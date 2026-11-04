@@ -557,6 +557,9 @@ fn risky(action: &Action) -> bool {
         Action::Restore { .. }
             | Action::Sql { .. }
             | Action::Datagen { .. }
+            | Action::Transfer { .. }
+            | Action::TableCopy { .. }
+            | Action::Import { .. }
             | Action::FileMove { .. }
             | Action::FileDelete { .. }
             | Action::Unzip { .. }
