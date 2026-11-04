@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { Ban, ListX } from "lucide-react";
+import { Ban, Clock, ListX } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
   convexSchedulableFunctions,
   convexScheduledJobs,
 } from "@/lib/db/convex-studio-schedules";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { ConvexScheduleRunHint } from "./convex-schedule-run-hint";
 import { ConvexScheduledJobSheet } from "./convex-scheduled-job-sheet";
 import { ConvexSchedulesConfirmDialog } from "./convex-schedules-confirm-dialog";
@@ -137,9 +138,12 @@ export function ConvexScheduledJobs({ target, refetchInterval }: Props) {
       ) : jobs.isPending ? (
         <p className="text-xs text-muted-foreground">Wird geladen…</p>
       ) : visible.length === 0 ? (
-        <p className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
-          Keine geplanten Funktionen.
-        </p>
+        <BaasEmptyState
+          compact
+          icon={Clock}
+          title="Keine geplanten Funktionen."
+          description="Aufrufe über ctx.scheduler.runAfter oder runAt erscheinen hier, bis sie ausgeführt sind."
+        />
       ) : (
         <div className="overflow-x-auto rounded-xl border">
           <table className="w-full text-left text-xs">

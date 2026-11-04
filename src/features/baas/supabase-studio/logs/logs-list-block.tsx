@@ -1,4 +1,6 @@
+import { CircleCheck } from "lucide-react";
 import type { ReactNode } from "react";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { DatabaseTable } from "../database/database-table";
 
 export function LogsListBlock<T>({
@@ -20,7 +22,7 @@ export function LogsListBlock<T>({
     <section className="space-y-2">
       {title && <h3 className="text-sm font-medium">{title}</h3>}
       {rows.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{empty}</p>
+        <BaasEmptyState compact icon={CircleCheck} title={empty} />
       ) : (
         <div className="overflow-x-auto rounded-xl border">
           <DatabaseTable headers={headers}>{rows.map(children)}</DatabaseTable>

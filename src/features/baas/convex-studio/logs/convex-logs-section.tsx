@@ -1,14 +1,15 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { Copy, Download, Eraser, RefreshCw } from "lucide-react";
+import { Copy, Download, Eraser, RefreshCw, ScrollText, SearchX } from "lucide-react";
 import { useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { copyWithToast } from "@/lib/clipboard";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasEmptyState } from "../../baas-empty-state";
+import { BaasSectionHeader } from "../../baas-section-header";
 import type { ConvexStudioSectionProps } from "../convex-studio-sections";
 import {
   bucketExecutions,
@@ -62,66 +63,70 @@ export function ConvexLogsSection({ deployment }: ConvexStudioSectionProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 ref={feature.ref} className="flex items-center gap-2 text-base font-semibold">
-          Logs {feature.isNew && <NewBadge />}
-        </h2>
-        <span className="text-xs text-muted-foreground">
-          {visible.length} von {stream.executions.length} Ausführungen
-          {failures > 0 && ` · ${failures} Fehler`} · Puffer max. {LOG_BUFFER_LIMIT}
-          {stream.dropped > 0 && ` · ${stream.dropped} übersprungen`}
-        </span>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Label className="flex items-center gap-2 text-xs">
-            <Switch checked={live} onCheckedChange={setLive} />
-            Live
-          </Label>
-          <Label className="flex items-center gap-2 text-xs">
-            <Switch checked={grouped} onCheckedChange={setGrouped} />
-            Nach Request gruppieren
-          </Label>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 text-xs"
-            disabled={live || stream.loading}
-            onClick={() => void stream.refresh()}
-          >
-            <RefreshCw className={`size-3.5 ${stream.loading ? "animate-spin" : ""}`} />
-            Aktualisieren
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 text-xs"
-            disabled={visible.length === 0}
-            onClick={() => void copyWithToast(toJsonl(visible, filters.levels), "Logs")}
-          >
-            <Copy className="size-3.5" />
-            Kopieren
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 text-xs"
-            disabled={visible.length === 0}
-            onClick={() => void exportJsonl()}
-          >
-            <Download className="size-3.5" />
-            JSONL
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 text-xs"
-            disabled={stream.executions.length === 0}
-            onClick={stream.clear}
-          >
-            <Eraser className="size-3.5" />
-            Leeren
-          </Button>
-        </div>
-      </div>
+      <BaasSectionHeader
+        title="Logs"
+        titleRef={feature.ref}
+        isNew={feature.isNew}
+        description={
+          <>
+            {visible.length} von {stream.executions.length} Ausführungen
+            {failures > 0 && ` · ${failures} Fehler`} · Puffer max. {LOG_BUFFER_LIMIT}
+            {stream.dropped > 0 && ` · ${stream.dropped} übersprungen`}
+          </>
+        }
+        actions={
+          <>
+            <Label className="flex items-center gap-2 text-xs">
+              <Switch checked={live} onCheckedChange={setLive} />
+              Live
+            </Label>
+            <Label className="flex items-center gap-2 text-xs">
+              <Switch checked={grouped} onCheckedChange={setGrouped} />
+              Nach Request gruppieren
+            </Label>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs"
+              disabled={live || stream.loading}
+              onClick={() => void stream.refresh()}
+            >
+              <RefreshCw className={`size-3.5 ${stream.loading ? "animate-spin" : ""}`} />
+              Aktualisieren
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs"
+              disabled={visible.length === 0}
+              onClick={() => void copyWithToast(toJsonl(visible, filters.levels), "Logs")}
+            >
+              <Copy className="size-3.5" />
+              Kopieren
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs"
+              disabled={visible.length === 0}
+              onClick={() => void exportJsonl()}
+            >
+              <Download className="size-3.5" />
+              JSONL
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs"
+              disabled={stream.executions.length === 0}
+              onClick={stream.clear}
+            >
+              <Eraser className="size-3.5" />
+              Leeren
+            </Button>
+          </>
+        }
+      />
       <ConvexLogsToolbar filters={filters} identifiers={identifiers} onChange={setFilters} />
       {stream.error && (
         <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -130,15 +135,24 @@ export function ConvexLogsSection({ deployment }: ConvexStudioSectionProps) {
       )}
       <ConvexLogsChart buckets={chart.buckets} size={chart.size} />
       {rows.length === 0 ? (
-        <p className="rounded-xl border py-12 text-center text-sm text-muted-foreground">
-          {stream.loading
-            ? "Logs werden geladen …"
-            : stream.executions.length === 0
-              ? live
-                ? "Warte auf neue Funktionsaufrufe …"
-                : "Keine Logs im Puffer. Live einschalten, um neue Aufrufe zu verfolgen."
-              : "Keine Logs passen zu den Filtern."}
-        </p>
+        <BaasEmptyState
+          compact
+          icon={stream.executions.length > 0 ? SearchX : ScrollText}
+          title={
+            stream.loading
+              ? "Logs werden geladen …"
+              : stream.executions.length === 0
+                ? live
+                  ? "Warte auf neue Funktionsaufrufe …"
+                  : "Keine Logs im Puffer."
+                : "Keine Logs passen zu den Filtern."
+          }
+          description={
+            !stream.loading && stream.executions.length === 0 && !live
+              ? "Live einschalten, um neue Aufrufe zu verfolgen."
+              : undefined
+          }
+        />
       ) : (
         <ConvexLogsList rows={rows} levels={deferredFilters.levels} onSelect={setSelected} />
       )}

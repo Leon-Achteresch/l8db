@@ -1,8 +1,17 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  FolderOpen,
+  RefreshCw,
+  Search,
+  SearchX,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,7 +33,9 @@ import {
   convexStudioFilesUpload,
 } from "@/lib/db/convex-studio-files";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { BaasFilePreview } from "../../baas-file-preview";
+import { BaasSectionHeader } from "../../baas-section-header";
 import { SupabaseStorageConfirmDialog } from "../../supabase-studio/storage/supabase-storage-confirm-dialog";
 import type { ConvexStudioSectionProps } from "../convex-studio-sections";
 import { ConvexFilesTable } from "./convex-files-table";
@@ -135,32 +146,32 @@ export function ConvexFilesSection({ deployment }: ConvexStudioSectionProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 ref={feature.ref} className="flex items-center gap-2 text-lg font-semibold">
-            Dateien {feature.isNew && <NewBadge />}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            {count.data === undefined
-              ? "Dateispeicher des Deployments"
-              : `${count.data.toLocaleString("de-DE")} Datei(en) im Dateispeicher`}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => void upload()} disabled={busy}>
-            <Upload className="size-3.5" /> Hochladen
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Dateien aktualisieren"
-            onClick={() => void queryClient.invalidateQueries({ queryKey: baseKey })}
-            disabled={current.isFetching}
-          >
-            <RefreshCw className={`size-3.5 ${current.isFetching ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-      </div>
+      <BaasSectionHeader
+        title="Dateien"
+        titleRef={feature.ref}
+        isNew={feature.isNew}
+        description={
+          count.data === undefined
+            ? "Dateispeicher des Deployments"
+            : `${count.data.toLocaleString("de-DE")} Datei(en) im Dateispeicher`
+        }
+        actions={
+          <>
+            <Button size="sm" variant="outline" onClick={() => void upload()} disabled={busy}>
+              <Upload className="size-3.5" /> Hochladen
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Dateien aktualisieren"
+              onClick={() => void queryClient.invalidateQueries({ queryKey: baseKey })}
+              disabled={current.isFetching}
+            >
+              <RefreshCw className={`size-3.5 ${current.isFetching ? "animate-spin" : ""}`} />
+            </Button>
+          </>
+        }
+      />
       <div className="flex flex-wrap items-center gap-2">
         <form
           className="relative min-w-48 flex-1"
@@ -251,9 +262,15 @@ export function ConvexFilesSection({ deployment }: ConvexStudioSectionProps) {
               {String(current.error)}
             </p>
           ) : files.length === 0 ? (
-            <p className="p-4 text-xs text-muted-foreground">
-              {search ? "Keine Datei mit dieser Storage-ID." : "Keine Dateien gespeichert."}
-            </p>
+            <BaasEmptyState
+              icon={search ? SearchX : FolderOpen}
+              title={search ? "Keine Datei mit dieser Storage-ID." : "Keine Dateien gespeichert."}
+              description={
+                search
+                  ? "Prüfe die ID oder leere die Suche, um alle Dateien zu sehen."
+                  : "Dateien, die deine App über ctx.storage ablegt, erscheinen hier. Du kannst auch direkt eine Datei hochladen."
+              }
+            />
           ) : (
             <ConvexFilesTable
               files={files}

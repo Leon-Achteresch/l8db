@@ -97,6 +97,7 @@ export function ConvexDataTableView({
             deployment={deployment}
             table={table}
             schema={schema.data}
+            total={count}
             onOpenDocument={onOpenDocument}
             onOpenReference={onOpenReference}
           />

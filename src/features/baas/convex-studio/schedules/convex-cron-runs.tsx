@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
+import { History } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { type ConvexStudioTarget, convexCronRuns } from "@/lib/db/convex-studio-schedules";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { CRON_STATUS, formatScheduleTime } from "./convex-schedules-format";
 
 const RUN_LIMIT = 50;
@@ -25,7 +27,7 @@ export function ConvexCronRuns({ target, name, refetchInterval }: Props) {
     );
   if (runs.isPending) return <p className="text-xs text-muted-foreground">Wird geladen…</p>;
   if (runs.data.length === 0)
-    return <p className="text-xs text-muted-foreground">Noch keine Läufe aufgezeichnet.</p>;
+    return <BaasEmptyState compact icon={History} title="Noch keine Läufe aufgezeichnet." />;
   return (
     <ul className="divide-y rounded-md border text-xs">
       {runs.data.map((run) => (

@@ -1,5 +1,15 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Globe2, Lock, Plus, RefreshCw, Search } from "lucide-react";
+import {
+  Archive,
+  ChevronLeft,
+  ChevronRight,
+  Globe2,
+  Lock,
+  Plus,
+  RefreshCw,
+  Search,
+  SearchX,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,6 +22,7 @@ import {
   supabaseStudioStorageBuckets,
 } from "@/lib/db/supabase-studio-storage";
 import { cn } from "@/lib/utils";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { storageQueryKey } from "./storage-format";
 import { SupabaseStorageBucketDialog } from "./supabase-storage-bucket-dialog";
 
@@ -113,9 +124,13 @@ export function SupabaseStorageBucketList({
           {String(buckets.error)}
         </p>
       ) : buckets.data.buckets.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          {search ? "Keine passenden Buckets." : "Keine Buckets sichtbar."}
-        </p>
+        <BaasEmptyState
+          compact
+          className="p-4"
+          icon={search ? SearchX : Archive}
+          title={search ? "Keine passenden Buckets." : "Keine Buckets sichtbar."}
+          description={search ? undefined : "Lege einen Bucket an, um Dateien zu speichern."}
+        />
       ) : (
         <ul className="space-y-0.5">
           {buckets.data.buckets.map((bucket) => (
