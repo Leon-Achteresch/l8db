@@ -210,7 +210,7 @@ export const LAYOUT_APPEARANCE_DEFAULTS = {
   seasonalAccents: true,
   lightTheme: DEFAULT_APP_THEME,
   darkTheme: DEFAULT_APP_THEME,
-  dbThemes: true,
+  dbThemes: false,
 } satisfies Partial<SettingsState>;
 
 export const TABLE_APPEARANCE_DEFAULTS = {
@@ -313,7 +313,7 @@ export const DEFAULT_SETTINGS = {
   seasonalAccents: true,
   lightTheme: DEFAULT_APP_THEME,
   darkTheme: DEFAULT_APP_THEME,
-  dbThemes: true,
+  dbThemes: false,
   fitColumnsToHeader: true,
   monochromeCells: true,
   tableStyle: "classic" as TableStyle,
@@ -444,11 +444,12 @@ export const useSettingsStore = create<SettingsState>()(
     {
       name: "l8db.settings",
       storage: createSafeJsonStorage(),
-      version: 1,
-      migrate: (persisted, version) =>
-        version < 1
-          ? { ...(persisted as Record<string, unknown>), productionReadOnly: true }
-          : persisted,
+      version: 2,
+      migrate: (persisted, version) => ({
+        ...(persisted as Record<string, unknown>),
+        ...(version < 1 ? { productionReadOnly: true } : {}),
+        ...(version < 2 ? { dbThemes: false } : {}),
+      }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<SettingsState> | undefined;
         return applyOrganizationSettings({
@@ -472,7 +473,7 @@ export const useSettingsStore = create<SettingsState>()(
           seasonalAccents: saved?.seasonalAccents !== false,
           lightTheme: normalizeAppTheme(saved?.lightTheme),
           darkTheme: normalizeAppTheme(saved?.darkTheme),
-          dbThemes: saved?.dbThemes !== false,
+          dbThemes: saved?.dbThemes === true,
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
           monochromeCells: saved?.monochromeCells !== false,
           tableStyle: normalizeTableStyle(saved?.tableStyle),

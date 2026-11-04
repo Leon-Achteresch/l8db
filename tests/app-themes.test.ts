@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   APP_THEMES,
+  activeThemeCssVars,
   appTheme,
   appThemeCssVars,
   DEFAULT_APP_THEME,
@@ -8,7 +9,7 @@ import {
   themeSwatch,
 } from "@/lib/app-themes";
 import { resolveDbTheme } from "@/lib/db-theme";
-import { useSettingsStore } from "@/lib/settings";
+import { DEFAULT_SETTINGS, useSettingsStore } from "@/lib/settings";
 
 describe("app themes", () => {
   test("light and dark themes are chosen independently", () => {
@@ -28,6 +29,42 @@ describe("app themes", () => {
     expect(appThemeCssVars(grove, null)["--db-hue"]).toBe(String(grove.hue));
     expect(appThemeCssVars(grove, db)["--db-hue"]).toBe(String(db.hue));
     expect(appThemeCssVars(grove, db)["--db-tint"]).toBe(String(grove.tint));
+  });
+
+  test("chosen theme is independent of the database kind by default", () => {
+    expect(DEFAULT_SETTINGS.dbThemes).toBe(false);
+    for (const mode of ["light", "dark"] as const) {
+      for (const theme of APP_THEMES) {
+        const expected = appThemeCssVars(theme[mode], null);
+        for (const [kind, provider] of [
+          ["postgres", null],
+          ["redis", null],
+          ["mysql", "mariadb"],
+          ["mongodb", null],
+          ["oracle", null],
+          [null, null],
+        ] as const) {
+          expect(activeThemeCssVars(theme.id, mode, false, kind, provider)).toEqual(expected);
+        }
+      }
+    }
+    expect(activeThemeCssVars("rose", "dark", true, "redis")["--db-hue"]).toBe(
+      String(resolveDbTheme("redis").hue),
+    );
+  });
+
+  test("stored settings drop the old database theme default", () => {
+    const { migrate, merge } = useSettingsStore.persist.getOptions();
+    const current = useSettingsStore.getState();
+    const migrated = migrate?.({ dbThemes: true, lightTheme: "rose" }, 1) as Record<
+      string,
+      unknown
+    >;
+    expect(migrated.dbThemes).toBe(false);
+    expect(migrated.lightTheme).toBe("rose");
+    expect(merge?.(migrated, current).dbThemes).toBe(false);
+    expect(merge?.({ dbThemes: true }, current).dbThemes).toBe(true);
+    expect(merge?.({}, current).dbThemes).toBe(false);
   });
 
   test("unknown ids fall back to the default theme", () => {
