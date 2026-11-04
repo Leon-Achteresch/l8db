@@ -53,7 +53,11 @@ fn table_text(value: &Value) -> String {
 }
 
 fn csv_field(text: &str) -> String {
-    if text.contains([',', '"', '\n', '\r']) || text.starts_with(' ') || text.ends_with(' ') {
+    if text.is_empty()
+        || text.contains([',', '"', '\n', '\r'])
+        || text.starts_with(' ')
+        || text.ends_with(' ')
+    {
         format!("\"{}\"", text.replace('"', "\"\""))
     } else {
         text.to_string()
@@ -110,11 +114,12 @@ pub fn write_rows(
             Ok(())
         }
         Format::Csv | Format::Tsv => {
-            let (separator, field): (&str, fn(&str) -> String) = if format == Format::Csv {
-                (",", csv_field)
-            } else {
-                ("\t", tsv_field)
-            };
+            let (separator, field, null): (&str, fn(&str) -> String, &str) =
+                if format == Format::Csv {
+                    (",", csv_field, "")
+                } else {
+                    ("\t", tsv_field, "\\N")
+                };
             let header: Vec<String> = columns.iter().map(|column| field(column)).collect();
             writeln!(out, "{}", header.join(separator))?;
             for row in rows {
@@ -124,7 +129,7 @@ pub fn write_rows(
                     .map(|(index, column)| {
                         plain(&cell(row, column, index))
                             .map(|text| field(&text))
-                            .unwrap_or_default()
+                            .unwrap_or_else(|| null.to_string())
                     })
                     .collect();
                 writeln!(out, "{}", line.join(separator))?;
@@ -188,6 +193,10 @@ mod tests {
     fn tsv_escapes_control_characters() {
         let text = render(Format::Tsv, &["v"], &[json!({"v": "a\tb\nc"})]);
         assert_eq!(text, "v\na\\tb\\nc\n");
+        let text = render(Format::Tsv, &["v"], &[json!([null]), json!([""])]);
+        assert_eq!(text, "v\n\\N\n\n");
+        let text = render(Format::Csv, &["v"], &[json!([null]), json!([""])]);
+        assert_eq!(text, "v\n\n\"\"\n");
     }
 
     #[test]

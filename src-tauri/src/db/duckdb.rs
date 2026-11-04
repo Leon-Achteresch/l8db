@@ -95,7 +95,7 @@ fn owned_to_json(value: duckdb::types::Value) -> serde_json::Value {
         V::UInt(i) => J::from(i),
         V::UBigInt(i) => uint(i),
         V::UHugeInt(i) => decimal(&i.to_string()),
-        V::Float(f) => num(f as f64),
+        V::Float(f) => num(f.to_string().parse().unwrap_or(f64::from(f))),
         V::Double(f) => num(f),
         V::Decimal(d) => decimal(&d.to_string()),
         V::Timestamp(unit, t) => instant(unit, t)
@@ -832,6 +832,11 @@ mod tests {
     use crate::db::pool::create_pool_state;
     use serde_json::json;
 
+    #[test]
+    fn real_values_use_their_shortest_text() {
+        assert_eq!(owned_to_json(duckdb::types::Value::Float(1.1)), json!(1.1));
+    }
+
     #[tokio::test]
     async fn column_changes_honour_not_null_and_roll_back_together() {
         let dir = tempfile::tempdir().unwrap();
@@ -973,7 +978,7 @@ mod tests {
                 json!("2024-01-02"),
                 json!("2024-01-02 03:04:05.123456"),
                 json!("13:14:15"),
-                json!(12.5),
+                json!("12.50"),
                 json!("12345678901234567890.123456789"),
                 json!("9007199254740993"),
                 json!("170141183460469231731687303715884105727"),

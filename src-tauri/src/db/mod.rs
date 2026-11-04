@@ -55,7 +55,7 @@ pub mod snapshot;
 mod snowflake;
 pub mod sql_log;
 pub(crate) mod sql_script;
-mod sqlite;
+pub(crate) mod sqlite;
 mod sqlite_http;
 pub mod ssh;
 pub mod table_copy;
@@ -1973,13 +1973,39 @@ pub(crate) fn is_binary_column_type(data_type: &str) -> bool {
         )
 }
 
+pub(crate) fn stable_order_terms(
+    order: Option<(&str, bool)>,
+    keys: &[String],
+    quote: impl Fn(&str) -> String,
+) -> Vec<String> {
+    let mut terms: Vec<String> = order
+        .iter()
+        .map(|(column, desc)| format!("{} {}", quote(column), if *desc { "DESC" } else { "ASC" }))
+        .collect();
+    terms.extend(
+        keys.iter()
+            .filter(|key| order.is_none_or(|(column, _)| column != key.as_str()))
+            .map(|key| quote(key)),
+    );
+    terms
+}
+
 pub(crate) fn where_clause(filter: Option<&str>, allow_raw: bool) -> Result<String, String> {
+    where_clause_in(filter, allow_raw, true)
+}
+
+pub(crate) fn where_clause_in(
+    filter: Option<&str>,
+    allow_raw: bool,
+    hash_comments: bool,
+) -> Result<String, String> {
     match filter.map(str::trim).filter(|f| !f.is_empty()) {
         Some(expression) => {
-            if !allow_raw {
-                validate_table_filter(expression)?;
+            if allow_raw {
+                return Ok(format!(" WHERE {expression}"));
             }
-            Ok(format!(" WHERE {expression}"))
+            validate_table_filter_in(expression, hash_comments)?;
+            Ok(format!(" WHERE ({expression})"))
         }
         None => Ok(String::new()),
     }
@@ -2010,20 +2036,25 @@ pub fn create_adapter(
         DatabaseKind::Postgres => Ok(Box::new(postgres::PostgresAdapter::from_config(
             config, pool_state,
         ))),
-        kind => {
-            let scheme = kind.url_schemes()[0];
-            let url = format!(
-                "{scheme}://{}:{}@{}:{}/{}",
-                url::form_urlencoded::byte_serialize(config.user.as_bytes()).collect::<String>(),
-                url::form_urlencoded::byte_serialize(config.password.as_bytes())
-                    .collect::<String>(),
-                config.host,
-                config.port,
-                config.database
-            );
-            create_adapter_from_string(kind, &url, None, pool_state)
-        }
+        kind => create_adapter_from_string(kind, &config_url(&config)?, None, pool_state),
     }
+}
+
+fn config_url(config: &ConnectionConfig) -> Result<String, String> {
+    let invalid = |part: &str| format!("Ungültige Verbindungsangabe: {part}");
+    let scheme = config.kind.url_schemes()[0];
+    let mut url = url::Url::parse(&format!("{scheme}://localhost")).map_err(|_| invalid("Typ"))?;
+    url.set_host(Some(&config.host))
+        .map_err(|_| invalid("Host"))?;
+    url.set_port(Some(config.port))
+        .map_err(|_| invalid("Port"))?;
+    url.set_username(&config.user)
+        .map_err(|_| invalid("Benutzer"))?;
+    set_url_password(&mut url, &config.password).map_err(|_| invalid("Passwort"))?;
+    url.path_segments_mut()
+        .map_err(|_| invalid("Datenbank"))?
+        .push(&config.database);
+    Ok(url.into())
 }
 
 pub fn create_adapter_from_string(
@@ -2549,6 +2580,110 @@ mod tests {
     }
 
     #[test]
+    fn rejects_statements_chained_without_separator() {
+        for filter in [
+            "1=1 DELETE FROM dbo.victim",
+            "1=1\nDELETE FROM victim",
+            "1=1\tdElEtE\tvictim",
+            "1=1 UPDATE t SET a = 1",
+            "1=1 DROP TABLE t",
+            "1=1 TRUNCATE TABLE t",
+            "1=1 EXEC sp_who",
+            "1=1 EXECUTE('x')",
+            "1=1 WAITFOR DELAY '0:0:5'",
+            "1=1 MERGE t USING s ON 1=1 WHEN MATCHED THEN DELETE",
+            "1=1 DECLARE @x int",
+            "1=1 CREATE TABLE x (a int)",
+            "1=1 GRANT ALL ON t TO public",
+            "1=1) DELETE FROM t WHERE (1=1",
+            "(1=1",
+            "1=1)",
+            "a = ')' ) delete from t where ('",
+        ] {
+            assert!(validate_table_filter(filter).is_err(), "{filter}");
+        }
+    }
+
+    #[test]
+    fn wraps_validated_filters_in_parentheses() {
+        assert_eq!(
+            super::where_clause(Some(" \"a\" = 1 "), false).unwrap(),
+            " WHERE (\"a\" = 1)"
+        );
+        assert_eq!(
+            super::where_clause(Some("a = 1 ORDER BY b"), true).unwrap(),
+            " WHERE a = 1 ORDER BY b"
+        );
+        assert_eq!(super::where_clause(Some("  "), false).unwrap(), "");
+    }
+
+    #[test]
+    fn accepts_filters_with_statement_words_in_literals_or_identifiers() {
+        for filter in [
+            "\"status\" = 'delete me (soon'",
+            "`update` = 1 AND [delete] = 2",
+            "\"created_at\" > '2024-01-01' AND \"updated_by\" IS NULL",
+            "(\"a\" = 1 OR \"b\" = 2) AND \"id\" IN (SELECT \"id\" FROM \"other\")",
+        ] {
+            assert!(validate_table_filter(filter).is_ok(), "{filter}");
+        }
+    }
+
+    #[test]
+    fn config_urls_encode_every_part() {
+        let url = super::config_url(&super::ConnectionConfig {
+            kind: super::DatabaseKind::Mysql,
+            host: "db.local".into(),
+            port: 3307,
+            user: "a b".into(),
+            password: "p w+@/:x".into(),
+            database: "my db/x".into(),
+            ssl_mode: None,
+            read_only: false,
+        })
+        .unwrap();
+        let parsed = url::Url::parse(&url).unwrap();
+        let decode = |s: &str| {
+            percent_encoding::percent_decode_str(s)
+                .decode_utf8()
+                .unwrap()
+                .into_owned()
+        };
+        assert_eq!(decode(parsed.username()), "a b");
+        assert_eq!(decode(parsed.password().unwrap()), "p w+@/:x");
+        assert_eq!(parsed.host_str(), Some("db.local"));
+        assert_eq!(parsed.port(), Some(3307));
+        assert_eq!(decode(&parsed.path()[1..]), "my db/x");
+    }
+
+    #[test]
+    fn page_order_always_ends_with_the_primary_key() {
+        let keys = vec!["id".to_string(), "b".to_string()];
+        let quote = |c: &str| format!("`{c}`");
+        assert_eq!(
+            super::stable_order_terms(None, &keys, quote),
+            ["`id`", "`b`"]
+        );
+        assert_eq!(
+            super::stable_order_terms(Some(("b", true)), &keys, quote),
+            ["`b` DESC", "`id`"]
+        );
+        assert!(super::stable_order_terms(None, &[], quote).is_empty());
+    }
+
+    #[test]
+    fn postgres_filters_accept_json_path_operators() {
+        let filter = "\"j\" #>> '{b,0}' = '1' AND \"j\" #> '{a}' IS NOT NULL AND (\"j\" #- '{c}') IS NOT NULL";
+        assert!(super::validate_table_filter_in(filter, false).is_ok());
+        assert!(validate_table_filter(filter).is_err());
+        assert!(super::validate_table_filter_in("1=1 #> '{a}'; DROP TABLE t", false).is_err());
+        assert_eq!(
+            super::where_clause_in(Some("\"j\" #>> '{b}' = '1'"), false, false).unwrap(),
+            " WHERE (\"j\" #>> '{b}' = '1')"
+        );
+    }
+
+    #[test]
     fn accepts_dialect_specific_builder_literals() {
         for filter in [
             "\"path\" = E'C:\\\\temp\\\\x'",
@@ -2750,6 +2885,48 @@ fn filter_outside_literals(input: &str, mode: FilterLexMode) -> String {
     out
 }
 
+const FILTER_STATEMENT_WORDS: [&str; 18] = [
+    "insert", "update", "delete", "merge", "drop", "create", "alter", "truncate", "exec",
+    "execute", "call", "declare", "grant", "revoke", "waitfor", "shutdown", "dbcc", "bulk",
+];
+
+fn strip_quoted_identifiers(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(ch) = chars.next() {
+        let close = match ch {
+            '`' => '`',
+            '[' => ']',
+            _ => {
+                out.push(ch);
+                continue;
+            }
+        };
+        out.push(' ');
+        for inner in chars.by_ref() {
+            if inner == close {
+                break;
+            }
+        }
+    }
+    out
+}
+
+fn parentheses_balanced(text: &str) -> bool {
+    let mut depth = 0usize;
+    for ch in text.chars() {
+        match ch {
+            '(' => depth += 1,
+            ')' => match depth.checked_sub(1) {
+                Some(next) => depth = next,
+                None => return false,
+            },
+            _ => {}
+        }
+    }
+    depth == 0
+}
+
 fn contains_dollar_quote(text: &str) -> bool {
     let chars: Vec<char> = text.chars().collect();
     chars.iter().enumerate().any(|(i, &ch)| {
@@ -2788,6 +2965,10 @@ fn contains_word(haystack: &str, word: &str) -> bool {
 }
 
 pub fn validate_table_filter(filter: &str) -> Result<(), String> {
+    validate_table_filter_in(filter, true)
+}
+
+pub fn validate_table_filter_in(filter: &str, hash_comments: bool) -> Result<(), String> {
     let reject = |token: &str| {
         Err(format!(
             "Filter abgelehnt: {token} ist im einfachen Filtermodus nicht erlaubt. Nutze den SQL-Modus für eigene Ausdrücke."
@@ -2802,15 +2983,24 @@ pub fn validate_table_filter(filter: &str) -> Result<(), String> {
         };
         let stripped = filter_outside_literals(filter, mode).to_lowercase();
         for token in [";", "--", "/*", "*/", "#"] {
-            if stripped.contains(token) {
+            if stripped.contains(token) && (hash_comments || token != "#") {
                 return reject(token);
             }
         }
         if contains_dollar_quote(&stripped) {
             return reject("$$");
         }
+        if !parentheses_balanced(&stripped) {
+            return reject("eine nicht geschlossene Klammer");
+        }
         for word in ["union", "returning", "into"] {
             if contains_word(&stripped, word) {
+                return reject(word);
+            }
+        }
+        let unquoted = strip_quoted_identifiers(&stripped);
+        for word in FILTER_STATEMENT_WORDS {
+            if contains_word(&unquoted, word) {
                 return reject(word);
             }
         }

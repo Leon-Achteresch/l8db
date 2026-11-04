@@ -1251,7 +1251,7 @@ mod tests {
                         json!({"jobComplete": true, "jobReference": {"jobId": "j2", "location": "EU"}, "numDmlAffectedRows": "5"})
                     } else {
                         assert!(
-                            sql.contains("FROM `proj`.`ds`.`orders` WHERE id > 1 ORDER BY `info`.`city` DESC LIMIT 10 OFFSET 0")
+                            sql.contains("FROM `proj`.`ds`.`orders` WHERE (id > 1) ORDER BY `info`.`city` DESC LIMIT 10 OFFSET 0")
                                 || sql == "SELECT 1",
                             "{sql}"
                         );

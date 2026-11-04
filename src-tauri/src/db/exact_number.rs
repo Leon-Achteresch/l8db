@@ -40,8 +40,13 @@ pub(crate) fn is_exact_in_js(text: &str) -> bool {
         .is_some_and(|shortest| shortest == decimal)
 }
 
+fn keeps_scale(text: &str) -> bool {
+    text.split_once('.')
+        .is_some_and(|(_, fraction)| fraction.ends_with('0'))
+}
+
 pub(crate) fn decimal(text: &str) -> Value {
-    if is_exact_in_js(text) {
+    if is_exact_in_js(text) && !keeps_scale(text) {
         if let Ok(integer) = text.parse::<i64>() {
             return Value::from(integer);
         }
@@ -222,7 +227,7 @@ pub(crate) fn quote_unsafe_top_level_numbers(json: &str) -> Cow<'_, str> {
             b'-' | b'0'..=b'9' if depth == 1 => {
                 let end = number_end(bytes, index);
                 let token = &json[index..end];
-                if !is_exact_in_js(token) {
+                if !is_exact_in_js(token) || keeps_scale(token) {
                     let buffer = out.get_or_insert_with(|| String::with_capacity(json.len() + 16));
                     buffer.push_str(&json[copied..index]);
                     buffer.push('"');
@@ -293,7 +298,9 @@ mod tests {
         }
         assert!(!is_exact_in_js("1e3"));
         assert!(!is_exact_in_js("abc"));
-        assert_eq!(decimal("123.450"), json!(123.45));
+        assert_eq!(decimal("123.450"), json!("123.450"));
+        assert_eq!(decimal("1.5000"), json!("1.5000"));
+        assert_eq!(decimal("123.45"), json!(123.45));
         assert_eq!(decimal("-0.5"), json!(-0.5));
         assert_eq!(decimal(".5"), json!(0.5));
         assert_eq!(decimal("+7"), json!(7));
@@ -337,7 +344,7 @@ mod tests {
         let row = r#"{"id": 9007199254740993, "price": 12.50, "doc": {"n": 9007199254740993}, "s": "9007199254740993", "e": 1e400, "a": [1, 2]}"#;
         let value: Value = serde_json::from_str(&quote_unsafe_top_level_numbers(row)).unwrap();
         assert_eq!(value["id"], json!("9007199254740993"));
-        assert_eq!(value["price"], json!(12.5));
+        assert_eq!(value["price"], json!("12.50"));
         assert_eq!(value["s"], json!("9007199254740993"));
         assert_eq!(value["e"], json!("1e400"));
         assert_eq!(value["a"], json!([1, 2]));
