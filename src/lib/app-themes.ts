@@ -1,4 +1,5 @@
-import type { DbThemeTokens } from "@/lib/db-theme";
+import type { DatabaseKind } from "@/lib/db";
+import { type DbThemeTokens, resolveDbTheme } from "@/lib/db-theme";
 
 export type ThemeMode = "light" | "dark";
 
@@ -82,6 +83,19 @@ export function appThemeCssVars(
     "--db-glow": String(db ? Math.min(db.glow, 0.05) : Math.min(variant.chroma, 0.05)),
     "--db-tint": String(variant.tint),
   };
+}
+
+export function activeThemeCssVars(
+  themeId: string | undefined,
+  mode: ThemeMode,
+  dbThemes: boolean,
+  kind?: DatabaseKind | null,
+  providerId?: string | null,
+): Record<string, string> {
+  return appThemeCssVars(
+    appTheme(themeId)[mode],
+    dbThemes ? resolveDbTheme(kind, providerId) : null,
+  );
 }
 
 export function themeSwatch(variant: ThemeVariant, mode: ThemeMode): string {
