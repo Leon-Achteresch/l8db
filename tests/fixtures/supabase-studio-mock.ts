@@ -1476,6 +1476,7 @@ export async function seedSupabaseStudio(page: Page): Promise<void> {
         case "supabase_is_connected":
           return true;
         case "supabase_projects":
+          return { projects: [project], cloud_error: null };
         case "supabase_connect":
           return [project];
         case "supabase_connect_self_hosted":

@@ -272,17 +272,17 @@ async fn get<T: serde::de::DeserializeOwned>(
         .header("Authorization", token)
         .send()
         .await
-        .map_err(|error| format!("PocketBase ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("PocketBase", &error))?;
     let status = response.status();
     if !status.is_success() {
         let hint = match status.as_u16() {
-            401 => "Superuser-Token ungültig oder abgelaufen.",
+            401 => "Superuser-Token ungültig oder abgelaufen. Über „Token erneuern“ einen neuen Token hinterlegen.",
             403 => "Superuser-Berechtigung fehlt.",
             404 => "Ressource nicht gefunden.",
             429 => "PocketBase-Limit erreicht. Bitte später erneut versuchen.",
             _ => "Anfrage fehlgeschlagen.",
         };
-        return Err(format!("PocketBase HTTP {}: {hint}", status.as_u16()));
+        return Err(crate::supabase::write_error("PocketBase", response, hint).await);
     }
     response
         .json::<T>()
@@ -431,10 +431,12 @@ pub async fn pocketbase_create_collection(
         .await
         .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "PocketBase HTTP {}: Collection konnte nicht erstellt werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "PocketBase",
+            response,
+            "Collection konnte nicht erstellt werden.",
+        )
+        .await);
     }
     let collection: PocketBaseCollection = response
         .json()
@@ -467,10 +469,12 @@ pub async fn pocketbase_rename_collection(
         .await
         .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "PocketBase HTTP {}: Collection konnte nicht umbenannt werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "PocketBase",
+            response,
+            "Collection konnte nicht umbenannt werden.",
+        )
+        .await);
     }
     let collection: PocketBaseCollection = response
         .json()
@@ -497,10 +501,12 @@ pub async fn pocketbase_delete_collection(id: String, collection_id: String) -> 
         .await
         .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "PocketBase HTTP {}: Collection konnte nicht gelöscht werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "PocketBase",
+            response,
+            "Collection konnte nicht gelöscht werden.",
+        )
+        .await);
     }
     Ok(())
 }
@@ -545,10 +551,12 @@ pub async fn pocketbase_create_auth_user(
         .await
         .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "PocketBase HTTP {}: Auth-Benutzer konnte nicht erstellt werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "PocketBase",
+            response,
+            "Auth-Benutzer konnte nicht erstellt werden.",
+        )
+        .await);
     }
     let record = response
         .json()
@@ -578,10 +586,12 @@ pub async fn pocketbase_create_record(
         .await
         .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "PocketBase HTTP {}: Datensatz konnte nicht erstellt werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "PocketBase",
+            response,
+            "Datensatz konnte nicht erstellt werden.",
+        )
+        .await);
     }
     let record = response
         .json()
@@ -613,10 +623,12 @@ pub async fn pocketbase_update_record(
         .await
         .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "PocketBase HTTP {}: Datensatz konnte nicht bearbeitet werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "PocketBase",
+            response,
+            "Datensatz konnte nicht bearbeitet werden.",
+        )
+        .await);
     }
     let record: PocketBaseRecord = response
         .json()
@@ -648,10 +660,12 @@ pub async fn pocketbase_delete_record(
         .await
         .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "PocketBase HTTP {}: Datensatz konnte nicht gelöscht werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "PocketBase",
+            response,
+            "Datensatz konnte nicht gelöscht werden.",
+        )
+        .await);
     }
     Ok(())
 }
@@ -734,10 +748,12 @@ pub async fn pocketbase_upload_file(
         .await
         .map_err(|_| "PocketBase ist beim Upload nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "PocketBase HTTP {}: Datei konnte nicht hochgeladen werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "PocketBase",
+            response,
+            "Datei konnte nicht hochgeladen werden.",
+        )
+        .await);
     }
     let record: PocketBaseRecord = response
         .json()
@@ -800,10 +816,12 @@ pub async fn pocketbase_delete_file(
         .await
         .map_err(|_| "PocketBase ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "PocketBase HTTP {}: Datei konnte nicht gelöscht werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "PocketBase",
+            response,
+            "Datei konnte nicht gelöscht werden.",
+        )
+        .await);
     }
     Ok(())
 }
@@ -865,10 +883,12 @@ async fn file_response_for(
         .await
         .map_err(|_| "PocketBase-Dateizugriff ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "PocketBase HTTP {}: Dateitoken konnte nicht erstellt werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "PocketBase",
+            response,
+            "Dateitoken konnte nicht erstellt werden.",
+        )
+        .await);
     }
     let file_token: PocketBaseFileToken = response
         .json()

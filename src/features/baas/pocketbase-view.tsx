@@ -1,12 +1,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Cloud, ExternalLink, Plus, RefreshCw, Unplug } from "lucide-react";
+import { Cloud, ExternalLink, KeyRound, Plus, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { pocketbaseConnect, pocketbaseDisconnect, pocketbaseProfiles } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasDisconnectButton } from "./baas-disconnect-button";
+import { disconnectDescription } from "./disconnect-baas";
 import { PocketBaseCollectionsView } from "./pocketbase-collections-view";
 
 export function PocketBaseView({ initialId }: { initialId?: string }) {
@@ -58,7 +60,7 @@ export function PocketBaseView({ initialId }: { initialId?: string }) {
     <div className="mx-auto max-w-[1400px] px-6 pb-8 lg:px-9">
       <header className="mb-7 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="eyebrow mb-3">Cloud-Projekte</p>
+          <p className="eyebrow mb-3">Instanzen</p>
           <div ref={feature.ref} className="flex items-center gap-2">
             <h1 className="text-3xl font-semibold tracking-[-0.045em]">PocketBase</h1>
             {feature.isNew && <NewBadge />}
@@ -68,9 +70,23 @@ export function PocketBaseView({ initialId }: { initialId?: string }) {
           </p>
         </div>
         {selected && (
-          <Button variant="outline" size="sm" onClick={() => setAdding((value) => !value)}>
-            <Plus className="size-3.5" /> Instanz hinzufügen
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              title="Abgelaufenen Superuser-Token für diese Instanz ersetzen"
+              onClick={() => {
+                setEndpoint(selected.endpoint);
+                setToken("");
+                setAdding(true);
+              }}
+            >
+              <KeyRound className="size-3.5" /> Token erneuern
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setAdding((value) => !value)}>
+              <Plus className="size-3.5" /> Instanz hinzufügen
+            </Button>
+          </div>
         )}
       </header>
 
@@ -163,14 +179,13 @@ export function PocketBaseView({ initialId }: { initialId?: string }) {
                   >
                     <RefreshCw className="size-3.5" /> Aktualisieren
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void disconnect()}
-                    disabled={busy}
-                  >
-                    <Unplug className="size-3.5" /> Trennen
-                  </Button>
+                  <BaasDisconnectButton
+                    description={disconnectDescription(
+                      selected?.name || selected?.endpoint || "PocketBase",
+                    )}
+                    busy={busy}
+                    onConfirm={() => void disconnect()}
+                  />
                 </div>
               </div>
               <section className="mb-6 rounded-2xl border bg-card p-5">
