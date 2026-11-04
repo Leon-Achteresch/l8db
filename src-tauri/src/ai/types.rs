@@ -17,6 +17,8 @@ pub struct Profile {
     #[serde(default)]
     pub effort: String,
     #[serde(default)]
+    pub fast: bool,
+    #[serde(default)]
     pub mode: String,
     #[serde(default)]
     pub approval: String,

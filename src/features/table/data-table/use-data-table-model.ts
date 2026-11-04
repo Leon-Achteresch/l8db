@@ -44,6 +44,7 @@ export function useDataTableModel({
   onNavigateToTable,
   onInsertRow,
   onDeleteRow,
+  rowMenuItems,
   columnDetails,
   autoSelectFirstCell = false,
 }: DataTableProps) {
@@ -175,7 +176,7 @@ export function useDataTableModel({
   );
   const tableWidth = table.getTotalSize();
   const columnScale = Math.max(1, (rowVirtualizer.scrollRect?.width ?? 0) / tableWidth);
-  const hasRowActions = !!onInsertRow || !!onDeleteRow;
+  const hasRowActions = !!onInsertRow || !!onDeleteRow || !!rowMenuItems;
   const [menuRow, setMenuRow] = useState<MenuRow | null>(null);
   const colSpan = table.getVisibleLeafColumns().length || 1;
   const activeSort = sorting[0];

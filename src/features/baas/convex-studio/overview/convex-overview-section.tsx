@@ -22,7 +22,7 @@ export function ConvexOverviewSection({ deployment }: ConvexStudioSectionProps) 
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border bg-card p-5">
+      <section className="rounded-2xl bg-muted/25 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div ref={feature.ref} className="flex flex-wrap items-center gap-2">
@@ -64,7 +64,7 @@ export function ConvexOverviewSection({ deployment }: ConvexStudioSectionProps) 
               value: info.data?.instanceName ?? info.data?.kind,
             },
           ].map((item) => (
-            <div key={item.label} className="rounded-xl border bg-background/50 p-3">
+            <div key={item.label} className="rounded-xl bg-background/50 p-3">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <item.icon className="size-3.5" /> {item.label}
               </div>
@@ -79,7 +79,7 @@ export function ConvexOverviewSection({ deployment }: ConvexStudioSectionProps) 
       <ConvexOverviewStats deployment={deployment} />
       <ConvexOverviewErrors deployment={deployment} />
 
-      <section className="rounded-2xl border bg-card p-5">
+      <section className="rounded-2xl bg-muted/25 p-5">
         <h3 className="text-sm font-semibold">Schnellzugriff</h3>
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {links.map((section) => (
@@ -89,7 +89,7 @@ export function ConvexOverviewSection({ deployment }: ConvexStudioSectionProps) 
               onClick={() =>
                 void navigate({ to: "/baas", search: { ...search, studio: section.id } })
               }
-              className="flex items-center gap-2 rounded-lg border bg-background/50 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
+              className="flex items-center gap-2 rounded-lg bg-background/50 px-3 py-2 text-left text-sm transition-colors hover:bg-muted"
             >
               <section.icon className="size-4 shrink-0 text-muted-foreground" />
               <span className="truncate">{section.label}</span>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,6 +19,8 @@ export function QuickPickDialog({
   resolve: (id: string, value: never) => void;
 }) {
   const [filter, setFilter] = useState("");
+  const [active, setActive] = useState(0);
+  const listId = useId();
   const [selected, setSelected] = useState<number[]>(
     (prompt.items ?? []).map((item, index) => (item.picked ? index : -1)).filter((i) => i >= 0),
   );
@@ -40,6 +42,17 @@ export function QuickPickDialog({
     }
     resolve(prompt.promptId, [index] as never);
   };
+  const current = visible[Math.min(active, visible.length - 1)];
+  const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      setActive((previous) => Math.max(0, Math.min(visible.length - 1, previous + step)));
+    } else if (event.key === "Enter" && current) {
+      event.preventDefault();
+      toggle(current.index);
+    }
+  };
   return (
     <Dialog open onOpenChange={(open) => !open && resolve(prompt.promptId, undefined as never)}>
       <DialogContent className="max-w-md">
@@ -50,25 +63,34 @@ export function QuickPickDialog({
           autoFocus
           placeholder={prompt.placeholder ?? "Filtern…"}
           value={filter}
-          onChange={(event) => setFilter(event.target.value)}
+          onChange={(event) => {
+            setFilter(event.target.value);
+            setActive(0);
+          }}
+          onKeyDown={onKeyDown}
+          role="combobox"
+          aria-expanded
+          aria-controls={listId}
+          aria-activedescendant={current ? `${listId}-${current.index}` : undefined}
         />
-        <div className="max-h-64 overflow-y-auto rounded-md border">
-          {visible.map((item) => (
-            <button
-              key={item.index}
-              type="button"
-              role="checkbox"
-              aria-checked={selected.includes(item.index)}
-              onClick={() => toggle(item.index)}
-              className={cn(
-                "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted",
+        <div
+          id={listId}
+          role={prompt.canPickMany ? "group" : "listbox"}
+          className="max-h-64 overflow-y-auto rounded-md border"
+        >
+          {visible.map((item) => {
+            const shared = {
+              id: `${listId}-${item.index}`,
+              onClick: () => toggle(item.index),
+              onMouseEnter: () => setActive(visible.indexOf(item)),
+              className: cn(
+                "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted",
                 selected.includes(item.index) && "bg-primary/10",
-              )}
-            >
-              {prompt.canPickMany && (
-                <span aria-hidden>{selected.includes(item.index) ? "☑" : "☐"}</span>
-              )}
-              <span className="min-w-0 flex-1">
+                current?.index === item.index && "ring-1 ring-inset ring-ring",
+              ),
+            };
+            const label = (
+              <span key="label" className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{item.label}</span>
                 {item.description && (
                   <span className="block truncate text-xs text-muted-foreground">
@@ -76,8 +98,32 @@ export function QuickPickDialog({
                   </span>
                 )}
               </span>
-            </button>
-          ))}
+            );
+            return prompt.canPickMany ? (
+              <button
+                key={item.index}
+                type="button"
+                role="checkbox"
+                tabIndex={-1}
+                aria-checked={selected.includes(item.index)}
+                {...shared}
+              >
+                <span aria-hidden>{selected.includes(item.index) ? "☑" : "☐"}</span>
+                {label}
+              </button>
+            ) : (
+              <div
+                key={item.index}
+                role="option"
+                tabIndex={-1}
+                aria-selected={current?.index === item.index}
+                onKeyDown={(event) => event.key === "Enter" && toggle(item.index)}
+                {...shared}
+              >
+                {label}
+              </div>
+            );
+          })}
           {visible.length === 0 && (
             <p className="px-3 py-4 text-sm text-muted-foreground">Keine Treffer.</p>
           )}

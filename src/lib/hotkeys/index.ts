@@ -3,6 +3,7 @@ export { commandById, defaultHotkeyFor, HOTKEY_COMMAND_IDS, HOTKEY_COMMANDS } fr
 export type { HotkeyConflict } from "./conflicts";
 export {
   canonicalizeHotkey,
+  conflictKey,
   detectHotkeyConflicts,
   findHotkeyConflict,
   validateHotkeyInput,

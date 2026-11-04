@@ -114,7 +114,8 @@ export function WorkspaceLayout() {
   const openToolTab = useTableTabs((state) => state.openToolTab);
 
   useEffect(() => {
-    if (tool && tool !== "compare" && tool !== "workbench") openToolTab(tool);
+    if (tool && tool !== "compare" && tool !== "schema-compare" && tool !== "workbench")
+      openToolTab(tool);
   }, [tool, openToolTab]);
 
   const activeTab = useActiveWorkspaceTab();

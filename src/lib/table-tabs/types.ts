@@ -105,6 +105,7 @@ export interface TabsState {
   openBucketTab: (tab: Omit<BucketTab, "kind">) => void;
   openToolTab: (tool: ToolId, id?: string) => void;
   updateCompareTab: (id: string, compare: CompareWorkspace, title: string) => void;
+  setToolTabTitle: (tool: ToolId, id: string, title: string | undefined) => void;
   closeTab: (key: string) => void;
   closeTabs: (keys: string[]) => void;
   closeOtherTabs: (key: string) => void;

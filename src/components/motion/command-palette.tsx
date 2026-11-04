@@ -100,6 +100,7 @@ export function CommandPalette({
   const canTouch = useTouchCapable();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const lastPointer = useRef<{ x: number; y: number } | null>(null);
   const listFrameRef = useRef<HTMLDivElement>(null);
   const pendingEnter = useRef<string | null>(null);
   const previousScroll = useRef<{ list: HTMLDivElement | null; active: number } | null>(null);
@@ -252,6 +253,20 @@ export function CommandPalette({
     setQuery(initialQuery);
     moveTo(null);
   });
+
+  useEffect(() => {
+    const track = (event: PointerEvent) => {
+      lastPointer.current = { x: event.clientX, y: event.clientY };
+    };
+    document.addEventListener("pointermove", track, { passive: true });
+    return () => document.removeEventListener("pointermove", track);
+  }, []);
+
+  const pointerMovedTo = (event: React.PointerEvent, item: CommandItem, index: number) => {
+    const last = lastPointer.current;
+    if (index === active || (last?.x === event.clientX && last?.y === event.clientY)) return;
+    moveTo(item.id);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -476,7 +491,9 @@ export function CommandPalette({
                                   uid={uid}
                                   reduce={reduce}
                                   hasIcons={hasIcons}
-                                  onHover={() => moveTo(it.id)}
+                                  onPointerMove={(event) =>
+                                    pointerMovedTo(event, it, row.itemIndex)
+                                  }
                                   onSelect={() => selectItem(it)}
                                 />
                               ) : (

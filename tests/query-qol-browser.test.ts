@@ -76,7 +76,8 @@ test.skipIf(!process.env.L8DB_PERF_BROWSER)(
       const nodeCount = await page.locator("tbody tr").count();
       expect(nodeCount).toBeLessThan(70);
       const baselineRequests = calls.filter((command) => command === "execute_query").length;
-      await page.getByRole("button", { name: /Zeit: Original/ }).click();
+      await page.getByRole("button", { name: "Ergebnisoptionen", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Zeitdarstellung: Original", exact: true }).click();
       await page.getByRole("menuitemradio", { name: "UTC", exact: true }).click();
       await page.getByText("2026-10-25 00:30:45 UTC", { exact: true }).first().waitFor();
       await page.getByRole("button", { name: "Inhaltsbreite", exact: true }).click();

@@ -106,7 +106,7 @@ for (const engine of [chromium, webkit] as BrowserType[]) {
         await input.pressSequentially("= 'error'");
         await page.getByRole("option", { name: /Filter hinzufügen/ }).waitFor();
         await input.press("Enter");
-        expect(await applied(page)).toBe(`"status"::text ILIKE 'error' ESCAPE '!'`);
+        expect(await applied(page)).toBe(`"status" = 'error'`);
         expect(await raw(page)).toBe("false");
         expect(await input.inputValue()).toBe("");
         await page.getByRole("button", { name: "Filter entfernen: status = error" }).waitFor();
@@ -132,7 +132,7 @@ for (const engine of [chromium, webkit] as BrowserType[]) {
           .getByRole("alert")
           .filter({ hasText: /gemischt bitte im SQL-Modus/ })
           .waitFor();
-        expect(await applied(page)).toBe(`"status"::text ILIKE 'error' ESCAPE '!'`);
+        expect(await applied(page)).toBe(`"status" = 'error'`);
 
         await reply(
           page,
@@ -148,7 +148,7 @@ for (const engine of [chromium, webkit] as BrowserType[]) {
         await shot(page, "omnibar-ai-preview", engine.name());
         await input.press("Enter");
         expect(await applied(page)).toContain(`"created_at" >=`);
-        expect(await applied(page)).toContain(`"status"::text ILIKE 'error'`);
+        expect(await applied(page)).toContain(`"status" = 'error'`);
         expect(await input.inputValue()).toBe("");
         const calls = await aiCalls(page);
         expect(calls).toHaveLength(1);
@@ -185,7 +185,7 @@ for (const engine of [chromium, webkit] as BrowserType[]) {
         await page.getByRole("button", { name: "SQL", exact: true }).click();
         const editor = page.locator("[data-filter-sql] .cm-content");
         await editor.waitFor();
-        expect(await editor.textContent()).toContain(`"status"::text ILIKE 'error'`);
+        expect(await editor.textContent()).toContain(`"status" = 'error'`);
         await editor.click();
         await page.keyboard.press("ControlOrMeta+A");
         await page.keyboard.type("tokens > 100");
@@ -261,7 +261,7 @@ for (const engine of [chromium, webkit] as BrowserType[]) {
         await page.getByRole("alert").filter({ hasText: "Bitte einen Wert eingeben." }).waitFor();
         await page.getByRole("textbox", { name: "Wert" }).fill("error");
         await page.getByRole("textbox", { name: "Wert" }).press("Enter");
-        expect(await applied(page)).toBe(`"status"::text ILIKE 'error' ESCAPE '!'`);
+        expect(await applied(page)).toBe(`"status" = 'error'`);
         await page.getByText("Neuer Filter").waitFor({ state: "hidden" });
 
         await page.getByRole("button", { name: "error", exact: true }).click();
@@ -269,7 +269,7 @@ for (const engine of [chromium, webkit] as BrowserType[]) {
         expect(await value.evaluate((element) => element === document.activeElement)).toBe(true);
         await value.fill("ok");
         await value.press("Enter");
-        expect(await applied(page)).toBe(`"status"::text ILIKE 'ok' ESCAPE '!'`);
+        expect(await applied(page)).toBe(`"status" = 'ok'`);
         await value.waitFor({ state: "hidden" });
 
         await page.getByRole("button", { name: "Farbregel hinzufügen" }).click();
@@ -301,7 +301,7 @@ for (const engine of [chromium, webkit] as BrowserType[]) {
         await shot(page, "pills-ai-preview", engine.name());
         await page.getByRole("button", { name: "Übernehmen" }).click();
         await prompt.waitFor({ state: "hidden" });
-        expect(await applied(page)).toBe(`"status"::text ILIKE 'ok' ESCAPE '!' OR "id" IN (1, 3)`);
+        expect(await applied(page)).toBe(`"status" = 'ok' OR "id" IN (1, 3)`);
         await page
           .getByRole("button", { name: "Verknüpfung „oder“, klicken zum Wechseln" })
           .waitFor();
@@ -326,7 +326,7 @@ for (const engine of [chromium, webkit] as BrowserType[]) {
         await page.getByRole("button", { name: "KI", exact: true }).click();
         await page.getByRole("button", { name: "Übernehmen" }).click();
         await page.getByText(/während der KI-Anfrage geändert/).waitFor();
-        expect(await applied(page)).toContain("ILIKE 'ok'");
+        expect(await applied(page)).toContain("= 'ok'");
         await page.keyboard.press("Escape");
 
         await page

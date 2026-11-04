@@ -10,6 +10,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Rows3,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
@@ -40,6 +41,7 @@ import {
   studioTablesRows,
   studioTablesUpdateRow,
 } from "@/lib/db/supabase-studio-tables";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { SupabaseTableCellDialog } from "./supabase-table-cell-dialog";
 import { SupabaseTableConfirmDialog } from "./supabase-table-confirm-dialog";
 import { SupabaseTableFilters } from "./supabase-table-filters";
@@ -377,7 +379,11 @@ export function SupabaseTableGrid({
               </tbody>
             </table>
             {pageRows.length === 0 && (
-              <p className="p-4 text-xs text-muted-foreground">Keine Zeilen auf dieser Seite.</p>
+              <BaasEmptyState
+                icon={Rows3}
+                title="Keine Zeilen auf dieser Seite."
+                description="Füge eine Zeile hinzu oder passe die Filter an."
+              />
             )}
           </div>
           <div className="flex h-9 shrink-0 items-center gap-2 border-t px-3 text-xs text-muted-foreground">

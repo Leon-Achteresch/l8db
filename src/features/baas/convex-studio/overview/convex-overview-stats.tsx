@@ -27,7 +27,7 @@ export function ConvexOverviewStats({ deployment }: { deployment: ConvexStudioDe
   ];
 
   return (
-    <section className="rounded-2xl border bg-card p-5">
+    <section className="rounded-2xl bg-muted/25 p-5">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">Kennzahlen</h3>
         <Button
@@ -48,7 +48,7 @@ export function ConvexOverviewStats({ deployment }: { deployment: ConvexStudioDe
         <>
           <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
             {cards.map((card) => (
-              <div key={card.label} className="rounded-lg border bg-background/50 px-3 py-2">
+              <div key={card.label} className="rounded-lg bg-background/50 px-3 py-2">
                 <p className="truncate text-[11px] text-muted-foreground">{card.label}</p>
                 <p className="mt-1 text-lg font-semibold tabular-nums">
                   {stats.isPending ? "…" : card.value}

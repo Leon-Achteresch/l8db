@@ -3,6 +3,7 @@ import { approvalSummary } from "@/lib/ai/approval-presentation";
 import {
   aiConnections,
   bypassAiPermissions,
+  fastSupported,
   mergeAiModels,
   modelEfforts,
   modeOptions,
@@ -147,11 +148,40 @@ test("native ACP session model metadata is normalized while preserving discovery
       models: { availableModels: [{ modelId: "native", name: "Native" }] },
       modes: { availableModes: [{ id: "ask", name: "Ask" }] },
     }).models,
-  ).toEqual([{ id: "native", name: "Native", efforts: undefined }]);
+  ).toEqual([{ id: "native", name: "Native", efforts: undefined, fast: false, default: false }]);
   expect(mergeAiModels(previous, { tools: ["read"] }).models).toEqual(previous.models);
   expect(modeOptions({ availableModes: [{ id: "ask", name: "Ask" }] })).toEqual([
     { id: "ask", name: "Ask" },
   ]);
+});
+
+test("fast mode is offered only for Codex and Claude models that advertise it", () => {
+  const base = { id: "p", binary: "", home: "", endpoint: "", effort: "", mode: "" };
+  const claude = mergeAiModels(
+    { models: [] },
+    {
+      models: [
+        { id: "default", name: "Default", fast: true },
+        { value: "haiku", displayName: "Haiku", supportsFastMode: false },
+        { value: "opus", displayName: "Opus", supportsFastMode: true },
+      ],
+    },
+  );
+  expect(fastSupported({ ...base, provider: "claude", model: "" }, claude)).toBe(true);
+  expect(fastSupported({ ...base, provider: "claude", model: "haiku" }, claude)).toBe(false);
+  expect(fastSupported({ ...base, provider: "claude", model: "opus" }, claude)).toBe(true);
+  const codex = mergeAiModels(
+    { models: [] },
+    {
+      models: [
+        { id: "gpt-a", name: "A", fast: true, default: true },
+        { id: "gpt-b", name: "B", fast: false },
+      ],
+    },
+  );
+  expect(fastSupported({ ...base, provider: "codex", model: "" }, codex)).toBe(true);
+  expect(fastSupported({ ...base, provider: "codex", model: "gpt-b" }, codex)).toBe(false);
+  expect(fastSupported({ ...base, provider: "copilot", model: "gpt-a" }, codex)).toBe(false);
 });
 
 test("reasoning choices come from Claude model levels, Copilot flags and OpenCode variants", () => {

@@ -4,7 +4,7 @@ import {
   operatorNeedsValue,
   parseFilterList,
 } from "./operators";
-import { literalIsText, quoteLike, quoteLiteral, quoteString, textMatch } from "./quote";
+import { quoteLike, quoteLiteral, quoteString, textMatch } from "./quote";
 
 function nextDay(value: string, kind?: FilterKind, dataType?: string): string | null {
   const day = value.trim();
@@ -22,7 +22,6 @@ export function compileConditionExpression(
   value: string,
   kind?: FilterKind,
   dataType?: string,
-  insensitive = false,
 ): string | null {
   if (kind === "mongodb" || kind === "redis") return null;
   if (!filterOperatorsForKind(kind).some((op) => op.key === operator)) return null;
@@ -40,20 +39,11 @@ export function compileConditionExpression(
     const range = `${columnExpression} >= ${start} AND ${before}`;
     return kind === "cassandra" ? range : `(${range})`;
   }
-  const insensitiveMatch = (item: string) =>
-    insensitive && literalIsText(item, kind, dataType)
-      ? textMatch(columnExpression, quoteLike(item, kind), kind)
-      : "";
   switch (operator) {
     case "in":
     case "notIn": {
       const values = parseFilterList(value);
       if (values.length === 0) return null;
-      const matches = values.map(insensitiveMatch);
-      if (matches.every(Boolean)) {
-        const joined = matches.length === 1 ? matches[0] : `(${matches.join(" OR ")})`;
-        return operator === "in" ? joined : `NOT (${joined})`;
-      }
       const sqlOperator = operator === "in" ? "IN" : "NOT IN";
       const clauses: string[] = [];
       const chunkSize = kind === "oracle" ? 1000 : values.length;
@@ -68,15 +58,9 @@ export function compileConditionExpression(
         : `(${clauses.join(operator === "in" ? " OR " : " AND ")})`;
     }
     case "eq":
-      return (
-        insensitiveMatch(value) || `${columnExpression} = ${quoteLiteral(value, kind, dataType)}`
-      );
-    case "neq": {
-      const match = insensitiveMatch(value);
-      return match
-        ? `NOT (${match})`
-        : `${columnExpression} <> ${quoteLiteral(value, kind, dataType)}`;
-    }
+      return `${columnExpression} = ${quoteLiteral(value, kind, dataType)}`;
+    case "neq":
+      return `${columnExpression} <> ${quoteLiteral(value, kind, dataType)}`;
     case "gt":
       return `${columnExpression} > ${quoteLiteral(value, kind, dataType)}`;
     case "gte":

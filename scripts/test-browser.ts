@@ -12,7 +12,9 @@ const files = [
   "compare-three-way",
   "compare-password",
   "data-compare",
+  "schema-compare-tabs",
   "split-transaction",
+  "command-palette-pointer",
 ];
 const log = "test-artifacts/browser/tests.log";
 await mkdir("test-artifacts/browser", { recursive: true });
@@ -46,7 +48,9 @@ try {
         L8DB_QOL_BROWSER: "1",
         L8DB_WORKBENCH_BROWSER: "1",
         L8DB_COMPARE_BROWSER: "1",
+        L8DB_SCHEMA_COMPARE_BROWSER: "1",
         L8DB_SPLIT_TRANSACTION_BROWSER_URL: url,
+        L8DB_PALETTE_BROWSER_URL: url,
         L8DB_BROWSER_ENGINES: "chromium",
       },
       stdout: "pipe",

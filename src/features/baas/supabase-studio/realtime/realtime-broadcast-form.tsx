@@ -36,7 +36,7 @@ export function RealtimeBroadcastForm({
 
   return (
     <form
-      className="space-y-2 rounded-xl border p-3"
+      className="space-y-2 rounded-xl p-3 bg-muted/30"
       onSubmit={(formEvent) => {
         formEvent.preventDefault();
         send.mutate();

@@ -59,6 +59,8 @@ export async function seedAiWorkspace(page: Page): Promise<void> {
                 id: "fixture-model",
                 name: "Fixture model",
                 efforts: [{ reasoningEffort: "high" }],
+                fast: true,
+                default: true,
               },
             ],
             modes: {

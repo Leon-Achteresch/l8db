@@ -42,14 +42,14 @@ export function SupabaseSettingsDanger({
   }
 
   return (
-    <section className="rounded-2xl border border-destructive/40 bg-card p-5">
+    <section className="rounded-2xl bg-destructive/5 p-5">
       <div className="flex items-center gap-2">
         <TriangleAlert className="size-4 text-destructive" />
         <h3 className="text-sm font-semibold">Gefahrenzone</h3>
       </div>
       <div className="mt-4 space-y-3">
         {capabilities.management && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-background/50 p-3">
             <div>
               <p className="text-xs font-medium">
                 {paused ? "Projekt wiederherstellen" : "Projekt pausieren"}
@@ -71,7 +71,7 @@ export function SupabaseSettingsDanger({
             </Button>
           </div>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/50 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-background/50 p-3">
           <div>
             <p className="text-xs font-medium">Von l8db trennen</p>
             <p className="text-[11px] text-muted-foreground">
