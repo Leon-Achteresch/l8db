@@ -221,6 +221,7 @@ export const NEW_FEATURES = {
   "schema-compare.options.normalize": "0.16.0",
   "schema-compare.options.filter": "0.16.0",
   "schema-compare.rename-column": "0.16.0",
+  "schema-compare.tabs": NEXT_FEATURE_VERSION,
   "split.pane-tables": "0.8.0",
   "split.pane-objects": "0.8.0",
   "split.scroll-sync": "0.8.0",
