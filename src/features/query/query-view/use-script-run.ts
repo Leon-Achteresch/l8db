@@ -108,7 +108,12 @@ export function useScriptRun({
       if (!connection || runningRef.current) return;
       runningRef.current = true;
       setIsRunning(true);
-      setScriptNote(SCRIPT_MODE_NOTE[mode]);
+      const sqlplus = connection.kind === "oracle";
+      setScriptNote(
+        sqlplus && mode !== "autocommit"
+          ? "SQL*Plus-Sitzung: Autocommit aus, COMMIT/ROLLBACK/EXIT im Skript wirken"
+          : SCRIPT_MODE_NOTE[mode],
+      );
       setScriptActiveIndex(null);
       setStatementError(null);
       setStatementRange(null);
@@ -135,6 +140,10 @@ export function useScriptRun({
           onProgress: (items) => setScriptEntries(shift(items)),
         });
         const entries = shift(outcome.entries);
+        if (outcome.exit)
+          setScriptNote(
+            `EXIT ${outcome.exit.label} (Code ${outcome.exit.code}) mit ${outcome.exit.action}`,
+          );
         recordUserQueryOutcome(connection.kind, outcome.error, performance.now() - startedAt);
         setScriptEntries(entries);
         if (!outcome.error) {

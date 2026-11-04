@@ -601,6 +601,25 @@ impl TransactionManager {
         }
     }
 
+    pub async fn execute_with_binds(
+        &self,
+        tx_id: &str,
+        sql: &str,
+        binds: &[super::BindVariable],
+    ) -> Result<super::BoundResult, String> {
+        let TransactionEntry::Oracle(c) = &*self.entry(tx_id).await? else {
+            return Err(super::unsupported("SQL*Plus-Bindvariablen"));
+        };
+        let sql = sql.to_string();
+        let binds = binds.to_vec();
+        let limit = super::execution::row_limit();
+        let call = oracle::CallGuard::current("transaction");
+        ora(c.clone(), move |c| {
+            call.run(c, |c| oracle::execute_binds(c, &sql, &binds, limit))
+        })
+        .await
+    }
+
     pub async fn oracle_changes(&self, tx_id: &str) -> Result<Vec<oracle::TxTableChanges>, String> {
         match &*self.entry(tx_id).await? {
             TransactionEntry::Oracle(c) => ora(c.clone(), |c| oracle::tx_table_changes(c)).await,
