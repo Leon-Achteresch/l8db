@@ -59,7 +59,7 @@ export function ConvexFunctionHistory({
       {visible.length === 0 ? (
         <p className="text-xs text-muted-foreground">Noch keine Ausführungen.</p>
       ) : (
-        <ul className="max-h-64 divide-y overflow-auto rounded-lg border">
+        <ul className="max-h-64 divide-y overflow-auto rounded-lg">
           {visible.map((run) => (
             <li key={run.id} className="flex items-center gap-2 px-2 py-1.5 text-xs">
               <Badge variant={run.success ? "secondary" : "destructive"}>

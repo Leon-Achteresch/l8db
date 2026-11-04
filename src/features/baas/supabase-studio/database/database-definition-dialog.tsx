@@ -34,7 +34,7 @@ export function DatabaseDefinitionDialog({
             {String(definition.error)}
           </p>
         ) : (
-          <pre className="max-h-[60vh] overflow-auto rounded-lg border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap">
+          <pre className="max-h-[60vh] overflow-auto rounded-lg bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap">
             {definition.data ?? "Wird geladen…"}
           </pre>
         )}

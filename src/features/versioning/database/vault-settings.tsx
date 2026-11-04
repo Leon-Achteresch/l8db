@@ -3,8 +3,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatBytes } from "@/lib/backup";
+import { copyText } from "@/lib/clipboard";
 import { branchingRecoveryImport, branchingRecoveryKey } from "@/lib/db";
-import { showCopiedMessage } from "@/lib/workspace-status";
 import { VersioningIconButton } from "../versioning-icon-button";
 import { NameConfirmDialog } from "./name-confirm-dialog";
 import type { BranchingWorkspace } from "./use-branching";
@@ -56,11 +56,7 @@ export function VaultSettings({ workspace }: { workspace: BranchingWorkspace }) 
                 icon={CopyIcon}
                 label="Schlüssel kopieren"
                 onClick={() =>
-                  void navigator.clipboard
-                    .writeText(key)
-                    .then(() =>
-                      showCopiedMessage("Schlüssel kopiert. Zwischenablage danach leeren."),
-                    )
+                  void copyText(key, "Schlüssel kopiert. Zwischenablage danach leeren.")
                 }
               />
               <VersioningIconButton

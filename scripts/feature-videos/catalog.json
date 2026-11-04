@@ -64,5 +64,18 @@
     "requiredCapabilities": [],
     "modes": ["easy", "normal"],
     "actionId": "settings"
+  },
+  {
+    "id": "split-dnd",
+    "revision": "1",
+    "title": "Tabs per Drag & Drop teilen",
+    "summary": "Ziehe Tabs an den Rand, um Tabellen nebeneinander oder untereinander zu zeigen, und ordne sie zwischen den Tab-Leisten neu an.",
+    "sourceCommit": "22ce5c05",
+    "introducedIn": "0.17.0",
+    "priority": 94,
+    "platforms": ["macos", "windows", "linux"],
+    "requiredCapabilities": [],
+    "modes": ["normal"],
+    "actionId": "settings"
   }
 ]

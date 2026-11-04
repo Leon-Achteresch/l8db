@@ -67,6 +67,7 @@ type Props = Pick<
     | "canEditCell"
     | "onInsertRow"
     | "onDeleteRow"
+    | "rowMenuItems"
     | "columnDetails"
   > & {
     columnNames: string[];
@@ -124,6 +125,7 @@ export function DataTableBody({
   rowOffset,
   onInsertRow,
   onDeleteRow,
+  rowMenuItems,
   columnDetails,
   stateKey,
   watchScope,
@@ -245,6 +247,7 @@ export function DataTableBody({
             scrollRef.current?.scrollTo({ top: 0, left: 0 });
           }}
           onDeleteRow={onDeleteRow}
+          extraItems={rowMenuItems?.(menuRow.original)}
           onWatch={
             watchScope && primaryKeys.length
               ? () => {

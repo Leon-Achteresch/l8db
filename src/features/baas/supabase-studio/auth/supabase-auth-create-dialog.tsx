@@ -119,7 +119,7 @@ export function SupabaseAuthCreateDialog({ reference, open, onOpenChange, onCrea
               disabled={busy}
             />
           </div>
-          <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+          <div className="flex items-center justify-between gap-3 rounded-lg p-3 bg-muted/30">
             <Label htmlFor="supabase-auth-create-confirm" className="text-xs">
               {mode === "email"
                 ? "E-Mail automatisch bestätigen"

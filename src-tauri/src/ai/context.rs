@@ -120,7 +120,8 @@ pub fn instructions_with_skills(request: &RunRequest, skills: &str) -> String {
         })
         .collect();
     format!(
-        "{INSTRUCTIONS}{skills}\nCurrent connections: {}{}{}",
+        "{INSTRUCTIONS}{}{skills}\nCurrent connections: {}{}{}",
+        crate::issues::prompt(),
         serde_json::to_string(&connections).unwrap_or_default(),
         request
             .connections

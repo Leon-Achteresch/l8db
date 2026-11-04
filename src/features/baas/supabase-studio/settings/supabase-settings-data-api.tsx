@@ -42,7 +42,7 @@ export function SupabaseSettingsDataApi({ reference }: { reference: string }) {
   }
 
   return (
-    <section className="rounded-2xl border bg-card p-5">
+    <section className="rounded-2xl bg-muted/25 p-5">
       <div className="flex items-center gap-2">
         <Globe2 className="size-4 text-muted-foreground" />
         <h3 className="text-sm font-semibold">Data API</h3>

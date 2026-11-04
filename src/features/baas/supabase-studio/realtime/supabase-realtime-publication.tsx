@@ -42,7 +42,7 @@ export function SupabaseRealtimePublication({ reference }: { reference: string }
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border p-3 text-xs">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl p-3 text-xs bg-muted/30">
         <span className="font-medium">supabase_realtime</span>
         {publication
           ? ACTIONS.map((action) => (

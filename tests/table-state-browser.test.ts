@@ -124,7 +124,7 @@ for (const engine of [chromium, webkit]) {
         await page.getByRole("link", { name: "Customers", exact: true }).click();
         await page.getByText("Seite 2 / 5", { exact: true }).waitFor();
         expect(await page.getByPlaceholder("Wert", { exact: true }).inputValue()).toBe("Hamburg");
-        await page.getByText("\"name\"::text ILIKE 'Berlin' ESCAPE '!'", { exact: true }).waitFor();
+        await page.getByText("\"name\" = 'Berlin'", { exact: true }).waitFor();
         await page.waitForTimeout(400);
         expect(
           await scroller.evaluate((element) => ({

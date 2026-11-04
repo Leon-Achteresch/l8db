@@ -56,29 +56,24 @@ export function SupabaseStudio({
             : "Studio wird geladen…",
       }))}
       value={active.id}
+      fullBleed={active.fullBleed}
       onValueChange={async (id) => {
         await navigate({ to: "/baas", search: { ...search, studio: id } });
       }}
     >
-      <div
-        className={
-          active.fullBleed ? "flex min-h-0 flex-1 flex-col" : "min-h-0 flex-1 overflow-auto p-5"
-        }
-      >
-        {capabilities.isError ? (
-          <p role="alert" className="text-sm text-destructive">
-            {String(capabilities.error)}
-          </p>
-        ) : capabilities.data ? (
-          <Section
-            key={`${project.reference}:${active.id}`}
-            project={project}
-            capabilities={capabilities.data}
-          />
-        ) : (
-          <p className="text-sm text-muted-foreground">Studio wird geladen…</p>
-        )}
-      </div>
+      {capabilities.isError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {String(capabilities.error)}
+        </p>
+      ) : capabilities.data ? (
+        <Section
+          key={`${project.reference}:${active.id}`}
+          project={project}
+          capabilities={capabilities.data}
+        />
+      ) : (
+        <p className="text-sm text-muted-foreground">Studio wird geladen…</p>
+      )}
     </BaasStudioFrame>
   );
 }

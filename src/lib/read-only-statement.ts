@@ -4,7 +4,7 @@ const WRITING_KEYWORD =
   /\b(insert|update|delete|merge|truncate|drop|alter|create|grant|revoke|call|do|vacuum|refresh|into)\b/i;
 
 const SIDE_EFFECT_FUNCTION =
-  /\b(pg_terminate_backend|pg_cancel_backend|pg_reload_conf|pg_rotate_logfile|pg_switch_wal|pg_promote|pg_create_\w+|pg_drop_\w+|pg_stat_reset\w*|pg_advisory\w*|pg_notify|pg_file_write|set_config|setval|nextval|lo_\w+|dblink\w*|get_lock|release_lock|load_file|xp_cmdshell)\s*\(/i;
+  /(?:^|[^\w$])"?(?:pg_terminate_backend|pg_cancel_backend|pg_reload_conf|pg_rotate_logfile|pg_switch_wal|pg_promote|pg_create_\w+|pg_drop_\w+|pg_stat_reset\w*|pg_advisory\w*|pg_notify|pg_file_write|set_config|setval|nextval|lo_\w+|dblink\w*|get_lock|release_lock|load_file|xp_cmdshell|pg_try_advisory\w*)"?\s*\(/i;
 
 const MONGO_READ_METHODS = new Set([
   "find",
@@ -92,7 +92,30 @@ export function isReadOnlyStatement(sql: string): boolean {
   if (cleaned.length === 0) return false;
   if (cleaned.includes(";")) return false;
   if (!READ_ONLY_START.test(cleaned)) return false;
-  return !WRITING_KEYWORD.test(cleaned) && !SIDE_EFFECT_FUNCTION.test(cleaned);
+  const code = blankStringLiterals(cleaned);
+  return !WRITING_KEYWORD.test(code) && !SIDE_EFFECT_FUNCTION.test(code);
+}
+
+function blankStringLiterals(sql: string): string {
+  if (sql.includes("\\")) return sql;
+  let out = "";
+  let index = 0;
+  while (index < sql.length) {
+    const char = sql[index];
+    const dollar = char === "$" ? /^\$\w*\$/.exec(sql.slice(index))?.[0] : undefined;
+    const close = dollar ?? (char === "[" ? "]" : `'"\``.includes(char) ? char : undefined);
+    if (!close) {
+      out += char;
+      index += 1;
+      continue;
+    }
+    let end = sql.indexOf(close, index + close.length);
+    while (!dollar && end >= 0 && sql[end + 1] === close) end = sql.indexOf(close, end + 2);
+    if (end < 0) return sql;
+    out += char === "'" ? "''" : sql.slice(index, end + close.length);
+    index = end + close.length;
+  }
+  return out;
 }
 
 function isReadOnlyMongo(text: string): boolean {

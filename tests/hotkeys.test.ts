@@ -3,6 +3,7 @@ import {
   HOTKEY_COMMANDS,
   canonicalizeHotkey,
   commandById,
+  conflictKey,
   defaultHotkeyFor,
   detectHotkeyConflicts,
   filterHotkeyCommands,
@@ -59,6 +60,12 @@ describe("hotkey conflicts", () => {
     expect(canonicalizeHotkey("Cmd+K")).toBe(canonicalizeHotkey("Mod+K"));
     expect(canonicalizeHotkey("ctrl+k")).toBe(canonicalizeHotkey("Control+K"));
     expect(canonicalizeHotkey("Option+F")).toBe(canonicalizeHotkey("Alt+F"));
+  });
+
+  it("behandelt Mod außerhalb von macOS wie Ctrl", () => {
+    expect(conflictKey("Mod+K", false)).toBe(conflictKey("Ctrl+K", false));
+    expect(conflictKey("Mod+K", true)).not.toBe(conflictKey("Ctrl+K", true));
+    expect(conflictKey("Meta+K", false)).not.toBe(conflictKey("Ctrl+K", false));
   });
 
   it("findet Kollisionen mit anderen Befehlen", () => {

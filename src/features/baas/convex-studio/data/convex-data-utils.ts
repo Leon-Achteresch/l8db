@@ -190,6 +190,51 @@ export function cellPreview(value: unknown): string {
   return String(value);
 }
 
+export function documentRows(documents: ConvexDocument[]) {
+  return documents.map((document) => ({
+    ...document,
+    _creationTime: new Date(document._creationTime).toISOString(),
+    __ctid__: document._id,
+  }));
+}
+
+export function documentColumnDetails(
+  columns: string[],
+  table: string,
+  fields: Record<string, ConvexFieldValidator> | null,
+) {
+  return columns.map((name, index) => ({
+    name,
+    data_type:
+      name === "_id"
+        ? `Id<"${table}">`
+        : name === "_creationTime"
+          ? "timestamptz"
+          : fields?.[name]
+            ? validatorText(fields[name].fieldType)
+            : "any",
+    is_nullable: Boolean(fields?.[name]?.optional),
+    column_default: null,
+    is_primary_key: name === "_id",
+    ordinal_position: index + 1,
+    character_maximum_length: null,
+  }));
+}
+
+export function parseEditedValue(
+  text: string | null,
+  original: unknown,
+  fieldType?: ConvexValidator,
+): unknown {
+  if (text === null) return null;
+  if (fieldType ? fieldType.type === "string" : typeof original === "string") return text;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
 export function formatCreationTime(value: unknown): string {
   return typeof value === "number" ? new Date(value).toLocaleString("de-DE") : "";
 }

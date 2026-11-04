@@ -9,6 +9,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { tabLabel } from "@/lib/tab-navigation";
+import { queryNeedsCloseConfirmation, tabKey, useTableTabs } from "@/lib/table-tabs";
 import type { PendingClose } from "./use-tab-close";
 
 interface CloseConfirmDialogProps {
@@ -26,6 +28,15 @@ export function CloseConfirmDialog({
   saveAndClose,
   executeClose,
 }: CloseConfirmDialogProps) {
+  const tabs = useTableTabs((state) => state.tabs);
+  const dirty = pendingClose
+    ? tabs.filter(
+        (tab) =>
+          pendingClose.keys.includes(tabKey(tab)) &&
+          tab.kind === "query" &&
+          queryNeedsCloseConfirmation(tab),
+      )
+    : [];
   return (
     <AlertDialog
       open={pendingClose !== null}
@@ -37,9 +48,24 @@ export function CloseConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Ungespeicherte Änderungen</AlertDialogTitle>
           <AlertDialogDescription>
-            SQL-Dateien und Entwürfe wurden noch nicht gespeichert. Geschlossene Tabs bleiben in der
-            Entwurfswiederherstellung verfügbar.
+            {dirty.length === 1
+              ? "Dieser Tab hat ungespeicherte Änderungen:"
+              : `Diese ${dirty.length} Tabs haben ungespeicherte Änderungen:`}
           </AlertDialogDescription>
+          <ul className="max-h-40 list-disc space-y-0.5 overflow-y-auto pl-5 text-sm">
+            {dirty.slice(0, 10).map((tab) => (
+              <li key={tabKey(tab)} className="truncate">
+                {tabLabel(tab)}
+              </li>
+            ))}
+            {dirty.length > 10 && (
+              <li className="text-muted-foreground">und {dirty.length - 10} weitere</li>
+            )}
+          </ul>
+          <p className="text-xs text-muted-foreground">
+            Ohne Speichern geschlossene Tabs lassen sich über die Entwurfswiederherstellung
+            zurückholen.
+          </p>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={savingClose}>Abbrechen</AlertDialogCancel>
@@ -56,7 +82,7 @@ export function CloseConfirmDialog({
               executeClose(pending);
             }}
           >
-            Verwerfen und schließen
+            Ohne Speichern schließen
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

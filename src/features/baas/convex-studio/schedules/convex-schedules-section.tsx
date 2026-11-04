@@ -1,7 +1,6 @@
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { useState } from "react";
-import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -12,6 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasSectionHeader } from "../../baas-section-header";
 import type { ConvexStudioSectionProps } from "../convex-studio-sections";
 import { ConvexCronJobs } from "./convex-cron-jobs";
 import { ConvexScheduledJobs } from "./convex-scheduled-jobs";
@@ -31,43 +31,41 @@ export function ConvexSchedulesSection({ deployment }: ConvexStudioSectionProps)
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 ref={feature.ref} className="flex items-center gap-2 text-lg font-semibold">
-            Zeitpläne {feature.isNew && <NewBadge />}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Geplante Funktionen und Cron-Jobs von {deployment.title} überwachen, abbrechen und
-            ausführen.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={autoRefresh} onValueChange={setAutoRefresh}>
-            <SelectTrigger
+      <BaasSectionHeader
+        title="Zeitpläne"
+        titleRef={feature.ref}
+        isNew={feature.isNew}
+        description={`Geplante Funktionen und Cron-Jobs von ${deployment.title} überwachen, abbrechen und ausführen.`}
+        actions={
+          <>
+            <Select value={autoRefresh} onValueChange={setAutoRefresh}>
+              <SelectTrigger
+                size="sm"
+                className="h-8 w-36 text-xs"
+                aria-label="Automatisch aktualisieren"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {AUTO_REFRESH_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value} className="text-xs">
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
               size="sm"
-              className="h-8 w-36 text-xs"
-              aria-label="Automatisch aktualisieren"
+              variant="outline"
+              disabled={fetching}
+              onClick={() => queryClient.invalidateQueries({ predicate })}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {AUTO_REFRESH_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value} className="text-xs">
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={fetching}
-            onClick={() => queryClient.invalidateQueries({ predicate })}
-          >
-            <RefreshCw className={fetching ? "size-3.5 animate-spin" : "size-3.5"} /> Aktualisieren
-          </Button>
-        </div>
-      </div>
+              <RefreshCw className={fetching ? "size-3.5 animate-spin" : "size-3.5"} />{" "}
+              Aktualisieren
+            </Button>
+          </>
+        }
+      />
       <Tabs defaultValue="jobs">
         <TabsList>
           <TabsTrigger value="jobs">Geplante Funktionen</TabsTrigger>

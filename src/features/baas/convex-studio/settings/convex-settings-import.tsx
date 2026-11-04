@@ -76,7 +76,7 @@ export function ConvexSettingsImport({ deployment }: { deployment: ConvexStudioD
     });
 
   return (
-    <section className="rounded-2xl border bg-card p-5">
+    <section className="rounded-2xl bg-muted/25 p-5">
       <h3 className="text-sm font-semibold">Import</h3>
       <p className="mt-1 text-[11px] text-muted-foreground">
         ZIP-Snapshot (alle Tabellen) oder eine .jsonl-, .json- bzw. .csv-Datei in eine Zieltabelle.
@@ -118,7 +118,7 @@ export function ConvexSettingsImport({ deployment }: { deployment: ConvexStudioD
         </Button>
       </div>
       {importId && (
-        <div className="mt-4 space-y-3 rounded-lg border bg-background/50 p-3 text-xs">
+        <div className="mt-4 space-y-3 rounded-lg bg-background/50 p-3 text-xs">
           {status.isError ? (
             <p role="alert" className="text-destructive">
               {String(status.error)}

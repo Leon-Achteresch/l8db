@@ -83,9 +83,13 @@ export function TableConstraintsEditor({ schema, table, columns }: TableConstrai
 
   const refresh = async () => {
     await Promise.all(
-      ["constraints", "foreign-keys", "columns-detailed", "table-columns-detailed"].map((key) =>
-        queryClient.invalidateQueries({ queryKey: [key, connection.id] }),
-      ),
+      [
+        "constraints",
+        "foreign-keys",
+        "columns-detailed",
+        "table-columns-detailed",
+        "er-schema",
+      ].map((key) => queryClient.invalidateQueries({ queryKey: [key, connection.id] })),
     );
   };
 
