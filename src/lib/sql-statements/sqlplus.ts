@@ -191,6 +191,7 @@ export type SqlPlusCommand =
   | { type: "column"; name: string; newValue: string | null; oldValue: string | null }
   | { type: "timing"; action: "START" | "STOP" | "SHOW"; name: string | null }
   | { type: "display"; name: string }
+  | { type: "run" }
   | { type: "invalid"; message: string }
   | { type: "other" };
 
@@ -269,8 +270,17 @@ function setCommand(words: string[]): SqlPlusCommand {
       message: `SET AUTOCOMMIT erwartet ON, OFF, IMMEDIATE oder eine Zahl.`,
     };
   }
-  if (named(option, ["SQLTERMINATOR", 4], ["BLOCKTERMINATOR", 3], ["CMDSEP", 4], ["SQLPREFIX", 6]))
-    return { type: "set-unsupported", option };
+  const defaults: [string, number, string][] = [
+    ["SQLTERMINATOR", 4, ";"],
+    ["BLOCKTERMINATOR", 3, "."],
+    ["CMDSEP", 4, "OFF"],
+    ["SQLPREFIX", 6, "#"],
+  ];
+  const parsing = defaults.find(([full, min]) => abbrev(option, full, min));
+  if (parsing)
+    return value === parsing[2] || value === "ON" || (parsing[0] === "CMDSEP" && value === "OFF")
+      ? { type: "set-display", option }
+      : { type: "set-unsupported", option };
   return { type: "set-display", option: option || "SET" };
 }
 
@@ -292,7 +302,6 @@ const DISPLAY_COMMANDS: [string, number][] = [
   ["APPEND", 1],
   ["CHANGE", 1],
   ["DEL", 3],
-  ["RUN", 1],
   ["HELP", 4],
   ["HISTORY", 4],
 ];
@@ -387,6 +396,7 @@ export function parseSqlPlusCommand(raw: string): SqlPlusCommand {
   const original = words(text);
   const first = (original[0] ?? "").toUpperCase();
   if (first === "REM" || first === "REMARK") return { type: "remark" };
+  if (text.trim() === "/" || named(first, ["RUN", 1])) return { type: "run" };
   if (named(first, ["PROMPT", 3]))
     return {
       type: "prompt",
@@ -531,7 +541,7 @@ export const PREDEFINED_VARIABLES = [
   "_EDITOR",
   "_O_VERSION",
   "_O_RELEASE",
-];
+] as const;
 
 export async function askMissingVariables(
   parts: { kind: string; text: string; defines?: Record<string, string> }[],
@@ -547,7 +557,11 @@ export async function askMissingVariables(
     if (!missing.includes(name)) missing.push(name);
   };
   for (const part of parts) {
-    Object.assign(simulated.defines, part.defines);
+    for (const [name, value] of Object.entries(part.defines ?? {})) {
+      const result = substitute(value, simulated);
+      for (const missingName of result.missing) need(missingName);
+      simulated.defines[name] = result.text;
+    }
     if (part.kind === "command") {
       const command = parseSqlPlusCommand(part.text);
       if (SUBSTITUTED_COMMANDS.has(command.type))

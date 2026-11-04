@@ -77,7 +77,7 @@ const SQLPLUS_COMMAND_FORMS: [string, number][] = [
   ["REMARK", 3],
   ["REPFOOTER", 4],
   ["REPHEADER", 4],
-  ["RUN", 3],
+  ["RUN", 1],
   ["SAVE", 3],
   ["SET", 3],
   ["SHOW", 3],
@@ -115,6 +115,7 @@ function isSpace(ch: string): boolean {
 
 export interface SqlSplitOptions {
   blankLines?: boolean;
+  slashRuns?: boolean;
 }
 
 export function splitSqlStatements(
@@ -157,6 +158,7 @@ export function splitSqlStatements(
   let plsqlPending = 0;
   let plsqlHeader = false;
   let plsqlClosed = false;
+  let awaitingSlash = false;
   let plsqlBody = false;
   let plsqlHead = 0;
   let batch = false;
@@ -278,6 +280,9 @@ export function splitSqlStatements(
         const lineEnd = sql.indexOf("\n", index);
         const end = lineEnd < 0 ? length : lineEnd;
         if (!sql.slice(lineStart, index).trim() && !sql.slice(index + 1, end).trim()) {
+          if (options.slashRuns && !hasCode && !awaitingSlash)
+            commands.push({ text: "/", start: index, end: index + 1 });
+          awaitingSlash = false;
           flush(index);
           index = end;
           continue;
@@ -576,7 +581,10 @@ export function splitSqlStatements(
     if (ch === ";") {
       index += 1;
       plsqlHeader = false;
-      if ((!plsql || plsqlClosed) && !batch && blockDepth === 0 && delimiter === ";") flush(index);
+      if ((!plsql || plsqlClosed) && !batch && blockDepth === 0 && delimiter === ";") {
+        awaitingSlash = plsql;
+        flush(index);
+      }
       continue;
     }
 

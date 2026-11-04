@@ -4135,7 +4135,7 @@ mod tests {
         ));
         assert!(matches!(
             bind_type("VARCHAR2(30 CHAR)"),
-            Ok(OracleType::Varchar2(30))
+            Ok(OracleType::Varchar2(120))
         ));
         assert!(matches!(bind_type("varchar2"), Ok(OracleType::Varchar2(1))));
         assert!(matches!(
@@ -5804,6 +5804,11 @@ fn bind_type(data_type: &str) -> Result<OracleType, String> {
         None => (upper.clone(), None),
     };
     let size = size.unwrap_or(1).clamp(1, 32767);
+    let size = if upper.contains(" CHAR") {
+        size.saturating_mul(4).min(32767)
+    } else {
+        size
+    };
     Ok(match base.as_str() {
         "NUMBER" => OracleType::Number(0, -127),
         "BINARY_FLOAT" => OracleType::BinaryFloat,

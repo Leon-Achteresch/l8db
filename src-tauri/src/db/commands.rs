@@ -940,19 +940,30 @@ pub async fn execute_with_binds(
     options: Option<super::execution::ExecutionOptions>,
     session: Option<String>,
 ) -> Result<super::BoundResult, String> {
+    let cap = super::execution::result_row_cap(MAX_RESULT_ROWS);
     super::execution::run_query(options, kind.capabilities().query_cancel, async {
-        if let Some(tx_id) = tx_id {
-            return tx_state.execute_with_binds(&tx_id, &sql, &binds).await;
-        }
-        let adapter = create_adapter_from_string(
-            kind,
-            &connection_string,
-            database.as_deref(),
-            pool_state.inner().clone(),
-        )?;
-        super::execution::with_session(session, adapter.execute_with_binds(&sql, &binds)).await
+        super::execution::with_row_limit(cap + 1, async {
+            if let Some(tx_id) = tx_id {
+                return tx_state.execute_with_binds(&tx_id, &sql, &binds).await;
+            }
+            let adapter = create_adapter_from_string(
+                kind,
+                &connection_string,
+                database.as_deref(),
+                pool_state.inner().clone(),
+            )?;
+            super::execution::with_session(session, adapter.execute_with_binds(&sql, &binds)).await
+        })
+        .await
     })
     .await
+    .map(|mut bound| {
+        bound.result = truncate_rows(bound.result, cap);
+        for bind in &mut bound.binds {
+            bind.cursor = bind.cursor.take().map(|cursor| truncate_rows(cursor, cap));
+        }
+        bound
+    })
 }
 
 #[tauri::command]

@@ -27,6 +27,10 @@ mock.module("@tauri-apps/plugin-fs", () => ({
     if (!(path in files)) throw new Error(`not found: ${path}`);
     return new TextEncoder().encode(files[path]);
   },
+  lstat: async (path: string) => {
+    if (!(path in files)) throw new Error(`not found: ${path}`);
+    return { isFile: true, isSymlink: false, size: files[path].length };
+  },
   writeTextFile: async (path: string, text: string, options: { append?: boolean } = {}) => {
     written.push({ path, text, append: options.append === true });
   },
@@ -66,6 +70,17 @@ const { useConnectionsStore } = await import("../../src/lib/connections");
 const { useTransactionStore } = await import("../../src/lib/transactions");
 const { useTasksStore } = await import("../../src/lib/tasks");
 const { runSqlScript } = await import("../../src/lib/script-runner");
+const { useSqlConfirmation, answerSqlConfirmation } = await import(
+  "../../src/lib/sql-confirmation"
+);
+let confirmAnswer = true;
+const confirmations: string[] = [];
+useSqlConfirmation.subscribe((state) => {
+  for (const request of state.requests) {
+    confirmations.push(request.title ?? request.statements.map((item) => item.sql).join(", "));
+    queueMicrotask(() => answerSqlConfirmation(request.id, confirmAnswer));
+  }
+});
 const connection = {
   id: "ora",
   name: "ORA",
@@ -79,6 +94,8 @@ const executed = () =>
 beforeEach(() => {
   calls.length = 0;
   written.length = 0;
+  confirmations.length = 0;
+  confirmAnswer = true;
   handle = null;
   failing.clear();
   useSettingsStore.getState().resetToDefaults();
@@ -623,7 +640,32 @@ test("SPOOL writes the run transcript next to the saved script and refuses other
   expect(written[0].text).toContain("SQL> PROMPT start\nstart");
   expect(written[0].text).toContain("SQL> SELECT 1 FROM dual;");
   expect(written[0].text).toContain("1 Zeile verarbeitet.");
-  expect(outcome.entries[4].error).toContain("SPOOL schreibt nur Protokolldateien");
+  expect(outcome.entries[4].error).toContain("versteckte Ordner oder Dateien");
+  expect(confirmations).toEqual(["Skriptprotokoll schreiben?"]);
+  for (const [target, reason] of [
+    ["/proj/out.sql", "nur Protokolldateien"],
+    ["//server/share/x.log", "UNC"],
+    ["/proj/../etc/x.log", "weder .."],
+  ]) {
+    const refused = await runSqlScript({
+      connection,
+      database: null,
+      sql: `SPOOL ${target}\nSELECT 1 FROM dual;`,
+      mode: "autocommit",
+      filePath: "/proj/main.sql",
+    });
+    expect(refused.entries[0].error).toContain(reason);
+  }
+  confirmAnswer = false;
+  const declined = await runSqlScript({
+    connection,
+    database: null,
+    sql: "SPOOL /proj/run.log\nSELECT 1 FROM dual;",
+    mode: "autocommit",
+    stopOnError: false,
+  });
+  expect(declined.entries.map((entry) => entry.status)).toEqual(["error", "skipped"]);
+  expect(declined.error).toBe("SPOOL vom Benutzer abgebrochen.");
 });
 
 test("COLUMN NEW_VALUE, ACCEPT, @file arguments, VERIFY and DEFINE behave like SQL*Plus", async () => {
@@ -735,4 +777,114 @@ test("other database families attach their server messages to each statement", a
     ),
   ).toBe(false);
   useProvidersStore.setState({ providers: FALLBACK_PROVIDERS, loaded: false });
+});
+
+test("bind statements obey read-only mode like every other SQL statement", async () => {
+  const readOnly = { ...connection, id: "ora-ro", readOnly: true };
+  useConnectionsStore.setState({ connections: [readOnly], activeId: readOnly.id });
+  const outcome = await runSqlScript({
+    connection: readOnly,
+    database: null,
+    sql: "VARIABLE n NUMBER\nDELETE FROM t WHERE id > :n;",
+    mode: "autocommit",
+  });
+  expect(outcome.entries[1].status).toBe("error");
+  expect(outcome.entries[1].error).toContain("Lesemodus");
+  expect(calls.some((call) => call.command === "execute_with_binds")).toBe(false);
+});
+
+test("runtime substitution is checked again for destructive statements before it runs", async () => {
+  handle = (command, args) => {
+    if (command === "execute_query" && String(args.sql).includes("'DROP'"))
+      return { columns: ["C"], rows: [{ C: "DROP" }], rows_affected: null, execution_time_ms: 1 };
+    return undefined;
+  };
+  confirmAnswer = false;
+  const outcome = await runSqlScript({
+    connection,
+    database: null,
+    sql: "COLUMN c NEW_VALUE cmd\nSELECT 'DROP' c FROM dual;\n&cmd TABLE important;\nSELECT 2 FROM dual;",
+    mode: "autocommit",
+    stopOnError: false,
+  });
+  expect(confirmations.length).toBe(1);
+  expect(executed().some((sql) => sql.startsWith("DROP"))).toBe(false);
+  expect(outcome.entries.map((entry) => entry.status)).toEqual([
+    "success",
+    "success",
+    "error",
+    "skipped",
+  ]);
+});
+
+test("a declined production commit stops the script instead of continuing", async () => {
+  await withOracleCapabilities(async () => {
+    const prod = { ...connection, id: "ora-prod", environment: "production" as const };
+    useConnectionsStore.setState({ connections: [prod], activeId: prod.id });
+    useSettingsStore.setState({
+      productionReadOnly: false,
+      productionConfirmCommit: true,
+    } as never);
+    sqlplusSession();
+    confirmAnswer = false;
+    const outcome = await runSqlScript({
+      connection: prod,
+      database: null,
+      sql: "WHENEVER SQLERROR CONTINUE\nUPDATE t SET x = 1 WHERE id = 1;\nCOMMIT;\nCREATE INDEX i ON t (x);",
+      mode: "new-transaction",
+    });
+    expect(outcome.entries.map((entry) => entry.status)).toEqual([
+      "success",
+      "success",
+      "error",
+      "skipped",
+    ]);
+    expect(outcome.error).toContain("abgebrochen");
+    expect(calls.some((call) => String(call.args.sql ?? "").startsWith("CREATE INDEX"))).toBe(
+      false,
+    );
+  });
+});
+
+test("ACCEPT … HIDE values are masked everywhere and forgotten after the run", async () => {
+  const { substitutionSession } = await import("../../src/lib/sql-statements/sqlplus");
+  const variables = substitutionSession("tab-hide");
+  const outcome = await runSqlScript({
+    connection,
+    database: null,
+    sql: "ACCEPT pw PROMPT 'Passwort' HIDE\nPROMPT setze &pw\nALTER USER app IDENTIFIED BY &pw;\nDEFINE pw",
+    mode: "autocommit",
+    variables,
+    askVariables: async () => ({ PW: "Geheim123" }),
+  });
+  expect(executed()).toEqual(["ALTER USER app IDENTIFIED BY Geheim123;"]);
+  const visible = JSON.stringify(outcome.entries);
+  expect(visible).not.toContain("Geheim123");
+  expect(visible).toContain("********");
+  expect(variables.state.defines.PW).toBeUndefined();
+});
+
+test("a slash after a terminated statement runs it again like SQL*Plus, a block slash does not", async () => {
+  const outcome = await runSqlScript({
+    connection,
+    database: null,
+    sql: "UPDATE t SET n = n + 1;\n/\nBEGIN NULL; END;\n/\nRUN",
+    mode: "autocommit",
+  });
+  expect(executed()).toEqual([
+    "UPDATE t SET n = n + 1;",
+    "UPDATE t SET n = n + 1;",
+    "BEGIN NULL; END;",
+    "BEGIN NULL; END;",
+  ]);
+  expect(outcome.entries).toHaveLength(4);
+});
+
+test("a master script that only calls @ files still starts in the SQL*Plus session", async () => {
+  const { useSettingsStore: settings } = await import("../../src/lib/settings");
+  expect(settings.getState().transactionsEnabled).toBe(true);
+  const { splitSqlStatements } = await import("../../src/lib/sql-statements");
+  expect(
+    splitSqlStatements("@a\n@b\ncommit;", "oracle").statements.map((item) => item.text),
+  ).toEqual(["commit;"]);
 });

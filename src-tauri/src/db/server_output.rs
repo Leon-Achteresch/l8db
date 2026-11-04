@@ -9,6 +9,12 @@ use tokio_postgres::{AsyncMessage, Client, Config, Connection};
 use super::{map_pg_err, QueryResult};
 
 const MAX_MESSAGES: usize = 2000;
+const MAX_MESSAGE_BYTES: usize = 32 * 1024;
+const MAX_BUFFER_BYTES: usize = 2 * 1024 * 1024;
+
+fn message_bytes(message: &ServerMessage) -> usize {
+    message.message.len() + message.detail.as_ref().map_or(0, String::len) + message.level.len()
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,24 +24,40 @@ pub struct ServerMessage {
     pub detail: Option<String>,
 }
 
+#[derive(Default)]
+struct Buffer {
+    entries: VecDeque<ServerMessage>,
+    bytes: usize,
+}
+
 #[derive(Clone, Default)]
-pub struct Messages(Arc<Mutex<VecDeque<ServerMessage>>>);
+pub struct Messages(Arc<Mutex<Buffer>>);
 
 impl Messages {
-    pub fn push(&self, message: ServerMessage) {
-        let mut entries = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        if entries.len() >= MAX_MESSAGES {
-            entries.pop_front();
+    pub fn push(&self, mut message: ServerMessage) {
+        if message.message.len() > MAX_MESSAGE_BYTES {
+            let mut end = MAX_MESSAGE_BYTES;
+            while !message.message.is_char_boundary(end) {
+                end -= 1;
+            }
+            message.message.truncate(end);
+            message.message.push('…');
         }
-        entries.push_back(message);
+        let mut buffer = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        buffer.bytes += message_bytes(&message);
+        buffer.entries.push_back(message);
+        while buffer.entries.len() > MAX_MESSAGES || buffer.bytes > MAX_BUFFER_BYTES {
+            let Some(dropped) = buffer.entries.pop_front() else {
+                break;
+            };
+            buffer.bytes -= message_bytes(&dropped);
+        }
     }
 
     pub fn take(&self) -> Vec<ServerMessage> {
-        self.0
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .drain(..)
-            .collect()
+        let mut buffer = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        buffer.bytes = 0;
+        buffer.entries.drain(..).collect()
     }
 }
 
@@ -140,6 +162,9 @@ pub fn set_enabled(key: &str, enabled: bool) {
     } else {
         reg.enabled.remove(key);
         reg.sessions.remove(key);
+        if let Some(buffer) = reg.buffers.get(key) {
+            buffer.take();
+        }
     }
 }
 
@@ -286,14 +311,34 @@ mod tests {
     }
 
     #[test]
-    fn registry_keeps_messages_when_output_is_switched_off() {
+    fn registry_clears_messages_when_output_is_switched_off() {
         let key = "server-output-registry-test";
         messages(key).push(notice(1));
         set_enabled(key, true);
         set_enabled(key, false);
-        assert_eq!(take(key).len(), 1);
         assert!(take(key).is_empty());
+        messages(key).push(notice(2));
+        assert_eq!(take(key).len(), 1);
         assert!(take("server-output-unknown-key").is_empty());
+    }
+
+    #[test]
+    fn buffer_caps_total_bytes_and_single_messages() {
+        let messages = Messages::default();
+        let big = "x".repeat(MAX_MESSAGE_BYTES * 2);
+        for _ in 0..200 {
+            messages.push(ServerMessage {
+                level: "NOTICE".into(),
+                message: big.clone(),
+                detail: None,
+            });
+        }
+        let taken = messages.take();
+        assert!(taken
+            .iter()
+            .all(|m| m.message.len() <= MAX_MESSAGE_BYTES + '…'.len_utf8()));
+        assert!(taken.iter().map(message_bytes).sum::<usize>() <= MAX_BUFFER_BYTES);
+        assert!(taken.len() < 200);
     }
 
     #[test]

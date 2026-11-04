@@ -30,6 +30,7 @@ const SQL_COMMANDS = new Set([
   "execute_in_transaction",
   "execute_in_transaction_with_params",
   "execute_script",
+  "execute_with_binds",
 ]);
 const CONFIGURED_COMMANDS = new Set([
   ...SQL_COMMANDS,

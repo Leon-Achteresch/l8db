@@ -126,6 +126,7 @@ export const NEW_FEATURES = {
   "query.sqlplus-scripts": "0.16.0",
   "query.sqlplus-session": NEXT_FEATURE_VERSION,
   "query.script-output": NEXT_FEATURE_VERSION,
+  "query.server-output": NEXT_FEATURE_VERSION,
   "query.analysis.index-advisor": "0.7.0",
   "query.analysis.plan-text": "0.16.0",
   "debugger.set-value": "0.16.0",
