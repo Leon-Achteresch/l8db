@@ -3,6 +3,7 @@ import { ArrowRight, Expand, Minimize2, Pause, Play, RotateCcw, X } from "lucide
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useAiStore } from "@/lib/ai/store";
 import { EASE_OUT } from "@/lib/ease";
 import type { FeatureVideo } from "@/lib/feature-videos/model";
 import { useFeatureVideoStore } from "@/lib/feature-videos/store";
@@ -236,6 +237,19 @@ export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
               onClick={() => open(next.id, true)}
             >
               Nächstes Feature
+              <ArrowRight className="size-3.5" />
+            </Button>
+          ) : !failed && item.id === "ai-issue-report" ? (
+            <Button
+              size="sm"
+              className="h-8 rounded-lg px-2.5 text-xs"
+              onClick={() => {
+                useAiStore.getState().setOpen(true);
+                if (preview) preview.onClose();
+                else close();
+              }}
+            >
+              KI-Chat öffnen
               <ArrowRight className="size-3.5" />
             </Button>
           ) : (

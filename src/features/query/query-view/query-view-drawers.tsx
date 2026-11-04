@@ -97,7 +97,7 @@ export function QueryViewDrawers({
               onSelect={onSelectScriptEntry}
               onClose={() => setScriptEntries(null)}
               note={scriptNote}
-              featureId={connection?.kind === "oracle" ? "query.sqlplus-scripts" : undefined}
+              featureId={connection?.kind === "oracle" ? "query.sqlplus-session" : undefined}
             />
           )}
         </DrawerContent>

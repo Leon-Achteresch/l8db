@@ -407,6 +407,7 @@ function transactionIssue(
 }
 
 export function scriptPolicyIssue(sql: string, dialect: string, managed: boolean): string | null {
+  if (dialect === "oracle") return null;
   const issue = transactionIssue(sql, dialect, managed);
   if (issue === "control") return TRANSACTION_CONTROL_MESSAGE;
   if (issue === "implicit") return IMPLICIT_COMMIT_MESSAGE;

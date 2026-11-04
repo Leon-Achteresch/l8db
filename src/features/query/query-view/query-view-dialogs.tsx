@@ -121,6 +121,7 @@ export function QueryViewDialogs({
         mode={script.scriptMode}
         unterminated={script.scriptSplit.unterminated}
         transactions={caps.transactions}
+        sqlplus={connection?.kind === "oracle"}
         onConfirm={(mode, stopOnError) => {
           script.setScriptDialogOpen(false);
           void script.runScript(mode, stopOnError);

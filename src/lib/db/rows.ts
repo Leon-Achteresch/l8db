@@ -146,6 +146,38 @@ export async function executeQueryWithParams(
   });
 }
 
+export interface BindVariable {
+  name: string;
+  dataType: string;
+  value: string | null;
+}
+
+export interface BoundResult {
+  result: QueryResult;
+  binds: { name: string; value: string | null; cursor: QueryResult | null }[];
+}
+
+export async function executeWithBinds(
+  kind: DatabaseKind,
+  connectionString: string,
+  sql: string,
+  binds: BindVariable[],
+  database?: string,
+  txId?: string | null,
+  options?: QueryExecutionOptions,
+): Promise<BoundResult> {
+  return invoke("execute_with_binds", {
+    kind,
+    connectionString,
+    database,
+    txId: txId ?? undefined,
+    sql,
+    binds,
+    options,
+    ...(options?.session ? { session: options.session } : {}),
+  });
+}
+
 export interface ExplainPlan {
   Plan?: ExplainNode;
   [key: string]: unknown;

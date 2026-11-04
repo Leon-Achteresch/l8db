@@ -422,6 +422,13 @@ impl CassandraAdapter {
                     .query_single_page(statement.clone(), &[], paging)
                     .await
                     .map_err(map_err)?;
+                for warning in result.warnings() {
+                    super::server_output::emit(super::server_output::ServerMessage {
+                        level: "WARNING".to_string(),
+                        message: warning.to_string(),
+                        detail: None,
+                    });
+                }
                 let rows_result = match result.into_rows_result() {
                     Ok(r) => r,
                     Err(scylla::response::query_result::IntoRowsResultError::ResultNotRows(_)) => {
@@ -922,6 +929,44 @@ mod tests {
         .await
         .unwrap_err()
         .contains("gemeinsam"));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_response_warnings_are_captured() {
+        use crate::db::server_output::{capture, Messages};
+        let url = std::env::var("L8DB_E2E_CASSANDRA_URL")
+            .unwrap_or_else(|_| "cassandra://127.0.0.1:9042".into());
+        let db = CassandraAdapter::new(&url, crate::db::pool::create_pool_state(), "warn".into())
+            .unwrap();
+        db.exec("CREATE KEYSPACE IF NOT EXISTS l8db_live WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}").await.unwrap();
+        db.exec("CREATE TABLE IF NOT EXISTS l8db_live.w (id int PRIMARY KEY)")
+            .await
+            .unwrap();
+        db.exec("INSERT INTO l8db_live.w (id) VALUES (1)")
+            .await
+            .unwrap();
+        let sink = Messages::default();
+        capture(
+            sink.clone(),
+            db.execute_query("SELECT id FROM l8db_live.w WHERE id = 1"),
+        )
+        .await
+        .unwrap();
+        assert!(sink.take().is_empty());
+        capture(
+            sink.clone(),
+            db.execute_query("SELECT COUNT(*) FROM l8db_live.w"),
+        )
+        .await
+        .unwrap();
+        let messages = sink.take();
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert_eq!(messages[0].level, "WARNING");
+        assert!(
+            messages[0].message.contains("partition key"),
+            "{messages:?}"
+        );
     }
 
     #[tokio::test]

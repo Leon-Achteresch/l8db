@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitions xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <policyNamespaces>
+    <target prefix="l8db" namespace="L8db.Policies.L8db" />
+  </policyNamespaces>
+  <resources minRequiredRevision="1.0" />
+  <supportedOn>
+    <definitions>
+      <definition name="SUPPORTED_l8db" displayName="$(string.SUPPORTED_l8db)" />
+    </definitions>
+  </supportedOn>
+  <categories>
+    <category name="l8db" displayName="$(string.l8db)" />
+    <category name="Settings" displayName="$(string.Settings)">
+      <parentCategory ref="l8db" />
+    </category>
+  </categories>
+  <policies>
+    <policy name="Organization" class="Machine" displayName="$(string.Organization)" explainText="$(string.Organization_Help)" key="SOFTWARE\Policies\l8db" presentation="$(presentation.Organization)">
+      <parentCategory ref="l8db" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <elements>
+        <text id="Organization" valueName="Organization" required="true" maxLength="200" />
+        <text id="Support" valueName="Support" maxLength="1000" />
+      </elements>
+    </policy>
+    <policy name="AllowAi" class="Machine" displayName="$(string.AllowAi)" explainText="$(string.AllowAi_Help)" key="SOFTWARE\Policies\l8db" valueName="AllowAi">
+      <parentCategory ref="l8db" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AllowExtensions" class="Machine" displayName="$(string.AllowExtensions)" explainText="$(string.AllowExtensions_Help)" key="SOFTWARE\Policies\l8db" valueName="AllowExtensions">
+      <parentCategory ref="l8db" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AllowPersonalSync" class="Machine" displayName="$(string.AllowPersonalSync)" explainText="$(string.AllowPersonalSync_Help)" key="SOFTWARE\Policies\l8db" valueName="AllowPersonalSync">
+      <parentCategory ref="l8db" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AllowMcp" class="Machine" displayName="$(string.AllowMcp)" explainText="$(string.AllowMcp_Help)" key="SOFTWARE\Policies\l8db" valueName="AllowMcp">
+      <parentCategory ref="l8db" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="RequireSignedReleases" class="Machine" displayName="$(string.RequireSignedReleases)" explainText="$(string.RequireSignedReleases_Help)" key="SOFTWARE\Policies\l8db" valueName="RequireSignedReleases" presentation="$(presentation.RequireSignedReleases)">
+      <parentCategory ref="l8db" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+      <elements>
+        <list id="TrustedReleaseSigners" key="SOFTWARE\Policies\l8db\TrustedReleaseSigners" valuePrefix="" />
+      </elements>
+    </policy>
+    <policy name="Connections" class="Machine" displayName="$(string.Connections)" explainText="$(string.Connections_Help)" key="SOFTWARE\Policies\l8db" presentation="$(presentation.Connections)">
+      <parentCategory ref="l8db" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <elements>
+        <text id="Connections" valueName="Connections" required="true" maxLength="32767" />
+      </elements>
+    </policy>
+    <policy name="ProductionReadOnly" class="Machine" displayName="$(string.ProductionReadOnly)" explainText="$(string.ProductionReadOnly_Help)" key="SOFTWARE\Policies\l8db" valueName="ProductionReadOnly">
+      <parentCategory ref="Settings" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="ProductionConfirmCommit" class="Machine" displayName="$(string.ProductionConfirmCommit)" explainText="$(string.ProductionConfirmCommit_Help)" key="SOFTWARE\Policies\l8db" valueName="ProductionConfirmCommit">
+      <parentCategory ref="Settings" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="ProductionAutoRollback" class="Machine" displayName="$(string.ProductionAutoRollback)" explainText="$(string.ProductionAutoRollback_Help)" key="SOFTWARE\Policies\l8db" valueName="ProductionAutoRollback">
+      <parentCategory ref="Settings" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="ConfirmDestructiveQueries" class="Machine" displayName="$(string.ConfirmDestructiveQueries)" explainText="$(string.ConfirmDestructiveQueries_Help)" key="SOFTWARE\Policies\l8db" valueName="ConfirmDestructiveQueries">
+      <parentCategory ref="Settings" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="SshTrustNewHosts" class="Machine" displayName="$(string.SshTrustNewHosts)" explainText="$(string.SshTrustNewHosts_Help)" key="SOFTWARE\Policies\l8db" valueName="SshTrustNewHosts">
+      <parentCategory ref="Settings" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="CrashReports" class="Machine" displayName="$(string.CrashReports)" explainText="$(string.CrashReports_Help)" key="SOFTWARE\Policies\l8db" valueName="CrashReports">
+      <parentCategory ref="Settings" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="UsageMetrics" class="Machine" displayName="$(string.UsageMetrics)" explainText="$(string.UsageMetrics_Help)" key="SOFTWARE\Policies\l8db" valueName="UsageMetrics">
+      <parentCategory ref="Settings" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AutoUpdateCheck" class="Machine" displayName="$(string.AutoUpdateCheck)" explainText="$(string.AutoUpdateCheck_Help)" key="SOFTWARE\Policies\l8db" valueName="AutoUpdateCheck">
+      <parentCategory ref="Settings" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AutoUpdateInstall" class="Machine" displayName="$(string.AutoUpdateInstall)" explainText="$(string.AutoUpdateInstall_Help)" key="SOFTWARE\Policies\l8db" valueName="AutoUpdateInstall">
+      <parentCategory ref="Settings" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="SslDefaultMode" class="Machine" displayName="$(string.SslDefaultMode)" explainText="$(string.SslDefaultMode_Help)" key="SOFTWARE\Policies\l8db" presentation="$(presentation.SslDefaultMode)">
+      <parentCategory ref="Settings" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <elements>
+        <enum id="SslDefaultMode" valueName="SslDefaultMode" required="true">
+          <item displayName="$(string.SslDefaultMode_Disable)"><value><string>disable</string></value></item>
+          <item displayName="$(string.SslDefaultMode_Prefer)"><value><string>prefer</string></value></item>
+          <item displayName="$(string.SslDefaultMode_Require)"><value><string>require</string></value></item>
+          <item displayName="$(string.SslDefaultMode_VerifyCa)"><value><string>verify-ca</string></value></item>
+          <item displayName="$(string.SslDefaultMode_VerifyFull)"><value><string>verify-full</string></value></item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="UpdateChannel" class="Machine" displayName="$(string.UpdateChannel)" explainText="$(string.UpdateChannel_Help)" key="SOFTWARE\Policies\l8db" presentation="$(presentation.UpdateChannel)">
+      <parentCategory ref="Settings" />
+      <supportedOn ref="SUPPORTED_l8db" />
+      <elements>
+        <enum id="UpdateChannel" valueName="UpdateChannel" required="true">
+          <item displayName="$(string.UpdateChannel_Stable)"><value><string>stable</string></value></item>
+          <item displayName="$(string.UpdateChannel_Canary)"><value><string>canary</string></value></item>
+        </enum>
+      </elements>
+    </policy>
+  </policies>
+</policyDefinitions>

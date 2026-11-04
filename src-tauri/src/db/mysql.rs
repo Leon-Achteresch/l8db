@@ -687,9 +687,37 @@ impl MysqlAdapter {
 }
 
 async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
+    let outcome = timed(async { Ok(read_query(conn, sql).await) }).await?;
+    let failed = match &outcome {
+        Ok(_) if conn.get_warnings() > 0 => Some(None),
+        Err(mysql_async::Error::Server(error)) => Some(Some(error.code)),
+        _ => None,
+    };
+    if let (Some(failed), true) = (failed, super::server_output::sink().is_some()) {
+        let _ = timed(emit_warnings(conn, failed)).await;
+    }
+    outcome.map_err(map_err)
+}
+
+async fn emit_warnings(conn: &mut Conn, failed: Option<u16>) -> Result<(), String> {
+    let rows: Vec<(String, u32, String)> = conn.query("SHOW WARNINGS").await.map_err(map_err)?;
+    for (level, code, message) in rows {
+        if level.eq_ignore_ascii_case("error") && failed == Some(code as u16) {
+            continue;
+        }
+        super::server_output::emit(super::server_output::ServerMessage {
+            level: level.to_uppercase(),
+            message,
+            detail: Some(format!("Code {code}")),
+        });
+    }
+    Ok(())
+}
+
+async fn read_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, mysql_async::Error> {
     let start = std::time::Instant::now();
-    timed(async {
-        let mut result = conn.query_iter(sql).await.map_err(map_err)?;
+    {
+        let mut result = conn.query_iter(sql).await?;
         let columns_meta: Vec<Column> = result.columns().map(|c| c.to_vec()).unwrap_or_default();
         let columns: Vec<String> = columns_meta
             .iter()
@@ -698,7 +726,7 @@ async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
         let columns = super::unique_column_names(columns);
         let limit = super::execution::row_limit();
         let mut rows: Vec<Row> = Vec::new();
-        while let Some(row) = result.next().await.map_err(map_err)? {
+        while let Some(row) = result.next().await? {
             if rows.len() < limit {
                 rows.push(row);
             }
@@ -708,7 +736,7 @@ async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
         } else {
             None
         };
-        result.drop_result().await.map_err(map_err)?;
+        result.drop_result().await?;
         let data: Vec<Vec<serde_json::Value>> = rows
             .into_iter()
             .map(|row| {
@@ -727,8 +755,7 @@ async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
             execution_time_ms: start.elapsed().as_millis() as u64,
             truncated: false,
         })
-    })
-    .await
+    }
 }
 
 async fn read_snapshot(conn: &mut Conn, sql: &str, max_rows: usize) -> Result<TableData, String> {
@@ -1903,6 +1930,122 @@ mod tests {
 
     async fn live_scalar(adapter: &MysqlAdapter, sql: &str) -> String {
         cell(&adapter.rows(sql).await.unwrap()[0], 0)
+    }
+
+    async fn show_warnings_count(conn: &mut Conn) -> u64 {
+        let row: (String, String) = conn
+            .query_first("SHOW SESSION STATUS LIKE 'Com_show_warnings'")
+            .await
+            .unwrap()
+            .unwrap();
+        row.1.parse().unwrap()
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_warnings_are_read_only_when_reported() {
+        use crate::db::server_output::{capture, Messages};
+        for url in live_urls() {
+            let pool = create_pool_state();
+            let adapter = MysqlAdapter::new(&url, None, pool.clone(), "output".into()).unwrap();
+            let mut conn = adapter.open_conn().await.unwrap();
+            let sink = Messages::default();
+            let base = show_warnings_count(&mut conn).await;
+            let mut plain = Vec::new();
+            let mut captured = Vec::new();
+            for round in 0..200 {
+                let started = std::time::Instant::now();
+                if round % 2 == 0 {
+                    capture(sink.clone(), run_query(&mut conn, "SELECT 1 AS n"))
+                        .await
+                        .unwrap();
+                    captured.push(started.elapsed().as_secs_f64() * 1000.0);
+                } else {
+                    run_query(&mut conn, "SELECT 1 AS n").await.unwrap();
+                    plain.push(started.elapsed().as_secs_f64() * 1000.0);
+                }
+            }
+            assert_eq!(show_warnings_count(&mut conn).await, base);
+            assert!(sink.take().is_empty());
+            plain.sort_by(f64::total_cmp);
+            captured.sort_by(f64::total_cmp);
+            eprintln!(
+                "performance mysql-warning-capture: url_kind={} statements=200 show_warnings_round_trips=0 plain_median_ms={:.3} plain_p95_ms={:.3} captured_median_ms={:.3} captured_p95_ms={:.3}",
+                if url.contains("maria") { "mariadb" } else { "mysql" },
+                plain[50],
+                plain[95],
+                captured[50],
+                captured[95]
+            );
+
+            capture(
+                sink.clone(),
+                run_query(&mut conn, "SELECT CAST('1x' AS SIGNED) AS n"),
+            )
+            .await
+            .unwrap();
+            assert_eq!(show_warnings_count(&mut conn).await, base + 1);
+            let messages = sink.take();
+            assert_eq!(messages.len(), 1, "{messages:?}");
+            assert_eq!(messages[0].level, "WARNING");
+            assert!(messages[0].message.contains("1x"), "{messages:?}");
+            assert_eq!(messages[0].detail.as_deref(), Some("Code 1292"));
+
+            capture(
+                sink.clone(),
+                run_query(&mut conn, "DROP TABLE IF EXISTS l8db_output_missing"),
+            )
+            .await
+            .unwrap();
+            let messages = sink.take();
+            assert_eq!(messages[0].level, "NOTE", "{messages:?}");
+            assert_eq!(messages[0].detail.as_deref(), Some("Code 1051"));
+
+            let error = capture(
+                sink.clone(),
+                run_query(&mut conn, "SELECT * FROM l8db_output_missing"),
+            )
+            .await
+            .unwrap_err();
+            assert!(error.contains("1146"), "{error}");
+            assert!(sink.take().is_empty());
+
+            let before = show_warnings_count(&mut conn).await;
+            run_query(&mut conn, "SELECT CAST('1x' AS SIGNED) AS n")
+                .await
+                .unwrap();
+            assert_eq!(show_warnings_count(&mut conn).await, before);
+
+            capture(
+                crate::db::commands::output_sink(&url, None),
+                adapter.execute_query("SELECT CAST('2x' AS SIGNED) AS n"),
+            )
+            .await
+            .unwrap();
+            let taken = crate::db::commands::take_output(
+                crate::db::DatabaseKind::Mysql,
+                &url,
+                None,
+                pool.clone(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(taken.len(), 1, "{taken:?}");
+            assert!(taken[0].message.contains("2x"));
+
+            let tx = crate::db::transaction::create_transaction_state();
+            let id = tx
+                .begin(crate::db::DatabaseKind::Mysql, &url, None, &pool)
+                .await
+                .unwrap();
+            tx.execute(&id, "SELECT CAST('3x' AS SIGNED) AS n")
+                .await
+                .unwrap();
+            let output = tx.server_output(&id).await.unwrap();
+            assert_eq!(output.len(), 1, "{output:?}");
+            assert!(output[0].message.contains("3x"));
+            tx.rollback(&id).await.unwrap();
+        }
     }
 
     #[tokio::test]

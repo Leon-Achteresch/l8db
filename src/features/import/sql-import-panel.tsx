@@ -13,7 +13,11 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { ScriptResultList } from "@/features/query/script-result-list";
-import { SCRIPT_RUN_MODE_TEXT, type ScriptRunMode } from "@/features/query/script-run-dialog";
+import {
+  SCRIPT_RUN_MODE_TEXT,
+  type ScriptRunMode,
+  SQLPLUS_MODE_TEXT,
+} from "@/features/query/script-run-dialog";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { readImportFile } from "@/lib/import-file";
@@ -124,7 +128,9 @@ export function SqlImportPanel({
               id="sql-import-mode"
               size="sm"
               className="w-64 text-xs"
-              title={SCRIPT_RUN_MODE_TEXT[mode]}
+              title={
+                (connection?.kind === "oracle" ? SQLPLUS_MODE_TEXT : SCRIPT_RUN_MODE_TEXT)[mode]
+              }
             >
               <SelectValue />
             </SelectTrigger>
@@ -181,7 +187,7 @@ export function SqlImportPanel({
             activeIndex={activeIndex}
             onSelect={(entry) => setActiveIndex(entry.index)}
             onClose={() => update({ entries: null })}
-            note={SCRIPT_RUN_MODE_TEXT[mode]}
+            note={(connection?.kind === "oracle" ? SQLPLUS_MODE_TEXT : SCRIPT_RUN_MODE_TEXT)[mode]}
           />
         </div>
       )}

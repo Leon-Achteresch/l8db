@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { createQuotaSafeStorage } from "@/lib/buffered-storage";
-import { isMainWindow } from "@/lib/connections/store";
+import { isMainWindow } from "@/lib/window-role";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export type TaskStatus =

@@ -255,6 +255,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Mysql => Capabilities {
+                server_output: true,
                 live_monitor: true,
                 backup: true,
                 query_stats: true,
@@ -290,6 +291,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Mssql => Capabilities {
+                server_output: true,
                 backup: true,
                 query_stats: true,
                 proxy_user: true,
@@ -348,6 +350,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Cassandra => Capabilities {
+                server_output: true,
                 ssl: false,
                 indexes: true,
                 ddl: true,
@@ -377,6 +380,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Odbc => Capabilities {
+                server_output: true,
                 databases: false,
                 views: true,
                 ddl: true,
@@ -384,11 +388,13 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Elasticsearch => Capabilities {
+                server_output: true,
                 databases: false,
                 filter_hint: "SQL-Bedingung, Lucene-Query (status:active AND age:>21) oder Query-DSL als JSON",
                 ..NONE
             },
             DatabaseKind::Influxdb => Capabilities {
+                server_output: true,
                 schemas: false,
                 filter_hint: "SQL-Bedingung auf Tags und Felder, z. B. \"host\" = 'a' AND \"usage\" > 50",
                 ..NONE
@@ -437,6 +443,7 @@ impl DatabaseKind {
             DatabaseKind::Bigquery | DatabaseKind::Snowflake => Capabilities {
                 databases: self == DatabaseKind::Snowflake,
                 proxy_user: self == DatabaseKind::Snowflake,
+                server_output: self == DatabaseKind::Bigquery,
                 views: true,
                 explain: true,
                 query_cancel: true,

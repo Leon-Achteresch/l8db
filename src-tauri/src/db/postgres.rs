@@ -6340,6 +6340,101 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    async fn notices_are_captured_per_statement_without_the_output_toggle() {
+        use crate::db::commands::{output_sink, take_output};
+        use crate::db::server_output::capture;
+        let url = lab_connection_string();
+        let pool = create_pool_state();
+        let adapter = PostgresAdapter::from_connection_string(&url, None, pool.clone()).unwrap();
+        let take = || take_output(crate::db::DatabaseKind::Postgres, &url, None, pool.clone());
+        take().await.unwrap();
+        let mut statement_ms = Vec::new();
+        let mut take_ms = Vec::new();
+        for _ in 0..5 {
+            let started = std::time::Instant::now();
+            capture(
+                output_sink(&url, None),
+                adapter.execute_query(
+                    "DO $$BEGIN FOR i IN 1..5000 LOOP RAISE NOTICE 'n %', i; END LOOP; END$$",
+                ),
+            )
+            .await
+            .unwrap();
+            statement_ms.push(started.elapsed().as_secs_f64() * 1000.0);
+            let started = std::time::Instant::now();
+            let messages = take().await.unwrap();
+            take_ms.push(started.elapsed().as_secs_f64() * 1000.0);
+            assert_eq!(messages.len(), 2000);
+            assert_eq!(messages[0].message, "n 3001");
+            assert_eq!(messages[1999].message, "n 5000");
+            assert_eq!(messages[1999].level, "NOTICE");
+        }
+        statement_ms.sort_by(f64::total_cmp);
+        take_ms.sort_by(f64::total_cmp);
+        eprintln!(
+            "performance postgres-notice-capture: notices=5000 retained=2000 statement_median_ms={:.1} statement_max_ms={:.1} take_median_ms={:.3} take_max_ms={:.3} runs=5",
+            statement_ms[2], statement_ms[4], take_ms[2], take_ms[4]
+        );
+        assert!(take_ms[4] < 20.0, "{take_ms:?}");
+
+        let error = capture(
+            output_sink(&url, None),
+            adapter.execute_query(
+                "DO $$BEGIN RAISE WARNING 'vorher'; RAISE EXCEPTION 'kaputt'; END$$",
+            ),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("kaputt"), "{error}");
+        let messages = take().await.unwrap();
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert_eq!(
+            (messages[0].level.as_str(), messages[0].message.as_str()),
+            ("WARNING", "vorher")
+        );
+
+        adapter
+            .execute_query("DO $$BEGIN RAISE NOTICE 'ohne Ziel'; END$$")
+            .await
+            .unwrap();
+        assert!(take().await.unwrap().is_empty());
+
+        adapter.set_server_output(true).await.unwrap();
+        capture(
+            output_sink(&url, None),
+            adapter.execute_query("DO $$BEGIN RAISE INFO 'sitzung'; END$$"),
+        )
+        .await
+        .unwrap();
+        let messages = take().await.unwrap();
+        adapter.set_server_output(false).await.unwrap();
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert_eq!(
+            (messages[0].level.as_str(), messages[0].message.as_str()),
+            ("INFO", "sitzung")
+        );
+
+        let tx = crate::db::transaction::create_transaction_state();
+        let id = tx
+            .begin(crate::db::DatabaseKind::Postgres, &url, None, &pool)
+            .await
+            .unwrap();
+        tx.execute(&id, "DO $$BEGIN RAISE NOTICE 'in tx'; END$$")
+            .await
+            .unwrap();
+        let output = tx.server_output(&id).await.unwrap();
+        assert_eq!(output.len(), 1, "{output:?}");
+        assert_eq!(
+            (output[0].level.as_str(), output[0].message.as_str()),
+            ("NOTICE", "in tx")
+        );
+        assert!(take().await.unwrap().is_empty());
+        tx.rollback(&id).await.unwrap();
+        assert!(tx.server_output(&id).await.is_err());
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn qol_cancel_isolates_server_output_and_transaction_sessions() {
         use crate::db::execution::{self, ExecutionOptions};
         let adapter = lab_adapter();

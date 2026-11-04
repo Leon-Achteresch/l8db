@@ -302,7 +302,7 @@ describe("transaction control inside a managed transaction", () => {
     ).toContain("Transaktionsbefehle");
     expect(
       scriptPolicyIssue("BEGIN UPDATE t SET a = 1; COMMIT; END;\n/", "oracle", true),
-    ).toContain("Transaktionsbefehle");
+    ).toBeNull();
   });
 });
 
@@ -353,10 +353,11 @@ describe("transaction control detection", () => {
     expect(scriptPolicyIssue("BEGIN TRANSACTION", "mssql", false)).toContain("Transaktionsbefehle");
   });
 
-  test("Oracle blocks with COMMIT are only rejected inside a managed transaction", () => {
+  test("Oracle scripts leave COMMIT to the SQL*Plus session, single editor statements stay guarded", () => {
     const block = "BEGIN UPDATE t SET a = 1 WHERE id = 1; COMMIT; END;";
     expect(scriptPolicyIssue(block, "oracle", false)).toBeNull();
-    expect(scriptPolicyIssue(block, "oracle", true)).toContain("Transaktionsbefehle");
+    expect(scriptPolicyIssue(block, "oracle", true)).toBeNull();
+    expect(scriptPolicyIssue("COMMIT;\nCREATE TABLE t (id NUMBER);", "oracle", true)).toBeNull();
     expect(managedQueryIssue(block, "oracle")).toContain("Transaktionsbefehle");
   });
 
