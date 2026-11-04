@@ -68,6 +68,7 @@ import { AiAttachmentChips } from "./ai-attachment-chips";
 import { AiCapabilities } from "./ai-capabilities";
 import { AiContext } from "./ai-context";
 import { AiContextChips } from "./ai-context-chips";
+import { AiIssueIntro } from "./ai-issue-intro";
 import { AiKnowledgeDialog } from "./ai-knowledge-dialog";
 import { AiOnboarding } from "./ai-onboarding";
 import { AiPanelHeader } from "./ai-panel-header";
@@ -1352,6 +1353,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           )}
         />
       </div>
+      {!minimized && <AiIssueIntro />}
       {!thread.length && !minimized && active && !runId && <AiSuggestions onAsk={ask} />}
     </div>
   );
