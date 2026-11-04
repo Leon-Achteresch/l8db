@@ -42,7 +42,7 @@ export function AiIssueGithubPreview({
           opened this issue now · 0 comments
         </span>
       </div>
-      <div className="mt-5 grid gap-6 md:grid-cols-[minmax(0,1fr)_13rem]">
+      <div className="mt-5 grid gap-6 md:grid-cols-[minmax(0,1fr)_14rem]">
         <div className="flex min-w-0 gap-3">
           <span className="hidden size-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground sm:flex">
             <Bot className="size-5" />
@@ -59,14 +59,14 @@ export function AiIssueGithubPreview({
                 Author
               </span>
             </header>
-            <div className="space-y-3 break-words px-4 py-3 [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:text-base [&_h3:first-child]:mt-0 [&_pre]:rounded-md [&_pre]:py-3">
+            <div className="min-w-0 space-y-3 px-4 py-3 [overflow-wrap:anywhere] [&_pre]:max-w-full [&_pre]:[overflow-wrap:normal] [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:text-base [&_h3:first-child]:mt-0 [&_pre]:rounded-md [&_pre]:py-3">
               <AiMarkdown source={body || "Der Bericht wird vorbereitet."} />
               <p className="text-sm italic text-foreground">{ISSUE_FOOTER}</p>
               {screenshot && (
                 <img
                   src={screenshot}
                   alt="Geschwärzter Screenshot für das GitHub-Issue"
-                  className="max-h-80 max-w-full rounded-md border object-contain"
+                  className="h-auto w-full max-w-full rounded-md border"
                 />
               )}
             </div>

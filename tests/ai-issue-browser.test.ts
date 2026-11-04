@@ -137,6 +137,28 @@ test.skipIf(!process.env.L8DB_AI_ISSUE_BROWSER)(
       );
       await mkdir(resolve("test-artifacts/ai-issue"), { recursive: true });
       await page.screenshot({ path: resolve("test-artifacts/ai-issue/preview.png") });
+      const layout = await modal.evaluate((dialog) => {
+        const scroller = dialog.querySelector<HTMLElement>("[data-issue-preview-scroll]");
+        if (!scroller) throw new Error("Scrollbereich fehlt");
+        const box = dialog.getBoundingClientRect();
+        scroller.scrollTop = scroller.scrollHeight;
+        const last = scroller.querySelector("img")?.getBoundingClientRect();
+        const view = scroller.getBoundingClientRect();
+        return {
+          width: box.width,
+          fits:
+            box.top >= 0 && box.bottom <= innerHeight && box.left >= 0 && box.right <= innerWidth,
+          overflowY: getComputedStyle(scroller).overflowY,
+          horizontal: scroller.scrollWidth - scroller.clientWidth,
+          endVisible: !!last && last.bottom <= view.bottom + 1,
+        };
+      });
+      expect(layout.width).toBeGreaterThan(1100);
+      expect(layout.fits).toBe(true);
+      expect(layout.overflowY).toBe("auto");
+      expect(layout.horizontal).toBeLessThanOrEqual(0);
+      expect(layout.endVisible).toBe(true);
+      await page.screenshot({ path: resolve("test-artifacts/ai-issue/preview-end.png") });
       await page.keyboard.press("Escape");
       await card.getByRole("button", { name: "Abbrechen", exact: true }).click();
       await panel.getByText("Der Bericht wurde nicht veröffentlicht.", { exact: true }).waitFor();
