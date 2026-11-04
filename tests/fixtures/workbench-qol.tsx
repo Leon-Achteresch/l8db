@@ -13,17 +13,16 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryView } from "../../src/features/query/query-view";
 import { DataTable } from "../../src/features/table/data-table";
-import { RowWatchMenuItem } from "../../src/features/table/row-watch-menu-item";
 import { RowWatchProvider } from "../../src/features/table/row-watch-provider";
-import { TableActionsMenu } from "../../src/features/table/table-view/table-export-menu";
-import { TimestampDisplayMenu } from "../../src/features/table/timestamp-display-menu";
+import { TableToolbarActions } from "../../src/features/table/table-view/table-toolbar-actions";
 import { InvestigationsButton } from "../../src/features/workbench/investigations-button";
 import { useConnectionsStore } from "../../src/lib/connections";
 import { ExtensionManager } from "../../src/lib/extensions/manager";
 import { ExtensionHostContext } from "../../src/lib/extensions/react-context";
 import { SandboxRuntime } from "../../src/lib/extensions/sandbox-runtime";
 import { useHotkeysStore } from "../../src/lib/hotkeys";
-import { useHasNewFeatures } from "../../src/lib/new-features";
+import { capabilitiesFor } from "../../src/lib/providers";
+import { useInsertRowMutation } from "../../src/lib/queries";
 import { useQueryWorkspace } from "../../src/lib/query-workspace";
 import { useTableTabs } from "../../src/lib/table-tabs";
 import { saveWorkbenchRecord } from "../../src/lib/workbench/records";
@@ -64,8 +63,9 @@ const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }
 function Fixture() {
   const { setTheme, resolvedTheme } = useTheme();
   const [table, setTable] = useState(new URLSearchParams(location.search).has("table"));
-  const watchNew = useHasNewFeatures("table.rows.watch");
-  const timeNew = useHasNewFeatures("query.results.timestamps");
+  const connection = useConnectionsStore((state) => state.connections[0]);
+  const insertRowMutation = useInsertRowMutation("public", "customers");
+  const [addRowSignal, setAddRowSignal] = useState(0);
   const [revision, setRevision] = useState(0);
   const rows = Array.from({ length: 5_000 }, (_, id) => ({
     id: String(id),
@@ -101,10 +101,38 @@ function Fixture() {
           <div className="flex shrink-0 items-center gap-4 border-b px-3 py-2">
             <span className="text-xs text-muted-foreground">public</span>
             <h1 className="mr-auto text-sm font-semibold">customers</h1>
-            <TableActionsMenu isNew={watchNew || timeNew}>
-              <RowWatchMenuItem />
-              <TimestampDisplayMenu />
-            </TableActionsMenu>
+            <TableToolbarActions
+              extensionActions={{ actions: [], running: null, run: async () => {}, isNew: false }}
+              connection={connection}
+              database={null}
+              stateKey="fixture-table"
+              caps={capabilitiesFor("postgres")}
+              tableTab="data"
+              insertRowMutation={insertRowMutation}
+              data={{ columns: ["id", "customer", "value", "created_at"], rows }}
+              tableRows={rows}
+              columnDetails={[
+                {
+                  name: "id",
+                  data_type: "text",
+                  is_primary_key: true,
+                  is_nullable: false,
+                  column_default: null,
+                  ordinal_position: 1,
+                  character_maximum_length: null,
+                },
+              ]}
+              refetch={async () => undefined}
+              exporting={false}
+              setCsvExportOpen={() => {}}
+              setXlsxExportOpen={() => {}}
+              setDataExportFormat={() => {}}
+              handleExport={async () => {}}
+              requestAddRow={() => setAddRowSignal((value) => value + 1)}
+              pluginTable={null}
+              schema="public"
+              table="customers"
+            />
           </div>
           <DataTable
             watchScope="fixture-table"
@@ -114,10 +142,20 @@ function Fixture() {
             columns={["id", "customer", "value", "created_at"]}
             data={rows}
             sorting={[]}
+            addRowSignal={addRowSignal}
+            onInsertRow={async () => {}}
             onSortingChange={() => {}}
             emptyMessage="Keine Daten"
             columnDetails={[
-              { name: "id", data_type: "text", is_primary_key: true, is_nullable: false },
+              {
+                name: "id",
+                data_type: "text",
+                is_primary_key: true,
+                is_nullable: false,
+                column_default: null,
+                ordinal_position: 1,
+                character_maximum_length: null,
+              },
             ]}
           />
         </RowWatchProvider>

@@ -8,6 +8,7 @@ import { createServer } from "vite";
 import manifest from "../package.json";
 import { reportScenario } from "../scripts/performance-report";
 import { featureStorageKey, NEXT_FEATURE_VERSION } from "../src/lib/new-features";
+import { FALLBACK_PROVIDERS } from "../src/lib/providers";
 
 test.skipIf(!process.env.L8DB_WORKBENCH_BROWSER)(
   "table helper menus: NEW, timestamp settings, watched changes and bounded idle UI for 200 watches over 5,000 rows",
@@ -31,7 +32,7 @@ test.skipIf(!process.env.L8DB_WORKBENCH_BROWSER)(
     page.on("pageerror", (error) => errors.push(error.message));
     await page.exposeFunction("workbenchInvoke", (command: string) => {
       calls.push(command);
-      return [];
+      return command === "list_providers" ? FALLBACK_PROVIDERS : [];
     });
     await page.addInitScript(() => {
       Object.assign(window, {
@@ -71,7 +72,23 @@ test.skipIf(!process.env.L8DB_WORKBENCH_BROWSER)(
       expect(await page.getByRole("button", { name: /Zeit:|Beobachtete Datensätze/ }).count()).toBe(
         0,
       );
+      expect(await more.count()).toBe(1);
       await more.click();
+      const actions = page.getByRole("menu");
+      await actions.getByRole("menuitem", { name: "Neue Zeile", exact: true }).waitFor();
+      expect(await actions.getByRole("menuitem", { name: "Neue Zeile", exact: true }).count()).toBe(
+        1,
+      );
+      expect(
+        await actions
+          .getByRole("menuitem", { name: "Beobachtete Zeilen (0)", exact: true })
+          .count(),
+      ).toBe(1);
+      expect(
+        await actions
+          .getByRole("menuitem", { name: "Zeitdarstellung: Original", exact: true })
+          .count(),
+      ).toBe(1);
       await page
         .getByRole("menuitem", { name: "Zeitdarstellung: Original", exact: true })
         .waitFor();
@@ -81,6 +98,8 @@ test.skipIf(!process.env.L8DB_WORKBENCH_BROWSER)(
           featureStorageKey("query.results.timestamps"),
         ),
       ).toBeNull();
+      await actions.getByRole("menuitem", { name: "Neue Zeile", exact: true }).hover();
+      await page.getByText("Neue Zeile", { exact: true }).waitFor();
       await page.screenshot({ path: `${folder}/menu-new.png` });
       await page.getByRole("menuitem", { name: "Zeitdarstellung: Original", exact: true }).click();
       await page.getByRole("menuitemradio", { name: "UTC", exact: true }).waitFor();
@@ -94,6 +113,10 @@ test.skipIf(!process.env.L8DB_WORKBENCH_BROWSER)(
       await more.click();
       await page.getByRole("menuitem", { name: "Zeitdarstellung: UTC", exact: true }).click();
       await page.getByRole("menuitemradio", { name: "Millisekunden", exact: true }).click();
+      await more.click();
+      await page.getByRole("menuitem", { name: "Neue Zeile", exact: true }).click();
+      await page.getByText("Neue Zeile · Entwurf", { exact: true }).waitFor();
+      await page.getByRole("button", { name: "Verwerfen", exact: true }).click();
       await page.locator('tr[data-ctid="0"]').click({ button: "right" });
       await page.getByRole("menuitem", { name: "Datensatz beobachten", exact: true }).click();
       await page.getByRole("button", { name: "Neu laden", exact: true }).click();
@@ -152,7 +175,7 @@ test.skipIf(!process.env.L8DB_WORKBENCH_BROWSER)(
       expect(await page.locator("tbody tr").count()).toBeLessThan(90);
       await page.waitForTimeout(400);
       expect(await page.locator('[data-slot="sheet-content"]').count()).toBe(0);
-      expect(calls.length).toBe(baselineCalls);
+      expect(calls.slice(baselineCalls)).toEqual([]);
       expect(errors).toEqual([]);
       await reportScenario("table-helper-menus", {
         rows: 5000,
