@@ -243,7 +243,7 @@ export function ConvexFilesSection({ deployment }: ConvexStudioSectionProps) {
         />
       </div>
       {selected.size > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5 text-xs">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/40 px-3 py-1.5 text-xs">
           <span>{selected.size} ausgewählt</span>
           <Button size="sm" variant="ghost" onClick={() => setDeleting([...selected])}>
             <Trash2 className="size-3.5" /> Löschen
@@ -254,7 +254,7 @@ export function ConvexFilesSection({ deployment }: ConvexStudioSectionProps) {
         </div>
       )}
       <div className={`grid gap-4 ${active ? "xl:grid-cols-[minmax(0,1fr)_360px]" : ""}`}>
-        <div className="min-w-0 overflow-x-auto rounded-xl border">
+        <div className="min-w-0 overflow-x-auto rounded-xl">
           {current.isPending ? (
             <p className="p-4 text-xs text-muted-foreground">Dateien werden geladen…</p>
           ) : current.isError ? (

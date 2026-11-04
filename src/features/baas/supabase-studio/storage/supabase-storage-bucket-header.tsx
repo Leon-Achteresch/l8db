@@ -59,7 +59,7 @@ export function SupabaseStorageBucketHeader({
   const known = canManage || bucket.created_at !== null;
 
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border bg-background/50 p-3">
+    <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl bg-background/50 p-3">
       <div className="min-w-0">
         <p className="flex items-center gap-2 text-sm font-semibold">
           {known &&

@@ -54,7 +54,7 @@ export function LogsHealthTab({ reference, refetchInterval }: LogsTabProps) {
                   ["Cache-Trefferquote Tabellen", formatPercent(data.table_hit_ratio)],
                   ["Cache-Trefferquote Indizes", formatPercent(data.index_hit_ratio)],
                 ].map(([label, value]) => (
-                  <div key={label} className="rounded-xl border p-3">
+                  <div key={label} className="rounded-xl p-3 bg-muted/30">
                     <div className="text-xs text-muted-foreground">{label}</div>
                     <div className="text-lg font-semibold tabular-nums">{value}</div>
                   </div>

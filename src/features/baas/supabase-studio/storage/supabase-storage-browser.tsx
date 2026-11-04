@@ -240,7 +240,7 @@ export function SupabaseStorageBrowser({
         </form>
       )}
       {selected.size > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5 text-xs">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/40 px-3 py-1.5 text-xs">
           <span>{selected.size} ausgewählt</span>
           {singleSelection && (
             <>
@@ -269,7 +269,7 @@ export function SupabaseStorageBrowser({
         </div>
       )}
       <div className={`grid gap-4 ${active ? "xl:grid-cols-[minmax(0,1fr)_340px]" : ""}`}>
-        <div className="min-w-0 overflow-x-auto rounded-xl border">
+        <div className="min-w-0 overflow-x-auto rounded-xl">
           {objects.isPending ? (
             <p className="p-4 text-xs text-muted-foreground">Dateien werden geladen…</p>
           ) : objects.isError ? (

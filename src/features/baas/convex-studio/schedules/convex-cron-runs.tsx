@@ -29,7 +29,7 @@ export function ConvexCronRuns({ target, name, refetchInterval }: Props) {
   if (runs.data.length === 0)
     return <BaasEmptyState compact icon={History} title="Noch keine Läufe aufgezeichnet." />;
   return (
-    <ul className="divide-y rounded-md border text-xs">
+    <ul className="divide-y rounded-md text-xs bg-muted/30">
       {runs.data.map((run) => (
         <li key={run.id} className="space-y-1 px-3 py-2">
           <div className="flex flex-wrap items-center gap-2">

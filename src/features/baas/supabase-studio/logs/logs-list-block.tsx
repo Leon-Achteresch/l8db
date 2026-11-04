@@ -24,7 +24,7 @@ export function LogsListBlock<T>({
       {rows.length === 0 ? (
         <BaasEmptyState compact icon={CircleCheck} title={empty} />
       ) : (
-        <div className="overflow-x-auto rounded-xl border">
+        <div className="overflow-x-auto rounded-xl">
           <DatabaseTable headers={headers}>{rows.map(children)}</DatabaseTable>
         </div>
       )}

@@ -282,7 +282,7 @@ export function SupabaseAuthUserSheet({ reference, userId, capabilities, onClose
                   <Trash2 className="size-3.5" /> Löschen
                 </Button>
               </div>
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border p-3">
+              <div className="flex flex-wrap items-center gap-2 rounded-lg p-3 bg-muted/30">
                 <Ban className="size-3.5 text-muted-foreground" />
                 {banned ? (
                   <>
@@ -325,7 +325,7 @@ export function SupabaseAuthUserSheet({ reference, userId, capabilities, onClose
                 )}
               </div>
               <form
-                className="grid gap-3 rounded-lg border p-3"
+                className="grid gap-3 rounded-lg p-3 bg-muted/30"
                 onSubmit={(event) => {
                   event.preventDefault();
                   void saveProfile();
@@ -374,7 +374,7 @@ export function SupabaseAuthUserSheet({ reference, userId, capabilities, onClose
                   <KeyRound className="size-3.5" /> Speichern
                 </Button>
               </form>
-              <div className="grid gap-2 rounded-lg border p-3">
+              <div className="grid gap-2 rounded-lg p-3 bg-muted/30">
                 <SupabaseAuthJsonField
                   id="supabase-auth-user-metadata"
                   label="user_metadata"
@@ -421,7 +421,7 @@ export function SupabaseAuthUserSheet({ reference, userId, capabilities, onClose
                 {(user.identities ?? []).length === 0 ? (
                   <p className="text-muted-foreground">Keine Identitäten.</p>
                 ) : (
-                  <ul className="divide-y rounded-lg border">
+                  <ul className="divide-y rounded-lg bg-muted/30">
                     {(user.identities ?? []).map((identity) => (
                       <li
                         key={identity.identity_id ?? `${identity.provider}:${identity.id}`}
@@ -445,7 +445,7 @@ export function SupabaseAuthUserSheet({ reference, userId, capabilities, onClose
                 {(user.factors ?? []).length === 0 ? (
                   <p className="text-muted-foreground">Keine Faktoren registriert.</p>
                 ) : (
-                  <ul className="divide-y rounded-lg border">
+                  <ul className="divide-y rounded-lg bg-muted/30">
                     {(user.factors ?? []).map((factor) => (
                       <li key={factor.id} className="flex items-center gap-2 p-2.5">
                         <div className="grid min-w-0 flex-1 gap-0.5">

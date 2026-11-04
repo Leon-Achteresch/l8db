@@ -59,7 +59,7 @@ export function ConvexDataTableView({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
-        <div className="flex shrink-0 items-center gap-2 border-b bg-muted/30 px-3">
+        <div className="flex shrink-0 items-center gap-2 bg-muted/30 px-3">
           <BaasTableTabs />
           <h3 className="truncate font-mono text-xs font-medium">{table}</h3>
           {typeof count === "number" && (

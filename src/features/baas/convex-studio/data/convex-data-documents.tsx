@@ -198,7 +198,7 @@ export function ConvexDataDocuments({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div
         ref={feature.ref}
-        className="flex shrink-0 flex-wrap items-center gap-1.5 border-b px-3 py-1.5"
+        className="flex shrink-0 flex-wrap items-center gap-1.5 bg-muted/30 px-3 py-1.5"
       >
         <Button
           variant={filtered ? "secondary" : "ghost"}

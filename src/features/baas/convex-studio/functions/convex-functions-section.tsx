@@ -99,7 +99,7 @@ export function ConvexFunctionsSection({ deployment }: ConvexStudioSectionProps)
                 fn={current.fn}
               />
             ) : (
-              <p className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
+              <p className="rounded-xl p-6 text-center text-xs text-muted-foreground bg-muted/30">
                 Funktion links auswählen.
               </p>
             )}

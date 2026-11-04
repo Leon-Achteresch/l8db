@@ -42,7 +42,7 @@ export function LogsAdvisorsTab({ reference, refetchInterval }: LogsTabProps) {
               {data.rows.map((lint, index) => (
                 <li
                   key={lint.cache_key ?? `${lint.name}-${index}`}
-                  className="rounded-xl border p-3"
+                  className="rounded-xl p-3 bg-muted/30"
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={lint.level === "ERROR" ? "destructive" : "secondary"}>

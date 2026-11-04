@@ -65,7 +65,7 @@ export function ConvexCronJobs({ target, refetchInterval }: Props) {
       />
     );
   return (
-    <div className="overflow-x-auto rounded-xl border">
+    <div className="overflow-x-auto rounded-xl">
       <table className="w-full text-left text-xs">
         <thead className="bg-muted/40 text-muted-foreground">
           <tr>
@@ -138,11 +138,11 @@ export function ConvexCronJobs({ target, refetchInterval }: Props) {
                       <div className="grid gap-3 lg:grid-cols-2">
                         <div className="space-y-1">
                           <div className="font-medium">Argumente</div>
-                          <pre className="max-h-60 overflow-auto rounded-md border bg-background p-2 font-mono">
+                          <pre className="max-h-60 overflow-auto rounded-md bg-background p-2 font-mono">
                             {formatJson(cron.args)}
                           </pre>
                           <div className="font-medium">Zeitplan (roh)</div>
-                          <pre className="overflow-auto rounded-md border bg-background p-2 font-mono">
+                          <pre className="overflow-auto rounded-md bg-background p-2 font-mono">
                             {formatJson(cron.schedule)}
                           </pre>
                         </div>
