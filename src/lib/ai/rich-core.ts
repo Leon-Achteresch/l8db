@@ -9,6 +9,7 @@ export type AiRichBlock = (
       output: string;
       sql?: string;
       title?: string;
+      body?: string;
       chart?: { chart: string; x?: string; y?: string[] };
     }
   | {
@@ -77,6 +78,9 @@ export function toolDetails(value: unknown, name: string) {
   return {
     ...(sql ? { sql } : {}),
     ...(title ? { title } : {}),
+    ...(name === "report_issue" && typeof args.body === "string"
+      ? { body: text(args.body, 60000) }
+      : {}),
     ...(name === "visualize" && CHART_KINDS.includes(kind)
       ? {
           chart: {
@@ -136,6 +140,7 @@ export function mergeAiRich(
             output: block.output || old.output,
             sql: block.sql ?? old.sql,
             title: block.title ?? old.title,
+            body: block.body ?? old.body,
             chart: block.chart ?? old.chart,
           }
         : { ...block, ...position },
@@ -165,8 +170,8 @@ export function sanitizeAiRich(value: unknown): AiRichBlock[] {
           : "cancelled",
         output: text(block.output),
         ...toolDetails(
-          { sql: block.sql, title: block.title, ...record(block.chart) },
-          record(block.chart).chart ? "visualize" : "",
+          { sql: block.sql, title: block.title, body: block.body, ...record(block.chart) },
+          record(block.chart).chart ? "visualize" : text(block.name, 300),
         ),
       });
     if (block.type === "diff")

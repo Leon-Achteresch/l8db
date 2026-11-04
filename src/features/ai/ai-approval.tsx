@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { approvalSummary } from "@/lib/ai/approval-presentation";
 import { type AiEvent, aiApprove, aiRespond } from "@/lib/db/ai";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { AiIssueCard } from "./ai-issue-card";
 import { AiSchemaField } from "./ai-schema-field";
 
 interface Props {
@@ -21,7 +22,6 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
   const [pending, setPending] = useState(false);
   const region = useRef<HTMLFieldSetElement>(null);
   const impact = useNewFeatureVisibility<HTMLDivElement>("ai.chat.dry-run");
-  const issue = useNewFeatureVisibility<HTMLDivElement>("ai.chat.issue-report");
   const data = event.data;
   const id = String(data.id);
   useEffect(() => {
@@ -132,7 +132,18 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
       aria-label="Agent benötigt eine Entscheidung"
       className="outline-none"
     >
-      {questionInput ? (
+      {details.tool === "report_issue" &&
+      typeof details.title === "string" &&
+      typeof details.body === "string" ? (
+        <AiIssueCard
+          title={details.title}
+          body={details.body}
+          screenshot={preview ?? undefined}
+          pending={pending}
+          onPublish={() => void act(true)}
+          onCancel={() => void act(false)}
+        />
+      ) : questionInput ? (
         <ApprovalCard
           questions={questions.map((question, index) => ({
             id: String(question.id ?? question.question ?? index),
@@ -173,10 +184,9 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
         >
           {description && <p className="whitespace-pre-wrap">{description}</p>}
           {preview && (
-            <div ref={issue.ref} className="mt-2 space-y-1">
+            <div className="mt-2 space-y-1">
               <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                 Geschwärzter Screenshot
-                {issue.isNew && <NewBadge />}
               </div>
               <img
                 src={preview}
