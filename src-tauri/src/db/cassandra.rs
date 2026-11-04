@@ -14,12 +14,24 @@ use rustls::DigitallySignedStruct;
 
 use super::pool::PoolState;
 use super::{
-    hex_blob, rows_to_objects, timed, unsupported, where_clause, AddColumnRequest,
+    hex_blob, rows_to_objects, timed, unsupported, validate_table_filter, AddColumnRequest,
     AlterColumnRequest, ColumnInfo, CreateTableRequest, DatabaseAdapter, DetailedColumnInfo,
     IndexInfo, QueryResult, RowCount, SslMode, TableData, TableInfo,
 };
 
 const PAGE_SIZE: i32 = 1000;
+
+fn cql_where(filter: Option<&str>, allow_raw: bool) -> Result<String, String> {
+    match filter.map(str::trim).filter(|f| !f.is_empty()) {
+        Some(expression) => {
+            if !allow_raw {
+                validate_table_filter(expression)?;
+            }
+            Ok(format!(" WHERE {expression}"))
+        }
+        None => Ok(String::new()),
+    }
+}
 const MAX_QUERY_ROWS: usize = 10_000;
 
 pub struct CassandraAdapter {
@@ -624,7 +636,7 @@ impl DatabaseAdapter for CassandraAdapter {
         _is_view: bool,
         allow_raw_filter: bool,
     ) -> Result<TableData, String> {
-        let where_sql = where_clause(filter, allow_raw_filter)?;
+        let where_sql = cql_where(filter, allow_raw_filter)?;
         let columns: Vec<String> = self
             .list_table_columns_detailed(schema, table)
             .await?
@@ -660,7 +672,7 @@ impl DatabaseAdapter for CassandraAdapter {
         filter: Option<&str>,
         allow_raw_filter: bool,
     ) -> Result<i64, String> {
-        let where_sql = where_clause(filter, allow_raw_filter)?;
+        let where_sql = cql_where(filter, allow_raw_filter)?;
         let cql = with_filtering(
             format!(
                 "SELECT COUNT(*) FROM {}.{}{}",
@@ -682,7 +694,7 @@ impl DatabaseAdapter for CassandraAdapter {
         allow_raw_filter: bool,
         cap: i64,
     ) -> Result<RowCount, String> {
-        let where_sql = where_clause(filter, allow_raw_filter)?;
+        let where_sql = cql_where(filter, allow_raw_filter)?;
         let key = self
             .list_table_columns_detailed(schema, table)
             .await?

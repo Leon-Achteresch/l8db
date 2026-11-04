@@ -10,14 +10,14 @@ use super::pool::{PoolState, PoolUse};
 use super::server_output::{self, ServerMessage};
 use super::{build_object_ddl, ObjectAuditInfo, ObjectDdlRequest, ObjectDependent};
 use super::{
-    map_pg_err, quote_ident, quote_literal, redact_connection_string, validate_table_filter,
-    AddColumnRequest, AlterColumnRequest, AlterRoleOptions, AlterSequenceRequest,
-    AvailableExtensionInfo, ColumnInfo, ColumnMatch, CompileErrorInfo, CompileResult,
-    ConnectionConfig, ConstraintInfo, CreateRoleOptions, DatabaseAdapter, DependencyInfo,
-    DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo,
-    IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, PrivilegeChange, ProxyUserInfo,
-    QueryResult, RoleInfo, RolePrivileges, RowCount, SchedulerJobInfo, SchemaPrivileges,
-    SequenceInfo, SourceMatch, SslMode, TableData, TableInfo, TablePrivileges, TriggerInfo,
+    map_pg_err, quote_ident, quote_literal, redact_connection_string, AddColumnRequest,
+    AlterColumnRequest, AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo,
+    ColumnMatch, CompileErrorInfo, CompileResult, ConnectionConfig, ConstraintInfo,
+    CreateRoleOptions, DatabaseAdapter, DependencyInfo, DetailedColumnInfo, ERColumn, ERSchema,
+    ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome,
+    InvalidObjectInfo, PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo, RolePrivileges,
+    RowCount, SchedulerJobInfo, SchemaPrivileges, SequenceInfo, SourceMatch, SslMode, TableData,
+    TableInfo, TablePrivileges, TriggerInfo,
 };
 
 const SEARCH_SNIPPET_LEN: usize = 240;
@@ -1566,12 +1566,7 @@ impl DatabaseAdapter for PostgresAdapter {
         is_view: bool,
         allow_raw_filter: bool,
     ) -> Result<TableData, String> {
-        let trimmed = filter.map(str::trim).filter(|f| !f.is_empty());
-        if !allow_raw_filter {
-            if let Some(expression) = trimmed {
-                validate_table_filter(expression)?;
-            }
-        }
+        let where_sql = super::where_clause_in(filter, allow_raw_filter, false)?;
         let conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async {
             let column_rows = conn
@@ -1581,24 +1576,17 @@ impl DatabaseAdapter for PostgresAdapter {
             let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
             let primary_key = primary_key_columns(&column_rows);
 
-            let where_clause = match filter {
-                Some(expression) if !expression.trim().is_empty() => {
-                    format!(" WHERE {}", expression.trim())
-                }
-                _ => String::new(),
-            };
             let order = order_by
                 .filter(|column| columns.iter().any(|name| name == column))
                 .map(|column| (column, order_desc));
-            let sql = table_page_sql(schema, table, &where_clause, order, !is_view, &primary_key);
+            let sql = table_page_sql(schema, table, &where_sql, order, !is_view, &primary_key);
             let data_rows = match conn.query(&sql, &[&limit, &offset]).await {
                 Ok(rows) => rows,
                 Err(e)
                     if !is_view
                         && e.code() == Some(&tokio_postgres::error::SqlState::UNDEFINED_COLUMN) =>
                 {
-                    let sql =
-                        table_page_sql(schema, table, &where_clause, order, false, &primary_key);
+                    let sql = table_page_sql(schema, table, &where_sql, order, false, &primary_key);
                     conn.query(&sql, &[&limit, &offset])
                         .await
                         .map_err(map_pg_err)?
@@ -1626,16 +1614,8 @@ impl DatabaseAdapter for PostgresAdapter {
         if request.format == FileFormat::Csv {
             export::validate_csv_options(&request.options)?;
         }
-        let trimmed = request
-            .filter
-            .as_deref()
-            .map(str::trim)
-            .filter(|f| !f.is_empty());
-        if !request.allow_raw_filter {
-            if let Some(expression) = trimmed {
-                validate_table_filter(expression)?;
-            }
-        }
+        let where_clause =
+            super::where_clause_in(request.filter.as_deref(), request.allow_raw_filter, false)?;
 
         let conn = super::execution::connect_postgres(&self.config, &self.ssl).await?;
         let column_rows = conn
@@ -1651,10 +1631,6 @@ impl DatabaseAdapter for PostgresAdapter {
             return Err("Keine Spalten für den Export gefunden.".to_string());
         }
 
-        let where_clause = match trimmed {
-            Some(expression) => format!(" WHERE {expression}"),
-            None => String::new(),
-        };
         let order_clause = match request.order_by.as_deref() {
             Some(column) if columns.iter().any(|name| name == column) => {
                 let direction = if request.order_desc { "DESC" } else { "ASC" };
@@ -1797,25 +1773,14 @@ impl DatabaseAdapter for PostgresAdapter {
         filter: Option<&str>,
         allow_raw_filter: bool,
     ) -> Result<i64, String> {
-        let trimmed = filter.map(str::trim).filter(|f| !f.is_empty());
-        if !allow_raw_filter {
-            if let Some(expression) = trimmed {
-                validate_table_filter(expression)?;
-            }
-        }
+        let where_sql = super::where_clause_in(filter, allow_raw_filter, false)?;
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
-            let where_clause = match filter {
-                Some(expression) if !expression.trim().is_empty() => {
-                    format!(" WHERE {}", expression.trim())
-                }
-                _ => String::new(),
-            };
             let sql = format!(
                 "SELECT COUNT(*) FROM {}.{}{}",
                 quote_ident(schema),
                 quote_ident(table),
-                where_clause,
+                where_sql,
             );
             conn.query_one(&sql, &[])
                 .await
@@ -1833,21 +1798,18 @@ impl DatabaseAdapter for PostgresAdapter {
         allow_raw_filter: bool,
         cap: i64,
     ) -> Result<RowCount, String> {
-        let trimmed = filter.map(str::trim).filter(|f| !f.is_empty());
-        if !allow_raw_filter {
-            if let Some(expression) = trimmed {
-                validate_table_filter(expression)?;
-            }
-        }
-        let where_clause = trimmed
-            .map(|expression| format!(" WHERE {expression}"))
-            .unwrap_or_default();
-        let sql = capped_count_sql(schema, table, &where_clause, cap);
+        let where_sql = super::where_clause_in(filter, allow_raw_filter, false)?;
+        let sql = capped_count_sql(schema, table, &where_sql, cap);
         let name = relation_name(schema, table);
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
             let row = conn.query_one(&sql, &[&name]).await.map_err(map_pg_err)?;
-            Ok(capped_count(row.get(0), row.get(1), cap, trimmed.is_some()))
+            Ok(capped_count(
+                row.get(0),
+                row.get(1),
+                cap,
+                !where_sql.is_empty(),
+            ))
         })
         .await
     }

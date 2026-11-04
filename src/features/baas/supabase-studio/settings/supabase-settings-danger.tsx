@@ -3,13 +3,9 @@ import { Pause, Play, TriangleAlert, Unplug } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { NameConfirmDialog } from "@/features/versioning/database/name-confirm-dialog";
-import {
-  type SupabaseProject,
-  type SupabaseStudioCapabilities,
-  supabaseDisconnect,
-  supabaseDisconnectSelfHosted,
-} from "@/lib/db";
+import type { SupabaseProject, SupabaseStudioCapabilities } from "@/lib/db";
 import { supabaseStudioSettingsSetPaused } from "@/lib/db/supabase-studio-settings";
+import { disconnectSupabase } from "../../disconnect-baas";
 
 type Action = "pause" | "restore" | "disconnect";
 
@@ -31,8 +27,7 @@ export function SupabaseSettingsDanger({
     setError(null);
     try {
       if (current === "disconnect") {
-        if (project.self_hosted) await supabaseDisconnectSelfHosted(project.reference);
-        else await supabaseDisconnect();
+        await disconnectSupabase(project.reference, Boolean(project.self_hosted));
         queryClient.removeQueries({ queryKey: ["supabase", "projects"] });
         await queryClient.invalidateQueries({ queryKey: ["supabase", "connected"] });
         return;

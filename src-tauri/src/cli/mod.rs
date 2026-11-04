@@ -194,7 +194,7 @@ enum Command {
         alias = "tables",
         help_template = SUB_HELP,
         override_usage = "l8db table <befehl>",
-        after_help = "Tabellen gibst du als name oder schema.name an.\n\nBeispiele:\n  l8db table list -s public\n  l8db table describe public.users\n  l8db table rows users --where \"created_at > now() - interval '1 day'\" --order-by id --desc\n  l8db table count orders --where \"status = 'open'\""
+        after_help = "Tabellen gibst du als name oder schema.name an.\n\nBeispiele:\n  l8db table list -s public\n  l8db table describe public.users\n  l8db table rows users --where \"created_at > now() - interval '1 day'\" --order-by id --desc\n  l8db table count orders --where \"status = 'open'\"\n  l8db table rows orders --where '{\"status\":\"open\"}'  (MongoDB)"
     )]
     Table {
         #[command(subcommand)]
@@ -345,7 +345,8 @@ struct QueryArgs {
         long,
         value_name = "SEKUNDEN",
         default_value_t = 300,
-        help = "Abbruch nach so vielen Sekunden; 0 = ohne Grenze"
+        value_parser = timeout_seconds,
+        help = "Abbruch nach so vielen Sekunden (mindestens 5); 0 = ohne Grenze"
     )]
     timeout: u64,
 }
@@ -357,6 +358,8 @@ struct Limit {
         long,
         value_name = "ANZAHL",
         default_value_t = 1000,
+        allow_negative_numbers = true,
+        value_parser = clap::builder::RangedU64ValueParser::<usize>::new().range(1..),
         help = "Höchstens so viele Zeilen ausgeben"
     )]
     limit: usize,
@@ -402,7 +405,7 @@ enum TableCommand {
             short = 'w',
             long = "where",
             value_name = "AUSDRUCK",
-            help = "SQL-Filter, z. B. \"id > 10\""
+            help = "SQL-Filter, z. B. \"id > 10\"; MongoDB: JSON wie '{\"status\":\"open\"}', Redis: Key-Muster wie 'user:*'"
         )]
         filter: Option<String>,
         #[arg(long, value_name = "SPALTE", help = "Sortieren nach Spalte")]
@@ -414,6 +417,8 @@ enum TableCommand {
             long,
             value_name = "ANZAHL",
             default_value_t = 100,
+            allow_negative_numbers = true,
+            value_parser = clap::value_parser!(i64).range(1..),
             help = "Anzahl Zeilen"
         )]
         limit: i64,
@@ -421,6 +426,8 @@ enum TableCommand {
             long,
             value_name = "ANZAHL",
             default_value_t = 0,
+            allow_negative_numbers = true,
+            value_parser = clap::value_parser!(i64).range(0..),
             help = "Zeilen überspringen"
         )]
         offset: i64,
@@ -436,7 +443,7 @@ enum TableCommand {
             short = 'w',
             long = "where",
             value_name = "AUSDRUCK",
-            help = "SQL-Filter"
+            help = "SQL-Filter, z. B. \"id > 10\"; MongoDB: JSON wie '{\"status\":\"open\"}', Redis: Key-Muster wie 'user:*'"
         )]
         filter: Option<String>,
     },
@@ -501,9 +508,20 @@ const COMMANDS: &[&str] = &[
 ];
 const GLOBAL_FLAGS: &[&str] = &["--connection", "--url", "--database", "--output"];
 
+fn timeout_seconds(value: &str) -> Result<u64, String> {
+    match value.parse::<u64>() {
+        Ok(seconds) if seconds == 0 || seconds >= 5 => Ok(seconds),
+        Ok(_) => Err("mindestens 5 Sekunden (0 = ohne Grenze)".into()),
+        Err(_) => Err("keine gültige Sekundenzahl".into()),
+    }
+}
+
 pub fn wants(args: &[String]) -> bool {
     args.first().is_some_and(|first| {
         COMMANDS.contains(&first.as_str())
+            || ["-c", "-d", "-o"]
+                .iter()
+                .any(|flag| first.starts_with(flag) && first.len() > 2)
             || GLOBAL_FLAGS
                 .iter()
                 .any(|flag| first == flag || first.starts_with(&format!("{flag}=")))
@@ -649,7 +667,20 @@ fn german(error: &clap::Error) -> String {
         }
         ErrorKind::ValueValidation => {
             let actual = value(ContextKind::InvalidValue).unwrap_or_default();
-            format!("Ungültiger Wert „{actual}“ für {invalid}.")
+            let reason = std::error::Error::source(error)
+                .map(ToString::to_string)
+                .map(|source| match source.split_once(" is not in ") {
+                    Some((_, range)) => format!(
+                        " Erlaubt: ab {}.",
+                        range.split("..").next().unwrap_or_default()
+                    ),
+                    None if source.contains("invalid digit") => {
+                        " Erwartet wird eine Zahl.".to_string()
+                    }
+                    None => format!(" Erlaubt: {source}."),
+                })
+                .unwrap_or_default();
+            format!("Ungültiger Wert „{actual}“ für {invalid}.{reason}")
         }
         ErrorKind::ArgumentConflict => {
             let other = value(ContextKind::PriorArg).unwrap_or_default();

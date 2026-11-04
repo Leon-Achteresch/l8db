@@ -75,7 +75,7 @@ async fn supabase_self_hosted_live() {
     assert!(project.self_hosted);
     assert_eq!(project.name, "Lab");
     assert!(supabase_is_connected().await.unwrap());
-    let projects = supabase_projects().await.unwrap();
+    let projects = supabase_projects().await.unwrap().projects;
     assert_eq!(projects.len(), 1);
     assert_eq!(projects[0].reference, reference);
     assert!(supabase_has_project_key(reference.clone()).await.unwrap());
@@ -277,7 +277,7 @@ async fn supabase_self_hosted_live() {
         .unwrap();
     assert!(!supabase_is_connected().await.unwrap());
     assert!(!supabase_has_project_key(reference.clone()).await.unwrap());
-    assert!(supabase_projects().await.unwrap().is_empty());
+    assert!(supabase_projects().await.unwrap().projects.is_empty());
 }
 
 #[tokio::test]
@@ -377,7 +377,7 @@ async fn supabase_public_key_live() {
             .await
             .is_err()
     );
-    assert!(supabase_projects().await.unwrap().is_empty());
+    assert!(supabase_projects().await.unwrap().projects.is_empty());
     pg_query(&url, &key, "DROP TABLE public.l8db_public").await;
 }
 

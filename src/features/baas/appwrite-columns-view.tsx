@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Columns3, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import { appwriteHasMore, appwriteTotal } from "@/lib/appwrite-paging";
 import { appwriteColumns } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
@@ -29,7 +30,7 @@ export function AppwriteColumnsView({
         <h5 className="text-xs font-medium">Spalten</h5>
         {feature.isNew && <NewBadge />}
         {columns.data && (
-          <span className="text-xs text-muted-foreground">{columns.data.total}</span>
+          <span className="text-xs text-muted-foreground">{appwriteTotal(columns.data)}</span>
         )}
         <Button
           variant="ghost"
@@ -65,7 +66,7 @@ export function AppwriteColumnsView({
           ))}
         </div>
       )}
-      {columns.data && (offset > 0 || offset + columns.data.items.length < columns.data.total) && (
+      {columns.data && (offset > 0 || appwriteHasMore(offset, columns.data)) && (
         <div className="mt-3 flex items-center justify-end gap-2 border-t pt-3">
           <Button
             variant="outline"
@@ -77,13 +78,13 @@ export function AppwriteColumnsView({
             <ChevronLeft className="size-3.5" />
           </Button>
           <span className="text-xs text-muted-foreground">
-            {offset + 1}–{offset + columns.data.items.length} / {columns.data.total}
+            {offset + 1}–{offset + columns.data.items.length} / {appwriteTotal(columns.data)}
           </span>
           <Button
             variant="outline"
             size="icon-sm"
             aria-label="Weitere Spalten"
-            disabled={offset + columns.data.items.length >= columns.data.total}
+            disabled={!appwriteHasMore(offset, columns.data)}
             onClick={() => setOffset((value) => value + 100)}
           >
             <ChevronRight className="size-3.5" />

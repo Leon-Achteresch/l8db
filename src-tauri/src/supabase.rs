@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 use std::time::Duration;
+#[cfg(test)]
 use tokio_util::io::ReaderStream;
 
 const TOKEN_ACCOUNT: &str = "baas:supabase:access-token";
@@ -10,6 +11,7 @@ const KEY_INDEX_ACCOUNT: &str = "baas:supabase:project-key-index";
 const SELF_HOSTED_ACCOUNT: &str = "baas:supabase:self-hosted";
 const SELF_HOSTED_PREFIX: &str = "self-";
 const PUBLIC_REST_HEALTH: &str = "rest/v1/l8db_health_probe?limit=0";
+#[cfg(test)]
 const PUBLIC_TABLE_LIST: &str = "Mit Publishable/anon Key oder über eine Supabase-Cloud-URL gibt Supabase keine Tabellenliste heraus. Öffne eine Tabelle über ihren Namen, verbinde selbst gehostet mit einem Secret Key oder Supabase Cloud mit einem Zugangstoken.";
 const SELF_HOSTED_HEALTH: [(&str, &str); 5] = [
     ("auth", "auth/v1/health"),
@@ -18,6 +20,48 @@ const SELF_HOSTED_HEALTH: [(&str, &str); 5] = [
     ("rest", "rest/v1/"),
     ("storage", "storage/v1/status"),
 ];
+
+pub(crate) fn server_reason(body: &str) -> String {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return String::new();
+    };
+    let mut parts: Vec<String> = value
+        .get("message")
+        .and_then(|m| m.as_str())
+        .filter(|m| !m.trim().is_empty())
+        .map(|m| vec![m.trim().to_string()])
+        .unwrap_or_default();
+    if let Some(fields) = value.get("data").and_then(|d| d.as_object()) {
+        parts.extend(fields.iter().filter_map(|(field, detail)| {
+            detail
+                .get("message")
+                .and_then(|m| m.as_str())
+                .map(|m| format!("{field}: {m}"))
+        }));
+    }
+    let reason: String = parts.join("; ").chars().take(500).collect();
+    if reason.is_empty() {
+        reason
+    } else {
+        format!(" Server: {reason}")
+    }
+}
+
+pub(crate) async fn write_error(service: &str, response: reqwest::Response, what: &str) -> String {
+    let status = response.status().as_u16();
+    let body = response.text().await.unwrap_or_default();
+    format!("{service} HTTP {status}: {what}{}", server_reason(&body))
+}
+
+pub(crate) fn network_error(service: &str, error: &reqwest::Error) -> String {
+    if error.is_timeout() {
+        format!("{service}: Zeitüberschreitung, der Server hat nicht rechtzeitig geantwortet.")
+    } else if error.is_connect() {
+        format!("{service} ist nicht erreichbar. Adresse, Netzwerk, DNS und TLS prüfen.")
+    } else {
+        format!("{service} ist nicht erreichbar oder hat die Verbindung abgebrochen.")
+    }
+}
 
 pub(crate) fn client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
@@ -325,7 +369,7 @@ pub(crate) async fn management_get<T: serde::de::DeserializeOwned>(
         .bearer_auth(access_token)
         .send()
         .await
-        .map_err(|error| format!("Supabase ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Supabase", &error))?;
     response_json(response).await
 }
 
@@ -343,7 +387,7 @@ pub(crate) async fn database_query<T: serde::de::DeserializeOwned>(
         .json(&serde_json::json!({"query": query, "parameters": parameters}))
         .send()
         .await
-        .map_err(|error| format!("Supabase-Datenbank ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Supabase-Datenbank", &error))?;
         return response_json(response).await;
     }
     let response = client()
@@ -358,7 +402,7 @@ pub(crate) async fn database_query<T: serde::de::DeserializeOwned>(
         }))
         .send()
         .await
-        .map_err(|error| format!("Supabase-Datenbank ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Supabase-Datenbank", &error))?;
     response_json(response).await
 }
 
@@ -385,7 +429,7 @@ pub(crate) async fn database_execute(
         .json(&serde_json::json!({"query": query, "parameters": parameters}))
         .send()
         .await
-        .map_err(|error| format!("Supabase-Datenbank ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Supabase-Datenbank", &error))?;
     response_json(response).await
 }
 
@@ -396,6 +440,7 @@ pub(crate) fn quote_identifier(value: &str) -> Result<String, String> {
     Ok(format!("\"{}\"", value.replace('"', "\"\"")))
 }
 
+#[cfg(test)]
 fn table_rows_sql(schema: &str, table: &str, offset: u32) -> Result<String, String> {
     if offset > 1_000_000 {
         return Err("Ungültiger Zeilen-Offset.".into());
@@ -494,6 +539,7 @@ pub struct SupabaseBackups {
     pub physical_backup_data: Option<SupabasePhysicalBackupData>,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SupabaseAuthUser {
     pub id: String,
@@ -506,11 +552,13 @@ pub struct SupabaseAuthUser {
     pub is_anonymous: Option<bool>,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SupabaseAuthUsersPage {
     pub users: Vec<SupabaseAuthUser>,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SupabaseTable {
     pub schema: String,
@@ -518,6 +566,7 @@ pub struct SupabaseTable {
     pub kind: String,
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SupabaseColumn {
     pub name: String,
@@ -525,18 +574,21 @@ pub struct SupabaseColumn {
     pub is_nullable: String,
 }
 
+#[cfg(test)]
 #[derive(Serialize)]
 pub struct SupabaseTablesPage {
     pub tables: Vec<SupabaseTable>,
     pub has_more: bool,
 }
 
+#[cfg(test)]
 #[derive(Serialize)]
 pub struct SupabaseRowsPage {
     pub rows: Vec<SupabaseRow>,
     pub has_more: bool,
 }
 
+#[cfg(test)]
 #[derive(Serialize)]
 pub struct SupabaseRow {
     pub ordinal: u32,
@@ -610,7 +662,7 @@ pub async fn supabase_connect_self_hosted(
     )
     .send()
     .await
-    .map_err(|error| format!("Supabase ist nicht erreichbar: {error}"))?;
+    .map_err(|error| crate::supabase::network_error("Supabase", &error))?;
     let _: serde_json::Value = response_json(response).await?;
     let name = name.trim();
     if name.chars().count() > 100 {
@@ -687,9 +739,15 @@ pub async fn supabase_is_connected() -> Result<bool, String> {
         || !self_hosted_projects().await?.is_empty())
 }
 
+#[derive(Debug, Serialize)]
+pub struct SupabaseProjectList {
+    pub projects: Vec<SupabaseProject>,
+    pub cloud_error: Option<String>,
+}
+
 #[tauri::command]
-pub async fn supabase_projects() -> Result<Vec<SupabaseProject>, String> {
-    let projects = match crate::db::secrets::load_secret(TOKEN_ACCOUNT.to_string())
+pub async fn supabase_projects() -> Result<SupabaseProjectList, String> {
+    let cloud = match crate::db::secrets::load_secret(TOKEN_ACCOUNT.to_string())
         .await?
         .filter(|value| !value.is_empty())
     {
@@ -697,12 +755,16 @@ pub async fn supabase_projects() -> Result<Vec<SupabaseProject>, String> {
         None => Ok(Vec::new()),
     };
     let self_hosted = self_hosted_projects().await?;
-    if self_hosted.is_empty() {
-        return projects;
-    }
-    let mut projects = projects.unwrap_or_default();
+    let (mut projects, cloud_error) = match cloud {
+        Ok(projects) => (projects, None),
+        Err(error) if !self_hosted.is_empty() => (Vec::new(), Some(error)),
+        Err(error) => return Err(error),
+    };
     projects.extend(self_hosted.into_iter().map(SupabaseProject::from));
-    Ok(projects)
+    Ok(SupabaseProjectList {
+        projects,
+        cloud_error,
+    })
 }
 
 #[derive(Deserialize)]
@@ -779,6 +841,7 @@ pub async fn supabase_database_endpoint(
     Ok(database_endpoint(reference, configs))
 }
 
+#[cfg(test)]
 #[tauri::command]
 pub async fn supabase_buckets(reference: String) -> Result<Vec<SupabaseBucket>, String> {
     let reference = validate_ref(&reference)?;
@@ -811,6 +874,7 @@ fn bucket_url(mut url: reqwest::Url, bucket: &str) -> Result<reqwest::Url, Strin
     Ok(url)
 }
 
+#[cfg(test)]
 #[tauri::command]
 pub async fn supabase_bucket_details(
     reference: String,
@@ -843,6 +907,7 @@ pub(crate) async fn project_secret_key(reference: &str) -> Result<String, String
         .ok_or_else(|| "Für diese Aktion wird ein Supabase Secret API Key benötigt.".into())
 }
 
+#[cfg(test)]
 #[tauri::command]
 pub async fn supabase_create_bucket(
     reference: String,
@@ -869,6 +934,7 @@ pub async fn supabase_create_bucket(
     Ok(())
 }
 
+#[cfg(test)]
 #[tauri::command]
 pub async fn supabase_update_bucket_public(
     reference: String,
@@ -1009,6 +1075,7 @@ pub async fn supabase_backups(reference: String) -> Result<SupabaseBackups, Stri
     .await
 }
 
+#[cfg(test)]
 #[tauri::command]
 pub async fn supabase_tables(reference: String, offset: u32) -> Result<SupabaseTablesPage, String> {
     if offset > 100_000 {
@@ -1026,6 +1093,7 @@ pub async fn supabase_tables(reference: String, offset: u32) -> Result<SupabaseT
     Ok(SupabaseTablesPage { tables, has_more })
 }
 
+#[cfg(test)]
 #[tauri::command]
 pub async fn supabase_table_columns(
     reference: String,
@@ -1045,6 +1113,7 @@ pub async fn supabase_table_columns(
     .await
 }
 
+#[cfg(test)]
 #[tauri::command]
 pub async fn supabase_table_rows(
     reference: String,
@@ -1071,6 +1140,7 @@ pub async fn supabase_table_rows(
     Ok(SupabaseRowsPage { rows, has_more })
 }
 
+#[cfg(test)]
 async fn data_api_rows(
     reference: &str,
     schema: &str,
@@ -1090,7 +1160,7 @@ async fn data_api_rows(
         .header("Accept-Profile", schema)
         .send()
         .await
-        .map_err(|error| format!("Supabase Data API ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Supabase Data API", &error))?;
     if matches!(response.status().as_u16(), 404 | 406) {
         return Err(format!(
             "Tabelle {schema}.{table} nicht gefunden oder nicht über die Data API freigegeben."
@@ -1123,7 +1193,7 @@ pub async fn supabase_set_project_key(reference: String, api_key: String) -> Res
     )
     .send()
     .await
-    .map_err(|error| format!("Supabase Storage ist nicht erreichbar: {error}"))?;
+    .map_err(|error| crate::supabase::network_error("Supabase Storage", &error))?;
     let _: serde_json::Value = response_json(response).await?;
     crate::db::secrets::store_secret(project_key_account(reference), api_key.to_string()).await?;
     let mut references = project_key_index().await?;
@@ -1160,6 +1230,7 @@ pub async fn supabase_delete_project_key(reference: String) -> Result<(), String
     .await
 }
 
+#[cfg(test)]
 #[tauri::command]
 pub async fn supabase_objects(
     reference: String,
@@ -1187,7 +1258,7 @@ pub async fn supabase_objects(
         }))
         .send()
         .await
-        .map_err(|error| format!("Supabase Storage ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Supabase Storage", &error))?;
     response_json(response).await
 }
 
@@ -1216,6 +1287,7 @@ async fn object_response(
         .map_err(|_| "Supabase Storage ist nicht erreichbar.".to_string())
 }
 
+#[cfg(test)]
 async fn upload_file(
     path: &std::path::Path,
     url: reqwest::Url,
@@ -1258,38 +1330,7 @@ async fn upload_file(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn supabase_upload_object(
-    app: tauri::AppHandle,
-    reference: String,
-    bucket: String,
-    prefix: String,
-) -> Result<Option<String>, String> {
-    let reference = validate_ref(&reference)?;
-    let bucket = validate_bucket(&bucket)?;
-    if !prefix.is_empty() && !prefix.ends_with('/') {
-        return Err("Ungültiger Storage-Ordner.".into());
-    }
-    let api_key = crate::db::secrets::load_secret(project_key_account(reference))
-        .await?
-        .ok_or_else(|| "Für den Upload wird ein Supabase Secret API Key benötigt.".to_string())?;
-    let Some(path) = crate::baas_file::pick_open_path(app).await? else {
-        return Ok(None);
-    };
-    let name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| "Dateiname konnte nicht gelesen werden.".to_string())?;
-    let object_key = validate_object_key(&format!("{prefix}{name}"))?.to_string();
-    let mut url = project_url(reference, "storage/v1/object").await?;
-    url.path_segments_mut()
-        .map_err(|_| "Ungültige Supabase-URL.".to_string())?
-        .push(bucket)
-        .extend(object_key.split('/'));
-    upload_file(&path, url, &api_key, crate::baas_file::upload_client()).await?;
-    Ok(Some(object_key))
-}
-
+#[cfg(test)]
 #[tauri::command]
 pub async fn supabase_delete_object(
     reference: String,
@@ -1315,6 +1356,7 @@ pub async fn supabase_delete_object(
     Ok(())
 }
 
+#[cfg(test)]
 #[tauri::command]
 pub async fn supabase_move_object(
     reference: String,
@@ -1383,6 +1425,7 @@ pub async fn supabase_download_object(
     Ok(true)
 }
 
+#[cfg(test)]
 #[tauri::command]
 pub async fn supabase_auth_users(
     reference: String,
@@ -1402,7 +1445,7 @@ pub async fn supabase_auth_users(
     .query(&[("page", page), ("per_page", 50)])
     .send()
     .await
-    .map_err(|error| format!("Supabase Auth ist nicht erreichbar: {error}"))?;
+    .map_err(|error| crate::supabase::network_error("Supabase Auth", &error))?;
     response_json(response).await
 }
 
@@ -1421,6 +1464,7 @@ fn validate_auth_user_id(id: &str) -> Result<&str, String> {
     Ok(id)
 }
 
+#[cfg(test)]
 fn validate_auth_email(email: &str) -> Result<&str, String> {
     if email.is_empty()
         || email.len() > 320
@@ -1432,6 +1476,7 @@ fn validate_auth_email(email: &str) -> Result<&str, String> {
     Ok(email)
 }
 
+#[cfg(test)]
 #[tauri::command]
 pub async fn supabase_create_auth_user(
     reference: String,
@@ -1461,6 +1506,7 @@ pub async fn supabase_create_auth_user(
     Ok(())
 }
 
+#[cfg(test)]
 #[tauri::command]
 pub async fn supabase_update_auth_user_email(
     reference: String,
@@ -1511,6 +1557,23 @@ pub async fn supabase_delete_auth_user(reference: String, user_id: String) -> Re
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn server_reason_reads_pocketbase_and_appwrite_bodies() {
+        assert_eq!(
+            super::server_reason(
+                r#"{"message":"Failed to update record.","data":{"title":{"code":"validation_required","message":"Cannot be blank."}}}"#
+            ),
+            " Server: Failed to update record.; title: Cannot be blank."
+        );
+        assert_eq!(
+            super::server_reason(
+                r#"{"message":"Document with the requested ID already exists.","code":409}"#
+            ),
+            " Server: Document with the requested ID already exists."
+        );
+        assert_eq!(super::server_reason("<html>"), "");
+    }
+
     use super::{
         bucket_url, client, cloud_project_url, cloud_ref, cloud_reference_of, database_endpoint,
         env_value, is_self_hosted, project_api_auth, project_key_is_secret, select_project_key,

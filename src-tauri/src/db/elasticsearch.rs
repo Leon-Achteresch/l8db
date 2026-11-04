@@ -342,13 +342,38 @@ fn console_requests(input: &str) -> Option<Vec<ConsoleRequest>> {
 pub fn read_only_request(statement: &str) -> Option<bool> {
     let requests = console_requests(statement)?;
     Some(requests.iter().all(|r| {
-        let path = r.path.split('?').next().unwrap_or_default();
         matches!(r.method.as_str(), "GET" | "HEAD")
-            || (r.method == "POST"
-                && path
-                    .split('/')
-                    .any(|segment| READ_ENDPOINTS.contains(&segment)))
+            || (r.method == "POST" && read_endpoint_path(&r.path))
     }))
+}
+
+fn read_endpoint_path(path: &str) -> bool {
+    let Ok(url) = url::Url::parse("http://l8db.invalid/").and_then(|base| base.join(path)) else {
+        return false;
+    };
+    let raw = path.split(['?', '#']).next().unwrap_or_default();
+    let segments: Vec<String> = url
+        .path_segments()
+        .into_iter()
+        .flatten()
+        .map(|segment| {
+            percent_encoding::percent_decode_str(segment)
+                .decode_utf8_lossy()
+                .into_owned()
+        })
+        .collect();
+    let dotted = raw
+        .split(['/', '\\'])
+        .chain(segments.iter().map(String::as_str))
+        .any(|segment| {
+            let decoded = percent_encoding::percent_decode_str(segment).decode_utf8_lossy();
+            decoded == "." || decoded == ".." || decoded.contains(['/', '\\'])
+        });
+    !dotted
+        && segments
+            .iter()
+            .find(|segment| segment.starts_with('_'))
+            .is_some_and(|segment| READ_ENDPOINTS.contains(&segment.as_str()))
 }
 
 pub fn is_index_ddl(statement: &str) -> bool {
@@ -1294,6 +1319,37 @@ mod tests {
         assert_eq!(read_only_request("POST logs/_doc\n{}"), Some(false));
         assert_eq!(read_only_request("DELETE logs"), Some(false));
         assert_eq!(read_only_request("SELECT 1"), None);
+        for path in [
+            "_search/../logs/_delete_by_query",
+            "_search/%2e%2e/logs/_delete_by_query",
+            "_search/%2E%2E/logs/_delete_by_query",
+            "_search\\..\\logs\\_delete_by_query",
+            "_search/./../logs/_update_by_query",
+            "logs/_search%2F..%2F_delete_by_query",
+            "logs/_doc/_search",
+            "logs/_delete_by_query#/_search",
+            "logs/_delete_by_query?x=/_search",
+            "_search_x",
+        ] {
+            assert_eq!(
+                read_only_request(&format!("POST {path}\n{{}}")),
+                Some(false),
+                "{path}"
+            );
+        }
+        for path in [
+            "_search",
+            "logs/_search?size=1",
+            "_search/scroll",
+            "logs/_explain/1",
+            "_sql?format=txt",
+        ] {
+            assert_eq!(
+                read_only_request(&format!("POST {path}\n{{}}")),
+                Some(true),
+                "{path}"
+            );
+        }
         assert!(is_index_ddl("DELETE logs"));
         assert!(is_index_ddl("PUT logs\n{\"mappings\": {}}"));
         assert!(!is_index_ddl("PUT logs/_doc/1\n{}"));

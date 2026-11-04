@@ -316,12 +316,25 @@ pub(super) fn split_table(name: &str) -> (Option<String>, String) {
         let part = part.trim();
         for (open, close) in [('"', '"'), ('`', '`'), ('[', ']')] {
             if let Some(inner) = part.strip_prefix(open).and_then(|s| s.strip_suffix(close)) {
-                return inner.to_string();
+                return inner.replace(&format!("{close}{close}"), &close.to_string());
             }
         }
         part.to_string()
     };
-    match name.rsplit_once('.') {
+    let mut quote: Option<char> = None;
+    let mut dot = None;
+    for (index, ch) in name.char_indices() {
+        match (quote, ch) {
+            (Some(close), _) if ch == close => quote = None,
+            (Some(_), _) => {}
+            (None, '"') => quote = Some('"'),
+            (None, '`') => quote = Some('`'),
+            (None, '[') => quote = Some(']'),
+            (None, '.') => dot = Some(index),
+            _ => {}
+        }
+    }
+    match dot.map(|index| (&name[..index], &name[index + 1..])) {
         Some((schema, table)) if !schema.trim().is_empty() && !table.trim().is_empty() => {
             (Some(unquote(schema)), unquote(table))
         }
@@ -329,40 +342,96 @@ pub(super) fn split_table(name: &str) -> (Option<String>, String) {
     }
 }
 
-async fn locate(session: &Session, name: &str, job: &str) -> Result<(String, String), String> {
-    let (schema, table) = split_table(name);
-    let tables = guarded(
-        job,
-        session.target.kind,
-        60,
-        session.adapter.list_tables(schema.as_deref()),
-    )
-    .await?;
-    let exact: Vec<_> = tables
-        .iter()
-        .filter(|t| t.name == table && schema.as_ref().is_none_or(|s| &t.schema == s))
+struct Relation {
+    schema: String,
+    name: String,
+    view: bool,
+}
+
+async fn relations(
+    session: &Session,
+    schema: Option<&str>,
+    job: &str,
+) -> Result<Vec<Relation>, String> {
+    let kind = session.target.kind;
+    let mut found: Vec<Relation> = guarded(job, kind, 60, session.adapter.list_tables(schema))
+        .await?
+        .into_iter()
+        .map(|t| Relation {
+            schema: t.schema,
+            name: t.name,
+            view: false,
+        })
         .collect();
-    let candidates = if exact.is_empty() {
-        tables
-            .iter()
-            .filter(|t| {
-                t.name.eq_ignore_ascii_case(&table)
-                    && schema
-                        .as_ref()
-                        .is_none_or(|s| t.schema.eq_ignore_ascii_case(s))
-            })
-            .collect()
+    if let Ok(views) = guarded(job, kind, 60, session.adapter.list_views(schema)).await {
+        for v in views {
+            if !found
+                .iter()
+                .any(|t| t.schema == v.schema && t.name == v.name)
+            {
+                found.push(Relation {
+                    schema: v.schema,
+                    name: v.name,
+                    view: true,
+                });
+            }
+        }
+    }
+    Ok(found)
+}
+
+fn pick<'a>(all: &'a [Relation], schema: Option<&str>, table: &str) -> Vec<&'a Relation> {
+    let exact: Vec<_> = all
+        .iter()
+        .filter(|t| t.name == table && schema.is_none_or(|s| t.schema == s))
+        .collect();
+    if !exact.is_empty() {
+        return exact;
+    }
+    all.iter()
+        .filter(|t| {
+            t.name.eq_ignore_ascii_case(table)
+                && schema.is_none_or(|s| t.schema.eq_ignore_ascii_case(s))
+        })
+        .collect()
+}
+
+async fn locate(session: &Session, name: &str, job: &str) -> Result<Relation, String> {
+    let (schema, table) = split_table(name);
+    let mut all = relations(session, schema.as_deref(), job).await?;
+    let mut candidates = pick(&all, schema.as_deref(), &table).len();
+    if candidates == 0 && schema.is_some() {
+        all = relations(session, None, job).await?;
+        candidates = pick(&all, schema.as_deref(), &table).len();
+    }
+    let (schema, table) = if candidates == 0 && schema.is_some() {
+        (None, name.trim().to_string())
     } else {
-        exact
+        (schema, table)
     };
-    match candidates.as_slice() {
-        [one] => Ok((one.schema.clone(), one.name.clone())),
-        [] => Err(format!(
+    let mut found = pick(&all, schema.as_deref(), &table);
+    match found.len() {
+        1 => {
+            let one = found.remove(0);
+            Ok(Relation {
+                schema: one.schema.clone(),
+                name: one.name.clone(),
+                view: one.view,
+            })
+        }
+        0 => Err(format!(
             "Tabelle „{name}“ nicht gefunden.\n  Alle Tabellen: l8db table list"
         )),
-        many => Err(format!(
+        _ if found.iter().all(|t| t.schema == found[0].schema) => Err(format!(
+            "„{name}“ ist nicht eindeutig: {} (Schema {}). Bitte die genaue Schreibweise in Anführungszeichen angeben, z. B. '\"{}\"'.",
+            found.iter().map(|t| t.name.as_str()).collect::<Vec<_>>().join(", "),
+            found[0].schema,
+            found[0].name.replace('"', "\"\""),
+        )),
+        _ => Err(format!(
             "„{name}“ gibt es in mehreren Schemas: {}. Bitte als schema.tabelle angeben.",
-            many.iter()
+            found
+                .iter()
                 .map(|t| format!("{}.{}", t.schema, t.name))
                 .collect::<Vec<_>>()
                 .join(", ")
@@ -384,25 +453,32 @@ async fn table(
         _ => None,
     };
     if let Some(filter) = filter.filter(|_| is_sql(kind)) {
-        db::validate_table_filter(&filter)
-            .map_err(|_| "--where darf nur eine Bedingung enthalten (ohne ; -- /* UNION INTO RETURNING).\n  Für eigenes SQL: l8db q \"select … where …\"".to_string())?;
+        db::validate_table_filter_in(&filter, kind != DatabaseKind::Postgres).map_err(|e| {
+            format!(
+                "--where darf nur eine Bedingung enthalten. {}\n  Für eigenes SQL: l8db q \"select … where …\"",
+                e.replace(" Nutze den SQL-Modus für eigene Ausdrücke.", "")
+            )
+        })?;
         if writes(kind, &filter) {
             allow_write(&session.target, false).await?;
         }
     }
     match command {
         TableCommand::List { schema } => {
-            let tables = guarded(job, kind, 60, adapter.list_tables(schema.as_deref())).await?;
-            let rows: Vec<Value> = tables.iter().map(|t| json!([t.schema, t.name])).collect();
+            let tables = relations(session, schema.as_deref(), job).await?;
+            let rows: Vec<Value> = tables
+                .iter()
+                .map(|t| json!([t.schema, t.name, if t.view { "view" } else { "table" }]))
+                .collect();
             write(output::write_rows(
                 out,
                 format,
-                &["schema".into(), "table".into()],
+                &["schema".into(), "table".into(), "type".into()],
                 &rows,
             ))
         }
         TableCommand::Describe { table } => {
-            let (schema, name) = locate(session, &table, job).await?;
+            let Relation { schema, name, .. } = locate(session, &table, job).await?;
             let columns = guarded(
                 job,
                 kind,
@@ -429,8 +505,7 @@ async fn table(
             limit,
             offset,
         } => {
-            let (schema, name) = locate(session, &table, job).await?;
-            let limit = limit.max(1);
+            let Relation { schema, name, view } = locate(session, &table, job).await?;
             let data = guarded(
                 job,
                 kind,
@@ -443,7 +518,7 @@ async fn table(
                     offset.max(0),
                     order_by.as_deref(),
                     desc,
-                    false,
+                    view,
                     false,
                 ),
             )
@@ -462,7 +537,7 @@ async fn table(
             Ok(())
         }
         TableCommand::Count { table, filter } => {
-            let (schema, name) = locate(session, &table, job).await?;
+            let Relation { schema, name, .. } = locate(session, &table, job).await?;
             let count = guarded(
                 job,
                 kind,
@@ -646,8 +721,9 @@ async fn query(
     {
         let started = Instant::now();
         match postgres_cursor(&session, statement, rows, global, job, args.timeout).await? {
-            Cursor::Done(result) => {
-                return print_result(out, format, &result, limit, started, false)
+            Cursor::Done(mut result) => {
+                typed_postgres(&session, statement, format, &mut result).await;
+                return print_result(out, format, &result, limit, started, false);
             }
             Cursor::Writes => allow_write(&session.target, args.yes).await?,
             Cursor::Skip => {}
@@ -676,7 +752,7 @@ async fn query(
                 .await
             }
         };
-        let result = match result {
+        let mut result = match result {
             Ok(result) => result,
             Err(error) => {
                 let mut message = if total > 1 {
@@ -695,6 +771,9 @@ async fn query(
                 return Err(message);
             }
         };
+        if kind == DatabaseKind::Postgres {
+            typed_postgres(&session, statement, format, &mut result).await;
+        }
         print_result(out, format, &result, limit, started, total > 1)?;
     }
     if let Some(mut tx) = transaction {
@@ -702,6 +781,57 @@ async fn query(
         eprintln!("✓ {total} Anweisungen in einer Transaktion übernommen.");
     }
     Ok(())
+}
+
+async fn typed_postgres(
+    session: &Session,
+    statement: &str,
+    format: Format,
+    result: &mut QueryResult,
+) {
+    if !matches!(format, Format::Json | Format::Ndjson) || result.rows.is_empty() {
+        return;
+    }
+    let Ok(columns) = session.adapter.describe_query_columns(statement).await else {
+        return;
+    };
+    if columns.len() != result.columns.len() {
+        return;
+    }
+    for row in &mut result.rows {
+        if let Value::Object(map) = row {
+            for (name, column) in result.columns.iter().zip(&columns) {
+                if let Some(value) = map.get_mut(name) {
+                    *value = postgres_json(&column.data_type, std::mem::take(value));
+                }
+            }
+        }
+    }
+}
+
+pub(super) fn postgres_json(data_type: &str, value: Value) -> Value {
+    let Value::String(text) = value else {
+        return value;
+    };
+    match data_type {
+        "int2" | "int4" | "int8" | "oid" => text
+            .parse::<i64>()
+            .map(db::exact_number::int)
+            .unwrap_or(Value::String(text)),
+        "numeric" => db::exact_number::decimal(&text),
+        "float4" | "float8" => text
+            .parse::<f64>()
+            .ok()
+            .and_then(serde_json::Number::from_f64)
+            .map(Value::Number)
+            .unwrap_or(Value::String(text)),
+        "bool" => match text.as_str() {
+            "t" => Value::Bool(true),
+            "f" => Value::Bool(false),
+            _ => Value::String(text),
+        },
+        _ => Value::String(text),
+    }
 }
 
 async fn allow_write(target: &Target, yes: bool) -> Result<(), String> {

@@ -36,8 +36,29 @@ export function useBaasConnections(enabled = true): BaasConnection[] {
       { queryKey: ["firebase", "profiles"], queryFn: firebaseProfiles, enabled },
     ],
   });
-  const supabaseEmpty = supabase.data === true && projects.data?.length === 0;
+  const supabaseEmpty = supabase.data === true && projects.data?.projects.length === 0;
+  const failures = [
+    { provider: "supabase" as const, name: "Supabase", query: projects },
+    { provider: "appwrite" as const, name: "Appwrite", query: appwrite },
+    { provider: "pocketbase" as const, name: "PocketBase", query: pocketbase },
+    { provider: "convex" as const, name: "Convex", query: convex },
+    { provider: "firebase" as const, name: "Firebase", query: firebase },
+  ].flatMap(({ provider, name, query }) =>
+    query.isError ? [{ provider, id: "", name, detail: `Fehler: ${String(query.error)}` }] : [],
+  );
+  const cloudError = supabase.data ? projects.data?.cloud_error : null;
   return [
+    ...failures,
+    ...(cloudError
+      ? [
+          {
+            provider: "supabase" as const,
+            id: "",
+            name: "Supabase Cloud",
+            detail: `Fehler: ${cloudError}`,
+          },
+        ]
+      : []),
     ...(supabaseEmpty
       ? [
           {
@@ -48,7 +69,7 @@ export function useBaasConnections(enabled = true): BaasConnection[] {
           },
         ]
       : []),
-    ...(supabase.data ? (projects.data ?? []) : []).map((item) => ({
+    ...(supabase.data ? (projects.data?.projects ?? []) : []).map((item) => ({
       provider: "supabase" as const,
       id: item.reference,
       name: item.name,
