@@ -45,9 +45,27 @@ pub fn install_logger<R: Runtime>(
                 _ => LogFilter::Ignore,
             },
         );
-    log::set_boxed_logger(Box::new(logger))?;
+    log::set_boxed_logger(Box::new(ServerOutputLogger(logger)))?;
     log::set_max_level(level);
     Ok(())
+}
+
+struct ServerOutputLogger<L>(L);
+
+impl<L: log::Log> log::Log for ServerOutputLogger<L> {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        self.0.enabled(metadata)
+    }
+
+    fn log(&self, record: &log::Record) {
+        if !crate::db::server_output::capture_log_record(record) {
+            self.0.log(record);
+        }
+    }
+
+    fn flush(&self) {
+        self.0.flush();
+    }
 }
 
 pub fn install_panic_hook() {

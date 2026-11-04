@@ -641,13 +641,16 @@ pub async fn execute_query(
             database.as_deref(),
             pool_state.inner().clone(),
         )?;
-        let run = super::execution::with_session(session, async {
-            if pooled == Some(true) {
-                adapter.execute_pooled_query(&sql).await
-            } else {
-                adapter.execute_query(&sql).await
-            }
-        });
+        let run = super::server_output::capture(
+            output_sink(&connection_string, database.as_deref()),
+            super::execution::with_session(session, async {
+                if pooled == Some(true) {
+                    adapter.execute_pooled_query(&sql).await
+                } else {
+                    adapter.execute_query(&sql).await
+                }
+            }),
+        );
         if kind == DatabaseKind::Oracle {
             return capped_query(run).await;
         }
@@ -673,18 +676,30 @@ pub async fn execute_query_with_params(
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
     super::execution::run_query(options, kind.capabilities().query_cancel, async {
-        capped_query(
-            create_adapter_from_string(
-                kind,
-                &connection_string,
-                database.as_deref(),
-                pool_state.inner().clone(),
-            )?
-            .execute_query_with_params(&sql, &params),
-        )
+        let adapter = create_adapter_from_string(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner().clone(),
+        )?;
+        capped_query(super::server_output::capture(
+            output_sink(&connection_string, database.as_deref()),
+            adapter.execute_query_with_params(&sql, &params),
+        ))
         .await
     })
     .await
+}
+
+fn output_key(connection_string: &str, database: Option<&str>) -> String {
+    super::cloud_auth::pool_key(connection_string, database.filter(|db| !db.is_empty()))
+}
+
+pub(crate) fn output_sink(
+    connection_string: &str,
+    database: Option<&str>,
+) -> super::server_output::Messages {
+    super::server_output::messages(&output_key(connection_string, database))
 }
 
 #[tauri::command]
@@ -846,7 +861,7 @@ pub async fn transaction_database_changes(
 pub async fn transaction_server_output(
     tx_id: String,
     tx_state: tauri::State<'_, TransactionState>,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<super::server_output::ServerMessage>, String> {
     tx_state.server_output(&tx_id).await
 }
 
@@ -909,6 +924,46 @@ pub async fn delete_row_in_transaction(
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<(), String> {
     tx_state.delete_row(&tx_id, &schema, &table, &ctid).await
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn execute_with_binds(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    tx_id: Option<String>,
+    sql: String,
+    binds: Vec<super::BindVariable>,
+    pool_state: tauri::State<'_, PoolState>,
+    tx_state: tauri::State<'_, TransactionState>,
+    options: Option<super::execution::ExecutionOptions>,
+    session: Option<String>,
+) -> Result<super::BoundResult, String> {
+    let cap = super::execution::result_row_cap(MAX_RESULT_ROWS);
+    super::execution::run_query(options, kind.capabilities().query_cancel, async {
+        super::execution::with_row_limit(cap + 1, async {
+            if let Some(tx_id) = tx_id {
+                return tx_state.execute_with_binds(&tx_id, &sql, &binds).await;
+            }
+            let adapter = create_adapter_from_string(
+                kind,
+                &connection_string,
+                database.as_deref(),
+                pool_state.inner().clone(),
+            )?;
+            super::execution::with_session(session, adapter.execute_with_binds(&sql, &binds)).await
+        })
+        .await
+    })
+    .await
+    .map(|mut bound| {
+        bound.result = truncate_rows(bound.result, cap);
+        for bind in &mut bound.binds {
+            bind.cursor = bind.cursor.take().map(|cursor| truncate_rows(cursor, cap));
+        }
+        bound
+    })
 }
 
 #[tauri::command]
@@ -2345,14 +2400,17 @@ pub async fn set_server_output(
     enabled: bool,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(
+    let adapter = create_adapter_from_string(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
-    )?
-    .set_server_output(enabled)
-    .await
+    )?;
+    super::server_output::set_enabled(
+        &output_key(&connection_string, database.as_deref()),
+        enabled,
+    );
+    adapter.set_server_output(enabled).await
 }
 
 #[tauri::command]
@@ -2362,14 +2420,25 @@ pub async fn take_server_output(
     database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<super::server_output::ServerMessage>, String> {
-    create_adapter_from_string(
+    take_output(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
-    )?
-    .take_server_output()
+    )
     .await
+}
+
+pub(crate) async fn take_output(
+    kind: DatabaseKind,
+    connection_string: &str,
+    database: Option<&str>,
+    pool: PoolState,
+) -> Result<Vec<super::server_output::ServerMessage>, String> {
+    let adapter = create_adapter_from_string(kind, connection_string, database, pool)?;
+    let mut messages = super::server_output::take(&output_key(connection_string, database));
+    messages.extend(adapter.take_server_output().await?);
+    Ok(messages)
 }
 
 #[tauri::command]

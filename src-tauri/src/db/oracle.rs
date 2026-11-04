@@ -2253,6 +2253,18 @@ impl DatabaseAdapter for OracleAdapter {
         Ok(results)
     }
 
+    async fn execute_with_binds(
+        &self,
+        sql: &str,
+        binds: &[super::BindVariable],
+    ) -> Result<super::BoundResult, String> {
+        let sql = sql.to_string();
+        let binds = binds.to_vec();
+        let limit = super::execution::row_limit();
+        self.run(move |c| execute_binds(c, &sql, &binds, limit))
+            .await
+    }
+
     async fn validate_sql(&self, sql: &str) -> Result<(), String> {
         let mut statements = Vec::new();
         for raw in sql::split_statements(sql) {
@@ -4140,6 +4152,35 @@ mod tests {
     }
 
     #[test]
+    fn sqlplus_bind_types_and_exec_lines_map_like_sqlplus() {
+        assert!(matches!(
+            bind_type("number"),
+            Ok(OracleType::Number(0, -127))
+        ));
+        assert!(matches!(
+            bind_type("VARCHAR2(30 CHAR)"),
+            Ok(OracleType::Varchar2(120))
+        ));
+        assert!(matches!(bind_type("varchar2"), Ok(OracleType::Varchar2(1))));
+        assert!(matches!(
+            bind_type("CHAR(5000)"),
+            Ok(OracleType::Char(2000))
+        ));
+        assert!(matches!(bind_type("REFCURSOR"), Ok(OracleType::RefCursor)));
+        assert!(bind_type("DATE").unwrap_err().starts_with("SP2-0553"));
+        assert_eq!(single_statement("EXEC :n := 5"), "BEGIN :n := 5; END;");
+        assert_eq!(
+            single_statement("exec pkg.run(1, -\n  2)"),
+            "BEGIN pkg.run(1, \n  2); END;"
+        );
+        assert_eq!(single_statement("COMMIT;"), "COMMIT");
+        assert_eq!(
+            single_statement("SELECT 1 FROM dual;"),
+            "SELECT 1 FROM dual"
+        );
+    }
+
+    #[test]
     fn prepares_statements() {
         assert_eq!(prepare("SELECT 1 FROM DUAL;"), "SELECT 1 FROM DUAL");
         assert_eq!(
@@ -5767,9 +5808,157 @@ pub fn tx_fetch_rows(
     })
 }
 
+fn single_statement(sql: &str) -> String {
+    match sql::split_statements(sql).as_slice() {
+        [one] => prepare(one),
+        _ => prepare(sql),
+    }
+}
+
+fn bind_type(data_type: &str) -> Result<OracleType, String> {
+    let upper = data_type.trim().to_ascii_uppercase();
+    let (base, size) = match upper.split_once('(') {
+        Some((base, rest)) => (
+            base.trim().to_string(),
+            rest.trim_end_matches(')')
+                .split_whitespace()
+                .next()
+                .and_then(|n| n.parse::<u32>().ok()),
+        ),
+        None => (upper.clone(), None),
+    };
+    let size = size.unwrap_or(1).clamp(1, 32767);
+    let size = if upper.contains(" CHAR") {
+        size.saturating_mul(4).min(32767)
+    } else {
+        size
+    };
+    Ok(match base.as_str() {
+        "NUMBER" => OracleType::Number(0, -127),
+        "BINARY_FLOAT" => OracleType::BinaryFloat,
+        "BINARY_DOUBLE" => OracleType::BinaryDouble,
+        "CHAR" => OracleType::Char(size.min(2000)),
+        "NCHAR" => OracleType::NChar(size.min(2000)),
+        "VARCHAR2" => OracleType::Varchar2(size),
+        "NVARCHAR2" => OracleType::NVarchar2(size),
+        "CLOB" => OracleType::CLOB,
+        "NCLOB" => OracleType::NCLOB,
+        "REFCURSOR" => OracleType::RefCursor,
+        "BOOLEAN" => OracleType::Boolean,
+        _ => {
+            return Err(format!(
+                "SP2-0553: Nicht unterstützter VARIABLE-Typ: {data_type}"
+            ))
+        }
+    })
+}
+
+pub fn execute_binds(
+    c: &Connection,
+    sql: &str,
+    binds: &[super::BindVariable],
+    limit: usize,
+) -> Result<super::BoundResult, String> {
+    let start = std::time::Instant::now();
+    let statement = single_statement(sql);
+    let mut stmt = c
+        .statement(&statement)
+        .fetch_array_size(limit.clamp(1, MAX_FETCH_ARRAY) as u32)
+        .build()
+        .map_err(|e| map_sql_err(e, &statement))?;
+    let mut used: Vec<(String, OracleType)> = Vec::new();
+    for name in stmt.bind_names().iter().map(|n| n.to_ascii_uppercase()) {
+        if used.iter().any(|(seen, _)| *seen == name) {
+            continue;
+        }
+        let spec = binds
+            .iter()
+            .find(|b| b.name.eq_ignore_ascii_case(&name))
+            .ok_or_else(|| format!("SP2-0552: Bindvariable \"{name}\" ist nicht deklariert."))?;
+        used.push((name, bind_type(&spec.data_type)?));
+    }
+    for (name, kind) in &used {
+        let value = binds
+            .iter()
+            .find(|b| b.name.eq_ignore_ascii_case(name))
+            .and_then(|b| b.value.clone());
+        let bound = match (kind, value) {
+            (OracleType::RefCursor, _) | (_, None) => stmt.bind(name.as_str(), kind),
+            (OracleType::Boolean, Some(v)) => {
+                stmt.bind(name.as_str(), &(&v.eq_ignore_ascii_case("TRUE"), kind))
+            }
+            (_, Some(v)) => stmt.bind(name.as_str(), &(&v, kind)),
+        };
+        bound.map_err(|e| map_sql_err(e, &statement))?;
+    }
+    let mut result = QueryResult {
+        columns: vec![],
+        rows: vec![],
+        rows_affected: None,
+        execution_time_ms: 0,
+        truncated: false,
+    };
+    if is_query(&statement) {
+        let rows = super::sql_log::logged(
+            "query",
+            &statement,
+            |_| None,
+            || stmt.query(&[]).map_err(|e| map_sql_err(e, &statement)),
+        )?;
+        let (columns, rows) = read_grid(rows, limit)?;
+        result.rows = rows_to_objects(&columns, rows);
+        result.columns = columns;
+    } else {
+        super::sql_log::logged(
+            "execute",
+            &statement,
+            |_| None,
+            || stmt.execute(&[]).map_err(|e| map_sql_err(e, &statement)),
+        )?;
+        if !is_plsql(&statement) {
+            result.rows_affected = Some(stmt.row_count().map_err(map_err)?);
+        }
+    }
+    let mut values = Vec::new();
+    for (name, kind) in &used {
+        let mut value = super::BindValue {
+            name: name.clone(),
+            value: None,
+            cursor: None,
+        };
+        match kind {
+            OracleType::RefCursor => {
+                let cursor: Option<oracle::sql_type::RefCursor> =
+                    stmt.bind_value(name.as_str()).map_err(map_err)?;
+                if let Some(mut cursor) = cursor {
+                    let (columns, rows) = read_grid(cursor.query().map_err(map_err)?, limit)?;
+                    value.cursor = Some(QueryResult {
+                        rows: rows_to_objects(&columns, rows),
+                        columns,
+                        rows_affected: None,
+                        execution_time_ms: 0,
+                        truncated: false,
+                    });
+                }
+            }
+            OracleType::Boolean => {
+                let flag: Option<bool> = stmt.bind_value(name.as_str()).map_err(map_err)?;
+                value.value = flag.map(|b| if b { "TRUE" } else { "FALSE" }.to_string());
+            }
+            _ => value.value = stmt.bind_value(name.as_str()).map_err(map_err)?,
+        }
+        values.push(value);
+    }
+    result.execution_time_ms = start.elapsed().as_millis() as u64;
+    Ok(super::BoundResult {
+        result,
+        binds: values,
+    })
+}
+
 pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
-    let statement = prepare(sql);
+    let statement = single_statement(sql);
     let statement = statement.as_str();
     if is_query(statement) {
         let (columns, rows) = run_query(c, statement)?;

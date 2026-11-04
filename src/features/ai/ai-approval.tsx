@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { approvalSummary } from "@/lib/ai/approval-presentation";
 import { type AiEvent, aiApprove, aiRespond } from "@/lib/db/ai";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { AiIssueCard } from "./ai-issue-card";
 import { AiSchemaField } from "./ai-schema-field";
 
 interface Props {
@@ -104,9 +105,14 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
     typeof data.details === "string"
       ? data.details
       : String(details.message ?? details.description ?? details.command ?? details.sql ?? "");
-  const extra = !questionInput && Object.keys(details).some((key) => key !== "requestedSchema") && (
+  const { screenshot, ...shown } = details;
+  const preview =
+    typeof screenshot === "string" && screenshot.startsWith("data:image/png;base64,")
+      ? screenshot
+      : null;
+  const extra = !questionInput && Object.keys(shown).some((key) => key !== "requestedSchema") && (
     <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
-      {JSON.stringify(details, null, 2)}
+      {JSON.stringify(shown, null, 2)}
     </pre>
   );
   const actions = (
@@ -126,7 +132,18 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
       aria-label="Agent benötigt eine Entscheidung"
       className="outline-none"
     >
-      {questionInput ? (
+      {details.tool === "report_issue" &&
+      typeof details.title === "string" &&
+      typeof details.body === "string" ? (
+        <AiIssueCard
+          title={details.title}
+          body={details.body}
+          screenshot={preview ?? undefined}
+          pending={pending}
+          onPublish={() => void act(true)}
+          onCancel={() => void act(false)}
+        />
+      ) : questionInput ? (
         <ApprovalCard
           questions={questions.map((question, index) => ({
             id: String(question.id ?? question.question ?? index),
@@ -166,6 +183,18 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
           actions={actions}
         >
           {description && <p className="whitespace-pre-wrap">{description}</p>}
+          {preview && (
+            <div className="mt-2 space-y-1">
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                Geschwärzter Screenshot
+              </div>
+              <img
+                src={preview}
+                alt="Geschwärzter Screenshot, der mitgesendet wird"
+                className="max-h-64 w-full rounded-md border object-contain"
+              />
+            </div>
+          )}
           {summary.length > 0 && (
             <dl className="mt-2 space-y-2 rounded-lg bg-muted/40 p-2.5">
               {summary.map((entry) => (

@@ -4,6 +4,7 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, type Locator, type Page } from "playwright";
 import { ASSET_BASE, clipTag } from "../../src/lib/feature-videos/model";
+import { seedAiWorkspace } from "../../tests/fixtures/ai-workspace";
 import { seedApp } from "../../tests/fixtures/perf-app";
 import { seedDashboardVideo } from "./dashboard-scenario";
 import { chat, seedMcpOpenVideo } from "./mcp-open-scenario";
@@ -61,7 +62,8 @@ try {
     const page = await context.newPage();
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    await seedApp(page, 8);
+    if (item.id === "ai-issue-report") await seedAiWorkspace(page);
+    else await seedApp(page, 8);
     await page.addInitScript(() => {
       localStorage.setItem("theme", "dark");
       const saved = JSON.parse(localStorage.getItem("l8db.settings") ?? "{}");
@@ -112,11 +114,15 @@ try {
     const start =
       item.id === "dashboard-workspace"
         ? "/dashboard"
-        : item.id === "mcp-open"
+        : item.id === "mcp-open" || item.id === "ai-issue-report"
           ? "/"
           : `/settings?tab=${tab}`;
     await page.goto(`http://localhost:${server.port}${start}`);
-    if (item.id === "mcp-open") await page.getByText("Shop · Beispieldaten").first().waitFor();
+    if (item.id === "ai-issue-report") {
+      await page.getByRole("button", { name: "AI-Arbeitsbereich", exact: true }).click();
+      await page.getByLabel("Nachricht an AI").waitFor();
+    } else if (item.id === "mcp-open")
+      await page.getByText("Shop · Beispieldaten").first().waitFor();
     else if (item.id === "dashboard-workspace")
       await page.getByRole("button", { name: "Chart bearbeiten", exact: true }).waitFor();
     else await page.getByRole("heading", { name: "Einstellungen", exact: true }).waitFor();
@@ -154,16 +160,22 @@ try {
           root.style.transition = "transform 850ms cubic-bezier(0.22, 1, 0.36, 1)";
           root.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
         },
-        { ...camera, includeDialogs: item.id === "dashboard-workspace" },
+        {
+          ...camera,
+          includeDialogs: item.id === "dashboard-workspace" || item.id === "ai-issue-report",
+        },
       );
     };
     const resetCamera = async () => {
       camera = { scale: 1, x: 0, y: 0 };
-      await page.evaluate((includeDialogs) => {
-        const root = includeDialogs ? document.body : document.getElementById("root");
-        if (!root) throw new Error("App-Wurzel fehlt");
-        root.style.transform = "none";
-      }, item.id === "dashboard-workspace");
+      await page.evaluate(
+        (includeDialogs) => {
+          const root = includeDialogs ? document.body : document.getElementById("root");
+          if (!root) throw new Error("App-Wurzel fehlt");
+          root.style.transform = "none";
+        },
+        item.id === "dashboard-workspace" || item.id === "ai-issue-report",
+      );
       await page.waitForTimeout(900);
     };
     const clickVisible = async (target: Locator) => {
@@ -177,7 +189,36 @@ try {
         );
       await page.mouse.click(x, y);
     };
-    if (item.id === "easy-mode") {
+    if (item.id === "ai-issue-report") {
+      const panel = page.getByRole("complementary", { name: "AI-Arbeitsbereich", exact: true });
+      await caption(page, "Ein Problem? Sag der KI: Erstelle dafür ein Issue.", 28);
+      await panel.getByLabel("Nachricht an AI").fill("Erstelle dafür ein Issue.");
+      await page.waitForTimeout(2600);
+      await panel.getByRole("button", { name: "Nachricht senden", exact: true }).click();
+      const card = panel.locator("[data-ai-issue-card]").first();
+      await card.waitFor();
+      await caption(page, "Dein Fehlerbericht erscheint als Issue-Card.", 28);
+      await focus(card, 1.65, { x: 650, y: 260 });
+      await page.waitForTimeout(3000);
+      await resetCamera();
+      await card.getByRole("button", { name: "Issue prüfen", exact: true }).click();
+      const modal = page.getByRole("dialog", { name: "Issue-Vorschau" });
+      await modal.waitFor();
+      await caption(page, "Prüfe Beschreibung, Schritte und Diagnose.", 28);
+      await page.waitForTimeout(3700);
+      await modal
+        .getByAltText("Geschwärzter Screenshot für das GitHub-Issue")
+        .scrollIntoViewIfNeeded();
+      await caption(page, "Der Screenshot ist geschwärzt. Du prüfst ihn vor dem Senden.", 28);
+      await page.waitForTimeout(3700);
+      await caption(page, "Erst deine Freigabe veröffentlicht das Issue. Demo-Daten.", 28);
+      await modal
+        .getByRole("button", { name: "Öffentliches Issue erstellen", exact: true })
+        .click();
+      await panel.getByRole("link", { name: "Auf GitHub", exact: true }).waitFor();
+      await caption(page, "Die Card zeigt dein erstelltes Issue und den GitHub-Link.", 28);
+      await page.waitForTimeout(3800);
+    } else if (item.id === "easy-mode") {
       const control = page.getByRole("switch", { name: "Easy Mode", exact: true });
       const navigation = page.getByRole("navigation", { name: "Bereiche" });
       await control.waitFor();
@@ -324,7 +365,8 @@ try {
     }
     if (errors.length) throw new Error(`App-Fehler während Aufnahme: ${errors.join("; ")}`);
     const recordedDuration = (performance.now() - recordingStart) / 1000 - trimStart;
-    const speedUp = item.id === "dashboard-workspace" || item.id === "mcp-open";
+    const speedUp =
+      item.id === "dashboard-workspace" || item.id === "mcp-open" || item.id === "ai-issue-report";
     const duration = Math.min(speedUp ? 29.5 : 25, recordedDuration);
     const videoFilter = speedUp
       ? `trim=duration=${recordedDuration.toFixed(3)},setpts=${duration / recordedDuration}*(PTS-STARTPTS),scale=1280:720`

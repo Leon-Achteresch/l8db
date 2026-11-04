@@ -4,15 +4,39 @@ Die Anwendung ist ein Datenbankclient. Datenbankrollen, Arbeitsplatzverwaltung u
 
 ## Verbindliche Maschinenrichtlinie
 
-| Plattform | Datei |
-| --- | --- |
-| macOS | `/Library/Application Support/com.leon.l8db/policy.json` |
-| Windows | `%PROGRAMDATA%\l8db\policy.json` |
-| Linux | `/etc/l8db/policy.json` |
+| Plattform | Gruppenrichtlinie / Registry | Datei |
+| --- | --- | --- |
+| macOS | | `/Library/Application Support/com.leon.l8db/policy.json` |
+| Windows | Vorlage oder Wert `Policy`, beides unter `HKLM\SOFTWARE\Policies\l8db` | `%PROGRAMDATA%\l8db\policy.json` |
+| Linux | | `/etc/l8db/policy.json` |
+
+Die Quellen werden nicht zusammengeführt. Setzt auf einem Windows-Rechner die Registry eine Richtlinie und liegt zusätzlich eine Datei vor, sperrt die Anwendung ihre Backend-Aufrufe, bis die IT eine Quelle entfernt.
 
 Ausgangspunkt: [organization-policy.example.json](organization-policy.example.json). Adressen, Kontakt und Signierer-Fingerabdruck ersetzen. Keine Zugangsdaten eintragen. Eine vorhandene ungültige oder unzureichend geschützte Richtlinie sperrt Backend-Aufrufe; es gibt keinen stillen Rückfall auf unverwaltete Einstellungen.
 
 Auf Unix müssen die Datei und alle Elternordner root gehören und dürfen weder gruppen- noch weltbeschreibbar sein; Symlinks werden abgelehnt. Die IT installiert die Datei mit Modus 0644 und die Ordner mit 0755. Unter Windows dürfen ausschließlich SYSTEM und Administratoren Schreibrechte auf Datei und Richtlinienordner haben. Die Anwendung prüft diese ACL mit PowerShell. Verteilung und Änderungen erfolgen durch MDM, Intune, Gruppenrichtlinie oder die bestehende Softwareverteilung.
+
+### Windows-Gruppenrichtlinie
+
+`l8db policy templates <pfad>` schreibt `l8db.admx` sowie `de-DE/l8db.adml` und `en-US/l8db.adml`. Den Inhalt des Ordners nach `C:\Windows\PolicyDefinitions` oder in den zentralen Speicher (`\\<domäne>\SYSVOL\<domäne>\Policies\PolicyDefinitions`) kopieren oder in Intune importieren. Die Richtlinien stehen unter Computerkonfiguration > Administrative Vorlagen > l8db, die verwalteten Einstellungen im Unterordner „Einstellungen“. Team-Verbindungen kommen als JSON-Array in einer Zeile (wie `connections` in der Datei) in die Richtlinie „Team-Verbindungen (JSON)“; das Feld ist einzeilig und fasst höchstens 32.767 Zeichen.
+
+- **KI, Erweiterungen, persönliche Synchronisation, MCP:** „Deaktiviert“ sperrt die Funktion, „Aktiviert“ und „Nicht konfiguriert“ erlauben sie.
+- **Einstellungen:** „Aktiviert“ schaltet die Einstellung ein, „Deaktiviert“ schaltet sie aus; in beiden Fällen ist sie gesperrt. „Nicht konfiguriert“ überlässt sie den Benutzern.
+- **Alle übrigen Richtlinien:** „Deaktiviert“ schränkt nichts ein, genau wie „Nicht konfiguriert“. Ein Schlüssel, der nur Reste deaktivierter Richtlinien enthält, gilt als keine Richtlinie.
+
+Änderungen kommen mit der nächsten Gruppenrichtlinienaktualisierung an; `gpupdate /target:computer /force` wendet sie sofort an. Läuft gerade eine Gruppenrichtlinienaktualisierung, wartet die Anwendung bis zu drei Sekunden, bevor sie den Schlüssel liest. Der Backend-Cache übernimmt sie nach höchstens einer Minute oder sofort mit „Neu laden“.
+
+Statt der Vorlage kann die IT den Wert `Policy` (`REG_SZ`) auf die vollständige Richtlinie als JSON setzen, etwa per Gruppenrichtlinien-Einstellungen oder Intune-Skript. Das passt auch für mehr Verbindungen als in das Vorlagenfeld. In PowerShell als Administrator:
+
+```powershell
+$json = (Get-Content -Raw -Encoding UTF8 policy.json) -replace '\r?\n\s*', ''
+New-Item -Path HKLM:\SOFTWARE\Policies\l8db -Force | Out-Null
+Set-ItemProperty -Path HKLM:\SOFTWARE\Policies\l8db -Name Policy -Value $json -Type String
+```
+
+Entweder `Policy` oder die Vorlagenwerte verwenden: liegt beides im Schlüssel, sperrt die Anwendung ihre Backend-Aufrufe; Reste deaktivierter Vorlagenrichtlinien zählen nicht. Ebenso bei allem, was die Vorlage nicht schreibt: unbekannte Werte oder Unterschlüssel, ein DWORD außer 0 oder 1, `REG_EXPAND_SZ` oder ein anderer Typ, wo eine Zeichenfolge erwartet wird, ungültiges JSON und „Signierte Releases verlangen“ ohne Signierer. Solche Fehler nennen den betroffenen Registry-Wert. Inhalte, die die Datei ebenso ablehnen würde (etwa ein Organisationsname über 200 Zeichen, mehr als 32 Signierer oder ein unbekannter Update-Kanal), meldet die Anwendung wie bei der Datei als ungültige Werte. Registry-Namen werden ohne Rücksicht auf Groß-/Kleinschreibung gelesen. Die Anwendung liest die Registry direkt über die Win32-API; gesperrte Werkzeuge wie `reg.exe` stören nicht. Schreibrechte auf `HKLM\SOFTWARE\Policies` haben standardmäßig nur Administratoren und SYSTEM; eine eigene ACL-Prüfung wie bei der Datei findet nicht statt. Jeder Benutzer des Rechners kann die Werte lesen, deshalb keine Zugangsdaten eintragen.
+
+Zum Entfernen die Richtlinien auf „Nicht konfiguriert“ setzen oder den Wert `Policy` löschen. `l8db doctor` zeigt, aus welcher Quelle die Richtlinie stammt.
 
 `settings` enthält ausschließlich die unterstützten Sicherheits-, Diagnose- und Update-Einstellungen. Diese Werte werden beim Start geladen und übersteuern lokale Setter, Zurücksetzen und gespeicherte Einstellungen. Die Oberfläche markiert sie als durch die IT verwaltet. KI, Erweiterungen, persönliche Synchronisation und externer MCP können zusätzlich am Backend gesperrt werden. Ein fehlerhafter Richtlinienpfad darf nicht als zentraler Entzug von Datenbankrechten verwendet werden: dafür den Datenbankzugang und gegebenenfalls Netzwerkzugang entziehen.
 

@@ -320,6 +320,8 @@ export async function seedUiPluginApp(
           case "ui_plugins_remove":
             pluginFiles.delete(String(args.name));
             return null;
+          case "ui_plugins_write_sdk":
+            return null;
           case "ui_plugins_write_support":
             written[String(args.name)] = String(args.contents);
             return null;

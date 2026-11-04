@@ -167,13 +167,22 @@ fn read(path: &Path, check_permissions: bool) -> Result<Status, String> {
     if bytes.len() > 4 * 1024 * 1024 {
         return Err("IT-Richtlinie ist zu groß.".into());
     }
-    let policy: Policy = serde_json::from_slice(&bytes).map_err(|_| {
-        "IT-Richtlinie enthält ungültige oder unbekannte Felder. Bitte die IT kontaktieren."
-    })?;
+    let policy = serde_json::from_slice(&bytes).map_err(|_| INVALID_FIELDS)?;
+    Ok(Status {
+        path: path.into(),
+        managed: true,
+        policy: validate(policy)?,
+    })
+}
+
+const INVALID_FIELDS: &str =
+    "IT-Richtlinie enthält ungültige oder unbekannte Felder. Bitte die IT kontaktieren.";
+
+fn validate(policy: Policy) -> Result<Policy, String> {
     if policy.format != 1
         || policy.connections.len() > 2000
-        || policy.organization.len() > 200
-        || policy.support.len() > 1000
+        || policy.organization.chars().count() > 200
+        || policy.support.chars().count() > 1000
         || policy.trusted_release_signers.len() > 32
         || (policy.require_signed_releases && policy.trusted_release_signers.is_empty())
         || policy.trusted_release_signers.iter().any(|signer| {
@@ -194,8 +203,30 @@ fn read(path: &Path, check_permissions: bool) -> Result<Status, String> {
     {
         return Err("IT-Richtlinie enthält ungültige Werte.".into());
     }
+    Ok(policy)
+}
+
+fn load(
+    path: &Path,
+    file: Result<Status, String>,
+    group_policy: Result<Option<crate::group_policy::Document>, String>,
+) -> Result<Status, String> {
+    let Some(document) = group_policy? else {
+        return file;
+    };
+    if file?.managed {
+        return Err(format!("IT-Richtlinie ist doppelt verteilt: als Gruppenrichtlinie unter {} und als Datei {}. Bitte die IT kontaktieren, damit nur ein Weg verwendet wird.", crate::group_policy::KEY, path.display()));
+    }
+    let source = crate::group_policy::KEY;
+    let policy = match document {
+        crate::group_policy::Document::Template(value) => serde_json::from_value(value),
+        crate::group_policy::Document::Json(text) => serde_json::from_str(&text),
+    }
+    .map_err(|_| INVALID_FIELDS.to_string())
+    .and_then(validate)
+    .map_err(|error| format!("Gruppenrichtlinie {source}: {error}"))?;
     Ok(Status {
-        path: path.into(),
+        path: source.into(),
         managed: true,
         policy,
     })
@@ -227,9 +258,12 @@ pub fn current(refresh: bool) -> Result<Arc<Status>, String> {
         .lock()
         .map_err(|_| "IT-Richtlinie nicht verfügbar")?;
     cached_status(&mut cache, refresh, || {
-        policy_path()
-            .and_then(|path| read(&path, true))
-            .map(Arc::new)
+        let path = policy_path()?;
+        #[cfg(windows)]
+        let group_policy = crate::group_policy::read();
+        #[cfg(not(windows))]
+        let group_policy = Ok(None);
+        load(&path, read(&path, true), group_policy).map(Arc::new)
     })
 }
 
@@ -305,6 +339,148 @@ mod tests {
         assert_eq!(status.policy.settings.production_read_only, Some(true));
         std::fs::write(&path, vec![b' '; 4 * 1024 * 1024 + 1]).unwrap();
         assert!(read(&path, false).is_err());
+    }
+
+    #[test]
+    fn organization_policy_group_policy_is_one_source_and_validated() {
+        use crate::group_policy::Document;
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("policy.json");
+        let unmanaged = || read(&path, false);
+        let file = || {
+            std::fs::write(&path, r#"{"format":1}"#).unwrap();
+            read(&path, false)
+        };
+        let registry = serde_json::json!({"format":1,"organization":"Beispiel AG","allowAi":false})
+            .to_string();
+        assert!(!load(&path, unmanaged(), Ok(None)).unwrap().managed);
+        let status = load(
+            &path,
+            unmanaged(),
+            Ok(Some(Document::Template(
+                serde_json::from_str(&registry).unwrap(),
+            ))),
+        )
+        .unwrap();
+        assert!(status.managed && !status.policy.allow_ai);
+        assert_eq!(status.path, PathBuf::from(crate::group_policy::KEY));
+        assert_eq!(status.policy.organization, "Beispiel AG");
+        let error = load(&path, file(), Ok(Some(Document::Json(registry))))
+            .err()
+            .unwrap();
+        assert!(error.contains("doppelt verteilt"), "{error}");
+        assert!(load(&path, file(), Ok(None)).unwrap().managed);
+        std::fs::remove_file(&path).unwrap();
+        let umlauts = serde_json::json!({"format":1,"organization":"ä".repeat(200)}).to_string();
+        assert_eq!(
+            load(&path, unmanaged(), Ok(Some(Document::Json(umlauts))))
+                .unwrap()
+                .policy
+                .organization
+                .len(),
+            400
+        );
+        for (document, expected) in [
+            (
+                r#"{"format":1,"settings":{"updateChannel":"nightly"}}"#,
+                "ungültige Werte",
+            ),
+            (r#"{"format":1,"bypass":true}"#, "unbekannte Felder"),
+            (
+                r#"{"format":1,"allowAi":false,"allowAi":true}"#,
+                "unbekannte Felder",
+            ),
+            (
+                r#"{"format":1,"settings":{"crashReports":false,"crashReports":true}}"#,
+                "unbekannte Felder",
+            ),
+        ] {
+            let error = load(
+                &path,
+                unmanaged(),
+                Ok(Some(Document::Json(document.into()))),
+            )
+            .err()
+            .unwrap();
+            assert!(
+                error.starts_with(r"Gruppenrichtlinie HKLM\SOFTWARE\Policies\l8db: ")
+                    && error.contains(expected),
+                "{error}"
+            );
+        }
+        assert_eq!(
+            load(&path, unmanaged(), Err("Registry kaputt".into()))
+                .err()
+                .unwrap(),
+            "Registry kaputt"
+        );
+    }
+
+    #[test]
+    fn organization_policy_large_group_policy_is_bounded() {
+        use crate::group_policy::{RegistryKey, RegistryValue, SIGNERS, SUBKEY, VALUES};
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("policy.json");
+        let profiles: Vec<_> = (0..2000).map(|index| serde_json::json!({"id":format!("connection-{index}"),"name":format!("Database {index}"),"kind":"postgres","connectionString":"postgres://database.example.invalid/app","readOnly":true})).collect();
+        let connections = serde_json::to_string(&profiles).unwrap();
+        let mut values: Vec<(String, RegistryValue)> = VALUES
+            .iter()
+            .map(|(name, kind, _)| {
+                let value = match (*name, kind) {
+                    ("Connections", _) => RegistryValue::Text(connections.clone()),
+                    ("SslDefaultMode", _) => RegistryValue::Text("verify-full".into()),
+                    ("UpdateChannel", _) => RegistryValue::Text("stable".into()),
+                    (_, crate::group_policy::Kind::Flag) => RegistryValue::Dword(0),
+                    _ => RegistryValue::Text("Beispiel AG".into()),
+                };
+                (name.to_string(), value)
+            })
+            .collect();
+        values.push(("RequireSignedReleases".into(), RegistryValue::Dword(1)));
+        let signers = RegistryKey {
+            values: (1..=32)
+                .map(|index| {
+                    (
+                        index.to_string(),
+                        RegistryValue::Text(format!("SHA256:{index}")),
+                    )
+                })
+                .collect(),
+            subkeys: Vec::new(),
+        };
+        let policy = RegistryKey {
+            values,
+            subkeys: vec![SIGNERS.into()],
+        };
+        let reads = std::cell::Cell::new(0);
+        let registry = |key: &str| {
+            reads.set(reads.get() + 1);
+            Ok(Some(if key == SUBKEY {
+                policy.clone()
+            } else {
+                signers.clone()
+            }))
+        };
+        let mut samples = Vec::new();
+        for _ in 0..15 {
+            let start = Instant::now();
+            let status = load(
+                &path,
+                read(&path, false),
+                crate::group_policy::document(registry),
+            )
+            .unwrap();
+            assert_eq!(status.policy.connections.len(), 2000);
+            assert_eq!(status.policy.trusted_release_signers.len(), 32);
+            assert_eq!(status.policy.settings.production_read_only, Some(false));
+            assert!(!status.policy.allow_ai && status.policy.require_signed_releases);
+            assert!(serde_json::to_vec(&status).unwrap().len() < 4096);
+            samples.push(start.elapsed());
+        }
+        samples.sort();
+        assert_eq!(reads.get(), 30);
+        eprintln!("group policy: 2000 profiles, {} bytes Connections, 32 signers, median {:?}, p95 {:?}, 2 registry key reads per load, no database requests or background tasks", connections.len(), samples[7], samples[14]);
+        assert!(samples[14] < Duration::from_millis(100));
     }
 
     #[cfg(unix)]

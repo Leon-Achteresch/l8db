@@ -15,6 +15,7 @@ Aufbau nach dem Muster von `gh`/`kubectl`: `l8db <nomen> <verb>`, kurze Aliase f
 | `open [name]` | Verbindung in der App öffnen (`--menu=dock.connection:<id>`) |
 | `task list` / `run`, `check`, `mcp` | Bestehende Modi `--run-task`, `--check`, `--mcp` unter neuen Namen; die alten Flags bleiben |
 | `doctor [--test-keychain] [--strict]` | Arbeitsplatz, IT-Richtlinie und Team-Datei ohne Zugangsdaten prüfen |
+| `policy templates <pfad>` | Gruppenrichtlinienvorlagen für Windows (`l8db.admx`, `de-DE`/`en-US`) schreiben |
 | `completions <shell>` | bash, zsh, fish, PowerShell |
 
 Globale Optionen: `-c/--connection`, `--url`, `-d/--database`, `-o/--output table|json|ndjson|csv|tsv`. Ohne `-o` gibt die CLI im Terminal eine Tabelle aus, in Pipes TSV. NULL ist in TSV `\N`, in CSV ein leeres Feld; ein Leerstring steht in CSV als `""`. `--url http(s)://…` ist mehrdeutig, dafür `clickhouse://`, `elasticsearch://` oder `influxdb://` nutzen; `--timeout` braucht mindestens 5 Sekunden (0 = ohne Grenze). Ergebnisse gehen nach stdout, Status und Hinweise nach stderr. Exit-Codes: 0 ok, 1 Fehler, 2 falscher Aufruf, 130 mit Strg+C abgebrochen (der Treiber bricht die Abfrage auf dem Server ab, wo er das kann: Postgres, SQLite).

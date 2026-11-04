@@ -10,7 +10,6 @@ import { initConnectionSecrets, isMainWindow, windowConnectionId } from "@/lib/c
 import { initCrashReporting } from "@/lib/crash-reporting";
 import { installDiagnosticsErrorCapture } from "@/lib/diagnostics";
 import { initExecutionSettings } from "@/lib/execution-settings";
-import { createExtensionHost } from "@/lib/extensions/host";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
 import { installNativeGuards } from "@/lib/native-guards";
 import { initOrganization } from "@/lib/organization";
@@ -57,7 +56,9 @@ const unsubscribeUsageRoute = router.subscribe("onResolved", () => {
 if (import.meta.hot) import.meta.hot.dispose(unsubscribeUsageRoute);
 
 const queryClient = createAppQueryClient();
-const extensionHost = createExtensionHost();
+const extensionHostReady = import("@/lib/extensions/host").then(({ createExtensionHost }) =>
+  createExtensionHost(),
+);
 
 for (const match of router.matchRoutes(router.state.location))
   void router
@@ -71,7 +72,7 @@ const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement,
 });
 root.render(<StartupView />);
 
-function render() {
+function render(extensionHost: Awaited<typeof extensionHostReady>) {
   root.render(
     <React.StrictMode>
       <HotkeysProvider defaultOptions={{ hotkey: { preventDefault: true, stopPropagation: true } }}>
@@ -103,8 +104,9 @@ Promise.all([organizationReady, executionSettings.ready, initConnectionSecrets()
     startupReady = true;
   })
   .catch(() => undefined)
-  .finally(() => {
-    render();
+  .finally(async () => {
+    const extensionHost = await extensionHostReady;
+    render(extensionHost);
     recordDuration("app.startup", performance.now(), { ready: String(startupReady) });
     const disposeWindowIntegration = initWindowIntegration();
     if (import.meta.hot) import.meta.hot.dispose(disposeWindowIntegration);

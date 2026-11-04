@@ -346,7 +346,6 @@ export async function runSchemaCompare(sides?: {
   } catch (error) {
     set({
       loading: null,
-      result: null,
       error: error instanceof Error ? error.message : String(error),
     });
   }

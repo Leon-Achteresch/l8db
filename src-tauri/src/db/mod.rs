@@ -332,6 +332,27 @@ pub struct QueryResult {
     pub truncated: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BindVariable {
+    pub name: String,
+    pub data_type: String,
+    pub value: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BindValue {
+    pub name: String,
+    pub value: Option<String>,
+    pub cursor: Option<QueryResult>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BoundResult {
+    pub result: QueryResult,
+    pub binds: Vec<BindValue>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct FunctionInfo {
     pub schema: String,
@@ -571,6 +592,14 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = sql;
         let _ = params;
         Err(unsupported("Bind-Parameter"))
+    }
+    async fn execute_with_binds(
+        &self,
+        sql: &str,
+        binds: &[BindVariable],
+    ) -> Result<BoundResult, String> {
+        let _ = (sql, binds);
+        Err(unsupported("SQL*Plus-Bindvariablen"))
     }
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
         let _ = schema;
@@ -922,10 +951,10 @@ pub trait DatabaseAdapter: Send + Sync {
     }
     async fn set_server_output(&self, enabled: bool) -> Result<(), String> {
         let _ = enabled;
-        Err(unsupported("Server-Ausgabe"))
+        Ok(())
     }
     async fn take_server_output(&self) -> Result<Vec<server_output::ServerMessage>, String> {
-        Err(unsupported("Server-Ausgabe"))
+        Ok(Vec::new())
     }
     async fn create_table(&self, req: &CreateTableRequest) -> Result<(), String> {
         let _ = req;

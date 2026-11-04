@@ -316,6 +316,7 @@ impl Runner {
                 .or(Some(execution::UNCLAMPED_MAX_SECONDS)),
             connection_timeout: None,
             max_rows: None,
+            no_time_limit: false,
         };
         let work: Boxed<'_, Result<StepOutcome, String>> =
             Box::pin(crate::automation::steps::run(&mut ctx));

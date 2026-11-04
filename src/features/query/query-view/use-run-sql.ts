@@ -90,11 +90,11 @@ export function useRunSql({
       if (connection?.kind !== "oracle") return text;
       const split = splitSqlStatements(text, connection.kind);
       if (split.statements.length !== 1 || split.commands.length > 0) return text;
-      const session = substitutionSession(tabId);
+      const session = substitutionSession(`${tabId}:${connection.id}`);
       const answers = await askMissingVariables([{ kind: "sql", text }], session, askVariables);
       return answers ? substitute(text, session.state, answers).text : null;
     },
-    [connection?.kind, tabId, askVariables],
+    [connection?.kind, connection?.id, tabId, askVariables],
   );
 
   const runSql = useCallback(

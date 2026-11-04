@@ -66,6 +66,7 @@ chat/
 !/docs/team-hub.md
 !/docs/enterprise-rollout.md
 !/docs/cli.md
+!/docs/sqlplus-scripts.md
 !/docs/organization-policy.example.json
 !/docs/postgres-production-controls.sql
 !/docs/release-1.0.md

@@ -134,7 +134,7 @@ objc2 = "0.6"
 keyring = { version = "3", features = ["windows-native"] }
 webview2-com = "0.39"
 windows-core = "0.62"
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Storage_EnhancedStorage", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_Shell_PropertiesSystem", "Win32_System_Console"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Storage_EnhancedStorage", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_Shell_PropertiesSystem", "Win32_System_Console", "Win32_System_GroupPolicy", "Win32_System_Registry"] }
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono", "winauth"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -148,3 +148,4 @@ duckdb = { path = "vendor/duckdb" }
 russh = { path = "vendor/russh" }
 ssh-key = { path = "vendor/ssh-key" }
 openssl-sys = { path = "vendor/openssl-sys" }
+tiberius = { path = "vendor/tiberius" }

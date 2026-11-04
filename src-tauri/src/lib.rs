@@ -18,7 +18,10 @@ mod desktop;
 mod extension_process;
 mod file_open;
 mod firebase;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod group_policy;
 mod index_advisor;
+mod issues;
 mod mcp;
 mod organization;
 mod pocketbase;
@@ -547,6 +550,7 @@ pub fn run() {
             db::commands::execute_in_transaction_with_params,
             db::commands::transaction_database_changes,
             db::commands::transaction_server_output,
+            db::commands::execute_with_binds,
             db::commands::update_row_in_transaction,
             db::commands::insert_row_in_transaction,
             db::commands::duplicate_row_in_transaction,
@@ -639,6 +643,7 @@ pub fn run() {
             ui_plugins::ui_plugins_write,
             ui_plugins::ui_plugins_remove,
             ui_plugins::ui_plugins_write_support,
+            ui_plugins::ui_plugins_write_sdk,
             ui_plugins::ui_plugins_watch,
             sync::sync_test,
             sync::sync_fetch,

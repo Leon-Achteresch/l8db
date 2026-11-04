@@ -6,6 +6,7 @@ use tokio::sync::Mutex;
 
 use super::pool::PoolState;
 use super::provider::DatabaseKind;
+use super::server_output::{self, Messages, ServerMessage};
 use super::{
     map_pg_err, mssql, mysql, oracle, quote_ident, sqlite, DatabaseAdapter, QueryResult, TxSession,
 };
@@ -426,7 +427,7 @@ where
 }
 
 pub struct TransactionManager {
-    transactions: Mutex<HashMap<String, Arc<TransactionEntry>>>,
+    transactions: Mutex<HashMap<String, (Arc<TransactionEntry>, Messages)>>,
 }
 
 pub type TransactionState = Arc<TransactionManager>;
@@ -446,22 +447,26 @@ impl TransactionManager {
         }
     }
 
-    async fn insert_entry(&self, entry: TransactionEntry) -> String {
+    async fn insert_entry(&self, entry: TransactionEntry, output: Messages) -> String {
         let tx_id = format!("tx_{}", TX_COUNTER.fetch_add(1, Ordering::Relaxed));
         self.transactions
             .lock()
             .await
-            .insert(tx_id.clone(), Arc::new(entry));
+            .insert(tx_id.clone(), (Arc::new(entry), output));
         tx_id
     }
 
-    async fn entry(&self, tx_id: &str) -> Result<Arc<TransactionEntry>, String> {
+    async fn tx(&self, tx_id: &str) -> Result<(Arc<TransactionEntry>, Messages), String> {
         self.transactions
             .lock()
             .await
             .get(tx_id)
             .cloned()
             .ok_or_else(|| "Transaktion nicht gefunden".to_string())
+    }
+
+    async fn entry(&self, tx_id: &str) -> Result<Arc<TransactionEntry>, String> {
+        self.tx(tx_id).await.map(|(entry, _)| entry)
     }
 
     pub async fn begin(
@@ -471,6 +476,21 @@ impl TransactionManager {
         database: Option<&str>,
         pool_state: &PoolState,
     ) -> Result<String, String> {
+        let output = Messages::default();
+        let entry = server_output::capture(
+            output.clone(),
+            Self::open(kind, connection_string, database, pool_state),
+        )
+        .await?;
+        Ok(self.insert_entry(entry, output).await)
+    }
+
+    async fn open(
+        kind: DatabaseKind,
+        connection_string: &str,
+        database: Option<&str>,
+        pool_state: &PoolState,
+    ) -> Result<TransactionEntry, String> {
         match kind {
             DatabaseKind::Postgres => {}
             DatabaseKind::Oracle => {
@@ -482,14 +502,12 @@ impl TransactionManager {
                     conn.get_mut()
                         .map_err(|_| "Oracle-Verbindung ist blockiert")?,
                 );
-                return Ok(self
-                    .insert_entry(TransactionEntry::Oracle(Arc::new(conn)))
-                    .await);
+                return Ok(TransactionEntry::Oracle(Arc::new(conn)));
             }
             DatabaseKind::Dynamodb => {
                 let key = super::connection::connection_key(connection_string, database);
                 let tx = Box::new(super::dynamodb::DynamoTx::new(connection_string, key)?);
-                return Ok(self.insert_entry(TransactionEntry::Dynamo(tx)).await);
+                return Ok(TransactionEntry::Dynamo(tx));
             }
             kind => {
                 let adapter = super::create_adapter_from_string(
@@ -499,13 +517,11 @@ impl TransactionManager {
                     pool_state.clone(),
                 )?;
                 let session = adapter.begin_transaction().await?;
-                return Ok(self
-                    .insert_entry(TransactionEntry::Generic(Generic {
-                        kind,
-                        adapter,
-                        session: Mutex::new(session),
-                    }))
-                    .await);
+                return Ok(TransactionEntry::Generic(Generic {
+                    kind,
+                    adapter,
+                    session: Mutex::new(session),
+                }));
             }
         }
         let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
@@ -513,12 +529,10 @@ impl TransactionManager {
         super::postgres::begin_guarded(&conn, "BEGIN", &[super::postgres::TRANSACTION_IDLE_GUARD])
             .await
             .map_err(map_pg_err)?;
-        Ok(self
-            .insert_entry(TransactionEntry::Pg(
-                Arc::new(super::execution::PgSession::new(conn)),
-                ssl,
-            ))
-            .await)
+        Ok(TransactionEntry::Pg(
+            Arc::new(super::execution::PgSession::new(conn)),
+            ssl,
+        ))
     }
 
     pub async fn execute_with_params(
@@ -527,7 +541,16 @@ impl TransactionManager {
         sql: &str,
         params: &[Option<String>],
     ) -> Result<QueryResult, String> {
-        let entry = self.entry(tx_id).await?;
+        let (entry, output) = self.tx(tx_id).await?;
+        server_output::capture(output, self.run_with_params(entry, sql, params)).await
+    }
+
+    async fn run_with_params(
+        &self,
+        entry: Arc<TransactionEntry>,
+        sql: &str,
+        params: &[Option<String>],
+    ) -> Result<QueryResult, String> {
         let (session, ssl) = match &*entry {
             TransactionEntry::Pg(c, ssl) => (c, ssl.clone()),
             _ => {
@@ -578,6 +601,25 @@ impl TransactionManager {
         }
     }
 
+    pub async fn execute_with_binds(
+        &self,
+        tx_id: &str,
+        sql: &str,
+        binds: &[super::BindVariable],
+    ) -> Result<super::BoundResult, String> {
+        let TransactionEntry::Oracle(c) = &*self.entry(tx_id).await? else {
+            return Err(super::unsupported("SQL*Plus-Bindvariablen"));
+        };
+        let sql = sql.to_string();
+        let binds = binds.to_vec();
+        let limit = super::execution::row_limit();
+        let call = oracle::CallGuard::current("transaction");
+        ora(c.clone(), move |c| {
+            call.run(c, |c| oracle::execute_binds(c, &sql, &binds, limit))
+        })
+        .await
+    }
+
     pub async fn oracle_changes(&self, tx_id: &str) -> Result<Vec<oracle::TxTableChanges>, String> {
         match &*self.entry(tx_id).await? {
             TransactionEntry::Oracle(c) => ora(c.clone(), |c| oracle::tx_table_changes(c)).await,
@@ -585,15 +627,26 @@ impl TransactionManager {
         }
     }
 
-    pub async fn server_output(&self, tx_id: &str) -> Result<Vec<String>, String> {
-        match &*self.entry(tx_id).await? {
-            TransactionEntry::Oracle(c) => ora(c.clone(), |c| oracle::read_output(c)).await,
-            _ => Ok(vec![]),
+    pub async fn server_output(&self, tx_id: &str) -> Result<Vec<ServerMessage>, String> {
+        let (entry, output) = self.tx(tx_id).await?;
+        let mut messages = output.take();
+        if let TransactionEntry::Oracle(c) = &*entry {
+            let lines = ora(c.clone(), |c| oracle::read_output(c)).await?;
+            messages.extend(lines.into_iter().map(|message| ServerMessage {
+                level: "OUTPUT".to_string(),
+                message,
+                detail: None,
+            }));
         }
+        Ok(messages)
     }
 
     pub async fn execute(&self, tx_id: &str, sql: &str) -> Result<QueryResult, String> {
-        let entry = self.entry(tx_id).await?;
+        let (entry, output) = self.tx(tx_id).await?;
+        server_output::capture(output, self.run(entry, sql)).await
+    }
+
+    async fn run(&self, entry: Arc<TransactionEntry>, sql: &str) -> Result<QueryResult, String> {
         let (session, ssl) = match &*entry {
             TransactionEntry::Pg(c, ssl) => (c, ssl.clone()),
             TransactionEntry::Oracle(c) => {
@@ -1478,6 +1531,34 @@ mod tests {
             "CREATE TABLE l8_tx_test (id INT IDENTITY PRIMARY KEY, name NVARCHAR(50))",
         )
         .await;
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn oracle_transaction_output_lines_are_server_messages() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
+            return;
+        };
+        let pool = super::super::pool::create_pool_state();
+        let tx = create_transaction_state();
+        let id = tx
+            .begin(DatabaseKind::Oracle, &url, None, &pool)
+            .await
+            .unwrap();
+        tx.execute(
+            &id,
+            "BEGIN DBMS_OUTPUT.ENABLE(NULL); DBMS_OUTPUT.PUT_LINE('eins'); DBMS_OUTPUT.PUT_LINE('zwei'); END;",
+        )
+        .await
+        .unwrap();
+        let output = tx.server_output(&id).await.unwrap();
+        let lines: Vec<_> = output
+            .iter()
+            .map(|m| (m.level.as_str(), m.message.as_str()))
+            .collect();
+        assert_eq!(lines, [("OUTPUT", "eins"), ("OUTPUT", "zwei")]);
+        assert!(tx.server_output(&id).await.unwrap().is_empty());
+        tx.rollback(&id).await.unwrap();
     }
 
     #[tokio::test]

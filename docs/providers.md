@@ -160,6 +160,27 @@ All adapters implement connection testing, database/schema/table/column discover
 
 The exact flags are `DatabaseKind::capabilities()`. Product compatibility and driver availability are separate from those flags. Use the app's driver status and provider hints when connecting.
 
+## Server messages
+
+Everything a statement returns besides rows is a `ServerMessage { level, message, detail }` (`src-tauri/src/db/server_output.rs`). The `execute_query` and `execute_query_with_params` commands run inside a capture scope for the connection key, whether or not the Server-Ausgabe toggle is on. Messages raised before an error are kept. `take_server_output` drains that buffer, followed by any adapter-specific output (Oracle DBMS_OUTPUT). Each transaction has its own buffer: `transaction_server_output(tx_id)` drains it and is removed with the transaction. Buffers keep the newest 2000 messages per key. Adapters call `server_output::emit`. Outside a scope, for example in MCP, CLI or metadata reads, `emit` does nothing.
+
+| Family | Channel | Levels |
+| --- | --- | --- |
+| Postgres | Notices from the backend connection (`RAISE`) | `NOTICE`/`WARNING`/`INFO`/`DEBUG`/`LOG` as sent, detail = `DETAIL` |
+| Oracle | DBMS_OUTPUT (unchanged) | `OUTPUT` |
+| Mssql | INFO tokens (patched tiberius, see `vendor/tiberius/L8DB-PATCH.md`) | `PRINT` → `OUTPUT`; other info → `INFO` with `Meldung n, Ebene s, Status t[, Prozedur p], Zeile l`. SQL Server sends `RAISERROR` severity 10 as level 0 |
+| Mysql/MariaDB | `SHOW WARNINGS` on the same session, only if the OK packet reports warnings, or after a server error (the error row itself is skipped) | `NOTE`/`WARNING`/`ERROR`, detail `Code n` |
+| Cassandra/Scylla | Response warnings of each page | `WARNING` |
+| Odbc | `SQL_SUCCESS_WITH_INFO` diagnostics (SQLSTATE class 01), which odbc-api only logs. The app logger captures them on the query thread instead of writing them to the log | `INFO`, detail `SQLSTATE s, nativer Fehler n` |
+| Bigquery | Non-fatal `errors[]` of a finished query | `WARNING`, detail `Grund r` |
+| Influxdb | `messages[]` of InfluxQL `/query` (v1 API) results | Level as sent, uppercased |
+| Elasticsearch/OpenSearch | `Warning` response headers (deprecations) | `WARNING` |
+| Athena | Scan and cost notice per query | `INFO` |
+
+No channel: Sqlite, SqliteHttp, Duckdb, Clickhouse (HTTP), Snowflake (SQL API), Mongodb, Redis, Dynamodb and S3. Their `server_output` capability stays off.
+
+Tests: `cargo test --lib server_output` covers the bound and timing. Lab checks (ignored): `notices_are_captured_per_statement_without_the_output_toggle` (Postgres lab), `live_info_messages_are_captured_per_statement` (`L8DB_SMOKE_MSSQL_URL`), `live_warnings_are_read_only_when_reported` (`L8DB_SMOKE_MYSQL_URL`/`L8DB_SMOKE_MARIADB_URL`; it counts `Com_show_warnings` to prove that statements without warnings add no round trip) and `oracle_transaction_output_lines_are_server_messages`.
+
 ## AWS providers
 
 DynamoDB and Athena talk to the AWS JSON APIs directly (hand-written SigV4 over `reqwest`, see [aws.rs](../src-tauri/src/db/aws.rs)); no AWS SDK is linked. URL layout:
@@ -234,6 +255,7 @@ Every session reports MODULE `l8db` and an ACTION such as `editor <pid>.<n>`, `m
 - **Transactions:** `DBMS_TRANSACTION.LOCAL_TRANSACTION_ID` tells whether the session has an open transaction before V$LOCKED_OBJECT is read. Without an open transaction there is nothing to list; with one but no V$ rights, the error says so.
 - **Compiling:** warnings from `CREATE OR REPLACE` in the editor and from package spec, body and callers are shown together. Objects compiled with debug info (`PLSQL_DEBUG` or optimize level below 2) appear only in the invalid-objects view, not in the sidebar markers, the compile-all count or deployment checks.
 - **Notices:** reconnects and extra result sets from `DBMS_SQL.RETURN_RESULT` are shown as a warning even when server output is off. Server output is read only when it is enabled.
+- **SQL*Plus scripts:** session, transaction and command behaviour of script runs are described in [sqlplus-scripts.md](sqlplus-scripts.md).
 - **Cancellation:** the editor call has an outer safety timeout (query timeout + 2 × connect timeout + 5 s); idle pings run under the connect timeout. The fallback kill only matches ACTIVE sessions of the same user and machine and is skipped when the call ends in the meantime.
 - **Data compare:** LOB columns are read through locators, so a fetch batch does not buffer 500 full LOBs. Sync scripts split CLOBs into `TO_CLOB` pieces of 1000 characters and refuse XMLTYPE, SDO_GEOMETRY, BFILE, LONG and binary values above 2000 bytes.
 - **SQL log:** passwords after `IDENTIFIED BY`, `REPLACE` and `PASSWORD '…'` are masked. Live checks: `oracle_live_tests` (ignored) run with `L8DB_SMOKE_ORACLE_URL` and, for kill and session tests, `L8DB_SMOKE_ORACLE_ADMIN_URL`.

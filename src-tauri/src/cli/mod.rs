@@ -37,6 +37,7 @@ Automatisierung
   check                    SQL-Prüfungen für CI ausführen
   mcp                      MCP-Server für KI-Clients starten
   doctor                   Arbeitsplatz und Team-Konfiguration prüfen
+  policy templates <pfad>  Gruppenrichtlinienvorlagen für Windows schreiben
 
 Shell
   completions <shell>      Tab-Vervollständigung (bash, zsh, fish, powershell)
@@ -140,6 +141,16 @@ enum Command {
         test_keychain: bool,
         #[arg(long, help = "Auch bei ungeprüften Schritten mit Fehlercode beenden")]
         strict: bool,
+    },
+    #[command(
+        about = "IT-Richtlinie als Windows-Gruppenrichtlinie verteilen",
+        help_template = SUB_HELP,
+        override_usage = "l8db policy <befehl>",
+        after_help = "Beispiele:\n  l8db policy templates gpo\n\nDen Inhalt des Ordners nach C:\\Windows\\PolicyDefinitions oder in den zentralen Speicher kopieren."
+    )]
+    Policy {
+        #[command(subcommand)]
+        command: PolicyCommand,
     },
     #[command(
         about = "Gespeicherte Verbindungen anzeigen, prüfen und als Standard festlegen",
@@ -248,6 +259,18 @@ enum Command {
     Help {
         #[arg(value_name = "BEFEHL")]
         command: Vec<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum PolicyCommand {
+    #[command(
+        about = "ADMX- und ADML-Vorlagen (de-DE, en-US) in einen Ordner schreiben",
+        override_usage = "l8db policy templates <PFAD>"
+    )]
+    Templates {
+        #[arg(value_name = "PFAD")]
+        directory: std::path::PathBuf,
     },
 }
 
@@ -460,6 +483,7 @@ enum TaskCommand {
 
 const COMMANDS: &[&str] = &[
     "doctor",
+    "policy",
     "conn",
     "connection",
     "query",

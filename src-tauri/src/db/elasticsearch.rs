@@ -517,7 +517,17 @@ impl ElasticAdapter {
             };
             request = request.header("Content-Type", content_type).body(body);
         }
-        http_api::send(self.label(), request).await
+        let reply = http_api::send(self.label(), request).await?;
+        for warning in reply.headers.get_all("warning") {
+            if let Some(message) = warning.to_str().ok().and_then(warning_text) {
+                super::server_output::emit(super::server_output::ServerMessage {
+                    level: "WARNING".to_string(),
+                    message,
+                    detail: None,
+                });
+            }
+        }
+        Ok(reply)
     }
 
     async fn call(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
@@ -1191,9 +1201,33 @@ impl DatabaseAdapter for ElasticAdapter {
     }
 }
 
+fn warning_text(header: &str) -> Option<String> {
+    let mut chars = header.split_once('"')?.1.chars();
+    let mut text = String::new();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => text.push(chars.next()?),
+            '"' => return Some(text),
+            c => text.push(c),
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn warning_headers_yield_their_quoted_text() {
+        assert_eq!(
+            warning_text(r#"299 Elasticsearch-8.11.0-abc "[types removal] \"_type\" is deprecated" "Mon, 01 Jan 2026 00:00:00 GMT""#)
+                .as_deref(),
+            Some(r#"[types removal] "_type" is deprecated"#)
+        );
+        assert_eq!(warning_text("299 OpenSearch-2.11.0 \"unterminated"), None);
+        assert_eq!(warning_text("299 -"), None);
+    }
 
     fn fields() -> Vec<Field> {
         mapping_fields(&json!({"logs": {"mappings": {"properties": {
