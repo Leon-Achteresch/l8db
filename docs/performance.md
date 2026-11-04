@@ -1,5 +1,11 @@
 # Performance tests, workloads and headless benchmarks
 
+## Saved password restoration
+
+`bun test tests/perf-secret-save.test.ts` covers saving secrets and restoring missing database passwords before opening a password prompt. The restoration scenario keeps 1,000 connections in the store and restores the last 60, using a mocked Tauri transport with 1 ms read latency. The previous prompt predicate classified all 60 as requiring manual entry despite saved passwords; restoration now needs zero prompts.
+
+Measured on 2026-11-04: Linux 6.12.111+deb13-amd64, x64, QEMU Virtual CPU version 2.5+, 16 GiB RAM, Bun 1.3.10. Cold restoration measured 2.86 ms median / 6.75 ms p95; subsequent checks measured 0.016 ms median / 0.023 ms p95. Budgets are 50 ms cold p95, 5 ms warm p95 and 8 MiB retained heap; measured retained heap was 223,040 bytes. Cold restoration makes exactly one keychain read per selected connection, warm checks make none, with one read in flight and zero database requests. Cancelling while a keychain read remains blocked settled in 0.27 ms against a 250 ms limit and left no prompt; the native read may finish later. A 25 ms idle period must issue no additional reads. Native keychain availability, packaged WebViews, macOS and Windows are not covered by this mocked transport measurement.
+
 ## Application performance gates
 
 Every runtime feature needs a regression scenario, even when the feature is small. Reuse a relevant scenario and exercise a realistic large input, median/p95 latency, retained resources, and database request counts/concurrency when it reads data. Background features also need cancellation and idle checks. Run only the affected scenarios locally. The performance workflow runs the shared gates on pushes to `development` and pull requests to `development`/`main`.
