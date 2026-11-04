@@ -5,7 +5,9 @@ use std::time::Instant;
 use super::connect::{self, Session, Source, Target};
 use super::output::{self, Format};
 use super::store;
-use super::{Cli, Command, ConnCommand, Global, Limit, QueryArgs, TableCommand, TaskCommand};
+use super::{
+    Cli, Command, ConnCommand, Global, Limit, PolicyCommand, QueryArgs, TableCommand, TaskCommand,
+};
 use crate::automation::model::{AutomationConnection, ProxyKind};
 use crate::db::execution::{self, ExecutionOptions};
 use crate::db::{self, DatabaseKind, QueryResult, TxSession};
@@ -35,6 +37,36 @@ pub fn dispatch(cli: Cli) -> i32 {
                 Ok(()) => i32::from(failed),
                 Err(_) => 1,
             }
+        }
+        Command::Policy {
+            command: PolicyCommand::Templates { directory },
+        } => {
+            let files = [
+                ("l8db.admx", include_str!("../../policy/l8db.admx")),
+                (
+                    "de-DE/l8db.adml",
+                    include_str!("../../policy/de-DE/l8db.adml"),
+                ),
+                (
+                    "en-US/l8db.adml",
+                    include_str!("../../policy/en-US/l8db.adml"),
+                ),
+            ];
+            for (name, contents) in files {
+                let path = name
+                    .split('/')
+                    .fold(directory.clone(), |path, part| path.join(part));
+                let written = path
+                    .parent()
+                    .map_or(Ok(()), std::fs::create_dir_all)
+                    .and_then(|()| std::fs::write(&path, contents));
+                if let Err(error) = written {
+                    eprintln!("Fehler: {} nicht schreibbar: {error}", path.display());
+                    return 1;
+                }
+                println!("{}", path.display());
+            }
+            0
         }
         Command::Help { command } => super::help_for(&command),
         Command::Completions { shell } => super::completions(shell),

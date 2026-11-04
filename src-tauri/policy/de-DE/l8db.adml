@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitionResources xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <displayName>l8db</displayName>
+  <description>Gruppenrichtlinien für l8db</description>
+  <resources>
+    <stringTable>
+      <string id="l8db">l8db</string>
+      <string id="Settings">Einstellungen</string>
+      <string id="SUPPORTED_l8db">l8db mit Unterstützung für Gruppenrichtlinien</string>
+      <string id="Organization">Organisation</string>
+      <string id="Organization_Help">Name der Organisation und optionaler Support-Hinweis. Benutzer sehen beides in den Einstellungen unter „Unternehmensrichtlinie“.
+
+Jede gesetzte l8db-Richtlinie macht die Anwendung zu einer verwalteten Installation; der Name zeigt, wer sie verwaltet.
+
+Deaktiviert oder Nicht konfiguriert: kein Name.</string>
+      <string id="AllowAi">KI-Funktionen erlauben</string>
+      <string id="AllowAi_Help">KI-Assistent und alle KI-Aufrufe der Anwendung.
+
+Deaktiviert: gesperrt; die Anwendung lehnt die zugehörigen Backend-Aufrufe ab.
+
+Aktiviert oder Nicht konfiguriert: erlaubt.</string>
+      <string id="AllowExtensions">Erweiterungen erlauben</string>
+      <string id="AllowExtensions_Help">Community-Erweiterungen und UI-Plugins.
+
+Deaktiviert: gesperrt; die Anwendung lehnt die zugehörigen Backend-Aufrufe ab.
+
+Aktiviert oder Nicht konfiguriert: erlaubt.</string>
+      <string id="AllowPersonalSync">Persönliche Synchronisation erlauben</string>
+      <string id="AllowPersonalSync_Help">Synchronisation persönlicher Verbindungen und Einstellungen.
+
+Deaktiviert: gesperrt; die Anwendung lehnt die zugehörigen Backend-Aufrufe ab.
+
+Aktiviert oder Nicht konfiguriert: erlaubt.</string>
+      <string id="AllowMcp">MCP-Server erlauben</string>
+      <string id="AllowMcp_Help">Der MCP-Server für externe KI-Clients, auch über „l8db mcp“.
+
+Deaktiviert: gesperrt; die Anwendung lehnt die zugehörigen Backend-Aufrufe ab.
+
+Aktiviert oder Nicht konfiguriert: erlaubt.</string>
+      <string id="RequireSignedReleases">Signierte Releases verlangen</string>
+      <string id="RequireSignedReleases_Help">Produktionsmigrationen laufen nur aus Git-Commits mit gültiger Signatur eines der eingetragenen Signierer. Einen Fingerabdruck pro Zeile eintragen, so wie „git show --format=%GF“ ihn ausgibt. Mindestens ein Signierer ist Pflicht.
+
+Der Arbeitsplatz braucht die passenden öffentlichen Schlüssel, bei SSH-Signaturen zusätzlich eine vertrauenswürdige allowedSignersFile.
+
+Deaktiviert oder Nicht konfiguriert: keine Einschränkung.</string>
+      <string id="Connections">Team-Verbindungen (JSON)</string>
+      <string id="Connections_Help">Verbindungsprofile für alle Benutzer dieses Computers, als JSON-Array in einer Zeile wie „connections“ in policy.json; das Eingabefeld ist einzeilig. Profile ergänzen die Team-Datei und gewinnen bei gleicher ID.
+
+Keine Passwörter oder anderen Zugangsdaten eintragen: jeder Benutzer dieses Computers kann den Wert lesen.
+
+Das Feld fasst höchstens 32.767 Zeichen. Für mehr Profile den Registry-Wert „Policy“ oder die Datei policy.json verwenden.
+
+Deaktiviert oder Nicht konfiguriert: keine Profile.</string>
+      <string id="ProductionReadOnly">Produktion schreibgeschützt öffnen</string>
+      <string id="ProductionReadOnly_Help">Produktionsverbindungen werden standardmäßig schreibgeschützt geöffnet.
+
+Aktiviert: eingeschaltet. Deaktiviert: ausgeschaltet. In beiden Fällen können Benutzer die Einstellung nicht ändern.
+
+Nicht konfiguriert: Benutzer entscheiden selbst.</string>
+      <string id="ProductionConfirmCommit">Commits auf Produktion bestätigen</string>
+      <string id="ProductionConfirmCommit_Help">Vor jedem Commit auf einer Produktionsverbindung fragt die Anwendung nach.
+
+Aktiviert: eingeschaltet. Deaktiviert: ausgeschaltet. In beiden Fällen können Benutzer die Einstellung nicht ändern.
+
+Nicht konfiguriert: Benutzer entscheiden selbst.</string>
+      <string id="ProductionAutoRollback">Offene Produktions-Transaktionen zurückrollen</string>
+      <string id="ProductionAutoRollback_Help">Offene Transaktionen auf Produktionsverbindungen werden automatisch zurückgerollt.
+
+Aktiviert: eingeschaltet. Deaktiviert: ausgeschaltet. In beiden Fällen können Benutzer die Einstellung nicht ändern.
+
+Nicht konfiguriert: Benutzer entscheiden selbst.</string>
+      <string id="ConfirmDestructiveQueries">Destruktive Abfragen absichern</string>
+      <string id="ConfirmDestructiveQueries_Help">Vor DELETE, DROP, TRUNCATE und ähnlichen Anweisungen fragt die Anwendung nach.
+
+Aktiviert: eingeschaltet. Deaktiviert: ausgeschaltet. In beiden Fällen können Benutzer die Einstellung nicht ändern.
+
+Nicht konfiguriert: Benutzer entscheiden selbst.</string>
+      <string id="SshTrustNewHosts">Neue SSH-Host-Keys akzeptieren</string>
+      <string id="SshTrustNewHosts_Help">Unbekannte SSH-Host-Keys werden ohne Rückfrage gespeichert. Für verwaltete Arbeitsplätze ausgeschaltet lassen.
+
+Aktiviert: eingeschaltet. Deaktiviert: ausgeschaltet. In beiden Fällen können Benutzer die Einstellung nicht ändern.
+
+Nicht konfiguriert: Benutzer entscheiden selbst.</string>
+      <string id="CrashReports">Absturzberichte senden</string>
+      <string id="CrashReports_Help">Die Anwendung sendet Absturzberichte.
+
+Aktiviert: eingeschaltet. Deaktiviert: ausgeschaltet. In beiden Fällen können Benutzer die Einstellung nicht ändern.
+
+Nicht konfiguriert: Benutzer entscheiden selbst.</string>
+      <string id="UsageMetrics">Nutzungs- und Leistungsdaten senden</string>
+      <string id="UsageMetrics_Help">Die Anwendung sendet Nutzungs- und Leistungsdaten.
+
+Aktiviert: eingeschaltet. Deaktiviert: ausgeschaltet. In beiden Fällen können Benutzer die Einstellung nicht ändern.
+
+Nicht konfiguriert: Benutzer entscheiden selbst.</string>
+      <string id="AutoUpdateCheck">Automatisch nach Updates suchen</string>
+      <string id="AutoUpdateCheck_Help">Die Anwendung sucht selbst nach neuen Versionen. Ausschalten, wenn die Softwareverteilung Updates ausliefert.
+
+Aktiviert: eingeschaltet. Deaktiviert: ausgeschaltet. In beiden Fällen können Benutzer die Einstellung nicht ändern.
+
+Nicht konfiguriert: Benutzer entscheiden selbst.</string>
+      <string id="AutoUpdateInstall">Updates automatisch installieren</string>
+      <string id="AutoUpdateInstall_Help">Gefundene Updates werden ohne Rückfrage installiert.
+
+Aktiviert: eingeschaltet. Deaktiviert: ausgeschaltet. In beiden Fällen können Benutzer die Einstellung nicht ändern.
+
+Nicht konfiguriert: Benutzer entscheiden selbst.</string>
+      <string id="SslDefaultMode">Standard-SSL-Modus</string>
+      <string id="SslDefaultMode_Help">SSL-Modus, mit dem neue Verbindungen angelegt werden. Benutzer können ihn nicht ändern.
+
+Deaktiviert oder Nicht konfiguriert: Benutzer entscheiden selbst.</string>
+      <string id="UpdateChannel">Update-Kanal</string>
+      <string id="UpdateChannel_Help">Kanal, aus dem die Anwendung Updates bezieht. Benutzer können ihn nicht ändern.
+
+Deaktiviert oder Nicht konfiguriert: Benutzer entscheiden selbst.</string>
+      <string id="SslDefaultMode_Disable">Kein SSL (disable)</string>
+      <string id="SslDefaultMode_Prefer">SSL bevorzugen (prefer)</string>
+      <string id="SslDefaultMode_Require">SSL verlangen (require)</string>
+      <string id="SslDefaultMode_VerifyCa">Zertifizierungsstelle prüfen (verify-ca)</string>
+      <string id="SslDefaultMode_VerifyFull">Zertifikat und Hostnamen prüfen (verify-full)</string>
+      <string id="UpdateChannel_Stable">Stabil</string>
+      <string id="UpdateChannel_Canary">Canary</string>
+    </stringTable>
+    <presentationTable>
+      <presentation id="Organization">
+        <textBox refId="Organization"><label>Name der Organisation</label></textBox>
+        <textBox refId="Support"><label>Support-Hinweis (optional)</label></textBox>
+      </presentation>
+      <presentation id="RequireSignedReleases">
+        <listBox refId="TrustedReleaseSigners">Freigegebene Signierer</listBox>
+      </presentation>
+      <presentation id="Connections">
+        <textBox refId="Connections"><label>Verbindungen als JSON-Array in einer Zeile</label></textBox>
+      </presentation>
+      <presentation id="SslDefaultMode">
+        <dropdownList refId="SslDefaultMode" noSort="true" defaultItem="4">SSL-Modus</dropdownList>
+      </presentation>
+      <presentation id="UpdateChannel">
+        <dropdownList refId="UpdateChannel" noSort="true" defaultItem="0">Kanal</dropdownList>
+      </presentation>
+    </presentationTable>
+  </resources>
+</policyDefinitionResources>
