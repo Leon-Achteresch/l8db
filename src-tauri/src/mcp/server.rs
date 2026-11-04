@@ -165,6 +165,7 @@ pub fn tool_definitions() -> Value {
         super::open::tool_definition(),
         super::code::tool_definition(),
         super::script::tool_definition(),
+        crate::issues::tool_definition(),
         {
             "name": "execute",
             "description": "One write statement (SQL, MongoDB insert/update/delete, Redis commands one per line) on a writable connection; needs confirm=true.",
@@ -189,6 +190,7 @@ pub(super) fn listed_tools(config: &McpConfig) -> Vec<Value> {
             .unwrap_or_default()
             .into_iter()
             .filter(|tool| config.workflows || tool["name"] != "workflow")
+            .filter(|tool| tool["name"] != "report_issue" || crate::issues::relay().is_ok())
             .filter(|tool| {
                 tool["name"] != "code"
                     || exposed(config).any(|connection| SQL_KINDS.contains(&connection.kind))
@@ -241,6 +243,7 @@ const ANNOTATIONS: &[(&str, &str, bool, bool, bool)] = &[
     ("import_file", "Import file", false, false, false),
     ("rules", "Data rules", false, true, false),
     ("notebook", "Notebook", false, false, false),
+    ("report_issue", "Report issue", false, false, false),
 ];
 
 pub(crate) fn published(tools: Vec<Value>) -> Vec<Value> {
@@ -443,6 +446,14 @@ impl Server {
                 result
             }
             "open" => self.open(config, &args).await,
+            "report_issue" if args["confirm"] != true => Err(
+                "Titel und Text erst dem Benutzer zeigen und nach seiner Zustimmung mit confirm=true senden."
+                    .into(),
+            ),
+            "report_issue" => match crate::issues::compose(&args, "Gemeldet über MCP") {
+                Ok((title, body)) => crate::issues::submit(&title, &body, None).await,
+                Err(error) => Err(error),
+            },
             "code" => self.code(config, &args).await,
             "search" | "describe" | "query" | "execute" | "script" | "benchmark" | "health"
             | "explain" | "relations" | "drilldown" | "overview" => {
@@ -2026,7 +2037,10 @@ mod tests {
                 .map(|tool| tool["name"].as_str().unwrap().to_string())
                 .collect()
         };
-        let all = names(tool_definitions().as_array().unwrap().clone());
+        let all: Vec<String> = names(tool_definitions().as_array().unwrap().clone())
+            .into_iter()
+            .filter(|name| name != "report_issue" || crate::issues::relay().is_ok())
+            .collect();
         let mut scripted = connection(false);
         scripted.allow_scripts = true;
         let mut redis = connection(true);

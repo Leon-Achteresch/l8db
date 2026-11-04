@@ -25,6 +25,7 @@ import { type ChatEditorTarget, handleChatEditorRequest } from "@/lib/ai/editor/
 import { editorAiController } from "@/lib/ai/editor/controller";
 import { useEditorAiSettings } from "@/lib/ai/editor/settings";
 import { AiFigureContext } from "@/lib/ai/figures";
+import { handleChatIssueRequest } from "@/lib/ai/issue";
 import { handleChatNotebookRequest } from "@/lib/ai/notebook";
 import { AI_KNOWLEDGE_PROMPT, AI_RULES_PROMPT } from "@/lib/ai/prompts";
 import { aiFigures, aiThreadMarkdown } from "@/lib/ai/result";
@@ -525,6 +526,12 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
             const requestId = String(event.data.id);
             void handleChatNotebookRequest(event.data.details, () => navigate({ to: "/notebook" }))
               .catch((reason) => ({ ok: false, text: String(reason) }))
+              .then((answer) => aiRespond(id, requestId, answer))
+              .catch(() => undefined);
+          } else if (event.kind === "issue") {
+            const requestId = String(event.data.id);
+            void handleChatIssueRequest()
+              .catch(() => ({ diagnostics: "", screenshot: null }))
               .then((answer) => aiRespond(id, requestId, answer))
               .catch(() => undefined);
           } else if (event.kind === "approval" || event.kind === "input") {

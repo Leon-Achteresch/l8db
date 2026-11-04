@@ -21,6 +21,7 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
   const [pending, setPending] = useState(false);
   const region = useRef<HTMLFieldSetElement>(null);
   const impact = useNewFeatureVisibility<HTMLDivElement>("ai.chat.dry-run");
+  const issue = useNewFeatureVisibility<HTMLDivElement>("ai.chat.issue-report");
   const data = event.data;
   const id = String(data.id);
   useEffect(() => {
@@ -104,9 +105,14 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
     typeof data.details === "string"
       ? data.details
       : String(details.message ?? details.description ?? details.command ?? details.sql ?? "");
-  const extra = !questionInput && Object.keys(details).some((key) => key !== "requestedSchema") && (
+  const { screenshot, ...shown } = details;
+  const preview =
+    typeof screenshot === "string" && screenshot.startsWith("data:image/png;base64,")
+      ? screenshot
+      : null;
+  const extra = !questionInput && Object.keys(shown).some((key) => key !== "requestedSchema") && (
     <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
-      {JSON.stringify(details, null, 2)}
+      {JSON.stringify(shown, null, 2)}
     </pre>
   );
   const actions = (
@@ -166,6 +172,19 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
           actions={actions}
         >
           {description && <p className="whitespace-pre-wrap">{description}</p>}
+          {preview && (
+            <div ref={issue.ref} className="mt-2 space-y-1">
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                Geschwärzter Screenshot
+                {issue.isNew && <NewBadge />}
+              </div>
+              <img
+                src={preview}
+                alt="Geschwärzter Screenshot, der mitgesendet wird"
+                className="max-h-64 w-full rounded-md border object-contain"
+              />
+            </div>
+          )}
           {summary.length > 0 && (
             <dl className="mt-2 space-y-2 rounded-lg bg-muted/40 p-2.5">
               {summary.map((entry) => (
