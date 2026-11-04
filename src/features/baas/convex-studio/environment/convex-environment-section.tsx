@@ -1,8 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Plus, RefreshCw, Upload } from "lucide-react";
+import { Download, KeyRound, Plus, RefreshCw, SearchX, Upload } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { NewBadge } from "@/components/new-badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,6 +21,8 @@ import {
 } from "@/lib/db";
 import { convexStudioSettingsEnvExport } from "@/lib/db/convex-studio-settings";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasEmptyState } from "../../baas-empty-state";
+import { BaasSectionHeader } from "../../baas-section-header";
 import type { ConvexStudioSectionProps } from "../convex-studio-sections";
 import { ConvexEnvironmentImportDialog } from "./convex-environment-import-dialog";
 import { ConvexEnvironmentRow } from "./convex-environment-row";
@@ -30,7 +31,7 @@ const NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export function ConvexEnvironmentSection({ deployment }: ConvexStudioSectionProps) {
   const queryClient = useQueryClient();
-  const feature = useNewFeatureVisibility<HTMLDivElement>("baas.convex.studio.environment");
+  const feature = useNewFeatureVisibility<HTMLHeadingElement>("baas.convex.studio.environment");
   const { profileId, projectId, deploymentName } = deployment;
   const queryKey = ["convex", profileId, "environment", projectId, deploymentName];
   const variables = useQuery({
@@ -104,42 +105,38 @@ export function ConvexEnvironmentSection({ deployment }: ConvexStudioSectionProp
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div ref={feature.ref} className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold tracking-tight">Umgebungsvariablen</h2>
-            {feature.isNew && <NewBadge />}
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Werte bleiben verborgen, bis du sie einzeln anzeigst. Änderungen wirken sofort auf alle
-            Funktionen.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => setImporting(true)} disabled={busy}>
-            <Upload className="size-3.5" /> .env importieren
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setExporting(true)}
-            disabled={busy || !variables.data?.length}
-          >
-            <Download className="size-3.5" /> Als .env exportieren
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Variablen aktualisieren"
-            onClick={refresh}
-            disabled={variables.isFetching}
-          >
-            <RefreshCw className={`size-3.5 ${variables.isFetching ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-      </div>
+      <BaasSectionHeader
+        title="Umgebungsvariablen"
+        titleRef={feature.ref}
+        isNew={feature.isNew}
+        description="Werte bleiben verborgen, bis du sie einzeln anzeigst. Änderungen wirken sofort auf alle Funktionen."
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => setImporting(true)} disabled={busy}>
+              <Upload className="size-3.5" /> .env importieren
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setExporting(true)}
+              disabled={busy || !variables.data?.length}
+            >
+              <Download className="size-3.5" /> Als .env exportieren
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Variablen aktualisieren"
+              onClick={refresh}
+              disabled={variables.isFetching}
+            >
+              <RefreshCw className={`size-3.5 ${variables.isFetching ? "animate-spin" : ""}`} />
+            </Button>
+          </>
+        }
+      />
 
-      <section className="rounded-2xl border bg-card p-5">
+      <section className="rounded-2xl bg-muted/25 p-5">
         <h3 className="text-sm font-semibold">Variable hinzufügen</h3>
         <form
           className="mt-3 flex flex-wrap gap-2"
@@ -178,7 +175,7 @@ export function ConvexEnvironmentSection({ deployment }: ConvexStudioSectionProp
         )}
       </section>
 
-      <section className="rounded-2xl border bg-card p-5">
+      <section className="rounded-2xl bg-muted/25 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-sm font-semibold">
             Variablen{variables.data ? ` (${variables.data.length})` : ""}
@@ -198,11 +195,19 @@ export function ConvexEnvironmentSection({ deployment }: ConvexStudioSectionProp
             {String(variables.error)}
           </p>
         ) : shown.length === 0 ? (
-          <p className="mt-3 text-xs text-muted-foreground">
-            {variables.data.length === 0 ? "Keine Variablen vorhanden." : "Keine Treffer."}
-          </p>
+          <BaasEmptyState
+            compact
+            className="mt-3"
+            icon={variables.data.length === 0 ? KeyRound : SearchX}
+            title={variables.data.length === 0 ? "Keine Variablen vorhanden." : "Keine Treffer."}
+            description={
+              variables.data.length === 0
+                ? "Umgebungsvariablen stehen deinen Funktionen über process.env zur Verfügung."
+                : "Keine Variable passt zur Suche."
+            }
+          />
         ) : (
-          <div className="mt-3 overflow-x-auto rounded-lg border bg-background/50">
+          <div className="mt-3 overflow-x-auto rounded-lg bg-background/50">
             <table className="w-full text-left">
               <thead className="text-[11px] text-muted-foreground">
                 <tr>

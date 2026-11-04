@@ -87,7 +87,7 @@ export function RoleEditForm({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="valid-until" className="text-xs">
-              Gültig bis
+              Gültig bis (Zeitzone des Servers)
             </Label>
             <Input
               id="valid-until"

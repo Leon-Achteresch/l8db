@@ -28,7 +28,7 @@ export function ConvexScheduleRunHint({ functions }: { functions: ConvexSchedula
     : "";
 
   return (
-    <Collapsible className="rounded-xl border p-3 text-xs">
+    <Collapsible className="rounded-xl p-3 text-xs bg-muted/30">
       <CollapsibleTrigger className="flex items-center gap-2 font-medium">
         <CalendarPlus className="size-3.5" /> Neuen Lauf einplanen
       </CollapsibleTrigger>
@@ -70,7 +70,7 @@ export function ConvexScheduleRunHint({ functions }: { functions: ConvexSchedula
         </div>
         {snippet && (
           <div className="flex items-start gap-2">
-            <pre className="flex-1 overflow-auto rounded-md border bg-muted/40 p-2 font-mono">
+            <pre className="flex-1 overflow-auto rounded-md bg-muted/40 p-2 font-mono">
               {snippet}
             </pre>
             <Button

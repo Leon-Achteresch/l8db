@@ -75,7 +75,7 @@ export function SupabaseSettingsDatabase({
   const failure = endpoint.error ?? pooler.error;
 
   return (
-    <section className="rounded-2xl border bg-card p-5">
+    <section className="rounded-2xl bg-muted/25 p-5">
       <div className="flex items-center gap-2">
         <Database className="size-4 text-muted-foreground" />
         <h3 className="text-sm font-semibold">Datenbankverbindung</h3>
@@ -84,7 +84,7 @@ export function SupabaseSettingsDatabase({
         {endpoints.map((item) => (
           <div
             key={`${item.label}:${item.host}:${item.port}`}
-            className="rounded-lg border bg-background/50 p-3"
+            className="rounded-lg bg-background/50 p-3"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-medium">

@@ -3,8 +3,6 @@ import { useCallback, useDeferredValue } from "react";
 import { Button } from "@/components/ui/button";
 import { AiFlash } from "@/features/automation/ai-flash";
 import { DataTable } from "@/features/table/data-table";
-import { RowWatchProvider } from "@/features/table/row-watch-provider";
-import { RowWatches } from "@/features/table/row-watches";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { TableFilterBar } from "@/features/table/table-filter-bar";
@@ -128,140 +126,137 @@ export function TableDataContent({
       ? stateKey
       : undefined;
   return (
-    <RowWatchProvider scope={watchScope} rows={tableRows}>
-      <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-        {stateKey && <AiFlash id={`table:${stateKey}`} neon />}
-        <TableViewsPanel
-          schema={schema}
-          table={table}
+    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      {stateKey && <AiFlash id={`table:${stateKey}`} neon />}
+      <TableViewsPanel
+        schema={schema}
+        table={table}
+        activeFilter={filter}
+        filterRaw={filterRaw}
+        onSelectView={(nextFilter, raw, saved) => {
+          handleFilterChange(nextFilter, raw);
+          if (stateKey && saved?.state)
+            useTableViewStateStore.getState().patch(stateKey, {
+              ...saved.state,
+              filter: nextFilter,
+              filterRaw: raw ?? false,
+              page: 0,
+            });
+          if (connection && saved?.layout)
+            useTableColumnPrefs
+              .getState()
+              .setPref(tableColumnPrefKey(connection.id, schema, table, database), saved.layout);
+        }}
+      />
+      <div
+        className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden"
+        data-tour="table-filter"
+      >
+        <TableFilterBar
+          key={stateKey}
+          stateKey={stateKey}
+          columns={data?.columns ?? []}
+          columnDetails={columnDetails}
           activeFilter={filter}
-          filterRaw={filterRaw}
-          onSelectView={(nextFilter, raw, saved) => {
-            handleFilterChange(nextFilter, raw);
-            if (stateKey && saved?.state)
-              useTableViewStateStore.getState().patch(stateKey, {
-                ...saved.state,
-                filter: nextFilter,
-                filterRaw: raw ?? false,
-                page: 0,
-              });
-            if (connection && saved?.layout)
-              useTableColumnPrefs
-                .getState()
-                .setPref(tableColumnPrefKey(connection.id, schema, table, database), saved.layout);
-          }}
+          onApply={handleFilterChange}
         />
-        <div
-          className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden"
-          data-tour="table-filter"
-        >
-          <TableFilterBar
+      </div>
+      {isLoading || (!isError && !gridReady) ? (
+        <TableDataSkeleton />
+      ) : isError ? (
+        <TableDataError
+          title="Fehler beim Laden der Tabelle"
+          error={error}
+          actions={
+            <>
+              {(filter.trim() !== "" || sorting.length > 0) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    handleFilterChange("", false);
+                    setSorting([]);
+                  }}
+                >
+                  <FilterXIcon />
+                  Filter & Sortierung zurücksetzen
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={() => void refetch()}>
+                <RefreshCwIcon />
+                Erneut versuchen
+              </Button>
+            </>
+          }
+        />
+      ) : (
+        <UiPluginGridContext.Provider value={pluginGrid}>
+          <DataTable
             key={stateKey}
             stateKey={stateKey}
-            columns={data?.columns ?? []}
-            columnDetails={columnDetails}
-            activeFilter={filter}
-            onApply={handleFilterChange}
-          />
-        </div>
-        {watchScope && <RowWatches key={watchScope} scope={watchScope} />}
-        {isLoading || (!isError && !gridReady) ? (
-          <TableDataSkeleton />
-        ) : isError ? (
-          <TableDataError
-            title="Fehler beim Laden der Tabelle"
-            error={error}
-            actions={
-              <>
-                {(filter.trim() !== "" || sorting.length > 0) && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      handleFilterChange("", false);
-                      setSorting([]);
-                    }}
-                  >
-                    <FilterXIcon />
-                    Filter & Sortierung zurücksetzen
-                  </Button>
-                )}
-                <Button size="sm" variant="ghost" onClick={() => void refetch()}>
-                  <RefreshCwIcon />
-                  Erneut versuchen
-                </Button>
-              </>
+            watchScope={watchScope}
+            scrollIdentity={JSON.stringify([filter, filterRaw, sorting, rowLimit])}
+            className="h-full min-h-0 flex-1"
+            columns={data?.columns ?? NO_COLUMNS}
+            data={tableRows}
+            emptyMessage={emptyMessage}
+            sorting={sorting}
+            sortableColumns={redis ? REDIS_KEY_COLUMNS : undefined}
+            onSortingChange={handleSortingChange}
+            isFetching={isFetching}
+            onSaveRow={
+              masked || connection?.readOnly
+                ? undefined
+                : caps.query_language === "redis"
+                  ? saveRedisRow
+                  : isView || !caps.row_edit
+                    ? undefined
+                    : saveRow
             }
+            canEditCell={caps.query_language === "redis" ? canEditRedisCell : undefined}
+            cellEditorKind={caps.query_language === "redis" ? "text" : undefined}
+            emptyEditValue={caps.query_language === "redis" ? "" : undefined}
+            filterableColumns={redis ? REDIS_KEY_COLUMNS : undefined}
+            compileColumnFilter={caps.query_language === "redis" ? redisKeyFilter : undefined}
+            filterOperators={
+              caps.query_language === "redis" ? REDIS_KEY_FILTER_OPERATORS : undefined
+            }
+            filterPrefix={
+              caps.query_language === "redis"
+                ? "MATCH"
+                : caps.query_language === "json"
+                  ? "JSON"
+                  : undefined
+            }
+            onApplyFilter={handleFilterChange}
+            revealColumn={revealColumn}
+            rowOffset={rowOffset}
+            rowExtent={rowExtent}
+            onVisibleRowsChange={onVisibleRowsChange}
+            totalCount={totalCount ?? undefined}
+            countLabel={countLabel}
+            onExactCount={handleExactCount}
+            pageSize={rowLimit}
+            foreignKeys={foreignKeys}
+            currentSchema={schema}
+            currentTable={table}
+            onNavigateToTable={handleNavigateToTable}
+            onInsertRow={
+              masked || isView || !caps.row_edit || connection?.readOnly ? undefined : addRow
+            }
+            onDeleteRow={
+              masked || isView || !caps.row_edit || connection?.readOnly
+                ? undefined
+                : handleDeleteRow
+            }
+            columnDetails={columnDetails}
+            onRefresh={handleRefresh}
+            searchRequiresFocus={inDrawer}
+            addRowSignal={addRowSignal}
           />
-        ) : (
-          <UiPluginGridContext.Provider value={pluginGrid}>
-            <DataTable
-              key={stateKey}
-              stateKey={stateKey}
-              watchScope={watchScope}
-              scrollIdentity={JSON.stringify([filter, filterRaw, sorting, rowLimit])}
-              className="h-full min-h-0 flex-1"
-              columns={data?.columns ?? NO_COLUMNS}
-              data={tableRows}
-              emptyMessage={emptyMessage}
-              sorting={sorting}
-              sortableColumns={redis ? REDIS_KEY_COLUMNS : undefined}
-              onSortingChange={handleSortingChange}
-              isFetching={isFetching}
-              onSaveRow={
-                masked || connection?.readOnly
-                  ? undefined
-                  : caps.query_language === "redis"
-                    ? saveRedisRow
-                    : isView || !caps.row_edit
-                      ? undefined
-                      : saveRow
-              }
-              canEditCell={caps.query_language === "redis" ? canEditRedisCell : undefined}
-              cellEditorKind={caps.query_language === "redis" ? "text" : undefined}
-              emptyEditValue={caps.query_language === "redis" ? "" : undefined}
-              filterableColumns={redis ? REDIS_KEY_COLUMNS : undefined}
-              compileColumnFilter={caps.query_language === "redis" ? redisKeyFilter : undefined}
-              filterOperators={
-                caps.query_language === "redis" ? REDIS_KEY_FILTER_OPERATORS : undefined
-              }
-              filterPrefix={
-                caps.query_language === "redis"
-                  ? "MATCH"
-                  : caps.query_language === "json"
-                    ? "JSON"
-                    : undefined
-              }
-              onApplyFilter={handleFilterChange}
-              revealColumn={revealColumn}
-              rowOffset={rowOffset}
-              rowExtent={rowExtent}
-              onVisibleRowsChange={onVisibleRowsChange}
-              totalCount={totalCount ?? undefined}
-              countLabel={countLabel}
-              onExactCount={handleExactCount}
-              pageSize={rowLimit}
-              foreignKeys={foreignKeys}
-              currentSchema={schema}
-              currentTable={table}
-              onNavigateToTable={handleNavigateToTable}
-              onInsertRow={
-                masked || isView || !caps.row_edit || connection?.readOnly ? undefined : addRow
-              }
-              onDeleteRow={
-                masked || isView || !caps.row_edit || connection?.readOnly
-                  ? undefined
-                  : handleDeleteRow
-              }
-              columnDetails={columnDetails}
-              onRefresh={handleRefresh}
-              searchRequiresFocus={inDrawer}
-              addRowSignal={addRowSignal}
-            />
-          </UiPluginGridContext.Provider>
-        )}
-      </div>
-    </RowWatchProvider>
+        </UiPluginGridContext.Provider>
+      )}
+    </div>
   );
 }
 

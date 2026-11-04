@@ -46,6 +46,7 @@ export interface TableTabActions {
   closeAll: () => void;
   split: (tab: Tab, edge: SplitEdge) => void;
   moveTo?: (tab: Tab, pane: number) => void;
+  shift?: (tab: Tab, delta: -1 | 1) => void;
   detach?: (tab: Tab) => void;
 }
 
@@ -269,6 +270,23 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
         <ContextMenuItem onSelect={() => actions.current.closeAll()}>
           Alle schließen
         </ContextMenuItem>
+        {actions.current.shift && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              disabled={index === 0}
+              onSelect={() => actions.current.shift?.(tab, -1)}
+            >
+              Nach links verschieben
+            </ContextMenuItem>
+            <ContextMenuItem
+              disabled={!hasTabsToRight}
+              onSelect={() => actions.current.shift?.(tab, 1)}
+            >
+              Nach rechts verschieben
+            </ContextMenuItem>
+          </>
+        )}
         {!easyMode && (
           <>
             <ContextMenuSeparator />

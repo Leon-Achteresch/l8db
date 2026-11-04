@@ -67,11 +67,11 @@ fn safe_path(path: &str) -> bool {
 fn read_json(path: &Path, limit: u64) -> Result<Value, String> {
     let metadata = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
     if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > limit {
-        return Err("Invalid or oversized extension file".into());
+        return Err("Ungültige oder zu große Erweiterungsdatei.".into());
     }
     let bytes = fs::read(path).map_err(|e| e.to_string())?;
     if bytes.len() as u64 > limit {
-        return Err("Extension file exceeds limit".into());
+        return Err("Die Erweiterungsdatei ist zu groß.".into());
     }
     serde_json::from_slice(&bytes).map_err(|e| e.to_string())
 }
@@ -80,7 +80,7 @@ fn validate_archive(archive: &Value) -> Result<String, String> {
         .as_str()
         .ok_or("Missing extension id")?;
     if archive["format"] != 1 || !safe_id(id) {
-        return Err("Invalid extension archive".into());
+        return Err("Ungültiges Erweiterungsarchiv.".into());
     }
     let main = archive["manifest"]["main"]
         .as_str()
@@ -95,14 +95,16 @@ fn validate_archive(archive: &Value) -> Result<String, String> {
             .iter()
             .any(|(path, value)| !safe_path(path) || !value.is_string())
     {
-        return Err("Invalid extension file paths or entry point".into());
+        return Err(
+            "Ungültige Dateipfade oder ungültiger Einstiegspunkt im Erweiterungsarchiv.".into(),
+        );
     }
     if serde_json::to_vec(archive)
         .map_err(|e| e.to_string())?
         .len() as u64
         > MAX_PACKAGE
     {
-        return Err("Extension archive exceeds 8 MiB".into());
+        return Err("Das Erweiterungsarchiv ist größer als 8 MiB.".into());
     }
     Ok(id.into())
 }
@@ -110,13 +112,13 @@ fn ensure_directory(path: &Path) -> Result<(), String> {
     fs::create_dir_all(path).map_err(|e| e.to_string())?;
     let metadata = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
     if !metadata.is_dir() || metadata.file_type().is_symlink() {
-        return Err("Extension directory must not be a symlink".into());
+        return Err("Der Erweiterungsordner darf kein symbolischer Link sein.".into());
     }
     Ok(())
 }
 fn location(root: &Path, id: &str) -> Result<PathBuf, String> {
     if !safe_id(id) {
-        return Err("Invalid extension id".into());
+        return Err("Ungültige Erweiterungs-ID.".into());
     }
     let path = root.join(id);
     if path.exists()
@@ -125,7 +127,7 @@ fn location(root: &Path, id: &str) -> Result<PathBuf, String> {
             .file_type()
             .is_symlink()
     {
-        return Err("Extension directory must not be a symlink".into());
+        return Err("Der Erweiterungsordner darf kein symbolischer Link sein.".into());
     }
     Ok(path)
 }
@@ -153,7 +155,7 @@ fn read_installed(root: &Path, id: &str) -> Result<Installed, String> {
     )?)
     .map_err(|e| e.to_string())?;
     if installed.archive["manifest"]["id"] != id {
-        return Err("Extension directory and id mismatch".into());
+        return Err("Ordnername und Erweiterungs-ID stimmen nicht überein.".into());
     }
     Ok(installed)
 }
@@ -167,7 +169,7 @@ fn import_directory(path: &Path) -> Result<Value, String> {
         .unwrap_or(manifest["main"].as_str().unwrap())
         .to_owned();
     if !safe_path(&main) {
-        return Err("Invalid main path".into());
+        return Err("Ungültiger Einstiegspfad (main).".into());
     }
     manifest["main"] = json!(main);
     let mut files = serde_json::Map::new();
@@ -182,12 +184,12 @@ fn import_directory(path: &Path) -> Result<Value, String> {
             .canonicalize()
             .map_err(|e| e.to_string())?;
         if !file.starts_with(&root) || !safe_path(&relative) {
-            return Err("Extension path escapes development directory".into());
+            return Err("Ein Pfad der Erweiterung zeigt aus dem Entwicklungsordner heraus.".into());
         }
         let metadata = fs::metadata(&file).map_err(|e| e.to_string())?;
         total += metadata.len();
         if !metadata.is_file() || total > MAX_PACKAGE {
-            return Err("Development extension exceeds size limit".into());
+            return Err("Die Entwicklungs-Erweiterung ist zu groß.".into());
         }
         let content = fs::read_to_string(file)
             .map_err(|e| format!("Only UTF-8 package files are supported: {e}"))?;
@@ -205,11 +207,11 @@ fn collect_assets(
 ) -> Result<(), String> {
     *visited += 1;
     if *visited > 512 || relative.components().count() > 16 {
-        return Err("Too many asset entries or nesting levels".into());
+        return Err("Zu viele Dateien oder Verzeichnisebenen in der Erweiterung.".into());
     }
     let metadata = fs::symlink_metadata(root.join(relative)).map_err(|e| e.to_string())?;
     if metadata.file_type().is_symlink() {
-        return Err("Asset symlinks are forbidden".into());
+        return Err("Symbolische Links sind in Erweiterungen nicht erlaubt.".into());
     }
     if metadata.is_dir() {
         for entry in fs::read_dir(root.join(relative)).map_err(|e| e.to_string())? {
@@ -219,7 +221,7 @@ fn collect_assets(
     } else {
         paths.push(relative.to_string_lossy().replace('\\', "/"));
         if paths.len() > 256 {
-            return Err("Too many extension files".into());
+            return Err("Die Erweiterung enthält zu viele Dateien.".into());
         }
     }
     Ok(())
@@ -249,7 +251,10 @@ fn operate(root: &Path, operation: &str, id: &str, value: Value) -> Result<Value
             let extension_id = validate_archive(archive)?;
             let directory = location(root, &extension_id)?;
             if directory.exists() {
-                return Err("Extension already installed; uninstall before replacing".into());
+                return Err(
+                    "Die Erweiterung ist bereits installiert. Zum Ersetzen erst deinstallieren."
+                        .into(),
+                );
             }
             let staging = root.join(format!("{extension_id}.installing"));
             if staging.exists() {
@@ -265,7 +270,7 @@ fn operate(root: &Path, operation: &str, id: &str, value: Value) -> Result<Value
             let archive = &value["archive"];
             let extension_id = validate_archive(archive)?;
             if extension_id != id {
-                return Err("Update must keep the extension id".into());
+                return Err("Ein Update darf die Erweiterungs-ID nicht ändern.".into());
             }
             let mut installed = read_installed(root, id)?;
             let declared = archive["manifest"]["permissions"]

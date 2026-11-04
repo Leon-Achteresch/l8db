@@ -152,7 +152,7 @@ export function LogsExplorerTab({ reference, refetchInterval }: LogsTabProps) {
       ) : rows.length === 0 ? (
         <p className="text-xs text-muted-foreground">Keine Logeinträge im Zeitraum.</p>
       ) : (
-        <div className="max-h-[560px] overflow-auto rounded-xl border">
+        <div className="max-h-[560px] overflow-auto rounded-xl">
           <DatabaseTable headers={["Zeitpunkt", "Nachricht"]}>
             {rows.map((row) => {
               const tone = logTone(row.event_message);

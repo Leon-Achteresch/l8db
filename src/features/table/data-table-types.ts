@@ -1,4 +1,5 @@
 import type { OnChangeFn, RowData, SortingState } from "@tanstack/react-table";
+import type { ReactNode } from "react";
 import type { DetailedColumnInfo, ForeignKeyInfo } from "@/lib/db";
 
 declare module "@tanstack/react-table" {
@@ -63,6 +64,8 @@ export type DataTableProps = {
   onExactCount?: () => void;
   pageSize?: number;
   onPageChange?: (page: number) => void;
+  hasNextPage?: boolean;
+  rowMenuItems?: (row: TableRow) => ReactNode;
   rowOffset?: number;
   rowExtent?: number;
   onVisibleRowsChange?: (firstRow: number, lastRow: number) => void;

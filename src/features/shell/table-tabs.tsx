@@ -32,6 +32,7 @@ import {
   isSplitShown,
   MAX_SPLIT_PANES,
   openDetached,
+  placeOpenTab,
   type SplitGroup,
   standaloneTabs,
   useSplitGroups,
@@ -201,6 +202,12 @@ export function TableTabs() {
     closeAll: handleCloseAll,
     split: handleSplitTab,
     moveTo: handleMoveTo,
+    shift: (tab, delta) => {
+      const key = tabKey(tab);
+      const keys = tabs.map(tabKey);
+      const rest = keys.filter((entry) => entry !== key);
+      placeOpenTab(key, rest[keys.indexOf(key) + delta] ?? null);
+    },
   };
   const actions = useRef(tabActions);
   actions.current = tabActions;

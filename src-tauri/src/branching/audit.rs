@@ -100,6 +100,12 @@ fn link(vault: &Vault, previous: &[u8; 32], json: &[u8]) -> [u8; 32] {
 fn parse(vault: &Vault) -> Result<Parsed, String> {
     let path = path(vault);
     let text = if path.exists() {
+        if std::fs::metadata(&path).is_ok_and(|meta| meta.len() > LIMIT) {
+            return Err(format!(
+                "Das Audit-Protokoll {} ist größer als 256 MiB und lässt sich nicht mehr prüfen. Protokollierte Vorgänge bleiben gesperrt, bis die Datei archiviert und der Tresor wiederhergestellt ist.",
+                path.display()
+            ));
+        }
         String::from_utf8(vault::read_limited(&path, LIMIT)?)
             .map_err(|_| "Protokoll ist kein UTF-8")?
     } else {

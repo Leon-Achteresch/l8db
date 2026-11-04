@@ -6,8 +6,6 @@ use tokio_postgres::Config;
 
 use super::SslMode;
 
-pub const READ_ONLY_OPTION: &str = "-c default_transaction_read_only=on";
-
 pub fn options_are_read_only(options: Option<&str>) -> bool {
     options
         .map(|value| {

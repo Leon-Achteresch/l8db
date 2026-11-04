@@ -188,7 +188,7 @@ export function SupabaseAuthLinkDialog({
           </div>
         </form>
         {fields.some(([, value]) => value) && (
-          <dl className="grid gap-2 rounded-lg border bg-muted/40 p-3 text-xs">
+          <dl className="grid gap-2 rounded-lg bg-muted/40 p-3 text-xs">
             {fields
               .filter(([, value]) => value)
               .map(([label, value]) => (

@@ -13,8 +13,8 @@ import {
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { requestSqlConfirmation } from "@/lib/sql-confirmation";
 import { destructiveStatements } from "@/lib/sql-safety";
+import { BaasSectionHeader } from "../../baas-section-header";
 import { BaasSidebarPortal } from "../../baas-sidebar-portal";
-import { SupabaseSectionHeader } from "../supabase-section-header";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import { SupabaseSqlLibrary } from "./supabase-sql-library";
 import { SupabaseSqlNameDialog } from "./supabase-sql-name-dialog";
@@ -110,7 +110,7 @@ export function SupabaseSqlSection({ project }: SupabaseStudioSectionProps) {
 
   return (
     <div className="grid gap-4">
-      <SupabaseSectionHeader
+      <BaasSectionHeader
         title="SQL"
         titleRef={feature.ref}
         isNew={feature.isNew}

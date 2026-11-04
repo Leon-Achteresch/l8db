@@ -19,6 +19,7 @@ type Props = {
   infinite: boolean;
   rowCount: number;
   page: number;
+  rowOffset: number;
   pageSize: number;
   totalCount: number | undefined;
   countLabel: string | undefined;
@@ -39,6 +40,7 @@ export const DataTableFooter = memo(function DataTableFooter({
   infinite,
   rowCount,
   page,
+  rowOffset,
   pageSize,
   totalCount,
   countLabel,
@@ -62,8 +64,9 @@ export const DataTableFooter = memo(function DataTableFooter({
   const infiniteFeature = useNewFeatureVisibility<HTMLSpanElement>("table.infinite-scroll");
   const totalPages = totalCount != null ? Math.ceil(totalCount / pageSize) : undefined;
   const openEnded = totalPages == null && countLabel !== undefined;
-  const rangeStart = page * pageSize + 1;
-  const rangeEnd = page * pageSize + rowCount;
+  const first = infinite ? page * pageSize : rowOffset;
+  const rangeStart = first + 1;
+  const rangeEnd = first + rowCount;
   const total = totalCount ?? countLabel;
   return (
     <div className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-t border-border bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground select-none">

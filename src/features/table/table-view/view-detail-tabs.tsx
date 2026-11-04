@@ -1,18 +1,22 @@
 import type { ReactNode } from "react";
-import { Suspense } from "react";
+import { Suspense, useContext } from "react";
 import { IconMenuSeparator } from "@/components/icon-menu";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
 import { ObjectAuditPanel } from "@/features/object-admin/object-audit-panel";
+import { RowWatchMenuItem } from "@/features/table/row-watch-menu-item";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableDetailTabBar } from "@/features/table/table-detail-tab-bar";
 import { TableExtensionActions } from "@/features/table/table-extension-actions";
 import { TableGrantsPanel } from "@/features/table/table-grants-panel";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
+import { TimestampDisplayMenu } from "@/features/table/timestamp-display-menu";
 import { PluginDetailTabsContent } from "@/features/ui-plugins/plugin-detail-tabs-content";
 import { PluginToolbar } from "@/features/ui-plugins/plugin-toolbar";
 import type { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
+import { useHasNewFeatures } from "@/lib/new-features";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
+import { RowWatchContext } from "@/lib/workbench/row-watch-context";
 import { TablePerfPanel, ViewDefinitionPanel } from "./lazy-panels";
 import { TableExportDialogs } from "./table-export-dialogs";
 import { TableActionsMenu, TableExportMenu } from "./table-export-menu";
@@ -79,6 +83,9 @@ export function ViewDetailTabs({
   table,
   dataContent,
 }: Props) {
+  const { scope: watchScope } = useContext(RowWatchContext);
+  const watchNew = useHasNewFeatures("table.rows.watch") && Boolean(watchScope);
+  const timeNew = useHasNewFeatures("query.results.timestamps");
   return (
     <Tabs
       value={viewTab}
@@ -100,8 +107,10 @@ export function ViewDetailTabs({
             refresh={() => void refetch()}
           />
           <ObjectAdminMenu schema={schema} name={table} objectType="view" showAlter={false} />
-          {viewTab === "data" && (data || extensionActions.actions.length > 0) && (
-            <TableActionsMenu isNew={extensionActions.isNew}>
+          {viewTab === "data" && (
+            <TableActionsMenu isNew={extensionActions.isNew || watchNew || timeNew}>
+              <RowWatchMenuItem />
+              <TimestampDisplayMenu />
               <TableExtensionActions {...extensionActions} />
               {data && extensionActions.actions.length > 0 && <IconMenuSeparator />}
               {data && (

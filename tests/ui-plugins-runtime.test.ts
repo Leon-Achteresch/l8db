@@ -351,6 +351,26 @@ describe("runtime isolation", () => {
     }
   });
 
+  test("hides host globals the tokenizer misreads after a division", async () => {
+    const { compilePlugin } = await import("../packages/ui-plugin-api/src/compile");
+    const scope = globalThis as Record<string, unknown>;
+    scope.top = { invoke: "ipc" };
+    try {
+      const compiled = compilePlugin(
+        "const out = {}; const a = {} / 1; out.top = top; out.self = self; out.nan = Number.isNaN(NaN); const b = 1 /1;\nexport default out;",
+        "division.js",
+      );
+      if (!compiled.ok) throw new Error(compiled.error.message);
+      expect(evaluatePlugin(compiled.code, {})).toEqual({
+        top: undefined,
+        self: undefined,
+        nan: true,
+      });
+    } finally {
+      delete scope.top;
+    }
+  });
+
   test("plugin timers only clear their own ids", async () => {
     const timers = createPluginTimers(() => undefined);
     let fired = false;

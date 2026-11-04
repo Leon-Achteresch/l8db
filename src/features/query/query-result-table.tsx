@@ -54,6 +54,7 @@ interface QueryResultTableProps {
   error: string | null;
   kind?: DatabaseKind;
   masked?: boolean;
+  timestampMenu?: boolean;
   onInspect?: (column: string, value: unknown, row: number) => void;
 }
 
@@ -64,6 +65,7 @@ export const QueryResultTable = memo(function QueryResultTable({
   error,
   kind,
   masked = false,
+  timestampMenu = true,
   onInspect,
 }: QueryResultTableProps) {
   const { active: resultMasks } = useActiveMasks(rawResult?.columns ?? []);
@@ -268,6 +270,7 @@ export const QueryResultTable = memo(function QueryResultTable({
   return (
     <div className="flex h-full flex-col">
       <ResultToolbar
+        timestampMenu={timestampMenu}
         visibleCount={visibleRows.length}
         totalCount={rows.length}
         filterCount={filterCount}

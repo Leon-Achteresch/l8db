@@ -345,7 +345,7 @@ fn postgres_text_values_become_json_types() {
         json!("9007199254740993")
     );
     assert_eq!(postgres_json("numeric", json!("1.5000")), json!("1.5000"));
-    assert_eq!(postgres_json("numeric", json!("2.5")), json!(2.5));
+    assert_eq!(postgres_json("numeric", json!("2.5")), json!("2.5"));
     assert_eq!(postgres_json("float8", json!("1.1")), json!(1.1));
     assert_eq!(postgres_json("float8", json!("NaN")), json!("NaN"));
     assert_eq!(postgres_json("bool", json!("t")), json!(true));

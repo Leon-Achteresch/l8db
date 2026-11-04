@@ -163,12 +163,22 @@ fn posix_unsafe(script: &str) -> Option<String> {
 }
 
 pub fn script_issue(rendered: &[String], templates: &[String]) -> Option<String> {
+    if let Some(ssh) = rendered.iter().position(|word| base_name(word) == "ssh") {
+        if let Some(content) = templates.iter().skip(ssh + 1).find_map(|t| posix_unsafe(t)) {
+            return Some(format!(
+                "Platzhalter „${{{content}}}“ steht ungeschützt in einem ssh-Befehl. ssh gibt die Argumente an die Shell des Servers weiter, daher „${{…|shell}}“ nutzen."
+            ));
+        }
+    }
     let shell = rendered.iter().position(|word| {
         let name = base_name(word);
         POSIX_SHELLS.contains(&name.as_str()) || OTHER_SHELLS.contains(&name.as_str())
     })?;
-    if OTHER_SHELLS.contains(&base_name(&rendered[shell]).as_str()) {
+    let name = base_name(&rendered[shell]);
+    if OTHER_SHELLS.contains(&name.as_str()) {
+        let powershell = name == "pwsh" || name == "powershell";
         let mut safe = false;
+        let mut command = false;
         for (word, template) in rendered.iter().zip(templates).skip(shell + 1) {
             if let Some((start, end)) = placeholders(template).next().filter(|_| !safe) {
                 return Some(format!(
@@ -176,7 +186,13 @@ pub fn script_issue(rendered: &[String], templates: &[String]) -> Option<String>
                     &template[start..=end]
                 ));
             }
-            safe |= matches!(word.to_ascii_lowercase().as_str(), "-file" | "-f");
+            let lower = word.to_ascii_lowercase();
+            command |= powershell
+                && matches!(
+                    lower.as_str(),
+                    "-command" | "-c" | "-encodedcommand" | "-ec"
+                );
+            safe |= powershell && !command && matches!(lower.as_str(), "-file" | "-f");
         }
         return None;
     }
@@ -187,7 +203,12 @@ pub fn script_issue(rendered: &[String], templates: &[String]) -> Option<String>
             && word.contains('c')
     })? + shell
         + 1;
-    let content = posix_unsafe(templates.get(flag + 1)?)?;
+    let script = if rendered.get(flag + 1).is_some_and(|word| word == "--") {
+        flag + 2
+    } else {
+        flag + 1
+    };
+    let content = posix_unsafe(templates.get(script)?)?;
     Some(format!(
         "Platzhalter „${{{content}}}“ steht ungeschützt im Shell-Skript. „${{…|shell}}“ außerhalb von Anführungszeichen nutzen oder den Wert als weiteres Argument übergeben und im Skript \"$1\" verwenden."
     ))
@@ -400,5 +421,11 @@ mod guard_tests {
         assert!(check(&["cmd.exe", "/c", "echo ${x}"]).is_some());
         assert!(check(&["pwsh", "-Command", "Write-Output ${x|shell}"]).is_some());
         assert!(check(&["pwsh", "-File", "run.ps1", "${x}"]).is_none());
+        assert!(check(&["cmd", "/c", "tool.exe", "-f", "${x}"]).is_some());
+        assert!(check(&["fish", "-c", "echo hi", "-f", "${x}"]).is_some());
+        assert!(check(&["pwsh", "-Command", "x", "-f", "${x}"]).is_some());
+        assert!(check(&["sh", "-c", "--", "rm ${x}"]).is_some());
+        assert!(check(&["ssh", "host", "rm ${x}"]).is_some());
+        assert!(check(&["ssh", "host", "rm ${x|shell}"]).is_none());
     }
 }

@@ -36,6 +36,7 @@ export function createOpenActions(
   | "openPackageTab"
   | "openToolTab"
   | "updateCompareTab"
+  | "setToolTabTitle"
   | "openRoleTab"
   | "openTriggerTab"
   | "openViewEditorTab"
@@ -156,6 +157,19 @@ export function createOpenActions(
           state,
         ),
       );
+    },
+
+    setToolTabTitle: (tool, id, title) => {
+      set((state) => {
+        const index = state.tabs.findIndex(
+          (tab) => tab.kind === "tool" && tab.tool === tool && tab.id === id,
+        );
+        const tab = state.tabs[index];
+        if (tab?.kind !== "tool" || tab.title === title) return state;
+        const tabs = [...state.tabs];
+        tabs[index] = { ...tab, title };
+        return storeFor(tabs, state);
+      });
     },
 
     openToolTab: (tool, id) => {
