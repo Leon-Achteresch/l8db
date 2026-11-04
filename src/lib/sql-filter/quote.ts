@@ -54,14 +54,6 @@ export function quoteLiteral(value: string, kind?: FilterKind, dataType?: string
   return quoteString(value, kind);
 }
 
-export function literalIsText(value: string, kind?: FilterKind, dataType?: string): boolean {
-  if (kind === "cassandra" || kind === "mongodb" || kind === "redis" || kind === "dynamodb")
-    return false;
-  if (dataType) return /char|text|string|clob|enum/i.test(dataType);
-  const trimmed = value.trim();
-  return !/^-?\d+(\.\d+)?$/.test(trimmed) && trimmed !== "true" && trimmed !== "false";
-}
-
 export function quoteString(value: string, kind?: FilterKind): string {
   if (kind === "mysql" && value.includes("\\")) {
     return `CONCAT(${value

@@ -48,7 +48,7 @@ for (const engine of [chromium, webkit]) {
         expect(await page.getByRole("button", { name: /^Wert entfernen:/ }).count()).toBe(2);
         await apply.click();
         expect(await page.getByLabel("Applied filter").textContent()).toBe(
-          `("name"::text ILIKE 'Berlin' ESCAPE '!' OR "name"::text ILIKE 'O''Brien, Jr.' ESCAPE '!')`,
+          `"name" IN ('Berlin', 'O''Brien, Jr.')`,
         );
         expect(await page.getByLabel("Raw SQL").textContent()).toBe("false");
         await operator.click();
@@ -58,7 +58,7 @@ for (const engine of [chromium, webkit]) {
         await page.getByRole("button", { name: "Wert entfernen: Berlin", exact: true }).click();
         await apply.click();
         expect(await page.getByLabel("Applied filter").textContent()).toBe(
-          `NOT ("name"::text ILIKE 'O''Brien, Jr.' ESCAPE '!')`,
+          `"name" NOT IN ('O''Brien, Jr.')`,
         );
         await operator.click();
         await page.getByRole("option", { name: "ist gleich", exact: true }).click();
@@ -91,7 +91,7 @@ for (const engine of [chromium, webkit]) {
         await headerInput.press("Enter");
         await popover.getByRole("button", { name: "Filter anwenden" }).click();
         expect(await page.getByLabel("Applied filter").textContent()).toBe(
-          `NOT ("name"::text ILIKE 'Hamburg' ESCAPE '!')`,
+          `"name" NOT IN ('Hamburg')`,
         );
         expect(errors).toEqual([]);
       } finally {

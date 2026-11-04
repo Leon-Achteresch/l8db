@@ -13,14 +13,7 @@ export function compileSingleCondition(
   if (!column) return null;
   if (operatorNeedsValue(operator) && value === "") return null;
   if (kind === "mongodb") return compileMongoCondition(column, operator, value, dataType);
-  return compileConditionExpression(
-    quoteIdent(column, kind),
-    operator,
-    value,
-    kind,
-    dataType,
-    true,
-  );
+  return compileConditionExpression(quoteIdent(column, kind), operator, value, kind, dataType);
 }
 
 export function compileFilterConditions(
