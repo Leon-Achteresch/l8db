@@ -156,7 +156,7 @@ function CreateRoleDialogContent({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="create-valid-until" className="text-xs">
-                Gültig bis
+                Gültig bis (Zeitzone des Servers)
               </Label>
               <Input
                 id="create-valid-until"
