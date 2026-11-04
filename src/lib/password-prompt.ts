@@ -2,7 +2,13 @@ import { create } from "zustand";
 import { connectionSummary } from "@/lib/connection-url";
 import { USER_REQUIRED } from "@/lib/connection-url/constants";
 import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
-import { extractUrlPassword, injectUrlPassword, replaceUrlUser, storeSecret } from "@/lib/secrets";
+import {
+  extractUrlPassword,
+  injectUrlPassword,
+  loadSecret,
+  replaceUrlUser,
+  storeSecret,
+} from "@/lib/secrets";
 
 export interface PasswordAnswer {
   user?: string;
@@ -92,9 +98,42 @@ export async function ensurePassword(
   retryMessage?: string,
   signal?: AbortSignal,
 ): Promise<boolean> {
-  const connection = useConnectionsStore.getState().connections.find((entry) => entry.id === id);
+  if (signal?.aborted) return false;
+  let connection = useConnectionsStore.getState().connections.find((entry) => entry.id === id);
   if (!connection) return true;
   if (!retryMessage && !needsPassword(connection)) return true;
+  if (!retryMessage && !needsUser(connection)) {
+    const saved = await new Promise<string | null>((resolve) => {
+      const onAbort = () => resolve(null);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      void loadSecret(id)
+        .catch(() => null)
+        .then((secret) => {
+          signal?.removeEventListener("abort", onAbort);
+          resolve(secret);
+        });
+    });
+    if (signal?.aborted) return false;
+    const current = useConnectionsStore.getState().connections.find((entry) => entry.id === id);
+    if (!current) return false;
+    if (!needsPassword(current)) return true;
+    if (
+      current.kind !== connection.kind ||
+      current.connectionString !== connection.connectionString
+    )
+      return false;
+    if (saved) {
+      useConnectionsStore.setState((state) => ({
+        connections: state.connections.map((entry) =>
+          entry === current
+            ? { ...entry, connectionString: injectUrlPassword(entry.connectionString, saved) }
+            : entry,
+        ),
+      }));
+      return true;
+    }
+    connection = current;
+  }
   const hadPassword = extractUrlPassword(connection.connectionString) !== null;
   const answer = await requestPassword(connection, retryMessage ?? null, signal);
   if (!answer) return false;
