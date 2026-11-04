@@ -40,8 +40,10 @@ function displayValue(value: unknown): unknown {
   return value;
 }
 
-function documentPath(document: FirebaseFirestoreDocument): string {
-  return document.name.split("/documents/")[1] ?? "";
+export function documentPath(document: Pick<FirebaseFirestoreDocument, "name">): string {
+  const marker = "/documents/";
+  const index = document.name.indexOf(marker);
+  return index < 0 ? "" : document.name.slice(index + marker.length);
 }
 
 export function FirebaseFirestoreView({ projectId }: { projectId: string }) {

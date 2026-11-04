@@ -899,13 +899,14 @@ impl DatabaseAdapter for MysqlAdapter {
             .map(|c| c.name.clone())
             .collect();
         let columns: Vec<String> = detailed.into_iter().map(|c| c.name).collect();
-        let order_sql = match order_by {
-            Some(col) if columns.iter().any(|c| c == col) => format!(
-                " ORDER BY {} {}",
-                quote(col),
-                if order_desc { "DESC" } else { "ASC" }
-            ),
-            _ => String::new(),
+        let order = order_by
+            .filter(|col| columns.iter().any(|c| c == col))
+            .map(|col| (col, order_desc));
+        let terms = super::stable_order_terms(order, &pk, quote);
+        let order_sql = if terms.is_empty() {
+            String::new()
+        } else {
+            format!(" ORDER BY {}", terms.join(", "))
         };
         let sql = format!(
             "SELECT * FROM {}.{}{}{} LIMIT {} OFFSET {}",

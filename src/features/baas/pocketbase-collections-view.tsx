@@ -669,17 +669,34 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                             <Trash2 className="size-3.5" /> Löschen
                           </Button>
                           {selected &&
-                            fileFields.map((field) => (
-                              <Button
-                                key={field.name}
-                                size="sm"
-                                variant="outline"
-                                disabled={busy}
-                                onClick={() => void uploadFile(selected.id, record.id, field.name)}
-                              >
-                                <Upload className="size-3.5" /> {field.name}
-                              </Button>
-                            ))}
+                            fileFields.map((field) => {
+                              const current = record[field.name];
+                              const replaces =
+                                (field.maxSelect ?? 1) <= 1 &&
+                                typeof current === "string" &&
+                                current !== "";
+                              return (
+                                <Button
+                                  key={field.name}
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={busy}
+                                  onClick={() => {
+                                    if (
+                                      replaces &&
+                                      !window.confirm(
+                                        `Das Feld „${field.name}“ nimmt nur eine Datei auf. „${current}“ wird ersetzt und auf dem Server gelöscht. Fortfahren?`,
+                                      )
+                                    )
+                                      return;
+                                    void uploadFile(selected.id, record.id, field.name);
+                                  }}
+                                >
+                                  <Upload className="size-3.5" />{" "}
+                                  {replaces ? `${field.name} ersetzen` : field.name}
+                                </Button>
+                              );
+                            })}
                         </div>
                       </details>
                       {attachments.length > 0 && (

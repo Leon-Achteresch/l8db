@@ -187,6 +187,7 @@ fn decode_messages(bytes: &[u8], records: &mut Vec<u8>) -> Result<(usize, bool),
     Ok((pos, false))
 }
 
+#[cfg(test)]
 pub fn decode_event_stream(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let mut records = Vec::new();
     let (consumed, ended) = decode_messages(bytes, &mut records)?;

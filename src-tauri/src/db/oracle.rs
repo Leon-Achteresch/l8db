@@ -2080,13 +2080,37 @@ impl DatabaseAdapter for OracleAdapter {
         let (columns, cols, rows) = self
             .run_browse(move |c| {
                 let columns = table_columns(c, &schema, &table, false)?;
-                let order_sql = match order_by {
-                    Some(col) if columns.iter().any(|c| *c == col) => format!(
-                        " ORDER BY {} {}",
-                        quote(&col),
-                        if order_desc { "DESC" } else { "ASC" }
-                    ),
-                    _ => String::new(),
+                let keys: Vec<String> = if is_view {
+                    Vec::new()
+                } else {
+                    fetch(
+                        c,
+                        &format!(
+                            "SELECT cc.column_name FROM all_constraints k JOIN all_cons_columns cc \
+                             ON cc.owner = k.owner AND cc.constraint_name = k.constraint_name \
+                             WHERE k.owner = {} AND k.table_name = {} AND k.constraint_type = 'P' \
+                             ORDER BY cc.position",
+                            lit(&schema),
+                            lit(&table)
+                        ),
+                    )?
+                    .iter()
+                    .map(|row| s(row, 0))
+                    .collect()
+                };
+                let order = order_by
+                    .as_deref()
+                    .filter(|col| columns.iter().any(|c| c == col))
+                    .map(|col| (col, order_desc));
+                let mut terms =
+                    super::stable_order_terms(order, &keys, |col| format!("t.{}", quote(col)));
+                if keys.is_empty() && order.is_some() && !is_view {
+                    terms.push("t.ROWID".to_string());
+                }
+                let order_sql = if terms.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ORDER BY {}", terms.join(", "))
                 };
                 let legacy = legacy_paging(c);
                 let sql = page_sql(

@@ -17,7 +17,13 @@ import {
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import type { BaasProvider } from "./baas-providers";
 
-type Field = { key: string; label: string; secret?: boolean; optional?: boolean };
+type Field = {
+  key: string;
+  label: string;
+  secret?: boolean;
+  optional?: boolean;
+  numeric?: boolean;
+};
 type Guide = { steps: string[]; link: { label: string; url: string } };
 
 const SELF_HOSTED: Partial<Record<BaasProvider, { label: string; fields: Field[]; guide: Guide }>> =
@@ -76,7 +82,7 @@ const FIELDS: Record<BaasProvider, Field[]> = {
     { key: "token", label: "Superuser-Token", secret: true },
   ],
   convex: [
-    { key: "project", label: "Team-ID" },
+    { key: "project", label: "Team-ID (Zahl)", numeric: true },
     { key: "token", label: "Team Access Token", secret: true },
   ],
   firebase: [],
@@ -160,6 +166,15 @@ export function BaasConnectForm({
   const value = (key: string) => values[key]?.trim() ?? "";
 
   async function save() {
+    const teamId = value("project");
+    if (
+      provider === "convex" &&
+      !selfHosted &&
+      (!/^\d+$/.test(teamId) || !Number.isSafeInteger(Number(teamId)) || Number(teamId) <= 0)
+    ) {
+      setError("Bitte eine gültige numerische Team-ID eingeben.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -237,6 +252,7 @@ export function BaasConnectForm({
             <Input
               id={`baas-${field.key}`}
               type={field.secret ? "password" : "text"}
+              inputMode={field.numeric ? "numeric" : undefined}
               value={values[field.key] ?? ""}
               onChange={(event) =>
                 setValues((current) => ({ ...current, [field.key]: event.target.value }))

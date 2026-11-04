@@ -3,6 +3,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react"
 import { type ReactNode, type Ref, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import { appwriteHasMore, appwriteTotal } from "@/lib/appwrite-paging";
 import type { AppwritePage } from "@/lib/db";
 
 interface ResourceItem {
@@ -51,7 +52,9 @@ export function AppwriteResourceCard<T extends ResourceItem>({
         {icon}
         <h3 className="text-sm font-semibold">{title}</h3>
         {resources.data && (
-          <span className="ml-auto text-xs text-muted-foreground">{resources.data.total}</span>
+          <span className="ml-auto text-xs text-muted-foreground">
+            {appwriteTotal(resources.data)}
+          </span>
         )}
         <Button
           variant="ghost"
@@ -109,38 +112,37 @@ export function AppwriteResourceCard<T extends ResourceItem>({
           ))}
         </div>
       )}
-      {resources.data &&
-        (offset > 0 || offset + resources.data.items.length < resources.data.total) && (
-          <div className="mt-4 flex items-center justify-end gap-2 border-t pt-3">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={`${title}: vorherige Seite`}
-              disabled={offset === 0}
-              onClick={() => {
-                setOffset((value) => Math.max(0, value - 100));
-                setExpandedId(null);
-              }}
-            >
-              <ChevronLeft className="size-3.5" />
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              {offset + 1}–{offset + resources.data.items.length} / {resources.data.total}
-            </span>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              aria-label={`${title}: nächste Seite`}
-              disabled={offset + resources.data.items.length >= resources.data.total}
-              onClick={() => {
-                setOffset((value) => value + 100);
-                setExpandedId(null);
-              }}
-            >
-              <ChevronRight className="size-3.5" />
-            </Button>
-          </div>
-        )}
+      {resources.data && (offset > 0 || appwriteHasMore(offset, resources.data)) && (
+        <div className="mt-4 flex items-center justify-end gap-2 border-t pt-3">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label={`${title}: vorherige Seite`}
+            disabled={offset === 0}
+            onClick={() => {
+              setOffset((value) => Math.max(0, value - 100));
+              setExpandedId(null);
+            }}
+          >
+            <ChevronLeft className="size-3.5" />
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {offset + 1}–{offset + resources.data.items.length} / {appwriteTotal(resources.data)}
+          </span>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label={`${title}: nächste Seite`}
+            disabled={!appwriteHasMore(offset, resources.data)}
+            onClick={() => {
+              setOffset((value) => value + 100);
+              setExpandedId(null);
+            }}
+          >
+            <ChevronRight className="size-3.5" />
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

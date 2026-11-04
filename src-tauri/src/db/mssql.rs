@@ -155,6 +155,7 @@ fn select_expression(name: &str, data_type: &str) -> String {
         "hierarchyid" => format!("{column}.ToString() AS {column}"),
         "sql_variant" => format!("CAST({column} AS NVARCHAR(4000)) AS {column}"),
         "json" | "vector" => format!("CAST({column} AS NVARCHAR(MAX)) AS {column}"),
+        "money" | "smallmoney" => format!("CAST({column} AS DECIMAL(19,4)) AS {column}"),
         _ if BUILTIN_TYPES.contains(&data_type.as_str()) => column,
         _ => format!("{column}.ToString() AS {column}"),
     }
@@ -191,7 +192,9 @@ fn value_to_json(data: &ColumnData<'static>) -> serde_json::Value {
         ColumnData::I64(v) => v
             .map(super::exact_number::int)
             .unwrap_or(serde_json::Value::Null),
-        ColumnData::F32(v) => v.map(|f| num(f as f64)).unwrap_or(serde_json::Value::Null),
+        ColumnData::F32(v) => v
+            .map(|f| num(f.to_string().parse().unwrap_or(f64::from(f))))
+            .unwrap_or(serde_json::Value::Null),
         ColumnData::F64(v) => v.map(num).unwrap_or(serde_json::Value::Null),
         ColumnData::Bit(v) => v
             .map(serde_json::Value::Bool)
@@ -505,7 +508,7 @@ pub fn parse_mssql_url(value: &str) -> Result<MssqlUrl, String> {
     let mut application_name = None;
     let mut instance = None;
     for (key, value) in url.query_pairs() {
-        match key.as_ref() {
+        match key.to_ascii_lowercase().as_str() {
             "sslmode" => {
                 ssl = serde_json::from_value(serde_json::Value::String(value.into_owned()))
                     .map_err(|_| "Ungültiger SSL-Modus".to_string())?
@@ -1246,13 +1249,14 @@ impl DatabaseAdapter for MssqlAdapter {
                 .join(", ")
         };
         let columns: Vec<String> = detailed.into_iter().map(|c| c.name).collect();
-        let order_sql = match order_by {
-            Some(col) if columns.iter().any(|c| c == col) => format!(
-                " ORDER BY {} {}",
-                quote(col),
-                if order_desc { "DESC" } else { "ASC" }
-            ),
-            _ => " ORDER BY (SELECT NULL)".to_string(),
+        let order = order_by
+            .filter(|col| columns.iter().any(|c| c == col))
+            .map(|col| (col, order_desc));
+        let terms = super::stable_order_terms(order, &pk, quote);
+        let order_sql = if terms.is_empty() {
+            " ORDER BY (SELECT NULL)".to_string()
+        } else {
+            format!(" ORDER BY {}", terms.join(", "))
         };
         let sql = format!(
             "SELECT {} FROM {}{}{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
@@ -2065,6 +2069,19 @@ mod tests {
             "CAST([v] AS NVARCHAR(4000)) AS [v]"
         );
         assert_eq!(select_expression("p", "Point"), "[p].ToString() AS [p]");
+        let parsed =
+            parse_mssql_url("mssql://sa:pw@h/db?trustServerCertificate=true&Encrypt=false")
+                .unwrap();
+        assert!(parsed.trust);
+        assert_eq!(parsed.ssl, SslMode::Disable);
+        assert_eq!(
+            select_expression("m", "money"),
+            "CAST([m] AS DECIMAL(19,4)) AS [m]"
+        );
+        assert_eq!(
+            value_to_json(&ColumnData::F32(Some(1.1))),
+            serde_json::json!(1.1)
+        );
         assert_eq!(select_expression("a]b", "nvarchar"), "[a]]b]");
     }
 

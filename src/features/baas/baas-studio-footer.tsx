@@ -1,15 +1,18 @@
-import { RefreshCw, Unplug } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BaasDisconnectButton } from "./baas-disconnect-button";
 
 export function BaasStudioFooter({
   onRefresh,
   refreshing,
   onDisconnect,
+  disconnectDescription,
   busy,
 }: {
   onRefresh: () => void;
   refreshing?: boolean;
   onDisconnect: () => void;
+  disconnectDescription: string;
   busy?: boolean;
 }) {
   return (
@@ -18,10 +21,11 @@ export function BaasStudioFooter({
         <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
         Aktualisieren
       </Button>
-      <Button variant="ghost" size="sm" onClick={onDisconnect} disabled={busy}>
-        <Unplug className="size-3.5" />
-        Trennen
-      </Button>
+      <BaasDisconnectButton
+        description={disconnectDescription}
+        busy={busy}
+        onConfirm={onDisconnect}
+      />
     </div>
   );
 }

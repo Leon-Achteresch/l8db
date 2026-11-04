@@ -113,7 +113,16 @@ export function rowKey(row: StudioRow, keyColumns: string[]): StudioRow {
   return Object.fromEntries(keyColumns.map((column) => [column, row[column]]));
 }
 
-const recentKey = (reference: string) => `l8db.supabase-studio.tables.recent.${reference}`;
+const RECENT_PREFIX = "l8db.supabase-studio.tables.recent.";
+const recentKey = (reference: string) => `${RECENT_PREFIX}${reference}`;
+
+export function forgetRecentTables(match: (reference: string) => boolean) {
+  const keys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index));
+  for (const key of keys) {
+    if (key?.startsWith(RECENT_PREFIX) && match(key.slice(RECENT_PREFIX.length)))
+      localStorage.removeItem(key);
+  }
+}
 
 export function loadRecentTables(reference: string): StudioTableRef[] {
   try {

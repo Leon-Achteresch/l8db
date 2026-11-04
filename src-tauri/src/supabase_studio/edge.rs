@@ -401,7 +401,7 @@ fn publication_actions_sql(insert: bool, update: bool, delete: bool, truncate: b
     format!("alter publication supabase_realtime set (publish = '{actions}')")
 }
 
-async fn read_bounded(
+pub(super) async fn read_bounded(
     response: &mut reqwest::Response,
     limit: usize,
 ) -> Result<(Vec<u8>, usize, bool), String> {
@@ -436,7 +436,7 @@ async fn fetch_source(reference: &str, slug: &str) -> Result<(String, Vec<u8>), 
         .header(reqwest::header::ACCEPT, "multipart/form-data")
         .send()
         .await
-        .map_err(|error| format!("Supabase ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Supabase", &error))?;
     let mut response = checked(response, "Quellcode konnte nicht geladen werden.").await?;
     let content_type = response
         .headers()
@@ -527,6 +527,16 @@ pub async fn supabase_studio_edge_function_source(
     Ok(parse_source(&content_type, &body))
 }
 
+fn free_target(folder: &std::path::Path, slug: &str) -> std::path::PathBuf {
+    let mut target = folder.join(slug);
+    let mut n = 2;
+    while target.exists() {
+        target = folder.join(format!("{slug}-{n}"));
+        n += 1;
+    }
+    target
+}
+
 #[tauri::command]
 pub async fn supabase_studio_edge_function_download(
     app: tauri::AppHandle,
@@ -537,7 +547,10 @@ pub async fn supabase_studio_edge_function_download(
     let Some(folder) = pick_folder(&app).await? else {
         return Ok(None);
     };
-    let target = folder.join(&slug);
+    if slug.is_empty() || slug.contains(['/', '\\']) || slug.starts_with('.') {
+        return Err("Ungültiger Funktionsname.".to_string());
+    }
+    let target = free_target(&folder, &slug);
     let files = source_parts(&content_type, &body)
         .unwrap_or_else(|| vec![(format!("{slug}.eszip"), body.as_slice())]);
     for (relative, data) in files {
@@ -547,7 +560,13 @@ pub async fn supabase_studio_edge_function_download(
                 .await
                 .map_err(|_| "Zielordner konnte nicht erstellt werden.".to_string())?;
         }
-        tokio::fs::write(&path, data)
+        let mut file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .await
+            .map_err(|_| format!("Datei {} konnte nicht angelegt werden.", path.display()))?;
+        tokio::io::AsyncWriteExt::write_all(&mut file, data)
             .await
             .map_err(|_| "Datei konnte nicht geschrieben werden.".to_string())?;
     }
@@ -622,7 +641,7 @@ pub async fn supabase_studio_edge_function_deploy(
         .multipart(form)
         .send()
         .await
-        .map_err(|error| format!("Supabase ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Supabase", &error))?;
     let response = checked(response, "Deployment fehlgeschlagen.").await?;
     response
         .json()
@@ -792,7 +811,7 @@ pub async fn supabase_studio_edge_invoke(
     let mut response = request
         .send()
         .await
-        .map_err(|error| format!("Edge Function ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Edge Function", &error))?;
     let status = response.status().as_u16();
     let headers = response
         .headers()
@@ -1083,7 +1102,7 @@ pub async fn supabase_studio_edge_realtime_broadcast(
     .json(&json!({"messages": [{"topic": channel, "event": event, "payload": payload, "private": private}]}))
     .send()
     .await
-    .map_err(|error| format!("Supabase Realtime ist nicht erreichbar: {error}"))?;
+    .map_err(|error| crate::supabase::network_error("Supabase Realtime", &error))?;
     checked(response, "Broadcast fehlgeschlagen.")
         .await
         .map(|_| ())
@@ -1160,6 +1179,15 @@ pub async fn supabase_studio_edge_publication_actions(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edge_download_never_reuses_existing_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(free_target(dir.path(), "hello"), dir.path().join("hello"));
+        std::fs::create_dir(dir.path().join("hello")).unwrap();
+        std::fs::create_dir(dir.path().join("hello-2")).unwrap();
+        assert_eq!(free_target(dir.path(), "hello"), dir.path().join("hello-3"));
+    }
 
     #[test]
     fn validates_slugs_and_secret_names() {

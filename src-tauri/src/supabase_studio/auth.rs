@@ -382,7 +382,7 @@ async fn auth_request(
     let response = request
         .send()
         .await
-        .map_err(|error| format!("Supabase Auth ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Supabase Auth", &error))?;
     let headers = response.headers().clone();
     Ok((auth_response(response).await?, headers))
 }
@@ -733,7 +733,7 @@ pub async fn supabase_studio_auth_update_config(
         .json(&patch)
         .send()
         .await
-        .map_err(|error| format!("Supabase ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Supabase", &error))?;
     auth_response(response).await
 }
 
