@@ -900,3 +900,29 @@ test.skipIf(!enabled)(
   },
   300_000,
 );
+
+test.skipIf(!enabled)(
+  "Oracle → Oracle between two users that only own their schema maps the target automatically",
+  async () => {
+    await script("system", CLEAR_TARGET);
+    await withPage("transfer-own-schema", async (page) => {
+      await openTransfer(page);
+      const mapping = page.getByLabel("Zielschema für TR_SRC");
+      await mapping.fill("");
+      expect(await mapping.getAttribute("placeholder")).toBe("TR_DST");
+      await pickContent(page, "Nur Struktur");
+      await page.getByText(/\d+ Tabellen bereit, nur Struktur/).waitFor({ timeout: 120_000 });
+      await page.getByRole("textbox", { name: "Schemas filtern" }).fill("");
+      await page.screenshot({ path: `${shots}/abnahme-7-eigenes-schema.png` });
+      await finish(page, /Struktur von \d+ Tabellen angelegt/);
+      await page.screenshot({ path: `${shots}/abnahme-8-eigenes-schema-fertig.png` });
+    });
+    const copied = await sql(
+      "system",
+      "SELECT table_name AS t FROM dba_tables WHERE owner = 'TR_DST' ORDER BY 1",
+    );
+    expect(copied.map((row) => row.T)).toContain("AUFTRAG");
+    expect(copied.map((row) => row.T)).toContain("KUNDE");
+  },
+  600_000,
+);
