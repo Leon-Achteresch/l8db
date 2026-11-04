@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Cloud, ExternalLink, RefreshCw, Unplug } from "lucide-react";
+import { Cloud, ExternalLink, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -8,14 +8,14 @@ import { Input } from "@/components/ui/input";
 import {
   supabaseConnect,
   supabaseConnectSelfHosted,
-  supabaseDisconnect,
-  supabaseDisconnectSelfHosted,
   supabaseIsConnected,
   supabaseProjects,
 } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasDisconnectButton } from "./baas-disconnect-button";
 import { BaasStudioFooter } from "./baas-studio-footer";
 import { BaasStudioHeader } from "./baas-studio-header";
+import { disconnectDescription, disconnectSupabase } from "./disconnect-baas";
 import { SupabaseStudio } from "./supabase-studio/supabase-studio";
 
 export function SupabaseView({ initialId }: { initialId?: string }) {
@@ -26,6 +26,10 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
     queryFn: supabaseProjects,
     enabled: connected.data === true,
   });
+  const projectList = projects.data?.projects;
+  const cloudError = projects.data?.cloud_error
+    ? `Supabase Cloud: ${projects.data.cloud_error}`
+    : null;
   const [token, setToken] = useState("");
   const [selfHosted, setSelfHosted] = useState(false);
   const [apiUrl, setApiUrl] = useState("");
@@ -36,7 +40,7 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
   const [error, setError] = useState<string | null>(null);
   const feature = useNewFeatureVisibility<HTMLDivElement>("baas.supabase");
   const selected =
-    projects.data?.find((project) => project.reference === selectedRef) ?? projects.data?.[0];
+    projectList?.find((project) => project.reference === selectedRef) ?? projectList?.[0];
 
   async function connect() {
     setBusy(true);
@@ -68,8 +72,7 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
     setBusy(true);
     setError(null);
     try {
-      if (selected?.self_hosted) await supabaseDisconnectSelfHosted(selected.reference);
-      else await supabaseDisconnect();
+      await disconnectSupabase(selected?.reference ?? "", Boolean(selected?.self_hosted));
       queryClient.removeQueries({ queryKey: ["supabase", "projects"] });
       await queryClient.invalidateQueries({ queryKey: ["supabase", "connected"] });
       setSelectedRef(null);
@@ -80,7 +83,7 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
     }
   }
 
-  if (connected.data && projects.data && selected)
+  if (connected.data && projectList && selected)
     return (
       <SupabaseStudio
         key={selected.reference}
@@ -89,10 +92,10 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
           <BaasStudioHeader
             provider="supabase"
             label="Supabase-Projekt"
-            items={projects.data.map((project) => ({ id: project.reference, label: project.name }))}
+            items={projectList.map((project) => ({ id: project.reference, label: project.name }))}
             value={selected.reference}
             onSelect={setSelectedRef}
-            error={error ?? (projects.isError ? String(projects.error) : null)}
+            error={error ?? (projects.isError ? String(projects.error) : cloudError)}
           />
         }
         footer={
@@ -100,6 +103,10 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
             onRefresh={() => void projects.refetch()}
             refreshing={projects.isFetching}
             onDisconnect={() => void disconnect()}
+            disconnectDescription={disconnectDescription(
+              selected?.name ?? "Supabase",
+              !selected?.self_hosted,
+            )}
             busy={busy}
           />
         }
@@ -229,7 +236,7 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
         <>
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2" role="tablist" aria-label="Supabase-Projekte">
-              {projects.data?.map((project) => (
+              {projectList?.map((project) => (
                 <button
                   key={project.reference}
                   type="button"
@@ -252,10 +259,14 @@ export function SupabaseView({ initialId }: { initialId?: string }) {
                 <RefreshCw className={`size-3.5 ${projects.isFetching ? "animate-spin" : ""}`} />
                 Aktualisieren
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => void disconnect()} disabled={busy}>
-                <Unplug className="size-3.5" />
-                Trennen
-              </Button>
+              <BaasDisconnectButton
+                description={disconnectDescription(
+                  selected?.name ?? "Supabase",
+                  !selected?.self_hosted,
+                )}
+                busy={busy}
+                onConfirm={() => void disconnect()}
+              />
             </div>
           </div>
           {error && (

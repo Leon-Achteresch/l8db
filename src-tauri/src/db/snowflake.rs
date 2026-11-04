@@ -1277,12 +1277,12 @@ mod tests {
                 ),
                 "SHOW TABLES LIKE 'ORDERS' IN SCHEMA \"SALES\".\"PUBLIC\"" => show(&["name", "rows"], json!([["ORDERS", "77"]])),
                 "SHOW ROLES" => show(&["name"], json!([["SYSADMIN"], ["ANALYST"]])),
-                "SELECT * FROM \"SALES\".\"PUBLIC\".\"ORDERS\" WHERE ID > 1 ORDER BY \"ID\" DESC LIMIT 5 OFFSET 10" => json!({
+                "SELECT * FROM \"SALES\".\"PUBLIC\".\"ORDERS\" WHERE (ID > 1) ORDER BY \"ID\" DESC LIMIT 5 OFFSET 10" => json!({
                     "statementHandle": "s",
                     "resultSetMetaData": {"rowType": [col("ID", "fixed", 0)]},
                     "data": [["2"]]
                 }).to_string().into(),
-                "SELECT COUNT(*) FROM \"SALES\".\"PUBLIC\".\"ORDERS\" WHERE ID > 1" => json!({
+                "SELECT COUNT(*) FROM \"SALES\".\"PUBLIC\".\"ORDERS\" WHERE (ID > 1)" => json!({
                     "statementHandle": "s",
                     "resultSetMetaData": {"rowType": [col("COUNT(*)", "fixed", 0)]},
                     "data": [["12"]]

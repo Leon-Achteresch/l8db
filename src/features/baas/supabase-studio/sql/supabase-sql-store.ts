@@ -89,6 +89,14 @@ export const useSupabaseSqlStore = create<SupabaseSqlStore>()(
 
 syncAcrossWindows(STORAGE_KEY, () => void useSupabaseSqlStore.persist.rehydrate());
 
+export function forgetSupabaseSqlProjects(match: (reference: string) => boolean) {
+  useSupabaseSqlStore.setState((state) => ({
+    projects: Object.fromEntries(
+      Object.entries(state.projects).filter(([reference]) => !match(reference)),
+    ),
+  }));
+}
+
 export function addSupabaseSqlTab(project: SupabaseSqlProjectState, sql = "") {
   const tab = newTab(project.tabs.length + 1, sql);
   return { tabs: [...project.tabs, tab], activeTab: tab.id };

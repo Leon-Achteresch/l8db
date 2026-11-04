@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::config::{self, McpConfig};
 use super::server::{arg_str, find_connection, with_database, Server};
-use crate::db::validate_table_filter;
+use crate::db::{validate_table_filter_in, DatabaseKind};
 
 const MAX_AGE_MS: u128 = 60_000;
 
@@ -117,7 +117,7 @@ impl Server {
                 .get(..6)
                 .filter(|head| head.eq_ignore_ascii_case("where "))
                 .map_or(filter, |_| filter[6..].trim());
-            validate_table_filter(filter)?;
+            validate_table_filter_in(filter, connection.kind != DatabaseKind::Postgres)?;
             request["filter"] = json!(filter);
             done += &if filter.is_empty() {
                 ", Filter entfernt".to_string()

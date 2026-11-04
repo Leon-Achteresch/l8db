@@ -240,6 +240,10 @@ pub enum Local {
         key: String,
         policy: DatabasePolicy,
     },
+    ScheduleSkipped {
+        key: String,
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -812,6 +816,9 @@ async fn from_head(
     let exported = pg::export_snapshot(&ctx.connection_string, plan.source).await?;
     let columns = pg::columns(&exported.client).await?;
     let mut masker = masker(plan, vault, &columns)?;
+    if masker.is_some() {
+        pg::check_fixed(&exported.client, plan.rules, &columns).await?;
+    }
     let meta = pg::meta(client, plan.source, server.info.version_num).await?;
     check_cancel()?;
     job.phase("Datenbank anlegen");
@@ -2122,9 +2129,10 @@ async fn apply_update(ctx: &Context, server: &Server, request: &Update) -> Resul
         }
         Update::TeamMasking { database, rules } => {
             let info = pg::database(client, database).await?;
-            let columns =
-                pg::columns(&pg::connect(&ctx.connection_string, database).await?).await?;
+            let source = pg::connect(&ctx.connection_string, database).await?;
+            let columns = pg::columns(&source).await?;
             mask::validate(rules, &columns)?;
+            pg::check_fixed(&source, rules, &columns).await?;
             let mut marker = info.marker.clone().unwrap_or_default();
             let before = fingerprint(&marker.masking);
             marker.masking = rules.clone();
@@ -2191,6 +2199,10 @@ async fn apply_update(ctx: &Context, server: &Server, request: &Update) -> Resul
 
 pub async fn local(root: &Path, request: Local) -> Result<(), String> {
     let vault = Vault::open(root).await?;
+    if let Local::ScheduleSkipped { key, reason } = &request {
+        mark_schedule(&vault, key, Some(clip(reason, 300))).await;
+        return Ok(());
+    }
     audit::ensure_intact(&vault).await?;
     let (action, database, target, detail) = {
         let _guard = vault::LOCK.lock().await;
@@ -2266,6 +2278,7 @@ pub async fn local(root: &Path, request: Local) -> Result<(), String> {
                     json!({ "masking": policy.masking.len(), "fingerprint": fingerprint(&policy.masking) }),
                 )
             }
+            Local::ScheduleSkipped { .. } => unreachable!(),
         }
     };
     audit::append(
@@ -2284,6 +2297,15 @@ pub async fn local(root: &Path, request: Local) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn schedule_skip_request_deserializes() {
+        let request: Local = serde_json::from_value(
+            json!({"action":"schedule_skipped","key":"pg:1/app","reason":"Passwort nötig"}),
+        )
+        .unwrap();
+        assert!(matches!(request, Local::ScheduleSkipped { key, .. } if key == "pg:1/app"));
+    }
 
     #[test]
     fn restrict_versions() {
