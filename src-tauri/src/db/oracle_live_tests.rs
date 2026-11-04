@@ -36,6 +36,53 @@ fn percentile(samples: &mut [f64], p: f64) -> f64 {
 
 #[tokio::test]
 #[ignore]
+async fn live_script_statements_run_past_the_query_timeout() {
+    let Some(db) = adapter("live-no-limit") else {
+        return;
+    };
+    let sleep = "BEGIN DBMS_SESSION.SLEEP(7); END;";
+    let limited = execution::run_query(options(None, 5), true, db.execute_query(sleep)).await;
+    assert!(
+        limited.as_ref().unwrap_err().contains("Timeout"),
+        "{limited:?}"
+    );
+    db.execute_query("SELECT 1 FROM dual").await.unwrap();
+    let started = Instant::now();
+    let unbounded = options(None, 5).map(|o| execution::ExecutionOptions {
+        no_time_limit: true,
+        ..o
+    });
+    let unlimited = execution::run_query(unbounded, true, db.execute_query(sleep)).await;
+    assert!(unlimited.is_ok(), "{unlimited:?}");
+    assert!(started.elapsed() >= Duration::from_secs(7));
+    let job = "live-no-limit-cancel";
+    let canceller = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        execution::cancel(job)
+    });
+    let started = Instant::now();
+    let endless = options(Some(job), 120).map(|o| execution::ExecutionOptions {
+        no_time_limit: true,
+        ..o
+    });
+    let cancelled = execution::run_query(
+        endless,
+        true,
+        db.execute_query("SELECT COUNT(*) AS c FROM all_objects a, all_objects b, all_objects c"),
+    )
+    .await;
+    assert_eq!(canceller.await.unwrap(), Ok(true));
+    assert_eq!(cancelled.unwrap_err(), "Abfrage vom Benutzer abgebrochen.");
+    let stopped = started.elapsed();
+    eprintln!(
+        "performance oracle-unlimited-cancel: stopped_after_ms={}",
+        stopped.as_millis()
+    );
+    assert!(stopped < Duration::from_secs(10), "{stopped:?}");
+}
+
+#[tokio::test]
+#[ignore]
 async fn live_user_cancel_stops_the_running_statement() {
     let Some(db) = adapter("live-cancel") else {
         return;

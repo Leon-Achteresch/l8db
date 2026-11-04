@@ -122,7 +122,7 @@ export function ScriptRunDialog({
           </label>
           <p>
             {sqlplus
-              ? "Gilt, bis das Skript WHENEVER SQLERROR oder WHENEVER OSERROR setzt; danach entscheidet das Skript wie in SQL*Plus."
+              ? "Gilt, bis das Skript WHENEVER SQLERROR oder WHENEVER OSERROR setzt; danach entscheidet das Skript wie in SQL*Plus. Statements laufen wie in SQL*Plus ohne Zeitlimit, Abbrechen über Stopp."
               : "In einer Transaktion stoppt der Ablauf beim ersten Fehler. Bei Autocommit können Sie das Fortsetzen ausdrücklich wählen."}
           </p>
           {unterminated && (
