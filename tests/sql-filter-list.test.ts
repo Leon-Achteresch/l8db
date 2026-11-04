@@ -10,7 +10,7 @@ const list = JSON.stringify;
 
 test("IN and NOT IN quote each list entry and preserve punctuation", () => {
   expect(compileSingleCondition('na"me', "in", list(["O'Brien", "a,b", "x); --"]))).toBe(
-    `("na""me"::text ILIKE 'O''Brien' ESCAPE '!' OR "na""me"::text ILIKE 'a,b' ESCAPE '!' OR "na""me"::text ILIKE 'x); --' ESCAPE '!')`,
+    `"na""me" IN ('O''Brien', 'a,b', 'x); --')`,
   );
   expect(compileSingleCondition("id", "notIn", list(["1", "-2.5", "true"]))).toBe(
     '"id" NOT IN (1, -2.5, true)',
@@ -19,9 +19,7 @@ test("IN and NOT IN quote each list entry and preserve punctuation", () => {
     `"id" IN ('42', '7')`,
   );
   expect(compileSingleCondition("id", "notIn", list(["42"]), "mssql")).toBe("[id] NOT IN (N'42')");
-  expect(compileSingleCondition("name", "in", list(["a,b"]), "mysql")).toBe(
-    "CAST(`name` AS CHAR) LIKE 'a,b' ESCAPE '!'",
-  );
+  expect(compileSingleCondition("name", "in", list(["a,b"]), "mysql")).toBe("`name` IN ('a,b')");
 });
 
 test("empty lists never generate invalid SQL", () => {
@@ -73,12 +71,10 @@ test("generated lists select and exclude the expected rows in SQLite", () => {
 test("list values respect column types, NULL text and Unicode", () => {
   expect(
     compileSingleCondition("code", "in", list(["001", "true", "null"]), "postgres", "text"),
-  ).toBe(
-    `("code"::text ILIKE '001' ESCAPE '!' OR "code"::text ILIKE 'true' ESCAPE '!' OR "code"::text ILIKE 'null' ESCAPE '!')`,
-  );
+  ).toBe(`"code" IN ('001', 'true', 'null')`);
   expect(compileSingleCondition("enabled", "eq", "true", "mssql", "bit")).toBe("[enabled] = 1");
   expect(compileSingleCondition("name", "eq", "東京", "mssql", "nvarchar")).toBe(
-    "CAST([name] AS NVARCHAR(MAX)) LIKE N'東京' ESCAPE '!'",
+    "[name] = N'東京'",
   );
   expect(
     compileSingleCondition("id", "in", list(["1", "2"]), "clickhouse", "Nullable(UInt64)"),
