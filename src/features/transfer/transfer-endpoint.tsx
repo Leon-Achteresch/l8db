@@ -1,5 +1,5 @@
 import { DatabaseIcon } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { ProviderLogo } from "@/components/provider-logo";
 import {
   Select,
@@ -25,13 +25,16 @@ export function TransferEndpoint({
   onChange,
   onSchemas,
   badge,
+  focus = false,
 }: {
   title: string;
   badge?: ReactNode;
   value: TransferSide;
   onChange: (value: TransferSide) => void;
-  onSchemas: (schemas: string[]) => void;
+  onSchemas: (schemas: string[] | null) => void;
+  focus?: boolean;
 }) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const connections = useConnectionsStore((state) => state.connections);
   const usable = connections.filter((item) => capabilitiesFor(item.kind).table_copy);
   const connection = usable.find((item) => item.id === value.connectionId) ?? null;
@@ -44,12 +47,17 @@ export function TransferEndpoint({
   const environment = useConnectionEnvironment(connection);
 
   useEffect(() => {
-    onSchemas([]);
+    if (focus) triggerRef.current?.focus();
+  }, [focus]);
+
+  useEffect(() => {
     setError(null);
     if (!connectionId) {
+      onSchemas([]);
       setDatabases([]);
       return;
     }
+    onSchemas(null);
     let active = true;
     setLoading(true);
     prepareConnection(connectionId)
@@ -64,7 +72,9 @@ export function TransferEndpoint({
         onSchemas(visibleSchemas(ready, schemas));
       })
       .catch((cause) => {
-        if (active) setError(cause instanceof Error ? cause.message : String(cause));
+        if (!active) return;
+        onSchemas([]);
+        setError(cause instanceof Error ? cause.message : String(cause));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -100,6 +110,7 @@ export function TransferEndpoint({
         </span>
         <Select value={value.connectionId ?? ""} onValueChange={pickConnection}>
           <SelectTrigger
+            ref={triggerRef}
             className="h-8 min-w-0 flex-1 border-transparent bg-transparent px-1.5 text-sm font-semibold shadow-none hover:bg-muted dark:bg-transparent dark:hover:bg-muted/60"
             aria-label={`${title}: Verbindung`}
           >
@@ -127,7 +138,12 @@ export function TransferEndpoint({
           </span>
         )}
         {badge}
-        {loading && <Spinner className="size-3 shrink-0 text-muted-foreground" />}
+        {loading && (
+          <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <Spinner className="size-3.5" />
+            Verbinde…
+          </span>
+        )}
       </div>
       <div className="flex min-w-0 items-center gap-2 pl-15">
         {connection ? (
