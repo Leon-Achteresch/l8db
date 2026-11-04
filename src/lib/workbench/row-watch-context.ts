@@ -4,9 +4,20 @@ import type { RowWatch, WatchedRowState } from "./row-watches";
 
 export const RowWatchContext = createContext<{
   scope: string;
+  open: boolean;
+  setOpen: (open: boolean) => void;
   records: WorkbenchRecord<RowWatch>[];
   states: WatchedRowState[];
   changedRows: Set<Record<string, unknown> | null>;
   loading: boolean;
   error: string | null;
-}>({ scope: "", records: [], states: [], changedRows: new Set(), loading: false, error: null });
+}>({
+  open: false,
+  setOpen: () => {},
+  scope: "",
+  records: [],
+  states: [],
+  changedRows: new Set(),
+  loading: false,
+  error: null,
+});

@@ -32,7 +32,7 @@ import {
   supportsDdlRollback,
 } from "@/lib/schema-compare/run";
 import type { SyncStatement } from "@/lib/schema-compare/script";
-import { runSchemaCompare } from "@/lib/schema-compare/store";
+import { runSchemaCompare, useSchemaCompareInstance } from "@/lib/schema-compare/store";
 import type { CompareResult } from "@/lib/schema-compare/types";
 import { cn } from "@/lib/utils";
 
@@ -97,6 +97,7 @@ export function SchemaCompareRunDialog({
   statements,
 }: SchemaCompareRunDialogProps) {
   const target = result.target;
+  const store = useSchemaCompareInstance();
   const [steps, setSteps] = useState<RunStep[]>([]);
   const [running, setRunning] = useState<"dry" | "real" | null>(null);
   const [summary, setSummary] = useState<RunSummary | null>(null);
@@ -190,7 +191,7 @@ export function SchemaCompareRunDialog({
   const close = (next: boolean) => {
     if (running) return;
     if (!next) {
-      if (executed) void runSchemaCompare();
+      if (executed) void runSchemaCompare(undefined, store);
       reset();
     }
     onOpenChange(next);

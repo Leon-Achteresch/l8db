@@ -46,7 +46,7 @@ fn keeps_scale(text: &str) -> bool {
 }
 
 pub(crate) fn decimal(text: &str) -> Value {
-    if is_exact_in_js(text) && !keeps_scale(text) {
+    if is_exact_in_js(text) && !text.contains('.') {
         if let Ok(integer) = text.parse::<i64>() {
             return Value::from(integer);
         }
@@ -300,9 +300,9 @@ mod tests {
         assert!(!is_exact_in_js("abc"));
         assert_eq!(decimal("123.450"), json!("123.450"));
         assert_eq!(decimal("1.5000"), json!("1.5000"));
-        assert_eq!(decimal("123.45"), json!(123.45));
-        assert_eq!(decimal("-0.5"), json!(-0.5));
-        assert_eq!(decimal(".5"), json!(0.5));
+        assert_eq!(decimal("123.45"), json!("123.45"));
+        assert_eq!(decimal("-0.5"), json!("-0.5"));
+        assert_eq!(decimal(".5"), json!(".5"));
         assert_eq!(decimal("+7"), json!(7));
     }
 

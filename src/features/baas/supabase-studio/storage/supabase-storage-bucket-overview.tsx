@@ -26,7 +26,7 @@ export function SupabaseStorageBucketOverview({
   if (buckets.isPending) return <p className="text-xs text-muted-foreground">Wird geladen…</p>;
   if (buckets.data.buckets.length === 0)
     return (
-      <p className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground">
+      <p className="rounded-xl p-6 text-center text-xs text-muted-foreground bg-muted/30">
         Noch keine Buckets. Lege links einen an.
       </p>
     );

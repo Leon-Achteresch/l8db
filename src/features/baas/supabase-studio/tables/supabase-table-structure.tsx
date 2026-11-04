@@ -45,7 +45,7 @@ export function SupabaseTableStructure({
           </Button>
         )}
       </div>
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-x-auto rounded-lg">
         <table className="min-w-full text-left text-xs">
           <caption className="sr-only">Spalten von {info.name}</caption>
           <thead className="bg-muted/50">
@@ -125,7 +125,7 @@ export function SupabaseTableStructure({
           ) : (
             <ul className="grid gap-1 text-xs">
               {info.foreign_keys.map((key) => (
-                <li key={key.name} className="rounded-lg border px-3 py-2">
+                <li key={key.name} className="rounded-lg px-3 py-2 bg-muted/30">
                   <span className="font-mono font-medium">{key.name}</span>
                   <span className="text-muted-foreground">
                     {" "}
@@ -144,7 +144,7 @@ export function SupabaseTableStructure({
           ) : (
             <ul className="grid gap-1 text-xs">
               {info.indexes.map((index) => (
-                <li key={index.name} className="rounded-lg border px-3 py-2">
+                <li key={index.name} className="rounded-lg px-3 py-2 bg-muted/30">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono font-medium">{index.name}</span>
                     {index.is_primary && <Badge variant="outline">PK</Badge>}

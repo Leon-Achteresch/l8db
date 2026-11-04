@@ -54,7 +54,7 @@ export function LogsUsageTab({ reference, refetchInterval }: LogsTabProps) {
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {COLUMNS.map(([key, label]) => (
-                <div key={key} className="rounded-xl border p-3">
+                <div key={key} className="rounded-xl p-3 bg-muted/30">
                   <div className="text-xs text-muted-foreground">{label}-Anfragen</div>
                   <div className="text-lg font-semibold tabular-nums">
                     {formatNumber(data.rows.reduce((sum, row) => sum + (row[key] ?? 0), 0))}

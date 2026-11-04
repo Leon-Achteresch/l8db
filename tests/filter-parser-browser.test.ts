@@ -36,9 +36,7 @@ for (const engine of [chromium, webkit]) {
         expect(await page.getByPlaceholder("Wert", { exact: true }).inputValue()).toBe("ANG");
         expect(await page.getByLabel("Apply count").textContent()).toBe("0");
         await apply.click();
-        expect(await page.getByLabel("Applied filter").textContent()).toBe(
-          `"name"::text ILIKE 'ANG' ESCAPE '!'`,
-        );
+        expect(await page.getByLabel("Applied filter").textContent()).toBe(`"name" = 'ANG'`);
         expect(await page.getByLabel("Raw SQL").textContent()).toBe("false");
         await page.getByRole("tab", { name: "SQL", exact: true }).click();
         await replaceEditorText("id = 1 OR id = 2 AND id = 3");
@@ -54,7 +52,7 @@ for (const engine of [chromium, webkit]) {
         await page.getByRole("button", { name: "Wert entfernen: O'Brien", exact: true }).waitFor();
         await apply.click();
         expect(await page.getByLabel("Applied filter").textContent()).toBe(
-          `("name"::text ILIKE 'O''Brien' ESCAPE '!' OR "name"::text ILIKE 'a,b' ESCAPE '!') AND "id" >= 2`,
+          `"name" IN ('O''Brien', 'a,b') AND "id" >= 2`,
         );
         await page.getByRole("tab", { name: "SQL", exact: true }).click();
         await editor.click();
@@ -63,9 +61,7 @@ for (const engine of [chromium, webkit]) {
         await page.getByRole("tab", { name: "Einfach", exact: true }).click();
         expect(await page.getByPlaceholder("Wert", { exact: true }).inputValue()).toBe("Berlin");
         await apply.click();
-        expect(await page.getByLabel("Applied filter").textContent()).toBe(
-          `"name"::text ILIKE 'Berlin' ESCAPE '!'`,
-        );
+        expect(await page.getByLabel("Applied filter").textContent()).toBe(`"name" = 'Berlin'`);
         await page.getByRole("tab", { name: "SQL", exact: true }).click();
         await editor.click();
         await page.keyboard.press("ControlOrMeta+a");
@@ -77,9 +73,7 @@ for (const engine of [chromium, webkit]) {
         expect(
           await page.getByRole("tab", { name: "SQL", exact: true }).getAttribute("aria-selected"),
         ).toBe("true");
-        expect(await page.getByLabel("Applied filter").textContent()).toBe(
-          `"name"::text ILIKE 'Berlin' ESCAPE '!'`,
-        );
+        expect(await page.getByLabel("Applied filter").textContent()).toBe(`"name" = 'Berlin'`);
         await editor.click();
         await page.keyboard.press("ControlOrMeta+a");
         await page.keyboard.press("Backspace");

@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { reportScenario } from "../scripts/performance-report";
 import { AiIssueCard } from "../src/features/ai/ai-issue-card";
+import { AiIssueGithubPreview } from "../src/features/ai/ai-issue-github-preview";
 import { AiIssueResult } from "../src/features/ai/ai-issue-result";
 import { githubIssueUrl } from "../src/lib/ai/issue-presentation";
 import { mergeAiRich, normalizeAiRich, sanitizeAiRich } from "../src/lib/ai/rich";
@@ -94,6 +95,44 @@ test("issues remain actionable in easy mode and interrupted reports never appear
   expect(
     render("success", "Issue erstellt: https://github.com/Leon-Achteresch/l8db/issues/123"),
   ).toContain("Auf GitHub");
+});
+
+test("draft cards offer one preview action and the preview mirrors the published GitHub issue", () => {
+  const card = renderToStaticMarkup(
+    createElement(AiIssueCard, {
+      title: "Tabellenansicht: Sortierung springt zurück",
+      body: "### Beschreibung\nText",
+      onPublish: () => {},
+      onCancel: () => {},
+    }),
+  );
+  expect(card.match(/<button/g)).toHaveLength(2);
+  expect(card).toContain("Vorschau");
+  expect(card).not.toContain("Issue prüfen");
+  expect(card).toContain(">bug<");
+  const preview = renderToStaticMarkup(
+    createElement(AiIssueGithubPreview, {
+      title: "Tabellenansicht: Sortierung springt zurück",
+      body: "### Beschreibung\nSortierung geht verloren.\n\n### Schritte\n1. Tabelle öffnen\n\n### Tatsächlich\n```text\nERROR: boom\n```",
+      screenshot: "data:image/png;base64,iVBORw0KGgo",
+      number: "42",
+    }),
+  );
+  for (const part of [
+    "Tabellenansicht: Sortierung springt zurück",
+    "#42",
+    "Open",
+    "l8db-issue-relay",
+    "bot",
+    ">bug<",
+    ">ai-report<",
+    "Automatisch aus l8db gemeldet.",
+    "<span>Beschreibung</span></h3>",
+    "<ol",
+    "ERROR: boom",
+    "Geschwärzter Screenshot für das GitHub-Issue",
+  ])
+    expect(preview).toContain(part);
 });
 
 test("80 large issue cards keep previews unmounted with bounded rendering cost", async () => {

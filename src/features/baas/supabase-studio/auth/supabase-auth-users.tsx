@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Link2, Mail, Plus, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Link2, Mail, Plus, Search, Users } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import {
   type SupabaseAuthUserSort,
   supabaseStudioAuthUsers,
 } from "@/lib/db/supabase-studio-auth";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { SupabaseAuthCreateDialog } from "./supabase-auth-create-dialog";
 import { formatAuthDate, isAuthBanned } from "./supabase-auth-format";
 import { SupabaseAuthInviteDialog } from "./supabase-auth-invite-dialog";
@@ -148,7 +149,7 @@ export function SupabaseAuthUsers({ reference, capabilities }: Props) {
         </p>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg border">
+          <div className="overflow-x-auto rounded-lg">
             <table className="w-full text-left text-xs">
               <thead className="bg-muted/40 text-muted-foreground">
                 <tr>
@@ -162,8 +163,12 @@ export function SupabaseAuthUsers({ reference, capabilities }: Props) {
               <tbody className="divide-y">
                 {users.data.users.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
-                      Keine Benutzer gefunden.
+                    <td colSpan={5}>
+                      <BaasEmptyState
+                        icon={Users}
+                        title="Keine Benutzer gefunden."
+                        description="Lade Benutzer ein oder lege sie direkt an. Neue Registrierungen erscheinen hier."
+                      />
                     </td>
                   </tr>
                 ) : (

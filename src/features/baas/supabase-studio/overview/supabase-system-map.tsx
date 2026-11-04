@@ -79,7 +79,7 @@ export function SupabaseSystemMap({
     <figure aria-label="Systemkarte des Projekts" className="m-0">
       <div className="grid grid-cols-[minmax(150px,190px)_40px_minmax(230px,1fr)_40px_minmax(190px,250px)] items-stretch max-lg:grid-cols-1 max-lg:gap-3">
         <div className="flex flex-col justify-center">
-          <div className="rounded-xl border border-dashed bg-background/60 p-3">
+          <div className="rounded-xl bg-background/60 p-3">
             <p className="flex items-center gap-1.5 text-xs font-semibold">
               <Globe2 className="size-3.5 text-muted-foreground" />
               Deine App

@@ -122,7 +122,7 @@ export function ConvexFunctionDetail({
             </p>
           )}
           {detail.data && !detail.data.source && (
-            <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+            <p className="rounded-lg p-3 text-xs text-muted-foreground bg-muted/30">
               Dieses Deployment stellt den Quelltext nicht über die Admin-API bereit.
             </p>
           )}
@@ -131,7 +131,7 @@ export function ConvexFunctionDetail({
               {detail.data.sourceTruncated && (
                 <p className="text-xs text-amber-600">Quelltext auf 2 MB gekürzt.</p>
               )}
-              <pre className="max-h-[60vh] overflow-auto rounded-xl border bg-muted/30 p-3 font-mono text-xs">
+              <pre className="max-h-[60vh] overflow-auto rounded-xl bg-muted/30 p-3 font-mono text-xs">
                 {detail.data.source}
               </pre>
             </div>

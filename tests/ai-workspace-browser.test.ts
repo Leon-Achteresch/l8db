@@ -88,6 +88,54 @@ test.skipIf(!enabled)(
       expect(Number(await resize.getAttribute("aria-valuenow"))).toBe(oldWidth + 76);
       expect(await page.evaluate(() => window.getSelection()?.toString())).toBe("");
 
+      const fastToggle = panel.getByRole("button", { name: "Fast-Modus", exact: true });
+      expect(await fastToggle.getAttribute("aria-pressed")).toBe("false");
+      await fastToggle.click();
+      expect(await fastToggle.getAttribute("aria-pressed")).toBe("true");
+      await fastToggle.click();
+      const composer = panel.getByLabel("Nachricht an AI");
+      const growth = await composer.evaluate((node) => {
+        const textarea = node as HTMLTextAreaElement;
+        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+        const type = (value: string) => {
+          const start = performance.now();
+          setter?.call(textarea, value);
+          textarea.dispatchEvent(new Event("input", { bubbles: true }));
+          return { ms: performance.now() - start, height: textarea.offsetHeight };
+        };
+        const base = textarea.offsetHeight;
+        const steps = Array.from({ length: 200 }, (_, line) =>
+          type(
+            Array.from({ length: line + 1 }, (_, row) => `SELECT ${row} FROM orders`).join("\n"),
+          ),
+        );
+        const paste = type(Array.from({ length: 5000 }, (_, row) => `-- row ${row}`).join("\n"));
+        const scrolls = textarea.scrollHeight > textarea.clientHeight;
+        type("");
+        const ms = steps.map((step) => step.ms).sort((a, b) => a - b);
+        return {
+          base,
+          third: steps[2].height,
+          capped: steps.at(-1)?.height ?? 0,
+          paste,
+          scrolls,
+          reset: textarea.offsetHeight,
+          median: ms[Math.floor(ms.length / 2)],
+          p95: ms[Math.floor(ms.length * 0.95)],
+          viewport: window.innerHeight,
+        };
+      });
+      console.info("AI composer growth", growth);
+      expect(growth.third).toBeGreaterThan(growth.base);
+      expect(growth.capped).toBeLessThanOrEqual(Math.min(8 * 24 + 6, growth.viewport * 0.4) + 1);
+      expect(growth.capped).toBeGreaterThan(growth.third);
+      expect(growth.paste.height).toBe(growth.capped);
+      expect(growth.scrolls).toBe(true);
+      expect(growth.reset).toBe(growth.base);
+      expect(growth.median).toBeLessThan(8);
+      expect(growth.p95).toBeLessThan(16);
+      expect(growth.paste.ms).toBeLessThan(50);
+
       await panel.getByRole("button", { name: "Anbieter und Modell auswählen" }).click();
       await page.getByRole("button", { name: /^Anbieter wechseln/ }).click();
       await page.getByRole("radio", { name: "Gemini CLI", exact: true }).click();

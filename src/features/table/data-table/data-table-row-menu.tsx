@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   ContextMenuContent,
   ContextMenuItem,
@@ -26,6 +27,7 @@ type Props = {
   onDuplicate: () => void;
   onWatch?: () => void;
   onDeleteRow?: (ctid: string, oldValues: Record<string, unknown>) => void;
+  extraItems?: ReactNode;
 };
 
 export function DataTableRowMenu({
@@ -37,6 +39,7 @@ export function DataTableRowMenu({
   onDuplicate,
   onDeleteRow,
   onWatch,
+  extraItems,
 }: Props) {
   return (
     <ContextMenuContent>
@@ -44,6 +47,7 @@ export function DataTableRowMenu({
         Zeile {menuRow.rowIndex + 1 + rowOffset}
       </ContextMenuLabel>
       <ContextMenuSeparator />
+      {extraItems}
       <ContextMenuSub>
         <ContextMenuSubTrigger>Kopieren als</ContextMenuSubTrigger>
         <ContextMenuSubContent>

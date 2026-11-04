@@ -2,12 +2,25 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createBufferedJsonStorage } from "@/lib/buffered-storage";
 import { useConnectionsStore } from "@/lib/connections";
+import {
+  forgetSchemaCompare,
+  LEGACY_SCHEMA_COMPARE_ID,
+  schemaCompareIds,
+} from "@/lib/schema-compare/persistence";
 import { syncAcrossWindows } from "@/lib/window-sync";
 import { createCloseActions } from "./close-actions";
 import { createOpenActions } from "./open-actions";
 import { createQueryActions } from "./query-actions";
-import { keyForConnection, readPersistedActiveConnectionId } from "./tab-keys";
+import { keyForConnection, readPersistedActiveConnectionId, tabKey } from "./tab-keys";
 import type { Tab, TableTab, TabsState } from "./types";
+
+const isSchemaCompare = (tab: Tab) => tab.kind === "tool" && tab.tool === "schema-compare";
+
+function withSchemaCompareId<T extends Tab>(tab: T): T {
+  return tab.kind === "tool" && tab.tool === "schema-compare" && !tab.id
+    ? { ...tab, id: LEGACY_SCHEMA_COMPARE_ID }
+    : tab;
+}
 
 export const useTableTabs = create<TabsState>()(
   persist(
@@ -71,11 +84,16 @@ export const useTableTabs = create<TabsState>()(
       }),
       merge: (persistedState, currentState) => {
         const stored = persistedState as Partial<TabsState> | undefined;
-        const tabsByConnection = stored?.tabsByConnection ?? {};
+        const tabsByConnection = Object.fromEntries(
+          Object.entries(stored?.tabsByConnection ?? {}).map(([key, tabs]) => [
+            key,
+            tabs.map(withSchemaCompareId),
+          ]),
+        );
         const key = keyForConnection(useConnectionsStore.getState().activeId);
         return {
           ...currentState,
-          recentlyClosed: stored?.recentlyClosed ?? [],
+          recentlyClosed: (stored?.recentlyClosed ?? []).map(withSchemaCompareId),
           tabsByConnection,
           tabs: tabsByConnection[key] ?? [],
         };
@@ -86,9 +104,43 @@ export const useTableTabs = create<TabsState>()(
 
 useConnectionsStore.subscribe((state, previous) => {
   if (state.activeId === previous.activeId) return;
+  const current = useTableTabs.getState();
+  const key = keyForConnection(state.activeId);
+  const next = current.tabsByConnection[key] ?? [];
+  const carried = current.tabs.filter(isSchemaCompare);
+  if (carried.length === 0) {
+    useTableTabs.setState({ tabs: next });
+    return;
+  }
+  const keys = new Set(next.map(tabKey));
+  const tabs = [...next, ...carried.filter((tab) => !keys.has(tabKey(tab)))];
   useTableTabs.setState({
-    tabs: useTableTabs.getState().tabsByConnection[keyForConnection(state.activeId)] ?? [],
+    tabs,
+    tabsByConnection: {
+      ...current.tabsByConnection,
+      [keyForConnection(previous.activeId)]: current.tabs.filter((tab) => !isSchemaCompare(tab)),
+      [key]: tabs,
+    },
   });
+});
+
+let syncing = false;
+
+useTableTabs.subscribe((state, previous) => {
+  if (
+    syncing ||
+    (state.tabsByConnection === previous.tabsByConnection &&
+      state.recentlyClosed === previous.recentlyClosed &&
+      state.tabs === previous.tabs)
+  )
+    return;
+  const all = (value: TabsState) => [
+    value.tabs,
+    value.recentlyClosed,
+    ...Object.values(value.tabsByConnection),
+  ];
+  const kept = schemaCompareIds(all(state));
+  for (const id of schemaCompareIds(all(previous))) if (!kept.has(id)) void forgetSchemaCompare(id);
 });
 
 export function mergeWindowTabs(
@@ -114,6 +166,11 @@ syncAcrossWindows("l8db.table-tabs", (value) => {
     current,
     keyForConnection(useConnectionsStore.getState().activeId),
   );
-  if (JSON.stringify(next) !== JSON.stringify(current))
+  if (JSON.stringify(next) === JSON.stringify(current)) return;
+  syncing = true;
+  try {
     useTableTabs.setState({ tabsByConnection: next });
+  } finally {
+    syncing = false;
+  }
 });

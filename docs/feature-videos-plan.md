@@ -30,6 +30,7 @@ Zwei Szenarien sind enthalten:
 | Extension-Markt | Offizielles Paket installieren, Berechtigungen freigeben und aktivieren | `8aeb1658`, 0.6.132 |
 | Dashboard-Arbeitsbereich | Datenfelder zuordnen, Länder vergleichen, Live-Vorschau und Chartgalerie verwenden, Chart speichern | `19ca9d85`, 0.8.0 |
 | Issues im KI-Chat | Bericht als Card prüfen, Modal mit Diagnose und geschwärztem Screenshot öffnen, bewusst veröffentlichen | `846eb4c9`, 0.17.0 |
+| Split View mit Drag & Drop | Tabs an den rechten und unteren Rand ziehen, einen weiteren Tab in eine Bereichs-Tab-Leiste ziehen | `22ce5c05`, 0.17.0 |
 
 Die Aufnahmen verwenden die gebaute echte React-App und vorbereitete Demo-Daten. Für den Extension-Clip werden Katalog und Paket aus einer lokalen Testdatei geliefert. Der Browser installiert und aktiviert das Paket über die echte Oberfläche; die vorbereiteten Tauri-Antworten verändern keine lokale Installation. Playwright zoomt auf die tatsächlichen Bedienelemente und prüft Easy Mode, Installation, Berechtigungen und Aktivierung als sichtbare Zustandswechsel. Die eingeblendeten Texte bleiben während der Zooms an ihrer Position. FFmpeg erzeugt MP4/H.264, WebM/VP9 und ein JPEG-Standbild. Die Clips haben keine Audiospur. Größe, Dauer und Encoding werden geprüft; die Rohaufnahme wird nach erfolgreichem Export gelöscht. [Playwright-Aufnahmen](https://playwright.dev/docs/videos), [FFmpeg](https://ffmpeg.org/ffmpeg-formats.html)
 
@@ -61,6 +62,16 @@ Der lokale Export vom 4. November 2026 dauert 24,709 Sekunden (1280 × 720, ohne
 Performance-Nachweis: Linux x86_64 in einer KVM-VM, acht virtuelle QEMU-CPUs, 16 GB RAM, Bun 1.3.10 und Playwright Chromium. Zwölf Server-Renderings von 80 Cards mit je 36.413 Zeichen Berichtstext und bis zu zwei Millionen Zeichen Screenshot-Eingabe ergaben Median 42,04 ms und p95 75,49 ms; Grenzen: Median 100 ms, p95 250 ms. Es entstehen 2.081 Elemente (Grenze 6.000), keine geöffneten Dialoge und keine Screenshot-Bildelemente. Die großen Vorschauen werden erst beim Öffnen gerendert. Diese Messung ist keine CPU-/Heap-Simulation und belegt keine native WebView-Performance auf macOS oder Windows und keine Datenbankfamilien.
 
 Der Chromium-Test prüft denselben Ablauf ohne aktive Datenbankverbindung, Abbrechen ohne Veröffentlichung, genau eine ausdrückliche Veröffentlichung und die Wiederherstellung aus dem gespeicherten Gespräch nach Neuladen. Acht Vorschau-Öffnungen ergaben Median 41,2 ms und p95 52,4 ms bei unverändertem p95-Limit von 1.000 ms. Gemessen wird im Browser vom DOM-Klick bis nach zwei Animation Frames; Playwright-Kommando- und Actionability-Zeiten gehören nicht dazu. Beim Öffnen und in der anschließenden Ruhephase entstanden keine zusätzlichen Datenbankanfragen. Nach Schließen blieben keine Dialoge im DOM; Videoquellen wurden vor dem Abspielen nicht angefordert. GitHub und Tauri-Transport sind simuliert. Die Live-Relay-Einrichtung und echte Datenbanken werden durch diesen Test nicht geprüft.
+
+### Split View mit Drag & Drop
+
+Der Eintrag `split-dnd` zeigt die Editor-Gruppen der geteilten Ansicht. Das Szenario zieht in der echten App mit echten Zeigerereignissen einen Tab an den rechten Rand, einen zweiten an den unteren Rand des neuen Bereichs und einen dritten in die Tab-Leiste des ersten Bereichs. Ein eingeblendeter Zeigerpunkt macht die Bewegung sichtbar, weil Playwright keinen Mauszeiger aufzeichnet. Jeder Schritt wartet auf die entstandene Tab-Leiste; schlägt ein Drop fehl, bricht die Aufnahme ab. Der Clip wird nur im normalen Modus angeboten, weil Easy Mode die geteilte Ansicht ausblendet. Die NEW-Markierung gehört zum Eintrag `split.pane-tabs`.
+
+```sh
+FEATURE_VIDEO_IDS='["split-dnd"]' bun run feature-videos:record
+```
+
+Der lokale Export vom 4. November 2026 dauert 19,79 Sekunden (1280 × 720, ohne Ton): MP4 648.699 Bytes, WebM 771.723 Bytes. Die Aufnahme ist eine Vorschau aus einem veränderten Arbeitsverzeichnis; veröffentlicht wird der Clip erst über den bestehenden Publisher mit einer passenden stabilen App-Version.
 
 ### Ausführliche Dashboard-Tour
 

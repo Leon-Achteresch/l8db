@@ -23,7 +23,7 @@ export function SupabaseOverviewProtection({
   const limit = tables.data?.has_more ? " (erste 100 Tabellen nach Name)" : "";
 
   return (
-    <section className="rounded-2xl border bg-card p-5">
+    <section className="rounded-2xl bg-muted/25 p-5">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           {safe ? (
