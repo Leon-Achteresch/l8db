@@ -1,11 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Check, Search, Settings, Unplug, X } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Spinner } from "@/components/ui/spinner";
+import { BAAS_AS_DATABASE } from "@/features/baas/baas-providers";
+import { type BaasConnection, useBaasConnections } from "@/features/baas/use-baas-connections";
 import { disconnectActiveConnection } from "@/features/connections/disconnect-button";
 import { groupByServer, sortServerGroups } from "@/lib/connection-groups";
 import { connectionSummary, providerFor } from "@/lib/connection-url";
@@ -18,6 +20,18 @@ import { compileSearchPatterns, searchMatcher } from "@/lib/regex-search";
 import { useRegexEnabled } from "@/lib/regex-search-prefs";
 import { cn } from "@/lib/utils";
 import { SidebarConnectionTriggerContent } from "./sidebar-connection-trigger";
+
+interface PickerRow {
+  id: string;
+  name: string;
+  providerId: string;
+  connection?: SavedConnection;
+  baas?: BaasConnection;
+  groupLabel: string;
+  favorite: boolean;
+  detail: string;
+  searchText: string;
+}
 
 interface Props {
   activeConnection: SavedConnection | null;
@@ -35,6 +49,7 @@ export function SidebarConnectionPicker({
   onSelect,
 }: Props) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const reduceMotion = useReducedMotion();
   const connections = useConnectionsStore((state) => state.connections);
   const favoriteServerKeys = useConnectionsStore((state) => state.favoriteServerKeys);
@@ -51,6 +66,7 @@ export function SidebarConnectionPicker({
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const listId = useId();
+  const baasConnections = useBaasConnections(open);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -73,13 +89,16 @@ export function SidebarConnectionPicker({
     [connections, favoriteServerKeys, hostGroupRules, serverOrder],
   );
 
-  const rows = useMemo(
+  const rows = useMemo<PickerRow[]>(
     () =>
       groups.flatMap((group) =>
         group.connections.map((connection) => {
           const endpoint = connectionSummary(connection.connectionString, connection.kind);
           const address = endpoint.port ? `${endpoint.host}:${endpoint.port}` : endpoint.host;
           return {
+            id: connection.id,
+            name: connection.name,
+            providerId: providerFor(connection).id,
             connection,
             groupLabel: group.label,
             favorite: Boolean(connection.favorite || favoriteServerKeys.includes(group.key)),
@@ -100,20 +119,37 @@ export function SidebarConnectionPicker({
     [favoriteServerKeys, groups],
   );
 
+  const baasRows = useMemo<PickerRow[]>(
+    () =>
+      baasConnections
+        .filter((item) => BAAS_AS_DATABASE.some((entry) => entry.id === item.provider))
+        .map((item) => ({
+          id: `baas:${item.provider}:${item.id}`,
+          name: item.name,
+          providerId: item.provider,
+          baas: item,
+          groupLabel: item.provider,
+          favorite: false,
+          detail: item.detail,
+          searchText: [item.provider, item.name, item.detail].join("\0"),
+        })),
+    [baasConnections],
+  );
+
   const visible = useMemo(() => {
     const trimmed = query.trim();
     const matches = searchMatcher(
       trimmed,
       regexEnabled && trimmed ? compileSearchPatterns(trimmed, { global: false }) : null,
     );
-    return rows
+    return [...rows, ...baasRows]
       .filter((row) => !matches || matches(row.searchText))
       .sort((a, b) => {
-        const priority = (row: (typeof rows)[number]) =>
-          row.connection.id === activeConnection?.id ? 0 : row.favorite ? 1 : 2;
+        const priority = (row: PickerRow) =>
+          row.id === activeConnection?.id ? 0 : row.favorite ? 1 : 2;
         return priority(a) - priority(b);
       });
-  }, [activeConnection?.id, query, regexEnabled, rows]);
+  }, [activeConnection?.id, baasRows, query, regexEnabled, rows]);
 
   useLayoutEffect(() => {
     if (!open || !panelRef.current) return;
@@ -153,10 +189,15 @@ export function SidebarConnectionPicker({
       ?.scrollIntoView({ block: "nearest" });
   }, [highlighted, open, visible.length]);
 
-  function select(id: string) {
+  function select(row: PickerRow) {
     if (isSwitching) return;
     closeAndFocus();
-    if (id !== activeConnection?.id) onSelect(id);
+    if (row.baas) {
+      void navigate({
+        to: "/baas",
+        search: { provider: row.baas.provider, id: row.baas.id || undefined },
+      });
+    } else if (row.id !== activeConnection?.id) onSelect(row.id);
   }
 
   function onSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
@@ -169,7 +210,7 @@ export function SidebarConnectionPicker({
       const target = visible[Number(event.key) - 1];
       if (target) {
         event.preventDefault();
-        select(target.connection.id);
+        select(target);
       }
       return;
     }
@@ -183,7 +224,7 @@ export function SidebarConnectionPicker({
     }
     if (event.key === "Enter" && visible.length) {
       event.preventDefault();
-      select(visible[Math.min(highlighted, visible.length - 1)].connection.id);
+      select(visible[Math.min(highlighted, visible.length - 1)]);
     }
   }
 
@@ -275,7 +316,7 @@ export function SidebarConnectionPicker({
                 aria-label="Gespeicherte Verbindungen"
                 className="max-h-[min(40rem,calc(100dvh-12.5rem))] min-h-12 overflow-y-auto overscroll-contain py-1"
               >
-                {connections.length === 0 ? (
+                {connections.length === 0 && baasRows.length === 0 ? (
                   <p className="px-3 py-5 text-center text-xs text-muted-foreground">
                     Keine Verbindungen gespeichert
                   </p>
@@ -285,18 +326,18 @@ export function SidebarConnectionPicker({
                   </p>
                 ) : (
                   visible.map((row, index) => {
-                    const active = row.connection.id === activeConnection?.id;
+                    const active = row.id === activeConnection?.id;
                     const previous = visible[index - 1];
                     const group = active ? "Aktuell" : row.favorite ? "Favoriten" : "Weitere";
                     const previousGroup = previous
-                      ? previous.connection.id === activeConnection?.id
+                      ? previous.id === activeConnection?.id
                         ? "Aktuell"
                         : previous.favorite
                           ? "Favoriten"
                           : "Weitere"
                       : null;
                     return (
-                      <div key={row.connection.id}>
+                      <div key={row.id}>
                         {!query && group !== previousGroup && (
                           <div className="px-3 pb-1 pt-2 text-[10px] font-medium text-muted-foreground">
                             {group}
@@ -305,13 +346,12 @@ export function SidebarConnectionPicker({
                         <button
                           id={`${listId}-${index}`}
                           data-connection-index={index}
-                          key={row.connection.id}
                           type="button"
                           role="option"
                           aria-selected={active}
                           disabled={isSwitching}
                           onMouseEnter={() => setHighlighted(index)}
-                          onClick={() => select(row.connection.id)}
+                          onClick={() => select(row)}
                           className={cn(
                             "flex h-11 w-full min-w-0 items-center gap-2 px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:opacity-50",
                             index === highlighted
@@ -323,21 +363,21 @@ export function SidebarConnectionPicker({
                         >
                           <span className="relative grid size-7 shrink-0 place-items-center rounded-md bg-muted/60">
                             <ProviderLogo
-                              providerId={providerFor(row.connection).id}
-                              kind={row.connection.kind}
+                              providerId={row.providerId}
+                              kind={row.connection?.kind}
                               className="size-4"
                             />
-                            <ConnectionStatusIndicator
-                              connectionId={row.connection.id}
-                              className="absolute -bottom-0.5 -right-0.5 rounded-full bg-background"
-                            />
+                            {row.connection && (
+                              <ConnectionStatusIndicator
+                                connectionId={row.connection.id}
+                                className="absolute -bottom-0.5 -right-0.5 rounded-full bg-background"
+                              />
+                            )}
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="flex min-w-0 items-center gap-1">
-                              <span className="truncate text-xs font-medium">
-                                {row.connection.name}
-                              </span>
-                              {row.connection.tags?.[0] && (
+                              <span className="truncate text-xs font-medium">{row.name}</span>
+                              {row.connection?.tags?.[0] && (
                                 <span
                                   className="max-w-16 shrink-0 truncate rounded px-1 font-mono text-[9px] text-white"
                                   style={{ backgroundColor: row.connection.tags[0].color }}
@@ -350,7 +390,7 @@ export function SidebarConnectionPicker({
                               {row.detail || row.groupLabel}
                             </span>
                           </span>
-                          {busyId === row.connection.id ? (
+                          {busyId === row.id ? (
                             <Spinner className="size-3.5 shrink-0" />
                           ) : index < 3 ? (
                             <kbd className="shrink-0 rounded border px-1 font-mono text-[10px] text-muted-foreground">

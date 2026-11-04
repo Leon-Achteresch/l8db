@@ -17,19 +17,23 @@ export interface BaasConnection {
   url?: string;
 }
 
-export function useBaasConnections(): BaasConnection[] {
-  const supabase = useQuery({ queryKey: ["supabase", "connected"], queryFn: supabaseIsConnected });
+export function useBaasConnections(enabled = true): BaasConnection[] {
+  const supabase = useQuery({
+    queryKey: ["supabase", "connected"],
+    queryFn: supabaseIsConnected,
+    enabled,
+  });
   const [projects, appwrite, pocketbase, convex, firebase] = useQueries({
     queries: [
       {
         queryKey: ["supabase", "projects"],
         queryFn: supabaseProjects,
-        enabled: supabase.data === true,
+        enabled: enabled && supabase.data === true,
       },
-      { queryKey: ["appwrite", "profiles"], queryFn: appwriteProfiles },
-      { queryKey: ["pocketbase", "profiles"], queryFn: pocketbaseProfiles },
-      { queryKey: ["convex", "profiles"], queryFn: convexProfiles },
-      { queryKey: ["firebase", "profiles"], queryFn: firebaseProfiles },
+      { queryKey: ["appwrite", "profiles"], queryFn: appwriteProfiles, enabled },
+      { queryKey: ["pocketbase", "profiles"], queryFn: pocketbaseProfiles, enabled },
+      { queryKey: ["convex", "profiles"], queryFn: convexProfiles, enabled },
+      { queryKey: ["firebase", "profiles"], queryFn: firebaseProfiles, enabled },
     ],
   });
   const supabaseEmpty = supabase.data === true && projects.data?.projects.length === 0;
