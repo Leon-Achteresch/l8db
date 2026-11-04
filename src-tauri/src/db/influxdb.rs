@@ -657,6 +657,13 @@ impl InfluxAdapter {
         let mut columns = Vec::new();
         let mut rows = Vec::new();
         for result in value["results"].as_array().cloned().unwrap_or_default() {
+            for message in result["messages"].as_array().into_iter().flatten() {
+                super::server_output::emit(super::server_output::ServerMessage {
+                    level: text(&message["level"]).to_uppercase(),
+                    message: text(&message["text"]),
+                    detail: None,
+                });
+            }
             if let Some(error) = result.get("error") {
                 return Err(format!("InfluxQL-Fehler: {}", text(error)));
             }

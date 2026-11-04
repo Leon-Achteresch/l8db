@@ -344,6 +344,7 @@ pub async fn connect_postgres(
     config: &tokio_postgres::Config,
     ssl: &super::connection::PgTls,
 ) -> Result<tokio_postgres::Client, String> {
+    let sink = super::server_output::sink();
     let (client, connection) = connect(async {
         config
             .connect(super::connection::tls_connector(ssl)?)
@@ -351,9 +352,7 @@ pub async fn connect_postgres(
             .map_err(super::map_pg_err)
     })
     .await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    tokio::spawn(super::server_output::forward_notices(connection, sink));
     Ok(client)
 }
 

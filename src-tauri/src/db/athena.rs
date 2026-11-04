@@ -567,16 +567,11 @@ impl DatabaseAdapter for AthenaAdapter {
         let result = self
             .run(statement, super::commands::MAX_RESULT_ROWS + 1)
             .await?;
-        if server_output::is_enabled(&self.key) {
-            server_output::push(
-                &self.key,
-                ServerMessage {
-                    level: "INFO".to_string(),
-                    message: cost_notice(result.scanned_bytes, result.engine_ms, &result.query_id),
-                    detail: None,
-                },
-            );
-        }
+        server_output::emit(ServerMessage {
+            level: "INFO".to_string(),
+            message: cost_notice(result.scanned_bytes, result.engine_ms, &result.query_id),
+            detail: None,
+        });
         let no_result = result.columns.is_empty();
         Ok(QueryResult {
             rows: rows_to_objects(&result.columns, result.rows),
@@ -798,11 +793,12 @@ mod tests {
     async fn runs_query_against_mocked_api() {
         let (url, log) = mock_athena(Some(1)).await;
         let adapter = AthenaAdapter::new(&url, None, "athena-mock".to_string()).unwrap();
-        adapter.set_server_output(true).await.unwrap();
-        let result = adapter
-            .execute_query("SELECT id, ok FROM t;")
-            .await
-            .unwrap();
+        let result = server_output::capture(
+            server_output::messages("athena-mock"),
+            adapter.execute_query("SELECT id, ok FROM t;"),
+        )
+        .await
+        .unwrap();
         assert_eq!(result.columns, vec!["id", "ok"]);
         assert_eq!(
             result.rows,
@@ -824,7 +820,6 @@ mod tests {
             "{}",
             output[0].message
         );
-        adapter.set_server_output(false).await.unwrap();
     }
 
     #[tokio::test]

@@ -13,6 +13,7 @@ use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 use super::pool::PoolState;
+use super::server_output::ServerMessage;
 use super::{
     attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, timed, unsupported, where_clause,
     AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
@@ -1009,6 +1010,38 @@ fn starts_batch(sql: &str) -> bool {
 }
 
 async fn run_query(client: &mut MsClient, sql: &str) -> Result<QueryResult, String> {
+    client.take_info_messages();
+    let result = run_statement(client, sql).await;
+    for info in client.take_info_messages() {
+        super::server_output::emit(info_message(info));
+    }
+    result
+}
+
+fn info_message(info: tiberius::TokenInfo) -> ServerMessage {
+    if info.number == 0 {
+        return ServerMessage {
+            level: "OUTPUT".to_string(),
+            message: info.message,
+            detail: None,
+        };
+    }
+    let procedure = if info.procedure.is_empty() {
+        String::new()
+    } else {
+        format!(", Prozedur {}", info.procedure)
+    };
+    ServerMessage {
+        level: "INFO".to_string(),
+        message: info.message,
+        detail: Some(format!(
+            "Meldung {}, Ebene {}, Status {}{procedure}, Zeile {}",
+            info.number, info.class, info.state, info.line
+        )),
+    }
+}
+
+async fn run_statement(client: &mut MsClient, sql: &str) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
     guarded(timed(async {
         if is_tx_control(sql) || starts_batch(sql) {
@@ -2033,6 +2066,132 @@ mod tests {
         );
         assert_eq!(select_expression("p", "Point"), "[p].ToString() AS [p]");
         assert_eq!(select_expression("a]b", "nvarchar"), "[a]]b]");
+    }
+
+    fn info(number: u32, class: u8, procedure: &str, message: &str) -> tiberius::TokenInfo {
+        tiberius::TokenInfo {
+            number,
+            state: 1,
+            class,
+            message: message.to_string(),
+            server: "srv".to_string(),
+            procedure: procedure.to_string(),
+            line: 3,
+        }
+    }
+
+    #[test]
+    fn info_tokens_map_print_to_output_and_raiserror_to_info() {
+        let print = info_message(info(0, 0, "", "hallo"));
+        assert_eq!(
+            (print.level.as_str(), print.message.as_str()),
+            ("OUTPUT", "hallo")
+        );
+        assert_eq!(print.detail, None);
+        let raised = info_message(info(50000, 10, "", "achtung"));
+        assert_eq!(raised.level, "INFO");
+        assert_eq!(
+            raised.detail.as_deref(),
+            Some("Meldung 50000, Ebene 10, Status 1, Zeile 3")
+        );
+        let in_proc = info_message(info(50001, 5, "dbo.p", "x"));
+        assert_eq!(
+            in_proc.detail.as_deref(),
+            Some("Meldung 50001, Ebene 5, Status 1, Prozedur dbo.p, Zeile 3")
+        );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_info_messages_are_captured_per_statement() {
+        use crate::db::server_output::{capture, Messages};
+        let Ok(url) = std::env::var("L8DB_SMOKE_MSSQL_URL") else {
+            return;
+        };
+        let pool = crate::db::pool::create_pool_state();
+        let adapter = MssqlAdapter::new(&url, None, pool.clone(), "output".into()).unwrap();
+        let sink = Messages::default();
+        let result = capture(
+            sink.clone(),
+            adapter.execute_query("PRINT 'hallo'; RAISERROR('achtung', 10, 1); SELECT 1 AS x"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.rows.len(), 1);
+        let messages = sink.take();
+        assert_eq!(messages.len(), 2, "{messages:?}");
+        assert_eq!(
+            (messages[0].level.as_str(), messages[0].message.as_str()),
+            ("OUTPUT", "hallo")
+        );
+        assert_eq!(messages[1].level, "INFO");
+        assert_eq!(messages[1].message, "achtung");
+        assert_eq!(
+            messages[1].detail.as_deref(),
+            Some("Meldung 50000, Ebene 0, Status 1, Zeile 1")
+        );
+
+        let error = capture(
+            sink.clone(),
+            adapter.execute_query("PRINT 'vorher'; RAISERROR('kaputt', 16, 1)"),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("kaputt"), "{error}");
+        let messages = sink.take();
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert_eq!(messages[0].message, "vorher");
+
+        assert!(adapter.execute_query("PRINT 'ohne Ziel'").await.is_ok());
+        let quiet = capture(sink.clone(), adapter.execute_query("SELECT 1 AS x"))
+            .await
+            .unwrap();
+        assert_eq!(quiet.rows.len(), 1);
+        assert!(sink.take().is_empty());
+
+        let mut runs = Vec::new();
+        for _ in 0..5 {
+            let started = std::time::Instant::now();
+            capture(
+                sink.clone(),
+                adapter.execute_query(
+                    "DECLARE @i int = 1; WHILE @i <= 5000 BEGIN PRINT CONCAT('n ', @i); SET @i += 1; END",
+                ),
+            )
+            .await
+            .unwrap();
+            let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+            let started = std::time::Instant::now();
+            let messages = sink.take();
+            let take_ms = started.elapsed().as_secs_f64() * 1000.0;
+            assert_eq!(messages.len(), 2000);
+            assert_eq!(messages[1999].message, "n 5000");
+            assert!(take_ms < 5.0, "{take_ms}");
+            runs.push((elapsed, take_ms));
+        }
+        runs.sort_by(|a, b| a.0.total_cmp(&b.0));
+        eprintln!(
+            "performance mssql-print-capture: prints=5000 retained=2000 statement_median_ms={:.1} statement_max_ms={:.1} take_max_ms={:.3} runs=5",
+            runs[2].0,
+            runs[4].0,
+            runs.iter().map(|r| r.1).fold(0.0, f64::max)
+        );
+
+        let tx = crate::db::transaction::create_transaction_state();
+        let id = tx
+            .begin(crate::db::DatabaseKind::Mssql, &url, None, &pool)
+            .await
+            .unwrap();
+        tx.execute(&id, "PRINT 'in tx'").await.unwrap();
+        let output = tx.server_output(&id).await.unwrap();
+        assert_eq!(output.len(), 1, "{output:?}");
+        assert_eq!(
+            (output[0].level.as_str(), output[0].message.as_str()),
+            ("OUTPUT", "in tx")
+        );
+        assert!(tx.server_output(&id).await.unwrap().is_empty());
+        tx.rollback(&id).await.unwrap();
+        assert!(tx.server_output(&id).await.is_err());
     }
 
     #[tokio::test]

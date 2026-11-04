@@ -148,3 +148,4 @@ duckdb = { path = "vendor/duckdb" }
 russh = { path = "vendor/russh" }
 ssh-key = { path = "vendor/ssh-key" }
 openssl-sys = { path = "vendor/openssl-sys" }
+tiberius = { path = "vendor/tiberius" }
