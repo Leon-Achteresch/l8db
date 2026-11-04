@@ -12,7 +12,7 @@ export function CommandPaletteOption({
   isActive,
   uid,
   hasIcons,
-  onHover,
+  onPointerMove,
   onSelect,
 }: {
   item: CommandItem;
@@ -22,7 +22,7 @@ export function CommandPaletteOption({
   uid: string;
   reduce: boolean | null;
   hasIcons: boolean;
-  onHover: () => void;
+  onPointerMove: (event: React.PointerEvent) => void;
   onSelect: () => void;
 }) {
   const Icon = item.icon;
@@ -35,7 +35,7 @@ export function CommandPaletteOption({
       role="option"
       aria-selected={isActive}
       data-index={index}
-      onMouseEnter={onHover}
+      onPointerMove={onPointerMove}
       onClick={onSelect}
       className={cn(
         "relative isolate flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors",
