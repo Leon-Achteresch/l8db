@@ -100,7 +100,7 @@ export class ExtensionManager extends ExtensionManagerBase {
       if (!gt(validated.manifest.version, previous))
         throw new ExtensionError(
           "ManifestValidationError",
-          `Version ${validated.manifest.version} is not newer than ${previous}`,
+          `Version ${validated.manifest.version} ist nicht neuer als die installierte ${previous}.`,
         );
       const wasEnabled = extension.enabled;
       await this.stop(id);
@@ -151,12 +151,12 @@ export class ExtensionManager extends ExtensionManagerBase {
         if (validated.manifest.id !== id)
           throw new ExtensionError(
             "ManifestValidationError",
-            "Development reload cannot change ID",
+            "Ein Entwicklungs-Neuladen darf die Erweiterungs-ID nicht ändern.",
           );
         if (JSON.stringify(validated.manifest) !== JSON.stringify(extension.archive.manifest))
           throw new ExtensionError(
             "ManifestValidationError",
-            "Manifest changed: reinstall to review permissions and contributions",
+            "Das Manifest hat sich geändert. Bitte neu installieren, um Berechtigungen und Beiträge erneut zu prüfen.",
           );
         extension.archive = validated;
       }
