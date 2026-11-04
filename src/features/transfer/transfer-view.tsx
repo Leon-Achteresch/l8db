@@ -193,6 +193,7 @@ export function TransferView() {
               loading={transfer.sourceSchemas === null}
               selected={transfer.schemas}
               mapping={transfer.mapping}
+              defaultTarget={transfer.defaultTarget}
               tables={transfer.tables}
               objects={transfer.objects}
               pickObjects={transfer.pickObjects}

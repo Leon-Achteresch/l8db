@@ -1,5 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   isReadOnlyConnection,
   type SavedConnection,
@@ -8,6 +9,7 @@ import {
 } from "@/lib/connections";
 import {
   cancelExecution,
+  executeQuery,
   loadPartitionDdl,
   loadSchemaCatalog,
   planTransfer,
@@ -23,8 +25,10 @@ import { databaseFromConnectionString, useActiveDatabase } from "@/lib/db-select
 import { prepareConnection } from "@/lib/prepare-connection";
 import { capabilitiesFor } from "@/lib/providers";
 import { compareTypesFor, defaultCompareTypes } from "@/lib/schema-compare/types";
+import { oracleLoginSchema } from "@/lib/schema-selection";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { readTabState, tabStateKey, useTabState, writeTabState } from "@/lib/tab-state";
+import { ANY_SCHEMA_SQL, defaultTargetSchema } from "@/lib/transfer/default-target";
 import {
   nativeScript,
   objectKey,
@@ -172,9 +176,41 @@ export function useTransfer() {
   const sourceConnection = connections.find((entry) => entry.id === source.connectionId) ?? null;
   const targetConnection = connections.find((entry) => entry.id === target.connectionId) ?? null;
   const readOnly = isReadOnlyConnection(targetConnection);
+  const sourceLogin = useMemo(
+    () =>
+      sourceConnection?.kind === "oracle"
+        ? oracleLoginSchema(sourceConnection.connectionString, sourceSchemas ?? [])
+        : null,
+    [sourceConnection, sourceSchemas],
+  );
+  const targetLogin = useMemo(
+    () =>
+      targetConnection?.kind === "oracle"
+        ? oracleLoginSchema(targetConnection.connectionString, targetSchemas ?? [])
+        : null,
+    [targetConnection, targetSchemas],
+  );
+  const targetId = targetConnection?.id ?? null;
+  const anySchema = useQuery({
+    queryKey: ["transfer-target-any-schema", targetId],
+    enabled: Boolean(targetLogin && targetId),
+    retry: false,
+    staleTime: 300_000,
+    queryFn: async () => {
+      const ready = await prepareConnection(targetId as string);
+      const result = await executeQuery(
+        ready.kind,
+        effectiveConnectionString(ready),
+        ANY_SCHEMA_SQL,
+      );
+      return Number(Object.values(result.rows[0] ?? {})[0] ?? 0) > 0;
+    },
+  });
+  const defaultTarget = (schema: string) =>
+    defaultTargetSchema(schema, sourceLogin, targetLogin, anySchema.data !== false);
   const pairs: TransferSchemaPair[] = schemas.map((schema) => ({
     source: schema,
-    target: (mapping[schema] ?? "").trim() || schema,
+    target: (mapping[schema] ?? "").trim() || defaultTarget(schema),
     ...(tables[schema] ? { tables: tables[schema] } : {}),
   }));
   const canReplace =
@@ -339,6 +375,7 @@ export function useTransfer() {
     toggleSchema,
     setSchemas,
     mapping,
+    defaultTarget,
     setMapping: (schema: string, value: string) =>
       setMapping((current) => ({ ...current, [schema]: value })),
     tables,

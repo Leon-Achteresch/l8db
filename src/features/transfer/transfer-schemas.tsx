@@ -21,6 +21,7 @@ export function TransferSchemas({
   existing,
   selected,
   mapping,
+  defaultTarget,
   tables: picked,
   objects,
   pickObjects,
@@ -42,6 +43,7 @@ export function TransferSchemas({
   existing: string[];
   selected: string[];
   mapping: Record<string, string>;
+  defaultTarget: (schema: string) => string;
   tables: Record<string, string[]>;
   objects: Record<string, string[]>;
   pickObjects: boolean;
@@ -132,7 +134,8 @@ export function TransferSchemas({
           <tbody>
             {visible.map((schema) => {
               const checked = selected.includes(schema);
-              const target = (mapping[schema] ?? "").trim() || schema;
+              const fallback = defaultTarget(schema);
+              const target = (mapping[schema] ?? "").trim() || fallback;
               const tables = checked
                 ? (plan?.tables ?? []).filter((table) => table.sourceSchema === schema)
                 : [];
@@ -192,7 +195,7 @@ export function TransferSchemas({
                             className="h-7 min-w-0 flex-1 font-mono text-xs md:text-xs"
                             list="transfer-target-schemas"
                             aria-label={`Zielschema für ${schema}`}
-                            placeholder={schema}
+                            placeholder={fallback}
                             value={mapping[schema] ?? ""}
                             onChange={(event) => onMap(schema, event.target.value)}
                           />
