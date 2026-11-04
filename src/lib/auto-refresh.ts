@@ -1,3 +1,5 @@
+import { create } from "zustand";
+
 export const AUTO_REFRESH_OFF = 0;
 
 export const AUTO_REFRESH_INTERVALS = [AUTO_REFRESH_OFF, 5000, 15000, 30000] as const;
@@ -44,3 +46,18 @@ export function shouldAutoRefresh(conditions: AutoRefreshConditions): boolean {
   if (conditions.intervalMs <= 0) return false;
   return autoRefreshPauseReason(conditions) === null;
 }
+
+export const useAutoRefreshStore = create<{
+  intervals: Record<string, AutoRefreshInterval>;
+  setIntervalMs: (key: string, ms: number) => void;
+}>()((set) => ({
+  intervals: {},
+  setIntervalMs: (key, ms) =>
+    set((state) => {
+      const intervals = { ...state.intervals };
+      const value = normalizeAutoRefreshInterval(ms);
+      if (value === AUTO_REFRESH_OFF) delete intervals[key];
+      else intervals[key] = value;
+      return { intervals };
+    }),
+}));
