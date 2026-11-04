@@ -24,6 +24,8 @@ pub struct ExecutionOptions {
     pub query_timeout: Option<u64>,
     pub connection_timeout: Option<u64>,
     pub max_rows: Option<usize>,
+    #[serde(default)]
+    pub no_time_limit: bool,
 }
 
 #[derive(Clone)]
@@ -120,6 +122,12 @@ pub fn result_row_cap(maximum: usize) -> usize {
 }
 
 pub fn query_duration() -> Duration {
+    if CONTEXT
+        .try_with(|ctx| ctx.options.no_time_limit)
+        .unwrap_or(false)
+    {
+        return Duration::from_secs(UNCLAMPED_MAX_SECONDS);
+    }
     let max = if UNCLAMPED.try_with(|_| ()).is_ok() {
         UNCLAMPED_MAX_SECONDS
     } else {
@@ -463,6 +471,27 @@ mod tests {
         .await;
         assert_eq!(unclamped.unwrap(), 900);
         assert_eq!(query_duration().as_secs(), 30);
+        let unlimited = run(
+            Some(ExecutionOptions {
+                query_timeout: Some(30),
+                no_time_limit: true,
+                ..Default::default()
+            }),
+            false,
+            async { Ok(query_duration().as_secs()) },
+        )
+        .await;
+        assert_eq!(unlimited.unwrap(), UNCLAMPED_MAX_SECONDS);
+        let zero = run(
+            Some(ExecutionOptions {
+                query_timeout: Some(0),
+                ..Default::default()
+            }),
+            false,
+            async { Ok(query_duration().as_secs()) },
+        )
+        .await;
+        assert_eq!(zero.unwrap(), 5);
     }
 
     #[tokio::test]

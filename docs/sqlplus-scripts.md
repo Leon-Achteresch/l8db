@@ -10,6 +10,7 @@
 - **Production:** every commit the script causes asks like the transaction panel (`productionConfirmCommit`): explicit `COMMIT`, `EXIT`/`WHENEVER … EXIT` with commit, `SET AUTOCOMMIT`, and DDL or `COMMIT`-containing PL/SQL while the transaction has changes. Declining stops the script; the transaction stays open. Statements whose text changes at runtime (`COLUMN … NEW_VALUE`, nested `DEFINE`) are checked again for destructive SQL. Read-only mode and the production write lock apply to bind statements as to every other statement.
 - `WHENEVER SQLERROR|OSERROR EXIT [SUCCESS|FAILURE|WARNING|n|variable|:bind|SQL.SQLCODE] [COMMIT|ROLLBACK]` and `CONTINUE [COMMIT|ROLLBACK|NONE]` work as in SQL*Plus. `EXIT` without a clause commits (`SET EXITCOMMIT OFF` rolls back). The exit code is shown in the result list; a non-zero code marks the run as failed.
 - Until the script sets `WHENEVER SQLERROR`, the dialog option "Bei Fehler stoppen" decides for SQL errors and SQL*Plus command errors (SP2). After `WHENEVER SQLERROR`, SP2 errors never stop the script. Missing `@` files and SPOOL write errors follow `WHENEVER OSERROR`, or the dialog option before that.
+- Script statements (also in the SQL import) run without the app's query timeout, as in SQL*Plus (`noTimeLimit` in `ExecutionOptions`, see `query_duration` in `src-tauri/src/db/execution.rs`); "Stopp" in the task list cancels the running statement (live: a long query stops after about 0.8 s). Calls that OCI cannot interrupt, such as `DBMS_SESSION.SLEEP`, still run to their end unless the session can be killed. Helper queries of the runner (COMMIT/ROLLBACK, SHOW, DESCRIBE, transaction checks), other families and normal editor queries keep the configured timeout.
 - Compilation errors of `CREATE` statements (`ORA-24344`) are warnings: the statement is marked amber, the messages are listed and `WHENEVER SQLERROR` does not fire. `SHOW ERRORS` lists `ALL_ERRORS` for the last created object or a named one.
 
 ## Output
@@ -35,7 +36,6 @@ Display and buffer commands (`SET LINESIZE/PAGESIZE/FEEDBACK/ECHO/TERMOUT/…`, 
 
 ## Known differences to SQL*Plus
 
-- Statements run with the app's query timeout (settings, at most 300 s); SQL*Plus has none.
 - Oracle sessions use `NLS_DATE_FORMAT 'YYYY-MM-DD HH24:MI:SS'` and `NLS_NUMERIC_CHARACTERS '.,'`; scripts that rely on implicit date or number conversion should set `ALTER SESSION` themselves.
 - `@` files are read before the run: `@&variable` file names and scripts generated during the run are not supported (both are refused).
 - Substitution state is kept per editor tab and connection across runs, like an interactive SQL*Plus session.

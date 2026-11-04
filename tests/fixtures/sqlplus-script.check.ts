@@ -437,6 +437,15 @@ test("the rollout script runs like SQL*Plus: DBMS_OUTPUT per block, COMMIT in th
     expect(calls.filter((call) => call.command === "rollback_transaction")).toHaveLength(1);
     expect(useTransactionStore.getState().transactions).toEqual([]);
     expect(outcome.exit).toBeNull();
+    const unlimited = (sql: string) =>
+      calls.find(
+        (call) =>
+          call.command === "execute_in_transaction" && String(call.args.sql).startsWith(sql),
+      )?.args.options as { noTimeLimit?: boolean; queryTimeout?: number } | undefined;
+    expect(unlimited("declare")).toMatchObject({ noTimeLimit: true });
+    expect(unlimited("select p.ref")).toMatchObject({ noTimeLimit: true });
+    expect(unlimited("SELECT DBMS_TRANSACTION")).toMatchObject({ queryTimeout: 30 });
+    expect(unlimited("SELECT DBMS_TRANSACTION")?.noTimeLimit).toBeUndefined();
   });
 });
 
@@ -615,6 +624,9 @@ test("VARIABLE, EXEC with binds, PRINT and REFCURSOR work like SQL*Plus", async 
     "EXEC :rc := :rc + 5",
     "BEGIN OPEN :c FOR SELECT level n FROM dual CONNECT BY level <= 2; END;",
   ]);
+  expect(bound.every((call) => (call.args.options as { noTimeLimit?: boolean }).noTimeLimit)).toBe(
+    true,
+  );
   expect(bound[0].args.binds).toEqual([
     { name: "RC", dataType: "NUMBER", value: "2" },
     { name: "C", dataType: "REFCURSOR", value: null },
@@ -771,6 +783,14 @@ test("other database families attach their server messages to each statement", a
     [{ level: "WARNING", message: "vor dem Fehler" }],
   ]);
   expect(calls.filter((call) => call.command === "take_server_output")).toHaveLength(4);
+  const statements = calls.filter((call) => call.command === "execute_query");
+  expect(statements).toHaveLength(3);
+  expect(
+    statements.every((call) => {
+      const options = call.args.options as { noTimeLimit?: boolean; queryTimeout?: number };
+      return options.queryTimeout === 30 && options.noTimeLimit === undefined;
+    }),
+  ).toBe(true);
   expect(
     outcome.entries.some((entry) =>
       entry.output?.some((line) => line.message === "aus einer früheren Abfrage"),

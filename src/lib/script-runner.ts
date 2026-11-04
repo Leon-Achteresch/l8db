@@ -999,6 +999,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     const execute = async (entry: ScriptRunEntry, sql: string): Promise<QueryResult> => {
       const options = {
         ...internal,
+        noTimeLimit: oracle,
         onJob: (id: string) => {
           currentJob = id;
         },
