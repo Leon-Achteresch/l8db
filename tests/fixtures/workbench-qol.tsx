@@ -13,16 +13,21 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryView } from "../../src/features/query/query-view";
 import { DataTable } from "../../src/features/table/data-table";
+import { RowWatchMenuItem } from "../../src/features/table/row-watch-menu-item";
 import { RowWatchProvider } from "../../src/features/table/row-watch-provider";
-import { RowWatches } from "../../src/features/table/row-watches";
+import { TableActionsMenu } from "../../src/features/table/table-view/table-export-menu";
+import { TimestampDisplayMenu } from "../../src/features/table/timestamp-display-menu";
 import { InvestigationsButton } from "../../src/features/workbench/investigations-button";
 import { useConnectionsStore } from "../../src/lib/connections";
 import { ExtensionManager } from "../../src/lib/extensions/manager";
 import { ExtensionHostContext } from "../../src/lib/extensions/react-context";
 import { SandboxRuntime } from "../../src/lib/extensions/sandbox-runtime";
 import { useHotkeysStore } from "../../src/lib/hotkeys";
+import { useHasNewFeatures } from "../../src/lib/new-features";
 import { useQueryWorkspace } from "../../src/lib/query-workspace";
 import { useTableTabs } from "../../src/lib/table-tabs";
+import { saveWorkbenchRecord } from "../../src/lib/workbench/records";
+import { watchSnapshot } from "../../src/lib/workbench/row-watches";
 import "../../src/index.css";
 
 useConnectionsStore.setState({
@@ -58,11 +63,21 @@ const extensions = new ExtensionManager(
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 function Fixture() {
   const { setTheme, resolvedTheme } = useTheme();
-  const [table, setTable] = useState(false);
+  const [table, setTable] = useState(new URLSearchParams(location.search).has("table"));
+  const watchNew = useHasNewFeatures("table.rows.watch");
+  const timeNew = useHasNewFeatures("query.results.timestamps");
   const [revision, setRevision] = useState(0);
   const rows = Array.from({ length: 5_000 }, (_, id) => ({
     id: String(id),
     value: id === 0 && revision ? "geändert" : "Original",
+    customer: [
+      "Nordlicht Studio",
+      "Elbwerk Digital",
+      "Kontor & Partner",
+      "Hafenblick Design",
+      "Bergmann Software",
+    ][id % 5],
+    created_at: "2026-10-25 02:30:45.123+02",
     __ctid__: String(id),
   }));
   return (
@@ -83,13 +98,20 @@ function Fixture() {
       </div>
       {table ? (
         <RowWatchProvider scope="fixture-table" rows={rows}>
-          <RowWatches scope="fixture-table" />
+          <div className="flex shrink-0 items-center gap-4 border-b px-3 py-2">
+            <span className="text-xs text-muted-foreground">public</span>
+            <h1 className="mr-auto text-sm font-semibold">customers</h1>
+            <TableActionsMenu isNew={watchNew || timeNew}>
+              <RowWatchMenuItem />
+              <TimestampDisplayMenu />
+            </TableActionsMenu>
+          </div>
           <DataTable
             watchScope="fixture-table"
             stateKey="fixture-table"
             currentSchema="public"
             currentTable="customers"
-            columns={["id", "value"]}
+            columns={["id", "customer", "value", "created_at"]}
             data={rows}
             sorting={[]}
             onSortingChange={() => {}}
@@ -134,6 +156,16 @@ createRoot(root).render(
 );
 Object.assign(window, {
   workbenchFixture: {
+    seedWatches: async (count: number) => {
+      for (let id = 0; id < count; id++) {
+        await saveWorkbenchRecord({
+          kind: "watch",
+          scope: "fixture-table",
+          name: `id=${id}`,
+          value: watchSnapshot({ id: String(id), value: "Original" }, ["id"], ["id", "value"]),
+        });
+      }
+    },
     getTabs: () => useTableTabs.getState().tabs,
     setSql: (sql: string) => {
       const tab = useTableTabs

@@ -1,11 +1,14 @@
 import { FilterIcon, FilterXIcon, Maximize2Icon } from "lucide-react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import { TableActionsMenu } from "@/features/table/table-view/table-export-menu";
 import { TimestampDisplayMenu } from "@/features/table/timestamp-display-menu";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { describeResultCount } from "@/lib/result-grid";
 
 interface ResultToolbarProps {
+  timestampMenu: boolean;
   visibleCount: number;
   totalCount: number;
   filterCount: number;
@@ -18,6 +21,7 @@ interface ResultToolbarProps {
 }
 
 export function ResultToolbar({
+  timestampMenu,
   visibleCount,
   totalCount,
   filterCount,
@@ -28,6 +32,7 @@ export function ResultToolbar({
   onToggleFilterRow,
   onReset,
 }: ResultToolbarProps) {
+  const timeNew = useHasNewFeatures("query.results.timestamps");
   const feature = useNewFeatureVisibility<HTMLButtonElement>("query.results.content-width");
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/30 px-3 py-1.5">
@@ -38,7 +43,11 @@ export function ResultToolbar({
         Sortierung und Filter gelten nur für die geladenen Zeilen (lokal, keine neue Abfrage).
       </span>
       <div className="ml-auto flex flex-wrap items-center gap-1">
-        <TimestampDisplayMenu />
+        {timestampMenu && (
+          <TableActionsMenu isNew={timeNew}>
+            <TimestampDisplayMenu />
+          </TableActionsMenu>
+        )}
         <Button
           ref={feature.ref}
           size="sm"
