@@ -136,15 +136,18 @@ export function AiIssueCard({
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
         {open && (
-          <DialogContent className="max-h-[90dvh] gap-0 overflow-hidden p-0 sm:max-w-4xl">
-            <DialogHeader className="px-6 pt-5 pr-14 pb-3">
+          <DialogContent className="flex h-[92dvh] max-h-[92dvh] w-[min(72rem,calc(100vw-2rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
+            <DialogHeader className="shrink-0 px-6 pt-5 pr-14 pb-3">
               <DialogTitle className="text-sm">Issue-Vorschau</DialogTitle>
               <DialogDescription className="text-xs">
                 So erscheint der Bericht öffentlich auf GitHub. Prüfe alle Inhalte auf sensible
                 Daten, bevor du ihn sendest.
               </DialogDescription>
             </DialogHeader>
-            <div className="max-h-[65dvh] overflow-auto bg-background px-6 py-5">
+            <div
+              data-issue-preview-scroll
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-background px-6 py-5 sm:px-8"
+            >
               <AiIssueGithubPreview
                 title={title}
                 body={body}
@@ -152,7 +155,7 @@ export function AiIssueCard({
                 number={number}
               />
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-2 bg-muted/30 px-6 py-3">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 bg-muted/30 px-6 py-3">
               <span className="mr-auto text-xs text-muted-foreground">Öffentlich sichtbar</span>
               <Button variant="ghost" disabled={pending} onClick={() => setOpen(false)}>
                 Schließen
