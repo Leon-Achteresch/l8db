@@ -110,20 +110,6 @@ pub struct SchemaDataCopy {
     pub unvalidated: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ConnectionConfig {
-    pub kind: DatabaseKind,
-    pub host: String,
-    pub port: u16,
-    pub user: String,
-    pub password: String,
-    pub database: String,
-    #[serde(default)]
-    pub ssl_mode: Option<SslMode>,
-    #[serde(default)]
-    pub read_only: bool,
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct TableInfo {
     pub schema: String,
@@ -2057,35 +2043,6 @@ pub fn set_url_password(url: &mut url::Url, password: &str) -> Result<(), ()> {
     ))
 }
 
-pub fn create_adapter(
-    config: ConnectionConfig,
-    pool_state: PoolState,
-) -> Result<Box<dyn DatabaseAdapter>, String> {
-    match config.kind {
-        DatabaseKind::Postgres => Ok(Box::new(postgres::PostgresAdapter::from_config(
-            config, pool_state,
-        ))),
-        kind => create_adapter_from_string(kind, &config_url(&config)?, None, pool_state),
-    }
-}
-
-fn config_url(config: &ConnectionConfig) -> Result<String, String> {
-    let invalid = |part: &str| format!("Ungültige Verbindungsangabe: {part}");
-    let scheme = config.kind.url_schemes()[0];
-    let mut url = url::Url::parse(&format!("{scheme}://localhost")).map_err(|_| invalid("Typ"))?;
-    url.set_host(Some(&config.host))
-        .map_err(|_| invalid("Host"))?;
-    url.set_port(Some(config.port))
-        .map_err(|_| invalid("Port"))?;
-    url.set_username(&config.user)
-        .map_err(|_| invalid("Benutzer"))?;
-    set_url_password(&mut url, &config.password).map_err(|_| invalid("Passwort"))?;
-    url.path_segments_mut()
-        .map_err(|_| invalid("Datenbank"))?
-        .push(&config.database);
-    Ok(url.into())
-}
-
 pub fn create_adapter_from_string(
     kind: DatabaseKind,
     connection_string: &str,
@@ -2656,33 +2613,6 @@ mod tests {
         ] {
             assert!(validate_table_filter(filter).is_ok(), "{filter}");
         }
-    }
-
-    #[test]
-    fn config_urls_encode_every_part() {
-        let url = super::config_url(&super::ConnectionConfig {
-            kind: super::DatabaseKind::Mysql,
-            host: "db.local".into(),
-            port: 3307,
-            user: "a b".into(),
-            password: "p w+@/:x".into(),
-            database: "my db/x".into(),
-            ssl_mode: None,
-            read_only: false,
-        })
-        .unwrap();
-        let parsed = url::Url::parse(&url).unwrap();
-        let decode = |s: &str| {
-            percent_encoding::percent_decode_str(s)
-                .decode_utf8()
-                .unwrap()
-                .into_owned()
-        };
-        assert_eq!(decode(parsed.username()), "a b");
-        assert_eq!(decode(parsed.password().unwrap()), "p w+@/:x");
-        assert_eq!(parsed.host_str(), Some("db.local"));
-        assert_eq!(parsed.port(), Some(3307));
-        assert_eq!(decode(&parsed.path()[1..]), "my db/x");
     }
 
     #[test]

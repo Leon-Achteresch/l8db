@@ -153,21 +153,6 @@ export async function installDriver(kind: DatabaseKind): Promise<string> {
 
 export type SslMode = "disable" | "prefer" | "require" | "verify-ca" | "verify-full";
 
-export interface ConnectionConfig {
-  kind: DatabaseKind;
-  host: string;
-  port: number;
-  user: string;
-  password: string;
-  database: string;
-  ssl_mode?: SslMode;
-  read_only?: boolean;
-}
-
-export async function testConnection(config: ConnectionConfig): Promise<void> {
-  await invoke("test_connection", { config });
-}
-
 export async function testConnectionString(
   kind: DatabaseKind,
   connectionString: string,
