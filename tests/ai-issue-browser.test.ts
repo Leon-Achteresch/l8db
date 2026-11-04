@@ -126,17 +126,22 @@ test.skipIf(!process.env.L8DB_AI_ISSUE_BROWSER)(
               .length,
         ),
       ).toBe(0);
-      await card.getByRole("button", { name: "Issue prüfen", exact: true }).click();
+      await card.getByRole("button", { name: "Vorschau", exact: true }).click();
       const modal = page.getByRole("dialog", { name: "Issue-Vorschau" });
       await modal.getByRole("heading", { name: "Umgebung", exact: true }).waitFor();
       await modal.getByAltText("Geschwärzter Screenshot für das GitHub-Issue").waitFor();
+      await modal.evaluate((element) =>
+        Promise.all(
+          element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+        ),
+      );
       await mkdir(resolve("test-artifacts/ai-issue"), { recursive: true });
       await page.screenshot({ path: resolve("test-artifacts/ai-issue/preview.png") });
       await page.keyboard.press("Escape");
       await card.getByRole("button", { name: "Abbrechen", exact: true }).click();
       await panel.getByText("Der Bericht wurde nicht veröffentlicht.", { exact: true }).waitFor();
       await prepare();
-      await card.getByRole("button", { name: "Issue prüfen", exact: true }).click();
+      await card.getByRole("button", { name: "Vorschau", exact: true }).click();
       await modal
         .getByRole("button", { name: "Öffentliches Issue erstellen", exact: true })
         .click();
