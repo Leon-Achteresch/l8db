@@ -225,7 +225,6 @@ function boundUpload(request, headers, timeoutMs) {
     close() {
       clearTimeout(timer);
       request.signal.removeEventListener("abort", onAbort);
-      reader?.cancel().catch(() => {});
     },
   };
 }

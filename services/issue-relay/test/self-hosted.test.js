@@ -153,6 +153,28 @@ test("real HTTP disconnect and slow upload release slots; actual streamed bytes 
   assert.equal(handler.active, 0);
 });
 
+test("early rate-limit responses survive HTTP transport cleanup", async (t) => {
+  const handler = createHandler(
+    {},
+    { fetchRelay: async () => Response.json({ error: "limited" }, { status: 429 }) },
+  );
+  const server = createRelayServer(handler);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/issues`, {
+    method: "POST",
+    body: "{}",
+    headers: { "content-length": "2" },
+  });
+  assert.equal(response.status, 429);
+  assert.deepEqual(await response.json(), { error: "limited" });
+  assert.equal(handler.active, 0);
+});
+
 test("Node performance: bounded identities and eight complete large synthetic reports at four-way concurrency", async (t) => {
   const limiter = createLimiter({ capacity: 4096, now: () => 0 });
   const samples = [];
