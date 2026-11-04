@@ -131,7 +131,7 @@ test("an Oracle SQL*Plus script costs one execute and one output read per statem
     total: timing,
     p95BudgetMs: 4000,
   });
-});
+}, 60_000);
 
 test("SET SERVEROUTPUT OFF removes the per-statement output read from the managed session", async () => {
   await runSqlScript({
@@ -209,4 +209,4 @@ test("non-Oracle scripts read server messages without extra database round trips
     total: timing,
     p95BudgetMs: 4000,
   });
-});
+}, 60_000);

@@ -73,7 +73,7 @@ export function useScriptRun({
   const scriptSplit = useMemo(
     () =>
       scriptDialogOpen
-        ? splitSqlStatements(sql, connection?.kind)
+        ? splitSqlStatements(sql, connection?.kind, { slashRuns: connection?.kind === "oracle" })
         : { statements: [], commands: [], unterminated: false },
     [scriptDialogOpen, sql, connection?.kind],
   );
@@ -82,9 +82,11 @@ export function useScriptRun({
     (text: string): ScriptRunMode => {
       if (!connection) return "autocommit";
       if (getQueryTransaction(connection.id, database)) return "existing-transaction";
-      const hasDml = splitSqlStatements(text, connection.kind).statements.some((statement) =>
-        isTransactionalStatement(statement.text, connection.kind),
-      );
+      const hasDml =
+        connection.kind === "oracle" ||
+        splitSqlStatements(text, connection.kind).statements.some((statement) =>
+          isTransactionalStatement(statement.text, connection.kind),
+        );
       if (
         hasDml &&
         caps.transactions &&
@@ -133,7 +135,7 @@ export function useScriptRun({
           mode,
           stopOnError,
           filePath,
-          variables: substitutionSession(tabId),
+          variables: substitutionSession(`${tabId}:${connection.id}`),
           askVariables,
           selectRowLimit: DEFAULT_SELECT_ROW_LIMIT,
           onJob: setActiveJobId,

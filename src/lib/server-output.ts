@@ -22,6 +22,8 @@ interface ServerOutputState {
 }
 
 const MAX_ENTRIES = 1000;
+const TOAST_REPEAT_MS = 60_000;
+const toasted = new Map<string, Map<string, number>>();
 
 function createId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -96,11 +98,18 @@ export function deliverServerOutput(
     useServerOutputStore.getState().append(connectionId, database, messages);
     return;
   }
-  for (const message of messages) {
-    if (message.level !== "WARNING") continue;
-    useServerOutputStore.getState().append(connectionId, database, [message]);
-    const [title, ...lines] = message.message.split("\n");
-    const more = lines.length > 3 ? [`… ${lines.length - 3} weitere in der Server-Ausgabe`] : [];
-    toast.warning(title, { description: [...lines.slice(0, 3), ...more].join("\n") || undefined });
-  }
+  const warnings = messages.filter((message) => message.level === "WARNING");
+  if (!warnings.length) return;
+  useServerOutputStore.getState().append(connectionId, database, warnings);
+  const now = Date.now();
+  const seen = toasted.get(connectionId) ?? new Map<string, number>();
+  toasted.set(connectionId, seen);
+  for (const [text, at] of seen) if (now - at > TOAST_REPEAT_MS) seen.delete(text);
+  const fresh = warnings.filter((message) => !seen.has(message.message));
+  if (!fresh.length) return;
+  for (const message of fresh) seen.set(message.message, now);
+  const [title, ...lines] = fresh[0].message.split("\n");
+  const extra = [...lines, ...fresh.slice(1).map((message) => message.message.split("\n")[0])];
+  const more = extra.length > 3 ? [`… ${extra.length - 3} weitere in der Server-Ausgabe`] : [];
+  toast.warning(title, { description: [...extra.slice(0, 3), ...more].join("\n") || undefined });
 }

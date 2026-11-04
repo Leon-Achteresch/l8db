@@ -20,7 +20,7 @@ export interface IncludeContext {
 
 export const INCLUDE_LIMITS = { depth: 10, items: 100_000, characters: 10 * 1024 * 1024 } as const;
 
-const INCLUDE_PATTERN = /^(@@?|STA(?:RT)?\s)\s*("[^"]+"|'[^']+'|\S+)([\s\S]*)$/i;
+const INCLUDE_PATTERN = /^(@@?|STA(?:RT?)?\s)\s*("[^"]+"|'[^']+'|\S+)([\s\S]*)$/i;
 
 export function includeTarget(
   text: string,
@@ -122,15 +122,25 @@ export async function expandIncludes(
         continue;
       }
       const fail = (error: string) => out.push({ ...placed, kind: "error", error });
+      if (/^(\\\\|\/\/)/.test(target.name)) {
+        fail(`Netzwerkpfade (UNC) sind für @-Dateien nicht erlaubt: ${target.name}`);
+        continue;
+      }
       if (depth >= INCLUDE_LIMITS.depth) {
         fail(
           `@-Aufrufe sind höchstens ${INCLUDE_LIMITS.depth} Ebenen tief erlaubt: ${target.name}`,
         );
         continue;
       }
+      if (target.name.includes("&")) {
+        fail(
+          `@-Dateinamen mit Substitutionsvariablen werden nicht unterstützt, weil l8db @-Dateien vor dem Lauf liest: ${target.name}`,
+        );
+        continue;
+      }
       const candidates = includeCandidates(
         target.name,
-        target.nested ? [dir] : [dir, top, ...context.searchPath],
+        target.nested ? [dir] : [top ?? dir, ...context.searchPath],
       );
       if (!candidates.length) {
         fail(
@@ -160,7 +170,7 @@ export async function expandIncludes(
         fail(`Datei ist zu groß: ${source}`);
         continue;
       }
-      const split = splitSqlStatements(found.text, "oracle");
+      const split = splitSqlStatements(found.text, "oracle", { slashRuns: true });
       if (split.unterminated) {
         fail(`Nicht abgeschlossenes Literal oder Kommentar in ${source}`);
         continue;

@@ -27,7 +27,7 @@ export const SCRIPT_RUN_MODE_TEXT: Record<ScriptRunMode, string> = {
     "Jedes Statement wird sofort und endgültig ausgeführt (Autocommit). Ein Rollback ist nicht möglich.",
 };
 
-const SQLPLUS_MODE_TEXT: Record<ScriptRunMode, string> = {
+export const SQLPLUS_MODE_TEXT: Record<ScriptRunMode, string> = {
   "existing-transaction":
     "Wie SQL*Plus in der offenen Transaktion: COMMIT, ROLLBACK, WHENEVER SQLERROR … und EXIT im Skript schließen sie ab; DDL committet implizit.",
   "new-transaction":

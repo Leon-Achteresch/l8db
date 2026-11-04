@@ -52,7 +52,8 @@ export function SubstitutionDialog({
             <DialogDescription>
               Werte für &amp;-Variablen ohne DEFINE und für ACCEPT. Sie werden wie in SQL*Plus als
               Text eingesetzt, auch in Literalen, und bleiben für diesen Tab bis zum Neustart
-              gespeichert (verdeckte ACCEPT … HIDE-Werte nicht).
+              gespeichert. Verdeckte ACCEPT … HIDE-Werte werden maskiert angezeigt und nach dem Lauf
+              verworfen.
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-80 pr-2">

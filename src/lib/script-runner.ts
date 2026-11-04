@@ -1,4 +1,4 @@
-import { stat, writeTextFile } from "@tauri-apps/plugin-fs";
+import { lstat, stat, writeTextFile } from "@tauri-apps/plugin-fs";
 import type {
   ScriptRunEntry,
   ScriptRunMessage,
@@ -93,18 +93,9 @@ const IMPLICIT_COMMIT = new Set([
 const BIND_TYPE =
   /^(NUMBER|BINARY_FLOAT|BINARY_DOUBLE|CLOB|NCLOB|REFCURSOR|BOOLEAN|(N?CHAR|N?VARCHAR2)(\s*\(\s*\d+(\s+(CHAR|BYTE))?\s*\))?)$/;
 const MAX_SCRIPT_OUTPUT = 20_000;
-const SPOOL_EXTENSIONS = new Set([
-  "lst",
-  "log",
-  "txt",
-  "out",
-  "csv",
-  "sql",
-  "html",
-  "htm",
-  "xml",
-  "json",
-]);
+const OUTPUT_BATCH = 2000;
+const OUTPUT_ROUNDS = MAX_SCRIPT_OUTPUT / OUTPUT_BATCH;
+const SPOOL_EXTENSIONS = new Set(["lst", "log", "txt", "out"]);
 
 export interface ScriptRequest {
   connection: SavedConnection;
@@ -147,6 +138,12 @@ interface BindState {
   cursor: QueryResult | null;
 }
 
+class ScriptAbort extends Error {}
+
+function abort(failure: unknown): never {
+  throw new ScriptAbort(failure instanceof Error ? failure.message : String(failure));
+}
+
 function message(failure: unknown): string {
   return failure instanceof Error ? failure.message : String(failure);
 }
@@ -157,6 +154,17 @@ function first(result: QueryResult): string {
 
 function literal(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
+}
+
+function connectIdentifier(connectionString: string): string {
+  try {
+    const url = new URL(connectionString);
+    const alias = url.searchParams.get("tns") ?? url.searchParams.get("connect_string");
+    if (alias) return alias;
+    return `${url.hostname}${url.port ? `:${url.port}` : ""}${decodeURIComponent(url.pathname)}`;
+  } catch {
+    return "";
+  }
 }
 
 function dirname(path: string): string | null {
@@ -204,12 +212,12 @@ function createdObject(sql: string): { type: string; owner: string | null; name:
 export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcome> {
   const { connection, database, mode } = request;
   const url = effectiveConnectionString(connection);
-  const split = splitSqlStatements(request.sql, connection.kind);
+  const oracle = connection.kind === "oracle";
+  const split = splitSqlStatements(request.sql, connection.kind, { slashRuns: oracle });
   if (split.unterminated)
     throw new Error(
       "Nicht abgeschlossenes SQL-Literal oder Kommentar. Das Skript wurde nicht gestartet.",
     );
-  const oracle = connection.kind === "oracle";
   const items = split.commands.length
     ? await expandIncludes(scriptItems(split), {
         file: request.filePath ?? null,
@@ -230,13 +238,36 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
   const answers = oracle ? await askMissingVariables(items, session, request.askVariables) : {};
   if (!answers) throw new Error("Ausführung vom Benutzer abgebrochen.");
   let values: Record<string, string> = answers;
+  const hidden = new Set(
+    items.flatMap((item) => {
+      if (item.kind !== "command") return [];
+      const command = parseSqlPlusCommand(item.text);
+      return command.type === "accept" && command.hide ? [command.name] : [];
+    }),
+  );
+  const masks = Object.fromEntries([...hidden].map((name) => [name, "********"]));
+  const mask = (text: string): string | null =>
+    hidden.size
+      ? substitute(
+          text,
+          { ...session.state, defines: { ...session.state.defines, ...masks } },
+          { ...values, ...masks },
+        ).text
+      : null;
+  const forget = () => {
+    for (const name of hidden) delete session.state.defines[name];
+  };
   const preview = { ...session.state, defines: { ...session.state.defines } };
+  const previewed = new Map<ScriptItem, string>();
   const executable = oracle
     ? items
         .flatMap((item) => {
           Object.assign(preview.defines, item.defines);
           if (item.kind === "command") applySqlPlusSetting(parseSqlPlusCommand(item.text), preview);
-          return item.kind === "sql" ? [substitute(item.text, preview, answers).text] : [];
+          if (item.kind !== "sql") return [];
+          const text = substitute(item.text, preview, answers).text;
+          previewed.set(item, text);
+          return [text];
         })
         .join("\n/\n")
     : request.sql;
@@ -333,6 +364,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     const publish = () => request.onProgress?.(entries.map((entry) => ({ ...entry })));
     let halted = false;
     let outputLines = 0;
+    let lastSql: ScriptItem | null = null;
     const add = (entry: ScriptRunEntry, lines: ScriptRunMessage[]) => {
       entry.output = [...(entry.output ?? []), ...lines];
     };
@@ -346,14 +378,21 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     };
     const collect = async (entry: ScriptRunEntry) => {
       const active = txId;
-      let messages: ScriptRunMessage[] = [];
+      const messages: ScriptRunMessage[] = [];
+      const read = () =>
+        active
+          ? transactionServerOutput(active)
+          : takeServerOutput(connection.kind, url, database ?? undefined);
+      if (active ? oracle && !plus.serverOutput : !supports(connection, "server_output")) return;
       try {
-        if (active) {
-          if (!oracle || plus.serverOutput) messages = await transactionServerOutput(active);
-        } else if (supports(connection, "server_output"))
-          messages = await takeServerOutput(connection.kind, url, database ?? undefined);
+        for (let round = 0; round < OUTPUT_ROUNDS; round += 1) {
+          const batch = await read();
+          messages.push(...batch);
+          if (!oracle || batch.filter((line) => line.level === "OUTPUT").length < OUTPUT_BATCH)
+            break;
+        }
       } catch {
-        return;
+        if (!messages.length) return;
       }
       if (!messages.length) return;
       const room = Math.max(0, MAX_SCRIPT_OUTPUT - outputLines);
@@ -381,6 +420,13 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       if (!(await pendingTransaction().catch(() => true)))
         useTransactionStore.getState().clearChanges(active);
     };
+    const confirmCommit = async (active: string, always: boolean) => {
+      const changes =
+        useTransactionStore.getState().transactions.find((item) => item.txId === active)?.changes ??
+        [];
+      if (always || changes.length)
+        await confirmProductionCommit(connection.id, database, changes).catch(abort);
+    };
     const control = async (entry: ScriptRunEntry, action: ExitAction, sql: string = action) => {
       const active = txId;
       if (!active) {
@@ -392,10 +438,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
           );
         return;
       }
-      if (action === "COMMIT") {
-        const tx = useTransactionStore.getState().transactions.find((item) => item.txId === active);
-        await confirmProductionCommit(connection.id, database, tx?.changes ?? []);
-      }
+      if (action === "COMMIT") await confirmCommit(active, true);
       await runManagedOperation(active, () => executeInTransaction(active, sql, internal));
       useTransactionStore.getState().clearChanges(active);
       plus.uncommitted = 0;
@@ -434,13 +477,16 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       halted = true;
       const resolved = resolveStatus(status);
       const chosen: ExitAction = action ?? (plus.exitCommit ? "COMMIT" : "ROLLBACK");
-      exit = { ...resolved, action: chosen };
-      say(entry, "INFO", `EXIT ${resolved.label} (Code ${resolved.code}) mit ${chosen}`);
       const active = txId;
       if (active) {
-        await finishManagedTransaction(active, chosen === "COMMIT");
+        await finishManagedTransaction(active, chosen === "COMMIT").catch((failure: unknown) =>
+          /abgebrochen/.test(message(failure)) ? abort(failure) : Promise.reject(failure),
+        );
         txId = null;
-      } else if (oracle && chosen === "ROLLBACK")
+      }
+      exit = { ...resolved, action: chosen };
+      say(entry, "INFO", `EXIT ${resolved.label} (Code ${resolved.code}) mit ${chosen}`);
+      if (!active && oracle && chosen === "ROLLBACK")
         say(
           entry,
           "WARNING",
@@ -459,10 +505,22 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       else if (rule.action === "COMMIT" || rule.action === "ROLLBACK")
         await control(entry, rule.action);
     };
+    const crash = (entry: ScriptRunEntry, failure: unknown) => {
+      const text = message(failure);
+      if (entry.error && entry.error !== text) say(entry, "ERROR", text);
+      else entry.error = text;
+      entry.status = "error";
+      error ??= entry.error;
+      halted = true;
+      if (failure instanceof ScriptAbort) {
+        stopped = true;
+        error = text;
+      }
+    };
     const commandFailure = (entry: ScriptRunEntry, failure: string) => {
       entry.error = failure;
       error = failure;
-      if (stopOnError) halted = true;
+      if (stopOnError && !plus.sqlError) halted = true;
     };
     const switchServerOutput = async (enabled: boolean) => {
       plus.serverOutput = enabled;
@@ -694,6 +752,12 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     ) => {
       await flushSpool(entry, entry.index);
       if (!command.file) return;
+      if (/^(\\\\|\/\/)/.test(command.file))
+        throw new Error("SPOOL auf Netzwerkpfade (UNC) ist nicht erlaubt.");
+      if (command.file.split(/[\\/]/).some((part) => part === ".." || /^\.[^.]/.test(part)))
+        throw new Error(
+          "SPOOL-Pfade dürfen weder .. noch versteckte Ordner oder Dateien enthalten.",
+        );
       const absolute = /^([\\/]|[A-Za-z]:[\\/])/.test(command.file);
       const base = request.filePath ? dirname(request.filePath) : null;
       if (!absolute && !base)
@@ -703,7 +767,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       const name = command.file.split(/[\\/]/).pop() ?? "";
       const withExtension = /\.[^.]+$/.test(name) ? command.file : `${command.file}.lst`;
       const extension = /\.([^.]+)$/.exec(withExtension)?.[1]?.toLowerCase() ?? "";
-      if (name.startsWith(".") || !SPOOL_EXTENSIONS.has(extension))
+      if (!SPOOL_EXTENSIONS.has(extension))
         throw new Error(
           `SPOOL schreibt nur Protokolldateien (${[...SPOOL_EXTENSIONS].map((item) => `.${item}`).join(", ")}).`,
         );
@@ -711,14 +775,34 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       const path = absolute
         ? withExtension
         : `${base}${base?.endsWith(separator) ? "" : separator}${withExtension}`;
-      if (
-        command.mode === "CREATE" &&
-        (await stat(path).then(
-          () => true,
-          () => false,
-        ))
-      )
-        throw new Error(`SP2-0771: Datei ${path} existiert bereits (SPOOL … CREATE).`);
+      const comparable = (value: string) => value.replace(/\\/g, "/").toLowerCase();
+      if (items.some((item) => item.source && comparable(item.source) === comparable(path)))
+        throw new Error(
+          `SPOOL ${path}: Die Datei wird später per @ ausgeführt. l8db liest @-Dateien vor dem Lauf, ein während des Laufs erzeugtes Skript würde nicht ausgeführt.`,
+        );
+      const existing = await lstat(path).catch(() => null);
+      if (existing && (existing.isSymlink || !existing.isFile))
+        throw new Error(`SPOOL ${path}: Ziel ist keine normale Datei.`);
+      if (existing && command.mode === "CREATE")
+        throw new Error(`SPOOL ${path}: Datei existiert bereits (SP2-0771, SPOOL … CREATE).`);
+      const accepted = await requestSqlConfirmation({
+        connection: connection.name,
+        database,
+        statements: [
+          {
+            sql: path,
+            reason: !existing
+              ? "neue Datei"
+              : command.mode === "APPEND"
+                ? "wird ergänzt"
+                : "wird überschrieben",
+          },
+        ],
+        title: "Skriptprotokoll schreiben?",
+        description: "Das Skript schreibt sein Protokoll per SPOOL in diese Datei.",
+        confirmLabel: "Schreiben",
+      });
+      if (!accepted) abort("SPOOL vom Benutzer abgebrochen.");
       plus.spool = { path, mode: command.mode, from: entry.index + 1 };
       say(entry, "INFO", `Spool nach ${path}`);
     };
@@ -726,10 +810,11 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       let command = parseSqlPlusCommand(raw);
       if (SUBSTITUTED_COMMANDS.has(command.type)) {
         const text = substitute(raw, session.state, values).text;
-        if (text !== raw) {
-          entry.sql = text;
-          command = parseSqlPlusCommand(text);
-        }
+        const shown = mask(raw) ?? text;
+        if (text !== raw) command = parseSqlPlusCommand(text);
+        if (shown !== raw) entry.sql = shown;
+        if (command.type === "prompt" || command.type === "pause")
+          command = parseSqlPlusCommand(shown);
       }
       switch (command.type) {
         case "connect":
@@ -806,7 +891,11 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
             const value = session.state.defines[name];
             if (value === undefined)
               throw new Error(`SP2-0135: Symbol ${name} ist nicht definiert.`);
-            say(entry, "INFO", `DEFINE ${name} = "${value}" (CHAR)`);
+            say(
+              entry,
+              "INFO",
+              `DEFINE ${name} = "${hidden.has(name) ? masks[name] : value}" (CHAR)`,
+            );
           }
           if (!names.length) say(entry, "INFO", "Keine Substitutionsvariablen definiert.");
           return "success";
@@ -861,8 +950,15 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
           entry.note = DISPLAY_NOTE;
           return "ignored";
         case "set-unsupported":
-          entry.note = `SET ${command.option} wird nicht unterstützt; es gelten ; und / als Trennzeichen.`;
-          return "ignored";
+          halted = true;
+          throw new Error(
+            `SET ${command.option} mit eigenem Trennzeichen wird nicht unterstützt; es gelten ; und /. Das Skript wurde angehalten, damit die folgenden Statements nicht falsch getrennt laufen.`,
+          );
+        case "run": {
+          if (!lastSql) throw new Error("SP2-0103: Im SQL-Puffer steht nichts zum Ausführen.");
+          await runStatement(lastSql, entry);
+          return entry.status === "running" ? "error" : entry.status;
+        }
         case "display":
           entry.note = `${command.name} ist ein Formatierungs- oder Pufferbefehl ohne Wirkung im Raster.`;
           return "ignored";
@@ -900,7 +996,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         });
       }
     };
-    const execute = async (entry: ScriptRunEntry): Promise<QueryResult> => {
+    const execute = async (entry: ScriptRunEntry, sql: string): Promise<QueryResult> => {
       const options = {
         ...internal,
         onJob: (id: string) => {
@@ -908,16 +1004,21 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         },
       };
       const used =
-        oracle && !/^\s*CREATE\b/i.test(entry.sql)
-          ? bindNames(entry.sql).filter((name) => plus.binds.has(name))
+        oracle && !/^\s*CREATE\b/i.test(sql)
+          ? bindNames(sql).filter((name) => plus.binds.has(name))
           : [];
       const activeTxId = txId;
+      const limited = applySelectRowLimit(
+        expandSessionViews(sql, sessionViewsFor(connection.id, database), connection.kind),
+        connection.kind,
+        oracle ? 0 : (request.selectRowLimit ?? 0),
+      );
       if (used.length) {
         const run = () =>
           executeWithBinds(
             connection.kind,
             url,
-            entry.sql,
+            limited,
             [...plus.binds].map(([name, bind]) => ({
               name,
               dataType: bind.dataType,
@@ -938,29 +1039,29 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         if (activeTxId) record(activeTxId, entry.sql, bound.result, []);
         return bound.result;
       }
-      const executionSql = applySelectRowLimit(
-        expandSessionViews(entry.sql, sessionViewsFor(connection.id, database), connection.kind),
-        connection.kind,
-        request.selectRowLimit ?? 0,
-      );
-      const sessionResult = await runSessionViewStatement(connection, database, entry.sql);
+      const sessionResult = await runSessionViewStatement(connection, database, sql);
       if (sessionResult) return sessionResult;
       if (!activeTxId)
-        return executeQuery(connection.kind, url, executionSql, database ?? undefined, options);
+        return executeQuery(connection.kind, url, limited, database ?? undefined, options);
       const tracked = await runManagedOperation(activeTxId, () =>
-        executeWithTransactionChanges(connection, database, activeTxId, entry.sql, () =>
-          executeInTransaction(activeTxId, executionSql, options),
+        executeWithTransactionChanges(connection, database, activeTxId, sql, () =>
+          executeInTransaction(activeTxId, limited, options),
         ),
       );
       record(activeTxId, entry.sql, tracked.result, tracked.changes);
       return tracked.result;
     };
     const runStatement = async (item: ScriptItem, entry: ScriptRunEntry) => {
+      lastSql = item;
+      let sql = item.text;
       if (oracle) {
-        entry.sql = substitute(item.text, session.state, values).text;
-        if (plus.verify && entry.sql !== item.text) add(entry, verifyLines(item.text, entry.sql));
+        sql = substitute(item.text, session.state, values).text;
+        entry.sql = mask(item.text) ?? sql;
+        if (plus.verify && sql !== item.text) add(entry, verifyLines(item.text, entry.sql));
+        if (sql !== previewed.get(item))
+          await confirmSqlExecution(connection.kind, url, sql, database ?? undefined).catch(abort);
       }
-      const words = oracle ? leadingWords(entry.sql, 3) : [];
+      const words = oracle ? leadingWords(sql, 3) : [];
       const verb = words[0] ?? "";
       const ending =
         oracle && txId && (verb === "COMMIT" || (verb === "ROLLBACK" && !words.includes("TO")))
@@ -971,16 +1072,20 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         IMPLICIT_COMMIT.has(verb) &&
         !(verb === "ALTER" && ["SESSION", "SYSTEM"].includes(words[1]));
       const plsql = oracle && ["BEGIN", "DECLARE", "CALL", "EXEC", "EXECUTE"].includes(verb);
+      const ends = plsql && /\b(COMMIT|ROLLBACK)\b/i.test(sql);
       entry.status = "running";
       publish();
       const started = performance.now();
       let failure: string | null = null;
       try {
+        const active = txId;
+        if (active && (ddl || (plsql && /\bCOMMIT\b/i.test(sql))))
+          await confirmCommit(active, false);
         let result: QueryResult;
         if (ending) {
-          await control(entry, ending, entry.sql);
+          await control(entry, ending, sql);
           result = { columns: [], rows: [], rows_affected: null, execution_time_ms: 0 };
-        } else result = await execute(entry);
+        } else result = await execute(entry, sql);
         if (!entry.result) {
           entry.result = result;
           entry.rowCount = result.columns.length ? result.rows.length : null;
@@ -989,7 +1094,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         entry.rowsAffected = result.rows_affected == null ? null : Number(result.rows_affected);
         entry.status = "success";
         if (oracle) {
-          entry.feedback ??= sqlplusFeedback(entry.sql, result);
+          entry.feedback ??= sqlplusFeedback(sql, result);
           if (result.columns.length && result.rows.length)
             for (const [column, target] of plus.columns) {
               const key = result.columns.find((name) => name.toUpperCase() === column);
@@ -999,16 +1104,12 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
               if (target.newValue) session.state.defines[target.newValue] = text;
               if (target.oldValue) session.state.defines[target.oldValue] = text;
             }
-          const created = createdObject(entry.sql);
+          const created = createdObject(sql);
           if (created) plus.lastObject = created;
         }
         if (txId && ddl) useTransactionStore.getState().clearChanges(txId);
-        else if (txId && plsql && /\b(COMMIT|ROLLBACK)\b/i.test(entry.sql)) await settle();
-        if (
-          txId &&
-          plus.autocommit &&
-          (plsql || isTransactionalStatement(entry.sql, connection.kind))
-        ) {
+        else if (txId && ends) await settle();
+        if (txId && plus.autocommit && (plsql || isTransactionalStatement(sql, connection.kind))) {
           plus.uncommitted += 1;
           if (plus.uncommitted >= plus.autocommit) {
             await control(entry, "COMMIT");
@@ -1016,13 +1117,14 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
           }
         }
       } catch (caught) {
+        if (caught instanceof ScriptAbort) throw caught;
         failure = message(caught);
-        if (oracle && failure.includes("ORA-24344")) {
+        if (oracle && failure.includes("ORA-24344") && createdObject(sql)) {
           const [, ...details] = failure.split("\n");
-          const created = createdObject(entry.sql);
+          const created = createdObject(sql);
           if (created) plus.lastObject = created;
           entry.status = "warning";
-          entry.feedback = compileWarning(entry.sql);
+          entry.feedback = compileWarning(sql);
           for (const line of details) if (line.trim()) say(entry, "WARNING", line.trim());
           if (txId) useTransactionStore.getState().clearChanges(txId);
           failure = null;
@@ -1031,14 +1133,15 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
           entry.error = failure;
           const code = /ORA-(\d{5})/.exec(failure);
           plus.sqlcode = code ? Number(code[1]) : plus.sqlcode || 1;
-          if (txId && (ddl || (plsql && /\b(COMMIT|ROLLBACK)\b/i.test(entry.sql)))) await settle();
+          if (txId && (ddl || ends)) await settle();
         }
       } finally {
         currentJob = null;
         entry.durationMs = Math.round(performance.now() - started);
       }
       await collect(entry);
-      if (failure !== null) await onRule(entry, oracle ? plus.sqlError : null, failure);
+      if (failure !== null && /^SP2-\d{4}/.test(failure)) commandFailure(entry, failure);
+      else if (failure !== null) await onRule(entry, oracle ? plus.sqlError : null, failure);
     };
     if (
       oracle &&
@@ -1050,17 +1153,37 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       );
       if (missing.length) {
         const result = await query(
-          "SELECT USER AS \"_USER\", SYS_CONTEXT('USERENV', 'DB_NAME') AS \"_CONNECT_IDENTIFIER\", TO_CHAR(SYSDATE) AS \"_DATE\", CASE SYS_CONTEXT('USERENV', 'ISDBA') WHEN 'TRUE' THEN 'AS SYSDBA' END AS \"_PRIVILEGE\", (SELECT version FROM product_component_version WHERE ROWNUM = 1) AS \"_O_VERSION\" FROM dual",
+          "SELECT USER AS \"_USER\", TO_CHAR(SYSDATE) AS \"_DATE\", CASE SYS_CONTEXT('USERENV', 'ISDBA') WHEN 'TRUE' THEN 'AS SYSDBA' END AS \"_PRIVILEGE\", (SELECT version FROM product_component_version WHERE ROWNUM = 1) AS \"VERSION\" FROM dual",
         ).catch(() => null);
+        const banner = await query("SELECT banner_full FROM v$version WHERE ROWNUM = 1")
+          .then(first)
+          .catch(() => "");
         const row = result?.rows[0] ?? {};
+        const release = String(row.VERSION ?? "")
+          .split(".")
+          .slice(0, 5)
+          .map((part) => part.padStart(2, "0").slice(-2))
+          .join("")
+          .padEnd(10, "0");
+        const known: Record<string, string> = {
+          _USER: String(row._USER ?? ""),
+          _CONNECT_IDENTIFIER: connectIdentifier(connection.connectionString),
+          _DATE: String(row._DATE ?? ""),
+          _PRIVILEGE: String(row._PRIVILEGE ?? ""),
+          _O_VERSION: banner || String(row.VERSION ?? ""),
+          _O_RELEASE: row.VERSION ? release : "",
+          _SQLPLUS_RELEASE: row.VERSION ? release : "",
+          _EDITOR: "",
+        };
         values = {
-          ...Object.fromEntries(missing.map((name) => [name, String(row[name] ?? "")])),
+          ...Object.fromEntries(missing.map((name) => [name, known[name] ?? ""])),
           ...answers,
         };
       }
     }
     for (const item of items) {
-      if (item.defines) Object.assign(session.state.defines, item.defines);
+      for (const [name, value] of Object.entries(item.defines ?? {}))
+        session.state.defines[name] = substitute(value, session.state, values).text;
       const entry = entryOf.get(item);
       if (!entry) continue;
       if (stopped || halted) {
@@ -1071,7 +1194,9 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       if (item.kind === "error") {
         entry.status = "error";
         entry.error = item.error ?? "Datei konnte nicht gelesen werden.";
-        await onRule(entry, plus.osError, entry.error);
+        await onRule(entry, plus.osError, entry.error).catch((failure: unknown) =>
+          crash(entry, failure),
+        );
         publish();
         continue;
       }
@@ -1079,9 +1204,12 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         const started = performance.now();
         entry.status = await runCommand(item.text, entry).catch(async (failure: unknown) => {
           const text = message(failure);
-          if (text.startsWith("SPOOL ")) {
+          if (failure instanceof ScriptAbort) crash(entry, failure);
+          else if (text.startsWith("SPOOL ")) {
             entry.error = text;
-            await onRule(entry, plus.osError, text);
+            await onRule(entry, plus.osError, text).catch((nested: unknown) =>
+              crash(entry, nested),
+            );
           } else commandFailure(entry, text);
           return "error" as const;
         });
@@ -1089,14 +1217,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         publish();
         continue;
       }
-      await runStatement(item, entry).catch((failure: unknown) => {
-        const text = message(failure);
-        if (entry.error) say(entry, "ERROR", text);
-        else entry.error = text;
-        entry.status = "error";
-        error ??= entry.error;
-        halted = true;
-      });
+      await runStatement(item, entry).catch((failure: unknown) => crash(entry, failure));
       updateTask(jobId, {
         progress: entries.filter(
           (entry) => entry.status !== "pending" && entry.status !== "skipped",
@@ -1147,6 +1268,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     const finalExit = exit as ScriptExit | null;
     if (finalExit && finalExit.code !== 0 && !error)
       error = `Skript mit EXIT ${finalExit.label} (Code ${finalExit.code}) beendet.`;
+    forget();
     const outcome = { entries, lastResult, error, txId, exit: finalExit };
     finishTask(
       jobId,
@@ -1158,6 +1280,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     );
     return outcome;
   } catch (failure) {
+    forget();
     finishTask(jobId, undefined, failure);
     throw failure;
   }
