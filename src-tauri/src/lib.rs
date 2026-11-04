@@ -18,6 +18,8 @@ mod desktop;
 mod extension_process;
 mod file_open;
 mod firebase;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod group_policy;
 mod index_advisor;
 mod issues;
 mod mcp;
