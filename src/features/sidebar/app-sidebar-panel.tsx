@@ -119,7 +119,7 @@ export function AppSidebarPanel() {
                 />
               </div>
             ) : (
-              <SidebarGroupLabel className="flex-1">
+              <SidebarGroupLabel className="flex-1 text-control text-sidebar-foreground">
                 {caps.object_storage && sidebarTab === "tables"
                   ? "Buckets"
                   : sidebarTabLabel(sidebarTab)}

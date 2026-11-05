@@ -32,10 +32,7 @@ export function ContinueRail({
   const now = Date.now();
 
   return (
-    <aside
-      aria-label="Weitermachen"
-      className="flex min-h-0 flex-col gap-6 @4xl/home:absolute @4xl/home:inset-0"
-    >
+    <aside aria-label="Weitermachen" className="flex min-h-0 flex-col gap-6">
       <section className="shrink-0">
         <h2 className="eyebrow mb-2">Weitermachen</h2>
         {entries.length ? (

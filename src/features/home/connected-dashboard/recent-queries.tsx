@@ -42,7 +42,7 @@ export function RecentQueries({
       {recent.length ? (
         <ul
           aria-label="Letzte Abfragen"
-          className="min-h-0 flex-1 divide-y overflow-auto rounded-xl border bg-card"
+          className="max-h-[22rem] min-h-0 flex-1 divide-y overflow-auto rounded-xl border bg-card"
           onPointerLeave={() => setHighlight(null)}
         >
           {recent.map((entry) => (

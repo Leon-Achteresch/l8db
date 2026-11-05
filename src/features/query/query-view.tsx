@@ -2,7 +2,6 @@ import { motion } from "motion/react";
 import { useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 import { useShallow } from "zustand/shallow";
-import { Separator } from "@/components/ui/separator";
 import { DmlPreviewDialog } from "@/features/query/dml-preview-dialog";
 import { MultiTargetSheet } from "@/features/query/multi-target/multi-target-sheet";
 import { useMultiTargetRun } from "@/features/query/multi-target/use-multi-target-run";
@@ -241,7 +240,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           className="@container/qtb flex h-12 shrink-0 flex-nowrap items-center gap-1.5 overflow-hidden border-b bg-card px-3"
           data-tour="query-toolbar"
         >
-          <div className="-mx-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1 py-1 [scrollbar-width:none]">
+          <div className="-mx-1 flex min-w-0 flex-1 items-center gap-4 overflow-x-auto px-1 py-1 [scrollbar-width:none]">
             <RunControls
               actions={actions}
               exec={exec}
@@ -252,45 +251,45 @@ export function QueryView({ tabId }: QueryViewProps) {
               showScript={isSql}
               onOpenScript={script.handleOpenScriptDialog}
               shortcutLabel={shortcutLabel}
-            />
-            {caps.dml_preview && (
-              <DmlPreviewButton
-                disabled={exec.isRunning || !connection || !sql.trim()}
-                disabledReason={
-                  exec.isRunning
-                    ? "Eine Abfrage läuft bereits"
-                    : !connection
-                      ? "Keine Verbindung aktiv"
-                      : "Kein SQL im Editor"
-                }
-                shortcut={shortcutLabel("query.preview")}
-                onPreview={() => void actions.handlePreview()}
-              />
-            )}
-            {caps.multi_target_query && (
-              <MultiTargetButton
-                disabled={!connection}
-                disabledReason="Keine Verbindung aktiv"
-                running={multiTargetRun.running}
-                onOpen={() => setMultiTargetOpen(true)}
-              />
-            )}
-            {isSql && <Separator orientation="vertical" className="mx-1 my-2" />}
-            {isSql && <SelectRowLimit />}
-            {connection && isSql && (
-              <SqlStatesButton
-                key={JSON.stringify([connection.id, database, tabId])}
-                connectionId={connection.id}
-                database={database}
-                tabId={tabId}
-                sql={sql}
-                running={exec.isRunning}
-                onRestore={(text) => {
-                  editorApiRef.current?.replaceText(text);
-                  editorSync.flush();
-                }}
-              />
-            )}
+            >
+              {caps.dml_preview && (
+                <DmlPreviewButton
+                  disabled={exec.isRunning || !connection || !sql.trim()}
+                  disabledReason={
+                    exec.isRunning
+                      ? "Eine Abfrage läuft bereits"
+                      : !connection
+                        ? "Keine Verbindung aktiv"
+                        : "Kein SQL im Editor"
+                  }
+                  shortcut={shortcutLabel("query.preview")}
+                  onPreview={() => void actions.handlePreview()}
+                />
+              )}
+              {caps.multi_target_query && (
+                <MultiTargetButton
+                  disabled={!connection}
+                  disabledReason="Keine Verbindung aktiv"
+                  running={multiTargetRun.running}
+                  onOpen={() => setMultiTargetOpen(true)}
+                />
+              )}
+              {isSql && <SelectRowLimit />}
+              {connection && isSql && (
+                <SqlStatesButton
+                  key={JSON.stringify([connection.id, database, tabId])}
+                  connectionId={connection.id}
+                  database={database}
+                  tabId={tabId}
+                  sql={sql}
+                  running={exec.isRunning}
+                  onRestore={(text) => {
+                    editorApiRef.current?.replaceText(text);
+                    editorSync.flush();
+                  }}
+                />
+              )}
+            </RunControls>
           </div>
           <ToolbarViewControls
             isSql={isSql}

@@ -145,24 +145,39 @@ export function ConnectionPickCard({
           footer={
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
               {connection.temporary ? (
-                <Button variant="outline" size="xs" onClick={() => saveTemporary(connection.id)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="px-3 text-control"
+                  onClick={() => saveTemporary(connection.id)}
+                >
                   <Save className="size-3" />
                   Verbindung speichern
                 </Button>
               ) : (
-                <Button variant="outline" size="xs" onClick={onEdit}>
+                <Button variant="outline" size="sm" className="px-3 text-control" onClick={onEdit}>
                   <Pencil className="size-3" />
                   Bearbeiten
                 </Button>
               )}
               <div className="flex items-center gap-1">
                 {active ? (
-                  <Button variant="outline" size="xs" onClick={onOpen}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="px-3 text-control"
+                    onClick={onOpen}
+                  >
                     <Unplug className="size-3" />
                     Trennen
                   </Button>
                 ) : (
-                  <Button variant="default" size="xs" onClick={onOpen}>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="px-3 text-control"
+                    onClick={onOpen}
+                  >
                     <Play className="size-3" />
                     Verbinden
                   </Button>
@@ -302,23 +317,23 @@ function ConnectionCardShell({
               </span>
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-2">
-                <h3
-                  className="truncate text-sm font-semibold tracking-tight text-foreground"
-                  title={connection.name}
-                >
-                  {connection.name}
-                </h3>
+              <h3
+                className="truncate text-sm font-semibold tracking-tight text-foreground"
+                title={connection.name}
+              >
+                {connection.name}
+              </h3>
+              <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                <span className="truncate">
+                  {provider.name}
+                  {colorLabel ? ` · ${colorLabel}` : ""}
+                </span>
                 {connected && (
-                  <span className="shrink-0 rounded-sm border border-emerald-500/30 bg-emerald-500/10 px-1.5 text-xs leading-[18px] font-medium text-emerald-600 dark:text-emerald-400">
+                  <span className="shrink-0 rounded-sm border border-emerald-500/30 bg-emerald-500/10 px-1.5 text-[11px] leading-4 font-medium text-emerald-600 dark:text-emerald-400">
                     Verbunden
                   </span>
                 )}
               </div>
-              <p className="truncate text-xs text-muted-foreground">
-                {provider.name}
-                {colorLabel ? ` · ${colorLabel}` : ""}
-              </p>
             </div>
           </div>
           {actions}

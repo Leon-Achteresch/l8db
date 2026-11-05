@@ -230,7 +230,7 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
           />
         </div>
       </div>
-      <div className="@4xl/home:relative @4xl/home:min-h-[22rem]">
+      <div>
         <ContinueRail
           connectionId={connection.id}
           database={database}

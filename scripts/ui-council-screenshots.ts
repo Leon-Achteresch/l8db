@@ -7,9 +7,10 @@ const ORDERS = { schema: "sales", table: "orders" };
 const TICKETS = { schema: "crm", table: "tickets" };
 const CUSTOMERS = { schema: "crm", table: "customers" };
 
-const SCENES: { name: string; path: string; wait?: string }[] = [
+const SCENES: { name: string; path: string; wait?: string; expandNav?: boolean }[] = [
   { name: "home", path: "/" },
   { name: "table", path: "/tables/sales/orders", wait: "tbody tr" },
+  { name: "table-navexpanded", path: "/tables/sales/orders", wait: "tbody tr", expandNav: true },
   { name: "query", path: "/query" },
   { name: "connections", path: "/connections" },
   { name: "settings", path: "/settings" },
@@ -31,6 +32,10 @@ try {
       await seedUiPluginApp(page, {}, { tabs: [ORDERS, TICKETS, CUSTOMERS], environment: null });
       await page.goto(`http://localhost:${server.port}${scene.path}`);
       if (scene.wait) await page.locator(scene.wait).first().waitFor();
+      if (scene.expandNav) {
+        await page.locator('nav[aria-label="Bereiche"] button[aria-expanded="false"]').click();
+        await page.locator('nav[aria-label="Bereiche"][data-expanded="true"]').waitFor();
+      }
       await page.mouse.move(0, 0);
       await page.waitForTimeout(1200);
       const file = join(out, `${scene.name}-${scheme}.png`);

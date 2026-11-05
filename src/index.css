@@ -72,6 +72,13 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-selected: var(--sidebar-selected);
+  --text-control: 0.8125rem;
+  --text-control--line-height: 1.25rem;
+  --text-meta: 0.75rem;
+  --text-meta--line-height: 1rem;
+  --text-section: 0.875rem;
+  --text-section--line-height: 1.25rem;
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -178,6 +185,7 @@
   --sidebar-primary-foreground: oklch(0.99 calc(0.01 * var(--db-tint)) var(--db-hue));
   --sidebar-accent: oklch(0.925 calc(0.008 * var(--db-tint)) var(--db-hue));
   --sidebar-accent-foreground: oklch(0.22 calc(0.012 * var(--db-tint)) var(--db-hue));
+  --sidebar-selected: color-mix(in oklab, var(--primary) 12%, var(--background));
   --sidebar-border: oklch(0.86 calc(0.006 * var(--db-tint)) var(--db-hue));
   --sidebar-ring: oklch(0.58 0.1 var(--db-hue));
   --menu: oklch(0.998 calc(0.002 * var(--db-tint)) var(--db-hue));
