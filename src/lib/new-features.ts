@@ -4,6 +4,7 @@ import { version as appVersion } from "../../package.json";
 export const NEXT_FEATURE_VERSION = "0.17.0";
 
 export const NEW_FEATURES = {
+  "ai.chat.ui-plugins": NEXT_FEATURE_VERSION,
   "table.filter.ui-plugins": NEXT_FEATURE_VERSION,
   "query.editor.checkpoints": NEXT_FEATURE_VERSION,
   "query.editor.last-success": NEXT_FEATURE_VERSION,

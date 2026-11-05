@@ -60,15 +60,15 @@ pub struct UiPluginWatcher(Mutex<Option<RecommendedWatcher>>);
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginFile {
-    name: String,
-    source: String,
+    pub(super) name: String,
+    pub(super) source: String,
     modified: u64,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkippedFile {
-    name: String,
+    pub(super) name: String,
     reason: String,
 }
 
@@ -76,17 +76,17 @@ pub struct SkippedFile {
 #[serde(rename_all = "camelCase")]
 pub struct PluginScan {
     dir: String,
-    files: Vec<PluginFile>,
+    pub(super) files: Vec<PluginFile>,
     skipped: Vec<SkippedFile>,
 }
 
-fn plugin_dir() -> Result<PathBuf, String> {
+pub(super) fn plugin_dir() -> Result<PathBuf, String> {
     crate::team::team_file()
         .and_then(|file| file.parent().map(|dir| dir.join("ui")))
         .ok_or_else(|| "Benutzerordner konnte nicht ermittelt werden.".to_string())
 }
 
-fn is_plugin_name(name: &str) -> bool {
+pub(super) fn is_plugin_name(name: &str) -> bool {
     let valid_chars = name
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
@@ -105,7 +105,7 @@ fn is_plugin_name(name: &str) -> bool {
         && !name.ends_with(".d.ts")
 }
 
-fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(super) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -125,7 +125,7 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     fs::rename(&temporary, path).map_err(|e| e.to_string())
 }
 
-fn scan(dir: &Path) -> Result<PluginScan, String> {
+pub(super) fn scan(dir: &Path) -> Result<PluginScan, String> {
     fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let mut entries = fs::read_dir(dir)
         .map_err(|e| format!("{}: {e}", dir.display()))?
@@ -191,7 +191,7 @@ fn scan(dir: &Path) -> Result<PluginScan, String> {
     })
 }
 
-fn write_plugin(dir: &Path, name: &str, source: &str) -> Result<(), String> {
+pub(super) fn write_plugin(dir: &Path, name: &str, source: &str) -> Result<(), String> {
     if !is_plugin_name(name) {
         return Err(format!("Ungültiger Dateiname: {name}"));
     }
@@ -202,7 +202,7 @@ fn write_plugin(dir: &Path, name: &str, source: &str) -> Result<(), String> {
     write_atomic(&dir.join(name), source.as_bytes())
 }
 
-fn remove_plugin(dir: &Path, name: &str) -> Result<(), String> {
+pub(super) fn remove_plugin(dir: &Path, name: &str) -> Result<(), String> {
     if !is_plugin_name(name) {
         return Err(format!("Ungültiger Dateiname: {name}"));
     }
