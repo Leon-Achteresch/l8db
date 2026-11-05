@@ -12,6 +12,7 @@ import { enableUiPluginsAfterSafeMode, reloadUiPlugins } from "@/lib/ui-plugins/
 import { useUiPluginSettings } from "@/lib/ui-plugins/settings";
 import { uiPluginStatuses } from "@/lib/ui-plugins/status";
 import { useUiPluginRuntime } from "@/lib/ui-plugins/store";
+import { UiPluginBundle } from "./ui-plugin-bundle";
 import { UiPluginCard } from "./ui-plugin-card";
 import { UiPluginGallery } from "./ui-plugin-gallery";
 
@@ -168,6 +169,7 @@ export function UiPluginsSection() {
           </ul>
         )}
       </div>
+      <UiPluginBundle />
       <UiPluginGallery />
     </section>
   );

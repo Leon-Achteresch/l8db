@@ -227,6 +227,71 @@ fn write_support(dir: &Path, name: &str, contents: &str) -> Result<(), String> {
     write_atomic(&path, contents.as_bytes())
 }
 
+const MAX_BUNDLE_BYTES: u64 = 2 * 1024 * 1024;
+
+fn validate_bundle(contents: &str) -> Result<serde_json::Value, String> {
+    if contents.len() as u64 > MAX_BUNDLE_BYTES {
+        return Err("Bundle ist größer als 2 MiB.".into());
+    }
+    let value: serde_json::Value = serde_json::from_str(contents).map_err(|e| e.to_string())?;
+    if value["format"] != "l8db.ui-plugins" || value["version"] != 1 {
+        return Err("Unbekanntes Bundle-Format oder Format-Version.".into());
+    }
+    let entries = value["plugins"].as_array().ok_or("Plugin-Liste fehlt.")?;
+    if entries.len() > MAX_FILES {
+        return Err("Mehr als 200 Plugins.".into());
+    }
+    Ok(value)
+}
+
+#[tauri::command(async)]
+pub fn ui_plugins_read_bundle(path: String) -> Result<serde_json::Value, String> {
+    use std::io::Read;
+    let file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut contents = String::new();
+    file.take(MAX_BUNDLE_BYTES + 1)
+        .read_to_string(&mut contents)
+        .map_err(|e| e.to_string())?;
+    let mut value = validate_bundle(&contents)?;
+    let mut names = std::collections::HashSet::new();
+    for entry in value["plugins"]
+        .as_array_mut()
+        .ok_or("Plugin-Liste fehlt.")?
+    {
+        let name = entry["name"].as_str().unwrap_or("").to_string();
+        let error = if !entry["options"].as_object().is_some_and(|options| {
+            options
+                .values()
+                .all(|v| v.is_string() || v.is_boolean() || v.is_number())
+        }) {
+            Some("Ungültige Optionen")
+        } else if !is_plugin_name(&name) {
+            Some("Ungültiger Dateiname")
+        } else if !names.insert(name.to_ascii_lowercase()) {
+            Some("Doppelter Dateiname")
+        } else if entry["source"]
+            .as_str()
+            .is_none_or(|s| s.len() as u64 > MAX_FILE_BYTES)
+        {
+            Some("Quelltext fehlt oder ist größer als 256 KiB")
+        } else {
+            None
+        };
+        if !entry.is_object() {
+            *entry = serde_json::json!({"name": name, "error": "Ungültiger Eintrag"});
+        } else if let Some(error) = error {
+            entry["error"] = error.into();
+        }
+    }
+    Ok(value)
+}
+
+#[tauri::command(async)]
+pub fn ui_plugins_export_bundle(path: String, contents: String) -> Result<(), String> {
+    validate_bundle(&contents)?;
+    write_atomic(Path::new(&path), contents.as_bytes())
+}
+
 #[tauri::command(async)]
 pub fn ui_plugins_scan() -> Result<PluginScan, String> {
     scan(&plugin_dir()?)
@@ -305,6 +370,33 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("l8db-ui-{}", rand::random::<u64>()));
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn bundle_format_and_limits() {
+        assert!(validate_bundle("broken").is_err());
+        assert!(validate_bundle(&" ".repeat(MAX_BUNDLE_BYTES as usize + 1)).is_err());
+        for version in [0, 2] {
+            assert!(validate_bundle(
+                &serde_json::json!({"format":"l8db.ui-plugins","version":version,"plugins":[]})
+                    .to_string()
+            )
+            .is_err());
+        }
+        assert!(
+            validate_bundle(r#"{"format":"l8db.ui-plugins","version":1,"plugins":{}}"#).is_err()
+        );
+        assert!(validate_bundle(&serde_json::json!({"format":"l8db.ui-plugins","version":1,"plugins":vec![serde_json::json!({});201]}).to_string()).is_err());
+        let dir = temp_dir();
+        let path = dir.join("bundle.json");
+        let contents = serde_json::json!({"format":"l8db.ui-plugins","version":1,"plugins":[{"name":"ok.tsx","source":"x","options":{}},{"name":"../evil.tsx","source":"x"},{"name":"OK.tsx","source":"x"},{"name":"big.tsx","source":"x".repeat(MAX_FILE_BYTES as usize+1)}]}).to_string();
+        ui_plugins_export_bundle(path.display().to_string(), contents).unwrap();
+        let bundle = ui_plugins_read_bundle(path.display().to_string()).unwrap();
+        assert!(bundle["plugins"][0]["error"].is_null());
+        for index in 1..4 {
+            assert!(bundle["plugins"][index]["error"].is_string());
+        }
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

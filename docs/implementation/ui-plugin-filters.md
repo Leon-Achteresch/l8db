@@ -144,3 +144,41 @@ Die drei Vorschlagstests bestehen mit Bun 1.3.10; 28 Filter-/Execution-/Safe-Mod
 bestanden im initialen Lauf mit dem vorinstallierten Bun 1.4.3, 49 Runtime-Tests mit
 Bun 1.3.10. Die erste Diff-Assertion wurde von 50.002 auf 50.000 korrigiert, da der
 identische abschließende Leerstring zum gemeinsamen Suffix gehört.
+
+## Schritt C: UI-Plugin-Bundles
+
+Implementiert: Export aller oder ausgewählter Quellen und Optionen über den
+Tauri-Speicherdialog; Import mit Dateidialog, Backend-Limit 2 MiB/200 Einträge,
+256 KiB je Quelle und bestehenden flachen Namensregeln. JSON-/Versionsfehler
+weisen das Bundle ab; einzelne defekte Einträge bleiben abwählbar. Compilerprüfung
+vor Vorschau und Übernahme; Code, Diff, Status und aus dem Quelltext ermittelte
+HTTP-Hosts je Eintrag. Ohne Bestätigung werden keine Plugin-Dateien geschrieben.
+Konflikte werden explizit ausgewählt oder übersprungen; geänderte Vorschau-Snapshots
+werden vor dem Schreiben abgewiesen. Schreibvorgänge sind je Datei atomar; ein
+Dateisystemfehler kann einen bereits teilweise übernommenen Import hinterlassen.
+HTTP-Grants werden weder exportiert noch importiert, für importierte IDs entzogen.
+Optionen laufen über den vorhandenen mehrfensterfähigen Settings-Store.
+
+Formatentscheidung für Schritt D: Das volle Extension-Archiv enthält eine einzelne
+Manifest-Erweiterung (format: 1, manifest, files). Das UI-Bundle verwendet den
+separaten Typ l8db.ui-plugins und version: 1 mit mehreren Einträgen. Beide lassen
+sich später eindeutig in einen gemeinsamen Container übernehmen. Keine automatische
+Verteilung. Bedienung und Format: docs/ui-plugin-bundles.md; Ordneranleitung ergänzt.
+
+Messung: macOS Darwin arm64, Apple M3, 16 GiB RAM, Bun 1.3.10.
+200 Plugins × 8.000 Bytes, 30 Import-/Export-Runden mit Compiler-Stub:
+Median 1,06 ms, p95 4,12 ms (Budget p95 <250 ms). Eingabe auf 2 MiB und
+200 Einträge begrenzt; Quellenprüfung seriell, keine DB-Anfragen, kein Polling,
+keine weiteren Prüferaufrufe nach 20 ms Idle. Dies misst JSON und Vorschauverwaltung,
+nicht die komplette Kompilierung oder native Dialoglatenz. Reale Compiler- und
+Endlosschleifenprüfungen sind separat funktional getestet. Kein Vorher-Baselinewert,
+da neue Funktion; keine CPU-/Heap-Drosselung auf macOS.
+
+Bun 1.3.10: 80 gezielte Bundle-/Runtime-/Execution-/Safe-Mode-Tests und ein separater
+Settings-Storage-Event-Test erfolgreich. Biome auf eigenen Dateien erfolgreich.
+Ein früher Lauf mit vorinstalliertem Bun 1.4.3 hatte 60 erfolgreiche Tests und
+Bundle median/p95 1,59/4,08 ms. Typecheck im gemeinsamen Checkout blockiert durch
+fremde entfernte transfer-cinematic-variant(s)-Module. Cargo check erfolgreich;
+abschließende Archivprüfung und Rust-Modultests werden im Abschluss ergänzt.
+Native Dateidialoge und zwei echte Desktop-Fenster wurden nicht manuell getestet;
+Abbruch/Selektion/Snapshot-Konflikte und Storage-Synchronisation sind isoliert getestet.
