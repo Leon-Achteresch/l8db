@@ -34,7 +34,7 @@ test.skipIf(!process.env.L8DB_HOME_ATLAS_BROWSER)(
       await map.locator("[data-atlas-index]").first().waitFor();
       const tiles = await map.locator("[data-atlas-index]").count();
       expect(tiles).toBeGreaterThan(20);
-      expect(tiles).toBeLessThanOrEqual(180);
+      expect(tiles).toBeLessThanOrEqual(24);
       if (!webkitEngine) {
         const cdp = await page.context().newCDPSession(page);
         await cdp.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(4) });

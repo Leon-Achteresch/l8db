@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { animatePageWave, PageWave } from "@/features/table/page-wave";
 import { cn } from "@/lib/utils";
 import { AiChatLab } from "./ai-chat-lab";
+import { AtlasLab } from "./atlas-lab";
 import { BlogSuggestionPreview } from "./blog-suggestion-preview";
 import { ConnectionSelectLab } from "./connection-select-lab";
 import { DriverOverviewLab } from "./driver-overview-lab";
@@ -97,6 +98,9 @@ export function DevView() {
             </TabsTrigger>
             <TabsTrigger value="transfer-cinematic" className="flex-none px-4">
               Transfer-Animation
+            </TabsTrigger>
+            <TabsTrigger value="atlas" className="flex-none px-4">
+              Tabellenkarte
             </TabsTrigger>
           </TabsList>
         </div>
@@ -221,6 +225,9 @@ export function DevView() {
         </TabsContent>
         <TabsContent value="transfer-cinematic">
           <TransferCinematicLab />
+        </TabsContent>
+        <TabsContent value="atlas">
+          <AtlasLab />
         </TabsContent>
       </Tabs>
     </main>

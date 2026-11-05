@@ -34,8 +34,8 @@ export const AtlasTile = memo(function AtlasTile({
   focusable,
 }: AtlasTileProps) {
   const area = tile.w * tile.h;
-  const showName = tile.w >= 44 && tile.h >= 20;
-  const showMeta = tile.w >= 64 && tile.h >= 44;
+  const showName = tile.w >= 52 && tile.h >= 28;
+  const showMeta = tile.w >= 72 && tile.h >= 52;
   const facts = describeAtlasTable(tile);
   const [primary, secondary] = atlasFacts(tile, metric);
   const lift =
@@ -63,8 +63,8 @@ export const AtlasTile = memo(function AtlasTile({
         .join(", ")}
       title={facts ? `${tile.name} · ${facts}` : tile.name}
       className={cn(
-        "group absolute flex flex-col items-start justify-between overflow-hidden rounded-[7px] border-2 border-transparent bg-clip-padding px-2 py-1.5 text-left outline-none",
-        "shadow-[inset_0_1px_0_color-mix(in_oklch,white_10%,transparent)]",
+        "group absolute flex flex-col items-start justify-between overflow-hidden rounded-[14px] border-4 border-transparent bg-clip-padding px-3 py-2.5 text-left outline-none",
+        "shadow-[inset_0_1px_0_color-mix(in_oklch,white_18%,transparent)]",
         "transition-[left,top,width,height,opacity,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
         "focus-visible:z-10 focus-visible:shadow-[inset_0_0_0_2px_var(--primary)]",
         tone === "active" &&
@@ -90,7 +90,7 @@ export const AtlasTile = memo(function AtlasTile({
         <span
           className={cn(
             "block max-w-full truncate font-mono font-medium leading-tight tracking-[-0.01em]",
-            area > 42_000 ? "text-[15px]" : area > 12_000 ? "text-[12.5px]" : "text-[11px]",
+            area > 60_000 ? "text-[15px]" : area > 18_000 ? "text-[13px]" : "text-[11.5px]",
           )}
         >
           {tile.name}
@@ -99,11 +99,11 @@ export const AtlasTile = memo(function AtlasTile({
       {showMeta && primary && (
         <span className="block max-w-full text-[10.5px] leading-tight tabular-nums text-muted-foreground">
           <span className="block truncate font-medium text-foreground/75">{primary}</span>
-          {secondary && tile.h >= 72 && <span className="block truncate">{secondary}</span>}
+          {secondary && tile.h >= 80 && <span className="block truncate">{secondary}</span>}
         </span>
       )}
       {mark && (
-        <span className="absolute right-1.5 top-1.5" aria-hidden="true">
+        <span className="absolute right-2.5 top-2.5" aria-hidden="true">
           {mark === "favorite" ? (
             <Star className="size-2.5 fill-current text-primary" />
           ) : (

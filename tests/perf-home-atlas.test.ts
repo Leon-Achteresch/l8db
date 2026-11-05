@@ -138,6 +138,21 @@ test("ohne lesbare Größen gewichtet der Atlas nach Fremdschlüsseln und die Sc
   expect(rankSchemas(["Z", "A"], undefined).map((entry) => entry.name)).toEqual(["A", "Z"]);
 });
 
+test("Atlas wählt die größten Tabellen mit Namensreihenfolge bei Gleichstand", () => {
+  const tables = Array.from({ length: 300 }, (_, index) =>
+    table(`t${String((index * 37) % 300).padStart(3, "0")}`, ((index * 7919) % 40) * 65_536),
+  );
+  const expected = [...tables]
+    .sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0) || (a.name < b.name ? -1 : 1))
+    .slice(0, ATLAS_TILE_LIMIT)
+    .map((entry) => entry.name)
+    .sort();
+  const layout = layoutAtlas(tables, 900, 480);
+  expect(layout.tiles.map((tile) => tile.name).sort()).toEqual(expected);
+  expect(layout.hidden).toBe(300 - ATLAS_TILE_LIMIT);
+  expect(layoutAtlas(tables, 900, 480, "", 0).tiles).toEqual([]);
+});
+
 test("Nachbarn einer Tabelle folgen den Fremdschlüsseln in beide Richtungen", () => {
   const links: SchemaMapLink[] = [
     { from: ["public", "orders"], to: ["public", "users"] },

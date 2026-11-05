@@ -1,7 +1,7 @@
 import { squarify } from "@/features/dashboard/charts/svg-geometry";
 import type { DatabaseOverview, SchemaMap, SchemaMapLink, TableInfo } from "@/lib/db";
 
-export const ATLAS_TILE_LIMIT = 180;
+export const ATLAS_TILE_LIMIT = 24;
 
 export type AtlasMetric = "bytes" | "rows" | "links" | null;
 
@@ -116,19 +116,24 @@ export function layoutAtlas(
   const needle = query.trim().toLowerCase();
   const unit = metric === "bytes" ? 8192 : 1;
   let largest = 0;
-  const weighted: { table: AtlasTable; size: number; weight: number }[] = [];
+  let matching = 0;
+  const shown: { table: AtlasTable; size: number; value: number }[] = [];
+  const before = (a: (typeof shown)[number], b: (typeof shown)[number]) =>
+    b.value - a.value || (a.table.name < b.table.name ? -1 : a.table.name > b.table.name ? 1 : 0);
   for (const table of tables) {
     const size = sizeOf(table, metric);
     if (size > largest) largest = size;
-    if (!needle || table.name.toLowerCase().includes(needle))
-      weighted.push({ table, size, weight: 1 + Math.log1p(size / unit) });
+    if (needle && !table.name.toLowerCase().includes(needle)) continue;
+    matching++;
+    const entry = { table, size, value: 1 + Math.log1p(size / unit) };
+    if (shown.length >= limit && (limit <= 0 || before(entry, shown[limit - 1]) >= 0)) continue;
+    let at = shown.length === limit ? limit - 1 : shown.length;
+    while (at > 0 && before(entry, shown[at - 1]) < 0) {
+      shown[at] = shown[at - 1];
+      at--;
+    }
+    shown[at] = entry;
   }
-  weighted.sort(
-    (a, b) =>
-      b.weight - a.weight ||
-      (a.table.name < b.table.name ? -1 : a.table.name > b.table.name ? 1 : 0),
-  );
-  const shown = weighted.slice(0, limit).map((entry) => ({ ...entry, value: entry.weight }));
   return {
     tiles: squarify(shown, 0, 0, width, height).map(({ item, x, y, width: w, height: h }) => ({
       ...item.table,
@@ -139,8 +144,8 @@ export function layoutAtlas(
       key: atlasKey(item.table.schema, item.table.name),
       heat: largest > 0 ? Math.sqrt(item.size / largest) : 0,
     })),
-    matching: weighted.length,
-    hidden: weighted.length - shown.length,
+    matching,
+    hidden: matching - shown.length,
     metric,
   };
 }
