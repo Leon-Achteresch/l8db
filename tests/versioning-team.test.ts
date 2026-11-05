@@ -109,6 +109,15 @@ describe("shared database team configuration", () => {
       expect(merged.binding).toBeUndefined();
     }
   });
+  test("keeps reviewed variances in the shared target", () => {
+    const team = createTeamConfiguration(store(), [connection]);
+    team.targets[0].variances = [
+      { object: "t", hash: "a".repeat(64), reason: "Kundenlogik LEGACY_1", until: "2027-01-31" },
+    ];
+    expect(parseTeamConfiguration(JSON.stringify(team), "project").targets[0].variances).toEqual(
+      team.targets[0].variances,
+    );
+  });
   test("rejects secret-bearing fields and broken shared references", () => {
     const team = createTeamConfiguration(store(), [connection]);
     for (const mutate of [
@@ -126,6 +135,15 @@ describe("shared database team configuration", () => {
       },
       (value: TeamConfiguration) => {
         value.branches.main = { targetId: "missing" };
+      },
+      (value: TeamConfiguration) => {
+        value.targets[0].variances = [{ object: "t", hash: "nope", reason: "x", until: null }];
+      },
+      (value: TeamConfiguration) => {
+        value.targets[0].variances = [
+          { object: "t", hash: "a".repeat(64), reason: "x", until: null },
+          { object: "t", hash: "b".repeat(64), reason: "y", until: null },
+        ];
       },
     ]) {
       const edited = structuredClone(team);

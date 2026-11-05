@@ -273,6 +273,40 @@ fn team_configuration_rejects_secrets_and_local_profile_fields() {
     assert!(team::parse(&missing.to_string()).is_err());
 }
 
+#[test]
+fn team_variances_are_validated_and_bound_to_the_plan() {
+    let mut fixture = team_fixture();
+    let hash = control::hash("id integer\nextra text");
+    fixture["targets"][0]["variances"] = json!([
+        {"object":"t","hash":hash,"reason":"Kundenlogik LEGACY_1","until":null},
+        {"object":"old","hash":hash,"reason":"Abgelaufen","until":"2000-01-01"}
+    ]);
+    let team = team::parse(&fixture.to_string()).unwrap();
+    let target = &team.targets[0];
+    let planned = json!([{"id":"t","definition":"id integer\nextra text"}]);
+    assert!(team::verify_variances(Some(target), &planned).is_ok());
+    assert!(team::verify_variances(Some(target), &json!([])).is_err());
+    assert!(team::verify_variances(None, &planned).is_err());
+    assert!(team::verify_variances(None, &json!([])).is_ok());
+    let changed = json!([{"id":"t","definition":"id integer"}]);
+    assert!(team::verify_variances(Some(target), &changed).is_err());
+    for invalid in [
+        json!({"object":"t","hash":"ABC","reason":"x","until":null}),
+        json!({"object":"t","hash":hash,"reason":"x","until":"morgen"}),
+        json!({"object":"t","hash":hash,"reason":"x","until":null,"by":"x"}),
+    ] {
+        let mut broken = team_fixture();
+        broken["targets"][0]["variances"] = json!([invalid]);
+        assert!(team::parse(&broken.to_string()).is_err());
+    }
+    let mut duplicate = team_fixture();
+    duplicate["targets"][0]["variances"] = json!([
+        {"object":"t","hash":hash,"reason":"a","until":null},
+        {"object":"t","hash":hash,"reason":"b","until":null}
+    ]);
+    assert!(team::parse(&duplicate.to_string()).is_err());
+}
+
 #[tokio::test]
 async fn team_configuration_is_absent_in_a_repository_without_commits() {
     let root = temp();

@@ -79,6 +79,12 @@ Der Ruhestatus in `L8DB_VERSIONING_STATE` ist `ready2`. Ältere l8db-Versionen e
 
 Ein leeres Ziel lässt sich onboarden: Der erste Release erhält die Migration `grundstand`, die alle verwalteten Objekte anlegt.
 
+### Abweichungen und Altkunden
+
+Bekannte, gewollte Abweichungen eines Ziels stehen in `database/team.json` unter `variances` (`object`, `hash`, `reason`, optional `until` als Datum). Sie werden per Pull Request geprüft. Beim Planen liest l8db nur die berührten Objekte und die Abweichungen. Hat sich eine Abweichung beim Kunden verändert, blockiert der Plan. Ändert eine Änderung ein Abweichungsobjekt über einen Vorher-Stand, wird sie abgewiesen; verträglich sind nur Änderungen mit SQL-Vorbedingung. Das Backend prüft die Abweichungen gegen die committete Teamkonfiguration und schreibt ihre Hashes ins Journal.
+
+**Mit Altstand aufnehmen** ordnet jede Änderung des gewählten Releases ein: Die berührten Objekte entsprechen dem Stand danach (erledigt), dem Stand davor (offen) oder keinem von beiden (Entscheidung). Datenänderungen sind immer eine Entscheidung. Unerklärte Objekte werden als Abweichung vorgeschlagen und brauchen einen Grund. Nach der Bestätigung füllt l8db die Abhakliste mit `baseline`, ohne SQL im Anwendungsschema auszuführen. Offene Änderungen spielt der nächste Rollout ein. Danach muss `database/team.json` committet werden. Bei 5.000 Objekten und 2.000 Änderungen dauert die Einordnung im Median 23 ms (Apple M3, Bun 1.4.3).
+
 ## Ein Repository für viele Kunden: Reviews und Pipeline
 
 Alle Kunden eines Produkts teilen ein Git-Repository mit dem Remote `origin` auf GitHub (auch Enterprise Server), GitLab, Azure DevOps oder Gitea/Forgejo. Änderungen gelangen nur über Pull Requests in den Hauptbranch, also den Standardbranch des Remotes. Jeder Kunde hat getrennte Verbindungen für Test- und Produktivsystem, gegebenenfalls auf verschiedenen Servern.

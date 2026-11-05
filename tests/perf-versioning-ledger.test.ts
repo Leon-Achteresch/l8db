@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { arch, cpus, release as osRelease, platform, totalmem } from "node:os";
-import { lineStatus, planChanges } from "../src/lib/versioning/change-plan";
+import { classifyBaseline, lineStatus, planChanges } from "../src/lib/versioning/change-plan";
 import { parseChangeLedger } from "../src/lib/versioning/ledger";
 import type { DatabaseRelease, ObjectSnapshot } from "../src/lib/versioning/types";
 
@@ -195,4 +195,48 @@ test("legacy format 1 histories derive touched objects once per release", () => 
   expect(firstMs).toBeLessThan(500);
   expect(median).toBeLessThan(15);
   expect(p95).toBeLessThan(40);
+});
+
+test("baseline classification of a legacy customer stays bounded for 5,000 objects", () => {
+  const reached = releases[60].objects;
+  const actual = new Map(
+    reached.map((entry, index) => [
+      entry.object.id,
+      index % 500 === 0 ? hash(`x${index}`) : entry.checksum,
+    ]),
+  );
+  Bun.gc(true);
+  const heapBefore = process.memoryUsage().heapUsed;
+  const times: number[] = [];
+  let result = classifyBaseline(map, `v${RELEASES - 1}`, actual);
+  for (let round = 0; round < 20; round++) {
+    const start = performance.now();
+    result = classifyBaseline(map, `v${RELEASES - 1}`, actual);
+    times.push(performance.now() - start);
+  }
+  Bun.gc(true);
+  const retainedMb = (process.memoryUsage().heapUsed - heapBefore) / 1024 / 1024;
+  times.sort((a, b) => a - b);
+  const median = times[Math.floor(times.length / 2)];
+  const p95 = times[Math.floor(times.length * 0.95)];
+  const counts = { done: 0, open: 0, decision: 0 };
+  for (const entry of result.changes) counts[entry.status]++;
+  console.log(
+    JSON.stringify({
+      scenario: "versioning-baseline-classification",
+      changes: result.changes.length,
+      objects: OBJECTS,
+      ...counts,
+      variances: result.variances.length,
+      medianMs: Number(median.toFixed(2)),
+      p95Ms: Number(p95.toFixed(2)),
+      retainedMb: Number(retainedMb.toFixed(1)),
+    }),
+  );
+  expect(result.changes.length).toBe(CHANGES + 1);
+  expect(counts.open).toBeGreaterThan(0);
+  expect(result.variances.length).toBeGreaterThan(0);
+  expect(median).toBeLessThan(100);
+  expect(p95).toBeLessThan(200);
+  expect(retainedMb).toBeLessThan(64);
 });

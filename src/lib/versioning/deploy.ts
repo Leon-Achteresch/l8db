@@ -10,6 +10,8 @@ import { bindingMatches } from "./binding";
 import { captureObject, captureObjects } from "./capture";
 import {
   activeVariances,
+  type BaselineClassification,
+  classifyBaseline,
   objectHistory,
   type PlannedStep,
   planChanges,
@@ -68,6 +70,7 @@ import type {
   ObjectSnapshot,
   ReleaseReference,
   StandaloneChange,
+  Variance,
   VersioningProject,
 } from "./types";
 
@@ -146,6 +149,7 @@ export async function baselineTarget(
   releaseId: string,
   reconcile = false,
   connections: SavedConnection[] = [connection],
+  deviations?: { done: string[]; variances: Variance[] },
 ) {
   const { store, text } = await readTargets(repo, project.id);
   const target = store.targets.find((item) => item.id === targetId);
@@ -178,16 +182,37 @@ export async function baselineTarget(
   try {
     const current = await readTargets(repo, project.id);
     await assertDistinctTarget(target, connection, current.store.targets, connections, project);
-    const actual = await captureObjects(
-      connection,
-      target.database,
-      release.objects.map((item) => item.object),
-      target.schema,
-    );
-    if (compareSnapshots(release.objects, actual).some((item) => item.status !== "unchanged"))
-      throw new Error(
-        "Der tatsächliche Datenbankstand entspricht nicht dem Release. Baseline wurde nicht gesetzt.",
+    const releases = await loadReleases(repo, project, reference.commit);
+    const map = new Map(releases.map((entry) => [entry.id, entry]));
+    const standalone = await loadStandaloneChanges(repo, project, reference.commit);
+    const closure = releaseClosure(map, release.id, standalone);
+    let recorded = closure.changes;
+    let actual: ObjectSnapshot[];
+    if (deviations) {
+      const captured = await captureClosure(connection, target, map, release.id);
+      actual = captured.filter((entry) =>
+        release.objects.some((item) => item.object.id === entry.object.id),
       );
+      recorded = acceptedBaseline(
+        classifyBaseline(map, release.id, checksums(captured), standalone),
+        deviations,
+        release,
+        closure.changes,
+        actual,
+      );
+    } else {
+      actual = await captureObjects(
+        connection,
+        target.database,
+        release.objects.map((item) => item.object),
+        target.schema,
+      );
+      if (compareSnapshots(release.objects, actual).some((item) => item.status !== "unchanged"))
+        throw new Error(
+          "Der tatsächliche Datenbankstand entspricht nicht dem Release. Baseline wurde nicht gesetzt.",
+        );
+    }
+    const complete = recorded.length === closure.changes.length;
     if (project.kind === "oracle") {
       for (const schema of new Set(
         release.objects.map((item) => target.schema || item.object.selection.schema || ""),
@@ -221,7 +246,7 @@ export async function baselineTarget(
         event.finishedAt = new Date().toISOString();
       }
     }
-    if (release.safety?.postconditions.length) {
+    if (release.safety?.postconditions.length && complete) {
       const transaction = await openVersioningSession(connection, target, release, true);
       try {
         await runReleaseChecks(transaction, release, target, "postconditions");
@@ -231,20 +256,16 @@ export async function baselineTarget(
     }
     target.binding = await databaseBinding(connection, target);
     await baselineLedger(connection, project, target, release, reconcile);
-    const releases = await loadReleases(repo, project, reference.commit);
-    const closure = releaseClosure(
-      new Map(releases.map((entry) => [entry.id, entry])),
-      release.id,
-      await loadStandaloneChanges(repo, project, reference.commit),
-    );
     await recordBaseline(
       connection,
       project,
       target,
       release,
-      closure.changes,
+      recorded,
       closureObjects(release, actual),
     );
+    if (deviations)
+      target.variances = deviations.variances.length ? deviations.variances : undefined;
     target.release = reference;
     await control(connection, project, target, "append", {
       runId: crypto.randomUUID(),
@@ -255,6 +276,80 @@ export async function baselineTarget(
   } finally {
     await rollbackTransaction(lock);
   }
+}
+
+const checksums = (entries: ObjectSnapshot[]) =>
+  new Map(entries.map((entry) => [entry.object.id, entry.checksum]));
+
+async function captureClosure(
+  connection: SavedConnection,
+  target: DatabaseTarget,
+  map: Map<string, DatabaseRelease>,
+  releaseId: string,
+) {
+  const latest = new Map<string, ObjectSnapshot>();
+  for (const release of releaseAncestry(map, releaseId))
+    for (const entry of release.objects) latest.set(entry.object.id, entry);
+  return captureTolerant(connection, target, [...latest.values()]);
+}
+
+export function acceptedBaseline(
+  check: BaselineClassification,
+  deviations: { done: string[]; variances: Variance[] },
+  release: DatabaseRelease,
+  changes: Change[],
+  actual: ObjectSnapshot[],
+): Change[] {
+  if (check.missing.length)
+    throw new Error(
+      `Beim Kunden fehlen ${check.missing.join(", ")}, und keine Änderung legt sie an.`,
+    );
+  const done = new Set(deviations.done);
+  for (const entry of check.changes)
+    if (entry.status !== "decision" && (entry.status === "done") !== done.has(entry.id))
+      throw new Error(`Einordnung von ${entry.id} hat sich seit der Prüfung geändert. Neu prüfen.`);
+  const proposed = new Map(check.variances.map((variance) => [variance.object, variance.hash]));
+  if (
+    deviations.variances.length !== proposed.size ||
+    deviations.variances.some((variance) => proposed.get(variance.object) !== variance.hash)
+  )
+    throw new Error("Abweichungen entsprechen nicht mehr dem Kundenstand. Neu prüfen.");
+  const pending = new Set(
+    changes.filter((change) => !done.has(change.id)).flatMap((change) => change.touches),
+  );
+  const found = checksums(actual);
+  for (const entry of release.objects)
+    if (
+      found.get(entry.object.id) !== entry.checksum &&
+      !proposed.has(entry.object.id) &&
+      !pending.has(entry.object.id)
+    )
+      throw new Error(
+        `${entry.object.id} weicht vom Release ab, ohne offene Änderung oder festgehaltene Abweichung.`,
+      );
+  return changes.filter((change) => done.has(change.id));
+}
+
+export async function classifyTarget(
+  repo: string,
+  project: VersioningProject,
+  target: DatabaseTarget,
+  connection: SavedConnection,
+  releaseId: string,
+) {
+  if (connection.id !== target.connectionId || connection.kind !== project.kind)
+    throw new Error("Zielverbindung passt nicht zum Projekt.");
+  const { release, reference } = await committedRelease(repo, project, releaseId);
+  const map = new Map(
+    (await loadReleases(repo, project, reference.commit)).map((entry) => [entry.id, entry]),
+  );
+  const captured = await captureClosure(connection, target, map, release.id);
+  return classifyBaseline(
+    map,
+    release.id,
+    checksums(captured),
+    await loadStandaloneChanges(repo, project, reference.commit),
+  );
 }
 
 export async function planDeployment(
@@ -349,15 +444,41 @@ export async function planDeployment(
   }
   if (chain[0]) await preflightChecks(connection, target, chain[0]);
   const varianceIds = new Set(variances.map((variance) => variance.object));
+  for (const variance of variances)
+    if (!to.objects.some((entry) => entry.object.id === variance.object))
+      throw new Error(
+        `Abweichung ${variance.object} betrifft kein verwaltetes Objekt von ${to.id}. Teamkonfiguration anpassen.`,
+      );
+  for (const change of plan.open)
+    for (const id of change.touches)
+      if (varianceIds.has(id) && id in change.before)
+        throw new Error(
+          `${change.id} ändert ${id}, das beim Kunden als Abweichung festgehalten ist. Erst angleichen oder die Änderung mit Vorbedingung statt Vorher-Stand bauen.`,
+        );
   const inspected = to.objects.filter(
     (entry) => plan.touched.has(entry.object.id) || varianceIds.has(entry.object.id),
   );
   const actual = await captureTolerant(connection, target, inspected);
   const differences = compareSnapshots(inspected, actual);
-  const drift = differences.filter(
-    (item) =>
-      item.status !== "unchanged" && !plan.touched.has(item.id) && !varianceIds.has(item.id),
-  );
+  const captured = new Map(actual.map((entry) => [entry.object.id, entry]));
+  const drift = [
+    ...differences.filter(
+      (item) =>
+        item.status !== "unchanged" && !plan.touched.has(item.id) && !varianceIds.has(item.id),
+    ),
+    ...differences
+      .filter((item) => {
+        const variance = variances.find((entry) => entry.object === item.id);
+        return variance && captured.get(item.id)?.checksum !== variance.hash;
+      })
+      .map((item) => ({ ...item, label: `${item.label} (Abweichung verändert)` })),
+  ];
+  const variancePayload = to.objects
+    .filter((entry) => varianceIds.has(entry.object.id))
+    .map((entry) => ({
+      id: entry.object.id,
+      ...snapshotPayload(entry, target, captured.get(entry.object.id)?.definition ?? ""),
+    }));
   const history = objectHistory(releases);
   const sql: string[] = [];
   const steps = plan.steps.map((step) => {
@@ -401,7 +522,7 @@ export async function planDeployment(
       id: entry.object.id,
       ...snapshotPayload(entry, target),
     })),
-    variances: [] as unknown[],
+    variances: variancePayload,
     releases: await Promise.all(
       steps.map(async ({ step, statements, changes }) => ({
         id: step.release.id,

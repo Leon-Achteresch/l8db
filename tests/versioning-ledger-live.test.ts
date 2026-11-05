@@ -43,7 +43,16 @@ for (const kind of ["postgres", "oracle"] as const) {
           hotfixShown: "1 Update offen",
           hotfixSteps: ["v6/m"],
           catchUpSteps: ["v5/m", "v5.1/m", "v6/m"],
-          versions: ["v6", "v6", "v5"],
+          versions: ["v7", "v7", "v8"],
+          legacy: {
+            decisions: ["v2/m", "v3/m", "v5.1/m", "v5/m", "v7/m"],
+            proposed: ["invoices", "price"],
+            noSql: true,
+            run: ["v8/m"],
+            variancesKept: true,
+            recorded: 2,
+            shown: "Aktuell",
+          },
         });
       } finally {
         await browser.close();

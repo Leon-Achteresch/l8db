@@ -31,11 +31,13 @@ import { databaseFromConnectionString } from "@/lib/db-selection";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
+import type { BaselineClassification } from "@/lib/versioning/change-plan";
 import { control } from "@/lib/versioning/control";
 import { targetStage } from "@/lib/versioning/delivery";
 import {
   adoptTarget,
   baselineTarget,
+  classifyTarget,
   type DeploymentPlan,
   inspectTarget,
 } from "@/lib/versioning/deploy";
@@ -46,6 +48,7 @@ import { addTarget } from "@/lib/versioning/targets";
 import type { DatabaseTarget, ObjectDifference } from "@/lib/versioning/types";
 import { connectionServerLabel, customerGroups, targetProgress } from "@/lib/versioning/workflow";
 import type { VersioningWorkspace } from "./use-versioning";
+import { VersioningBaselineReview } from "./versioning-baseline-review";
 import { VersioningDeliveryGates } from "./versioning-delivery-gates";
 import { VersioningIconButton } from "./versioning-icon-button";
 import { VersioningSelect } from "./versioning-select";
@@ -78,6 +81,11 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   const [plans, setPlans] = useState<DeploymentPlan[]>([]);
   const [preflight, setPreflight] = useState<FleetResult[]>([]);
   const [recovery, setRecovery] = useState<DatabaseTarget | null>(null);
+  const [baselineReview, setBaselineReview] = useState<{
+    target: DatabaseTarget;
+    releaseId: string;
+    result: BaselineClassification;
+  } | null>(null);
   const [recoveryConfirmation, setRecoveryConfirmation] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const editing = targets?.targets.find((entry) => entry.id === editingId);
@@ -589,6 +597,31 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                             Baseline {releaseId} prüfen
                           </Button>
                         )}
+                        {!target.release && releaseId && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="mt-2 h-7 px-2 text-[11px]"
+                            disabled={!target.connectionId}
+                            onClick={() =>
+                              void run(async () => {
+                                setBaselineReview({
+                                  target,
+                                  releaseId,
+                                  result: await classifyTarget(
+                                    repo,
+                                    project,
+                                    target,
+                                    connectionFor(target),
+                                    releaseId,
+                                  ),
+                                });
+                              })
+                            }
+                          >
+                            Mit Altstand aufnehmen
+                          </Button>
+                        )}
                       </div>
                       <span className="max-w-24 truncate rounded-md bg-muted/50 px-2 py-1 font-mono text-[10px] text-muted-foreground">
                         {target.release?.id ?? "Ohne Baseline"}
@@ -706,6 +739,32 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
             </fieldset>
           </DialogContent>
         </Dialog>
+      )}
+      {baselineReview && (
+        <VersioningBaselineReview
+          key={`${baselineReview.target.id}:${baselineReview.releaseId}`}
+          target={baselineReview.target}
+          releaseId={baselineReview.releaseId}
+          result={baselineReview.result}
+          busy={workspace.busy}
+          onCancel={() => setBaselineReview(null)}
+          onConfirm={(deviations) =>
+            void run(async () => {
+              await baselineTarget(
+                repo,
+                project,
+                baselineReview.target.id,
+                connectionFor(baselineReview.target),
+                baselineReview.releaseId,
+                false,
+                connections,
+                deviations,
+              );
+              setBaselineReview(null);
+              await refresh();
+            }, "Altstand aufgenommen. Teamkonfiguration committen, bevor ausgerollt wird.")
+          }
+        />
       )}
       {recovery && (
         <div
