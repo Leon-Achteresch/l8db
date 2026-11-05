@@ -33,7 +33,19 @@ export interface ObjectSnapshot {
   checksum: string;
 }
 
-export interface ReleaseMigration {
+export type ChangeKind = "versioned" | "repeatable";
+
+export interface ChangeRules {
+  kind?: ChangeKind;
+  touches?: string[];
+  before?: Record<string, string | null>;
+  requires?: string[];
+  data?: boolean;
+  preconditions?: ReleaseCheck[];
+  postconditions?: ReleaseCheck[];
+}
+
+export interface ReleaseMigration extends ChangeRules {
   id: string;
   title: string;
   sql: string;
@@ -41,16 +53,66 @@ export interface ReleaseMigration {
 }
 
 export interface DatabaseRelease {
-  format: 1;
+  format: 1 | 2;
   id: string;
   projectId: string;
   kind: DeployKind;
-  parent: string | null;
+  parent?: string | null;
+  parents?: string[];
+  changes?: string[];
   createdAt: string;
   objects: ObjectSnapshot[];
   migrations: ReleaseMigration[];
   track?: string;
   safety?: ReleaseSafety;
+}
+
+export interface ChangeFile extends ChangeRules {
+  format: 1;
+  id: string;
+  title: string;
+  checksum: string;
+  touches: string[];
+}
+
+export interface StandaloneChange extends ChangeFile {
+  sql: string;
+}
+
+export interface Change {
+  id: string;
+  release: string | null;
+  title: string;
+  sql: string;
+  checksum: string;
+  kind: ChangeKind;
+  touches: string[];
+  before: Record<string, string | null>;
+  requires: string[];
+  data: boolean;
+  preconditions: ReleaseCheck[];
+  postconditions: ReleaseCheck[];
+}
+
+export interface AppliedChange {
+  id: string;
+  checksum: string;
+  kind: ChangeKind;
+  source: "rollout" | "baseline" | "adopted" | "script" | "migrated";
+  release: string | null;
+}
+
+export interface AppliedObject {
+  id: string;
+  hash: string;
+  change: string | null;
+}
+
+export interface Variance {
+  object: string;
+  hash: string;
+  reason: string;
+  until: string | null;
 }
 
 export interface ReleaseCheck {
@@ -118,6 +180,8 @@ export interface DatabaseTarget {
   pinnedRelease?: string | null;
   paused?: boolean;
   ledgerSchema?: string;
+  variances?: Variance[];
+  ledger?: { tip: string; open: number; variances: number; checkedAt: string };
   requireApproval?: boolean;
   operators?: string[];
   administrators?: string[];
