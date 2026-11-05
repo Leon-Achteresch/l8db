@@ -99,3 +99,18 @@ test("preview/cancel writes nothing; selection overwrites or skips and rejects s
     }),
   ).rejects.toThrow("inzwischen");
 });
+
+test("installierte ID unter anderem Dateinamen blockiert Vorschau und Anwendung", async () => {
+  const sameId = async () => ({ id: "shared" });
+  const current = [{ name: "local.tsx", source: "old", modified: 0 }];
+  const [preview] = await previewBundle(bundle([entry("new.tsx")]), current, sameId);
+  expect(preview.error).toContain("anderem Dateinamen");
+  const [fresh] = await previewBundle(bundle([entry("new.tsx")]), [], sameId);
+  let writes = 0;
+  await expect(
+    applyBundle([fresh], new Set(["new.tsx"]), current, sameId, async () => {
+      writes++;
+    }),
+  ).rejects.toThrow();
+  expect(writes).toBe(0);
+});

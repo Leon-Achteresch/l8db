@@ -14,7 +14,6 @@ import { assertExtensionsAllowed, useExtensionSources } from "@/lib/extensions/m
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useOrganizationStore } from "@/lib/organization-state";
 import { checkUiPluginSource, reloadUiPlugins } from "@/lib/ui-plugins/host";
-import { waitForProposalStatus } from "@/lib/ui-plugins/proposal-status";
 
 export function PluginProposals() {
   const [proposals, setProposals] = useState<(UiPluginProposal & { http: string[] })[]>([]);
@@ -26,6 +25,7 @@ export function PluginProposals() {
     let live = true;
     let running = false;
     let again = false;
+    const cache = new Map<string, { source: string; http: string[] }>();
     const sync = async () => {
       if (running) {
         again = true;
@@ -37,13 +37,20 @@ export function PluginProposals() {
           again = false;
           const pending = await pendingUiPluginProposals();
           const valid = [];
+          const active = new Set(pending.map((request) => request.nonce));
+          for (const key of cache.keys()) if (!active.has(key)) cache.delete(key);
           for (const request of pending) {
             try {
-              const definition =
-                request.action === "write"
-                  ? await checkUiPluginSource(request.name, request.source)
-                  : null;
-              valid.push({ ...request, http: definition?.http ?? [] });
+              let checked = cache.get(request.nonce);
+              if (!checked || checked.source !== request.source) {
+                const definition =
+                  request.action === "write"
+                    ? await checkUiPluginSource(request.name, request.source)
+                    : null;
+                checked = { source: request.source, http: definition?.http ?? [] };
+                cache.set(request.nonce, checked);
+              }
+              valid.push({ ...request, http: checked.http });
             } catch (failure) {
               await finishUiPluginProposal(request, {
                 decision: "invalid",
@@ -78,15 +85,14 @@ export function PluginProposals() {
       if (accept) {
         assertExtensionsAllowed();
         if (request.action === "write") await checkUiPluginSource(request.name, request.source);
-        await finishUiPluginProposal(request, {}, true);
+        await finishUiPluginProposal(
+          request,
+          { decision: "accepted", status: { state: "applied" } },
+          true,
+        );
+        setProposals((items) => items.filter((item) => item.nonce !== request.nonce));
         useExtensionSources.getState().mark(`light:${request.name}`, "KI");
         await reloadUiPlugins();
-        await finishUiPluginProposal(request, {
-          decision: "accepted",
-          status: (await waitForProposalStatus(request.name)) ?? {
-            state: request.action === "remove" ? "removed" : "stale",
-          },
-        });
       } else await finishUiPluginProposal(request, { decision: "rejected" });
       setProposals((items) => items.filter((item) => item.nonce !== request.nonce));
     } catch (failure) {

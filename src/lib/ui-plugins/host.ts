@@ -209,17 +209,8 @@ export function applyUiPluginFiles(
 
 export async function checkUiPluginSource(file: string, source: string, expectedId?: string) {
   const compiler = await import("../../../packages/ui-plugin-api/src/compile");
-  const result = loadUiPlugin(compiler, { name: file, source, modified: 0 }, hashSource(source));
-  if (!result.ok)
-    throw new Error(
-      result.error.line
-        ? `Zeile ${result.error.line}: ${result.error.message}`
-        : result.error.message,
-    );
-  result.plugin.timers.dispose();
-  if (expectedId && result.plugin.definition.id !== expectedId)
-    throw new Error(`Plugin meldet id "${result.plugin.definition.id}", erwartet "${expectedId}".`);
-  return result.plugin.definition;
+  const { inspectPluginSource } = await import("./inspect");
+  return inspectPluginSource(compiler, file, source, expectedId);
 }
 
 function scheduleStatus() {

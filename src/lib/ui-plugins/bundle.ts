@@ -52,6 +52,12 @@ export async function previewBundle(value: unknown, files: UiPluginFile[], check
   const result: BundlePreview[] = [];
   const names = new Set<string>();
   const ids = new Set<string>();
+  const installed = new Map<string, string>();
+  for (const file of files) {
+    try {
+      installed.set((await check(file.name, file.source)).id, file.name.toLowerCase());
+    } catch {}
+  }
   for (const raw of bundle.plugins) {
     const entry: BundlePreview = {
       key: String(result.length),
@@ -85,6 +91,8 @@ export async function previewBundle(value: unknown, files: UiPluginFile[], check
         throw new Error("Ungültige Optionen.");
       entry.options = raw.options;
       const definition = await check(entry.name, entry.source);
+      if (installed.has(definition.id) && installed.get(definition.id) !== entry.name.toLowerCase())
+        throw new Error("Plugin-ID bereits unter anderem Dateinamen installiert.");
       if (ids.has(definition.id)) throw new Error("Doppelte Plugin-ID.");
       ids.add(definition.id);
       entry.id = definition.id;
@@ -114,7 +122,12 @@ export async function applyBundle(
       entry.before
     )
       throw new Error("Plugin wurde inzwischen geändert. Import erneut öffnen.");
-    await check(entry.name, entry.source);
+    const [validated] = await previewBundle(
+      { format: "l8db.ui-plugins", version: 1, plugins: [entry] },
+      current,
+      check,
+    );
+    if (validated.error) throw new Error(validated.error);
   }
   for (const entry of chosen) await write(entry);
 }

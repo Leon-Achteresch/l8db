@@ -26,6 +26,18 @@ import {
 } from "../registries";
 import { dispatchRpc } from "./dispatch-rpc";
 
+export function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, item) =>
+    item && typeof item === "object" && !Array.isArray(item)
+      ? Object.fromEntries(
+          Object.keys(item)
+            .sort()
+            .map((key) => [key, item[key]]),
+        )
+      : item,
+  );
+}
+
 export class ExtensionManagerBase {
   readonly registry = new ExtensionRegistry();
   readonly commands = new CommandRegistry();
@@ -103,13 +115,13 @@ export class ExtensionManagerBase {
         const replacement = next.get(id);
         if (
           replacement &&
-          JSON.stringify({
+          stableJson({
             archive: current.archive,
             enabled: current.enabled,
             grants: current.grants,
             configuration: current.configuration,
             developmentPath: current.developmentPath,
-          }) === JSON.stringify(replacement)
+          }) === stableJson(replacement)
         ) {
           next.delete(id);
           continue;

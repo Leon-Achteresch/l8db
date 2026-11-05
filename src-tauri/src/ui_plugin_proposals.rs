@@ -196,9 +196,6 @@ pub fn ui_plugin_proposals_finish(
             .app_handle()
             .emit(super::ui_plugins::CHANGED_EVENT, ());
     }
-    if apply {
-        return Ok(());
-    }
     super::ui_plugins::write_atomic(&dir.join("response.json"), response.to_string().as_bytes())
 }
 
@@ -221,7 +218,13 @@ fn snapshot(root: &std::path::Path, name: &str) -> Result<Option<String>, String
 
 fn apply_request(root: &std::path::Path, current: &Value) -> Result<(), String> {
     let name = current["name"].as_str().ok_or("Dateiname fehlt")?;
-    if snapshot(root, name)? != current["before"].as_str().map(str::to_owned) {
+    let actual = snapshot(root, name)?;
+    if (current["action"] == "write" && actual.as_deref() == current["source"].as_str())
+        || (current["action"] == "remove" && actual.is_none())
+    {
+        return Ok(());
+    }
+    if actual != current["before"].as_str().map(str::to_owned) {
         return Err("Plugin wurde inzwischen geändert".into());
     }
     match current["action"].as_str() {
@@ -247,7 +250,7 @@ mod tests {
             let request = json!({"action":"write","name":name,"before":"old","source":"new"});
             apply_request(dir.path(), &request).unwrap();
             assert_eq!(snapshot(dir.path(), name).unwrap().as_deref(), Some("new"));
-            assert!(apply_request(dir.path(), &request).is_err());
+            apply_request(dir.path(), &request).unwrap();
             apply_request(
                 dir.path(),
                 &json!({"action":"remove","name":name,"before":"new"}),

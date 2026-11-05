@@ -42,6 +42,7 @@ export function markUiPluginLoading(now = Date.now()): () => void {
   const clear = () => store.removeItem(key);
   const timer = setTimeout(clear, SETTLE_MS);
   globalThis.addEventListener?.("pagehide", clear, { once: true });
+  globalThis.addEventListener?.("beforeunload", clear, { once: true });
   return () => {
     clearTimeout(timer);
     clear();
