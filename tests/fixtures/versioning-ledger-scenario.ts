@@ -69,6 +69,11 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
         `DROP TABLE ${pg ? "public" : `"${at.schema}"`}."L8DB_VERSIONING_${suffix}"`,
         true,
       );
+    await exec(
+      at,
+      pg ? "DROP FUNCTION public.lab_price(numeric)" : `DROP PACKAGE "${at.schema}"."LAB_PRICE"`,
+      true,
+    );
     for (const table of ["lab_currencies", "lab_invoices"])
       await exec(at, `DROP TABLE ${q(at, table)}${pg ? " CASCADE" : " CASCADE CONSTRAINTS"}`, true);
     await exec(
@@ -235,6 +240,102 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
   ).label;
   const hotfixPlan = await rollout("b", "v6");
   const catchUp = await rollout("a", "v6");
+  const codeObject = pg
+    ? {
+        id: "price",
+        path: "database/objects/price.sql",
+        selection: {
+          schema: dev.schema,
+          objectType: "routine",
+          objectName: "lab_price(numeric)",
+          objectOid: null,
+        },
+      }
+    : {
+        id: "price",
+        path: "database/objects/price.pks",
+        bodyPath: "database/objects/price.pkb",
+        selection: {
+          schema: dev.schema,
+          objectType: "package",
+          objectName: "LAB_PRICE",
+          objectOid: null,
+        },
+      };
+  const price = (at: { schema: string }, factor: number) =>
+    pg
+      ? [
+          `CREATE OR REPLACE FUNCTION public.lab_price(numeric) RETURNS numeric LANGUAGE sql AS $$ SELECT $1 * ${factor} $$`,
+        ]
+      : [
+          `CREATE OR REPLACE PACKAGE "${at.schema}"."LAB_PRICE" AS FUNCTION total(value NUMBER) RETURN NUMBER; END LAB_PRICE;`,
+          `CREATE OR REPLACE PACKAGE BODY "${at.schema}"."LAB_PRICE" AS FUNCTION total(value NUMBER) RETURN NUMBER IS BEGIN RETURN value * ${factor}; END; END LAB_PRICE;`,
+        ];
+  const script = (statements: string[]) =>
+    pg ? statements.join(";\n") : `${statements.join("\n/\n")}\n/`;
+  project = { ...project, objects: [...objects, codeObject] };
+  await api.saveFile(
+    repo,
+    model.PROJECT_PATH,
+    api.encode(project),
+    await api.readFile(repo, model.PROJECT_PATH),
+  );
+  for (const statement of price(dev, 1)) await exec(dev, statement);
+  await release("v7", ["v6"], script(price(dev, 1)));
+  for (const id of ["a", "b", "c"]) await rollout(id, "v7");
+  const legacyAt = customers.c;
+  for (const suffix of ["LOCKS", "POLICY", "JOURNAL", "APPROVALS", "STATE", "CHANGES", "OBJECTS"])
+    await exec(
+      legacyAt,
+      `DROP TABLE ${pg ? "public" : `"${legacyAt.schema}"`}."L8DB_VERSIONING_${suffix}"`,
+    );
+  const stored = await api.readTargets(repo, project.id);
+  stored.store.targets = stored.store.targets.map((entry) =>
+    entry.id === "c" ? { ...entry, release: null, history: [] } : entry,
+  );
+  await api.saveTargets(repo, stored.store, stored.text);
+  await exec(
+    legacyAt,
+    pg
+      ? "ALTER TABLE public.lab_invoices ADD COLUMN legacy_ref text"
+      : `ALTER TABLE ${q(legacyAt, "lab_invoices")} ADD (LEGACY_REF VARCHAR2(20))`,
+  );
+  for (const statement of price(legacyAt, 7)) await exec(legacyAt, statement);
+  const fingerprint = async () => {
+    const result: Record<string, string> = {};
+    for (const object of project.objects)
+      result[object.id] = (
+        await capture.captureObject(connection, legacyAt.database, object, legacyAt.schema)
+      ).checksum;
+    return result;
+  };
+  const legacyBefore = await fingerprint();
+  const classified = await deployment.classifyTarget(
+    repo,
+    project,
+    await target("c"),
+    connection,
+    "v7",
+  );
+  await deployment.baselineTarget(repo, project, "c", connection, "v7", false, [connection], {
+    done: classified.changes
+      .filter((entry) => entry.status === "done" || entry.suggested === "done")
+      .map((entry) => entry.id),
+    variances: classified.variances.map((variance) => ({
+      ...variance,
+      reason: "Kundenlogik LEGACY_1",
+    })),
+  });
+  const legacyBaseline = await fingerprint();
+  await commit("Abweichungen LEGACY_1");
+  const v8 = pg
+    ? "ALTER TABLE public.lab_currencies ADD COLUMN rate numeric"
+    : `ALTER TABLE ${q(devPlace, "lab_currencies")} ADD (RATE NUMBER)`;
+  await exec(devPlace, v8);
+  await release("v8", ["v7"], v8);
+  const legacyRun = (await rollout("c", "v8")).changes.map((change) => change.id);
+  const legacyAfter = await fingerprint();
+  const legacyTarget = await target("c");
   return {
     masse,
     again,
@@ -249,5 +350,26 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
       (entry) => entry.release?.id,
     ),
     ledgerB: (await applied("b")).length,
+    legacy: {
+      decisions: classified.changes
+        .filter((entry) => entry.status === "decision")
+        .map((entry) => entry.id)
+        .sort(),
+      proposed: classified.variances.map((variance) => variance.object).sort(),
+      noSql: JSON.stringify(legacyBefore) === JSON.stringify(legacyBaseline),
+      run: legacyRun,
+      variancesKept:
+        legacyAfter.invoices === legacyBefore.invoices &&
+        legacyAfter.price === legacyBefore.price &&
+        legacyTarget?.variances?.every(
+          (variance) => legacyAfter[variance.object] === variance.hash,
+        ) === true,
+      recorded: legacyTarget?.variances?.length,
+      shown: progress(
+        legacyTarget,
+        await api.loadReleases(repo, project),
+        await db.versioningRepository({ action: "status", repo }),
+      ).label,
+    },
   };
 }

@@ -238,6 +238,12 @@ async fn authorize(
 ) -> Result<(), String> {
     super::artifact::verify(request).await?;
     let shared = super::team::verify_request(request).await?;
+    let planned: Value =
+        serde_json::from_str(&request.artifact).map_err(|_| "Freigabeartefakt ist ungültig")?;
+    super::team::verify_variances(
+        shared.as_ref().map(|verified| &verified.target),
+        &planned["execution"]["variances"],
+    )?;
     let control = control::Request {
         connection: request.connection.clone(),
         action: "authorize".into(),

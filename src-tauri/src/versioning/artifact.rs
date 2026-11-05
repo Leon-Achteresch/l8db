@@ -555,11 +555,23 @@ pub async fn verify(request: &Request) -> Result<(), String> {
     }
     let mut cache: std::collections::HashMap<String, (Value, String)> = Default::default();
     let (to, _) = release(&root, commit, to_id).await?;
-    if plan["variances"].as_array().is_some_and(|v| !v.is_empty()) {
-        return Err("Festgehaltene Abweichungen fehlen in der Teamkonfiguration".into());
-    }
-    if plan["objects"] != managed(&to, target)? {
+    let soll = managed(&to, target)?;
+    if plan["objects"] != soll {
         return Err("Sollstand im Ausführungsplan weicht vom Zielrelease ab".into());
+    }
+    for variance in plan["variances"]
+        .as_array()
+        .ok_or("Festgehaltene Abweichungen fehlen im Ausführungsplan")?
+    {
+        let entry = soll
+            .as_array()
+            .and_then(|items| items.iter().find(|item| item["id"] == variance["id"]))
+            .ok_or("Festgehaltene Abweichung betrifft kein verwaltetes Objekt")?;
+        let mut expected = entry.clone();
+        expected["definition"] = variance["definition"].clone();
+        if !variance["definition"].is_string() || *variance != expected {
+            return Err("Festgehaltene Abweichung wurde im Ausführungsplan verändert".into());
+        }
     }
     let releases = plan["releases"]
         .as_array()
