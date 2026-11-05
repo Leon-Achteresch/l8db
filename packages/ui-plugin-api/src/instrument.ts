@@ -28,7 +28,12 @@ const LOOPS = new Set([
   "DoWhileStatement",
 ]);
 
-const INVOKES = new Set(["CallExpression", "NewExpression", "TaggedTemplateExpression"]);
+const INVOKES = new Set([
+  "CallExpression",
+  "NewExpression",
+  "TaggedTemplateExpression",
+  "AwaitExpression",
+]);
 
 function invokes(node: Tree): boolean {
   if (INVOKES.has(node.type)) return true;
@@ -68,9 +73,12 @@ export function instrumentPlugin(code: string): string {
       if (token.type.label === "=>") arrows.push(token.end);
     },
   }) as unknown as Tree;
-  const edits: { at: number; text: string; order: number }[] = [];
-  const insert = (at: number, text: string, order = 0) => edits.push({ at, text, order });
+  const edits: { at: number; text: string; close: boolean; depth: number }[] = [];
+  let level = 0;
+  const insert = (at: number, text: string, close = false) =>
+    edits.push({ at, text, close, depth: level });
   function visit(node: Tree) {
+    level++;
     if (
       (node.type === "CallExpression" || node.type === "NewExpression") &&
       node.arguments?.length
@@ -85,15 +93,15 @@ export function instrumentPlugin(code: string): string {
         if (argument.type === "SpreadElement")
           throw new Error("Dynamische Allokationsargumente sind nicht erlaubt.");
         insert(argument.start, `${GUARD_NAME}.size(`);
-        insert(argument.end, ")");
+        insert(argument.end, ")", true);
       }
     }
     if (node.generator) throw new Error("Generatorfunktionen sind in UI-Plugins nicht erlaubt.");
     if (node.type === "ForOfStatement" && node.await)
       throw new Error("for await ist in UI-Plugins nicht erlaubt.");
     if (node.type === "AwaitExpression" && node.argument) {
-      insert(node.argument.start, `${GUARD_NAME}.suspend(`, 3);
-      insert(node.argument.end, ")", -3);
+      insert(node.argument.start, `${GUARD_NAME}.suspend(`);
+      insert(node.argument.end, ")", true);
     }
     if (node.regex) checkPattern(node.regex.pattern);
     if (
@@ -107,8 +115,8 @@ export function instrumentPlugin(code: string): string {
     if (FUNCTIONS.has(node.type) && node.body) {
       const body = node.body;
       if (body.type === "BlockStatement") {
-        insert(body.start + 1, `${GUARD_NAME}.enter();try{`, 1);
-        insert(body.end - 1, `}finally{${GUARD_NAME}.leave();}`, -1);
+        insert(body.start + 1, `${GUARD_NAME}.enter();try{`);
+        insert(body.end - 1, `}finally{${GUARD_NAME}.leave();}`, true);
       } else if (invokes(body)) {
         let low = 0;
         let high = arrows.length;
@@ -118,16 +126,16 @@ export function instrumentPlugin(code: string): string {
           else high = mid;
         }
         if (!low) throw new Error("Pfeilfunktion konnte nicht abgesichert werden.");
-        insert(arrows[low - 1], `{${GUARD_NAME}.enter();try{return (`, 1);
-        insert(node.end, `);}finally{${GUARD_NAME}.leave();}}`, -1);
+        insert(arrows[low - 1], `{${GUARD_NAME}.enter();try{return (`);
+        insert(node.end, `);}finally{${GUARD_NAME}.leave();}}`, true);
       }
     }
     if (LOOPS.has(node.type) && node.body) {
       const body = node.body;
       if (body.type === "BlockStatement") insert(body.start + 1, `${GUARD_NAME}.check();`);
       else {
-        insert(body.start, `{${GUARD_NAME}.check();`, 2);
-        insert(body.end, "}", -2);
+        insert(body.start, `{${GUARD_NAME}.check();`);
+        insert(body.end, "}", true);
       }
     }
     for (const value of Object.values(node)) {
@@ -136,9 +144,15 @@ export function instrumentPlugin(code: string): string {
         for (const item of value) if (item && typeof item.type === "string") visit(item);
       } else if (value && typeof value === "object" && "type" in value) visit(value as Tree);
     }
+    level--;
   }
   visit(tree);
-  edits.sort((a, b) => a.at - b.at || b.order - a.order);
+  edits.sort(
+    (a, b) =>
+      a.at - b.at ||
+      Number(b.close) - Number(a.close) ||
+      (a.close ? b.depth - a.depth : a.depth - b.depth),
+  );
   const parts: string[] = [];
   let cursor = 0;
   for (const edit of edits) {
@@ -182,10 +196,10 @@ export function createExecutionGuard() {
       return value;
     },
     leave() {
-      depth--;
+      if (depth > 0) depth--;
     },
     suspend(value: unknown) {
-      depth--;
+      if (depth > 0) depth--;
       return Promise.resolve(value).then(
         (result) => {
           resume();
