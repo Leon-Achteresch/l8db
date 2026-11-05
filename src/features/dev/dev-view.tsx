@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { animatePageWave, PageWave } from "@/features/table/page-wave";
 import { cn } from "@/lib/utils";
+import { AiChatLab } from "./ai-chat-lab";
 import { BlogSuggestionPreview } from "./blog-suggestion-preview";
 import { ConnectionSelectLab } from "./connection-select-lab";
 import { DriverOverviewLab } from "./driver-overview-lab";
@@ -61,6 +62,9 @@ export function DevView() {
             </p>
           </div>
           <TabsList variant="line" aria-label="Komponenten-Vorschau" className="w-fit max-w-full">
+            <TabsTrigger value="ai-chat" className="flex-none px-4">
+              KI-Chat
+            </TabsTrigger>
             <TabsTrigger value="feature-video" className="flex-none px-4">
               Feature-Popup
             </TabsTrigger>
@@ -96,6 +100,9 @@ export function DevView() {
             </TabsTrigger>
           </TabsList>
         </div>
+        <TabsContent value="ai-chat">
+          <AiChatLab />
+        </TabsContent>
         <TabsContent value="feature-video">
           <FeatureVideoPreview />
         </TabsContent>

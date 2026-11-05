@@ -92,6 +92,7 @@ const SUITES = {
     "tests/perf-onboarding.test.ts",
     "tests/perf-seasonal-browser.test.ts",
     "tests/query-qol-browser.test.ts",
+    "tests/perf-ai-stream.test.ts",
   ],
   throttle: ["tests/perf-throttle.test.ts"],
 } as const;

@@ -393,6 +393,40 @@ pub async fn check_lock(
     Ok(())
 }
 
+pub fn invalid_policy(next: &Policy) -> Option<&'static str> {
+    if next.track.is_empty() {
+        return Some("Release-Linie fehlt");
+    }
+    if next.operators.len() > 1000
+        || next.reviewers.len() > 1000
+        || next.administrators.len() > 1000
+    {
+        return Some("höchstens 1000 Einträge je Rollenliste");
+    }
+    if next
+        .operators
+        .iter()
+        .chain(&next.reviewers)
+        .chain(&next.administrators)
+        .any(|s| s.trim().is_empty() || s.len() > 256)
+    {
+        return Some("Datenbankbenutzer dürfen nicht leer oder länger als 256 Zeichen sein");
+    }
+    if next.require_approval && next.reviewers.is_empty() {
+        return Some("Vier-Augen-Freigabe benötigt mindestens einen Freigeber");
+    }
+    if next.production && !next.require_approval {
+        return Some("Produktion benötigt eine verbindliche Freigabe (requireApproval)");
+    }
+    if next.production && next.operators.is_empty() {
+        return Some("Produktion benötigt mindestens einen freigegebenen Deployer (operators)");
+    }
+    if next.production && next.reviewers.is_empty() {
+        return Some("Produktion benötigt mindestens einen Freigeber (reviewers)");
+    }
+    None
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Request {
@@ -486,23 +520,8 @@ pub async fn handle(
             if next.administrators.is_empty() {
                 return Err("Mindestens ein Regeladministrator ist erforderlich".into());
             }
-            if next.track.is_empty()
-                || next.operators.len() > 1000
-                || next.reviewers.len() > 1000
-                || next.administrators.len() > 1000
-                || next
-                    .operators
-                    .iter()
-                    .chain(&next.reviewers)
-                    .chain(&next.administrators)
-                    .any(|s| s.trim().is_empty() || s.len() > 256)
-                || (next.require_approval && next.reviewers.is_empty())
-                || (next.production
-                    && (!next.require_approval
-                        || next.operators.is_empty()
-                        || next.reviewers.is_empty()))
-            {
-                return Err("Ungültige Kundenregeln".into());
+            if let Some(rule) = invalid_policy(&next) {
+                return Err(format!("Ungültige Kundenregeln: {rule}"));
             }
             if let Some(delivery) = &next.delivery {
                 super::delivery::validate(delivery)?;

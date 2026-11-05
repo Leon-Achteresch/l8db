@@ -145,6 +145,8 @@ test("AI streaming saves re-sanitize only the message that changed", async () =>
   };
   try {
     useAiStore.getState().saveSession(base);
+    const saved = () => useAiStore.getState().sessions.find((entry) => entry.id === base.id);
+    const initial = saved()?.messages ?? [];
     const durations: number[] = [];
     for (let chunk = 0; chunk < 20; chunk++) {
       const stored = useAiStore.getState().sessions.find((entry) => entry.id === base.id);
@@ -164,8 +166,17 @@ test("AI streaming saves re-sanitize only the message that changed", async () =>
       durations.push(performance.now() - start);
     }
     const timing = percentiles(durations);
+    const stableMessages = (saved()?.messages ?? []).filter(
+      (message, index) => message === initial[index],
+    ).length;
+    expect(stableMessages).toBe(19);
     expect(timing.p95Ms).toBeLessThan(100);
-    await reportScenario("ai-streaming-save", { messages: 20, toolBlocks: 20 * 80, ...timing });
+    await reportScenario("ai-streaming-save", {
+      messages: 20,
+      toolBlocks: 20 * 80,
+      stableMessages,
+      ...timing,
+    });
   } finally {
     useAiStore.setState(previous);
     await Bun.sleep(200);

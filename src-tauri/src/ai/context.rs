@@ -517,6 +517,7 @@ pub fn tool_definitions() -> Vec<Value> {
         .as_array()
         .cloned()
         .unwrap_or_default();
+    tools.retain(|tool| tool["name"] != "watch");
     tools.push(json!({
         "name": "visualize",
         "description": "Run a read-only query and show the result to the user as a chart or table in the chat. Use it whenever the answer is a list, ranking, trend, comparison or breakdown. Aggregate in SQL so the result stays small. Returns the same TSV as query.",

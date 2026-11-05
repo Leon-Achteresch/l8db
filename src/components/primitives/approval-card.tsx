@@ -1,8 +1,7 @@
-import { Check, ChevronDown, ChevronUp } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, MessageCircleQuestion } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { GlideMenu } from "./glide-menu";
 
 export interface ApprovalQuestion {
   id: string;
@@ -96,11 +95,11 @@ export function ApprovalCard({
   return (
     <div
       className={cn(
-        "w-full overflow-hidden rounded-xl border bg-card text-card-foreground shadow-xs animate-in fade-in slide-in-from-bottom-1 duration-300",
+        "w-full overflow-hidden rounded-2xl bg-card text-card-foreground shadow-[0_1px_2px_oklch(0_0_0/5%),0_8px_24px_-12px_oklch(0_0_0/16%)] animate-in fade-in slide-in-from-bottom-1 duration-300",
         className,
       )}
     >
-      <div className="px-2.5 pt-3.5 pb-3">
+      <div className="px-2.5 pt-3.5 pb-2">
         <div
           className="overflow-hidden px-1"
           style={{
@@ -132,24 +131,33 @@ export function ApprovalCard({
                     transition: frame.animate ? `opacity ${SLIDE}` : undefined,
                   }}
                 >
-                  <p className="text-[13px] font-medium leading-snug">{question.title}</p>
-                  {question.description && (
-                    <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                      {question.description}
-                    </p>
-                  )}
-                  <GlideMenu className="-mx-1 mt-2 flex flex-col gap-px">
+                  <div className="flex items-start gap-2.5">
+                    <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                      <MessageCircleQuestion className="size-3.5" />
+                    </span>
+                    <div className="min-w-0 flex-1 pt-1">
+                      <p className="text-[13px] font-semibold leading-snug">{question.title}</p>
+                      {question.description && (
+                        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                          {question.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-col gap-1">
                     {question.options?.map((option) => {
                       const on = picked.includes(option.value);
                       return (
                         <button
                           key={option.value}
                           type="button"
-                          data-menu-row
                           aria-pressed={on}
                           disabled={pending}
                           onClick={() => toggle(question, option.value)}
-                          className="relative flex min-h-8 items-start gap-2 rounded-md px-1.5 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className={cn(
+                            "flex min-h-10 items-start gap-2.5 rounded-xl px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                            on ? "bg-primary/10" : "bg-muted/55 hover:bg-muted",
+                          )}
                         >
                           <span
                             className={cn(
@@ -157,7 +165,7 @@ export function ApprovalCard({
                               question.multiple ? "rounded-[5px]" : "rounded-full",
                               on
                                 ? "bg-primary text-primary-foreground"
-                                : "text-transparent shadow-[inset_0_0_0_1.5px_var(--border)]",
+                                : "bg-background text-transparent shadow-[inset_0_0_0_1.5px_var(--border)]",
                             )}
                           >
                             {question.multiple ? (
@@ -175,7 +183,7 @@ export function ApprovalCard({
                             <span
                               className={cn(
                                 "block text-[13px] leading-4 transition-colors",
-                                on ? "text-foreground" : "text-foreground/80",
+                                on ? "font-medium text-foreground" : "text-foreground/85",
                               )}
                             >
                               {option.label}
@@ -189,10 +197,7 @@ export function ApprovalCard({
                         </button>
                       );
                     })}
-                    <label
-                      data-menu-row
-                      className="relative flex min-h-8 items-center rounded-md px-1.5"
-                    >
+                    <label className="flex min-h-10 items-center rounded-xl px-3 transition-colors focus-within:bg-muted/55">
                       <input
                         ref={(element) => {
                           inputs.current[index] = element;
@@ -219,16 +224,16 @@ export function ApprovalCard({
                         className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
                       />
                     </label>
-                  </GlideMenu>
+                  </div>
                 </div>
               );
             })}
           </div>
         </div>
       </div>
-      <div className="flex items-center justify-between gap-3 border-t bg-muted/30 px-2.5 py-2">
+      <div className="flex items-center justify-between gap-3 px-3.5 pt-1 pb-3">
         {questions.length > 1 ? (
-          <div className="flex items-center gap-0.5 text-muted-foreground">
+          <div className="-ml-1.5 flex items-center gap-0.5 text-muted-foreground">
             <Button
               size="icon-xs"
               variant="ghost"
@@ -236,7 +241,7 @@ export function ApprovalCard({
               disabled={step === 0}
               onClick={() => goTo(step - 1)}
             >
-              <ChevronUp />
+              <ChevronLeft />
             </Button>
             <span className="inline-flex h-4 overflow-hidden text-[11px] font-medium tabular-nums">
               <span
@@ -256,7 +261,7 @@ export function ApprovalCard({
               disabled={last}
               onClick={() => goTo(step + 1)}
             >
-              <ChevronDown />
+              <ChevronRight />
             </Button>
           </div>
         ) : (

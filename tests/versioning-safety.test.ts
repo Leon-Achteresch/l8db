@@ -88,7 +88,7 @@ describe("release graph and customer policy", () => {
       ),
     ).toThrow();
   });
-  test("validates migration IDs against the whole applied ancestry", () => {
+  test("allows repeated migration IDs because changes are scoped by release", () => {
     const migration = { id: "backfill-once", title: "Backfill", sql: "SELECT 1", checksum: "" };
     expect(() =>
       validateReleaseGraph([
@@ -96,7 +96,7 @@ describe("release graph and customer policy", () => {
         release("v2", "v1"),
         { ...release("v3", "v2"), migrations: [migration] },
       ]),
-    ).toThrow("bereits verwendet");
+    ).not.toThrow();
   });
   test("supports independent baselines and branching from a common product release", () => {
     expect(() =>

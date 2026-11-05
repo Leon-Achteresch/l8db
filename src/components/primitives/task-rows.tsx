@@ -34,7 +34,7 @@ export function TaskRows({
   return (
     <div
       className={cn(
-        "w-full overflow-hidden rounded-xl border bg-card text-card-foreground",
+        "w-full overflow-hidden rounded-2xl bg-card text-card-foreground shadow-[0_1px_2px_oklch(0_0_0/5%),0_8px_24px_-12px_oklch(0_0_0/16%)]",
         className,
       )}
     >
@@ -43,9 +43,9 @@ export function TaskRows({
           type="button"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
-          className="flex h-9 w-full items-center gap-2 px-3 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          className="flex h-10 w-full items-center gap-2 px-3.5 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         >
-          <span className="min-w-0 flex-1 truncate text-xs font-medium">{title}</span>
+          <span className="min-w-0 flex-1 truncate text-xs font-semibold">{title}</span>
           <span className="text-[11px] tabular-nums text-muted-foreground">
             {done}/{rows.length}
           </span>
@@ -61,14 +61,14 @@ export function TaskRows({
         className="grid transition-[grid-template-rows,opacity] duration-300 ease-smooth-out"
         style={{ gridTemplateRows: listOpen ? "1fr" : "0fr", opacity: listOpen ? 1 : 0 }}
       >
-        <ol inert={!listOpen} className={cn("overflow-hidden", title && "border-t")}>
+        <ol inert={!listOpen} className={cn("overflow-hidden", title ? "pb-1.5" : "py-1.5")}>
           {rows.map((row, index) => {
             const rowOpen = Boolean(expanded[row.id]);
             const pill = PILL[row.status];
             return (
               <li
                 key={row.id}
-                className="border-b animate-in fade-in slide-in-from-bottom-1 fill-mode-both duration-300 last:border-0"
+                className="animate-in fade-in slide-in-from-bottom-1 fill-mode-both duration-300"
                 style={{ animationDelay: `${index * 60}ms` }}
               >
                 <button
@@ -76,7 +76,7 @@ export function TaskRows({
                   disabled={!row.details}
                   aria-expanded={row.details ? rowOpen : undefined}
                   onClick={() => setExpanded((all) => ({ ...all, [row.id]: !rowOpen }))}
-                  className="flex min-h-9 w-full items-center gap-2.5 px-3 py-1.5 text-left outline-none transition-colors enabled:hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:cursor-default"
+                  className="flex min-h-8 w-full items-center gap-2.5 px-3.5 py-1 text-left outline-none transition-colors enabled:hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:cursor-default"
                 >
                   <TaskStatusIcon status={row.status} step={index + 1} />
                   <span
@@ -119,7 +119,7 @@ export function TaskRows({
                     style={{ gridTemplateRows: rowOpen ? "1fr" : "0fr", opacity: rowOpen ? 1 : 0 }}
                   >
                     <div inert={!rowOpen} className="overflow-hidden">
-                      <div className="ml-[22px] border-l px-3 pb-2.5 text-xs text-muted-foreground">
+                      <div className="ml-[30px] px-3.5 pb-2.5 text-xs text-muted-foreground">
                         {row.details}
                       </div>
                     </div>
