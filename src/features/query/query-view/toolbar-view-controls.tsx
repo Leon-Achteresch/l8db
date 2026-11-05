@@ -54,15 +54,15 @@ export function ToolbarViewControls({
       <Button
         size="sm"
         variant={analysisOpen ? "secondary" : "ghost"}
-        className="size-8 px-0"
+        className="h-8 gap-1.5 px-1.5 text-xs"
         aria-pressed={analysisOpen}
         onClick={onOpenAnalysis}
         title="Explain und Performance-Test"
       >
         <GaugeIcon className="size-3.5" />
-        <span className="sr-only">Analyse</span>
+        <span className="sr-only @min-[62rem]/qtb:not-sr-only">Analyse</span>
       </Button>
-      <Separator orientation="vertical" className="mx-1 my-2" />
+      <Separator orientation="vertical" className="mx-0.5 my-2" />
       <Button
         size="icon-sm"
         className="size-8"
@@ -85,7 +85,7 @@ export function ToolbarViewControls({
       >
         <PanelBottomIcon className="size-3.5" />
       </Button>
-      <Separator orientation="vertical" className="mx-1 my-2" />
+      <Separator orientation="vertical" className="mx-0.5 my-2" />
       <QueryEditorSettingsPopover />
       {toolsMenu}
     </div>

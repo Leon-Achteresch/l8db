@@ -214,7 +214,7 @@
   --accent-foreground: oklch(0.96 calc(0.01 * var(--db-tint)) var(--db-hue));
   --destructive: oklch(0.72 0.16 24);
   --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 16%);
+  --input: oklch(1 0 0 / 12%);
   --control-off: oklch(0.5 calc(0.012 * var(--db-tint)) var(--db-hue));
   --ring: oklch(0.74 0.1 var(--db-hue));
   --chart-1: oklch(0.76 0.12 var(--db-hue));

@@ -377,7 +377,7 @@ export function AppHeaderSearch() {
             <span
               role="img"
               aria-label="Neu"
-              className="pointer-events-none absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary ring-2 ring-background"
+              className="pointer-events-none absolute -top-1 -right-1 size-1.5 rounded-full bg-info ring-2 ring-background"
             />
           ) : null}
         </button>

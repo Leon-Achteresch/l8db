@@ -65,9 +65,9 @@ export function SidebarEntityList({
       >
         <SidebarSearchInput
           placeholder={
-            panelWidth < 260
-              ? "Suchen …"
-              : searchIncludeColumns
+            panelWidth < 200
+              ? "Suchen…"
+              : searchIncludeColumns && panelWidth >= 260
                 ? type === "table"
                   ? "Tabellen & Spalten…"
                   : "Views & Spalten…"

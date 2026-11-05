@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Plus, Search, Star, Table2 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { Info, Plus, Search, Star, Table2 } from "lucide-react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
+import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +44,13 @@ function atlasHeight(count: number, metric: AtlasMetric, compact: boolean, width
   return "clamp(320px,calc(100vh - 430px),640px)";
 }
 
-export function HomeAtlas({ connection }: { connection: SavedConnection }) {
+export function HomeAtlas({
+  connection,
+  children,
+}: {
+  connection: SavedConnection;
+  children?: ReactNode;
+}) {
   const database = useActiveDatabase();
   const schema = useActiveSchema();
   const caps = useActiveCapabilities();
@@ -87,6 +94,7 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
     [atlasTables, focus.key],
   );
   const showRelations = Boolean(links?.length);
+  const sizeHint = !map.isPending && (summary.metric === null || summary.metric === "links");
 
   const open = (tableSchema: string, name: string, view = false) => {
     useTableTabs
@@ -203,25 +211,35 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
               />
             </div>
           </div>
-          {atlasTables.length > 0 && (
+          {(atlasTables.length > 1 || (atlasTables.length > 0 && sizeHint)) && (
             <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
-              {!map.isPending && (summary.metric === null || summary.metric === "links") && (
+              {sizeHint && (
+                <Tooltip
+                  side="bottom"
+                  content={
+                    summary.metric === null
+                      ? "Ohne Statistik- oder Leserechte sind die Tabellengrößen unbekannt. Alle Kacheln werden gleich groß dargestellt."
+                      : "Ohne Statistik- oder Leserechte sind die Tabellengrößen unbekannt. Die Fläche zeigt die Fremdschlüssel."
+                  }
+                >
+                  <span className="inline-flex items-center gap-1">
+                    Größe je Tabelle nicht lesbar
+                    <Info className="size-3" aria-hidden />
+                  </span>
+                </Tooltip>
+              )}
+              {atlasTables.length > 1 && (
                 <>
-                  <span>
-                    {summary.metric === null
-                      ? "Tabellengrößen unbekannt – Kacheln gleich groß dargestellt"
-                      : "Tabellengrößen unbekannt – Fläche zeigt die Fremdschlüssel"}
+                  {sizeHint && <span aria-hidden>·</span>}
+                  <span className="inline-flex items-center gap-1">
+                    <span className="size-1.5 rounded-full bg-primary" /> geöffnet
                   </span>
                   <span aria-hidden>·</span>
+                  <span className="inline-flex items-center gap-1">
+                    <Star className="size-2.5 fill-current text-primary" /> Favorit
+                  </span>
                 </>
               )}
-              <span className="inline-flex items-center gap-1">
-                <span className="size-1.5 rounded-full bg-primary" /> geöffnet
-              </span>
-              <span aria-hidden>·</span>
-              <span className="inline-flex items-center gap-1">
-                <Star className="size-2.5 fill-current text-primary" /> Favorit
-              </span>
             </p>
           )}
         </div>
@@ -250,7 +268,7 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
           onClear={() => setFocus({ key: null, live: false })}
         />
       </div>
-      <div className="self-start">
+      <div className="self-start @4xl/home:col-start-2 @4xl/home:row-span-2 @4xl/home:row-start-1">
         <ContinueRail
           connectionId={connection.id}
           database={database}
@@ -262,6 +280,7 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
           onOpen={open}
         />
       </div>
+      {children}
     </section>
   );
 }

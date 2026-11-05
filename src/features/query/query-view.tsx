@@ -237,10 +237,10 @@ export function QueryView({ tabId }: QueryViewProps) {
       >
         <div
           data-icon-chrome
-          className="@container/qtb flex h-12 shrink-0 flex-nowrap items-center gap-1.5 overflow-hidden border-b bg-card px-3"
+          className="@container/qtb flex h-12 shrink-0 flex-nowrap items-center gap-1 overflow-hidden border-b bg-card px-3"
           data-tour="query-toolbar"
         >
-          <div className="-mx-1 flex min-w-0 flex-1 items-center gap-4 overflow-x-auto px-1 py-1 [scrollbar-width:none]">
+          <div className="-mx-1 flex min-w-0 flex-1 items-center gap-3 overflow-x-auto px-1 py-1 [scrollbar-width:none]">
             <RunControls
               actions={actions}
               exec={exec}

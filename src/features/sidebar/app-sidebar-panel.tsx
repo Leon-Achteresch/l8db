@@ -139,11 +139,10 @@ export function AppSidebarPanel() {
                     : sidebarTabLabel(sidebarTab)
                 }
               >
-                {tabCount !== undefined
-                  ? tabCount.toLocaleString("de-DE")
-                  : caps.object_storage && sidebarTab === "tables"
-                    ? "Buckets"
-                    : sidebarTabLabel(sidebarTab)}
+                {caps.object_storage && sidebarTab === "tables"
+                  ? "Buckets"
+                  : sidebarTabLabel(sidebarTab)}
+                {tabCount !== undefined ? ` · ${tabCount.toLocaleString("de-DE")}` : null}
               </SidebarGroupLabel>
             )}
             {sidebarTab === "functions" ||

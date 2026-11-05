@@ -60,7 +60,6 @@ export function useColumnSizing(
       if (saved === undefined) {
         fitted[column] = classicColumnWidth({
           name: column,
-          typeLabel: info?.dataType ?? info?.label ?? "",
           icons: 1 + (info?.kind === "key" ? 1 : 0) + (fkByColumn.has(column) ? 1 : 0),
           values: sample.map((row) => row[column]),
         });

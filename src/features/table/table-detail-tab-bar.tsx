@@ -157,14 +157,17 @@ export function TableDetailTabBar({
         </ContextMenuContent>
       </ContextMenu>
       {overflow.length > 0 && (
+        <span aria-hidden="true" className="mx-2 h-4 w-px shrink-0 bg-border" />
+      )}
+      {overflow.length > 0 && (
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="sm"
               className={cn(
-                "ml-1 min-w-8 shrink-0 gap-1.5 px-2 text-control font-normal text-muted-foreground",
-                activeOverflow && "bg-muted font-medium text-foreground",
+                "h-8 min-w-8 shrink-0 gap-1.5 px-1.5 text-sm font-medium text-foreground/60 hover:text-foreground dark:text-muted-foreground",
+                activeOverflow && "bg-muted font-semibold text-foreground dark:text-foreground",
               )}
               aria-label={
                 activeOverflow
