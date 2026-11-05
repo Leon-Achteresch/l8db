@@ -37,6 +37,9 @@ try {
         await page.locator('nav[aria-label="Bereiche"][data-expanded="true"]').waitFor();
       }
       await page.mouse.move(0, 0);
+      const greeting = page.locator('[data-island="greeting"]');
+      await greeting.waitFor({ timeout: 4000 }).catch(() => {});
+      await greeting.waitFor({ state: "detached", timeout: 8000 });
       await page.waitForTimeout(1200);
       const file = join(out, `${scene.name}-${scheme}.png`);
       await page.screenshot({ path: file, animations: "disabled" });

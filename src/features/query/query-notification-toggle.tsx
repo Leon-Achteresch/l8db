@@ -13,14 +13,14 @@ export function QueryNotificationToggle() {
       ref={feature.ref}
       size="sm"
       variant={enabled ? "secondary" : "ghost"}
-      className="h-7 gap-1.5 px-2 text-xs"
+      className="h-8 gap-1.5 px-2 text-xs"
       aria-label="Desktop-Meldungen für lange Abfragen"
       aria-pressed={enabled}
       title="Bei Erfolg oder Fehler nach mindestens 10 Sekunden im Hintergrund benachrichtigen; ohne SQL oder Daten"
       onClick={() => setEnabled(!enabled)}
     >
       <BellIcon className="size-3.5" />
-      <span className="sr-only @min-[72rem]/qtb:not-sr-only">Meldungen</span>
+      <span className="sr-only @min-[62rem]/qtb:not-sr-only">Meldungen</span>
       {feature.isNew && <NewBadge />}
     </Button>
   );

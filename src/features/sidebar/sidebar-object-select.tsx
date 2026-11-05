@@ -25,7 +25,7 @@ export function SidebarObjectSelect({
       <SelectTrigger
         size="sm"
         aria-label="Objekttyp"
-        className="h-8 min-w-0 border-none px-2 text-xs font-medium text-sidebar-foreground/70 shadow-none hover:bg-sidebar-accent hover:text-sidebar-foreground dark:bg-transparent dark:hover:bg-sidebar-accent"
+        className="h-8 min-w-0 gap-1 border-none px-2 text-control font-medium text-sidebar-foreground shadow-none hover:bg-sidebar-accent dark:bg-transparent dark:hover:bg-sidebar-accent"
       >
         <SelectValue />
         {hasNewFeatures(activeTab?.featureScope, seen) ? <NewBadge /> : null}

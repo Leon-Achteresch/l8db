@@ -5,6 +5,7 @@ import { createSafeJsonStorage } from "@/lib/buffered-storage";
 export const SIDEBAR_PANEL_MIN_WIDTH = 240;
 export const SIDEBAR_PANEL_MAX_WIDTH = 512;
 export const SIDEBAR_PANEL_DEFAULT_WIDTH = 304;
+export const SIDEBAR_PANEL_NAV_EXPANDED_WIDTH = 256;
 
 interface SidebarPanelState {
   width: number;
@@ -15,6 +16,12 @@ interface SidebarPanelState {
 
 export function clampSidebarWidth(width: number): number {
   return Math.min(SIDEBAR_PANEL_MAX_WIDTH, Math.max(SIDEBAR_PANEL_MIN_WIDTH, Math.round(width)));
+}
+
+export function effectiveSidebarWidth(width: number, navExpanded: boolean): number {
+  return navExpanded && width === SIDEBAR_PANEL_DEFAULT_WIDTH
+    ? SIDEBAR_PANEL_NAV_EXPANDED_WIDTH
+    : width;
 }
 
 export const useSidebarPanel = create<SidebarPanelState>()(

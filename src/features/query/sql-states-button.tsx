@@ -84,7 +84,7 @@ export function SqlStatesButton({ connectionId, database, tabId, sql, running, o
         ref={feature.ref}
         variant="ghost"
         size="sm"
-        className="relative size-7 shrink-0 px-0"
+        className="relative size-8 shrink-0 px-0"
         aria-label="SQL-Stände"
         title="SQL-Stände und Varianten"
         onClick={() => {

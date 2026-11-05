@@ -34,9 +34,9 @@ export const AtlasTile = memo(function AtlasTile({
   const facts = describeAtlasTable(tile);
   const [facts1, facts2] = atlasFacts(tile, metric);
   const links = tile.links ? formatLinks(tile.links) : null;
-  const unknown =
-    metric !== "bytes" && metric !== "rows" && tile.rows == null && tile.bytes == null;
-  const primary = facts1 ?? links ?? tile.comment ?? (unknown ? "Größe unbekannt" : null);
+  const status = mark === "favorite" ? "Favorit" : mark === "open" ? "geöffnet" : null;
+  const primary = facts1 ?? links ?? tile.comment ?? status;
+  const unknown = primary === status;
   const secondary = facts1 ? facts2 : links ? tile.comment : null;
   return (
     <button
@@ -72,7 +72,7 @@ export const AtlasTile = memo(function AtlasTile({
         <span
           className={cn(
             "block max-w-full truncate font-mono font-medium leading-tight",
-            area > 42_000 ? "text-[15px]" : area > 12_000 ? "text-[13px]" : "text-[11px]",
+            area > 42_000 ? "text-[15px]" : "text-[13px]",
           )}
         >
           {tile.name}

@@ -155,7 +155,12 @@ export function ConnectionPickCard({
                   Verbindung speichern
                 </Button>
               ) : (
-                <Button variant="outline" size="sm" className="px-3 text-control" onClick={onEdit}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-lg px-3 text-control"
+                  onClick={onEdit}
+                >
                   <Pencil className="size-3" />
                   Bearbeiten
                 </Button>
@@ -165,7 +170,7 @@ export function ConnectionPickCard({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="px-3 text-control"
+                    className="rounded-lg px-3 text-control"
                     onClick={onOpen}
                   >
                     <Unplug className="size-3" />
@@ -175,7 +180,7 @@ export function ConnectionPickCard({
                   <Button
                     variant="default"
                     size="sm"
-                    className="px-3 text-control"
+                    className="rounded-lg px-3 text-control"
                     onClick={onOpen}
                   >
                     <Play className="size-3" />

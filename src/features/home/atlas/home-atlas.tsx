@@ -167,7 +167,9 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
               atlasTables.length > 0 &&
               (summary.metric === null || summary.metric === "links") && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Keine Größen lesbar: Statistiken oder Leserechte fehlen.
+                  {summary.metric === null
+                    ? "Tabellengrößen unbekannt – Kacheln gleich groß dargestellt"
+                    : "Tabellengrößen unbekannt – Fläche zeigt die Fremdschlüssel"}
                 </p>
               )}
           </div>

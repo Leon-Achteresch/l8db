@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useSettingsStore } from "@/lib/settings";
-import { TABLE_DETAIL_TABS } from "@/lib/table-detail-tabs";
+import { TABLE_DETAIL_TAB_GROUPS, TABLE_DETAIL_TABS } from "@/lib/table-detail-tabs";
 
 export function SettingsTableTabs() {
   const hidden = useSettingsStore((s) => s.hiddenTableDetailTabs);
@@ -36,22 +36,31 @@ export function SettingsTableTabs() {
           </Button>
         ) : null}
       </div>
-      <div className="grid max-w-2xl gap-x-4 rounded-lg bg-muted/40 p-2 sm:grid-cols-2">
-        {TABLE_DETAIL_TABS.map((tab) => (
-          <label
-            key={tab.id}
-            className="flex h-9 cursor-pointer items-center justify-between gap-3 rounded-md px-2 text-control transition-colors hover:bg-muted"
-          >
-            <span className="truncate">
-              {tab.label}
-              {tab.entity === "view" ? " (Views)" : ""}
-            </span>
-            <Switch
-              checked={!hidden.includes(tab.id)}
-              onCheckedChange={(checked) => setVisible(tab.id, checked)}
-              aria-label={`${tab.label} anzeigen`}
-            />
-          </label>
+      <div className="grid max-w-2xl gap-x-6 gap-y-4 sm:grid-cols-2">
+        {TABLE_DETAIL_TAB_GROUPS.map((group) => (
+          <div key={group.label} className="min-w-0">
+            <h4 className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">
+              {group.label}
+            </h4>
+            <div className="divide-y divide-border/50">
+              {TABLE_DETAIL_TABS.filter((tab) => group.ids.includes(tab.id)).map((tab) => (
+                <label
+                  key={tab.id}
+                  className="flex h-9 cursor-pointer items-center justify-between gap-3 px-2 text-control transition-colors hover:bg-muted/60"
+                >
+                  <span className="truncate">
+                    {tab.label}
+                    {tab.entity === "view" ? " (Views)" : ""}
+                  </span>
+                  <Switch
+                    checked={!hidden.includes(tab.id)}
+                    onCheckedChange={(checked) => setVisible(tab.id, checked)}
+                    aria-label={`${tab.label} anzeigen`}
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </section>

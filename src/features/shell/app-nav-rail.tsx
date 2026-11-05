@@ -71,7 +71,7 @@ export function AppNavRail() {
       aria-label="Bereiche"
       className={cn(
         "flex shrink-0 flex-col gap-1.5 overflow-y-auto bg-sidebar py-2 [scrollbar-width:none]",
-        expanded ? "w-[184px] items-stretch gap-0.5 px-2" : "w-14 items-center",
+        expanded ? "w-[200px] items-stretch gap-0.5 px-2" : "w-14 items-center",
       )}
     >
       {navItems.map((item, index) => {
