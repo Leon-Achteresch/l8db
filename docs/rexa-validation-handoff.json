@@ -1,0 +1,218 @@
+{
+  "status": "in_progress_relocated_to_macbook_by_user",
+  "objective": "Complete the implemented RexaDB gap expansion, remaining validation and necessary corrections, then commit/push development and provide a short German summary",
+  "sourceCheckpoint": "b80e804d1360656d587451fc7c9d19a36abb9fdd",
+  "repository": "https://github.com/Leon-Achteresch/l8db",
+  "branch": "development",
+  "implementationCommits": [
+    "c9212b60",
+    "3173c576",
+    "e63b345c"
+  ],
+  "areas": [
+    "Neon accounts/branches/Auth/Storage/Functions and sessionful PostgreSQL WSS",
+    "Read-only bounded multi-source federation",
+    "Central team workspaces/roles/grants/approvals/audit",
+    "JDBC profiles/JARs/Java17+bridge",
+    "PlanetScale discovery and SpacetimeDB HTTP adapter",
+    "Supabase Stripe admin/private billing schema/Edge Functions"
+  ],
+  "review": {
+    "model": "Claude Opus5.5",
+    "effort": "high",
+    "completed": true,
+    "readOnly": true,
+    "findings": [
+      {
+        "id": 1,
+        "severity": "P1",
+        "change": "JDK discovery is lazy and cached; provider registry starts no Java process"
+      },
+      {
+        "id": 2,
+        "severity": "P1",
+        "change": "Bounded per-account and real-peer login throttling with eviction prevents a global login lock"
+      },
+      {
+        "id": 3,
+        "severity": "P2",
+        "change": "Reserve a query slot before changing an approval from pending to running"
+      },
+      {
+        "id": 4,
+        "severity": "P2",
+        "change": "Keep the JDBC bridge and session after a valid framed SQL error"
+      },
+      {
+        "id": 5,
+        "severity": "P2",
+        "change": "Neon listener reuse touches activity atomically with idle retirement"
+      },
+      {
+        "id": 6,
+        "severity": "P2",
+        "change": "Federation paging requires a complete stable primary key and a supported ordering strategy; other sources/views limited to512rows"
+      },
+      {
+        "id": 7,
+        "severity": "P2",
+        "change": "Explicit32MiB SQLite alias capacity and translated SQLITE_FULL errors, without raising budgets"
+      },
+      {
+        "id": 8,
+        "severity": "P2",
+        "change": "Spacetime SQL guard uses the existing dialect-aware splitter; actual2.14.1 server already rejected the reported multi-statement attack"
+      },
+      {
+        "id": 9,
+        "severity": "P3",
+        "change": "Workspace GET numeric identifiers remain strings; only offset is numeric"
+      },
+      {
+        "id": 10,
+        "severity": "P3",
+        "change": "Keep and document fresh read-only database sessions; MySQL fixture checks15fresh connections and latency/idle budgets",
+        "remaining": "Complete the full current-source MySQL run and record numerical measurements"
+      }
+    ],
+    "approval": "User approved all confirmed findings and Spacetime hardening",
+    "fixRoundsAllowed": 1,
+    "fixRoundInProgress": 1,
+    "additionalReviewAllowed": false,
+    "coverage": "Backend and connected callers thoroughly read; most new frontend views and Neon/PlanetScale explorers skimmed"
+  },
+  "passedEvidence": {
+    "linuxEnvironment": {
+      "os": "Debian 13 Linux 6.12.111",
+      "architecture": "x86_64",
+      "cpu": "QEMU Virtual CPU 2.5+, 8vCPU",
+      "ramBytes": 16775348224,
+      "swapBytes": 0,
+      "bun": "1.3.10",
+      "rust": "1.99.0"
+    },
+    "reviewFixRust": {
+      "runtimeSourceBeforeCancellationPatch": "3173c576",
+      "regularPassed": 64,
+      "ignoredInSelection": 6,
+      "nativeLivePassed": 7,
+      "families": [
+        "JDBC H2/PostgreSQL",
+        "local Neon WSS with real PostgreSQL and pg_dump",
+        "SpacetimeDB2.14.1",
+        "Workspace PostgreSQL"
+      ]
+    },
+    "currentCancellationSource": {
+      "head": "ee47ce3b",
+      "typescript": true,
+      "frontendProductionBuild": true,
+      "targetedFrontendTestsPassed": 9,
+      "cargoCheckDefaultFeatures": true,
+      "clippyLibraryDefaultFeatures": true,
+      "clippyWarnings": true
+    },
+    "jdbcBrowser": {
+      "assertions": 56,
+      "profiles": 64,
+      "runs": 3,
+      "medianMs": 993.6,
+      "p95Ms": 7385.2,
+      "medianLimitMs": 8000,
+      "p95LimitMs": 12000,
+      "domLimitExclusive": 3000,
+      "idleRequests": 0,
+      "transport": "mocked Tauri",
+      "background": "optimized Rust build was running, not an isolated performance baseline"
+    },
+    "otherFeatureBrowserJourneys": "Nine feature journeys passed with mocked Tauri transport; see docs/providers.md and PERFORMANCE.md",
+    "postgresSshIntegration": {
+      "passed": true,
+      "seconds": 79.124,
+      "scope": "PostgreSQL,SSH,jumps,SOCKS/HTTP proxies,exports/snapshots/comparison/production controls"
+    },
+    "payments": {
+      "realPostgresSchemaTestsPassed": 4,
+      "realDenoRuntimeGroupsPassed": 9,
+      "denoVersion": "2.9.8",
+      "stripeAndSupabaseUpstreams": "mocked"
+    },
+    "productionBrowser": "CSP/editor workers and extension sandbox passed before subsequent unrelated development changes",
+    "nativeOptimizedBinary": {
+      "head": "3173c576",
+      "passed": true,
+      "allDefaultDrivers": true,
+      "optLevel": 3,
+      "lto": "thin",
+      "localRootCodegenUnits": 16,
+      "bundle": false,
+      "important": "This precedes e63b345c and must not count as a current-source native/MySQL pass"
+    }
+  },
+  "criticalRemainingRegression": {
+    "test": "tests/workspaces-mysql-live.test.ts",
+    "firstRun": "Native release run reached534assertions, then failed because a blocked MySQL HTTP query did not return within2seconds after cancellation",
+    "fixCommit": "e63b345c",
+    "fixFile": "src-tauri/src/workspaces/server.rs",
+    "fix": "Non-PostgreSQL operation has a local cancellation-token/30second timeout select; PostgreSQL retains native cancellation",
+    "verification": "Compile and Clippy passed; a complete current-source native MySQL retest is still required",
+    "semantics": "Local HTTP cancellation is not confirmation that the server-side SQL already stopped; fixture verifies cleanup after releasing its table lock",
+    "mysqlVersionPreviouslyUsed": "8.4.13",
+    "fixtureInputs": [
+      "L8DB_WORKSPACE_SERVER_BIN absolute path to the current native app binary",
+      "L8DB_WORKSPACE_MYSQL_URL local isolated MySQL lab with performance_schema enabled"
+    ],
+    "budgets": "15queries against10000rows; median<100ms,p95<250ms,1000retainedrows,response<128KiB,15freshDBconnections,concurrency4/fifth429,HTTPcancel<2s,zeroidlequeries/connections"
+  },
+  "remainingWork": [
+    "Inspect and preserve the Mac checkout status; synchronize development using repository coordination rules. Do not overwrite local edits or use worktrees.",
+    "Read current AGENTS.md and docs/providers.md, docs/team-hub.md, PERFORMANCE.md. Recent incoming development changed AGENTS UI guidance, extension APIs, versioning and bun.lock; these changes have been merged, preserving both feature-ID groups.",
+    "Use Bun1.3.10 and a frozen-lockfile install. Recheck TypeScript/build on the newly merged source and test the feature-ID merge. Do not use Linux node_modules, binaries, JDK paths or test tokens on macOS.",
+    "Run current-source cargo check with default DuckDB/ODBC features; compile extra scoped Rust regressions with default features and memory-conscious local compiler settings. Filters: mcp::server::tests::, mcp::watch::tests::, versioning::artifact::, workspaces::.",
+    "Run Workspace PostgreSQL ignored tests against an isolated local lab. Previous unchanged JDBC/Neon/Spacetime live evidence remains valid; add native macOS evidence where feasible and record missing coverage.",
+    "Build the current native app and run the complete MySQL fixture above. Prefer the normal release configuration if resources allow; any local compiler override must be recorded and must not change tracked Cargo settings just to satisfy local memory limits.",
+    "Fix related failures within the already authorized final fix round. Never loosen performance budgets or fix unrelated pre-existing failures.",
+    "Record actual macOS/architecture/CPU/RAM/runtime and median/p95/memory/request/concurrency/cancellation/idle results. Do not claim all operating systems, JDBC vendors or database families were tested.",
+    "Update the verification record and remaining limitations, commit only owned changes and push origin/development with coordination/fetch/merge/retry. Verify the commit is reachable from fetched origin/development. No canary/main push, no release and no CI wait."
+  ],
+  "portableCommands": {
+    "frontendTypecheck": "bunx tsc -p tsconfig.app.json --noEmit",
+    "frontendBuild": "bun run build",
+    "extraRust": "cargo --config profile.test.package.l8db.debug=0 test --lib --locked -- --test-threads=1 --nocapture mcp::server::tests:: mcp::watch::tests:: versioning::artifact:: workspaces::",
+    "workspacePostgres": "cargo --config profile.test.package.l8db.debug=0 test --lib --locked -- --ignored --test-threads=1 --nocapture workspaces::",
+    "nativeBuild": "bun run tauri build --no-bundle -- --locked --bin l8db",
+    "mysql": "bun test tests/workspaces-mysql-live.test.ts",
+    "spacetimeLab": "bash scripts/test-spacetimedb-live.sh --setup-only"
+  },
+  "knownUnrelatedBaselineFailures": {
+    "bun": [
+      "definition-merge",
+      "perf-split-groups",
+      "perf-ui-plugins"
+    ],
+    "rust": [
+      "Two MCP catalog latency budgets",
+      "Existing MCP tools/list byte-budget fixture, before subsequent incoming tool changes"
+    ],
+    "browser": [
+      "Toolbar overflow3px",
+      "Editor Undo timeout",
+      "Compare duplicate Arbeitsstände locator",
+      "Data-compare duplicate Arbeitsstände locator"
+    ],
+    "attribution": "Reproduced on unchanged d64ff3008a706db0306e10657e657fcfad0aa135; broad runs were not fully green and must not be reported as all passed"
+  },
+  "linuxTransferState": {
+    "latestAdditionalRustAttempt": "Interrupted at user request while linking, before test results; do not count it as a pass",
+    "oracleLab": "Temporarily stopped with explicit user approval, then restarted; /opt/oracle/healthcheck.sh passed",
+    "heavyLinuxWork": "Stopped; continue on MacBook through T3 Code",
+    "linuxLabs": "Private PostgreSQL still running; MySQL and Spacetime stopped. Local127.0.0.1 Linux ports are not Mac endpoints."
+  },
+  "limitations": [
+    "No live hosted Neon, PlanetScale, Stripe or Supabase credentials",
+    "No real Windows result",
+    "JDBC live evidence covers H2 and PostgreSQL under JDK21; javac--release17 passed but actualJDK17runtime was not tested",
+    "No cross-server federation snapshot or Workspace SSO; limits documented in providers/team docs",
+    "Cloud browser transport mocks are separate evidence from native/live tests"
+  ]
+}
