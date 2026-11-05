@@ -393,7 +393,7 @@ describe("runtime isolation", () => {
     const { compilePlugin } = await import("../packages/ui-plugin-api/src/compile");
     const outcome = (body: string) => {
       const compiled = compilePlugin(body, "escape.tsx");
-      if (!compiled.ok) throw new Error(`compile: ${compiled.error.message}`);
+      if (!compiled.ok) return { error: `compile: ${compiled.error.message}` };
       try {
         return { value: evaluatePlugin(compiled.code, {}) };
       } catch (error) {
@@ -463,6 +463,9 @@ describe("runtime isolation", () => {
     expect(new NamedError().name).toBe("NamedError");
     expect(String(new (Legacy as unknown as new () => object)())).toBe("legacy");
     expect(String(plain)).toBe("plain");
+    const service = () => undefined;
+    service.toString = () => "service";
+    expect(String(service)).toBe("service");
     expect(new Function("return 1 + 1")()).toBe(2);
     expect(Object.isFrozen(Object.prototype)).toBe(true);
   });
@@ -1193,4 +1196,47 @@ describe("sdk helpers", () => {
       else process.env.TZ = zone;
     }
   });
+});
+
+test("bundle uses real compiler and loop watchdog before writing", async () => {
+  const { previewBundle } = await import("../src/lib/ui-plugins/bundle");
+  const entries = await previewBundle(
+    {
+      format: "l8db.ui-plugins",
+      version: 1,
+      plugins: [
+        { name: "ok.tsx", source: STATUS, options: {} },
+        { name: "bad.tsx", source: "export default {", options: {} },
+        { name: "loop.tsx", source: "while(true){}; export default {};", options: {} },
+      ],
+    },
+    [],
+    checkUiPluginSource,
+  );
+  expect(entries[0].id).toBe("test.status");
+  expect(entries[1].error).toBeTruthy();
+  expect(entries[2].error).toBeTruthy();
+});
+
+test("large bundle preview with real compiler remains bounded", async () => {
+  const { previewBundle, encodeBundle } = await import("../src/lib/ui-plugins/bundle");
+  const plugins = Array.from({ length: 200 }, (_, index) => ({
+    name: `plugin-${index}.tsx`,
+    source: `export default { id: "bundle.plugin${index}", name: "Bundle", slots: () => ({}) };\n${" ".repeat(8000)}`,
+    options: {},
+    requiredHttpHosts: [],
+  }));
+  const samples: number[] = [];
+  for (let run = 0; run < 10; run++) {
+    const started = performance.now();
+    const result = await previewBundle(JSON.parse(encodeBundle(plugins)), [], checkUiPluginSource);
+    expect(result.length).toBe(200);
+    expect(result.some((entry) => entry.error)).toBe(false);
+    samples.push(performance.now() - started);
+  }
+  samples.sort((a, b) => a - b);
+  console.log(
+    `Bundle real compiler: 200 × 8KB, 10 runs, median ${samples[5].toFixed(2)} ms, p95 ${samples[9].toFixed(2)} ms; 200 entries, serial checking, timers disposed`,
+  );
+  expect(samples[9]).toBeLessThan(5000);
 });

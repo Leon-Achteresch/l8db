@@ -40,7 +40,10 @@ export function TransferReplaceDialog({
           <AlertDialogTitle>Ziel „{expected}“ überschreiben?</AlertDialogTitle>
           <AlertDialogDescription>
             {plan.replaced.length} Objekte im Ziel werden mit allen Daten unwiderruflich gelöscht
-            und durch die Quelle ersetzt. Schlägt die Übertragung fehl, bleibt das Zielschema leer.
+            und durch die Quelle ersetzt.
+            {plan.atomic
+              ? " Schlägt die Übertragung fehl, wird alles zurückgerollt."
+              : " Schlägt die Übertragung fehl, bleibt das Ziel unvollständig."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="space-y-2">

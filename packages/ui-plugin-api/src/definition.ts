@@ -461,8 +461,15 @@ export function validateToolbarActions(value: unknown): ToolbarAction[] {
     const id = requiredText(action.id, `${path}.id`, 40);
     if (!ITEM_ID.test(id)) fail(`${path}.id darf nur Buchstaben, Ziffern, - und _ enthalten.`);
     if (typeof action.run !== "function") fail(`${path}.run muss eine Funktion sein.`);
+    if (
+      action.placement !== undefined &&
+      action.placement !== "toolbar" &&
+      action.placement !== "beforeFilter"
+    )
+      fail(`${path}.placement muss toolbar oder beforeFilter sein.`);
     return {
       id,
+      placement: action.placement as ToolbarAction["placement"],
       label: requiredText(action.label, `${path}.label`, 40),
       tone: validateTone(action.tone),
       run: action.run as ToolbarAction["run"],

@@ -1,5 +1,5 @@
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, Write};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -70,14 +70,48 @@ pub fn serve() {
         pool: db::pool::create_sealed_pool_state(),
         columns: HashMap::new(),
     };
-    let stdin = std::io::stdin();
+    let (input, mut lines) = tokio::sync::mpsc::channel(8);
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lock().lines() {
+            let Ok(line) = line else { break };
+            if input.blocking_send(line).is_err() {
+                break;
+            }
+        }
+    });
     let mut stdout = std::io::stdout();
-    for line in stdin.lock().lines() {
-        let Ok(line) = line else { break };
+    let mut pending = VecDeque::new();
+    while let Some(line) = pending
+        .pop_front()
+        .or_else(|| runtime.block_on(lines.recv()))
+    {
         if line.trim().is_empty() {
             continue;
         }
-        let Some(response) = runtime.block_on(server.handle_line(&line)) else {
+        let id = serde_json::from_str::<Value>(&line)
+            .ok()
+            .and_then(|v| v.get("id").cloned());
+        let response = runtime.block_on(async {
+            let work = server.handle_line(&line);
+            tokio::pin!(work);
+            loop {
+                tokio::select! {
+                    result = &mut work => return result,
+                    incoming = lines.recv(), if !lines.is_closed() && pending.len() < 64 => {
+                        let Some(incoming) = incoming else { continue; };
+                        if let Ok(value) = serde_json::from_str::<Value>(&incoming) {
+                            if value["method"] == "notifications/cancelled" && id.as_ref() == value["params"].get("requestId") {
+                                return id.clone().map(|id| rpc_error(id, -32800, "Anfrage abgebrochen"));
+                            }
+                            if value.get("method").is_some() {
+                                pending.push_back(incoming);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let Some(response) = response else {
             continue;
         };
         if writeln!(stdout, "{response}")
@@ -163,6 +197,7 @@ pub fn tool_definitions() -> Value {
         super::health::tool_definition(),
         super::workflow::tool_definition(),
         super::open::tool_definition(),
+        crate::ui_plugin_proposals::definition(),
         super::code::tool_definition(),
         super::script::tool_definition(),
         super::watch::tool_definition(),
@@ -250,6 +285,7 @@ const ANNOTATIONS: &[(&str, &str, bool, bool, bool)] = &[
     ("rules", "Data rules", false, true, false),
     ("notebook", "Notebook", false, false, false),
     ("report_issue", "Report issue", false, false, false),
+    ("ui_plugins", "UI plugins", false, true, false),
 ];
 
 pub(crate) fn published(tools: Vec<Value>) -> Vec<Value> {
@@ -308,7 +344,7 @@ impl Server {
             Err(e) => return Some(rpc_error(Value::Null, -32700, format!("Parse error: {e}"))),
         };
         let id = request.get("id").cloned();
-        let method = request.get("method").and_then(Value::as_str).unwrap_or("");
+        let method = request.get("method").and_then(Value::as_str)?;
         let params = request.get("params").cloned().unwrap_or(Value::Null);
         let id = id?;
         if let Err(error) = crate::organization::authorize("mcp_serve") {
@@ -452,6 +488,7 @@ impl Server {
                 }
                 result
             }
+            "ui_plugins" => crate::ui_plugin_proposals::call(&args).await,
             "open" => self.open(config, &args).await,
             "report_issue" if args["confirm"] != true => Err(
                 "Titel und Text erst dem Benutzer zeigen und nach seiner Zustimmung mit confirm=true senden."
@@ -1477,6 +1514,18 @@ mod tests {
     use crate::mcp::TEST_ENV_LOCK as ENV_LOCK;
 
     #[test]
+    fn client_responses_are_ignored() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let mut server = Server {
+            pool: db::pool::create_sealed_pool_state(),
+            columns: HashMap::new(),
+        };
+        assert!(runtime
+            .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#))
+            .is_none());
+    }
+
+    #[test]
     fn desktop_read_guard_covers_sql_and_nosql_without_database_requests() {
         for kind in [
             DatabaseKind::Postgres,
@@ -1833,7 +1882,7 @@ mod tests {
         let tools = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#))
             .unwrap();
-        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 13);
+        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 14);
         let unknown = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":3,"method":"nope"}"#))
             .unwrap();

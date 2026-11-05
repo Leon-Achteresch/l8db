@@ -78,6 +78,12 @@ Keep checks fast: run only what the change can break, once at the end, not after
 - `src/features/shell/` — app chrome (`app-layout`, `table-tabs`, `app-header`, `transaction-panel`).
 - `src/components/ui/` — shared shadcn primitives only.
 
+## UI design
+
+- Few borders: structure with spacing, typography, and subtle background tints (`bg-muted/40`) instead of outlines, dividers, and cards.
+- Little text: no explanatory subtitles or helper sentences when a label, icon, or state already says it. Short labels, numbers, and logos over prose.
+- Interactive elements must look interactive (hover/press feedback, cursor, clear on/off state) without needing a caption.
+
 ## NEW badges for features
 
 - Register every new user-facing feature in `NEW_FEATURES` in `src/lib/new-features.ts` with a stable hierarchical ID for its navigation path and the app version that introduces it.

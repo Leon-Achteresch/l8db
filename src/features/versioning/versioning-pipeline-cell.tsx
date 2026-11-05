@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PipelineEntry } from "@/lib/versioning/pipeline";
 import type { DatabaseTarget } from "@/lib/versioning/types";
+import { ledgerDetail } from "@/lib/versioning/workflow";
 
 const DOT = {
   current: "bg-emerald-500",
@@ -30,7 +31,11 @@ export function VersioningPipelineCell({
   return (
     <div className="flex min-w-0 flex-col gap-1.5 rounded-lg bg-background/70 p-2">
       {entries.map(({ target, progress }) => (
-        <div key={target.id} className="flex min-w-0 items-center gap-2" title={progress.label}>
+        <div
+          key={target.id}
+          className="flex min-w-0 items-center gap-2"
+          title={[progress.label, ledgerDetail(progress)].filter(Boolean).join(" · ")}
+        >
           <span className={cn("size-2 shrink-0 rounded-full", DOT[progress.state])} />
           <span className="min-w-0 flex-1 truncate text-[11px]">
             {target.environment || target.name}

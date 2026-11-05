@@ -60,15 +60,15 @@ pub struct UiPluginWatcher(Mutex<Option<RecommendedWatcher>>);
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginFile {
-    name: String,
-    source: String,
+    pub(super) name: String,
+    pub(super) source: String,
     modified: u64,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkippedFile {
-    name: String,
+    pub(super) name: String,
     reason: String,
 }
 
@@ -76,17 +76,17 @@ pub struct SkippedFile {
 #[serde(rename_all = "camelCase")]
 pub struct PluginScan {
     dir: String,
-    files: Vec<PluginFile>,
+    pub(super) files: Vec<PluginFile>,
     skipped: Vec<SkippedFile>,
 }
 
-fn plugin_dir() -> Result<PathBuf, String> {
+pub(super) fn plugin_dir() -> Result<PathBuf, String> {
     crate::team::team_file()
         .and_then(|file| file.parent().map(|dir| dir.join("ui")))
         .ok_or_else(|| "Benutzerordner konnte nicht ermittelt werden.".to_string())
 }
 
-fn is_plugin_name(name: &str) -> bool {
+pub(super) fn is_plugin_name(name: &str) -> bool {
     let valid_chars = name
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
@@ -105,7 +105,7 @@ fn is_plugin_name(name: &str) -> bool {
         && !name.ends_with(".d.ts")
 }
 
-fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub(super) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -125,7 +125,7 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     fs::rename(&temporary, path).map_err(|e| e.to_string())
 }
 
-fn scan(dir: &Path) -> Result<PluginScan, String> {
+pub(super) fn scan(dir: &Path) -> Result<PluginScan, String> {
     fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let mut entries = fs::read_dir(dir)
         .map_err(|e| format!("{}: {e}", dir.display()))?
@@ -191,7 +191,7 @@ fn scan(dir: &Path) -> Result<PluginScan, String> {
     })
 }
 
-fn write_plugin(dir: &Path, name: &str, source: &str) -> Result<(), String> {
+pub(super) fn write_plugin(dir: &Path, name: &str, source: &str) -> Result<(), String> {
     if !is_plugin_name(name) {
         return Err(format!("Ungültiger Dateiname: {name}"));
     }
@@ -202,7 +202,7 @@ fn write_plugin(dir: &Path, name: &str, source: &str) -> Result<(), String> {
     write_atomic(&dir.join(name), source.as_bytes())
 }
 
-fn remove_plugin(dir: &Path, name: &str) -> Result<(), String> {
+pub(super) fn remove_plugin(dir: &Path, name: &str) -> Result<(), String> {
     if !is_plugin_name(name) {
         return Err(format!("Ungültiger Dateiname: {name}"));
     }
@@ -225,6 +225,71 @@ fn write_support(dir: &Path, name: &str, contents: &str) -> Result<(), String> {
         return Ok(());
     }
     write_atomic(&path, contents.as_bytes())
+}
+
+const MAX_BUNDLE_BYTES: u64 = 2 * 1024 * 1024;
+
+fn validate_bundle(contents: &str) -> Result<serde_json::Value, String> {
+    if contents.len() as u64 > MAX_BUNDLE_BYTES {
+        return Err("Bundle ist größer als 2 MiB.".into());
+    }
+    let value: serde_json::Value = serde_json::from_str(contents).map_err(|e| e.to_string())?;
+    if value["format"] != "l8db.ui-plugins" || value["version"] != 1 {
+        return Err("Unbekanntes Bundle-Format oder Format-Version.".into());
+    }
+    let entries = value["plugins"].as_array().ok_or("Plugin-Liste fehlt.")?;
+    if entries.len() > MAX_FILES {
+        return Err("Mehr als 200 Plugins.".into());
+    }
+    Ok(value)
+}
+
+#[tauri::command(async)]
+pub fn ui_plugins_read_bundle(path: String) -> Result<serde_json::Value, String> {
+    use std::io::Read;
+    let file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut contents = String::new();
+    file.take(MAX_BUNDLE_BYTES + 1)
+        .read_to_string(&mut contents)
+        .map_err(|e| e.to_string())?;
+    let mut value = validate_bundle(&contents)?;
+    let mut names = std::collections::HashSet::new();
+    for entry in value["plugins"]
+        .as_array_mut()
+        .ok_or("Plugin-Liste fehlt.")?
+    {
+        let name = entry["name"].as_str().unwrap_or("").to_string();
+        let error = if !entry["options"].as_object().is_some_and(|options| {
+            options
+                .values()
+                .all(|v| v.is_string() || v.is_boolean() || v.is_number())
+        }) {
+            Some("Ungültige Optionen")
+        } else if !is_plugin_name(&name) {
+            Some("Ungültiger Dateiname")
+        } else if !names.insert(name.to_ascii_lowercase()) {
+            Some("Doppelter Dateiname")
+        } else if entry["source"]
+            .as_str()
+            .is_none_or(|s| s.len() as u64 > MAX_FILE_BYTES)
+        {
+            Some("Quelltext fehlt oder ist größer als 256 KiB")
+        } else {
+            None
+        };
+        if !entry.is_object() {
+            *entry = serde_json::json!({"name": name, "error": "Ungültiger Eintrag"});
+        } else if let Some(error) = error {
+            entry["error"] = error.into();
+        }
+    }
+    Ok(value)
+}
+
+#[tauri::command(async)]
+pub fn ui_plugins_export_bundle(path: String, contents: String) -> Result<(), String> {
+    validate_bundle(&contents)?;
+    write_atomic(Path::new(&path), contents.as_bytes())
 }
 
 #[tauri::command(async)]
@@ -305,6 +370,33 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("l8db-ui-{}", rand::random::<u64>()));
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn bundle_format_and_limits() {
+        assert!(validate_bundle("broken").is_err());
+        assert!(validate_bundle(&" ".repeat(MAX_BUNDLE_BYTES as usize + 1)).is_err());
+        for version in [0, 2] {
+            assert!(validate_bundle(
+                &serde_json::json!({"format":"l8db.ui-plugins","version":version,"plugins":[]})
+                    .to_string()
+            )
+            .is_err());
+        }
+        assert!(
+            validate_bundle(r#"{"format":"l8db.ui-plugins","version":1,"plugins":{}}"#).is_err()
+        );
+        assert!(validate_bundle(&serde_json::json!({"format":"l8db.ui-plugins","version":1,"plugins":vec![serde_json::json!({});201]}).to_string()).is_err());
+        let dir = temp_dir();
+        let path = dir.join("bundle.json");
+        let contents = serde_json::json!({"format":"l8db.ui-plugins","version":1,"plugins":[{"name":"ok.tsx","source":"x","options":{}},{"name":"../evil.tsx","source":"x"},{"name":"OK.tsx","source":"x"},{"name":"big.tsx","source":"x".repeat(MAX_FILE_BYTES as usize+1)}]}).to_string();
+        ui_plugins_export_bundle(path.display().to_string(), contents).unwrap();
+        let bundle = ui_plugins_read_bundle(path.display().to_string()).unwrap();
+        assert!(bundle["plugins"][0]["error"].is_null());
+        for index in 1..4 {
+            assert!(bundle["plugins"][index]["error"].is_string());
+        }
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

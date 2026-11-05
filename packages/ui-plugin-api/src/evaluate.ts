@@ -1,4 +1,5 @@
 import { PLUGIN_GLOBALS } from "./globals";
+import { createExecutionGuard, GUARD_NAME } from "./instrument";
 import { lockdownRealm } from "./lockdown";
 import { tokenize } from "./scan";
 
@@ -101,9 +102,17 @@ export function evaluatePlugin(
   const names = [
     ...new Set([...Object.keys(values), ...referencedNames(code), ...hostGlobalNames()]),
   ].filter((name) => IDENTIFIER.test(name) && !RESERVED.has(name));
+  const guard = createExecutionGuard();
+  values[GUARD_NAME] = guard;
+  if (!names.includes(GUARD_NAME)) names.push(GUARD_NAME);
   const factory = new Function(...names, `return function () { "use strict";\n${code}\n};`);
-  factory(
-    ...names.map((name) => (Object.hasOwn(values, name) ? values[name] : hostValue(name))),
-  ).call(undefined);
+  guard.enter();
+  try {
+    factory(
+      ...names.map((name) => (Object.hasOwn(values, name) ? values[name] : hostValue(name))),
+    ).call(undefined);
+  } finally {
+    guard.leave();
+  }
   return Object.hasOwn(module.exports, "default") ? module.exports.default : module.exports;
 }

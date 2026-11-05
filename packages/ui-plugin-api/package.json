@@ -23,6 +23,7 @@
     "l8db-ui.d.ts"
   ],
   "dependencies": {
-    "sucrase": "^3.35.0"
+    "sucrase": "^3.35.0",
+    "acorn": "^8.15.0"
   }
 }

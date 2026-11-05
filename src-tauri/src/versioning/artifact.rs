@@ -337,6 +337,20 @@ pub(super) struct Context<'a> {
     pub parent: Option<&'a Value>,
     pub target: Option<&'a str>,
     pub kind: DatabaseKind,
+    pub change: Option<&'a str>,
+    pub additive: bool,
+}
+
+fn destructive(sql: &str) -> bool {
+    let upper = sql.to_uppercase();
+    let tokens: Vec<&str> = upper
+        .split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '#')))
+        .filter(|token| !token.is_empty())
+        .collect();
+    tokens
+        .iter()
+        .any(|token| matches!(*token, "DROP" | "TRUNCATE" | "MODIFY"))
+        || (tokens.contains(&"ALTER") && tokens.contains(&"TYPE"))
 }
 
 async fn verify_changes(source: &Value, plan: &Value, context: &Context<'_>) -> Result<(), String> {
@@ -371,9 +385,10 @@ async fn verify_changes(source: &Value, plan: &Value, context: &Context<'_>) -> 
                 source,
             )
         } else {
-            if !source["changes"]
-                .as_array()
-                .is_some_and(|ids| ids.iter().any(|entry| entry == change_id))
+            if context.change != Some(change_id)
+                && !source["changes"]
+                    .as_array()
+                    .is_some_and(|ids| ids.iter().any(|entry| entry == change_id))
             {
                 return Err(format!("Änderung {change_id} gehört nicht zu Release {id}"));
             }
@@ -381,7 +396,7 @@ async fn verify_changes(source: &Value, plan: &Value, context: &Context<'_>) -> 
             (rules, sql, None, change_id.to_string(), context.to)
         };
         let kind = rules["kind"].as_str().unwrap_or("versioned");
-        if kind != "versioned"
+        if !["versioned", "repeatable"].contains(&kind)
             || change["kind"] != kind
             || change["checksum"] != control::hash(&sql)
             || change["requires"] != rules.get("requires").cloned().unwrap_or(json!([]))
@@ -409,7 +424,16 @@ async fn verify_changes(source: &Value, plan: &Value, context: &Context<'_>) -> 
             }
         }
         let sql = map_sql(&sql, scope, context.target)?;
-        for (index, sql) in split(context.kind, &sql)?.into_iter().enumerate() {
+        let pieces = split(context.kind, &sql)?;
+        if context.additive
+            && rules["destructive"] != true
+            && pieces.iter().any(|piece| destructive(piece))
+        {
+            return Err(format!(
+                "Nur additiv: {change_id} enthält Entfernungen oder Typwechsel ohne ausdrückliche Freigabe"
+            ));
+        }
+        for (index, sql) in pieces.into_iter().enumerate() {
             statements.push(json!({"id":format!("{prefix}:{}", index + 1), "migration":change_id, "sql":statement_key(&sql)}));
         }
     }
@@ -549,17 +573,56 @@ pub async fn verify(request: &Request) -> Result<(), String> {
     if plan["fromHash"] != from_hash || plan["fromObjects"] != objects(&from, target)? {
         return Err("Ausgangsrelease wurde im Ausführungsplan verändert".into());
     }
-    let to_id = text(&plan["reference"], "id")?;
-    if plan["reference"]["path"] != format!("database/releases/{to_id}.json") {
-        return Err("Zielrelease stimmt nicht mit dem Ausführungsplan überein".into());
-    }
+    let change = match plan.get("mode").and_then(Value::as_str) {
+        None => None,
+        Some("change") => Some(text(plan, "change")?),
+        Some(_) => return Err("Unbekannter Ausführungsmodus".into()),
+    };
+    let to_id = if let Some(change) = change {
+        if plan["reference"]["id"] != change
+            || plan["reference"]["path"] != format!("database/changes/{change}.json")
+        {
+            return Err("Änderung stimmt nicht mit dem Ausführungsplan überein".into());
+        }
+        text(plan, "fromId")?
+    } else {
+        let to_id = text(&plan["reference"], "id")?;
+        if plan["reference"]["path"] != format!("database/releases/{to_id}.json") {
+            return Err("Zielrelease stimmt nicht mit dem Ausführungsplan überein".into());
+        }
+        to_id
+    };
     let mut cache: std::collections::HashMap<String, (Value, String)> = Default::default();
     let (to, _) = release(&root, commit, to_id).await?;
-    if plan["variances"].as_array().is_some_and(|v| !v.is_empty()) {
-        return Err("Festgehaltene Abweichungen fehlen in der Teamkonfiguration".into());
-    }
-    if plan["objects"] != managed(&to, target)? {
+    let soll = managed(&to, target)?;
+    if plan["objects"] != soll {
         return Err("Sollstand im Ausführungsplan weicht vom Zielrelease ab".into());
+    }
+    for variance in plan["variances"]
+        .as_array()
+        .ok_or("Festgehaltene Abweichungen fehlen im Ausführungsplan")?
+    {
+        let entry = soll
+            .as_array()
+            .and_then(|items| items.iter().find(|item| item["id"] == variance["id"]))
+            .ok_or("Festgehaltene Abweichung betrifft kein verwaltetes Objekt")?;
+        let mut expected = entry.clone();
+        expected["definition"] = variance["definition"].clone();
+        if !variance["definition"].is_string() || *variance != expected {
+            return Err("Festgehaltene Abweichung wurde im Ausführungsplan verändert".into());
+        }
+    }
+    if let Some(overrides) = plan.get("overrides") {
+        let overrides = overrides
+            .as_array()
+            .ok_or("Überschreiben-Freigaben sind ungültig")?;
+        if overrides.iter().any(|id| {
+            !soll
+                .as_array()
+                .is_some_and(|items| items.iter().any(|item| item["id"] == *id))
+        }) {
+            return Err("Überschreiben-Freigabe betrifft kein verwaltetes Objekt".into());
+        }
     }
     let releases = plan["releases"]
         .as_array()
@@ -567,6 +630,19 @@ pub async fn verify(request: &Request) -> Result<(), String> {
         .ok_or("Release-Kette fehlt oder ist zu lang")?;
     if releases.last().map(|r| &r["id"]) != Some(&json!(to_id)) {
         return Err("Zielrelease stimmt nicht mit dem Ausführungsplan überein".into());
+    }
+    if let Some(change) = change {
+        let changes = releases[0]["changes"].as_array();
+        if releases.len() != 1
+            || changes.map(Vec::len) != Some(1)
+            || changes.and_then(|c| c[0]["id"].as_str()) != Some(change)
+            || changes.is_some_and(|c| c[0]["kind"] != "versioned")
+        {
+            return Err(
+                "Eine Einzeländerung wird allein und nur als versionierte Änderung ausgerollt"
+                    .into(),
+            );
+        }
     }
     let mut queue = vec![to_id.to_string()];
     while let Some(id) = queue.pop() {
@@ -580,6 +656,30 @@ pub async fn verify(request: &Request) -> Result<(), String> {
         queue.extend(parents(&loaded.0));
         cache.insert(id, loaded);
     }
+    for entry in plan
+        .get("ahead")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let object = text(entry, "object")?;
+        let change_id = text(entry, "change")?;
+        let (rules, _) = standalone(&root, commit, change_id).await?;
+        if change == Some(change_id)
+            || !rules["touches"]
+                .as_array()
+                .is_some_and(|touches| touches.iter().any(|t| t == object))
+            || cache.values().any(|(value, _)| {
+                value["changes"]
+                    .as_array()
+                    .is_some_and(|ids| ids.iter().any(|id| id == change_id))
+            })
+        {
+            return Err(format!(
+                "Vorgezogene Änderung {change_id} ist im Ausführungsplan ungültig"
+            ));
+        }
+    }
     let ancestors = |id: &str| {
         let mut seen = HashSet::new();
         let mut stack = vec![id.to_string()];
@@ -592,6 +692,16 @@ pub async fn verify(request: &Request) -> Result<(), String> {
         }
         seen
     };
+    let additive =
+        match super::git(&root, &["show", &format!("{commit}:database/project.json")]).await {
+            Ok(text) => {
+                serde_json::from_str::<Value>(&text)
+                    .map_err(|_| "database/project.json im freigegebenen Commit ist ungültig")?
+                    ["additiveOnly"]
+                    == true
+            }
+            Err(_) => false,
+        };
     let mut done: HashSet<String> = HashSet::new();
     for planned in releases {
         let id = text(planned, "id")?;
@@ -626,6 +736,8 @@ pub async fn verify(request: &Request) -> Result<(), String> {
             parent,
             target,
             kind: request.connection.kind,
+            change,
+            additive,
         };
         verify_plan(source, hash, planned, &context).await?;
         done.insert(id.to_string());
@@ -636,6 +748,23 @@ pub async fn verify(request: &Request) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn additive_rule_detects_drops_and_type_changes() {
+        assert!(destructive("ALTER TABLE t DROP COLUMN a"));
+        assert!(destructive("alter table t alter column a type bigint"));
+        assert!(destructive("ALTER TABLE T MODIFY (A VARCHAR2(5))"));
+        assert!(destructive("ALTER TABLE t ALTER COLUMN \"a\" TYPE bigint"));
+        assert!(destructive("ALTER TABLE t ALTER a\n  TYPE bigint"));
+        assert!(destructive(
+            "ALTER TABLE t ALTER COLUMN a SET DATA TYPE bigint"
+        ));
+        assert!(destructive("-- Typ\nALTER TABLE t ALTER a TYPE bigint"));
+        assert!(!destructive(
+            "ALTER TABLE t ADD COLUMN dropped_at timestamp"
+        ));
+        assert!(!destructive("CREATE INDEX i ON t (a)"));
+    }
 
     #[tokio::test]
     async fn committed_artifact_is_verified_before_any_database_is_opened() {
@@ -758,6 +887,8 @@ mod tests {
             parent,
             target: None,
             kind,
+            change: None,
+            additive: false,
         }
     }
 

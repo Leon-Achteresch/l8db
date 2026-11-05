@@ -40,6 +40,24 @@ function computeTouches(
   return { touches, before };
 }
 
+export function standaloneChange(id: string, change: StandaloneChange): Change {
+  return {
+    id,
+    release: null,
+    title: change.title,
+    sql: change.sql,
+    checksum: change.checksum,
+    kind: change.kind ?? "versioned",
+    touches: change.touches,
+    before: change.before ?? {},
+    requires: change.requires ?? [],
+    data: change.data ?? false,
+    destructive: change.destructive ?? false,
+    preconditions: change.preconditions ?? [],
+    postconditions: change.postconditions ?? [],
+  };
+}
+
 export function releaseChanges(
   release: DatabaseRelease,
   map: Map<string, DatabaseRelease>,
@@ -50,20 +68,7 @@ export function releaseChanges(
     const change = standalone.get(id);
     if (!change)
       throw new Error(`Änderung ${id} aus Release ${release.id} fehlt unter database/changes/.`);
-    changes.push({
-      id,
-      release: null,
-      title: change.title,
-      sql: change.sql,
-      checksum: change.checksum,
-      kind: change.kind ?? "versioned",
-      touches: change.touches,
-      before: change.before ?? {},
-      requires: change.requires ?? [],
-      data: change.data ?? false,
-      preconditions: change.preconditions ?? [],
-      postconditions: change.postconditions ?? [],
-    });
+    changes.push(standaloneChange(id, change));
   }
   let derived: ReturnType<typeof derivedTouches> | undefined;
   for (const migration of release.migrations) {
@@ -83,6 +88,7 @@ export function releaseChanges(
       before: explicit ? (migration.before ?? {}) : (derived?.before ?? {}),
       requires: migration.requires ?? [],
       data: migration.data ?? (!explicit && touches.length === 0),
+      destructive: migration.destructive ?? false,
       preconditions: migration.preconditions ?? [],
       postconditions: migration.postconditions ?? [],
     });
@@ -132,6 +138,18 @@ export interface ChangePlan {
   touched: Set<string>;
 }
 
+export function aheadObjects(
+  plan: Pick<ChangePlan, "closure" | "touched">,
+  applied: Map<string, AppliedChange>,
+  standalone: Map<string, StandaloneChange>,
+) {
+  const closureIds = new Set(plan.closure.changes.map((change) => change.id));
+  return [...applied.keys()]
+    .filter((id) => !closureIds.has(id) && standalone.has(id))
+    .flatMap((id) => (standalone.get(id)?.touches ?? []).map((object) => ({ object, change: id })))
+    .filter((entry) => !plan.touched.has(entry.object));
+}
+
 export function planChanges(
   map: Map<string, DatabaseRelease>,
   targetId: string,
@@ -147,9 +165,7 @@ export function planChanges(
         `Die bereits angewendete Änderung ${change.id} wurde im Repository verändert. Neue Änderung anlegen statt die alte zu bearbeiten.`,
       );
   }
-  const open = closure.changes.filter(
-    (change) => change.kind === "versioned" && !applied.has(change.id),
-  );
+  const open = closure.changes.filter((change) => !applied.has(change.id));
   const grouped = new Map<string, Change[]>();
   for (const change of open) {
     const release = closure.owner.get(change.id) ?? targetId;
@@ -220,7 +236,7 @@ export function pendingReleases(
 
 export function activeVariances(variances: Variance[] | undefined, now = Date.now()) {
   return (variances ?? []).filter(
-    (variance) => variance.until === null || Date.parse(variance.until) > now,
+    (variance) => !variance.until || Date.parse(variance.until) > now,
   );
 }
 
@@ -264,4 +280,126 @@ export function lineStatus(
     pending: 0,
     diverged: Boolean(from && latest && available.has(from) && latest.id !== from),
   };
+}
+
+export type BaselineStatus = "done" | "open" | "decision";
+
+export interface BaselineEntry {
+  id: string;
+  title: string;
+  release: string;
+  data: boolean;
+  status: BaselineStatus;
+  suggested: "done" | "open";
+  objects: string[];
+}
+
+export interface BaselineClassification {
+  changes: BaselineEntry[];
+  variances: Variance[];
+  missing: string[];
+}
+
+export function classifyBaseline(
+  map: Map<string, DatabaseRelease>,
+  releaseId: string,
+  actual: Map<string, string>,
+  standalone: Map<string, StandaloneChange> = new Map(),
+): BaselineClassification {
+  const closure = releaseClosure(map, releaseId, standalone);
+  const reference = map.get(releaseId);
+  if (!reference) throw new Error(`Release ${releaseId} fehlt.`);
+  const indexes = new Map<DatabaseRelease, Map<string, string>>();
+  const hashIn = (release: DatabaseRelease | undefined, id: string) => {
+    if (!release) return null;
+    let index = indexes.get(release);
+    if (!index) {
+      index = new Map(release.objects.map((entry) => [entry.object.id, entry.checksum]));
+      indexes.set(release, index);
+    }
+    return index.get(id) ?? null;
+  };
+  const timelines = new Map<string, { states: (string | null)[]; groups: string[] }>();
+  const groupOf = new Map<string, number>();
+  for (const change of closure.changes) {
+    const owner = closure.owner.get(change.id) ?? releaseId;
+    const release = map.get(owner);
+    for (const id of change.touches) {
+      let line = timelines.get(id);
+      if (!line) {
+        const initial =
+          id in change.before
+            ? change.before[id]
+            : hashIn(map.get(releaseParents(release ?? reference)[0] ?? ""), id);
+        line = { states: [initial], groups: [] };
+        timelines.set(id, line);
+      }
+      if (line.groups[line.groups.length - 1] !== owner) {
+        line.groups.push(owner);
+        line.states.push(hashIn(release, id));
+      }
+      groupOf.set(`${change.id}\0${id}`, line.groups.length);
+    }
+  }
+  const reached = new Map<string, number | null>();
+  for (const [id, line] of timelines) {
+    const current = actual.get(id) ?? null;
+    let found: number | null = null;
+    for (let index = line.states.length - 1; index >= 0; index--)
+      if (line.states[index] === current) {
+        found = index;
+        break;
+      }
+    reached.set(id, found);
+  }
+  const entries: BaselineEntry[] = closure.changes.map((change) => {
+    const states = change.touches.map((id) => {
+      const position = reached.get(id);
+      if (position === null || position === undefined) return "decision" as const;
+      return position >= (groupOf.get(`${change.id}\0${id}`) ?? 0)
+        ? ("done" as const)
+        : ("open" as const);
+    });
+    const status: BaselineStatus = !states.length
+      ? "decision"
+      : states.every((state) => state === "done")
+        ? "done"
+        : states.every((state) => state === "open")
+          ? "open"
+          : "decision";
+    return {
+      id: change.id,
+      title: change.title,
+      release: closure.owner.get(change.id) ?? releaseId,
+      data: change.data,
+      status,
+      suggested: status === "open" ? "open" : "done",
+      objects: change.touches,
+    };
+  });
+  const releaseOrder = new Map(closure.releases.map((release, index) => [release.id, index]));
+  let firstOpen = Number.POSITIVE_INFINITY;
+  for (const entry of entries)
+    if (entry.status === "open")
+      firstOpen = Math.min(firstOpen, releaseOrder.get(entry.release) ?? 0);
+  for (const entry of entries)
+    if (!entry.objects.length)
+      entry.suggested = (releaseOrder.get(entry.release) ?? 0) < firstOpen ? "done" : "open";
+  const variances: Variance[] = [];
+  const missing: string[] = [];
+  for (const entry of reference.objects) {
+    const id = entry.object.id;
+    const current = actual.get(id);
+    const explained = timelines.has(id) ? reached.get(id) !== null : current === entry.checksum;
+    if (explained) continue;
+    if (current === undefined) missing.push(id);
+    else
+      variances.push({
+        object: id,
+        hash: current,
+        reason: "Altstand bei der Aufnahme",
+        until: null,
+      });
+  }
+  return { changes: entries, variances, missing };
 }

@@ -60,7 +60,12 @@ function allowOverride(target: object, key: PropertyKey) {
       return value;
     },
     set(this: unknown, next: unknown) {
-      if (this === target || this === null || typeof this !== "object") return;
+      if (
+        this === target ||
+        this === null ||
+        (typeof this !== "object" && typeof this !== "function")
+      )
+        return;
       Object.defineProperty(this, key, {
         value: next,
         writable: true,

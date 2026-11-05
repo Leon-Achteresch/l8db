@@ -34,6 +34,7 @@ mod supabase;
 mod supabase_studio;
 mod sync;
 mod team;
+mod ui_plugin_proposals;
 mod ui_plugins;
 mod updates;
 mod versioning;
@@ -161,6 +162,7 @@ pub fn run() {
         .manage(file_open::PendingOpenFiles::new(initial_files))
         .manage(windows::WindowConnections::default())
         .manage(ui_plugins::UiPluginWatcher::default())
+        .manage(ui_plugin_proposals::Proposals::default())
         .manage(std::sync::Arc::new(ai::AiState::default()))
         .manage(db::pool::create_pool_state())
         .manage(db::transaction::create_transaction_state())
@@ -707,7 +709,12 @@ pub fn run() {
             db::secrets::load_secret,
             db::secrets::delete_secret,
             team::team_connections,
+            ui_plugin_proposals::ui_plugin_proposals_start,
+            ui_plugin_proposals::ui_plugin_proposals_pending,
+            ui_plugin_proposals::ui_plugin_proposals_finish,
             ui_plugins::ui_plugins_scan,
+            ui_plugins::ui_plugins_read_bundle,
+            ui_plugins::ui_plugins_export_bundle,
             ui_plugins::ui_plugins_write,
             ui_plugins::ui_plugins_remove,
             ui_plugins::ui_plugins_write_support,

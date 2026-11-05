@@ -169,6 +169,7 @@ export function useTransfer() {
     pairs: [] as TransferSchemaPair[],
     foldNames,
     replace: false,
+    mirror: false,
     content,
     objects: null as Record<string, string[]> | null,
   });
@@ -213,12 +214,9 @@ export function useTransfer() {
     target: (mapping[schema] ?? "").trim() || defaultTarget(schema),
     ...(tables[schema] ? { tables: tables[schema] } : {}),
   }));
-  const canReplace =
-    sourceConnection?.kind === "oracle" &&
-    targetConnection?.kind === "oracle" &&
-    content !== "data" &&
-    pairs.every((pair) => !pair.tables && !objects[pair.source]);
-  const replace = canReplace && replaceTarget;
+  const replace = replaceTarget;
+  const mirror =
+    replace && content !== "data" && pairs.every((pair) => !pair.tables && !objects[pair.source]);
   const native =
     Boolean(sourceConnection && targetConnection) &&
     sourceConnection?.kind === targetConnection?.kind &&
@@ -235,9 +233,18 @@ export function useTransfer() {
     !readOnly &&
     !sameEndpoint;
   const planKey = ready
-    ? JSON.stringify([source, target, pairs, foldNames, replace, content, picked])
+    ? JSON.stringify([source, target, pairs, foldNames, replace, mirror, content, picked])
     : null;
-  configRef.current = { source, target, pairs, foldNames, replace, content, objects: picked };
+  configRef.current = {
+    source,
+    target,
+    pairs,
+    foldNames,
+    replace,
+    mirror,
+    content,
+    objects: picked,
+  };
 
   useEffect(() => {
     if (!running) return;
@@ -282,6 +289,7 @@ export function useTransfer() {
             schemas: config.pairs,
             foldNames: config.foldNames,
             replace: config.replace,
+            mirror: config.mirror,
             content: config.content,
           },
           config.target.database ?? undefined,
@@ -395,8 +403,8 @@ export function useTransfer() {
     setContent,
     foldNames,
     setFoldNames,
-    canReplace,
     replace,
+    mirror,
     setReplace,
     crossFamily: Boolean(
       sourceConnection && targetConnection && sourceConnection.kind !== targetConnection.kind,

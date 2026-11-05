@@ -219,8 +219,9 @@ export function TransferView() {
             crossFamily={transfer.crossFamily}
             foldNames={transfer.foldNames}
             onFoldNames={transfer.setFoldNames}
-            canReplace={transfer.canReplace}
             replace={transfer.replace}
+            mirror={transfer.mirror}
+            content={transfer.content}
             onReplace={transfer.setReplace}
             onShowPlan={setPlanTab}
           />

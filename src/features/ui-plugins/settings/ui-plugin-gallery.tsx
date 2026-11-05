@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { writeUiPlugin } from "@/lib/db";
+import { useExtensionSources } from "@/lib/extensions/management";
 import {
   catalogPluginFileName,
   downloadUiPlugin,
@@ -60,6 +61,7 @@ export function UiPluginGallery() {
       const source = await downloadUiPlugin(entry);
       await checkUiPluginSource(file, source, entry.id);
       await writeUiPlugin(file, source);
+      useExtensionSources.getState().mark(`light:${file}`, "Galerie");
       markInstalled(entry.id, { file, version: entry.version, sha256: entry.sha256 });
       await reloadUiPlugins();
       toast.success(

@@ -480,3 +480,22 @@ test("table commands require read permission before fetching or sharing data", a
     return snapshot;
   })).rejects.toThrow("database:read");
 });
+
+test("management refresh synchronizes installs, toggles and removals without idle reloads", async () => {
+  const { manager, storage, runtime } = setup();
+  const value = other("test.shared");
+  await storage.install(value);
+  await manager.refreshInstalled();
+  expect(manager.listExtensions()[0].enabled).toBe(false);
+  expect(runtime.loads).toHaveLength(0);
+  await storage.update(value.manifest.id, true, value.manifest.permissions ?? [], {});
+  await manager.refreshInstalled();
+  expect(manager.listExtensions()[0].enabled).toBe(true);
+  expect(runtime.loads).toHaveLength(1);
+  await manager.refreshInstalled();
+  expect(runtime.loads).toHaveLength(1);
+  await storage.remove(value.manifest.id);
+  await manager.refreshInstalled();
+  expect(manager.listExtensions()).toHaveLength(0);
+  expect(runtime.unloaded).toContain(value.manifest.id);
+});
