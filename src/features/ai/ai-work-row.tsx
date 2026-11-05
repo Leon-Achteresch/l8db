@@ -1,17 +1,17 @@
-import { ChevronRight, type LucideIcon } from "lucide-react";
+import { ChevronRight, LoaderCircle, type LucideIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ThinkingShimmer } from "./beui/agents/loading-states";
 
 export type AiStationTone = "idle" | "active" | "failed" | "allowed" | "denied" | "lead";
 
-const DOT: Record<AiStationTone, string> = {
-  idle: "bg-muted-foreground/45",
-  active: "bg-primary",
-  failed: "bg-destructive",
-  allowed: "bg-amber-500",
-  denied: "bg-destructive",
-  lead: "bg-background ring-[1.5px] ring-inset ring-muted-foreground/60",
+const ICON: Record<AiStationTone, string> = {
+  idle: "text-muted-foreground",
+  active: "text-primary",
+  failed: "text-destructive/80",
+  allowed: "text-amber-600 dark:text-amber-400",
+  denied: "text-destructive/80",
+  lead: "text-muted-foreground",
 };
 
 export function AiWorkRow({
@@ -39,38 +39,29 @@ export function AiWorkRow({
   const open = controlled ?? own;
   const station = tone ?? (active ? "active" : failed ? "failed" : "idle");
   const interactive = Boolean(detail || onToggle);
+  const Glyph = station === "active" ? LoaderCircle : Icon;
   return (
-    <div className="relative">
-      <span
-        aria-hidden="true"
-        className={cn(
-          "absolute top-[9px] -left-[21px] size-[9px] rounded-full shadow-[0_0_0_3px_var(--background)]",
-          DOT[station],
-        )}
-      >
-        {station === "active" && (
-          <span className="absolute inset-0 animate-ping rounded-full bg-primary/50 motion-reduce:animate-none" />
-        )}
-      </span>
+    <div>
       <button
         type="button"
         disabled={!interactive}
         aria-expanded={interactive ? open : undefined}
         onClick={() => (onToggle ? onToggle() : setOwn(!own))}
-        className="-ml-1.5 flex min-h-7 w-[calc(100%+0.375rem)] select-none items-center gap-2 rounded-md px-1.5 text-left text-[13px] leading-relaxed outline-none transition-colors enabled:hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+        className="group/work -ml-1.5 flex min-h-7 max-w-[calc(100%+0.375rem)] select-none items-center gap-2 rounded-lg px-1.5 text-left text-[12.5px] leading-relaxed outline-none transition-colors enabled:hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
       >
-        {Icon && (
-          <Icon
+        {Glyph && (
+          <Glyph
             className={cn(
-              "size-3.5 shrink-0 text-muted-foreground",
-              station === "failed" && "text-destructive/70",
+              "size-3.5 shrink-0",
+              ICON[station],
+              station === "active" && "animate-spin motion-reduce:animate-none",
             )}
           />
         )}
         <span
           className={cn(
-            "min-w-0 flex-1 truncate text-muted-foreground",
-            station === "failed" && "text-destructive/90",
+            "min-w-0 truncate text-muted-foreground",
+            (station === "failed" || station === "denied") && "text-destructive/90",
           )}
         >
           {active ? <ThinkingShimmer className="font-normal">{label}</ThinkingShimmer> : label}
@@ -79,14 +70,14 @@ export function AiWorkRow({
         {interactive && (
           <ChevronRight
             className={cn(
-              "size-3 shrink-0 text-muted-foreground/70 transition-transform duration-200",
-              open && "rotate-90",
+              "size-3 shrink-0 text-muted-foreground/60 opacity-0 transition-[transform,opacity] duration-200 group-hover/work:opacity-100 group-focus-visible/work:opacity-100",
+              open && "rotate-90 opacity-100",
             )}
           />
         )}
       </button>
       {open && detail && typeof detail === "string" && (
-        <div className="mt-1 mb-2 max-h-64 overflow-auto rounded-lg bg-muted/50 px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/80">
+        <div className="mt-1 mb-2 max-h-64 overflow-auto rounded-xl bg-muted/60 px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/80">
           {detail}
         </div>
       )}

@@ -48,7 +48,7 @@ export function AiAnswer({
         return (
           <CodeBlock
             key={String(index)}
-            className="my-2 rounded-lg border border-border/70 bg-secondary"
+            className="my-2 rounded-xl border-0 bg-muted/70"
             code={code}
             language={
               supported.includes(language as AgentCodeLanguage)

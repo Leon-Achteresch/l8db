@@ -16,16 +16,13 @@ export function AiIssueIntro() {
         ref={feature.ref}
         type="button"
         onClick={() => setOpen(true)}
-        className="my-2 flex w-full items-center gap-2 rounded-xl border border-dashed border-primary/25 bg-primary/[0.03] px-3 py-2 text-left text-xs text-muted-foreground outline-none transition-colors hover:bg-primary/[0.07] focus-visible:ring-2 focus-visible:ring-ring"
+        title="So meldest du Probleme direkt als Issue – mit Vorschau und geschwärztem Screenshot"
+        className="mt-3 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-[11px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <CircleDot className="size-4 shrink-0 text-primary" />
-        <span className="min-w-0 flex-1">
-          <span className="font-medium text-foreground">Probleme direkt als Issue melden</span>
-          <span className="mt-0.5 block">Mit Vorschau und geschwärztem Screenshot.</span>
-        </span>
+        <CircleDot className="size-3 shrink-0" />
+        Problem als Issue melden
+        <Play className="size-2.5 shrink-0 fill-current" />
         {feature.isNew && <NewBadge />}
-        <Play className="size-3.5 shrink-0" />
-        <span className="sr-only">So funktioniert’s</span>
       </button>
       {open && (
         <Suspense fallback={null}>

@@ -351,7 +351,7 @@ test.skipIf(!enabled)(
       ).toBe(true);
       expect(await answerTable.getByRole("row").count()).toBe(5);
       expect(await answerTable.textContent()).not.toContain("---");
-      expect(await panel.getByText("Plan des Agents", { exact: true }).count()).toBeGreaterThan(0);
+      expect(await panel.getByText("Plan", { exact: true }).count()).toBeGreaterThan(0);
       expect(await panel.getByText("query.sql", { exact: true }).count()).toBeGreaterThan(0);
       expect(await panel.getByText("Tool verwendet", { exact: false }).count()).toBe(0);
       expect(
