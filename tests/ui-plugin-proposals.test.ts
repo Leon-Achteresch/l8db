@@ -56,3 +56,11 @@ test("Vorprüfung führt Top-Level-Code nicht aus", async () => {
     ),
   ).toEqual({ id: "safe", http: ["https://example.org"] });
 });
+
+test("Vorprüfung erhält die Compilerzeile für MCP-Antworten", async () => {
+  const { inspectPluginSource } = await import("../src/lib/ui-plugins/inspect");
+  const compiler = await import("../packages/ui-plugin-api/src/compile");
+  expect(() => inspectPluginSource(compiler, "broken.tsx", "export default {\n id: ;\n}")).toThrow(
+    "Zeile 2",
+  );
+});
