@@ -228,3 +228,38 @@ Die unveränderte native Tauri-Probe mit 20.000 × 121 Datenspalten und zehn Sek
 Der vollständige Workspace mit 5.000 × 120 Datenzellen erreichte in WebKit 57,6 FPS, p95 22 ms und maximal 45 ms. Damit bleiben die Abnahmeschwellen auch bei geringerer Hintergrundlast verletzt. Andere Apps erklären die verbleibenden Probleme nicht allein.
 
 Ein zusätzlicher Versuch halbierte den Zeilen- und Spaltenpuffer auf 128 Pixel. Die breite Tabellenansicht bestand damit die Komponentenprüfung einschließlich Wheel- und Funktionsprüfungen (60,03–60,05 FPS, maximal 40 ms, 177 DOM-Zellen beim Mount). Der Workspace verfehlte mit 59,8 FPS und maximal 51 ms weiterhin die Grenze; das SQL-Ergebnis zeigte einen Frame mit 108 ms. Der Versuch wurde verworfen, der Puffer bleibt bei 256 Pixeln. Diese einzelnen Läufe belegen keine statistisch gesicherte Verbesserung oder Verschlechterung der Ausreißer.
+
+
+## Rexa-Abgleich: neue Verbindungen und Verwaltungsansichten (5. November 2026)
+
+Gemessen im Linux-Entwicklungs-VM: Debian 13, Linux 6.12.111, x86_64, QEMU Virtual CPU (8 vCPU), 16.775.348.224 Byte RAM, kein Swap; Bun 1.3.10, Rust 1.99.0. Die breite Testsuite lief auf dem gemeinsam genutzten Entwicklungsrechner mit weiteren Build-/Labprozessen. Die Werte sind keine isolierte Hardwarebaseline und kein Nachweis für macOS, Windows oder alle Datenbankfamilien. Browserprüfungen verwenden Chromium und gemockten Tauri-Transport; echte Adapter-/HTTP-/PostgreSQL-Tests sind separate Nachweise.
+
+| Szenario | Umfang | Median | p95 | Begrenzung und Ergebnis |
+|---|---|---:|---:|---|
+| Profilverweise | 10.000 JDBC-/Workspace-Profile × 11 | 28,62 ms | 42,27 ms | Heapdelta 4.524.820 Byte, 100 Zusammenfassungen behalten, 0 DB-/Leerlaufanfragen |
+| Cloud-Projektseiten | 20 × 100 Projekte | 0,70 ms/Seite | 0,94 ms/Seite | 5 Seiten/500 Projekte behalten, genau 20 Anfragen |
+| Cloud-Ansicht, Serverrendering | 50 Konten, 100 Projekte | 7,04 ms | 14,68 ms | 198.226 Byte Markup, 0 DB-Anfragen beim Rendern |
+| Zahlungen, vor Datumsformatierer-Wiederverwendung | 500 Abos, 15 Renderdurchläufe | 69,30 ms | 90,04 ms | Medianbudget von 60 ms verletzt |
+| Zahlungen, nach Änderung | gleicher Testumfang | 31,42 ms | 52,52 ms | bestehende Budgets erfüllt, 5 Seiten/500 Zeilen, 20 Anfragen für 20 Seiten, Heapdelta 25.081.503 Byte |
+
+Die Zahlungsoptimierung erstellt den deutschen Datumsformatierer einmal statt für jede Tabellenzelle. Die Vorher-/Nachherläufe hatten unterschiedliche Hintergrundlast; daraus wird kein genauer Beschleunigungsfaktor abgeleitet. Grenzwerte wurden nicht erhöht. Weitere Prüfungen belegen verworfene veraltete Antworten und keine automatischen Abfragen bei Leerlauf, Fokus- oder Netzwechsel.
+
+Die zugehörigen Szenarien stehen in `tests/managed-connections.test.ts`, `tests/cloud-accounts-perf.test.ts`, `tests/payments-perf.test.ts`, `tests/workspaces-perf.test.tsx` sowie den Federation-/JDBC-/Workspace-/Payments-/Cloud-Browsersuiten. Der volle Bun-Lauf schreibt jede Datei isoliert nach `test-artifacts/unit/`; ursprüngliche Fehler des Durchgangs bleiben zusätzlich in `/tmp/l8db-rexa-bun-full.log` erhalten. Live-Abdeckung und fehlende Cloud-Zugangsdaten müssen getrennt vom Browsertransport bewertet werden.
+
+### Echte Laufzeiten und Datenbankadapter
+
+| Szenario | Umfang | Median | p95 | Begrenzung und Ergebnis |
+|---|---|---:|---:|---|
+| JDBC / H2 | 100.000 Quellzeilen, 15 × 1.000 Ergebniszeilen | 18,43 ms | 26,37 ms | 169.787 Byte Antwort, eine gleichzeitige Anfrage |
+| JDBC / PostgreSQL 18.6 | 100.000 Quellzeilen, 9 × 1.000 Ergebniszeilen | 21,96 ms | 63,49 ms | Antwort unter 256 KiB; Parameter, Präzision, Ergebnisgrenzen und Leseschutz geprüft |
+| Neon-WebSocket / lokales PostgreSQL | 9 × 100.000 Zeilen, insgesamt 57,6 MB Text | 305,41 ms | 389,91 ms | Session-Wiederverwendung, Rollback, Abbruch und echtes pg_dump 18.6 bestanden |
+| SpacetimeDB 2.14.1 | 10.000 Kunden und 10.000 Bestellungen, 9 × 1.000 Ergebniszeilen | 54,76 ms | 61,21 ms | maximal 210.839 Byte/Seite, neun SQL-Anfragen; vier parallele Anfragen begrenzt auf vier |
+| Workspace-Metadaten / lokales HTTP und SQLite | 10.000 Benutzer, 50.000 Audit-Einträge | 7,93 ms | 17,27 ms | 100 Einträge/Seite, zwei Anfragen/Durchlauf, 20.546 Byte Antwort |
+| Billing-Webhook / Deno 2.9.8 | 31 × 128 KiB, echte lokale HTTP-Anfragen | 1,68 ms | 2,93 ms | zusammen mit Checkout 62 HTTP-/155 simulierte Upstream-Anfragen |
+| Billing-Checkout / Deno 2.9.8 | 31 echte lokale HTTP-Anfragen | 0,96 ms | 1,54 ms | Heap und externer Speicher zusammen +8.923.907 Byte, RSS +2.981.888 Byte |
+
+JDBC lief unter Temurin JDK 21.0.13+9; die Java-Bridge wurde zusätzlich mit `javac --release 17` kompiliert. Das ersetzt keinen Lauf unter einem tatsächlichen JDK 17. H2 2.3.232 und der PostgreSQL-JDBC-Treiber 42.7.7 sind die geprüften Treiber. Abbruch und Disconnect blieben unter 500 ms; Timeout und Leerlaufbereinigung wurden ebenfalls geprüft.
+
+Die Neon-Prüfung verwendet einen lokalen WebSocket-Proxy vor echtem PostgreSQL, keinen gehosteten Neon-Endpunkt. SpacetimeDB lief mit dem offiziellen SDK und Server 2.14.1. Das Verwerfen einer HTTP-Anfrage gibt lokale Arbeit frei; ein sofortiger serverseitiger Abbruch wird nicht behauptet. In den nativen Szenarien entstanden im Leerlauf keine zusätzlichen Anfragen.
+
+Die beiden Billing-Funktionen wurden mit echtem Deno inklusive HTTP-Server, Streams und WebCrypto ausgeführt und mit dessen TypeScript-Prüfer geprüft. Nur Stripe-/Supabase-Upstreams waren simuliert. Geprüft wurden unter anderem rohe UTF-8-Signaturen, Zeitfenster, Größenlimits, Origin, JWT, Preise, Idempotenz und Fehlerbereinigung. Für den sequenziellen Performance-Durchlauf galt eine gleichzeitige Anfrage; nach 250 ms Leerlauf gab es keine weiteren Requests. Der Deno-Lauf fand während einer speicherbegrenzten PostgreSQL-Testkompilierung statt und ist keine isolierte Hardwarebaseline. Das Limit von 64 MiB Speicherzuwachs und die Latenzbudgets von 100/250 ms wurden eingehalten.

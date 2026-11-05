@@ -3,6 +3,8 @@ import {
   Blocks,
   CalendarClock,
   ChartSpline,
+  Cloud,
+  CloudCog,
   Diff,
   FileDiff,
   GitCompare,
@@ -24,7 +26,10 @@ import {
   SquareTerminal,
   Terminal,
   TriangleAlert,
+  Users,
+  UsersRound,
   Waypoints,
+  Workflow,
   Zap,
 } from "lucide";
 
@@ -43,6 +48,30 @@ export type AppSidebarNavItem = {
 
 export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
   navMain: [
+    {
+      title: "Cloud-Konten",
+      url: "/cloud-accounts",
+      icon: Cloud,
+      activeIcon: CloudCog,
+      featureScope: "connections.cloud-accounts",
+      connectionFree: true,
+    },
+    {
+      title: "Team-Workspaces",
+      url: "/workspaces",
+      icon: Users,
+      activeIcon: UsersRound,
+      featureScope: "connections.workspaces",
+      connectionFree: true,
+    },
+    {
+      title: "Föderiertes SQL",
+      url: "/federation",
+      icon: Network,
+      activeIcon: Workflow,
+      featureScope: "query.federation",
+      connectionFree: true,
+    },
     {
       title: "Dashboard",
       url: "/dashboard",

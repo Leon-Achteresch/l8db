@@ -3,6 +3,7 @@ import { allProviders, providerForKind } from "@/lib/providers";
 import { DATABASE_REQUIRED, PATH_LIKE, SSL_MODES, SSLMODE_PARAM, USER_REQUIRED } from "./constants";
 import { oracleConnectString, oracleKeyValueToUrl } from "./oracle-endpoint";
 import { isOracleKeyValue } from "./oracle-key-value";
+import { isProfileConnection, parseProfileConnection } from "./profile-pointer";
 
 export function kindFromUrl(value: string): DatabaseKind | undefined {
   const trimmed = value.trim();
@@ -77,6 +78,7 @@ export function multiHostUrl(
 
 export function connectionUrlString(value: string, kind = kindFromUrl(value)): string {
   const url = parseConnectionUrl(value, kind);
+  if (isProfileConnection(kind)) return value.trim();
   return kind && MULTI_HOST_KINDS.includes(kind) && multiHostUrl(value)
     ? value.trim()
     : url.toString();
@@ -90,6 +92,7 @@ export function parseConnectionUrl(value: string, kind = kindFromUrl(value)): UR
     if (resolved === "oracle") text = oracleKeyValueToUrl(text);
   }
   if (!resolved) throw new Error("Gib eine gültige Verbindungs-URL ein, z. B. postgresql://…");
+  if (isProfileConnection(resolved)) return parseProfileConnection(text, resolved);
   const info = providerForKind(resolved);
   if (info?.file_based) return parseFileUrl(text, resolved);
   const multi = MULTI_HOST_KINDS.includes(resolved) ? multiHostUrl(text) : null;
@@ -152,6 +155,13 @@ export function parseConnectionUrl(value: string, kind = kindFromUrl(value)): UR
     } catch {
       throw new Error("Die URL enthält eine ungültige Zeichenkodierung.");
     }
+  }
+  if (resolved === "spacetimedb") {
+    const database = decodeURIComponent(url.pathname.replace(/^\/+|\/+$/g, ""));
+    if (!database || database.length > 256 || /[\s/\p{Cc}]/u.test(database))
+      throw new Error("Gib einen gültigen SpacetimeDB-Datenbanknamen an.");
+    if (["token", "auth_token", "authToken"].some((key) => url.searchParams.has(key)))
+      throw new Error("Das Identity-Token gehört als Passwort in die URL, nicht in URL-Parameter.");
   }
   return url;
 }

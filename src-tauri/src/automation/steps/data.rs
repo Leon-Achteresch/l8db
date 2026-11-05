@@ -803,6 +803,8 @@ mod tests {
             kind: DatabaseKind::Sqlite,
             url: path.display().to_string(),
             database: None,
+            schemas: None,
+            mask_rules: Vec::new(),
             read_only: false,
             production_locked: false,
             environment: None,

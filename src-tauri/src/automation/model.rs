@@ -1038,6 +1038,10 @@ pub struct AutomationConnection {
     pub kind: DatabaseKind,
     pub connection_string: String,
     #[serde(default)]
+    pub schemas: Option<Vec<String>>,
+    #[serde(default)]
+    pub mask_rules: Vec<crate::mcp::config::RedactRule>,
+    #[serde(default)]
     pub read_only: bool,
     #[serde(default)]
     pub production_locked: bool,

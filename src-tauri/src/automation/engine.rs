@@ -1385,6 +1385,8 @@ pub(crate) mod tests {
                 name: name.into(),
                 kind,
                 connection_string: url.into(),
+                schemas: None,
+                mask_rules: Vec::new(),
                 read_only: false,
                 production_locked: false,
                 environment: None,

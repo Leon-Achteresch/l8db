@@ -1,3 +1,4 @@
+import { isProfileConnection, parseProfileConnection } from "@/lib/connection-url/profile-pointer";
 import {
   cloudAuthConnectionString,
   isReadOnlyConnection,
@@ -108,6 +109,13 @@ registerReadOnlyResolver((connectionString) => {
 });
 
 export function effectiveConnectionString(connection: SavedConnection): string {
+  if (isProfileConnection(connection.kind)) {
+    const pointer = connection.connectionString.trim();
+    parseProfileConnection(pointer, connection.kind);
+    if (usesTunnel(connection))
+      throw new Error("Netzwerkzugang für diese Verbindung wird im Profil verwaltet.");
+    return pointer;
+  }
   const cached = peekSecret(connection.id);
   const raw =
     cached && extractUrlPassword(connection.connectionString) === null

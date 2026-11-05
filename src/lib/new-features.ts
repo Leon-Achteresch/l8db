@@ -4,6 +4,11 @@ import { version as appVersion } from "../../package.json";
 export const NEXT_FEATURE_VERSION = "0.17.0";
 
 export const NEW_FEATURES = {
+  "query.federation": NEXT_FEATURE_VERSION,
+  "connections.workspaces": NEXT_FEATURE_VERSION,
+  "connections.cloud-accounts": NEXT_FEATURE_VERSION,
+  "drivers.jdbc": NEXT_FEATURE_VERSION,
+  "baas.supabase.studio.payments": NEXT_FEATURE_VERSION,
   "query.editor.checkpoints": NEXT_FEATURE_VERSION,
   "query.editor.last-success": NEXT_FEATURE_VERSION,
   "query.editor.variants": NEXT_FEATURE_VERSION,

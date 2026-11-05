@@ -1,5 +1,6 @@
 import { useBackupToolPaths } from "@/lib/backup-runner";
 import { stripConnectionSecrets } from "@/lib/connection-export/export";
+import { isProfileConnection } from "@/lib/connection-url/profile-pointer";
 import {
   cloudAuthConnectionString,
   type SavedConnection,
@@ -26,6 +27,9 @@ function serverReadOnly(connection: SavedConnection): boolean {
 }
 
 function cleanConnectionString(connection: SavedConnection, readOnly: boolean): string {
+  if (isProfileConnection(connection.kind)) {
+    return connection.connectionString.trim();
+  }
   const raw = stripConnectionSecrets(connection.connectionString);
   let value = raw;
   if (readOnly && capabilitiesFor(connection.kind).read_only_mode && raw.includes("://")) {
@@ -48,6 +52,8 @@ export function buildAutomationConnection(connection: SavedConnection): Automati
     name: connection.name,
     kind: connection.kind,
     connectionString: cleanConnectionString(connection, readOnly),
+    schemas: connection.schemas ?? null,
+    maskRules: connection.maskRules ?? [],
     readOnly,
     productionLocked: isProductionLocked(connection),
     environment: connectionEnvironment(connection),

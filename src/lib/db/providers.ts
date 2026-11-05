@@ -19,7 +19,10 @@ export type DatabaseKind =
   | "athena"
   | "bigquery"
   | "snowflake"
-  | "s3";
+  | "s3"
+  | "jdbc"
+  | "workspace"
+  | "spacetimedb";
 
 export interface Capabilities {
   databases: boolean;
