@@ -6,19 +6,20 @@ import {
   GROUND,
   gateOpen,
   LABEL_Y,
-  MUZZLE,
+  muzzleAt,
   nameSlots,
   type Particle,
   type Scene,
-  SOURCE_X,
   type Speaker,
   STAGE_H,
   STAGE_W,
   SUBTITLES,
   shipOrb,
   shipPose,
+  sourceAt,
   TARGET_X,
   TIMELINE,
+  targetAt,
 } from "./transfer-cinematic-sim";
 
 type Ctx = CanvasRenderingContext2D;
@@ -503,8 +504,9 @@ function drawBeam(ctx: Ctx, pose: Pose | null, t: number) {
   const envelope = Math.sin((local / 0.95) * Math.PI);
   const width = (34 + 50 * envelope + Math.sin(t * 60) * 4) * envelope;
   const orb = shipOrb(pose);
-  const angle = Math.atan2(GROUND - 70 - orb.y, TARGET_X - orb.x);
-  const length = Math.hypot(GROUND - 70 - orb.y, TARGET_X - orb.x) + 90;
+  const aim = targetAt(t).x;
+  const angle = Math.atan2(GROUND - 70 - orb.y, aim - orb.x);
+  const length = Math.hypot(GROUND - 70 - orb.y, aim - orb.x) + 90;
   ctx.save();
   ctx.translate(orb.x, orb.y);
   ctx.rotate(angle);
@@ -609,6 +611,53 @@ function drawEye(
   line(ctx, 2);
 }
 
+function drawLegs(ctx: Ctx, t: number, stride: number, lift: number, color: string) {
+  for (const side of [-1, 1]) {
+    const swing = Math.sin(t * 15 + (side > 0 ? Math.PI : 0)) * stride;
+    const footX = side * 24 + swing * 16;
+    const footY =
+      22 - lift * 8 - Math.max(0, Math.cos(t * 15 + (side > 0 ? Math.PI : 0))) * stride * 8;
+    ctx.beginPath();
+    ctx.moveTo(side * 22, 4);
+    ctx.quadraticCurveTo(side * 26 + swing * 6, 14, footX, footY);
+    line(ctx, 7);
+    ctx.beginPath();
+    ctx.moveTo(side * 22, 4);
+    ctx.quadraticCurveTo(side * 26 + swing * 6, 14, footX, footY);
+    line(ctx, 4, color);
+    ctx.beginPath();
+    ctx.ellipse(footX + side * 4, footY + 2, 10, 5, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#3f4552";
+    ctx.fill();
+    line(ctx, 1.8);
+  }
+}
+
+function drawDizzy(ctx: Ctx, t: number, amount: number, y: number) {
+  if (amount < 0.08) return;
+  ctx.globalAlpha = clamp01(amount * 2);
+  for (let index = 0; index < 3; index++) {
+    const angle = t * 6 + (index * Math.PI * 2) / 3;
+    const x = Math.cos(angle) * 46;
+    const dy = Math.sin(angle) * 10;
+    ctx.save();
+    ctx.translate(x, y + dy);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    for (let point = 0; point < 10; point++) {
+      const r = point % 2 === 0 ? 8 : 3.5;
+      const a = (point * Math.PI) / 5;
+      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fillStyle = "#ffe066";
+    ctx.fill();
+    line(ctx, 1.6);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
 function lookAt(fromX: number, fromY: number, toX: number, toY: number) {
   const dx = toX - fromX;
   const dy = toY - fromY;
@@ -630,11 +679,31 @@ function drawSource(ctx: Ctx, scene: Scene, pose: Pose | null) {
   const r = scene.recoil;
   const talk = speaking(t, "source");
   const cool = t > TIMELINE.outro + 0.3;
-  ellipse(ctx, SOURCE_X, GROUND, 74, 11, "rgba(60,64,52,0.28)");
+  const body = sourceAt(t);
+  const air = clamp01(-body.y / 80);
+  ellipse(
+    ctx,
+    body.x,
+    GROUND + 18,
+    74 * (1 - air * 0.4),
+    11 * (1 - air * 0.4),
+    "rgba(60,64,52,0.28)",
+  );
   ctx.save();
-  ctx.translate(SOURCE_X - r * 4, GROUND);
-  ctx.rotate(-0.025 * r);
-  ctx.scale(1 + 0.03 * r, 1 - 0.03 * r + Math.sin(t * 2.4) * 0.008);
+  ctx.translate(body.x - r * 4, GROUND + body.y);
+  ctx.rotate(-0.025 * r + body.lean + Math.sin(t * 9) * 0.04 * scene.bonk);
+  drawLegs(
+    ctx,
+    t,
+    clamp01(Math.abs(Math.cos((t - TIMELINE.battle) * 1.3)) * 0.8) *
+      (t > TIMELINE.battle && t < TIMELINE.gate + 0.4 ? 1 : 0),
+    air,
+    "#7fc9ae",
+  );
+  ctx.scale(
+    1 + 0.03 * r + body.squash * 0.22,
+    1 - 0.03 * r + Math.sin(t * 2.4) * 0.008 - body.squash * 0.22,
+  );
   ctx.beginPath();
   ctx.moveTo(10, -164);
   ctx.quadraticCurveTo(14, -186, 22, -198);
@@ -645,9 +714,19 @@ function drawSource(ctx: Ctx, scene: Scene, pose: Pose | null) {
   line(ctx, 1.8);
   drawCylinder(ctx, 116, 150, SOURCE_SKIN, 0);
   const focus = pose && t < TIMELINE.boom + 0.6 ? shipOrb(pose) : { x: TARGET_X, y: GROUND - 90 };
-  const { lx, ly } = lookAt(SOURCE_X, GROUND - 98, focus.x, focus.y);
-  drawEye(ctx, -19, -100, 16, lx, ly, 2.4);
-  drawEye(ctx, 15, -102, 14.5, lx, ly, 2.2);
+  const { lx, ly } = lookAt(body.x, GROUND - 98, focus.x, focus.y);
+  const daze = scene.bonk > 0.25;
+  const spin = t * 14;
+  drawEye(ctx, -19, -100, 16, daze ? Math.cos(spin) : lx, daze ? Math.sin(spin) : ly, 2.4);
+  drawEye(
+    ctx,
+    15,
+    -102,
+    14.5,
+    daze ? -Math.cos(spin) : lx * 0.8,
+    daze ? Math.sin(spin) : ly + 0.15,
+    2.2,
+  );
   ctx.beginPath();
   ctx.moveTo(-32, -122);
   ctx.quadraticCurveTo(-20, -128, -8, -121);
@@ -729,6 +808,7 @@ function drawSource(ctx: Ctx, scene: Scene, pose: Pose | null) {
   ctx.fillStyle = "#3f4552";
   ctx.fill();
   line(ctx, 1.8);
+  drawDizzy(ctx, t, scene.bonk, -170);
   ctx.restore();
   ctx.restore();
 }
@@ -739,14 +819,32 @@ function drawTarget(ctx: Ctx, scene: Scene, pose: Pose | null) {
   const panic = pose ? 1 : 0;
   const talk = speaking(t, "target");
   const tremble = Math.sin(t * 46) * (0.6 + panic * 1.6);
-  ellipse(ctx, TARGET_X, GROUND, 70, 11, "rgba(60,64,52,0.28)");
+  const body = targetAt(t);
+  const air = clamp01(-body.y / 60);
+  ellipse(
+    ctx,
+    body.x,
+    GROUND + 18,
+    70 * (1 - air * 0.4),
+    11 * (1 - air * 0.4),
+    "rgba(60,64,52,0.28)",
+  );
   ctx.save();
-  ctx.translate(TARGET_X + f * 9 + tremble, GROUND);
-  ctx.rotate(0.06 * f);
-  ctx.scale(1 - 0.04 * f, 1 + 0.03 * f + Math.sin(t * 2.6 + 1) * 0.008);
+  ctx.translate(body.x + f * 9 + tremble, GROUND + body.y);
+  const runLean = Math.cos((t - TIMELINE.arrival - 0.8) * 5.2) * 0.12 * body.run;
+  ctx.rotate(0.06 * f + runLean);
+  drawLegs(ctx, t * (1 + body.run * 0.6), Math.max(body.run, air > 0.05 ? 0.6 : 0), air, "#e98f78");
+  ctx.scale(
+    1 - 0.04 * f + body.squash * 0.24,
+    1 + 0.03 * f + Math.sin(t * 2.6 + 1) * 0.008 - body.squash * 0.24,
+  );
   for (const side of [-1, 1]) {
     const wave = Math.sin(t * (4 + panic * 9) + side) * (0.25 + panic * 0.35);
-    const hand = { x: side * (74 + wave * 6), y: -60 - panic * 50 + wave * 18 };
+    const windUp = side < 0 ? body.throwing : 0;
+    const hand = {
+      x: side * (74 + wave * 6) + windUp * 30,
+      y: -60 - panic * 50 + wave * 18 - windUp * 90,
+    };
     for (const [width, color] of [
       [7, LINE],
       [4.5, "#c9ccd3"],
@@ -794,8 +892,8 @@ function drawTarget(ctx: Ctx, scene: Scene, pose: Pose | null) {
     ctx.ellipse(30, -110, 12, 8, -0.3, 0, Math.PI * 2);
     ctx.fill();
   }
-  const focus = pose ? { x: pose.x, y: pose.y } : { x: SOURCE_X, y: GROUND - 100 };
-  const look = lookAt(TARGET_X, GROUND - 96, focus.x, focus.y);
+  const focus = pose ? { x: pose.x, y: pose.y } : { x: sourceAt(t).x, y: GROUND - 100 };
+  const look = lookAt(body.x, GROUND - 96, focus.x, focus.y);
   const squint = f > 0.55;
   const eyeR = pose ? 18 : 16;
   const pupil = pose ? 1.8 : 2.4;
@@ -997,6 +1095,39 @@ function drawSolidParticle(ctx: Ctx, p: Particle) {
     ctx.restore();
     return;
   }
+  if (p.kind === "splat") {
+    const grow = easeOutCubic(clamp01(p.age / 0.12));
+    ctx.globalAlpha = 0.85 * (1 - clamp01((k - 0.6) / 0.4));
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, 22 * p.size * grow, 5 * p.size * grow, 0, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+    line(ctx, 1.6);
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (p.kind === "null") {
+    if (p.trail) drawTrail(ctx, p.trail, "rgba(43,38,51,0.3)", 8);
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ellipse(ctx, 0, 0, 17, 17, "#3b3646");
+    ctx.beginPath();
+    ctx.arc(0, 0, 17, 0, Math.PI * 2);
+    line(ctx, 2.2);
+    ctx.beginPath();
+    ctx.moveTo(10, -12);
+    ctx.quadraticCurveTo(16, -22, 22, -20);
+    line(ctx, 2);
+    ellipse(ctx, 23, -21, 3 + Math.abs(Math.sin(p.age * 40)) * 2, 3, "#ffb347");
+    ctx.font = `700 9px ${MONO}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#f4f2f8";
+    ctx.fillText("NULL", 0, 1);
+    ctx.restore();
+    return;
+  }
   if (p.kind === "letter") {
     if (p.trail) drawTrail(ctx, p.trail, "rgba(43,38,51,0.35)", 6);
     ctx.save();
@@ -1178,39 +1309,41 @@ function pill(ctx: Ctx, x: number, y: number, width: number, height: number) {
 }
 
 function drawLabels(ctx: Ctx, scene: Scene) {
+  const sourceX = sourceAt(scene.t).x;
+  const targetX = targetAt(scene.t).x;
   const name = scene.targetName;
   const width = Math.max(name.length, scene.sourceName.length) * 11 + 28;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  pill(ctx, SOURCE_X, LABEL_Y, width, 26);
+  pill(ctx, sourceX, LABEL_Y, width, 26);
   ctx.font = `600 14px ${MONO}`;
   if (scene.stolen === 0) {
     ctx.fillStyle = "#f4f2f8";
-    ctx.fillText(scene.sourceName, SOURCE_X, LABEL_Y + 1);
+    ctx.fillText(scene.sourceName, sourceX, LABEL_Y + 1);
   } else {
-    const slots = nameSlots(name, SOURCE_X);
+    const slots = nameSlots(name, sourceX);
     ctx.fillStyle = "#a8f0e8";
     for (let index = 0; index < scene.stolen; index++)
       ctx.fillText(name[index], slots[index], LABEL_Y + 1);
     ctx.font = `500 10px ${MONO}`;
     ctx.fillStyle = "rgba(43,38,51,0.6)";
-    ctx.fillText(scene.sourceName, SOURCE_X, LABEL_Y - 22);
+    ctx.fillText(scene.sourceName, sourceX, LABEL_Y - 22);
     const strike = ctx.measureText(scene.sourceName).width / 2 + 3;
     ctx.strokeStyle = "rgba(200,60,60,0.8)";
     ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.moveTo(SOURCE_X - strike, LABEL_Y - 22);
-    ctx.lineTo(SOURCE_X + strike, LABEL_Y - 22);
+    ctx.moveTo(sourceX - strike, LABEL_Y - 22);
+    ctx.lineTo(sourceX + strike, LABEL_Y - 22);
     ctx.stroke();
   }
   if (scene.destroyed) return;
-  pill(ctx, TARGET_X, LABEL_Y, width, 26);
+  pill(ctx, targetX, LABEL_Y, width, 26);
   ctx.font = `600 14px ${MONO}`;
   if (scene.launched >= name.length) {
     ctx.fillStyle = "rgba(244,242,248,0.35)";
-    ctx.fillText("—", TARGET_X, LABEL_Y + 1);
+    ctx.fillText("—", targetX, LABEL_Y + 1);
   } else {
-    const slots = nameSlots(name, TARGET_X);
+    const slots = nameSlots(name, targetX);
     ctx.fillStyle = "#f4f2f8";
     for (let index = scene.launched; index < name.length; index++)
       ctx.fillText(name[index], slots[index], LABEL_Y + 1);
@@ -1218,11 +1351,11 @@ function drawLabels(ctx: Ctx, scene: Scene) {
   const barW = 90;
   const hp = Math.max(0, scene.hp);
   ctx.beginPath();
-  ctx.roundRect(TARGET_X - barW / 2, LABEL_Y + 20, barW, 4, 2);
+  ctx.roundRect(targetX - barW / 2, LABEL_Y + 20, barW, 4, 2);
   ctx.fillStyle = "rgba(24,22,32,0.45)";
   ctx.fill();
   ctx.beginPath();
-  ctx.roundRect(TARGET_X - barW / 2, LABEL_Y + 20, Math.max(4, barW * hp), 4, 2);
+  ctx.roundRect(targetX - barW / 2, LABEL_Y + 20, Math.max(4, barW * hp), 4, 2);
   ctx.fillStyle = hp > 0.6 ? "#5fd4a8" : hp > 0.3 ? "#f0c24a" : "#ef5a5a";
   ctx.fill();
 }
@@ -1322,8 +1455,9 @@ export function drawScene(ctx: Ctx, scene: Scene) {
   const t = scene.t;
   const pose = shipPose(t);
   const cam = camera(t);
-  const shakeX = (Math.random() * 2 - 1) * scene.shake;
-  const shakeY = (Math.random() * 2 - 1) * scene.shake;
+  const c = scene.clock;
+  const shakeX = (Math.sin(c * 71) * 0.6 + Math.sin(c * 43.3 + 1.7) * 0.4) * scene.shake;
+  const shakeY = (Math.sin(c * 59.7 + 0.6) * 0.6 + Math.sin(c * 37.1 + 2.9) * 0.4) * scene.shake;
   const night = nightAmount(t);
 
   ctx.save();
@@ -1384,12 +1518,13 @@ export function drawScene(ctx: Ctx, scene: Scene) {
   }
   if (scene.recoil > 0.25) {
     const radius = 30 * scene.recoil;
-    const flash = ctx.createRadialGradient(MUZZLE.x, MUZZLE.y, 0, MUZZLE.x, MUZZLE.y, radius);
+    const muzzle = muzzleAt(t);
+    const flash = ctx.createRadialGradient(muzzle.x, muzzle.y, 0, muzzle.x, muzzle.y, radius);
     flash.addColorStop(0, "rgba(210,250,250,0.9)");
     flash.addColorStop(1, "rgba(127,227,224,0)");
     ctx.fillStyle = flash;
     ctx.beginPath();
-    ctx.arc(MUZZLE.x, MUZZLE.y, radius, 0, Math.PI * 2);
+    ctx.arc(muzzle.x, muzzle.y, radius, 0, Math.PI * 2);
     ctx.fill();
   }
   for (const p of scene.particles) drawLightParticle(ctx, p, t);
