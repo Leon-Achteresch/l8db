@@ -285,6 +285,7 @@ const ANNOTATIONS: &[(&str, &str, bool, bool, bool)] = &[
     ("rules", "Data rules", false, true, false),
     ("notebook", "Notebook", false, false, false),
     ("report_issue", "Report issue", false, false, false),
+    ("ui_plugins", "UI plugins", false, true, false),
 ];
 
 pub(crate) fn published(tools: Vec<Value>) -> Vec<Value> {
