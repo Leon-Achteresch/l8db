@@ -54,7 +54,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       featureScope: "dashboard",
     },
     {
-      title: "Übersicht",
+      title: "Start",
       url: "/",
       icon: House,
       activeIcon: HousePlug,
@@ -94,7 +94,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       available: (caps) => caps.health_advisor,
     },
     {
-      title: "Query Builder",
+      title: "Abfrage-Builder",
       url: "/query-builder",
       group: 1,
       icon: Blocks,

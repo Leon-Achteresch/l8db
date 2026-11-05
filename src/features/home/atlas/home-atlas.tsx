@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Plus, Search, Table2 } from "lucide-react";
+import { Plus, Search, Star, Table2 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -15,10 +15,12 @@ import { previewQuery } from "@/lib/sql-filter/quote";
 import { useTableTabs } from "@/lib/table-tabs";
 import {
   ATLAS_GRID_ROW,
+  ATLAS_GRID_ROW_COMPACT,
   ATLAS_TILE_LIMIT,
   type AtlasMetric,
   type AtlasNeighbors,
   atlasGrid,
+  atlasHasMeta,
   atlasKey,
   atlasMetric,
   atlasNeighbors,
@@ -32,9 +34,9 @@ import { useAtlasTrail } from "./use-atlas-trail";
 
 const NO_NEIGHBORS: AtlasNeighbors = { outgoing: [], incoming: [] };
 
-function atlasHeight(count: number, metric: AtlasMetric): string {
+function atlasHeight(count: number, metric: AtlasMetric, compact: boolean): string {
   const grid = atlasGrid(count, metric);
-  if (grid) return `${grid.rows * ATLAS_GRID_ROW}px`;
+  if (grid) return `${grid.rows * (compact ? ATLAS_GRID_ROW_COMPACT : ATLAS_GRID_ROW)}px`;
   if (count <= 4) return "13rem";
   if (count <= 12) return "21rem";
   return "clamp(320px,calc(100vh - 430px),640px)";
@@ -73,6 +75,7 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
       matching,
       hidden: Math.max(0, matching - ATLAS_TILE_LIMIT),
       metric: atlasMetric(atlasTables),
+      compact: !atlasHasMeta(atlasTables),
     };
   }, [atlasTables, query]);
   const focused = useMemo(
@@ -163,15 +166,27 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
         <div className="mb-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
           <div className="min-w-0 flex-1">
             <SchemaStrip connectionId={connection.id} schema={schema} />
-            {!map.isPending &&
-              atlasTables.length > 0 &&
-              (summary.metric === null || summary.metric === "links") && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {summary.metric === null
-                    ? "Tabellengrößen unbekannt – Kacheln gleich groß dargestellt"
-                    : "Tabellengrößen unbekannt – Fläche zeigt die Fremdschlüssel"}
-                </p>
-              )}
+            {atlasTables.length > 0 && (
+              <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+                {!map.isPending && (summary.metric === null || summary.metric === "links") && (
+                  <>
+                    <span>
+                      {summary.metric === null
+                        ? "Tabellengrößen unbekannt – Kacheln gleich groß dargestellt"
+                        : "Tabellengrößen unbekannt – Fläche zeigt die Fremdschlüssel"}
+                    </span>
+                    <span aria-hidden>·</span>
+                  </>
+                )}
+                <span className="inline-flex items-center gap-1">
+                  <span className="size-1.5 rounded-full bg-primary" /> geöffnet
+                </span>
+                <span aria-hidden>·</span>
+                <span className="inline-flex items-center gap-1">
+                  <Star className="size-2.5 fill-current text-primary" /> Favorit
+                </span>
+              </p>
+            )}
           </div>
           <div className="relative flex items-center gap-2">
             {feature.isNew && <NewBadge />}
@@ -210,27 +225,25 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
         <div
           ref={mapRef}
           className="-m-0.5 overflow-hidden"
-          style={{ height: atlasHeight(summary.matching, summary.metric) }}
+          style={{ height: atlasHeight(summary.matching, summary.metric, summary.compact) }}
         >
           {body}
         </div>
-        <div className="mt-3">
-          <AtlasLens
-            table={focused}
-            neighbors={neighbors}
-            metric={summary.metric}
-            sizesPending={map.isPending}
-            notice={map.isError ? String(map.error) : (map.data?.warning ?? null)}
-            hidden={summary.hidden}
-            matching={summary.matching}
-            showRelations={showRelations && caps.foreign_keys}
-            showEr={caps.foreign_keys && !easyMode}
-            onWalk={(key) => setFocus({ key, live: false })}
-            onOpen={open}
-            onQuery={openQuery}
-            onClear={() => setFocus({ key: null, live: false })}
-          />
-        </div>
+        <AtlasLens
+          table={focused}
+          neighbors={neighbors}
+          metric={summary.metric}
+          sizesPending={map.isPending}
+          notice={map.isError ? String(map.error) : (map.data?.warning ?? null)}
+          hidden={summary.hidden}
+          matching={summary.matching}
+          showRelations={showRelations && caps.foreign_keys}
+          showEr={caps.foreign_keys && !easyMode}
+          onWalk={(key) => setFocus({ key, live: false })}
+          onOpen={open}
+          onQuery={openQuery}
+          onClear={() => setFocus({ key: null, live: false })}
+        />
       </div>
       <div>
         <ContinueRail

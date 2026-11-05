@@ -126,7 +126,7 @@ export const GENERAL_COMMANDS: HotkeyCommand[] = [
   {
     id: "edit.undo",
     label: "Rückgängig",
-    description: "Letzte Änderung im Dashboard oder Query Builder zurücknehmen",
+    description: "Letzte Änderung im Dashboard oder Abfrage-Builder zurücknehmen",
     area: "Allgemein",
     defaultHotkey: "Mod+Z",
     origin: "VS Code",
@@ -135,7 +135,7 @@ export const GENERAL_COMMANDS: HotkeyCommand[] = [
   {
     id: "edit.redo",
     label: "Wiederholen",
-    description: "Zurückgenommene Änderung im Dashboard oder Query Builder wiederherstellen",
+    description: "Zurückgenommene Änderung im Dashboard oder Abfrage-Builder wiederherstellen",
     area: "Allgemein",
     defaultHotkey: "Mod+Shift+Z",
     aliases: ["Mod+Y"],

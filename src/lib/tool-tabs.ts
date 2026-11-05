@@ -183,7 +183,7 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
   },
   "query-builder": {
     path: "/query-builder",
-    label: "Query Builder",
+    label: "Abfrage-Builder",
     Icon: BlocksIcon,
     iconColor: "text-violet-500",
     Component: lazy(() =>

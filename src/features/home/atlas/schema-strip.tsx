@@ -50,7 +50,7 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
             aria-pressed={active}
             onClick={() => select(entry.name)}
             className={cn(
-              "group flex w-32 shrink-0 flex-col gap-1 rounded-lg px-2.5 pb-2 pt-1.5 text-left transition-colors hover:bg-muted/70 focus-visible:outline-2 focus-visible:outline-primary",
+              "group flex h-12 w-32 shrink-0 flex-col justify-between rounded-lg px-2.5 pb-1.5 pt-1.5 text-left transition-colors hover:bg-muted/70 focus-visible:outline-2 focus-visible:outline-primary",
               active && "bg-muted",
             )}
           >
@@ -81,7 +81,7 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
                   "block h-full rounded-full",
                   active ? "bg-primary" : "bg-muted-foreground/40 group-hover:bg-primary/60",
                 )}
-                style={{ width: `${Math.max(2, entry.share * 100)}%` }}
+                style={{ width: active ? "100%" : `${Math.max(2, entry.share * 100)}%` }}
               />
             </span>
           </button>

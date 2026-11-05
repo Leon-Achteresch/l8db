@@ -308,7 +308,7 @@ function ConnectionCardShell({
       )}
 
       <div>
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2.5">
             <div
               className={cn(
@@ -317,9 +317,11 @@ function ConnectionCardShell({
               )}
             >
               <ProviderLogo providerId={provider.id} kind={connection.kind} className="size-5" />
-              <span className="absolute -bottom-1 -right-1">
-                <ConnectionStatusIndicator connectionId={connection.id} />
-              </span>
+              {!connected && (
+                <span className="absolute -bottom-1 -right-1">
+                  <ConnectionStatusIndicator connectionId={connection.id} />
+                </span>
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <h3

@@ -4,6 +4,7 @@ import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
+import { cn } from "@/lib/utils";
 
 export type SidebarObjectTab = {
   value: string;
@@ -34,22 +35,31 @@ export function SidebarObjectTabs({
         })
       }
     >
-      <TabsList className="w-full" data-icon-chrome>
+      <TabsList className="@container w-full" data-icon-chrome>
         {tabs.map((tab) => (
           <Tooltip
             key={tab.value}
             content={tab.disabledReason ?? tab.label}
             side="bottom"
-            wrapperClassName="h-full flex-1"
+            wrapperClassName={cn(
+              "h-full min-w-0",
+              tab.value === shown ? "flex-1 @[17rem]:flex-none" : "flex-1",
+            )}
           >
             <TabsTrigger
               value={tab.value}
-              className="relative h-full w-full px-0 transition-none after:bg-primary data-active:after:opacity-100"
+              className={cn(
+                "relative h-full w-full gap-1.5 px-0 transition-none after:bg-primary data-active:after:opacity-100",
+                tab.value === shown && "@[17rem]:px-2.5",
+              )}
               aria-label={tab.label}
               disabled={Boolean(tab.disabledReason)}
               title={tab.disabledReason ?? undefined}
             >
               <tab.icon className="size-4" />
+              {tab.value === shown ? (
+                <span className="hidden text-xs @[17rem]:inline">{tab.label}</span>
+              ) : null}
               {hasNewFeatures(tab.featureScope, seen) ? (
                 <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
               ) : null}

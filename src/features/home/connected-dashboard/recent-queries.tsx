@@ -88,7 +88,7 @@ export function RecentQueries({
           ))}
         </ul>
       ) : (
-        <p className="rounded-xl border border-dashed px-5 py-6 text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Deine ausgeführten Abfragen erscheinen hier mit Laufzeit und Ergebnis.
         </p>
       )}

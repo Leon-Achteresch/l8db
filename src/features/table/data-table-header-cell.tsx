@@ -91,7 +91,7 @@ export function DataTableHeaderCell({
           ref={setCellRef}
           data-column-id={header.id}
           className={cn(
-            "group/th relative sticky top-0 z-20 border-b border-r border-border bg-muted text-left",
+            "group/th relative sticky top-0 z-20 border-b border-r border-border border-b-foreground/15 bg-muted text-left",
             classic ? "px-3 py-1 align-middle leading-4" : "px-2 py-1.5",
             tableStyle === "profile" ? "align-top" : "align-middle",
             pinnedOffset !== null && "z-30 shadow-[1px_0_0_0_var(--border)]",

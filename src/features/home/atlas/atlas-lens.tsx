@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, ArrowRight, SquareTerminal, Star, Table2, Workflow, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, SquareTerminal, Table2, Workflow, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
@@ -44,9 +44,11 @@ export function AtlasLens({
   onQuery,
   onClear,
 }: AtlasLensProps) {
-  if (!table)
+  if (!table) {
+    const scale = !sizesPending && (metric === "bytes" || metric === "rows");
+    if (!sizesPending && !scale && !notice && hidden === 0 && !showRelations) return null;
     return (
-      <p className="flex min-h-14 flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      <p className="mt-3 flex min-h-14 flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         {sizesPending ? (
           <span>Größen werden geladen</span>
         ) : metric === "bytes" ? (
@@ -59,12 +61,6 @@ export function AtlasLens({
             Katalog nur teilweise lesbar: {notice}
           </span>
         )}
-        <span className="flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-primary" /> geöffnet
-        </span>
-        <span className="flex items-center gap-1.5">
-          <Star className="size-2.5 fill-current text-primary" /> Favorit
-        </span>
         {hidden > 0 && (
           <span>
             Zeigt die {matching - hidden} größten von {matching.toLocaleString("de-DE")} Tabellen,
@@ -74,6 +70,7 @@ export function AtlasLens({
         {showRelations && <span>Fahre über eine Tabelle, um ihre Beziehungen zu sehen</span>}
       </p>
     );
+  }
 
   const { outgoing, incoming } = neighbors;
   const facts = describeAtlasTable(table);
@@ -113,7 +110,7 @@ export function AtlasLens({
     );
 
   return (
-    <div className="flex min-h-14 flex-wrap items-start justify-between gap-x-6 gap-y-2">
+    <div className="mt-3 flex min-h-14 flex-wrap items-start justify-between gap-x-6 gap-y-2">
       <div className="min-w-0 flex-1">
         <p className="flex min-w-0 items-baseline gap-3">
           <span className="truncate font-mono text-sm font-semibold">{table.name}</span>

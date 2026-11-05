@@ -36,7 +36,7 @@ export function SettingsTableTabs() {
           </Button>
         ) : null}
       </div>
-      <div className="flex max-w-2xl flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
+      <div className="-mx-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
         {[0, 1].map((column) => (
           <div key={column} className="flex min-w-0 flex-1 flex-col gap-3">
             {TABLE_DETAIL_TAB_GROUPS.filter((_, index) => index % 2 === column).map((group) => (
