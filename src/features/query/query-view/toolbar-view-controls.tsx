@@ -32,11 +32,11 @@ export function ToolbarViewControls({
 }: ToolbarViewControlsProps) {
   const navigatorVisible = useQueryWorkspace((state) => state.navigatorVisible);
   return (
-    <div className="flex shrink-0 items-center gap-1 rounded-md bg-muted/50 p-0.5">
+    <div className="flex shrink-0 items-center gap-2 rounded-md bg-muted/50 p-0.5">
       {isSql && (
         <Button
           size="icon-sm"
-          className="size-7"
+          className="size-8"
           variant={navigatorVisible ? "secondary" : "ghost"}
           aria-label="Schema-Navigator umschalten"
           title="Schema und Statement-Navigator"
@@ -54,7 +54,7 @@ export function ToolbarViewControls({
       <Button
         size="sm"
         variant={analysisOpen ? "secondary" : "ghost"}
-        className="h-7 gap-1.5 px-2 text-xs"
+        className="h-8 gap-1.5 px-2 text-xs"
         aria-pressed={analysisOpen}
         onClick={onOpenAnalysis}
         title="Explain und Performance-Test"
@@ -65,7 +65,7 @@ export function ToolbarViewControls({
       <Separator orientation="vertical" className="mx-1 my-2" />
       <Button
         size="icon-sm"
-        className="size-7"
+        className="size-8"
         variant={editorFocus ? "secondary" : "ghost"}
         title="Editor-Fokus umschalten"
         aria-label="Editor-Fokus umschalten"
@@ -76,7 +76,7 @@ export function ToolbarViewControls({
       </Button>
       <Button
         size="icon-sm"
-        className="size-7"
+        className="size-8"
         variant={resultFocus ? "secondary" : "ghost"}
         title="Ergebnis vergrößern umschalten"
         aria-label="Ergebnis vergrößern umschalten"

@@ -210,7 +210,11 @@ export function TableView(props: TableViewProps) {
           data-tour="table-toolbar"
           data-icon-chrome
         >
-          <TableDetailTabBar tabs={availableTabs} activeTab={tableTab} />
+          <TableDetailTabBar
+            tabs={availableTabs}
+            activeTab={tableTab}
+            onTabChange={(id) => setDetailTab(id as TableDetailTab)}
+          />
           <TableToolbarActions
             extensionActions={extensionActions}
             connection={connection}

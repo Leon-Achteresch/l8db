@@ -97,7 +97,11 @@ export function ViewDetailTabs({
         data-tour="table-toolbar"
         data-icon-chrome
       >
-        <TableDetailTabBar tabs={availableTabs} activeTab={viewTab} />
+        <TableDetailTabBar
+          tabs={availableTabs}
+          activeTab={viewTab}
+          onTabChange={(id) => setDetailTab(id as TableDetailTab)}
+        />
         <div className="ml-auto flex items-center gap-1">
           <PluginToolbar
             info={pluginTable}

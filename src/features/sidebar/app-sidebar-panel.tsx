@@ -110,8 +110,11 @@ export function AppSidebarPanel() {
               sidebarTab === "views" ? "flex items-center gap-1 pr-7" : "flex items-center gap-1"
             }
           >
-            {activeConnection && objectNav === "select" ? (
-              <div className="flex min-w-0 flex-1" data-tour="sidebar-tabs">
+            {activeConnection && !caps.object_storage ? (
+              <div
+                className="flex min-w-0 flex-1"
+                data-tour={objectNav === "select" ? "sidebar-tabs" : undefined}
+              >
                 <SidebarObjectSelect
                   tabs={sidebarTabs}
                   value={sidebarTab}

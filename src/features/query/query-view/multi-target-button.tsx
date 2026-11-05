@@ -23,7 +23,7 @@ export function MultiTargetButton({
       ref={feature.ref}
       size="sm"
       variant="ghost"
-      className="h-7 gap-1.5 px-2 text-xs"
+      className="h-8 gap-1.5 px-2 text-xs"
       data-tour="query-multi-target"
       onClick={onOpen}
       disabled={disabled}

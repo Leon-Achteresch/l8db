@@ -16,6 +16,7 @@ import { useIslandView } from "@/features/shell/dynamic-island/use-island-view";
 import { dismissIslandMoment, useIslandStore } from "@/lib/dynamic-island";
 import { EASE_OUT } from "@/lib/ease";
 import { useElementSize } from "@/lib/hooks/use-element-size";
+import { cn } from "@/lib/utils";
 
 const IDLE_WIDTH = 180;
 const ACTIVE_WIDTH = 220;
@@ -119,7 +120,12 @@ export function DynamicIsland({ buttonRef, shortcut, badge, onOpen }: Props) {
             className="pointer-events-none absolute top-0 left-1/2 flex h-7 w-max -translate-x-1/2 items-center justify-center gap-2 px-2.5 text-xs @max-[8rem]/header-search:px-1.5"
           >
             <IslandSymbol glyph={view.glyph} />
-            <span className="min-w-0 truncate font-medium @max-[8rem]/header-search:hidden">
+            <span
+              className={cn(
+                "min-w-0 truncate @max-[8rem]/header-search:hidden",
+                view.idle ? "text-current/60" : "font-medium",
+              )}
+            >
               {view.title}
             </span>
             {view.idle ? badge : null}

@@ -47,17 +47,13 @@ export function AtlasLens({
   if (!table)
     return (
       <p className="flex min-h-14 flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span>
-          {sizesPending
-            ? "Größen werden geladen"
-            : metric === "bytes"
-              ? "Fläche zeigt den Speicher, logarithmisch skaliert"
-              : metric === "rows"
-                ? "Fläche zeigt die geschätzten Zeilen, logarithmisch skaliert"
-                : metric === "links"
-                  ? "Fläche zeigt die Fremdschlüssel"
-                  : "Alle Tabellen sind gleich groß"}
-        </span>
+        {sizesPending ? (
+          <span>Größen werden geladen</span>
+        ) : metric === "bytes" ? (
+          <span>Fläche zeigt den Speicher, logarithmisch skaliert</span>
+        ) : metric === "rows" ? (
+          <span>Fläche zeigt die geschätzten Zeilen, logarithmisch skaliert</span>
+        ) : null}
         {notice && (
           <span title={notice} className="max-w-full truncate text-amber-600 dark:text-amber-400">
             Katalog nur teilweise lesbar: {notice}

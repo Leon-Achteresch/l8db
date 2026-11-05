@@ -163,7 +163,7 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
   },
   health: {
     path: "/health",
-    label: "Health",
+    label: "Zustand",
     Icon: HeartPulseIcon,
     iconColor: "text-rose-500",
     Component: lazy(() =>

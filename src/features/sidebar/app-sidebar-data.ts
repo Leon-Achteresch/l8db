@@ -54,7 +54,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       featureScope: "dashboard",
     },
     {
-      title: "Übersicht",
+      title: "Verbindungsübersicht",
       url: "/",
       icon: House,
       activeIcon: HousePlug,
@@ -76,7 +76,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       available: (caps) => caps.query_language === "sql",
     },
     {
-      title: "Invalid Objects",
+      title: "Ungültige Objekte",
       url: "/invalid-objects",
       group: 2,
       icon: TriangleAlert,
@@ -85,7 +85,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     },
     { title: "Monitor", url: "/monitor", icon: Activity, activeIcon: ChartSpline, group: 2 },
     {
-      title: "Health",
+      title: "Zustand",
       url: "/health",
       group: 2,
       icon: HeartPulse,
