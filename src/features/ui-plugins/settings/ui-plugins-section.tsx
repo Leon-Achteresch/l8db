@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { copyText } from "@/lib/clipboard";
 import { removeUiPlugin } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { reloadUiPlugins } from "@/lib/ui-plugins/host";
+import { enableUiPluginsAfterSafeMode, reloadUiPlugins } from "@/lib/ui-plugins/host";
 import { useUiPluginSettings } from "@/lib/ui-plugins/settings";
 import { uiPluginStatuses } from "@/lib/ui-plugins/status";
 import { useUiPluginRuntime } from "@/lib/ui-plugins/store";
@@ -45,6 +45,7 @@ export function UiPluginsSection() {
     })),
   );
   const forgetInstalled = useUiPluginSettings((state) => state.forgetInstalled);
+  const safeMode = useUiPluginRuntime((state) => state.safeMode);
   const statuses = useMemo(() => uiPluginStatuses(runtime, settings), [runtime, settings]);
 
   const remove = async (id: string, file: string) => {
@@ -65,6 +66,27 @@ export function UiPluginsSection() {
       className="@container space-y-4 border-t border-border/60 pt-6"
       aria-labelledby="ui-plugins-heading"
     >
+      {safeMode && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-amber-500/10 px-3 py-2 text-xs"
+        >
+          <p className="max-w-xl text-pretty">
+            Abgesicherter Modus: Beim letzten Start hat das Laden der UI-Plugins nicht
+            abgeschlossen. Alle Plugins sind vorübergehend aus. Entferne oder korrigiere das
+            fehlerhafte Plugin und aktiviere sie dann wieder.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              void enableUiPluginsAfterSafeMode().catch((cause) => toast.error(String(cause)))
+            }
+          >
+            Wieder aktivieren
+          </Button>
+        </div>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 id="ui-plugins-heading" className="flex items-center gap-1.5 text-sm font-semibold">
