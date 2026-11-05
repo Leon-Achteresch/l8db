@@ -5,7 +5,7 @@ import {
 } from "@/lib/compare-apply-plan";
 import { quoteIdentifier } from "@/lib/export";
 import { columnDefinitionSql } from "@/lib/migration-script/sql";
-import { checksum, deployKind, validateMigration } from "./model";
+import { checksum, deployKind, destructiveStatement, validateMigration } from "./model";
 import { sqlCode } from "./sql-code";
 import type { DatabaseRelease, ObjectSnapshot, ReleaseMigration, VersioningKind } from "./types";
 
@@ -176,6 +176,7 @@ export function generateMigration(
   before: DatabaseRelease,
   current: ObjectSnapshot[],
   allowDrops = false,
+  additiveOnly = false,
 ): MigrationDraft {
   const changes: MigrationDraft["changes"] = [];
   const issues: MigrationDraft["issues"] = [];
@@ -217,6 +218,10 @@ export function generateMigration(
               );
       if (!allowDrops && generated.some((sql) => /\bDROP\b/i.test(sqlCode(sql))))
         throw new Error("Entfernungen erst ausdrücklich freigeben oder manuell schreiben.");
+      if (additiveOnly && !allowDrops && generated.some(destructiveStatement))
+        throw new Error(
+          "Nur additiv: Typwechsel und Verkürzungen ausdrücklich freigeben oder manuell schreiben.",
+        );
       const part = {
         id: item.object.id,
         code: CODE_TYPES.has(item.object.selection.objectType),

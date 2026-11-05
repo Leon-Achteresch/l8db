@@ -174,7 +174,16 @@ fn short(commit: &str) -> &str {
 }
 
 pub async fn touching(root: &Path, tip: &str, release: &str) -> Result<Vec<String>, String> {
-    let path = format!("database/releases/{release}.json");
+    touching_in(root, tip, "releases", release).await
+}
+
+async fn touching_in(
+    root: &Path,
+    tip: &str,
+    folder: &str,
+    release: &str,
+) -> Result<Vec<String>, String> {
+    let path = format!("database/{folder}/{release}.json");
     if release.contains('/') {
         return Err("Ungültige Release-ID".into());
     }
@@ -230,9 +239,18 @@ async fn reviewed(
 ) -> (Result<String, String>, Vec<Value>) {
     let mut evidence = Vec::new();
     let mut pulls = Vec::new();
-    for release in plan["releases"].as_array().into_iter().flatten() {
-        let id = release["id"].as_str().unwrap_or_default();
-        let commits = match touching(root, &tip.commit, id).await {
+    let sources: Vec<(&str, &str)> = if plan["mode"] == "change" {
+        vec![("changes", plan["change"].as_str().unwrap_or_default())]
+    } else {
+        plan["releases"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|release| ("releases", release["id"].as_str().unwrap_or_default()))
+            .collect()
+    };
+    for (folder, id) in sources {
+        let commits = match touching_in(root, &tip.commit, folder, id).await {
             Ok(commits) if commits.is_empty() => {
                 return (
                     Err(format!(

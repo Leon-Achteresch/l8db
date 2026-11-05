@@ -25,6 +25,7 @@ export interface VersioningProject {
   name: string;
   kind: VersioningKind;
   objects: ManagedObject[];
+  additiveOnly?: boolean;
 }
 
 export interface ObjectSnapshot {
@@ -43,6 +44,7 @@ export interface ChangeRules {
   data?: boolean;
   preconditions?: ReleaseCheck[];
   postconditions?: ReleaseCheck[];
+  destructive?: boolean;
 }
 
 export interface ReleaseMigration extends ChangeRules {
@@ -90,6 +92,7 @@ export interface Change {
   before: Record<string, string | null>;
   requires: string[];
   data: boolean;
+  destructive: boolean;
   preconditions: ReleaseCheck[];
   postconditions: ReleaseCheck[];
 }

@@ -4,6 +4,7 @@ import {
   DatabaseIcon,
   EllipsisIcon,
   FileDownIcon,
+  GitMergeIcon,
   ListChecksIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -26,11 +27,12 @@ import {
 import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useConnectionsStore } from "@/lib/connections";
-import { listSchemas } from "@/lib/db";
+import { listSchemas, versioningRepository } from "@/lib/db";
 import { databaseFromConnectionString } from "@/lib/db-selection";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
+import { alignmentDraft, finishAlignment, saveAlignment } from "@/lib/versioning/align";
 import type { BaselineClassification } from "@/lib/versioning/change-plan";
 import {
   adoptCustomerCode,
@@ -48,11 +50,14 @@ import {
 } from "@/lib/versioning/deploy";
 import { deployFleet, type FleetResult, preflightFleet } from "@/lib/versioning/fleet";
 import { saveMigrationScripts } from "@/lib/versioning/migration-script";
+import { loadStandaloneChanges } from "@/lib/versioning/repository";
 import { snapshotTargets } from "@/lib/versioning/rollout-snapshot";
 import { addTarget } from "@/lib/versioning/targets";
-import type { DatabaseTarget, ObjectDifference } from "@/lib/versioning/types";
+import { TEAM_PATH } from "@/lib/versioning/team";
+import type { DatabaseTarget, ObjectDifference, StandaloneChange } from "@/lib/versioning/types";
 import { connectionServerLabel, customerGroups, targetProgress } from "@/lib/versioning/workflow";
 import type { VersioningWorkspace } from "./use-versioning";
+import { VersioningAlign } from "./versioning-align";
 import { VersioningBaselineReview } from "./versioning-baseline-review";
 import { VersioningCodeDriftActions } from "./versioning-code-drift-actions";
 import { VersioningCodeDriftReport } from "./versioning-code-drift-report";
@@ -82,6 +87,10 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   const [loadingSchemas, setLoadingSchemas] = useState(false);
   const [production, setProduction] = useState(true);
   const [releaseId, setReleaseId] = useState("");
+  const [changeFiles, setChangeFiles] = useState<StandaloneChange[]>([]);
+  const changeId = releaseId.startsWith("change:") ? releaseId.slice(7) : null;
+  const rolloutId = changeId ?? releaseId;
+  const baselineId = changeId ? "" : releaseId;
   const [selection, setSelection] = useState<string[]>([]);
   const [differenceName, setDifferenceName] = useState("");
   const [differences, setDifferences] = useState<ObjectDifference[]>([]);
@@ -89,6 +98,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   const [preflight, setPreflight] = useState<FleetResult[]>([]);
   const [recovery, setRecovery] = useState<DatabaseTarget | null>(null);
   const [overrides, setOverrides] = useState<Record<string, string[]>>({});
+  const [aligning, setAligning] = useState<DatabaseTarget | null>(null);
   const [codeReport, setCodeReport] = useState<Awaited<ReturnType<typeof codeDriftReport>> | null>(
     null,
   );
@@ -110,9 +120,26 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   useEffect(() => {
     const latest = releases.filter((release) => (release.track ?? "main") === "main").at(-1);
     setReleaseId((current) =>
-      releases.some((release) => release.id === current) ? current : (latest?.id ?? ""),
+      current.startsWith("change:") || releases.some((release) => release.id === current)
+        ? current
+        : (latest?.id ?? ""),
     );
   }, [releases]);
+  const head = workspace.status?.head;
+  useEffect(() => {
+    if (!project || !head) return;
+    let active = true;
+    void loadStandaloneChanges(repo, project, head)
+      .then((loaded) => {
+        if (active) setChangeFiles([...loaded.values()]);
+      })
+      .catch(() => {
+        if (active) setChangeFiles([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [repo, project, head]);
   useEffect(() => {
     if (
       workspace.requestedReleaseId &&
@@ -192,7 +219,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
     setSchema("");
   };
   const plan = async (nextOverrides = overrides) => {
-    if (!project || !targets || !releaseId) throw new Error("Ziele und Zielrelease auswählen.");
+    if (!project || !targets || !rolloutId) throw new Error("Ziele und Zielrelease auswählen.");
     setPlans([]);
     setPreflight([]);
     setConfirmation("");
@@ -201,14 +228,15 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
       project,
       targets.targets.filter((item) => selection.includes(item.id)),
       connections,
-      releaseId,
+      rolloutId,
       nextOverrides,
+      Boolean(changeId),
     );
     setPreflight(result);
     setPlans(result.flatMap((item) => (item.plan ? [item.plan] : [])));
   };
   const execute = async () => {
-    if (!project || !plans.length || confirmation !== releaseId)
+    if (!project || !plans.length || confirmation !== rolloutId)
       throw new Error("Zur Bestätigung die Release-ID eingeben.");
     try {
       if (preflight.some((item) => item.error))
@@ -218,10 +246,11 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
         project,
         plans,
         connections,
-        releaseId,
+        rolloutId,
         workspace.setMessage,
         Number(waveLimit),
         snapshot,
+        Boolean(changeId),
       );
       workspace.setMessage(
         `Welle abgeschlossen${snapshots.length ? ` · ${snapshots.length} ${snapshots.length === 1 ? "Sicherung" : "Sicherungen"} vorher erstellt` : ""}. Betrieb prüfen und verbleibende Ziele neu planen.`,
@@ -454,7 +483,13 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                 setRecovery(null);
               }}
               placeholder="Zielrelease auswählen"
-              options={releases.map((release) => ({ value: release.id, label: release.id }))}
+              options={[
+                ...releases.map((release) => ({ value: release.id, label: release.id })),
+                ...changeFiles.map((change) => ({
+                  value: `change:${change.id}`,
+                  label: `Einzeländerung · ${change.title}`,
+                })),
+              ]}
             />
           </div>
           <Button
@@ -631,7 +666,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                             {target.pinnedRelease ? ` · Max. ${target.pinnedRelease}` : ""}
                           </p>
                         )}
-                        {!target.release && releaseId && (
+                        {!target.release && baselineId && (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -644,7 +679,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                                   project,
                                   target.id,
                                   connectionFor(target),
-                                  releaseId,
+                                  baselineId,
                                   false,
                                   connections,
                                 );
@@ -652,10 +687,10 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                               }, "Baseline geprüft und zugeordnet")
                             }
                           >
-                            Baseline {releaseId} prüfen
+                            Baseline {baselineId} prüfen
                           </Button>
                         )}
-                        {!target.release && releaseId && (
+                        {!target.release && baselineId && (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -665,13 +700,13 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                               void run(async () => {
                                 setBaselineReview({
                                   target,
-                                  releaseId,
+                                  releaseId: baselineId,
                                   result: await classifyTarget(
                                     repo,
                                     project,
                                     target,
                                     connectionFor(target),
-                                    releaseId,
+                                    baselineId,
                                   ),
                                 });
                               })
@@ -712,6 +747,12 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                             }
                           />
                           <IconMenuItem
+                            icon={<GitMergeIcon />}
+                            label="Auf Standard angleichen"
+                            disabled={!target.release || !target.variances?.length}
+                            onSelect={() => setAligning(target)}
+                          />
+                          <IconMenuItem
                             icon={<ListChecksIcon />}
                             label="Abhakliste übernehmen"
                             disabled={!target.release || !target.connectionId}
@@ -732,11 +773,11 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                           <IconMenuItem
                             icon={<RefreshCwIcon />}
                             label={
-                              releaseId
-                                ? `Stand abgleichen · Release ${releaseId}`
+                              baselineId
+                                ? `Stand abgleichen · Release ${baselineId}`
                                 : "Stand abgleichen · zuerst Zielrelease auswählen"
                             }
-                            disabled={!releaseId}
+                            disabled={!baselineId}
                             onSelect={() => {
                               setRecovery(target);
                               setRecoveryConfirmation("");
@@ -798,6 +839,60 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
           </DialogContent>
         </Dialog>
       )}
+      {aligning && (
+        <VersioningAlign
+          key={aligning.id}
+          target={aligning}
+          releases={releases}
+          busy={workspace.busy}
+          onClose={() => setAligning(null)}
+          onPreview={(standard, allowDrops) =>
+            new Promise((resolve) =>
+              run(async () =>
+                resolve(
+                  await alignmentDraft(
+                    repo,
+                    project,
+                    aligning,
+                    connectionFor(aligning),
+                    standard,
+                    allowDrops,
+                  ),
+                ),
+              ),
+            )
+          }
+          onSave={(draft) =>
+            void run(async () => {
+              const paths = await saveAlignment(repo, draft);
+              await versioningRepository({
+                action: "commit",
+                repo,
+                paths,
+                name: draft.change?.title ?? draft.id,
+              });
+              setReleaseId(`change:${draft.id}`);
+              setSelection([aligning.id]);
+              await refresh();
+            }, "Angleich-Änderung committet. Jetzt planen und als Einzeländerung ausrollen.")
+          }
+          onFinish={(standard) =>
+            void run(async () => {
+              await finishAlignment(repo, project, aligning.id, connectionFor(aligning));
+              await versioningRepository({
+                action: "commit",
+                repo,
+                paths: [TEAM_PATH],
+                name: `${aligning.name} zurück auf main`,
+              });
+              setReleaseId(standard);
+              setSelection([aligning.id]);
+              setAligning(null);
+              await refresh();
+            }, `Abweichungen entfernt. Jetzt ${standard} planen und ausrollen.`)
+          }
+        />
+      )}
       {baselineReview && (
         <VersioningBaselineReview
           key={`${baselineReview.target.id}:${baselineReview.releaseId}`}
@@ -838,13 +933,13 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
           </p>
           <Input
             aria-label="Wiederherstellung bestätigen"
-            placeholder={`Geprüften Release ${releaseId} eingeben`}
+            placeholder={`Geprüften Release ${baselineId} eingeben`}
             value={recoveryConfirmation}
             onChange={(event) => setRecoveryConfirmation(event.target.value)}
           />
           <div className="flex gap-2">
             <Button
-              disabled={!releaseId || recoveryConfirmation !== releaseId}
+              disabled={!baselineId || recoveryConfirmation !== baselineId}
               onClick={() =>
                 void run(async () => {
                   await baselineTarget(
@@ -852,7 +947,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                     project,
                     recovery.id,
                     connectionFor(recovery),
-                    releaseId,
+                    baselineId,
                     true,
                     connections,
                   );
@@ -1114,7 +1209,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
               </p>
             )}
           <label className="text-xs leading-relaxed" htmlFor="versioning-deploy-confirmation">
-            Release-ID zur Bestätigung eingeben
+            Release- oder Änderungs-ID zur Bestätigung eingeben
             <Input
               id="versioning-deploy-confirmation"
               aria-label="Deployment bestätigen"
@@ -1124,7 +1219,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
           </label>
           <Button
             disabled={
-              confirmation !== releaseId ||
+              confirmation !== rolloutId ||
               preflight.some((item) => item.error) ||
               plans.every((item) => !item.releases.length) ||
               plans.some((item) => item.drift.length > 0)

@@ -42,7 +42,17 @@ pub(super) struct Execution {
     pub variances: Vec<Managed>,
     #[serde(default)]
     pub overrides: Vec<String>,
+    #[serde(default)]
+    pub ahead: Vec<Ahead>,
+    #[serde(default)]
+    pub mode: Option<String>,
     pub releases: Vec<Release>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct Ahead {
+    pub object: String,
+    pub change: String,
 }
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -421,18 +431,30 @@ pub(super) async fn precheck(
     snapshot::verify(adapter, c.kind, &snapshots)
         .await
         .map_err(|e| format!("Festgehaltene Abweichung hat sich verändert. {e}"))?;
+    if let Some(missing) = plan.ahead.iter().find(|a| !ledger.contains(&a.change)) {
+        return Err(format!(
+            "Vorgezogene Änderung {} ist in dieser Datenbank nicht abgehakt. Neu planen.",
+            missing.change
+        ));
+    }
+    let ahead: std::collections::HashSet<&str> =
+        plan.ahead.iter().map(|a| a.object.as_str()).collect();
     let touched = touched(&plan.releases);
     let untouched: Vec<Snapshot> = plan
         .objects
         .iter()
-        .filter(|o| !touched.contains(o.id.as_str()) && !variances.contains(o.id.as_str()))
+        .filter(|o| {
+            !touched.contains(o.id.as_str())
+                && !variances.contains(o.id.as_str())
+                && !ahead.contains(o.id.as_str())
+        })
         .map(|o| o.snapshot.clone())
         .collect();
     snapshot::verify(adapter, c.kind, &untouched).await
 }
 
-fn change_sql(c: &Connection, change: &PlannedChange, release: &str, run: &str) -> String {
-    format!("INSERT INTO {} (\"PROJECT_ID\", \"CHANGE_ID\", \"CHECKSUM\", \"KIND\", \"SOURCE\", \"RELEASE_ID\", \"RUN_ID\", \"APPLIED_AT\", \"APPLIED_BY\") VALUES ({}, {}, {}, {}, 'rollout', {}, {}, {}, {})",table(&c.schema,"CHANGES"),literal(&c.project_id),literal(&change.id),literal(&change.checksum),literal(&change.kind),literal(release),literal(run),c.now_sql(),c.actor_sql())
+fn change_sql(c: &Connection, change: &PlannedChange, release: Option<&str>, run: &str) -> String {
+    format!("INSERT INTO {} (\"PROJECT_ID\", \"CHANGE_ID\", \"CHECKSUM\", \"KIND\", \"SOURCE\", \"RELEASE_ID\", \"RUN_ID\", \"APPLIED_AT\", \"APPLIED_BY\") VALUES ({}, {}, {}, {}, 'rollout', {}, {}, {}, {})",table(&c.schema,"CHANGES"),literal(&c.project_id),literal(&change.id),literal(&change.checksum),literal(&change.kind),release.map(literal).unwrap_or_else(|| "NULL".into()),literal(run),c.now_sql(),c.actor_sql())
 }
 
 pub(super) fn object_sql(c: &Connection, id: &str, hash: &str, change: Option<&str>) -> String {
@@ -505,6 +527,7 @@ async fn run(
         let variance_map: std::collections::HashMap<&str, &Snapshot> = plan.variances.iter().map(|v| (v.id.as_str(), &v.snapshot)).collect();
         event["skippedChanges"] = json!([]);
         let count = plan.releases.len();
+        let change_mode = plan.mode.as_deref() == Some("change");
         for (index, release) in plan.releases.iter().enumerate() {
             control::check_lock(c,&lock,&transactions).await?;
             let later = touched(&plan.releases[index + 1..]);
@@ -512,7 +535,7 @@ async fn run(
                 .changes
                 .iter()
                 .flat_map(|change| change.touches.iter().map(|t| t.id.as_str()))
-                .filter(|id| !later.contains(id) && !variances.contains(id))
+                .filter(|id| !change_mode && !later.contains(id) && !variances.contains(id))
                 .filter_map(|id| targets.get(id).map(|snapshot| (id, *snapshot)))
                 .collect();
             settled.sort_by_key(|(id, _)| *id);
@@ -564,15 +587,16 @@ async fn run(
                         event["inFlightStatement"] = Value::Null;
                     }
                     checks(&tx,&change.postconditions,&transactions,&mut event).await?;
-                    transactions.execute(&tx,&change_sql(c,change,&release.id,&request.run_id)).await?;
+                    transactions.execute(&tx,&change_sql(c,change,(!change_mode).then_some(release.id.as_str()),&request.run_id)).await?;
                     event["completedMigrations"].as_array_mut().unwrap().push(json!(change.id));
                 }
                 checks(&tx,&release.postconditions,&transactions,&mut event).await?;
-                let advance = format!("UPDATE {state} SET \"RELEASE_ID\"={}, \"RELEASE_HASH\"={} WHERE \"PROJECT_ID\"={} AND \"LEASE\"={} AND \"STATUS\"='running'",literal(&release.id),literal(&release.hash),literal(&c.project_id),literal(&request.run_id));
+                let advance = format!("UPDATE {state} SET \"RELEASE_ID\"={}, \"RELEASE_HASH\"={} WHERE \"PROJECT_ID\"={} AND \"LEASE\"={} AND \"STATUS\"='running'{}",literal(&release.id),literal(&release.hash),literal(&c.project_id),literal(&request.run_id),if change_mode { format!(" AND \"RELEASE_HASH\"={}",literal(&release.hash)) } else { String::new() });
+                let last_step = index + 1 == count && !change_mode;
                 if c.kind==DatabaseKind::Postgres {
                     let session = transactions.versioning_adapter(&tx,pool.clone()).await?;
                     snapshot::verify(session.as_ref(),c.kind,&settled_snapshots).await?;
-                    if index + 1 == count { snapshot::verify_removed(session.as_ref(),&plan.from_objects,&all_targets).await?; }
+                    if last_step { snapshot::verify_removed(session.as_ref(),&plan.from_objects,&all_targets).await?; }
                     for (id, snapshot) in &settled { transactions.execute(&tx,&object_sql(c,id,&control::hash(&snapshot.definition),None)).await?; }
                     if transactions.execute(&tx,&advance).await?.rows_affected!=Some(1) { return Err("Deployment-Sperre verloren".into()); }
                 }
@@ -583,7 +607,7 @@ async fn run(
                 journal(adapter.as_ref(),request,"commit_confirmed",json!({"release":release.id})).await?;
                 if c.kind==DatabaseKind::Oracle {
                     snapshot::verify(adapter.as_ref(),c.kind,&settled_snapshots).await?;
-                    if index + 1 == count { snapshot::verify_removed(adapter.as_ref(),&plan.from_objects,&all_targets).await?; }
+                    if last_step { snapshot::verify_removed(adapter.as_ref(),&plan.from_objects,&all_targets).await?; }
                     let invalid = adapter.list_invalid_objects(Some(&c.schema)).await?;
                     if invalid.iter().any(|item| all_targets.iter().any(|o|o.name==item.name) || !invalid_before.iter().any(|old|old.name==item.name && old.object_type==item.object_type)) { return Err("Oracle enthält ungültige Objekte; vor dem Fortsetzen kompilieren und prüfen".into()); }
                     control::check_lock(c,&lock,&transactions).await?;
@@ -596,8 +620,10 @@ async fn run(
                 if !committed { if let Err(rollback) = transactions.rollback(&tx).await { return Err(format!("{error}; Rollback konnte nicht bestätigt werden: {rollback}")); } }
                 return Err(error);
             }
-            let mut reference = plan.reference.clone(); reference["id"] = json!(release.id); reference["path"] = json!(format!("database/releases/{}.json",release.id));
-            last_reference = Some(reference);
+            if !change_mode {
+                let mut reference = plan.reference.clone(); reference["id"] = json!(release.id); reference["path"] = json!(format!("database/releases/{}.json",release.id));
+                last_reference = Some(reference);
+            }
             persist(request,&event,last_reference.as_ref()).await?;
             if let Some(status)=jobs().lock().await.get_mut(&request.run_id) { status.release = release.id.clone(); }
         }

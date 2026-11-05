@@ -194,6 +194,24 @@ export async function committedRelease(repo: string, project: VersioningProject,
   return { release, reference: { id, commit: status.head, path } };
 }
 
+export async function committedChange(repo: string, project: VersioningProject, id: string) {
+  const status = await versioningRepository<RepositoryStatus>({ action: "status", repo });
+  if (!status.head) throw new Error("Bitte zuerst einen Commit erstellen.");
+  const path = changePath(id);
+  const sqlPath = path.replace(/\.json$/, ".sql");
+  const [manifest, sql, committedManifest, committedSql] = await Promise.all([
+    readFile(repo, path),
+    readFile(repo, sqlPath),
+    readFile(repo, path, status.head),
+    readFile(repo, sqlPath, status.head),
+  ]);
+  if (!manifest || !sql || manifest !== committedManifest || sql !== committedSql)
+    throw new Error("Änderung enthält nicht commitete Teile. Bitte zuerst committen.");
+  const change = await parseChange(manifest, sql, project);
+  if (change.id !== id) throw new Error("Änderungs-ID stimmt nicht mit der Datei überein.");
+  return { change, reference: { id, commit: status.head, path } };
+}
+
 export async function committedTeamConfiguration(
   repo: string,
   projectId: string,

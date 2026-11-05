@@ -57,7 +57,8 @@ export function parseProject(text: string): VersioningProject {
     !identifier(project.id) ||
     !project.name?.trim() ||
     !isVersioningKind(project.kind) ||
-    !Array.isArray(project.objects)
+    !Array.isArray(project.objects) ||
+    (project.additiveOnly !== undefined && typeof project.additiveOnly !== "boolean")
   )
     throw new Error("Ungültiges Versionierungsprojekt.");
   const ids = new Set<string>();
@@ -143,6 +144,7 @@ export async function validateChangeRules(
         rules.touches.some((id) => !objects.has(id)))) ||
     (rules.requires !== undefined && !ids(rules.requires)) ||
     (rules.data !== undefined && typeof rules.data !== "boolean") ||
+    (rules.destructive !== undefined && typeof rules.destructive !== "boolean") ||
     (rules.before !== undefined &&
       (typeof rules.before !== "object" ||
         rules.before === null ||
@@ -240,6 +242,20 @@ export async function parseRelease(
 }
 
 const LEGACY_KEYS = new Set(["id", "title", "sql", "checksum"]);
+
+export function destructiveStatement(sql: string): boolean {
+  const tokens = sql.toUpperCase().split(/[^A-Z0-9_$#]+/);
+  return tokens.some(
+    (token, index) =>
+      ["DROP", "TRUNCATE", "MODIFY"].includes(token) ||
+      (token === "ALTER" &&
+        tokens[index + 1] === "COLUMN" &&
+        (tokens[index + 3] === "TYPE" ||
+          (tokens[index + 3] === "SET" &&
+            tokens[index + 4] === "DATA" &&
+            tokens[index + 5] === "TYPE"))),
+  );
+}
 
 export function validateMigration(sql: string, kind: DeployKind): string[] {
   if (/^(?:<{7}|={7}|>{7}|\|{7})(?:\s|$)/m.test(sql))

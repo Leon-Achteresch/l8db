@@ -10,12 +10,14 @@ import { bindingMatches } from "./binding";
 import { captureObject, captureObjects } from "./capture";
 import {
   activeVariances,
+  aheadObjects,
   type BaselineClassification,
   classifyBaseline,
   objectHistory,
   type PlannedStep,
   planChanges,
   releaseClosure,
+  standaloneChange,
 } from "./change-plan";
 import { mappedCheck, preflightChecks, runReleaseChecks } from "./checks";
 import { control, initialPolicy, type PolicyRecord, sharedTarget } from "./control";
@@ -43,12 +45,14 @@ import {
   checksum,
   compareSnapshots,
   deployKind,
+  destructiveStatement,
   releaseAncestry,
   releaseParents,
   releaseTrack,
   validateMigration,
 } from "./model";
 import {
+  committedChange,
   committedRelease,
   committedTeamConfiguration,
   loadReleases,
@@ -78,6 +82,11 @@ export interface CodeDecision {
   change: string;
   object: string;
   action: "apply" | "skip" | "variance" | "override" | "drift";
+}
+
+export interface RolloutOptions {
+  overrides?: string[];
+  change?: boolean;
 }
 
 export interface DeploymentPlan {
@@ -360,14 +369,36 @@ export async function classifyTarget(
   );
 }
 
+function singleChangePlan(
+  change: Change,
+  ledger: ChangeLedger,
+  map: Map<string, DatabaseRelease>,
+  from: DatabaseRelease,
+  standalone: Map<string, StandaloneChange>,
+) {
+  if (ledger.changes.has(change.id))
+    throw new Error(`${change.id} ist in dieser Datenbank bereits abgehakt.`);
+  if (change.kind === "repeatable")
+    throw new Error("Programmcode wird über Releases verteilt, nicht als Einzeländerung.");
+  const missing = change.requires.find((id) => !ledger.changes.has(id));
+  if (missing) throw new Error(`${change.id} benötigt ${missing}, die noch nicht angewendet ist.`);
+  return {
+    closure: releaseClosure(map, from.id, standalone),
+    open: [change],
+    steps: [{ release: from, changes: [change] }],
+    touched: new Set(change.touches),
+  };
+}
+
 export async function planDeployment(
   repo: string,
   project: VersioningProject,
   target: DatabaseTarget,
   connection: SavedConnection,
   releaseId: string,
-  overrides: string[] = [],
+  options: RolloutOptions = {},
 ): Promise<DeploymentPlan> {
+  const overrides = options.overrides ?? [];
   const team = await committedTeamConfiguration(repo, project.id);
   if (connection.readOnly) throw new Error("Die Zielverbindung ist schreibgeschützt.");
   const shared = await sharedTarget(connection, project, target);
@@ -422,7 +453,9 @@ export async function planDeployment(
     throw new Error(
       "Datenbank-Historie weicht ab oder ein Deployment ist ungeklärt. Stand zuerst abgleichen.",
     );
-  const { release: to, reference } = await committedRelease(repo, project, releaseId);
+  const single = options.change ? await committedChange(repo, project, releaseId) : null;
+  const released = single ? null : await committedRelease(repo, project, releaseId);
+  const reference = single?.reference ?? (released as NonNullable<typeof released>).reference;
   const releases = await loadReleases(repo, project, reference.commit);
   const standalone = await loadStandaloneChanges(repo, project, reference.commit);
   const map = new Map(releases.map((release) => [release.id, release]));
@@ -431,16 +464,22 @@ export async function planDeployment(
     throw new Error(
       `Der Datenbankstand ${state.RELEASE_ID} fehlt im Zielbranch oder wurde nachträglich verändert.`,
     );
-  if (releaseTrack(to) !== (target.track ?? "main"))
-    throw new Error("Zielrelease gehört zu einer anderen Kundenvariante / Release-Linie.");
-  if (
-    target.pinnedRelease &&
-    !releaseAncestry(map, target.pinnedRelease, false).some((release) => release.id === to.id)
-  )
-    throw new Error(`Diese Datenbank ist auf ${target.pinnedRelease} festgelegt.`);
+  const to = released?.release ?? from;
+  if (released) {
+    if (releaseTrack(to) !== (target.track ?? "main"))
+      throw new Error("Zielrelease gehört zu einer anderen Kundenvariante / Release-Linie.");
+    if (
+      target.pinnedRelease &&
+      !releaseAncestry(map, target.pinnedRelease, false).some((release) => release.id === to.id)
+    )
+      throw new Error(`Diese Datenbank ist auf ${target.pinnedRelease} festgelegt.`);
+  }
   const ledger = await ensureLedger(connection, project, target, from, map, standalone, state);
   const variances = activeVariances(target.variances);
-  const plan = planChanges(map, to.id, ledger.changes, from.id, standalone);
+  const plan = single
+    ? singleChangePlan(standaloneChange(releaseId, single.change), ledger, map, from, standalone)
+    : planChanges(map, to.id, ledger.changes, from.id, standalone);
+  const ahead = aheadObjects(plan, ledger.changes, standalone);
   if (target.schema && new Set(to.objects.map((item) => item.object.selection.schema)).size !== 1)
     throw new Error("Eine Schema-Zuordnung benötigt genau ein Quellschema.");
   const chain = plan.steps.map((step) => step.release);
@@ -460,7 +499,12 @@ export async function planDeployment(
       );
   for (const change of plan.open)
     for (const id of change.touches)
-      if (varianceIds.has(id) && id in change.before && change.kind !== "repeatable")
+      if (
+        varianceIds.has(id) &&
+        id in change.before &&
+        change.kind !== "repeatable" &&
+        change.before[id] !== variances.find((variance) => variance.object === id)?.hash
+      )
         throw new Error(
           `${change.id} ändert ${id}, das beim Kunden als Abweichung festgehalten ist. Erst angleichen oder die Änderung mit Vorbedingung statt Vorher-Stand bauen.`,
         );
@@ -537,10 +581,15 @@ export async function planDeployment(
       const prefix = change.release
         ? `${change.release}:${change.id.slice(change.release.length + 1)}`
         : change.id;
-      for (const [index, entry] of validateMigration(
+      const mapped = validateMigration(
         mappedMigration(change.sql, target, scope),
         deployKind(project.kind),
-      ).entries()) {
+      );
+      if (project.additiveOnly && !change.destructive && mapped.some(destructiveStatement))
+        throw new Error(
+          `Nur additiv: ${change.id} enthält Entfernungen oder Typwechsel ohne ausdrückliche Freigabe.`,
+        );
+      for (const [index, entry] of mapped.entries()) {
         sql.push(entry);
         statements.push({ id: `${prefix}:${index + 1}`, migration: change.id, sql: entry });
       }
@@ -550,7 +599,7 @@ export async function planDeployment(
         kind: change.kind,
         requires: change.requires,
         touches: change.touches
-          .map((id) => touchPayload(id, change, step.release, map, to, history, target))
+          .map((id) => touchPayload(id, change, step.release, map, to, history, target, captured))
           .sort((a, b) => a.id.localeCompare(b.id)),
         preconditions: change.preconditions.map((entry) => mappedCheck(entry, scope, target)),
         postconditions: change.postconditions.map((entry) => mappedCheck(entry, scope, target)),
@@ -573,6 +622,8 @@ export async function planDeployment(
     })),
     variances: variancePayload,
     overrides,
+    ahead,
+    ...(single ? { mode: "change", change: releaseId } : {}),
     releases: await Promise.all(
       steps.map(async ({ step, statements, changes }) => ({
         id: step.release.id,
@@ -652,12 +703,12 @@ export async function deploy(
   releaseId: string,
   reviewedToken: string,
   onProgress?: (message: string) => void,
-  overrides: string[] = [],
+  options: RolloutOptions = {},
 ) {
   const { store } = await readTargets(repo, project.id);
   const target = store.targets.find((item) => item.id === targetId);
   if (!target) throw new Error("Datenbankziel fehlt.");
-  const plan = await planDeployment(repo, project, target, connection, releaseId, overrides);
+  const plan = await planDeployment(repo, project, target, connection, releaseId, options);
   assertReviewedToken(reviewedToken, plan.reviewToken);
   if (plan.drift.length)
     throw new Error(
@@ -702,6 +753,7 @@ function touchPayload(
   to: DatabaseRelease,
   history: ReturnType<typeof objectHistory>,
   target: DatabaseTarget,
+  captured: Map<string, ObjectSnapshot>,
 ) {
   const owner = change.release ? map.get(change.release) : undefined;
   const parent = owner ? map.get(releaseParents(owner)[0] ?? "") : undefined;
@@ -712,7 +764,9 @@ function touchPayload(
   const expected = change.before[id];
   if (!(id in change.before)) return { id, expect: "check", ...snapshotPayload(meta, target, "") };
   if (expected === null) return { id, expect: "absent", ...snapshotPayload(meta, target, "") };
-  const definition = history(id, expected)?.definition;
+  const definition =
+    history(id, expected)?.definition ??
+    (captured.get(id)?.checksum === expected ? captured.get(id)?.definition : undefined);
   if (!definition)
     throw new Error(`Vorher-Stand von ${id} aus ${change.id} ist in keinem Release enthalten.`);
   return { id, expect: "definition", ...snapshotPayload(meta, target, definition) };

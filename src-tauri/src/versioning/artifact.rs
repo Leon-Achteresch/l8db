@@ -337,6 +337,24 @@ pub(super) struct Context<'a> {
     pub parent: Option<&'a Value>,
     pub target: Option<&'a str>,
     pub kind: DatabaseKind,
+    pub change: Option<&'a str>,
+    pub additive: bool,
+}
+
+fn destructive(sql: &str) -> bool {
+    let upper = sql.to_uppercase();
+    let tokens: Vec<&str> = upper
+        .split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '#')))
+        .collect();
+    tokens.iter().enumerate().any(|(index, token)| {
+        matches!(*token, "DROP" | "TRUNCATE" | "MODIFY")
+            || (*token == "ALTER"
+                && tokens.get(index + 1) == Some(&"COLUMN")
+                && (tokens.get(index + 3) == Some(&"TYPE")
+                    || (tokens.get(index + 3) == Some(&"SET")
+                        && tokens.get(index + 4) == Some(&"DATA")
+                        && tokens.get(index + 5) == Some(&"TYPE"))))
+    })
 }
 
 async fn verify_changes(source: &Value, plan: &Value, context: &Context<'_>) -> Result<(), String> {
@@ -371,9 +389,10 @@ async fn verify_changes(source: &Value, plan: &Value, context: &Context<'_>) -> 
                 source,
             )
         } else {
-            if !source["changes"]
-                .as_array()
-                .is_some_and(|ids| ids.iter().any(|entry| entry == change_id))
+            if context.change != Some(change_id)
+                && !source["changes"]
+                    .as_array()
+                    .is_some_and(|ids| ids.iter().any(|entry| entry == change_id))
             {
                 return Err(format!("Änderung {change_id} gehört nicht zu Release {id}"));
             }
@@ -409,7 +428,16 @@ async fn verify_changes(source: &Value, plan: &Value, context: &Context<'_>) -> 
             }
         }
         let sql = map_sql(&sql, scope, context.target)?;
-        for (index, sql) in split(context.kind, &sql)?.into_iter().enumerate() {
+        let pieces = split(context.kind, &sql)?;
+        if context.additive
+            && rules["destructive"] != true
+            && pieces.iter().any(|piece| destructive(piece))
+        {
+            return Err(format!(
+                "Nur additiv: {change_id} enthält Entfernungen oder Typwechsel ohne ausdrückliche Freigabe"
+            ));
+        }
+        for (index, sql) in pieces.into_iter().enumerate() {
             statements.push(json!({"id":format!("{prefix}:{}", index + 1), "migration":change_id, "sql":statement_key(&sql)}));
         }
     }
@@ -549,10 +577,25 @@ pub async fn verify(request: &Request) -> Result<(), String> {
     if plan["fromHash"] != from_hash || plan["fromObjects"] != objects(&from, target)? {
         return Err("Ausgangsrelease wurde im Ausführungsplan verändert".into());
     }
-    let to_id = text(&plan["reference"], "id")?;
-    if plan["reference"]["path"] != format!("database/releases/{to_id}.json") {
-        return Err("Zielrelease stimmt nicht mit dem Ausführungsplan überein".into());
-    }
+    let change = match plan.get("mode").and_then(Value::as_str) {
+        None => None,
+        Some("change") => Some(text(plan, "change")?),
+        Some(_) => return Err("Unbekannter Ausführungsmodus".into()),
+    };
+    let to_id = if let Some(change) = change {
+        if plan["reference"]["id"] != change
+            || plan["reference"]["path"] != format!("database/changes/{change}.json")
+        {
+            return Err("Änderung stimmt nicht mit dem Ausführungsplan überein".into());
+        }
+        text(plan, "fromId")?
+    } else {
+        let to_id = text(&plan["reference"], "id")?;
+        if plan["reference"]["path"] != format!("database/releases/{to_id}.json") {
+            return Err("Zielrelease stimmt nicht mit dem Ausführungsplan überein".into());
+        }
+        to_id
+    };
     let mut cache: std::collections::HashMap<String, (Value, String)> = Default::default();
     let (to, _) = release(&root, commit, to_id).await?;
     let soll = managed(&to, target)?;
@@ -592,6 +635,19 @@ pub async fn verify(request: &Request) -> Result<(), String> {
     if releases.last().map(|r| &r["id"]) != Some(&json!(to_id)) {
         return Err("Zielrelease stimmt nicht mit dem Ausführungsplan überein".into());
     }
+    if let Some(change) = change {
+        let changes = releases[0]["changes"].as_array();
+        if releases.len() != 1
+            || changes.map(Vec::len) != Some(1)
+            || changes.and_then(|c| c[0]["id"].as_str()) != Some(change)
+            || changes.is_some_and(|c| c[0]["kind"] != "versioned")
+        {
+            return Err(
+                "Eine Einzeländerung wird allein und nur als versionierte Änderung ausgerollt"
+                    .into(),
+            );
+        }
+    }
     let mut queue = vec![to_id.to_string()];
     while let Some(id) = queue.pop() {
         if cache.contains_key(&id) {
@@ -603,6 +659,30 @@ pub async fn verify(request: &Request) -> Result<(), String> {
         let loaded = release(&root, commit, &id).await?;
         queue.extend(parents(&loaded.0));
         cache.insert(id, loaded);
+    }
+    for entry in plan
+        .get("ahead")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let object = text(entry, "object")?;
+        let change_id = text(entry, "change")?;
+        let (rules, _) = standalone(&root, commit, change_id).await?;
+        if change == Some(change_id)
+            || !rules["touches"]
+                .as_array()
+                .is_some_and(|touches| touches.iter().any(|t| t == object))
+            || cache.values().any(|(value, _)| {
+                value["changes"]
+                    .as_array()
+                    .is_some_and(|ids| ids.iter().any(|id| id == change_id))
+            })
+        {
+            return Err(format!(
+                "Vorgezogene Änderung {change_id} ist im Ausführungsplan ungültig"
+            ));
+        }
     }
     let ancestors = |id: &str| {
         let mut seen = HashSet::new();
@@ -616,6 +696,11 @@ pub async fn verify(request: &Request) -> Result<(), String> {
         }
         seen
     };
+    let additive = super::git(&root, &["show", &format!("{commit}:database/project.json")])
+        .await
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .is_some_and(|project| project["additiveOnly"] == true);
     let mut done: HashSet<String> = HashSet::new();
     for planned in releases {
         let id = text(planned, "id")?;
@@ -650,6 +735,8 @@ pub async fn verify(request: &Request) -> Result<(), String> {
             parent,
             target,
             kind: request.connection.kind,
+            change,
+            additive,
         };
         verify_plan(source, hash, planned, &context).await?;
         done.insert(id.to_string());
@@ -660,6 +747,17 @@ pub async fn verify(request: &Request) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn additive_rule_detects_drops_and_type_changes() {
+        assert!(destructive("ALTER TABLE t DROP COLUMN a"));
+        assert!(destructive("alter table t alter column a type bigint"));
+        assert!(destructive("ALTER TABLE T MODIFY (A VARCHAR2(5))"));
+        assert!(!destructive(
+            "ALTER TABLE t ADD COLUMN dropped_at timestamp"
+        ));
+        assert!(!destructive("CREATE INDEX i ON t (a)"));
+    }
 
     #[tokio::test]
     async fn committed_artifact_is_verified_before_any_database_is_opened() {
@@ -782,6 +880,8 @@ mod tests {
             parent,
             target: None,
             kind,
+            change: None,
+            additive: false,
         }
     }
 
