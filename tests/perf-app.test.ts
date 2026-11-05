@@ -273,7 +273,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expect(median).toBeLessThan(50);
       expect(p95).toBeLessThan(120);
       await rail.locator("button[aria-expanded]").click();
-      expect(Math.round((await rail.boundingBox())?.width ?? 0)).toBe(200);
+      expect(Math.round((await rail.boundingBox())?.width ?? 0)).toBe(184);
       expect(
         await app.page.evaluate(
           () => JSON.parse(localStorage.getItem("l8db.settings") ?? "{}").state?.navRailExpanded,

@@ -13,7 +13,7 @@ export function unwrapDataType(dataType: string): string {
   }
 }
 
-function kindFromDataType(dataType: string): ColumnTypeKind | null {
+export function kindFromDataType(dataType: string): ColumnTypeKind | null {
   const lower = unwrapDataType(dataType);
   if (/^(?:array|map|tuple|nested|variant|dynamic|json)\(/.test(lower)) return "json";
   if (/^(?:enum(?:8|16)?\(|ipv[46]|fixedstring)/.test(lower)) return "text";

@@ -166,7 +166,7 @@ export function TableDetailTabBar({
               variant="ghost"
               size="sm"
               className={cn(
-                "h-8 min-w-8 shrink-0 gap-1.5 px-1.5 text-sm font-medium text-foreground/60 hover:text-foreground dark:text-muted-foreground",
+                "h-8 w-36 shrink-0 justify-start gap-1.5 px-1.5 text-sm font-medium text-foreground/60 hover:text-foreground dark:text-muted-foreground",
                 activeOverflow && "bg-muted font-semibold text-foreground dark:text-foreground",
               )}
               aria-label={
@@ -175,9 +175,11 @@ export function TableDetailTabBar({
                   : "Weitere Ansichten"
               }
             >
-              {ActiveIcon && <ActiveIcon className="size-3.5" strokeWidth={1.75} />}
-              {activeOverflow ? activeOverflow.label : "Weitere"}
-              <ChevronDownIcon className="size-3.5 opacity-60" />
+              {ActiveIcon && <ActiveIcon className="size-3.5 shrink-0" strokeWidth={1.75} />}
+              <span className="min-w-0 flex-1 truncate text-left">
+                {activeOverflow ? activeOverflow.label : "Weitere"}
+              </span>
+              <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-44">
