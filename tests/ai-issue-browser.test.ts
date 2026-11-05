@@ -103,7 +103,7 @@ test.skipIf(!process.env.L8DB_AI_ISSUE_BROWSER)(
           () => JSON.parse(localStorage.getItem("l8db.connections") ?? "{}").state.activeId,
         ),
       ).toBeNull();
-      await panel.getByRole("button", { name: /Probleme direkt als Issue melden/ }).click();
+      await panel.getByRole("button", { name: /Problem als Issue melden/ }).click();
       const guide = page.getByRole("dialog", { name: "Aus einem Problem wird ein Issue" });
       await guide.getByText("Bewusst veröffentlichen.", { exact: true }).waitFor();
       await guide.locator("video").waitFor();
