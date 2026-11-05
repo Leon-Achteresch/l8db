@@ -2,9 +2,11 @@ import { useNavigate } from "@tanstack/react-router";
 import { LoaderCircleIcon } from "lucide-react";
 import { useState } from "react";
 import type { DetailedColumnInfo } from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { useTableTabs } from "@/lib/table-tabs";
 import type { Row, TableInfo } from "@/lib/ui-plugins/api";
+import { pluginFilters } from "@/lib/ui-plugins/filters";
 import { columnInfos } from "@/lib/ui-plugins/info";
 import type { ToolbarEntry } from "@/lib/ui-plugins/registry";
 import { freezeRows } from "@/lib/ui-plugins/rows";
@@ -27,7 +29,9 @@ export function PluginToolbar({
   columnNames,
   columnDetails,
   refresh,
+  placement = "toolbar",
 }: {
+  placement?: "toolbar" | "beforeFilter";
   info: TableInfo | null;
   stateKey: string | null | undefined;
   rows: readonly Row[] | undefined;
@@ -35,7 +39,10 @@ export function PluginToolbar({
   columnDetails: readonly DetailedColumnInfo[] | undefined;
   refresh: () => void;
 }) {
-  const entries = usePluginToolbar(info);
+  const feature = useNewFeatureVisibility<HTMLDivElement>("table.filter.ui-plugins");
+  const entries = usePluginToolbar(info).filter(
+    (entry) => (entry.action.placement ?? "toolbar") === placement,
+  );
   const navigate = useNavigate();
   const openTab = useTableTabs((state) => state.openTab);
   const [running, setRunning] = useState<string | null>(null);
@@ -49,6 +56,7 @@ export function PluginToolbar({
           openTab(tab);
           navigateToTab(navigate, { kind: "table", ...tab });
         }),
+        ...pluginFilters(info, columnInfos(columnNames ?? [], columnDetails), stateKey),
         table: info,
         columns: columnInfos(columnNames ?? [], columnDetails),
         rows: freezeRows(rows),
@@ -65,7 +73,7 @@ export function PluginToolbar({
   };
 
   return (
-    <div className="flex items-center gap-1" data-ui-plugin-toolbar="">
+    <div ref={feature.ref} className="flex items-center gap-1" data-ui-plugin-toolbar="">
       {entries.map((entry) => (
         <button
           key={entry.key}

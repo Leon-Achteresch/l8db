@@ -76,9 +76,28 @@ export interface ActionContext {
   copy(text: string): Promise<void>;
   openTable(table: string): void;
   refresh(): void;
+  setFilter(filter: {
+    column: string;
+    operator:
+      | "eq"
+      | "neq"
+      | "gt"
+      | "gte"
+      | "lt"
+      | "lte"
+      | "contains"
+      | "startsWith"
+      | "endsWith"
+      | "isNull"
+      | "isNotNull";
+    value?: string;
+  }): void;
+  clearFilter(): void;
+  pickColumn(): Promise<string | null>;
 }
 
 export interface ToolbarAction {
+  placement?: "toolbar" | "beforeFilter";
   id: string;
   label: string;
   tone?: Tone;
