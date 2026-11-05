@@ -393,7 +393,7 @@ describe("runtime isolation", () => {
     const { compilePlugin } = await import("../packages/ui-plugin-api/src/compile");
     const outcome = (body: string) => {
       const compiled = compilePlugin(body, "escape.tsx");
-      if (!compiled.ok) throw new Error(`compile: ${compiled.error.message}`);
+      if (!compiled.ok) return { error: `compile: ${compiled.error.message}` };
       try {
         return { value: evaluatePlugin(compiled.code, {}) };
       } catch (error) {

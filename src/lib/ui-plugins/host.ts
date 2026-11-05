@@ -13,6 +13,12 @@ import { evaluatePlugin } from "../../../packages/ui-plugin-api/src/evaluate";
 import { validatePlugin } from "./api";
 import type { SlotName } from "./guard";
 import { buildRegistry, slotKey } from "./registry";
+import {
+  clearUiPluginSafeMode,
+  detectUiPluginSafeMode,
+  markUiPluginLoading,
+  onUiPluginSafeModeCleared,
+} from "./safe-mode";
 import { useUiPluginSettings } from "./settings";
 import { uiPluginStatusReport } from "./status";
 import {
@@ -217,7 +223,8 @@ function scheduleStatus() {
 
 async function reloadOnce() {
   const scan = await scanUiPlugins();
-  const files = Array.isArray(scan?.files) ? scan.files : [];
+  const files =
+    Array.isArray(scan?.files) && !useUiPluginRuntime.getState().safeMode ? scan.files : [];
   const compiler = files.length
     ? await import("../../../packages/ui-plugin-api/src/compile")
     : null;
@@ -261,6 +268,18 @@ export function reloadUiPlugins(): Promise<void> {
   return running;
 }
 
+function leaveSafeMode() {
+  if (!useUiPluginRuntime.getState().safeMode) return Promise.resolve();
+  useUiPluginRuntime.setState({ safeMode: false });
+  markUiPluginLoading();
+  return reloadUiPlugins();
+}
+
+export function enableUiPluginsAfterSafeMode(): Promise<void> {
+  clearUiPluginSafeMode();
+  return leaveSafeMode();
+}
+
 export async function startUiPluginHost(sdkModules: Readonly<Record<string, unknown>>) {
   if (started) return;
   started = true;
@@ -276,7 +295,16 @@ export async function startUiPluginHost(sdkModules: Readonly<Record<string, unkn
       scheduleStatus();
   });
   useUiPluginSettings.subscribe(() => scheduleStatus());
+  const safeMode = detectUiPluginSafeMode();
+  useUiPluginRuntime.setState({ safeMode });
+  if (safeMode)
+    toast.warning("UI-Plugins sind im abgesicherten Modus", {
+      description:
+        "Beim letzten Start hat das Laden der Plugins nicht abgeschlossen. Unter Einstellungen → Erweiterungen kannst du sie wieder aktivieren.",
+    });
+  onUiPluginSafeModeCleared(() => void leaveSafeMode());
   await listen(UI_PLUGINS_CHANGED_EVENT, () => void reloadUiPlugins()).catch(() => undefined);
+  if (!safeMode) markUiPluginLoading();
   await reloadUiPlugins();
   void watchUiPlugins().catch((error) =>
     console.warn("UI-Plugin-Ordner wird nicht beobachtet", error),

@@ -14,6 +14,7 @@ export type UiPluginError = { message: string; line?: number; hash?: string };
 
 interface UiPluginRuntimeState {
   ready: boolean;
+  safeMode: boolean;
   dir: string | null;
   loaded: Record<string, LoadedUiPlugin>;
   errors: Record<string, UiPluginError>;
@@ -48,6 +49,7 @@ export const EMPTY_REGISTRY: UiPluginRegistry = {
 
 export const useUiPluginRuntime = create<UiPluginRuntimeState>()(() => ({
   ready: false,
+  safeMode: false,
   dir: null,
   loaded: {},
   errors: {},

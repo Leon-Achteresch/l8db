@@ -1,4 +1,5 @@
 import { type Transform, transform } from "sucrase";
+import { GUARD_NAME, instrumentPlugin } from "./instrument";
 import { ScanError, type Token, tokenize } from "./scan";
 
 export const ALLOWED_IMPORTS = ["react", "react/jsx-runtime", "@l8db/ui"] as const;
@@ -167,6 +168,8 @@ export function checkPluginSource(source: string, fileName: string): CompileResu
       return { ok: false, error: { message: error.message, line: error.line } };
     throw error;
   }
+  if (tokens.some((token) => token.value.includes(GUARD_NAME)))
+    return { ok: false, error: { message: "Reservierter Laufzeitwächter." } };
   const blocked = checkTokens(tokens);
   if (blocked) return { ok: false, error: blocked };
   const element = BLOCKED_ELEMENTS.exec(esm);
@@ -191,7 +194,7 @@ export function compilePlugin(source: string, fileName: string): CompileResult {
       disableESTransforms: true,
       filePath: fileName.replace(/\.(tsx|ts|jsx)$/, ".js"),
     }).code;
-    return { ok: true, code };
+    return { ok: true, code: instrumentPlugin(code) };
   } catch (error) {
     return { ok: false, error: transformError(error) };
   }
