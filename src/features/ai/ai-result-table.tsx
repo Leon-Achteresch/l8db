@@ -18,13 +18,13 @@ export function AiResultTable({ table }: { table: AiTable }) {
     <div className="max-h-72 overflow-auto">
       <table className="w-full border-collapse text-left text-xs tabular-nums">
         <thead className="sticky top-0 bg-card">
-          <tr className="shadow-[inset_0_-1px_0_var(--border)]">
+          <tr>
             {table.columns.map((column) => (
               <th
                 key={column}
                 scope="col"
                 className={cn(
-                  "whitespace-nowrap px-3 py-2 text-[11px] font-medium text-muted-foreground",
+                  "whitespace-nowrap px-3.5 py-2 text-[11px] font-medium text-muted-foreground",
                   numeric.has(column) && "text-right",
                 )}
               >
@@ -35,15 +35,12 @@ export function AiResultTable({ table }: { table: AiTable }) {
         </thead>
         <tbody>
           {table.rows.map((row, index) => (
-            <tr
-              key={String(index)}
-              className="border-t border-border/50 transition-colors hover:bg-muted/40"
-            >
+            <tr key={String(index)} className="transition-colors odd:bg-muted/35 hover:bg-muted/70">
               {table.columns.map((column) => (
                 <td
                   key={column}
                   className={cn(
-                    "max-w-64 truncate px-3 py-1.5",
+                    "max-w-64 truncate px-3.5 py-1.5",
                     numeric.has(column) && "text-right",
                   )}
                   title={row[column] ?? ""}

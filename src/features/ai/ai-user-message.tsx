@@ -40,7 +40,7 @@ export function AiUserMessage({
   if (draft !== null)
     return (
       <form
-        className="w-full rounded-xl border bg-background p-2 focus-within:border-foreground/25"
+        className="w-full rounded-2xl bg-muted/70 p-2 focus-within:bg-muted"
         onSubmit={(event) => {
           event.preventDefault();
           save();
@@ -80,7 +80,7 @@ export function AiUserMessage({
       data-slot="message"
       data-from="user"
       aria-label="Deine Nachricht"
-      className="group/message relative flex flex-col items-start gap-1.5"
+      className="group/message relative flex flex-col items-end gap-1.5 pl-10"
     >
       {message.attachments?.length ? <AiAttachmentChips files={message.attachments} /> : null}
       {message.contextLabels?.length ? (
@@ -88,10 +88,10 @@ export function AiUserMessage({
           {message.contextLabels.join(" · ")}
         </p>
       ) : null}
-      <div className="relative w-full">
+      <div className="max-w-full rounded-[20px] rounded-br-md bg-foreground/[0.06] px-3.5 py-2 dark:bg-muted">
         <div
           className={cn(
-            "whitespace-pre-wrap break-words text-[15px] font-medium leading-snug tracking-[-0.005em] text-foreground",
+            "whitespace-pre-wrap break-words text-[14px] leading-relaxed text-foreground",
             long &&
               !expanded &&
               "max-h-44 overflow-hidden [mask-image:linear-gradient(to_bottom,black_calc(100%-1.75rem),transparent)]",
@@ -106,11 +106,12 @@ export function AiUserMessage({
             className="-ml-2 mt-1 h-6 px-2 text-xs text-muted-foreground"
             onClick={() => setExpanded(!expanded)}
           >
-            {expanded ? "Weniger anzeigen" : "Ganze Nachricht anzeigen"}
+            {expanded ? "Weniger" : "Alles anzeigen"}
           </Button>
         )}
       </div>
-      <div className="absolute top-0 right-0 z-10 flex items-center gap-0.5 rounded-lg bg-background/95 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/message:opacity-100 pointer-coarse:opacity-100">
+      <div className="-mt-1 -mr-1.5 flex items-center gap-0.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/message:opacity-100 pointer-coarse:opacity-100">
+        <AiMessageTime at={message.createdAt} />
         <ResponseAction
           label="Nachricht bearbeiten"
           disabled={disabled}
@@ -125,7 +126,6 @@ export function AiUserMessage({
           disabled={disabled}
           onBranch={onBranch}
         />
-        <AiMessageTime at={message.createdAt} />
       </div>
     </article>
   );

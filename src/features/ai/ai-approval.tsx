@@ -1,4 +1,4 @@
-import { ShieldAlert } from "lucide-react";
+import { MessageCircleQuestion, ShieldAlert, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { type ApprovalAnswers, ApprovalCard } from "@/components/primitives/approval-card";
@@ -25,7 +25,7 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
   const data = event.data;
   const id = String(data.id);
   useEffect(() => {
-    if (id) region.current?.focus();
+    if (id) region.current?.focus({ preventScroll: true });
   }, [id]);
   const details =
     data.details && typeof data.details === "object"
@@ -99,22 +99,26 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
       setPending(false);
     }
   };
-  const summary = approvalSummary(details);
   const title = String(data.title ?? (questionInput ? "Rückfrage" : "Freigabe erforderlich"));
-  const description =
+  const summary = approvalSummary(details).filter((entry) => entry.value !== title);
+  const connection = summary.find((entry) => entry.label === "Verbindung")?.value;
+  const rawDescription =
     typeof data.details === "string"
       ? data.details
       : String(details.message ?? details.description ?? details.command ?? details.sql ?? "");
+  const description = summary.some((entry) => entry.value === rawDescription) ? "" : rawDescription;
   const { screenshot, ...shown } = details;
   const preview =
     typeof screenshot === "string" && screenshot.startsWith("data:image/png;base64,")
       ? screenshot
       : null;
-  const extra = !questionInput && Object.keys(shown).some((key) => key !== "requestedSchema") && (
-    <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
-      {JSON.stringify(shown, null, 2)}
-    </pre>
-  );
+  const extra = !questionInput &&
+    !schema &&
+    Object.keys(shown).some((key) => key !== "requestedSchema") && (
+      <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
+        {JSON.stringify(shown, null, 2)}
+      </pre>
+    );
   const actions = (
     <>
       <Button size="xs" variant="ghost" disabled={pending} onClick={() => void act(false)}>
@@ -170,13 +174,14 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
       ) : (
         <RecommendationCard
           title={title}
+          icon={schema ? <MessageCircleQuestion /> : <ShieldAlert />}
           meta={
-            <>
-              <ShieldAlert className="size-3.5 shrink-0 text-amber-500" />
-              <span className="truncate font-mono">
-                {String(data.name ?? details.tool ?? "Agent-Aktion")}
+            data.name || details.tool || connection ? (
+              <span className="truncate">
+                <span className="font-mono">{String(data.name ?? details.tool ?? "")}</span>
+                {data.name || details.tool ? (connection ? ` · ${connection}` : "") : connection}
               </span>
-            </>
+            ) : undefined
           }
           details={extra || undefined}
           detailsLabel="Details"
@@ -184,33 +189,47 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
         >
           {description && <p className="whitespace-pre-wrap">{description}</p>}
           {preview && (
-            <div className="mt-2 space-y-1">
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                Geschwärzter Screenshot
-              </div>
-              <img
-                src={preview}
-                alt="Geschwärzter Screenshot, der mitgesendet wird"
-                className="max-h-64 w-full rounded-md border object-contain"
-              />
-            </div>
+            <img
+              src={preview}
+              alt="Geschwärzter Screenshot, der mitgesendet wird"
+              title="Geschwärzter Screenshot"
+              className="mt-2 max-h-64 w-full rounded-xl bg-muted object-contain"
+            />
           )}
           {summary.length > 0 && (
-            <dl className="mt-2 space-y-2 rounded-lg bg-muted/40 p-2.5">
-              {summary.map((entry) => (
-                <div
-                  key={`${entry.label}-${entry.value}`}
-                  ref={entry.label === "Auswirkung" ? impact.ref : undefined}
-                >
-                  <dt className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                    {entry.label}
-                    {entry.label === "Auswirkung" && impact.isNew && <NewBadge />}
-                  </dt>
-                  <dd className="mt-0.5 whitespace-pre-wrap break-words text-foreground/90">
-                    {entry.value}
-                  </dd>
-                </div>
-              ))}
+            <dl className="mt-2 space-y-2">
+              {summary
+                .filter((entry) => entry.label !== "Verbindung")
+                .map((entry) =>
+                  entry.label === "Auswirkung" ? (
+                    <div
+                      key={`${entry.label}-${entry.value}`}
+                      ref={impact.ref}
+                      className="flex items-start gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-foreground"
+                    >
+                      <dt className="sr-only">{entry.label}</dt>
+                      <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                      <dd className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+                        {entry.value}
+                      </dd>
+                      {impact.isNew && <NewBadge />}
+                    </div>
+                  ) : /^(SQL|Anweisungen|Befehl)$/.test(entry.label) ? (
+                    <div key={`${entry.label}-${entry.value}`}>
+                      <dt className="sr-only">{entry.label}</dt>
+                      <dd className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted/70 px-3 py-2 font-mono text-[11.5px] leading-relaxed text-foreground/90">
+                        {entry.value}
+                      </dd>
+                    </div>
+                  ) : (
+                    <div key={`${entry.label}-${entry.value}`} className="flex gap-3">
+                      <dt className="w-20 shrink-0 text-muted-foreground">{entry.label}</dt>
+                      <dd className="min-w-0 flex-1 whitespace-pre-wrap break-words text-foreground/90">
+                        {entry.value}
+                      </dd>
+                    </div>
+                  ),
+                )}
             </dl>
           )}
           {Object.entries(properties).map(([key, property]) => (
@@ -226,14 +245,16 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
           ))}
           {Object.keys(properties).length > 0 && (
             <details className="mt-3">
-              <summary className="min-h-8 cursor-pointer py-1.5">Erweitert: JSON-Antwort</summary>
+              <summary className="min-h-7 cursor-pointer py-1 text-[11px]">
+                Als JSON antworten
+              </summary>
               <textarea
                 aria-label="Antwort als JSON"
                 value={advanced}
                 disabled={pending}
                 onChange={(event) => setAdvanced(event.target.value)}
                 aria-invalid={invalidJson}
-                className="mt-2 min-h-20 w-full rounded-md border bg-background p-2 font-mono text-xs"
+                className="mt-2 min-h-20 w-full rounded-xl bg-muted/60 p-2.5 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
               {invalidJson && <p className="text-xs text-destructive">Kein gültiges JSON.</p>}
             </details>
