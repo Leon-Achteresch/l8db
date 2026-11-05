@@ -9,8 +9,10 @@ import { Button } from "@/components/ui/button";
 import { readCommunityExtension } from "@/lib/db";
 import { SPRING_LAYOUT, SPRING_PANEL } from "@/lib/ease";
 import type { ExtensionDescriptor } from "@/lib/extensions/contracts";
+import { useExtensionSources } from "@/lib/extensions/management";
 import { useExtensionHost } from "@/lib/extensions/react-context";
 import { useHasNewFeatures } from "@/lib/new-features";
+import { useOrganizationStore } from "@/lib/organization-state";
 import { cn } from "@/lib/utils";
 import { ExtensionActionsMenu } from "./extension-actions-menu";
 import { ExtensionDetails } from "./extension-details";
@@ -42,6 +44,8 @@ export function CommunityExtensionCard({
   const host = useExtensionHost();
   const { manifest } = extension.archive;
   const id = manifest.id;
+  const source = useExtensionSources((state) => state.sources[`full:${id}`] ?? "Eigene");
+  const blocked = useOrganizationStore((state) => state.policy?.allowExtensions === false);
   const guided = GUIDED[id];
   const Icon = guided?.icon ?? PuzzleIcon;
   const Setup = guided?.setup;
@@ -91,18 +95,22 @@ export function CommunityExtensionCard({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">Voll · {source}</Badge>
             <h3 className="text-sm font-semibold">{manifest.name}</h3>
             {id === PASSWORD_MANAGER_ID && !extension.enabled && openbaoIsNew && <NewBadge />}
             <Badge variant={failed ? "destructive" : extension.enabled ? "secondary" : "outline"}>
-              {failed ? "Fehler" : extension.enabled ? "Aktiv" : "Inaktiv"}
+              {blocked ? "Abgeschaltet" : failed ? "Fehler" : extension.enabled ? "Aktiv" : "Aus"}
             </Badge>
             <span className="text-xs text-muted-foreground tabular-nums">v{manifest.version}</span>
           </div>
           <p className="mt-0.5 text-xs text-pretty text-muted-foreground">{manifest.description}</p>
+          <p className="text-xs text-muted-foreground">
+            Rechte: {manifest.permissions?.join(", ") || "Keine"}
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {!extension.enabled && !consent && (
-            <Button size="sm" onClick={activate}>
+            <Button size="sm" disabled={blocked} onClick={activate}>
               Aktivieren
             </Button>
           )}

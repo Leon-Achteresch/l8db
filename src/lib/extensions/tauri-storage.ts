@@ -7,6 +7,16 @@ import type {
   Permission,
 } from "./contracts";
 
+export const EXTENSION_STORAGE_REVISION = "l8db.extensions.revision";
+async function mutate(action: string, id: string, value?: unknown) {
+  const result = await communityExtensionStore<void>(action, id, value);
+  try {
+    if (typeof localStorage !== "undefined")
+      localStorage.setItem(EXTENSION_STORAGE_REVISION, crypto.randomUUID());
+  } catch {}
+  return result;
+}
+
 const secretAccount = (id: string, key: string) => `extension:${id}:${key}`;
 const indexAccount = (id: string) => `extension-secret-index:${id}`;
 
@@ -24,18 +34,18 @@ export class TauriExtensionStorage implements ExtensionStorage {
     return communityExtensionStore<InstalledExtension[]>("list");
   }
   install(archive: ExtensionArchive, developmentPath?: string) {
-    return communityExtensionStore<void>("install", "", { archive, developmentPath });
+    return mutate("install", "", { archive, developmentPath });
   }
   replace(id: string, archive: ExtensionArchive, developmentPath?: string) {
-    return communityExtensionStore<void>("replace", id, { archive, developmentPath });
+    return mutate("replace", id, { archive, developmentPath });
   }
   async remove(id: string) {
     for (const key of await secretKeys(id)) await deleteSecret(secretAccount(id, key));
     await deleteSecret(indexAccount(id));
-    await communityExtensionStore<void>("remove", id);
+    await mutate("remove", id);
   }
   update(id: string, enabled: boolean, grants: Permission[], configuration: Record<string, Json>) {
-    return communityExtensionStore<void>("update", id, { enabled, grants, configuration });
+    return mutate("update", id, { enabled, grants, configuration });
   }
   get(id: string, key: string) {
     return communityExtensionStore<Json>("get", id, { key });

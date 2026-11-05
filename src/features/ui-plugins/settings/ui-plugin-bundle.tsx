@@ -10,10 +10,14 @@ import {
   scanUiPlugins,
   writeUiPlugin,
 } from "@/lib/db/ui-plugins";
+import type { ExtensionArchive } from "@/lib/extensions/contracts";
+import { assertExtensionsAllowed, useExtensionSources } from "@/lib/extensions/management";
+import { useExtensionHost } from "@/lib/extensions/react-context";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import {
   applyBundle,
   type BundlePreview,
+  bundleArchives,
   encodeBundle,
   previewBundle,
 } from "@/lib/ui-plugins/bundle";
@@ -21,6 +25,9 @@ import { checkUiPluginSource, reloadUiPlugins } from "@/lib/ui-plugins/host";
 import { useUiPluginSettings } from "@/lib/ui-plugins/settings";
 
 export function UiPluginBundle() {
+  const host = useExtensionHost();
+  const [archives, setArchives] = useState<ExtensionArchive[]>([]);
+  const [archiveSelection, setArchiveSelection] = useState<Set<string>>(new Set());
   const feature = useNewFeatureVisibility<HTMLDivElement>("settings.extensions.ui-plugins.bundle");
   const [entries, setEntries] = useState<BundlePreview[] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -38,20 +45,21 @@ export function UiPluginBundle() {
   };
   const prepare = (next: "import" | "export") =>
     run(async () => {
+      if (next === "import") assertExtensionsAllowed();
       const files = (await scanUiPlugins()).files;
       let value: unknown;
       if (next === "import") {
         const path = await open({
           multiple: false,
-          filters: [{ name: "UI-Plugins", extensions: ["json"] }],
+          filters: [{ name: "Erweiterungen", extensions: ["json"] }],
         });
         if (!path) return;
         value = await readUiPluginBundle(path);
       } else {
-        if (!files.length) throw new Error("Keine Plugins zum Exportieren.");
         value = {
           format: "l8db.ui-plugins",
           version: 1,
+          archives: host.listExtensions().map((extension) => extension.archive),
           plugins: files.map((file) => ({ ...file, options: {} })),
         };
       }
@@ -60,6 +68,22 @@ export function UiPluginBundle() {
         const options = useUiPluginSettings.getState().options;
         for (const entry of preview) entry.options = entry.id ? (options[entry.id] ?? {}) : {};
       }
+      const full = bundleArchives(value);
+      if (
+        next === "import" &&
+        full.some((archive) =>
+          host
+            .listExtensions()
+            .some((extension) => extension.archive.manifest.id === archive.manifest.id),
+        )
+      )
+        throw new Error(
+          "Volle Erweiterung bereits installiert. Vor dem Import entfernen oder über Details aktualisieren.",
+        );
+      setArchives(full);
+      setArchiveSelection(
+        new Set(next === "export" ? full.map((archive) => archive.manifest.id) : []),
+      );
       setMode(next);
       setEntries(preview);
       setSelected(new Set(preview.filter((e) => !e.error).map((e) => e.name)));
@@ -69,8 +93,8 @@ export function UiPluginBundle() {
       const chosen = entries?.filter((e) => selected.has(e.name) && !e.error) ?? [];
       if (mode === "export") {
         const path = await save({
-          defaultPath: "ui-plugins.json",
-          filters: [{ name: "UI-Plugins", extensions: ["json"] }],
+          defaultPath: "erweiterungen.json",
+          filters: [{ name: "Erweiterungen", extensions: ["json"] }],
         });
         if (!path) return;
         await exportUiPluginBundle(
@@ -82,12 +106,15 @@ export function UiPluginBundle() {
               options,
               requiredHttpHosts,
             })),
+            archives.filter((archive) => archiveSelection.has(archive.manifest.id)),
           ),
         );
       } else {
+        assertExtensionsAllowed();
         const current = (await scanUiPlugins()).files;
         await applyBundle(entries ?? [], selected, current, checkUiPluginSource, async (entry) => {
           await writeUiPlugin(entry.name, entry.source);
+          useExtensionSources.getState().mark(`light:${entry.name}`, "Import");
           const settings = useUiPluginSettings.getState();
           if (entry.id) {
             const httpGrants = { ...settings.httpGrants };
@@ -98,10 +125,15 @@ export function UiPluginBundle() {
             });
           }
         });
+        for (const archive of archives.filter((entry) => archiveSelection.has(entry.manifest.id))) {
+          assertExtensionsAllowed();
+          await host.installExtension(archive);
+          useExtensionSources.getState().mark(`full:${archive.manifest.id}`, "Import");
+        }
         await reloadUiPlugins();
       }
       setEntries(null);
-      toast.success(mode === "export" ? "Plugins exportiert" : "Plugins importiert");
+      toast.success(mode === "export" ? "Erweiterungen exportiert" : "Erweiterungen importiert");
     });
   return (
     <div ref={feature.ref} className="flex gap-2">
@@ -118,8 +150,40 @@ export function UiPluginBundle() {
         }}
       >
         <DialogContent className="max-h-[85vh] max-w-4xl overflow-auto">
-          <DialogTitle>UI-Plugins {mode === "import" ? "importieren" : "exportieren"}</DialogTitle>
+          <DialogTitle>
+            Erweiterungen {mode === "import" ? "importieren" : "exportieren"}
+          </DialogTitle>
           <p className="text-sm">HTTP-Freigaben werden nicht übertragen.</p>
+          {archives.map((archive) => (
+            <article key={`full:${archive.manifest.id}`} className="space-y-2 bg-muted/40 p-3">
+              <label className="flex gap-2">
+                <input
+                  type="checkbox"
+                  disabled={busy}
+                  checked={archiveSelection.has(archive.manifest.id)}
+                  onChange={(event) =>
+                    setArchiveSelection((old) => {
+                      const next = new Set(old);
+                      if (event.target.checked) next.add(archive.manifest.id);
+                      else next.delete(archive.manifest.id);
+                      return next;
+                    })
+                  }
+                />
+                {archive.manifest.name} · Voll
+              </label>
+              <p className="text-xs">
+                Rechte: {archive.manifest.permissions?.join(", ") || "Keine"}
+              </p>
+              <pre className="text-xs whitespace-pre-wrap">
+                {JSON.stringify(archive.manifest.capabilities ?? {}, null, 2)}
+              </pre>
+              <p className="text-xs">
+                Auswahl bestätigt den Import. Aktivierung und Rechtefreigabe erfolgen anschließend
+                in der Liste.
+              </p>
+            </article>
+          ))}
           {entries?.map((entry) => (
             <article key={entry.key} className="space-y-2 bg-muted/40 p-3">
               <label className="flex gap-2">
@@ -172,7 +236,10 @@ export function UiPluginBundle() {
             <Button variant="ghost" disabled={busy} onClick={() => setEntries(null)}>
               Abbrechen
             </Button>
-            <Button disabled={busy || !selected.size} onClick={() => void confirm()}>
+            <Button
+              disabled={busy || (!selected.size && !archiveSelection.size)}
+              onClick={() => void confirm()}
+            >
               Auswahl {mode === "import" ? "übernehmen" : "speichern"}
             </Button>
           </div>

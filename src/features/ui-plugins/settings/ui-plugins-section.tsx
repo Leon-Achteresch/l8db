@@ -1,13 +1,17 @@
 import { openPath } from "@tauri-apps/plugin-opener";
 import { BotIcon, FolderOpenIcon, RefreshCwIcon } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/shallow";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import { CommunityExtensionCard } from "@/features/community-extensions/community-extension-card";
 import { copyText } from "@/lib/clipboard";
 import { removeUiPlugin } from "@/lib/db";
+import { extensionPage } from "@/lib/extensions/management-page";
+import { useExtensionSnapshot } from "@/lib/extensions/react-context";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { useOrganizationStore } from "@/lib/organization-state";
 import { enableUiPluginsAfterSafeMode, reloadUiPlugins } from "@/lib/ui-plugins/host";
 import { useUiPluginSettings } from "@/lib/ui-plugins/settings";
 import { uiPluginStatuses } from "@/lib/ui-plugins/status";
@@ -17,7 +21,7 @@ import { UiPluginCard } from "./ui-plugin-card";
 import { UiPluginGallery } from "./ui-plugin-gallery";
 
 function aiPrompt(dir: string | null) {
-  return `Baue mir ein l8db UI-Plugin. Arbeitsordner: ${dir ?? "~/.l8db/ui"}
+  return `Baue mir eine leichte l8db-Erweiterung. Arbeitsordner: ${dir ?? "~/.l8db/ui"}
 Lies zuerst AGENTS.md und l8db-ui.d.ts in diesem Ordner. Lege genau eine .tsx-Datei an.
 Prüfe danach .status.json: Die Datei muss "active" sein und darf keine slotErrors haben.
 
@@ -25,7 +29,10 @@ Mein Wunsch: `;
 }
 
 export function UiPluginsSection() {
-  const feature = useNewFeatureVisibility<HTMLElement>("settings.extensions.ui-plugins");
+  const blocked = useOrganizationStore((state) => state.policy?.allowExtensions === false);
+  const extensions = useExtensionSnapshot((manager) => manager.listExtensions());
+  const [page, setPage] = useState(0);
+  const feature = useNewFeatureVisibility<HTMLElement>("settings.extensions.management");
   const runtime = useUiPluginRuntime(
     useShallow((state) => ({
       ready: state.ready,
@@ -49,6 +56,8 @@ export function UiPluginsSection() {
   const safeMode = useUiPluginRuntime((state) => state.safeMode);
   const statuses = useMemo(() => uiPluginStatuses(runtime, settings), [runtime, settings]);
 
+  const visible = extensionPage(extensions, statuses, page);
+
   const remove = async (id: string, file: string) => {
     try {
       await removeUiPlugin(file);
@@ -67,16 +76,16 @@ export function UiPluginsSection() {
       className="@container space-y-4 border-t border-border/60 pt-6"
       aria-labelledby="ui-plugins-heading"
     >
+      {blocked && (
+        <p role="alert" className="text-sm text-destructive">
+          Erweiterungen sind durch die Organisation abgeschaltet.
+        </p>
+      )}
       {safeMode && (
         <div
           role="alert"
           className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-amber-500/10 px-3 py-2 text-xs"
         >
-          <p className="max-w-xl text-pretty">
-            Abgesicherter Modus: Beim letzten Start hat das Laden der UI-Plugins nicht
-            abgeschlossen. Alle Plugins sind vorübergehend aus. Entferne oder korrigiere das
-            fehlerhafte Plugin und aktiviere sie dann wieder.
-          </p>
           <Button
             size="sm"
             variant="outline"
@@ -91,7 +100,7 @@ export function UiPluginsSection() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 id="ui-plugins-heading" className="flex items-center gap-1.5 text-sm font-semibold">
-            UI-Plugins
+            Installierte Erweiterungen
             {feature.isNew && <NewBadge />}
           </h3>
           <p className="max-w-xl text-xs text-pretty text-muted-foreground">
@@ -127,7 +136,7 @@ export function UiPluginsSection() {
           <Button
             size="icon-sm"
             variant="ghost"
-            aria-label="UI-Plugins neu laden"
+            aria-label="leichte Erweiterungen neu laden"
             onClick={() => void reloadUiPlugins()}
           >
             <RefreshCwIcon />
@@ -140,22 +149,28 @@ export function UiPluginsSection() {
         </p>
       )}
       <div className="space-y-3">
-        {statuses.map((status) => {
+        {visible.full.map((extension) => (
+          <CommunityExtensionCard
+            key={`full:${extension.archive.manifest.id}`}
+            extension={extension}
+            run={(action) => {
+              void action().catch((error) => toast.error(String(error)));
+            }}
+          />
+        ))}
+        {visible.light.map((status) => {
           const id = status.id;
-          const installedFile = id ? settings.installed[id]?.file : undefined;
           return (
             <UiPluginCard
               key={status.file}
               status={status}
-              onRemove={
-                id && installedFile === status.file ? () => void remove(id, status.file) : undefined
-              }
+              onRemove={() => void remove(id ?? status.file, status.file)}
             />
           );
         })}
-        {runtime.ready && statuses.length === 0 && (
+        {runtime.ready && statuses.length + extensions.length === 0 && (
           <p className="rounded-2xl border border-dashed px-4 py-6 text-center text-xs text-muted-foreground">
-            Noch keine UI-Plugins. Unten aus der Galerie installieren oder mit „Mit KI bauen“ ein
+            Noch keine Erweiterungen. Unten aus der Galerie installieren oder mit „Mit KI bauen“ ein
             eigenes anlegen lassen.
           </p>
         )}
@@ -169,6 +184,20 @@ export function UiPluginsSection() {
           </ul>
         )}
       </div>
+      {statuses.length + extensions.length > 25 && (
+        <div className="flex gap-2">
+          <Button disabled={visible.page === 0} onClick={() => setPage(visible.page - 1)}>
+            Zurück
+          </Button>
+          <span>{visible.page + 1}</span>
+          <Button
+            disabled={(visible.page + 1) * 25 >= statuses.length + extensions.length}
+            onClick={() => setPage(visible.page + 1)}
+          >
+            Weiter
+          </Button>
+        </div>
+      )}
       <UiPluginBundle />
       <UiPluginGallery />
     </section>

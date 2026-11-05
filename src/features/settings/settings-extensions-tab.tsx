@@ -11,10 +11,10 @@ export function SettingsExtensionsTab() {
           Erweiterungen installieren, freigeben und einrichten.
         </p>
       </div>
-      <CommunityExtensionsSection />
+      <CommunityExtensionsSection controlsOnly />
+      <UiPluginsSection />
       <ExtensionMarketSection />
       <ExtensionMarketSection community />
-      <UiPluginsSection />
     </div>
   );
 }

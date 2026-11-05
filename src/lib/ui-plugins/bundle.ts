@@ -1,4 +1,6 @@
 import type { UiPluginFile } from "@/lib/db/ui-plugins";
+import type { ExtensionArchive } from "@/lib/extensions/contracts";
+import { validateArchive } from "../../../packages/extension-api/src/manifest";
 import type { UiPluginOptionValue } from "./settings";
 
 export interface BundleEntry {
@@ -15,9 +17,24 @@ export interface BundlePreview extends BundleEntry {
 }
 type Check = (name: string, source: string) => Promise<{ id: string; http?: string[] }>;
 
-export function encodeBundle(plugins: BundleEntry[]) {
-  if (!plugins.length) throw new Error("Keine Plugins ausgewählt.");
-  const contents = JSON.stringify({ format: "l8db.ui-plugins", version: 1, plugins });
+export function bundleArchives(value: unknown): ExtensionArchive[] {
+  const raw = (value as { archives?: unknown })?.archives;
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw) || raw.length > 50) throw new Error("Ungültige Archivliste.");
+  const archives = raw.map(validateArchive);
+  if (new Set(archives.map((archive) => archive.manifest.id)).size !== archives.length)
+    throw new Error("Doppelte Erweiterungs-ID.");
+  return archives;
+}
+
+export function encodeBundle(plugins: BundleEntry[], archives: ExtensionArchive[] = []) {
+  if (!plugins.length && !archives.length) throw new Error("Keine Plugins ausgewählt.");
+  const contents = JSON.stringify({
+    format: "l8db.ui-plugins",
+    version: 1,
+    plugins,
+    archives: bundleArchives({ archives }),
+  });
   if (new TextEncoder().encode(contents).length > 2 * 1024 * 1024)
     throw new Error("Bundle ist größer als 2 MiB.");
   return contents;
