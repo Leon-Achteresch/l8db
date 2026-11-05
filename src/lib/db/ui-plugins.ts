@@ -67,7 +67,14 @@ export function finishUiPluginProposal(
   if (apply) assertExtensionsAllowed();
   return invoke<void>("ui_plugin_proposals_finish", {
     slot: request.slot,
-    request,
+    request: {
+      slot: request.slot,
+      nonce: request.nonce,
+      action: request.action,
+      name: request.name,
+      source: request.source,
+      before: request.before,
+    },
     response,
     apply,
   });

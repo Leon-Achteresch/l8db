@@ -10,7 +10,10 @@ export function inspectPluginSource(
   expectedId?: string,
 ) {
   const compiled = compiler.compilePlugin(source, file);
-  if (!compiled.ok) throw new Error(compiled.error.message);
+  if (!compiled.ok)
+    throw new Error(
+      `${compiled.error.message}${compiled.error.line ? ` (Zeile ${compiled.error.line})` : ""}`,
+    );
   const tokens = tokenize(
     transform(source, { transforms: ["typescript", "jsx"], jsxRuntime: "automatic" }).code,
   );
