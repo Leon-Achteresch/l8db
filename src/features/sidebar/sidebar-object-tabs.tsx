@@ -34,7 +34,7 @@ export function SidebarObjectTabs({
         })
       }
     >
-      <TabsList className="w-full">
+      <TabsList className="w-full" data-icon-chrome>
         {tabs.map((tab) => (
           <Tooltip
             key={tab.value}

@@ -4,9 +4,11 @@ import {
   ChevronLastIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  KeyboardIcon,
   RefreshCwIcon,
 } from "lucide-react";
 import { memo } from "react";
+import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
 import { DataTableAutoRefresh } from "@/features/table/data-table-auto-refresh";
 import type { autoRefreshPauseReason } from "@/lib/auto-refresh";
@@ -68,16 +70,24 @@ export const DataTableFooter = memo(function DataTableFooter({
   const rangeStart = first + 1;
   const rangeEnd = first + rowCount;
   const total = totalCount ?? countLabel;
+  const keyboardHint = canEdit
+    ? "Pfeiltasten navigieren · Enter oder Klick auf die fokussierte Zelle zum Bearbeiten"
+    : "Navigiere mit Pfeiltasten · Doppelklick zum Kopieren";
   return (
-    <div
-      title={
-        canEdit
-          ? "Pfeiltasten navigieren · Enter oder Klick auf die fokussierte Zelle zum Bearbeiten"
-          : "Navigiere mit Pfeiltasten · Doppelklick zum Kopieren"
-      }
-      className="grid h-8 shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-t border-border bg-muted/40 px-3 text-[11px] text-muted-foreground select-none"
-    >
-      <span ref={infinite ? infiniteFeature.ref : undefined} className="whitespace-nowrap">
+    <div className="grid h-8 shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-t border-border bg-muted/40 px-3 text-xs text-muted-foreground select-none">
+      <span
+        ref={infinite ? infiniteFeature.ref : undefined}
+        className="flex items-center gap-2 whitespace-nowrap"
+      >
+        <Tooltip content={keyboardHint} side="top">
+          <button
+            type="button"
+            aria-label={keyboardHint}
+            className="inline-flex cursor-help rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+          >
+            <KeyboardIcon className="size-3.5" strokeWidth={1.75} />
+          </button>
+        </Tooltip>
         {infinite && infiniteFeature.isNew && <NewBadge />}
         {total != null
           ? `${rangeStart}–${rangeEnd} von ${total}`

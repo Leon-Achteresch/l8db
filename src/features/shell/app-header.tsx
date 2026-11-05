@@ -124,6 +124,7 @@ export function AppHeader() {
 
   return (
     <header
+      data-icon-chrome
       ref={headerRef}
       data-tauri-drag-region="deep"
       className={cn(

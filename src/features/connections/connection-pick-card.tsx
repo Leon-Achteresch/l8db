@@ -67,6 +67,7 @@ export function ConnectionPickCard({
         <ConnectionCardShell
           connection={connection}
           active={active}
+          connected={active}
           onDoubleClick={(event) => {
             if (active || (event.target as HTMLElement).closest("button")) return;
             onOpen();
@@ -248,6 +249,7 @@ export function ConnectionSelectCard({
 function ConnectionCardShell({
   connection,
   active,
+  connected = false,
   actions,
   footer,
   className,
@@ -255,6 +257,7 @@ function ConnectionCardShell({
 }: {
   connection: SavedConnection;
   active: boolean;
+  connected?: boolean;
   actions: ReactNode;
   footer?: ReactNode;
 } & ComponentProps<typeof motion.article>) {
@@ -299,13 +302,20 @@ function ConnectionCardShell({
               </span>
             </div>
             <div className="min-w-0 flex-1">
-              <h3
-                className="truncate text-sm font-semibold tracking-tight text-foreground"
-                title={connection.name}
-              >
-                {connection.name}
-              </h3>
-              <p className="truncate text-[11px] text-muted-foreground">
+              <div className="flex min-w-0 items-center gap-2">
+                <h3
+                  className="truncate text-sm font-semibold tracking-tight text-foreground"
+                  title={connection.name}
+                >
+                  {connection.name}
+                </h3>
+                {connected && (
+                  <span className="shrink-0 rounded-sm border border-emerald-500/30 bg-emerald-500/10 px-1.5 text-xs leading-[18px] font-medium text-emerald-600 dark:text-emerald-400">
+                    Verbunden
+                  </span>
+                )}
+              </div>
+              <p className="truncate text-xs text-muted-foreground">
                 {provider.name}
                 {colorLabel ? ` · ${colorLabel}` : ""}
               </p>

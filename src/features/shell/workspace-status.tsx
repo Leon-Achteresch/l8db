@@ -31,7 +31,7 @@ export function WorkspaceStatus() {
     return () => useWorkspaceStatusStore.setState({ visible: false });
   }, []);
   return (
-    <footer className="@container/footer flex h-7 shrink-0 items-center justify-between gap-3 border-t bg-card/60 px-4 text-[10px] text-muted-foreground">
+    <footer className="@container/footer flex h-7 shrink-0 items-center justify-between gap-3 border-t bg-card/60 px-4 text-xs text-muted-foreground">
       <div className="flex min-w-0 items-center gap-3">
         <Link
           to="/connections"

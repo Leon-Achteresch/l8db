@@ -149,7 +149,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
           <Icon className="relative size-3" />
         )}
       </span>
-      <span className="truncate font-medium">{label}</span>
+      <span className={cn("truncate", isActive ? "font-semibold" : "font-medium")}>{label}</span>
       {color && (
         <span
           aria-hidden="true"
@@ -194,8 +194,10 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
             <span
               aria-hidden="true"
               className={cn(
-                "pointer-events-none absolute inset-0 -z-10 rounded-md bg-card",
-                dimmed ? "ring-1 ring-inset ring-border/80" : "ring-1 ring-inset ring-border",
+                "pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-md bg-card shadow-xs after:absolute after:inset-x-0 after:bottom-0 after:h-0.5",
+                dimmed
+                  ? "ring-1 ring-inset ring-border/80 after:bg-primary/40"
+                  : "ring-1 ring-inset ring-border after:bg-primary",
               )}
             />
           )}

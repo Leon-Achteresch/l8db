@@ -14,8 +14,11 @@ import { useSettingsStore } from "@/lib/settings";
 import { previewQuery } from "@/lib/sql-filter/quote";
 import { useTableTabs } from "@/lib/table-tabs";
 import {
+  ATLAS_GRID_ROW,
   ATLAS_TILE_LIMIT,
+  type AtlasMetric,
   type AtlasNeighbors,
+  atlasGrid,
   atlasKey,
   atlasMetric,
   atlasNeighbors,
@@ -29,7 +32,9 @@ import { useAtlasTrail } from "./use-atlas-trail";
 
 const NO_NEIGHBORS: AtlasNeighbors = { outgoing: [], incoming: [] };
 
-function atlasHeight(count: number): string {
+function atlasHeight(count: number, metric: AtlasMetric): string {
+  const grid = atlasGrid(count, metric);
+  if (grid) return `${grid.rows * ATLAS_GRID_ROW}px`;
   if (count <= 4) return "13rem";
   if (count <= 12) return "21rem";
   return "clamp(320px,calc(100vh - 430px),640px)";
@@ -161,7 +166,7 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
             {!map.isPending &&
               atlasTables.length > 0 &&
               (summary.metric === null || summary.metric === "links") && (
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="mt-1 text-xs text-muted-foreground">
                   Keine Größen lesbar: Statistiken oder Leserechte fehlen.
                 </p>
               )}
@@ -203,7 +208,7 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
         <div
           ref={mapRef}
           className="-m-0.5 overflow-hidden"
-          style={{ height: atlasHeight(summary.matching) }}
+          style={{ height: atlasHeight(summary.matching, summary.metric) }}
         >
           {body}
         </div>

@@ -2,6 +2,9 @@ import { squarify } from "@/features/dashboard/charts/svg-geometry";
 import type { DatabaseOverview, SchemaMap, SchemaMapLink, TableInfo } from "@/lib/db";
 
 export const ATLAS_TILE_LIMIT = 180;
+export const ATLAS_GRID_LIMIT = 24;
+export const ATLAS_GRID_ROW = 88;
+const ATLAS_GRID_COLS = 4;
 
 export type AtlasMetric = "bytes" | "rows" | "links" | null;
 
@@ -76,6 +79,15 @@ export function atlasMetric(tables: AtlasTable[]): AtlasMetric {
   return null;
 }
 
+export function atlasGrid(
+  count: number,
+  metric: AtlasMetric,
+): { cols: number; rows: number } | null {
+  if (metric === "bytes" || metric === "rows" || count < 1 || count > ATLAS_GRID_LIMIT) return null;
+  const cols = Math.min(count, ATLAS_GRID_COLS);
+  return { cols, rows: Math.ceil(count / cols) };
+}
+
 export interface RankedSchema {
   name: string;
   bytes: number | null;
@@ -129,8 +141,20 @@ export function layoutAtlas(
       (a.table.name < b.table.name ? -1 : a.table.name > b.table.name ? 1 : 0),
   );
   const shown = weighted.slice(0, limit).map((entry) => ({ ...entry, value: entry.weight }));
+  const grid = atlasGrid(shown.length, metric);
+  const cells = grid
+    ? width > 0 && height > 0
+      ? shown.map((item, index) => ({
+          item,
+          x: (index % grid.cols) * (width / grid.cols),
+          y: Math.floor(index / grid.cols) * (height / grid.rows),
+          width: width / grid.cols,
+          height: height / grid.rows,
+        }))
+      : []
+    : squarify(shown, 0, 0, width, height);
   return {
-    tiles: squarify(shown, 0, 0, width, height).map(({ item, x, y, width: w, height: h }) => ({
+    tiles: cells.map(({ item, x, y, width: w, height: h }) => ({
       ...item.table,
       x,
       y,

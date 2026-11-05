@@ -31,7 +31,7 @@ export function DmlPreviewButton({
       disabledReason={disabledReason}
       title={`Betroffene Zeilen eines UPDATE, DELETE, MERGE oder INSERT … SELECT anzeigen, ohne auszuführen (${shortcut})`}
     >
-      <ScanEyeIcon className="size-3" />
+      <ScanEyeIcon className="size-3.5" />
       <span className="sr-only @min-[54rem]/qtb:not-sr-only">Vorschau</span>
       {feature.isNew && <NewBadge />}
     </Button>

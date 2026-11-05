@@ -105,7 +105,7 @@ export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps
               <motion.div
                 layoutId="active-settings-tab-bg"
                 transition={{ layout: SPRING_LAYOUT }}
-                className="absolute inset-0 rounded-md bg-muted"
+                className="absolute inset-0 rounded-md bg-muted before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-primary"
               />
             ) : null}
             <div

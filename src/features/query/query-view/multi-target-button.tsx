@@ -30,7 +30,7 @@ export function MultiTargetButton({
       disabledReason={disabledReason}
       title="Dieselbe Abfrage auf mehreren Datenbanken, Schemas oder Verbindungen ausführen"
     >
-      <LayersIcon className={running ? "size-3 animate-pulse" : "size-3"} />
+      <LayersIcon className={running ? "size-3.5 animate-pulse" : "size-3.5"} />
       <span className="sr-only @min-[54rem]/qtb:not-sr-only">Mehrere Ziele</span>
       {feature.isNew && <NewBadge />}
     </Button>

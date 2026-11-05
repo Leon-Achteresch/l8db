@@ -79,7 +79,7 @@ export function DataTableColumnHeader({
             columnStyle?.numeric ? "mr-auto" : "ml-auto",
           )}
         >
-          <div className="flex items-center gap-1 font-mono text-[10px] leading-none font-normal whitespace-nowrap text-muted-foreground select-none">
+          <div className="flex items-center gap-1 font-mono text-xs leading-none font-normal whitespace-nowrap text-muted-foreground select-none">
             {renderTypeIcon(typeInfo.iconName, "size-2.5")}
             <span>{typeInfo.label}</span>
           </div>

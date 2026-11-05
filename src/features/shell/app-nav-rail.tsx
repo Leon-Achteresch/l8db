@@ -77,8 +77,8 @@ export function AppNavRail() {
                 <MorphIcon
                   icon={active ? item.activeIcon : item.icon}
                   reducedMotion="user"
-                  className="size-[18px]"
-                  strokeWidth={2}
+                  className="size-4"
+                  strokeWidth={1.75}
                 />
                 {hasNewFeatures(item.featureScope, seenFeatures) && (
                   <span
