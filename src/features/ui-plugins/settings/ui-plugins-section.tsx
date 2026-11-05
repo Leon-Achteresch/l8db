@@ -1,3 +1,4 @@
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { BotIcon, FolderOpenIcon, RefreshCwIcon } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -60,6 +61,13 @@ export function UiPluginsSection() {
 
   const remove = async (id: string, file: string) => {
     try {
+      if (
+        !(await confirm(`Datei "${file}" endgültig löschen?`, {
+          title: "Erweiterung löschen",
+          kind: "warning",
+        }))
+      )
+        return;
       await removeUiPlugin(file);
       forgetInstalled(id);
       await reloadUiPlugins();
@@ -86,6 +94,9 @@ export function UiPluginsSection() {
           role="alert"
           className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-amber-500/10 px-3 py-2 text-xs"
         >
+          <p>
+            Abgesicherter Modus: Das Laden der Plugins wurde beim letzten Start nicht abgeschlossen.
+          </p>
           <Button
             size="sm"
             variant="outline"

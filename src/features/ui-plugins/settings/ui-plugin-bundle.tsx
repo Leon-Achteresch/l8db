@@ -69,18 +69,16 @@ export function UiPluginBundle() {
         for (const entry of preview) entry.options = entry.id ? (options[entry.id] ?? {}) : {};
       }
       const full = bundleArchives(value);
-      if (
-        next === "import" &&
-        full.some((archive) =>
-          host
-            .listExtensions()
-            .some((extension) => extension.archive.manifest.id === archive.manifest.id),
-        )
-      )
-        throw new Error(
-          "Volle Erweiterung bereits installiert. Vor dem Import entfernen oder über Details aktualisieren.",
-        );
-      setArchives(full);
+      const available =
+        next === "import"
+          ? full.filter(
+              (archive) =>
+                !host
+                  .listExtensions()
+                  .some((extension) => extension.archive.manifest.id === archive.manifest.id),
+            )
+          : full;
+      setArchives(available);
       setArchiveSelection(
         new Set(next === "export" ? full.map((archive) => archive.manifest.id) : []),
       );

@@ -26,7 +26,6 @@ export const NEW_FEATURES = {
   "connections.team.help": NEXT_FEATURE_VERSION,
   "onboarding.team-workflow": NEXT_FEATURE_VERSION,
   "settings.cli.doctor": NEXT_FEATURE_VERSION,
-  "settings.extensions.ui-plugins": "0.17.0",
   "settings.statistics.overview": "0.14.0",
   "settings.cli.install": "0.14.0",
   "workspace.inline-tabs": "0.9.1",

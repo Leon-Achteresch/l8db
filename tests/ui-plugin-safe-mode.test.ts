@@ -49,3 +49,19 @@ test("kaputter Merker zählt als Hänger und wird entfernt", () => {
   expect(detectUiPluginSafeMode()).toBe(true);
   expect(values.has("l8db.ui-plugins.loading:?window=2")).toBe(false);
 });
+
+test("beforeunload löscht den Startmerker", () => {
+  const original = globalThis.addEventListener;
+  const handlers = new Map<string, () => void>();
+  globalThis.addEventListener = ((name: string, callback: () => void) => {
+    handlers.set(name, callback);
+  }) as typeof original;
+  try {
+    const done = markUiPluginLoading();
+    handlers.get("beforeunload")?.();
+    expect(detectUiPluginSafeMode()).toBe(false);
+    done();
+  } finally {
+    globalThis.addEventListener = original;
+  }
+});

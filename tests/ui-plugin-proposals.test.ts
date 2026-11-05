@@ -44,3 +44,15 @@ test("großer Vorschlagsdiff bleibt begrenzt: median/p95 unter 100ms", () => {
   );
   expect(times[28]).toBeLessThan(100);
 });
+
+test("Vorprüfung führt Top-Level-Code nicht aus", async () => {
+  const { inspectPluginSource } = await import("../src/lib/ui-plugins/inspect");
+  const compiler = await import("../packages/ui-plugin-api/src/compile");
+  expect(
+    inspectPluginSource(
+      compiler,
+      "safe.tsx",
+      'throw new Error("executed"); export default {id:"safe", permissions:{http:["https://example.org"]}, slots:{}}',
+    ),
+  ).toEqual({ id: "safe", http: ["https://example.org"] });
+});
