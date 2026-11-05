@@ -197,3 +197,11 @@ l8db lädt die Dateien nach Dateinamen sortiert. Aus der Galerie installierte Pl
 ## Teilen
 
 Gute Plugins mit Screenshot per Pull Request an https://github.com/Leon-Achteresch/l8db-ui-plugins schicken. Nach dem Merge können alle sie in l8db unter Einstellungen → Erweiterungen → UI-Plugins installieren.
+
+Toolbar-Aktionen können `await ctx.pickColumn()` verwenden (Spaltenname oder `null` bei Abbruch).
+`ctx.setFilter({ column, operator: "isNull" })` ergänzt den aktuellen einfachen Filter mit AND.
+Weitere Operatoren: isNotNull, eq, neq, gt, gte, lt, lte, contains, startsWith, endsWith.
+Vergleiche benötigen `value` als String. Nur Spalten der aktuellen Tabelle sind erlaubt.
+SQL-Filter und Datenbankfamilien ohne SQL-Filter werden abgelehnt. `ctx.clearFilter()` löscht den gesamten Filter.
+Die Methoden verwenden den Filter-Compiler der App und benötigen keine eigenen SQL-Ausdrücke.
+`placement: "beforeFilter"` an einer ToolbarAction platziert sie links vor dem Filter; Standard ist `"toolbar"`.
