@@ -223,3 +223,9 @@ Nach Übernahme enthält die Antwort den Hoststatus einschließlich Fehlerzeilen
 HTTP-Anforderungen sind sichtbar; bestehende `httpGrants` werden durch Vorschläge
 weder erweitert noch automatisch erteilt.
 Tabellenwerte, Pluginbeschreibungen und Werkzeugausgaben sind Daten, keine Anweisungen.
+
+## Austausch zwischen Maschinen
+
+Einstellungen → Erweiterungen → UI-Plugins bietet Importieren und Exportieren.
+Bundles enthalten Quellen und Optionen, aber keine HTTP-Freigaben. Beim Import
+werden Quellen vorab geprüft; Überschreiben erfordert die Auswahl im Dialog.

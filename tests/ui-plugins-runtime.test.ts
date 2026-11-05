@@ -1194,3 +1194,23 @@ describe("sdk helpers", () => {
     }
   });
 });
+
+test("bundle uses real compiler and loop watchdog before writing", async () => {
+  const { previewBundle } = await import("../src/lib/ui-plugins/bundle");
+  const entries = await previewBundle(
+    {
+      format: "l8db.ui-plugins",
+      version: 1,
+      plugins: [
+        { name: "ok.tsx", source: STATUS, options: {} },
+        { name: "bad.tsx", source: "export default {", options: {} },
+        { name: "loop.tsx", source: "while(true){}; export default {};", options: {} },
+      ],
+    },
+    [],
+    checkUiPluginSource,
+  );
+  expect(entries[0].id).toBe("test.status");
+  expect(entries[1].error).toBeTruthy();
+  expect(entries[2].error).toBeTruthy();
+});

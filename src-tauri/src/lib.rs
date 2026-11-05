@@ -644,6 +644,8 @@ pub fn run() {
             ui_plugin_proposals::ui_plugin_proposals_pending,
             ui_plugin_proposals::ui_plugin_proposals_finish,
             ui_plugins::ui_plugins_scan,
+            ui_plugins::ui_plugins_read_bundle,
+            ui_plugins::ui_plugins_export_bundle,
             ui_plugins::ui_plugins_write,
             ui_plugins::ui_plugins_remove,
             ui_plugins::ui_plugins_write_support,

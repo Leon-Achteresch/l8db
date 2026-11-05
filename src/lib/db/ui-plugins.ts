@@ -69,3 +69,8 @@ export function finishUiPluginProposal(
     apply,
   });
 }
+
+export const readUiPluginBundle = (path: string) =>
+  invoke<unknown>("ui_plugins_read_bundle", { path });
+export const exportUiPluginBundle = (path: string, contents: string) =>
+  invoke<void>("ui_plugins_export_bundle", { path, contents });
