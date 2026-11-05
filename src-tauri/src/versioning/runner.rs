@@ -30,37 +30,70 @@ struct Artifact {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Execution {
-    context: Value,
-    from_id: String,
-    from_hash: String,
-    from_objects: Vec<Snapshot>,
-    reference: Value,
-    releases: Vec<Release>,
+pub(super) struct Execution {
+    pub format: u32,
+    pub context: Value,
+    pub from_id: String,
+    pub from_hash: String,
+    pub from_objects: Vec<Snapshot>,
+    pub reference: Value,
+    pub objects: Vec<Managed>,
+    #[serde(default)]
+    pub variances: Vec<Managed>,
+    pub releases: Vec<Release>,
+}
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct Managed {
+    pub id: String,
+    #[serde(flatten)]
+    pub snapshot: Snapshot,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Release {
-    id: String,
-    hash: String,
-    objects: Vec<Snapshot>,
-    statements: Vec<Statement>,
-    preconditions: Vec<Check>,
-    postconditions: Vec<Check>,
-    settings: Vec<String>,
-    oracle_timeout: u64,
+pub(super) struct Release {
+    pub id: String,
+    pub hash: String,
+    pub objects: Vec<Snapshot>,
+    pub statements: Vec<Statement>,
+    #[serde(default)]
+    pub changes: Vec<PlannedChange>,
+    pub preconditions: Vec<Check>,
+    pub postconditions: Vec<Check>,
+    pub settings: Vec<String>,
+    pub oracle_timeout: u64,
 }
 #[derive(Deserialize)]
-struct Statement {
-    id: String,
-    migration: String,
-    sql: String,
+#[serde(rename_all = "camelCase")]
+pub(super) struct PlannedChange {
+    pub id: String,
+    pub checksum: String,
+    pub kind: String,
+    #[serde(default)]
+    pub requires: Vec<String>,
+    pub touches: Vec<Touch>,
+    pub preconditions: Vec<Check>,
+    pub postconditions: Vec<Check>,
 }
 #[derive(Deserialize)]
-struct Check {
-    id: String,
-    sql: String,
-    expected: String,
+#[serde(rename_all = "camelCase")]
+pub(super) struct Touch {
+    pub id: String,
+    pub expect: String,
+    #[serde(flatten)]
+    pub object: Snapshot,
+}
+#[derive(Deserialize)]
+pub(super) struct Statement {
+    pub id: String,
+    pub migration: String,
+    pub sql: String,
+}
+#[derive(Deserialize)]
+pub(super) struct Check {
+    pub id: String,
+    pub sql: String,
+    pub expected: String,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -251,6 +284,114 @@ async fn commit(
     result
 }
 
+pub(super) const READY: &str = "ready2";
+
+async fn applied(
+    adapter: &dyn DatabaseAdapter,
+    c: &Connection,
+) -> Result<std::collections::HashSet<String>, String> {
+    let result = adapter
+        .execute_query(&format!(
+            "SELECT \"CHANGE_ID\" FROM {} WHERE \"PROJECT_ID\"={}",
+            table(&c.schema, "CHANGES"),
+            literal(&c.project_id)
+        ))
+        .await
+        .map_err(|e| format!("Abhakliste der Zieldatenbank nicht lesbar: {e}"))?;
+    Ok(result
+        .rows
+        .iter()
+        .filter_map(|row| row["CHANGE_ID"].as_str().map(str::to_owned))
+        .collect())
+}
+
+fn touched<'a>(releases: &'a [Release]) -> std::collections::HashSet<&'a str> {
+    releases
+        .iter()
+        .flat_map(|release| &release.changes)
+        .flat_map(|change| change.touches.iter().map(|touch| touch.id.as_str()))
+        .collect()
+}
+
+pub(super) async fn precheck(
+    adapter: &dyn DatabaseAdapter,
+    c: &Connection,
+    plan: &Execution,
+) -> Result<(), String> {
+    if plan.format != 2 {
+        return Err("Ausführungsplan stammt von einer älteren l8db-Version. Neu planen.".into());
+    }
+    let ledger = applied(adapter, c).await?;
+    let mut planned = std::collections::HashSet::new();
+    for change in plan.releases.iter().flat_map(|release| &release.changes) {
+        if ledger.contains(&change.id) {
+            return Err(format!(
+                "Änderung {} ist in dieser Datenbank bereits angewendet. Neu planen.",
+                change.id
+            ));
+        }
+        if let Some(missing) = change
+            .requires
+            .iter()
+            .find(|id| !ledger.contains(*id) && !planned.contains(*id))
+        {
+            return Err(format!(
+                "Änderung {} benötigt {missing}, die noch nicht angewendet ist",
+                change.id
+            ));
+        }
+        planned.insert(change.id.clone());
+    }
+    let variances: std::collections::HashSet<&str> =
+        plan.variances.iter().map(|v| v.id.as_str()).collect();
+    let snapshots: Vec<Snapshot> = plan.variances.iter().map(|v| v.snapshot.clone()).collect();
+    snapshot::verify(adapter, c.kind, &snapshots)
+        .await
+        .map_err(|e| format!("Festgehaltene Abweichung hat sich verändert. {e}"))?;
+    let touched = touched(&plan.releases);
+    let untouched: Vec<Snapshot> = plan
+        .objects
+        .iter()
+        .filter(|o| !touched.contains(o.id.as_str()) && !variances.contains(o.id.as_str()))
+        .map(|o| o.snapshot.clone())
+        .collect();
+    snapshot::verify(adapter, c.kind, &untouched).await
+}
+
+fn change_sql(c: &Connection, change: &PlannedChange, release: &str, run: &str) -> String {
+    format!("INSERT INTO {} (\"PROJECT_ID\", \"CHANGE_ID\", \"CHECKSUM\", \"KIND\", \"SOURCE\", \"RELEASE_ID\", \"RUN_ID\", \"APPLIED_AT\", \"APPLIED_BY\") VALUES ({}, {}, {}, {}, 'rollout', {}, {}, {}, {})",table(&c.schema,"CHANGES"),literal(&c.project_id),literal(&change.id),literal(&change.checksum),literal(&change.kind),literal(release),literal(run),c.now_sql(),c.actor_sql())
+}
+
+pub(super) fn object_sql(c: &Connection, id: &str, hash: &str, change: Option<&str>) -> String {
+    let objects = table(&c.schema, "OBJECTS");
+    let change = change.map(literal).unwrap_or_else(|| "NULL".into());
+    if c.kind == DatabaseKind::Oracle {
+        format!("MERGE INTO {objects} t USING (SELECT {} AS p, {} AS o, {} AS h, {change} AS c FROM dual) s ON (t.\"PROJECT_ID\"=s.p AND t.\"OBJECT_ID\"=s.o) WHEN MATCHED THEN UPDATE SET t.\"APPLIED_HASH\"=s.h, t.\"CHANGE_ID\"=s.c, t.\"APPLIED_AT\"={} WHEN NOT MATCHED THEN INSERT (\"PROJECT_ID\", \"OBJECT_ID\", \"APPLIED_HASH\", \"CHANGE_ID\", \"APPLIED_AT\") VALUES (s.p, s.o, s.h, s.c, {})",literal(&c.project_id),literal(id),literal(hash),c.now_sql(),c.now_sql())
+    } else {
+        format!("INSERT INTO {objects} (\"PROJECT_ID\", \"OBJECT_ID\", \"APPLIED_HASH\", \"CHANGE_ID\", \"APPLIED_AT\") VALUES ({}, {}, {}, {change}, {}) ON CONFLICT (\"PROJECT_ID\", \"OBJECT_ID\") DO UPDATE SET \"APPLIED_HASH\"=EXCLUDED.\"APPLIED_HASH\", \"CHANGE_ID\"=EXCLUDED.\"CHANGE_ID\", \"APPLIED_AT\"=EXCLUDED.\"APPLIED_AT\"",literal(&c.project_id),literal(id),literal(hash),c.now_sql())
+    }
+}
+
+async fn before(
+    adapter: &dyn DatabaseAdapter,
+    kind: DatabaseKind,
+    change: &PlannedChange,
+) -> Result<(), String> {
+    for touch in &change.touches {
+        match touch.expect.as_str() {
+            "definition" => snapshot::verify(adapter, kind, std::slice::from_ref(&touch.object))
+                .await
+                .map_err(|e| format!("{}: Vorher-Stand stimmt nicht. {e}", change.id))?,
+            "absent" => snapshot::verify_absent(adapter, &touch.object)
+                .await
+                .map_err(|e| format!("{}: {e}", change.id))?,
+            "check" => {}
+            _ => return Err("Ungültige Objekterwartung im Ausführungsplan".into()),
+        }
+    }
+    Ok(())
+}
+
 async fn run(
     request: &Request,
     pool: db::pool::PoolState,
@@ -268,19 +409,41 @@ async fn run(
     let mut event = json!({"id":request.run_id,"startedAt":chrono::Utc::now().to_rfc3339(),"finishedAt":null,"from":{"id":plan.from_id},"to":plan.reference,"status":"running","completedMigrations":[],"completedStatements":[],"checked":[],"inFlightStatement":null,"error":null});
     let mut last_reference = None;
     let mut leased = false;
+    let variances: std::collections::HashSet<&str> =
+        plan.variances.iter().map(|v| v.id.as_str()).collect();
+    let targets: HashMap<&str, &Snapshot> = plan
+        .objects
+        .iter()
+        .map(|o| (o.id.as_str(), &o.snapshot))
+        .collect();
+    let all_targets: Vec<Snapshot> = plan.objects.iter().map(|o| o.snapshot.clone()).collect();
+    let mut started = false;
     let outcome = async {
         authorize(request,artifact.policy_revision,pool.clone(),transactions.clone()).await?;
-        snapshot::verify(adapter.as_ref(),c.kind,&plan.from_objects).await?;
+        precheck(adapter.as_ref(), c, &plan).await?;
+        started = true;
         persist(request,&event,None).await?;
-        journal(adapter.as_ref(),request,"started",json!({"from":plan.from_id,"to":plan.reference,"artifact":control::hash(&request.artifact),"policyRevision":artifact.policy_revision})).await?;
+        journal(adapter.as_ref(),request,"started",json!({"from":plan.from_id,"to":plan.reference,"artifact":control::hash(&request.artifact),"policyRevision":artifact.policy_revision,"variances":plan.variances.iter().map(|v| json!({"object":v.id,"hash":control::hash(&v.snapshot.definition)})).collect::<Vec<_>>()})).await?;
         let state = table(&c.schema,"STATE");
-        let result = adapter.execute_query(&format!("UPDATE {state} SET \"LEASE\"={}, \"STATUS\"='running' WHERE \"PROJECT_ID\"={} AND \"RELEASE_HASH\"={} AND \"STATUS\"='ready' AND \"LEASE\" IS NULL",literal(&request.run_id),literal(&c.project_id),literal(&plan.from_hash))).await?;
+        let result = adapter.execute_query(&format!("UPDATE {state} SET \"LEASE\"={}, \"STATUS\"='running' WHERE \"PROJECT_ID\"={} AND \"RELEASE_HASH\"={} AND \"STATUS\"='{READY}' AND \"LEASE\" IS NULL",literal(&request.run_id),literal(&c.project_id),literal(&plan.from_hash))).await?;
         if result.rows_affected!=Some(1) { return Err("Datenbankstand geändert oder ungeklärte Ausführung".into()); }
         leased = true;
-        let mut previous = &plan.from_objects;
-        for release in &plan.releases {
+        let count = plan.releases.len();
+        for (index, release) in plan.releases.iter().enumerate() {
             control::check_lock(c,&lock,&transactions).await?;
-            snapshot::verify(adapter.as_ref(),c.kind,previous).await?;
+            let later = touched(&plan.releases[index + 1..]);
+            let mut settled: Vec<(&str, &Snapshot)> = release
+                .changes
+                .iter()
+                .flat_map(|change| change.touches.iter().map(|t| t.id.as_str()))
+                .filter(|id| !later.contains(id) && !variances.contains(id))
+                .filter_map(|id| targets.get(id).map(|snapshot| (id, *snapshot)))
+                .collect();
+            settled.sort_by_key(|(id, _)| *id);
+            settled.dedup_by_key(|(id, _)| *id);
+            let settled_snapshots: Vec<Snapshot> = settled.iter().map(|(_, s)| (*s).clone()).collect();
+            let planned_statements: usize = release.changes.iter().map(|change| release.statements.iter().filter(|s| s.migration == change.id).count()).sum();
+            if planned_statements != release.statements.len() { return Err("Anweisungen ohne zugehörige Änderung im Ausführungsplan".into()); }
             let invalid_before = if c.kind==DatabaseKind::Oracle {adapter.list_invalid_objects(Some(&c.schema)).await?}else{vec![]};
             let tx = transactions.begin(c.kind,&c.connection_string,c.database.as_deref(),&pool).await?;
             let mut committed = false;
@@ -288,7 +451,7 @@ async fn run(
                 if c.kind==DatabaseKind::Oracle { transactions.versioning_oracle_timeout(&tx,release.oracle_timeout).await?; }
                 for sql in &release.settings { transactions.execute(&tx,sql).await?; }
                 identity(c, &tx, &plan.context, &transactions).await?;
-                let mut schemas: Vec<String> = previous.iter().chain(&release.objects).map(|o| o.schema.clone()).collect();
+                let mut schemas: Vec<String> = plan.objects.iter().map(|o| o.snapshot.schema.clone()).chain(release.objects.iter().map(|o| o.schema.clone())).collect();
                 schemas.push(c.schema.clone());
                 schemas.sort();
                 schemas.dedup();
@@ -297,30 +460,37 @@ async fn run(
                     scoped.schema = schema;
                     control::execution_lock(&scoped, &tx, &transactions).await?;
                 }
-                if c.kind == DatabaseKind::Postgres {
-                    let session = transactions.versioning_adapter(&tx, pool.clone()).await?;
-                    snapshot::verify(session.as_ref(), c.kind, previous).await?;
-                } else {
-                    snapshot::verify(adapter.as_ref(), c.kind, previous).await?;
-                }
                 checks(&tx,&release.preconditions,&transactions,&mut event).await?;
-                for (index, statement) in release.statements.iter().enumerate() {
+                for change in &release.changes {
                     control::check_lock(c,&lock,&transactions).await?;
-                    event["inFlightStatement"] = json!(statement.id);
-                    journal(adapter.as_ref(),request,"statement_started",json!({"statement":statement.id,"checksum":control::hash(&statement.sql)})).await?;
-                    persist(request,&event,last_reference.as_ref()).await?;
-                    transactions.execute(&tx,&statement.sql).await?;
-                    journal(adapter.as_ref(),request,"statement_confirmed",json!({"statement":statement.id})).await?;
-                    event["completedStatements"].as_array_mut().unwrap().push(json!(statement.id));
-                    event["inFlightStatement"] = Value::Null;
-                    if release.statements.get(index + 1).is_none_or(|next|next.migration!=statement.migration) && !event["completedMigrations"].as_array().unwrap().contains(&json!(statement.migration)) { event["completedMigrations"].as_array_mut().unwrap().push(json!(statement.migration)); }
+                    if c.kind == DatabaseKind::Postgres {
+                        let session = transactions.versioning_adapter(&tx, pool.clone()).await?;
+                        before(session.as_ref(), c.kind, change).await?;
+                    } else {
+                        before(adapter.as_ref(), c.kind, change).await?;
+                    }
+                    checks(&tx,&change.preconditions,&transactions,&mut event).await?;
+                    for statement in release.statements.iter().filter(|s| s.migration == change.id) {
+                        control::check_lock(c,&lock,&transactions).await?;
+                        event["inFlightStatement"] = json!(statement.id);
+                        journal(adapter.as_ref(),request,"statement_started",json!({"statement":statement.id,"checksum":control::hash(&statement.sql)})).await?;
+                        persist(request,&event,last_reference.as_ref()).await?;
+                        transactions.execute(&tx,&statement.sql).await?;
+                        journal(adapter.as_ref(),request,"statement_confirmed",json!({"statement":statement.id})).await?;
+                        event["completedStatements"].as_array_mut().unwrap().push(json!(statement.id));
+                        event["inFlightStatement"] = Value::Null;
+                    }
+                    checks(&tx,&change.postconditions,&transactions,&mut event).await?;
+                    transactions.execute(&tx,&change_sql(c,change,&release.id,&request.run_id)).await?;
+                    event["completedMigrations"].as_array_mut().unwrap().push(json!(change.id));
                 }
                 checks(&tx,&release.postconditions,&transactions,&mut event).await?;
                 let advance = format!("UPDATE {state} SET \"RELEASE_ID\"={}, \"RELEASE_HASH\"={} WHERE \"PROJECT_ID\"={} AND \"LEASE\"={} AND \"STATUS\"='running'",literal(&release.id),literal(&release.hash),literal(&c.project_id),literal(&request.run_id));
                 if c.kind==DatabaseKind::Postgres {
                     let session = transactions.versioning_adapter(&tx,pool.clone()).await?;
-                    snapshot::verify(session.as_ref(),c.kind,&release.objects).await?;
-                    snapshot::verify_removed(session.as_ref(),previous,&release.objects).await?;
+                    snapshot::verify(session.as_ref(),c.kind,&settled_snapshots).await?;
+                    if index + 1 == count { snapshot::verify_removed(session.as_ref(),&plan.from_objects,&all_targets).await?; }
+                    for (id, snapshot) in &settled { transactions.execute(&tx,&object_sql(c,id,&control::hash(&snapshot.definition),None)).await?; }
                     if transactions.execute(&tx,&advance).await?.rows_affected!=Some(1) { return Err("Deployment-Sperre verloren".into()); }
                 }
                 control::check_lock(c,&lock,&transactions).await?;
@@ -329,11 +499,12 @@ async fn run(
                 committed = true;
                 journal(adapter.as_ref(),request,"commit_confirmed",json!({"release":release.id})).await?;
                 if c.kind==DatabaseKind::Oracle {
-                    snapshot::verify(adapter.as_ref(),c.kind,&release.objects).await?;
-                    snapshot::verify_removed(adapter.as_ref(),previous,&release.objects).await?;
+                    snapshot::verify(adapter.as_ref(),c.kind,&settled_snapshots).await?;
+                    if index + 1 == count { snapshot::verify_removed(adapter.as_ref(),&plan.from_objects,&all_targets).await?; }
                     let invalid = adapter.list_invalid_objects(Some(&c.schema)).await?;
-                    if invalid.iter().any(|item| release.objects.iter().any(|o|o.name==item.name) || !invalid_before.iter().any(|old|old.name==item.name && old.object_type==item.object_type)) { return Err("Oracle enthält ungültige Objekte; vor dem Fortsetzen kompilieren und prüfen".into()); }
+                    if invalid.iter().any(|item| all_targets.iter().any(|o|o.name==item.name) || !invalid_before.iter().any(|old|old.name==item.name && old.object_type==item.object_type)) { return Err("Oracle enthält ungültige Objekte; vor dem Fortsetzen kompilieren und prüfen".into()); }
                     control::check_lock(c,&lock,&transactions).await?;
+                    for (id, snapshot) in &settled { adapter.execute_query(&object_sql(c,id,&control::hash(&snapshot.definition),None)).await?; }
                     if adapter.execute_query(&advance).await?.rows_affected!=Some(1) { return Err("Deployment-Sperre verloren".into()); }
                 }
                 Ok::<(),String>(())
@@ -346,13 +517,16 @@ async fn run(
             last_reference = Some(reference);
             persist(request,&event,last_reference.as_ref()).await?;
             if let Some(status)=jobs().lock().await.get_mut(&request.run_id) { status.release = release.id.clone(); }
-            previous = &release.objects;
         }
         journal(adapter.as_ref(),request,"succeeded",json!({"to":plan.reference})).await?;
-        if adapter.execute_query(&format!("UPDATE {state} SET \"LEASE\"=NULL, \"STATUS\"='ready' WHERE \"PROJECT_ID\"={} AND \"LEASE\"={}",literal(&c.project_id),literal(&request.run_id))).await?.rows_affected!=Some(1) { return Err("Deployment-Abschluss nicht bestätigt".into()); }
+        if adapter.execute_query(&format!("UPDATE {state} SET \"LEASE\"=NULL, \"STATUS\"='{READY}' WHERE \"PROJECT_ID\"={} AND \"LEASE\"={}",literal(&c.project_id),literal(&request.run_id))).await?.rows_affected!=Some(1) { return Err("Deployment-Abschluss nicht bestätigt".into()); }
         leased = false;
         Ok(())
     }.await;
+    if !started {
+        let unlocked = transactions.rollback(&lock).await;
+        return outcome.and(unlocked);
+    }
     if outcome.is_err() && leased {
         let _ = adapter
             .execute_query(&format!(
@@ -533,16 +707,11 @@ pub async fn start_fleet(
                 )
                 .await?;
                 let adapter = request.connection.adapter(pool.clone())?;
-                snapshot::verify(
-                    adapter.as_ref(),
-                    request.connection.kind,
-                    &artifact.execution.from_objects,
-                )
-                .await?;
+                precheck(adapter.as_ref(), &request.connection, &artifact.execution).await?;
                 let current=adapter.execute_query(&format!("SELECT \"RELEASE_HASH\", \"STATUS\", \"LEASE\" FROM {} WHERE \"PROJECT_ID\"={}",table(&request.connection.schema,"STATE"),literal(&request.connection.project_id))).await?;
                 if !current.rows.first().is_some_and(|r| {
                     r["RELEASE_HASH"] == artifact.execution.from_hash
-                        && r["STATUS"] == "ready"
+                        && r["STATUS"] == READY
                         && r["LEASE"].is_null()
                 }) {
                     return Err("Datenbankstand vor Wellenstart geändert".into());

@@ -62,7 +62,7 @@ async fn release(root: &Path, commit: &str, id: &str) -> Result<(Value, String),
     let source = super::git(root, &["show", &object]).await?;
     let value: Value =
         serde_json::from_str(&source).map_err(|_| "Release-Manifest ist ungültig")?;
-    if value["format"] != 1 || value["id"] != id {
+    if !(value["format"] == 1 || value["format"] == 2) || value["id"] != id {
         return Err("Release-Manifest passt nicht zur Referenz".into());
     }
     for item in value["migrations"].as_array().into_iter().flatten() {
@@ -95,6 +95,159 @@ fn objects(release: &Value, target: Option<&str>) -> Result<Value, String> {
         if !object["metadataVersion"].is_null() {
             mapped["metadataVersion"] = object["metadataVersion"].clone();
         }
+        result.push(mapped);
+    }
+    Ok(json!(result))
+}
+
+fn mapped(item: &Value, target: Option<&str>, definition: Option<&str>) -> Result<Value, String> {
+    let object = &item["object"];
+    let selection = &object["selection"];
+    let source = text(selection, "schema")?;
+    let mut mapped = json!({
+        "schema": target.unwrap_or(source), "sourceSchema": source,
+        "name": text(selection, "objectName")?, "kind": text(selection, "objectType")?,
+        "definition": definition.map(str::to_owned).map_or_else(|| text(item, "definition").map(str::to_owned), Ok)?,
+    });
+    if !object["metadataVersion"].is_null() {
+        mapped["metadataVersion"] = object["metadataVersion"].clone();
+    }
+    Ok(mapped)
+}
+
+fn managed(release: &Value, target: Option<&str>) -> Result<Value, String> {
+    let mut result = Vec::new();
+    for item in release["objects"]
+        .as_array()
+        .ok_or("Release-Objekte fehlen")?
+    {
+        let mut entry = mapped(item, target, None)?;
+        entry["id"] = json!(text(&item["object"], "id")?);
+        result.push(entry);
+    }
+    Ok(json!(result))
+}
+
+pub(super) fn parents(release: &Value) -> Vec<String> {
+    if release["format"] == 2 {
+        release["parents"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|p| p.as_str().map(str::to_owned))
+            .collect()
+    } else {
+        release["parent"]
+            .as_str()
+            .map(str::to_owned)
+            .into_iter()
+            .collect()
+    }
+}
+
+fn object_entry<'a>(release: &'a Value, id: &str) -> Option<&'a Value> {
+    release["objects"]
+        .as_array()?
+        .iter()
+        .find(|item| item["object"]["id"] == id)
+}
+
+fn touch(
+    id: &str,
+    owners: &[&Value],
+    target: Option<&str>,
+    expect: &str,
+    definition: &str,
+) -> Result<Value, String> {
+    let item = owners
+        .iter()
+        .find_map(|release| object_entry(release, id))
+        .ok_or_else(|| format!("Berührtes Objekt {id} ist im Release nicht beschrieben"))?;
+    let mut value = mapped(item, target, Some(definition))?;
+    value["id"] = json!(id);
+    value["expect"] = json!(expect);
+    Ok(value)
+}
+
+fn sorted(mut values: Vec<Value>) -> Vec<Value> {
+    values.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+    values
+}
+
+fn expected_touches(
+    rules: &Value,
+    source: Option<&Value>,
+    parent: Option<&Value>,
+    to: &Value,
+    planned: &Value,
+    target: Option<&str>,
+) -> Result<Vec<Value>, String> {
+    let owners: Vec<&Value> = source.into_iter().chain(parent).chain([to]).collect();
+    let mut result = Vec::new();
+    if rules.get("touches").is_none_or(Value::is_null) {
+        let source = source.ok_or("Änderung ohne berührte Objekte")?;
+        let empty = vec![];
+        let previous = parent
+            .and_then(|p| p["objects"].as_array())
+            .unwrap_or(&empty);
+        let current = source["objects"]
+            .as_array()
+            .ok_or("Release-Objekte fehlen")?;
+        let mut ids: Vec<&str> = previous
+            .iter()
+            .chain(current)
+            .filter_map(|item| item["object"]["id"].as_str())
+            .collect();
+        ids.sort();
+        ids.dedup();
+        for id in ids {
+            let old = parent.and_then(|p| object_entry(p, id));
+            let new = object_entry(source, id);
+            if old.map(|o| &o["checksum"]) == new.map(|n| &n["checksum"]) {
+                continue;
+            }
+            result.push(match old {
+                Some(old) => touch(id, &owners, target, "definition", text(old, "definition")?)?,
+                None => touch(id, &owners, target, "absent", "")?,
+            });
+        }
+        return Ok(sorted(result));
+    }
+    let declared = rules["touches"].as_array().ok_or("touches ist ungültig")?;
+    let planned_touches = planned["touches"]
+        .as_array()
+        .ok_or("Berührte Objekte fehlen")?;
+    for id in declared {
+        let id = id.as_str().ok_or("touches ist ungültig")?;
+        let before = &rules["before"][id];
+        result.push(if before.is_null() && rules["before"].get(id).is_some() {
+            touch(id, &owners, target, "absent", "")?
+        } else if let Some(hash) = before.as_str() {
+            let definition = planned_touches
+                .iter()
+                .find(|t| t["id"] == id)
+                .and_then(|t| t["definition"].as_str())
+                .ok_or("Vorher-Stand fehlt im Ausführungsplan")?;
+            if control::hash(definition) != hash {
+                return Err(format!("Vorher-Stand von {id} passt nicht zur Änderung"));
+            }
+            touch(id, &owners, target, "definition", definition)?
+        } else {
+            touch(id, &owners, target, "check", "")?
+        });
+    }
+    Ok(sorted(result))
+}
+
+fn mapped_checks(checks: &Value, release: &Value, target: Option<&str>) -> Result<Value, String> {
+    let mut result = Vec::new();
+    for check in checks.as_array().into_iter().flatten() {
+        let sql = text(check, "sql")?;
+        if check["checksum"] != control::hash(sql) {
+            return Err("Prüfanweisungs-Prüfsumme stimmt nicht".into());
+        }
+        let mut mapped = check.clone();
+        mapped["sql"] = json!(map_sql(sql, release, target)?);
         result.push(mapped);
     }
     Ok(json!(result))
@@ -144,22 +297,120 @@ fn statement_key(sql: &str) -> &str {
     sql.strip_suffix(';').unwrap_or(sql).trim_end()
 }
 
-fn verify_statements(
-    release: &Value,
-    plan: &Value,
-    target: Option<&str>,
-    kind: DatabaseKind,
-) -> Result<(), String> {
-    let id = text(release, "id")?;
+pub(super) async fn standalone(
+    root: &Path,
+    commit: &str,
+    id: &str,
+) -> Result<(Value, String), String> {
+    if !identifier(id) {
+        return Err("Ungültige Änderungs-ID".into());
+    }
+    let manifest = super::git(
+        root,
+        &["show", &format!("{commit}:database/changes/{id}.json")],
+    )
+    .await
+    .map_err(|_| format!("Änderung {id} ist im geplanten Git-Stand nicht committet"))?;
+    let sql = super::git(
+        root,
+        &["show", &format!("{commit}:database/changes/{id}.sql")],
+    )
+    .await
+    .map_err(|_| format!("SQL der Änderung {id} ist im geplanten Git-Stand nicht committet"))?;
+    let value: Value =
+        serde_json::from_str(&manifest).map_err(|_| "Änderungsdatei ist ungültig")?;
+    let sql = sql
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .trim_end()
+        .to_string();
+    if value["format"] != 1 || value["id"] != id || value["checksum"] != control::hash(&sql) {
+        return Err(format!("Änderung {id} passt nicht zu ihrer Prüfsumme"));
+    }
+    Ok((value, sql))
+}
+
+pub(super) struct Context<'a> {
+    pub root: &'a Path,
+    pub commit: &'a str,
+    pub to: &'a Value,
+    pub parent: Option<&'a Value>,
+    pub target: Option<&'a str>,
+    pub kind: DatabaseKind,
+}
+
+async fn verify_changes(source: &Value, plan: &Value, context: &Context<'_>) -> Result<(), String> {
+    let id = text(source, "id")?;
     let mut statements = Vec::new();
-    for migration in release["migrations"]
+    let changes = plan["changes"]
         .as_array()
-        .ok_or("Migrationen fehlen")?
-    {
-        let migration_id = text(migration, "id")?;
-        let sql = map_sql(text(migration, "sql")?, release, target)?;
-        for (index, sql) in split(kind, &sql)?.into_iter().enumerate() {
-            statements.push(json!({"id":format!("{id}:{migration_id}:{}", index+1), "migration":migration_id, "sql":statement_key(&sql)}));
+        .ok_or("Änderungen fehlen im Ausführungsplan")?;
+    let mut seen = HashSet::new();
+    for change in changes {
+        let change_id = text(change, "id")?;
+        if !seen.insert(change_id.to_string()) {
+            return Err("Änderung doppelt im Ausführungsplan".into());
+        }
+        let embedded = change_id
+            .strip_prefix(id)
+            .and_then(|rest| rest.strip_prefix('/'));
+        let (rules, sql, owner, prefix, scope) = if let Some(migration) = embedded {
+            let rules = source["migrations"]
+                .as_array()
+                .ok_or("Migrationen fehlen")?
+                .iter()
+                .find(|m| m["id"] == migration)
+                .ok_or_else(|| format!("Änderung {change_id} fehlt im Release"))?
+                .clone();
+            let sql = text(&rules, "sql")?.to_string();
+            (
+                rules,
+                sql,
+                Some(source),
+                format!("{id}:{migration}"),
+                source,
+            )
+        } else {
+            if !source["changes"]
+                .as_array()
+                .is_some_and(|ids| ids.iter().any(|entry| entry == change_id))
+            {
+                return Err(format!("Änderung {change_id} gehört nicht zu Release {id}"));
+            }
+            let (rules, sql) = standalone(context.root, context.commit, change_id).await?;
+            (rules, sql, None, change_id.to_string(), context.to)
+        };
+        let kind = rules["kind"].as_str().unwrap_or("versioned");
+        if kind != "versioned"
+            || change["kind"] != kind
+            || change["checksum"] != control::hash(&sql)
+            || change["requires"] != rules.get("requires").cloned().unwrap_or(json!([]))
+        {
+            return Err(format!(
+                "Änderung {change_id} weicht vom committeten Stand ab"
+            ));
+        }
+        let touches = expected_touches(
+            &rules,
+            owner,
+            context.parent,
+            context.to,
+            change,
+            context.target,
+        )?;
+        if sorted(change["touches"].as_array().cloned().unwrap_or_default()) != touches {
+            return Err(format!(
+                "Berührte Objekte von {change_id} weichen vom committeten Stand ab"
+            ));
+        }
+        for phase in ["preconditions", "postconditions"] {
+            if change[phase] != mapped_checks(&rules[phase], scope, context.target)? {
+                return Err("Prüfanweisungen wurden im Ausführungsplan verändert".into());
+            }
+        }
+        let sql = map_sql(&sql, scope, context.target)?;
+        for (index, sql) in split(context.kind, &sql)?.into_iter().enumerate() {
+            statements.push(json!({"id":format!("{prefix}:{}", index + 1), "migration":change_id, "sql":statement_key(&sql)}));
         }
     }
     let planned: Vec<Value> = plan["statements"]
@@ -173,36 +424,27 @@ fn verify_statements(
             Ok(item)
         })
         .collect::<Result<_, String>>()?;
-    if statements.is_empty() || planned != statements {
+    if planned != statements {
         return Err("SQL-Anweisungen stimmen nicht mit dem committeten Release überein".into());
     }
     Ok(())
 }
 
-fn verify_plan(
+async fn verify_plan(
     release: &Value,
     hash: &str,
     plan: &Value,
-    target: Option<&str>,
-    kind: DatabaseKind,
+    context: &Context<'_>,
 ) -> Result<(), String> {
+    let target = context.target;
+    let kind = context.kind;
     let id = text(release, "id")?;
     if plan["id"] != id || plan["hash"] != hash || plan["objects"] != objects(release, target)? {
         return Err("Ausführungsplan weicht vom committeten Release ab".into());
     }
-    verify_statements(release, plan, target, kind)?;
+    verify_changes(release, plan, context).await?;
     for phase in ["preconditions", "postconditions"] {
-        let mut checks = Vec::new();
-        for check in release["safety"][phase].as_array().into_iter().flatten() {
-            let sql = text(check, "sql")?;
-            if check["checksum"] != control::hash(sql) {
-                return Err("Prüfanweisungs-Prüfsumme stimmt nicht".into());
-            }
-            let mut mapped = check.clone();
-            mapped["sql"] = json!(map_sql(sql, release, target)?);
-            checks.push(mapped);
-        }
-        if plan[phase] != json!(checks) {
+        if plan[phase] != mapped_checks(&release["safety"][phase], release, target)? {
             return Err("Prüfanweisungen wurden im Ausführungsplan verändert".into());
         }
     }
@@ -301,35 +543,92 @@ pub async fn verify(request: &Request) -> Result<(), String> {
     if from["projectId"] != request.connection.project_id {
         return Err("Ausgangsrelease gehört nicht zum Projekt".into());
     }
+    if plan["format"] != 2 {
+        return Err("Ausführungsplan stammt von einer älteren l8db-Version. Neu planen.".into());
+    }
     if plan["fromHash"] != from_hash || plan["fromObjects"] != objects(&from, target)? {
         return Err("Ausgangsrelease wurde im Ausführungsplan verändert".into());
+    }
+    let to_id = text(&plan["reference"], "id")?;
+    if plan["reference"]["path"] != format!("database/releases/{to_id}.json") {
+        return Err("Zielrelease stimmt nicht mit dem Ausführungsplan überein".into());
+    }
+    let mut cache: std::collections::HashMap<String, (Value, String)> = Default::default();
+    let (to, _) = release(&root, commit, to_id).await?;
+    if plan["variances"].as_array().is_some_and(|v| !v.is_empty()) {
+        return Err("Festgehaltene Abweichungen fehlen in der Teamkonfiguration".into());
+    }
+    if plan["objects"] != managed(&to, target)? {
+        return Err("Sollstand im Ausführungsplan weicht vom Zielrelease ab".into());
     }
     let releases = plan["releases"]
         .as_array()
         .filter(|items| !items.is_empty() && items.len() <= 1000)
         .ok_or("Release-Kette fehlt oder ist zu lang")?;
-    let mut previous = text(&from, "id")?.to_string();
-    let mut seen = HashSet::from([previous.clone()]);
+    if releases.last().map(|r| &r["id"]) != Some(&json!(to_id)) {
+        return Err("Zielrelease stimmt nicht mit dem Ausführungsplan überein".into());
+    }
+    let mut queue = vec![to_id.to_string()];
+    while let Some(id) = queue.pop() {
+        if cache.contains_key(&id) {
+            continue;
+        }
+        if cache.len() >= 5000 {
+            return Err("Release-Historie ist zu groß".into());
+        }
+        let loaded = release(&root, commit, &id).await?;
+        queue.extend(parents(&loaded.0));
+        cache.insert(id, loaded);
+    }
+    let ancestors = |id: &str| {
+        let mut seen = HashSet::new();
+        let mut stack = vec![id.to_string()];
+        while let Some(current) = stack.pop() {
+            if seen.insert(current.clone()) {
+                if let Some((value, _)) = cache.get(&current) {
+                    stack.extend(parents(value));
+                }
+            }
+        }
+        seen
+    };
+    let mut done: HashSet<String> = HashSet::new();
     for planned in releases {
         let id = text(planned, "id")?;
-        if !seen.insert(id.to_string()) {
-            return Err("Zyklische Release-Kette".into());
-        }
-        let (source, hash) = release(&root, commit, id).await?;
-        if source["parent"] != previous
+        let Some((source, hash)) = cache.get(id) else {
+            return Err("Release-Kette gehört nicht zum Projekt oder Ausgangsrelease".into());
+        };
+        if done.contains(id)
             || source["projectId"] != request.connection.project_id
             || source["kind"]
                 != serde_json::to_value(request.connection.kind).map_err(|e| e.to_string())?
         {
             return Err("Release-Kette gehört nicht zum Projekt oder Ausgangsrelease".into());
         }
-        verify_plan(&source, &hash, planned, target, request.connection.kind)?;
-        previous = id.to_string();
-    }
-    if plan["reference"]["id"] != previous
-        || plan["reference"]["path"] != format!("database/releases/{previous}.json")
-    {
-        return Err("Zielrelease stimmt nicht mit dem Ausführungsplan überein".into());
+        let later: Vec<&str> = releases
+            .iter()
+            .skip_while(|entry| entry["id"] != id)
+            .skip(1)
+            .filter_map(|entry| entry["id"].as_str())
+            .collect();
+        let own = ancestors(id);
+        if later.iter().any(|entry| own.contains(*entry)) {
+            return Err("Zyklische Release-Kette".into());
+        }
+        let parent = parents(source)
+            .first()
+            .and_then(|p| cache.get(p))
+            .map(|(v, _)| v);
+        let context = Context {
+            root: &root,
+            commit,
+            to: &to,
+            parent,
+            target,
+            kind: request.connection.kind,
+        };
+        verify_plan(source, hash, planned, &context).await?;
+        done.insert(id.to_string());
     }
     Ok(())
 }
@@ -355,11 +654,13 @@ mod tests {
             .unwrap();
         std::fs::create_dir_all(root.path().join("database/releases")).unwrap();
         let from = json!({"format":1,"id":"r1","projectId":"test","kind":"postgres","parent":null,
-            "objects":[{"object":{"selection":{"schema":"public","objectName":"t","objectType":"table"}},"definition":"id integer","checksum":control::hash("id integer")}],"migrations":[]});
+            "objects":[{"object":{"id":"t","selection":{"schema":"public","objectName":"t","objectType":"table"}},"definition":"id integer","checksum":control::hash("id integer")}],"migrations":[]});
         let mut next = from.clone();
         next["id"] = json!("r2");
         next["parent"] = json!("r1");
         next["migrations"] = json!([{"id":"m1","sql":"ALTER TABLE public.t ADD name text","checksum":control::hash("ALTER TABLE public.t ADD name text")}]);
+        next["objects"][0]["definition"] = json!("id integer\nname text");
+        next["objects"][0]["checksum"] = json!(control::hash("id integer\nname text"));
         for source in [&from, &next] {
             std::fs::write(
                 root.path().join(format!(
@@ -384,10 +685,15 @@ mod tests {
             .unwrap()
             .trim()
             .to_string();
-        let plan = json!({"fromId":"r1","fromHash":control::hash(&from.to_string()),"fromObjects":objects(&from,None).unwrap(),
+        let touches = vec![
+            json!({"id":"t","expect":"definition","schema":"public","sourceSchema":"public","name":"t","kind":"table","definition":"id integer"}),
+        ];
+        let plan = json!({"format":2,"fromId":"r1","fromHash":control::hash(&from.to_string()),"fromObjects":objects(&from,None).unwrap(),
             "reference":{"id":"r2","commit":commit,"path":"database/releases/r2.json"},
+            "objects":managed(&next,None).unwrap(),"variances":[],
             "releases":[{"id":"r2","hash":control::hash(&next.to_string()),"objects":objects(&next,None).unwrap(),
-                "statements":[{"id":"r2:m1:1","migration":"m1","sql":"ALTER TABLE public.t ADD name text"}],
+                "statements":[{"id":"r2:m1:1","migration":"r2/m1","sql":"ALTER TABLE public.t ADD name text"}],
+                "changes":[{"id":"r2/m1","checksum":control::hash("ALTER TABLE public.t ADD name text"),"kind":"versioned","requires":[],"touches":touches,"preconditions":[],"postconditions":[]}],
                 "preconditions":[],"postconditions":[],"oracleTimeout":60000,
                 "settings":["SET LOCAL lock_timeout = '5000ms'","SET LOCAL statement_timeout = '60000ms'","SET LOCAL idle_in_transaction_session_timeout = '60000ms'","SET LOCAL search_path = \"public\", pg_temp","SET LOCAL row_security = off"]}]});
         let request = Request {
@@ -439,36 +745,75 @@ mod tests {
         assert!(source.len() < 1024 * 1024);
     }
 
-    #[test]
-    fn source_plan_rejects_changed_sql_checks_settings_and_snapshots() {
-        let release = json!({"id":"r2","objects":[{"object":{"selection":{"schema":"public","objectName":"t","objectType":"table"}},"definition":"id integer"}],
+    fn context<'a>(
+        root: &'a Path,
+        to: &'a Value,
+        parent: Option<&'a Value>,
+        kind: DatabaseKind,
+    ) -> Context<'a> {
+        Context {
+            root,
+            commit: "0",
+            to,
+            parent,
+            target: None,
+            kind,
+        }
+    }
+
+    #[tokio::test]
+    async fn source_plan_rejects_changed_sql_checks_settings_and_snapshots() {
+        let parent = json!({"id":"r1","objects":[{"object":{"id":"t","selection":{"schema":"public","objectName":"t","objectType":"table"}},"definition":"id integer","checksum":"a"}],"migrations":[]});
+        let release = json!({"id":"r2","objects":[{"object":{"id":"t","selection":{"schema":"public","objectName":"t","objectType":"table"}},"definition":"id integer\nname text","checksum":"b"}],
             "migrations":[{"id":"m1","sql":"ALTER TABLE public.t ADD name text"}]});
         let plan = json!({"id":"r2","hash":"hash","objects":objects(&release,None).unwrap(),
-            "statements":[{"id":"r2:m1:1","migration":"m1","sql":"ALTER TABLE public.t ADD name text"}],
+            "statements":[{"id":"r2:m1:1","migration":"r2/m1","sql":"ALTER TABLE public.t ADD name text"}],
+            "changes":[{"id":"r2/m1","checksum":control::hash("ALTER TABLE public.t ADD name text"),"kind":"versioned","requires":[],
+                "touches":[{"id":"t","expect":"definition","schema":"public","sourceSchema":"public","name":"t","kind":"table","definition":"id integer"}],"preconditions":[],"postconditions":[]}],
             "preconditions":[],"postconditions":[],"oracleTimeout":60000,
             "settings":["SET LOCAL lock_timeout = '5000ms'","SET LOCAL statement_timeout = '60000ms'","SET LOCAL idle_in_transaction_session_timeout = '60000ms'","SET LOCAL search_path = \"public\", pg_temp","SET LOCAL row_security = off"]});
-        verify_plan(&release, "hash", &plan, None, DatabaseKind::Postgres).unwrap();
-        for key in ["statements", "preconditions", "settings", "objects", "hash"] {
+        let root = Path::new(".");
+        let ctx = context(root, &release, Some(&parent), DatabaseKind::Postgres);
+        verify_plan(&release, "hash", &plan, &ctx).await.unwrap();
+        for key in [
+            "statements",
+            "preconditions",
+            "settings",
+            "objects",
+            "hash",
+            "changes",
+        ] {
             let mut altered = plan.clone();
             altered[key] = json!("tampered");
-            assert!(verify_plan(&release, "hash", &altered, None, DatabaseKind::Postgres).is_err());
+            assert!(verify_plan(&release, "hash", &altered, &ctx).await.is_err());
         }
+        let mut altered = plan.clone();
+        altered["changes"][0]["touches"][0]["definition"] = json!("id bigint");
+        assert!(verify_plan(&release, "hash", &altered, &ctx).await.is_err());
+        let mut altered = plan.clone();
+        altered["changes"][0]["touches"] = json!([]);
+        assert!(verify_plan(&release, "hash", &altered, &ctx).await.is_err());
         assert_eq!(
             compact("{\n \"sql\": \"a b\\\"c\" }"),
             "{\"sql\":\"a b\\\"c\"}"
         );
     }
 
-    #[test]
-    fn plan_statements_match_the_frontend_splitter_output() {
+    #[tokio::test]
+    async fn plan_statements_match_the_frontend_splitter_output() {
         let check = |kind, sql: &str, planned: Vec<&str>| {
-            let release = json!({"id":"r2","migrations":[{"id":"m1","sql":sql}]});
+            let release = json!({"id":"r2","objects":[],"migrations":[{"id":"m1","sql":sql,"touches":[],"before":{}}]});
             let statements: Vec<Value> = planned
                 .iter()
                 .enumerate()
-                .map(|(index, sql)| json!({"id":format!("r2:m1:{}", index + 1),"migration":"m1","sql":sql}))
+                .map(|(index, sql)| json!({"id":format!("r2:m1:{}", index + 1),"migration":"r2/m1","sql":sql}))
                 .collect();
-            verify_statements(&release, &json!({"statements":statements}), None, kind)
+            let plan = json!({"statements":statements,"changes":[{"id":"r2/m1","checksum":control::hash(sql),"kind":"versioned","requires":[],"touches":[],"preconditions":[],"postconditions":[]}]});
+            async move {
+                let root = Path::new(".");
+                let ctx = context(root, &release, None, kind);
+                verify_changes(&release, &plan, &ctx).await
+            }
         };
         check(
             DatabaseKind::Postgres,
@@ -478,6 +823,7 @@ mod tests {
                 "CREATE INDEX t_note ON public.t(note);",
             ],
         )
+        .await
         .unwrap();
         check(
             DatabaseKind::Oracle,
@@ -487,30 +833,35 @@ mod tests {
                 "CREATE OR REPLACE PACKAGE P AS\n PROCEDURE Q;\nEND;",
             ],
         )
+        .await
         .unwrap();
         assert!(check(
             DatabaseKind::Postgres,
             "ALTER TABLE public.t ADD note text;",
             vec!["ALTER TABLE public.t ADD note text; DROP TABLE public.t;"],
         )
+        .await
         .is_err());
         assert!(check(
             DatabaseKind::Postgres,
             "ALTER TABLE public.t ADD note text;",
             vec!["ALTER TABLE public.t ADD note text;;"],
         )
+        .await
         .is_err());
         assert!(check(
             DatabaseKind::Oracle,
             "ALTER TABLE T ADD (X NUMBER);\n@more.sql",
             vec!["ALTER TABLE T ADD (X NUMBER);"],
         )
+        .await
         .is_err());
         assert!(check(
             DatabaseKind::Oracle,
             "CREATE OR REPLACE PACKAGE P AS\n PROCEDURE Q;\nEND;\n/",
             vec!["CREATE OR REPLACE PACKAGE P AS\n PROCEDURE Q", "END"],
         )
+        .await
         .is_err());
     }
 }
