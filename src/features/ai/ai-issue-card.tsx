@@ -54,7 +54,10 @@ export function AiIssueCard({
             : "Senden fehlgeschlagen";
   const number = url?.split("/").at(-1);
   return (
-    <article data-ai-issue-card className="my-2 rounded-xl bg-muted/40 p-3.5">
+    <article
+      data-ai-issue-card
+      className="my-3 rounded-2xl bg-card p-3.5 shadow-[0_1px_2px_oklch(0_0_0/5%),0_8px_24px_-12px_oklch(0_0_0/16%)]"
+    >
       <div className="flex items-start gap-3">
         <span
           className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${
@@ -126,7 +129,7 @@ export function AiIssueCard({
         )}
         <Button
           size="sm"
-          variant={onPublish ? "default" : "outline"}
+          variant={onPublish ? "default" : "secondary"}
           disabled={pending}
           onClick={() => setOpen(true)}
         >

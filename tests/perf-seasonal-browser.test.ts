@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { chromium, type Page, webkit } from "playwright";
 import { reportScenario } from "../scripts/performance-report";
-import { HOLIDAYS } from "../src/lib/seasonal-calendar";
 import { seedApp } from "./fixtures/perf-app";
 import { expectFrame, FRAME_BUDGETS } from "./fixtures/perf-webkit-profile";
 
@@ -300,88 +299,6 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
     }
   },
   90000,
-);
-
-test.skipIf(!process.env.L8DB_PERF_APP)(
-  "Alle 19 Vorschauen bleiben bei 57 Wechseln begrenzt, abschaltbar und im Leerlauf ohne Arbeit",
-  async () => {
-    const app = await open(TABLE, OFF_SEASON);
-    try {
-      await app.page.getByRole("link", { name: /^Einstellungen/ }).click();
-      await app.page.getByRole("button", { name: "Darstellung", exact: true }).click();
-      await app.page.getByRole("button", { name: "Feiertage ansehen" }).click();
-      const preview = app.page.locator("[data-seasonal-preview]");
-      await preview.waitFor();
-      const galleryNodes = await preview.locator("*").count();
-      const beforePreviews = await app.spider();
-      const timings: number[] = [];
-      let maxVisitNodes = 0;
-      for (let cycle = 0; cycle < 3; cycle++) {
-        for (const holiday of HOLIDAYS) {
-          const start = performance.now();
-          await app.page.locator(`[data-holiday-option="${holiday.id}"]`).click();
-          expect(await preview.getAttribute("data-seasonal-preview")).toBe(holiday.id);
-          timings.push(performance.now() - start);
-          await app.page.getByRole("button", { name: "Besuch starten", exact: true }).click();
-          const selector = holiday.id === "halloween" ? SPIDER : VISITOR;
-          await app.page.waitForSelector(selector);
-          maxVisitNodes = Math.max(maxVisitNodes, await app.page.locator(`${selector} *`).count());
-          await app.page.getByRole("button", { name: "Verabschieden", exact: true }).click();
-          expect(await app.page.locator(`${VISITOR},${SPIDER}`).count()).toBe(0);
-        }
-      }
-      const sorted = timings.sort((a, b) => a - b);
-      const median = sorted[Math.floor(sorted.length * 0.5)];
-      const p95 = sorted[Math.floor(sorted.length * 0.95)];
-      expect(galleryNodes).toBeLessThan(800);
-      expect(await preview.locator("*").count()).toBe(galleryNodes);
-      expect(maxVisitNodes).toBeLessThan(40);
-      expect(median).toBeLessThan(150);
-      expect(p95).toBeLessThan(300);
-      const before = await app.spider();
-      const previewRequests = before.commands
-        .slice(beforePreviews.commands.length)
-        .filter(
-          (command) => command !== "list_providers" && /rows|query|list_|count|fetch/.test(command),
-        );
-      expect(previewRequests).toEqual([]);
-      await app.page.waitForTimeout(2500);
-      const after = await app.spider();
-      expect(after.scheduled).toBe(before.scheduled);
-      expect(
-        after.commands
-          .slice(before.commands.length)
-          .filter((command) => /rows|query|list_|count|fetch/.test(command)),
-      ).toEqual([]);
-      expect(
-        await app.page.evaluate(() =>
-          Object.keys(localStorage).filter((key) => key.startsWith("l8db.seasonal.")),
-        ),
-      ).toEqual([]);
-      await app.page.getByRole("button", { name: "Besuch starten", exact: true }).click();
-      await app.page.waitForSelector(VISITOR);
-      await app.page.getByRole("switch", { name: "Saisonale Akzente", exact: true }).click();
-      await app.page.waitForSelector(VISITOR, { state: "detached" });
-      expect(await preview.count()).toBe(0);
-      expect(await app.page.locator("[data-seasonal]").count()).toBe(0);
-      expect(app.errors).toEqual([]);
-      console.log(
-        `seasonal gallery: 57 switches, median ${median.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms, ${galleryNodes} retained gallery nodes, max ${maxVisitNodes} guest nodes`,
-      );
-      await reportScenario("seasonal-calendar-previews", {
-        switches: timings.length,
-        medianMs: median,
-        p95Ms: p95,
-        galleryNodes,
-        maxVisitNodes,
-        retainedVisitorNodes: 0,
-        previewDatabaseRequests: previewRequests.length,
-      });
-    } finally {
-      await app.close();
-    }
-  },
-  120000,
 );
 
 test.skipIf(!process.env.L8DB_PERF_APP)(

@@ -29,7 +29,7 @@ for (const engine of ["chromium", "webkit"] as const) {
         await page
           .getByRole("button", { name: "Versionierungsprojekt anlegen", exact: true })
           .click();
-        await page.getByRole("tab", { name: "Kunden", exact: true }).waitFor();
+        await page.getByRole("tab", { name: /^Kunden(\s|$)/ }).waitFor();
         const result = await page.evaluate(
           async ({ repo }) => {
             const { runPostgresScenario } = await import(
@@ -53,7 +53,7 @@ for (const engine of ["chromium", "webkit"] as const) {
           failureRecorded: true,
         });
         await page.getByRole("button", { name: "Versionierung aktualisieren" }).click();
-        await page.getByRole("tab", { name: "Kunden", exact: true }).click();
+        await page.getByRole("tab", { name: /^Kunden(\s|$)/ }).click();
         await page.getByText("Kunde A", { exact: true }).first().waitFor();
         const panel = page.locator("#versioning-panel");
         expect(await panel.getAttribute("aria-hidden")).toBe("false");
@@ -77,7 +77,7 @@ for (const engine of ["chromium", "webkit"] as const) {
         await page.locator("header button[aria-controls='versioning-panel']").click();
         await page.locator("[data-tour='tx-panel']").waitFor({ state: "detached" });
         await page.screenshot({ path: `/tmp/l8db-versioning-${engine}-fleet.png` });
-        await page.getByRole("tab", { name: "Releases", exact: true }).click();
+        await page.getByRole("tab", { name: /^Releases(\s|$)/ }).click();
         await page.getByRole("button", { name: "Release vorbereiten", exact: true }).click();
         await page.getByRole("textbox", { name: "Release-ID", exact: true }).fill("draft-check");
         await page.getByTestId("versioning-badge").getByText("4", { exact: true }).waitFor();
@@ -89,9 +89,7 @@ for (const engine of ["chromium", "webkit"] as const) {
         await page.getByRole("tab", { name: /^Änderungen/ }).click();
         await page.getByRole("alert").filter({ hasText: "Ungespeicherten Entwurf" }).waitFor();
         expect(
-          await page
-            .getByRole("tab", { name: "Releases", exact: true })
-            .getAttribute("aria-selected"),
+          await page.getByRole("tab", { name: /^Releases(\s|$)/ }).getAttribute("aria-selected"),
         ).toBe("true");
         await page.getByRole("button", { name: "Release-Entwurf verwerfen", exact: true }).click();
         await page.getByRole("tab", { name: /^Änderungen/ }).click();
@@ -119,7 +117,7 @@ for (const engine of ["chromium", "webkit"] as const) {
           }),
         ).toBe(true);
         await panel.getByRole("button", { name: "Entwurf verwerfen", exact: true }).click();
-        await page.getByRole("button", { name: "feature/approval", exact: true }).click();
+        await page.getByRole("button", { name: "Branch: feature/approval", exact: true }).click();
         const branches = page.getByRole("dialog", { name: "Branches", exact: true });
         await branches
           .getByRole("combobox", { name: "Git-Branch", exact: true })

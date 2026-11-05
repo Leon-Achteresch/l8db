@@ -27,7 +27,7 @@ export function AiFastToggle({ profile, models, disabled }: Props) {
       disabled={disabled}
       onClick={() => saveProfile({ ...profile, fast: !fast })}
       className={cn(
-        "relative flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+        "relative flex h-8 shrink-0 items-center gap-1 rounded-full px-2 text-xs outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
         fast
           ? "text-amber-500 hover:text-amber-500"
           : "text-muted-foreground hover:text-foreground",

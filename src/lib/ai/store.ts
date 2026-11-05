@@ -117,51 +117,60 @@ function sanitizeRich(rich: NonNullable<AiMessage["rich"]>) {
   sanitizedRich.add(Object.freeze(result));
   return result;
 }
+const sanitizedMessages = new WeakMap<AiMessage, AiMessage>();
 function sanitizeSession(session: AiSession): AiSession {
   return {
     ...session,
-    messages: session.messages.map(
-      (
-        {
-          id,
-          parentId,
-          role,
-          text,
-          rich,
-          reasoning,
-          error,
-          stopped,
-          createdAt,
-          durationMs,
-          attachments,
-          context,
-          contextLabels,
-        },
-        index,
-      ) => ({
-        id: id ?? `m${index}`,
-        ...(parentId !== undefined ? { parentId } : {}),
-        role,
-        text,
-        ...(rich ? { rich: sanitizeRich(rich) } : {}),
-        ...(typeof reasoning === "string" && reasoning ? { reasoning } : {}),
-        ...(typeof error === "string" && error ? { error } : {}),
-        ...(stopped ? { stopped: true } : {}),
-        ...(typeof createdAt === "number" ? { createdAt } : {}),
-        ...(typeof durationMs === "number" ? { durationMs } : {}),
-        ...(Array.isArray(attachments) && attachments.length
-          ? { attachments: attachments.slice(0, 10) }
-          : {}),
-        ...(typeof context === "string" && context ? { context } : {}),
-        ...(Array.isArray(contextLabels) && contextLabels.length
-          ? {
-              contextLabels: contextLabels
-                .filter((label) => typeof label === "string")
-                .slice(0, 20),
-            }
-          : {}),
-      }),
-    ),
+    messages: session.messages.map((message, index) => {
+      const cached = sanitizedMessages.get(message);
+      if (cached) return cached;
+      const result = sanitizeMessage(message, index);
+      if (message.id !== undefined) {
+        sanitizedMessages.set(message, result);
+        sanitizedMessages.set(result, result);
+      }
+      return result;
+    }),
+  };
+}
+function sanitizeMessage(
+  {
+    id,
+    parentId,
+    role,
+    text,
+    rich,
+    reasoning,
+    error,
+    stopped,
+    createdAt,
+    durationMs,
+    attachments,
+    context,
+    contextLabels,
+  }: AiMessage,
+  index: number,
+): AiMessage {
+  return {
+    id: id ?? `m${index}`,
+    ...(parentId !== undefined ? { parentId } : {}),
+    role,
+    text,
+    ...(rich ? { rich: sanitizeRich(rich) } : {}),
+    ...(typeof reasoning === "string" && reasoning ? { reasoning } : {}),
+    ...(typeof error === "string" && error ? { error } : {}),
+    ...(stopped ? { stopped: true } : {}),
+    ...(typeof createdAt === "number" ? { createdAt } : {}),
+    ...(typeof durationMs === "number" ? { durationMs } : {}),
+    ...(Array.isArray(attachments) && attachments.length
+      ? { attachments: attachments.slice(0, 10) }
+      : {}),
+    ...(typeof context === "string" && context ? { context } : {}),
+    ...(Array.isArray(contextLabels) && contextLabels.length
+      ? {
+          contextLabels: contextLabels.filter((label) => typeof label === "string").slice(0, 20),
+        }
+      : {}),
   };
 }
 function readData(value: string | null): AiData {

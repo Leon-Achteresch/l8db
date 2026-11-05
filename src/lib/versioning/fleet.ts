@@ -28,8 +28,10 @@ export async function preflightFleet(
       const connection = connections.find((connection) => connection.id === target.connectionId);
       if (!connection) throw new Error("Zielverbindung fehlt.");
       const plan = await planDeployment(repo, project, target, connection, releaseId);
-      if (plan.differences.some((difference) => difference.status !== "unchanged"))
-        throw new Error("Direkte Datenbankänderungen erkannt. Stand zuerst abgleichen.");
+      if (plan.drift.length)
+        throw new Error(
+          `Direkte Datenbankänderungen erkannt (${plan.drift.map((item) => item.label).join(", ")}). Stand zuerst abgleichen.`,
+        );
       const gate = plan.releases.length ? blockingGate(plan.delivery) : null;
       if (gate)
         throw new Error(

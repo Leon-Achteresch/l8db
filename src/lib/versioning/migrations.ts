@@ -5,9 +5,9 @@ import {
 } from "@/lib/compare-apply-plan";
 import { quoteIdentifier } from "@/lib/export";
 import { columnDefinitionSql } from "@/lib/migration-script/sql";
-import { deployKind, validateMigration } from "./model";
+import { checksum, deployKind, validateMigration } from "./model";
 import { sqlCode } from "./sql-code";
-import type { DatabaseRelease, ObjectSnapshot, VersioningKind } from "./types";
+import type { DatabaseRelease, ObjectSnapshot, ReleaseMigration, VersioningKind } from "./types";
 
 export interface MigrationDraft {
   sql: string;
@@ -207,4 +207,24 @@ export function generateMigration(
     .join(kind === "oracle" ? "\n/\n" : "\n\n");
   if (sql) validateMigration(sql, deployKind(kind));
   return { sql, changes, issues };
+}
+
+export async function groundwork(
+  kind: VersioningKind,
+  id: string,
+  objects: ObjectSnapshot[],
+): Promise<ReleaseMigration[]> {
+  const empty = { objects: [] } as unknown as DatabaseRelease;
+  const draft = generateMigration(kind, empty, objects);
+  if (!draft.sql || draft.issues.length) return [];
+  return [
+    {
+      id: "grundstand",
+      title: `Grundstand ${id} für leere Datenbanken`,
+      sql: draft.sql,
+      checksum: await checksum(draft.sql),
+      touches: objects.map((entry) => entry.object.id),
+      before: Object.fromEntries(objects.map((entry) => [entry.object.id, null])),
+    },
+  ];
 }

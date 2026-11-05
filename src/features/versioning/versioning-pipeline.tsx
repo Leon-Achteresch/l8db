@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
 import { STAGE_LABELS } from "@/lib/versioning/delivery";
+import { releaseParents } from "@/lib/versioning/model";
 import {
   buildPipeline,
   PIPELINE_STAGES,
@@ -96,14 +97,16 @@ export function VersioningPipeline({
           committed={pipeline.committed}
           stages={pipeline.stages}
         />
-        {pipeline.committed && pipeline.tip?.parent && (
+        {pipeline.committed && pipeline.tip && releaseParents(pipeline.tip)[0] && (
           <Button
             size="sm"
             variant="ghost"
             className="ml-auto h-7 text-[11px]"
-            title={`${pipeline.tip.id} mit einem neuen Release auf ${pipeline.tip.parent} zurücknehmen`}
+            title={`${pipeline.tip.id} mit einem neuen Release auf ${releaseParents(pipeline.tip)[0]} zurücknehmen`}
             onClick={() => {
-              workspace.setRequestedRollbackId(pipeline.tip?.parent ?? "");
+              workspace.setRequestedRollbackId(
+                pipeline.tip ? (releaseParents(pipeline.tip)[0] ?? "") : "",
+              );
               onNavigate("releases");
             }}
           >
