@@ -59,7 +59,9 @@ export function AppNavRail() {
             (item) => item.connectionFree && isEasyModeRouteVisible(item.url, easyMode),
           ),
         ]
-  ).sort((a, b) => (a.group ?? 0) - (b.group ?? 0));
+  ).sort(
+    (a, b) => (a.group ?? 0) - (b.group ?? 0) || Number(b.url === "/") - Number(a.url === "/"),
+  );
   const activeUrl = useRouterSelect(
     (state) =>
       [...appSidebarData.navMain, connectItem].find((item) =>
@@ -100,7 +102,7 @@ export function AppNavRail() {
               active &&
                 "bg-sidebar-accent font-medium text-foreground before:absolute before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-primary",
               active && (expanded ? "before:-left-2" : "before:-left-2.5"),
-              secondary && "bg-sidebar-accent text-foreground",
+              secondary && "text-foreground",
             )}
           >
             <MorphIcon
@@ -124,14 +126,16 @@ export function AppNavRail() {
         );
         return (
           <Fragment key={item.title}>
-            {groupStart && (
-              <span
-                aria-hidden="true"
-                className={cn("my-1 h-px shrink-0 bg-border", expanded ? "w-full" : "w-6")}
-              />
+            {groupStart && !expanded && (
+              <span aria-hidden="true" className="my-1 h-px w-6 shrink-0 bg-border" />
             )}
             {expanded && (index === 0 || groupStart) && navGroupLabels[group] && (
-              <span className="px-2.5 pt-1 pb-0.5 text-xs text-muted-foreground">
+              <span
+                className={cn(
+                  "px-2.5 pb-1 text-[11px] text-muted-foreground",
+                  index === 0 ? "pt-1" : "pt-3",
+                )}
+              >
                 {navGroupLabels[group]}
               </span>
             )}

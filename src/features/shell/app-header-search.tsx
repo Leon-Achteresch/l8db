@@ -346,7 +346,7 @@ export function AppHeaderSearch() {
         <DynamicIsland
           buttonRef={searchButtonRef}
           shortcut={formatHotkeyDisplay(paletteHotkey)}
-          badge={searchNew ? <NewBadge /> : undefined}
+          isNew={searchNew}
           onOpen={() => openSearch()}
         />
       ) : (
@@ -359,7 +359,7 @@ export function AppHeaderSearch() {
           onClick={() => openSearch()}
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
           className={cn(
-            "inline-flex h-7 w-full max-w-[460px] items-center gap-2 rounded-full",
+            "relative inline-flex h-7 w-full max-w-[460px] items-center gap-2 rounded-full",
             "border border-border/70 bg-muted/40 px-3 @max-[8rem]/header-search:gap-0 @max-[8rem]/header-search:px-1.5",
             "text-xs text-muted-foreground transition-colors",
             "cursor-pointer select-none",
@@ -368,12 +368,18 @@ export function AppHeaderSearch() {
         >
           <Search className="size-3.5 shrink-0 opacity-60" strokeWidth={2} />
           <span className="min-w-0 flex-1 truncate text-left @max-[8rem]/header-search:hidden">
-            Suchen
+            Objekte & Befehle suchen
           </span>
           <kbd className="inline-flex shrink-0 items-center rounded-full border border-border/60 @max-[8rem]/header-search:hidden bg-background/70 px-1.5 py-px font-sans text-[10px]">
             {formatHotkeyDisplay(paletteHotkey)}
           </kbd>
-          {searchNew ? <NewBadge /> : null}
+          {searchNew ? (
+            <span
+              role="img"
+              aria-label="Neu"
+              className="pointer-events-none absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary ring-2 ring-background"
+            />
+          ) : null}
         </button>
       ),
     [dynamicIsland, openSearch, paletteHotkey, searchNew],

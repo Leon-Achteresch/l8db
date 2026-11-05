@@ -96,7 +96,7 @@ export function SettingsView() {
       className="workspace-canvas h-full w-full min-w-0 overflow-y-auto"
       data-tour="settings-page"
     >
-      <div ref={featureRef} className="mx-auto w-full max-w-6xl px-6 py-7">
+      <div ref={featureRef} className="mx-auto w-full max-w-[1048px] px-6 py-7">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-[22px] font-semibold tracking-tight text-foreground">

@@ -24,6 +24,21 @@ let measureFont = "";
 const measured = new Map<string, number>();
 
 const ASCII = /^[\x20-\x7e]*$/;
+let cellChar: number | undefined;
+
+export function cellMonoCharWidth(): number {
+  if (cellChar !== undefined) return cellChar;
+  if (typeof document === "undefined" || !document.body) return 7.22;
+  const probe = document.createElement("span");
+  probe.className = "font-mono text-xs";
+  probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;left:-9999px";
+  probe.textContent = "0".repeat(100);
+  document.body.appendChild(probe);
+  const width = probe.getBoundingClientRect().width / 100;
+  probe.remove();
+  if (width > 0) cellChar = width;
+  return width > 0 ? width : 7.22;
+}
 
 function textWidth(text: string, font: string, fallback: number): number {
   if (ASCII.test(text)) return fallback;

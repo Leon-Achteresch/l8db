@@ -3,9 +3,11 @@ import type { DatabaseOverview, SchemaMap, SchemaMapLink, TableInfo } from "@/li
 
 export const ATLAS_TILE_LIMIT = 180;
 export const ATLAS_GRID_LIMIT = 24;
-export const ATLAS_GRID_ROW = 72;
-export const ATLAS_GRID_ROW_COMPACT = 56;
+export const ATLAS_GRID_ROW = 68;
+export const ATLAS_GRID_ROW_COMPACT = 60;
 const ATLAS_GRID_COLS = 4;
+const ATLAS_CELL_MIN = 204;
+const ATLAS_CELL_MAX = 244;
 
 export type AtlasMetric = "bytes" | "rows" | "links" | null;
 
@@ -90,10 +92,13 @@ export function atlasMetric(tables: AtlasTable[]): AtlasMetric {
 export function atlasGrid(
   count: number,
   metric: AtlasMetric,
-): { cols: number; rows: number } | null {
+  width = 0,
+): { cols: number; rows: number; cell: number } | null {
   if (metric === "bytes" || metric === "rows" || count < 1 || count > ATLAS_GRID_LIMIT) return null;
-  const cols = Math.min(count, ATLAS_GRID_COLS);
-  return { cols, rows: Math.ceil(count / cols) };
+  const fit = width > 0 ? Math.max(1, Math.floor(width / ATLAS_CELL_MIN)) : ATLAS_GRID_COLS;
+  const cols = Math.min(count, fit);
+  const cell = width > 0 ? Math.min(ATLAS_CELL_MAX, width / fit) : 0;
+  return { cols, rows: Math.ceil(count / cols), cell };
 }
 
 export interface RankedSchema {
@@ -149,14 +154,14 @@ export function layoutAtlas(
       (a.table.name < b.table.name ? -1 : a.table.name > b.table.name ? 1 : 0),
   );
   const shown = weighted.slice(0, limit).map((entry) => ({ ...entry, value: entry.weight }));
-  const grid = atlasGrid(shown.length, metric);
+  const grid = atlasGrid(shown.length, metric, width);
   const cells = grid
     ? width > 0 && height > 0
       ? shown.map((item, index) => ({
           item,
-          x: (index % grid.cols) * (width / grid.cols),
+          x: (index % grid.cols) * grid.cell,
           y: Math.floor(index / grid.cols) * (height / grid.rows),
-          width: width / grid.cols,
+          width: grid.cell,
           height: height / grid.rows,
         }))
       : []

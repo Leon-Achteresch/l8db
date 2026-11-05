@@ -131,11 +131,19 @@ export function AppSidebarPanel() {
                 />
               </div>
             ) : (
-              <SidebarGroupLabel className="flex-1 tabular-nums">
-                {caps.object_storage && sidebarTab === "tables"
-                  ? "Buckets"
-                  : sidebarTabLabel(sidebarTab)}
-                {tabCount !== undefined ? ` · ${tabCount.toLocaleString("de-DE")}` : null}
+              <SidebarGroupLabel
+                className="flex-1 text-xs tabular-nums text-muted-foreground"
+                title={
+                  caps.object_storage && sidebarTab === "tables"
+                    ? "Buckets"
+                    : sidebarTabLabel(sidebarTab)
+                }
+              >
+                {tabCount !== undefined
+                  ? tabCount.toLocaleString("de-DE")
+                  : caps.object_storage && sidebarTab === "tables"
+                    ? "Buckets"
+                    : sidebarTabLabel(sidebarTab)}
               </SidebarGroupLabel>
             )}
             {sidebarTab === "functions" ||

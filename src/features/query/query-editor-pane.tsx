@@ -39,6 +39,7 @@ export type { EditorPosition, QueryEditorApi } from "./query-editor-pane/types";
 export function QueryEditorPane({
   value,
   language = "sql",
+  placeholder,
   onChange,
   onRun,
   onSave,
@@ -319,6 +320,10 @@ export function QueryEditorPane({
   }, [resolvedTheme]);
 
   useEditorOptionsSync(editorRef, editorSettings);
+
+  useEffect(() => {
+    editorRef.current?.updateOptions({ placeholder });
+  }, [placeholder]);
 
   return (
     <div className={cn("relative flex flex-col", className ?? "size-full")}>

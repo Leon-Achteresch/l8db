@@ -1,4 +1,4 @@
-import { Star } from "lucide-react";
+import { Star, Table2 } from "lucide-react";
 import { memo } from "react";
 import { cn } from "@/lib/utils";
 import { atlasFacts, describeAtlasTable, formatLinks } from "./atlas-format";
@@ -70,13 +70,14 @@ export const AtlasTile = memo(function AtlasTile({
       {showName && (
         <span
           className={cn(
-            "block max-w-full truncate font-mono font-medium leading-tight",
+            "flex max-w-full items-center gap-1.5 font-medium leading-tight",
             area > 42_000 && (metric === "bytes" || metric === "rows")
               ? "text-[15px]"
               : "text-[13px]",
           )}
         >
-          {tile.name}
+          {tile.w >= 80 && <Table2 className="size-3.5 shrink-0 text-muted-foreground" />}
+          <span className="truncate">{tile.name}</span>
         </span>
       )}
       {showMeta && (

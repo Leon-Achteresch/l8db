@@ -288,7 +288,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
             <div
               ref={edgeFadeRef}
               aria-hidden
-              className="pointer-events-none absolute inset-y-0 right-0 z-30 w-6 bg-gradient-to-l from-background to-transparent opacity-0 transition-opacity"
+              className="pointer-events-none absolute right-0 bottom-0 z-30 w-6 bg-gradient-to-l from-background to-transparent opacity-0 transition-opacity"
             />
             <PageWave
               direction="up"

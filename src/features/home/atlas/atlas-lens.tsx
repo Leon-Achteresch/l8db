@@ -86,7 +86,7 @@ export function AtlasLens({
             type="button"
             onClick={() => (foreign ? onOpen(schema, name) : onWalk(key))}
             title={foreign ? `${schema}.${name} öffnen` : `Zu ${name} springen`}
-            className="max-w-48 truncate rounded-md px-1.5 py-0.5 font-mono text-xs text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
+            className="max-w-48 truncate rounded-md px-1.5 py-0.5 text-xs font-medium text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
           >
             {foreign ? `${schema}.${name}` : name}
           </button>
@@ -113,7 +113,7 @@ export function AtlasLens({
     <div className="mt-3 flex min-h-14 flex-wrap items-start justify-between gap-x-6 gap-y-2">
       <div className="min-w-0 flex-1">
         <p className="flex min-w-0 items-baseline gap-3">
-          <span className="truncate font-mono text-sm font-semibold">{table.name}</span>
+          <span className="truncate text-sm font-semibold">{table.name}</span>
           {facts && (
             <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{facts}</span>
           )}

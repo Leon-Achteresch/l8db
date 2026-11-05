@@ -109,11 +109,13 @@ test("ohne lesbare Größen gewichtet der Atlas nach Fremdschlüsseln und die Sc
   expect(layout.tiles[0].heat).toBe(1);
   expect(layout.tiles[2].heat).toBe(0);
   expect(layout.tiles.map((tile) => [tile.x, tile.y, tile.w, tile.h])).toEqual([
-    [0, 0, 200, 400],
-    [200, 0, 200, 400],
-    [400, 0, 200, 400],
+    [0, 0, 244, 200],
+    [244, 0, 244, 200],
+    [0, 200, 244, 200],
   ]);
-  expect(atlasGrid(6, null)).toEqual({ cols: 4, rows: 2 });
+  expect(atlasGrid(6, null)).toEqual({ cols: 4, rows: 2, cell: 0 });
+  expect(atlasGrid(6, null, 1000)).toEqual({ cols: 4, rows: 2, cell: 244 });
+  expect(atlasGrid(6, null, 300)).toEqual({ cols: 1, rows: 6, cell: 244 });
   expect(atlasGrid(6, "bytes")).toBeNull();
   expect(atlasGrid(ATLAS_GRID_LIMIT + 1, "links")).toBeNull();
 

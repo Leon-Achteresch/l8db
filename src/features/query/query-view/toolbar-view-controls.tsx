@@ -54,13 +54,13 @@ export function ToolbarViewControls({
       <Button
         size="sm"
         variant={analysisOpen ? "secondary" : "ghost"}
-        className="h-8 gap-1.5 px-2 text-xs"
+        className="size-8 px-0"
         aria-pressed={analysisOpen}
         onClick={onOpenAnalysis}
         title="Explain und Performance-Test"
       >
         <GaugeIcon className="size-3.5" />
-        <span className="sr-only @min-[62rem]/qtb:not-sr-only">Analyse</span>
+        <span className="sr-only">Analyse</span>
       </Button>
       <Separator orientation="vertical" className="mx-1 my-2" />
       <Button

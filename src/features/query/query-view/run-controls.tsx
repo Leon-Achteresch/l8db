@@ -57,7 +57,7 @@ export function RunControls({
           <Button
             size="sm"
             variant="default"
-            className="h-8 gap-1.5 rounded-r-none border-r border-primary-foreground/25 px-2.5 text-xs disabled:bg-primary/45 disabled:opacity-100 @min-[42rem]/qtb:px-3"
+            className="h-8 gap-1.5 rounded-r-none border-r border-primary-foreground/25 px-2.5 text-xs disabled:opacity-50 @min-[42rem]/qtb:px-3"
             data-tour="query-run"
             data-hotkey={hasSelection ? "query.runSelection" : "query.run"}
             onClick={actions.handleRun}
@@ -73,7 +73,7 @@ export function RunControls({
               <Button
                 size="sm"
                 variant="default"
-                className="h-8 w-8 rounded-l-none px-0 disabled:bg-primary/45 disabled:opacity-100"
+                className="h-8 w-8 rounded-l-none px-0 disabled:opacity-50"
                 aria-label="Weitere Ausführungsarten"
                 title="Weitere Ausführungsarten"
                 disabled={runDisabled}

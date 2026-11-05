@@ -1,6 +1,6 @@
 import type { ColumnSizingState, Updater } from "@tanstack/react-table";
 import { useCallback, useMemo } from "react";
-import { contentColumnWidth } from "@/lib/column-content-width";
+import { classicColumnWidth, contentColumnWidth } from "@/lib/column-content-width";
 import { fitHeaderColumnWidth, measureHeaderTitleWidth } from "@/lib/column-header-width";
 import type { ForeignKeyInfo } from "@/lib/db";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
@@ -53,12 +53,24 @@ export function useColumnSizing(
     const sized = defaultWidths ? { ...defaultWidths, ...classicSizing } : classicSizing;
     if (!fitColumnsToHeader) return sized;
     const fitted: Record<string, number> = { ...sized };
+    const sample = data.length > SAMPLE_ROWS ? data.slice(0, SAMPLE_ROWS) : data;
     for (const column of order) {
+      const info = typeInfoByColumn.get(column);
+      const saved = sized[column];
+      if (saved === undefined) {
+        fitted[column] = classicColumnWidth({
+          name: column,
+          typeLabel: info?.dataType ?? info?.label ?? "",
+          icons: 1 + (info?.kind === "key" ? 1 : 0) + (fkByColumn.has(column) ? 1 : 0),
+          values: sample.map((row) => row[column]),
+        });
+        continue;
+      }
       const minWidth = fitHeaderColumnWidth(
-        measureHeaderTitleWidth(column, typeInfoByColumn.get(column)?.label),
+        measureHeaderTitleWidth(column, info?.label),
         fkByColumn.has(column),
       );
-      fitted[column] = Math.max(minWidth, sized[column] ?? 0);
+      fitted[column] = Math.max(minWidth, saved);
     }
     return fitted;
   }, [

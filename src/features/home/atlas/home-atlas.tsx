@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { queryErrorMessage } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
 import { useActiveCapabilities, useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
+import { useElementSize } from "@/lib/hooks/use-element-size";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useSchemaMapQuery, useTablesQuery } from "@/lib/queries";
 import { useSettingsStore } from "@/lib/settings";
@@ -34,8 +35,8 @@ import { useAtlasTrail } from "./use-atlas-trail";
 
 const NO_NEIGHBORS: AtlasNeighbors = { outgoing: [], incoming: [] };
 
-function atlasHeight(count: number, metric: AtlasMetric, compact: boolean): string {
-  const grid = atlasGrid(count, metric);
+function atlasHeight(count: number, metric: AtlasMetric, compact: boolean, width: number): string {
+  const grid = atlasGrid(count, metric, width);
   if (grid) return `${grid.rows * (compact ? ATLAS_GRID_ROW_COMPACT : ATLAS_GRID_ROW)}px`;
   if (count <= 4) return "13rem";
   if (count <= 12) return "21rem";
@@ -52,7 +53,7 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
   const navigate = useNavigate();
   const feature = useNewFeatureVisibility<HTMLElement>("home.atlas");
   const searchRef = useRef<HTMLInputElement>(null);
-  const mapRef = useRef<HTMLDivElement>(null);
+  const { ref: mapRef, width: mapWidth } = useElementSize<HTMLDivElement>();
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<AtlasFocus>({ key: null, live: false });
   const { entries, marks } = useAtlasTrail(connection.id, database);
@@ -163,69 +164,73 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
       className="grid gap-x-10 gap-y-8 @4xl/home:grid-cols-[minmax(0,1fr)_17.5rem]"
     >
       <div className="min-w-0">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-          <div className="min-w-0 flex-1">
-            <SchemaStrip connectionId={connection.id} schema={schema} />
-            {atlasTables.length > 0 && (
-              <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
-                {!map.isPending && (summary.metric === null || summary.metric === "links") && (
-                  <>
-                    <span>
-                      {summary.metric === null
-                        ? "Tabellengrößen unbekannt – Kacheln gleich groß dargestellt"
-                        : "Tabellengrößen unbekannt – Fläche zeigt die Fremdschlüssel"}
-                    </span>
-                    <span aria-hidden>·</span>
-                  </>
-                )}
-                <span className="inline-flex items-center gap-1">
-                  <span className="size-1.5 rounded-full bg-primary" /> geöffnet
-                </span>
-                <span aria-hidden>·</span>
-                <span className="inline-flex items-center gap-1">
-                  <Star className="size-2.5 fill-current text-primary" /> Favorit
-                </span>
-              </p>
-            )}
-          </div>
-          <div className="relative flex items-center gap-2">
-            {feature.isNew && <NewBadge />}
-            <Search className="pointer-events-none absolute left-2.5 size-3.5 text-muted-foreground" />
-            <Input
-              ref={searchRef}
-              type="search"
-              className="h-8 w-56 pl-8 text-xs"
-              aria-label={`Tabellen in ${schema} finden`}
-              placeholder={`Tabelle in ${schema} finden…`}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape" && query) {
-                  event.preventDefault();
-                  setQuery("");
-                } else if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  mapRef.current
-                    ?.querySelector<HTMLButtonElement>('[data-atlas-index="0"]')
-                    ?.focus();
-                } else if (event.key === "Enter") {
-                  const exact = atlasTables.find(
-                    (table) => table.name.toLowerCase() === query.trim().toLowerCase(),
-                  );
-                  if (exact) open(exact.schema, exact.name);
-                  else
+        <div className="mb-2 flex flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+            <div className="min-w-0 flex-1">
+              <SchemaStrip connectionId={connection.id} schema={schema} />
+            </div>
+            <div className="relative flex items-center gap-2">
+              {feature.isNew && <NewBadge />}
+              <Search className="pointer-events-none absolute left-2.5 size-3.5 text-muted-foreground" />
+              <Input
+                ref={searchRef}
+                type="search"
+                className="h-8 w-56 pl-8 text-xs"
+                aria-label={`Tabellen in ${schema} finden`}
+                placeholder={`Tabelle in ${schema} finden…`}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape" && query) {
+                    event.preventDefault();
+                    setQuery("");
+                  } else if (event.key === "ArrowDown") {
+                    event.preventDefault();
                     mapRef.current
                       ?.querySelector<HTMLButtonElement>('[data-atlas-index="0"]')
-                      ?.click();
-                }
-              }}
-            />
+                      ?.focus();
+                  } else if (event.key === "Enter") {
+                    const exact = atlasTables.find(
+                      (table) => table.name.toLowerCase() === query.trim().toLowerCase(),
+                    );
+                    if (exact) open(exact.schema, exact.name);
+                    else
+                      mapRef.current
+                        ?.querySelector<HTMLButtonElement>('[data-atlas-index="0"]')
+                        ?.click();
+                  }
+                }}
+              />
+            </div>
           </div>
+          {atlasTables.length > 0 && (
+            <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground">
+              {!map.isPending && (summary.metric === null || summary.metric === "links") && (
+                <>
+                  <span>
+                    {summary.metric === null
+                      ? "Tabellengrößen unbekannt – Kacheln gleich groß dargestellt"
+                      : "Tabellengrößen unbekannt – Fläche zeigt die Fremdschlüssel"}
+                  </span>
+                  <span aria-hidden>·</span>
+                </>
+              )}
+              <span className="inline-flex items-center gap-1">
+                <span className="size-1.5 rounded-full bg-primary" /> geöffnet
+              </span>
+              <span aria-hidden>·</span>
+              <span className="inline-flex items-center gap-1">
+                <Star className="size-2.5 fill-current text-primary" /> Favorit
+              </span>
+            </p>
+          )}
         </div>
         <div
           ref={mapRef}
           className="-m-0.5 overflow-hidden"
-          style={{ height: atlasHeight(summary.matching, summary.metric, summary.compact) }}
+          style={{
+            height: atlasHeight(summary.matching, summary.metric, summary.compact, mapWidth),
+          }}
         >
           {body}
         </div>
@@ -245,7 +250,7 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
           onClear={() => setFocus({ key: null, live: false })}
         />
       </div>
-      <div>
+      <div className="self-start">
         <ContinueRail
           connectionId={connection.id}
           database={database}
