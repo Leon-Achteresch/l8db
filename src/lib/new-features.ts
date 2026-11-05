@@ -207,7 +207,6 @@ export const NEW_FEATURES = {
   "settings.appearance.table-style": "0.14.0",
   "settings.appearance.filter-bar": "0.16.0",
   "settings.appearance.seasonal": "0.15.0",
-  "settings.appearance.seasonal.calendar": NEXT_FEATURE_VERSION,
   "settings.appearance.themes": NEXT_FEATURE_VERSION,
   "settings.appearance.db-themes": NEXT_FEATURE_VERSION,
   "query.transaction.changes": "0.7.0",
