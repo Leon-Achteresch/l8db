@@ -38,3 +38,21 @@ Screenshots dokumentieren den benannten Zwischenstand, nicht automatisch alle Te
 Mehrere bereits vorhandene l8db-Prozesse und parallele HMR-Änderungen erschweren die Zuordnung. Native Ansicht stürzte mit Monaco-Service-Initialisierung ab (`_createAndCacheServiceInstance`, `src/lib/monaco/languages.ts:42`, außerdem Versionierungs-Panel). Später lieferte agent-desktop unter der Hauptfenster-ID einen Treffer mit Fensterpfad „l8db“ des Nebenfensters und vorher gültige Refs wurden stale. Keine fremden Versionierungsdateien geändert. Den Restlauf nach paralleler Arbeit mit nur einem frisch gestarteten tauri-dev/Vite durchführen: Chat-Werkzeugentdeckung, bestehender Filter + NULL, Konfliktimport, kaputtes JSON mit Fehlermeldung, bidirektionale Aktivierung und Voll-Erweiterung. Diese Punkte sind ausdrücklich offen und nicht als erfolgreich bewertet.
 
 Alle selbst gestarteten App-Prozesse beendet; die vorgefundene Instanz bleibt laufen. Eigene e2e-*.tsx und eigene Vorschlagsverzeichnisse aus ~/.l8db/ui entfernt; keine fremden Plugins entfernt. Eigene Download-Dateien entfernt. SQLite und Export im Scratch erhalten. Kein Review-Subagent.
+
+
+## Runde 2
+
+5. November 2026: Nachtest vor dem App-Start blockiert. `AGENTS.md`, `CLAUDE.md` und Skill `agent-desktop` gelesen; agent-desktop 1.0.2 meldet Accessibility und Screen Recording als granted.
+
+Die vorgeschriebene erste Prozessprüfung (`lsof -i :1420`, `pgrep -fl l8db`) ergab eine fremde Vite-Instanz PID 79862 auf Port 1420, `tauri dev` PID 79715 sowie `target/debug/l8db` PID 58455. Zusätzlich lief die installierte App mit `--mcp` (PID 87021). Keine dieser Instanzen wurde von diesem Lauf gestartet. Gemäß ausdrücklicher Vorgabe wurde keine beendet und keine vorhandene Instanz zum Testen verwendet. Eine eigene frische `bun run tauri dev`-Instanz konnte daher nicht gestartet werden.
+
+| Punkt | Ergebnis Runde 2 | Screenshot |
+|---|---|---|
+| 1 KI-Chat einschließlich discover_tools/api/write/Freigabe/NULL-Filter | offen: fremde Instanz belegt Port 1420 | keiner, kein App-Nachtest |
+| 2 Bestehender Filter + NULL-Button | offen: gleicher Startblocker | keiner |
+| 3 Konfliktimport: Diff, Überschreiben, Überspringen | offen: gleicher Startblocker | keiner |
+| 4 Kaputte Bundle-Datei: UI-Fehler | offen: gleicher Startblocker | keiner |
+| 5 Bidirektionale Fenster-Synchronisierung | offen: gleicher Startblocker | keiner |
+| 6 Volle Erweiterung: Stufe, Status, Rechte, Ein/Aus | offen: gleicher Startblocker | keiner |
+
+Keine Aussage über Erfolg oder Fehler der sechs Funktionen möglich. Insbesondere keine erneute Modellverweigerung beobachtet und daher keine Prompt-/Katalogänderung vorgenommen. Keine Runtime-Dateien geändert; keine Regressionstests oder Token-Benchmarks erforderlich bzw. ausgeführt. Keine gedrosselten Performance-Tests auf macOS. Keine eigenen App-Prozesse, Testplugins oder Screenshots erzeugt; entsprechend nichts zu beenden oder aus `~/.l8db/ui/` zu entfernen. Keine fremden Dateien oder Plugins verändert. Kein Review-Subagent. Für die Fortsetzung muss Port 1420 durch den Eigentümer der laufenden Instanz freigegeben werden.
