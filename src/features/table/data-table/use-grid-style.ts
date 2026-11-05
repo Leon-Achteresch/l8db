@@ -22,7 +22,6 @@ export function useGridStyle(
   return useMemo(() => {
     const columns = new Map<string, GridColumnStyle>();
     const now = new Date();
-    if (style === "classic") return { style, columns, now };
     const primaryKeys = new Set(
       (columnDetails ?? []).filter((column) => column.is_primary_key).map((column) => column.name),
     );
@@ -34,7 +33,9 @@ export function useGridStyle(
       const values = data.map((row) => row[name]);
       const present = values.filter((value) => value !== null && value !== undefined);
       const categorical =
-        kind === "text" && isCategorical(values, isEnumDataType(dataTypes.get(name)));
+        style !== "classic" &&
+        kind === "text" &&
+        isCategorical(values, isEnumDataType(dataTypes.get(name)));
       columns.set(name, {
         kind,
         numeric:

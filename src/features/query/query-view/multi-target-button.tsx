@@ -22,8 +22,8 @@ export function MultiTargetButton({
     <Button
       ref={feature.ref}
       size="sm"
-      variant="outline"
-      className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
+      variant="ghost"
+      className="h-7 gap-1.5 px-2 text-xs"
       data-tour="query-multi-target"
       onClick={onOpen}
       disabled={disabled}

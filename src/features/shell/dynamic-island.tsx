@@ -85,7 +85,7 @@ export function DynamicIsland({ buttonRef, shortcut, badge, onOpen }: Props) {
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
         style={{ width: pill.width || undefined, WebkitAppRegion: "no-drag" } as CSSProperties}
-        className="group relative h-7 max-w-full text-foreground transition-[scale] dark:text-white duration-150 ease-out active:scale-[0.96]"
+        className="group relative h-7 max-w-full text-foreground transition-[scale] duration-150 ease-out active:scale-[0.96]"
       >
         {pill.width ? (
           <IslandPill width={pill.width} tone={view.tone ?? "neutral"} delay={pill.delay} />

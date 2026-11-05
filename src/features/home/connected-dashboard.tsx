@@ -43,12 +43,8 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
       <motion.div
         initial={reduce ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        className="@container/home relative isolate mx-auto max-w-[1440px] px-6 py-7 lg:px-9"
+        className="@container/home relative isolate mx-auto max-w-[1440px] px-6 py-7"
       >
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-80 opacity-80 [background:radial-gradient(55%_100%_at_12%_0%,color-mix(in_oklch,var(--chart-1)_16%,transparent),transparent_70%),radial-gradient(45%_80%_at_62%_0%,color-mix(in_oklch,var(--chart-2)_11%,transparent),transparent_70%)]"
-        />
         <header className="mb-6 grid gap-x-6 gap-y-4 md:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
             <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
@@ -68,8 +64,8 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
                 {tables.isError ? "Verbindung prüfen" : tables.isPending ? "Lädt" : "Verbunden"}
               </AnimatedBadge>
             </div>
-            <h1 className="text-3xl font-semibold tracking-[-0.045em]">{connection.name}</h1>
-            <div className="mt-2">
+            <h1 className="text-[22px] font-semibold tracking-tight">{connection.name}</h1>
+            <div className="mt-1">
               <InventoryLine database={database} schema={schema} />
             </div>
           </div>

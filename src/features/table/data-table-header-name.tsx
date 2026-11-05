@@ -18,7 +18,7 @@ export function DataTableHeaderName({ name, isFk = false }: { name: string; isFk
         ref={ref}
         className={cn(
           "min-w-0 truncate font-mono font-semibold text-[12px] tracking-tight",
-          isFk ? "text-blue-600 dark:text-blue-400" : "text-foreground/80",
+          isFk ? "text-blue-600 dark:text-blue-400" : "text-foreground",
         )}
         onPointerEnter={() => {
           const el = ref.current;

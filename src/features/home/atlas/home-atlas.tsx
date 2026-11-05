@@ -29,8 +29,11 @@ import { useAtlasTrail } from "./use-atlas-trail";
 
 const NO_NEIGHBORS: AtlasNeighbors = { outgoing: [], incoming: [] };
 
-const ATLAS_GROUND =
-  "linear-gradient(140deg, color-mix(in oklch, var(--chart-2) 34%, var(--border)), color-mix(in oklch, var(--border) 75%, var(--background)) 48%, color-mix(in oklch, var(--chart-1) 42%, var(--border)))";
+function atlasHeight(count: number): string {
+  if (count <= 4) return "13rem";
+  if (count <= 12) return "21rem";
+  return "clamp(320px,calc(100vh - 430px),640px)";
+}
 
 export function HomeAtlas({ connection }: { connection: SavedConnection }) {
   const database = useActiveDatabase();
@@ -155,6 +158,13 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
         <div className="mb-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
           <div className="min-w-0 flex-1">
             <SchemaStrip connectionId={connection.id} schema={schema} />
+            {!map.isPending &&
+              atlasTables.length > 0 &&
+              (summary.metric === null || summary.metric === "links") && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Keine Größen lesbar: Statistiken oder Leserechte fehlen.
+                </p>
+              )}
           </div>
           <div className="relative flex items-center gap-2">
             {feature.isNew && <NewBadge />}
@@ -162,7 +172,7 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
             <Input
               ref={searchRef}
               type="search"
-              className="h-8 w-56 rounded-lg pl-8 text-xs"
+              className="h-8 w-56 pl-8 text-xs"
               aria-label={`Tabellen in ${schema} finden`}
               placeholder={`Tabelle in ${schema} finden…`}
               value={query}
@@ -192,8 +202,8 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
         </div>
         <div
           ref={mapRef}
-          className="h-[clamp(320px,calc(100vh-430px),640px)] overflow-hidden rounded-xl p-0.5 shadow-[0_30px_70px_-42px_color-mix(in_oklch,var(--chart-1)_70%,transparent)]"
-          style={{ backgroundImage: ATLAS_GROUND }}
+          className="-m-0.5 overflow-hidden"
+          style={{ height: atlasHeight(summary.matching) }}
         >
           {body}
         </div>

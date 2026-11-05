@@ -73,8 +73,10 @@ export function ConnectionPickCard({
           }}
           actions={
             <div className="flex items-center gap-0.5">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
                 aria-label={
                   favorite
                     ? `${connection.name} aus Favoriten entfernen`
@@ -86,12 +88,11 @@ export function ConnectionPickCard({
                   onToggleFavorite();
                 }}
                 className={cn(
-                  "grid size-7 place-items-center rounded-md transition-colors hover:bg-muted",
-                  favorite ? "text-amber-500" : "text-muted-foreground/60 hover:text-foreground",
+                  favorite ? "text-amber-500" : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Star className={cn("size-3.5", favorite && "fill-current")} />
-              </button>
+              </Button>
               <IconMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -143,22 +144,12 @@ export function ConnectionPickCard({
           footer={
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
               {connection.temporary ? (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => saveTemporary(connection.id)}
-                  className="text-muted-foreground hover:text-foreground"
-                >
+                <Button variant="outline" size="xs" onClick={() => saveTemporary(connection.id)}>
                   <Save className="size-3" />
                   Verbindung speichern
                 </Button>
               ) : (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={onEdit}
-                  className="text-muted-foreground hover:text-foreground"
-                >
+                <Button variant="outline" size="xs" onClick={onEdit}>
                   <Pencil className="size-3" />
                   Bearbeiten
                 </Button>
@@ -170,7 +161,7 @@ export function ConnectionPickCard({
                     Trennen
                   </Button>
                 ) : (
-                  <Button variant="default" size="xs" onClick={onOpen} className="gap-1 shadow-2xs">
+                  <Button variant="default" size="xs" onClick={onOpen}>
                     <Play className="size-3" />
                     Verbinden
                   </Button>
@@ -280,8 +271,8 @@ function ConnectionCardShell({
       animate={{ opacity: 1, scale: 1 }}
       {...rest}
       className={cn(
-        "group relative flex flex-col justify-between overflow-hidden rounded-xl border bg-card p-4 transition-colors duration-150 hover:border-foreground/20",
-        active ? "border-primary/40 ring-1 ring-primary/15" : "border-border/80",
+        "group relative flex flex-col justify-between overflow-hidden rounded-lg border bg-card p-4 transition-colors duration-150 hover:border-foreground/20",
+        active ? "border-primary/40 ring-1 ring-primary/15" : "border-border",
         className,
       )}
     >
@@ -294,7 +285,7 @@ function ConnectionCardShell({
       )}
 
       <div>
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2.5">
             <div
               className={cn(
@@ -327,10 +318,10 @@ function ConnectionCardShell({
         <div className="mt-3 text-xs">
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <Database className="size-3 shrink-0 text-muted-foreground/70" />
-            <span className="truncate font-mono font-medium text-foreground/90">
+            <span className="truncate font-mono font-medium text-foreground">
               {target || "Standard"}
             </span>
-            {schema && <span className="truncate text-muted-foreground/80">/ {schema}</span>}
+            {schema && <span className="truncate text-muted-foreground">/ {schema}</span>}
           </div>
           <div className="mt-1.5 flex items-center gap-1.5 text-muted-foreground">
             <User className="size-3 shrink-0 text-muted-foreground/70" />
@@ -339,7 +330,7 @@ function ConnectionCardShell({
                 (connection.team ? "Benutzer beim ersten Verbinden" : "Kein Benutzer")}
             </span>
             {endpoint.host && (
-              <span className="truncate text-muted-foreground/60">
+              <span className="truncate text-muted-foreground">
                 @{endpoint.host}
                 {endpoint.port ? `:${endpoint.port}` : ""}
               </span>

@@ -33,7 +33,7 @@ export function DataTableAutoRefresh({
         <SelectTrigger
           size="sm"
           title={pauseReason ? `Pausiert: ${pauseReason}` : "Automatisch aktualisieren"}
-          className="h-5 gap-1 border-border bg-background px-1 text-[11px] text-muted-foreground hover:bg-accent"
+          className="h-6 gap-1 border-border data-[size=sm]:h-6 bg-background px-1 text-[11px] text-muted-foreground hover:bg-accent"
         >
           <SelectValue />
         </SelectTrigger>

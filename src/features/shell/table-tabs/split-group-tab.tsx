@@ -45,7 +45,7 @@ export function SplitGroupTab({
       <ContextMenuTrigger asChild>
         <div
           className={cn(
-            "group relative flex h-7 shrink-0 items-center rounded-full pl-1 pr-0.5 text-xs ring-1 ring-inset transition-[background-color,color] duration-200",
+            "group relative flex h-7 shrink-0 items-center rounded-md pl-1 pr-0.5 text-xs ring-1 ring-inset transition-[background-color,color] duration-200",
             active
               ? "bg-primary/12 text-foreground ring-primary/40"
               : "text-muted-foreground ring-border/80 hover:bg-card/70 hover:text-foreground",
@@ -63,7 +63,7 @@ export function SplitGroupTab({
                 cancelled.current = true;
                 event.currentTarget.blur();
               }}
-              className="h-5 w-32 rounded-full bg-background px-2 text-xs outline-none ring-1 ring-ring"
+              className="h-5 w-32 rounded-sm bg-background px-2 text-xs outline-none ring-1 ring-ring"
             />
           ) : (
             <button
@@ -73,7 +73,7 @@ export function SplitGroupTab({
               onDoubleClick={() => onRename && setEditing(true)}
               title={`${name}: ${members.join(" | ")}`}
               aria-current={active ? "page" : undefined}
-              className="flex h-full min-w-0 max-w-64 items-center gap-1.5 rounded-full pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className="flex h-full min-w-0 max-w-64 items-center gap-1.5 rounded-md pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
               <span className="relative grid size-5 shrink-0 place-items-center rounded-full text-primary before:absolute before:inset-0 before:rounded-full before:bg-current before:opacity-10">
                 <SquareSplitHorizontalIcon className="relative size-3" />
@@ -88,7 +88,7 @@ export function SplitGroupTab({
             onClick={onClose}
             aria-label={`Geteilte Ansicht ${name} auflösen`}
             title="Geteilte Ansicht auflösen – alle Tabs bleiben geöffnet"
-            className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground/70 opacity-0 transition-[background-color,color,opacity] duration-200 hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100"
+            className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground/70 opacity-0 transition-[background-color,color,opacity] duration-200 hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100"
           >
             <XIcon className="size-3" />
           </button>

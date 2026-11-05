@@ -92,7 +92,7 @@ export function DataTableHeaderCell({
           data-column-id={header.id}
           className={cn(
             "group/th relative sticky top-0 z-20 border-b border-r border-border bg-muted text-left",
-            classic ? "px-3 py-2 align-middle" : "px-2 py-1.5",
+            classic ? "px-3 py-1 align-middle leading-4" : "px-2 py-1.5",
             tableStyle === "profile" ? "align-top" : "align-middle",
             pinnedOffset !== null && "z-30 shadow-[1px_0_0_0_var(--border)]",
           )}
@@ -106,7 +106,7 @@ export function DataTableHeaderCell({
               className={cn(
                 "shrink-0 cursor-grab touch-none rounded p-0.5 text-muted-foreground/35 hover:text-muted-foreground active:cursor-grabbing",
                 classic
-                  ? "-ml-1"
+                  ? "absolute top-1/2 left-0.5 z-10 -translate-y-1/2 bg-muted opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100"
                   : "absolute top-1.5 left-0 z-10 bg-muted opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100",
               )}
             >

@@ -67,7 +67,7 @@ export const QueryResultRow = memo(function QueryResultRow({
           title="Zeile markieren / Markierung aufheben"
           onClick={() => toggleRowMarker(row)}
           className={cn(
-            "block w-full cursor-pointer px-3 py-[calc(var(--ui-cell-padding)-0.125rem)] text-right tabular-nums focus-visible:outline-2 focus-visible:outline-ring",
+            "block w-full cursor-pointer px-3 py-[var(--ui-cell-padding)] text-right tabular-nums focus-visible:outline-2 focus-visible:outline-ring",
             isMarked && "text-primary",
           )}
         >
