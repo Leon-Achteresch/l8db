@@ -100,7 +100,6 @@ export interface TransferPlan {
   native: boolean;
   atomic: boolean;
   schemas: TransferSchemaPair[];
-  createSchemas: string[];
   tables: TransferTable[];
   preData: TransferStatement[];
   beforeLoad: TransferStatement[];
@@ -116,6 +115,7 @@ export interface TransferPlan {
   warnings: string[];
   conflicts: string[];
   replace: boolean;
+  mirror: boolean;
   replaced: string[];
   content: TransferContent;
 }
@@ -153,6 +153,7 @@ export async function planTransfer(
     schemas: TransferSchemaPair[];
     foldNames: boolean;
     replace: boolean;
+    mirror: boolean;
     content: TransferContent;
   },
   database?: string,

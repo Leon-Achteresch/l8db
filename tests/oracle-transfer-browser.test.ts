@@ -757,6 +757,7 @@ test.skipIf(!enabled)(
           schemas: [{ source: "TR_SRC", target }],
           foldNames: true,
           replace: true,
+          mirror: true,
         },
       });
     const count = (owner: string) =>
@@ -807,6 +808,7 @@ test.skipIf(!enabled)(
         schemas: [{ source: "TR_SRC", target: "TR_DST" }],
         foldNames: true,
         replace: true,
+        mirror: true,
       },
     });
     expect(plan.replace).toBe(true);
