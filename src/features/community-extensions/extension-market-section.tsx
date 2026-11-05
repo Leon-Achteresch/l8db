@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import { useExtensionSources } from "@/lib/extensions/management";
 import {
   COMMUNITY_MARKET_REPOSITORY,
   COMMUNITY_MARKET_URL,
@@ -56,6 +57,7 @@ export function ExtensionMarketSection({ community = false }: { community?: bool
         toast.success(`${entry.name} aktualisiert.`);
       } else {
         await host.installExtension(archive);
+        useExtensionSources.getState().mark(`full:${archive.manifest.id}`, "Galerie");
         toast.success(`${entry.name} installiert. Jetzt unter „Installiert“ aktivieren.`);
       }
     } catch (cause) {

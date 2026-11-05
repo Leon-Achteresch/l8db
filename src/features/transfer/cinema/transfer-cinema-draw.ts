@@ -1,4 +1,9 @@
+import { drawSource, drawTarget, drawWreck } from "./transfer-cinema-actors";
+import { episodeLocal, umbrellaOpen } from "./transfer-cinema-episodes";
+import { drawDrop, drawEpisodeBack, drawEpisodeFront } from "./transfer-cinema-episodes-draw";
+import { type Ctx, ellipse, hash, LINE, lerp, line, MONO, UI } from "./transfer-cinema-paint";
 import {
+  activeLine,
   clamp01,
   easeInOut,
   easeOutCubic,
@@ -6,30 +11,24 @@ import {
   GROUND,
   gateOpen,
   LABEL_Y,
-  MUZZLE,
+  muzzleAt,
   nameSlots,
   type Particle,
   type Scene,
-  SOURCE_X,
   type Speaker,
   STAGE_H,
   STAGE_W,
-  SUBTITLES,
   shipOrb,
   shipPose,
+  sourceAt,
   TARGET_X,
   TIMELINE,
-} from "./transfer-cinematic-sim";
+  targetAt,
+} from "./transfer-cinema-sim";
 
-type Ctx = CanvasRenderingContext2D;
 type Pose = NonNullable<ReturnType<typeof shipPose>>;
 type Camera = { zoom: number; x: number; y: number };
 
-const LINE = "#2b2633";
-const UI = '"Inter", "SF Pro Text", system-ui, sans-serif';
-const MONO = 'ui-monospace, "SF Mono", Menlo, monospace';
-const SOURCE_SKIN = { body: "#a8e6cf", shade: "#7fc9ae", light: "#d9f7ea", top: "#c4f0dd" };
-const TARGET_SKIN = { body: "#ffb199", shade: "#e98f78", light: "#ffd6c9", top: "#ffc5b3" };
 const VOICE: Record<Speaker, string> = { source: "#a8e6cf", target: "#ffb199" };
 
 const SHOTS: [number, number, number, number][] = [
@@ -45,15 +44,6 @@ const SHOTS: [number, number, number, number][] = [
   [TIMELINE.outro + 1.6, 1.12, 340, 300],
   [TIMELINE.done + 2, 1.12, 340, 300],
 ];
-
-function hash(value: number) {
-  const x = Math.sin(value * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-function lerp(a: number, b: number, k: number) {
-  return a + (b - a) * k;
-}
 
 function camera(t: number): Camera {
   for (let index = 1; index < SHOTS.length; index++) {
@@ -79,19 +69,29 @@ function enterLayer(ctx: Ctx, cam: Camera, depth: number) {
   );
 }
 
-function line(ctx: Ctx, width = 2.2, color = LINE) {
-  ctx.strokeStyle = color;
-  ctx.lineWidth = width;
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-  ctx.stroke();
+const DAY = 420;
+
+function duskAmount(clock: number) {
+  if (clock < 60) return 0;
+  return ((1 - Math.cos(((clock - 60) / DAY) * Math.PI * 2)) / 2) * 0.55;
 }
 
-function ellipse(ctx: Ctx, x: number, y: number, rx: number, ry: number, fill: string) {
-  ctx.beginPath();
-  ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
-  ctx.fillStyle = fill;
-  ctx.fill();
+const STARS = Array.from({ length: 40 }, (_, index) => ({
+  x: -300 + hash(index + 41) * 1560,
+  y: -160 + hash(index + 83) * 330,
+  r: 0.8 + hash(index + 7) * 1.4,
+  phase: hash(index + 19) * 6,
+}));
+
+function drawStars(ctx: Ctx, clock: number, amount: number) {
+  ctx.fillStyle = "#fffbe6";
+  for (const star of STARS) {
+    ctx.globalAlpha = Math.min(1, amount) * (0.55 + 0.45 * Math.sin(clock * 1.3 + star.phase));
+    ctx.beginPath();
+    ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 }
 
 function nightAmount(t: number) {
@@ -496,15 +496,17 @@ function drawOrb(ctx: Ctx, pose: Pose, t: number) {
   }
 }
 
-function drawBeam(ctx: Ctx, pose: Pose | null, t: number) {
+function drawBeam(ctx: Ctx, pose: Pose | null, scene: Scene) {
+  const t = scene.t;
   if (!pose) return;
   const local = t - (TIMELINE.boom - 0.45);
   if (local < 0 || local > 0.95) return;
   const envelope = Math.sin((local / 0.95) * Math.PI);
   const width = (34 + 50 * envelope + Math.sin(t * 60) * 4) * envelope;
   const orb = shipOrb(pose);
-  const angle = Math.atan2(GROUND - 70 - orb.y, TARGET_X - orb.x);
-  const length = Math.hypot(GROUND - 70 - orb.y, TARGET_X - orb.x) + 90;
+  const aim = targetAt(scene).x;
+  const angle = Math.atan2(GROUND - 70 - orb.y, aim - orb.x);
+  const length = Math.hypot(GROUND - 70 - orb.y, aim - orb.x) + 90;
   ctx.save();
   ctx.translate(orb.x, orb.y);
   ctx.rotate(angle);
@@ -520,374 +522,6 @@ function drawBeam(ctx: Ctx, pose: Pose | null, t: number) {
     ctx.lineTo(length, (width * scale) / 2);
     ctx.lineTo(0, (width * scale) / 3);
     ctx.fill();
-  }
-  ctx.restore();
-}
-
-function drawCylinder(ctx: Ctx, w: number, h: number, skin: typeof SOURCE_SKIN, flash: number) {
-  const rx = w / 2;
-  const ry = 16;
-  const body = new Path2D();
-  body.moveTo(-rx, -h);
-  body.lineTo(-rx, 0);
-  body.ellipse(0, 0, rx, ry, 0, Math.PI, 0, true);
-  body.lineTo(rx, -h);
-  body.ellipse(0, -h, rx, ry, 0, 0, Math.PI, false);
-  body.closePath();
-  ctx.fillStyle = skin.body;
-  ctx.fill(body);
-  ctx.save();
-  ctx.clip(body);
-  ctx.fillStyle = skin.shade;
-  ctx.beginPath();
-  ctx.moveTo(rx * 0.42, -h - 20);
-  ctx.bezierCurveTo(rx * 0.3, -h * 0.6, rx * 0.36, -h * 0.25, rx * 0.5, 20);
-  ctx.lineTo(rx + 4, 20);
-  ctx.lineTo(rx + 4, -h - 20);
-  ctx.fill();
-  ctx.fillStyle = skin.light;
-  ctx.beginPath();
-  ctx.roundRect(-rx + 9, -h + 22, 6, h - 40, 3);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(43,38,51,0.35)";
-  ctx.lineWidth = 1.4;
-  for (const level of [h / 3, (h * 2) / 3]) {
-    ctx.beginPath();
-    ctx.ellipse(0, -level, rx, ry, 0, 0, Math.PI, false);
-    ctx.stroke();
-  }
-  if (flash > 0.02) {
-    ctx.fillStyle = `rgba(255,255,255,${flash * 0.55})`;
-    ctx.fillRect(-rx - 4, -h - 20, w + 8, h + 40);
-  }
-  ctx.restore();
-  ctx.lineWidth = 2.4;
-  ctx.strokeStyle = LINE;
-  ctx.lineJoin = "round";
-  ctx.stroke(body);
-  ctx.beginPath();
-  ctx.ellipse(0, -h, rx, ry, 0, 0, Math.PI * 2);
-  ctx.fillStyle = skin.top;
-  ctx.fill();
-  line(ctx, 2.4);
-}
-
-function drawEye(
-  ctx: Ctx,
-  x: number,
-  y: number,
-  r: number,
-  lx: number,
-  ly: number,
-  pupil: number,
-  lid = 0,
-  lidColor = "#e98f78",
-) {
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fillStyle = "#fff";
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(x + lx * (r - pupil - 4), y + ly * (r - pupil - 4), pupil, 0, Math.PI * 2);
-  ctx.fillStyle = LINE;
-  ctx.fill();
-  if (lid > 0) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.fillStyle = lidColor;
-    ctx.fillRect(x - r, y - r, r * 2, r * 2 * lid);
-    ctx.beginPath();
-    ctx.moveTo(x - r, y - r + r * 2 * lid);
-    ctx.lineTo(x + r, y - r + r * 2 * lid);
-    line(ctx, 2);
-    ctx.restore();
-  }
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  line(ctx, 2);
-}
-
-function lookAt(fromX: number, fromY: number, toX: number, toY: number) {
-  const dx = toX - fromX;
-  const dy = toY - fromY;
-  const length = Math.hypot(dx, dy) || 1;
-  return { lx: dx / length, ly: dy / length };
-}
-
-function speaking(t: number, speaker: Speaker) {
-  for (const entry of SUBTITLES) {
-    if (entry.speaker === speaker && t >= entry.from && t <= entry.to) {
-      return Math.abs(Math.sin(t * 17)) * (0.6 + 0.4 * Math.abs(Math.sin(t * 5.3)));
-    }
-  }
-  return 0;
-}
-
-function drawSource(ctx: Ctx, scene: Scene, pose: Pose | null) {
-  const t = scene.t;
-  const r = scene.recoil;
-  const talk = speaking(t, "source");
-  const cool = t > TIMELINE.outro + 0.3;
-  ellipse(ctx, SOURCE_X, GROUND, 74, 11, "rgba(60,64,52,0.28)");
-  ctx.save();
-  ctx.translate(SOURCE_X - r * 4, GROUND);
-  ctx.rotate(-0.025 * r);
-  ctx.scale(1 + 0.03 * r, 1 - 0.03 * r + Math.sin(t * 2.4) * 0.008);
-  ctx.beginPath();
-  ctx.moveTo(10, -164);
-  ctx.quadraticCurveTo(14, -186, 22, -198);
-  line(ctx, 2.4);
-  ellipse(ctx, 23, -200, 6, 6, Math.sin(t * 3) > 0 ? "#7fe3e0" : "#4fb3b0");
-  ctx.beginPath();
-  ctx.arc(23, -200, 6, 0, Math.PI * 2);
-  line(ctx, 1.8);
-  drawCylinder(ctx, 116, 150, SOURCE_SKIN, 0);
-  const focus = pose && t < TIMELINE.boom + 0.6 ? shipOrb(pose) : { x: TARGET_X, y: GROUND - 90 };
-  const { lx, ly } = lookAt(SOURCE_X, GROUND - 98, focus.x, focus.y);
-  drawEye(ctx, -19, -100, 16, lx, ly, 2.4);
-  drawEye(ctx, 15, -102, 14.5, lx, ly, 2.2);
-  ctx.beginPath();
-  ctx.moveTo(-32, -122);
-  ctx.quadraticCurveTo(-20, -128, -8, -121);
-  ctx.moveTo(4, -124);
-  ctx.quadraticCurveTo(16, -130, 28, -125);
-  line(ctx, 2.6);
-  if (cool) {
-    const slide = easeOutCubic(clamp01((t - TIMELINE.outro - 0.3) / 0.5));
-    ctx.save();
-    ctx.translate(0, -60 * (1 - slide));
-    ctx.globalAlpha = slide;
-    ctx.beginPath();
-    ctx.moveTo(-42, -106);
-    ctx.lineTo(36, -108);
-    line(ctx, 3);
-    for (const [x, w] of [
-      [-19, 20],
-      [15, 18],
-    ]) {
-      ctx.beginPath();
-      ctx.moveTo(x - w, -108);
-      ctx.lineTo(x + w, -108);
-      ctx.quadraticCurveTo(x + w, -88, x, -88);
-      ctx.quadraticCurveTo(x - w, -88, x - w, -108);
-      ctx.fillStyle = "#1b1920";
-      ctx.fill();
-      line(ctx, 1.6);
-      ctx.beginPath();
-      ctx.moveTo(x - w * 0.55, -103);
-      ctx.lineTo(x - w * 0.1, -103);
-      ctx.strokeStyle = "rgba(255,255,255,0.55)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-  const open = Math.max(talk, r > 0.4 ? r * 0.6 : 0);
-  ctx.beginPath();
-  ctx.moveTo(-26, -60);
-  ctx.quadraticCurveTo(-2, -64, 24, -66);
-  ctx.quadraticCurveTo(4, -58 + 22 * open, -26, -60);
-  ctx.closePath();
-  ctx.fillStyle = "#5a2a35";
-  ctx.fill();
-  ctx.save();
-  ctx.clip();
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(-30, -70, 60, 7);
-  ctx.fillStyle = "#d9677a";
-  ctx.beginPath();
-  ctx.ellipse(0, -58 + 20 * open, 12, 6, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-  line(ctx, 2);
-  ctx.save();
-  ctx.translate(50, -66);
-  ctx.rotate(-0.06 - r * 0.18);
-  ctx.translate(-r * 6, 0);
-  ctx.beginPath();
-  ctx.moveTo(-8, 4);
-  ctx.lineTo(16, 0);
-  line(ctx, 7);
-  ctx.beginPath();
-  ctx.moveTo(-8, 4);
-  ctx.lineTo(16, 0);
-  line(ctx, 4.5, "#c9ccd3");
-  ctx.beginPath();
-  ctx.roundRect(12, -10, 40, 18, 5);
-  ctx.fillStyle = "#e6e8ec";
-  ctx.fill();
-  line(ctx, 2);
-  ctx.beginPath();
-  ctx.roundRect(48, -6, 10, 10, 3);
-  ctx.fillStyle = "#7fe3e0";
-  ctx.fill();
-  line(ctx, 1.8);
-  ctx.beginPath();
-  ctx.arc(28, -10, 6, Math.PI, 0);
-  ctx.fillStyle = "#3f4552";
-  ctx.fill();
-  line(ctx, 1.8);
-  ctx.restore();
-  ctx.restore();
-}
-
-function drawTarget(ctx: Ctx, scene: Scene, pose: Pose | null) {
-  const t = scene.t;
-  const f = scene.flinch;
-  const panic = pose ? 1 : 0;
-  const talk = speaking(t, "target");
-  const tremble = Math.sin(t * 46) * (0.6 + panic * 1.6);
-  ellipse(ctx, TARGET_X, GROUND, 70, 11, "rgba(60,64,52,0.28)");
-  ctx.save();
-  ctx.translate(TARGET_X + f * 9 + tremble, GROUND);
-  ctx.rotate(0.06 * f);
-  ctx.scale(1 - 0.04 * f, 1 + 0.03 * f + Math.sin(t * 2.6 + 1) * 0.008);
-  for (const side of [-1, 1]) {
-    const wave = Math.sin(t * (4 + panic * 9) + side) * (0.25 + panic * 0.35);
-    const hand = { x: side * (74 + wave * 6), y: -60 - panic * 50 + wave * 18 };
-    for (const [width, color] of [
-      [7, LINE],
-      [4.5, "#c9ccd3"],
-    ] as const) {
-      ctx.beginPath();
-      ctx.moveTo(side * 54, -74);
-      ctx.quadraticCurveTo(side * 74, -76, hand.x, hand.y);
-      line(ctx, width, color);
-    }
-    ellipse(ctx, hand.x, hand.y, 6, 6, "#c9ccd3");
-    ctx.beginPath();
-    ctx.arc(hand.x, hand.y, 6, 0, Math.PI * 2);
-    line(ctx, 1.8);
-  }
-  drawCylinder(ctx, 112, 144, TARGET_SKIN, f > 0.5 ? f : 0);
-  ctx.beginPath();
-  ctx.moveTo(-8, -158);
-  ctx.quadraticCurveTo(-16, -176, -30, -180);
-  line(ctx, 2.4);
-  ellipse(ctx, -32, -180, 5, 5, panic && Math.sin(t * 20) > 0 ? "#ff5a5a" : "#ffd6c9");
-  ctx.beginPath();
-  ctx.arc(-32, -180, 5, 0, Math.PI * 2);
-  line(ctx, 1.8);
-  const damage = 1 - scene.hp;
-  ctx.strokeStyle = "rgba(43,38,51,0.7)";
-  ctx.lineWidth = 1.4;
-  const cracks = [
-    [-34, -112, -24, -100, -30, -88, -18, -78],
-    [32, -126, 22, -112, 30, -100],
-    [-40, -48, -28, -42, -32, -30],
-    [20, -56, 32, -46, 26, -34, 36, -22],
-  ];
-  for (let index = 0; index < Math.min(cracks.length, Math.floor(damage * 5)); index++) {
-    const crack = cracks[index];
-    ctx.beginPath();
-    ctx.moveTo(crack[0], crack[1]);
-    for (let point = 2; point < crack.length; point += 2)
-      ctx.lineTo(crack[point], crack[point + 1]);
-    ctx.stroke();
-  }
-  if (damage > 0.3) {
-    ctx.fillStyle = `rgba(70,50,30,${Math.min(0.35, damage * 0.4)})`;
-    ctx.beginPath();
-    ctx.ellipse(-26, -40, 16, 10, 0.4, 0, Math.PI * 2);
-    ctx.ellipse(30, -110, 12, 8, -0.3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  const focus = pose ? { x: pose.x, y: pose.y } : { x: SOURCE_X, y: GROUND - 100 };
-  const look = lookAt(TARGET_X, GROUND - 96, focus.x, focus.y);
-  const squint = f > 0.55;
-  const eyeR = pose ? 18 : 16;
-  const pupil = pose ? 1.8 : 2.4;
-  const lid = squint ? 0.5 : 0;
-  drawEye(ctx, -19, -96, eyeR, look.lx, look.ly, pupil, lid);
-  drawEye(ctx, 17, -96, eyeR - 1, look.lx, look.ly, pupil, lid);
-  ctx.beginPath();
-  ctx.moveTo(-36, -120 - panic * 4);
-  ctx.quadraticCurveTo(-24, -126 - panic * 6, -8, -122);
-  ctx.moveTo(34, -120 - panic * 4);
-  ctx.quadraticCurveTo(24, -126 - panic * 6, 8, -122);
-  line(ctx, 2.2);
-  const open = Math.max(talk, panic * 0.5, squint ? 0.6 : 0);
-  if (open > 0.05) {
-    ctx.beginPath();
-    ctx.moveTo(-16, -56);
-    ctx.quadraticCurveTo(0, -60, 16, -56);
-    ctx.quadraticCurveTo(0, -56 + 20 * open, -16, -56);
-    ctx.closePath();
-    ctx.fillStyle = "#5a2a35";
-    ctx.fill();
-    line(ctx, 2);
-  } else {
-    ctx.beginPath();
-    ctx.moveTo(-14, -56);
-    ctx.bezierCurveTo(-6, -60, 4, -52, 14, -57);
-    line(ctx, 2);
-  }
-  if (panic) {
-    const phase = (t * 0.9) % 1;
-    const x = 44;
-    const y = -124 + phase * 40;
-    ctx.globalAlpha = 1 - phase;
-    ctx.beginPath();
-    ctx.moveTo(x, y - 9);
-    ctx.quadraticCurveTo(x + 6, y + 2, x, y + 4);
-    ctx.quadraticCurveTo(x - 6, y + 2, x, y - 9);
-    ctx.fillStyle = "#c8ecf7";
-    ctx.fill();
-    line(ctx, 1.4);
-    ctx.globalAlpha = 1;
-  }
-  ctx.restore();
-}
-
-function drawWreck(ctx: Ctx, scene: Scene) {
-  const t = scene.t;
-  ellipse(ctx, TARGET_X, GROUND + 2, 110, 16, "rgba(40,36,30,0.45)");
-  ctx.save();
-  ctx.translate(TARGET_X, GROUND);
-  const shell = new Path2D(
-    "M-56 0 L-56 -34 L-44 -50 L-30 -32 L-16 -56 L2 -36 L18 -50 L34 -30 L48 -44 L56 -30 L56 0 A56 16 0 0 1 -56 0 Z",
-  );
-  ctx.fillStyle = "#b97a68";
-  ctx.fill(shell);
-  ctx.save();
-  ctx.clip(shell);
-  ctx.fillStyle = "#8a5848";
-  ctx.fillRect(18, -60, 50, 80);
-  ctx.fillStyle = "rgba(40,30,20,0.5)";
-  ctx.fillRect(-60, -60, 120, 18);
-  ctx.restore();
-  ctx.lineWidth = 2.4;
-  ctx.strokeStyle = LINE;
-  ctx.lineJoin = "round";
-  ctx.stroke(shell);
-  for (const x of [-18, 16]) {
-    ctx.beginPath();
-    ctx.moveTo(x - 5, -24);
-    ctx.lineTo(x + 5, -14);
-    ctx.moveTo(x + 5, -24);
-    ctx.lineTo(x - 5, -14);
-    line(ctx, 2);
-  }
-  if (t > TIMELINE.boom + 1.2) {
-    const rise = easeOutCubic(clamp01((t - TIMELINE.boom - 1.2) / 0.6));
-    ctx.save();
-    ctx.translate(34, -36);
-    ctx.scale(1, rise);
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(0, -64);
-    line(ctx, 2.2);
-    ctx.beginPath();
-    ctx.moveTo(0, -64);
-    for (let x = 0; x <= 36; x += 6) ctx.lineTo(x, -64 + Math.sin(x * 0.2 - t * 5) * 2.5);
-    for (let x = 36; x >= 0; x -= 6) ctx.lineTo(x, -44 + Math.sin(x * 0.2 - t * 5) * 2.5);
-    ctx.closePath();
-    ctx.fillStyle = "#fbfbf7";
-    ctx.fill();
-    line(ctx, 1.8);
-    ctx.restore();
   }
   ctx.restore();
 }
@@ -994,6 +628,43 @@ function drawSolidParticle(ctx: Ctx, p: Particle) {
     ctx.fill();
     line(ctx, 1.6);
     ctx.globalAlpha = 1;
+    ctx.restore();
+    return;
+  }
+  if (p.kind === "drop") {
+    drawDrop(ctx, p.x, p.y, p.color);
+    return;
+  }
+  if (p.kind === "splat") {
+    const grow = easeOutCubic(clamp01(p.age / 0.12));
+    ctx.globalAlpha = 0.85 * (1 - clamp01((k - 0.6) / 0.4));
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, 22 * p.size * grow, 5 * p.size * grow, 0, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+    line(ctx, 1.6);
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (p.kind === "null") {
+    if (p.trail) drawTrail(ctx, p.trail, "rgba(43,38,51,0.3)", 8);
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ellipse(ctx, 0, 0, 17, 17, "#3b3646");
+    ctx.beginPath();
+    ctx.arc(0, 0, 17, 0, Math.PI * 2);
+    line(ctx, 2.2);
+    ctx.beginPath();
+    ctx.moveTo(10, -12);
+    ctx.quadraticCurveTo(16, -22, 22, -20);
+    line(ctx, 2);
+    ellipse(ctx, 23, -21, 3 + Math.abs(Math.sin(p.age * 40)) * 2, 3, "#ffb347");
+    ctx.font = `700 9px ${MONO}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#f4f2f8";
+    ctx.fillText("NULL", 0, 1);
     ctx.restore();
     return;
   }
@@ -1178,61 +849,66 @@ function pill(ctx: Ctx, x: number, y: number, width: number, height: number) {
 }
 
 function drawLabels(ctx: Ctx, scene: Scene) {
+  const source = sourceAt(scene);
+  const target = targetAt(scene);
+  const sourceX = source.x;
+  const targetX = target.x;
+  const sourceY = LABEL_Y + source.y;
+  const targetY = LABEL_Y + target.y;
   const name = scene.targetName;
   const width = Math.max(name.length, scene.sourceName.length) * 11 + 28;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  pill(ctx, SOURCE_X, LABEL_Y, width, 26);
+  pill(ctx, sourceX, sourceY, width, 26);
   ctx.font = `600 14px ${MONO}`;
   if (scene.stolen === 0) {
     ctx.fillStyle = "#f4f2f8";
-    ctx.fillText(scene.sourceName, SOURCE_X, LABEL_Y + 1);
+    ctx.fillText(scene.sourceName, sourceX, sourceY + 1);
   } else {
-    const slots = nameSlots(name, SOURCE_X);
+    const slots = nameSlots(name, sourceX);
     ctx.fillStyle = "#a8f0e8";
     for (let index = 0; index < scene.stolen; index++)
-      ctx.fillText(name[index], slots[index], LABEL_Y + 1);
+      ctx.fillText(name[index], slots[index], sourceY + 1);
     ctx.font = `500 10px ${MONO}`;
     ctx.fillStyle = "rgba(43,38,51,0.6)";
-    ctx.fillText(scene.sourceName, SOURCE_X, LABEL_Y - 22);
+    ctx.fillText(scene.sourceName, sourceX, sourceY - 22);
     const strike = ctx.measureText(scene.sourceName).width / 2 + 3;
     ctx.strokeStyle = "rgba(200,60,60,0.8)";
     ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.moveTo(SOURCE_X - strike, LABEL_Y - 22);
-    ctx.lineTo(SOURCE_X + strike, LABEL_Y - 22);
+    ctx.moveTo(sourceX - strike, sourceY - 22);
+    ctx.lineTo(sourceX + strike, sourceY - 22);
     ctx.stroke();
   }
   if (scene.destroyed) return;
-  pill(ctx, TARGET_X, LABEL_Y, width, 26);
+  const hidden = scene.episode?.kind === "rain" ? umbrellaOpen(episodeLocal(scene)) : 0;
+  ctx.globalAlpha = 1 - hidden * 0.85;
+  pill(ctx, targetX, targetY, width, 26);
   ctx.font = `600 14px ${MONO}`;
   if (scene.launched >= name.length) {
     ctx.fillStyle = "rgba(244,242,248,0.35)";
-    ctx.fillText("—", TARGET_X, LABEL_Y + 1);
+    ctx.fillText("—", targetX, targetY + 1);
   } else {
-    const slots = nameSlots(name, TARGET_X);
+    const slots = nameSlots(name, targetX);
     ctx.fillStyle = "#f4f2f8";
     for (let index = scene.launched; index < name.length; index++)
-      ctx.fillText(name[index], slots[index], LABEL_Y + 1);
+      ctx.fillText(name[index], slots[index], targetY + 1);
   }
   const barW = 90;
   const hp = Math.max(0, scene.hp);
   ctx.beginPath();
-  ctx.roundRect(TARGET_X - barW / 2, LABEL_Y + 20, barW, 4, 2);
+  ctx.roundRect(targetX - barW / 2, targetY + 20, barW, 4, 2);
   ctx.fillStyle = "rgba(24,22,32,0.45)";
   ctx.fill();
   ctx.beginPath();
-  ctx.roundRect(TARGET_X - barW / 2, LABEL_Y + 20, Math.max(4, barW * hp), 4, 2);
+  ctx.roundRect(targetX - barW / 2, targetY + 20, Math.max(4, barW * hp), 4, 2);
   ctx.fillStyle = hp > 0.6 ? "#5fd4a8" : hp > 0.3 ? "#f0c24a" : "#ef5a5a";
   ctx.fill();
+  ctx.globalAlpha = 1;
 }
 
 function transferProgress(scene: Scene) {
-  if (scene.destroyed) return 1;
-  const letters = scene.stolen / Math.max(1, scene.targetName.length);
-  return (
-    letters * 0.8 + clamp01((scene.t - TIMELINE.arrival) / (TIMELINE.boom - TIMELINE.arrival)) * 0.2
-  );
+  return scene.outcome === "success" ? 1 : clamp01(scene.progress);
 }
 
 function drawHud(ctx: Ctx, scene: Scene) {
@@ -1270,9 +946,9 @@ function drawHud(ctx: Ctx, scene: Scene) {
 }
 
 function drawSubtitle(ctx: Ctx, scene: Scene, bars: number) {
-  const t = scene.t;
-  const active = SUBTITLES.find((entry) => t >= entry.from && t <= entry.to);
-  if (!active) return;
+  const found = activeLine(scene);
+  if (!found) return;
+  const { line: active, now: t } = found;
   const alpha = Math.min(clamp01((t - active.from) / 0.2), clamp01((active.to - t) / 0.25));
   const name = active.speaker === "source" ? scene.sourceName : scene.targetName;
   const y = STAGE_H - 22 - (1 - bars) * 18;
@@ -1322,14 +998,17 @@ export function drawScene(ctx: Ctx, scene: Scene) {
   const t = scene.t;
   const pose = shipPose(t);
   const cam = camera(t);
-  const shakeX = (Math.random() * 2 - 1) * scene.shake;
-  const shakeY = (Math.random() * 2 - 1) * scene.shake;
-  const night = nightAmount(t);
+  const c = scene.clock;
+  const shakeX = (Math.sin(c * 71) * 0.6 + Math.sin(c * 43.3 + 1.7) * 0.4) * scene.shake;
+  const shakeY = (Math.sin(c * 59.7 + 0.6) * 0.6 + Math.sin(c * 37.1 + 2.9) * 0.4) * scene.shake;
+  const dusk = duskAmount(scene.clock);
+  const night = Math.max(nightAmount(t), dusk);
 
   ctx.save();
   ctx.translate(shakeX, shakeY);
   enterLayer(ctx, cam, 0.05);
-  drawSky(ctx, t);
+  drawSky(ctx, scene.clock);
+  if (dusk > 0.15) drawStars(ctx, scene.clock, (dusk - 0.15) / 0.4);
   ctx.restore();
   enterLayer(ctx, cam, 0.3);
   drawFarCity(ctx);
@@ -1342,16 +1021,18 @@ export function drawScene(ctx: Ctx, scene: Scene) {
   }
   ctx.restore();
   enterLayer(ctx, cam, 0.65);
-  drawFoliage(ctx, t);
+  drawFoliage(ctx, scene.clock);
   ctx.restore();
   enterLayer(ctx, cam, 1);
   drawGround(ctx);
   for (const p of scene.particles) {
     if (p.kind === "smoke" && p.y > GROUND - 70) drawSolidParticle(ctx, p);
   }
+  drawEpisodeBack(ctx, scene);
   drawSource(ctx, scene, pose);
   if (scene.destroyed) drawWreck(ctx, scene);
   else drawTarget(ctx, scene, pose);
+  drawEpisodeFront(ctx, scene);
   for (const p of scene.particles) {
     if (p.kind !== "smoke") drawSolidParticle(ctx, p);
   }
@@ -1384,16 +1065,17 @@ export function drawScene(ctx: Ctx, scene: Scene) {
   }
   if (scene.recoil > 0.25) {
     const radius = 30 * scene.recoil;
-    const flash = ctx.createRadialGradient(MUZZLE.x, MUZZLE.y, 0, MUZZLE.x, MUZZLE.y, radius);
+    const muzzle = muzzleAt(scene);
+    const flash = ctx.createRadialGradient(muzzle.x, muzzle.y, 0, muzzle.x, muzzle.y, radius);
     flash.addColorStop(0, "rgba(210,250,250,0.9)");
     flash.addColorStop(1, "rgba(127,227,224,0)");
     ctx.fillStyle = flash;
     ctx.beginPath();
-    ctx.arc(MUZZLE.x, MUZZLE.y, radius, 0, Math.PI * 2);
+    ctx.arc(muzzle.x, muzzle.y, radius, 0, Math.PI * 2);
     ctx.fill();
   }
   for (const p of scene.particles) drawLightParticle(ctx, p, t);
-  drawBeam(ctx, pose, t);
+  drawBeam(ctx, pose, scene);
   if (scene.flash > 0.02) {
     const glow = ctx.createRadialGradient(TARGET_X, GROUND - 70, 0, TARGET_X, GROUND - 70, 520);
     glow.addColorStop(0, `rgba(255,220,160,${0.9 * scene.flash})`);

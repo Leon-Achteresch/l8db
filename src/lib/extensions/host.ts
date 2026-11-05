@@ -10,6 +10,7 @@ import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-sele
 import { gridCellText } from "@/lib/grid-search";
 import { loadSecret, rememberSecret } from "@/lib/secrets";
 import { effectiveConnectionString, readOnlyConnectionString } from "@/lib/ssh";
+import { syncAcrossWindows } from "@/lib/window-sync";
 import { version } from "../../../package.json";
 import type {
   CoreServices,
@@ -28,7 +29,7 @@ import { ExtensionManager } from "./manager";
 import { useExtensionPrompts } from "./prompts";
 import { bindQueryParams } from "./query-params";
 import { SandboxRuntime } from "./sandbox-runtime";
-import { TauriExtensionStorage } from "./tauri-storage";
+import { EXTENSION_STORAGE_REVISION, TauriExtensionStorage } from "./tauri-storage";
 
 export function createExtensionHost() {
   const database = (): DatabaseInfo | null => {
@@ -229,9 +230,15 @@ export function createExtensionHost() {
           })
           .catch((error) => manager.log("host", "error", String(error)));
       };
+      const storage = syncAcrossWindows(EXTENSION_STORAGE_REVISION, () => {
+        void manager
+          .refreshInstalled()
+          .catch((error) => manager.log("host", "error", String(error)));
+      });
       const connections = useConnectionsStore.subscribe(update);
       const selections = useDbSelectionStore.subscribe(update);
       dispose = () => {
+        storage();
         connections();
         selections();
       };

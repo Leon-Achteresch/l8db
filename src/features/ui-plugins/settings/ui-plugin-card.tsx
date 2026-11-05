@@ -2,6 +2,8 @@ import { AlertTriangleIcon, GlobeIcon, PuzzleIcon, Trash2Icon } from "lucide-rea
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { useExtensionSources } from "@/lib/extensions/management";
+import { useOrganizationStore } from "@/lib/organization-state";
 import { resolveOptions } from "@/lib/ui-plugins/api";
 import { useUiPluginSettings } from "@/lib/ui-plugins/settings";
 import type { UiPluginStatus } from "@/lib/ui-plugins/status";
@@ -21,6 +23,13 @@ export function UiPluginCard({
   status: UiPluginStatus;
   onRemove?: () => void;
 }) {
+  const legacyGallery = useUiPluginSettings((state) =>
+    status.id ? state.installed[status.id]?.file === status.file : false,
+  );
+  const source = useExtensionSources(
+    (state) => state.sources[`light:${status.file}`] ?? (legacyGallery ? "Galerie" : "Eigene"),
+  );
+  const blocked = useOrganizationStore((state) => state.policy?.allowExtensions === false);
   const setEnabled = useUiPluginSettings((state) => state.setEnabled);
   const grantHttp = useUiPluginSettings((state) => state.grantHttp);
   const revokeHttp = useUiPluginSettings((state) => state.revokeHttp);
@@ -46,6 +55,7 @@ export function UiPluginCard({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">Leicht · {source}</Badge>
             <strong className="text-sm font-semibold">{status.name ?? status.file}</strong>
             <Badge
               variant={
@@ -56,7 +66,7 @@ export function UiPluginCard({
                     : "destructive"
               }
             >
-              {STATE_LABEL[status.state]}
+              {blocked ? "Abgeschaltet" : STATE_LABEL[status.state]}
             </Badge>
             {status.version && (
               <span className="text-xs text-muted-foreground tabular-nums">v{status.version}</span>
@@ -87,7 +97,8 @@ export function UiPluginCard({
           {status.id && (
             <Switch
               aria-label={`${status.name ?? status.file} aktivieren`}
-              checked={status.state !== "disabled"}
+              disabled={blocked}
+              checked={!blocked && status.state !== "disabled"}
               onCheckedChange={(checked) => status.id && setEnabled(status.id, checked)}
             />
           )}

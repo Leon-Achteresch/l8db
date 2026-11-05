@@ -510,12 +510,20 @@ async fn sqlite_to_duckdb_transfers_structure_and_data() {
         }],
         fold_names: true,
         replace: false,
+        mirror: false,
         content: Content::All,
     };
+    let absent = plan(&target, &request, pool.clone()).await.unwrap_err();
+    assert!(
+        absent.contains("Zielschema shop existiert nicht"),
+        "{absent}"
+    );
+    let duck =
+        create_adapter_from_string(DatabaseKind::Duckdb, &target_url, None, pool.clone()).unwrap();
+    duck.execute_query("CREATE SCHEMA shop").await.unwrap();
     let plan = plan(&target, &request, pool.clone()).await.unwrap();
     assert!(!plan.native);
     assert!(plan.atomic);
-    assert_eq!(plan.create_schemas, vec!["shop"]);
     let order: Vec<&str> = plan.tables.iter().map(|t| t.target_name.as_str()).collect();
     assert!(
         order.iter().position(|t| *t == "customer") < order.iter().position(|t| *t == "orders")
@@ -561,9 +569,6 @@ async fn sqlite_to_duckdb_transfers_structure_and_data() {
         count(&target_url, DatabaseKind::Duckdb, "shop.orders").await,
         12_345
     );
-    let duck =
-        create_adapter_from_string(DatabaseKind::Duckdb, &target_url, None, create_pool_state())
-            .unwrap();
     let row = duck
         .execute_query("SELECT CAST(total AS VARCHAR) AS total, note, hex(payload) AS payload FROM shop.orders WHERE id = 12345")
         .await
@@ -575,6 +580,53 @@ async fn sqlite_to_duckdb_transfers_structure_and_data() {
         .execute_query("INSERT INTO shop.orders (id, customer_id) VALUES (999999, 4242)")
         .await;
     assert!(rejected.is_err(), "foreign key must exist in the target");
+
+    duck.execute_query("CREATE TABLE shop.extra (id INTEGER)")
+        .await
+        .unwrap();
+    duck.execute_query("DELETE FROM shop.orders WHERE id > 100")
+        .await
+        .unwrap();
+    let conflicting = super::plan(&target, &request, pool.clone()).await.unwrap();
+    assert!(!conflicting.conflicts.is_empty());
+    let mirror = PlanRequest {
+        replace: true,
+        mirror: true,
+        ..request.clone()
+    };
+    let mirrored = super::plan(&target, &mirror, pool.clone()).await.unwrap();
+    assert!(mirrored.conflicts.is_empty());
+    assert!(
+        mirrored.replaced.contains(&"TABLE shop.extra".to_string()),
+        "{:?}",
+        mirrored.replaced
+    );
+    let outcome = run(
+        &target,
+        &RunRequest {
+            source: request.source.clone(),
+            plan: mirrored,
+        },
+        pool.clone(),
+        &no_progress,
+    )
+    .await
+    .unwrap();
+    assert_eq!(outcome.error, None, "{outcome:?}");
+    assert_eq!(
+        count(&target_url, DatabaseKind::Duckdb, "shop.orders").await,
+        12_345
+    );
+    let tables: Vec<String> = duck
+        .list_tables(Some("shop"))
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    assert!(!tables.contains(&"extra".to_string()), "{tables:?}");
+    let schemas = duck.list_schemas().await.unwrap();
+    assert!(schemas.contains(&"shop".to_string()));
 }
 
 #[cfg(feature = "duckdb")]
@@ -608,6 +660,7 @@ async fn sqlite_to_duckdb_selected_tables_structure_then_data() {
         }],
         fold_names: true,
         replace: false,
+        mirror: false,
         content,
     };
     let empty = plan(&target, &request(Content::All, &[]), pool.clone())
@@ -625,6 +678,7 @@ async fn sqlite_to_duckdb_selected_tables_structure_then_data() {
         missing.contains("Zielschema shop existiert nicht"),
         "{missing}"
     );
+    duck.execute_query("CREATE SCHEMA shop").await.unwrap();
 
     let structure = plan(
         &target,
@@ -698,13 +752,61 @@ async fn sqlite_to_duckdb_selected_tables_structure_then_data() {
     assert_eq!(rows("orders").await, "12345");
     let refused = run(
         &target,
-        &RunRequest { source, plan: data },
-        pool,
+        &RunRequest {
+            source: source.clone(),
+            plan: data,
+        },
+        pool.clone(),
         &no_progress,
     )
     .await
     .unwrap_err();
     assert!(refused.contains("enthält bereits Zeilen"), "{refused}");
+    assert_eq!(rows("customer").await, "50");
+
+    duck.execute_query("DELETE FROM shop.orders WHERE id > 10")
+        .await
+        .unwrap();
+    let overwrite = PlanRequest {
+        replace: true,
+        ..request(Content::Data, &["orders", "customer"])
+    };
+    let refill = plan(&target, &overwrite, pool.clone()).await.unwrap();
+    assert_eq!(refill.replaced.len(), 2);
+    let replaced = run(
+        &target,
+        &RunRequest {
+            source: source.clone(),
+            plan: refill,
+        },
+        pool.clone(),
+        &no_progress,
+    )
+    .await
+    .unwrap();
+    assert_eq!(replaced.error, None, "{replaced:?}");
+    assert_eq!(rows("orders").await, "12345");
+    assert_eq!(rows("customer").await, "50");
+
+    let partial = PlanRequest {
+        replace: true,
+        ..request(Content::All, &["orders"])
+    };
+    let rebuild = plan(&target, &partial, pool.clone()).await.unwrap();
+    assert_eq!(rebuild.replaced, vec!["TABLE shop.orders".to_string()]);
+    let rebuilt = run(
+        &target,
+        &RunRequest {
+            source,
+            plan: rebuild,
+        },
+        pool,
+        &no_progress,
+    )
+    .await
+    .unwrap();
+    assert_eq!(rebuilt.error, None, "{rebuilt:?}");
+    assert_eq!(rows("orders").await, "12345");
     assert_eq!(rows("customer").await, "50");
 }
 
@@ -726,6 +828,7 @@ async fn sqlite_native_transfer_rolls_back_completely_on_failure() {
         }],
         fold_names: true,
         replace: false,
+        mirror: false,
         content: Content::All,
     };
     let mut plan = plan(&target, &request, pool.clone()).await.unwrap();
@@ -879,6 +982,7 @@ impl Live {
                 .collect(),
             fold_names: true,
             replace: false,
+            mirror: false,
             content: Content::All,
         };
         let plan = plan(target, &request, self.pool.clone())
@@ -963,7 +1067,6 @@ async fn transfer_live_matrix() {
             .replace("\"tr_src\".", "\"tr_native\".")
     };
     let mut native_plan = plan_pg.clone();
-    native_plan.create_schemas = vec!["tr_native".into()];
     native_plan.pre_data = catalog
         .iter()
         .filter(|o| o.object_type == "sequence" || o.object_type == "table")
@@ -1054,6 +1157,7 @@ async fn transfer_live_matrix() {
                 }],
                 fold_names: true,
                 replace: false,
+                mirror: false,
                 content: Content::All,
             };
             let plan = plan(&target, &request, live.pool.clone())
@@ -1205,6 +1309,7 @@ async fn transfer_live_oracle_native_packages() {
         }],
         fold_names: true,
         replace: false,
+        mirror: false,
         content: Content::All,
     };
     let mut plan = plan(&target, &request, pool.clone()).await.unwrap();
@@ -1387,6 +1492,7 @@ async fn transfer_live_mssql_snapshot_source() {
         }],
         fold_names: true,
         replace: false,
+        mirror: false,
         content: Content::All,
     };
     let plan = plan(&target, &request, pool.clone()).await.unwrap();
@@ -1549,6 +1655,7 @@ async fn transfer_live_oracle_bulk_budget() {
         }],
         fold_names: true,
         replace: false,
+        mirror: false,
         content: Content::All,
     };
     let mut plan = plan(&target, &request, pool.clone()).await.unwrap();
@@ -1978,6 +2085,7 @@ END;"
         }],
         fold_names: true,
         replace: false,
+        mirror: false,
         content,
     };
     let full = request(Content::All, None);
@@ -2156,4 +2264,164 @@ END;"
             .execute_query(&format!("DROP USER {user} CASCADE"))
             .await;
     }
+}
+
+#[tokio::test]
+#[ignore]
+async fn postgres_replace_mirrors_and_overwrites_selection() {
+    let url = std::env::var("L8DB_E2E_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:testpw@127.0.0.1:5433/testdb".into());
+    let lab = Lab::new("pg-replace");
+    let source_url = lab.url("sqlite", "source.sqlite");
+    seed_source(&source_url).await;
+    let pool = create_pool_state();
+    let pg = create_adapter_from_string(DatabaseKind::Postgres, &url, None, pool.clone()).unwrap();
+    exec_all(
+        pg.as_ref(),
+        &[
+            "DROP SCHEMA IF EXISTS tr_rep CASCADE",
+            "CREATE SCHEMA tr_rep",
+            "CREATE EXTENSION IF NOT EXISTS citext SCHEMA tr_rep",
+            "CREATE TABLE tr_rep.extra (id integer)",
+            "CREATE TABLE tr_rep.orders (legacy text)",
+            "CREATE VIEW tr_rep.v AS SELECT * FROM tr_rep.extra",
+            "CREATE FUNCTION tr_rep.f(integer) RETURNS integer LANGUAGE sql AS 'SELECT 1'",
+            "CREATE FUNCTION tr_rep.f(text) RETURNS integer LANGUAGE sql AS 'SELECT 2'",
+        ],
+    )
+    .await;
+    let target = endpoint(DatabaseKind::Postgres, &url);
+    let source = endpoint(DatabaseKind::Sqlite, &source_url);
+    let request = |replace: bool, mirror: bool, tables: Option<Vec<String>>| PlanRequest {
+        source: source.clone(),
+        schemas: vec![SchemaPair {
+            source: "main".into(),
+            target: "tr_rep".into(),
+            tables,
+        }],
+        fold_names: true,
+        replace,
+        mirror,
+        content: Content::All,
+    };
+    let blocked = plan(&target, &request(false, false, None), pool.clone())
+        .await
+        .unwrap();
+    assert!(blocked.conflicts.contains(&"tr_rep.orders".to_string()));
+
+    let mirrored = plan(&target, &request(true, true, None), pool.clone())
+        .await
+        .unwrap();
+    for label in [
+        "TABLE tr_rep.extra",
+        "VIEW tr_rep.v",
+        "FUNCTION tr_rep.f(integer)",
+        "FUNCTION tr_rep.f(text)",
+    ] {
+        assert!(
+            mirrored.replaced.contains(&label.to_string()),
+            "{label}: {:?}",
+            mirrored.replaced
+        );
+    }
+    assert!(
+        !mirrored.replaced.iter().any(|l| l.contains("citext")),
+        "{:?}",
+        mirrored.replaced
+    );
+    let outcome = run(
+        &target,
+        &RunRequest {
+            source: source.clone(),
+            plan: mirrored,
+        },
+        pool.clone(),
+        &no_progress,
+    )
+    .await
+    .unwrap();
+    assert_eq!(outcome.error, None, "{outcome:?}");
+    assert_eq!(
+        scalar(pg.as_ref(), "SELECT count(*) FROM tr_rep.orders")
+            .await
+            .as_deref(),
+        Some("12345")
+    );
+    assert_eq!(
+        scalar(
+            pg.as_ref(),
+            "SELECT count(*) FROM pg_tables WHERE schemaname = 'tr_rep' AND tablename = 'extra'"
+        )
+        .await
+        .as_deref(),
+        Some("0")
+    );
+    assert_eq!(
+        scalar(pg.as_ref(), "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'tr_rep' AND p.proname = 'f'").await.as_deref(),
+        Some("0")
+    );
+
+    pg.execute_query("DELETE FROM tr_rep.orders WHERE id > 5")
+        .await
+        .unwrap();
+    let partial = plan(
+        &target,
+        &request(true, false, Some(vec!["orders".into()])),
+        pool.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(partial.replaced, vec!["TABLE tr_rep.orders".to_string()]);
+    let outcome = run(
+        &target,
+        &RunRequest {
+            source: source.clone(),
+            plan: partial,
+        },
+        pool.clone(),
+        &no_progress,
+    )
+    .await
+    .unwrap();
+    assert_eq!(outcome.error, None, "{outcome:?}");
+    assert_eq!(
+        scalar(pg.as_ref(), "SELECT count(*) FROM tr_rep.orders")
+            .await
+            .as_deref(),
+        Some("12345")
+    );
+    assert_eq!(
+        scalar(pg.as_ref(), "SELECT count(*) FROM tr_rep.customer")
+            .await
+            .as_deref(),
+        Some("50")
+    );
+
+    let missing = plan(
+        &target,
+        &PlanRequest {
+            schemas: vec![SchemaPair {
+                source: "main".into(),
+                target: "tr_rep_missing".into(),
+                tables: None,
+            }],
+            ..request(false, false, None)
+        },
+        pool.clone(),
+    )
+    .await
+    .unwrap_err();
+    assert!(missing.contains("existiert nicht"), "{missing}");
+    assert_eq!(
+        scalar(
+            pg.as_ref(),
+            "SELECT count(*) FROM pg_namespace WHERE nspname = 'tr_rep_missing'"
+        )
+        .await
+        .as_deref(),
+        Some("0")
+    );
+    pg.execute_query("DROP SCHEMA tr_rep CASCADE")
+        .await
+        .unwrap();
 }

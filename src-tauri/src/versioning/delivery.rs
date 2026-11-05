@@ -173,8 +173,13 @@ fn short(commit: &str) -> &str {
     &commit[..commit.len().min(12)]
 }
 
-pub async fn touching(root: &Path, tip: &str, release: &str) -> Result<Vec<String>, String> {
-    let path = format!("database/releases/{release}.json");
+async fn touching_in(
+    root: &Path,
+    tip: &str,
+    folder: &str,
+    release: &str,
+) -> Result<Vec<String>, String> {
+    let path = format!("database/{folder}/{release}.json");
     if release.contains('/') {
         return Err("Ungültige Release-ID".into());
     }
@@ -230,9 +235,18 @@ async fn reviewed(
 ) -> (Result<String, String>, Vec<Value>) {
     let mut evidence = Vec::new();
     let mut pulls = Vec::new();
-    for release in plan["releases"].as_array().into_iter().flatten() {
-        let id = release["id"].as_str().unwrap_or_default();
-        let commits = match touching(root, &tip.commit, id).await {
+    let sources: Vec<(&str, &str)> = if plan["mode"] == "change" {
+        vec![("changes", plan["change"].as_str().unwrap_or_default())]
+    } else {
+        plan["releases"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|release| ("releases", release["id"].as_str().unwrap_or_default()))
+            .collect()
+    };
+    for (folder, id) in sources {
+        let commits = match touching_in(root, &tip.commit, folder, id).await {
             Ok(commits) if commits.is_empty() => {
                 return (
                     Err(format!(
@@ -335,7 +349,9 @@ async fn test_state(
             row["RELEASE_ID"].as_str().unwrap_or("–")
         ));
     }
-    if row["STATUS"] != "ready" || !row["LEASE"].is_null() {
+    if (row["STATUS"] != "ready" && row["STATUS"] != super::runner::READY)
+        || !row["LEASE"].is_null()
+    {
         return Err("die Auslieferung dort läuft noch oder ist fehlgeschlagen".into());
     }
     Ok(())
@@ -657,10 +673,12 @@ mod tests {
         assert_eq!(outcome(found), vec![("repository", true), ("merged", true)]);
         let merge = git(&work, &["rev-parse", "HEAD"]).await.trim().to_string();
         assert_eq!(
-            touching(&work, &merge, "r1").await.unwrap(),
+            touching_in(&work, &merge, "releases", "r1").await.unwrap(),
             vec![merge.clone()]
         );
-        assert!(touching(&work, &merge, "../r1").await.is_err());
+        assert!(touching_in(&work, &merge, "releases", "../r1")
+            .await
+            .is_err());
         rules.review = true;
         rules.approvals = 1;
         let found = super::gates(&request, None, &rules, true, pool.clone())

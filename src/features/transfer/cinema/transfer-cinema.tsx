@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { IslandElapsed } from "@/features/shell/dynamic-island/island-elapsed";
@@ -8,6 +8,7 @@ import type { TransferOutcome, TransferPlan, TransferProgress } from "@/lib/db";
 import { EASE_OUT } from "@/lib/ease";
 import { TransferCinemaCounter } from "./transfer-cinema-counter";
 import { TransferCinemaNode } from "./transfer-cinema-node";
+import { TransferCinemaStage } from "./transfer-cinema-stage";
 import { TransferCinemaStream } from "./transfer-cinema-stream";
 
 const PHASE_LABELS: Record<TransferProgress["progress"]["phase"], string> = {
@@ -78,21 +79,29 @@ export function TransferCinema({
           ? PHASE_LABELS[progress.phase]
           : "Verbindung wird aufgebaut";
   const rows = state === "success" ? (outcome?.rows ?? 0) : (progress?.totalRows ?? 0);
+  const animated = !reduce;
+  const [finished, setFinished] = useState(false);
+  const close = useRef(onClose);
+  close.current = onClose;
 
   useEffect(() => {
-    if (!open || state !== "success") return;
-    const timer = window.setTimeout(onClose, 3200);
+    if (open) setFinished(false);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || state !== "success" || (animated && !finished)) return;
+    const timer = window.setTimeout(() => close.current(), animated ? 1200 : 3200);
     return () => window.clearTimeout(timer);
-  }, [open, state, onClose]);
+  }, [open, state, animated, finished]);
 
   useEffect(() => {
     if (!open || state !== "failure") return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") close.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, state, onClose]);
+  }, [open, state]);
 
   return createPortal(
     <AnimatePresence>
@@ -118,7 +127,11 @@ export function TransferCinema({
             className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(6,9,15,0.9)_100%)]"
           />
           <motion.span
-            className="absolute top-12 text-[11px] font-semibold uppercase text-white/40"
+            className={
+              animated
+                ? "mb-5 text-[11px] font-semibold uppercase text-white/40"
+                : "absolute top-12 text-[11px] font-semibold uppercase text-white/40"
+            }
             initial={reduce ? false : { opacity: 0, letterSpacing: "0.9em" }}
             animate={{ opacity: 1, letterSpacing: "0.45em" }}
             transition={{ duration: 1.1, ease: EASE_OUT }}
@@ -126,39 +139,68 @@ export function TransferCinema({
             Transfer
           </motion.span>
 
-          <div className="relative flex w-full max-w-4xl items-center justify-center gap-4 px-10">
-            <TransferCinemaNode
-              connection={source}
-              database={sourceDatabase}
-              caption="Quelle"
-              percent={null}
-              state={state === "failure" ? "idle" : state}
-              delay={0.1}
-            />
-            <TransferCinemaStream
-              active={state === "running"}
-              state={state}
-              table={state === "running" ? (progress?.table ?? null) : null}
-              tableKey={`${progress?.phase ?? ""}-${progress?.tableIndex ?? 0}`}
-            />
-            <TransferCinemaNode
-              connection={target}
-              database={targetDatabase}
-              caption="Ziel"
-              percent={percent}
-              state={state}
-              delay={0.25}
-            />
-          </div>
+          {animated ? (
+            <motion.div
+              className="relative w-[min(64rem,92vw,calc((100vh-19rem)*16/9))] overflow-hidden rounded-2xl shadow-2xl ring-1 ring-white/10"
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ duration: 0.6, ease: EASE_OUT }}
+            >
+              <TransferCinemaStage
+                sourceName={sourceDatabase || source.name}
+                targetName={targetDatabase || target.name}
+                input={{
+                  progress: percent / 100,
+                  rows,
+                  table: progress?.table ?? null,
+                  outcome: state === "success" || state === "failure" ? state : "running",
+                }}
+                onFinished={() => setFinished(true)}
+              />
+            </motion.div>
+          ) : (
+            <div className="relative flex w-full max-w-4xl items-center justify-center gap-4 px-10">
+              <TransferCinemaNode
+                connection={source}
+                database={sourceDatabase}
+                caption="Quelle"
+                percent={null}
+                state={state === "failure" ? "idle" : state}
+                delay={0.1}
+              />
+              <TransferCinemaStream
+                active={state === "running"}
+                state={state}
+                table={state === "running" ? (progress?.table ?? null) : null}
+                tableKey={`${progress?.phase ?? ""}-${progress?.tableIndex ?? 0}`}
+              />
+              <TransferCinemaNode
+                connection={target}
+                database={targetDatabase}
+                caption="Ziel"
+                percent={percent}
+                state={state}
+                delay={0.25}
+              />
+            </div>
+          )}
 
           <motion.div
-            className="mt-14 flex flex-col items-center gap-3"
+            className={
+              animated
+                ? "mt-6 flex flex-col items-center gap-2"
+                : "mt-14 flex flex-col items-center gap-3"
+            }
             initial={reduce ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: EASE_OUT, delay: 0.6 }}
           >
-            <TransferCinemaCounter value={rows} />
-            <span className="text-xs uppercase tracking-[0.3em] text-white/40">Zeilen</span>
+            {!animated && (
+              <>
+                <TransferCinemaCounter value={rows} />
+                <span className="text-xs uppercase tracking-[0.3em] text-white/40">Zeilen</span>
+              </>
+            )}
             <div className="relative mt-2 h-6 w-[32rem] max-w-[90vw]">
               <AnimatePresence mode="popLayout" initial={false}>
                 <motion.span
@@ -183,14 +225,18 @@ export function TransferCinema({
                   : "Das Ziel ist nicht vollständig bereinigt.")}
             </span>
             {state === "failure" && outcome?.error && (
-              <pre className="mt-1 max-h-32 max-w-[40rem] overflow-auto rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 font-mono text-xs whitespace-pre-wrap text-red-200">
+              <pre className="mt-1 max-h-24 max-w-[40rem] overflow-auto rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 font-mono text-xs whitespace-pre-wrap text-red-200">
                 {outcome.error}
               </pre>
             )}
           </motion.div>
 
           <motion.div
-            className="absolute bottom-10 flex items-center gap-4"
+            className={
+              animated
+                ? "mt-5 flex items-center gap-4"
+                : "absolute bottom-10 flex items-center gap-4"
+            }
             initial={reduce ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.6, delay: 1 }}

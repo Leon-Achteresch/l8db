@@ -1,3 +1,4 @@
+import { assertExtensionsAllowed } from "@/lib/extensions/management";
 import { invoke } from "./core";
 
 export interface UiPluginFile {
@@ -26,6 +27,7 @@ export function scanUiPlugins(): Promise<UiPluginScan> {
 }
 
 export function writeUiPlugin(name: string, source: string): Promise<void> {
+  assertExtensionsAllowed();
   return invoke<void>("ui_plugins_write", { name, source });
 }
 
@@ -44,3 +46,41 @@ export function writeUiPluginSupport(name: UiPluginSupportFile, contents: string
 export function watchUiPlugins(): Promise<void> {
   return invoke<void>("ui_plugins_watch");
 }
+
+export interface UiPluginProposal {
+  slot: number;
+  nonce: string;
+  action: "write" | "remove";
+  name: string;
+  source: string;
+  before: string | null;
+}
+
+export const startUiPluginProposals = () => invoke<void>("ui_plugin_proposals_start");
+export const pendingUiPluginProposals = () =>
+  invoke<UiPluginProposal[]>("ui_plugin_proposals_pending");
+export function finishUiPluginProposal(
+  request: UiPluginProposal,
+  response: unknown,
+  apply = false,
+) {
+  if (apply) assertExtensionsAllowed();
+  return invoke<void>("ui_plugin_proposals_finish", {
+    slot: request.slot,
+    request: {
+      slot: request.slot,
+      nonce: request.nonce,
+      action: request.action,
+      name: request.name,
+      source: request.source,
+      before: request.before,
+    },
+    response,
+    apply,
+  });
+}
+
+export const readUiPluginBundle = (path: string) =>
+  invoke<unknown>("ui_plugins_read_bundle", { path });
+export const exportUiPluginBundle = (path: string, contents: string) =>
+  invoke<void>("ui_plugins_export_bundle", { path, contents });

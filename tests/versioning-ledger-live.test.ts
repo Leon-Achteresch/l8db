@@ -34,6 +34,14 @@ for (const kind of ["postgres", "oracle"] as const) {
         );
         console.log(JSON.stringify(result));
         expect(result).toMatchObject({
+          script: {
+            text: true,
+            from: "v12",
+            open: 0,
+            ticks: ["v12/m:script"],
+            guarded: true,
+            reconciled: "v12",
+          },
           masse: [["v2", "v3", "v4"], ["v3", "v4"], ["v4"]],
           again: 0,
           adopted: true,
@@ -43,7 +51,58 @@ for (const kind of ["postgres", "oracle"] as const) {
           hotfixShown: "1 Update offen",
           hotfixSteps: ["v6/m"],
           catchUpSteps: ["v5/m", "v5.1/m", "v6/m"],
-          versions: ["v6", "v6", "v5"],
+          versions: ["v11", "v12", "v11"],
+          single: {
+            distributed: [
+              ["2026-11-05-index-waehrung"],
+              ["2026-11-05-index-waehrung"],
+              ["2026-11-05-index-waehrung"],
+            ],
+            twice: true,
+            v11: [0, 0, 0],
+            indexes: [1, 1, 1],
+            ticks: [1, 1, 1],
+          },
+          align: {
+            open: ["v9/schema", "v9/code", "v9/data", "v10/code"],
+            variances: ["invoices", "price"],
+            aligned: [expect.stringMatching(/^angleichen-c-/)],
+            after: ["v9/schema", "v9/code", "v9/data", "v10/code"],
+            variancesLeft: 0,
+            track: "main",
+            shown: "Aktuell",
+            price: true,
+          },
+          code: {
+            skipA: ["v9/code:skip"],
+            applyB: ["v9/code:apply"],
+            skipped: ["v9/code"],
+            usd: [1, 1],
+            tickedA: 3,
+            tickedB: 3,
+            again: 0,
+            priceB: true,
+          },
+          drift: {
+            planned: ["price"],
+            refused: true,
+            keptA: true,
+            report: ["a:price", "b:price"],
+            varianceRun: ["v10/code:variance"],
+            varianceKept: true,
+            withoutOverride: ["price"],
+            override: ["v10/code:override"],
+            overriddenB: true,
+          },
+          legacy: {
+            decisions: ["v2/m", "v3/m", "v5.1/m", "v5/m", "v7/m"],
+            proposed: ["invoices", "price"],
+            noSql: true,
+            run: ["v8/m"],
+            variancesKept: true,
+            recorded: 2,
+            shown: "Aktuell",
+          },
         });
       } finally {
         await browser.close();

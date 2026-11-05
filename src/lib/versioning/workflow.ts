@@ -1,4 +1,4 @@
-import { lineStatus } from "./change-plan";
+import { activeVariances, lineStatus } from "./change-plan";
 import { releaseParents, releasePath } from "./model";
 import { changedFiles } from "./status";
 import type { DatabaseRelease, DatabaseTarget, RepositoryStatus } from "./types";
@@ -29,10 +29,23 @@ export function progressIndex(releases: DatabaseRelease[], status: RepositorySta
       if (siblings) siblings.push(release);
       else children.set(parent, [release]);
     }
-  return { available, children, pending: new Map<string, number>() };
+  return {
+    available,
+    children,
+    pending: new Map<string, { pending: number; tip: string | null }>(),
+  };
 }
 
 export type ProgressIndex = ReturnType<typeof progressIndex>;
+
+export function ledgerOpen(target: DatabaseTarget, tip: string | null) {
+  const ledger = target.ledger;
+  if (!ledger || !tip || ledger.tip !== tip) return null;
+  const stale = target.history.some(
+    (event) => (event.finishedAt ?? event.startedAt) > ledger.checkedAt,
+  );
+  return stale ? null : ledger.open;
+}
 
 export function targetProgress(
   target: DatabaseTarget,
@@ -40,34 +53,44 @@ export function targetProgress(
   status: RepositoryStatus | null,
   index: ProgressIndex = progressIndex(releases, status),
 ) {
+  const variances = activeVariances(target.variances).length;
+  const base = { pending: 0, open: null as number | null, variances };
   if (target.history.some((event) => event.status === "running" || event.status === "failed"))
-    return { label: "Stand abgleichen", pending: 0, state: "blocked" as const };
+    return { ...base, label: "Stand abgleichen", state: "blocked" as const };
   if (!target.connectionId)
-    return { label: "Lokales Profil zuordnen", pending: 0, state: "blocked" as const };
-  if (!target.release) return { label: "Baseline prüfen", pending: 0, state: "baseline" as const };
-  if (target.paused) return { label: "Updates pausiert", pending: 0, state: "paused" as const };
+    return { ...base, label: "Lokales Profil zuordnen", state: "blocked" as const };
+  if (!target.release) return { ...base, label: "Baseline prüfen", state: "baseline" as const };
+  if (target.paused) return { ...base, label: "Updates pausiert", state: "paused" as const };
   const { available } = index;
   const track = target.track ?? "main";
   const key = `${target.release.id}\0${track}\0${target.pinnedRelease ?? ""}`;
-  let pending = index.pending.get(key);
-  if (pending === undefined) {
-    const line = lineStatus(available, track, target.pinnedRelease, target.release.id);
-    pending = line.diverged ? -1 : line.pending;
-    if (line.tip && target.ledger?.tip === line.tip.id && target.ledger.open)
-      pending = Math.max(pending, 1);
-    index.pending.set(key, pending);
+  let line = index.pending.get(key);
+  if (line === undefined) {
+    const status = lineStatus(available, track, target.pinnedRelease, target.release.id);
+    line = { pending: status.diverged ? -1 : status.pending, tip: status.tip?.id ?? null };
+    index.pending.set(key, line);
   }
-  if (pending < 0)
-    return {
-      label: "Merge-Release nötig",
-      pending: 0,
-      state: "blocked" as const,
-    };
+  if (line.pending < 0) return { ...base, label: "Merge-Release nötig", state: "blocked" as const };
+  const open = ledgerOpen(target, line.tip);
+  const pending = open ? Math.max(line.pending, 1) : line.pending;
   return {
+    ...base,
+    open,
     label: pending ? `${pending} ${pending === 1 ? "Update" : "Updates"} offen` : "Aktuell",
     pending,
     state: pending ? ("pending" as const) : ("current" as const),
   };
+}
+
+export function ledgerDetail(progress: { open: number | null; variances: number }) {
+  return [
+    progress.open ? `${progress.open} ${progress.open === 1 ? "Änderung" : "Änderungen"}` : "",
+    progress.variances
+      ? `${progress.variances} ${progress.variances === 1 ? "Abweichung" : "Abweichungen"}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 export function customerGroups(targets: DatabaseTarget[]) {

@@ -10,10 +10,14 @@ import { bindingMatches } from "./binding";
 import { captureObject, captureObjects } from "./capture";
 import {
   activeVariances,
+  aheadObjects,
+  type BaselineClassification,
+  classifyBaseline,
   objectHistory,
   type PlannedStep,
   planChanges,
   releaseClosure,
+  standaloneChange,
 } from "./change-plan";
 import { mappedCheck, preflightChecks, runReleaseChecks } from "./checks";
 import { control, initialPolicy, type PolicyRecord, sharedTarget } from "./control";
@@ -41,12 +45,14 @@ import {
   checksum,
   compareSnapshots,
   deployKind,
+  destructiveStatement,
   releaseAncestry,
   releaseParents,
   releaseTrack,
   validateMigration,
 } from "./model";
 import {
+  committedChange,
   committedRelease,
   committedTeamConfiguration,
   loadReleases,
@@ -68,8 +74,20 @@ import type {
   ObjectSnapshot,
   ReleaseReference,
   StandaloneChange,
+  Variance,
   VersioningProject,
 } from "./types";
+
+export interface CodeDecision {
+  change: string;
+  object: string;
+  action: "apply" | "skip" | "variance" | "override" | "drift";
+}
+
+export interface RolloutOptions {
+  overrides?: string[];
+  change?: boolean;
+}
 
 export interface DeploymentPlan {
   target: DatabaseTarget;
@@ -81,6 +99,8 @@ export interface DeploymentPlan {
   changes: Change[];
   differences: ObjectDifference[];
   drift: ObjectDifference[];
+  code: CodeDecision[];
+  overrides: string[];
   reviewToken: string;
   sql: string[];
   binding: NonNullable<DatabaseTarget["binding"]>;
@@ -146,6 +166,7 @@ export async function baselineTarget(
   releaseId: string,
   reconcile = false,
   connections: SavedConnection[] = [connection],
+  deviations?: { done: string[]; variances: Variance[] },
 ) {
   const { store, text } = await readTargets(repo, project.id);
   const target = store.targets.find((item) => item.id === targetId);
@@ -178,16 +199,37 @@ export async function baselineTarget(
   try {
     const current = await readTargets(repo, project.id);
     await assertDistinctTarget(target, connection, current.store.targets, connections, project);
-    const actual = await captureObjects(
-      connection,
-      target.database,
-      release.objects.map((item) => item.object),
-      target.schema,
-    );
-    if (compareSnapshots(release.objects, actual).some((item) => item.status !== "unchanged"))
-      throw new Error(
-        "Der tatsächliche Datenbankstand entspricht nicht dem Release. Baseline wurde nicht gesetzt.",
+    const releases = await loadReleases(repo, project, reference.commit);
+    const map = new Map(releases.map((entry) => [entry.id, entry]));
+    const standalone = await loadStandaloneChanges(repo, project, reference.commit);
+    const closure = releaseClosure(map, release.id, standalone);
+    let recorded = closure.changes;
+    let actual: ObjectSnapshot[];
+    if (deviations) {
+      const captured = await captureClosure(connection, target, map, release.id);
+      actual = captured.filter((entry) =>
+        release.objects.some((item) => item.object.id === entry.object.id),
       );
+      recorded = acceptedBaseline(
+        classifyBaseline(map, release.id, checksums(captured), standalone),
+        deviations,
+        release,
+        closure.changes,
+        actual,
+      );
+    } else {
+      actual = await captureObjects(
+        connection,
+        target.database,
+        release.objects.map((item) => item.object),
+        target.schema,
+      );
+      if (compareSnapshots(release.objects, actual).some((item) => item.status !== "unchanged"))
+        throw new Error(
+          "Der tatsächliche Datenbankstand entspricht nicht dem Release. Baseline wurde nicht gesetzt.",
+        );
+    }
+    const complete = recorded.length === closure.changes.length;
     if (project.kind === "oracle") {
       for (const schema of new Set(
         release.objects.map((item) => target.schema || item.object.selection.schema || ""),
@@ -221,7 +263,7 @@ export async function baselineTarget(
         event.finishedAt = new Date().toISOString();
       }
     }
-    if (release.safety?.postconditions.length) {
+    if (release.safety?.postconditions.length && complete) {
       const transaction = await openVersioningSession(connection, target, release, true);
       try {
         await runReleaseChecks(transaction, release, target, "postconditions");
@@ -231,20 +273,16 @@ export async function baselineTarget(
     }
     target.binding = await databaseBinding(connection, target);
     await baselineLedger(connection, project, target, release, reconcile);
-    const releases = await loadReleases(repo, project, reference.commit);
-    const closure = releaseClosure(
-      new Map(releases.map((entry) => [entry.id, entry])),
-      release.id,
-      await loadStandaloneChanges(repo, project, reference.commit),
-    );
     await recordBaseline(
       connection,
       project,
       target,
       release,
-      closure.changes,
+      recorded,
       closureObjects(release, actual),
     );
+    if (deviations)
+      target.variances = deviations.variances.length ? deviations.variances : undefined;
     target.release = reference;
     await control(connection, project, target, "append", {
       runId: crypto.randomUUID(),
@@ -257,13 +295,110 @@ export async function baselineTarget(
   }
 }
 
+const checksums = (entries: ObjectSnapshot[]) =>
+  new Map(entries.map((entry) => [entry.object.id, entry.checksum]));
+
+async function captureClosure(
+  connection: SavedConnection,
+  target: DatabaseTarget,
+  map: Map<string, DatabaseRelease>,
+  releaseId: string,
+) {
+  const latest = new Map<string, ObjectSnapshot>();
+  for (const release of releaseAncestry(map, releaseId))
+    for (const entry of release.objects) latest.set(entry.object.id, entry);
+  return captureTolerant(connection, target, [...latest.values()]);
+}
+
+export function acceptedBaseline(
+  check: BaselineClassification,
+  deviations: { done: string[]; variances: Variance[] },
+  release: DatabaseRelease,
+  changes: Change[],
+  actual: ObjectSnapshot[],
+): Change[] {
+  if (check.missing.length)
+    throw new Error(
+      `Beim Kunden fehlen ${check.missing.join(", ")}, und keine Änderung legt sie an.`,
+    );
+  const done = new Set(deviations.done);
+  for (const entry of check.changes)
+    if (entry.status !== "decision" && (entry.status === "done") !== done.has(entry.id))
+      throw new Error(`Einordnung von ${entry.id} hat sich seit der Prüfung geändert. Neu prüfen.`);
+  const proposed = new Map(check.variances.map((variance) => [variance.object, variance.hash]));
+  if (
+    deviations.variances.length !== proposed.size ||
+    deviations.variances.some((variance) => proposed.get(variance.object) !== variance.hash)
+  )
+    throw new Error("Abweichungen entsprechen nicht mehr dem Kundenstand. Neu prüfen.");
+  const pending = new Set(
+    changes.filter((change) => !done.has(change.id)).flatMap((change) => change.touches),
+  );
+  const found = checksums(actual);
+  for (const entry of release.objects)
+    if (
+      found.get(entry.object.id) !== entry.checksum &&
+      !proposed.has(entry.object.id) &&
+      !pending.has(entry.object.id)
+    )
+      throw new Error(
+        `${entry.object.id} weicht vom Release ab, ohne offene Änderung oder festgehaltene Abweichung.`,
+      );
+  return changes.filter((change) => done.has(change.id));
+}
+
+export async function classifyTarget(
+  repo: string,
+  project: VersioningProject,
+  target: DatabaseTarget,
+  connection: SavedConnection,
+  releaseId: string,
+) {
+  if (connection.id !== target.connectionId || connection.kind !== project.kind)
+    throw new Error("Zielverbindung passt nicht zum Projekt.");
+  const { release, reference } = await committedRelease(repo, project, releaseId);
+  const map = new Map(
+    (await loadReleases(repo, project, reference.commit)).map((entry) => [entry.id, entry]),
+  );
+  const captured = await captureClosure(connection, target, map, release.id);
+  return classifyBaseline(
+    map,
+    release.id,
+    checksums(captured),
+    await loadStandaloneChanges(repo, project, reference.commit),
+  );
+}
+
+function singleChangePlan(
+  change: Change,
+  ledger: ChangeLedger,
+  map: Map<string, DatabaseRelease>,
+  from: DatabaseRelease,
+  standalone: Map<string, StandaloneChange>,
+) {
+  if (ledger.changes.has(change.id))
+    throw new Error(`${change.id} ist in dieser Datenbank bereits abgehakt.`);
+  if (change.kind === "repeatable")
+    throw new Error("Programmcode wird über Releases verteilt, nicht als Einzeländerung.");
+  const missing = change.requires.find((id) => !ledger.changes.has(id));
+  if (missing) throw new Error(`${change.id} benötigt ${missing}, die noch nicht angewendet ist.`);
+  return {
+    closure: releaseClosure(map, from.id, standalone),
+    open: [change],
+    steps: [{ release: from, changes: [change] }],
+    touched: new Set(change.touches),
+  };
+}
+
 export async function planDeployment(
   repo: string,
   project: VersioningProject,
   target: DatabaseTarget,
   connection: SavedConnection,
   releaseId: string,
+  options: RolloutOptions = {},
 ): Promise<DeploymentPlan> {
+  const overrides = options.overrides ?? [];
   const team = await committedTeamConfiguration(repo, project.id);
   if (connection.readOnly) throw new Error("Die Zielverbindung ist schreibgeschützt.");
   const shared = await sharedTarget(connection, project, target);
@@ -318,7 +453,9 @@ export async function planDeployment(
     throw new Error(
       "Datenbank-Historie weicht ab oder ein Deployment ist ungeklärt. Stand zuerst abgleichen.",
     );
-  const { release: to, reference } = await committedRelease(repo, project, releaseId);
+  const single = options.change ? await committedChange(repo, project, releaseId) : null;
+  const released = single ? null : await committedRelease(repo, project, releaseId);
+  const reference = single?.reference ?? (released as NonNullable<typeof released>).reference;
   const releases = await loadReleases(repo, project, reference.commit);
   const standalone = await loadStandaloneChanges(repo, project, reference.commit);
   const map = new Map(releases.map((release) => [release.id, release]));
@@ -327,16 +464,22 @@ export async function planDeployment(
     throw new Error(
       `Der Datenbankstand ${state.RELEASE_ID} fehlt im Zielbranch oder wurde nachträglich verändert.`,
     );
-  if (releaseTrack(to) !== (target.track ?? "main"))
-    throw new Error("Zielrelease gehört zu einer anderen Kundenvariante / Release-Linie.");
-  if (
-    target.pinnedRelease &&
-    !releaseAncestry(map, target.pinnedRelease, false).some((release) => release.id === to.id)
-  )
-    throw new Error(`Diese Datenbank ist auf ${target.pinnedRelease} festgelegt.`);
+  const to = released?.release ?? from;
+  if (released) {
+    if (releaseTrack(to) !== (target.track ?? "main"))
+      throw new Error("Zielrelease gehört zu einer anderen Kundenvariante / Release-Linie.");
+    if (
+      target.pinnedRelease &&
+      !releaseAncestry(map, target.pinnedRelease, false).some((release) => release.id === to.id)
+    )
+      throw new Error(`Diese Datenbank ist auf ${target.pinnedRelease} festgelegt.`);
+  }
   const ledger = await ensureLedger(connection, project, target, from, map, standalone, state);
   const variances = activeVariances(target.variances);
-  const plan = planChanges(map, to.id, ledger.changes, from.id, standalone);
+  const plan = single
+    ? singleChangePlan(standaloneChange(releaseId, single.change), ledger, map, from, standalone)
+    : planChanges(map, to.id, ledger.changes, from.id, standalone);
+  const ahead = aheadObjects(plan, ledger.changes, standalone);
   if (target.schema && new Set(to.objects.map((item) => item.object.selection.schema)).size !== 1)
     throw new Error("Eine Schema-Zuordnung benötigt genau ein Quellschema.");
   const chain = plan.steps.map((step) => step.release);
@@ -347,17 +490,88 @@ export async function planDeployment(
         "Ein Zwischenrelease enthält inkompatible Änderungen. Der Betriebsplan benötigt ein Wartungsfenster für den gesamten Pfad.",
       );
   }
-  if (chain[0]) await preflightChecks(connection, target, chain[0]);
+  if (chain[0] && !single) await preflightChecks(connection, target, chain[0]);
   const varianceIds = new Set(variances.map((variance) => variance.object));
+  for (const variance of variances)
+    if (!to.objects.some((entry) => entry.object.id === variance.object))
+      throw new Error(
+        `Abweichung ${variance.object} betrifft kein verwaltetes Objekt von ${to.id}. Teamkonfiguration anpassen.`,
+      );
+  for (const change of plan.open)
+    for (const id of change.touches)
+      if (
+        varianceIds.has(id) &&
+        id in change.before &&
+        change.kind !== "repeatable" &&
+        change.before[id] !== variances.find((variance) => variance.object === id)?.hash
+      )
+        throw new Error(
+          `${change.id} ändert ${id}, das beim Kunden als Abweichung festgehalten ist. Erst angleichen oder die Änderung mit Vorbedingung statt Vorher-Stand bauen.`,
+        );
   const inspected = to.objects.filter(
     (entry) => plan.touched.has(entry.object.id) || varianceIds.has(entry.object.id),
   );
   const actual = await captureTolerant(connection, target, inspected);
   const differences = compareSnapshots(inspected, actual);
-  const drift = differences.filter(
-    (item) =>
-      item.status !== "unchanged" && !plan.touched.has(item.id) && !varianceIds.has(item.id),
+  const captured = new Map(actual.map((entry) => [entry.object.id, entry]));
+  const code: CodeDecision[] = [];
+  const current = new Map<string, string | undefined>(
+    [...plan.touched].map((id) => [id, captured.get(id)?.checksum]),
   );
+  const last = new Map([...ledger.objects.values()].map((entry) => [entry.id, entry.hash]));
+  for (const step of plan.steps)
+    for (const change of step.changes) {
+      const id = change.touches[0];
+      const soll = step.release.objects.find((entry) => entry.object.id === id)?.checksum;
+      if (change.kind !== "repeatable" || change.touches.length !== 1 || !soll) continue;
+      const ist = current.get(id);
+      const variance = variances.find((entry) => entry.object === id);
+      const known = last.get(id);
+      const previous =
+        known !== undefined
+          ? ist === known
+          : id in change.before &&
+            (change.before[id] === null ? ist === undefined : ist === change.before[id]);
+      const action: CodeDecision["action"] =
+        ist === soll
+          ? "skip"
+          : variance && ist === variance.hash
+            ? "variance"
+            : previous
+              ? "apply"
+              : overrides.includes(id)
+                ? "override"
+                : "drift";
+      code.push({ change: change.id, object: id, action });
+      if (action !== "variance" && action !== "drift") {
+        current.set(id, soll);
+        last.set(id, soll);
+      }
+    }
+  const codeDrift = new Set(
+    code.filter((entry) => entry.action === "drift").map((entry) => entry.object),
+  );
+  const drift = [
+    ...differences
+      .filter((item) => codeDrift.has(item.id))
+      .map((item) => ({ ...item, label: `${item.label} (direkt beim Kunden geändert)` })),
+    ...differences.filter(
+      (item) =>
+        item.status !== "unchanged" && !plan.touched.has(item.id) && !varianceIds.has(item.id),
+    ),
+    ...differences
+      .filter((item) => {
+        const variance = variances.find((entry) => entry.object === item.id);
+        return variance && captured.get(item.id)?.checksum !== variance.hash;
+      })
+      .map((item) => ({ ...item, label: `${item.label} (Abweichung verändert)` })),
+  ];
+  const variancePayload = to.objects
+    .filter((entry) => varianceIds.has(entry.object.id))
+    .map((entry) => ({
+      id: entry.object.id,
+      ...snapshotPayload(entry, target, captured.get(entry.object.id)?.definition ?? ""),
+    }));
   const history = objectHistory(releases);
   const sql: string[] = [];
   const steps = plan.steps.map((step) => {
@@ -367,10 +581,15 @@ export async function planDeployment(
       const prefix = change.release
         ? `${change.release}:${change.id.slice(change.release.length + 1)}`
         : change.id;
-      for (const [index, entry] of validateMigration(
+      const mapped = validateMigration(
         mappedMigration(change.sql, target, scope),
         deployKind(project.kind),
-      ).entries()) {
+      );
+      if (project.additiveOnly && !change.destructive && mapped.some(destructiveStatement))
+        throw new Error(
+          `Nur additiv: ${change.id} enthält Entfernungen oder Typwechsel ohne ausdrückliche Freigabe.`,
+        );
+      for (const [index, entry] of mapped.entries()) {
         sql.push(entry);
         statements.push({ id: `${prefix}:${index + 1}`, migration: change.id, sql: entry });
       }
@@ -380,7 +599,7 @@ export async function planDeployment(
         kind: change.kind,
         requires: change.requires,
         touches: change.touches
-          .map((id) => touchPayload(id, change, step.release, map, to, history, target))
+          .map((id) => touchPayload(id, change, step.release, map, to, history, target, captured))
           .sort((a, b) => a.id.localeCompare(b.id)),
         preconditions: change.preconditions.map((entry) => mappedCheck(entry, scope, target)),
         postconditions: change.postconditions.map((entry) => mappedCheck(entry, scope, target)),
@@ -401,7 +620,10 @@ export async function planDeployment(
       id: entry.object.id,
       ...snapshotPayload(entry, target),
     })),
-    variances: [] as unknown[],
+    variances: variancePayload,
+    overrides,
+    ahead,
+    ...(single ? { mode: "change", change: releaseId } : {}),
     releases: await Promise.all(
       steps.map(async ({ step, statements, changes }) => ({
         id: step.release.id,
@@ -459,6 +681,8 @@ export async function planDeployment(
     changes: plan.open,
     differences,
     drift,
+    code,
+    overrides,
     sql,
     reviewToken: `${Date.now()}:${hash}`,
     binding,
@@ -479,11 +703,12 @@ export async function deploy(
   releaseId: string,
   reviewedToken: string,
   onProgress?: (message: string) => void,
+  options: RolloutOptions = {},
 ) {
   const { store } = await readTargets(repo, project.id);
   const target = store.targets.find((item) => item.id === targetId);
   if (!target) throw new Error("Datenbankziel fehlt.");
-  const plan = await planDeployment(repo, project, target, connection, releaseId);
+  const plan = await planDeployment(repo, project, target, connection, releaseId, options);
   assertReviewedToken(reviewedToken, plan.reviewToken);
   if (plan.drift.length)
     throw new Error(
@@ -528,6 +753,7 @@ function touchPayload(
   to: DatabaseRelease,
   history: ReturnType<typeof objectHistory>,
   target: DatabaseTarget,
+  captured: Map<string, ObjectSnapshot>,
 ) {
   const owner = change.release ? map.get(change.release) : undefined;
   const parent = owner ? map.get(releaseParents(owner)[0] ?? "") : undefined;
@@ -538,7 +764,9 @@ function touchPayload(
   const expected = change.before[id];
   if (!(id in change.before)) return { id, expect: "check", ...snapshotPayload(meta, target, "") };
   if (expected === null) return { id, expect: "absent", ...snapshotPayload(meta, target, "") };
-  const definition = history(id, expected)?.definition;
+  const definition =
+    history(id, expected)?.definition ??
+    (captured.get(id)?.checksum === expected ? captured.get(id)?.definition : undefined);
   if (!definition)
     throw new Error(`Vorher-Stand von ${id} aus ${change.id} ist in keinem Release enthalten.`);
   return { id, expect: "definition", ...snapshotPayload(meta, target, definition) };
@@ -644,14 +872,8 @@ export async function recordBaseline(
 ) {
   const ledger = await readChangeLedger(connection, project, target);
   const missing = changes.filter((change) => !ledger?.changes.has(change.id));
-  await writeChangeLedger(
-    connection,
-    project,
-    target,
-    [
-      ...changeRows(project, target, missing, "baseline", release.id, null),
-      ...objectRows(project, target, objects),
-    ],
-    objects.map((entry) => entry.id),
-  );
+  await writeChangeLedger(connection, target, [
+    ...changeRows(project, target, missing, "baseline", release.id, null),
+    ...objectRows(project, target, objects),
+  ]);
 }

@@ -276,6 +276,7 @@ pub async fn run_transfer(
                 .collect(),
             fold_names,
             replace: false,
+            mirror: false,
             content: transfer::Content::All,
         },
         pool.clone(),

@@ -1,0 +1,15 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"decision\":\"accepted\",\"status\":{\"state\":\"applied\"}}"
+        }
+      ],
+      "isError": false
+    }
+  }
+]

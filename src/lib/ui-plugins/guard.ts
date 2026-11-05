@@ -1,3 +1,4 @@
+import { EXECUTION_ERROR } from "../../../packages/ui-plugin-api/src/instrument";
 import { withoutHooks } from "../../../packages/ui-plugin-api/src/modules";
 import { errorMessage } from "./store";
 
@@ -64,6 +65,7 @@ export class SlotGuard {
     this.errors++;
     const message = errorMessage(error);
     if (this.errors === 1) this.events.error(this.plugin, this.slot, message);
+    if (message.includes(EXECUTION_ERROR)) this.trip(message);
     if (this.errors >= MAX_ERRORS) this.trip(`${this.errors} Fehler, zuletzt: ${message}`);
   }
 

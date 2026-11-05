@@ -14,10 +14,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { versioningRepository } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
-import { generateMigration, groundwork, type MigrationDraft } from "@/lib/versioning/migrations";
+import { derivedTouches } from "@/lib/versioning/change-plan";
+import {
+  generateMigration,
+  groundwork,
+  type MigrationDraft,
+  splitMigrations,
+} from "@/lib/versioning/migrations";
 import {
   checksum,
   deployKind,
+  destructiveStatement,
   PROJECT_PATH,
   parseRelease,
   releaseParents,
@@ -33,6 +40,7 @@ import { workingSnapshot } from "@/lib/versioning/sources";
 import { changedFiles } from "@/lib/versioning/status";
 import type { DatabaseRelease, ManagedObject, ObjectSnapshot } from "@/lib/versioning/types";
 import type { VersioningWorkspace } from "./use-versioning";
+import { VersioningChangeCreate } from "./versioning-change-create";
 import { VersioningIconButton } from "./versioning-icon-button";
 import { VersioningSafetyEditor } from "./versioning-safety-editor";
 import { VersioningSelect } from "./versioning-select";
@@ -53,6 +61,8 @@ export function VersioningReleases({
   const [generatedFor, setGeneratedFor] = useState("");
   const [id, setId] = useState("");
   const [parent, setParent] = useState("");
+  const [mergeParent, setMergeParent] = useState("");
+  const mergeFeature = useNewFeatureVisibility<HTMLDivElement>("versioning.releases.merge");
   const [sql, setSql] = useState("");
   const [track, setTrack] = useState("main");
   const [safety, setSafety] = useState(defaultSafety);
@@ -87,7 +97,13 @@ export function VersioningReleases({
     const before = releases.find((release) => release.id === predecessor);
     if (!before) throw new Error("Für einen Migrationsentwurf einen Vorgänger auswählen.");
     const current = await snapshots(objects);
-    const result = generateMigration(project.kind, before, current, allowDrops);
+    const result = generateMigration(
+      project.kind,
+      before,
+      current,
+      allowDrops,
+      project.additiveOnly ?? false,
+    );
     setMigration(result);
     setManualReviewed(false);
     setGeneratedFor(JSON.stringify(current.map((item) => [item.object.id, item.checksum])));
@@ -157,11 +173,26 @@ export function VersioningReleases({
       id,
       projectId: project.id,
       kind: deployKind(project.kind),
-      parents: parent ? [parent] : [],
+      parents: parent ? [parent, ...(mergeParent ? [mergeParent] : [])] : [],
       createdAt: new Date().toISOString(),
       objects,
       migrations: sql.trim()
-        ? [{ id: `${id}-migration`, title: `Update auf ${id}`, sql, checksum: await checksum(sql) }]
+        ? ((migration && sql === migration.sql
+            ? await splitMigrations(project.kind, id, migration)
+            : null) ?? [
+            {
+              id: `${id}-migration`,
+              title: `Update auf ${id}`,
+              sql,
+              checksum: await checksum(sql),
+              ...(mergeParent
+                ? derivedTouches(
+                    { objects } as DatabaseRelease,
+                    releases.find((release) => release.id === parent),
+                  )
+                : {}),
+            },
+          ])
         : await groundwork(project.kind, id, objects),
       track,
       safety: {
@@ -180,6 +211,12 @@ export function VersioningReleases({
         ),
       },
     };
+    if (project.additiveOnly && allowDrops)
+      release.migrations = release.migrations.map((entry) =>
+        validateMigration(entry.sql, release.kind).some(destructiveStatement)
+          ? { ...entry, destructive: true }
+          : entry,
+      );
     await parseRelease(encode(release), project);
     validateReleaseGraph([...releases, release]);
     await saveFile(repo, path, encode(release), null);
@@ -194,6 +231,7 @@ export function VersioningReleases({
     setGeneratedFor("");
     setManualReviewed(false);
     setAllowDrops(false);
+    setMergeParent("");
     workspace.setDirty(false);
     try {
       if (commit) {
@@ -282,6 +320,13 @@ export function VersioningReleases({
           />
         )}
       </div>
+      {!creating && project && (
+        <VersioningChangeCreate
+          workspace={workspace}
+          project={project}
+          reference={releases.filter((release) => releaseTrack(release) === "main").at(-1)}
+        />
+      )}
       {creating ? (
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
@@ -314,6 +359,29 @@ export function VersioningReleases({
               />
             </div>
           </div>
+          {parent && (
+            <div ref={mergeFeature.ref} className="space-y-1.5">
+              <span className="flex items-center gap-2 text-xs font-medium">
+                Zweiter Vorgänger (Merge){mergeFeature.isNew && <NewBadge />}
+              </span>
+              <VersioningSelect
+                hideLabel
+                label="Zweiter Vorgänger-Release"
+                value={mergeParent}
+                onChange={setMergeParent}
+                options={[
+                  { value: "", label: "Kein Merge" },
+                  ...releases
+                    .filter((release) => release.id !== parent)
+                    .map((release) => ({ value: release.id, label: release.id })),
+                ]}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Führt etwa einen Hotfix zurück in die Hauptlinie. Kunden auf dem Hotfix bekommen nur
+                die Änderungen, die ihnen fehlen.
+              </p>
+            </div>
+          )}
           <label htmlFor="vcs-release-track" className="space-y-1.5 text-xs font-medium">
             Release-Linie
             <Input
@@ -331,6 +399,30 @@ export function VersioningReleases({
               onChange={(event) => setAllowDrops(event.target.checked)}
             />
             Entfernungen beim nächsten Erzeugen einschließen. DROP-Anweisungen können Daten löschen.
+            {project?.additiveOnly
+              ? " Bei der Projektregel „nur additiv“ gilt das auch für Typwechsel und Verkürzungen und wird als Freigabe im Release vermerkt."
+              : ""}
+          </label>
+          <label className="flex items-start gap-2 text-[11px] text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={project?.additiveOnly ?? false}
+              onChange={(event) =>
+                void run(async () => {
+                  if (!project) return;
+                  const { additiveOnly: _, ...rest } = project;
+                  await saveFile(
+                    repo,
+                    PROJECT_PATH,
+                    encode(event.target.checked ? { ...rest, additiveOnly: true } : rest),
+                    projectText,
+                  );
+                  await refresh();
+                }, "Projektregel gespeichert. project.json committen.")
+              }
+            />
+            Projektregel „nur additiv“: Generator und Rollout weisen Entfernungen, Typwechsel und
+            Verkürzungen ohne ausdrückliche Freigabe ab.
           </label>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label htmlFor="vcs-migration-sql" className="text-xs font-medium">

@@ -40,7 +40,19 @@ pub(super) struct Execution {
     pub objects: Vec<Managed>,
     #[serde(default)]
     pub variances: Vec<Managed>,
+    #[serde(default)]
+    pub overrides: Vec<String>,
+    #[serde(default)]
+    pub ahead: Vec<Ahead>,
+    #[serde(default)]
+    pub mode: Option<String>,
     pub releases: Vec<Release>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct Ahead {
+    pub object: String,
+    pub change: String,
 }
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -238,6 +250,12 @@ async fn authorize(
 ) -> Result<(), String> {
     super::artifact::verify(request).await?;
     let shared = super::team::verify_request(request).await?;
+    let planned: Value =
+        serde_json::from_str(&request.artifact).map_err(|_| "Freigabeartefakt ist ungültig")?;
+    super::team::verify_variances(
+        shared.as_ref().map(|verified| &verified.target),
+        &planned["execution"]["variances"],
+    )?;
     let control = control::Request {
         connection: request.connection.clone(),
         action: "authorize".into(),
@@ -305,6 +323,72 @@ async fn applied(
         .collect())
 }
 
+async fn applied_objects(
+    adapter: &dyn DatabaseAdapter,
+    c: &Connection,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let result = adapter
+        .execute_query(&format!(
+            "SELECT \"OBJECT_ID\", \"APPLIED_HASH\" FROM {} WHERE \"PROJECT_ID\"={}",
+            table(&c.schema, "OBJECTS"),
+            literal(&c.project_id)
+        ))
+        .await
+        .map_err(|e| format!("Objektstand der Zieldatenbank nicht lesbar: {e}"))?;
+    Ok(result
+        .rows
+        .iter()
+        .filter_map(|row| {
+            Some((
+                row["OBJECT_ID"].as_str()?.to_owned(),
+                row["APPLIED_HASH"].as_str()?.to_owned(),
+            ))
+        })
+        .collect())
+}
+
+pub(super) async fn code(
+    adapter: &dyn DatabaseAdapter,
+    kind: DatabaseKind,
+    change: &PlannedChange,
+    soll: &Snapshot,
+    variance: Option<&Snapshot>,
+    last: Option<&str>,
+    overridden: bool,
+) -> Result<(bool, bool), String> {
+    let touch = change
+        .touches
+        .first()
+        .filter(|_| change.touches.len() == 1)
+        .ok_or("Programmcode-Änderung muss genau ein Objekt berühren")?;
+    let ist = if snapshot::exists(adapter, soll).await? {
+        Some(snapshot::definition(adapter, kind, soll).await?)
+    } else {
+        None
+    };
+    if ist.as_deref() == Some(soll.definition.as_str()) {
+        return Ok((false, true));
+    }
+    if variance.is_some_and(|v| ist.as_deref() == Some(v.definition.as_str())) {
+        return Ok((false, false));
+    }
+    let previous = match last {
+        Some(hash) => ist.as_deref().map(control::hash).as_deref() == Some(hash),
+        None => match touch.expect.as_str() {
+            "definition" => ist.as_deref() == Some(touch.object.definition.as_str()),
+            "absent" => ist.is_none(),
+            _ => false,
+        },
+    };
+    if previous || overridden {
+        return Ok((true, true));
+    }
+    Err(format!(
+        "{}: Programmcode {}.{} wurde direkt beim Kunden geändert. Übernehmen, als Abweichung festhalten oder Überschreiben freigeben.",
+        change.id, soll.schema, soll.name
+    ))
+}
+
 fn touched<'a>(releases: &'a [Release]) -> std::collections::HashSet<&'a str> {
     releases
         .iter()
@@ -348,18 +432,30 @@ pub(super) async fn precheck(
     snapshot::verify(adapter, c.kind, &snapshots)
         .await
         .map_err(|e| format!("Festgehaltene Abweichung hat sich verändert. {e}"))?;
+    if let Some(missing) = plan.ahead.iter().find(|a| !ledger.contains(&a.change)) {
+        return Err(format!(
+            "Vorgezogene Änderung {} ist in dieser Datenbank nicht abgehakt. Neu planen.",
+            missing.change
+        ));
+    }
+    let ahead: std::collections::HashSet<&str> =
+        plan.ahead.iter().map(|a| a.object.as_str()).collect();
     let touched = touched(&plan.releases);
     let untouched: Vec<Snapshot> = plan
         .objects
         .iter()
-        .filter(|o| !touched.contains(o.id.as_str()) && !variances.contains(o.id.as_str()))
+        .filter(|o| {
+            !touched.contains(o.id.as_str())
+                && !variances.contains(o.id.as_str())
+                && !ahead.contains(o.id.as_str())
+        })
         .map(|o| o.snapshot.clone())
         .collect();
     snapshot::verify(adapter, c.kind, &untouched).await
 }
 
-fn change_sql(c: &Connection, change: &PlannedChange, release: &str, run: &str) -> String {
-    format!("INSERT INTO {} (\"PROJECT_ID\", \"CHANGE_ID\", \"CHECKSUM\", \"KIND\", \"SOURCE\", \"RELEASE_ID\", \"RUN_ID\", \"APPLIED_AT\", \"APPLIED_BY\") VALUES ({}, {}, {}, {}, 'rollout', {}, {}, {}, {})",table(&c.schema,"CHANGES"),literal(&c.project_id),literal(&change.id),literal(&change.checksum),literal(&change.kind),literal(release),literal(run),c.now_sql(),c.actor_sql())
+fn change_sql(c: &Connection, change: &PlannedChange, release: Option<&str>, run: &str) -> String {
+    format!("INSERT INTO {} (\"PROJECT_ID\", \"CHANGE_ID\", \"CHECKSUM\", \"KIND\", \"SOURCE\", \"RELEASE_ID\", \"RUN_ID\", \"APPLIED_AT\", \"APPLIED_BY\") VALUES ({}, {}, {}, {}, 'rollout', {}, {}, {}, {})",table(&c.schema,"CHANGES"),literal(&c.project_id),literal(&change.id),literal(&change.checksum),literal(&change.kind),release.map(literal).unwrap_or_else(|| "NULL".into()),literal(run),c.now_sql(),c.actor_sql())
 }
 
 pub(super) fn object_sql(c: &Connection, id: &str, hash: &str, change: Option<&str>) -> String {
@@ -428,7 +524,11 @@ async fn run(
         let result = adapter.execute_query(&format!("UPDATE {state} SET \"LEASE\"={}, \"STATUS\"='running' WHERE \"PROJECT_ID\"={} AND \"RELEASE_HASH\"={} AND \"STATUS\"='{READY}' AND \"LEASE\" IS NULL",literal(&request.run_id),literal(&c.project_id),literal(&plan.from_hash))).await?;
         if result.rows_affected!=Some(1) { return Err("Datenbankstand geändert oder ungeklärte Ausführung".into()); }
         leased = true;
+        let mut last = applied_objects(adapter.as_ref(), c).await?;
+        let variance_map: std::collections::HashMap<&str, &Snapshot> = plan.variances.iter().map(|v| (v.id.as_str(), &v.snapshot)).collect();
+        event["skippedChanges"] = json!([]);
         let count = plan.releases.len();
+        let change_mode = plan.mode.as_deref() == Some("change");
         for (index, release) in plan.releases.iter().enumerate() {
             control::check_lock(c,&lock,&transactions).await?;
             let later = touched(&plan.releases[index + 1..]);
@@ -436,7 +536,7 @@ async fn run(
                 .changes
                 .iter()
                 .flat_map(|change| change.touches.iter().map(|t| t.id.as_str()))
-                .filter(|id| !later.contains(id) && !variances.contains(id))
+                .filter(|id| !change_mode && !later.contains(id) && !variances.contains(id))
                 .filter_map(|id| targets.get(id).map(|snapshot| (id, *snapshot)))
                 .collect();
             settled.sort_by_key(|(id, _)| *id);
@@ -460,17 +560,24 @@ async fn run(
                     scoped.schema = schema;
                     control::execution_lock(&scoped, &tx, &transactions).await?;
                 }
-                checks(&tx,&release.preconditions,&transactions,&mut event).await?;
+                if !change_mode { checks(&tx,&release.preconditions,&transactions,&mut event).await?; }
                 for change in &release.changes {
                     control::check_lock(c,&lock,&transactions).await?;
-                    if c.kind == DatabaseKind::Postgres {
-                        let session = transactions.versioning_adapter(&tx, pool.clone()).await?;
-                        before(session.as_ref(), c.kind, change).await?;
-                    } else {
-                        before(adapter.as_ref(), c.kind, change).await?;
-                    }
+                    let session = if c.kind == DatabaseKind::Postgres { Some(transactions.versioning_adapter(&tx, pool.clone()).await?) } else { None };
+                    let inspector: &dyn DatabaseAdapter = session.as_deref().unwrap_or(adapter.as_ref());
+                    let soll = (change.kind == "repeatable").then(|| change.touches.first().and_then(|t| release.objects.iter().find(|o| o.schema == t.object.schema && o.name == t.object.name && o.kind == t.object.kind).map(|o| (t.id.as_str(), o)))).flatten();
+                    let apply = match soll {
+                        Some((id, soll)) => {
+                            let (apply, settled) = code(inspector, c.kind, change, soll, variance_map.get(id).copied(), last.get(id).map(String::as_str), plan.overrides.iter().any(|o| o == id)).await?;
+                            if settled { last.insert(id.to_string(), control::hash(&soll.definition)); }
+                            apply
+                        }
+                        None => { before(inspector, c.kind, change).await?; true }
+                    };
+                    drop(session);
+                    if !apply { event["skippedChanges"].as_array_mut().unwrap().push(json!(change.id)); }
                     checks(&tx,&change.preconditions,&transactions,&mut event).await?;
-                    for statement in release.statements.iter().filter(|s| s.migration == change.id) {
+                    for statement in release.statements.iter().filter(|s| apply && s.migration == change.id) {
                         control::check_lock(c,&lock,&transactions).await?;
                         event["inFlightStatement"] = json!(statement.id);
                         journal(adapter.as_ref(),request,"statement_started",json!({"statement":statement.id,"checksum":control::hash(&statement.sql)})).await?;
@@ -481,15 +588,16 @@ async fn run(
                         event["inFlightStatement"] = Value::Null;
                     }
                     checks(&tx,&change.postconditions,&transactions,&mut event).await?;
-                    transactions.execute(&tx,&change_sql(c,change,&release.id,&request.run_id)).await?;
+                    transactions.execute(&tx,&change_sql(c,change,(!change_mode).then_some(release.id.as_str()),&request.run_id)).await?;
                     event["completedMigrations"].as_array_mut().unwrap().push(json!(change.id));
                 }
-                checks(&tx,&release.postconditions,&transactions,&mut event).await?;
-                let advance = format!("UPDATE {state} SET \"RELEASE_ID\"={}, \"RELEASE_HASH\"={} WHERE \"PROJECT_ID\"={} AND \"LEASE\"={} AND \"STATUS\"='running'",literal(&release.id),literal(&release.hash),literal(&c.project_id),literal(&request.run_id));
+                if !change_mode { checks(&tx,&release.postconditions,&transactions,&mut event).await?; }
+                let advance = format!("UPDATE {state} SET \"RELEASE_ID\"={}, \"RELEASE_HASH\"={} WHERE \"PROJECT_ID\"={} AND \"LEASE\"={} AND \"STATUS\"='running'{}",literal(&release.id),literal(&release.hash),literal(&c.project_id),literal(&request.run_id),if change_mode { format!(" AND \"RELEASE_HASH\"={}",literal(&release.hash)) } else { String::new() });
+                let last_step = index + 1 == count && !change_mode;
                 if c.kind==DatabaseKind::Postgres {
                     let session = transactions.versioning_adapter(&tx,pool.clone()).await?;
                     snapshot::verify(session.as_ref(),c.kind,&settled_snapshots).await?;
-                    if index + 1 == count { snapshot::verify_removed(session.as_ref(),&plan.from_objects,&all_targets).await?; }
+                    if last_step { snapshot::verify_removed(session.as_ref(),&plan.from_objects,&all_targets).await?; }
                     for (id, snapshot) in &settled { transactions.execute(&tx,&object_sql(c,id,&control::hash(&snapshot.definition),None)).await?; }
                     if transactions.execute(&tx,&advance).await?.rows_affected!=Some(1) { return Err("Deployment-Sperre verloren".into()); }
                 }
@@ -500,7 +608,7 @@ async fn run(
                 journal(adapter.as_ref(),request,"commit_confirmed",json!({"release":release.id})).await?;
                 if c.kind==DatabaseKind::Oracle {
                     snapshot::verify(adapter.as_ref(),c.kind,&settled_snapshots).await?;
-                    if index + 1 == count { snapshot::verify_removed(adapter.as_ref(),&plan.from_objects,&all_targets).await?; }
+                    if last_step { snapshot::verify_removed(adapter.as_ref(),&plan.from_objects,&all_targets).await?; }
                     let invalid = adapter.list_invalid_objects(Some(&c.schema)).await?;
                     if invalid.iter().any(|item| all_targets.iter().any(|o|o.name==item.name) || !invalid_before.iter().any(|old|old.name==item.name && old.object_type==item.object_type)) { return Err("Oracle enthält ungültige Objekte; vor dem Fortsetzen kompilieren und prüfen".into()); }
                     control::check_lock(c,&lock,&transactions).await?;
@@ -513,8 +621,10 @@ async fn run(
                 if !committed { if let Err(rollback) = transactions.rollback(&tx).await { return Err(format!("{error}; Rollback konnte nicht bestätigt werden: {rollback}")); } }
                 return Err(error);
             }
-            let mut reference = plan.reference.clone(); reference["id"] = json!(release.id); reference["path"] = json!(format!("database/releases/{}.json",release.id));
-            last_reference = Some(reference);
+            if !change_mode {
+                let mut reference = plan.reference.clone(); reference["id"] = json!(release.id); reference["path"] = json!(format!("database/releases/{}.json",release.id));
+                last_reference = Some(reference);
+            }
             persist(request,&event,last_reference.as_ref()).await?;
             if let Some(status)=jobs().lock().await.get_mut(&request.run_id) { status.release = release.id.clone(); }
         }

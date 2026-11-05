@@ -5,6 +5,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { ExtensionPrompts } from "@/features/extensions/extension-prompts";
 import { StartupView } from "@/features/shell/startup-view";
+import { PluginProposals } from "@/features/ui-plugins/plugin-proposals";
 import { initAppearance } from "@/lib/appearance";
 import { initConnectionSecrets, isMainWindow, windowConnectionId } from "@/lib/connections";
 import { initCrashReporting } from "@/lib/crash-reporting";
@@ -79,6 +80,7 @@ function render(extensionHost: Awaited<typeof extensionHostReady>) {
         <QueryClientProvider client={queryClient}>
           <ExtensionHostContext.Provider value={extensionHost.manager}>
             <RouterProvider router={router} />
+            <PluginProposals />
             <ExtensionPrompts />
           </ExtensionHostContext.Provider>
         </QueryClientProvider>

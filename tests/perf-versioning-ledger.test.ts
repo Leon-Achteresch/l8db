@@ -1,8 +1,22 @@
 import { expect, test } from "bun:test";
 import { arch, cpus, release as osRelease, platform, totalmem } from "node:os";
-import { lineStatus, planChanges } from "../src/lib/versioning/change-plan";
+import {
+  aheadObjects,
+  classifyBaseline,
+  lineStatus,
+  planChanges,
+  releaseClosure,
+} from "../src/lib/versioning/change-plan";
+import { codeStatus } from "../src/lib/versioning/code-drift";
 import { parseChangeLedger } from "../src/lib/versioning/ledger";
-import type { DatabaseRelease, ObjectSnapshot } from "../src/lib/versioning/types";
+import { migrationScript, scriptLedger } from "../src/lib/versioning/migration-script";
+import type {
+  DatabaseRelease,
+  ObjectSnapshot,
+  StandaloneChange,
+  VersioningProject,
+} from "../src/lib/versioning/types";
+import { ledgerDetail, progressIndex, targetProgress } from "../src/lib/versioning/workflow";
 
 const TARGETS = 200;
 const CHANGES = 2000;
@@ -195,4 +209,310 @@ test("legacy format 1 histories derive touched objects once per release", () => 
   expect(firstMs).toBeLessThan(500);
   expect(median).toBeLessThan(15);
   expect(p95).toBeLessThan(40);
+});
+
+test("baseline classification of a legacy customer stays bounded for 5,000 objects", () => {
+  const reached = releases[60].objects;
+  const actual = new Map(
+    reached.map((entry, index) => [
+      entry.object.id,
+      index % 500 === 0 ? hash(`x${index}`) : entry.checksum,
+    ]),
+  );
+  Bun.gc(true);
+  const heapBefore = process.memoryUsage().heapUsed;
+  const times: number[] = [];
+  let result = classifyBaseline(map, `v${RELEASES - 1}`, actual);
+  for (let round = 0; round < 20; round++) {
+    const start = performance.now();
+    result = classifyBaseline(map, `v${RELEASES - 1}`, actual);
+    times.push(performance.now() - start);
+  }
+  Bun.gc(true);
+  const retainedMb = (process.memoryUsage().heapUsed - heapBefore) / 1024 / 1024;
+  times.sort((a, b) => a - b);
+  const median = times[Math.floor(times.length / 2)];
+  const p95 = times[Math.floor(times.length * 0.95)];
+  const counts = { done: 0, open: 0, decision: 0 };
+  for (const entry of result.changes) counts[entry.status]++;
+  console.log(
+    JSON.stringify({
+      scenario: "versioning-baseline-classification",
+      changes: result.changes.length,
+      objects: OBJECTS,
+      ...counts,
+      variances: result.variances.length,
+      medianMs: Number(median.toFixed(2)),
+      p95Ms: Number(p95.toFixed(2)),
+      retainedMb: Number(retainedMb.toFixed(1)),
+    }),
+  );
+  expect(result.changes.length).toBe(CHANGES + 1);
+  expect(counts.open).toBeGreaterThan(0);
+  expect(result.variances.length).toBeGreaterThan(0);
+  expect(median).toBeLessThan(100);
+  expect(p95).toBeLessThan(200);
+  expect(retainedMb).toBeLessThan(64);
+});
+
+test("code drift report classifies 200 targets with 500 code objects each", () => {
+  const code: ObjectSnapshot[] = Array.from({ length: 500 }, (_, index) => ({
+    object: {
+      id: `p${index}`,
+      path: `database/objects/p${index}.pks`,
+      selection: { schema: "APP", objectType: "package", objectName: `P${index}`, objectOid: null },
+    },
+    definition: `P${index}`,
+    checksum: hash(`p${index}`),
+  }));
+  const fleet = Array.from({ length: TARGETS }, (_, target) => ({
+    target: {
+      id: `t${target}`,
+      name: `Kunde ${target}`,
+      connectionId: "c",
+      database: null,
+      schema: `S${target}`,
+      production: false,
+      release: null,
+      history: [],
+    },
+    actual: new Map(
+      code.map((entry, index) => [
+        entry.object.id,
+        index === target % 500 ? hash(`drift${target}`) : entry.checksum,
+      ]),
+    ),
+    applied: new Map(
+      code.map((entry) => [
+        entry.object.id,
+        { id: entry.object.id, hash: entry.checksum, change: null },
+      ]),
+    ),
+  }));
+  const times: number[] = [];
+  let drift = 0;
+  for (const entry of fleet) {
+    const start = performance.now();
+    const rows = codeStatus(entry.target, code, entry.actual, entry.applied, []);
+    times.push(performance.now() - start);
+    drift += rows.filter((row) => row.state === "drift").length;
+  }
+  times.sort((a, b) => a - b);
+  const median = times[Math.floor(times.length / 2)];
+  const p95 = times[Math.floor(times.length * 0.95)];
+  console.log(
+    JSON.stringify({
+      scenario: "versioning-code-drift-report",
+      targets: TARGETS,
+      codeObjects: code.length,
+      ledgerQueriesPerTarget: 1,
+      drift,
+      medianMs: Number(median.toFixed(3)),
+      p95Ms: Number(p95.toFixed(3)),
+    }),
+  );
+  expect(drift).toBe(TARGETS);
+  expect(median).toBeLessThan(5);
+  expect(p95).toBeLessThan(20);
+});
+
+test("standalone changes distributed ahead of releases keep planning bounded", () => {
+  const STANDALONE = 500;
+  const standalone = new Map<string, StandaloneChange>(
+    Array.from({ length: STANDALONE }, (_, index) => [
+      `s${index}`,
+      {
+        format: 1,
+        id: `s${index}`,
+        kind: "versioned",
+        title: `Einzeländerung ${index}`,
+        checksum: hash(`x${index}`),
+        sql: `CREATE INDEX I${index} ON APP.T${index} (C)`,
+        touches: [`o${index}`, `o${(index * 7) % OBJECTS}`],
+        before: {},
+        requires: [],
+        data: false,
+        preconditions: [],
+        postconditions: [],
+      },
+    ]),
+  );
+  const targets = ledgerRows.map((ledger, target) => {
+    const applied = parseChangeLedger(ledger.rows).changes;
+    for (let index = 0; index < (target % 10) * 50; index++)
+      applied.set(`s${index}`, {
+        id: `s${index}`,
+        checksum: hash(`x${index}`),
+        kind: "versioned",
+        source: "rollout",
+        release: null,
+      });
+    return { reached: ledger.reached, applied };
+  });
+  Bun.gc(true);
+  const heapBefore = process.memoryUsage().heapUsed;
+  const times: number[] = [];
+  let maxAhead = 0;
+  for (let round = 0; round < 3; round++)
+    for (const { reached, applied } of targets) {
+      const start = performance.now();
+      const plan = planChanges(map, `v${RELEASES - 1}`, applied, `v${reached}`, standalone);
+      const ahead = aheadObjects(plan, applied, standalone);
+      const single = releaseClosure(map, `v${reached}`, standalone);
+      times.push(performance.now() - start);
+      maxAhead = Math.max(maxAhead, ahead.length);
+      expect(single.releases.length).toBeGreaterThan(0);
+    }
+  Bun.gc(true);
+  const retainedMb = (process.memoryUsage().heapUsed - heapBefore) / 1024 / 1024;
+  times.sort((a, b) => a - b);
+  const median = times[Math.floor(times.length / 2)];
+  const p95 = times[Math.floor(times.length * 0.95)];
+  console.log(
+    JSON.stringify({
+      scenario: "versioning-standalone-ahead",
+      targets: TARGETS,
+      standalone: STANDALONE,
+      changes: CHANGES,
+      objects: OBJECTS,
+      plans: times.length,
+      maxAhead,
+      medianMs: Number(median.toFixed(2)),
+      p95Ms: Number(p95.toFixed(2)),
+      retainedMb: Number(retainedMb.toFixed(1)),
+      os: `${platform()} ${osRelease()}`,
+      arch: arch(),
+      cpu: cpus()[0]?.model,
+      ramGb: Math.round(totalmem() / 1024 ** 3),
+      runtime: `bun ${Bun.version}`,
+    }),
+  );
+  expect(maxAhead).toBeLessThanOrEqual(450 * 2);
+  expect(median).toBeLessThan(20);
+  expect(p95).toBeLessThan(50);
+  expect(retainedMb).toBeLessThan(64);
+});
+
+test("ledger scripts and customer summaries stay bounded for 2,000 changes and 200 targets", async () => {
+  const project = {
+    id: "p",
+    name: "Produkt",
+    kind: "oracle",
+    objects: [{ selection: { schema: "APP" } }],
+  } as unknown as VersioningProject;
+  const target = {
+    id: "t",
+    name: "Kunde A",
+    connectionId: "c",
+    database: null,
+    schema: "APP",
+    production: false,
+    history: [],
+    release: { id: "v0", commit: "a".repeat(40), path: "database/releases/v0.json" },
+  };
+  const execution = {
+    fromId: "v0",
+    fromHash: hash("from"),
+    objects: objects.map((entry) => ({ id: entry.object.id, definition: entry.definition })),
+    variances: [],
+    releases: releases.slice(1, RELEASES).map((release) => ({
+      id: release.id,
+      hash: hash(release.id),
+      changes: release.migrations.map((migration) => ({
+        id: `${release.id}/${migration.id}`,
+        checksum: migration.checksum,
+        kind: "versioned",
+        touches: (migration.touches ?? []).map((id) => ({ id })),
+      })),
+    })),
+  };
+  const plan = {
+    target,
+    from: releases[0],
+    to: releases[RELEASES - 1],
+    reference: { id: "v99", commit: "a".repeat(40), path: "database/releases/v99.json" },
+    releases: releases.slice(1, RELEASES),
+    sql: releases.slice(1, RELEASES).flatMap((release) => release.migrations.map((m) => m.sql)),
+    reviewArtifact: JSON.stringify({ execution }),
+  };
+  const changes = execution.releases.reduce((sum, step) => sum + step.changes.length, 0);
+  Bun.gc(true);
+  const heapBefore = process.memoryUsage().heapUsed;
+  const times: number[] = [];
+  let statements = 0;
+  let bytes = 0;
+  for (let round = 0; round < 20; round++) {
+    const start = performance.now();
+    const ledger = await scriptLedger(plan, project);
+    const script = migrationScript({ ...plan, ledger }, project.name);
+    times.push(performance.now() - start);
+    statements = ledger?.statements.length ?? 0;
+    bytes = script.length;
+  }
+  const targets = Array.from({ length: TARGETS }, (_, index) => ({
+    ...target,
+    id: `t${index}`,
+    release: { ...target.release, id: `v${(index * 7) % RELEASES}` },
+    ledger: {
+      tip: `v${RELEASES - 1}`,
+      open: index % 4,
+      variances: 0,
+      checkedAt: "2026-11-05T00:00:00Z",
+    },
+    variances: index % 3 ? [] : [{ object: "o1", hash: hash("v"), reason: "Kunde", until: null }],
+  }));
+  const status = {
+    repo: "/r",
+    head: "a".repeat(40),
+    branch: "main",
+    branches: ["main"],
+    files: [],
+    changes: "",
+    history: "",
+  };
+  const summaryTimes: number[] = [];
+  let detailed = 0;
+  for (let round = 0; round < 20; round++) {
+    const start = performance.now();
+    const index = progressIndex(releases, status);
+    detailed = targets.filter((entry) =>
+      ledgerDetail(targetProgress(entry, releases, status, index)),
+    ).length;
+    summaryTimes.push(performance.now() - start);
+  }
+  Bun.gc(true);
+  const retainedMb = (process.memoryUsage().heapUsed - heapBefore) / 1024 / 1024;
+  times.sort((a, b) => a - b);
+  summaryTimes.sort((a, b) => a - b);
+  const median = times[Math.floor(times.length / 2)];
+  const p95 = times[Math.floor(times.length * 0.95)];
+  const summaryMedian = summaryTimes[Math.floor(summaryTimes.length / 2)];
+  const summaryP95 = summaryTimes[Math.floor(summaryTimes.length * 0.95)];
+  console.log(
+    JSON.stringify({
+      scenario: "versioning-ledger-script",
+      changes,
+      objects: OBJECTS,
+      statements,
+      scriptKb: Math.round(bytes / 1024),
+      medianMs: Number(median.toFixed(2)),
+      p95Ms: Number(p95.toFixed(2)),
+      targets: TARGETS,
+      summaryMedianMs: Number(summaryMedian.toFixed(2)),
+      summaryP95Ms: Number(summaryP95.toFixed(2)),
+      retainedMb: Number(retainedMb.toFixed(1)),
+      os: `${platform()} ${osRelease()}`,
+      arch: arch(),
+      cpu: cpus()[0]?.model,
+      ramGb: Math.round(totalmem() / 1024 ** 3),
+      runtime: `bun ${Bun.version}`,
+    }),
+  );
+  expect(statements).toBeLessThanOrEqual(changes + changes + 1);
+  expect(detailed).toBeGreaterThan(0);
+  expect(median).toBeLessThan(60);
+  expect(p95).toBeLessThan(150);
+  expect(summaryMedian).toBeLessThan(20);
+  expect(summaryP95).toBeLessThan(50);
+  expect(retainedMb).toBeLessThan(64);
 });

@@ -9,10 +9,17 @@ import {
   writeUiPluginSdk,
   writeUiPluginSupport,
 } from "@/lib/db";
+import { useOrganizationStore } from "@/lib/organization-state";
 import { evaluatePlugin } from "../../../packages/ui-plugin-api/src/evaluate";
 import { validatePlugin } from "./api";
 import type { SlotName } from "./guard";
 import { buildRegistry, slotKey } from "./registry";
+import {
+  clearUiPluginSafeMode,
+  detectUiPluginSafeMode,
+  markUiPluginLoading,
+  onUiPluginSafeModeCleared,
+} from "./safe-mode";
 import { useUiPluginSettings } from "./settings";
 import { uiPluginStatusReport } from "./status";
 import {
@@ -62,7 +69,10 @@ export function refreshUiPluginRegistry() {
   useUiPluginRuntime.setState({
     registry: buildRegistry({
       plugins,
-      disabled: settings.disabled,
+      disabled:
+        useOrganizationStore.getState().policy?.allowExtensions === false
+          ? plugins.map((plugin) => plugin.definition.id)
+          : settings.disabled,
       options: settings.options,
       grants: settings.httpGrants,
       tripped: state.tripped,
@@ -70,6 +80,14 @@ export function refreshUiPluginRegistry() {
     }),
   });
 }
+
+useOrganizationStore.subscribe(() => {
+  if (useOrganizationStore.getState().policy?.allowExtensions === false) {
+    for (const plugin of Object.values(useUiPluginRuntime.getState().loaded))
+      plugin.timers.dispose();
+  }
+  refreshUiPluginRegistry();
+});
 
 useUiPluginSettings.subscribe((state, previous) => {
   if (
@@ -191,17 +209,8 @@ export function applyUiPluginFiles(
 
 export async function checkUiPluginSource(file: string, source: string, expectedId?: string) {
   const compiler = await import("../../../packages/ui-plugin-api/src/compile");
-  const result = loadUiPlugin(compiler, { name: file, source, modified: 0 }, hashSource(source));
-  if (!result.ok)
-    throw new Error(
-      result.error.line
-        ? `Zeile ${result.error.line}: ${result.error.message}`
-        : result.error.message,
-    );
-  result.plugin.timers.dispose();
-  if (expectedId && result.plugin.definition.id !== expectedId)
-    throw new Error(`Plugin meldet id "${result.plugin.definition.id}", erwartet "${expectedId}".`);
-  return result.plugin.definition;
+  const { inspectPluginSource } = await import("./inspect");
+  return inspectPluginSource(compiler, file, source, expectedId);
 }
 
 function scheduleStatus() {
@@ -217,7 +226,8 @@ function scheduleStatus() {
 
 async function reloadOnce() {
   const scan = await scanUiPlugins();
-  const files = Array.isArray(scan?.files) ? scan.files : [];
+  const files =
+    Array.isArray(scan?.files) && !useUiPluginRuntime.getState().safeMode ? scan.files : [];
   const compiler = files.length
     ? await import("../../../packages/ui-plugin-api/src/compile")
     : null;
@@ -261,6 +271,18 @@ export function reloadUiPlugins(): Promise<void> {
   return running;
 }
 
+function leaveSafeMode() {
+  if (!useUiPluginRuntime.getState().safeMode) return Promise.resolve();
+  useUiPluginRuntime.setState({ safeMode: false });
+  markUiPluginLoading();
+  return reloadUiPlugins();
+}
+
+export function enableUiPluginsAfterSafeMode(): Promise<void> {
+  clearUiPluginSafeMode();
+  return leaveSafeMode();
+}
+
 export async function startUiPluginHost(sdkModules: Readonly<Record<string, unknown>>) {
   if (started) return;
   started = true;
@@ -276,7 +298,16 @@ export async function startUiPluginHost(sdkModules: Readonly<Record<string, unkn
       scheduleStatus();
   });
   useUiPluginSettings.subscribe(() => scheduleStatus());
+  const safeMode = detectUiPluginSafeMode();
+  useUiPluginRuntime.setState({ safeMode });
+  if (safeMode)
+    toast.warning("UI-Plugins sind im abgesicherten Modus", {
+      description:
+        "Beim letzten Start hat das Laden der Plugins nicht abgeschlossen. Unter Einstellungen → Erweiterungen kannst du sie wieder aktivieren.",
+    });
+  onUiPluginSafeModeCleared(() => void leaveSafeMode());
   await listen(UI_PLUGINS_CHANGED_EVENT, () => void reloadUiPlugins()).catch(() => undefined);
+  if (!safeMode) markUiPluginLoading();
   await reloadUiPlugins();
   void watchUiPlugins().catch((error) =>
     console.warn("UI-Plugin-Ordner wird nicht beobachtet", error),

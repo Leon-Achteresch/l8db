@@ -7,10 +7,12 @@ import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { TableFilterBar } from "@/features/table/table-filter-bar";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
+import { PluginToolbar } from "@/features/ui-plugins/plugin-toolbar";
 import { canEditRedisCell, REDIS_KEY_FILTER_OPERATORS, redisKeyFilter } from "@/lib/redis-commands";
 import { tableColumnPrefKey, useTableColumnPrefs } from "@/lib/table-column-prefs";
 import { useTableViewStateStore } from "@/lib/table-view-state";
 import { UiPluginGridContext, usePluginGrid } from "@/lib/ui-plugins/grid";
+import { usePluginTableInfo } from "@/lib/ui-plugins/table-slots";
 
 import type { useTableViewModel } from "./use-table-view-model";
 
@@ -101,6 +103,7 @@ export function TableDataContent({
   table,
   emptyMessage,
 }: Props) {
+  const pluginTable = usePluginTableInfo(connection, database, schema, table, isView);
   const gridReady = useDeferredValue(!isLoading, false);
   const pluginGrid = usePluginGrid(
     connection,
@@ -134,29 +137,40 @@ export function TableDataContent({
       >
         <TableFilterBar
           leading={
-            <TableViewsPanel
-              schema={schema}
-              table={table}
-              activeFilter={filter}
-              filterRaw={filterRaw}
-              onSelectView={(nextFilter, raw, saved) => {
-                handleFilterChange(nextFilter, raw);
-                if (stateKey && saved?.state)
-                  useTableViewStateStore.getState().patch(stateKey, {
-                    ...saved.state,
-                    filter: nextFilter,
-                    filterRaw: raw ?? false,
-                    page: 0,
-                  });
-                if (connection && saved?.layout)
-                  useTableColumnPrefs
-                    .getState()
-                    .setPref(
-                      tableColumnPrefKey(connection.id, schema, table, database),
-                      saved.layout,
-                    );
-              }}
-            />
+            <>
+              <PluginToolbar
+                placement="beforeFilter"
+                info={pluginTable}
+                stateKey={stateKey}
+                rows={tableRows}
+                columnNames={data?.columns}
+                columnDetails={columnDetails}
+                refresh={() => void refetch()}
+              />
+              <TableViewsPanel
+                schema={schema}
+                table={table}
+                activeFilter={filter}
+                filterRaw={filterRaw}
+                onSelectView={(nextFilter, raw, saved) => {
+                  handleFilterChange(nextFilter, raw);
+                  if (stateKey && saved?.state)
+                    useTableViewStateStore.getState().patch(stateKey, {
+                      ...saved.state,
+                      filter: nextFilter,
+                      filterRaw: raw ?? false,
+                      page: 0,
+                    });
+                  if (connection && saved?.layout)
+                    useTableColumnPrefs
+                      .getState()
+                      .setPref(
+                        tableColumnPrefKey(connection.id, schema, table, database),
+                        saved.layout,
+                      );
+                }}
+              />
+            </>
           }
           key={stateKey}
           stateKey={stateKey}
