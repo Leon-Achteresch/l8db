@@ -182,3 +182,15 @@ fremde entfernte transfer-cinematic-variant(s)-Module. Cargo check erfolgreich;
 abschließende Archivprüfung und Rust-Modultests werden im Abschluss ergänzt.
 Native Dateidialoge und zwei echte Desktop-Fenster wurden nicht manuell getestet;
 Abbruch/Selektion/Snapshot-Konflikte und Storage-Synchronisation sind isoliert getestet.
+
+Zusätzliche Prüfung mit echtem Compiler: 200 Plugins × ca. 8 KiB, zehn Durchläufe,
+Median 108,95 ms, p95 270,71 ms; Budget p95 <5.000 ms. Quellenprüfung bleibt seriell,
+Prüf-Timer werden verworfen, keine wachsende Compile-Queue. Der Test besteht mit
+Bun 1.3.10. Optionen werden pro Plugin in einem Store-Update ersetzt, statt für
+jeden Schlüssel erneut localStorage zu schreiben. Keine Heap-Messung: die
+Speicherevidenz sind die harten Eingabe-/Eintragsgrenzen und serielle Verarbeitung.
+Rust-Modultests: 5 bestanden. TypeScript und Biome im sauberen HEAD-Archiv bestanden.
+Archivprüfung des Implementierungscommits: cargo fmt --check und cargo check mit
+geteiltem CARGO_TARGET_DIR ebenfalls erfolgreich (3m46s inklusive Neuprüfung
+lokaler Vendor-Pfade). Abschließender Typecheck nach dem gebündelten Optionsimport
+im gemeinsamen Checkout erfolgreich. Regulärer Push-Hook wird verwendet.
