@@ -117,3 +117,14 @@ test("einfache Pfeilfunktionen bleiben ohne Wächter, aufrufende nicht", () => {
   );
   expect(() => fan.spin()).toThrow("Laufzeitgrenze");
 });
+
+test("Pfeilfunktionen mit await im Ausdrucksrumpf bleiben gültig und im Gleichgewicht", async () => {
+  const plugin = loadModule(
+    "const wait = (ms) => new Promise(r => setTimeout(r, ms)); export const a = async () => await wait(5); export const b = async () => await 7; export const c = async (x) => await (await x); export const ping = () => { for (let i = 0; i < 3; i++); return 1 }",
+  );
+  expect(await plugin.a()).toBeUndefined();
+  expect(await plugin.b()).toBe(7);
+  expect(await plugin.c(Promise.resolve(Promise.resolve(3)))).toBe(3);
+  await new Promise((resolve) => setTimeout(resolve, 130));
+  expect(plugin.ping()).toBe(1);
+});
