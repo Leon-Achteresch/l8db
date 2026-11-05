@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { arch, cpus, release as osRelease, platform, totalmem } from "node:os";
 import { classifyBaseline, lineStatus, planChanges } from "../src/lib/versioning/change-plan";
+import { codeStatus } from "../src/lib/versioning/code-drift";
 import { parseChangeLedger } from "../src/lib/versioning/ledger";
 import type { DatabaseRelease, ObjectSnapshot } from "../src/lib/versioning/types";
 
@@ -239,4 +240,65 @@ test("baseline classification of a legacy customer stays bounded for 5,000 objec
   expect(median).toBeLessThan(100);
   expect(p95).toBeLessThan(200);
   expect(retainedMb).toBeLessThan(64);
+});
+
+test("code drift report classifies 200 targets with 500 code objects each", () => {
+  const code: ObjectSnapshot[] = Array.from({ length: 500 }, (_, index) => ({
+    object: {
+      id: `p${index}`,
+      path: `database/objects/p${index}.pks`,
+      selection: { schema: "APP", objectType: "package", objectName: `P${index}`, objectOid: null },
+    },
+    definition: `P${index}`,
+    checksum: hash(`p${index}`),
+  }));
+  const fleet = Array.from({ length: TARGETS }, (_, target) => ({
+    target: {
+      id: `t${target}`,
+      name: `Kunde ${target}`,
+      connectionId: "c",
+      database: null,
+      schema: `S${target}`,
+      production: false,
+      release: null,
+      history: [],
+    },
+    actual: new Map(
+      code.map((entry, index) => [
+        entry.object.id,
+        index === target % 500 ? hash(`drift${target}`) : entry.checksum,
+      ]),
+    ),
+    applied: new Map(
+      code.map((entry) => [
+        entry.object.id,
+        { id: entry.object.id, hash: entry.checksum, change: null },
+      ]),
+    ),
+  }));
+  const times: number[] = [];
+  let drift = 0;
+  for (const entry of fleet) {
+    const start = performance.now();
+    const rows = codeStatus(entry.target, code, entry.actual, entry.applied, []);
+    times.push(performance.now() - start);
+    drift += rows.filter((row) => row.state === "drift").length;
+  }
+  times.sort((a, b) => a - b);
+  const median = times[Math.floor(times.length / 2)];
+  const p95 = times[Math.floor(times.length * 0.95)];
+  console.log(
+    JSON.stringify({
+      scenario: "versioning-code-drift-report",
+      targets: TARGETS,
+      codeObjects: code.length,
+      ledgerQueriesPerTarget: 1,
+      drift,
+      medianMs: Number(median.toFixed(3)),
+      p95Ms: Number(p95.toFixed(3)),
+    }),
+  );
+  expect(drift).toBe(TARGETS);
+  expect(median).toBeLessThan(5);
+  expect(p95).toBeLessThan(20);
 });

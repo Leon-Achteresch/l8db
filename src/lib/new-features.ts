@@ -114,6 +114,7 @@ export const NEW_FEATURES = {
   "versioning.targets.script": "0.15.0",
   "versioning.ignore": "0.15.0",
   "versioning.targets.baseline-deviations": "0.17.0",
+  "versioning.targets.code-drift": "0.17.0",
   "table.pagination.keyboard": "0.7.0",
   "table.infinite-scroll": "0.16.0",
   "table.filter.rules": "0.10.0",

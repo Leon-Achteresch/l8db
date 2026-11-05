@@ -32,6 +32,11 @@ import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility"
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 import type { BaselineClassification } from "@/lib/versioning/change-plan";
+import {
+  adoptCustomerCode,
+  codeDriftReport,
+  recordCodeVariance,
+} from "@/lib/versioning/code-drift";
 import { control } from "@/lib/versioning/control";
 import { targetStage } from "@/lib/versioning/delivery";
 import {
@@ -49,6 +54,8 @@ import type { DatabaseTarget, ObjectDifference } from "@/lib/versioning/types";
 import { connectionServerLabel, customerGroups, targetProgress } from "@/lib/versioning/workflow";
 import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningBaselineReview } from "./versioning-baseline-review";
+import { VersioningCodeDriftActions } from "./versioning-code-drift-actions";
+import { VersioningCodeDriftReport } from "./versioning-code-drift-report";
 import { VersioningDeliveryGates } from "./versioning-delivery-gates";
 import { VersioningIconButton } from "./versioning-icon-button";
 import { VersioningSelect } from "./versioning-select";
@@ -81,6 +88,10 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
   const [plans, setPlans] = useState<DeploymentPlan[]>([]);
   const [preflight, setPreflight] = useState<FleetResult[]>([]);
   const [recovery, setRecovery] = useState<DatabaseTarget | null>(null);
+  const [overrides, setOverrides] = useState<Record<string, string[]>>({});
+  const [codeReport, setCodeReport] = useState<Awaited<ReturnType<typeof codeDriftReport>> | null>(
+    null,
+  );
   const [baselineReview, setBaselineReview] = useState<{
     target: DatabaseTarget;
     releaseId: string;
@@ -180,7 +191,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
     setName("");
     setSchema("");
   };
-  const plan = async () => {
+  const plan = async (nextOverrides = overrides) => {
     if (!project || !targets || !releaseId) throw new Error("Ziele und Zielrelease auswählen.");
     setPlans([]);
     setPreflight([]);
@@ -191,6 +202,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
       targets.targets.filter((item) => selection.includes(item.id)),
       connections,
       releaseId,
+      nextOverrides,
     );
     setPreflight(result);
     setPlans(result.flatMap((item) => (item.plan ? [item.plan] : [])));
@@ -218,6 +230,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
       setPlans([]);
       setPreflight([]);
       setConfirmation("");
+      setOverrides({});
       await refresh();
     }
   };
@@ -237,6 +250,18 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
         </div>
         <Button
           size="sm"
+          variant="ghost"
+          disabled={workspace.busy}
+          onClick={() =>
+            void run(async () => {
+              setCodeReport(await codeDriftReport(repo, project, targets.targets, connections));
+            })
+          }
+        >
+          Code-Drift prüfen
+        </Button>
+        <Button
+          size="sm"
           variant="outline"
           aria-expanded={setupOpen}
           onClick={() => setSetupOpen((open) => !open)}
@@ -245,6 +270,39 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
           Kundenziel hinzufügen
         </Button>
       </div>
+      {codeReport && (
+        <VersioningCodeDriftReport
+          rows={codeReport.rows}
+          problems={codeReport.problems}
+          targets={targets.targets}
+          busy={workspace.busy}
+          onClose={() => setCodeReport(null)}
+          onAdopt={(row) =>
+            void run(async () => {
+              const target = targets.targets.find((entry) => entry.id === row.target);
+              if (!target) throw new Error("Datenbankziel fehlt.");
+              await adoptCustomerCode(repo, project, target, connectionFor(target), row.object);
+              await refresh();
+            }, "Kundencode in die Arbeitskopie übernommen. Daraus einen Release erstellen.")
+          }
+          onVariance={(row) =>
+            void run(async () => {
+              const target = targets.targets.find((entry) => entry.id === row.target);
+              if (!target) throw new Error("Datenbankziel fehlt.");
+              await recordCodeVariance(
+                repo,
+                project,
+                target.id,
+                connectionFor(target),
+                row.object,
+                "Direkt beim Kunden geändert",
+              );
+              setCodeReport(await codeDriftReport(repo, project, targets.targets, connections));
+              await refresh();
+            }, "Abweichung festgehalten. Teamkonfiguration committen.")
+          }
+        />
+      )}
       {setupOpen && (
         <div className="space-y-4 rounded-xl bg-muted/35 p-4">
           <div>
@@ -403,7 +461,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
             size="sm"
             aria-label={`Update für ${selection.length} Ziele planen`}
             disabled={!selection.length || !releaseId}
-            onClick={() => void run(plan)}
+            onClick={() => void run(() => plan())}
           >
             Planen
             {selection.length > 0 && (
@@ -841,9 +899,52 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
           {preflight
             .filter((item) => item.error)
             .map((item) => (
-              <p key={item.target.id}>
-                {item.target.name}: {item.error}
-              </p>
+              <div key={item.target.id} className="space-y-1.5">
+                <p>
+                  {item.target.name}: {item.error}
+                </p>
+                {item.plan && (
+                  <VersioningCodeDriftActions
+                    plan={item.plan}
+                    busy={workspace.busy}
+                    onAdopt={(id) =>
+                      void run(async () => {
+                        await adoptCustomerCode(
+                          repo,
+                          project,
+                          item.target,
+                          connectionFor(item.target),
+                          id,
+                        );
+                        await refresh();
+                      }, "Kundencode in die Arbeitskopie übernommen. Daraus einen Release erstellen.")
+                    }
+                    onVariance={(id) =>
+                      void run(async () => {
+                        await recordCodeVariance(
+                          repo,
+                          project,
+                          item.target.id,
+                          connectionFor(item.target),
+                          id,
+                          "Direkt beim Kunden geändert",
+                        );
+                        await refresh();
+                      }, "Abweichung festgehalten. Teamkonfiguration committen und neu planen.")
+                    }
+                    onOverride={(id) =>
+                      void run(async () => {
+                        const next = {
+                          ...overrides,
+                          [item.target.id]: [...(overrides[item.target.id] ?? []), id],
+                        };
+                        setOverrides(next);
+                        await plan(next);
+                      })
+                    }
+                  />
+                )}
+              </div>
             ))}
         </div>
       )}

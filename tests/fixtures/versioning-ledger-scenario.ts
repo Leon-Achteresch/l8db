@@ -100,7 +100,7 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
   const release = async (
     id: string,
     parents: string[],
-    sql: string | null,
+    sql: string | null | ({ id: string; sql: string } & Record<string, unknown>)[],
     extra: Record<string, unknown> = {},
   ) => {
     const snapshots = [];
@@ -114,9 +114,17 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
       parents,
       createdAt: new Date().toISOString(),
       objects: snapshots,
-      migrations: sql
-        ? [{ id: "m", title: `Update ${id}`, sql, checksum: await model.checksum(sql), ...extra }]
-        : [],
+      migrations: Array.isArray(sql)
+        ? await Promise.all(
+            sql.map(async (entry) => ({
+              title: `${entry.id} ${id}`,
+              ...entry,
+              checksum: await model.checksum(entry.sql),
+            })),
+          )
+        : sql
+          ? [{ id: "m", title: `Update ${id}`, sql, checksum: await model.checksum(sql), ...extra }]
+          : [],
     };
     await api.saveFile(repo, model.releasePath(id), api.encode(value), null);
     await commit(id);
@@ -336,6 +344,117 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
   const legacyRun = (await rollout("c", "v8")).changes.map((change) => change.id);
   const legacyAfter = await fingerprint();
   const legacyTarget = await target("c");
+  const legacyShown = progress(
+    legacyTarget,
+    await api.loadReleases(repo, project),
+    await db.versioningRepository({ action: "status", repo }),
+  ).label;
+  const snapshotOf = (
+    releaseValue: { objects: { object: { id: string }; checksum: string }[] },
+    id: string,
+  ) => releaseValue.objects.find((entry) => entry.object.id === id)?.checksum;
+  const codeAt = async (at: { database: string | null; schema: string }) =>
+    (await capture.captureObject(connection, at.database, codeObject, at.schema)).checksum;
+  const v8Release = JSON.parse((await api.readFile(repo, model.releasePath("v8"))) ?? "{}");
+  const column = pg
+    ? "ALTER TABLE public.lab_invoices ADD COLUMN status text"
+    : `ALTER TABLE ${q(devPlace, "lab_invoices")} ADD (STATUS VARCHAR2(20))`;
+  await exec(devPlace, column);
+  for (const statement of price(dev, 2)) await exec(dev, statement);
+  const usd = `INSERT INTO ${q(devPlace, "lab_currencies")} (${name("code")}, ${name("label")}) VALUES ('USD', 'Dollar')`;
+  const v9 = await release(
+    "v9",
+    ["v8"],
+    [
+      {
+        id: "schema",
+        sql: column,
+        touches: ["invoices"],
+        before: { invoices: snapshotOf(v8Release, "invoices") },
+      },
+      {
+        id: "code",
+        kind: "repeatable",
+        sql: script(price(dev, 2)),
+        touches: ["price"],
+        before: { price: snapshotOf(v8Release, "price") },
+      },
+      { id: "data", sql: usd, touches: [], data: true },
+    ],
+  );
+  for (const statement of price(customers.a, 2)) await exec(customers.a, statement);
+  const planA = await rollout("a", "v9");
+  const planB = await rollout("b", "v9");
+  const priceB = (await codeAt(customers.b)) === snapshotOf(v9, "price");
+  const usdCount = async (at: { database: string | null; schema: string }) =>
+    Number(
+      Object.values(
+        (
+          await query(
+            at,
+            `SELECT COUNT(*) AS "n" FROM ${q(at, "lab_currencies")} WHERE ${name("code")} = 'USD'`,
+          )
+        )[0],
+      )[0],
+    );
+  const historyA = (await target("a"))?.history[0] as { skippedChanges?: string[] } | undefined;
+  const ticked = async (id: string) =>
+    (await applied(id)).filter((entry) => entry.startsWith("v9/")).length;
+  const againV9 = (await plan("a", "v9")).steps.length + (await plan("b", "v9")).steps.length;
+  for (const statement of price(customers.a, 5)) await exec(customers.a, statement);
+  for (const statement of price(customers.b, 5)) await exec(customers.b, statement);
+  const directA = await codeAt(customers.a);
+  for (const statement of price(dev, 3)) await exec(dev, statement);
+  const v10 = await release(
+    "v10",
+    ["v9"],
+    [
+      {
+        id: "code",
+        kind: "repeatable",
+        sql: script(price(dev, 3)),
+        touches: ["price"],
+        before: { price: snapshotOf(v9, "price") },
+      },
+    ],
+  );
+  const blocked = await plan("a", "v10");
+  let refused = false;
+  try {
+    await deployment.deploy(repo, project, "a", connection, "v10", blocked.reviewToken);
+  } catch {
+    refused = true;
+  }
+  const keptA = (await codeAt(customers.a)) === directA;
+  const drift = await import("/src/lib/versioning/code-drift.ts");
+  const report = await drift.codeDriftReport(
+    repo,
+    project,
+    (await api.readTargets(repo, project.id)).store.targets,
+    [connection],
+  );
+  await drift.recordCodeVariance(repo, project, "a", connection, "price", "Kundenlogik Kunde A");
+  await commit("Abweichung Kunde A");
+  const varianceRun = await rollout("a", "v10");
+  const overridePlan = await plan("b", "v10");
+  const overridden = await deployment.planDeployment(
+    repo,
+    project,
+    await target("b"),
+    connection,
+    "v10",
+    ["price"],
+  );
+  await deployment.deploy(
+    repo,
+    project,
+    "b",
+    connection,
+    "v10",
+    overridden.reviewToken,
+    undefined,
+    ["price"],
+  );
   return {
     masse,
     again,
@@ -350,6 +469,30 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
       (entry) => entry.release?.id,
     ),
     ledgerB: (await applied("b")).length,
+    code: {
+      skipA: planA.code.map((entry) => `${entry.change}:${entry.action}`),
+      applyB: planB.code.map((entry) => `${entry.change}:${entry.action}`),
+      skipped: historyA?.skippedChanges ?? [],
+      usd: [await usdCount(customers.a), await usdCount(customers.b)],
+      tickedA: await ticked("a"),
+      tickedB: await ticked("b"),
+      again: againV9,
+      priceB,
+    },
+    drift: {
+      planned: blocked.drift.map((entry) => entry.id),
+      refused,
+      keptA,
+      report: report.rows
+        .filter((row) => row.state === "drift")
+        .map((row) => `${row.target}:${row.object}`)
+        .sort(),
+      varianceRun: varianceRun.code.map((entry) => `${entry.change}:${entry.action}`),
+      varianceKept: (await codeAt(customers.a)) === directA,
+      withoutOverride: overridePlan.drift.map((entry) => entry.id),
+      override: overridden.code.map((entry) => `${entry.change}:${entry.action}`),
+      overriddenB: (await codeAt(customers.b)) === snapshotOf(v10, "price"),
+    },
     legacy: {
       decisions: classified.changes
         .filter((entry) => entry.status === "decision")
@@ -365,11 +508,7 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
           (variance) => legacyAfter[variance.object] === variance.hash,
         ) === true,
       recorded: legacyTarget?.variances?.length,
-      shown: progress(
-        legacyTarget,
-        await api.loadReleases(repo, project),
-        await db.versioningRepository({ action: "status", repo }),
-      ).label,
+      shown: legacyShown,
     },
   };
 }
