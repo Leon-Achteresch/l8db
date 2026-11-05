@@ -26,3 +26,34 @@ Das Extension-Archiv in packages/extension-api/src/manifest.ts beschreibt eine
 mehrere leichte Erweiterungen mit lokalen Optionen. Ein eigener Formattyp vermeidet
  eine mehrdeutige Interpretation; Schritt D kann beide Typen in einem gemeinsamen
 versionierten Container aufnehmen. Es erfolgt keine automatische Verteilung.
+
+## Gemeinsame Erweiterungsverwaltung
+
+Einstellungen → Erweiterungen führt die Stufen **Leicht** (bisher UI-Plugin) und
+**Voll** (Extension mit Manifest und Worker im Sandbox-Iframe) in einer paginierten
+Liste zusammen. Optionen, HTTP-Freigaben, Aktivierung, Entfernen, Galerie,
+KI-Anleitung und Entwicklungsordner bleiben verfügbar. Beide Laufzeiten bleiben getrennt.
+
+Das bisherige JSON-Format `l8db.ui-plugins`, Version 1, erhält optional `archives`:
+eine Liste unveränderter Archive aus `packages/extension-api`. Dies ist eine additive,
+abwärtslesbare Erweiterung statt einer Migration: bisherige Bundles ohne dieses Feld
+bleiben gültig; bisherige Leser importieren weiterhin deren leichte Einträge.
+Das bestehende Gesamtlimit von 2 MiB sowie maximal 200 leichte und 50 volle Einträge
+bleiben bewusst begrenzt. Größere volle Pakete lassen sich einzeln installieren.
+
+Der Import zeigt Permissions und Netzwerk-/Prozessziele voller Archive. Diese sind
+anfangs nicht ausgewählt. Die Auswahl bestätigt die Installation, die zunächst
+ausgeschaltet erfolgt. Erst die separate Rechtefreigabe aktiviert die Erweiterung.
+Abbrechen installiert nichts. Bereits installierte volle IDs werden abgewiesen;
+Updates erfolgen über die vorhandene Aktualisierung. Gleiche IDs zwischen den beiden
+Stufen sind zulässig, innerhalb einer Stufe bleiben sie eindeutig. Freigaben und
+Secrets werden nicht exportiert, Konfiguration voller Erweiterungen ebenfalls nicht.
+
+Die Organisationsregel `allowExtensions` gilt für beide Stufen einschließlich KI,
+Galerie, Import und Aktivierung. Alte Storage-Keys bleiben erhalten. Die zusätzliche
+Herkunft wird unter `l8db.extension-sources` mit stufenspezifischen Schlüsseln gespeichert
+und zwischen Fenstern synchronisiert. Alte Galerieeinträge leichter Erweiterungen
+werden anhand der vorhandenen Installationsmetadaten erkannt; sonstige ältere Einträge
+erscheinen als Eigene, da ihre ursprüngliche Herkunft nicht rekonstruierbar ist.
+Volle Installationen und Änderungen werden über ein Storage-Ereignis abgeglichen,
+leichte weiterhin über ihren Datei-Watcher; es gibt kein zusätzliches Polling.

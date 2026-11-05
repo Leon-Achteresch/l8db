@@ -194,3 +194,34 @@ Archivprüfung des Implementierungscommits: cargo fmt --check und cargo check mi
 geteiltem CARGO_TARGET_DIR ebenfalls erfolgreich (3m46s inklusive Neuprüfung
 lokaler Vendor-Pfade). Abschließender Typecheck nach dem gebündelten Optionsimport
 im gemeinsamen Checkout erfolgreich. Regulärer Push-Hook wird verwendet.
+
+## Gemeinsame Verwaltung Leicht / Voll (2026-11-05)
+
+Umgesetzt: eine gemeinsame Liste mit Stufen, Status, Herkunft, Rechten und bestehenden
+Bedienelementen; maximal 25 Karten pro Seite. Gemeinsames Bundle durch additives
+`archives`-Feld in Version 1 (siehe `docs/ui-plugin-bundles.md`), Rechtevorschau,
+ausgeschaltete Installation voller Archive, separate Aktivierungsfreigabe. Die
+Organisationsregel greift für beide Stufen, einschließlich Import und KI-Bestätigung.
+Keine Migration von IDs oder bisherigen Storage-Keys. Herkunft separat synchronisiert;
+volle Installationen/Ein-Aus/Entfernen werden ereignisbasiert zwischen Fenstern abgeglichen.
+
+Validierung auf macOS/Darwin arm64, Apple M3, 16 GiB RAM, Bun 1.3.10:
+- Gemeinsames Bundle, Altformat, stufenübergreifende ID-Kollision, ungültige/doppelte
+  Archive, leere/geschrumpfte Seiten, Policy-Grenze sowie Manager-Mehrfensterabgleich:
+  40 Tests bestanden (einschließlich bestehender Extension-Tests).
+- Bestehender Storage-Sync-Test isoliert: 1 bestanden. Im gemeinsamen Prozess war er
+  wegen zuvor importiertem Zustand ohne neuen Storage-Listener fehlgeschlagen.
+- 200 leichte + 50 volle Einträge, 100 Ableitungsdurchläufe über 10 Seiten:
+  Median 0,005 ms, p95 0,031 ms; höchstens 25 Referenzen pro Seite, keine Timer/I/O.
+- Tatsächliche React-Karten als SSR, 30 Durchläufe mit je einer vollen und leichten
+  Seite: Median 8,65 ms, p95 18,34 ms für beide Seiten zusammen; maximal 601
+  HTML-Elemente pro Seite (Budgets 250 ms / 3000 Elemente). Ein Test bestanden.
+- Vergleichsbasis: vorher zwei unpaginierte Listen; keine historische Zeitmessung.
+  Dies ist eine neue Regression-Baseline, keine gemessene Beschleunigungsbehauptung.
+- Bestehende Bundle-/Runtime-/Guard-/Policy-Tests: 117 bestanden im ersten Lauf,
+  zwei anfängliche Fehler (normalisiertes Archiv im neuen Test, isolierter Storage-Test)
+  anschließend korrigiert bzw. isoliert verifiziert.
+
+Kein echter WebView-DOM-/Heap-Test, kein Windows/Linux-Test und keine Datenbanktests:
+diese Verwaltung stellt keine Datenbankanfragen. SSR-Elementzählung ersetzt keine
+Browser-Heapmessung. Gedrosselte Performance-Tests wurden auf macOS nicht ausgeführt.

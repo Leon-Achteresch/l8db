@@ -1,6 +1,6 @@
-# l8db UI-Plugins (Build Your Own UI)
+# l8db Erweiterungen – Stufe Leicht
 
-Dieser Ordner gehört l8db. Jede Datei `*.tsx`, `*.ts`, `*.jsx` oder `*.js` direkt hier ist ein UI-Plugin. l8db lädt Änderungen sofort, ohne Neustart. `AGENTS.md`, `CLAUDE.md`, `l8db-ui.d.ts`, `tsconfig.json` und `.status.json` schreibt l8db selbst; ändere sie nicht.
+Dieser Ordner gehört l8db. Die Verwaltung unter Einstellungen → Erweiterungen unterscheidet Leicht (eine React-Datei, Live-Reload, nur freigegebenes `ctx.http`) und Voll (Manifest, Permissions, Worker im Sandbox-Iframe). Dieser Ordner und `@l8db/ui` gehören ausschließlich zur Stufe Leicht. IDs, Dateiformate und SDK-Namen bleiben kompatibel. Jede Datei `*.tsx`, `*.ts`, `*.jsx` oder `*.js` direkt hier ist ein UI-Plugin. l8db lädt Änderungen sofort, ohne Neustart. `AGENTS.md`, `CLAUDE.md`, `l8db-ui.d.ts`, `tsconfig.json` und `.status.json` schreibt l8db selbst; ändere sie nicht.
 
 ## So arbeitest du
 

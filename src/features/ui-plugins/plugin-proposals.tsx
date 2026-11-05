@@ -10,6 +10,7 @@ import {
   startUiPluginProposals,
   type UiPluginProposal,
 } from "@/lib/db/ui-plugins";
+import { assertExtensionsAllowed, useExtensionSources } from "@/lib/extensions/management";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useOrganizationStore } from "@/lib/organization-state";
 import { checkUiPluginSource, reloadUiPlugins } from "@/lib/ui-plugins/host";
@@ -75,8 +76,10 @@ export function PluginProposals() {
     setError("");
     try {
       if (accept) {
+        assertExtensionsAllowed();
         if (request.action === "write") await checkUiPluginSource(request.name, request.source);
         await finishUiPluginProposal(request, {}, true);
+        useExtensionSources.getState().mark(`light:${request.name}`, "KI");
         await reloadUiPlugins();
         await finishUiPluginProposal(request, {
           decision: "accepted",

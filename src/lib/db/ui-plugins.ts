@@ -1,3 +1,4 @@
+import { assertExtensionsAllowed } from "@/lib/extensions/management";
 import { invoke } from "./core";
 
 export interface UiPluginFile {
@@ -26,6 +27,7 @@ export function scanUiPlugins(): Promise<UiPluginScan> {
 }
 
 export function writeUiPlugin(name: string, source: string): Promise<void> {
+  assertExtensionsAllowed();
   return invoke<void>("ui_plugins_write", { name, source });
 }
 
@@ -62,6 +64,7 @@ export function finishUiPluginProposal(
   response: unknown,
   apply = false,
 ) {
+  if (apply) assertExtensionsAllowed();
   return invoke<void>("ui_plugin_proposals_finish", {
     slot: request.slot,
     request,

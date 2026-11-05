@@ -9,6 +9,7 @@ import {
   writeUiPluginSdk,
   writeUiPluginSupport,
 } from "@/lib/db";
+import { useOrganizationStore } from "@/lib/organization-state";
 import { evaluatePlugin } from "../../../packages/ui-plugin-api/src/evaluate";
 import { validatePlugin } from "./api";
 import type { SlotName } from "./guard";
@@ -68,7 +69,10 @@ export function refreshUiPluginRegistry() {
   useUiPluginRuntime.setState({
     registry: buildRegistry({
       plugins,
-      disabled: settings.disabled,
+      disabled:
+        useOrganizationStore.getState().policy?.allowExtensions === false
+          ? plugins.map((plugin) => plugin.definition.id)
+          : settings.disabled,
       options: settings.options,
       grants: settings.httpGrants,
       tripped: state.tripped,
@@ -76,6 +80,14 @@ export function refreshUiPluginRegistry() {
     }),
   });
 }
+
+useOrganizationStore.subscribe(() => {
+  if (useOrganizationStore.getState().policy?.allowExtensions === false) {
+    for (const plugin of Object.values(useUiPluginRuntime.getState().loaded))
+      plugin.timers.dispose();
+  }
+  refreshUiPluginRegistry();
+});
 
 useUiPluginSettings.subscribe((state, previous) => {
   if (

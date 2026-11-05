@@ -1,4 +1,5 @@
 import gt from "semver/functions/gt";
+import { assertExtensionsAllowed } from "@/lib/extensions/management";
 import { validateArchive } from "../../../packages/extension-api/src/manifest";
 import type {
   ExtensionArchive,
@@ -27,6 +28,7 @@ function widenedGrants(previous: ExtensionManifest, next: ExtensionManifest): Pe
 export class ExtensionManager extends ExtensionManagerBase {
   installExtension(archive: ExtensionArchive, developmentPath?: string) {
     return this.serial(async () => {
+      assertExtensionsAllowed();
       const validated = validateArchive(archive);
       const extension: ExtensionDescriptor = {
         archive: validated,
@@ -51,6 +53,7 @@ export class ExtensionManager extends ExtensionManagerBase {
   }
   enableExtension(id: string, grants: Permission[]) {
     return this.serial(async () => {
+      assertExtensionsAllowed();
       const extension = this.registry.get(id);
       this.permissions.validate(extension.archive.manifest, grants);
       this.loader.validate(structuredClone(extension));
@@ -93,6 +96,7 @@ export class ExtensionManager extends ExtensionManagerBase {
   }
   updateExtension(archive: ExtensionArchive, developmentPath?: string) {
     return this.serial(async () => {
+      assertExtensionsAllowed();
       const validated = validateArchive(archive);
       const id = validated.manifest.id;
       const extension = this.registry.get(id);
@@ -147,6 +151,7 @@ export class ExtensionManager extends ExtensionManagerBase {
     return this.serial(async () => {
       const extension = this.registry.get(id);
       if (archive) {
+        assertExtensionsAllowed();
         const validated = validateArchive(archive);
         if (validated.manifest.id !== id)
           throw new ExtensionError(

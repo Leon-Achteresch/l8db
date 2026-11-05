@@ -94,6 +94,44 @@ export class ExtensionManagerBase {
     }
     this.changed();
   }
+  refreshInstalled() {
+    return this.serial(async () => {
+      const stored = await this.storage.list();
+      const next = new Map(stored.map((entry) => [entry.archive.manifest.id, entry]));
+      for (const current of this.registry.list()) {
+        const id = current.archive.manifest.id;
+        const replacement = next.get(id);
+        if (
+          replacement &&
+          JSON.stringify({
+            archive: current.archive,
+            enabled: current.enabled,
+            grants: current.grants,
+            configuration: current.configuration,
+            developmentPath: current.developmentPath,
+          }) === JSON.stringify(replacement)
+        ) {
+          next.delete(id);
+          continue;
+        }
+        await this.stop(id);
+        this.release(id);
+        this.registry.remove(id);
+      }
+      for (const entry of next.values()) {
+        const extension: ExtensionDescriptor = { ...entry, state: "discovered" };
+        this.registry.add(extension);
+        try {
+          this.prepare(extension);
+        } catch (error) {
+          this.fail(extension, error);
+        }
+      }
+      this.changed();
+      await this.trigger("onStartup");
+      if (this.core.database()) await this.trigger("onDatabaseOpen");
+    });
+  }
   protected prepare(extension: ExtensionDescriptor) {
     const id = extension.archive.manifest.id;
     this.loader.validate(extension);
