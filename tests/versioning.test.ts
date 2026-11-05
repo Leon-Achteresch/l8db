@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { planChanges } from "../src/lib/versioning/change-plan";
 import {
   checksum,
   compareSnapshots,
   parseProject,
   parseRelease,
-  releaseChain,
+  releaseAncestry,
   validateMigration,
 } from "../src/lib/versioning/model";
 import { changedFiles, pendingVersioningCount } from "../src/lib/versioning/status";
@@ -80,28 +81,51 @@ describe("database versioning integrity", () => {
     ).rejects.toThrow("Prüfsumme");
   });
   test("customers on different versions receive different ordered plans", () => {
-    const versions = [release("v1", null), release("v2", "v1"), release("v3", "v2")];
-    expect(releaseChain(versions, "v1", "v3").map((value) => value.id)).toEqual(["v2", "v3"]);
-    expect(releaseChain(versions, "v2", "v3").map((value) => value.id)).toEqual(["v3"]);
-    expect(releaseChain(versions, "v3", "v3")).toEqual([]);
-    expect(() => releaseChain(versions, "v3", "v1")).toThrow("Nachfolger");
+    const versions = [
+      { ...release("v1", null), migrations: [] },
+      {
+        ...release("v2", "v1"),
+        migrations: [{ id: "m", title: "m", sql: "select 1", checksum: "a" }],
+      },
+      {
+        ...release("v3", "v2"),
+        migrations: [{ id: "m", title: "m", sql: "select 2", checksum: "b" }],
+      },
+    ];
+    const map = new Map(versions.map((value) => [value.id, value]));
+    const applied = (ids: string[]) =>
+      new Map(
+        ids.map((id) => [
+          id,
+          {
+            id,
+            checksum: id === "v2/m" ? "a" : "b",
+            kind: "versioned" as const,
+            source: "rollout" as const,
+            release: null,
+          },
+        ]),
+      );
+    expect(planChanges(map, "v3", applied([]), "v1").steps.map((step) => step.release.id)).toEqual([
+      "v2",
+      "v3",
+    ]);
+    expect(
+      planChanges(map, "v3", applied(["v2/m"]), "v2").steps.map((step) => step.release.id),
+    ).toEqual(["v3"]);
+    expect(planChanges(map, "v3", applied(["v2/m", "v3/m"]), "v3").steps).toEqual([]);
   });
-  test("missing versions, cycles and repeated migrations block rollout", () => {
-    expect(() => releaseChain([release("v3", "v2")], "v1", "v3")).toThrow("fehlt");
-    expect(() => releaseChain([release("v2", "v3"), release("v3", "v2")], "v1", "v3")).toThrow(
-      "Zyklische",
-    );
-    const migration = { id: "same", title: "same", sql: "select 1", checksum: "" };
+  test("missing versions and cycles block rollout", () => {
+    expect(() => releaseAncestry(new Map([["v3", release("v3", "v2")]]), "v3")).toThrow("fehlt");
     expect(() =>
-      releaseChain(
-        [
-          { ...release("v2", "v1"), migrations: [migration] },
-          { ...release("v3", "v2"), migrations: [migration] },
-        ],
-        "v1",
+      releaseAncestry(
+        new Map([
+          ["v2", release("v2", "v3")],
+          ["v3", release("v3", "v2")],
+        ]),
         "v3",
       ),
-    ).toThrow("eindeutig");
+    ).toThrow("Zyklische");
   });
   test("drift includes missing and unmanaged objects", async () => {
     const before = { object, definition: "old", checksum: await checksum("old") };

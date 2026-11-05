@@ -148,7 +148,7 @@ export function AiRichContent({
           return (
             <TaskRows
               key={block.id}
-              title="Plan des Agents"
+              title="Plan"
               rows={block.items.map((item) => ({
                 id: item.id,
                 label: item.title,

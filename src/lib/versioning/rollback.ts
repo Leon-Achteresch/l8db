@@ -1,4 +1,4 @@
-import { PROJECT_PATH, parseProject, releaseTrack } from "./model";
+import { PROJECT_PATH, parseProject, releaseParents, releaseTrack } from "./model";
 import { deleteFile, encode, readFile, saveFile } from "./repository";
 import { sourceFiles } from "./sources";
 import type { DatabaseRelease, VersioningProject } from "./types";
@@ -7,20 +7,20 @@ export function rollbackBases(releases: DatabaseRelease[], release: DatabaseRele
   const map = new Map(releases.map((entry) => [entry.id, entry]));
   const extended = new Set(
     releases.flatMap((entry) => {
-      const parent = entry.parent ? map.get(entry.parent) : undefined;
+      const parent = map.get(releaseParents(entry)[0] ?? "");
       return parent && releaseTrack(parent) === releaseTrack(entry) ? [parent.id] : [];
     }),
   );
   return releases.filter((tip) => {
     if (tip.id === release.id || extended.has(tip.id)) return false;
     const seen = new Set<string>();
-    let current = tip.parent;
+    let current: string | undefined = releaseParents(tip)[0];
     while (current && !seen.has(current)) {
       if (current === release.id) return true;
       const entry = map.get(current);
       if (!entry || releaseTrack(entry) !== releaseTrack(tip)) return false;
       seen.add(current);
-      current = entry.parent;
+      current = releaseParents(entry)[0];
     }
     return false;
   });

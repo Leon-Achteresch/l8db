@@ -1,0 +1,54 @@
+import { expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
+import { mkdir, readFile } from "node:fs/promises";
+import { chromium } from "playwright";
+import { installVersioningLab, versioningAppUrl } from "./fixtures/versioning-lab";
+
+const enabled = process.env.L8DB_VERSIONING_LAB;
+
+for (const kind of ["postgres", "oracle"] as const) {
+  test.skipIf(!enabled)(
+    `${kind}: change ledger for mass rollouts, hotfix merges, data releases and legacy customers`,
+    async () => {
+      if (!enabled) throw new Error("L8DB_VERSIONING_LAB is required");
+      const settings = JSON.parse(await readFile(enabled, "utf8"));
+      const repo = `${settings.root}/ledger-${kind}-${Date.now()}`;
+      await mkdir(repo);
+      execFileSync("git", ["init", "-b", "main", repo]);
+      execFileSync("git", ["-C", repo, "config", "user.name", "Versioning Lab"]);
+      execFileSync("git", ["-C", repo, "config", "user.email", "lab@example.invalid"]);
+      const browser = await chromium.launch();
+      const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } });
+      page.setDefaultTimeout(30000);
+      try {
+        await installVersioningLab(page, repo);
+        await page.goto(`${versioningAppUrl}/versioning`);
+        const result = await page.evaluate(
+          async ({ repo, kind }) => {
+            const { runLedgerScenario } = await import(
+              "/tests/fixtures/versioning-ledger-scenario.ts"
+            );
+            return runLedgerScenario(repo, kind);
+          },
+          { repo, kind },
+        );
+        console.log(JSON.stringify(result));
+        expect(result).toMatchObject({
+          masse: [["v2", "v3", "v4"], ["v3", "v4"], ["v4"]],
+          again: 0,
+          adopted: true,
+          migrated: true,
+          confirmRequired: true,
+          euros: 1,
+          hotfixShown: "1 Update offen",
+          hotfixSteps: ["v6/m"],
+          catchUpSteps: ["v5/m", "v5.1/m", "v6/m"],
+          versions: ["v6", "v6", "v5"],
+        });
+      } finally {
+        await browser.close();
+      }
+    },
+    300000,
+  );
+}

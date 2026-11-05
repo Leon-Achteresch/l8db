@@ -69,6 +69,16 @@ Unterschiedliche Versionsstände benötigen keine dauerhaften Kundenbranches. Ab
 
 Für solche Varianten unterstützt der Dateieditor einen Drei-Wege-Merge: gemeinsamer Basis-Commit, neuer Produkt-Commit und aktueller Kundenentwurf. Konflikte bleiben sichtbar und müssen aufgelöst werden. Das Ergebnis kann als eigener Release mit passender Vorgängerkette gepflegt werden. Ein Kundenrelease darf keine Migrationen aus einer fremden Vorgängerkette überspringen. l8db übernimmt keine automatische fachliche Zusammenführung kundenspezifischer Logik.
 
+## Abhakliste pro Ziel
+
+Jedes Ziel führt eine Abhakliste angewendeter Änderungen. Die Tabelle `L8DB_VERSIONING_CHANGES` speichert pro Projekt die Änderungs-ID (`<release>/<migration>` oder die ID einer eigenständigen Änderung), Prüfsumme, Art, Quelle (`rollout`, `baseline`, `migrated`, `script`), Release, Lauf und Zeitpunkt. `L8DB_VERSIONING_OBJECTS` hält pro Objekt den zuletzt angewendeten Hash. Geplant wird nicht mehr über eine Vorgängerkette, sondern über alle Änderungen im Abschluss des Zielreleases, die noch nicht abgehakt sind. Ein reiner Datenrelease läuft dadurch nie zweimal.
+
+Releases im Format 2 haben `parents` statt `parent`. Ein Merge-Release mit zwei Vorgängern führt einen Hotfix-Zweig und die Hauptlinie wieder zusammen; ein Kunde auf dem Hotfix sieht dann wieder offene Updates statt „Aktuell“. Migrationen können `touches`, `before` und `requires` angeben. Ohne Angabe leitet l8db die berührten Objekte aus dem Unterschied zum ersten Vorgänger ab. Geprüft werden vor jedem Schritt nur die berührten Objekte; die übrigen verwalteten Objekte vergleicht der Backend-Lauf vor dem Setzen der Sperre mit dem Sollstand.
+
+Der Ruhestatus in `L8DB_VERSIONING_STATE` ist `ready2`. Ältere l8db-Versionen erwarten `ready` und brechen deshalb ab, statt die Abhakliste zu umgehen. Bestehende Ziele werden beim ersten Planen automatisch umgestellt: l8db trägt die Änderungen des aktuellen Releases mit Quelle `migrated` ein. Enthält dieser Abschluss Datenänderungen, verlangt die Umstellung eine ausdrückliche Bestätigung über **Abhakliste übernehmen**. Produktive Steuerschemas benötigen das Recht, die beiden neuen Tabellen anzulegen; sonst nennt die Meldung die nötige DBA-Aktion.
+
+Ein leeres Ziel lässt sich onboarden: Der erste Release erhält die Migration `grundstand`, die alle verwalteten Objekte anlegt.
+
 ## Ein Repository für viele Kunden: Reviews und Pipeline
 
 Alle Kunden eines Produkts teilen ein Git-Repository mit dem Remote `origin` auf GitHub (auch Enterprise Server), GitLab, Azure DevOps oder Gitea/Forgejo. Änderungen gelangen nur über Pull Requests in den Hauptbranch, also den Standardbranch des Remotes. Jeder Kunde hat getrennte Verbindungen für Test- und Produktivsystem, gegebenenfalls auf verschiedenen Servern.

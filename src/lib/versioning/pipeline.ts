@@ -1,5 +1,5 @@
 import { targetStage } from "./delivery";
-import { releasePath, releaseTrack } from "./model";
+import { releaseParents, releasePath, releaseTrack } from "./model";
 import { changedFiles } from "./status";
 import type {
   DatabaseRelease,
@@ -123,7 +123,7 @@ export function pipelineNextStep(
       area: "development",
       action: "Änderungen öffnen",
     };
-  if (!releases.some((release) => !release.parent && committed(release)))
+  if (!releases.some((release) => !releaseParents(release).length && committed(release)))
     return {
       title: "Ausgangsstand festhalten",
       detail: "Eine Baseline hält das vorhandene Schema ohne SQL-Ausführung fest.",
