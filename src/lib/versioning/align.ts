@@ -1,5 +1,5 @@
 import type { SavedConnection } from "@/lib/connections";
-import { captureObject } from "./capture";
+import { captureObjects } from "./capture";
 import { activeVariances, planChanges } from "./change-plan";
 import { control, type PolicyRecord } from "./control";
 import { readChangeLedger } from "./ledger";
@@ -15,13 +15,7 @@ import {
   saveFile,
   saveTargets,
 } from "./repository";
-import type {
-  DatabaseRelease,
-  DatabaseTarget,
-  ObjectSnapshot,
-  StandaloneChange,
-  VersioningProject,
-} from "./types";
+import type { DatabaseRelease, DatabaseTarget, StandaloneChange, VersioningProject } from "./types";
 
 export interface AlignmentDraft {
   id: string;
@@ -61,9 +55,12 @@ export async function alignmentDraft(
   const expected = from.objects.filter((entry) =>
     variances.some((variance) => variance.object === entry.object.id),
   );
-  const actual: ObjectSnapshot[] = [];
-  for (const entry of expected)
-    actual.push(await captureObject(connection, target.database, entry.object, target.schema));
+  const actual = await captureObjects(
+    connection,
+    target.database,
+    expected.map((entry) => entry.object),
+    target.schema,
+  );
   const draft = generateMigration(
     project.kind,
     { objects: actual } as unknown as DatabaseRelease,

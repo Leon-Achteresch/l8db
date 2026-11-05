@@ -349,7 +349,9 @@ async fn test_state(
             row["RELEASE_ID"].as_str().unwrap_or("–")
         ));
     }
-    if row["STATUS"] != "ready" || !row["LEASE"].is_null() {
+    if (row["STATUS"] != "ready" && row["STATUS"] != super::runner::READY)
+        || !row["LEASE"].is_null()
+    {
         return Err("die Auslieferung dort läuft noch oder ist fehlgeschlagen".into());
     }
     Ok(())

@@ -355,7 +355,7 @@ pub(super) async fn code(
     variance: Option<&Snapshot>,
     last: Option<&str>,
     overridden: bool,
-) -> Result<bool, String> {
+) -> Result<(bool, bool), String> {
     let touch = change
         .touches
         .first()
@@ -366,10 +366,11 @@ pub(super) async fn code(
     } else {
         None
     };
-    if ist.as_deref() == Some(soll.definition.as_str())
-        || variance.is_some_and(|v| ist.as_deref() == Some(v.definition.as_str()))
-    {
-        return Ok(false);
+    if ist.as_deref() == Some(soll.definition.as_str()) {
+        return Ok((false, true));
+    }
+    if variance.is_some_and(|v| ist.as_deref() == Some(v.definition.as_str())) {
+        return Ok((false, false));
     }
     let previous = match last {
         Some(hash) => ist.as_deref().map(control::hash).as_deref() == Some(hash),
@@ -380,7 +381,7 @@ pub(super) async fn code(
         },
     };
     if previous || overridden {
-        return Ok(true);
+        return Ok((true, true));
     }
     Err(format!(
         "{}: Programmcode {}.{} wurde direkt beim Kunden geändert. Übernehmen, als Abweichung festhalten oder Überschreiben freigeben.",
@@ -559,7 +560,7 @@ async fn run(
                     scoped.schema = schema;
                     control::execution_lock(&scoped, &tx, &transactions).await?;
                 }
-                checks(&tx,&release.preconditions,&transactions,&mut event).await?;
+                if !change_mode { checks(&tx,&release.preconditions,&transactions,&mut event).await?; }
                 for change in &release.changes {
                     control::check_lock(c,&lock,&transactions).await?;
                     let session = if c.kind == DatabaseKind::Postgres { Some(transactions.versioning_adapter(&tx, pool.clone()).await?) } else { None };
@@ -567,8 +568,8 @@ async fn run(
                     let soll = (change.kind == "repeatable").then(|| change.touches.first().and_then(|t| release.objects.iter().find(|o| o.schema == t.object.schema && o.name == t.object.name && o.kind == t.object.kind).map(|o| (t.id.as_str(), o)))).flatten();
                     let apply = match soll {
                         Some((id, soll)) => {
-                            let apply = code(inspector, c.kind, change, soll, variance_map.get(id).copied(), last.get(id).map(String::as_str), plan.overrides.iter().any(|o| o == id)).await?;
-                            if apply || !variance_map.contains_key(id) { last.insert(id.to_string(), control::hash(&soll.definition)); }
+                            let (apply, settled) = code(inspector, c.kind, change, soll, variance_map.get(id).copied(), last.get(id).map(String::as_str), plan.overrides.iter().any(|o| o == id)).await?;
+                            if settled { last.insert(id.to_string(), control::hash(&soll.definition)); }
                             apply
                         }
                         None => { before(inspector, c.kind, change).await?; true }
@@ -590,7 +591,7 @@ async fn run(
                     transactions.execute(&tx,&change_sql(c,change,(!change_mode).then_some(release.id.as_str()),&request.run_id)).await?;
                     event["completedMigrations"].as_array_mut().unwrap().push(json!(change.id));
                 }
-                checks(&tx,&release.postconditions,&transactions,&mut event).await?;
+                if !change_mode { checks(&tx,&release.postconditions,&transactions,&mut event).await?; }
                 let advance = format!("UPDATE {state} SET \"RELEASE_ID\"={}, \"RELEASE_HASH\"={} WHERE \"PROJECT_ID\"={} AND \"LEASE\"={} AND \"STATUS\"='running'{}",literal(&release.id),literal(&release.hash),literal(&c.project_id),literal(&request.run_id),if change_mode { format!(" AND \"RELEASE_HASH\"={}",literal(&release.hash)) } else { String::new() });
                 let last_step = index + 1 == count && !change_mode;
                 if c.kind==DatabaseKind::Postgres {
