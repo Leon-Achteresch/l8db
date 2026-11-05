@@ -5,7 +5,7 @@ import { createSafeJsonStorage } from "@/lib/buffered-storage";
 export const SIDEBAR_PANEL_MIN_WIDTH = 240;
 export const SIDEBAR_PANEL_MAX_WIDTH = 512;
 export const SIDEBAR_PANEL_DEFAULT_WIDTH = 304;
-export const SIDEBAR_PANEL_NAV_EXPANDED_WIDTH = 256;
+export const SIDEBAR_PANEL_NAV_EXPANDED_WIDTH = 240;
 
 interface SidebarPanelState {
   width: number;

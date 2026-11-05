@@ -3,7 +3,7 @@ import type { DatabaseOverview, SchemaMap, SchemaMapLink, TableInfo } from "@/li
 
 export const ATLAS_TILE_LIMIT = 180;
 export const ATLAS_GRID_LIMIT = 24;
-export const ATLAS_GRID_ROW = 88;
+export const ATLAS_GRID_ROW = 72;
 const ATLAS_GRID_COLS = 4;
 
 export type AtlasMetric = "bytes" | "rows" | "links" | null;

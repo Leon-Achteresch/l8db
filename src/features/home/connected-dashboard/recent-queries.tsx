@@ -71,7 +71,7 @@ export function RecentQueries({
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-mono text-xs">{entry.sql}</span>
-                  <span className="mt-1 block text-[10px] text-muted-foreground">
+                  <span className="mt-1 block text-xs text-muted-foreground">
                     {new Date(entry.ranAt).toLocaleString("de-DE", {
                       dateStyle: "short",
                       timeStyle: "short",
@@ -79,7 +79,7 @@ export function RecentQueries({
                     · {entry.error ? "Fehlgeschlagen" : `${entry.rowCount ?? 0} Zeilen`}
                   </span>
                 </span>
-                <span className="text-[10px] tabular-nums text-muted-foreground group-enabled:group-hover:hidden group-focus-visible:hidden">
+                <span className="text-xs tabular-nums text-muted-foreground group-enabled:group-hover:hidden group-focus-visible:hidden">
                   {entry.durationMs == null ? "—" : `${entry.durationMs} ms`}
                 </span>
                 <ArrowRight className="hidden size-3.5 text-muted-foreground group-enabled:group-hover:block group-focus-visible:block" />

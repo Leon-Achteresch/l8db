@@ -36,30 +36,34 @@ export function SettingsTableTabs() {
           </Button>
         ) : null}
       </div>
-      <div className="grid max-w-2xl gap-x-6 gap-y-4 sm:grid-cols-2">
-        {TABLE_DETAIL_TAB_GROUPS.map((group) => (
-          <div key={group.label} className="min-w-0">
-            <h4 className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">
-              {group.label}
-            </h4>
-            <div className="divide-y divide-border/50">
-              {TABLE_DETAIL_TABS.filter((tab) => group.ids.includes(tab.id)).map((tab) => (
-                <label
-                  key={tab.id}
-                  className="flex h-9 cursor-pointer items-center justify-between gap-3 px-2 text-control transition-colors hover:bg-muted/60"
-                >
-                  <span className="truncate">
-                    {tab.label}
-                    {tab.entity === "view" ? " (Views)" : ""}
-                  </span>
-                  <Switch
-                    checked={!hidden.includes(tab.id)}
-                    onCheckedChange={(checked) => setVisible(tab.id, checked)}
-                    aria-label={`${tab.label} anzeigen`}
-                  />
-                </label>
-              ))}
-            </div>
+      <div className="flex max-w-2xl flex-col gap-3 sm:flex-row sm:items-start sm:gap-6">
+        {[0, 1].map((column) => (
+          <div key={column} className="flex min-w-0 flex-1 flex-col gap-3">
+            {TABLE_DETAIL_TAB_GROUPS.filter((_, index) => index % 2 === column).map((group) => (
+              <div key={group.label} className="min-w-0">
+                <h4 className="px-2 pb-1 text-xs font-medium text-muted-foreground">
+                  {group.label}
+                </h4>
+                <div className="divide-y divide-border/50">
+                  {TABLE_DETAIL_TABS.filter((tab) => group.ids.includes(tab.id)).map((tab) => (
+                    <label
+                      key={tab.id}
+                      className="flex h-8 cursor-pointer items-center justify-between gap-3 px-2 text-control transition-colors hover:bg-muted/60"
+                    >
+                      <span className="truncate">
+                        {tab.label}
+                        {tab.entity === "view" ? " (Views)" : ""}
+                      </span>
+                      <Switch
+                        checked={!hidden.includes(tab.id)}
+                        onCheckedChange={(checked) => setVisible(tab.id, checked)}
+                        aria-label={`${tab.label} anzeigen`}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         ))}
       </div>

@@ -34,9 +34,7 @@ export const AtlasTile = memo(function AtlasTile({
   const facts = describeAtlasTable(tile);
   const [facts1, facts2] = atlasFacts(tile, metric);
   const links = tile.links ? formatLinks(tile.links) : null;
-  const status = mark === "favorite" ? "Favorit" : mark === "open" ? "geöffnet" : null;
-  const primary = facts1 ?? links ?? tile.comment ?? status;
-  const unknown = primary === status;
+  const primary = facts1 ?? links ?? tile.comment;
   const secondary = facts1 ? facts2 : links ? tile.comment : null;
   return (
     <button
@@ -72,16 +70,18 @@ export const AtlasTile = memo(function AtlasTile({
         <span
           className={cn(
             "block max-w-full truncate font-mono font-medium leading-tight",
-            area > 42_000 ? "text-[15px]" : "text-[13px]",
+            area > 42_000 && (metric === "bytes" || metric === "rows")
+              ? "text-[15px]"
+              : "text-[13px]",
           )}
         >
           {tile.name}
         </span>
       )}
-      {showMeta && primary && (
+      {showMeta && (
         <span className="block max-w-full text-xs leading-snug tabular-nums text-muted-foreground">
-          <span className={cn("block truncate", !unknown && "font-medium text-foreground")}>
-            {primary}
+          <span className={cn("block truncate", primary && "font-medium text-foreground")}>
+            {primary ?? "—"}
           </span>
           {secondary && tile.h >= 72 && <span className="block truncate">{secondary}</span>}
         </span>

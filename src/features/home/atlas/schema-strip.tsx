@@ -62,7 +62,7 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
             >
               {entry.name}
             </span>
-            <span className="truncate text-[11px] tabular-nums text-muted-foreground">
+            <span className="truncate text-xs tabular-nums text-muted-foreground">
               {[
                 entry.bytes != null ? formatBytes(entry.bytes) : null,
                 entry.tables != null
@@ -70,7 +70,7 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
                   : null,
               ]
                 .filter(Boolean)
-                .join(" · ") || "\u00a0"}
+                .join(" · ") || "nicht geladen"}
             </span>
             <span
               aria-hidden="true"

@@ -65,7 +65,7 @@ export function ContinueRail({
                       {!here && <span className="text-muted-foreground">{entry.schema}.</span>}
                       {entry.name}
                     </span>
-                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                    <span className="shrink-0 text-xs text-muted-foreground">
                       {entry.state === "open"
                         ? "offen"
                         : entry.state === "closed" && entry.at
