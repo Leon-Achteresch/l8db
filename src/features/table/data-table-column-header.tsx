@@ -6,7 +6,7 @@ import { useContext } from "react";
 import { DataTableColumnProfile } from "@/features/table/data-table-column-profile";
 import { DataTableHeaderName } from "@/features/table/data-table-header-name";
 import { cn } from "@/lib/utils";
-import type { getColumnTypeInfo } from "./data-table/column-type-info";
+import { type getColumnTypeInfo, shortTypeLabel } from "./data-table/column-type-info";
 import { GridStyleContext } from "./data-table/grid-style-context";
 import { renderTypeIcon } from "./data-table/render-type-icon";
 import type { TableRow } from "./data-table-types";
@@ -80,8 +80,11 @@ export function DataTableColumnHeader({
         title={fkTitle}
       >
         <div className="flex max-w-full min-w-0 items-center">{sortButton}</div>
-        <span className="max-w-full truncate font-mono text-[11px] leading-3 font-normal text-muted-foreground select-none">
-          {typeInfo.dataType ?? typeInfo.label}
+        <span
+          title={typeInfo.dataType ?? typeInfo.label}
+          className="max-w-full truncate font-mono text-[11px] leading-3 font-normal text-muted-foreground select-none"
+        >
+          {shortTypeLabel(typeInfo.dataType ?? typeInfo.label)}
         </span>
       </div>
     );

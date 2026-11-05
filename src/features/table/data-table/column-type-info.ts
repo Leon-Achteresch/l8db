@@ -27,6 +27,13 @@ function kindFromDataType(dataType: string): ColumnTypeKind | null {
   return null;
 }
 
+export function shortTypeLabel(dataType: string): string {
+  return dataType
+    .replace("timestamp without time zone", "timestamp")
+    .replace("timestamp with time zone", "timestamptz")
+    .replace("character varying", "varchar");
+}
+
 export function getColumnTypeInfo(col: string, rows: TableRow[], detail?: DetailedColumnInfo) {
   let first: unknown;
   for (const row of rows) {

@@ -74,7 +74,10 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
             </span>
             <span
               aria-hidden="true"
-              className="h-0.5 w-full overflow-hidden rounded-full bg-border"
+              className={cn(
+                "h-0.5 w-full overflow-hidden rounded-full bg-border",
+                entry.bytes == null && entry.tables == null && "invisible",
+              )}
             >
               <span
                 className="block h-full rounded-full bg-muted-foreground/40"

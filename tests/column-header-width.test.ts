@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { shortTypeLabel } from "../src/features/table/data-table/column-type-info";
 import { classicColumnWidth } from "../src/lib/column-content-width";
 import {
   COLUMN_SIZE_MAX,
@@ -22,23 +23,27 @@ describe("fitHeaderColumnWidth", () => {
 test("classic start width follows the widest of name, type line and loaded values, capped at 320", () => {
   const id = classicColumnWidth({
     name: "id",
-    typeLabel: "integer",
     icons: 2,
     values: [10480, 10481],
   });
   expect(id).toBe(80);
   const customer = classicColumnWidth({
     name: "customer",
-    typeLabel: "text",
     icons: 1,
     values: ["Müller Logistik GmbH", "Kessler Maschinenbau"],
   });
   expect(customer).toBe(181);
   const notes = classicColumnWidth({
     name: "notes",
-    typeLabel: "text",
     icons: 1,
     values: ["x".repeat(500)],
   });
   expect(notes).toBe(320);
+});
+
+test("kürzt lange Postgres-Typen für die Kopfzeile", () => {
+  expect(shortTypeLabel("timestamp with time zone")).toBe("timestamptz");
+  expect(shortTypeLabel("timestamp without time zone")).toBe("timestamp");
+  expect(shortTypeLabel("character varying(255)")).toBe("varchar(255)");
+  expect(shortTypeLabel("integer")).toBe("integer");
 });

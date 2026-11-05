@@ -107,43 +107,44 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
             </Button>
           </div>
         </header>
-        <HomeAtlas connection={connection} />
-        <section aria-labelledby="home-pinboard" className="mt-8">
-          <h2 id="home-pinboard" className="eyebrow mb-3">
-            Pinnwand
-          </h2>
-          {editing && (
-            <section
-              aria-label="Pinnwand anpassen"
-              className="sticky top-3 z-20 mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-popover px-4 py-2.5 shadow-sm"
-            >
-              <p className="text-xs text-muted-foreground">
-                Widgets ziehen, an der Ecke in der Größe ändern oder entfernen.
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={!customized}
-                  onClick={() => {
-                    if (
-                      window.confirm("Alle Widgets von der Pinnwand dieser Verbindung entfernen?")
-                    )
-                      resetLayout(connection.id);
-                  }}
-                >
-                  Leeren
-                </Button>
-                <HomeAddWidgetMenu connectionId={connection.id} />
-                <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
-                  <Check className="size-3.5" />
-                  Fertig
-                </Button>
-              </div>
-            </section>
-          )}
-          <HomeGrid connectionId={connection.id} editing={editing} onAddWidget={toggleEditing} />
-        </section>
+        <HomeAtlas connection={connection}>
+          <section aria-labelledby="home-pinboard" className="min-w-0 @4xl/home:col-start-1">
+            <h2 id="home-pinboard" className="eyebrow mb-3">
+              Pinnwand
+            </h2>
+            {editing && (
+              <section
+                aria-label="Pinnwand anpassen"
+                className="sticky top-3 z-20 mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-popover px-4 py-2.5 shadow-sm"
+              >
+                <p className="text-xs text-muted-foreground">
+                  Widgets ziehen, an der Ecke in der Größe ändern oder entfernen.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!customized}
+                    onClick={() => {
+                      if (
+                        window.confirm("Alle Widgets von der Pinnwand dieser Verbindung entfernen?")
+                      )
+                        resetLayout(connection.id);
+                    }}
+                  >
+                    Leeren
+                  </Button>
+                  <HomeAddWidgetMenu connectionId={connection.id} />
+                  <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
+                    <Check className="size-3.5" />
+                    Fertig
+                  </Button>
+                </div>
+              </section>
+            )}
+            <HomeGrid connectionId={connection.id} editing={editing} onAddWidget={toggleEditing} />
+          </section>
+        </HomeAtlas>
       </motion.div>
     </main>
   );

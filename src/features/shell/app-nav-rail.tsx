@@ -115,8 +115,8 @@ export function AppNavRail() {
             {hasNewFeatures(item.featureScope, seenFeatures) && (
               <span
                 className={cn(
-                  "absolute size-1.5 rounded-full bg-primary",
-                  expanded ? "right-2 top-1/2 -translate-y-1/2" : "right-1 top-1",
+                  "pointer-events-none absolute size-1.5 rounded-full bg-info ring-2 ring-background",
+                  expanded ? "right-2 top-1/2 -translate-y-1/2" : "-right-1 -top-1",
                 )}
                 role="img"
                 aria-label="Neu"
@@ -166,7 +166,7 @@ export function AppNavRail() {
         {expanded && <span className="truncate">Einklappen</span>}
         {toggleFeature.isNew && (
           <span
-            className="absolute right-1 top-1 size-1.5 rounded-full bg-primary"
+            className="pointer-events-none absolute -right-1 -top-1 size-1.5 rounded-full bg-info ring-2 ring-background"
             role="img"
             aria-label="Neu"
           />

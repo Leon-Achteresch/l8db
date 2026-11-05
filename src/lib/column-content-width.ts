@@ -96,14 +96,13 @@ const HEADER_ICON = 16;
 
 export type ClassicWidthInput = {
   name: string;
-  typeLabel: string;
   icons: number;
   values: readonly unknown[];
 };
 
-export function classicColumnWidth({ name, typeLabel, icons, values }: ClassicWidthInput): number {
+export function classicColumnWidth({ name, icons, values }: ClassicWidthInput): number {
   const char = cellMonoCharWidth();
-  let longest = Math.max(name.length + (icons * HEADER_ICON) / char, (typeLabel.length * 11) / 12);
+  let longest = name.length + (icons * HEADER_ICON) / char;
   const count = Math.min(values.length, SAMPLE_ROWS);
   for (let i = 0; i < count; i++) {
     const length = tableCellPreview(values[i], PREVIEW_LIMIT).text.length;
