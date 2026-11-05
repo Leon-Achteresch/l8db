@@ -60,3 +60,12 @@ Badge und Proposal-Cache ist durch Strukturregressionen abgedeckt.
   published_tools_are_annotated_slim_and_keep_array_items erwartet einen
   Annotationstitel für ui_plugins. Nicht durch diese Fixes verursacht;
   gemäß AGENTS.md nicht mitgeändert.
+- Proposal-Modul: drei Tests erfolgreich, einschließlich idempotenter
+  Wiederholung, Event-Antworten, zwei parallelen Vorschlägen, Timeout,
+  Cancellation und Kapazitätsgrenze. 30 × 256 KiB, Median 85,69 ms,
+  p95 124,05 ms bei 5-ms-Timeout und Grenze p95 <250 ms, Queue <=8.
+- Push-Hook durch fremdes TS6133 in src/lib/versioning/ledger.ts:346
+  blockiert. Sauberer git-archive-Export wird vor dem autorisierten
+  --no-verify-Push separat geprüft.
+- Sauberer Export von 0f2ec23d: Typecheck, Biome, cargo fmt --check und
+  cargo check erfolgreich. Daher --no-verify für den Push autorisiert.
