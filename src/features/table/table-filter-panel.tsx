@@ -9,7 +9,7 @@ import {
   SlidersHorizontalIcon,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, type ReactNode, Suspense, useMemo, useState } from "react";
 import { Collapse } from "@/components/motion/collapse";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +40,7 @@ const SqlEditor = lazy(() =>
 );
 
 interface TableFilterPanelProps {
+  leading?: ReactNode;
   stateKey?: string;
   columns: string[];
   columnDetails?: DetailedColumnInfo[];
@@ -48,6 +49,7 @@ interface TableFilterPanelProps {
 }
 
 export function TableFilterPanel({
+  leading,
   stateKey,
   columns,
   columnDetails,
@@ -175,7 +177,8 @@ export function TableFilterPanel({
 
   return (
     <div className="flex min-h-0 max-h-full flex-col border-b bg-muted/30">
-      <div className="flex shrink-0 items-center gap-2 px-3 py-2">
+      <div className="flex h-9 shrink-0 items-center gap-2 px-3">
+        {leading}
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}

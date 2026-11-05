@@ -39,6 +39,7 @@ export type AppSidebarNavItem = {
   available?: (caps: Capabilities) => boolean;
   featureScope?: string;
   connectionFree?: boolean;
+  group?: number;
 };
 
 export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
@@ -57,10 +58,17 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       activeIcon: HousePlug,
       available: (caps) => caps.overview,
     },
-    { title: "SQL-Arbeitsplatz", url: "/query", icon: SquareTerminal, activeIcon: Terminal },
+    {
+      title: "SQL-Arbeitsplatz",
+      url: "/query",
+      icon: SquareTerminal,
+      activeIcon: Terminal,
+      group: 1,
+    },
     {
       title: "SQL-Notebooks",
       url: "/notebook",
+      group: 1,
       icon: NotebookPen,
       activeIcon: NotebookText,
       available: (caps) => caps.query_language === "sql",
@@ -68,14 +76,16 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "Invalid Objects",
       url: "/invalid-objects",
+      group: 2,
       icon: TriangleAlert,
       activeIcon: OctagonAlert,
       available: (caps) => caps.compile_objects,
     },
-    { title: "Monitor", url: "/monitor", icon: Activity, activeIcon: ChartSpline },
+    { title: "Monitor", url: "/monitor", icon: Activity, activeIcon: ChartSpline, group: 2 },
     {
       title: "Health",
       url: "/health",
+      group: 2,
       icon: HeartPulse,
       activeIcon: HeartPlus,
       featureScope: "health",
@@ -84,6 +94,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "Query Builder",
       url: "/query-builder",
+      group: 1,
       icon: Blocks,
       activeIcon: Grid2x2Plus,
       available: (caps) => caps.query_language === "sql",
@@ -91,6 +102,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "ER-Diagramm",
       url: "/er-diagram",
+      group: 1,
       icon: Waypoints,
       activeIcon: Network,
       featureScope: "er-diagram",
@@ -99,6 +111,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "Vergleich",
       url: "/compare",
+      group: 3,
       icon: Diff,
       activeIcon: FileDiff,
       featureScope: "compare",
@@ -106,6 +119,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "Schema-Vergleich",
       url: "/schema-compare",
+      group: 3,
       icon: GitCompareArrows,
       activeIcon: GitCompare,
       featureScope: "schema-compare",
@@ -114,6 +128,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "Gespeicherte Pläne",
       url: "/saved-plan",
+      group: 2,
       icon: ListTree,
       activeIcon: ListChecks,
       available: (caps) => caps.explain,
@@ -121,6 +136,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "Automatisierung",
       url: "/automation",
+      group: 3,
       icon: Zap,
       activeIcon: CalendarClock,
       featureScope: "automation",
