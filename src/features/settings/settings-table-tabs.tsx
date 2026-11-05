@@ -36,9 +36,12 @@ export function SettingsTableTabs() {
           </Button>
         ) : null}
       </div>
-      <div className="grid max-w-3xl gap-x-6 rounded-lg bg-muted/40 p-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid max-w-2xl gap-x-4 rounded-lg bg-muted/40 p-2 sm:grid-cols-2">
         {TABLE_DETAIL_TABS.map((tab) => (
-          <label key={tab.id} className="flex h-8 items-center justify-between gap-3 text-[13px]">
+          <label
+            key={tab.id}
+            className="flex h-9 cursor-pointer items-center justify-between gap-3 rounded-md px-2 text-control transition-colors hover:bg-muted"
+          >
             <span className="truncate">
               {tab.label}
               {tab.entity === "view" ? " (Views)" : ""}

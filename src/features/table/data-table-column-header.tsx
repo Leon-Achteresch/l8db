@@ -67,23 +67,22 @@ export function DataTableColumnHeader({
     return (
       <div
         className={cn(
-          "flex w-full min-w-0 items-center gap-2",
-          columnStyle?.numeric && "flex-row-reverse",
+          "flex w-full min-w-0 flex-col gap-0.5",
+          columnStyle?.numeric ? "items-end" : "items-start",
         )}
         title={fkTitle}
       >
-        {sortButton}
-        <div
-          className={cn(
-            "flex shrink-0 items-center gap-1",
-            columnStyle?.numeric ? "mr-auto" : "ml-auto",
+        <div className="flex max-w-full min-w-0 items-center gap-1">
+          {typeInfo.kind === "key" && (
+            <span className="shrink-0 text-muted-foreground">
+              {renderTypeIcon(typeInfo.iconName, "size-3")}
+            </span>
           )}
-        >
-          <div className="flex items-center gap-1 font-mono text-xs leading-none font-normal whitespace-nowrap text-muted-foreground select-none">
-            {renderTypeIcon(typeInfo.iconName, "size-2.5")}
-            <span>{typeInfo.label}</span>
-          </div>
+          {sortButton}
         </div>
+        <span className="max-w-full truncate px-1 font-mono text-[11px] leading-3 font-normal text-muted-foreground select-none">
+          {typeInfo.dataType ?? typeInfo.label}
+        </span>
       </div>
     );
 

@@ -108,7 +108,7 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
           </div>
         </header>
         <HomeAtlas connection={connection} />
-        <section aria-labelledby="home-pinboard" className="mt-12">
+        <section aria-labelledby="home-pinboard" className="mt-8">
           <h2 id="home-pinboard" className="eyebrow mb-3">
             Pinnwand
           </h2>

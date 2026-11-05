@@ -73,11 +73,18 @@ export function getColumnTypeInfo(col: string, rows: TableRow[], detail?: Detail
     }
   }
 
+  return {
+    ...typeInfoFor(type),
+    dataType: detail?.data_type ? unwrapDataType(detail.data_type) : undefined,
+  };
+}
+
+function typeInfoFor(type: ColumnTypeKind) {
   switch (type) {
     case "key":
       return {
         kind: "key" as const,
-        label: "id",
+        label: "key",
         align: "text-left" as const,
         iconName: "Key",
       };

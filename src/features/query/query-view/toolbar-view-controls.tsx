@@ -32,7 +32,7 @@ export function ToolbarViewControls({
 }: ToolbarViewControlsProps) {
   const navigatorVisible = useQueryWorkspace((state) => state.navigatorVisible);
   return (
-    <div className="flex h-full shrink-0 items-center gap-1">
+    <div className="flex shrink-0 items-center gap-1 rounded-md bg-muted/50 p-0.5">
       {isSql && (
         <Button
           size="icon-sm"

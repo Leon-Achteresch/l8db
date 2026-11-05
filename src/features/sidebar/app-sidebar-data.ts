@@ -42,6 +42,8 @@ export type AppSidebarNavItem = {
   group?: number;
 };
 
+export const navGroupLabels = ["Überblick", "Arbeiten", "Diagnose", "Werkzeuge"];
+
 export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
   navMain: [
     {
