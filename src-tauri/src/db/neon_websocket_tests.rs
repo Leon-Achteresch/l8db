@@ -230,6 +230,68 @@ async fn loopback_proxy_reuses_listeners_backs_off_and_retires_idle_without_poll
     stop(&proxy.target).await;
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cached_listener_reuse_and_idle_retirement_are_atomic_and_keep_lookup_work_bounded() {
+    let _guard = LIFECYCLE.lock().await;
+    let proxy = proxy(None).await;
+    for _ in 0..64 {
+        let original = ensure(&proxy.target).unwrap();
+        *original.touched.lock().unwrap() = Instant::now() - IDLE - Duration::from_secs(1);
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let reuse_barrier = barrier.clone();
+        let reuse_target = proxy.target.clone();
+        let handle = tokio::runtime::Handle::current();
+        let reuse = tokio::task::spawn_blocking(move || {
+            let _runtime = handle.enter();
+            reuse_barrier.wait();
+            ensure(&reuse_target).unwrap()
+        });
+        let retire_target = proxy.target.clone();
+        let retiring = original.clone();
+        let retire = tokio::task::spawn_blocking(move || {
+            barrier.wait();
+            retire_idle(&retire_target, &retiring)
+        });
+        let (reused, retired) = tokio::join!(reuse, retire);
+        let reused = reused.unwrap();
+        let retired = retired.unwrap();
+        if Arc::ptr_eq(&original, &reused) {
+            assert!(!retired);
+            assert!(!original.cancel.is_cancelled());
+        } else {
+            assert!(retired);
+            assert!(original.cancel.is_cancelled());
+        }
+        assert!(!reused.cancel.is_cancelled());
+        assert!(!is_idle(&reused));
+        stop(&proxy.target).await;
+    }
+    let state = ensure(&proxy.target).unwrap();
+    *state.touched.lock().unwrap() = Instant::now() - IDLE - Duration::from_secs(1);
+    assert!(is_idle(&state));
+    assert!(Arc::ptr_eq(&state, &ensure(&proxy.target).unwrap()));
+    assert!(!retire_idle(&proxy.target, &state));
+    let mut samples = Vec::new();
+    for _ in 0..9 {
+        let started = Instant::now();
+        for _ in 0..1000 {
+            assert!(Arc::ptr_eq(&state, &ensure(&proxy.target).unwrap()));
+        }
+        samples.push(started.elapsed());
+    }
+    samples.sort();
+    assert!(samples[4] < Duration::from_millis(100));
+    assert!(samples[8] < Duration::from_millis(250));
+    assert!(Arc::strong_count(&state) <= 4);
+    assert_eq!(state.stats.accepted.load(Ordering::Relaxed), 0);
+    assert_eq!(state.stats.opened.load(Ordering::Relaxed), 0);
+    assert_eq!(proxy.connections.load(Ordering::Relaxed), 0);
+    tokio::time::sleep(Duration::from_millis(40)).await;
+    assert_eq!(proxy.connections.load(Ordering::Relaxed), 0);
+    eprintln!("Neon WSS cache: 64 concurrent reuse/idle races, 9x1000 cache hits median {:?}/p95 {:?}, one retained listener/<=4 Arc owners, upstream requests=0, idle requests=0", samples[4], samples[8]);
+    stop(&proxy.target).await;
+}
+
 #[tokio::test]
 async fn invalid_startup_packets_fail_before_opening_any_upstream() {
     let _guard = LIFECYCLE.lock().await;

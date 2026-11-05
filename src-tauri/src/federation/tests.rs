@@ -349,17 +349,18 @@ async fn fixture(rows: usize) -> (tempfile::TempDir, Services) {
         let mut database = Connection::open(&path).unwrap();
         database
             .execute_batch(&format!(
-                "CREATE TABLE {table}(id INTEGER PRIMARY KEY, label TEXT, amount INTEGER)"
+                "CREATE TABLE {table}(tenant INTEGER NOT NULL, id INTEGER NOT NULL, label TEXT, amount INTEGER, PRIMARY KEY(tenant, id))"
             ))
             .unwrap();
         let transaction = database.transaction().unwrap();
         {
             let mut insert = transaction
-                .prepare(&format!("INSERT INTO {table} VALUES (?1, ?2, ?3)"))
+                .prepare(&format!("INSERT INTO {table} VALUES (?1, ?2, ?3, ?4)"))
                 .unwrap();
             for index in 0..rows {
                 insert
                     .execute(rusqlite::params![
+                        (index % 7) as i64,
                         index as i64,
                         format!("item-{index}"),
                         (index % 10) as i64
@@ -528,7 +529,7 @@ async fn perf_federation_40000_source_rows_has_bounded_reads_memory_and_no_idle_
         assert!(report.source_bytes < 8 * 1024 * 1024);
     }
     samples.sort_by(f64::total_cmp);
-    eprintln!("federation: SQLite sources 2 × 20000 rows, page <= 512, source bytes < 8 MiB, reads=82, concurrent source reads=1, retained result=1 row; median {:.1} ms, p95 {:.1} ms; limits 3000/5000 ms; no polling/background jobs", samples[2], samples[4]);
+    eprintln!("federation: SQLite sources 2 × 20000 rows, composite PRIMARY KEY(tenant,id), explicit full-key ordering, page <= 512, source bytes < 8 MiB, reads=82, concurrent source reads=1, retained result=1 row; median {:.1} ms, p95 {:.1} ms; limits 3000/5000 ms; no polling/background jobs", samples[2], samples[4]);
     assert!(samples[2] < 3_000.0);
     assert!(samples[4] < 5_000.0);
     tokio::time::sleep(Duration::from_millis(20)).await;
@@ -544,5 +545,171 @@ async fn perf_federation_40000_source_rows_has_bounded_reads_memory_and_no_idle_
             ),
         )
         .unwrap();
-    assert!(engine.allocated_pages().unwrap() * 4096 < 8 * 1024 * 1024);
+    assert!(engine.allocated_pages().unwrap() * sandbox::DATABASE_PAGE_BYTES < 8 * 1024 * 1024);
+}
+
+#[tokio::test]
+async fn keyless_tables_and_views_fit_one_page_or_fail_before_an_aggregate() {
+    for rows in [0_usize, MAX_PAGE_ROWS, MAX_PAGE_ROWS + 1] {
+        let (directory, services) = fixture(1).await;
+        let mut database = Connection::open(directory.path().join("customers.sqlite")).unwrap();
+        database.execute_batch("CREATE TABLE keyless(id INTEGER); CREATE VIEW visible_keyless AS SELECT id FROM keyless").unwrap();
+        let transaction = database.transaction().unwrap();
+        for id in 0..rows {
+            transaction
+                .execute("INSERT INTO keyless VALUES (?1)", [id as i64])
+                .unwrap();
+        }
+        transaction.commit().unwrap();
+        for table in ["keyless", "visible_keyless"] {
+            let request = FederationRequest {
+                sources: vec![source("customers", table)],
+                sql: format!("SELECT count(*) n FROM customers.{table}"),
+            };
+            let result = run_with_config(&services, request, 30, &config()).await;
+            if rows <= MAX_PAGE_ROWS {
+                let report = result.unwrap();
+                assert_eq!(report.result.rows, vec![json!({"n":rows})]);
+                assert_eq!(report.source_reads, 2);
+            } else {
+                let error = result.unwrap_err();
+                assert!(error.contains("mehr als 512") && error.contains("Primärschlüssel"));
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn composite_primary_keys_keep_pages_stable_when_unordered_scan_direction_changes() {
+    let (_directory, services) = fixture(1536).await;
+    let source = source("customers", "customers");
+    let mut cache = ConnectionCache::new();
+    let resolved = connection::resolve(&services, &mut cache, &source.connection_id, None)
+        .await
+        .unwrap();
+    let adapter = connection::adapter(&services, &resolved).unwrap();
+    let columns = adapter
+        .list_columns(Some("main"), Some("customers"), None)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|column| column.name)
+        .collect();
+    let mut plan = paging::PagePlan::prepare(
+        adapter.as_ref(),
+        resolved.kind,
+        &source,
+        1536,
+        &columns,
+        &CancellationToken::new(),
+        Instant::now() + Duration::from_secs(30),
+    )
+    .await
+    .unwrap();
+    let mut observed = Vec::new();
+    for (index, offset) in (0..1536).step_by(MAX_PAGE_ROWS).enumerate() {
+        adapter
+            .execute_query(if index % 2 == 0 {
+                "PRAGMA reverse_unordered_selects=ON"
+            } else {
+                "PRAGMA reverse_unordered_selects=OFF"
+            })
+            .await
+            .unwrap();
+        let page = plan
+            .fetch(
+                adapter.as_ref(),
+                resolved.kind,
+                &source,
+                MAX_PAGE_ROWS,
+                offset,
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.rows.len(), MAX_PAGE_ROWS);
+        plan.accept(&source, &page).unwrap();
+        observed.extend(
+            page.rows
+                .iter()
+                .map(|row| (row["tenant"].as_i64().unwrap(), row["id"].as_i64().unwrap())),
+        );
+    }
+    let mut expected = (0_i64..1536).map(|id| (id % 7, id)).collect::<Vec<_>>();
+    expected.sort();
+    assert_eq!(observed, expected);
+    assert_eq!(observed.into_iter().collect::<HashSet<_>>().len(), 1536);
+}
+
+#[tokio::test]
+async fn sqlite_nullable_composite_primary_keys_cannot_hide_nonunique_page_order() {
+    let (directory, services) = fixture(1).await;
+    let mut database = Connection::open(directory.path().join("customers.sqlite")).unwrap();
+    database
+        .execute_batch(
+            "CREATE TABLE nullable_key(tenant INTEGER, id INTEGER, PRIMARY KEY(tenant,id))",
+        )
+        .unwrap();
+    let transaction = database.transaction().unwrap();
+    for id in 0..513_i64 {
+        transaction
+            .execute("INSERT INTO nullable_key VALUES (NULL, ?1)", [id])
+            .unwrap();
+    }
+    transaction.commit().unwrap();
+    let request = FederationRequest {
+        sources: vec![source("customers", "nullable_key")],
+        sql: "SELECT count(*) n FROM customers.nullable_key".into(),
+    };
+    let error = run_with_config(&services, request, 30, &config())
+        .await
+        .unwrap_err();
+    assert!(
+        error.contains("NULL-Primärschlüssel") && error.contains("kein unvollständiges Ergebnis")
+    );
+}
+
+#[test]
+fn sqlite_full_preserves_the_alias_page_budget_and_reports_the_actual_limit() {
+    assert_eq!(sandbox::DATABASE_PAGE_BYTES, 4096);
+    assert_eq!(sandbox::MAX_DATABASE_PAGES, 8192);
+    assert_eq!(sandbox::MAX_ALIAS_DATABASE_BYTES, 32 * 1024 * 1024);
+    assert_eq!(MAX_INPUT_BYTES, 64 * 1024 * 1024);
+    let engine = sandbox(&[definition("src", "items", &["id", "payload"])]);
+    let payload = "x".repeat(64 * 1024);
+    let mut loaded = 0_usize;
+    let mut input_bytes = 0_usize;
+    let mut full = None;
+    for batch in 0..8 {
+        let page = data(
+            &["id", "payload"],
+            (0..128)
+                .map(|id| json!({"id":batch * 128 + id,"payload":payload.clone()}))
+                .collect(),
+        );
+        assert!(page.rows.len() <= MAX_PAGE_ROWS);
+        input_bytes += page.rows.iter().map(sandbox::value_bytes).sum::<usize>();
+        match engine.load(&source("src", "items"), page) {
+            Ok(()) => loaded += 128,
+            Err(cause) => {
+                full = Some(cause);
+                break;
+            }
+        }
+    }
+    let error = full.expect("The unchanged 8192-page alias limit must be enforced");
+    assert!(error.contains("Quelle src.items"));
+    assert!(error.contains("32 MiB") && error.contains("8192") && error.contains("4096"));
+    assert!(error.contains("64 MiB") && error.contains("Alias"));
+    assert!(input_bytes < MAX_INPUT_BYTES);
+    assert!(
+        engine.allocated_pages().unwrap() * sandbox::DATABASE_PAGE_BYTES
+            <= sandbox::MAX_ALIAS_DATABASE_BYTES
+    );
+    assert_eq!(
+        engine
+            .execute("SELECT count(*) n FROM src.items")
+            .unwrap()
+            .rows,
+        vec![json!({"n":loaded})]
+    );
 }

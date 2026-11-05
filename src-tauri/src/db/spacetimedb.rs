@@ -607,17 +607,9 @@ pub(crate) fn read_only_select(sql: &str) -> Result<String, String> {
     while let Some(rest) = statement.strip_suffix(';') {
         statement = rest.trim_end();
     }
-    let mut in_single = false;
-    let mut in_double = false;
-    for c in statement.chars() {
-        match c {
-            '\'' if !in_double => in_single = !in_single,
-            '"' if !in_single => in_double = !in_double,
-            ';' if !in_single && !in_double => {
-                return Err("SpacetimeDB: Bitte genau eine Abfrage ausführen.".into())
-            }
-            _ => {}
-        }
+    if super::sql_script::split_dialect(statement, super::sql_script::Dialect::Standard).len() != 1
+    {
+        return Err("SpacetimeDB: Bitte genau eine Abfrage ausführen.".into());
     }
     let first = statement
         .split(|c: char| c.is_whitespace() || c == '(')
@@ -997,8 +989,42 @@ mod tests {
         assert!(read_only_select("DELETE FROM t").is_err());
         assert!(read_only_select("SELECT 1; DELETE FROM t").is_err());
         assert!(read_only_select("INSERT INTO t VALUES (1)").is_err());
+        for sql in [
+            "SELECT 1 /* ' */; DELETE FROM t /* ' */",
+            "SELECT id FROM t -- '\n; DELETE FROM t -- '",
+            "SELECT id FROM t /* ; ' \" */; SELECT id FROM t",
+        ] {
+            assert!(read_only_select(sql).is_err(), "{sql}");
+        }
+        assert!(read_only_select("SELECT id FROM t /* ; ' \" */").is_ok());
+        assert!(read_only_select("SELECT id FROM t WHERE name = 'a'';b'").is_ok());
         assert_eq!(quote("player").unwrap(), "player");
         assert_eq!(quote("odd name").unwrap(), "\"odd name\"");
+    }
+
+    #[test]
+    fn read_only_gate_large_sql_has_bounded_latency_and_retained_output() {
+        let sql = format!(
+            "SELECT id FROM customer WHERE name = '{}' /* ; ' \" */",
+            "x".repeat(256 * 1024)
+        );
+        let mut samples = Vec::with_capacity(31);
+        let mut maximum_retained = 0;
+        for _ in 0..31 {
+            let started = std::time::Instant::now();
+            let output = read_only_select(std::hint::black_box(&sql)).unwrap();
+            samples.push(started.elapsed().as_secs_f64() * 1000.0);
+            assert_eq!(output, sql);
+            maximum_retained = maximum_retained.max(output.capacity());
+        }
+        samples.sort_by(f64::total_cmp);
+        assert!(samples[15] < 50.0, "median {} ms", samples[15]);
+        assert!(samples[29] < 100.0, "p95 {} ms", samples[29]);
+        assert!(maximum_retained <= sql.len() + 16);
+        eprintln!(
+            "Spacetime SQL guard: {} bytes x31, median {:.3}ms p95 {:.3}ms, retained output {}B, no database requests or background work",
+            sql.len(), samples[15], samples[29], maximum_retained
+        );
     }
 
     #[tokio::test]

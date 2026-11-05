@@ -30,6 +30,7 @@ import {
   jdbcStatus,
 } from "@/lib/db/jdbc";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { refreshDriverStatus, useProvidersStore } from "@/lib/providers";
 
 const EMPTY: JdbcProfileInput = {
   name: "",
@@ -44,7 +45,17 @@ const EMPTY: JdbcProfileInput = {
 export function JdbcManager() {
   const client = useQueryClient();
   const badge = useNewFeatureVisibility<HTMLElement>("drivers.jdbc");
-  const status = useQuery({ queryKey: ["jdbc", "status"], queryFn: jdbcStatus, retry: false });
+  const driverStatus = useProvidersStore(
+    (state) => state.providers.find((provider) => provider.kind === "jdbc")?.driver_status,
+  );
+  const status = useQuery({
+    queryKey: ["jdbc", "status"],
+    queryFn: async () => {
+      await refreshDriverStatus("jdbc");
+      return jdbcStatus();
+    },
+    retry: false,
+  });
   const profiles = useQuery({
     queryKey: ["jdbc", "profiles"],
     queryFn: jdbcProfiles,
@@ -58,6 +69,7 @@ export function JdbcManager() {
   const [input, setInput] = useState<JdbcProfileInput | null>(null);
   const [busy, setBusy] = useState(false);
   const [remove, setRemove] = useState<string | null>(null);
+  const runtimeAvailable = driverStatus?.available ?? status.data?.available ?? false;
   const refresh = () => client.invalidateQueries({ queryKey: ["jdbc"] });
 
   async function action(work: () => Promise<void>) {
@@ -135,9 +147,9 @@ export function JdbcManager() {
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        {status.data?.detail ?? "Java-Laufzeit wird geprüft …"} Importiere ausschließlich
-        vertrauenswürdige Hersteller-JARs; Treiber führen lokalen Code aus. Profile speichern
-        Passwörter im Betriebssystem-Schlüsselbund.
+        {driverStatus?.detail ?? status.data?.detail ?? "Java-Laufzeit wird geprüft …"} Importiere
+        ausschließlich vertrauenswürdige Hersteller-JARs; Treiber führen lokalen Code aus. Profile
+        speichern Passwörter im Betriebssystem-Schlüsselbund.
       </p>
       {(status.error || profiles.error) && (
         <p role="alert" className="text-sm text-destructive">
@@ -189,7 +201,7 @@ export function JdbcManager() {
             <Button
               size="sm"
               variant="outline"
-              disabled={busy || !status.data?.available}
+              disabled={busy || !runtimeAvailable}
               onClick={() => connect(profile)}
             >
               Verbindung hinzufügen

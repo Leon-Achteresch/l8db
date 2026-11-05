@@ -105,7 +105,7 @@ test.skipIf(!binary || !mysqlUrl)(
     source.password = sourcePassword;
     source.pathname = `/${schema}`;
     const sourceUrl = source.toString();
-    const db = new SQL(mysqlUrl, { max: 3 });
+    const db = new SQL(mysqlUrl, { max: 3, connectionTimeout: 2 });
     const root = await mkdtemp(join(tmpdir(), "l8db-workspace-mysql-"));
     let server: Server | undefined;
     let requests = 0;
@@ -146,7 +146,14 @@ test.skipIf(!binary || !mysqlUrl)(
     const sourceStats = async () => {
       const [row] =
         await db`SELECT COALESCE(SUM(COUNT_STAR),0) AS total, COALESCE(SUM(SUM_ROWS_SENT),0) AS sent FROM performance_schema.events_statements_summary_by_account_by_event_name WHERE USER=${sourceUser} AND EVENT_NAME LIKE 'statement/sql/%'`;
-      return { statements: Number(row.total), rowsSent: Number(row.sent) };
+      const [sessions] =
+        await db`SELECT COALESCE(SUM(TOTAL_CONNECTIONS),0) AS total, COALESCE(SUM(CURRENT_CONNECTIONS),0) AS current FROM performance_schema.accounts WHERE USER=${sourceUser}`;
+      return {
+        statements: Number(row.total),
+        rowsSent: Number(row.sent),
+        connections: Number(sessions.total),
+        openConnections: Number(sessions.current),
+      };
     };
     const sourceQueries = async () => {
       const [row] =
@@ -154,6 +161,16 @@ test.skipIf(!binary || !mysqlUrl)(
       return Number(row.total);
     };
     try {
+      const readyUntil = performance.now() + 30000;
+      for (;;) {
+        try {
+          await db.unsafe("SELECT 1");
+          break;
+        } catch (error) {
+          if (performance.now() >= readyUntil) throw error;
+          await Bun.sleep(100);
+        }
+      }
       const [settings] = await db.unsafe("SELECT @@performance_schema AS enabled");
       expect(Number(settings.enabled)).toBe(1);
       await db.unsafe(`CREATE DATABASE \`${schema}\``);
@@ -304,6 +321,12 @@ test.skipIf(!binary || !mysqlUrl)(
       const statsAfter = await sourceStats();
       const sourceReads = statsAfter.statements - statsBefore.statements;
       const sourceRows = statsAfter.rowsSent - statsBefore.rowsSent;
+      const sourceConnections = statsAfter.connections - statsBefore.connections;
+      expect(sourceConnections).toBe(15);
+      const readIdleDeadline = performance.now() + 3000;
+      while ((await sourceStats()).openConnections !== 0 && performance.now() < readIdleDeadline)
+        await Bun.sleep(10);
+      expect((await sourceStats()).openConnections).toBe(0);
       samples.sort((a, b) => a - b);
       expect(requests - calls).toBe(15);
       expect(sourceReads).toBeGreaterThanOrEqual(15);
@@ -353,8 +376,13 @@ test.skipIf(!binary || !mysqlUrl)(
         if (finished) await deadline(finished, 5000, "MySQL-Jobs kehren nach Unlock nicht zurück");
       }
       const idleUntil = performance.now() + 3000;
-      while ((await sourceQueries()) !== 0 && performance.now() < idleUntil) await Bun.sleep(10);
+      while (
+        ((await sourceQueries()) !== 0 || (await sourceStats()).openConnections !== 0) &&
+        performance.now() < idleUntil
+      )
+        await Bun.sleep(10);
       expect(await sourceQueries()).toBe(0);
+      expect((await sourceStats()).openConnections).toBe(0);
       expect(
         (await ok<QueryResult>(reader.token, "POST", `${path}/query`, { sql: "SELECT 1 AS alive" }))
           .rows[0]?.alive,
@@ -375,7 +403,7 @@ test.skipIf(!binary || !mysqlUrl)(
         auditBefore.items.map((item) => item.id),
       );
       console.log(
-        `workspace MySQL native: 10000 rows, median ${samples[7].toFixed(2)} ms p95 ${samples[14].toFixed(2)} ms (limits100/250), 15 HTTP queries/${sourceReads} source SQL statements/${sourceRows} source rows, retained1000 rows/response${retainedBytes}B, concurrency4/fifth429; HTTP cancel${cancelMilliseconds.toFixed(2)}ms, source queries still present at cancellation${remainingAtCancellation} (no immediate server-cancel guarantee); after unlock0/idle requests0`,
+        `workspace MySQL native: 10000 rows, median ${samples[7].toFixed(2)} ms p95 ${samples[14].toFixed(2)} ms (limits100/250), 15 HTTP queries/${sourceReads} source SQL statements/${sourceRows} source rows/${sourceConnections} fresh database connections, retained1000 rows/response${retainedBytes}B, concurrency4/fifth429; HTTP cancel${cancelMilliseconds.toFixed(2)}ms, source queries still present at cancellation${remainingAtCancellation} (no immediate server-cancel guarantee); after unlock0/idle connections0/idle requests0`,
       );
     } finally {
       await server?.stop();

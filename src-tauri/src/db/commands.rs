@@ -41,13 +41,14 @@ async fn run_schema_metadata<T>(
 #[tauri::command]
 pub async fn list_providers() -> Vec<super::provider::ProviderInfo> {
     let mut providers = super::provider::list_providers();
-    let available = super::jdbc::available().await;
-    for provider in &mut providers {
-        if provider.kind == DatabaseKind::Jdbc {
-            provider.driver_status.available = available;
-            if available {
-                provider.driver_status.detail =
-                    "JDK 17+ gefunden; JDBC-Profil unter Treiber einrichten.".into();
+    if let Some(available) = super::jdbc::cached_available() {
+        for provider in &mut providers {
+            if provider.kind == DatabaseKind::Jdbc {
+                provider.driver_status.available = available;
+                if available {
+                    provider.driver_status.detail =
+                        "JDK 17+ gefunden; JDBC-Profil unter Treiber einrichten.".into();
+                }
             }
         }
     }
@@ -58,7 +59,7 @@ pub async fn list_providers() -> Vec<super::provider::ProviderInfo> {
 pub async fn driver_status(kind: DatabaseKind) -> super::provider::DriverStatus {
     let mut status = super::provider::kind_driver_status(kind);
     if kind == DatabaseKind::Jdbc {
-        status.available = super::jdbc::available().await;
+        status.available = super::jdbc::refresh_available().await;
         if status.available {
             status.detail = "JDK 17+ gefunden; JDBC-Profil unter Treiber einrichten.".into();
         }

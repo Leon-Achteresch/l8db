@@ -40,7 +40,12 @@ impl Lab {
         let endpoint = format!("http://{}", listener.local_addr().unwrap());
         let app = server::router(state.clone());
         let task = tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+            )
+            .await
+            .unwrap();
         });
         let login = client::http(
             &endpoint,
@@ -696,6 +701,25 @@ async fn workspace_live_postgres_native_readonly_blocks_security_definer_writes(
 async fn workspace_bounds_live_query_concurrency_and_cancels_all_abandoned_work() {
     let lab = Lab::start(true).await;
     let connection = lab.connection(false).await;
+    let approval_connection = lab.connection(true).await;
+    let (writer, writer_id) = lab.member("approval-writer@example.test", "member").await;
+    lab.grant(&approval_connection, &writer_id, "write").await;
+    let queued = lab
+        .request(
+            &writer,
+            "POST",
+            &format!("connections/{approval_connection}/query"),
+            json!({"sql":"UPDATE items SET name=name||'-approved' WHERE id=1"}),
+        )
+        .await
+        .unwrap_err();
+    assert!(queued.contains("Freigabe"));
+    let pending = lab
+        .request(&lab.admin, "GET", "pending", Value::Null)
+        .await
+        .unwrap();
+    let pending_id = pending["items"][0]["id"].as_str().unwrap();
+    let approval_path = format!("pending/{pending_id}/approve");
     let mut jobs = Vec::new();
     for index in 0..4 {
         let endpoint = lab.endpoint.clone();
@@ -718,6 +742,30 @@ async fn workspace_bounds_live_query_concurrency_and_cancels_all_abandoned_work(
         .await
         .unwrap_err();
     assert!(fifth.contains("Vier"));
+    let approval_error = lab
+        .request(&lab.admin, "POST", &approval_path, Value::Null)
+        .await
+        .unwrap_err();
+    assert!(approval_error.contains("Vier"));
+    let waiting = lab
+        .request(
+            &lab.admin,
+            "GET",
+            &format!("pending/{pending_id}"),
+            Value::Null,
+        )
+        .await
+        .unwrap();
+    assert_eq!(waiting["status"], "pending");
+    assert_eq!(
+        Connection::open(lab.source.path())
+            .unwrap()
+            .query_row("SELECT name FROM items WHERE id=1", [], |row| row
+                .get::<_, String>(0))
+            .unwrap(),
+        "first"
+    );
+
     for index in 0..4 {
         lab.request(
             &lab.admin,
@@ -736,4 +784,172 @@ async fn workspace_bounds_live_query_concurrency_and_cancels_all_abandoned_work(
             .is_err());
     }
     assert_eq!(lab.state.active_jobs(), 0);
+    let (first, second) = tokio::join!(
+        lab.request(&lab.admin, "POST", &approval_path, Value::Null),
+        lab.request(&lab.admin, "POST", &approval_path, Value::Null),
+    );
+    assert_ne!(first.is_ok(), second.is_ok());
+    assert_eq!(
+        Connection::open(lab.source.path())
+            .unwrap()
+            .query_row("SELECT name FROM items WHERE id=1", [], |row| row
+                .get::<_, String>(0))
+            .unwrap(),
+        "first-approved"
+    );
+    let approved = lab
+        .request(
+            &lab.admin,
+            "GET",
+            &format!("pending/{pending_id}"),
+            Value::Null,
+        )
+        .await
+        .unwrap();
+    assert_eq!(approved["status"], "executed");
+}
+
+#[tokio::test]
+async fn workspace_login_spray_cannot_lock_proxy_users_and_forwarded_headers_cannot_bypass_limits()
+{
+    let lab = Lab::start(false).await;
+    let http = reqwest::Client::new();
+    let mut limited = 0;
+    for index in 0..256 {
+        let response = http
+            .post(format!("{}/api/login", lab.endpoint))
+            .json(&json!({"email":format!("stranger-{index}@example.test"),"password":PASSWORD}))
+            .send()
+            .await
+            .unwrap();
+        assert!(matches!(response.status().as_u16(), 401 | 429));
+        if response.status().as_u16() == 429 {
+            limited += 1;
+        }
+    }
+    assert!(limited > 0);
+    let spoofed = http
+        .post(format!("{}/api/login", lab.endpoint))
+        .header("X-Forwarded-For", "203.0.113.9")
+        .header("Forwarded", "for=203.0.113.9")
+        .json(&json!({"email":"another-stranger@example.test","password":PASSWORD}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(spoofed.status().as_u16(), 429);
+    let valid = client::http(
+        &lab.endpoint,
+        None,
+        "POST",
+        "api/login",
+        Some(json!({"email":"admin@example.test","password":PASSWORD})),
+    )
+    .await
+    .unwrap();
+    assert!(valid["token"].is_string());
+    let (new_user, _) = lab.member("new-proxy-user@example.test", "member").await;
+    assert!(lab
+        .request(&new_user, "GET", "me", Value::Null)
+        .await
+        .is_ok());
+}
+
+#[test]
+fn workspace_login_limits_evict_counters_without_unlocking_targeted_accounts_or_other_clients() {
+    use super::login::LoginLimits;
+    use std::net::{IpAddr, Ipv4Addr};
+    let mut limits = LoginLimits::default();
+    let at = Instant::now();
+    let proxy = IpAddr::V4(Ipv4Addr::LOCALHOST);
+    for _ in 0..10 {
+        assert!(limits.admit(Some("target"), "target@example.test", proxy, at));
+    }
+    assert!(!limits.admit(Some("target"), "target@example.test", proxy, at));
+    for index in 0..4096u16 {
+        let peer = IpAddr::V4(Ipv4Addr::new(198, 18, (index >> 8) as u8, index as u8));
+        assert!(limits.admit(None, &format!("unknown-{index}@example.test"), peer, at));
+        limits.failed(peer, at);
+    }
+    assert_eq!(limits.sizes(), [1, 256, 256]);
+    assert!(!limits.admit(Some("target"), "target@example.test", proxy, at));
+    assert!(limits.admit(
+        None,
+        "new-client@example.test",
+        IpAddr::V4(Ipv4Addr::new(203, 0, 113, 44)),
+        at
+    ));
+    for index in 0..32 {
+        assert!(limits.admit(None, &format!("proxy-{index}@example.test"), proxy, at));
+        limits.failed(proxy, at);
+    }
+    assert!(!limits.admit(None, "proxy-new@example.test", proxy, at));
+    assert!(limits.admit(Some("other-account"), "real-user@example.test", proxy, at));
+    limits.succeeded("other-account", "real-user@example.test");
+    assert!(!limits.admit(None, "proxy-new@example.test", proxy, at));
+    assert!(limits.admit(
+        Some("target"),
+        "target@example.test",
+        proxy,
+        at + Duration::from_secs(301)
+    ));
+    assert!(limits.retained_key_and_bucket_bytes() < 256 * 1024);
+}
+
+#[test]
+fn workspace_login_limit_performance_bounds_spray_memory_and_latency() {
+    use super::login::LoginLimits;
+    use std::net::{IpAddr, Ipv4Addr};
+    let mut samples = Vec::new();
+    let mut retained = 0;
+    for _ in 0..15 {
+        let mut limits = LoginLimits::default();
+        let at = Instant::now();
+        let started = Instant::now();
+        for index in 0..1024u16 {
+            let id = format!("{index:032}");
+            let address = format!("{index:0240}@example.test");
+            let peer = IpAddr::V4(Ipv4Addr::new(198, 18, (index >> 8) as u8, index as u8));
+            let account = (index % 4 == 0).then_some(id.as_str());
+            assert!(limits.admit(account, &address, peer, at));
+            limits.failed(peer, at);
+        }
+        samples.push(started.elapsed().as_secs_f64() * 1000.0);
+        assert_eq!(limits.sizes(), [256, 256, 256]);
+        retained = retained.max(limits.retained_key_and_bucket_bytes());
+    }
+    samples.sort_by(f64::total_cmp);
+    eprintln!("workspace login limiter: 1024 clients/15 samples, 256 counters per account/unknown-email/peer map, median {:.2} ms p95 {:.2} ms, retained key+bucket capacity {} bytes, zero password jobs/database requests/background tasks",samples[7],samples[14],retained);
+    assert!(samples[7] < 100.0);
+    assert!(samples[14] < 250.0);
+    assert!(retained < 256 * 1024);
+}
+
+#[tokio::test]
+async fn workspace_get_numeric_ids_keep_their_text_and_offsets_still_paginate() {
+    let lab = Lab::start(true).await;
+    let id = "000123";
+    lab.request(&lab.admin,"POST","connections",json!({"id":id,"name":"Numeric ID","kind":"sqlite","database":null,"connectionString":format!("sqlite://{}",lab.source.path().display())})).await.unwrap();
+    for name in ["First", "Second"] {
+        lab.request(
+            &lab.admin,
+            "POST",
+            "queries",
+            json!({"connectionId":id,"name":name,"sql":"SELECT 1"}),
+        )
+        .await
+        .unwrap();
+    }
+    let page = lab
+        .request(
+            &lab.admin,
+            "GET",
+            "queries",
+            json!({"connectionId":id,"offset":1}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(page["items"].as_array().unwrap().len(), 1);
+    assert_eq!(page["items"][0]["name"], "Second");
+    assert_eq!(page["items"][0]["connectionId"], id);
+    assert_eq!(page["more"], false);
 }

@@ -33,6 +33,9 @@ export function DriversView() {
     setRefreshing(true);
     try {
       await loadProviders();
+      await refreshDriverStatus("jdbc");
+    } catch (error) {
+      toast.error(`Treiberstatus konnte nicht geprüft werden: ${String(error)}`);
     } finally {
       setRefreshing(false);
     }

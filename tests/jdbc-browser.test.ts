@@ -20,9 +20,11 @@ test.skipIf(!base)(
           const state = window as unknown as {
             __jdbcCalls: { command: string; args?: Record<string, unknown> }[];
             __jdbcProfiles: Record<string, unknown>[];
+            __jdbcRuntimeAvailable: boolean;
             __TAURI_INTERNALS__: unknown;
           };
           state.__jdbcCalls = [];
+          state.__jdbcRuntimeAvailable = false;
           state.__jdbcProfiles = Array.from({ length: 64 }, (_, index) => ({
             id: `profile-${index}`,
             name: `Datenbank ${index}`,
@@ -37,10 +39,17 @@ test.skipIf(!base)(
             transformCallback: () => 1,
             invoke: async (command: string, args?: Record<string, unknown>) => {
               state.__jdbcCalls.push({ command, args });
+              if (command === "driver_status")
+                return {
+                  available: state.__jdbcRuntimeAvailable,
+                  detail: state.__jdbcRuntimeAvailable ? "JDK 21 verfügbar" : "JDK fehlt",
+                  install: [],
+                  install_command: null,
+                };
               if (command === "jdbc_status")
                 return {
-                  available: true,
-                  detail: "JDK 21 verfügbar",
+                  available: state.__jdbcRuntimeAvailable,
+                  detail: state.__jdbcRuntimeAvailable ? "JDK 21 verfügbar" : "JDK fehlt",
                   jars: [{ id: "h2jar", name: "h2.jar", bytes: 2651157 }],
                   activeProcesses: 0,
                   maxProcesses: 4,
@@ -83,6 +92,44 @@ test.skipIf(!base)(
         expect(await page.locator("article").count()).toBe(64);
         expect(await page.locator("*").count()).toBeLessThan(3000);
         const first = page.locator("article").first();
+        await page.getByText("JDK fehlt", { exact: false }).waitFor();
+        expect(
+          await first.getByRole("button", { name: "Verbindung hinzufügen" }).isDisabled(),
+        ).toBe(true);
+        expect(
+          await page.evaluate(() =>
+            (window as unknown as { __jdbcDriverAvailable: () => boolean }).__jdbcDriverAvailable(),
+          ),
+        ).toBe(false);
+        await page.evaluate(() => {
+          (window as unknown as { __jdbcRuntimeAvailable: boolean }).__jdbcRuntimeAvailable = true;
+        });
+        await page.getByRole("button", { name: "Aktualisieren", exact: true }).click();
+        await page.getByText("JDK 21 verfügbar", { exact: false }).waitFor();
+        expect(await first.getByRole("button", { name: "Verbindung hinzufügen" }).isEnabled()).toBe(
+          true,
+        );
+        expect(
+          await page.evaluate(() =>
+            (window as unknown as { __jdbcDriverAvailable: () => boolean }).__jdbcDriverAvailable(),
+          ),
+        ).toBe(true);
+        for (const available of [false, true]) {
+          await page.evaluate(async (available) => {
+            const state = window as unknown as {
+              __jdbcRuntimeAvailable: boolean;
+              __jdbcRefreshDriverStatus: () => Promise<unknown>;
+            };
+            state.__jdbcRuntimeAvailable = available;
+            await state.__jdbcRefreshDriverStatus();
+          }, available);
+          await page
+            .getByText(available ? "JDK 21 verfügbar" : "JDK fehlt", { exact: false })
+            .waitFor();
+          expect(
+            await first.getByRole("button", { name: "Verbindung hinzufügen" }).isEnabled(),
+          ).toBe(available);
+        }
         await first.getByRole("button", { name: "Bearbeiten", exact: true }).click();
         await page.getByLabel("Passwort", { exact: false }).fill("fixture-private-secret");
         await page.getByLabel("Name", { exact: true }).fill("Geändertes Profil");

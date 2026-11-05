@@ -54,6 +54,81 @@ fn detects_supported_jdk_without_accepting_jre_or_java_11() {
     assert!(!supported_java_modules("unrecognized java output"));
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn runtime_checks_are_lazy_cached_refreshable_and_bounded_without_startup_processes() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::atomic::Ordering;
+
+    let _guard = LIFECYCLE.lock().await;
+    let temporary = tempfile::tempdir().unwrap();
+    let executable = temporary.path().join("java");
+    let ready = temporary.path().join("java.ready");
+    let delay = temporary.path().join("java.delay");
+    let calls = temporary.path().join("java.calls");
+    std::fs::write(&executable, "#!/bin/sh\nprintf x >> \"$0.calls\"\nif [ -f \"$0.delay\" ]; then sleep 0.05; fi\nif [ ! -f \"$0.ready\" ]; then exit 1; fi\nprintf '%s\\n' 'java.base@17.0.1' 'jdk.compiler@17.0.1'\n").unwrap();
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(!runtime_available_at(executable.clone(), false).await);
+    assert!(!runtime_available_at(executable.clone(), false).await);
+    assert_eq!(std::fs::read(&calls).unwrap().len(), 1);
+    std::fs::write(&ready, "").unwrap();
+    assert!(runtime_available_at(executable.clone(), true).await);
+    std::fs::remove_file(&ready).unwrap();
+    assert!(runtime_available_at(executable.clone(), false).await);
+    assert!(!runtime_available_at(executable.clone(), true).await);
+    std::fs::write(&ready, "").unwrap();
+    java_availability()
+        .lock()
+        .unwrap()
+        .as_mut()
+        .unwrap()
+        .checked = Instant::now() - JAVA_MISSING_TTL - Duration::from_secs(1);
+    assert!(runtime_available_at(executable.clone(), false).await);
+    assert_eq!(std::fs::read(&calls).unwrap().len(), 4);
+    std::fs::write(&delay, "").unwrap();
+    let concurrent = futures_util::future::join_all(
+        (0..4).map(|_| runtime_available_at(executable.clone(), true)),
+    )
+    .await;
+    assert!(concurrent.into_iter().all(|available| available));
+    assert_eq!(std::fs::read(&calls).unwrap().len(), 5);
+    std::fs::remove_file(&delay).unwrap();
+    let before = JAVA_PROBES.load(Ordering::SeqCst);
+    let mut cached = Vec::new();
+    for _ in 0..9 {
+        let started = Instant::now();
+        for _ in 0..100 {
+            assert!(runtime_available_at(executable.clone(), false).await);
+        }
+        cached.push(started.elapsed());
+    }
+    let checking = JAVA_CHECK.lock().await;
+    let mut registry = Vec::new();
+    let mut retained = 0;
+    for _ in 0..9 {
+        let started = Instant::now();
+        let providers = tokio::time::timeout(
+            Duration::from_secs(1),
+            super::super::commands::list_providers(),
+        )
+        .await
+        .expect("Registry must not await a JDK probe");
+        registry.push(started.elapsed());
+        retained = retained.max(serde_json::to_vec(&providers).unwrap().len());
+        assert!(retained < 256 * 1024);
+    }
+    drop(checking);
+    assert_eq!(JAVA_PROBES.load(Ordering::SeqCst), before);
+    assert_eq!(std::fs::read(&calls).unwrap().len(), 5);
+    cached.sort();
+    registry.sort();
+    assert!(cached[4] < Duration::from_millis(100));
+    assert!(cached[8] < Duration::from_millis(250));
+    assert!(registry[4] < Duration::from_millis(250));
+    assert!(registry[8] < Duration::from_secs(1));
+    eprintln!("JDBC runtime cache: 9x100 lookups median {:?}/p95 {:?}; 9 registry listings median {:?}/p95 {:?}, retained registry={} bytes, JDK processes=0 during registry/cache workload, four concurrent refreshes=one process", cached[4], cached[8], registry[4], registry[8], retained);
+}
+
 #[test]
 fn frames_preserve_tabs_newlines_unicode_and_bound_requests() {
     let fields = vec![
@@ -105,6 +180,32 @@ async fn response_framing_rejects_oversize_incomplete_and_malformed_frames() {
         .await
         .unwrap_err()
         .contains("8 MiB"));
+}
+
+#[test]
+fn framed_sql_errors_are_recoverable_but_protocol_connection_and_timeout_errors_are_fatal() {
+    assert!(matches!(
+        bridge_response(json!({"error":"SQL failed","state":"42001","kind":"sql"})),
+        Err(BridgeFailure::Recoverable(_))
+    ));
+    for kind in ["protocol", "connection", "timeout", "unknown"] {
+        assert!(matches!(
+            bridge_response(json!({"error":"failed","state":null,"kind":kind})),
+            Err(BridgeFailure::Fatal(_))
+        ));
+    }
+    for invalid in [
+        json!(null),
+        json!({"ok":false}),
+        json!({"error":1}),
+        json!({"columns":["id"],"rows":[[1,2]]}),
+    ] {
+        assert!(matches!(
+            bridge_response(invalid),
+            Err(BridgeFailure::Fatal(_))
+        ));
+    }
+    assert!(bridge_response(json!({"columns":["id"],"rows":[[1]]})).is_ok());
 }
 
 #[test]
@@ -200,6 +301,53 @@ async fn live_h2_metadata_prepared_queries_bounded_results_performance_and_idle(
         .unwrap();
     adapter.execute_query("CREATE TABLE \"APP\".\"items\" (\"id\" BIGINT PRIMARY KEY, \"label\" VARCHAR(80), \"payload\" CLOB)").await.unwrap();
     adapter.execute_query("INSERT INTO \"APP\".\"items\" SELECT X, 'row-' || X, RPAD('x', 128, 'x') FROM SYSTEM_RANGE(1, 100000)").await.unwrap();
+    adapter
+        .execute_query("CREATE LOCAL TEMPORARY TABLE \"session_probe\" (\"value\" INTEGER)")
+        .await
+        .unwrap();
+    adapter
+        .execute_query("INSERT INTO \"session_probe\" VALUES (7)")
+        .await
+        .unwrap();
+    let slot = worker(temporary.path(), &profile.id).await.unwrap();
+    let pid = slot
+        .state
+        .lock()
+        .await
+        .bridge
+        .as_ref()
+        .unwrap()
+        .child
+        .id()
+        .unwrap();
+    let before_errors = requests(&slot).await;
+    let mut sql_errors = Vec::new();
+    for _ in 0..9 {
+        let started = Instant::now();
+        assert!(adapter
+            .execute_query("SELEC invalid syntax")
+            .await
+            .unwrap_err()
+            .contains("SQLState"));
+        sql_errors.push(started.elapsed());
+        assert_eq!(
+            slot.state.lock().await.bridge.as_ref().unwrap().child.id(),
+            Some(pid)
+        );
+    }
+    assert_eq!(requests(&slot).await - before_errors, 9);
+    assert_eq!(
+        adapter
+            .execute_query("SELECT \"value\" FROM \"session_probe\"")
+            .await
+            .unwrap()
+            .rows[0]["value"],
+        7
+    );
+    sql_errors.sort();
+    assert!(sql_errors[4] < Duration::from_millis(250));
+    assert!(sql_errors[8] < Duration::from_secs(1));
+    eprintln!("JDBC H2 SQL error recovery: 9 syntax errors/9 requests, one unchanged PID/session, median {:?}/p95 {:?}, no process restarts", sql_errors[4], sql_errors[8]);
     assert!(adapter
         .list_schemas()
         .await
@@ -388,8 +536,12 @@ async fn live_h2_read_only_cancellation_disconnect_and_oversized_cells() {
         .execute_query("SELECT SPACE(300000) AS \"oversized\"")
         .await;
     assert!(oversized.is_err());
-    assert!(slot.state.lock().await.bridge.is_none());
+    let pid = slot.state.lock().await.bridge.as_ref().unwrap().child.id();
     adapter.test_connection().await.unwrap();
+    assert_eq!(
+        slot.state.lock().await.bridge.as_ref().unwrap().child.id(),
+        pid
+    );
     let run = adapter.execute_query("SELECT SUM(SIN(X)) FROM SYSTEM_RANGE(1, 1000000000)");
     let disconnect = async {
         tokio::time::sleep(Duration::from_millis(100)).await;

@@ -134,14 +134,16 @@ struct ListenerGuard {
 
 impl Drop for ListenerGuard {
     fn drop(&mut self) {
-        self.state.cancel.cancel();
         if let Ok(mut listeners) = listeners().lock() {
+            self.state.cancel.cancel();
             if listeners
                 .get(&self.key)
                 .is_some_and(|state| Arc::ptr_eq(state, &self.state))
             {
                 listeners.remove(&self.key);
             }
+        } else {
+            self.state.cancel.cancel();
         }
     }
 }
@@ -150,20 +152,41 @@ struct ConnectionGuard(Arc<ListenerState>);
 
 impl Drop for ConnectionGuard {
     fn drop(&mut self) {
-        self.0.stats.active.fetch_sub(1, Ordering::AcqRel);
         if let Ok(mut touched) = self.0.touched.lock() {
             *touched = Instant::now();
+            self.0.stats.active.fetch_sub(1, Ordering::AcqRel);
+        } else {
+            self.0.stats.active.fetch_sub(1, Ordering::AcqRel);
         }
     }
 }
 
 fn is_idle(state: &ListenerState) -> bool {
-    state.stats.active.load(Ordering::Acquire) == 0
-        && state
-            .touched
-            .lock()
-            .map(|touched| touched.elapsed() >= IDLE)
-            .unwrap_or(true)
+    state
+        .touched
+        .lock()
+        .map(|touched| state.stats.active.load(Ordering::Acquire) == 0 && touched.elapsed() >= IDLE)
+        .unwrap_or(true)
+}
+
+fn retire_idle(target: &Target, state: &Arc<ListenerState>) -> bool {
+    let Ok(mut cache) = listeners().lock() else {
+        state.cancel.cancel();
+        return true;
+    };
+    if !cache
+        .get(&target.url)
+        .is_some_and(|cached| Arc::ptr_eq(cached, state))
+    {
+        state.cancel.cancel();
+        return true;
+    }
+    if !is_idle(state) {
+        return false;
+    }
+    state.cancel.cancel();
+    cache.remove(&target.url);
+    true
 }
 
 fn ensure(target: &Target) -> Result<Arc<ListenerState>, String> {
@@ -174,6 +197,11 @@ fn ensure(target: &Target) -> Result<Arc<ListenerState>, String> {
         .map_err(|_| "Neon-WebSocket-Verwaltung ist blockiert.".to_string())?;
     cache.retain(|_, state| !state.cancel.is_cancelled());
     if let Some(state) = cache.get(&target.url) {
+        *state
+            .touched
+            .lock()
+            .map_err(|_| "Neon-WebSocket-Leerlaufverwaltung ist blockiert.".to_string())? =
+            Instant::now();
         return Ok(state.clone());
     }
     if cache.len() >= MAX_LISTENERS {
@@ -219,7 +247,7 @@ async fn serve(listener: TcpListener, target: Target, guard: ListenerGuard) {
     loop {
         tokio::select! {
             _ = state.cancel.cancelled() => break,
-            _ = cleanup.tick() => if is_idle(state) { break; },
+            _ = cleanup.tick() => if retire_idle(&target, state) { break; },
             accepted = listener.accept() => {
                 let Ok((stream, address)) = accepted else { break; };
                 if !address.ip().is_loopback() { continue; }

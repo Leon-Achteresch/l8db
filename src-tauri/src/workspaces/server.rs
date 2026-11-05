@@ -1,4 +1,4 @@
-use super::{crypto, model::*};
+use super::{crypto, login::LoginLimits, model::*};
 use crate::db::{
     self,
     execution::{self, ExecutionOptions},
@@ -7,7 +7,7 @@ use crate::db::{
 };
 use axum::{
     body::Bytes,
-    extract::{DefaultBodyLimit, Path as RoutePath, RawQuery, State},
+    extract::{ConnectInfo, DefaultBodyLimit, Path as RoutePath, RawQuery, State},
     http::{HeaderMap, Method, StatusCode},
     response::{IntoResponse, Response},
     routing::{any, get, post},
@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 #[derive(Clone)]
 pub struct ServerState {
@@ -28,7 +28,7 @@ pub struct ServerState {
     pool: PoolState,
     queries: Arc<Semaphore>,
     auth: Arc<Semaphore>,
-    attempts: Arc<Mutex<HashMap<String, (Instant, u16)>>>,
+    attempts: Arc<Mutex<LoginLimits>>,
     jobs: Arc<Mutex<HashMap<String, String>>>,
     allow_local_files: bool,
 }
@@ -166,7 +166,7 @@ impl ServerState {
             pool: create_pool_state(),
             queries: Arc::new(Semaphore::new(4)),
             auth: Arc::new(Semaphore::new(2)),
-            attempts: Arc::new(Mutex::new(HashMap::new())),
+            attempts: Arc::new(Mutex::new(LoginLimits::default())),
             jobs: Arc::new(Mutex::new(HashMap::new())),
             allow_local_files: false,
         })
@@ -180,6 +180,15 @@ impl ServerState {
     #[cfg(test)]
     pub(super) fn active_jobs(&self) -> usize {
         self.jobs.lock().unwrap().len()
+    }
+
+    fn query_slot(&self) -> Result<OwnedSemaphorePermit, ApiError> {
+        self.queries.clone().try_acquire_owned().map_err(|_| {
+            ApiError(
+                StatusCode::TOO_MANY_REQUESTS,
+                "Vier Workspace-Abfragen laufen bereits. Bitte später erneut versuchen.".into(),
+            )
+        })
     }
 
     fn cancel_jobs(&self, user_id: Option<&str>) {
@@ -337,31 +346,12 @@ fn non_browser(headers: &HeaderMap) -> Result<(), ApiError> {
 
 async fn login(
     State(state): State<ServerState>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
     headers: HeaderMap,
     Json(input): Json<Credentials>,
 ) -> Result<Json<Value>, ApiError> {
     non_browser(&headers)?;
     let normalized = email(&input.email)?;
-    {
-        let mut attempts = state.attempts.lock().map_err(|_| denied())?;
-        attempts.retain(|_, (at, _)| at.elapsed() < Duration::from_secs(300));
-        if attempts.len() >= 256 && !attempts.contains_key(&normalized) {
-            return Err(ApiError(
-                StatusCode::TOO_MANY_REQUESTS,
-                "Zu viele Anmeldeversuche. Bitte später erneut versuchen.".into(),
-            ));
-        }
-        let entry = attempts
-            .entry(normalized.clone())
-            .or_insert((Instant::now(), 0));
-        entry.1 += 1;
-        if entry.1 > 10 {
-            return Err(ApiError(
-                StatusCode::TOO_MANY_REQUESTS,
-                "Zu viele Anmeldeversuche. Bitte fünf Minuten warten.".into(),
-            ));
-        }
-    }
     let _permit = state.auth.clone().try_acquire_owned().map_err(|_| {
         ApiError(
             StatusCode::TOO_MANY_REQUESTS,
@@ -387,6 +377,17 @@ async fn login(
             },
         )
         .optional()?;
+    if !state.attempts.lock().map_err(|_| denied())?.admit(
+        row.as_ref().map(|row| row.0.id.as_str()),
+        &normalized,
+        peer.ip(),
+        Instant::now(),
+    ) {
+        return Err(ApiError(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Zu viele Anmeldeversuche. Bitte fünf Minuten warten.".into(),
+        ));
+    }
     let (salt, expected) = row
         .as_ref()
         .map(|row| (row.1.clone(), row.2.clone()))
@@ -396,15 +397,25 @@ async fn login(
     })
     .await
     .map_err(|_| denied())?;
-    let user = row
-        .filter(|row| valid && row.0.active)
-        .map(|row| row.0)
-        .ok_or_else(|| {
-            ApiError(
-                StatusCode::UNAUTHORIZED,
-                "E-Mail oder Passwort ist falsch.".into(),
-            )
-        })?;
+    let user = match row.filter(|row| valid && row.0.active) {
+        Some((user, _, _)) => user,
+        None => {
+            let limited = state
+                .attempts
+                .lock()
+                .map_err(|_| denied())?
+                .failed(peer.ip(), Instant::now());
+            return Err(ApiError(
+                if limited {
+                    StatusCode::TOO_MANY_REQUESTS
+                } else {
+                    StatusCode::UNAUTHORIZED
+                },
+                "E-Mail oder Passwort ist falsch oder die Anmeldung ist vorübergehend begrenzt."
+                    .into(),
+            ));
+        }
+    };
     let token = crypto::id()?;
     {
         let db = state.locked()?;
@@ -419,7 +430,7 @@ async fn login(
         .attempts
         .lock()
         .map_err(|_| denied())?
-        .remove(&normalized);
+        .succeeded(&user.id, &normalized);
     state.audit(&user, "login", None, "ok")?;
     Ok(Json(json!({"token":token,"user":user})))
 }
@@ -491,10 +502,12 @@ async fn api(
             body = json!({});
         }
         for (key, value) in url::form_urlencoded::parse(query.as_bytes()) {
-            body[key.as_ref()] = value
-                .parse::<u64>()
-                .map(Value::from)
-                .unwrap_or_else(|_| Value::String(value.into_owned()));
+            let numeric = if method == Method::GET && key == "offset" {
+                value.parse::<u64>().ok().map(Value::from)
+            } else {
+                None
+            };
+            body[key.as_ref()] = numeric.unwrap_or_else(|| Value::String(value.into_owned()));
         }
     }
     let segments: Vec<&str> = path.split('/').collect();
@@ -794,7 +807,7 @@ async fn dispatch(
         }
         ("POST", ["connections", id, "query"]) => {
             let input: QueryInput = decode(body)?;
-            execute_query(state, user, id, input, false).await
+            execute_query(state, user, id, input, false, None).await
         }
         ("POST", ["connections", id, "cancel"]) => {
             state.access(user, id)?;
@@ -999,6 +1012,11 @@ async fn dispatch(
             if connection.access != "write" {
                 return Err(denied());
             }
+            let reserved_slot = if *decision == "approve" {
+                Some(state.query_slot()?)
+            } else {
+                None
+            };
             let next = if *decision == "approve" {
                 "running"
             } else {
@@ -1025,6 +1043,7 @@ async fn dispatch(
                     max_rows: Some(MAX_RESULT_ROWS),
                 },
                 true,
+                reserved_slot,
             )
             .await;
             state.locked()?.execute(
@@ -1062,6 +1081,7 @@ async fn execute_query(
     id: &str,
     input: QueryInput,
     approved: bool,
+    reserved_slot: Option<OwnedSemaphorePermit>,
 ) -> ApiResult {
     if !valid_sql(&input.sql) {
         return Err("Abfrage muss zwischen 1 Byte und 1 MB groß sein."
@@ -1139,12 +1159,10 @@ async fn execute_query(
         return Err("Aufgaben-ID ungültig.".to_string().into());
     }
     let key = format!("workspace:{}:{job}", user.id);
-    let _permit = state.queries.clone().try_acquire_owned().map_err(|_| {
-        ApiError(
-            StatusCode::TOO_MANY_REQUESTS,
-            "Vier Workspace-Abfragen laufen bereits. Bitte später erneut versuchen.".into(),
-        )
-    })?;
+    let _permit = match reserved_slot {
+        Some(permit) => permit,
+        None => state.query_slot()?,
+    };
     {
         let mut jobs = state.jobs.lock().map_err(|_| denied())?;
         if jobs.insert(key.clone(), user.id.clone()).is_some() {

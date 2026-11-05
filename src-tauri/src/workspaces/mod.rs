@@ -1,6 +1,7 @@
 mod adapter;
 pub(crate) mod client;
 mod crypto;
+mod login;
 mod model;
 mod server;
 #[cfg(test)]
@@ -62,7 +63,7 @@ pub fn cli(args: &[String]) -> i32 {
         if state.db.lock().map_err(|_|"Workspace ist blockiert")?.query_row("SELECT count(*) FROM users",[],|row|row.get::<_,i64>(0)).map_err(|_|"Workspace ist beschädigt")?==0{return Err("Beim ersten Start L8DB_WORKSPACE_ADMIN_EMAIL und L8DB_WORKSPACE_ADMIN_PASSWORD setzen.".into());}
         let listener=tokio::net::TcpListener::bind(address).await.map_err(|_|"Workspace-Port kann nicht geöffnet werden")?;
         eprintln!("Workspace läuft auf {}",listener.local_addr().map_err(|_|"Workspace-Port fehlt")?);
-        axum::serve(listener,server::router(state)).with_graceful_shutdown(async{let _=tokio::signal::ctrl_c().await;}).await.map_err(|_|"Workspace-Server wurde unerwartet beendet".to_string())
+        axum::serve(listener,server::router(state).into_make_service_with_connect_info::<std::net::SocketAddr>()).with_graceful_shutdown(async{let _=tokio::signal::ctrl_c().await;}).await.map_err(|_|"Workspace-Server wurde unerwartet beendet".to_string())
     });
     match result {
         Ok(()) => 0,
