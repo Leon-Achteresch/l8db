@@ -132,3 +132,15 @@ Dateisystem-Watcher und Cleanup: erster Lauf median 78,07 ms, p95 127,18 ms
 je Slot (neu/bisher), jeweils höchstens 256 KiB, zuzüglich begrenzter JSON-Escapes.
 Keine Datenbankanfragen; Idle wartet auf Events, Abbruch löscht alle reservierten Slots.
 Keine CPU-Drosseltests auf macOS.
+
+Prüfstand beim ersten Commit: Die zwei Queue-/Perf-Tests liefen erfolgreich. Nach
+Ergänzen der Snapshot-/Overwrite-Prüfung blockierten fremde Transfer-Änderungen die
+Test-Kompilierung (`transfer_tests.rs:519,970`: entferntes `create_schemas`). Der erste
+`cargo check` war erfolgreich; ein späterer Lauf traf den parallelen Umbau
+(`automation/steps/data.rs`: fehlendes `mirror`). Typecheck und Pre-Push wurden durch
+fehlende `transfer-cinematic-variant(s)` in `transfer-cinematic-lab.tsx` blockiert.
+Diese fremden Dateien wurden nicht geändert. Biome auf eigenen TS-Dateien ist grün.
+Die drei Vorschlagstests bestehen mit Bun 1.3.10; 28 Filter-/Execution-/Safe-Mode-Tests
+bestanden im initialen Lauf mit dem vorinstallierten Bun 1.4.3, 49 Runtime-Tests mit
+Bun 1.3.10. Die erste Diff-Assertion wurde von 50.002 auf 50.000 korrigiert, da der
+identische abschließende Leerstring zum gemeinsamen Suffix gehört.
