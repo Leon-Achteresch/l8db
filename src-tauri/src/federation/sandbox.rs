@@ -14,7 +14,9 @@ use crate::db::{ColumnInfo, QueryResult, TableData};
 
 const MAX_VM_STEPS: u64 = 20_000_000;
 const PROGRESS_STEPS: i32 = 1_000;
-const MAX_DATABASE_PAGES: usize = 8_192;
+pub(super) const MAX_DATABASE_PAGES: usize = 8_192;
+pub(super) const DATABASE_PAGE_BYTES: usize = 4_096;
+pub(super) const MAX_ALIAS_DATABASE_BYTES: usize = MAX_DATABASE_PAGES * DATABASE_PAGE_BYTES;
 
 pub(super) struct Definition {
     pub source: FederationSource,
@@ -30,6 +32,10 @@ pub(super) struct Sandbox {
 }
 
 fn error(cause: rusqlite::Error) -> String {
+    if matches!(&cause, rusqlite::Error::SqliteFailure(failure, _) if failure.code == rusqlite::ErrorCode::DiskFull)
+    {
+        return format!("Die lokale SQLite-Speichergrenze ist erreicht: höchstens {} MiB je Alias ({MAX_DATABASE_PAGES} Seiten à {DATABASE_PAGE_BYTES} Byte), einschließlich aller Tabellen und ihrer Verwaltungsdaten. Die Grenze von 64 MiB für rohe Quelldaten gilt zusätzlich. Weniger oder kleinere Quellen je Alias auswählen; es wird kein unvollständiges Ergebnis berechnet.", MAX_ALIAS_DATABASE_BYTES / (1024 * 1024));
+    }
     format!("Lokale SQL-Abfrage: {cause}")
 }
 
@@ -217,7 +223,7 @@ impl Sandbox {
                         [],
                     )
                     .map_err(error)?;
-                connection.execute_batch(&format!("PRAGMA {}.max_page_count={MAX_DATABASE_PAGES}; PRAGMA {}.cache_size=-4096;", quote(&source.alias), quote(&source.alias))).map_err(error)?;
+                connection.execute_batch(&format!("PRAGMA {}.page_size={DATABASE_PAGE_BYTES}; PRAGMA {}.max_page_count={MAX_DATABASE_PAGES}; PRAGMA {}.cache_size=-4096;", quote(&source.alias), quote(&source.alias), quote(&source.alias))).map_err(error)?;
             }
             let columns = definition
                 .columns
@@ -353,7 +359,7 @@ impl Sandbox {
             let _ = self.connection.execute_batch("ROLLBACK");
         }
         self.protect()?;
-        operation
+        operation.map_err(|cause| format!("Quelle {}.{}: {cause}", source.alias, source.table))
     }
 
     pub fn execute(&self, sql: &str) -> Result<QueryResult, String> {

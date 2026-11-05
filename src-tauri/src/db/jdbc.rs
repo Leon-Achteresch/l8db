@@ -22,9 +22,51 @@ const MAX_JAR: u64 = 256 * 1024 * 1024;
 const MAX_ROWS: usize = 50_000;
 const MAX_WORKERS: usize = 4;
 const IDLE: Duration = Duration::from_secs(60);
+const JAVA_READY_TTL: Duration = Duration::from_secs(60);
+const JAVA_MISSING_TTL: Duration = Duration::from_secs(2);
 const SOURCE: &str = include_str!("../../jdbc/L8dbJdbcBridge.java");
 static ROOT: OnceLock<PathBuf> = OnceLock::new();
 static PROFILE_LOCK: Mutex<()> = Mutex::const_new(());
+static JAVA_CHECK: Mutex<()> = Mutex::const_new(());
+
+#[cfg(test)]
+static JAVA_PROBES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+#[derive(Clone, PartialEq)]
+struct JavaRuntimeKey {
+    executable: PathBuf,
+    search_path: Option<std::ffi::OsString>,
+}
+
+#[derive(Clone)]
+struct JavaAvailability {
+    key: JavaRuntimeKey,
+    checked: Instant,
+    available: bool,
+}
+
+fn java_availability() -> &'static std::sync::Mutex<Option<JavaAvailability>> {
+    static CACHE: OnceLock<std::sync::Mutex<Option<JavaAvailability>>> = OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+fn runtime_key(executable: PathBuf) -> JavaRuntimeKey {
+    JavaRuntimeKey {
+        executable,
+        search_path: std::env::var_os("PATH"),
+    }
+}
+
+fn cached_java(key: &JavaRuntimeKey) -> Option<JavaAvailability> {
+    java_availability()
+        .lock()
+        .ok()
+        .and_then(|entry| entry.as_ref().filter(|entry| entry.key == *key).cloned())
+}
+
+pub(crate) fn cached_available() -> Option<bool> {
+    cached_java(&runtime_key(java_path())).map(|entry| entry.available)
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -261,15 +303,54 @@ fn java_path() -> PathBuf {
 }
 
 pub async fn available() -> bool {
+    runtime_available_at(java_path(), false).await
+}
+
+pub(crate) async fn refresh_available() -> bool {
+    runtime_available_at(java_path(), true).await
+}
+
+async fn runtime_available_at(executable: PathBuf, refresh: bool) -> bool {
+    let requested = Instant::now();
+    let key = runtime_key(executable);
+    let fresh = |entry: &JavaAvailability| {
+        entry.checked.elapsed()
+            < if entry.available {
+                JAVA_READY_TTL
+            } else {
+                JAVA_MISSING_TTL
+            }
+    };
+    if !refresh {
+        if let Some(entry) = cached_java(&key).filter(fresh) {
+            return entry.available;
+        }
+    }
+    let _guard = JAVA_CHECK.lock().await;
+    if let Some(entry) =
+        cached_java(&key).filter(|entry| fresh(entry) && (!refresh || entry.checked >= requested))
+    {
+        return entry.available;
+    }
+    #[cfg(test)]
+    JAVA_PROBES.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let output = tokio::time::timeout(
         Duration::from_secs(3),
-        crate::process::command(java_path())
+        crate::process::command(&key.executable)
             .arg("--list-modules")
             .kill_on_drop(true)
             .output(),
     )
     .await;
-    matches!(output, Ok(Ok(output)) if output.status.success() && supported_java_modules(&String::from_utf8_lossy(&output.stdout)))
+    let available = matches!(output, Ok(Ok(output)) if output.status.success() && supported_java_modules(&String::from_utf8_lossy(&output.stdout)));
+    if let Ok(mut entry) = java_availability().lock() {
+        *entry = Some(JavaAvailability {
+            key,
+            checked: Instant::now(),
+            available,
+        });
+    }
+    available
 }
 
 fn supported_java_modules(modules: &str) -> bool {
@@ -523,6 +604,57 @@ struct Bridge {
     requests: u64,
 }
 
+#[derive(Debug)]
+enum BridgeFailure {
+    Recoverable(String),
+    Fatal(String),
+}
+
+impl BridgeFailure {
+    fn into_message(self) -> String {
+        match self {
+            Self::Recoverable(message) | Self::Fatal(message) => message,
+        }
+    }
+}
+
+fn bridge_response(response: Value) -> Result<Value, BridgeFailure> {
+    let invalid =
+        || BridgeFailure::Fatal("JDBC-Prozess hat eine ungültige Antwort geliefert.".into());
+    if let Some(error) = response.get("error") {
+        let error = error.as_str().ok_or_else(invalid)?;
+        let state = response
+            .get("state")
+            .and_then(Value::as_str)
+            .unwrap_or("unbekannt");
+        let message = format!("{error} (SQLState {state}). URL, Treiber, Rechte und SQL prüfen.");
+        return Err(if response["kind"].as_str() == Some("sql") {
+            BridgeFailure::Recoverable(message)
+        } else {
+            BridgeFailure::Fatal(message)
+        });
+    }
+    if response.get("ok").is_some() {
+        return if response["ok"] == Value::Bool(true) {
+            Ok(response)
+        } else {
+            Err(invalid())
+        };
+    }
+    let columns = response["columns"].as_array().ok_or_else(invalid)?;
+    let rows = response["rows"].as_array().ok_or_else(invalid)?;
+    if columns.len() > 1024
+        || columns.iter().any(|column| !column.is_string())
+        || rows.len() > MAX_ROWS
+        || rows
+            .iter()
+            .any(|row| row.as_array().is_none_or(|row| row.len() != columns.len()))
+    {
+        return Err(invalid());
+    }
+    Ok(response)
+}
+
 impl Drop for Bridge {
     fn drop(&mut self) {
         let _ = self.child.start_kill();
@@ -530,28 +662,22 @@ impl Drop for Bridge {
 }
 
 impl Bridge {
-    async fn request(&mut self, fields: &[String]) -> Result<Value, String> {
-        let request = encode_request(fields)?;
+    async fn request(&mut self, fields: &[String]) -> Result<Value, BridgeFailure> {
+        let request = encode_request(fields).map_err(BridgeFailure::Recoverable)?;
         self.input
             .write_all(&request)
             .await
-            .map_err(|_| "JDBC-Prozess ist nicht erreichbar.".to_string())?;
+            .map_err(|_| BridgeFailure::Fatal("JDBC-Prozess ist nicht erreichbar.".into()))?;
         self.requests += 1;
         self.input
             .flush()
             .await
-            .map_err(|_| "JDBC-Prozess ist nicht erreichbar.".to_string())?;
-        let response = read_frame(&mut self.output).await?;
-        if let Some(error) = response.get("error").and_then(Value::as_str) {
-            let state = response
-                .get("state")
-                .and_then(Value::as_str)
-                .unwrap_or("unbekannt");
-            return Err(format!(
-                "{error} (SQLState {state}). URL, Treiber, Rechte und SQL prüfen."
-            ));
-        }
-        Ok(response)
+            .map_err(|_| BridgeFailure::Fatal("JDBC-Prozess ist nicht erreichbar.".into()))?;
+        bridge_response(
+            read_frame(&mut self.output)
+                .await
+                .map_err(BridgeFailure::Fatal)?,
+        )
     }
 }
 
@@ -729,7 +855,8 @@ async fn start(root: &Path, profile: &JdbcProfile, password: &str) -> Result<Bri
             password.into(),
             profile.read_only.to_string(),
         ])
-        .await?;
+        .await
+        .map_err(BridgeFailure::into_message)?;
     Ok(bridge)
 }
 
@@ -801,10 +928,10 @@ impl JdbcAdapter {
             fields.extend(arguments);
             let response = bridge.request(&fields).await;
             worker.touched = Instant::now();
-            if response.is_ok() {
+            if response.is_ok() || matches!(&response, Err(BridgeFailure::Recoverable(_))) {
                 worker.bridge = Some(bridge);
             }
-            response
+            response.map_err(BridgeFailure::into_message)
         };
         tokio::select! {
             _ = token.cancelled() => Err("JDBC-Abfrage wurde abgebrochen.".into()),

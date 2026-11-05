@@ -1,3 +1,6 @@
+mod paging;
+#[cfg(test)]
+mod paging_tests;
 mod protection;
 mod sandbox;
 #[cfg(test)]
@@ -322,23 +325,23 @@ async fn run_with_config(
         let mut masked_columns = None;
         let known_columns =
             &expected_columns[&(source.alias.to_lowercase(), source.table.to_lowercase())];
+        let mut page_plan = paging::PagePlan::prepare(
+            adapter.as_ref(),
+            resolved.kind,
+            &source,
+            expected,
+            known_columns,
+            &cancel,
+            deadline,
+        )
+        .await?;
         loop {
             let remaining = expected.saturating_sub(offset);
             let page_limit = MAX_PAGE_ROWS.min(remaining + 1);
             let mut data = bounded(
                 &cancel,
                 deadline,
-                adapter.fetch_rows(
-                    &source.schema,
-                    &source.table,
-                    None,
-                    page_limit as i64,
-                    offset as i64,
-                    None,
-                    false,
-                    false,
-                    false,
-                ),
+                page_plan.fetch(adapter.as_ref(), resolved.kind, &source, page_limit, offset),
             )
             .await?;
             source_reads += 1;
@@ -373,6 +376,7 @@ async fn run_with_config(
             if source_bytes > MAX_INPUT_BYTES {
                 return Err("Die Quelldaten überschreiten 64 MiB. Weniger oder kleinere Tabellen auswählen.".into());
             }
+            page_plan.accept(&source, &data)?;
             let page_masked_columns = protection.apply(&mut data);
             masked_columns.get_or_insert(page_masked_columns);
             offset += data.rows.len();
@@ -383,7 +387,7 @@ async fn run_with_config(
             })
             .await
             .map_err(|_| "Quelldaten konnten nicht lokal übernommen werden.".to_string())??;
-            if remaining < page_limit {
+            if remaining < page_limit || expected <= MAX_PAGE_ROWS {
                 break;
             }
         }

@@ -303,6 +303,11 @@ async fn live_spacetime_account_adapter_limits_performance_cancel_and_idle() {
         .execute_query("SELECT * FROM customer; DELETE FROM customer")
         .await
         .is_err());
+    assert!(adapter
+        .execute_query("SELECT id FROM customer LIMIT 1 /* ' */; DELETE FROM customer WHERE id = 18446744073709551615 /* ' */")
+        .await
+        .unwrap_err()
+        .contains("genau eine"));
     assert!(
         account::call_reducer_at(&target, "rename_customer", &json!([1, "changed"]), false)
             .await

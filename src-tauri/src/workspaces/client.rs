@@ -353,9 +353,13 @@ pub async fn workspace_local_start(
     let shutdown = tokio_util::sync::CancellationToken::new();
     let stopped = shutdown.clone();
     tokio::spawn(async move {
-        let _ = axum::serve(listener, super::server::router(state))
-            .with_graceful_shutdown(stopped.cancelled_owned())
-            .await;
+        let _ = axum::serve(
+            listener,
+            super::server::router(state)
+                .into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .with_graceful_shutdown(stopped.cancelled_owned())
+        .await;
     });
     *local_server()
         .lock()

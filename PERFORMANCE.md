@@ -263,3 +263,21 @@ JDBC lief unter Temurin JDK 21.0.13+9; die Java-Bridge wurde zusätzlich mit `ja
 Die Neon-Prüfung verwendet einen lokalen WebSocket-Proxy vor echtem PostgreSQL, keinen gehosteten Neon-Endpunkt. SpacetimeDB lief mit dem offiziellen SDK und Server 2.14.1. Das Verwerfen einer HTTP-Anfrage gibt lokale Arbeit frei; ein sofortiger serverseitiger Abbruch wird nicht behauptet. In den nativen Szenarien entstanden im Leerlauf keine zusätzlichen Anfragen.
 
 Die beiden Billing-Funktionen wurden mit echtem Deno inklusive HTTP-Server, Streams und WebCrypto ausgeführt und mit dessen TypeScript-Prüfer geprüft. Nur Stripe-/Supabase-Upstreams waren simuliert. Geprüft wurden unter anderem rohe UTF-8-Signaturen, Zeitfenster, Größenlimits, Origin, JWT, Preise, Idempotenz und Fehlerbereinigung. Für den sequenziellen Performance-Durchlauf galt eine gleichzeitige Anfrage; nach 250 ms Leerlauf gab es keine weiteren Requests. Der Deno-Lauf fand während einer speicherbegrenzten PostgreSQL-Testkompilierung statt und ist keine isolierte Hardwarebaseline. Das Limit von 64 MiB Speicherzuwachs und die Latenzbudgets von 100/250 ms wurden eingehalten.
+
+### Freigegebene Review-Korrekturen
+
+Nach dem einmaligen Opus-5.5-High-Review und der Freigabe aller bestätigten Funde wurden 64 gezielte Rust-Tests sowie sieben echte JDBC-/WSS-/Spacetime-/Workspace-PostgreSQL-Livetests ausgeführt. Alle bestanden. Die nachfolgenden Werte stammen aus dieser Korrekturrunde; die früheren Messungen oben bleiben als getrennte Nachweise erhalten.
+
+| Szenario | Umfang | Median | p95 | Begrenzung und Ergebnis |
+|---|---|---:|---:|---|
+| JDK-Statuscache | 9 × 100 Zugriffe | 0,117 ms | 0,153 ms | keine JDK-Prozesse beim Cache-/Registry-Workload; vier gleichzeitige Prüfungen starten zusammen einen Prozess |
+| Provider-Registry | neun Listenabrufe | 7,38 ms | 80,70 ms | kein JDK-Prozess beim App-Start; frische Prüfung erst bei explizitem Treiberzugriff |
+| JDBC / H2, Syntaxfehler | neun Fehler / neun Anfragen | 0,53 ms | 11,06 ms | dieselbe PID und temporäre Sitzung bleiben erhalten; keine Prozessneustarts |
+| Neon-Listenercache | 9 × 1.000 Treffer, zusätzlich 64 konkurrierende Wiederverwendungs-/Idle-Fälle | 1,34 ms | 1,47 ms | ein Listener, höchstens vier Arc-Besitzer, keine Upstream-/Leerlaufanfragen |
+| Spacetime-SQL-Prüfer | 262.195 Byte SQL × 31 | 0,86 ms | 0,96 ms | 262.195 Byte behaltene Ausgabe, keine DB-Anfragen oder Hintergrundarbeit; Budgets 50/100 ms |
+| Federation / SQLite | 2 × 20.000 Zeilen, zusammengesetzter PK `(tenant,id)` | 1.252,7 ms | 1.308,6 ms | volle Schlüsselordnung, Seiten höchstens 512 Zeilen, 82 COUNT-/Datenseitenoperationen, Rohwerte unter 8 MiB; Budgets 3.000/5.000 ms |
+| Workspace-Loginbegrenzung | 1.024 Clients × 15 Durchläufe | 48,04 ms | 56,79 ms | höchstens 768 Zähler, geschätzte Schlüssel-/Bucketkapazität 135.579 Byte, keine Passwortjobs/DB-Anfragen/Hintergrundarbeit; Budgets 100/250 ms |
+
+Der neue Federation-Test deckt tatsächlich wechselnde ungeordnete SQLite-Scans, zusammengesetzte Schlüssel, den Übergang 512/513 Zeilen, Views, fehlende/NULL-/duplizierte Schlüssel und echtes `SQLITE_FULL` mit zurückgerollter Ladecharge ab. Die 64-MiB-Rohdatengrenze und das 32-MiB-SQLite-Limit je Alias wurden nicht erhöht. Quellen über 512 Zeilen benötigen eine belegbar stabile und begrenzte Adapterstrategie; zusätzliche Schema-/View-/PK-Metadatenabfragen zählen nicht zu den 82 COUNT-/Datenseitenoperationen.
+
+Die wiederholten JDBC-Datenläufe ergaben H2 17,74/27,10 ms, PostgreSQL 20,04/80,43 ms; Neon-WSS 332,66/360,40 ms und SpacetimeDB 59,28/64,29 ms (jeweils Median/p95, gleiche Datensätze und Grenzen wie oben). Für die Workspace-Metadatenseiten waren es 9,89/21,17 ms bei weiterhin 20.546 Byte Antwort. Unterschiedliche Hintergrundlast erlaubt daraus keinen präzisen Beschleunigungsfaktor. Vor Testausführung wurde über die gemeinsame Cargo-Sperre auf parallel laufende Kompilierungen gewartet; Warte- und Kompilierzeit sind nicht Teil dieser Funktionslatenzen.

@@ -202,7 +202,13 @@ class L8dbJdbcBridge {
                     OUTPUT.println(response);
                 } catch (Throwable error) {
                     String state = error instanceof SQLException ? ((SQLException) error).getSQLState() : null;
-                    OUTPUT.println("{\"error\":\"JDBC-Operation fehlgeschlagen\",\"state\":" + (state == null ? "null" : escape(state)) + "}");
+                    String kind = "protocol";
+                    if (error instanceof SQLException) {
+                        kind = "sql";
+                        if (error instanceof SQLTimeoutException || "57014".equals(state)) kind = "timeout";
+                        else if (error instanceof SQLNonTransientConnectionException || error instanceof SQLTransientConnectionException || error instanceof SQLRecoverableException || (state != null && state.startsWith("08"))) kind = "connection";
+                    }
+                    OUTPUT.println("{\"error\":\"JDBC-Operation fehlgeschlagen\",\"kind\":" + escape(kind) + ",\"state\":" + (state == null ? "null" : escape(state)) + "}");
                 }
                 OUTPUT.flush();
             }
