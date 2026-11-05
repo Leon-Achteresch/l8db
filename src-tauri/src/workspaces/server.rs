@@ -1213,7 +1213,7 @@ async fn execute_query(
             match (result,cleanup) {(Ok(result),Ok(()))=>Ok(result),(Err(error),_)=>Err(error),(_,Err(error))=>Err(error)}
         } else { adapter.execute_query(&input.sql).await }
         };
-        if connection.kind == DatabaseKind::Postgres {
+        if matches!(connection.kind, DatabaseKind::Postgres | DatabaseKind::Sqlite) {
             operation.await
         } else {
             let cancelled = execution::cancellation_token();

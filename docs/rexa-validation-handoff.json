@@ -1,5 +1,5 @@
 {
-  "status": "in_progress_relocated_to_macbook_by_user",
+  "status": "complete_macbook_validation",
   "objective": "Complete the implemented RexaDB gap expansion, remaining validation and necessary corrections, then commit/push development and provide a short German summary",
   "sourceCheckpoint": "b80e804d1360656d587451fc7c9d19a36abb9fdd",
   "repository": "https://github.com/Leon-Achteresch/l8db",
@@ -72,14 +72,15 @@
         "id": 10,
         "severity": "P3",
         "change": "Keep and document fresh read-only database sessions; MySQL fixture checks15fresh connections and latency/idle budgets",
-        "remaining": "Complete the full current-source MySQL run and record numerical measurements"
+        "verification": "Current macOS arm64 binary: complete MySQL8.4.13 fixture passed with560assertions; see macValidation"
       }
     ],
     "approval": "User approved all confirmed findings and Spacetime hardening",
     "fixRoundsAllowed": 1,
-    "fixRoundInProgress": 1,
+    "fixRoundInProgress": null,
     "additionalReviewAllowed": false,
-    "coverage": "Backend and connected callers thoroughly read; most new frontend views and Neon/PlanetScale explorers skimmed"
+    "coverage": "Backend and connected callers thoroughly read; most new frontend views and Neon/PlanetScale explorers skimmed",
+    "fixRoundsCompleted": 1
   },
   "passedEvidence": {
     "linuxEnvironment": {
@@ -154,35 +155,27 @@
     "firstRun": "Native release run reached534assertions, then failed because a blocked MySQL HTTP query did not return within2seconds after cancellation",
     "fixCommit": "e63b345c",
     "fixFile": "src-tauri/src/workspaces/server.rs",
-    "fix": "Non-PostgreSQL operation has a local cancellation-token/30second timeout select; PostgreSQL retains native cancellation",
-    "verification": "Compile and Clippy passed; a complete current-source native MySQL retest is still required",
+    "fix": "e63b345c added a local cancellation-token/30second timeout select; the Mac continuation preserves both PostgreSQL and SQLite native cancellation and retains that select for MySQL",
+    "verification": "Complete current-source native macOS MySQL run passed with560assertions after preserving SQLite native interruption in the same authorized fix round",
     "semantics": "Local HTTP cancellation is not confirmation that the server-side SQL already stopped; fixture verifies cleanup after releasing its table lock",
     "mysqlVersionPreviouslyUsed": "8.4.13",
     "fixtureInputs": [
       "L8DB_WORKSPACE_SERVER_BIN absolute path to the current native app binary",
       "L8DB_WORKSPACE_MYSQL_URL local isolated MySQL lab with performance_schema enabled"
     ],
-    "budgets": "15queries against10000rows; median<100ms,p95<250ms,1000retainedrows,response<128KiB,15freshDBconnections,concurrency4/fifth429,HTTPcancel<2s,zeroidlequeries/connections"
+    "budgets": "15queries against10000rows; median<100ms,p95<250ms,1000retainedrows,response<128KiB,15freshDBconnections,concurrency4/fifth429,HTTPcancel<2s,zeroidlequeries/connections",
+    "status": "passed_on_macbook"
   },
-  "remainingWork": [
-    "Inspect and preserve the Mac checkout status; synchronize development using repository coordination rules. Do not overwrite local edits or use worktrees.",
-    "Read current AGENTS.md and docs/providers.md, docs/team-hub.md, PERFORMANCE.md. Recent incoming development changed AGENTS UI guidance, extension APIs, versioning and bun.lock; these changes have been merged, preserving both feature-ID groups.",
-    "Use Bun1.3.10 and a frozen-lockfile install. Recheck TypeScript/build on the newly merged source and test the feature-ID merge. Do not use Linux node_modules, binaries, JDK paths or test tokens on macOS.",
-    "Run current-source cargo check with default DuckDB/ODBC features; compile extra scoped Rust regressions with default features and memory-conscious local compiler settings. Filters: mcp::server::tests::, mcp::watch::tests::, versioning::artifact::, workspaces::.",
-    "Run Workspace PostgreSQL ignored tests against an isolated local lab. Previous unchanged JDBC/Neon/Spacetime live evidence remains valid; add native macOS evidence where feasible and record missing coverage.",
-    "Build the current native app and run the complete MySQL fixture above. Prefer the normal release configuration if resources allow; any local compiler override must be recorded and must not change tracked Cargo settings just to satisfy local memory limits.",
-    "Fix related failures within the already authorized final fix round. Never loosen performance budgets or fix unrelated pre-existing failures.",
-    "Record actual macOS/architecture/CPU/RAM/runtime and median/p95/memory/request/concurrency/cancellation/idle results. Do not claim all operating systems, JDBC vendors or database families were tested.",
-    "Update the verification record and remaining limitations, commit only owned changes and push origin/development with coordination/fetch/merge/retry. Verify the commit is reachable from fetched origin/development. No canary/main push, no release and no CI wait."
-  ],
+  "remainingWork": [],
   "portableCommands": {
     "frontendTypecheck": "bunx tsc -p tsconfig.app.json --noEmit",
     "frontendBuild": "bun run build",
     "extraRust": "cargo --config profile.test.package.l8db.debug=0 test --lib --locked -- --test-threads=1 --nocapture mcp::server::tests:: mcp::watch::tests:: versioning::artifact:: workspaces::",
     "workspacePostgres": "cargo --config profile.test.package.l8db.debug=0 test --lib --locked -- --ignored --test-threads=1 --nocapture workspaces::",
-    "nativeBuild": "bun run tauri build --no-bundle -- --locked --bin l8db",
+    "nativeBuild": "CARGO_BUILD_JOBS=1 cargo build --locked --bin l8db (src-tauri; native development profile, default DuckDB/ODBC)",
     "mysql": "bun test tests/workspaces-mysql-live.test.ts",
-    "spacetimeLab": "bash scripts/test-spacetimedb-live.sh --setup-only"
+    "spacetimeLab": "bash scripts/test-spacetimedb-live.sh --setup-only",
+    "nativeBuildRelease": "bun run tauri build --no-bundle -- --locked --bin l8db"
   },
   "knownUnrelatedBaselineFailures": {
     "bun": [
@@ -213,6 +206,168 @@
     "No real Windows result",
     "JDBC live evidence covers H2 and PostgreSQL under JDK21; javac--release17 passed but actualJDK17runtime was not tested",
     "No cross-server federation snapshot or Workspace SSO; limits documented in providers/team docs",
-    "Cloud browser transport mocks are separate evidence from native/live tests"
-  ]
+    "Cloud browser transport mocks are separate evidence from native/live tests",
+    "Current macOS native evidence uses the development profile; no current optimized release/installer or signing result",
+    "No native heap/RSS profile; MySQL memory evidence bounds retained rows and serialized response size",
+    "JDK17.0.21 and21.0.12.1 were found on this Mac, but JDBC/WSS/Spacetime live scenarios were not unnecessarily repeated; previous Linux evidence remains separate",
+    "No broad suite rerun or new review; documented unrelated baseline failures remain separate"
+  ],
+  "macValidation": {
+    "date": "2026-11-05",
+    "gitBase": "5d6d2f94ea7753da464e683a1d3147c6bb6432e3",
+    "environment": {
+      "os": "macOS27.0.1",
+      "build": "26A434",
+      "architecture": "arm64",
+      "cpu": "Apple M3",
+      "logicalCpus": 8,
+      "ramBytes": 17179869184,
+      "bun": "1.3.10 (30e609e0)",
+      "rust": "1.99.0 (b940084d7)",
+      "cargo": "1.99.0",
+      "dockerServer": "29.9.1",
+      "labs": "Own loopback-only Docker Linux/aarch64 MySQL8.4.13 and PostgreSQL18.6; no Linux-host artifacts, secrets or labs reused",
+      "isolation": "Shared development Mac; real platform evidence, no CPU/heap simulation or isolated hardware baseline"
+    },
+    "dependencies": {
+      "command": "bun install --frozen-lockfile --ignore-scripts",
+      "lockfileChanged": false
+    },
+    "frontend": {
+      "typescriptAndViteBuild": true,
+      "targetedDistinctTestsPassed": 28,
+      "files": [
+        "new-features",
+        "workspaces",
+        "managed-connections",
+        "cloud-accounts",
+        "federation-bridge",
+        "jdbc",
+        "payments"
+      ],
+      "testExecutionNote": "One combined Bun invocation caused cross-file transport mock contamination in payments; its8tests passed in the isolated process required by scripts/test-tests.ts. No runtime fix or budget change was needed.",
+      "registeredRexaCommands": 62,
+      "featureIdsRetainedAndAttached": 5,
+      "warnings": "Existing chunk-size and ineffective dynamic import warnings"
+    },
+    "rust": {
+      "defaultFeatures": [
+        "duckdb",
+        "odbc"
+      ],
+      "cargoCheckAfterCorrection": true,
+      "unaffectedContractsPassedBeforeWorkspaceOnlyCorrection": {
+        "mcp::server::tests::": 23,
+        "mcp::watch::tests::": 8,
+        "versioning::artifact::": 5
+      },
+      "workspaceRegularPassedAfterCorrection": 13,
+      "workspacePostgresLivePassedAfterCorrection": 1,
+      "remainingIgnored": "mcp::watch::tests::watch_pushes_row_changes_with_bounded_database_load requires its own watch lab; not run",
+      "compilerSettings": "CARGO_BUILD_JOBS=1; test CARGO_INCREMENTAL=0 and --config profile.test.package.l8db.debug=0; tracked Cargo settings unchanged",
+      "warnings": "Existing Tiberius deprecations; macOS linker reports __eh_frame>16MiB and possible exception-handling performance impact"
+    },
+    "authorizedFixRoundContinuation": {
+      "file": "src-tauri/src/workspaces/server.rs",
+      "problem": "The e63b345c outer cancellation select also dropped SQLite run_blocking before its native interrupt, leaving four recursive SQL workers busy and hanging runtime shutdown. The initial scoped test run was deliberately terminated and is not a complete suite pass.",
+      "correction": "Keep PostgreSQL and SQLite native cancellation/timeout paths; retain local cancellation/30s timeout select for MySQL",
+      "regression": "Existing SQLite cancellation test now requires native interrupted-query acknowledgement and same-connection followup within2s, plus zero active jobs and no idle audit writes; existing four-slot/revocation tests also pass",
+      "additionalReview": false
+    },
+    "nativeBinary": {
+      "path": "src-tauri/target/debug/l8db",
+      "format": "Mach-O64-bit arm64",
+      "sha256": "114a5379a9d745fc8a6607004d90196078f9578717819af5799ebe193a10d7f9",
+      "buildPassed": true,
+      "profile": "dev, unoptimized with debuginfo; all default drivers; no root codegen/LTO overrides",
+      "reason": "Reuse107GiB existing debug cache with only24GiB free at start; no additional release cache or installer build",
+      "runtimeSourceSha256": "69f98c90453b97fa93e145218035547f92c1ceb0166e1221b722f5576d492d28"
+    },
+    "mysql": {
+      "passed": true,
+      "assertions": 560,
+      "fixture": "tests/workspaces-mysql-live.test.ts",
+      "wallSeconds": 6.69,
+      "sourceRows": 10000,
+      "queries": 15,
+      "medianMs": 40.84,
+      "p95Ms": 46.56,
+      "medianLimitMs": 100,
+      "p95LimitMs": 250,
+      "sourceSqlStatements": 90,
+      "sourceRowsSent": 150015,
+      "freshDatabaseConnections": 15,
+      "retainedResultRows": 1000,
+      "maximumResponseBytes": 28882,
+      "responseLimitExclusiveBytes": 131072,
+      "maximumConcurrentQueries": 4,
+      "fifthHttpStatus": 429,
+      "httpCancellationMs": 2.49,
+      "httpCancellationLimitMs": 2000,
+      "sourceQueriesStillRunningAtHttpCancellation": 4,
+      "sourceQueriesAfterUnlock": 0,
+      "idleConnections": 0,
+      "idleRequests": 0,
+      "idleObservationMs": 250,
+      "memoryScope": "Bounded retained rows/serialized response, not a native heap/RSS profile",
+      "otherCoverage": "Native startup/restart/persistence, credential encryption/file modes, permissions, native read-only SECURITY DEFINER protection, admin writes, pagination and4MiB result error"
+    },
+    "otherMeasurements": {
+      "sqliteCancellation": {
+        "recursiveStepLimit": 1000000000,
+        "nativeInterruptMs": 0.634667,
+        "sameConnectionFollowupMs": 0.662208,
+        "eachLimitMs": 2000,
+        "activeJobsAfter": 0,
+        "idleMsWithoutAuditWrites": 80
+      },
+      "workspaceMetadata": {
+        "users": 10000,
+        "auditRows": 50000,
+        "requestsPerRun": 2,
+        "retainedRowsPerPage": 100,
+        "medianMs": 2.6,
+        "p95Ms": 3.01,
+        "responseBytes": 20546,
+        "backgroundJobs": 0
+      },
+      "loginLimiter": {
+        "clients": 1024,
+        "samples": 15,
+        "medianMs": 21.79,
+        "p95Ms": 22.37,
+        "retainedCapacityBytes": 130140,
+        "maxCounters": 768,
+        "passwordJobs": 0,
+        "databaseRequests": 0,
+        "backgroundTasks": 0
+      },
+      "managedPointers": {
+        "profiles": 10000,
+        "samples": 11,
+        "medianMs": 9.903792,
+        "p95Ms": 19.75575,
+        "heapDeltaBytes": 4504495,
+        "retainedSummaries": 100,
+        "databaseRequests": 0,
+        "idleRequests": 0
+      },
+      "artifactJson": {
+        "migrations": 2000,
+        "inputBytes": 344914,
+        "medianMs": 10.487875,
+        "p95Ms": 10.696625,
+        "databaseRequests": 0
+      },
+      "mcpReadGuard": {
+        "columns": 2000,
+        "inputBytes": 22909,
+        "medianMs": 11.173958,
+        "p95Ms": 11.248959,
+        "databaseRequests": 0
+      }
+    },
+    "localLogs": "/private/tmp/l8db-rexa-mac-*.log (ephemeral local evidence; measurements preserved here)",
+    "cleanup": "Own MySQL and PostgreSQL test containers and their anonymous volumes removed after validation; pre-existing containers left unchanged"
+  }
 }

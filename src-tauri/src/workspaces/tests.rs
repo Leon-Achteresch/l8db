@@ -425,13 +425,30 @@ async fn workspace_cancellation_stops_real_sqlite_work_and_returns_to_idle() {
     )
     .await
     .unwrap();
-    assert!(tokio::time::timeout(Duration::from_secs(2), pending)
+    let error = tokio::time::timeout(Duration::from_secs(2), pending)
         .await
         .unwrap()
         .unwrap()
-        .is_err());
+        .unwrap_err();
+    assert!(error.contains("vom Server abgebrochen"), "{error}");
     assert!(started.elapsed() < Duration::from_secs(2));
+    let cancelled = started.elapsed();
     assert_eq!(lab.state.active_jobs(), 0);
+    let followup = Instant::now();
+    let result = tokio::time::timeout(
+        Duration::from_secs(2),
+        lab.request(
+            &lab.admin,
+            "POST",
+            &format!("connections/{connection}/query"),
+            json!({"sql":"SELECT 42 AS answer"}),
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(result["rows"][0]["answer"], 42);
+    let followup = followup.elapsed();
     let count: i64 = lab
         .state
         .db
@@ -450,6 +467,7 @@ async fn workspace_cancellation_stops_real_sqlite_work_and_returns_to_idle() {
             .unwrap(),
         count
     );
+    println!("workspace SQLite cancellation: 1000000000 recursive steps abandoned, native interrupt {cancelled:?}, same-connection followup {followup:?}, limits 2s each, active jobs 0, idle 80ms without audit writes");
 }
 
 #[tokio::test]
