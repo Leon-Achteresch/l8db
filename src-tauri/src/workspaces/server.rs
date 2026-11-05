@@ -1188,6 +1188,7 @@ async fn execute_query(
         },
     )?;
     let result=execution::run_query(Some(ExecutionOptions{job_id:Some(key),query_timeout:Some(30),max_rows:Some(maximum+1),..Default::default()}),true,async {
+        let operation = async {
         if read {
             crate::mcp::server::validate_read_query(connection.kind,input.sql.clone())?;
             if connection.kind == DatabaseKind::Postgres {
@@ -1211,6 +1212,17 @@ async fn execute_query(
             let cleanup=transaction.rollback().await;
             match (result,cleanup) {(Ok(result),Ok(()))=>Ok(result),(Err(error),_)=>Err(error),(_,Err(error))=>Err(error)}
         } else { adapter.execute_query(&input.sql).await }
+        };
+        if connection.kind == DatabaseKind::Postgres {
+            operation.await
+        } else {
+            let cancelled = execution::cancellation_token();
+            tokio::select! {
+                biased;
+                _ = cancelled.cancelled() => Err("Abfrage abgebrochen. Der Serverabschluss ist nicht bestätigt; vor erneutem Schreiben den Zustand prüfen.".to_string()),
+                result = tokio::time::timeout(Duration::from_secs(30), operation) => result.map_err(|_| execution::timeout_message())?,
+            }
+        }
     }).await;
     state.audit(
         user,
