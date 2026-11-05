@@ -74,6 +74,12 @@ import type {
   VersioningProject,
 } from "./types";
 
+export interface CodeDecision {
+  change: string;
+  object: string;
+  action: "apply" | "skip" | "variance" | "override" | "drift";
+}
+
 export interface DeploymentPlan {
   target: DatabaseTarget;
   from: DatabaseRelease;
@@ -84,6 +90,8 @@ export interface DeploymentPlan {
   changes: Change[];
   differences: ObjectDifference[];
   drift: ObjectDifference[];
+  code: CodeDecision[];
+  overrides: string[];
   reviewToken: string;
   sql: string[];
   binding: NonNullable<DatabaseTarget["binding"]>;
@@ -358,6 +366,7 @@ export async function planDeployment(
   target: DatabaseTarget,
   connection: SavedConnection,
   releaseId: string,
+  overrides: string[] = [],
 ): Promise<DeploymentPlan> {
   const team = await committedTeamConfiguration(repo, project.id);
   if (connection.readOnly) throw new Error("Die Zielverbindung ist schreibgeschützt.");
@@ -451,7 +460,7 @@ export async function planDeployment(
       );
   for (const change of plan.open)
     for (const id of change.touches)
-      if (varianceIds.has(id) && id in change.before)
+      if (varianceIds.has(id) && id in change.before && change.kind !== "repeatable")
         throw new Error(
           `${change.id} ändert ${id}, das beim Kunden als Abweichung festgehalten ist. Erst angleichen oder die Änderung mit Vorbedingung statt Vorher-Stand bauen.`,
         );
@@ -461,7 +470,47 @@ export async function planDeployment(
   const actual = await captureTolerant(connection, target, inspected);
   const differences = compareSnapshots(inspected, actual);
   const captured = new Map(actual.map((entry) => [entry.object.id, entry]));
+  const code: CodeDecision[] = [];
+  const current = new Map<string, string | undefined>(
+    [...plan.touched].map((id) => [id, captured.get(id)?.checksum]),
+  );
+  const last = new Map([...ledger.objects.values()].map((entry) => [entry.id, entry.hash]));
+  for (const step of plan.steps)
+    for (const change of step.changes) {
+      const id = change.touches[0];
+      const soll = step.release.objects.find((entry) => entry.object.id === id)?.checksum;
+      if (change.kind !== "repeatable" || change.touches.length !== 1 || !soll) continue;
+      const ist = current.get(id);
+      const variance = variances.find((entry) => entry.object === id);
+      const known = last.get(id);
+      const previous =
+        known !== undefined
+          ? ist === known
+          : id in change.before &&
+            (change.before[id] === null ? ist === undefined : ist === change.before[id]);
+      const action: CodeDecision["action"] =
+        ist === soll
+          ? "skip"
+          : variance && ist === variance.hash
+            ? "variance"
+            : previous
+              ? "apply"
+              : overrides.includes(id)
+                ? "override"
+                : "drift";
+      code.push({ change: change.id, object: id, action });
+      if (action !== "variance" && action !== "drift") {
+        current.set(id, soll);
+        last.set(id, soll);
+      }
+    }
+  const codeDrift = new Set(
+    code.filter((entry) => entry.action === "drift").map((entry) => entry.object),
+  );
   const drift = [
+    ...differences
+      .filter((item) => codeDrift.has(item.id))
+      .map((item) => ({ ...item, label: `${item.label} (direkt beim Kunden geändert)` })),
     ...differences.filter(
       (item) =>
         item.status !== "unchanged" && !plan.touched.has(item.id) && !varianceIds.has(item.id),
@@ -523,6 +572,7 @@ export async function planDeployment(
       ...snapshotPayload(entry, target),
     })),
     variances: variancePayload,
+    overrides,
     releases: await Promise.all(
       steps.map(async ({ step, statements, changes }) => ({
         id: step.release.id,
@@ -580,6 +630,8 @@ export async function planDeployment(
     changes: plan.open,
     differences,
     drift,
+    code,
+    overrides,
     sql,
     reviewToken: `${Date.now()}:${hash}`,
     binding,
@@ -600,11 +652,12 @@ export async function deploy(
   releaseId: string,
   reviewedToken: string,
   onProgress?: (message: string) => void,
+  overrides: string[] = [],
 ) {
   const { store } = await readTargets(repo, project.id);
   const target = store.targets.find((item) => item.id === targetId);
   if (!target) throw new Error("Datenbankziel fehlt.");
-  const plan = await planDeployment(repo, project, target, connection, releaseId);
+  const plan = await planDeployment(repo, project, target, connection, releaseId, overrides);
   assertReviewedToken(reviewedToken, plan.reviewToken);
   if (plan.drift.length)
     throw new Error(

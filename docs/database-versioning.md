@@ -85,6 +85,10 @@ Bekannte, gewollte Abweichungen eines Ziels stehen in `database/team.json` unter
 
 **Mit Altstand aufnehmen** ordnet jede Änderung des gewählten Releases ein: Die berührten Objekte entsprechen dem Stand danach (erledigt), dem Stand davor (offen) oder keinem von beiden (Entscheidung). Datenänderungen sind immer eine Entscheidung. Unerklärte Objekte werden als Abweichung vorgeschlagen und brauchen einen Grund. Nach der Bestätigung füllt l8db die Abhakliste mit `baseline`, ohne SQL im Anwendungsschema auszuführen. Offene Änderungen spielt der nächste Rollout ein. Danach muss `database/team.json` committet werden. Bei 5.000 Objekten und 2.000 Änderungen dauert die Einordnung im Median 23 ms (Apple M3, Bun 1.4.3).
 
+### Programmcode
+
+Views, Routinen, Prozeduren und Packages werden beim Erzeugen eines Releases zu eigenen wiederholbaren Änderungen (`kind: "repeatable"`, genau ein berührtes Objekt), solange das erzeugte SQL unverändert bleibt. Für sie gelten drei Hashes: Soll (Release), Zuletzt (`L8DB_VERSIONING_OBJECTS`) und Ist (Kunde). Ist gleich Soll: nichts einspielen, nur abhaken. Ist gleich festgehaltener Abweichung: überspringen. Ist gleich Zuletzt: einspielen. Sonst wurde der Code direkt beim Kunden geändert; Plan und Backend blockieren für genau dieses Objekt. Auflösen lässt sich das über **Ins Repository übernehmen** (Kundencode in die Arbeitskopie), **Als Abweichung festhalten** (`team.json`) oder **Überschreiben freigeben** (Teil des freigegebenen Plans). Übersprungene Änderungen stehen im Ereignis unter `skippedChanges`. **Code-Drift prüfen** zeigt den Zustand aller Code-Objekte bei allen Kunden mit einer Abhaklisten-Abfrage je Ziel.
+
 ## Ein Repository für viele Kunden: Reviews und Pipeline
 
 Alle Kunden eines Produkts teilen ein Git-Repository mit dem Remote `origin` auf GitHub (auch Enterprise Server), GitLab, Azure DevOps oder Gitea/Forgejo. Änderungen gelangen nur über Pull Requests in den Hauptbranch, also den Standardbranch des Remotes. Jeder Kunde hat getrennte Verbindungen für Test- und Produktivsystem, gegebenenfalls auf verschiedenen Servern.

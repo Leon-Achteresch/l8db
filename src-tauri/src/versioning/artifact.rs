@@ -381,7 +381,7 @@ async fn verify_changes(source: &Value, plan: &Value, context: &Context<'_>) -> 
             (rules, sql, None, change_id.to_string(), context.to)
         };
         let kind = rules["kind"].as_str().unwrap_or("versioned");
-        if kind != "versioned"
+        if !["versioned", "repeatable"].contains(&kind)
             || change["kind"] != kind
             || change["checksum"] != control::hash(&sql)
             || change["requires"] != rules.get("requires").cloned().unwrap_or(json!([]))
@@ -571,6 +571,18 @@ pub async fn verify(request: &Request) -> Result<(), String> {
         expected["definition"] = variance["definition"].clone();
         if !variance["definition"].is_string() || *variance != expected {
             return Err("Festgehaltene Abweichung wurde im Ausführungsplan verändert".into());
+        }
+    }
+    if let Some(overrides) = plan.get("overrides") {
+        let overrides = overrides
+            .as_array()
+            .ok_or("Überschreiben-Freigaben sind ungültig")?;
+        if overrides.iter().any(|id| {
+            !soll
+                .as_array()
+                .is_some_and(|items| items.iter().any(|item| item["id"] == *id))
+        }) {
+            return Err("Überschreiben-Freigabe betrifft kein verwaltetes Objekt".into());
         }
     }
     let releases = plan["releases"]

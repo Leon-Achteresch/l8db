@@ -40,6 +40,8 @@ pub(super) struct Execution {
     pub objects: Vec<Managed>,
     #[serde(default)]
     pub variances: Vec<Managed>,
+    #[serde(default)]
+    pub overrides: Vec<String>,
     pub releases: Vec<Release>,
 }
 #[derive(Clone, Deserialize)]
@@ -311,6 +313,71 @@ async fn applied(
         .collect())
 }
 
+async fn applied_objects(
+    adapter: &dyn DatabaseAdapter,
+    c: &Connection,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let result = adapter
+        .execute_query(&format!(
+            "SELECT \"OBJECT_ID\", \"APPLIED_HASH\" FROM {} WHERE \"PROJECT_ID\"={}",
+            table(&c.schema, "OBJECTS"),
+            literal(&c.project_id)
+        ))
+        .await
+        .map_err(|e| format!("Objektstand der Zieldatenbank nicht lesbar: {e}"))?;
+    Ok(result
+        .rows
+        .iter()
+        .filter_map(|row| {
+            Some((
+                row["OBJECT_ID"].as_str()?.to_owned(),
+                row["APPLIED_HASH"].as_str()?.to_owned(),
+            ))
+        })
+        .collect())
+}
+
+pub(super) async fn code(
+    adapter: &dyn DatabaseAdapter,
+    kind: DatabaseKind,
+    change: &PlannedChange,
+    soll: &Snapshot,
+    variance: Option<&Snapshot>,
+    last: Option<&str>,
+    overridden: bool,
+) -> Result<bool, String> {
+    let touch = change
+        .touches
+        .first()
+        .filter(|_| change.touches.len() == 1)
+        .ok_or("Programmcode-Änderung muss genau ein Objekt berühren")?;
+    let ist = if snapshot::exists(adapter, soll).await? {
+        Some(snapshot::definition(adapter, kind, soll).await?)
+    } else {
+        None
+    };
+    if ist.as_deref() == Some(soll.definition.as_str())
+        || variance.is_some_and(|v| ist.as_deref() == Some(v.definition.as_str()))
+    {
+        return Ok(false);
+    }
+    let previous = match last {
+        Some(hash) => ist.as_deref().map(control::hash).as_deref() == Some(hash),
+        None => match touch.expect.as_str() {
+            "definition" => ist.as_deref() == Some(touch.object.definition.as_str()),
+            "absent" => ist.is_none(),
+            _ => false,
+        },
+    };
+    if previous || overridden {
+        return Ok(true);
+    }
+    Err(format!(
+        "{}: Programmcode {}.{} wurde direkt beim Kunden geändert. Übernehmen, als Abweichung festhalten oder Überschreiben freigeben.",
+        change.id, soll.schema, soll.name
+    ))
+}
+
 fn touched<'a>(releases: &'a [Release]) -> std::collections::HashSet<&'a str> {
     releases
         .iter()
@@ -434,6 +501,9 @@ async fn run(
         let result = adapter.execute_query(&format!("UPDATE {state} SET \"LEASE\"={}, \"STATUS\"='running' WHERE \"PROJECT_ID\"={} AND \"RELEASE_HASH\"={} AND \"STATUS\"='{READY}' AND \"LEASE\" IS NULL",literal(&request.run_id),literal(&c.project_id),literal(&plan.from_hash))).await?;
         if result.rows_affected!=Some(1) { return Err("Datenbankstand geändert oder ungeklärte Ausführung".into()); }
         leased = true;
+        let mut last = applied_objects(adapter.as_ref(), c).await?;
+        let variance_map: std::collections::HashMap<&str, &Snapshot> = plan.variances.iter().map(|v| (v.id.as_str(), &v.snapshot)).collect();
+        event["skippedChanges"] = json!([]);
         let count = plan.releases.len();
         for (index, release) in plan.releases.iter().enumerate() {
             control::check_lock(c,&lock,&transactions).await?;
@@ -469,14 +539,21 @@ async fn run(
                 checks(&tx,&release.preconditions,&transactions,&mut event).await?;
                 for change in &release.changes {
                     control::check_lock(c,&lock,&transactions).await?;
-                    if c.kind == DatabaseKind::Postgres {
-                        let session = transactions.versioning_adapter(&tx, pool.clone()).await?;
-                        before(session.as_ref(), c.kind, change).await?;
-                    } else {
-                        before(adapter.as_ref(), c.kind, change).await?;
-                    }
+                    let session = if c.kind == DatabaseKind::Postgres { Some(transactions.versioning_adapter(&tx, pool.clone()).await?) } else { None };
+                    let inspector: &dyn DatabaseAdapter = session.as_deref().unwrap_or(adapter.as_ref());
+                    let soll = (change.kind == "repeatable").then(|| change.touches.first().and_then(|t| release.objects.iter().find(|o| o.schema == t.object.schema && o.name == t.object.name && o.kind == t.object.kind).map(|o| (t.id.as_str(), o)))).flatten();
+                    let apply = match soll {
+                        Some((id, soll)) => {
+                            let apply = code(inspector, c.kind, change, soll, variance_map.get(id).copied(), last.get(id).map(String::as_str), plan.overrides.iter().any(|o| o == id)).await?;
+                            if apply || !variance_map.contains_key(id) { last.insert(id.to_string(), control::hash(&soll.definition)); }
+                            apply
+                        }
+                        None => { before(inspector, c.kind, change).await?; true }
+                    };
+                    drop(session);
+                    if !apply { event["skippedChanges"].as_array_mut().unwrap().push(json!(change.id)); }
                     checks(&tx,&change.preconditions,&transactions,&mut event).await?;
-                    for statement in release.statements.iter().filter(|s| s.migration == change.id) {
+                    for statement in release.statements.iter().filter(|s| apply && s.migration == change.id) {
                         control::check_lock(c,&lock,&transactions).await?;
                         event["inFlightStatement"] = json!(statement.id);
                         journal(adapter.as_ref(),request,"statement_started",json!({"statement":statement.id,"checksum":control::hash(&statement.sql)})).await?;

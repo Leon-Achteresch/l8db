@@ -147,9 +147,7 @@ export function planChanges(
         `Die bereits angewendete Änderung ${change.id} wurde im Repository verändert. Neue Änderung anlegen statt die alte zu bearbeiten.`,
       );
   }
-  const open = closure.changes.filter(
-    (change) => change.kind === "versioned" && !applied.has(change.id),
-  );
+  const open = closure.changes.filter((change) => !applied.has(change.id));
   const grouped = new Map<string, Change[]>();
   for (const change of open) {
     const release = closure.owner.get(change.id) ?? targetId;

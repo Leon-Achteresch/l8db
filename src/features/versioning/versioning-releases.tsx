@@ -14,7 +14,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { versioningRepository } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
-import { generateMigration, groundwork, type MigrationDraft } from "@/lib/versioning/migrations";
+import {
+  generateMigration,
+  groundwork,
+  type MigrationDraft,
+  splitMigrations,
+} from "@/lib/versioning/migrations";
 import {
   checksum,
   deployKind,
@@ -161,7 +166,16 @@ export function VersioningReleases({
       createdAt: new Date().toISOString(),
       objects,
       migrations: sql.trim()
-        ? [{ id: `${id}-migration`, title: `Update auf ${id}`, sql, checksum: await checksum(sql) }]
+        ? ((migration && sql === migration.sql
+            ? await splitMigrations(project.kind, id, migration)
+            : null) ?? [
+            {
+              id: `${id}-migration`,
+              title: `Update auf ${id}`,
+              sql,
+              checksum: await checksum(sql),
+            },
+          ])
         : await groundwork(project.kind, id, objects),
       track,
       safety: {
