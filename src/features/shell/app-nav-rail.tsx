@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Plug, PlugZap } from "lucide";
 import { MorphIcon } from "morphicons/react";
+import { Fragment } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { type AppSidebarNavItem, appSidebarData } from "@/features/sidebar/app-sidebar-data";
 import { useActiveConnection } from "@/lib/connections";
@@ -27,17 +28,19 @@ export function AppNavRail() {
   const easyMode = useSettingsStore((state) => state.easyMode);
   const seenFeatures = useSeenNewFeatures();
   const activeConnection = useActiveConnection();
-  const navItems = activeConnection
-    ? appSidebarData.navMain.filter(
-        (item) =>
-          isEasyModeRouteVisible(item.url, easyMode) && (!item.available || item.available(caps)),
-      )
-    : [
-        connectItem,
-        ...appSidebarData.navMain.filter(
-          (item) => item.connectionFree && isEasyModeRouteVisible(item.url, easyMode),
-        ),
-      ];
+  const navItems = (
+    activeConnection
+      ? appSidebarData.navMain.filter(
+          (item) =>
+            isEasyModeRouteVisible(item.url, easyMode) && (!item.available || item.available(caps)),
+        )
+      : [
+          connectItem,
+          ...appSidebarData.navMain.filter(
+            (item) => item.connectionFree && isEasyModeRouteVisible(item.url, easyMode),
+          ),
+        ]
+  ).sort((a, b) => (a.group ?? 0) - (b.group ?? 0));
   const activeUrl = useRouterSelect(
     (state) =>
       [...appSidebarData.navMain, connectItem].find((item) =>
@@ -51,37 +54,42 @@ export function AppNavRail() {
       aria-label="Bereiche"
       className="flex w-14 shrink-0 flex-col items-center gap-1.5 overflow-y-auto bg-sidebar py-2 [scrollbar-width:none]"
     >
-      {navItems.map((item) => {
+      {navItems.map((item, index) => {
         const active = item.url === activeUrl;
+        const groupStart = index > 0 && (navItems[index - 1].group ?? 0) !== (item.group ?? 0);
         return (
-          <Tooltip key={item.title} content={item.title} side="right">
-            <Link
-              to={item.url}
-              preload={item.url === "/query" || item.url === "/compare" ? false : "intent"}
-              preloadDelay={80}
-              aria-label={item.title}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors",
-                "hover:bg-sidebar-accent hover:text-foreground",
-                active && "bg-sidebar-accent text-foreground",
-              )}
-            >
-              <MorphIcon
-                icon={active ? item.activeIcon : item.icon}
-                reducedMotion="user"
-                className="size-[18px]"
-                strokeWidth={2}
-              />
-              {hasNewFeatures(item.featureScope, seenFeatures) && (
-                <span
-                  className="absolute right-1 top-1 size-1.5 rounded-full bg-primary"
-                  role="img"
-                  aria-label="Neu"
+          <Fragment key={item.title}>
+            {groupStart && <span aria-hidden="true" className="my-1 h-px w-6 shrink-0 bg-border" />}
+            <Tooltip content={item.title} side="right">
+              <Link
+                to={item.url}
+                preload={item.url === "/query" || item.url === "/compare" ? false : "intent"}
+                preloadDelay={80}
+                aria-label={item.title}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "relative inline-flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
+                  "hover:bg-sidebar-accent hover:text-foreground",
+                  active &&
+                    "bg-sidebar-accent text-foreground before:absolute before:-left-2.5 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-primary",
+                )}
+              >
+                <MorphIcon
+                  icon={active ? item.activeIcon : item.icon}
+                  reducedMotion="user"
+                  className="size-[18px]"
+                  strokeWidth={2}
                 />
-              )}
-            </Link>
-          </Tooltip>
+                {hasNewFeatures(item.featureScope, seenFeatures) && (
+                  <span
+                    className="absolute right-1 top-1 size-1.5 rounded-full bg-primary"
+                    role="img"
+                    aria-label="Neu"
+                  />
+                )}
+              </Link>
+            </Tooltip>
+          </Fragment>
         );
       })}
     </nav>

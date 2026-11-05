@@ -69,7 +69,14 @@ export const DataTableFooter = memo(function DataTableFooter({
   const rangeEnd = first + rowCount;
   const total = totalCount ?? countLabel;
   return (
-    <div className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-t border-border bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground select-none">
+    <div
+      title={
+        canEdit
+          ? "Pfeiltasten navigieren · Enter oder Klick auf die fokussierte Zelle zum Bearbeiten"
+          : "Navigiere mit Pfeiltasten · Doppelklick zum Kopieren"
+      }
+      className="grid h-8 shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-t border-border bg-muted/40 px-3 text-[11px] text-muted-foreground select-none"
+    >
       <span ref={infinite ? infiniteFeature.ref : undefined} className="whitespace-nowrap">
         {infinite && infiniteFeature.isNew && <NewBadge />}
         {total != null
@@ -98,13 +105,7 @@ export const DataTableFooter = memo(function DataTableFooter({
             </span>{" "}
             ({activeSort.desc ? "absteigend" : "aufsteigend"})
           </span>
-        ) : (
-          <span>
-            {canEdit
-              ? "Pfeiltasten navigieren · Enter oder Klick auf die fokussierte Zelle zum Bearbeiten"
-              : "Navigiere mit Pfeiltasten · Doppelklick zum Kopieren"}
-          </span>
-        )}
+        ) : null}
       </div>
       <div className="flex items-center justify-end gap-4">
         {onRefresh && (

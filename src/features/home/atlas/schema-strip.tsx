@@ -62,7 +62,7 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
             >
               {entry.name}
             </span>
-            <span className="truncate text-[10px] tabular-nums text-muted-foreground">
+            <span className="truncate text-[11px] tabular-nums text-muted-foreground">
               {[
                 entry.bytes != null ? formatBytes(entry.bytes) : null,
                 entry.tables != null
@@ -70,7 +70,7 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
                   : null,
               ]
                 .filter(Boolean)
-                .join(" · ") || " "}
+                .join(" · ") || "\u00a0"}
             </span>
             <span
               aria-hidden="true"
@@ -79,9 +79,7 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
               <span
                 className={cn(
                   "block h-full rounded-full",
-                  active
-                    ? "bg-linear-to-r from-chart-2 to-chart-1"
-                    : "bg-muted-foreground/40 group-hover:bg-linear-to-r group-hover:from-chart-2/70 group-hover:to-chart-1/70",
+                  active ? "bg-primary" : "bg-muted-foreground/40 group-hover:bg-primary/60",
                 )}
                 style={{ width: `${Math.max(2, entry.share * 100)}%` }}
               />

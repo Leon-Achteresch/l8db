@@ -40,6 +40,7 @@ export function DataTableColumnHeader({
       className={cn(
         "group flex items-center gap-1 rounded-sm py-0.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer min-w-0 shrink",
         classic ? "px-1" : "px-0.5",
+        columnStyle?.numeric && "flex-row-reverse",
       )}
     >
       {isFk && <LinkIcon className="size-3 shrink-0 text-blue-500" />}
@@ -64,10 +65,21 @@ export function DataTableColumnHeader({
 
   if (classic)
     return (
-      <div className="flex items-center gap-2 w-full min-w-0 justify-start" title={fkTitle}>
+      <div
+        className={cn(
+          "flex w-full min-w-0 items-center gap-2",
+          columnStyle?.numeric && "flex-row-reverse",
+        )}
+        title={fkTitle}
+      >
         {sortButton}
-        <div className="ml-auto flex shrink-0 items-center gap-1">
-          <div className="flex items-center gap-1 font-mono text-[10px] leading-none whitespace-nowrap text-muted-foreground/80 select-none">
+        <div
+          className={cn(
+            "flex shrink-0 items-center gap-1",
+            columnStyle?.numeric ? "mr-auto" : "ml-auto",
+          )}
+        >
+          <div className="flex items-center gap-1 font-mono text-[10px] leading-none font-normal whitespace-nowrap text-muted-foreground select-none">
             {renderTypeIcon(typeInfo.iconName, "size-2.5")}
             <span>{typeInfo.label}</span>
           </div>

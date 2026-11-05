@@ -53,7 +53,7 @@ export function RunControls({
         <Button
           size="sm"
           variant="default"
-          className="h-7 gap-1.5 rounded-r-none border-r border-primary-foreground/25 px-2.5 text-xs @min-[42rem]/qtb:px-3"
+          className="h-7 gap-1.5 rounded-r-none border-r border-primary-foreground/25 px-2.5 text-xs disabled:bg-primary/45 disabled:opacity-100 @min-[42rem]/qtb:px-3"
           data-tour="query-run"
           data-hotkey={hasSelection ? "query.runSelection" : "query.run"}
           onClick={actions.handleRun}
@@ -69,7 +69,7 @@ export function RunControls({
             <Button
               size="sm"
               variant="default"
-              className="h-7 w-8 rounded-l-none px-0"
+              className="h-7 w-7 rounded-l-none px-0 disabled:bg-primary/45 disabled:opacity-100"
               aria-label="Weitere Ausführungsarten"
               title="Weitere Ausführungsarten"
               disabled={runDisabled}
@@ -116,8 +116,8 @@ export function RunControls({
       </div>
       <Button
         size="sm"
-        variant="outline"
-        className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
+        variant="ghost"
+        className="h-7 gap-1.5 px-2 text-xs"
         data-tour="query-check"
         data-hotkey="query.check"
         onClick={() => void actions.handleCheck()}
@@ -137,8 +137,8 @@ export function RunControls({
       {isRunning && (
         <Button
           size="sm"
-          variant="outline"
-          className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
+          variant="ghost"
+          className="h-7 gap-1.5 px-2 text-xs"
           disabled={!activeJob?.cancellable || activeJob.status === "cancelling"}
           disabledReason={
             activeJob?.status === "cancelling"

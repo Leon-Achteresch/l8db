@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createId, emptyCondition } from "@/features/table/table-filter-panel/filter-conditions";
 import type { Combinator, FilterMode } from "@/features/table/table-filter-panel/filter-types";
 import { useActiveConnection } from "@/lib/connections";
@@ -13,6 +13,7 @@ import { compileFilterConditions, filterSupportsOr } from "@/lib/sql-filter";
 import type { FilterCondition, RowRule } from "@/lib/table-view-state";
 
 export interface FilterBarProps {
+  leading?: ReactNode;
   stateKey?: string;
   columns: string[];
   columnDetails?: DetailedColumnInfo[];

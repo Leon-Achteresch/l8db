@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 import { useShallow } from "zustand/shallow";
+import { Separator } from "@/components/ui/separator";
 import { DmlPreviewDialog } from "@/features/query/dml-preview-dialog";
 import { MultiTargetSheet } from "@/features/query/multi-target/multi-target-sheet";
 import { useMultiTargetRun } from "@/features/query/multi-target/use-multi-target-run";
@@ -251,6 +252,9 @@ export function QueryView({ tabId }: QueryViewProps) {
               onOpenScript={script.handleOpenScriptDialog}
               shortcutLabel={shortcutLabel}
             />
+            {(caps.dml_preview || caps.multi_target_query) && (
+              <Separator orientation="vertical" className="mx-1 my-2" />
+            )}
             {caps.dml_preview && (
               <DmlPreviewButton
                 disabled={exec.isRunning || !connection || !sql.trim()}
@@ -273,6 +277,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 onOpen={() => setMultiTargetOpen(true)}
               />
             )}
+            {isSql && <Separator orientation="vertical" className="mx-1 my-2" />}
             {isSql && <SelectRowLimit />}
             {connection && isSql && (
               <SqlStatesButton

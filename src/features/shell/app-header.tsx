@@ -260,7 +260,7 @@ export function AppHeader() {
             >
               <GitPullRequestIcon className="size-4" strokeWidth={1.75} />
               {hasNewVersioningFeatures ? (
-                <NewBadge className="absolute -right-2 -top-1.5 px-1 text-[8px]" />
+                <NewBadge className="absolute -right-2.5 -top-0.5 px-1 text-[8px]" />
               ) : null}
               {versioning.pending > 0 ? (
                 <span
@@ -339,7 +339,7 @@ export function AppHeader() {
           >
             <Sparkles className="size-4" strokeWidth={1.75} />
             {hasNewAiFeatures && !aiOpen && !aiPage ? (
-              <NewBadge className="absolute -right-2 -top-1.5 px-1 text-[8px]" />
+              <NewBadge className="absolute -right-2.5 -top-0.5 px-1 text-[8px]" />
             ) : null}
           </button>
         </Tooltip>
@@ -371,7 +371,7 @@ export function AppHeader() {
           >
             <Settings className="size-4" strokeWidth={1.75} />
             {hasNewSettingsFeatures ? (
-              <NewBadge className="absolute -right-2 -top-1.5 px-1 text-[8px]" />
+              <NewBadge className="absolute -right-2.5 -top-0.5 px-1 text-[8px]" />
             ) : null}
             {update ? (
               <span

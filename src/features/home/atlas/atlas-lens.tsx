@@ -55,8 +55,8 @@ export function AtlasLens({
               : metric === "rows"
                 ? "Fläche zeigt die geschätzten Zeilen, logarithmisch skaliert"
                 : metric === "links"
-                  ? "Keine Größen lesbar (Statistiken oder Leserechte fehlen), Fläche zeigt die Fremdschlüssel"
-                  : "Keine Größen lesbar (Statistiken oder Leserechte fehlen), alle Tabellen sind gleich groß"}
+                  ? "Fläche zeigt die Fremdschlüssel"
+                  : "Alle Tabellen sind gleich groß"}
         </span>
         {notice && (
           <span title={notice} className="max-w-full truncate text-amber-600 dark:text-amber-400">

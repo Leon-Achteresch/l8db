@@ -13,11 +13,11 @@ export function SettingsTableTabs() {
     <section
       data-setting-id="table-tabs"
       tabIndex={-1}
-      className="space-y-3 rounded-2xl border border-border/80 bg-card px-4 py-3.5 shadow-sm"
+      className="space-y-3 border-b border-border/60 pb-[calc(1rem+var(--ui-density-step))] outline-none"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="flex items-center gap-2 text-sm font-semibold">
+          <h3 className="flex items-center gap-2 text-sm font-medium">
             Tabbar für Tabellen & Views
             {hidden.length > 0 ? (
               <Badge variant="secondary" className="text-[10px]">
@@ -25,27 +25,29 @@ export function SettingsTableTabs() {
               </Badge>
             ) : null}
           </h3>
-          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+          <p className="mt-0.5 max-w-[68ch] text-xs leading-relaxed text-muted-foreground">
             Sichtbare Tabs für alle Verbindungen festlegen. Auch per Rechtsklick auf die Tabbar. Je
             nach Datenbank und Objekttyp sind nicht alle Tabs verfügbar.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={reset} disabled={hidden.length === 0}>
-          Alle einblenden
-        </Button>
+        {hidden.length > 0 ? (
+          <Button variant="outline" size="sm" onClick={reset}>
+            Alle einblenden
+          </Button>
+        ) : null}
       </div>
-      <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+      <div className="grid max-w-3xl gap-x-6 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-3">
         {TABLE_DETAIL_TABS.map((tab) => (
-          <label key={tab.id} className="flex items-center justify-between gap-4 text-sm">
-            <span>
-              {tab.label}
-              {tab.entity === "view" ? " (Views)" : ""}
-            </span>
+          <label key={tab.id} className="flex items-center gap-3 text-[13px]">
             <Switch
               checked={!hidden.includes(tab.id)}
               onCheckedChange={(checked) => setVisible(tab.id, checked)}
               aria-label={`${tab.label} anzeigen`}
             />
+            <span>
+              {tab.label}
+              {tab.entity === "view" ? " (Views)" : ""}
+            </span>
           </label>
         ))}
       </div>
