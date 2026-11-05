@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import type { CatalogObject } from "../src/lib/db";
-import { nativeScript, selectTables } from "../src/lib/transfer/native-script";
+import {
+  nativeScript,
+  objectKey,
+  pickableObjects,
+  selectTables,
+} from "../src/lib/transfer/native-script";
 
 function object(
   object_type: CatalogObject["object_type"],
@@ -213,6 +218,60 @@ describe("nativeScript", () => {
       "trigger:kunde_stempel",
       "table:beleg",
       "trigger:BELEG_LOG",
+    ]);
+  });
+
+  test("transfers only the picked code objects and what they need", () => {
+    const catalog = [
+      object("table", "KUNDE", "CREATE TABLE ..."),
+      object("table", "LOG", "CREATE TABLE ..."),
+      object("trigger", "KUNDE_TRG", "CREATE TRIGGER ... BEGIN NULL; END;", "KUNDE"),
+      object("trigger", "LOG_TRG", "CREATE TRIGGER ...", "LOG"),
+      object("index", "KUNDE_IX", "CREATE INDEX ...", "KUNDE"),
+      object("package", "PKG_API", "CREATE PACKAGE PKG_API AS END;"),
+      object("package_body", "PKG_API", "CREATE PACKAGE BODY PKG_API AS x T_ID; END;"),
+      object("package", "PKG_ALT", "CREATE PACKAGE PKG_ALT AS END;"),
+      object("type", "T_ID", "CREATE TYPE T_ID AS OBJECT (v NUMBER)"),
+      object("function", "F_ALT", "CREATE FUNCTION F_ALT ..."),
+      object("view", "V_KUNDE", "CREATE VIEW V_KUNDE AS SELECT * FROM KUNDE"),
+    ];
+    const picked = ["package:PKG_API", "trigger:KUNDE.KUNDE_TRG", "trigger:LOG.LOG_TRG"];
+    const names = selectTables(catalog, ["KUNDE"], picked).objects.map(objectKey);
+    expect(names.sort()).toEqual([
+      "index:KUNDE_IX",
+      "package:PKG_API",
+      "package:PKG_API",
+      "table:KUNDE",
+      "trigger:KUNDE.KUNDE_TRG",
+      "type:T_ID",
+    ]);
+    const allTables = selectTables(catalog, undefined, ["view:V_KUNDE"]).objects.map(objectKey);
+    expect(allTables.sort()).toEqual([
+      "index:KUNDE_IX",
+      "table:KUNDE",
+      "table:LOG",
+      "view:V_KUNDE",
+    ]);
+    const views = selectTables(
+      [
+        ...catalog,
+        object("view", "V_BASIS", "CREATE VIEW V_BASIS AS SELECT * FROM KUNDE"),
+        object("view", "V_REPORT", "CREATE VIEW V_REPORT AS SELECT * FROM V_BASIS"),
+        object("trigger", "V_REPORT_IO", "CREATE TRIGGER ... INSTEAD OF", "V_REPORT"),
+      ],
+      ["KUNDE"],
+      ["view:V_REPORT", "trigger:V_REPORT.V_REPORT_IO"],
+    ).objects.map(objectKey);
+    expect(views).toContain("view:V_BASIS");
+    expect(views).toContain("trigger:V_REPORT.V_REPORT_IO");
+    expect(pickableObjects(catalog).map(objectKey)).toEqual([
+      "trigger:KUNDE.KUNDE_TRG",
+      "trigger:LOG.LOG_TRG",
+      "package:PKG_API",
+      "package:PKG_ALT",
+      "type:T_ID",
+      "function:F_ALT",
+      "view:V_KUNDE",
     ]);
   });
 });
