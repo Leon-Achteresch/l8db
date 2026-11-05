@@ -1,9 +1,19 @@
 import { expect, test } from "bun:test";
 import { arch, cpus, release as osRelease, platform, totalmem } from "node:os";
-import { classifyBaseline, lineStatus, planChanges } from "../src/lib/versioning/change-plan";
+import {
+  aheadObjects,
+  classifyBaseline,
+  lineStatus,
+  planChanges,
+  releaseClosure,
+} from "../src/lib/versioning/change-plan";
 import { codeStatus } from "../src/lib/versioning/code-drift";
 import { parseChangeLedger } from "../src/lib/versioning/ledger";
-import type { DatabaseRelease, ObjectSnapshot } from "../src/lib/versioning/types";
+import type {
+  DatabaseRelease,
+  ObjectSnapshot,
+  StandaloneChange,
+} from "../src/lib/versioning/types";
 
 const TARGETS = 200;
 const CHANGES = 2000;
@@ -301,4 +311,81 @@ test("code drift report classifies 200 targets with 500 code objects each", () =
   expect(drift).toBe(TARGETS);
   expect(median).toBeLessThan(5);
   expect(p95).toBeLessThan(20);
+});
+
+test("standalone changes distributed ahead of releases keep planning bounded", () => {
+  const STANDALONE = 500;
+  const standalone = new Map<string, StandaloneChange>(
+    Array.from({ length: STANDALONE }, (_, index) => [
+      `s${index}`,
+      {
+        format: 1,
+        id: `s${index}`,
+        kind: "versioned",
+        title: `Einzeländerung ${index}`,
+        checksum: hash(`x${index}`),
+        sql: `CREATE INDEX I${index} ON APP.T${index} (C)`,
+        touches: [`o${index}`, `o${(index * 7) % OBJECTS}`],
+        before: {},
+        requires: [],
+        data: false,
+        preconditions: [],
+        postconditions: [],
+      },
+    ]),
+  );
+  const targets = ledgerRows.map((ledger, target) => {
+    const applied = parseChangeLedger(ledger.rows).changes;
+    for (let index = 0; index < (target % 10) * 50; index++)
+      applied.set(`s${index}`, {
+        id: `s${index}`,
+        checksum: hash(`x${index}`),
+        kind: "versioned",
+        source: "rollout",
+        release: null,
+      });
+    return { reached: ledger.reached, applied };
+  });
+  Bun.gc(true);
+  const heapBefore = process.memoryUsage().heapUsed;
+  const times: number[] = [];
+  let maxAhead = 0;
+  for (let round = 0; round < 3; round++)
+    for (const { reached, applied } of targets) {
+      const start = performance.now();
+      const plan = planChanges(map, `v${RELEASES - 1}`, applied, `v${reached}`, standalone);
+      const ahead = aheadObjects(plan, applied, standalone);
+      const single = releaseClosure(map, `v${reached}`, standalone);
+      times.push(performance.now() - start);
+      maxAhead = Math.max(maxAhead, ahead.length);
+      expect(single.releases.length).toBeGreaterThan(0);
+    }
+  Bun.gc(true);
+  const retainedMb = (process.memoryUsage().heapUsed - heapBefore) / 1024 / 1024;
+  times.sort((a, b) => a - b);
+  const median = times[Math.floor(times.length / 2)];
+  const p95 = times[Math.floor(times.length * 0.95)];
+  console.log(
+    JSON.stringify({
+      scenario: "versioning-standalone-ahead",
+      targets: TARGETS,
+      standalone: STANDALONE,
+      changes: CHANGES,
+      objects: OBJECTS,
+      plans: times.length,
+      maxAhead,
+      medianMs: Number(median.toFixed(2)),
+      p95Ms: Number(p95.toFixed(2)),
+      retainedMb: Number(retainedMb.toFixed(1)),
+      os: `${platform()} ${osRelease()}`,
+      arch: arch(),
+      cpu: cpus()[0]?.model,
+      ramGb: Math.round(totalmem() / 1024 ** 3),
+      runtime: `bun ${Bun.version}`,
+    }),
+  );
+  expect(maxAhead).toBeLessThanOrEqual(450 * 2);
+  expect(median).toBeLessThan(20);
+  expect(p95).toBeLessThan(50);
+  expect(retainedMb).toBeLessThan(64);
 });

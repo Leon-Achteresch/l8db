@@ -20,6 +20,7 @@ export async function preflightFleet(
   connections: SavedConnection[],
   releaseId: string,
   overrides: Record<string, string[]> = {},
+  change = false,
 ): Promise<FleetResult[]> {
   if (!targets.length) throw new Error("Mindestens eine Datenbank auswählen.");
   const results: FleetResult[] = [];
@@ -28,14 +29,10 @@ export async function preflightFleet(
     try {
       const connection = connections.find((connection) => connection.id === target.connectionId);
       if (!connection) throw new Error("Zielverbindung fehlt.");
-      const plan = await planDeployment(
-        repo,
-        project,
-        target,
-        connection,
-        releaseId,
-        overrides[target.id] ?? [],
-      );
+      const plan = await planDeployment(repo, project, target, connection, releaseId, {
+        overrides: overrides[target.id] ?? [],
+        change,
+      });
       if (plan.drift.length) {
         results.push({
           target,
@@ -76,6 +73,7 @@ export async function deployFleet(
   onProgress?: (message: string) => void,
   waveLimit = 1000,
   snapshot = false,
+  change = false,
 ) {
   const { store } = await readTargets(repo, project.id);
   const targets = reviewed.map((plan) => {
@@ -90,6 +88,7 @@ export async function deployFleet(
     connections,
     releaseId,
     Object.fromEntries(reviewed.map((plan) => [plan.target.id, plan.overrides])),
+    change,
   );
   if (!Number.isInteger(waveLimit) || waveLimit < 1 || waveLimit > 1000)
     throw new Error("Ungültige Wellengröße.");

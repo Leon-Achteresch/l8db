@@ -40,6 +40,24 @@ function computeTouches(
   return { touches, before };
 }
 
+export function standaloneChange(id: string, change: StandaloneChange): Change {
+  return {
+    id,
+    release: null,
+    title: change.title,
+    sql: change.sql,
+    checksum: change.checksum,
+    kind: change.kind ?? "versioned",
+    touches: change.touches,
+    before: change.before ?? {},
+    requires: change.requires ?? [],
+    data: change.data ?? false,
+    destructive: change.destructive ?? false,
+    preconditions: change.preconditions ?? [],
+    postconditions: change.postconditions ?? [],
+  };
+}
+
 export function releaseChanges(
   release: DatabaseRelease,
   map: Map<string, DatabaseRelease>,
@@ -50,20 +68,7 @@ export function releaseChanges(
     const change = standalone.get(id);
     if (!change)
       throw new Error(`Änderung ${id} aus Release ${release.id} fehlt unter database/changes/.`);
-    changes.push({
-      id,
-      release: null,
-      title: change.title,
-      sql: change.sql,
-      checksum: change.checksum,
-      kind: change.kind ?? "versioned",
-      touches: change.touches,
-      before: change.before ?? {},
-      requires: change.requires ?? [],
-      data: change.data ?? false,
-      preconditions: change.preconditions ?? [],
-      postconditions: change.postconditions ?? [],
-    });
+    changes.push(standaloneChange(id, change));
   }
   let derived: ReturnType<typeof derivedTouches> | undefined;
   for (const migration of release.migrations) {
@@ -83,6 +88,7 @@ export function releaseChanges(
       before: explicit ? (migration.before ?? {}) : (derived?.before ?? {}),
       requires: migration.requires ?? [],
       data: migration.data ?? (!explicit && touches.length === 0),
+      destructive: migration.destructive ?? false,
       preconditions: migration.preconditions ?? [],
       postconditions: migration.postconditions ?? [],
     });
@@ -130,6 +136,18 @@ export interface ChangePlan {
   open: Change[];
   steps: PlannedStep[];
   touched: Set<string>;
+}
+
+export function aheadObjects(
+  plan: Pick<ChangePlan, "closure" | "touched">,
+  applied: Map<string, AppliedChange>,
+  standalone: Map<string, StandaloneChange>,
+) {
+  const closureIds = new Set(plan.closure.changes.map((change) => change.id));
+  return [...applied.keys()]
+    .filter((id) => !closureIds.has(id) && standalone.has(id))
+    .flatMap((id) => (standalone.get(id)?.touches ?? []).map((object) => ({ object, change: id })))
+    .filter((entry) => !plan.touched.has(entry.object));
 }
 
 export function planChanges(

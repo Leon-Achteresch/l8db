@@ -89,6 +89,18 @@ Bekannte, gewollte Abweichungen eines Ziels stehen in `database/team.json` unter
 
 Views, Routinen, Prozeduren und Packages werden beim Erzeugen eines Releases zu eigenen wiederholbaren Änderungen (`kind: "repeatable"`, genau ein berührtes Objekt), solange das erzeugte SQL unverändert bleibt. Für sie gelten drei Hashes: Soll (Release), Zuletzt (`L8DB_VERSIONING_OBJECTS`) und Ist (Kunde). Ist gleich Soll: nichts einspielen, nur abhaken. Ist gleich festgehaltener Abweichung: überspringen. Ist gleich Zuletzt: einspielen. Sonst wurde der Code direkt beim Kunden geändert; Plan und Backend blockieren für genau dieses Objekt. Auflösen lässt sich das über **Ins Repository übernehmen** (Kundencode in die Arbeitskopie), **Als Abweichung festhalten** (`team.json`) oder **Überschreiben freigeben** (Teil des freigegebenen Plans). Übersprungene Änderungen stehen im Ereignis unter `skippedChanges`. **Code-Drift prüfen** zeigt den Zustand aller Code-Objekte bei allen Kunden mit einer Abhaklisten-Abfrage je Ziel.
 
+### Einzeländerungen, Merge-Releases und Angleichen
+
+**Einzeländerung anlegen** (Releases) legt `database/changes/<id>.json` und `.sql` an: SQL, berührte Objekte, optional der vorausgesetzte Stand aus dem neuesten Release und SQL-Vorbedingungen. Nach dem Merge in `main` steht sie unter Kunden im Zielauswahlfeld als `Änderung <id>` und lässt sich an mehrere Ziele verteilen. Es gelten dieselben Auslieferungsregeln wie für Releases; als Nachweis dient der Pull Request mit der Änderungsdatei. Ein Einzelrollout hakt nur diese Änderung ab und lässt den Release des Ziels stehen. Ein zweiter Versuch wird abgewiesen. Führt ein späterer Release die Änderung unter `changes`, läuft sie dort nicht erneut. Bis dahin gelten ihre Objekte als vorgezogen (`ahead`): Die Vorabprüfung lässt sie aus, das Backend prüft, dass die Änderung abgehakt ist und diese Objekte berührt.
+
+Beim Erzeugen eines Releases lässt sich ein zweiter Vorgänger wählen. Der Release erhält dann `parents` mit beiden IDs und führt Hotfix-Zweig und Hauptlinie zusammen.
+
+**Auf Standard angleichen** (Menü eines Ziels) holt einen Kunden zurück auf die Standardlinie. Die Vorschau zeigt die offenen Änderungen bis zum gewählten Standard-Release und erzeugt aus den Abweichungen eine Angleich-Änderung, die den Kundenstand auf den aktuellen Release des Ziels zurückführt. Entfernungen müssen ausdrücklich freigegeben werden. Ablauf: Angleich-Änderung committen und als Einzeländerung ausrollen, dann **Abschließen** (Abweichungen entfernen, Linie `main`, keine Fixierung, `team.json` committen), danach den Standard-Release wie gewohnt ausrollen.
+
+### Nur additiv
+
+`additiveOnly: true` in `database/project.json` (Schalter unter Releases, Standard aus) erlaubt nur Änderungen ohne `DROP`, `TRUNCATE`, `MODIFY` oder Spaltentypwechsel. Der Generator meldet solche Anweisungen als offenen Punkt, der Plan bricht ab und das Backend prüft die Regel anhand der `project.json` im freigegebenen Commit. Eine Migration mit `destructive: true` ist ausdrücklich freigegeben.
+
 ## Ein Repository für viele Kunden: Reviews und Pipeline
 
 Alle Kunden eines Produkts teilen ein Git-Repository mit dem Remote `origin` auf GitHub (auch Enterprise Server), GitLab, Azure DevOps oder Gitea/Forgejo. Änderungen gelangen nur über Pull Requests in den Hauptbranch, also den Standardbranch des Remotes. Jeder Kunde hat getrennte Verbindungen für Test- und Produktivsystem, gegebenenfalls auf verschiedenen Servern.

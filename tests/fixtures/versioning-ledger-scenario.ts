@@ -102,6 +102,7 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
     parents: string[],
     sql: string | null | ({ id: string; sql: string } & Record<string, unknown>)[],
     extra: Record<string, unknown> = {},
+    top: Record<string, unknown> = {},
   ) => {
     const snapshots = [];
     for (const object of project.objects)
@@ -113,6 +114,7 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
       kind,
       parents,
       createdAt: new Date().toISOString(),
+      ...top,
       objects: snapshots,
       migrations: Array.isArray(sql)
         ? await Promise.all(
@@ -443,7 +445,7 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
     await target("b"),
     connection,
     "v10",
-    ["price"],
+    { overrides: ["price"] },
   );
   await deployment.deploy(
     repo,
@@ -453,8 +455,102 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
     "v10",
     overridden.reviewToken,
     undefined,
-    ["price"],
+    { overrides: ["price"] },
   );
+  const align = await import("/src/lib/versioning/align.ts");
+  const draft = await align.alignmentDraft(
+    repo,
+    project,
+    await target("c"),
+    connection,
+    "v10",
+    true,
+  );
+  await commit((await align.saveAlignment(repo, draft)) && draft.id);
+  const single = async (id: string, change: string) => {
+    const planned = await deployment.planDeployment(
+      repo,
+      project,
+      await target(id),
+      connection,
+      change,
+      {
+        change: true,
+      },
+    );
+    await deployment.deploy(repo, project, id, connection, change, planned.reviewToken, undefined, {
+      change: true,
+    });
+    return planned;
+  };
+  const aligned = await single("c", draft.id);
+  await align.finishAlignment(repo, project, "c", connection);
+  await commit("LEGACY_1 zurück auf main");
+  const backOnMain = await rollout("c", "v10");
+  const alignedTarget = await target("c");
+  const alignedShown = progress(
+    alignedTarget,
+    await api.loadReleases(repo, project),
+    await db.versioningRepository({ action: "status", repo }),
+  ).label;
+  const alignedPrice = (await codeAt(customers.c)) === snapshotOf(v10, "price");
+  const changeFiles = await import("/src/lib/versioning/change-files.ts");
+  const indexSql = pg
+    ? "CREATE INDEX lab_currencies_label ON public.lab_currencies (label)"
+    : `CREATE INDEX "${dev.schema}"."LAB_CURRENCIES_LABEL" ON ${q(devPlace, "lab_currencies")} (LABEL)`;
+  const indexId = "2026-11-05-index-waehrung";
+  await changeFiles.createStandaloneChange(repo, project, {
+    id: indexId,
+    title: "Index auf Währungsbezeichnung",
+    sql: indexSql,
+    touches: ["currencies"],
+    before: {},
+    data: false,
+    preconditions: [
+      {
+        id: "index-fehlt",
+        title: "Index fehlt noch",
+        sql: pg
+          ? "SELECT CASE WHEN COUNT(*) = 0 THEN 'ja' ELSE 'nein' END AS ok FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'lab_currencies_label'"
+          : "SELECT CASE WHEN COUNT(*) = 0 THEN 'ja' ELSE 'nein' END AS ok FROM all_indexes WHERE owner = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AND index_name = 'LAB_CURRENCIES_LABEL'",
+        expected: "ja",
+        checksum: "",
+      },
+    ],
+  });
+  await commit(indexId);
+  const distributed = [];
+  for (const id of ["a", "b", "c"])
+    distributed.push((await single(id, indexId)).changes.map((change) => change.id));
+  let twice = false;
+  try {
+    await single("a", indexId);
+  } catch (error) {
+    twice = String(error).includes("bereits abgehakt");
+  }
+  await exec(devPlace, indexSql);
+  await release("v11", ["v10"], null, {}, { changes: [indexId] });
+  const v11 = [];
+  for (const id of ["a", "b", "c"]) v11.push((await rollout(id, "v11")).changes.length);
+  const indexes = [];
+  for (const at of [customers.a, customers.b, customers.c])
+    indexes.push(
+      Number(
+        Object.values(
+          (
+            await query(
+              at,
+              pg
+                ? "SELECT COUNT(*) AS n FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'lab_currencies_label'"
+                : `SELECT COUNT(*) AS "n" FROM all_indexes WHERE owner = '${at.schema}' AND index_name = 'LAB_CURRENCIES_LABEL'`,
+            )
+          )[0],
+        )[0],
+      ),
+    );
+  const ticks = [];
+  for (const id of ["a", "b", "c"])
+    ticks.push((await applied(id)).filter((entry) => entry.startsWith(indexId)).length);
   return {
     masse,
     again,
@@ -492,6 +588,17 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
       withoutOverride: overridePlan.drift.map((entry) => entry.id),
       override: overridden.code.map((entry) => `${entry.change}:${entry.action}`),
       overriddenB: (await codeAt(customers.b)) === snapshotOf(v10, "price"),
+    },
+    single: { distributed, twice, v11, indexes, ticks },
+    align: {
+      open: draft.open,
+      variances: draft.variances,
+      aligned: aligned.changes.map((change) => change.id),
+      after: backOnMain.changes.map((change) => change.id),
+      variancesLeft: alignedTarget?.variances?.length ?? 0,
+      track: alignedTarget?.track ?? "main",
+      shown: alignedShown,
+      price: alignedPrice,
     },
     legacy: {
       decisions: classified.changes
