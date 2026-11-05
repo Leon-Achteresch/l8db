@@ -244,16 +244,13 @@ export async function parseRelease(
 const LEGACY_KEYS = new Set(["id", "title", "sql", "checksum"]);
 
 export function destructiveStatement(sql: string): boolean {
-  const tokens = sql.toUpperCase().split(/[^A-Z0-9_$#]+/);
-  return tokens.some(
-    (token, index) =>
-      ["DROP", "TRUNCATE", "MODIFY"].includes(token) ||
-      (token === "ALTER" &&
-        tokens[index + 1] === "COLUMN" &&
-        (tokens[index + 3] === "TYPE" ||
-          (tokens[index + 3] === "SET" &&
-            tokens[index + 4] === "DATA" &&
-            tokens[index + 5] === "TYPE"))),
+  const tokens = sql
+    .toUpperCase()
+    .split(/[^A-Z0-9_$#]+/)
+    .filter(Boolean);
+  return (
+    tokens.some((token) => ["DROP", "TRUNCATE", "MODIFY"].includes(token)) ||
+    (tokens.includes("ALTER") && tokens.includes("TYPE"))
   );
 }
 

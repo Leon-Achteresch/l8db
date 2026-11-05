@@ -345,16 +345,12 @@ fn destructive(sql: &str) -> bool {
     let upper = sql.to_uppercase();
     let tokens: Vec<&str> = upper
         .split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '#')))
+        .filter(|token| !token.is_empty())
         .collect();
-    tokens.iter().enumerate().any(|(index, token)| {
-        matches!(*token, "DROP" | "TRUNCATE" | "MODIFY")
-            || (*token == "ALTER"
-                && tokens.get(index + 1) == Some(&"COLUMN")
-                && (tokens.get(index + 3) == Some(&"TYPE")
-                    || (tokens.get(index + 3) == Some(&"SET")
-                        && tokens.get(index + 4) == Some(&"DATA")
-                        && tokens.get(index + 5) == Some(&"TYPE"))))
-    })
+    tokens
+        .iter()
+        .any(|token| matches!(*token, "DROP" | "TRUNCATE" | "MODIFY"))
+        || (tokens.contains(&"ALTER") && tokens.contains(&"TYPE"))
 }
 
 async fn verify_changes(source: &Value, plan: &Value, context: &Context<'_>) -> Result<(), String> {
@@ -696,11 +692,16 @@ pub async fn verify(request: &Request) -> Result<(), String> {
         }
         seen
     };
-    let additive = super::git(&root, &["show", &format!("{commit}:database/project.json")])
-        .await
-        .ok()
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .is_some_and(|project| project["additiveOnly"] == true);
+    let additive =
+        match super::git(&root, &["show", &format!("{commit}:database/project.json")]).await {
+            Ok(text) => {
+                serde_json::from_str::<Value>(&text)
+                    .map_err(|_| "database/project.json im freigegebenen Commit ist ungültig")?
+                    ["additiveOnly"]
+                    == true
+            }
+            Err(_) => false,
+        };
     let mut done: HashSet<String> = HashSet::new();
     for planned in releases {
         let id = text(planned, "id")?;
@@ -753,6 +754,12 @@ mod tests {
         assert!(destructive("ALTER TABLE t DROP COLUMN a"));
         assert!(destructive("alter table t alter column a type bigint"));
         assert!(destructive("ALTER TABLE T MODIFY (A VARCHAR2(5))"));
+        assert!(destructive("ALTER TABLE t ALTER COLUMN \"a\" TYPE bigint"));
+        assert!(destructive("ALTER TABLE t ALTER a\n  TYPE bigint"));
+        assert!(destructive(
+            "ALTER TABLE t ALTER COLUMN a SET DATA TYPE bigint"
+        ));
+        assert!(destructive("-- Typ\nALTER TABLE t ALTER a TYPE bigint"));
         assert!(!destructive(
             "ALTER TABLE t ADD COLUMN dropped_at timestamp"
         ));

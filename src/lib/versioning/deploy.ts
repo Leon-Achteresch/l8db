@@ -490,7 +490,7 @@ export async function planDeployment(
         "Ein Zwischenrelease enthält inkompatible Änderungen. Der Betriebsplan benötigt ein Wartungsfenster für den gesamten Pfad.",
       );
   }
-  if (chain[0]) await preflightChecks(connection, target, chain[0]);
+  if (chain[0] && !single) await preflightChecks(connection, target, chain[0]);
   const varianceIds = new Set(variances.map((variance) => variance.object));
   for (const variance of variances)
     if (!to.objects.some((entry) => entry.object.id === variance.object))
@@ -872,14 +872,8 @@ export async function recordBaseline(
 ) {
   const ledger = await readChangeLedger(connection, project, target);
   const missing = changes.filter((change) => !ledger?.changes.has(change.id));
-  await writeChangeLedger(
-    connection,
-    project,
-    target,
-    [
-      ...changeRows(project, target, missing, "baseline", release.id, null),
-      ...objectRows(project, target, objects),
-    ],
-    objects.map((entry) => entry.id),
-  );
+  await writeChangeLedger(connection, target, [
+    ...changeRows(project, target, missing, "baseline", release.id, null),
+    ...objectRows(project, target, objects),
+  ]);
 }

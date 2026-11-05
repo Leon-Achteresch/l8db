@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { generateMigration, splitMigrations } from "../src/lib/versioning/migrations";
-import { checksum } from "../src/lib/versioning/model";
+import { checksum, destructiveStatement } from "../src/lib/versioning/model";
 import { seedBranchAllowed, seedStatementCount } from "../src/lib/versioning/seeds";
 import type {
   DatabaseRelease,
@@ -243,6 +243,11 @@ describe("automatic release migrations", () => {
     expect(draft.sql.indexOf('CREATE TABLE "public"."people"')).toBeLessThan(
       draft.sql.indexOf('ALTER TABLE "public"."orders" ADD CONSTRAINT'),
     );
+  });
+  test("additive rule catches drops and type changes in any spelling", () => {
+    expect(destructiveStatement('ALTER TABLE t ALTER COLUMN "a" TYPE bigint')).toBe(true);
+    expect(destructiveStatement("-- Typ\nALTER TABLE t ALTER a\n  TYPE bigint")).toBe(true);
+    expect(destructiveStatement("ALTER TABLE t ADD COLUMN dropped_at timestamp")).toBe(false);
   });
   test("destructive migrations require explicit opt in", async () => {
     const old = await table("people", definition());

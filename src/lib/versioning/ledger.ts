@@ -309,25 +309,42 @@ export function objectRows(
   project: VersioningProject,
   target: DatabaseTarget,
   objects: AppliedObject[],
+  batch = 100,
 ) {
   const oracle = project.kind === "oracle";
-  return insertStatements(
-    project.kind,
-    ledgerTable(project, target, "OBJECTS"),
-    ["PROJECT_ID", "OBJECT_ID", "APPLIED_HASH", "CHANGE_ID"],
-    objects.map((entry) => [project.id, entry.id, entry.hash, entry.change]),
-    [
-      `APPLIED_AT=${oracle ? "SYS_EXTRACT_UTC(SYSTIMESTAMP)" : "(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')"}`,
-    ],
-  );
+  const table = ledgerTable(project, target, "OBJECTS");
+  const now = oracle ? "SYS_EXTRACT_UTC(SYSTIMESTAMP)" : "(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')";
+  const unique = [...new Map(objects.map((entry) => [entry.id, entry])).values()];
+  const statements: string[] = [];
+  for (let index = 0; index < unique.length; index += batch) {
+    const rows = unique.slice(index, index + batch);
+    statements.push(
+      oracle
+        ? `MERGE INTO ${table} t USING (${rows
+            .map(
+              (entry) =>
+                `SELECT ${literal(project.id)} AS p, ${literal(entry.id)} AS o, ${literal(entry.hash)} AS h, CAST(${sqlValue(entry.change)} AS VARCHAR2(255)) AS c FROM dual`,
+            )
+            .join(
+              " UNION ALL ",
+            )}) s ON (t."PROJECT_ID" = s.p AND t."OBJECT_ID" = s.o) WHEN MATCHED THEN UPDATE SET t."APPLIED_HASH" = s.h, t."CHANGE_ID" = s.c, t."APPLIED_AT" = ${now} WHEN NOT MATCHED THEN INSERT ("PROJECT_ID", "OBJECT_ID", "APPLIED_HASH", "CHANGE_ID", "APPLIED_AT") VALUES (s.p, s.o, s.h, s.c, ${now})`
+        : `INSERT INTO ${table} ("PROJECT_ID", "OBJECT_ID", "APPLIED_HASH", "CHANGE_ID", "APPLIED_AT") VALUES ${rows
+            .map(
+              (entry) =>
+                `(${literal(project.id)}, ${literal(entry.id)}, ${literal(entry.hash)}, ${sqlValue(entry.change)}, ${now})`,
+            )
+            .join(
+              ", ",
+            )} ON CONFLICT ("PROJECT_ID", "OBJECT_ID") DO UPDATE SET "APPLIED_HASH" = EXCLUDED."APPLIED_HASH", "CHANGE_ID" = EXCLUDED."CHANGE_ID", "APPLIED_AT" = EXCLUDED."APPLIED_AT"`,
+    );
+  }
+  return statements;
 }
 
 export async function writeChangeLedger(
   connection: SavedConnection,
-  project: VersioningProject,
   target: DatabaseTarget,
   statements: string[],
-  replaceObjects: string[] = [],
   finish?: string,
 ) {
   const transaction = await beginTransaction(
@@ -336,15 +353,6 @@ export async function writeChangeLedger(
     target.database ?? undefined,
   );
   try {
-    for (let index = 0; index < replaceObjects.length; index += 500)
-      await executeInTransaction(
-        transaction,
-        `DELETE FROM ${ledgerTable(project, target, "OBJECTS")} WHERE "PROJECT_ID" = ${literal(project.id)} AND "OBJECT_ID" IN (${replaceObjects
-          .slice(index, index + 500)
-          .map(literal)
-          .join(", ")})`,
-        { confirmed: true },
-      );
     for (const sql of statements) await executeInTransaction(transaction, sql, { confirmed: true });
     if (finish) {
       const result = await executeInTransaction(transaction, finish, { confirmed: true });
@@ -370,13 +378,11 @@ export async function adoptLedger(
   const hash = await releaseHash(release);
   await writeChangeLedger(
     connection,
-    project,
     target,
     [
       ...changeRows(project, target, changes, "migrated", release.id, null),
       ...objectRows(project, target, objects),
     ],
-    objects.map((entry) => entry.id),
     `UPDATE ${ledgerTable(project, target)} SET "STATUS" = '${LEDGER_READY}' WHERE "PROJECT_ID" = ${literal(project.id)} AND "RELEASE_HASH" = ${literal(hash)} AND "STATUS" = 'ready' AND "LEASE" IS NULL`,
   );
 }
