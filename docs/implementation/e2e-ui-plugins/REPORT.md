@@ -56,3 +56,22 @@ Die vorgeschriebene erste Prozessprüfung (`lsof -i :1420`, `pgrep -fl l8db`) er
 | 6 Volle Erweiterung: Stufe, Status, Rechte, Ein/Aus | offen: gleicher Startblocker | keiner |
 
 Keine Aussage über Erfolg oder Fehler der sechs Funktionen möglich. Insbesondere keine erneute Modellverweigerung beobachtet und daher keine Prompt-/Katalogänderung vorgenommen. Keine Runtime-Dateien geändert; keine Regressionstests oder Token-Benchmarks erforderlich bzw. ausgeführt. Keine gedrosselten Performance-Tests auf macOS. Keine eigenen App-Prozesse, Testplugins oder Screenshots erzeugt; entsprechend nichts zu beenden oder aus `~/.l8db/ui/` zu entfernen. Keine fremden Dateien oder Plugins verändert. Kein Review-Subagent. Für die Fortsetzung muss Port 1420 durch den Eigentümer der laufenden Instanz freigegeben werden.
+
+## Runde 3
+
+5. November 2026, ab 18:19 CET. Vorhandene Dev-Instanz ausdrücklich zur Nutzung freigegeben; keine zweite Instanz gestartet, keine Instanz beendet und kein Neustart ausgelöst. AGENTS.md, CLAUDE.md und agent-desktop-Skill einschließlich macOS-/Systemreferenz gelesen. Keine fremden Dateien verändert.
+
+Stand: Start-HEAD `d8bfc63b8ee37455ece06c0bd78bf0a921e8936f` (`docs: Startblockade des UI-Plugin-Nachtests dokumentieren`). `git merge-base --is-ancestor 4ce941cb HEAD` war erfolgreich. Commit `4ce941cb` datiert auf **18:17:42 +0100**. App PID **58455** (`target/debug/l8db`) startete um **18:16:40** und enthält daher den neuen Rust-Stand nicht nachweislich. Für Punkt 1 ist ein App-Neustart nötig. `bun tauri dev` PID 79714 und Vite PID 79862 liefen unverändert seit 16:05:57.
+
+Zusätzliche native Blockade: Accessibility und Screen Recording sind granted, aber `snapshot --app l8db` liefert `WINDOW_NOT_FOUND`. Die globale Fensterliste zeigt zu PID 58455 ausschließlich `w-20996`, Titel `l8db`, unsichtbar, `accessible:false`, Geometrie x=-1470/y=0, 1470×33. `list-windows --app l8db` liefert eine leere Liste. Gezieltes `focus-window` und ein frischer Snapshot dieser ID liefern `ACTION_NOT_SUPPORTED`, `kind:window_without_accessibility_element`. Auch `snapshot --surface menubar --app l8db` findet kein Fenster. Der Screenshot der ID ist lediglich 2940×66 Pixel groß und belegt kein App-Inhaltsfenster. Keine fremde Anwendung aktiviert oder ein zusätzlicher App-Prozess gestartet, um diese Blockade zu umgehen. Im Prozessinventar existiert außerdem l8db PID 87021 (MCP); dieser wurde nicht benutzt.
+
+| Punkt | Ergebnis Runde 3 | Screenshot |
+|---|---|---|
+| 1 KI-Chat: discover_tools/api/write/Freigabe/NULLs | offen: Rust-Prozess älter als 4ce941cb; Neustart nötig; zusätzlich kein zugängliches Inhaltsfenster | r3-window-unavailable.png (nur Fensterrest, kein Funktionsbeleg) |
+| 2 Bestehender Filter + NULL-Button | offen: kein bedienbares Inhaltsfenster | gleicher Blockadebeleg |
+| 3 Konfliktimport: Diff/Überschreiben/Überspringen | offen: kein bedienbares Inhaltsfenster | gleicher Blockadebeleg |
+| 4 Kaputte Bundle-Datei: Fehlermeldung | offen: kein bedienbares Inhaltsfenster | gleicher Blockadebeleg |
+| 5 Aktivierung bidirektional in zwei Fenstern | offen: kein bedienbares erstes Fenster; zweites nicht geöffnet | gleicher Blockadebeleg |
+| 6 Volle Erweiterung: Stufe/Status/Rechte/Ein-Aus | offen: kein bedienbares Inhaltsfenster; nichts installiert | gleicher Blockadebeleg |
+
+Keine erneute Modellverweigerung oder Monaco-Ausnahme beobachtbar; ohne Inhaltsfenster ist auch deren Abwesenheit nicht belegt. Keine Runtime-Änderungen, deshalb keine Regressionstests, Token-Benchmarks oder Buildchecks ausgeführt. Keine Performance-Messung und keine CPU-Drosselung. Plattform wie oben: macOS/arm64; keine weitere Plattform- oder Datenbankabdeckung. Keine neuen Testdaten, temporären Verbindungen, Testplugins oder Erweiterungen angelegt, kein zweites Fenster geöffnet; entsprechend keine Bereinigung erforderlich. Die drei genannten Dev-Prozesse blieben erhalten. Kein Review-Subagent. Fortsetzung benötigt ein zugängliches App-Inhaltsfenster und für Punkt 1 einen vom Eigentümer ausgelösten Neustart mit aktuellem Rust-Stand.
