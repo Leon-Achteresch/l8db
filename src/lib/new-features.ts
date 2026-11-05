@@ -121,6 +121,7 @@ export const NEW_FEATURES = {
   "versioning.releases.merge": "0.17.0",
   "versioning.targets.change-rollout": "0.17.0",
   "versioning.targets.align": "0.17.0",
+  "versioning.targets.ledger": "0.17.0",
   "table.pagination.keyboard": "0.7.0",
   "table.infinite-scroll": "0.16.0",
   "table.filter.rules": "0.10.0",

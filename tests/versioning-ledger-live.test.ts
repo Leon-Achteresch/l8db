@@ -34,6 +34,14 @@ for (const kind of ["postgres", "oracle"] as const) {
         );
         console.log(JSON.stringify(result));
         expect(result).toMatchObject({
+          script: {
+            text: true,
+            from: "v12",
+            open: 0,
+            ticks: ["v12/m:script"],
+            guarded: true,
+            reconciled: "v12",
+          },
           masse: [["v2", "v3", "v4"], ["v3", "v4"], ["v4"]],
           again: 0,
           adopted: true,
@@ -43,7 +51,7 @@ for (const kind of ["postgres", "oracle"] as const) {
           hotfixShown: "1 Update offen",
           hotfixSteps: ["v6/m"],
           catchUpSteps: ["v5/m", "v5.1/m", "v6/m"],
-          versions: ["v11", "v11", "v11"],
+          versions: ["v11", "v12", "v11"],
           single: {
             distributed: [
               ["2026-11-05-index-waehrung"],
