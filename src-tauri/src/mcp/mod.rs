@@ -22,6 +22,7 @@ pub mod redact;
 pub(crate) mod sandbox;
 mod script;
 pub mod server;
+mod watch;
 pub mod workflow;
 
 #[cfg(all(test, feature = "duckdb"))]
