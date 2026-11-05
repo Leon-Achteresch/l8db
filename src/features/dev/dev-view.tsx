@@ -9,6 +9,7 @@ import { ConnectionSelectLab } from "./connection-select-lab";
 import { DriverOverviewLab } from "./driver-overview-lab";
 import { FeatureVideoPreview } from "./feature-video-preview";
 import { FontLab } from "./font-lab";
+import { McpOverviewLab } from "./mcp-overview-lab";
 import { NewBadgeExitLab } from "./new-badge-exit-lab";
 import { ProviderPickerLab } from "./provider-picker-lab";
 import { SettingsDesignLab } from "./settings-design-lab";
@@ -62,47 +63,52 @@ export function DevView() {
               Interaktive Entwürfe mit Beispieldaten, direkt im App-Kontext.
             </p>
           </div>
-          <TabsList variant="line" aria-label="Komponenten-Vorschau" className="w-fit max-w-full">
-            <TabsTrigger value="ai-chat" className="flex-none px-4">
-              KI-Chat
-            </TabsTrigger>
-            <TabsTrigger value="feature-video" className="flex-none px-4">
-              Feature-Popup
-            </TabsTrigger>
-            <TabsTrigger value="blog-suggestion" className="flex-none px-4">
-              Blog-Popup
-            </TabsTrigger>
-            <TabsTrigger value="table-tabs" className="flex-none px-4">
-              Tab-Leiste
-            </TabsTrigger>
-            <TabsTrigger value="connection-select" className="flex-none px-4">
-              Connection-Select
-            </TabsTrigger>
-            <TabsTrigger value="fonts" className="flex-none px-4">
-              Schriften
-            </TabsTrigger>
-            <TabsTrigger value="provider-picker" className="flex-none px-4">
-              Datenbank-Auswahl
-            </TabsTrigger>
-            <TabsTrigger value="drivers" className="flex-none px-4">
-              Treiber
-            </TabsTrigger>
-            <TabsTrigger value="settings-design" className="flex-none px-4">
-              Einstellungen
-            </TabsTrigger>
-            <TabsTrigger value="toast" className="flex-none px-4">
-              Toast
-            </TabsTrigger>
-            <TabsTrigger value="new-badge" className="flex-none px-4">
-              NEW-Badge
-            </TabsTrigger>
-            <TabsTrigger value="transfer-cinematic" className="flex-none px-4">
-              Transfer-Animation
-            </TabsTrigger>
-            <TabsTrigger value="atlas" className="flex-none px-4">
-              Tabellenkarte
-            </TabsTrigger>
-          </TabsList>
+          <div className="-mx-1 overflow-x-auto px-1 pb-2">
+            <TabsList variant="line" aria-label="Komponenten-Vorschau" className="w-max">
+              <TabsTrigger value="ai-chat" className="flex-none px-4">
+                KI-Chat
+              </TabsTrigger>
+              <TabsTrigger value="feature-video" className="flex-none px-4">
+                Feature-Popup
+              </TabsTrigger>
+              <TabsTrigger value="blog-suggestion" className="flex-none px-4">
+                Blog-Popup
+              </TabsTrigger>
+              <TabsTrigger value="table-tabs" className="flex-none px-4">
+                Tab-Leiste
+              </TabsTrigger>
+              <TabsTrigger value="connection-select" className="flex-none px-4">
+                Connection-Select
+              </TabsTrigger>
+              <TabsTrigger value="fonts" className="flex-none px-4">
+                Schriften
+              </TabsTrigger>
+              <TabsTrigger value="provider-picker" className="flex-none px-4">
+                Datenbank-Auswahl
+              </TabsTrigger>
+              <TabsTrigger value="drivers" className="flex-none px-4">
+                Treiber
+              </TabsTrigger>
+              <TabsTrigger value="settings-design" className="flex-none px-4">
+                Einstellungen
+              </TabsTrigger>
+              <TabsTrigger value="toast" className="flex-none px-4">
+                Toast
+              </TabsTrigger>
+              <TabsTrigger value="new-badge" className="flex-none px-4">
+                NEW-Badge
+              </TabsTrigger>
+              <TabsTrigger value="transfer-cinematic" className="flex-none px-4">
+                Transfer-Animation
+              </TabsTrigger>
+              <TabsTrigger value="atlas" className="flex-none px-4">
+                Tabellenkarte
+              </TabsTrigger>
+              <TabsTrigger value="mcp-overview" className="flex-none px-4">
+                MCP Overview
+              </TabsTrigger>
+            </TabsList>
+          </div>
         </div>
         <TabsContent value="ai-chat">
           <AiChatLab />
@@ -228,6 +234,9 @@ export function DevView() {
         </TabsContent>
         <TabsContent value="atlas">
           <AtlasLab />
+        </TabsContent>
+        <TabsContent value="mcp-overview">
+          <McpOverviewLab />
         </TabsContent>
       </Tabs>
     </main>
