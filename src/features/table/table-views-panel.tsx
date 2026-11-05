@@ -63,7 +63,7 @@ export function TableViewsPanel({
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
-      <div className="flex h-7 min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex min-h-7 min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <TableViewChip
           schema={schema}
           table={table}
