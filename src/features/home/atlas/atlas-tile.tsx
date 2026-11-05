@@ -30,11 +30,11 @@ export const AtlasTile = memo(function AtlasTile({
 }: AtlasTileProps) {
   const area = tile.w * tile.h;
   const showName = tile.w >= 44 && tile.h >= 20;
-  const showMeta = tile.w >= 64 && tile.h >= 44;
   const facts = describeAtlasTable(tile);
   const [facts1, facts2] = atlasFacts(tile, metric);
   const links = tile.links ? formatLinks(tile.links) : null;
   const primary = facts1 ?? links ?? tile.comment;
+  const showMeta = Boolean(primary) && tile.w >= 64 && tile.h >= 44;
   const secondary = facts1 ? facts2 : links ? tile.comment : null;
   return (
     <button
@@ -50,8 +50,9 @@ export const AtlasTile = memo(function AtlasTile({
         .join(", ")}
       title={facts ? `${tile.name} · ${facts}` : tile.name}
       className={cn(
-        "group absolute flex flex-col items-start justify-between overflow-hidden rounded-[10px] border-2 border-transparent bg-card bg-clip-padding px-2.5 py-2 text-left outline-none",
+        "group absolute flex flex-col items-start overflow-hidden rounded-[10px] border-2 border-transparent bg-card bg-clip-padding px-2.5 py-2 text-left outline-none",
         "shadow-[inset_0_0_0_1px_var(--border)] hover:bg-muted/60",
+        showMeta ? "justify-between" : "justify-center",
         "transition-[left,top,width,height,opacity,box-shadow,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
         "focus-visible:z-10 focus-visible:shadow-[inset_0_0_0_2px_var(--primary)]",
         tone === "active" && "z-10 bg-muted/60 shadow-[inset_0_0_0_1.5px_var(--primary)]",
@@ -80,9 +81,7 @@ export const AtlasTile = memo(function AtlasTile({
       )}
       {showMeta && (
         <span className="block max-w-full text-xs leading-snug tabular-nums text-muted-foreground">
-          <span className={cn("block truncate", primary && "font-medium text-foreground")}>
-            {primary ?? "—"}
-          </span>
+          <span className="block truncate font-medium text-foreground">{primary}</span>
           {secondary && tile.h >= 72 && <span className="block truncate">{secondary}</span>}
         </span>
       )}

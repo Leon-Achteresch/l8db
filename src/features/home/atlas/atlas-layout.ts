@@ -4,6 +4,7 @@ import type { DatabaseOverview, SchemaMap, SchemaMapLink, TableInfo } from "@/li
 export const ATLAS_TILE_LIMIT = 180;
 export const ATLAS_GRID_LIMIT = 24;
 export const ATLAS_GRID_ROW = 72;
+export const ATLAS_GRID_ROW_COMPACT = 56;
 const ATLAS_GRID_COLS = 4;
 
 export type AtlasMetric = "bytes" | "rows" | "links" | null;
@@ -70,6 +71,13 @@ export function joinAtlas(tables: TableInfo[], map: SchemaMap | undefined): Atla
       links: table.schema === schema ? (degree.get(table.name) ?? 0) : 0,
     };
   });
+}
+
+export function atlasHasMeta(tables: AtlasTable[]): boolean {
+  return tables.some(
+    (table) =>
+      table.rows != null || table.bytes != null || table.links > 0 || Boolean(table.comment),
+  );
 }
 
 export function atlasMetric(tables: AtlasTable[]): AtlasMetric {

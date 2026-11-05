@@ -44,7 +44,14 @@ export function DataTableColumnHeader({
       )}
     >
       {isFk && <LinkIcon className="size-3 shrink-0 text-blue-500" />}
-      <DataTableHeaderName name={name} isFk={isFk} />
+      <span className="flex min-w-0 items-center gap-1">
+        {classic && typeInfo.kind === "key" && (
+          <span className="shrink-0 text-muted-foreground">
+            {renderTypeIcon(typeInfo.iconName, "size-3")}
+          </span>
+        )}
+        <DataTableHeaderName name={name} isFk={isFk} />
+      </span>
       <span
         className={cn(
           "shrink-0 text-muted-foreground transition-colors",
@@ -72,14 +79,7 @@ export function DataTableColumnHeader({
         )}
         title={fkTitle}
       >
-        <div className="flex max-w-full min-w-0 items-center gap-1">
-          {typeInfo.kind === "key" && (
-            <span className="shrink-0 text-muted-foreground">
-              {renderTypeIcon(typeInfo.iconName, "size-3")}
-            </span>
-          )}
-          {sortButton}
-        </div>
+        <div className="flex max-w-full min-w-0 items-center">{sortButton}</div>
         <span className="max-w-full truncate px-1 font-mono text-[11px] leading-3 font-normal text-muted-foreground select-none">
           {typeInfo.dataType ?? typeInfo.label}
         </span>

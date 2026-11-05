@@ -29,6 +29,9 @@ function isNavActive(url: string, pathname: string) {
   return url === "/" ? pathname === "/" : pathname.startsWith(url);
 }
 
+const OBJECT_ROUTE =
+  /^\/(tables|functions|procedures|packages|matviews|triggers|users|view-editor|alter-table|sequences|enums|buckets)(\/|$)/;
+
 const itemClass =
   "relative inline-flex shrink-0 items-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground";
 
@@ -63,6 +66,7 @@ export function AppNavRail() {
         isNavActive(item.url, state.location.pathname),
       )?.url,
   );
+  const objectRoute = useRouterSelect((state) => OBJECT_ROUTE.test(state.location.pathname));
   const sizeClass = expanded
     ? "h-8 w-full justify-start gap-2.5 px-2.5 text-control"
     : "size-9 justify-center";
@@ -80,6 +84,7 @@ export function AppNavRail() {
     >
       {navItems.map((item, index) => {
         const active = item.url === activeUrl;
+        const secondary = !activeUrl && objectRoute && item.url === "/";
         const group = item.group ?? 0;
         const groupStart = index > 0 && (navItems[index - 1].group ?? 0) !== group;
         const link = (
@@ -95,6 +100,7 @@ export function AppNavRail() {
               active &&
                 "bg-sidebar-accent font-medium text-foreground before:absolute before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-primary",
               active && (expanded ? "before:-left-2" : "before:-left-2.5"),
+              secondary && "bg-sidebar-accent text-foreground",
             )}
           >
             <MorphIcon

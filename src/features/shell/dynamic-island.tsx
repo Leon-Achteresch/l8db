@@ -128,7 +128,6 @@ export function DynamicIsland({ buttonRef, shortcut, badge, onOpen }: Props) {
             >
               {view.title}
             </span>
-            {view.idle ? badge : null}
             {view.detail ? (
               <span className="min-w-0 truncate text-current/55 @max-[14rem]/header-search:hidden">
                 {view.detail}
@@ -164,6 +163,7 @@ export function DynamicIsland({ buttonRef, shortcut, badge, onOpen }: Props) {
                     {shortcut}
                   </kbd>
                 ) : null}
+                {view.idle ? badge : null}
               </span>
             ) : null}
           </motion.div>
