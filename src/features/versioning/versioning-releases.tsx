@@ -14,12 +14,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { versioningRepository } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
-import { generateMigration, type MigrationDraft } from "@/lib/versioning/migrations";
+import { generateMigration, groundwork, type MigrationDraft } from "@/lib/versioning/migrations";
 import {
   checksum,
   deployKind,
   PROJECT_PATH,
   parseRelease,
+  releaseParents,
   releasePath,
   releaseTrack,
   validateMigration,
@@ -152,16 +153,16 @@ export function VersioningReleases({
       );
     if (sql.trim()) validateMigration(sql, deployKind(project.kind));
     const release: DatabaseRelease = {
-      format: 1,
+      format: 2,
       id,
       projectId: project.id,
       kind: deployKind(project.kind),
-      parent: parent || null,
+      parents: parent ? [parent] : [],
       createdAt: new Date().toISOString(),
       objects,
       migrations: sql.trim()
         ? [{ id: `${id}-migration`, title: `Update auf ${id}`, sql, checksum: await checksum(sql) }]
-        : [],
+        : await groundwork(project.kind, id, objects),
       track,
       safety: {
         ...safety,
@@ -471,7 +472,9 @@ export function VersioningReleases({
                   <span className="block truncate font-mono text-xs font-medium">{release.id}</span>
                   <span className="mt-1 block text-[11px] text-muted-foreground">
                     {releaseTrack(release)} · {release.objects.length} Objekte ·{" "}
-                    {release.parent ? `von ${release.parent}` : "Baseline"}
+                    {releaseParents(release).length
+                      ? `von ${releaseParents(release).join(" + ")}`
+                      : "Baseline"}
                   </span>
                 </span>
                 <span className="text-[10px] text-muted-foreground">

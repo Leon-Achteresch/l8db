@@ -28,9 +28,7 @@ export function AiMenuAction({
       onClick={onClick}
       className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left outline-none transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:hover:bg-transparent"
     >
-      <span className="grid size-7 shrink-0 place-items-center rounded-md border bg-muted/50">
-        {icon}
-      </span>
+      <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-muted">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5 truncate text-xs font-medium">
           {label}

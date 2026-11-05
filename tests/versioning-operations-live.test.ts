@@ -72,7 +72,7 @@ for (const kind of ["postgres", "oracle"] as const) {
         await page
           .getByRole("button", { name: "Versionierung aktualisieren", exact: true })
           .click();
-        await page.getByRole("tab", { name: "Kunden", exact: true }).click();
+        await page.getByRole("tab", { name: /^Kunden(\s|$)/ }).click();
         await page.getByRole("button", { name: "Aktionen: Customer 2", exact: true }).click();
         await page
           .getByRole("menuitem", { name: "Kundenzuordnung und Update-Regeln", exact: true })
@@ -83,7 +83,7 @@ for (const kind of ["postgres", "oracle"] as const) {
         await page.getByText("main · Pausiert", { exact: true }).waitFor();
         await page.keyboard.press("Escape");
         await page.getByTestId("versioning-badge").getByText("2", { exact: true }).waitFor();
-        await page.getByRole("tab", { name: "Releases", exact: true }).click();
+        await page.getByRole("tab", { name: /^Releases(\s|$)/ }).click();
         await page.getByRole("button", { name: "Release vorbereiten", exact: true }).click();
         await page.getByText("Betriebsplan und Datenprüfungen", { exact: true }).click();
         await page

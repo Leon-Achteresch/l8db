@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
 
 export interface AiFigureScope {
   numbers: Map<string, number>;
@@ -15,3 +15,11 @@ export const AiFigureContext = createContext<AiFigureScope>({
 });
 
 export const useAiFigures = () => useContext(AiFigureContext);
+
+export function useAiFigureNumbers(figures: { id: string }[]) {
+  const key = figures.map((figure) => figure.id).join("\n");
+  return useMemo(
+    () => new Map<string, number>(key ? key.split("\n").map((id, index) => [id, index + 1]) : []),
+    [key],
+  );
+}

@@ -3,7 +3,7 @@ import { useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { open as openDialog, save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { CircleCheck, CircleHelp, CircleX, LoaderCircle } from "lucide";
-import { Download, ListPlus, Pencil, Plus, Settings2, Trash2, X } from "lucide-react";
+import { Download, Pencil, Plus, Settings2, Trash2 } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -24,7 +24,7 @@ import { setAiDropHandler } from "@/lib/ai/drop-target";
 import { type ChatEditorTarget, handleChatEditorRequest } from "@/lib/ai/editor/chat-edit";
 import { editorAiController } from "@/lib/ai/editor/controller";
 import { useEditorAiSettings } from "@/lib/ai/editor/settings";
-import { AiFigureContext } from "@/lib/ai/figures";
+import { AiFigureContext, useAiFigureNumbers } from "@/lib/ai/figures";
 import { handleChatIssueRequest } from "@/lib/ai/issue";
 import { handleChatNotebookRequest } from "@/lib/ai/notebook";
 import { AI_KNOWLEDGE_PROMPT, AI_RULES_PROMPT } from "@/lib/ai/prompts";
@@ -65,17 +65,24 @@ import { type AiAccessLevel, AiAccessStrip } from "./ai-access-strip";
 import { AiApproval } from "./ai-approval";
 import { AiApprovalPicker } from "./ai-approval-picker";
 import { AiAttachmentChips } from "./ai-attachment-chips";
+import { AiBanner } from "./ai-banner";
 import { AiCapabilities } from "./ai-capabilities";
+import { AiComposerFrame } from "./ai-composer-frame";
 import { AiContext } from "./ai-context";
 import { AiContextChips } from "./ai-context-chips";
+import { AiEmptyHero } from "./ai-empty-hero";
 import { AiFastToggle } from "./ai-fast-toggle";
 import { AiIssueIntro } from "./ai-issue-intro";
 import { AiKnowledgeDialog } from "./ai-knowledge-dialog";
+import { AiMentionChips } from "./ai-mention-chips";
+import { AiMentionList } from "./ai-mention-list";
 import { AiOnboarding } from "./ai-onboarding";
 import { AiPanelHeader } from "./ai-panel-header";
+import { AiPanelTabs } from "./ai-panel-tabs";
 import { AiPlusActions } from "./ai-plus-actions";
 import { AiProductionConfirmDialog } from "./ai-production-confirm-dialog";
 import { AiProviderPicker } from "./ai-provider-picker";
+import { AiQueue } from "./ai-queue";
 import { AiReasoningPicker } from "./ai-reasoning-picker";
 import { AiResultsShelf } from "./ai-results-shelf";
 import { AiSettings } from "./ai-settings";
@@ -361,9 +368,10 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const figures = useMemo(() => aiFigures(thread), [thread]);
   const shelf = fullPage && wide && thread.length > 0;
   const focusTimer = useRef<number | undefined>(undefined);
+  const figureNumbers = useAiFigureNumbers(figures);
   const figureScope = useMemo(
     () => ({
-      numbers: new Map(figures.map((block, index) => [block.id, index + 1])),
+      numbers: figureNumbers,
       shelf,
       focused,
       focus: (id: string) => {
@@ -375,7 +383,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         focusTimer.current = window.setTimeout(() => setFocused(null), 1800);
       },
     }),
-    [figures, shelf, focused],
+    [figureNumbers, shelf, focused],
   );
   const tab = figures.length && !fullPage ? panelTab : "chat";
   const updateLast = (change: (message: AiMessage) => AiMessage) => {
@@ -1084,51 +1092,14 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         !thread.length && !minimized && tab === "chat" && "my-auto",
       )}
     >
-      {!thread.length && !minimized && (
-        <div className="px-1 pb-5">
-          <h2 className="text-balance text-[22px] font-semibold leading-tight tracking-[-0.02em]">
-            {active ? `Was möchtest du über ${active.name} wissen?` : "Wie kann ich helfen?"}
-          </h2>
-          <p className="mt-1.5 max-w-[34rem] text-[13px] leading-relaxed text-muted-foreground">
-            Frag in Alltagssprache. Du bekommst eine kurze Antwort, Diagramme und Tabellen zum
-            Exportieren und auf Wunsch das SQL dahinter.
-          </p>
-        </div>
-      )}
+      {!thread.length && !minimized && <AiEmptyHero connectionName={active?.name} />}
       {mentionCount > 0 && (
-        <div
-          role="listbox"
-          aria-label="Kontext oder Verbindung erwähnen"
-          className="mb-2 max-h-48 overflow-auto rounded-xl border bg-popover p-1 shadow-sm"
-        >
-          {contextMatches.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="option"
-              aria-selected={false}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => selectContext(item)}
-            >
-              <span className="min-w-0 flex-1 truncate">@{item.label}</span>
-              <span className="shrink-0 text-[11px] text-muted-foreground">
-                {item.kind === "table" ? item.schema || "Tabelle" : "Kontext"}
-              </span>
-            </button>
-          ))}
-          {suggestions.map((connection) => (
-            <button
-              key={connection.id}
-              type="button"
-              role="option"
-              aria-selected={false}
-              className="block w-full rounded-lg px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => selectMention(connection.id)}
-            >
-              @{connection.name}
-            </button>
-          ))}
-        </div>
+        <AiMentionList
+          contexts={contextMatches}
+          connections={suggestions}
+          onContext={selectContext}
+          onConnection={selectMention}
+        />
       )}
       {(contextItems.length > 0 || editorTab) && (
         <div ref={contextFeature.ref} className="mb-2">
@@ -1148,21 +1119,14 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         </div>
       )}
       {mentioned.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1">
-          {mentioned.map((id) => (
-            <button
-              key={id}
-              type="button"
-              disabled={busy}
-              aria-label={`Verbindung ${connections.find((connection) => connection.id === id)?.name ?? id} aus Kontext entfernen`}
-              className="flex items-center gap-1 rounded-md border bg-card px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
-              onClick={() => setMentioned((ids) => ids.filter((entry) => entry !== id))}
-            >
-              @{connections.find((connection) => connection.id === id)?.name ?? "Entfernt"}
-              <X className="size-2.5" />
-            </button>
-          ))}
-        </div>
+        <AiMentionChips
+          connections={mentioned.map((id) => ({
+            id,
+            name: connections.find((connection) => connection.id === id)?.name ?? "Entfernt",
+          }))}
+          disabled={busy}
+          onRemove={(id) => setMentioned((ids) => ids.filter((entry) => entry !== id))}
+        />
       )}
       {attachments.length > 0 && (
         <div className="mb-2">
@@ -1175,49 +1139,26 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         </div>
       )}
       {queue.length > 0 && (
-        <ul aria-label="Warteschlange" className="mb-2 space-y-1">
-          {queue.map((entry) => (
-            <li
-              key={entry.id}
-              className="flex items-center gap-2 rounded-lg border bg-card py-1 pr-1 pl-2.5 text-xs"
-            >
-              <ListPlus className="size-3.5 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate">{entry.text}</span>
-              <IconButton
-                aria-label="Aus Warteschlange entfernen"
-                variant="ghost"
-                size="icon"
-                className="size-6"
-                onClick={() =>
-                  setQueue((entries) => entries.filter((item) => item.id !== entry.id))
-                }
-              >
-                <X className="size-3" />
-              </IconButton>
-            </li>
-          ))}
-        </ul>
+        <AiQueue
+          entries={queue}
+          onRemove={(id) => setQueue((entries) => entries.filter((item) => item.id !== id))}
+        />
       )}
-      {runId && approvals.length > 0 && (
-        <div className="max-h-[50vh] space-y-2 overflow-auto rounded-t-2xl border border-b-0 border-amber-500/35 bg-amber-500/[0.07] p-2">
-          {approvals.map((event) => (
-            <AiApproval
-              key={String(event.data.id)}
-              event={event}
-              runId={runId}
-              onResolved={resolve}
-              onError={setError}
-            />
-          ))}
-        </div>
-      )}
-      <div
-        className={cn(
-          "overflow-hidden rounded-2xl border bg-card shadow-[0_1px_2px_oklch(0_0_0/4%),0_10px_28px_-16px_oklch(0_0_0/18%)] transition-colors focus-within:border-foreground/20",
-          runId && approvals.length > 0 && "rounded-t-none border-amber-500/35",
-          minimized &&
-            "group-not-data-active/mini:overflow-visible group-not-data-active/mini:border-0 group-not-data-active/mini:bg-transparent group-not-data-active/mini:shadow-none",
-        )}
+      <AiComposerFrame
+        minimized={minimized}
+        approvals={
+          runId && approvals.length > 0
+            ? approvals.map((event) => (
+                <AiApproval
+                  key={String(event.data.id)}
+                  event={event}
+                  runId={runId}
+                  onResolved={resolve}
+                  onError={setError}
+                />
+              ))
+            : null
+        }
       >
         {strip}
         {productionConfirm && (
@@ -1355,9 +1296,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               "group-not-data-active/mini:flex group-not-data-active/mini:items-center group-not-data-active/mini:gap-1 group-not-data-active/mini:[&>div:last-child]:contents group-not-data-active/mini:[&>div:last-child>div:last-child]:order-2 group-not-data-active/mini:[&>textarea]:order-1 group-not-data-active/mini:[&>textarea]:min-w-0 group-not-data-active/mini:[&>textarea]:flex-1 group-not-data-active/mini:[&>textarea]:pt-0 group-not-data-active/mini:rounded-full group-not-data-active/mini:border group-not-data-active/mini:bg-background/80 group-not-data-active/mini:shadow-lg group-not-data-active/mini:shadow-black/20 group-not-data-active/mini:backdrop-blur-md group-not-data-active/mini:[&>div:last-child>div:last-child>*:not(:last-child)]:hidden",
           )}
         />
-      </div>
-      {!minimized && <AiIssueIntro />}
+      </AiComposerFrame>
       {!thread.length && !minimized && active && !runId && <AiSuggestions onAsk={ask} />}
+      {!thread.length && !minimized && <AiIssueIntro />}
     </div>
   );
   const chat = setupNeeded ? (
@@ -1365,14 +1306,16 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   ) : (
     <>
       {missingSetup && (
-        <div className="mx-3 mt-3 flex items-center gap-3 rounded-xl border bg-card px-3 py-2.5 text-xs">
-          <p className="min-w-0 flex-1">
-            {provider.cli ? `${provider.name} ist nicht eingerichtet.` : "API-Schlüssel fehlt."}
-          </p>
-          <Button size="sm" variant="outline" onClick={() => setView("settings")}>
-            Einstellungen öffnen
-          </Button>
-        </div>
+        <AiBanner
+          tone="setup"
+          action={
+            <Button size="xs" variant="secondary" onClick={() => setView("settings")}>
+              Einrichten
+            </Button>
+          }
+        >
+          {provider.cli ? `${provider.name} ist nicht eingerichtet.` : "API-Schlüssel fehlt."}
+        </AiBanner>
       )}
       {tab === "results" ? (
         <AiResultsShelf figures={figures} />
@@ -1407,13 +1350,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const main = (
     <>
       {!fullPage && (
-        <div
-          className={cn(
-            minimized
-              ? "group-data-active/mini:border-b"
-              : (!figures.length || view !== "chat") && "border-b",
-          )}
-        >
+        <div>
           <AiPanelHeader
             title={session?.title || "KI-Assistent"}
             view={view}
@@ -1436,36 +1373,10 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         </div>
       )}
       {!fullPage && !minimized && view === "chat" && figures.length > 0 && (
-        <div role="tablist" aria-label="Ansicht" className="flex shrink-0 gap-4 border-b px-4">
-          {(
-            [
-              ["chat", "Gespräch"],
-              ["results", "Ergebnisse"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={tab === id}
-              onClick={() => setPanelTab(id)}
-              className={cn(
-                "-mb-px flex h-9 items-center gap-1.5 border-b-2 border-transparent text-[13px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground",
-                tab === id && "border-primary font-medium text-foreground",
-              )}
-            >
-              {label}
-              {id === "results" && (
-                <span className="rounded-md bg-primary/10 px-1.5 text-[11px] font-semibold tabular-nums text-primary">
-                  {figures.length}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        <AiPanelTabs tab={tab} count={figures.length} onTab={setPanelTab} />
       )}
       {fullPage && view === "chat" && thread.length > 0 && (
-        <div className="flex h-12 shrink-0 items-center border-b px-5">
+        <div className="flex h-12 shrink-0 items-center px-5">
           <h2 className="min-w-0 truncate text-[13px] font-semibold">{session?.title}</h2>
         </div>
       )}
@@ -1491,34 +1402,14 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         chat
       )}
       {state.persistenceError && (
-        <p
-          role="alert"
-          className={cn(
-            "shrink-0 border-t bg-destructive/5 px-3 py-2 text-xs text-destructive",
-            alertMini,
-          )}
-        >
+        <AiBanner tone="error" className={alertMini}>
           {state.persistenceError}
-        </p>
+        </AiBanner>
       )}
       {error && (
-        <div
-          role="alert"
-          className={cn(
-            "flex shrink-0 items-start gap-2 border-t bg-destructive/5 px-3 py-2 text-xs text-destructive",
-            alertMini,
-          )}
-        >
-          <p className="max-h-28 flex-1 overflow-auto whitespace-pre-wrap break-words">{error}</p>
-          <button
-            type="button"
-            aria-label="Fehler schließen"
-            className="rounded p-0.5 focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => setError("")}
-          >
-            <X className="size-3" />
-          </button>
-        </div>
+        <AiBanner tone="error" className={alertMini} onClose={() => setError("")}>
+          {error}
+        </AiBanner>
       )}
     </>
   );
@@ -1538,7 +1429,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
             onboarding
           ) : fullPage ? (
             <>
-              <div ref={historyFeature.ref} className="flex border-r bg-sidebar/50">
+              <div ref={historyFeature.ref} className="flex bg-sidebar/50">
                 <SidebarNav
                   {...history}
                   title="Gespräche"
@@ -1549,8 +1440,8 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               </div>
               <div className="flex min-h-0 min-w-0 flex-1 flex-col">{main}</div>
               {shelf && view === "chat" && (
-                <div className="flex w-[25rem] shrink-0 flex-col border-l bg-muted/25">
-                  <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+                <div className="flex w-[25rem] shrink-0 flex-col bg-muted/30">
+                  <div className="flex h-12 shrink-0 items-center gap-2 px-4">
                     <h2 className="text-[13px] font-semibold">Ergebnisse</h2>
                     {figures.length > 0 && (
                       <span className="rounded-md bg-primary/10 px-1.5 text-[11px] font-semibold tabular-nums text-primary">

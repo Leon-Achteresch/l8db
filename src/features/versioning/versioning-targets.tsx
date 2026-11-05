@@ -4,6 +4,7 @@ import {
   DatabaseIcon,
   EllipsisIcon,
   FileDownIcon,
+  ListChecksIcon,
   PlusIcon,
   RefreshCwIcon,
   ScanSearchIcon,
@@ -32,7 +33,12 @@ import { effectiveConnectionString } from "@/lib/ssh";
 import { cn } from "@/lib/utils";
 import { control } from "@/lib/versioning/control";
 import { targetStage } from "@/lib/versioning/delivery";
-import { baselineTarget, type DeploymentPlan, inspectTarget } from "@/lib/versioning/deploy";
+import {
+  adoptTarget,
+  baselineTarget,
+  type DeploymentPlan,
+  inspectTarget,
+} from "@/lib/versioning/deploy";
 import { deployFleet, type FleetResult, preflightFleet } from "@/lib/versioning/fleet";
 import { saveMigrationScripts } from "@/lib/versioning/migration-script";
 import { snapshotTargets } from "@/lib/versioning/rollout-snapshot";
@@ -615,6 +621,24 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                             }
                           />
                           <IconMenuItem
+                            icon={<ListChecksIcon />}
+                            label="Abhakliste übernehmen"
+                            disabled={!target.release || !target.connectionId}
+                            onSelect={() =>
+                              void run(async () => {
+                                const ledger = await adoptTarget(
+                                  repo,
+                                  project,
+                                  target,
+                                  connectionFor(target),
+                                );
+                                workspace.setMessage(
+                                  `${target.name}: ${ledger.changes.size} Änderungen abgehakt`,
+                                );
+                              })
+                            }
+                          />
+                          <IconMenuItem
                             icon={<RefreshCwIcon />}
                             label={
                               releaseId
@@ -798,9 +822,8 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
           {plans.map((item) => (
             <details key={item.target.id} className="text-xs leading-relaxed">
               <summary>
-                {item.target.name}: {item.from.id} → {item.to.id} · {item.releases.length} Releases
-                ·{" "}
-                {item.differences.filter((difference) => difference.status !== "unchanged").length}{" "}
+                {item.target.name}: {item.from.id} → {item.to.id} · {item.changes.length}{" "}
+                {item.changes.length === 1 ? "Änderung" : "Änderungen"} offen · {item.drift.length}{" "}
                 Abweichungen
               </summary>
               <div className="mt-2 flex items-start gap-1">
@@ -855,10 +878,15 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                   {risk}
                 </p>
               ))}
-              {item.releases.map((release) => (
+              {item.steps.map(({ release, changes }) => (
                 <div className="mt-3 space-y-1" key={release.id}>
                   <p className="font-medium">
                     {release.id} · {release.safety?.phase ?? "Ohne Betriebsplan"}
+                  </p>
+                  <p>
+                    {changes.length
+                      ? changes.map((change) => change.title).join(" · ")
+                      : "Alle Änderungen bereits abgehakt"}
                   </p>
                   <p>{release.safety?.notes}</p>
                   <p>
@@ -939,9 +967,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
               confirmation !== releaseId ||
               preflight.some((item) => item.error) ||
               plans.every((item) => !item.releases.length) ||
-              plans.some((item) =>
-                item.differences.some((difference) => difference.status !== "unchanged"),
-              )
+              plans.some((item) => item.drift.length > 0)
             }
             onClick={() => void run(execute)}
           >

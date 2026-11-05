@@ -149,7 +149,7 @@ test.skipIf(!enabled)(
       await panel.getByRole("button", { name: "Reasoning auswählen" }).click();
       await page.getByRole("menuitemradio", { name: "high" }).click();
       await panel.getByLabel("Nachricht an AI").fill("@Anal");
-      await panel.getByRole("option", { name: "@Analytics", exact: true }).click();
+      await panel.getByRole("option", { name: "Analytics Verbindung", exact: true }).click();
       await panel.getByRole("button", { name: "Kontext", exact: true }).click();
       expect(
         await page
@@ -351,7 +351,7 @@ test.skipIf(!enabled)(
       ).toBe(true);
       expect(await answerTable.getByRole("row").count()).toBe(5);
       expect(await answerTable.textContent()).not.toContain("---");
-      expect(await panel.getByText("Plan des Agents", { exact: true }).count()).toBeGreaterThan(0);
+      expect(await panel.getByText("Plan", { exact: true }).count()).toBeGreaterThan(0);
       expect(await panel.getByText("query.sql", { exact: true }).count()).toBeGreaterThan(0);
       expect(await panel.getByText("Tool verwendet", { exact: false }).count()).toBe(0);
       expect(
@@ -384,6 +384,10 @@ test.skipIf(!enabled)(
       await panel.getByRole("button", { name: /^empty-schema/ }).click();
       await panel.getByAltText("Bild aus Agent-Ergebnis").waitFor();
       expect(await panel.getByText("SQL proposal", { exact: true }).isVisible()).toBe(true);
+      await panel
+        .getByRole("button", { name: /Schritte/ })
+        .last()
+        .click();
       expect(await panel.getByText("Write fixture row", { exact: true }).last().isVisible()).toBe(
         true,
       );

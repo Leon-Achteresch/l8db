@@ -119,7 +119,7 @@ export function CodeBlock({
         ref={viewportRef}
         role={streaming ? "log" : undefined}
         aria-live={streaming ? "polite" : undefined}
-        className="scrollbar-hide overflow-auto border-t border-foreground/[0.06] py-2"
+        className="scrollbar-hide overflow-auto pb-2"
         style={{ maxHeight }}
       >
         <pre className="m-0 min-w-max font-mono text-xs leading-5 text-foreground/85">
