@@ -1,0 +1,104 @@
+warning: use of deprecated module `std::usize`: all constants in this module replaced by associated constants on the type
+ --> vendor/tiberius/src/tds/codec/type_info.rs:5:40
+  |
+5 | use std::{convert::TryFrom, sync::Arc, usize};
+  |                                        ^^^^^
+  |
+  = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated associated function `core::num::<impl u16>::max_value`: replaced by the `MAX` associated constant on this type
+  --> vendor/tiberius/src/tds/codec/header.rs:60:32
+   |
+60 |         assert!(length <= u16::max_value() as usize);
+   |                                ^^^^^^^^^
+
+warning: use of deprecated associated function `core::num::<impl u64>::max_value`: replaced by the `MAX` associated constant on this type
+   --> vendor/tiberius/src/tds/numeric.rs:115:47
+    |
+115 |             let high_part = high_part * (u64::max_value() as u128 + 1);
+    |                                               ^^^^^^^^^
+
+warning: `tiberius` (lib) generated 3 warnings
+warning: linker stderr: ld: __eh_frame section too large (max 16MB) to encode dwarf unwind offsets in compact unwind table, performance of exception handling might be affected
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `l8db` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.80s
+     Running unittests src/lib.rs (target/debug/deps/l8db_lib-e8f384e3137e1586)
+
+running 1 test
+huge catalog: 50007 tables, 1977120 columns, built in 2.128742667s
+| measure | baseline B | bytes | ≈tokens (bytes/4) |
+|---|---:|---:|---:|
+| tools/list | 28737 | 14086 | 3522 |
+| instructions | 1324 | 960 | 240 |
+| byok start catalog | 12201 | 10596 | 2649 |
+| tool connections | – | 218 | 55 |
+| tool overview | – | 393 | 99 |
+| tool search | – | 611 | 153 |
+| tool describe | – | 615 | 154 |
+| tool relations | – | 426 | 107 |
+| tool explain | – | 439 | 110 |
+| tool drilldown | – | 899 | 225 |
+| tool query | – | 513 | 129 |
+| tool dashboard | – | 1683 | 421 |
+| tool benchmark | – | 616 | 154 |
+| tool health | – | 527 | 132 |
+| tool workflow | – | 1152 | 288 |
+| tool open | – | 1633 | 409 |
+| tool ui_plugins | – | 552 | 138 |
+| tool code | – | 1694 | 424 |
+| tool script | – | 901 | 226 |
+| tool watch | – | 695 | 174 |
+| tool execute | – | 490 | 123 |
+| task | calls | baseline B | args B | response B | total B | ≈tokens (bytes/4) | info complete | ms |
+|---|---:|---:|---:|---:|---:|---:|---|---:|
+| shop.revenue_per_customer | 5 | 1657 | 403 | 952 | 1355 | 339 | yes | 97 |
+|  steps: search 39+216, search 36+256, describe 46+202, relations 59+237, query 223+41 |
+| shop.overview | 2 | 939 | 88 | 869 | 957 | 240 | yes | 5 |
+|  steps: search 21+298, describe 67+571 |
+| huge.overview | 1 | 2073 | 21 | 879 | 900 | 225 | yes | 77 |
+|  steps: search 21+879 |
+| huge.tenant_id_tables | 1 | 20030 | 40 | 2037 | 2077 | 520 | yes | 318 |
+|  steps: search 40+2037 |
+| huge.wide_table_column | 1 | 12223 | 43 | 112 | 155 | 39 | yes | 190 |
+|  steps: search 43+112 |
+| huge.revenue_per_customer | 2 | 21960 | 123 | 4235 | 4358 | 1090 | yes | 298 |
+|  steps: search 38+2317, describe 85+1918 |
+| huge.map | 1 | 11345 | 21 | 1718 | 1739 | 435 | yes | 138 |
+|  steps: overview 21+1718 |
+| huge.zoom_schema | 1 | 2557 | 39 | 1339 | 1378 | 345 | yes | 78 |
+|  steps: overview 39+1339 |
+| huge.understand_routine | 1 | 136626 | 59 | 3901 | 3960 | 990 | yes | 365 |
+|  steps: describe 59+3901 |
+| huge.writers_of_table | 1 | 144448 | 123 | 2223 | 2346 | 587 | yes | 475 |
+|  steps: search 123+2223 |
+| huge.knowledge_column | 1 | 24056 | 40 | 200 | 240 | 60 | yes | 190 |
+|  steps: search 40+200 |
+| code task | baseline calls | baseline B | ≈tokens | code calls | code B | ≈tokens | saved | info complete | ms baseline / code |
+|---|---:|---:|---:|---:|---:|---:|---:|---|---:|
+| code.tenant_orphans | 301 | 55926 | 13982 | 1 | 1049 | 263 | 98 % | yes | 7171 / 6384 |
+| code.latest_updated | 52 | 7487 | 1872 | 1 | 2473 | 619 | 67 % | yes | 337 / 588 |
+| code.compare_counts | 3 | 1637 | 410 | 1 | 488 | 122 | 70 % | yes | 7 / 405 |
+| code.payment_writers | 3 | 7691 | 1923 | 1 | 1274 | 319 | 83 % | yes | 3822 / 850 |
+modeled baseline huge.map: 11345 B — 3 queries on pg_class/pg_proc: schemas with tables, rows, size (all 304 rows), top 10 tables, object counts
+modeled baseline huge.zoom_schema: 2557 B — 2 queries: name prefixes of public with rows, top 10 tables of public
+modeled baseline huge.understand_routine: 136626 B — read the whole 5211 line definition via pg_get_functiondef in 7 chunks of max_chars
+modeled baseline huge.writers_of_table: 144448 B — regex over prosrc, reading the 15 matching sources to confirm
+modeled baseline huge.knowledge_column: 24056 B — Phase 1 AI workspace sent all table notes in every system prompt; the external MCP had no knowledge
+knowledge prompt per AI request: Phase 1 24056 B, Phase 2 465 B
+
+thread 'mcp::token_benchmark::token_benchmark_reports_surface_and_task_bytes' (14200293) panicked at src/mcp/token_benchmark.rs:1406:5:
+over budget: ["tools/list: 14086 > 11935", "instructions: 960 > 950"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test mcp::token_benchmark::token_benchmark_reports_surface_and_task_bytes ... FAILED
+
+failures:
+
+failures:
+    mcp::token_benchmark::token_benchmark_reports_surface_and_task_bytes
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1417 filtered out; finished in 28.95s
+
+error: test failed, to rerun pass `--lib`
