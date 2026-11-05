@@ -205,6 +205,7 @@ export const NEW_FEATURES = {
   "transfer.replace": "0.17.0",
   "transfer.tables": NEXT_FEATURE_VERSION,
   "transfer.content": NEXT_FEATURE_VERSION,
+  "transfer.editor": NEXT_FEATURE_VERSION,
   "settings.general.hide-own-schema": "0.8.0",
   "settings.general.dynamic-island": "0.10.0",
   "settings.general.sidebar-object-nav": "0.10.0",

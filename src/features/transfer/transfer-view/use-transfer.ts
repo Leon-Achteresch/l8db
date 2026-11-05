@@ -1,5 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   isReadOnlyConnection,
   type SavedConnection,
@@ -8,6 +9,7 @@ import {
 } from "@/lib/connections";
 import {
   cancelExecution,
+  executeQuery,
   loadPartitionDdl,
   loadSchemaCatalog,
   planTransfer,
@@ -23,9 +25,16 @@ import { databaseFromConnectionString, useActiveDatabase } from "@/lib/db-select
 import { prepareConnection } from "@/lib/prepare-connection";
 import { capabilitiesFor } from "@/lib/providers";
 import { compareTypesFor, defaultCompareTypes } from "@/lib/schema-compare/types";
+import { oracleLoginSchema } from "@/lib/schema-selection";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { readTabState, tabStateKey, useTabState, writeTabState } from "@/lib/tab-state";
-import { nativeScript, selectTables } from "@/lib/transfer/native-script";
+import { ANY_SCHEMA_SQL, defaultTargetSchema } from "@/lib/transfer/default-target";
+import {
+  nativeScript,
+  objectKey,
+  pickableObjects,
+  selectTables,
+} from "@/lib/transfer/native-script";
 
 export interface TransferSide {
   connectionId: string | null;
@@ -46,28 +55,40 @@ function endpoint(connection: SavedConnection, database: string | null): Transfe
   };
 }
 
+const NATIVE_KINDS = new Set(["postgres", "mysql", "mssql", "oracle", "sqlite"]);
+
 async function withNativeStructure(
   plan: TransferPlan,
   source: TransferEndpoint,
+  excluded: Record<string, string[]> | null,
   onStep: (text: string) => void,
 ): Promise<TransferPlan> {
   const next: TransferPlan = { ...plan, preData: [], postData: [], warnings: [...plan.warnings] };
   const types =
     source.kind === "oracle" ? compareTypesFor(source.kind) : defaultCompareTypes(source.kind);
-  for (const pair of plan.schemas) {
-    onStep(`Struktur von ${pair.source} wird gelesen…`);
+  for (const [index, pair] of plan.schemas.entries()) {
+    onStep(
+      `Struktur von ${pair.source} wird gelesen (Schema ${index + 1} von ${plan.schemas.length})…`,
+    );
+    const catalog = await loadSchemaCatalog(
+      source.kind,
+      source.connectionString,
+      pair.source,
+      types,
+      source.database ?? undefined,
+    );
+    const skip = new Set(excluded?.[pair.source] ?? []);
+    const picked =
+      excluded && (pair.tables || skip.size > 0)
+        ? [...new Set(pickableObjects(catalog).map(objectKey))].filter((key) => !skip.has(key))
+        : undefined;
     const selection = selectTables(
-      await loadSchemaCatalog(
-        source.kind,
-        source.connectionString,
-        pair.source,
-        types,
-        source.database ?? undefined,
-      ),
+      catalog,
       pair.tables &&
         plan.tables
           .filter((table) => table.sourceSchema === pair.source)
           .map((table) => table.sourceName),
+      picked,
     );
     const objects = selection.objects;
     next.warnings.push(...selection.warnings);
@@ -114,8 +135,8 @@ export function useTransfer() {
   );
   const [source, setSource] = useTabState(tabStateKey(scope, "source"), initialSource);
   const [target, setTarget] = useTabState(tabStateKey(scope, "target"), EMPTY_TRANSFER_SIDE);
-  const [sourceSchemas, setSourceSchemas] = useState<string[]>([]);
-  const [targetSchemas, setTargetSchemas] = useState<string[]>([]);
+  const [sourceSchemas, setSourceSchemas] = useState<string[] | null>([]);
+  const [targetSchemas, setTargetSchemas] = useState<string[] | null>([]);
   const [schemas, setSchemas] = useTabState<string[]>(tabStateKey(scope, "schemas"), []);
   const [mapping, setMapping] = useTabState<Record<string, string>>(
     tabStateKey(scope, "mapping"),
@@ -123,6 +144,10 @@ export function useTransfer() {
   );
   const [tables, setTables] = useTabState<Record<string, string[]>>(
     tabStateKey(scope, "tables"),
+    {},
+  );
+  const [objects, setObjects] = useTabState<Record<string, string[]>>(
+    tabStateKey(scope, "objects"),
     {},
   );
   const [content, setContent] = useTabState<TransferContent>(tabStateKey(scope, "content"), "all");
@@ -145,22 +170,60 @@ export function useTransfer() {
     foldNames,
     replace: false,
     content,
+    objects: null as Record<string, string[]> | null,
   });
 
   const sourceConnection = connections.find((entry) => entry.id === source.connectionId) ?? null;
   const targetConnection = connections.find((entry) => entry.id === target.connectionId) ?? null;
   const readOnly = isReadOnlyConnection(targetConnection);
+  const sourceLogin = useMemo(
+    () =>
+      sourceConnection?.kind === "oracle"
+        ? oracleLoginSchema(sourceConnection.connectionString, sourceSchemas ?? [])
+        : null,
+    [sourceConnection, sourceSchemas],
+  );
+  const targetLogin = useMemo(
+    () =>
+      targetConnection?.kind === "oracle"
+        ? oracleLoginSchema(targetConnection.connectionString, targetSchemas ?? [])
+        : null,
+    [targetConnection, targetSchemas],
+  );
+  const targetId = targetConnection?.id ?? null;
+  const anySchema = useQuery({
+    queryKey: ["transfer-target-any-schema", targetId],
+    enabled: Boolean(targetLogin && targetId),
+    retry: false,
+    staleTime: 300_000,
+    queryFn: async () => {
+      const ready = await prepareConnection(targetId as string);
+      const result = await executeQuery(
+        ready.kind,
+        effectiveConnectionString(ready),
+        ANY_SCHEMA_SQL,
+      );
+      return Number(Object.values(result.rows[0] ?? {})[0] ?? 0) > 0;
+    },
+  });
+  const defaultTarget = (schema: string) =>
+    defaultTargetSchema(schema, sourceLogin, targetLogin, anySchema.data !== false);
   const pairs: TransferSchemaPair[] = schemas.map((schema) => ({
     source: schema,
-    target: (mapping[schema] ?? "").trim() || schema,
+    target: (mapping[schema] ?? "").trim() || defaultTarget(schema),
     ...(tables[schema] ? { tables: tables[schema] } : {}),
   }));
   const canReplace =
     sourceConnection?.kind === "oracle" &&
     targetConnection?.kind === "oracle" &&
     content !== "data" &&
-    pairs.every((pair) => !pair.tables);
+    pairs.every((pair) => !pair.tables && !objects[pair.source]);
   const replace = canReplace && replaceTarget;
+  const native =
+    Boolean(sourceConnection && targetConnection) &&
+    sourceConnection?.kind === targetConnection?.kind &&
+    NATIVE_KINDS.has(sourceConnection?.kind ?? "");
+  const picked = native && content !== "data" ? objects : null;
   const sameEndpoint =
     Boolean(sourceConnection && targetConnection) &&
     source.connectionId === target.connectionId &&
@@ -172,9 +235,9 @@ export function useTransfer() {
     !readOnly &&
     !sameEndpoint;
   const planKey = ready
-    ? JSON.stringify([source, target, pairs, foldNames, replace, content])
+    ? JSON.stringify([source, target, pairs, foldNames, replace, content, picked])
     : null;
-  configRef.current = { source, target, pairs, foldNames, replace, content };
+  configRef.current = { source, target, pairs, foldNames, replace, content, objects: picked };
 
   useEffect(() => {
     if (!running) return;
@@ -228,7 +291,7 @@ export function useTransfer() {
         });
         if (!alive()) return;
         if (next.native && next.content !== "data")
-          next = await withNativeStructure(next, from, (text) => {
+          next = await withNativeStructure(next, from, config.objects, (text) => {
             if (alive()) setPlanning(text);
           });
         if (alive()) {
@@ -288,7 +351,7 @@ export function useTransfer() {
     setSchemas((current) =>
       current.includes(schema)
         ? current.filter((entry) => entry !== schema)
-        : sourceSchemas.filter((entry) => entry === schema || current.includes(entry)),
+        : (sourceSchemas ?? []).filter((entry) => entry === schema || current.includes(entry)),
     );
 
   return {
@@ -298,6 +361,7 @@ export function useTransfer() {
       setSource(value);
       setSchemas([]);
       setTables({});
+      setObjects({});
     },
     target,
     setTarget,
@@ -311,6 +375,7 @@ export function useTransfer() {
     toggleSchema,
     setSchemas,
     mapping,
+    defaultTarget,
     setMapping: (schema: string, value: string) =>
       setMapping((current) => ({ ...current, [schema]: value })),
     tables,
@@ -319,6 +384,13 @@ export function useTransfer() {
         const { [schema]: _, ...rest } = current;
         return value ? { ...rest, [schema]: value } : rest;
       }),
+    objects,
+    setObjects: (schema: string, value: string[] | null) =>
+      setObjects((current) => {
+        const { [schema]: _, ...rest } = current;
+        return value ? { ...rest, [schema]: value } : rest;
+      }),
+    pickObjects: native && content !== "data",
     content,
     setContent,
     foldNames,

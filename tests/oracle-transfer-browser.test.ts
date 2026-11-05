@@ -474,7 +474,7 @@ async function withPage(name: string, run: (page: Page) => Promise<void>) {
   }
 }
 
-async function openTransfer(page: Page) {
+async function openTransfer(page: Page, onSource?: () => Promise<void>) {
   await page.addInitScript(() => {
     if (localStorage.getItem("l8db.connections")) return;
     localStorage.setItem(
@@ -515,6 +515,7 @@ async function openTransfer(page: Page) {
     await source.click();
     await page.getByRole("option", { name: "TR Quelle" }).click();
   }
+  await onSource?.();
   await page.getByRole("combobox", { name: "Ziel: Verbindung" }).click();
   await page.getByRole("option", { name: "TR Ziel" }).click();
   await page.getByRole("textbox", { name: "Schemas filtern" }).fill("TR_SRC");
@@ -552,11 +553,11 @@ afterAll(async () => {
 async function pickTables(page: Page, tables: string[]) {
   await page.getByRole("button", { name: "Tabellen aus TR_SRC" }).click();
   const popover = page.locator('[data-slot="popover-content"]');
-  const list = popover.getByRole("group", { name: "Tabellen aus TR_SRC" });
+  const list = popover.getByRole("group", { name: "Objekte aus TR_SRC" });
   await list.waitFor();
   await popover.getByRole("button", { name: "Keine" }).click();
   for (const table of tables) {
-    await popover.getByRole("textbox", { name: "Tabellen filtern" }).fill(table);
+    await popover.getByRole("textbox", { name: "Objekte filtern" }).fill(table);
     await list.locator(`[data-table="${table}"]`).click();
   }
   await page.keyboard.press("Escape");
@@ -845,4 +846,83 @@ test.skipIf(!enabled)(
       ),
     ).toBe("0");
   },
+);
+
+test.skipIf(!enabled)(
+  "Transfer focuses the target, shows progress, lists code objects and opens the script",
+  async () => {
+    await withPage("transfer-acceptance", async (page) => {
+      await openTransfer(page, async () => {
+        const target = page.getByRole("combobox", { name: "Ziel: Verbindung" });
+        await expect
+          .poll(() => target.evaluate((node) => node === document.activeElement))
+          .toBe(true);
+        await page.screenshot({ path: `${shots}/abnahme-1-ziel-autofokus.png` });
+      });
+      await page
+        .getByRole("status")
+        .filter({ hasText: /Plan wird erstellt|Struktur von/ })
+        .waitFor();
+      await page.screenshot({ path: `${shots}/abnahme-2-laden.png` });
+      await page.getByText(/\d+ Tabellen bereit/).waitFor({ timeout: 120_000 });
+      expect(await page.getByRole("columnheader", { name: "Zielschema" }).count()).toBe(1);
+      expect(await page.getByRole("columnheader", { name: "Ziel", exact: true }).count()).toBe(0);
+      await page.screenshot({ path: `${shots}/abnahme-3-zielschema.png` });
+
+      await page.getByRole("button", { name: "Tabellen aus TR_SRC" }).click();
+      const popover = page.locator('[data-slot="popover-content"]');
+      const list = popover.getByRole("group", { name: "Objekte aus TR_SRC" });
+      await list.waitFor();
+      await popover.getByText("Packages", { exact: true }).waitFor();
+      await page.screenshot({ path: `${shots}/abnahme-4-objekte.png` });
+      await popover.getByRole("textbox", { name: "Objekte filtern" }).fill("KUNDE_AU");
+      await list.locator('[data-object="trigger:KUNDE.KUNDE_AU"]').click();
+      await page.keyboard.press("Escape");
+      await page.getByText(/\d+ Tabellen bereit/).waitFor({ timeout: 120_000 });
+
+      await page.getByRole("button", { name: "Skript anzeigen" }).click();
+      const dialog = page.getByRole("dialog", { name: "Übertragungsplan" });
+      await dialog.waitFor();
+      expect((await dialog.boundingBox())?.width ?? 0).toBeGreaterThan(1300);
+      const text = await dialog.locator("pre").first().innerText();
+      expect(text).toContain("AUFTRAG_BI");
+      expect(text).not.toContain("KUNDE_AU");
+      await page.screenshot({ path: `${shots}/abnahme-5-plan.png` });
+
+      await dialog.getByRole("button", { name: "Im Editor öffnen" }).click();
+      await page.waitForURL(/\/query\//);
+      await page.locator(".monaco-editor .view-lines").first().waitFor();
+      await expect
+        .poll(() => page.locator(".monaco-editor .view-lines").first().innerText())
+        .toContain("CREATE");
+      await page.screenshot({ path: `${shots}/abnahme-6-editor.png` });
+    });
+  },
+  300_000,
+);
+
+test.skipIf(!enabled)(
+  "Oracle → Oracle between two users that only own their schema maps the target automatically",
+  async () => {
+    await script("system", CLEAR_TARGET);
+    await withPage("transfer-own-schema", async (page) => {
+      await openTransfer(page);
+      const mapping = page.getByLabel("Zielschema für TR_SRC");
+      await mapping.fill("");
+      expect(await mapping.getAttribute("placeholder")).toBe("TR_DST");
+      await pickContent(page, "Nur Struktur");
+      await page.getByText(/\d+ Tabellen bereit, nur Struktur/).waitFor({ timeout: 120_000 });
+      await page.getByRole("textbox", { name: "Schemas filtern" }).fill("");
+      await page.screenshot({ path: `${shots}/abnahme-7-eigenes-schema.png` });
+      await finish(page, /Struktur von \d+ Tabellen angelegt/);
+      await page.screenshot({ path: `${shots}/abnahme-8-eigenes-schema-fertig.png` });
+    });
+    const copied = await sql(
+      "system",
+      "SELECT table_name AS t FROM dba_tables WHERE owner = 'TR_DST' ORDER BY 1",
+    );
+    expect(copied.map((row) => row.T)).toContain("AUFTRAG");
+    expect(copied.map((row) => row.T)).toContain("KUNDE");
+  },
+  600_000,
 );

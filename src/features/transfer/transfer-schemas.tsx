@@ -3,6 +3,7 @@ import { Fragment } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatBytes } from "@/lib/backup";
 import type { SchemaSize, TransferContent, TransferPlan } from "@/lib/db";
@@ -20,7 +21,11 @@ export function TransferSchemas({
   existing,
   selected,
   mapping,
+  defaultTarget,
   tables: picked,
+  objects,
+  pickObjects,
+  loading,
   content,
   plan,
   sizes,
@@ -28,6 +33,7 @@ export function TransferSchemas({
   onSelectAll,
   onMap,
   onTables,
+  onObjects,
   onContent,
 }: {
   scope: string;
@@ -37,7 +43,11 @@ export function TransferSchemas({
   existing: string[];
   selected: string[];
   mapping: Record<string, string>;
+  defaultTarget: (schema: string) => string;
   tables: Record<string, string[]>;
+  objects: Record<string, string[]>;
+  pickObjects: boolean;
+  loading: boolean;
   content: TransferContent;
   plan: TransferPlan | null;
   sizes: Record<string, SchemaSize>;
@@ -45,6 +55,7 @@ export function TransferSchemas({
   onSelectAll: (value: string[]) => void;
   onMap: (schema: string, target: string) => void;
   onTables: (schema: string, value: string[] | null) => void;
+  onObjects: (schema: string, value: string[] | null) => void;
   onContent: (value: TransferContent) => void;
 }) {
   const picker = useNewFeatureVisibility<HTMLTableCellElement>("transfer.tables");
@@ -109,21 +120,22 @@ export function TransferSchemas({
             <tr className="border-b">
               <th className="py-2 pl-3" aria-label="Auswahl" />
               <th className="py-2 text-left font-medium">Objekt</th>
-              <th className="py-2 pr-3 text-left font-medium">Ziel</th>
+              <th className="py-2 pr-3 text-left font-medium">Zielschema</th>
               <th ref={picker.ref} className="py-2 pr-4 text-right font-medium">
                 <span className="inline-flex items-center gap-1.5">
                   {picker.isNew && <NewBadge />}
-                  Tabellen
+                  {pickObjects ? "Objekte" : "Tabellen"}
                 </span>
               </th>
               <th className="py-2 pr-4 text-right font-medium">Größe</th>
-              <th className="py-2 pr-3 text-left font-medium">Im Ziel</th>
+              <th className="py-2 pr-3 text-left font-medium">Status</th>
             </tr>
           </thead>
           <tbody>
             {visible.map((schema) => {
               const checked = selected.includes(schema);
-              const target = (mapping[schema] ?? "").trim() || schema;
+              const fallback = defaultTarget(schema);
+              const target = (mapping[schema] ?? "").trim() || fallback;
               const tables = checked
                 ? (plan?.tables ?? []).filter((table) => table.sourceSchema === schema)
                 : [];
@@ -183,7 +195,7 @@ export function TransferSchemas({
                             className="h-7 min-w-0 flex-1 font-mono text-xs md:text-xs"
                             list="transfer-target-schemas"
                             aria-label={`Zielschema für ${schema}`}
-                            placeholder={schema}
+                            placeholder={fallback}
                             value={mapping[schema] ?? ""}
                             onChange={(event) => onMap(schema, event.target.value)}
                           />
@@ -198,7 +210,10 @@ export function TransferSchemas({
                           schema={schema}
                           total={size?.table_count ?? null}
                           selected={picked[schema]}
+                          objects={pickObjects ? objects[schema] : undefined}
+                          withObjects={pickObjects}
                           onChange={(value) => onTables(schema, value)}
+                          onObjects={(value) => onObjects(schema, value)}
                         />
                       ) : size ? (
                         size.table_count.toLocaleString("de-DE")
@@ -272,10 +287,20 @@ export function TransferSchemas({
             })}
           </tbody>
         </table>
-        {visible.length === 0 && (
-          <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-            {schemas.length === 0 ? "Keine Schemas gefunden." : "Keine Treffer."}
+        {loading ? (
+          <p
+            role="status"
+            className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-muted-foreground"
+          >
+            <Spinner className="size-4" />
+            Schemas der Quelle werden geladen…
           </p>
+        ) : (
+          visible.length === 0 && (
+            <p className="px-4 py-6 text-center text-xs text-muted-foreground">
+              {schemas.length === 0 ? "Keine Schemas gefunden." : "Keine Treffer."}
+            </p>
+          )
         )}
       </div>
       <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-t px-4 text-xs">
