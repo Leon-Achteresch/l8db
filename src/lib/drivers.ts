@@ -14,6 +14,9 @@ export interface DriverSummary {
 }
 
 export const DRIVER_FAMILY_TITLES: Record<DatabaseKind, string> = {
+  jdbc: "JDBC",
+  workspace: "Team-Workspace",
+  spacetimedb: "SpacetimeDB",
   postgres: "PostgreSQL",
   mysql: "MySQL / MariaDB",
   sqlite: "SQLite",

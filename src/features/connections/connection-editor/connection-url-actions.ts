@@ -1,6 +1,7 @@
 import { withTimeout } from "@/lib/async";
 import {
   connectionUrlString,
+  isProfileConnection,
   kindFromUrl,
   multiHostUrl,
   parseConnectionUrl,
@@ -100,6 +101,7 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
         ? withSslModeParam(connectionString, ssl)
         : connectionString;
     }
+    if (isProfileConnection(kind)) throw new Error("Nutze den Profilverweis im URL-Modus.");
     if (info.file_based) return parseConnectionUrl(file, kind).toString();
     if (mode === "tns") {
       const alias = tnsAlias.trim();

@@ -9,6 +9,7 @@ mod baas_self_hosted_live_tests;
 mod branching;
 mod check_cli;
 mod cli;
+mod cloud_accounts;
 mod community_extensions;
 mod connection_import;
 mod convex;
@@ -16,6 +17,7 @@ mod convex_studio;
 mod db;
 mod desktop;
 mod extension_process;
+mod federation;
 mod file_open;
 mod firebase;
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -24,6 +26,7 @@ mod index_advisor;
 mod issues;
 mod mcp;
 mod organization;
+mod payments;
 mod pocketbase;
 mod process;
 mod query_notification;
@@ -35,6 +38,7 @@ mod ui_plugins;
 mod updates;
 mod versioning;
 mod windows;
+mod workspaces;
 
 #[cfg(target_os = "windows")]
 fn set_memory_target(window: &tauri::Window, low: bool) {
@@ -73,6 +77,9 @@ pub fn run() {
         return;
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--workspace-server") {
+        std::process::exit(workspaces::cli(&args));
+    }
     if cli::wants(&args) {
         std::process::exit(cli::main(&args));
     }
@@ -160,6 +167,68 @@ pub fn run() {
         .manage(db::ssh::create_ssh_state())
         .manage(automation::AutomationState::default())
         .invoke_handler(organization::guard(tauri::generate_handler![
+            payments::payments_connect,
+            payments::payments_status,
+            payments::payments_disconnect,
+            payments::payments_list,
+            payments::payments_mutate,
+            payments::payments_setup_preview,
+            payments::payments_setup,
+            db::jdbc::jdbc_status,
+            db::jdbc::jdbc_catalog,
+            db::jdbc::jdbc_profiles,
+            db::jdbc::jdbc_import_jar,
+            db::jdbc::jdbc_remove_jar,
+            db::jdbc::jdbc_save_profile,
+            db::jdbc::jdbc_remove_profile,
+            db::jdbc::jdbc_close_profile,
+            federation::federation_query,
+            federation::federation_catalog,
+            workspaces::client::workspace_profiles,
+            workspaces::client::workspace_login,
+            workspaces::client::workspace_accept_invitation,
+            workspaces::client::workspace_disconnect,
+            workspaces::client::workspace_request,
+            workspaces::client::workspace_local_status,
+            workspaces::client::workspace_local_start,
+            workspaces::client::workspace_local_stop,
+            cloud_accounts::spacetime::cloud_spacetime_add,
+            cloud_accounts::spacetime::cloud_spacetime_databases,
+            cloud_accounts::spacetime::cloud_spacetime_schema,
+            cloud_accounts::spacetime::cloud_spacetime_create_connection,
+            cloud_accounts::spacetime::cloud_spacetime_call_reducer,
+            cloud_accounts::cloud_accounts,
+            cloud_accounts::cloud_account_remove,
+            cloud_accounts::planetscale::cloud_planetscale_add_token,
+            cloud_accounts::planetscale::cloud_planetscale_organizations,
+            cloud_accounts::planetscale::cloud_planetscale_databases,
+            cloud_accounts::planetscale::cloud_planetscale_branches,
+            cloud_accounts::planetscale::cloud_planetscale_create_credential,
+            cloud_accounts::planetscale::cloud_planetscale_credentials,
+            cloud_accounts::planetscale::cloud_planetscale_revoke_credential,
+            cloud_accounts::oauth::cloud_neon_oauth_config,
+            cloud_accounts::oauth::cloud_neon_oauth_start,
+            cloud_accounts::oauth::cloud_neon_oauth_finish,
+            cloud_accounts::oauth::cloud_neon_oauth_cancel,
+            cloud_accounts::neon::cloud_neon_add_api_key,
+            cloud_accounts::neon::cloud_neon_organizations,
+            cloud_accounts::neon::cloud_neon_projects,
+            cloud_accounts::neon::cloud_neon_branches,
+            cloud_accounts::neon::cloud_neon_databases,
+            cloud_accounts::neon::cloud_neon_roles,
+            cloud_accounts::neon::cloud_neon_create_connection,
+            cloud_accounts::neon::cloud_neon_auth,
+            cloud_accounts::neon::cloud_neon_auth_enable,
+            cloud_accounts::neon::cloud_neon_auth_users,
+            cloud_accounts::neon::cloud_neon_auth_create_user,
+            cloud_accounts::neon::cloud_neon_auth_delete_user,
+            cloud_accounts::neon::cloud_neon_auth_set_roles,
+            cloud_accounts::neon::cloud_neon_storage,
+            cloud_accounts::neon::cloud_neon_buckets,
+            cloud_accounts::neon::cloud_neon_create_bucket,
+            cloud_accounts::neon::cloud_neon_objects,
+            cloud_accounts::neon::cloud_neon_functions,
+            cloud_accounts::neon::cloud_neon_function,
             query_notification::notify_query_completion,
             organization::organization_policy,
             mcp::server::validate_read_query,

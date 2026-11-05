@@ -290,3 +290,43 @@ Generic `http(s)://` URLs remain ClickHouse unless the host matches a known Elas
 Live checks (ignored): `L8DB_SMOKE_ELASTICSEARCH_URL`, `L8DB_E2E_OPENSEARCH_URL`, `L8DB_SMOKE_INFLUXDB_URL` (v2), `L8DB_E2E_INFLUXDB3_URL` and `L8DB_SMOKE_SQLITEHTTP_URL` drive `http_live_tests`; they expect the seeded indices `logs`/`big`, measurements `cpu`/`mem` and a writable libSQL server. `bun run test:http-families` starts each server in Docker, seeds these fixtures and runs the checks one family at a time (`L8DB_HTTP_FAMILIES` selects a subset). D1 is covered by a mocked HTTP server in the unit tests.
 
 `smoke_adapters_from_env` is ignored by default and runs configured `L8DB_SMOKE_<KIND>_URL` providers. It is not the mandatory integration suite. The isolated PostgreSQL/SSH suite is described in [integration-tests.md](integration-tests.md).
+
+
+## Cloud accounts and managed profiles
+
+Cloud accounts adds Neon, PlanetScale and SpacetimeDB accounts. Account credentials use backend-only keychain entries and are never returned by the general frontend secret commands. Database connections created from an account keep their ordinary connection ID; their database password is stored separately in the keychain.
+
+- **Neon:** API keys work without an OAuth registration. OAuth appears only when an application-owned `L8DB_NEON_OAUTH_CLIENT_ID` is configured; an integration must register its redirect URI with Neon. Optional configuration: `L8DB_NEON_OAUTH_REDIRECT_PORT`, `L8DB_NEON_OAUTH_SCOPES`, `L8DB_NEON_OAUTH_CLIENT_SECRET`. The app does not reuse the neonctl client identity. The account browser lists organizations, projects, branches, databases and roles; branch tabs cover supported Auth, Storage and Functions APIs. Those APIs can depend on the project's beta access. Unknown Auth schemas produce an explicit error.
+- **Neon over port 443:** choose WebSocket when creating the connection. `l8db_transport=neon-ws` forwards the PostgreSQL protocol through verified WSS and preserves sessions. There is no direct TCP fallback. The selected transport uses outer HTTPS encryption and sets PostgreSQL `channel_binding=disable`; the UI explains that choice. TCP connections retain their requested channel binding. This is not a stateless HTTP SQL adapter. Hosts must belong to `.neon.tech` or `.neon.build`.
+- **PlanetScale:** a service token lists organizations, databases and branches. Creating reader credentials requires explicit confirmation and selects PostgreSQL or MySQL from the database's actual engine. l8db tracks and can revoke only credentials it issued. Removing the local account does not silently revoke remote credentials.
+- **SpacetimeDB:** `spacetimedb://token:IDENTITY_TOKEN@maincloud.spacetimedb.com/database`. The placeholder username is `token`; the actual identity token belongs in the password field/keychain. Local fixture: `spacetimedb://token:TOKEN@127.0.0.1:13000/database?tls=false`. Cleartext is allowed only on loopback. Tables, schema and read-only SQL use the HTTP API; confirmed reducer calls are available from Cloud accounts. SQL responses are bounded to 10,000 rows/16 MiB. Dropping a request releases local work; no server-side cancellation acknowledgement is claimed.
+- **JDBC:** create a profile under Drivers, import the vendor's JAR after accepting that it executes code, and select a full **JDK 17 or newer** (`JAVA_HOME` or `PATH`). A JRE alone cannot run the source bridge. Connections use only `jdbc:l8db:profile-id`; driver URLs and passwords remain in the backend profile. The catalog links to vendor sources and does not bundle proprietary drivers. Metadata, paged reads, prepared parameters, SQL and process cancellation are supported; generic row editing, transactions and catalog switching are not advertised. Limits: four Java processes, 192 MiB heap each, 60-second idle cleanup, 50,000 result rows and 8 MiB responses.
+- **Workspace:** `workspace://profile-id/connection-id` refers to a login profile. The server holds the actual database credentials. See [team-hub.md](team-hub.md) for setup and limits.
+
+JDBC and Workspace references are strict identifiers. Editing, imports, automation and startup preserve them without injecting ordinary database passwords, PostgreSQL options or SSH/proxy/command tunnels. Profiles manage those settings themselves.
+
+Cloud lists keep at most five result pages. Queries do not poll on idle, window focus or reconnect; abandoned cache entries are discarded.
+
+### Reproduce the new live fixtures
+
+Run `bash scripts/test-spacetimedb-live.sh --setup-only` for the local lab. Its SDK fixture is in `tests/lab/spacetime/`; native ignored tests are in `src-tauri/src/db/spacetimedb_live_tests.rs` and read `L8DB_SPACETIME_LAB_CONFIG` from the script's protected configuration file. JDBC ignored tests use `JAVA_HOME`, `L8DB_JDBC_TEST_JAR` (H2), optional `L8DB_JDBC_POSTGRES_JAR`, and `L8DB_E2E_PG_URL`. Neon WSS ignored tests use a local PostgreSQL instance and a test WebSocket proxy; they do not establish access to the Neon cloud. Browser journeys mock the Tauri transport separately from native adapter live tests.
+
+
+## Scope of the RexaDB comparison
+
+The reference was [RexaDB source at 95504ab](https://github.com/RexaDB/RexaDB/tree/95504abdd0f807272af818f6edd007cf9349896a). Its advertised and implemented flows were compared with l8db's existing adapters, SQL editor, grid, ER diagrams, AI, automation, SSH, export and Supabase Studio. This change supplies the following gaps with an independent implementation; no RexaDB source files are included.
+
+| Area | Existing l8db entry point | Added flow |
+|---|---|---|
+| Neon | PostgreSQL connection URL | Accounts, branch browser, branch management tabs and WSS transport on port 443 |
+| Federation | Individual connections and comparison tools | Explicit sources from saved connections, local read-only SQL joins, schema/masking enforcement, cancellation and bounds |
+| Team collaboration | Password-free connections.json distribution | Central login, encrypted shared connections, roles/grants, versioned shared queries, separate-author approval and audit |
+| JDBC | Native adapters and ODBC | Vendor JAR catalog/import, backend profiles and bounded Java bridge |
+| PlanetScale / SpacetimeDB | PlanetScale URL through MySQL/PostgreSQL | Account discovery, confirmed reader credentials; Spacetime HTTP metadata/read-only SQL and confirmed reducers |
+| Supabase payments | Supabase Studio | Stripe test/live connection, project/account list scopes, admin actions, previewed setup, private billing schema and two Edge Functions |
+
+Federation materializes declared source tables in memory and then executes SELECT/CTE/JOIN queries in a restricted SQLite sandbox. It does not offer a transactionally consistent snapshot across independent servers. Limits are eight sources, 50,000 rows per source table, 100,000 rows/64 MiB across sources and 10,000 result rows/8 MiB; oversized sources fail explicitly. A 512-row fetch page bounds normal source batches, while a single large source value can exceed a batch budget before validation. Masked values become NULL before local SQL so expressions cannot recover them; that can change join results.
+
+Payments setup creates the private RLS-protected l8db_billing schema, a Stripe webhook and the l8db billing webhook/checkout Edge Functions after preview and confirmation. Admin mutations use project metadata checks and stable idempotency keys. Cloud credentials were not available in the development lab: cloud calls are covered by local HTTP mocks, function runtime tests, real PostgreSQL privilege tests and browser transport mocks. A live Stripe/Supabase deployment remains separate coverage. Stripe search is eventually consistent, project-only invoice lists can be empty because automatically generated invoices lack project metadata, and local disconnect does not remove the previously created webhook/function secrets. The app does not supply an application-user subscription-status API.
+
+JDBC support is a generic adapter, not certification of every vendor's product or driver. OAuth needs an approved application registration, and beta cloud features depend on the provider account. Workspace SSO and a stateless PostgreSQL HTTP adapter are not part of this implementation.

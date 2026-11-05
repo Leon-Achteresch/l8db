@@ -1,3 +1,4 @@
+import type { MaskRule } from "@/lib/masking";
 import type { BackupOptions } from "./backup";
 import { invoke } from "./core";
 import type { DatagenLocale } from "./datagen";
@@ -507,6 +508,8 @@ export interface AutomationConnection {
   name: string;
   kind: DatabaseKind;
   connectionString: string;
+  schemas?: string[] | null;
+  maskRules?: MaskRule[];
   readOnly: boolean;
   productionLocked: boolean;
   environment: string | null;

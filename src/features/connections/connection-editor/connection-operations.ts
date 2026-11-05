@@ -2,7 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { MutableRefObject } from "react";
 import { toast } from "sonner";
 import { errorText, vaultSave } from "@/features/community-extensions/password-manager";
-import { connectionError } from "@/lib/connection-url";
+import { connectionError, isProfileConnection, kindFromUrl } from "@/lib/connection-url";
 import {
   type CloudAuth,
   type ConnectionEnvironment,
@@ -76,6 +76,7 @@ export async function databasePasswordToSave(
   connection: Pick<SavedConnection, "id" | "connectionString"> | undefined,
   cleared = false,
 ): Promise<string | null> {
+  if (isProfileConnection(kindFromUrl(connectionString))) return null;
   const typed = extractUrlPassword(connectionString);
   if (typed !== null || !connection || cleared) return typed;
   if (extractUrlPassword(connection.connectionString) !== null) return null;
@@ -195,6 +196,8 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
     try {
       if (!name.trim()) throw new Error("Gib der Verbindung einen Namen.");
       const config = await configuration();
+      const profileConnection = isProfileConnection(config.kind);
+      const savedReadOnly = config.kind === "spacetimedb" || readOnly;
       const configInfo = providers.find((entry) => entry.kind === config.kind) ?? info;
       const id = connection?.id ?? crypto.randomUUID();
       const dbPassword = await databasePasswordToSave(
@@ -211,14 +214,16 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
       ];
       let reconnect = false;
       if (connection && wasActive) {
-        const stored = await Promise.all(
-          desiredSecrets.map(([account]) => loadSecret(account).catch(() => null)),
-        );
+        const stored = profileConnection
+          ? desiredSecrets.map(() => null)
+          : await Promise.all(
+              desiredSecrets.map(([account]) => loadSecret(account).catch(() => null)),
+            );
         reconnect =
           endpointChanged(connection, {
             ...config,
             sslMode: ssl,
-            readOnly,
+            readOnly: savedReadOnly,
             cloudAuth,
             environment,
           }) ||
@@ -235,7 +240,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
             "Datenbankpasswort gilt nur in dieser Sitzung: Schlüsselbund nicht verfügbar.",
           ),
         );
-      } else if (connection) {
+      } else if (connection && !profileConnection) {
         await deleteSecret(id);
       }
       if (config.ssh && config.secret) {
@@ -244,7 +249,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
             "SSH-Zugangsdaten gelten nur in dieser Sitzung: Schlüsselbund nicht verfügbar.",
           ),
         );
-      } else if (connection) {
+      } else if (connection && !profileConnection) {
         await deleteSecret(sshSecretAccount(id));
       }
       for (const [account, value] of desiredSecrets.slice(2)) {
@@ -254,7 +259,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
               "Netzwerk-Zugangsdaten gelten nur in dieser Sitzung: Schlüsselbund nicht verfügbar.",
             ),
           );
-        } else if (connection) {
+        } else if (connection && !profileConnection) {
           await deleteSecret(account).catch(() => undefined);
         }
       }
@@ -274,13 +279,13 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
         commandTunnel: config.commandTunnel,
         tunnelPort: keepConnected ? (connection?.tunnelPort ?? null) : null,
         favorite: connection?.favorite ?? false,
-        readOnly,
+        readOnly: savedReadOnly,
         cloudAuth,
         schemas: configInfo.capabilities.schemas && schemaFilter.length ? schemaFilter : null,
         showSingleSchemaSwitcher,
         color,
         environment,
-        vault: connection?.vault,
+        vault: profileConnection ? undefined : connection?.vault,
         maskRules: maskRules.filter((rule) => rule.pattern.trim()),
         tags: [
           ...new Set(
@@ -301,7 +306,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
         }));
       toast.success("Verbindung gespeichert");
       if (reconnect) void activateConnectionWithToast(id);
-      if (vault) {
+      if (vault && !profileConnection) {
         const stored = vaultSave(vault.host, id).then(async () => {
           useConnectionsStore.setState((state) => ({
             connections: state.connections.map((entry) =>

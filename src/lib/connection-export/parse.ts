@@ -1,3 +1,4 @@
+import { isProfileConnection, parseProfileConnection } from "@/lib/connection-url/profile-pointer";
 import {
   type CloudAuth,
   createConnectionId,
@@ -185,6 +186,21 @@ function parseProfile(value: unknown): ExportedConnection | string {
   const connectionString =
     typeof value.connectionString === "string" ? value.connectionString.trim() : "";
   if (!connectionString) return "Verbindungsparameter fehlen.";
+  if (isProfileConnection(kind as DatabaseKind)) {
+    try {
+      parseProfileConnection(connectionString, kind as DatabaseKind);
+    } catch (error) {
+      return error instanceof Error ? error.message : "Ungültiger Profilverweis.";
+    }
+    if (
+      value.ssh ||
+      value.proxy ||
+      value.cloudAuth ||
+      value.proxyUser ||
+      value.commandTunnelOmitted
+    )
+      return "Profilverbindungen verwalten Netzwerk und Zugangsdaten in ihrem Profil.";
+  }
   const sslMode =
     typeof value.sslMode === "string" && SSL_MODES.includes(value.sslMode as SslMode)
       ? (value.sslMode as SslMode)
@@ -218,6 +234,7 @@ function parseProfile(value: unknown): ExportedConnection | string {
       : null,
     showSingleSchemaSwitcher: value.showSingleSchemaSwitcher !== false,
     ...parseSafety(value),
+    ...(kind === "spacetimedb" ? { readOnly: true } : {}),
     ...parseDetails(value),
   };
 }

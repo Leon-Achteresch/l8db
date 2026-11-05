@@ -3,7 +3,7 @@ import { useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { usePasswordManager } from "@/features/community-extensions/password-manager";
 import { initialSslMode } from "@/lib/connection-defaults";
-import { detectProvider, kindFromUrl } from "@/lib/connection-url";
+import { detectProvider, isProfileConnection, kindFromUrl } from "@/lib/connection-url";
 import type { ConnectionEnvironment, SshAuth } from "@/lib/connections";
 import { oracleTnsNames, type SslMode } from "@/lib/db";
 import { useDbThemeStore } from "@/lib/db-theme";
@@ -34,7 +34,7 @@ export function useConnectionEditor({
   const extensionHost = useExtensionHost();
   const vault = usePasswordManager();
   const [storeInVault, setStoreInVault] = useState(connection ? Boolean(connection.vault) : true);
-  const [value, setValue] = useState(connection?.connectionString ?? initialUrl ?? "");
+  const [value, setValue] = useState(seed?.connectionString ?? initialUrl ?? "");
   const [provider, setProvider] = useState(
     seed
       ? detectProvider(seed.connectionString, seed.kind)
@@ -145,13 +145,20 @@ export function useConnectionEditor({
 
   useEffect(() => {
     const id = connection?.id;
-    if (!id) return;
-    void loadSecret(id).then((secret) => {
-      if (!secret) return;
-      setKeychainPassword(true);
-      setPassword((current) => current || secret);
-    });
-  }, [connection?.id]);
+    if (!id || isProfileConnection(connection?.kind)) return;
+    let active = true;
+    void loadSecret(id)
+      .then((secret) => {
+        if (!active) return;
+        if (!secret) return;
+        setKeychainPassword(true);
+        setPassword((current) => current || secret);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [connection?.id, connection?.kind]);
 
   useEffect(() => {
     if (result.status !== "testing") return;
@@ -220,7 +227,10 @@ export function useConnectionEditor({
     tags,
     cloudAuth: cloudAuthValue,
     passwordCleared: keychainPassword && !password && mode !== "string" && !cloudAuthValue,
-    vault: vault && storeInVault ? { host: extensionHost, name: vault.name } : null,
+    vault:
+      vault && storeInVault && !isProfileConnection(mode === "string" ? quickKind : kind)
+        ? { host: extensionHost, name: vault.name }
+        : null,
     onSaved,
   });
 

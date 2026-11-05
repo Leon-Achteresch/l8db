@@ -32,11 +32,13 @@ pub(crate) mod http_mock;
 pub mod import;
 pub mod import_source;
 pub(crate) mod influxdb;
+pub mod jdbc;
 pub mod masking;
 pub(crate) mod mongo_shell;
 pub(crate) mod mongodb;
 mod mssql;
 mod mysql;
+pub(crate) mod neon_websocket;
 #[cfg(feature = "odbc")]
 mod odbc;
 pub mod s3;
@@ -45,6 +47,7 @@ pub use odbc::configure_system_ini as configure_odbc;
 pub(crate) mod oracle;
 pub mod pool;
 mod postgres;
+pub(crate) use postgres::run_simple_query as run_postgres_simple_query;
 pub mod postgres_health;
 pub mod provider;
 pub(crate) mod redis;
@@ -53,6 +56,7 @@ pub mod secrets;
 pub mod server_output;
 pub mod snapshot;
 mod snowflake;
+pub(crate) mod spacetimedb;
 pub mod sql_log;
 pub(crate) mod sql_script;
 pub(crate) mod sqlite;
@@ -2052,6 +2056,15 @@ pub fn create_adapter_from_string(
     let database = database.filter(|db| !db.is_empty());
     let key = cloud_auth::pool_key(connection_string, database);
     Ok(match kind {
+        DatabaseKind::Jdbc => Box::new(jdbc::JdbcAdapter::new(connection_string)?),
+        DatabaseKind::Workspace => Box::new(crate::workspaces::WorkspaceAdapter::new(
+            connection_string,
+            database,
+        )?),
+        DatabaseKind::Spacetimedb => Box::new(spacetimedb::SpacetimeAdapter::new(
+            connection_string,
+            database,
+        )?),
         DatabaseKind::Postgres => Box::new(postgres::PostgresAdapter::from_connection_string(
             connection_string,
             database,

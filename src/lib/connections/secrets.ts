@@ -1,5 +1,5 @@
 import { splitSecretParams, withSecretParams } from "@/lib/connection-export/export";
-import { sslModeFromUrl } from "@/lib/connection-url";
+import { isProfileConnection, sslModeFromUrl } from "@/lib/connection-url";
 import { extractUrlPassword, injectUrlPassword, loadSecret, storeSecret } from "@/lib/secrets";
 import { loadQuerySecret, markQuerySecretResolved, useConnectionsStore } from "./store";
 import type { SavedConnection } from "./types";
@@ -16,6 +16,7 @@ export async function initConnectionSecrets(): Promise<void> {
   const next = await Promise.all(
     connections.map((connection) =>
       (async () => {
+        if (isProfileConnection(connection.kind)) return connection;
         const inlineParams = splitSecretParams(connection.connectionString).secrets;
         if (inlineParams) plaintextParams = true;
         const params = inlineParams ? null : await loadQuerySecret(connection);
@@ -92,5 +93,5 @@ export async function initConnectionSecrets(): Promise<void> {
 export function isReadOnlyConnection(
   connection: Pick<SavedConnection, "kind" | "readOnly"> | null | undefined,
 ): boolean {
-  return connection?.readOnly === true;
+  return connection?.kind === "spacetimedb" || connection?.readOnly === true;
 }

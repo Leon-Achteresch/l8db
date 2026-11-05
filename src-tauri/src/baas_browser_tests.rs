@@ -24,7 +24,7 @@ fn channel_messages() -> &'static std::sync::Mutex<std::collections::HashMap<Str
 
 async fn dispatch(command: &str, x: &Value) -> Result<Value, String> {
     match command {
-        "list_providers" => Ok(json!(crate::db::commands::list_providers())),
+        "list_providers" => Ok(json!(crate::db::commands::list_providers().await)),
         "store_secret" => ok(secrets::store_secret(a(x, "account")?, a(x, "secret")?).await),
         "load_secret" => ok(secrets::load_secret(a(x, "account")?).await),
         "delete_secret" => ok(secrets::delete_secret(a(x, "account")?).await),

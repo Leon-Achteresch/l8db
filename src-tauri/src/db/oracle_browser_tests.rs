@@ -27,7 +27,7 @@ async fn dispatch(
     tx: &super::transaction::TransactionState,
 ) -> Result<Value, String> {
     match command {
-        "list_providers" => Ok(json!(crate::db::commands::list_providers())),
+        "list_providers" => Ok(json!(crate::db::commands::list_providers().await)),
         "list_schemas" => crate::db::commands::list_schemas(
             a(x, "kind")?,
             a(x, "connectionString")?,

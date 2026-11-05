@@ -8,6 +8,7 @@ import {
 } from "./oracle-endpoint";
 import { isOracleKeyValue, parseOracleKeyValue } from "./oracle-key-value";
 import { filePath, kindFromUrl, multiHostUrl } from "./parse";
+import { isProfileConnection, parseProfileConnection } from "./profile-pointer";
 
 function detectObjectStorage(value: string, candidates: ProviderInfo[]): string {
   let endpoint: URL | null = null;
@@ -78,6 +79,19 @@ export function providerFor(connection: {
 export function connectionSummary(value: string, kind = kindFromUrl(value)) {
   const resolved = kind ?? (isOracleKeyValue(value) ? "oracle" : undefined);
   const info = resolved ? providerForKind(resolved) : undefined;
+  if (resolved && isProfileConnection(resolved)) {
+    try {
+      const url = parseProfileConnection(value, resolved);
+      return {
+        host: resolved === "jdbc" ? "JDBC-Profil" : `Workspace ${url.hostname}`,
+        port: "",
+        database: resolved === "jdbc" ? url.pathname.slice("l8db:".length) : url.pathname.slice(1),
+        user: "",
+      };
+    } catch {
+      return { host: "Ungültiges Verbindungsprofil", port: "", database: "", user: "" };
+    }
+  }
   if (info?.file_based) {
     const path = filePath(value);
     return { host: path.split("/").pop() || path, port: "", database: path, user: "" };

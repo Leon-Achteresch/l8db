@@ -14,6 +14,9 @@ export const CONNECTION_EXPORT_FORMAT = "l8db-connections";
 export const CONNECTION_EXPORT_VERSION = 1;
 
 const KIND_SET: Record<DatabaseKind, true> = {
+  jdbc: true,
+  workspace: true,
+  spacetimedb: true,
   postgres: true,
   mysql: true,
   sqlite: true,

@@ -46,6 +46,7 @@ export function needsUser(connection: SavedConnection): boolean {
 }
 
 export function needsPassword(connection: SavedConnection): boolean {
+  if (connection.kind === "jdbc" || connection.kind === "workspace") return false;
   if (needsUser(connection)) return true;
   if (extractUrlPassword(connection.connectionString) !== null) return false;
   try {

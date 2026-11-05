@@ -22,6 +22,9 @@ pub enum DatabaseKind {
     Bigquery,
     Snowflake,
     S3,
+    Jdbc,
+    Workspace,
+    Spacetimedb,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -189,7 +192,7 @@ const SQL_COMMON: Capabilities = Capabilities {
 
 impl DatabaseKind {
     #[cfg(test)]
-    pub const ALL: [DatabaseKind; 19] = [
+    pub const ALL: [DatabaseKind; 22] = [
         DatabaseKind::Postgres,
         DatabaseKind::Mysql,
         DatabaseKind::Sqlite,
@@ -209,10 +212,42 @@ impl DatabaseKind {
         DatabaseKind::Bigquery,
         DatabaseKind::Snowflake,
         DatabaseKind::S3,
+        DatabaseKind::Jdbc,
+        DatabaseKind::Workspace,
+        DatabaseKind::Spacetimedb,
     ];
 
     pub fn capabilities(self) -> Capabilities {
         match self {
+            DatabaseKind::Jdbc => Capabilities {
+                databases: false,
+                schemas: true,
+                views: true,
+                bind_parameters: true,
+                query_cancel: true,
+                read_only_mode: false,
+                ssl: false,
+                ssh: false,
+                ..NONE
+            },
+            DatabaseKind::Workspace => Capabilities {
+                databases: false,
+                schemas: true,
+                read_only_mode: false,
+                query_cancel: true,
+                ssl: false,
+                ssh: false,
+                ..NONE
+            },
+            DatabaseKind::Spacetimedb => Capabilities {
+                databases: false,
+                schemas: false,
+                read_only_mode: false,
+                ssl: false,
+                ssh: false,
+                dashboard_parallelism: 1,
+                ..NONE
+            },
             DatabaseKind::Postgres => Capabilities {
                 multi_target_schemas: true,
                 health_advisor: true,
@@ -475,6 +510,9 @@ impl DatabaseKind {
             DatabaseKind::Bigquery => &["bigquery"],
             DatabaseKind::Snowflake => &["snowflake"],
             DatabaseKind::S3 => &["s3"],
+            DatabaseKind::Jdbc => &["jdbc"],
+            DatabaseKind::Workspace => &["workspace"],
+            DatabaseKind::Spacetimedb => &["spacetimedb"],
         }
     }
 
@@ -600,6 +638,9 @@ const fn odbc(
 }
 
 const PROVIDERS: &[Provider] = &[
+    Provider { id: "jdbc", name: "JDBC", group: "Weitere Treiber", kind: DatabaseKind::Jdbc, port: None, placeholder: "jdbc:l8db:profil-id", hint: "JDBC-Profil unter Treiber anlegen. Benötigt JDK 17 oder neuer und den JDBC-Treiber des Herstellers.", hosts: &[], driver: Driver::RuntimeLibrary { library: "JDK 17+ und JDBC-JAR" } },
+    Provider { id: "workspace", name: "Team-Workspace", group: "Team", kind: DatabaseKind::Workspace, port: None, placeholder: "workspace://profil-id/verbindung-id", hint: "Gemeinsame Verbindung über Workspaces öffnen. Rechte und Zugangsdaten verwaltet der Workspace-Server.", hosts: &[], driver: Driver::Builtin },
+    Provider { id: "spacetimedb", name: "SpacetimeDB", group: "Echtzeit", kind: DatabaseKind::Spacetimedb, port: None, placeholder: "spacetimedb://token:identity-token@maincloud.spacetimedb.com/datenbank", hint: "Identity-Token im Passwortfeld. Lokal: spacetimedb://token:identity-token@127.0.0.1:3000/db?tls=false. SQL-Abfragen sind schreibgeschützt; Änderungen über bestätigte Reducer.", hosts: &[".spacetimedb.com"], driver: Driver::Builtin },
     pg("postgres", "PostgreSQL", 5432, "postgresql://postgres:password@localhost:5432/postgres", "Lokaler Server oder eigener Host. Alle Funktionen des SQL-Arbeitsplatzes verfügbar.", &["localhost", "127.0.0.1"]),
     pg("supabase", "Supabase", 5432, "postgresql://postgres:password@db.project.supabase.co:5432/postgres", "Direkte URL aus Connect. In IPv4-Netzen eignet sich der Session Pooler auf Port 5432.", &[".supabase.co", ".supabase.com"]),
     pg("neon", "Neon", 5432, "postgresql://user:password@ep-project.eu-central-1.aws.neon.tech/neondb?sslmode=require", "URL aus dem Connect-Dialog des Branches. SSL und URL-Parameter bleiben erhalten.", &[".neon.tech"]),
@@ -750,6 +791,14 @@ fn oracle_hints() -> Vec<InstallHint> {
 }
 
 fn driver_status(kind: DatabaseKind, driver: Driver) -> DriverStatus {
+    if kind == DatabaseKind::Jdbc {
+        return DriverStatus {
+            available: false,
+            detail: "Benötigt JDK 17 oder neuer und ein JDBC-Profil; Laufzeitprüfung über die Treiberübersicht.".into(),
+            install: vec![InstallHint { os: "all", command: "JDK 17 oder neuer und einen JDBC-Treiber installieren", url: "https://adoptium.net/temurin/releases/" }],
+            install_command: None,
+        };
+    }
     let install_command = install_command(kind).ok().map(str::to_string);
     match driver {
         Driver::Builtin => DriverStatus {

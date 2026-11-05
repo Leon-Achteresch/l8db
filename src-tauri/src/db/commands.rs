@@ -38,14 +38,32 @@ async fn run_schema_metadata<T>(
     .await
 }
 
-#[tauri::command(async)]
-pub fn list_providers() -> Vec<super::provider::ProviderInfo> {
-    super::provider::list_providers()
+#[tauri::command]
+pub async fn list_providers() -> Vec<super::provider::ProviderInfo> {
+    let mut providers = super::provider::list_providers();
+    let available = super::jdbc::available().await;
+    for provider in &mut providers {
+        if provider.kind == DatabaseKind::Jdbc {
+            provider.driver_status.available = available;
+            if available {
+                provider.driver_status.detail =
+                    "JDK 17+ gefunden; JDBC-Profil unter Treiber einrichten.".into();
+            }
+        }
+    }
+    providers
 }
 
-#[tauri::command(async)]
-pub fn driver_status(kind: DatabaseKind) -> super::provider::DriverStatus {
-    super::provider::kind_driver_status(kind)
+#[tauri::command]
+pub async fn driver_status(kind: DatabaseKind) -> super::provider::DriverStatus {
+    let mut status = super::provider::kind_driver_status(kind);
+    if kind == DatabaseKind::Jdbc {
+        status.available = super::jdbc::available().await;
+        if status.available {
+            status.detail = "JDK 17+ gefunden; JDBC-Profil unter Treiber einrichten.".into();
+        }
+    }
+    status
 }
 
 #[tauri::command(async)]
@@ -1734,7 +1752,11 @@ pub async fn execute_script(
         options,
         matches!(
             kind,
-            DatabaseKind::Postgres | DatabaseKind::Sqlite | DatabaseKind::Athena
+            DatabaseKind::Postgres
+                | DatabaseKind::Sqlite
+                | DatabaseKind::Athena
+                | DatabaseKind::Jdbc
+                | DatabaseKind::Workspace
         ),
         async {
             create_adapter_from_string(

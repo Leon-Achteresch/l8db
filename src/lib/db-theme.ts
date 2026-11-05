@@ -9,6 +9,9 @@ export interface DbThemeTokens {
 }
 
 const KIND_THEMES: Record<DatabaseKind, DbThemeTokens> = {
+  jdbc: { hue: 230, chroma: 0.08, glow: 0.1, shader: ["#20243a", "#8ea0d4", "#e4e8f6"] },
+  workspace: { hue: 248, chroma: 0.13, glow: 0.2, shader: ["#1b3a7a", "#6ea8ff", "#d7e6ff"] },
+  spacetimedb: { hue: 285, chroma: 0.15, glow: 0.2, shader: ["#2a1250", "#9b6bff", "#eadfff"] },
   postgres: { hue: 248, chroma: 0.13, glow: 0.2, shader: ["#1b3a7a", "#6ea8ff", "#d7e6ff"] },
   mysql: { hue: 42, chroma: 0.14, glow: 0.18, shader: ["#7a4a12", "#f0b429", "#ffe7b3"] },
   sqlite: { hue: 80, chroma: 0.05, glow: 0.08, shader: ["#3a3a32", "#c8c4b0", "#f2efe4"] },

@@ -23,5 +23,6 @@ export {
   parseConnectionUrl,
   sslModeFromUrl,
 } from "./parse";
+export { isProfileConnection, parseProfileConnection } from "./profile-pointer";
 export { connectionSummary, detectProvider, providerFor } from "./summary";
 export { joinKeySecret, searchParam, splitKeySecret, withSearchParam } from "./warehouse";

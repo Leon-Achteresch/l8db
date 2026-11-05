@@ -15,6 +15,9 @@ const SQLITE_PATTERNS: Array<[RegExp, string, string]> = [
 ];
 
 const CODE_PATTERNS: Record<DatabaseKind, Array<[RegExp, string, string]>> = {
+  jdbc: [],
+  workspace: [],
+  spacetimedb: [],
   postgres: [
     [/\b28P01\b/i, "28P01", "Authentifizierung fehlgeschlagen"],
     [/\b23505\b/i, "23505", "Eindeutigkeitsverletzung"],

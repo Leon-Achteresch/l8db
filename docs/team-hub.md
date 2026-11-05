@@ -44,3 +44,22 @@ Verbindliche Maschinenrichtlinien und der vollständige Ablauf für IT, DBA und 
 
 - `bun test tests/team-sync.test.ts`: Merge, Abgleich, Altbestand, Performance.
 - `cargo test team` (in `src-tauri/`): Lesen der Datei.
+
+
+## Zentraler Team-Workspace
+
+Die dateibasierten Team-Verbindungen oben bleiben ein eigener Weg. Unter **Team-Workspaces** lässt sich zusätzlich ein zentraler Workspace mit Anmeldung, Einladungen, Admin-/Mitgliederrollen, Verbindungsrechten, gemeinsamen SQL-Abfragen, Freigaben und Auditprotokoll verwenden. Gespeicherte Verbindungen enthalten nur `workspace://profil-id/verbindung-id`; Sitzungen liegen im Backend-Schlüsselbund.
+
+Der lokale Server wird in der Oberfläche gestartet. Für einen eigenständigen Server:
+
+```sh
+L8DB_WORKSPACE_ADMIN_EMAIL=admin@example.com L8DB_WORKSPACE_ADMIN_PASSWORD='<eigenes Passwort>' l8db --workspace-server --data /absoluter/pfad/workspace --listen 127.0.0.1:3891
+```
+
+Die Bootstrap-Variablen werden beim ersten Start benötigt. Eine entfernte Bindung braucht `--allow-remote` und einen HTTPS-Reverseproxy. Clients akzeptieren unverschlüsseltes HTTP ausschließlich auf Loopback; der Server ist kein Browser-API-Endpunkt. Lokale SQLite-Dateien müssen ausdrücklich mit `--allow-local-files` erlaubt werden und sind nur bei Loopback-Bindung zulässig. Quellen sind derzeit PostgreSQL, MySQL und SQLite.
+
+Das Datenverzeichnis hat Modus 0700, `credentials.key` Modus 0600. Datenbank und Schlüssel müssen gemeinsam gesichert werden: Ohne den Schlüssel lassen sich gespeicherte Verbindungsdaten nicht wiederherstellen. Der Schlüssel liegt bei diesem Headless-Betrieb als geschützte Datei auf dem Server.
+
+Eine Abfrage liefert höchstens 1.000 Zeilen bzw. 4 MiB HTTP-Antwort, läuft höchstens 30 Sekunden und teilt sich vier Ausführungsplätze. Ein einzelner großer Wert kann im Quelladapter bereits vor der Antwortbegrenzung mehr Speicher beanspruchen. Gespeicherte SQL-Abfragen sind auf 1 MiB je Inhalt, 1.000 Einträge/8 MiB gesamt begrenzt; Freigabeanträge auf 500 Einträge/8 MiB und 24 Stunden. Listen liefern Vorschauen, vollständiges SQL wird einzeln vor Bearbeiten oder Freigabe geladen. Das Auditprotokoll behält 50.000 Einträge.
+
+Änderungen an gemeinsamen SQL-Abfragen prüfen die Revision. Freigaben prüfen Autor, aktuellen Status und aktuelle Rechte auf dem Server; Autor und Freigebender müssen verschieden sein. Rechte- oder Sitzungsentzug bricht laufende Jobs ab. Gemeinsame SQL-Ergebnisse werden virtualisiert dargestellt. Microsoft-/OIDC-/SAML-SSO ist in diesem Workspace nicht implementiert.
