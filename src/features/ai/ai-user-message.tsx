@@ -1,7 +1,6 @@
 import { Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import type { AiSession } from "@/lib/ai/store";
 import type { AiMessage } from "@/lib/db/ai";
 import { cn } from "@/lib/utils";
 import { AiAttachmentChips } from "./ai-attachment-chips";
@@ -12,13 +11,13 @@ import { ResponseAction } from "./beui/agents/streaming-response";
 
 export function AiUserMessage({
   message,
-  session,
+  siblings,
   disabled,
   onEdit,
   onBranch,
 }: {
   message: AiMessage;
-  session?: AiSession;
+  siblings?: (string | undefined)[];
   disabled: boolean;
   onEdit: (message: AiMessage, text: string) => void;
   onBranch: (id: string | undefined) => void;
@@ -121,7 +120,7 @@ export function AiUserMessage({
         </ResponseAction>
         <AiCopyAction text={message.text} label="Nachricht kopieren" />
         <AiBranchSwitcher
-          session={session}
+          siblings={siblings}
           id={message.id}
           disabled={disabled}
           onBranch={onBranch}

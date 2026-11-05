@@ -67,16 +67,19 @@ export function aiRowsLabel(footer: string): string {
 
 export type AiFigureBlock = Extract<AiRichBlock, { type: "tool" }>;
 
+const figureBlocks = new WeakMap<AiFigureBlock, boolean>();
+function isFigure(block: AiRichBlock): block is AiFigureBlock {
+  if (block.type !== "tool" || block.name !== "visualize" || block.status !== "success")
+    return false;
+  const cached = figureBlocks.get(block);
+  if (cached !== undefined) return cached;
+  const figure = Boolean(parseAiTable(block.output));
+  figureBlocks.set(block, figure);
+  return figure;
+}
+
 export function aiFigures(messages: AiMessage[]): AiFigureBlock[] {
-  return messages.flatMap((message) =>
-    (message.rich ?? []).filter(
-      (block): block is AiFigureBlock =>
-        block.type === "tool" &&
-        block.name === "visualize" &&
-        block.status === "success" &&
-        Boolean(parseAiTable(block.output)),
-    ),
-  );
+  return messages.flatMap((message) => (message.rich ?? []).filter(isFigure));
 }
 
 export function aiFollowups(code: string): string[] {

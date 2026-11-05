@@ -24,7 +24,7 @@ import { setAiDropHandler } from "@/lib/ai/drop-target";
 import { type ChatEditorTarget, handleChatEditorRequest } from "@/lib/ai/editor/chat-edit";
 import { editorAiController } from "@/lib/ai/editor/controller";
 import { useEditorAiSettings } from "@/lib/ai/editor/settings";
-import { AiFigureContext } from "@/lib/ai/figures";
+import { AiFigureContext, useAiFigureNumbers } from "@/lib/ai/figures";
 import { handleChatIssueRequest } from "@/lib/ai/issue";
 import { handleChatNotebookRequest } from "@/lib/ai/notebook";
 import { AI_KNOWLEDGE_PROMPT, AI_RULES_PROMPT } from "@/lib/ai/prompts";
@@ -368,9 +368,10 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const figures = useMemo(() => aiFigures(thread), [thread]);
   const shelf = fullPage && wide && thread.length > 0;
   const focusTimer = useRef<number | undefined>(undefined);
+  const figureNumbers = useAiFigureNumbers(figures);
   const figureScope = useMemo(
     () => ({
-      numbers: new Map(figures.map((block, index) => [block.id, index + 1])),
+      numbers: figureNumbers,
       shelf,
       focused,
       focus: (id: string) => {
@@ -382,7 +383,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         focusTimer.current = window.setTimeout(() => setFocused(null), 1800);
       },
     }),
-    [figures, shelf, focused],
+    [figureNumbers, shelf, focused],
   );
   const tab = figures.length && !fullPage ? panelTab : "chat";
   const updateLast = (change: (message: AiMessage) => AiMessage) => {
