@@ -45,8 +45,10 @@ Jeder Push weckt das Modell und kostet einen Turn mit dem ganzen Kontext. Deshal
 
 ## Messungen
 
-Testlauf `cargo test --lib mcp::watch -- --include-ignored` gegen PostgreSQL 17.11 lokal (Linux x86_64, 8 Kerne, 16 GB, Rechner durch andere Prozesse stark ausgelastet), mit verkürzten Intervallen (40–300 ms Polling, 200–800 ms Push-Abstand):
+Testlauf `cargo test --lib mcp::watch -- --include-ignored` gegen PostgreSQL 18.6 in Docker lokal (macOS 27.0.1, Apple M3, 16 GB RAM, rustc 1.99.0, Debug-Build), mit verkürzten Intervallen (40–300 ms Polling, 200–800 ms Push-Abstand):
 
-MESSWERTE
+- Latenz Änderung → Push: Median 53,8 ms, p95 260,1 ms (Polling 40–300 ms)
+- Burst: 7987 Schreibvorgänge in 2 s → 5 Pushes, 146 Abfragen
+- Leerlauf: 3 s mit 1 Watch → 9 Abfragen
 
-Nicht gemessen: andere Datenbankfamilien (nur PostgreSQL unterstützt), PgBouncer, echte Netzwerklatenz, macOS und Windows (Lock-Dateien nutzen `File::try_lock`, dort ungetestet), Codex live.
+Nicht gemessen: andere Datenbankfamilien (nur PostgreSQL unterstützt), PgBouncer, echte Netzwerklatenz, Linux (Testlauf dort nie fertig geworden) und Windows (Lock-Dateien nutzen `File::try_lock`, unter macOS getestet, unter Windows ungetestet), Codex live.
