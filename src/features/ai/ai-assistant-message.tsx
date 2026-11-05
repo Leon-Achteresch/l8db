@@ -3,7 +3,6 @@ import { Fragment, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { stripAiFollowups } from "@/lib/ai/result";
 import { interleaveAiRich } from "@/lib/ai/rich";
-import type { AiSession } from "@/lib/ai/store";
 import type { AiMessage } from "@/lib/db/ai";
 import { useSettingsStore } from "@/lib/settings";
 import { AiAnswer } from "./ai-answer";
@@ -17,7 +16,7 @@ import { ResponseAction } from "./beui/agents/streaming-response";
 
 export function AiAssistantMessage({
   message,
-  session,
+  siblings,
   streaming,
   status,
   disabled,
@@ -26,7 +25,7 @@ export function AiAssistantMessage({
   onFollowup,
 }: {
   message: AiMessage;
-  session?: AiSession;
+  siblings?: (string | undefined)[];
   streaming: boolean;
   status: string;
   disabled: boolean;
@@ -132,7 +131,7 @@ export function AiAssistantMessage({
             <RotateCcw className="size-3.5" />
           </ResponseAction>
           <AiBranchSwitcher
-            session={session}
+            siblings={siblings}
             id={message.id}
             disabled={disabled}
             onBranch={onBranch}
