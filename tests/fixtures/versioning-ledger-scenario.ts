@@ -5,6 +5,7 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
   const capture = await import("/src/lib/versioning/capture.ts");
   const deployment = await import("/src/lib/versioning/deploy.ts");
   const ledger = await import("/src/lib/versioning/ledger.ts");
+  const scripts = await import("/src/lib/versioning/migration-script.ts");
   const pg = kind === "postgres";
   const connection = pg
     ? {
@@ -551,7 +552,37 @@ export async function runLedgerScenario(repo: string, kind: "postgres" | "oracle
   const ticks = [];
   for (const id of ["a", "b", "c"])
     ticks.push((await applied(id)).filter((entry) => entry.startsWith(indexId)).length);
+  const v12 = pg
+    ? "ALTER TABLE public.lab_currencies ADD COLUMN note text"
+    : `ALTER TABLE ${q(devPlace, "lab_currencies")} ADD (NOTE VARCHAR2(200))`;
+  await exec(devPlace, v12);
+  await release("v12", ["v11"], v12);
+  const scripted = await plan("b", "v12");
+  const scriptLedger = await scripts.scriptLedger(scripted, project);
+  const scriptText = scripts.migrationScript({ ...scripted, ledger: scriptLedger }, project.name);
+  for (const statement of [
+    scriptLedger?.guard ?? "",
+    ...scripted.sql,
+    ...(scriptLedger?.statements ?? []),
+  ])
+    await query(customers.b, statement);
+  let guarded = false;
+  try {
+    await query(customers.b, scriptLedger?.guard ?? "");
+  } catch (error) {
+    guarded = String(error).includes("l8db:");
+  }
+  const afterScript = await plan("b", "v12");
+  await deployment.baselineTarget(repo, project, "b", connection, "v12", true);
   return {
+    script: {
+      text: scriptText.includes("'script'") && scriptText.includes("L8DB_VERSIONING_CHANGES"),
+      from: afterScript.from.id,
+      open: afterScript.changes.length,
+      ticks: (await applied("b")).filter((entry) => entry.startsWith("v12/")),
+      guarded,
+      reconciled: (await target("b"))?.release?.id,
+    },
     masse,
     again,
     adopted,

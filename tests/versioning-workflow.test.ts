@@ -11,6 +11,7 @@ import type {
 import {
   customerGroups,
   graphLanes,
+  ledgerDetail,
   parseGitGraph,
   targetProgress,
 } from "../src/lib/versioning/workflow";
@@ -97,6 +98,30 @@ describe("versioning workflow", () => {
     );
     expect(targetProgress(target("New", null), releases, status).state).toBe("baseline");
     expect(targetProgress(target("Fork", "other"), releases, status).pending).toBe(0);
+  });
+  test("shows open ledger changes only while the summary is fresh", () => {
+    const releases = [release("v1", null), release("v2", "v1")];
+    const summary = { tip: "v2", open: 3, variances: 0, checkedAt: "2026-11-05T10:00:00Z" };
+    const variance = { object: "o", hash: "a".repeat(64), reason: "Kunde A", until: null };
+    const current = { ...target("Nord", "v2"), ledger: summary, variances: [variance] };
+    const progress = targetProgress(current, releases, status);
+    expect(progress).toMatchObject({ open: 3, variances: 1, pending: 1, state: "pending" });
+    expect(ledgerDetail(progress)).toBe("3 Änderungen · 1 Abweichung");
+    const event = {
+      id: "r",
+      status: "succeeded",
+      startedAt: "2026-11-05T11:00:00Z",
+      finishedAt: "2026-11-05T11:01:00Z",
+    } as DatabaseTarget["history"][number];
+    expect(targetProgress({ ...current, history: [event] }, releases, status)).toMatchObject({
+      open: null,
+      pending: 0,
+      state: "current",
+    });
+    expect(
+      targetProgress({ ...current, ledger: { ...summary, tip: "v1" } }, releases, status).open,
+    ).toBeNull();
+    expect(targetProgress(target("Ohne", "v2"), releases, status).open).toBeNull();
   });
   test("preserves fork and merge edges in Git swimlanes", () => {
     const ids = ["a", "b", "c", "d"].map((letter) => letter.repeat(40));

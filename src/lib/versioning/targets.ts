@@ -1,6 +1,7 @@
 import type { SavedConnection } from "@/lib/connections";
 import { listSchemas } from "@/lib/db";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { activeVariances } from "./change-plan";
 import { readTargets, saveTargets } from "./repository";
 import { databaseBinding } from "./session";
 import { describeTeamConnection, ensureTeamConnection } from "./team";
@@ -158,6 +159,27 @@ export async function bindTeamConnection(
     target.binding = binding;
   }
   store.connectionBindings = { ...store.connectionBindings, [ref]: connection.id };
+  await saveTargets(repo, store, text);
+}
+
+export async function recordLedgerSummaries(
+  repo: string,
+  projectId: string,
+  summaries: { target: string; tip: string; open: number }[],
+) {
+  if (!summaries.length) return;
+  const { store, text } = await readTargets(repo, projectId);
+  const checkedAt = new Date().toISOString();
+  for (const summary of summaries) {
+    const target = store.targets.find((item) => item.id === summary.target);
+    if (target)
+      target.ledger = {
+        tip: summary.tip,
+        open: summary.open,
+        variances: activeVariances(target.variances).length,
+        checkedAt,
+      };
+  }
   await saveTargets(repo, store, text);
 }
 

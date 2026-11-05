@@ -120,7 +120,9 @@ Ticket-Schlüssel werden in Branchnamen, Commit-Nachrichten, Pull-Request-Titeln
 
 ### Migrationsskripte für Systeme ohne direkten Rollout
 
-Unter **Kunden → Rollout prüfen** speichert das Dateisymbol das geplante SQL eines Ziels als `.sql`-Datei, bei mehreren Zielen eine Datei pro Ziel in einem gewählten Ordner (`migration-<Kunde>-<Umgebung>-<von>-<nach>.sql`). Der Kopf nennt Kunde, Umgebung, Schema, Release-Pfad und Commit. PostgreSQL-Skripte laufen mit `psql` in einer Transaktion mit `ON_ERROR_STOP`, Oracle-Skripte mit SQL*Plus/SQLcl und `WHENEVER SQLERROR EXIT`; PL/SQL-Blöcke enden mit `/`. Vor- und Nachprüfungen, Sperren und Ledger laufen dabei nicht mit. Nach der manuellen Ausführung den Release unter **Stand abgleichen** bestätigen.
+Unter **Kunden → Rollout prüfen** speichert das Dateisymbol das geplante SQL eines Ziels als `.sql`-Datei, bei mehreren Zielen eine Datei pro Ziel in einem gewählten Ordner (`migration-<Kunde>-<Umgebung>-<von>-<nach>.sql`). Der Kopf nennt Kunde, Umgebung, Schema, Release-Pfad und Commit. PostgreSQL-Skripte laufen mit `psql` in einer Transaktion mit `ON_ERROR_STOP`, Oracle-Skripte mit SQL*Plus/SQLcl und `WHENEVER SQLERROR EXIT`; PL/SQL-Blöcke enden mit `/`. Das Skript schreibt die Abhakliste mit: Zu Beginn prüft ein Block, dass das Ziel noch auf dem geplanten Ausgangsrelease steht und kein Rollout läuft. Am Ende trägt es jede Änderung mit Quelle `script` in `L8DB_VERSIONING_CHANGES` ein, setzt die Objekt-Hashes und schreibt den neuen Stand in `L8DB_VERSIONING_STATE`, nur wenn der Ausgangsstand noch stimmt. Ein zweiter Lauf bricht deshalb ab. Vor- und Nachprüfungen sowie Sperren laufen nicht mit. Nach der manuellen Ausführung den Release unter **Stand abgleichen** bestätigen. Ein Skript mit 2.000 Änderungen und 5.000 Objekten entsteht im Median in 7 ms (Apple M3, Bun 1.4.3).
+
+Jede Vorprüfung unter Kunden merkt sich pro Ziel die offenen Änderungen bis zum Linienende. Kunden- und Pipeline-Ansicht zeigen sie zusammen mit der Zahl aktiver Abweichungen neben dem Status, bis der nächste Rollout die Zahl veraltet.
 
 ### Git-Plattform verbinden
 

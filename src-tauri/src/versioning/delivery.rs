@@ -173,10 +173,6 @@ fn short(commit: &str) -> &str {
     &commit[..commit.len().min(12)]
 }
 
-pub async fn touching(root: &Path, tip: &str, release: &str) -> Result<Vec<String>, String> {
-    touching_in(root, tip, "releases", release).await
-}
-
 async fn touching_in(
     root: &Path,
     tip: &str,
@@ -675,10 +671,12 @@ mod tests {
         assert_eq!(outcome(found), vec![("repository", true), ("merged", true)]);
         let merge = git(&work, &["rev-parse", "HEAD"]).await.trim().to_string();
         assert_eq!(
-            touching(&work, &merge, "r1").await.unwrap(),
+            touching_in(&work, &merge, "releases", "r1").await.unwrap(),
             vec![merge.clone()]
         );
-        assert!(touching(&work, &merge, "../r1").await.is_err());
+        assert!(touching_in(&work, &merge, "releases", "../r1")
+            .await
+            .is_err());
         rules.review = true;
         rules.approvals = 1;
         let found = super::gates(&request, None, &rules, true, pool.clone())

@@ -52,7 +52,7 @@ import { deployFleet, type FleetResult, preflightFleet } from "@/lib/versioning/
 import { saveMigrationScripts } from "@/lib/versioning/migration-script";
 import { loadStandaloneChanges } from "@/lib/versioning/repository";
 import { snapshotTargets } from "@/lib/versioning/rollout-snapshot";
-import { addTarget } from "@/lib/versioning/targets";
+import { addTarget, recordLedgerSummaries } from "@/lib/versioning/targets";
 import { TEAM_PATH } from "@/lib/versioning/team";
 import type { DatabaseTarget, ObjectDifference, StandaloneChange } from "@/lib/versioning/types";
 import { connectionServerLabel, customerGroups, targetProgress } from "@/lib/versioning/workflow";
@@ -63,6 +63,7 @@ import { VersioningCodeDriftActions } from "./versioning-code-drift-actions";
 import { VersioningCodeDriftReport } from "./versioning-code-drift-report";
 import { VersioningDeliveryGates } from "./versioning-delivery-gates";
 import { VersioningIconButton } from "./versioning-icon-button";
+import { VersioningLedgerSummary } from "./versioning-ledger-summary";
 import { VersioningSelect } from "./versioning-select";
 import { VersioningTargetDetails } from "./versioning-target-details";
 import { VersioningTargetPolicy } from "./versioning-target-policy";
@@ -233,7 +234,20 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
       Boolean(changeId),
     );
     setPreflight(result);
-    setPlans(result.flatMap((item) => (item.plan ? [item.plan] : [])));
+    const planned = result.flatMap((item) => (item.plan ? [item.plan] : []));
+    setPlans(planned);
+    if (!changeId) {
+      await recordLedgerSummaries(
+        repo,
+        project.id,
+        planned.map((item) => ({
+          target: item.target.id,
+          tip: item.to.id,
+          open: item.changes.length,
+        })),
+      );
+      await refresh();
+    }
   };
   const execute = async () => {
     if (!project || !plans.length || confirmation !== rolloutId)
@@ -651,7 +665,9 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                               : "text-muted-foreground",
                           )}
                         >
-                          {targetProgress(target, releases, workspace.status).label}
+                          <VersioningLedgerSummary
+                            progress={targetProgress(target, releases, workspace.status)}
+                          />
                         </p>
                         {unresolved && (
                           <p className="mt-1 flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
@@ -1059,7 +1075,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
               className="size-7"
               onClick={() =>
                 void run(async () => {
-                  const count = await saveMigrationScripts(plans, project.name);
+                  const count = await saveMigrationScripts(plans, project);
                   if (count)
                     toast.success(
                       count === 1
@@ -1091,7 +1107,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                   className="size-7"
                   onClick={() =>
                     void run(async () => {
-                      if (await saveMigrationScripts([item], project.name))
+                      if (await saveMigrationScripts([item], project))
                         toast.success("Migrationsskript gespeichert");
                     })
                   }
