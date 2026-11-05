@@ -33,6 +33,16 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
   const provider = providerFor(connection);
   const caps = provider.capabilities;
 
+  function toggleEditing() {
+    setEditing(!editing);
+    if (!editing)
+      requestAnimationFrame(() =>
+        document
+          .getElementById("home-pinboard")
+          ?.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" }),
+      );
+  }
+
   function newQuery() {
     const id = useTableTabs.getState().openQueryTab();
     void navigate({ to: "/query/$id", params: { id } });
@@ -64,7 +74,7 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
                 {tables.isError ? "Verbindung prüfen" : tables.isPending ? "Lädt" : "Verbunden"}
               </AnimatedBadge>
             </div>
-            <h1 className="text-[22px] font-semibold tracking-tight">{connection.name}</h1>
+            <h1 className="text-[26px] font-semibold tracking-tight">{connection.name}</h1>
             <div className="mt-1">
               <InventoryLine database={database} schema={schema} />
             </div>
@@ -76,15 +86,7 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
               variant="outline"
               size="sm"
               aria-pressed={editing}
-              onClick={() => {
-                setEditing(!editing);
-                if (!editing)
-                  requestAnimationFrame(() =>
-                    document
-                      .getElementById("home-pinboard")
-                      ?.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" }),
-                  );
-              }}
+              onClick={toggleEditing}
             >
               <SlidersHorizontal className="size-3.5" />
               Anpassen
@@ -140,7 +142,7 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
               </div>
             </section>
           )}
-          <HomeGrid connectionId={connection.id} editing={editing} />
+          <HomeGrid connectionId={connection.id} editing={editing} onAddWidget={toggleEditing} />
         </section>
       </motion.div>
     </main>

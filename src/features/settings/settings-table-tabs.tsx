@@ -36,18 +36,18 @@ export function SettingsTableTabs() {
           </Button>
         ) : null}
       </div>
-      <div className="grid max-w-3xl gap-x-6 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid max-w-3xl gap-x-6 rounded-lg bg-muted/40 p-3 sm:grid-cols-2 lg:grid-cols-3">
         {TABLE_DETAIL_TABS.map((tab) => (
-          <label key={tab.id} className="flex items-center gap-3 text-[13px]">
+          <label key={tab.id} className="flex h-8 items-center justify-between gap-3 text-[13px]">
+            <span className="truncate">
+              {tab.label}
+              {tab.entity === "view" ? " (Views)" : ""}
+            </span>
             <Switch
               checked={!hidden.includes(tab.id)}
               onCheckedChange={(checked) => setVisible(tab.id, checked)}
               aria-label={`${tab.label} anzeigen`}
             />
-            <span>
-              {tab.label}
-              {tab.entity === "view" ? " (Views)" : ""}
-            </span>
           </label>
         ))}
       </div>

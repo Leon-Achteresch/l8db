@@ -61,8 +61,11 @@ export function RunControls({
           disabledReason={runBlockedReason}
           title={`${runLabel} (${shortcutLabel("query.run")})`}
         >
-          <MorphIcon icon={hasSelection ? TextSelect : Play} className="size-3" />
+          <MorphIcon icon={hasSelection ? TextSelect : Play} className="size-3.5" />
           <span className="sr-only @min-[42rem]/qtb:not-sr-only">{runLabel}</span>
+          <kbd className="hidden font-sans text-[11px] font-normal text-primary-foreground/70 @min-[54rem]/qtb:inline">
+            {shortcutLabel(hasSelection ? "query.runSelection" : "query.run")}
+          </kbd>
         </Button>
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
@@ -127,7 +130,7 @@ export function RunControls({
       >
         <MorphIcon
           icon={isChecking ? Loader : ShieldCheck}
-          className={cn("size-3", isChecking && "animate-spin")}
+          className={cn("size-3.5", isChecking && "animate-spin")}
         />
         <span className="sr-only @min-[54rem]/qtb:not-sr-only">
           {isChecking ? "Prüfe…" : "Prüfen"}
@@ -153,7 +156,7 @@ export function RunControls({
               : "Dieser Treiber unterstützt keinen direkten Abfrageabbruch. Das konfigurierte Timeout bleibt wirksam."
           }
         >
-          <SquareIcon className="size-3" />
+          <SquareIcon className="size-3.5" />
           <span className="sr-only @min-[54rem]/qtb:not-sr-only">
             {activeJob?.status === "cancelling" ? "Abbruch angefordert…" : "Abbrechen"}
           </span>

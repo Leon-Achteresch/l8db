@@ -46,7 +46,7 @@ export function AtlasLens({
 }: AtlasLensProps) {
   if (!table)
     return (
-      <p className="flex min-h-14 flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+      <p className="flex min-h-14 flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span>
           {sizesPending
             ? "Größen werden geladen"
@@ -93,14 +93,14 @@ export function AtlasLens({
             type="button"
             onClick={() => (foreign ? onOpen(schema, name) : onWalk(key))}
             title={foreign ? `${schema}.${name} öffnen` : `Zu ${name} springen`}
-            className="max-w-48 truncate rounded-md px-1.5 py-0.5 font-mono text-[11px] text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
+            className="max-w-48 truncate rounded-md px-1.5 py-0.5 font-mono text-xs text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary"
           >
             {foreign ? `${schema}.${name}` : name}
           </button>
         );
       })}
       {keys.length > CHIP_LIMIT && (
-        <span className="text-[11px] text-muted-foreground">+{keys.length - CHIP_LIMIT}</span>
+        <span className="text-xs text-muted-foreground">+{keys.length - CHIP_LIMIT}</span>
       )}
     </>
   );
@@ -108,7 +108,7 @@ export function AtlasLens({
   const relation = (icon: ReactNode, label: string, keys: string[]) =>
     keys.length > 0 && (
       <span className="flex min-w-0 flex-wrap items-center gap-x-0.5 gap-y-0.5">
-        <span className="mr-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+        <span className="mr-1 flex items-center gap-1 text-xs text-muted-foreground">
           {icon}
           {label}
         </span>
@@ -122,7 +122,7 @@ export function AtlasLens({
         <p className="flex min-w-0 items-baseline gap-3">
           <span className="truncate font-mono text-sm font-semibold">{table.name}</span>
           {facts && (
-            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{facts}</span>
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{facts}</span>
           )}
         </p>
         {table.comment && (
@@ -132,7 +132,7 @@ export function AtlasLens({
           {relation(<ArrowRight className="size-3" />, "verweist auf", outgoing)}
           {relation(<ArrowLeft className="size-3" />, "referenziert von", incoming)}
           {showRelations && outgoing.length + incoming.length === 0 && (
-            <span className="text-[11px] text-muted-foreground">Keine Fremdschlüssel</span>
+            <span className="text-xs text-muted-foreground">Keine Fremdschlüssel</span>
           )}
         </div>
       </div>

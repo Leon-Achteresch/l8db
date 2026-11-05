@@ -13,7 +13,7 @@ import {
   TableIcon,
   ZapIcon,
 } from "lucide-react";
-import { useCallback, useLayoutEffect, useRef, useState, type WheelEvent } from "react";
+import { Fragment, useCallback, useLayoutEffect, useRef, useState, type WheelEvent } from "react";
 import {
   ContextMenu,
   ContextMenuCheckboxItem,
@@ -42,6 +42,20 @@ const icons = {
   audit: HistoryIcon,
 };
 
+const groups: Record<string, number> = {
+  triggers: 1,
+  indexes: 1,
+  constraints: 1,
+  partitions: 1,
+  rls: 2,
+  grants: 2,
+  "used-by": 3,
+  performance: 3,
+  audit: 3,
+};
+
+const groupOf = (id: string) => groups[id] ?? 0;
+
 export function TableDetailTabBar({
   tabs,
   activeTab,
@@ -52,7 +66,9 @@ export function TableDetailTabBar({
   const hidden = useSettingsStore((s) => s.hiddenTableDetailTabs);
   const setVisible = useSettingsStore((s) => s.setTableDetailTabVisible);
   const reset = useSettingsStore((s) => s.resetTableDetailTabs);
-  const visible = tabs.filter((tab) => !hidden.includes(tab.id));
+  const visible = tabs
+    .filter((tab) => !hidden.includes(tab.id))
+    .sort((a, b) => groupOf(a.id) - groupOf(b.id));
   const scrollRef = useRef<HTMLElement>(null);
   const [scrollState, setScrollState] = useState({ overflow: false, left: false, right: false });
 
@@ -131,23 +147,33 @@ export function TableDetailTabBar({
             ref={scrollRef}
             onScroll={updateScrollState}
             onWheel={handleWheel}
-            className="h-9 min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="h-8 min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             aria-label="Tabellenansichten, per Rechtsklick anpassen"
           >
             {visible.length ? (
-              <TabsList variant="line" className="h-9 w-max" aria-label="Tabellenansichten">
-                {visible.map((tab) => {
+              <TabsList
+                variant="line"
+                className="w-max gap-0 group-data-horizontal/tabs:h-8"
+                aria-label="Tabellenansichten"
+              >
+                {visible.map((tab, index) => {
                   const Icon = icons[tab.id as keyof typeof icons] ?? PuzzleIcon;
+                  const previous = visible[index - 1];
                   return (
-                    <TabsTrigger key={tab.id} value={tab.id} data-tab-id={tab.id}>
-                      <Icon className="size-3.5" />
-                      {tab.label}
-                    </TabsTrigger>
+                    <Fragment key={tab.id}>
+                      {previous && groupOf(previous.id) !== groupOf(tab.id) && (
+                        <span aria-hidden="true" className="mx-2 h-4 w-px shrink-0 bg-border" />
+                      )}
+                      <TabsTrigger value={tab.id} data-tab-id={tab.id} className="px-1.5">
+                        <Icon className="size-3.5" strokeWidth={1.75} />
+                        {tab.label}
+                      </TabsTrigger>
+                    </Fragment>
                   );
                 })}
               </TabsList>
             ) : (
-              <div className="flex h-9 items-center text-xs text-muted-foreground">
+              <div className="flex h-8 items-center text-xs text-muted-foreground">
                 Keine Tabs sichtbar · Rechtsklick zum Anpassen
               </div>
             )}

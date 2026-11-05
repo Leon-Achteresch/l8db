@@ -449,6 +449,9 @@
   ::selection {
     background: color-mix(in oklch, var(--primary) 22%, transparent);
   }
+  [data-icon-chrome] svg.lucide {
+    stroke-width: 1.75;
+  }
   * {
     scrollbar-width: thin;
     scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent) transparent;

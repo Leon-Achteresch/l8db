@@ -237,6 +237,7 @@ export function QueryView({ tabId }: QueryViewProps) {
         className="flex h-full min-w-0 flex-1 flex-col"
       >
         <div
+          data-icon-chrome
           className="@container/qtb flex h-12 shrink-0 flex-nowrap items-center gap-1.5 overflow-hidden border-b bg-card px-3"
           data-tour="query-toolbar"
         >
@@ -252,9 +253,6 @@ export function QueryView({ tabId }: QueryViewProps) {
               onOpenScript={script.handleOpenScriptDialog}
               shortcutLabel={shortcutLabel}
             />
-            {(caps.dml_preview || caps.multi_target_query) && (
-              <Separator orientation="vertical" className="mx-1 my-2" />
-            )}
             {caps.dml_preview && (
               <DmlPreviewButton
                 disabled={exec.isRunning || !connection || !sql.trim()}
