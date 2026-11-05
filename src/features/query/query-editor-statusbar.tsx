@@ -36,7 +36,7 @@ export function QueryEditorStatusbar({
   const setEditorWordWrap = useSettingsStore((s) => s.setEditorWordWrap);
 
   return (
-    <div className="flex h-7 shrink-0 items-center gap-1 overflow-x-auto border-t bg-muted/40 px-3 text-[11px] text-muted-foreground select-none">
+    <div className="flex h-7 shrink-0 items-center gap-1 overflow-x-auto border-t bg-muted/40 px-3 text-xs text-muted-foreground select-none">
       <span className="font-mono whitespace-nowrap tabular-nums">
         Ze {position.line}, Sp {position.column}
       </span>

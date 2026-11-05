@@ -44,7 +44,7 @@ export function SidebarObjectTabs({
           >
             <TabsTrigger
               value={tab.value}
-              className="relative h-full w-full px-0 transition-none"
+              className="relative h-full w-full px-0 transition-none after:bg-primary data-active:after:opacity-100"
               aria-label={tab.label}
               disabled={Boolean(tab.disabledReason)}
               title={tab.disabledReason ?? undefined}

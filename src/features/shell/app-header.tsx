@@ -363,7 +363,13 @@ export function AppHeader() {
         <Tooltip content="Einstellungen" side="bottom">
           <Link
             to="/settings"
-            aria-label={hasNewSettingsFeatures ? "Einstellungen, neue Funktionen" : "Einstellungen"}
+            aria-label={
+              update
+                ? "Einstellungen, Update verfügbar"
+                : hasNewSettingsFeatures
+                  ? "Einstellungen, neue Funktionen"
+                  : "Einstellungen"
+            }
             className={cn(
               "relative inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
               "hover:bg-muted hover:text-foreground",
@@ -371,14 +377,13 @@ export function AppHeader() {
             )}
           >
             <Settings className="size-4" strokeWidth={1.75} />
-            {hasNewSettingsFeatures ? (
-              <NewBadge className="absolute -right-2.5 -top-0.5 px-1 text-[8px]" />
-            ) : null}
             {update ? (
               <span
                 aria-hidden
-                className="absolute -bottom-0.5 -left-0.5 size-2 rounded-full bg-red-500 ring-2 ring-card"
+                className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-red-500 ring-2 ring-card"
               />
+            ) : hasNewSettingsFeatures ? (
+              <NewBadge className="absolute -right-2.5 -top-0.5 px-1 text-[8px]" />
             ) : null}
           </Link>
         </Tooltip>

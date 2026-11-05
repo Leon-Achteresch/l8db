@@ -67,9 +67,6 @@ export function RunControls({
           >
             <MorphIcon icon={hasSelection ? TextSelect : Play} className="size-3.5" />
             <span className="sr-only @min-[42rem]/qtb:not-sr-only">{runLabel}</span>
-            <kbd className="hidden font-sans text-[11px] font-normal text-primary-foreground/70 @min-[80rem]/qtb:inline">
-              {shortcutLabel(hasSelection ? "query.runSelection" : "query.run")}
-            </kbd>
           </Button>
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
@@ -147,7 +144,7 @@ export function RunControls({
           </Button>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-2 rounded-md bg-muted/50 p-0.5">
+      <div className="flex shrink-0 items-center gap-1">
         <Button
           size="sm"
           variant="ghost"

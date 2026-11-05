@@ -42,10 +42,14 @@ export function AppNavRail() {
   const activeConnection = useActiveConnection();
   const navItems = (
     activeConnection
-      ? appSidebarData.navMain.filter(
-          (item) =>
-            isEasyModeRouteVisible(item.url, easyMode) && (!item.available || item.available(caps)),
-        )
+      ? [
+          connectItem,
+          ...appSidebarData.navMain.filter(
+            (item) =>
+              isEasyModeRouteVisible(item.url, easyMode) &&
+              (!item.available || item.available(caps)),
+          ),
+        ]
       : [
           connectItem,
           ...appSidebarData.navMain.filter(
@@ -71,7 +75,7 @@ export function AppNavRail() {
       aria-label="Bereiche"
       className={cn(
         "flex shrink-0 flex-col gap-1.5 overflow-y-auto bg-sidebar py-2 [scrollbar-width:none]",
-        expanded ? "w-[200px] items-stretch gap-0.5 px-2" : "w-14 items-center",
+        expanded ? "w-[184px] items-stretch gap-0.5 px-2" : "w-14 items-center",
       )}
     >
       {navItems.map((item, index) => {
@@ -121,7 +125,7 @@ export function AppNavRail() {
               />
             )}
             {expanded && (index === 0 || groupStart) && navGroupLabels[group] && (
-              <span className="px-2.5 pt-1 pb-0.5 text-[11px] text-muted-foreground">
+              <span className="px-2.5 pt-1 pb-0.5 text-xs text-muted-foreground">
                 {navGroupLabels[group]}
               </span>
             )}
