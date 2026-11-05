@@ -143,9 +143,7 @@ export function TransferSchemas({
               const blocked = tables.filter((table) =>
                 conflicts.has(`${table.targetSchema}.${table.targetName}`),
               ).length;
-              const isNew = plan
-                ? plan.createSchemas.includes(target)
-                : existing.length > 0 && !existing.includes(target);
+              const missing = existing.length > 0 && !existing.includes(target);
               const size = sizes[schema];
               return (
                 <Fragment key={schema}>
@@ -231,10 +229,10 @@ export function TransferSchemas({
                         <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-amber-700 dark:text-amber-400">
                           {blocked} vorhanden
                         </span>
+                      ) : missing ? (
+                        <span className="text-destructive">Schema fehlt</span>
                       ) : content === "data" ? (
                         "Leere Tabellen nötig"
-                      ) : isNew ? (
-                        "Schema neu anlegen"
                       ) : (
                         "Schema vorhanden"
                       )}

@@ -23,9 +23,6 @@ const PHASES: { key: keyof TransferPlan; label: string }[] = [
 
 function script(plan: TransferPlan): string {
   const sections = [
-    plan.createSchemas.length > 0
-      ? `-- Schemas anlegen\n${plan.createSchemas.map((schema) => `-- ${schema}`).join("\n")}`
-      : "",
     ...PHASES.map(({ key, label }) => {
       const statements = plan[key] as TransferStatement[];
       if (statements.length === 0) return "";
@@ -35,9 +32,7 @@ function script(plan: TransferPlan): string {
   const data = `-- Daten: ${plan.tables.length} Tabellen in dieser Reihenfolge\n${plan.tables
     .map((table) => `--   ${table.targetSchema}.${table.targetName}`)
     .join("\n")}`;
-  return [sections[0], sections[1], sections[2], data, sections[3], sections[4]]
-    .filter(Boolean)
-    .join("\n\n");
+  return [sections[0], sections[1], data, sections[2], sections[3]].filter(Boolean).join("\n\n");
 }
 
 export function TransferPlanDetails({

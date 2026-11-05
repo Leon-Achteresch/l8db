@@ -48,6 +48,8 @@ pub struct PlanRequest {
     #[serde(default)]
     pub replace: bool,
     #[serde(default)]
+    pub mirror: bool,
+    #[serde(default)]
     pub content: Content,
 }
 
@@ -135,7 +137,6 @@ pub struct TransferPlan {
     pub native: bool,
     pub atomic: bool,
     pub schemas: Vec<SchemaPair>,
-    pub create_schemas: Vec<String>,
     pub tables: Vec<TransferTable>,
     pub pre_data: Vec<Statement>,
     pub before_load: Vec<Statement>,
@@ -147,6 +148,8 @@ pub struct TransferPlan {
     pub conflicts: Vec<String>,
     #[serde(default)]
     pub replace: bool,
+    #[serde(default)]
+    pub mirror: bool,
     #[serde(default)]
     pub replaced: Vec<String>,
     #[serde(default)]
@@ -1068,13 +1071,6 @@ fn check_names(target: Dialect, plan: &TransferPlan) -> Result<(), String> {
     }
 }
 
-fn create_schema_sql(target: Dialect, schema: &str) -> String {
-    match target {
-        Dialect::Mysql | Dialect::Clickhouse => format!("CREATE DATABASE {}", target.quote(schema)),
-        _ => format!("CREATE SCHEMA {}", target.quote(schema)),
-    }
-}
-
 pub fn column_canonical(
     source_kind: DatabaseKind,
     data_type: &str,
@@ -1832,11 +1828,7 @@ async fn existing_objects(
     names.iter().map(|name| object_key(target, name)).collect()
 }
 
-pub async fn conflicts(
-    adapter: &dyn DatabaseAdapter,
-    target: Dialect,
-    plan: &TransferPlan,
-) -> Vec<String> {
+fn planned_objects(plan: &TransferPlan) -> Vec<(String, String)> {
     let mut planned: Vec<(String, String)> = plan
         .tables
         .iter()
@@ -1861,13 +1853,18 @@ pub async fn conflicts(
             }
         }
     }
+    planned
+}
+
+pub async fn conflicts(
+    adapter: &dyn DatabaseAdapter,
+    target: Dialect,
+    plan: &TransferPlan,
+) -> Vec<String> {
     let mut inventory: HashMap<String, HashSet<String>> = HashMap::new();
     let mut out = Vec::new();
     let mut seen = HashSet::new();
-    for (schema, name) in planned {
-        if plan.create_schemas.contains(&schema) {
-            continue;
-        }
+    for (schema, name) in planned_objects(plan) {
         if !inventory.contains_key(&schema) {
             let existing = existing_objects(adapter, target, &schema).await;
             inventory.insert(schema.clone(), existing);
@@ -1932,15 +1929,12 @@ pub async fn plan(
     let native = native_family(request.source.kind, target.kind);
     let fold_names = request.fold_names && !native;
     let oracle_native = native && target_dialect == Dialect::Oracle;
-    if request.replace && !oracle_native {
-        return Err("Überschreiben wird nur für Oracle → Oracle unterstützt.".into());
-    }
-    if request.replace && (subset || content == Content::Data) {
+    if request.mirror && (!request.replace || subset || content == Content::Data) {
         return Err(
-            "Überschreiben ist nur ohne Tabellenauswahl und nicht für „Nur Daten“ möglich.".into(),
+            "Vollständiges Überschreiben ist nur für ganze Schemas mit Struktur möglich.".into(),
         );
     }
-    if request.replace {
+    if request.mirror && oracle_native {
         replace_guard(source.as_ref(), target_adapter.as_ref(), &request.schemas).await?;
     }
     let mut plan = TransferPlan {
@@ -1948,6 +1942,7 @@ pub async fn plan(
         atomic: atomic(target_dialect),
         schemas: request.schemas.clone(),
         replace: request.replace,
+        mirror: request.mirror,
         content,
         ..Default::default()
     };
@@ -1956,24 +1951,11 @@ pub async fn plan(
         if pair.target.trim().is_empty() || pair.source.trim().is_empty() {
             return Err("Quell- und Zielschema müssen gesetzt sein.".into());
         }
-        if existing.contains(&pair.target) || plan.create_schemas.contains(&pair.target) {
-            continue;
-        }
-        match target_dialect {
-            _ if content == Content::Data => {
-                return Err(format!(
-                    "Zielschema {} existiert nicht. „Nur Daten“ lädt nur in vorhandene Tabellen.",
-                    pair.target
-                ))
-            }
-            Dialect::Oracle => {
-                return Err(format!(
-                    "Zielschema {} existiert nicht. Oracle-Schemas sind Benutzer und müssen vorher angelegt werden.",
-                    pair.target
-                ))
-            }
-            Dialect::Sqlite => return Err(format!("Zielschema {} existiert nicht.", pair.target)),
-            _ => plan.create_schemas.push(pair.target.clone()),
+        if !existing.contains(&pair.target) {
+            return Err(format!(
+                "Zielschema {} existiert nicht. Schema bzw. Datenbank bitte vorher anlegen.",
+                pair.target
+            ));
         }
     }
     let need = Need {
@@ -2105,16 +2087,238 @@ pub async fn plan(
             plan.warnings
                 .push("„Nur Daten“: Aktive Trigger der Zieltabellen feuern beim Laden.".into());
         }
-    } else if plan.replace {
-        for pair in &request.schemas {
-            for (kind, name) in oracle_copy::objects(target_adapter.as_ref(), &pair.target).await? {
-                plan.replaced.push(format!("{kind} {}.{name}", pair.target));
-            }
-        }
-    } else {
+    } else if !plan.replace {
         plan.conflicts = conflicts(target_adapter.as_ref(), target_dialect, &plan).await;
     }
+    if plan.replace {
+        plan.replaced = if content == Content::Data {
+            plan.tables
+                .iter()
+                .map(|t| format!("ZEILEN {}.{}", t.target_schema, t.target_name))
+                .collect()
+        } else {
+            replace_targets(target_adapter.as_ref(), target_dialect, &plan)
+                .await?
+                .iter()
+                .map(|(kind, schema, name)| format!("{kind} {schema}.{name}"))
+                .collect()
+        };
+    }
     Ok(plan)
+}
+
+async fn target_objects(
+    adapter: &dyn DatabaseAdapter,
+    target: Dialect,
+    schema: &str,
+) -> Result<Vec<(String, String)>, String> {
+    if target == Dialect::Oracle {
+        return oracle_copy::objects(adapter, schema).await;
+    }
+    if target == Dialect::Postgres {
+        let schema = super::quote_literal(schema);
+        let result = adapter
+            .execute_query(&format!(
+                "SELECT k, n FROM ( \
+                 SELECT CASE c.relkind WHEN 'v' THEN 'VIEW' WHEN 'm' THEN 'MATERIALIZED VIEW' WHEN 'S' THEN 'SEQUENCE' \
+                 WHEN 'f' THEN 'FOREIGN TABLE' ELSE 'TABLE' END AS k, c.relname::text AS n, c.oid, 'pg_class'::regclass AS cls, \
+                 CASE WHEN c.relkind IN ('v', 'm') THEN 0 WHEN c.relkind = 'S' THEN 2 ELSE 1 END AS r \
+                 FROM pg_class c JOIN pg_namespace s ON s.oid = c.relnamespace \
+                 WHERE s.nspname = {schema} AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f') AND NOT c.relispartition \
+                 UNION ALL \
+                 SELECT CASE p.prokind WHEN 'p' THEN 'PROCEDURE' WHEN 'a' THEN 'AGGREGATE' ELSE 'FUNCTION' END, \
+                 p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')', p.oid, 'pg_proc'::regclass, 3 \
+                 FROM pg_proc p JOIN pg_namespace s ON s.oid = p.pronamespace WHERE s.nspname = {schema} \
+                 ) o WHERE NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = o.cls AND d.objid = o.oid AND d.deptype = 'e') \
+                 ORDER BY r, n"
+            ))
+            .await?;
+        return Ok(result
+            .rows
+            .iter()
+            .filter_map(|row| {
+                let text = |key: &str| row.get(key).and_then(super::export::value_text);
+                Some((text("k")?, text("n")?))
+            })
+            .collect());
+    }
+    let named = |kind: &str, names: Vec<String>| {
+        names
+            .into_iter()
+            .map(|name| (kind.to_string(), name))
+            .collect::<Vec<_>>()
+    };
+    let mut out = named(
+        "VIEW",
+        adapter
+            .list_views(Some(schema))
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|t| t.name)
+            .collect(),
+    );
+    out.extend(named(
+        "TABLE",
+        adapter
+            .list_tables(Some(schema))
+            .await?
+            .into_iter()
+            .map(|t| t.name)
+            .collect(),
+    ));
+    out.extend(named(
+        "SEQUENCE",
+        adapter
+            .list_sequences(Some(schema))
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| s.name)
+            .collect(),
+    ));
+    out.extend(named(
+        "FUNCTION",
+        adapter
+            .list_functions(Some(schema))
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|f| f.name)
+            .collect(),
+    ));
+    out.extend(named(
+        "PROCEDURE",
+        adapter
+            .list_procedures(Some(schema))
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|f| f.name)
+            .collect(),
+    ));
+    Ok(out)
+}
+
+async fn replace_targets(
+    adapter: &dyn DatabaseAdapter,
+    target: Dialect,
+    plan: &TransferPlan,
+) -> Result<Vec<(String, String, String)>, String> {
+    let planned: HashSet<(String, String)> = planned_objects(plan)
+        .into_iter()
+        .map(|(schema, name)| (schema, object_key(target, &name)))
+        .collect();
+    let mut schemas = HashSet::new();
+    let mut out = Vec::new();
+    for pair in &plan.schemas {
+        if !schemas.insert(pair.target.clone()) {
+            continue;
+        }
+        for (kind, name) in target_objects(adapter, target, &pair.target).await? {
+            if plan.mirror || planned.contains(&(pair.target.clone(), object_key(target, &name))) {
+                out.push((kind, pair.target.clone(), name));
+            }
+        }
+    }
+    Ok(out)
+}
+
+async fn drop_order(adapter: &dyn DatabaseAdapter, drops: &mut [(String, String, String)]) {
+    let tables: Vec<(String, String)> = drops
+        .iter()
+        .filter(|(kind, _, _)| kind == "TABLE")
+        .map(|(_, schema, name)| (schema.clone(), name.clone()))
+        .collect();
+    let mut referenced: HashMap<(String, String), HashSet<(String, String)>> = HashMap::new();
+    for (schema, name) in &tables {
+        for fk in adapter
+            .list_foreign_keys(schema, name)
+            .await
+            .unwrap_or_default()
+        {
+            let parent = (fk.to_schema, fk.to_table);
+            if parent != (schema.clone(), name.clone()) {
+                referenced
+                    .entry(parent)
+                    .or_default()
+                    .insert((schema.clone(), name.clone()));
+            }
+        }
+    }
+    let mut rank: HashMap<(String, String), usize> = HashMap::new();
+    let mut left = tables;
+    while !left.is_empty() {
+        let next = rank.len();
+        let free: Vec<(String, String)> = left
+            .iter()
+            .filter(|t| {
+                referenced.get(*t).is_none_or(|children| {
+                    children
+                        .iter()
+                        .all(|c| rank.contains_key(c) || !left.contains(c))
+                })
+            })
+            .cloned()
+            .collect();
+        let free = if free.is_empty() { left.clone() } else { free };
+        for (i, table) in free.iter().enumerate() {
+            rank.insert(table.clone(), next + i);
+        }
+        left.retain(|t| !free.contains(t));
+    }
+    drops.sort_by_key(|(kind, schema, name)| match kind.as_str() {
+        "VIEW" | "MATERIALIZED VIEW" => (0, 0),
+        "TABLE" => (
+            1,
+            rank.get(&(schema.clone(), name.clone()))
+                .copied()
+                .unwrap_or(0),
+        ),
+        _ => (2, 0),
+    });
+}
+
+fn replace_sql(target: Dialect, mirror: bool, drops: &[(String, String, String)]) -> Vec<String> {
+    let qualify = |schema: &str, name: &str| match name.find('(') {
+        Some(at) => format!("{}{}", target.target(schema, &name[..at]), &name[at..]),
+        None => target.target(schema, name),
+    };
+    if target == Dialect::Postgres {
+        let cascade = if mirror { " CASCADE" } else { "" };
+        let mut kinds: Vec<&str> = Vec::new();
+        for (kind, _, _) in drops {
+            if !kinds.contains(&kind.as_str()) {
+                kinds.push(kind);
+            }
+        }
+        return kinds
+            .into_iter()
+            .map(|kind| {
+                let names: Vec<String> = drops
+                    .iter()
+                    .filter(|(k, _, _)| k == kind)
+                    .map(|(_, schema, name)| qualify(schema, name))
+                    .collect();
+                format!("DROP {kind} IF EXISTS {}{cascade}", names.join(", "))
+            })
+            .collect();
+    }
+    drops
+        .iter()
+        .filter_map(|(kind, schema, name)| {
+            let qualified = qualify(schema, name);
+            Some(match (target, kind.as_str()) {
+                (Dialect::Oracle, _) => oracle_copy::drop_statement(schema, kind, name),
+                (Dialect::Duckdb, "FUNCTION") => format!("DROP MACRO IF EXISTS {qualified}"),
+                (Dialect::Clickhouse, "TABLE" | "VIEW") | (Dialect::Sqlite, "TABLE" | "VIEW") => {
+                    format!("DROP {kind} IF EXISTS {qualified}")
+                }
+                (Dialect::Clickhouse | Dialect::Sqlite, _) => return None,
+                _ => format!("DROP {kind} IF EXISTS {qualified}"),
+            })
+        })
+        .collect()
 }
 
 async fn replace_guard(
@@ -2565,7 +2769,6 @@ struct Runner<'a> {
     adapter: Box<dyn DatabaseAdapter>,
     session: Option<Box<dyn TxSession>>,
     journal: Vec<Statement>,
-    created_schemas: Vec<String>,
     loaded: Vec<String>,
 }
 
@@ -2600,6 +2803,49 @@ impl Runner<'_> {
         }
         if self.session.is_none() && statement.object_type.is_some() {
             self.journal.push(statement.clone());
+        }
+        Ok(())
+    }
+
+    async fn drop_objects(&mut self, drops: &[String]) -> Result<(), String> {
+        if drops.is_empty() {
+            return Ok(());
+        }
+        if self.dialect == Dialect::Mysql {
+            let mut session = self.table_session().await?;
+            session.execute("SET FOREIGN_KEY_CHECKS = 0").await?;
+            for sql in drops {
+                session.execute(sql).await?;
+            }
+            session.execute("SET FOREIGN_KEY_CHECKS = 1").await?;
+            return session.commit().await;
+        }
+        for sql in drops {
+            match self.exec(&Statement::plain(sql.as_str())).await {
+                Err(error)
+                    if self.dialect == Dialect::Oracle
+                        && ["ORA-04043", "ORA-00942", "ORA-04080", "ORA-02289"]
+                            .iter()
+                            .any(|code| error.contains(code)) => {}
+                other => other?,
+            }
+        }
+        Ok(())
+    }
+
+    async fn empty_tables(&mut self, plan: &TransferPlan) -> Result<(), String> {
+        if !plan.replace || plan.content != Content::Data {
+            return Ok(());
+        }
+        for table in plan.tables.iter().rev() {
+            let qualified = self
+                .dialect
+                .target(&table.target_schema, &table.target_name);
+            let sql = match self.dialect {
+                Dialect::Clickhouse => format!("TRUNCATE TABLE {qualified}"),
+                _ => format!("DELETE FROM {qualified}"),
+            };
+            self.exec(&Statement::plain(sql)).await?;
         }
         Ok(())
     }
@@ -2888,11 +3134,6 @@ impl Runner<'_> {
                 ));
             }
         }
-        for schema in self.created_schemas.iter().rev() {
-            leftovers.push(format!(
-                "Datenbank {schema} wurde angelegt und nicht entfernt."
-            ));
-        }
         leftovers
     }
 }
@@ -3002,12 +3243,17 @@ pub async fn run(
         return Err("Der Plan passt nicht zur Zielverbindung. Bitte neu analysieren.".into());
     }
     let oracle_native = plan.native && d == Dialect::Oracle;
-    if plan.replace && !oracle_native {
-        return Err("Überschreiben wird nur für Oracle → Oracle unterstützt.".into());
+    let subset = plan.schemas.iter().any(|pair| pair.tables.is_some());
+    if plan.mirror && (!plan.replace || subset || plan.content == Content::Data) {
+        return Err(
+            "Vollständiges Überschreiben ist nur für ganze Schemas mit Struktur möglich.".into(),
+        );
     }
+    let oracle_clear = plan.mirror && oracle_native;
     let target_adapter = adapter(target, &pool)?;
     let source = adapter(&request.source, &pool)?;
-    if plan.replace {
+    let mut drops = Vec::new();
+    if oracle_clear {
         replace_guard(source.as_ref(), target_adapter.as_ref(), &plan.schemas).await?;
         let mut unconfirmed = Vec::new();
         for pair in &plan.schemas {
@@ -3024,8 +3270,29 @@ pub async fn run(
                 unconfirmed.join(", ")
             ));
         }
+    } else if plan.replace && plan.content != Content::Data {
+        let mut targets = replace_targets(target_adapter.as_ref(), d, plan).await?;
+        if plan.mirror {
+            let unconfirmed: Vec<String> = targets
+                .iter()
+                .map(|(kind, schema, name)| format!("{kind} {schema}.{name}"))
+                .filter(|label| !plan.replaced.contains(label))
+                .collect();
+            if !unconfirmed.is_empty() {
+                return Err(format!(
+                    "Im Ziel sind seit der Planung Objekte hinzugekommen, deren Löschung nicht bestätigt wurde: {}. Plan neu erstellen.",
+                    unconfirmed.join(", ")
+                ));
+            }
+        }
+        if !matches!(d, Dialect::Postgres | Dialect::Mysql | Dialect::Clickhouse) {
+            drop_order(target_adapter.as_ref(), &mut targets).await;
+        }
+        drops = replace_sql(d, plan.mirror, &targets);
     } else if plan.content == Content::Data {
-        refuse_filled(target_adapter.as_ref(), d, plan).await?;
+        if !plan.replace {
+            refuse_filled(target_adapter.as_ref(), d, plan).await?;
+        }
     } else {
         refuse_conflicts(
             target_adapter.as_ref(),
@@ -3053,7 +3320,7 @@ pub async fn run(
         warnings,
         ..Default::default()
     };
-    if plan.replace {
+    if oracle_clear {
         let cleared = async {
             for pair in &plan.schemas {
                 let leftovers = oracle_copy::clear(target_adapter.as_ref(), &pair.target).await?;
@@ -3086,7 +3353,6 @@ pub async fn run(
         adapter: target_adapter,
         session: None,
         journal: Vec::new(),
-        created_schemas: Vec::new(),
         loaded: Vec::new(),
     };
     let tables = plan.tables.len();
@@ -3100,6 +3366,23 @@ pub async fn run(
             total_rows: total,
         })
     };
+    let early = d == Dialect::Duckdb && plan.replace;
+    if early {
+        let cleared = async {
+            runner.drop_objects(&drops).await?;
+            runner.empty_tables(plan).await
+        }
+        .await;
+        if let Err(error) = cleared {
+            if let Some(reader) = reader {
+                reader.close().await;
+            }
+            return Err(error);
+        }
+        outcome
+            .warnings
+            .push("DuckDB: Das Überschreiben im Ziel wurde vor dem Laden festgeschrieben.".into());
+    }
     let result: Result<(), String> = async {
         if plan.atomic {
             let mut session = runner.table_session().await?;
@@ -3117,16 +3400,14 @@ pub async fn run(
             runner.session = Some(session);
         }
         emit("pre", None, 0, 0, 0);
-        for schema in &plan.create_schemas {
-            runner
-                .exec(&Statement::plain(create_schema_sql(d, schema)))
-                .await?;
-            if !plan.atomic {
-                runner.created_schemas.push(schema.clone());
-            }
+        if !early {
+            runner.drop_objects(&drops).await?;
         }
         for statement in plan.pre_data.iter().chain(&plan.before_load) {
             runner.exec(statement).await?;
+        }
+        if !early {
+            runner.empty_tables(plan).await?;
         }
         let mut total = 0u64;
         for (index, table) in plan.tables.iter().enumerate() {

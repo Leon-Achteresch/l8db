@@ -1,18 +1,28 @@
 import { NewBadge } from "@/components/new-badge";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import type { TransferPlan } from "@/lib/db";
+import type { TransferContent, TransferPlan } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
 export function TransferReplace({
   plan,
   replace,
+  mirror,
+  content,
   onReplace,
 }: {
   plan: TransferPlan | null;
   replace: boolean;
+  mirror: boolean;
+  content: TransferContent;
   onReplace: (value: boolean) => void;
 }) {
+  const label =
+    content === "data"
+      ? "Zieltabellen vorher leeren"
+      : mirror
+        ? "Ziel vollständig überschreiben"
+        : "Vorhandene Objekte überschreiben";
   const feature = useNewFeatureVisibility<HTMLElement>("transfer.replace");
   const replaced = plan?.replace ? plan.replaced : [];
   return (
@@ -27,14 +37,13 @@ export function TransferReplace({
       <div className="flex items-center gap-2">
         <Switch id="transfer-replace" size="sm" checked={replace} onCheckedChange={onReplace} />
         <Label htmlFor="transfer-replace" className="text-xs font-semibold">
-          Ziel vollständig überschreiben
+          {label}
         </Label>
         {feature.isNew && <NewBadge />}
       </div>
-      <p className="mt-2 text-muted-foreground">
-        Löscht vor dem Kopieren alle Objekte der Zielschemas (Tabellen, Daten, Views, Code, Typen,
-        Sequenzen, Synonyme, Jobs). Oracle-DDL lässt sich nicht zurückrollen.
-      </p>
+      {plan && !plan.atomic && replace && (
+        <p className="mt-2 text-muted-foreground">Lässt sich nicht zurückrollen.</p>
+      )}
       {replace && plan?.replace && (
         <div className="mt-2">
           <p className="font-medium text-destructive">
