@@ -35,7 +35,7 @@ export function SidebarObjectTabs({
         })
       }
     >
-      <TabsList className="@container w-full" data-icon-chrome>
+      <TabsList className="@container w-full gap-0.5" data-icon-chrome>
         {tabs.map((tab) => (
           <Tooltip
             key={tab.value}
@@ -43,22 +43,22 @@ export function SidebarObjectTabs({
             side="bottom"
             wrapperClassName={cn(
               "h-full min-w-0",
-              tab.value === shown ? "flex-1 @[17rem]:flex-none" : "flex-1",
+              tab.value === shown ? "flex-1 @[14rem]:flex-none" : "flex-1",
             )}
           >
             <TabsTrigger
               value={tab.value}
               className={cn(
                 "relative h-full w-full gap-1.5 px-0 transition-none after:bg-primary data-active:after:opacity-100",
-                tab.value === shown && "@[17rem]:px-2.5",
+                tab.value === shown && "@[14rem]:px-2",
               )}
               aria-label={tab.label}
               disabled={Boolean(tab.disabledReason)}
               title={tab.disabledReason ?? undefined}
             >
-              <tab.icon className="size-4" />
+              <tab.icon className={tab.value === shown ? "size-4" : "size-3.5"} />
               {tab.value === shown ? (
-                <span className="hidden text-xs @[17rem]:inline">{tab.label}</span>
+                <span className="hidden text-xs @[14rem]:inline">{tab.label}</span>
               ) : null}
               {hasNewFeatures(tab.featureScope, seen) ? (
                 <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />

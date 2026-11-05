@@ -1,7 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   type CSSProperties,
-  type ReactNode,
   type RefObject,
   useEffect,
   useLayoutEffect,
@@ -18,7 +17,7 @@ import { EASE_OUT } from "@/lib/ease";
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { cn } from "@/lib/utils";
 
-const IDLE_WIDTH = 180;
+const IDLE_WIDTH = 264;
 const ACTIVE_WIDTH = 220;
 const SHRINK_DELAY = 0.07;
 const BACKLOG_DURATION = 1600;
@@ -27,11 +26,11 @@ const PERCENT = new Intl.NumberFormat("de-DE", { style: "percent" });
 interface Props {
   buttonRef: RefObject<HTMLButtonElement | null>;
   shortcut: string;
-  badge?: ReactNode;
+  isNew?: boolean;
   onOpen: () => void;
 }
 
-export function DynamicIsland({ buttonRef, shortcut, badge, onOpen }: Props) {
+export function DynamicIsland({ buttonRef, shortcut, isNew, onOpen }: Props) {
   useIslandMoments();
   const view = useIslandView();
   const reduce = useReducedMotion();
@@ -163,11 +162,17 @@ export function DynamicIsland({ buttonRef, shortcut, badge, onOpen }: Props) {
                     {shortcut}
                   </kbd>
                 ) : null}
-                {view.idle ? badge : null}
               </span>
             ) : null}
           </motion.div>
         </AnimatePresence>
+        {isNew && view.idle ? (
+          <span
+            role="img"
+            aria-label="Neu"
+            className="pointer-events-none absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary ring-2 ring-background"
+          />
+        ) : null}
         <span className="sr-only" aria-live="polite">
           {announcement}
         </span>

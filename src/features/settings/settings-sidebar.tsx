@@ -118,7 +118,7 @@ export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps
               {hasUpdate ? (
                 <span
                   aria-hidden
-                  className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-primary ring-2 ring-background"
+                  className="absolute -right-1 -top-1 size-1.5 rounded-full bg-info ring-2 ring-background"
                 />
               ) : null}
             </div>
@@ -128,7 +128,7 @@ export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps
                 {hasNewFeatures(`settings.${tab.id}`, seenFeatures) ? <NewBadge /> : null}
               </div>
               {hasUpdate ? (
-                <span className="block text-xs font-normal text-primary">Update verfügbar</span>
+                <span className="block text-xs font-normal text-info">Update verfügbar</span>
               ) : null}
             </div>
           </button>

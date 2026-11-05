@@ -88,8 +88,8 @@ export function useIslandView(): IslandView {
       key: "idle:transaction",
       idle: true,
       glyph: { kind: "dot", color: TRANSACTION_COLOR },
-      title: "Suchen …",
+      title: "Objekte & Befehle suchen",
       label: `Suchen · ${transactions === 1 ? "1 offene Transaktion" : `${transactions} offene Transaktionen`}`,
     };
-  return { key: "idle", idle: true, glyph: { kind: "search" }, title: "Suchen …" };
+  return { key: "idle", idle: true, glyph: { kind: "search" }, title: "Objekte & Befehle suchen" };
 }

@@ -380,7 +380,7 @@ export function AppHeader() {
             {update ? (
               <span
                 aria-hidden
-                className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-primary ring-2 ring-card"
+                className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-info ring-2 ring-card"
               />
             ) : hasNewSettingsFeatures ? (
               <NewBadge className="absolute -right-2.5 -top-0.5 px-1 text-[8px]" />

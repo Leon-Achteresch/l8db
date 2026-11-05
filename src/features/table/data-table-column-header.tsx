@@ -39,7 +39,7 @@ export function DataTableColumnHeader({
       disabled={isFetching || !column.getCanSort()}
       className={cn(
         "group flex items-center gap-1 rounded-sm py-0.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer min-w-0 shrink",
-        classic ? "px-1" : "px-0.5",
+        !classic && "px-0.5",
         columnStyle?.numeric && "flex-row-reverse",
       )}
     >
@@ -80,7 +80,7 @@ export function DataTableColumnHeader({
         title={fkTitle}
       >
         <div className="flex max-w-full min-w-0 items-center">{sortButton}</div>
-        <span className="max-w-full truncate px-1 font-mono text-[11px] leading-3 font-normal text-muted-foreground select-none">
+        <span className="max-w-full truncate font-mono text-[11px] leading-3 font-normal text-muted-foreground select-none">
           {typeInfo.dataType ?? typeInfo.label}
         </span>
       </div>

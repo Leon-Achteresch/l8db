@@ -101,6 +101,7 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-info: var(--info);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -161,6 +162,7 @@
   --popover: oklch(0.995 calc(0.003 * var(--db-tint)) var(--db-hue));
   --popover-foreground: oklch(0.2 calc(0.01 * var(--db-tint)) var(--db-hue));
   --primary: oklch(0.4 var(--db-chroma) var(--db-hue));
+  --info: oklch(0.55 0.17 255);
   --primary-foreground: oklch(0.99 calc(0.005 * var(--db-tint)) var(--db-hue));
   --secondary: oklch(0.95 calc(0.008 * var(--db-tint)) var(--db-hue));
   --secondary-foreground: oklch(0.24 calc(0.012 * var(--db-tint)) var(--db-hue));
@@ -202,6 +204,7 @@
   --popover: oklch(0.2 calc(0.01 * var(--db-tint)) var(--db-hue));
   --popover-foreground: oklch(0.97 calc(0.01 * var(--db-tint)) var(--db-hue));
   --primary: oklch(0.78 calc(var(--db-chroma) + 0.02) var(--db-hue));
+  --info: oklch(0.72 0.14 250);
   --primary-foreground: oklch(0.18 calc(0.03 * var(--db-tint)) var(--db-hue));
   --secondary: oklch(0.26 calc(0.009 * var(--db-tint)) var(--db-hue));
   --secondary-foreground: oklch(0.96 calc(0.01 * var(--db-tint)) var(--db-hue));
@@ -550,6 +553,12 @@ body[data-onboarding-active]
 .monaco-editor .sticky-widget-lines,
 .monaco-editor .sticky-widget-line-numbers {
   background-color: var(--background) !important;
+}
+
+.monaco-editor .editorPlaceholder {
+  font-family: var(--font-sans) !important;
+  font-size: 13px !important;
+  color: var(--muted-foreground) !important;
 }
 
 .monaco-editor .sticky-widget {

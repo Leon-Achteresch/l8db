@@ -61,7 +61,7 @@ export function ContinueRail({
                         )}
                       />
                     )}
-                    <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
                       {!here && <span className="text-muted-foreground">{entry.schema}.</span>}
                       {entry.name}
                     </span>

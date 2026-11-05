@@ -37,12 +37,12 @@ export function QueryEditorSettingsPopover() {
         <Button
           size="sm"
           variant="ghost"
-          className="h-8 gap-1.5 px-2 text-xs"
+          className="size-8 px-0"
           title="Query Editor anpassen"
           aria-label="Query Editor anpassen"
         >
           <Settings2Icon className="size-3.5" />
-          <span className="sr-only @min-[62rem]/qtb:not-sr-only">Anpassen</span>
+          <span className="sr-only">Anpassen</span>
         </Button>
       </SheetTrigger>
       <SheetContent className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-xl">

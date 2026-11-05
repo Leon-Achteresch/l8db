@@ -36,6 +36,10 @@ export function cellPreviewLimit(width: number, fontSize = 12): number {
   );
 }
 
+export function cellPreviewWidth(chars: number, fontSize = 12): number {
+  return Math.ceil(Math.max(24, fontSize * 2) + chars * Math.max(1, fontSize * 0.65)) + 1;
+}
+
 export function truncateCellPreview(text: string, limit: number): string {
   if (text.length <= limit + 1) return text;
   const last = text.charCodeAt(limit - 1);

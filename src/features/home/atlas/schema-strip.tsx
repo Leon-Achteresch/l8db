@@ -50,14 +50,14 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
             aria-pressed={active}
             onClick={() => select(entry.name)}
             className={cn(
-              "group flex h-12 w-32 shrink-0 flex-col justify-between rounded-lg px-2.5 pb-1.5 pt-1.5 text-left transition-colors hover:bg-muted/70 focus-visible:outline-2 focus-visible:outline-primary",
+              "flex h-12 w-32 shrink-0 flex-col justify-between rounded-md px-2.5 pb-1.5 pt-1.5 text-left transition-colors hover:bg-muted/70 focus-visible:outline-2 focus-visible:outline-primary",
               active && "bg-muted",
             )}
           >
             <span
               className={cn(
-                "truncate font-mono text-xs",
-                active ? "font-semibold text-foreground" : "text-muted-foreground",
+                "truncate text-[13px] font-medium",
+                active ? "text-foreground" : "text-muted-foreground",
               )}
             >
               {entry.name}
@@ -74,14 +74,11 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
             </span>
             <span
               aria-hidden="true"
-              className="h-0.5 w-full overflow-hidden rounded-full bg-border/70"
+              className="h-0.5 w-full overflow-hidden rounded-full bg-border"
             >
               <span
-                className={cn(
-                  "block h-full rounded-full",
-                  active ? "bg-primary" : "bg-muted-foreground/40 group-hover:bg-primary/60",
-                )}
-                style={{ width: active ? "100%" : `${Math.max(2, entry.share * 100)}%` }}
+                className="block h-full rounded-full bg-muted-foreground/40"
+                style={{ width: `${Math.max(2, entry.share * 100)}%` }}
               />
             </span>
           </button>
@@ -98,7 +95,7 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
           </SelectTrigger>
           <SelectContent className="max-h-80">
             {rest.map((entry) => (
-              <SelectItem key={entry.name} value={entry.name} className="font-mono text-xs">
+              <SelectItem key={entry.name} value={entry.name} className="text-xs">
                 {entry.name}
               </SelectItem>
             ))}
