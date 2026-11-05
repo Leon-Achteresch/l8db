@@ -44,3 +44,28 @@ export function writeUiPluginSupport(name: UiPluginSupportFile, contents: string
 export function watchUiPlugins(): Promise<void> {
   return invoke<void>("ui_plugins_watch");
 }
+
+export interface UiPluginProposal {
+  slot: number;
+  nonce: string;
+  action: "write" | "remove";
+  name: string;
+  source: string;
+  before: string | null;
+}
+
+export const startUiPluginProposals = () => invoke<void>("ui_plugin_proposals_start");
+export const pendingUiPluginProposals = () =>
+  invoke<UiPluginProposal[]>("ui_plugin_proposals_pending");
+export function finishUiPluginProposal(
+  request: UiPluginProposal,
+  response: unknown,
+  apply = false,
+) {
+  return invoke<void>("ui_plugin_proposals_finish", {
+    slot: request.slot,
+    request,
+    response,
+    apply,
+  });
+}

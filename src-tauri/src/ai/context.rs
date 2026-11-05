@@ -206,6 +206,12 @@ pub async fn call(
             return json!({"content": [{"type": "text", "text": "Benutzer hat die Dashboard-Änderung abgelehnt."}], "isError": true});
         }
     }
+    if name == "ui_plugins" {
+        if run.plan_only && matches!(args["action"].as_str(), Some("write" | "remove")) {
+            return text_result(Err("Plugin-Änderungen sind im Plan-Modus gesperrt.".into()));
+        }
+        return text_result(crate::ui_plugin_proposals::call(&args).await);
+    }
     if name == "editor" {
         return editor(run, args).await;
     }

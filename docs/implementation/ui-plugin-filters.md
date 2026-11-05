@@ -86,3 +86,49 @@ Grid 48.000 Zellen: p95 0,70–0,86 µs/Zelle; sichtbares Fenster p95 0,36–0,4
 Das 150-ms-Budget für das Kaltladen hält bei ruhigem Rechner. Unter der Last parallel
 laufender Agenten verfehlen einzelne Läufe es, auch ohne Wächter (einmal 161 ms). Das p95 aus
 5 Läufen ist dabei der langsamste Lauf. Das Budget ist unverändert.
+
+## KI-/MCP-Vorschläge (2026-11-05)
+
+`ui_plugins` ist im gemeinsamen Werkzeugkatalog und im App-Chat verfügbar. Aktionen:
+`api`, `list`, `read`, `status`, `write`, `remove`. `api` liefert die SDK-Typen und
+Ordneranleitung. Werkzeugbeschreibung und bestehender KI-Kontext behandeln
+Tabellendaten und Beschreibungen als Daten, niemals als Anweisungen.
+
+Änderungen landen unter `~/.l8db/ui/.proposals/` in acht atomar reservierten Slots.
+Die Queue nutzt Dateisystem-Benachrichtigungen, keine Intervallabfragen. Ein wartender
+Future hält genau einen Slot; Drop bei Abbruch, Timeout oder Antwort räumt ihn auf.
+Nach einem Prozessabsturz werden verwaiste Slots nach 130 Sekunden bei Wiederverwendung
+entfernt. Ohne geöffnetes Hauptfenster läuft der Vorschlag nach 120 Sekunden ab.
+MCP-stdio nimmt während eines laufenden Werkzeugs Abbruchmeldungen entgegen; weitere
+RPC-Anfragen erhalten währenddessen einen Busy-Fehler. Der Eingabekanal hat acht Plätze.
+
+Nur das Fenster `main` darf Vorschläge lesen/entscheiden (auch im Backend geprüft).
+Der Dialog validiert mit `checkUiPluginSource`, zeigt Code, bei Überschreiben den Diff
+und angeforderte HTTP-Ziele. Compilerfehler werden ohne Änderung der Plugin-Datei
+zurückgemeldet. Keine Auto-Approve-Option, keine neuen HTTP-Grants. Bestehende Grants
+bleiben unverändert. Auch Galerie-/Fremdplugins brauchen Bestätigung. Vor Anwendung
+wird der alte Inhalt verglichen; parallele Änderungen werden nicht überschrieben.
+Nichtreguläre Dateien und Dateien über 256 KiB werden nicht als Vorlage gelesen.
+
+Nach Übernahme lädt der Host erneut. Der Status wartet über eine Store-Subscription
+auf 250 ms Ruhe, höchstens zwei Sekunden; die Antwort enthält Hoststatus, Zeile,
+`slotErrors`, `tripped` und Laufzeitfehler. Später auftretende Fehler bleiben über
+`status` abrufbar. Plugin-Quelltext wird im Dialog als React-Text gerendert.
+
+Validierung: Bun-Vorschlagstests (NULL-Aktion mit Spaltenwahl, passiver Injection-Text,
+Compilerfehler mit Zeile, großer Diff); bestehende Filter-, Execution-, Safe-Mode-
+und 49 Host-/Runtime-Tests (u. a. stale, Slotfehler, tripped, HTTP-Grants).
+Rust-Tests prüfen Queue-Antworten, zwei Vorschläge, Ablehnung, Timeout ohne App,
+Abbruch-Cleanup, Kapazität sowie atomare Übernahme/Entfernung und Pfadnamen.
+Keine native Mehrfenster-/Dialog-E2E ausgeführt; die Fensterprüfung ist Code-seitig
+abgesichert. Keine Aussage über reale Windows-/Linux-Systeme oder Datenbankfamilien.
+
+Performance: macOS 27.0.1 arm64, Apple M3, 16 GiB RAM, Rust 1.99.0, Bun 1.3.10.
+30 Diffs mit 25.000 alten + 25.000 neuen Zeilen: median 6,91 ms, p95 9,49 ms
+(Budget p95 <100 ms, Diff-Matrix auf 100.000 Zellen begrenzt).
+Queue mit 256-KiB-Vorschlägen, 30 Läufe, 5-ms-Testtimeout inklusive atomarem Schreiben,
+Dateisystem-Watcher und Cleanup: erster Lauf median 78,07 ms, p95 127,18 ms
+(Budget p95 <250 ms; parallel laufende Builds). Maximal acht Slots; zwei Quelltexte
+je Slot (neu/bisher), jeweils höchstens 256 KiB, zuzüglich begrenzter JSON-Escapes.
+Keine Datenbankanfragen; Idle wartet auf Events, Abbruch löscht alle reservierten Slots.
+Keine CPU-Drosseltests auf macOS.

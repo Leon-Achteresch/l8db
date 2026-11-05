@@ -70,14 +70,45 @@ pub fn serve() {
         pool: db::pool::create_sealed_pool_state(),
         columns: HashMap::new(),
     };
-    let stdin = std::io::stdin();
+    let (input, mut lines) = tokio::sync::mpsc::channel(8);
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lock().lines() {
+            let Ok(line) = line else { break };
+            if input.blocking_send(line).is_err() {
+                break;
+            }
+        }
+    });
     let mut stdout = std::io::stdout();
-    for line in stdin.lock().lines() {
-        let Ok(line) = line else { break };
+    while let Some(line) = runtime.block_on(lines.recv()) {
         if line.trim().is_empty() {
             continue;
         }
-        let Some(response) = runtime.block_on(server.handle_line(&line)) else {
+        let id = serde_json::from_str::<Value>(&line)
+            .ok()
+            .and_then(|v| v.get("id").cloned());
+        let response = runtime.block_on(async {
+            let work = server.handle_line(&line);
+            tokio::pin!(work);
+            loop {
+                tokio::select! {
+                    result = &mut work => return result,
+                    incoming = lines.recv() => {
+                        let Some(incoming) = incoming else { return None; };
+                        if let Ok(value) = serde_json::from_str::<Value>(&incoming) {
+                            if value["method"] == "notifications/cancelled" && id.as_ref() == value["params"].get("requestId") {
+                                return id.clone().map(|id| rpc_error(id, -32800, "Anfrage abgebrochen"));
+                            }
+                            if let Some(other_id) = value.get("id") {
+                                let busy = rpc_error(other_id.clone(), -32000, "Eine Anfrage läuft bereits");
+                                let _ = writeln!(stdout, "{busy}").and_then(|_| stdout.flush());
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let Some(response) = response else {
             continue;
         };
         if writeln!(stdout, "{response}")
@@ -163,6 +194,7 @@ pub fn tool_definitions() -> Value {
         super::health::tool_definition(),
         super::workflow::tool_definition(),
         super::open::tool_definition(),
+        crate::ui_plugin_proposals::definition(),
         super::code::tool_definition(),
         super::script::tool_definition(),
         super::watch::tool_definition(),
@@ -452,6 +484,7 @@ impl Server {
                 }
                 result
             }
+            "ui_plugins" => crate::ui_plugin_proposals::call(&args).await,
             "open" => self.open(config, &args).await,
             "report_issue" if args["confirm"] != true => Err(
                 "Titel und Text erst dem Benutzer zeigen und nach seiner Zustimmung mit confirm=true senden."
@@ -1833,7 +1866,7 @@ mod tests {
         let tools = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#))
             .unwrap();
-        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 13);
+        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 14);
         let unknown = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":3,"method":"nope"}"#))
             .unwrap();
