@@ -90,10 +90,12 @@ export function UiPluginBundle() {
           await writeUiPlugin(entry.name, entry.source);
           const settings = useUiPluginSettings.getState();
           if (entry.id) {
-            settings.revokeHttp(entry.id);
-            settings.resetOptions(entry.id);
-            for (const [key, value] of Object.entries(entry.options))
-              settings.setOption(entry.id, key, value);
+            const httpGrants = { ...settings.httpGrants };
+            delete httpGrants[entry.id];
+            useUiPluginSettings.setState({
+              options: { ...settings.options, [entry.id]: entry.options },
+              httpGrants,
+            });
           }
         });
         await reloadUiPlugins();

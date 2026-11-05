@@ -1214,3 +1214,26 @@ test("bundle uses real compiler and loop watchdog before writing", async () => {
   expect(entries[1].error).toBeTruthy();
   expect(entries[2].error).toBeTruthy();
 });
+
+test("large bundle preview with real compiler remains bounded", async () => {
+  const { previewBundle, encodeBundle } = await import("../src/lib/ui-plugins/bundle");
+  const plugins = Array.from({ length: 200 }, (_, index) => ({
+    name: `plugin-${index}.tsx`,
+    source: `export default { id: "bundle.plugin${index}", name: "Bundle", slots: () => ({}) };\n${" ".repeat(8000)}`,
+    options: {},
+    requiredHttpHosts: [],
+  }));
+  const samples: number[] = [];
+  for (let run = 0; run < 10; run++) {
+    const started = performance.now();
+    const result = await previewBundle(JSON.parse(encodeBundle(plugins)), [], checkUiPluginSource);
+    expect(result.length).toBe(200);
+    expect(result.some((entry) => entry.error)).toBe(false);
+    samples.push(performance.now() - started);
+  }
+  samples.sort((a, b) => a - b);
+  console.log(
+    `Bundle real compiler: 200 × 8KB, 10 runs, median ${samples[5].toFixed(2)} ms, p95 ${samples[9].toFixed(2)} ms; 200 entries, serial checking, timers disposed`,
+  );
+  expect(samples[9]).toBeLessThan(5000);
+});
