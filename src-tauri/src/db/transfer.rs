@@ -2839,11 +2839,6 @@ impl Runner<'_> {
         let journal: Vec<Statement> = std::mem::take(&mut self.journal)
             .into_iter()
             .rev()
-            .filter(|s| {
-                !self
-                    .created_schemas
-                    .contains(&s.schema.clone().unwrap_or_default())
-            })
             .collect();
         if d == Dialect::Mysql {
             let tables: Vec<String> = journal
@@ -2893,14 +2888,10 @@ impl Runner<'_> {
                 ));
             }
         }
-        for schema in self.created_schemas.clone().iter().rev() {
-            if let Err(error) = self
-                .adapter
-                .execute_query(&format!("DROP DATABASE {}", d.quote(schema)))
-                .await
-            {
-                leftovers.push(format!("Datenbank {schema}: {error}"));
-            }
+        for schema in self.created_schemas.iter().rev() {
+            leftovers.push(format!(
+                "Datenbank {schema} wurde angelegt und nicht entfernt."
+            ));
         }
         leftovers
     }
