@@ -124,6 +124,61 @@ fn map_sql(sql: &str, release: &Value, target: Option<&str>) -> Result<String, S
     ))
 }
 
+fn split(kind: DatabaseKind, sql: &str) -> Result<Vec<String>, String> {
+    if kind != DatabaseKind::Oracle {
+        return Ok(sql_script::split_for(kind, sql));
+    }
+    let mut statements = Vec::new();
+    for (sqlplus, statement) in crate::db::oracle::script_items(sql) {
+        if !sqlplus {
+            statements.push(statement);
+        } else if statement.trim() != "/" {
+            return Err("SQL*Plus-Befehle sind in verwalteten Migrationen nicht zulässig".into());
+        }
+    }
+    Ok(statements)
+}
+
+fn statement_key(sql: &str) -> &str {
+    let sql = sql.trim();
+    sql.strip_suffix(';').unwrap_or(sql).trim_end()
+}
+
+fn verify_statements(
+    release: &Value,
+    plan: &Value,
+    target: Option<&str>,
+    kind: DatabaseKind,
+) -> Result<(), String> {
+    let id = text(release, "id")?;
+    let mut statements = Vec::new();
+    for migration in release["migrations"]
+        .as_array()
+        .ok_or("Migrationen fehlen")?
+    {
+        let migration_id = text(migration, "id")?;
+        let sql = map_sql(text(migration, "sql")?, release, target)?;
+        for (index, sql) in split(kind, &sql)?.into_iter().enumerate() {
+            statements.push(json!({"id":format!("{id}:{migration_id}:{}", index+1), "migration":migration_id, "sql":statement_key(&sql)}));
+        }
+    }
+    let planned: Vec<Value> = plan["statements"]
+        .as_array()
+        .ok_or("SQL-Anweisungen fehlen")?
+        .iter()
+        .map(|item| {
+            let sql = item["sql"].as_str().ok_or("SQL-Anweisung ist ungültig")?;
+            let mut item = item.clone();
+            item["sql"] = json!(statement_key(sql));
+            Ok(item)
+        })
+        .collect::<Result<_, String>>()?;
+    if statements.is_empty() || planned != statements {
+        return Err("SQL-Anweisungen stimmen nicht mit dem committeten Release überein".into());
+    }
+    Ok(())
+}
+
 fn verify_plan(
     release: &Value,
     hash: &str,
@@ -135,20 +190,7 @@ fn verify_plan(
     if plan["id"] != id || plan["hash"] != hash || plan["objects"] != objects(release, target)? {
         return Err("Ausführungsplan weicht vom committeten Release ab".into());
     }
-    let mut statements = Vec::new();
-    for migration in release["migrations"]
-        .as_array()
-        .ok_or("Migrationen fehlen")?
-    {
-        let migration_id = text(migration, "id")?;
-        let sql = map_sql(text(migration, "sql")?, release, target)?;
-        for (index, sql) in sql_script::split_for(kind, &sql).into_iter().enumerate() {
-            statements.push(json!({"id":format!("{id}:{migration_id}:{}", index+1), "migration":migration_id, "sql":sql}));
-        }
-    }
-    if statements.is_empty() || plan["statements"] != json!(statements) {
-        return Err("SQL-Anweisungen stimmen nicht mit dem committeten Release überein".into());
-    }
+    verify_statements(release, plan, target, kind)?;
     for phase in ["preconditions", "postconditions"] {
         let mut checks = Vec::new();
         for check in release["safety"][phase].as_array().into_iter().flatten() {
@@ -415,5 +457,60 @@ mod tests {
             compact("{\n \"sql\": \"a b\\\"c\" }"),
             "{\"sql\":\"a b\\\"c\"}"
         );
+    }
+
+    #[test]
+    fn plan_statements_match_the_frontend_splitter_output() {
+        let check = |kind, sql: &str, planned: Vec<&str>| {
+            let release = json!({"id":"r2","migrations":[{"id":"m1","sql":sql}]});
+            let statements: Vec<Value> = planned
+                .iter()
+                .enumerate()
+                .map(|(index, sql)| json!({"id":format!("r2:m1:{}", index + 1),"migration":"m1","sql":sql}))
+                .collect();
+            verify_statements(&release, &json!({"statements":statements}), None, kind)
+        };
+        check(
+            DatabaseKind::Postgres,
+            "ALTER TABLE public.t ADD note text;\nCREATE INDEX t_note ON public.t(note);",
+            vec![
+                "ALTER TABLE public.t ADD note text;",
+                "CREATE INDEX t_note ON public.t(note);",
+            ],
+        )
+        .unwrap();
+        check(
+            DatabaseKind::Oracle,
+            "ALTER TABLE T ADD (X NUMBER);\nCREATE OR REPLACE PACKAGE P AS\n PROCEDURE Q;\nEND;\n/",
+            vec![
+                "ALTER TABLE T ADD (X NUMBER);",
+                "CREATE OR REPLACE PACKAGE P AS\n PROCEDURE Q;\nEND;",
+            ],
+        )
+        .unwrap();
+        assert!(check(
+            DatabaseKind::Postgres,
+            "ALTER TABLE public.t ADD note text;",
+            vec!["ALTER TABLE public.t ADD note text; DROP TABLE public.t;"],
+        )
+        .is_err());
+        assert!(check(
+            DatabaseKind::Postgres,
+            "ALTER TABLE public.t ADD note text;",
+            vec!["ALTER TABLE public.t ADD note text;;"],
+        )
+        .is_err());
+        assert!(check(
+            DatabaseKind::Oracle,
+            "ALTER TABLE T ADD (X NUMBER);\n@more.sql",
+            vec!["ALTER TABLE T ADD (X NUMBER);"],
+        )
+        .is_err());
+        assert!(check(
+            DatabaseKind::Oracle,
+            "CREATE OR REPLACE PACKAGE P AS\n PROCEDURE Q;\nEND;\n/",
+            vec!["CREATE OR REPLACE PACKAGE P AS\n PROCEDURE Q", "END"],
+        )
+        .is_err());
     }
 }
