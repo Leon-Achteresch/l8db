@@ -463,6 +463,9 @@ describe("runtime isolation", () => {
     expect(new NamedError().name).toBe("NamedError");
     expect(String(new (Legacy as unknown as new () => object)())).toBe("legacy");
     expect(String(plain)).toBe("plain");
+    const service = () => undefined;
+    service.toString = () => "service";
+    expect(String(service)).toBe("service");
     expect(new Function("return 1 + 1")()).toBe(2);
     expect(Object.isFrozen(Object.prototype)).toBe(true);
   });
