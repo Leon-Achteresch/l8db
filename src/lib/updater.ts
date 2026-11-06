@@ -79,6 +79,15 @@ export async function checkForUpdates(timeoutMs = UPDATE_CHECK_TIMEOUT_MS): Prom
   return update;
 }
 
+export async function checkForStableRollback(
+  timeoutMs = UPDATE_CHECK_TIMEOUT_MS,
+): Promise<Update | null> {
+  const metadata = await checkUpdate("stable", timeoutMs, true);
+  const update = metadata ? new Update(metadata) : null;
+  if (update) setPendingUpdate(update);
+  return update;
+}
+
 function flushPendingState(): void {
   if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") return;
   window.dispatchEvent(new Event("pagehide"));
