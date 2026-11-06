@@ -1724,4 +1724,95 @@ mod tests {
             .await
             .unwrap();
     }
+
+    #[test]
+    #[ignore]
+    fn oracle_transaction_path_fits_the_windows_main_thread_stack() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
+            return;
+        };
+        fn run<F: std::future::Future>(
+            runtime: &tokio::runtime::Runtime,
+            sizes: &mut Vec<(&'static str, usize)>,
+            name: &'static str,
+            future: F,
+        ) -> F::Output {
+            sizes.push((name, std::mem::size_of_val(&future)));
+            runtime.block_on(future)
+        }
+        std::thread::Builder::new()
+            .stack_size(1 << 20)
+            .spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                let pool = super::super::pool::create_pool_state();
+                let adapter = super::super::create_adapter_from_string(
+                    DatabaseKind::Oracle,
+                    &url,
+                    None,
+                    pool.clone(),
+                )
+                .unwrap();
+                let _ = runtime.block_on(adapter.execute_query("DROP TABLE L8_STACK_TEST"));
+                for sql in [
+                    "CREATE TABLE L8_STACK_TEST (ID NUMBER PRIMARY KEY, A VARCHAR2(20), B VARCHAR2(20), C NUMBER)",
+                    "INSERT INTO L8_STACK_TEST VALUES (1, 'x', NULL, NULL)",
+                    "INSERT INTO L8_STACK_TEST VALUES (2, 'x', 'y', 5)",
+                    "COMMIT",
+                ] {
+                    runtime.block_on(adapter.execute_query(sql)).unwrap();
+                }
+                let schema = runtime
+                    .block_on(adapter.execute_query("SELECT USER AS U FROM dual"))
+                    .unwrap()
+                    .rows[0]["U"]
+                    .as_str()
+                    .unwrap()
+                    .to_string();
+                let tx = create_transaction_state();
+                let mut sizes = Vec::new();
+                let id = run(&runtime, &mut sizes, "begin", tx.begin(DatabaseKind::Oracle, &url, None, &pool)).unwrap();
+                let deleted = run(
+                    &runtime,
+                    &mut sizes,
+                    "execute delete",
+                    tx.execute(&id, "DELETE FROM L8_STACK_TEST WHERE nvl(A, '-') = 'x' AND B IS NULL AND nvl(C, 0) = 0"),
+                )
+                .unwrap();
+                assert_eq!(deleted.rows_affected, Some(1));
+                run(
+                    &runtime,
+                    &mut sizes,
+                    "execute insert",
+                    tx.execute(&id, "INSERT INTO L8_STACK_TEST (ID, A, B, C) VALUES (10, 'n', NULL, 1)"),
+                )
+                .unwrap();
+                run(
+                    &runtime,
+                    &mut sizes,
+                    "execute update",
+                    tx.execute(&id, "UPDATE L8_STACK_TEST SET C = NULL WHERE nvl(B, '-') = 'y'"),
+                )
+                .unwrap();
+                let values = HashMap::from([
+                    ("ID".to_string(), Some("20".to_string())),
+                    ("A".to_string(), Some("grid".to_string())),
+                    ("B".to_string(), None),
+                ]);
+                run(&runtime, &mut sizes, "insert_row", tx.insert_row(&id, &schema, "L8_STACK_TEST", &values)).unwrap();
+                run(&runtime, &mut sizes, "oracle_changes", tx.oracle_changes(&id)).unwrap();
+                run(&runtime, &mut sizes, "server_output", tx.server_output(&id)).unwrap();
+                run(&runtime, &mut sizes, "rollback", tx.rollback(&id)).unwrap();
+                runtime.block_on(adapter.execute_query("DROP TABLE L8_STACK_TEST")).unwrap();
+                eprintln!("future bytes: {sizes:?}");
+                for (name, size) in sizes {
+                    assert!(size < 64 * 1024, "{name} {size}");
+                }
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
 }
