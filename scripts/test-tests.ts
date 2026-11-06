@@ -1,14 +1,15 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
+import { selectTestFiles } from "./test-selection";
 
 const args = process.argv.slice(2);
-const selected = args.filter((arg) => /\.test\.[cm]?[jt]sx?$/.test(arg));
-const flags = args.filter((arg) => !selected.includes(arg));
-const files = selected.length
-  ? selected
-  : (await Array.fromAsync(new Bun.Glob("**/*.test.{ts,tsx,js,mjs,cjs}").scan({ cwd: "tests" })))
-      .map((file) => `tests/${file}`)
-      .sort();
+const explicit = args.some((arg) => /\.test\.[cm]?[jt]sx?$/.test(arg));
+const discovered = explicit
+  ? []
+  : (
+      await Array.fromAsync(new Bun.Glob("**/*.test.{ts,tsx,js,mjs,cjs}").scan({ cwd: "tests" }))
+    ).map((file) => `tests/${file}`);
+const { flags, files } = selectTestFiles(args, discovered);
 if (!files.length) throw new Error("Keine Testdateien gefunden.");
 const directory = resolve("test-artifacts/unit");
 await mkdir(directory, { recursive: true });
