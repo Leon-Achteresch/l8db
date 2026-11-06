@@ -1,5 +1,6 @@
 import { DragDropProvider } from "@dnd-kit/react";
-import { memo, useId, useMemo, useRef } from "react";
+import { type CSSProperties, memo, useId, useMemo, useRef } from "react";
+import { gridColumnTemplate } from "@/lib/column-window";
 import { useSpiderVisit } from "@/lib/hooks/use-spider-visit";
 import { reorderVisibleColumns } from "@/lib/table-column-prefs";
 import { cn } from "@/lib/utils";
@@ -120,6 +121,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
   const edgeFadeRef = useRef<HTMLDivElement>(null);
   useScrollEdgeFade(scrollRef, edgeFadeRef);
   const columnScope = useId();
+  const gridColumns = useMemo(() => gridColumnTemplate(columnWidths), [columnWidths]);
   const dragPreview = useColumnDragPreview({
     scope: columnScope,
     scrollRef,
@@ -207,8 +209,15 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                   <style ref={dragPreview.styleRef} />
                   <table
                     data-column-scope={columnScope}
+                    data-grid-layout={columnWindow.enabled || undefined}
+                    role={columnWindow.enabled ? "table" : undefined}
+                    aria-colcount={columnWindow.enabled ? columnWidths.length : undefined}
                     className="min-w-full border-separate border-spacing-0 text-sm table-fixed"
-                    style={{ width: tableWidth }}
+                    style={
+                      columnWindow.enabled
+                        ? ({ width: tableWidth, "--grid-columns": gridColumns } as CSSProperties)
+                        : { width: tableWidth }
+                    }
                   >
                     <colgroup>
                       {visibleColumns.map((column, index) => (

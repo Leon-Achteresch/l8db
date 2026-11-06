@@ -95,29 +95,22 @@ export function useTableHeader({
   } = filter;
   return useMemo(
     () => (
-      <thead className="select-none">
+      <thead className="select-none" role={columnWindow.enabled ? "rowgroup" : undefined}>
         {headerGroups.map((headerGroup) => (
-          <tr key={headerGroup.id}>
+          <tr key={headerGroup.id} role={columnWindow.enabled ? "row" : undefined}>
             {columnWindow.items.map((item) => {
-              if (item.spacer)
-                return (
-                  <th
-                    key={item.key}
-                    aria-hidden
-                    colSpan={item.span}
-                    className="sticky top-0 z-20 border-b border-border border-b-foreground/15 bg-muted"
-                    style={{ width: item.width, padding: 0 }}
-                  />
-                );
               const header = headerGroup.headers[item.index];
+              const gridColumn = columnWindow.enabled ? item.index + 1 : undefined;
               if (header.id === INDEX_COLUMN) {
                 return (
                   <ContextMenu key={header.id}>
                     <ContextMenuTrigger asChild>
                       <th
+                        role={gridColumn ? "columnheader" : undefined}
+                        aria-colindex={gridColumn}
                         title="Rechtsklick: Spalten"
                         className="w-12 sticky top-0 left-0 z-40 border-b border-r border-border border-b-foreground/15 bg-muted px-3 py-1 text-center align-middle leading-4"
-                        style={{ width: header.getSize() }}
+                        style={{ width: header.getSize(), gridColumn }}
                       >
                         {header.isPlaceholder
                           ? null
@@ -153,6 +146,7 @@ export function useTableHeader({
               return (
                 <DataTableHeaderCell
                   key={header.id}
+                  gridColumn={gridColumn}
                   header={header}
                   isFetching={isFetching}
                   sorting={sorting}
@@ -191,6 +185,7 @@ export function useTableHeader({
     [
       headerGroups,
       columnWindow.items,
+      columnWindow.enabled,
       columnSizing,
       resizingColumn,
       columnPinning,

@@ -21,6 +21,7 @@ import { operatorNeedsValue } from "@/lib/sql-filter";
 import { cn } from "@/lib/utils";
 
 type DataTableHeaderCellProps = {
+  gridColumn?: number;
   header: Header<Record<string, unknown>, unknown>;
   isFetching: boolean;
   sorting: SortingState;
@@ -45,6 +46,7 @@ type DataTableHeaderCellProps = {
 };
 
 export function DataTableHeaderCell({
+  gridColumn,
   header,
   isFetching,
   sorting,
@@ -88,6 +90,8 @@ export function DataTableHeaderCell({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <th
+          role={gridColumn ? "columnheader" : undefined}
+          aria-colindex={gridColumn}
           ref={setCellRef}
           data-column-id={header.id}
           className={cn(
@@ -96,7 +100,7 @@ export function DataTableHeaderCell({
             tableStyle === "profile" ? "align-top" : "align-middle",
             pinnedOffset !== null && "z-30 shadow-[1px_0_0_0_var(--border)]",
           )}
-          style={{ width: header.getSize(), left: pinnedOffset ?? undefined }}
+          style={{ width: header.getSize(), left: pinnedOffset ?? undefined, gridColumn }}
         >
           <div className="flex min-w-0 items-center gap-1">
             <button
