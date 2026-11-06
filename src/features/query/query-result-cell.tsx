@@ -18,6 +18,7 @@ type QueryResultCellProps = {
   active: boolean;
   fontSize: number;
   width: number;
+  gridColumn?: number;
   onInspect?: (column: string, value: unknown, row: number) => void;
 };
 
@@ -31,6 +32,7 @@ export const QueryResultCell = memo(function QueryResultCell({
   active,
   fontSize,
   width,
+  gridColumn,
   onInspect,
 }: QueryResultCellProps) {
   const isNull = value === null || value === undefined;
@@ -61,7 +63,9 @@ export const QueryResultCell = memo(function QueryResultCell({
         }
       }}
       data-col={column}
-      style={{ fontSize: `${fontSize}px` }}
+      role={gridColumn ? "cell" : undefined}
+      aria-colindex={gridColumn}
+      style={{ fontSize: `${fontSize}px`, gridColumn }}
       title={isNull ? undefined : onInspect ? display : text}
       className={cn(
         active && "ring-1 ring-inset ring-primary bg-primary/10",

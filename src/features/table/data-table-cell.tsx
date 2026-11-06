@@ -43,6 +43,7 @@ export type DataTableCellProps = Pick<
   hasCustomContent: boolean;
   monochromeCells: boolean;
   cellIndex: number;
+  gridColumn?: number;
   width: number;
   previewWidth: number;
   pinnedOffset: number | null;
@@ -77,6 +78,7 @@ export const DataTableCell = memo(function DataTableCell({
   hasCustomContent,
   monochromeCells,
   cellIndex,
+  gridColumn,
   width,
   previewWidth,
   pinnedOffset,
@@ -126,6 +128,7 @@ export const DataTableCell = memo(function DataTableCell({
         setEditingCell={setEditingCell}
         commitEditingCell={commitEditingCell}
         width={width}
+        gridColumn={gridColumn}
       />
     );
   }
@@ -180,12 +183,20 @@ export const DataTableCell = memo(function DataTableCell({
             }
           : undefined
       }
+      role={gridColumn ? "cell" : undefined}
+      aria-colindex={gridColumn}
       data-row-index={rowIndex}
       data-col={cellIndex > 0 ? columnId : undefined}
       style={
         isSticky
-          ? ({ left: pinnedOffset ?? undefined, "--cell-tint": stickyTint } as CSSProperties)
-          : undefined
+          ? ({
+              gridColumn,
+              left: pinnedOffset ?? undefined,
+              "--cell-tint": stickyTint,
+            } as CSSProperties)
+          : gridColumn
+            ? { gridColumn }
+            : undefined
       }
       className={cn(
         "align-middle border-b border-r border-r-foreground/6 border-b-foreground/9 dark:border-r-foreground/9 dark:border-b-foreground/7 select-text cursor-default text-left overflow-hidden whitespace-nowrap text-ellipsis font-mono text-xs leading-5",
