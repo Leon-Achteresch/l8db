@@ -19,6 +19,7 @@ import {
 const SUITES = {
   core: [
     "tests/perf-budget.test.ts",
+    "tests/perf-definition-merge.test.ts",
     "tests/query-client.test.ts",
     "tests/query-cache-budget.test.ts",
     "tests/perf-query-cache.test.ts",
