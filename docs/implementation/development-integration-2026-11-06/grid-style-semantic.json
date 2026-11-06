@@ -1,0 +1,15 @@
+{
+  "runs": 9,
+  "medianMs": 102.996666,
+  "p95Ms": 115.3191670000001,
+  "maxMs": 115.3191670000001,
+  "rows": 5000,
+  "columns": 400,
+  "databaseRequests": 0,
+  "limits": {
+    "p95Ms": 200
+  },
+  "name": "grid-style-semantic",
+  "runId": null,
+  "capturedAt": "2026-11-06T05:42:09.384Z"
+}

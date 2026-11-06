@@ -1,0 +1,16 @@
+{
+  "runs": 9,
+  "medianMs": 0.2907919999999997,
+  "p95Ms": 0.2993749999999977,
+  "maxMs": 0.2993749999999977,
+  "sourceRows": 100000,
+  "viewportUpdates": 5000,
+  "changedWindows": 626,
+  "largestWindow": 40,
+  "retainedWindows": 1,
+  "idleAllocations": 0,
+  "databaseRequests": 0,
+  "name": "grid-buffered-windows",
+  "runId": null,
+  "capturedAt": "2026-11-06T05:42:09.482Z"
+}

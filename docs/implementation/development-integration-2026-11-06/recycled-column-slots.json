@@ -1,0 +1,19 @@
+{
+  "runs": 9,
+  "medianMs": 22.122708000000017,
+  "p95Ms": 22.454958000000005,
+  "maxMs": 22.454958000000005,
+  "columns": 1000,
+  "windows": 10000,
+  "peakSlots": 13,
+  "retainedSlots": 13,
+  "databaseRequests": 0,
+  "backgroundTasks": 0,
+  "limits": {
+    "p95Ms": 250,
+    "retainedSlots": 26
+  },
+  "name": "recycled-column-slots",
+  "runId": null,
+  "capturedAt": "2026-11-06T05:42:04.409Z"
+}
