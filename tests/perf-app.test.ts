@@ -169,9 +169,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expectFrame(sidebarScroll.p95).toBeLessThan(MAX_P95_MS);
 
       const overviewScroll = await measure("overview-atlas-hover", app.page, async () => {
-        const box = await app.page
-          .locator('fieldset[aria-label^="Tabellenkarte"]')
-          .boundingBox();
+        const box = await app.page.locator('fieldset[aria-label^="Tabellenkarte"]').boundingBox();
         if (!box) throw new Error("Tabellenkarte fehlt");
         for (let step = 0; step < 40; step++)
           await app.page.mouse.move(
@@ -216,6 +214,77 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
     }
   },
   180000,
+);
+
+test.skipIf(!process.env.L8DB_PERF_APP)(
+  "Navigation mit Beschriftung klappt bei großer Tabelle schnell und begrenzt auf",
+  async () => {
+    const app = await open("/tables/public/table_0000", 'tbody tr[data-index="0"]', {
+      rows: 5000,
+      columns: 120,
+    });
+    try {
+      const rail = app.page.locator('nav[aria-label="Bereiche"]');
+      const links = await rail.locator("a").count();
+      const toggles = 40;
+      const durations = await app.page.evaluate(async (toggles) => {
+        const nav = document.querySelector('nav[aria-label="Bereiche"]');
+        const results: number[] = [];
+        for (let index = 0; index < toggles; index++) {
+          const expanded = nav?.getAttribute("data-expanded") === "true";
+          const button = nav?.querySelector<HTMLButtonElement>("button[aria-expanded]");
+          if (!button) throw new Error("Navigations-Toggle fehlt");
+          const started = performance.now();
+          button.click();
+          await new Promise<void>((resolve) => {
+            const check = () =>
+              nav?.getAttribute("data-expanded") === String(!expanded)
+                ? requestAnimationFrame(() => resolve())
+                : requestAnimationFrame(check);
+            check();
+          });
+          results.push(performance.now() - started);
+        }
+        return results;
+      }, toggles);
+      const sorted = [...durations].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      const p95 = sorted[Math.ceil(sorted.length * 0.95) - 1];
+      const dom = await rail.evaluate((nav) => ({
+        width: nav.getBoundingClientRect().width,
+        nodes: nav.querySelectorAll("*").length,
+        rows: document.querySelectorAll("tbody tr[data-index]").length,
+      }));
+      console.log(
+        `perf nav-rail toggle: ${toggles} Wechsel, ${links} Einträge, median ${median.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms, ${dom.nodes} Knoten, ${dom.rows} Zeilen`,
+      );
+      await reportScenario(`nav-rail-toggle-${process.env.L8DB_PERF_ENGINE ?? "chromium"}`, {
+        toggles,
+        links,
+        medianMs: median,
+        p95Ms: p95,
+        nodes: dom.nodes,
+      });
+      expect(await rail.getAttribute("data-expanded")).toBe("false");
+      expect(Math.round(dom.width)).toBe(56);
+      expect(await rail.locator("a").count()).toBe(links);
+      expect(dom.nodes).toBeLessThan(links * 12 + 40);
+      expect(dom.rows).toBeLessThan(100);
+      expect(median).toBeLessThan(50);
+      expect(p95).toBeLessThan(120);
+      await rail.locator("button[aria-expanded]").click();
+      expect(Math.round((await rail.boundingBox())?.width ?? 0)).toBe(184);
+      expect(
+        await app.page.evaluate(
+          () => JSON.parse(localStorage.getItem("l8db.settings") ?? "{}").state?.navRailExpanded,
+        ),
+      ).toBe(true);
+      expect(app.errors).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  },
+  90000,
 );
 
 test.skipIf(!process.env.L8DB_PERF_APP)(

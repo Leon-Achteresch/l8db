@@ -34,6 +34,7 @@ export const NEW_FEATURES = {
   "settings.statistics.overview": "0.14.0",
   "settings.cli.install": "0.14.0",
   "workspace.inline-tabs": "0.9.1",
+  "workspace.nav-labels": NEXT_FEATURE_VERSION,
   "workspace.status.branch": "0.9.1",
   "workspace.status.query": "0.9.1",
   "sidebar.rename-inline": "0.9.1",

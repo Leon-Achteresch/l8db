@@ -1,6 +1,8 @@
+import { Plus } from "lucide-react";
 import GridLayout, { type Layout, useContainerWidth } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
+import { Button } from "@/components/ui/button";
 import {
   DEFAULT_HOME_LAYOUT,
   HOME_GRID_COLS,
@@ -15,7 +17,15 @@ import { cn } from "@/lib/utils";
 import { HomeWidgetContent } from "./home-widget-content";
 import { HomeWidgetFrame } from "./home-widget-frame";
 
-export function HomeGrid({ connectionId, editing }: { connectionId: string; editing: boolean }) {
+export function HomeGrid({
+  connectionId,
+  editing,
+  onAddWidget,
+}: {
+  connectionId: string;
+  editing: boolean;
+  onAddWidget: () => void;
+}) {
   const widgets = useHomeLayoutStore((state) => state.layouts[connectionId] ?? DEFAULT_HOME_LAYOUT);
   const setLayout = useHomeLayoutStore((state) => state.setLayout);
   const { width, containerRef, mounted } = useContainerWidth();
@@ -106,10 +116,18 @@ export function HomeGrid({ connectionId, editing }: { connectionId: string; edit
         </GridLayout>
       )}
       {widgets.length === 0 && (
-        <p className="rounded-2xl border border-dashed px-5 py-12 text-center text-sm text-muted-foreground">
-          Über „Anpassen“ heftest du Abfrage-Ergebnisse, Dashboard-Charts, Notizen oder die
-          Performance-Übersicht dieser Verbindung hier an.
-        </p>
+        <div className="flex min-h-20 flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-3">
+          <p className="max-w-[56ch] text-[13px] text-muted-foreground">
+            Noch keine Widgets. Hefte Abfrage-Ergebnisse, Charts, Notizen oder die
+            Performance-Übersicht an.
+          </p>
+          {!editing && (
+            <Button variant="outline" size="sm" onClick={onAddWidget}>
+              <Plus className="size-3.5" />
+              Widget hinzufügen
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );

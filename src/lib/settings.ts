@@ -109,6 +109,7 @@ export interface SettingsState {
   uiScale: number;
   sidebarExtraCompact: boolean;
   navInHeader: boolean;
+  navRailExpanded: boolean;
   dynamicIsland: boolean;
   shortcutHints: boolean;
   seasonalAccents: boolean;
@@ -186,6 +187,7 @@ export interface SettingsState {
   resetAppearance: () => void;
   setSidebarExtraCompact: (value: boolean) => void;
   setNavInHeader: (value: boolean) => void;
+  setNavRailExpanded: (value: boolean) => void;
   setDynamicIsland: (value: boolean) => void;
   setShortcutHints: (value: boolean) => void;
   setSeasonalAccents: (value: boolean) => void;
@@ -206,6 +208,7 @@ export const LAYOUT_APPEARANCE_DEFAULTS = {
   uiDensity: "normal",
   sidebarExtraCompact: false,
   navInHeader: false,
+  navRailExpanded: false,
   dynamicIsland: true,
   seasonalAccents: true,
   lightTheme: DEFAULT_APP_THEME,
@@ -308,6 +311,7 @@ export const DEFAULT_SETTINGS = {
   uiScale: 100,
   sidebarExtraCompact: false,
   navInHeader: false,
+  navRailExpanded: false,
   dynamicIsland: true,
   shortcutHints: true,
   seasonalAccents: true,
@@ -420,6 +424,7 @@ export const useSettingsStore = create<SettingsState>()(
       setUiScale: (uiScale) => set({ uiScale: normalizeUiScale(uiScale) }),
       setSidebarExtraCompact: (sidebarExtraCompact) => set({ sidebarExtraCompact }),
       setNavInHeader: (navInHeader) => set({ navInHeader }),
+      setNavRailExpanded: (navRailExpanded) => set({ navRailExpanded }),
       setDynamicIsland: (dynamicIsland) => set({ dynamicIsland }),
       setShortcutHints: (shortcutHints) => set({ shortcutHints }),
       setSeasonalAccents: (seasonalAccents) => set({ seasonalAccents }),
@@ -468,6 +473,7 @@ export const useSettingsStore = create<SettingsState>()(
           sidebarExtraCompact: saved?.sidebarExtraCompact === true,
           sidebarObjectNav: saved?.sidebarObjectNav === "select" ? "select" : "tabs",
           navInHeader: saved?.navInHeader === true,
+          navRailExpanded: saved?.navRailExpanded === true,
           dynamicIsland: saved?.dynamicIsland !== false,
           shortcutHints: saved?.shortcutHints !== false,
           seasonalAccents: saved?.seasonalAccents !== false,

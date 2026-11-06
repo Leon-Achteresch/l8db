@@ -32,10 +32,7 @@ export function ContinueRail({
   const now = Date.now();
 
   return (
-    <aside
-      aria-label="Weitermachen"
-      className="flex min-h-0 flex-col gap-6 @4xl/home:absolute @4xl/home:inset-0"
-    >
+    <aside aria-label="Weitermachen" className="flex min-h-0 flex-col gap-6">
       <section className="shrink-0">
         <h2 className="eyebrow mb-2">Weitermachen</h2>
         {entries.length ? (
@@ -64,11 +61,11 @@ export function ContinueRail({
                         )}
                       />
                     )}
-                    <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
                       {!here && <span className="text-muted-foreground">{entry.schema}.</span>}
                       {entry.name}
                     </span>
-                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                    <span className="shrink-0 text-xs text-muted-foreground">
                       {entry.state === "open"
                         ? "offen"
                         : entry.state === "closed" && entry.at

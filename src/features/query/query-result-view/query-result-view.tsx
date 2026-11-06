@@ -65,7 +65,11 @@ export function QueryResultView({
           Temporäre View
           {isNew ? <NewBadge /> : null}
         </span>
-        <TableDetailTabBar tabs={RESULT_TABS} activeTab={activeTab} />
+        <TableDetailTabBar
+          tabs={RESULT_TABS}
+          activeTab={activeTab}
+          onTabChange={(id) => model.setDetailTab(id as TableDetailTab)}
+        />
         <div className="flex shrink-0 items-center gap-1">
           {statusText && (
             <span className="hidden truncate text-[10px] tabular-nums text-muted-foreground md:inline">

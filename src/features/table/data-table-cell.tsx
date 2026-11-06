@@ -188,12 +188,12 @@ export const DataTableCell = memo(function DataTableCell({
           : undefined
       }
       className={cn(
-        "align-middle border-b border-r border-border/30 select-text cursor-default text-left overflow-hidden whitespace-nowrap text-ellipsis font-mono text-xs leading-5",
+        "align-middle border-b border-r border-r-foreground/6 border-b-foreground/9 dark:border-r-foreground/9 dark:border-b-foreground/7 select-text cursor-default text-left overflow-hidden whitespace-nowrap text-ellipsis font-mono text-xs leading-5",
         tableStyle === "classic"
           ? "px-3 py-[var(--ui-cell-padding)]"
           : tableStyle === "semantic"
-            ? "px-2 py-[max(0rem,calc(var(--ui-cell-padding)-0.125rem))]"
-            : "px-2 py-[max(0rem,calc(var(--ui-cell-padding)-0.25rem))]",
+            ? "px-2 py-[var(--ui-cell-padding)]"
+            : "px-2 py-[max(0rem,calc(var(--ui-cell-padding)-0.125rem))]",
         cellIndex > 0 &&
           tableStyle !== "semantic" &&
           (tableStyle !== "classic" && preview.kind === "null"
@@ -217,11 +217,11 @@ export const DataTableCell = memo(function DataTableCell({
           columnStyle?.kind !== "uuid" &&
           "font-sans",
         tableStyle === "semantic" && hasCustomContent && "text-blue-600 dark:text-blue-400",
-        tableStyle !== "classic" && columnStyle?.numeric && "text-right tabular-nums",
+        columnStyle?.numeric && "text-right tabular-nums",
         plugin?.align === "end" && "text-right",
         plugin?.align === "center" && "text-center",
         cellIndex === 0 &&
-          "w-12 border-r border-border sticky left-0 z-10 text-center text-muted-foreground/50 select-none",
+          "w-12 border-r border-border sticky left-0 z-10 text-center text-muted-foreground select-none",
         cellIndex === 0 && tableStyle !== "classic" && "px-1",
         cellIndex === 0 && isMarked && "text-primary",
         pinnedOffset !== null &&

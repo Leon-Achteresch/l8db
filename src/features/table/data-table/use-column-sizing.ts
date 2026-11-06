@@ -1,7 +1,6 @@
 import type { ColumnSizingState, Updater } from "@tanstack/react-table";
 import { useCallback, useMemo } from "react";
-import { contentColumnWidth } from "@/lib/column-content-width";
-import { fitHeaderColumnWidth, measureHeaderTitleWidth } from "@/lib/column-header-width";
+import { classicColumnWidth, contentColumnWidth } from "@/lib/column-content-width";
 import type { ForeignKeyInfo } from "@/lib/db";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { useSettingsStore } from "@/lib/settings";
@@ -10,6 +9,27 @@ import type { getColumnTypeInfo } from "./column-type-info";
 import type { GridStyle } from "./grid-style-context";
 
 const SAMPLE_ROWS = 200;
+
+export function fitClassicColumnSizing(
+  sized: ColumnSizingState,
+  order: string[],
+  fkByColumn: Map<string, ForeignKeyInfo[]>,
+  typeInfoByColumn: Map<string, ReturnType<typeof getColumnTypeInfo>>,
+  data: TableRow[],
+): ColumnSizingState {
+  const fitted: ColumnSizingState = { ...sized };
+  const sample = data.length > SAMPLE_ROWS ? data.slice(0, SAMPLE_ROWS) : data;
+  for (const column of order) {
+    if (sized[column] !== undefined) continue;
+    const info = typeInfoByColumn.get(column);
+    fitted[column] = classicColumnWidth({
+      name: column,
+      icons: 1 + (info?.kind === "key" ? 1 : 0) + (fkByColumn.has(column) ? 1 : 0),
+      values: sample.map((row) => row[column]),
+    });
+  }
+  return fitted;
+}
 
 export function useColumnSizing(
   stateKey: string | undefined,
@@ -52,15 +72,7 @@ export function useColumnSizing(
     }
     const sized = defaultWidths ? { ...defaultWidths, ...classicSizing } : classicSizing;
     if (!fitColumnsToHeader) return sized;
-    const fitted: Record<string, number> = { ...sized };
-    for (const column of order) {
-      const minWidth = fitHeaderColumnWidth(
-        measureHeaderTitleWidth(column, typeInfoByColumn.get(column)?.label),
-        fkByColumn.has(column),
-      );
-      fitted[column] = Math.max(minWidth, sized[column] ?? 0);
-    }
-    return fitted;
+    return fitClassicColumnSizing(sized, order, fkByColumn, typeInfoByColumn, data);
   }, [
     contentFit,
     data,

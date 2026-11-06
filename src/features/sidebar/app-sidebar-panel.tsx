@@ -64,6 +64,15 @@ export function AppSidebarPanel() {
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [searchModalMounted, setSearchModalMounted] = useState(false);
   const objectNav = useSettingsStore((state) => state.sidebarObjectNav);
+  const tabCount = (
+    {
+      tables: q.tables,
+      views: q.views,
+      functions: plainFunctions,
+      procedures: q.procedures,
+      packages,
+    } as Partial<Record<string, unknown[]>>
+  )[sidebarTab]?.length;
   const changeTab = (value: string) =>
     startTransition(() => setSidebarTab(value as typeof sidebarTab));
 
@@ -110,8 +119,11 @@ export function AppSidebarPanel() {
               sidebarTab === "views" ? "flex items-center gap-1 pr-7" : "flex items-center gap-1"
             }
           >
-            {activeConnection && objectNav === "select" ? (
-              <div className="flex min-w-0 flex-1" data-tour="sidebar-tabs">
+            {activeConnection && !caps.object_storage && objectNav === "select" ? (
+              <div
+                className="flex min-w-0 flex-1"
+                data-tour={objectNav === "select" ? "sidebar-tabs" : undefined}
+              >
                 <SidebarObjectSelect
                   tabs={sidebarTabs}
                   value={sidebarTab}
@@ -119,10 +131,18 @@ export function AppSidebarPanel() {
                 />
               </div>
             ) : (
-              <SidebarGroupLabel className="flex-1">
+              <SidebarGroupLabel
+                className="flex-1 text-xs tabular-nums text-muted-foreground"
+                title={
+                  caps.object_storage && sidebarTab === "tables"
+                    ? "Buckets"
+                    : sidebarTabLabel(sidebarTab)
+                }
+              >
                 {caps.object_storage && sidebarTab === "tables"
                   ? "Buckets"
                   : sidebarTabLabel(sidebarTab)}
+                {tabCount !== undefined ? ` · ${tabCount.toLocaleString("de-DE")}` : null}
               </SidebarGroupLabel>
             )}
             {sidebarTab === "functions" ||

@@ -34,22 +34,22 @@ export function SidebarObjectTabs({
         })
       }
     >
-      <TabsList className="w-full">
+      <TabsList className="w-full gap-0.5" data-icon-chrome>
         {tabs.map((tab) => (
           <Tooltip
             key={tab.value}
             content={tab.disabledReason ?? tab.label}
             side="bottom"
-            wrapperClassName="h-full flex-1"
+            wrapperClassName="h-full min-w-0 flex-1"
           >
             <TabsTrigger
               value={tab.value}
-              className="relative h-full w-full px-0 transition-none"
+              className="relative h-full w-full px-0 transition-none after:bg-primary data-active:after:opacity-100"
               aria-label={tab.label}
               disabled={Boolean(tab.disabledReason)}
               title={tab.disabledReason ?? undefined}
             >
-              <tab.icon className="size-4" />
+              <tab.icon className={tab.value === shown ? "size-4" : "size-3.5"} />
               {hasNewFeatures(tab.featureScope, seen) ? (
                 <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
               ) : null}

@@ -4,7 +4,8 @@ import { memo, useLayoutEffect, useMemo, useRef } from "react";
 import { type Sidebar, useSidebar } from "@/components/ui/sidebar";
 import { SidebarContext, type SidebarContextProps } from "@/components/ui/sidebar/shared";
 import { AppSidebarBody } from "@/features/sidebar/app-sidebar-body";
-import { useSidebarPanel } from "@/lib/sidebar-panel";
+import { useSettingsStore } from "@/lib/settings";
+import { effectiveSidebarWidth, useSidebarPanel } from "@/lib/sidebar-panel";
 
 const SLIDE = { duration: 300, easing: "cubic-bezier(0.32, 0.72, 0, 1)", fill: "both" } as const;
 
@@ -67,7 +68,10 @@ export const AppSidebar = memo(function AppSidebar({
     }
     for (const animation of animations.current) animation.cancel();
     if (open) setInert(false);
-    const width = `${useSidebarPanel.getState().width}px`;
+    const width = `${effectiveSidebarWidth(
+      useSidebarPanel.getState().width,
+      useSettingsStore.getState().navRailExpanded,
+    )}px`;
     wrapper.style.width = "0px";
     panel.style.transform = "";
     const panelFrames = ["translateX(-100%)", "translateX(0)"];

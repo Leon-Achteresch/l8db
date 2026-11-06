@@ -163,7 +163,7 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
   },
   health: {
     path: "/health",
-    label: "Health",
+    label: "Zustand",
     Icon: HeartPulseIcon,
     iconColor: "text-rose-500",
     Component: lazy(() =>
@@ -183,7 +183,7 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
   },
   "query-builder": {
     path: "/query-builder",
-    label: "Query Builder",
+    label: "Abfrage-Builder",
     Icon: BlocksIcon,
     iconColor: "text-violet-500",
     Component: lazy(() =>

@@ -6,7 +6,7 @@ import { useContext } from "react";
 import { DataTableColumnProfile } from "@/features/table/data-table-column-profile";
 import { DataTableHeaderName } from "@/features/table/data-table-header-name";
 import { cn } from "@/lib/utils";
-import type { getColumnTypeInfo } from "./data-table/column-type-info";
+import { type getColumnTypeInfo, shortTypeLabel } from "./data-table/column-type-info";
 import { GridStyleContext } from "./data-table/grid-style-context";
 import { renderTypeIcon } from "./data-table/render-type-icon";
 import type { TableRow } from "./data-table-types";
@@ -39,11 +39,19 @@ export function DataTableColumnHeader({
       disabled={isFetching || !column.getCanSort()}
       className={cn(
         "group flex items-center gap-1 rounded-sm py-0.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer min-w-0 shrink",
-        classic ? "px-1" : "px-0.5",
+        !classic && "px-0.5",
+        columnStyle?.numeric && "flex-row-reverse",
       )}
     >
       {isFk && <LinkIcon className="size-3 shrink-0 text-blue-500" />}
-      <DataTableHeaderName name={name} isFk={isFk} />
+      <span className="flex min-w-0 items-center gap-1">
+        {classic && typeInfo.kind === "key" && (
+          <span className="shrink-0 text-muted-foreground">
+            {renderTypeIcon(typeInfo.iconName, "size-3")}
+          </span>
+        )}
+        <DataTableHeaderName name={name} isFk={isFk} />
+      </span>
       <span
         className={cn(
           "shrink-0 text-muted-foreground transition-colors",
@@ -64,14 +72,20 @@ export function DataTableColumnHeader({
 
   if (classic)
     return (
-      <div className="flex items-center gap-2 w-full min-w-0 justify-start" title={fkTitle}>
-        {sortButton}
-        <div className="ml-auto flex shrink-0 items-center gap-1">
-          <div className="flex items-center gap-1 font-mono text-[10px] leading-none whitespace-nowrap text-muted-foreground/80 select-none">
-            {renderTypeIcon(typeInfo.iconName, "size-2.5")}
-            <span>{typeInfo.label}</span>
-          </div>
-        </div>
+      <div
+        className={cn(
+          "flex w-full min-w-0 flex-col gap-0.5",
+          columnStyle?.numeric ? "items-end" : "items-start",
+        )}
+        title={fkTitle}
+      >
+        <div className="flex max-w-full min-w-0 items-center">{sortButton}</div>
+        <span
+          title={typeInfo.dataType ?? typeInfo.label}
+          className="max-w-full truncate font-mono text-[11px] leading-3 font-normal text-muted-foreground select-none"
+        >
+          {shortTypeLabel(typeInfo.dataType ?? typeInfo.label)}
+        </span>
       </div>
     );
 

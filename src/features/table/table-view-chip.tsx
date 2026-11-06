@@ -30,15 +30,17 @@ export function TableViewChip({
   return (
     <div
       className={cn(
-        "group flex shrink-0 items-center rounded-full px-1 text-sm",
-        active ? "border bg-background shadow-xs" : "text-muted-foreground hover:bg-muted/60",
+        "group flex h-7 shrink-0 items-center rounded-md border px-1 text-[13px]",
+        active
+          ? "border-border bg-background"
+          : "border-transparent text-muted-foreground hover:bg-muted/60",
       )}
     >
       <button
         type="button"
         onClick={onSelect}
         aria-pressed={active}
-        className="flex items-center gap-1.5 rounded-full px-2 py-1 focus-visible:outline-2"
+        className="flex items-center gap-1.5 rounded-sm px-1.5 focus-visible:outline-2"
       >
         <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
         <span>{label}</span>
@@ -51,7 +53,7 @@ export function TableViewChip({
           type="button"
           aria-label={`Ansicht ${label} entfernen`}
           onClick={onRemove}
-          className="rounded-full p-1 opacity-50 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2"
+          className="rounded-sm p-1 opacity-50 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2"
         >
           <XIcon className="size-3" />
         </button>
