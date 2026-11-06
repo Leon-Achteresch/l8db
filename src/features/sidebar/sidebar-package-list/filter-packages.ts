@@ -1,5 +1,5 @@
 import type { PackageMemberInfo } from "@/lib/db";
-import { type SearchPatternCompileResult, splitSearchPatterns } from "@/lib/regex-search";
+import { type SearchPatternCompileResult, searchMatcher } from "@/lib/regex-search";
 
 export interface PackageMatch {
   schema: string;
@@ -30,12 +30,8 @@ export function filterPackages(
   compiled: SearchPatternCompileResult | null,
 ): PackageMatch[] | undefined {
   if (!items) return undefined;
-  const patterns = splitSearchPatterns(search);
-  if (!patterns.length || (compiled && !compiled.ok)) return items;
-  const lowerPatterns = patterns.map((pattern) => pattern.toLowerCase());
-  const matches = compiled?.ok
-    ? (value: string) => compiled.regexes.some((regex) => regex.test(value))
-    : (value: string) => lowerPatterns.some((pattern) => value.toLowerCase().includes(pattern));
+  const matches = searchMatcher(search, compiled);
+  if (!matches) return items;
   const result: PackageMatch[] = [];
   for (const item of items) {
     const nameMatch = matches(item.name);

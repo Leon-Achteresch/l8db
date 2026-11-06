@@ -1,8 +1,10 @@
 import { memo, useMemo } from "react";
 import { DataTableCellBadge } from "@/features/table/data-table-cell/data-table-cell-badge";
 import { useMasterDetail } from "@/lib/master-detail";
+import { useQueryQolSettings } from "@/lib/query-qol-settings";
 import { resultCellText } from "@/lib/result-grid";
 import { cellPreviewLimit, truncateCellPreview } from "@/lib/table-cell-preview";
+import { timestampCellText } from "@/lib/timestamp-display";
 import { cn } from "@/lib/utils";
 import { cellValueBadge } from "@/lib/value-viewers/detect";
 
@@ -32,7 +34,8 @@ export const QueryResultCell = memo(function QueryResultCell({
   onInspect,
 }: QueryResultCellProps) {
   const isNull = value === null || value === undefined;
-  const text = resultCellText(value);
+  const timestamps = useQueryQolSettings((s) => s.timestamps);
+  const text = timestampCellText(value, timestamps) ?? resultCellText(value);
   const badge = useMemo(() => cellValueBadge(value), [value]);
   const display = isNull
     ? "NULL"

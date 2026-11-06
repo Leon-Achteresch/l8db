@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 
 import { listTransactions } from "@/lib/db";
 
@@ -54,6 +55,7 @@ interface TransactionStoreState {
   addTransaction: (tx: ActiveTransaction) => void;
   removeTransaction: (txId: string) => void;
   addChange: (txId: string, change: TransactionChange) => void;
+  clearChanges: (txId: string) => void;
   setDatabaseChanges: (txId: string, databaseChanges: DatabaseChanges) => void;
   syncWithBackend: () => Promise<void>;
 }
@@ -83,6 +85,13 @@ export const useTransactionStore = create<TransactionStoreState>()(
           ),
         })),
 
+      clearChanges: (txId) =>
+        set((s) => ({
+          transactions: s.transactions.map((t) =>
+            t.txId === txId ? { ...t, changes: [], databaseChanges: undefined } : t,
+          ),
+        })),
+
       setDatabaseChanges: (txId, databaseChanges) =>
         set((s) => ({
           transactions: s.transactions.map((t) =>
@@ -105,6 +114,7 @@ export const useTransactionStore = create<TransactionStoreState>()(
     }),
     {
       name: "l8db.transactions",
+      storage: createSafeJsonStorage(),
       partialize: (state) => ({
         transactions: state.transactions,
         panelOpen: state.panelOpen,

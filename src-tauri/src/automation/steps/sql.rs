@@ -38,6 +38,20 @@ pub async fn sql(ctx: &mut StepContext<'_>, config: &Action) -> Result<StepOutco
         let text = ctx.vars.render_sql(&source, resolved.kind)?;
         let statements = crate::db::sql_script::split_for(resolved.kind, &text);
         let name = resolved.name.clone();
+        if resolved.read_only || resolved.production_locked {
+            let mode = if resolved.read_only {
+                "Lesemodus"
+            } else {
+                "Produktionssperre"
+            };
+            for statement in &statements {
+                crate::mcp::server::validate_read_query(resolved.kind, statement.clone()).map_err(
+                    |error| {
+                        format!("{name}: {mode}, nur lesende Anweisungen sind erlaubt ({error})")
+                    },
+                )?;
+            }
+        }
         if statements.len() == 1 {
             let result = adapter
                 .execute_query(&statements[0])
@@ -110,6 +124,37 @@ mod tests {
             )
             .await;
         assert_eq!(run.status, RunStatus::Success, "{:?}", run.error);
+    }
+
+    #[tokio::test]
+    async fn read_only_and_locked_production_reject_writes() {
+        for (read_only, production_locked, mode) in [
+            (true, false, "Lesemodus"),
+            (false, true, "Produktionssperre"),
+        ] {
+            let h = harness().await;
+            let (services, db) = (&h.services, &h.db);
+            let mut list = services.store.connections().await.unwrap();
+            list[0].read_only = read_only;
+            list[0].production_locked = production_locked;
+            services.store.replace_connections(list).await.unwrap();
+            let run = db
+                .run(
+                    services,
+                    vec![
+                        step("a", json!({ "type": "sql", "connections": ["db"], "sql": "SELECT name FROM items" })),
+                        step("b", json!({ "type": "sql", "connections": ["db"], "sql": "SELECT 1; DELETE FROM items" })),
+                    ],
+                )
+                .await;
+            assert_eq!(run.status, RunStatus::Failed);
+            assert!(run.error.unwrap().contains(mode));
+            let left: i64 = rusqlite::Connection::open(&db.path)
+                .unwrap()
+                .query_row("SELECT COUNT(*) FROM items", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(left, 3);
+        }
     }
 
     #[tokio::test]

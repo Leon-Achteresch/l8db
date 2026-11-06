@@ -197,7 +197,19 @@ export async function runTableTransaction<T>(
   );
   try {
     const result = await op(txId);
-    await confirmProductionCommit(connection.id, database, [change(result)]);
+    const applied = change(result);
+    if (applied.type === "delete" && !isProduction(connection)) {
+      const accepted = await requestSqlConfirmation({
+        connection: connection.name,
+        database: database ?? null,
+        statements: [{ sql: changeLabel(applied), reason: "Zeile löschen" }],
+        title: "Zeile endgültig löschen?",
+        description: "Ohne Transaktionsmodus wird die Zeile sofort gelöscht und committet.",
+        confirmLabel: "Löschen",
+      });
+      if (!accepted) throw new Error("Löschen abgebrochen.");
+    }
+    await confirmProductionCommit(connection.id, database, [applied]);
     await commitTransaction(txId);
     return result;
   } catch (err) {

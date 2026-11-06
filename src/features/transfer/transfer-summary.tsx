@@ -3,7 +3,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { formatBytes } from "@/lib/backup";
-import type { SchemaSize, TransferPlan } from "@/lib/db";
+import type { SchemaSize, TransferContent, TransferPlan } from "@/lib/db";
+import { TransferReplace } from "./transfer-replace";
 
 export function TransferSummary({
   plan,
@@ -12,6 +13,10 @@ export function TransferSummary({
   crossFamily,
   foldNames,
   onFoldNames,
+  replace,
+  mirror,
+  content,
+  onReplace,
   onShowPlan,
 }: {
   plan: TransferPlan | null;
@@ -20,6 +25,10 @@ export function TransferSummary({
   crossFamily: boolean;
   foldNames: boolean;
   onFoldNames: (value: boolean) => void;
+  replace: boolean;
+  mirror: boolean;
+  content: TransferContent;
+  onReplace: (value: boolean) => void;
   onShowPlan: (tab: string) => void;
 }) {
   const known = selected.map((schema) => sizes[schema]).filter(Boolean);
@@ -100,11 +109,19 @@ export function TransferSummary({
         </dl>
       </section>
 
+      <TransferReplace
+        plan={plan}
+        replace={replace}
+        mirror={mirror}
+        content={content}
+        onReplace={onReplace}
+      />
+
       {conflicts.length > 0 && (
         <section className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-xs">
           <p className="font-medium text-amber-700 dark:text-amber-400">
-            Im Ziel existieren bereits {conflicts.length} Objekte. Anderes Zielschema wählen oder
-            die Objekte entfernen.
+            Im Ziel existieren bereits {conflicts.length} Objekte. Anderes Zielschema wählen, die
+            Objekte entfernen oder überschreiben.
           </p>
           <p className="mt-1.5 font-mono break-all text-muted-foreground">
             {conflicts.slice(0, 30).join(", ")}

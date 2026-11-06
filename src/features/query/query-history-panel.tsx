@@ -48,6 +48,11 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
     },
     [entries, removeEntry, restore],
   );
+  const renameSaved = useCallback((id: string, name: string) => {
+    const store = useSavedQueriesStore.getState();
+    const query = store.queries.find((item) => item.id === id);
+    if (query) store.updateQuery(id, name, query.sql);
+  }, []);
   const undoableDelete = useCallback(
     (id: string) => {
       const entry = savedQueries.find((item) => item.id === id);
@@ -82,15 +87,12 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
 
   const visibleEntries = tab === "history" ? history : saved;
   const scrollToFn = useMemo(() => createFreshElementScroll<HTMLDivElement, HTMLDivElement>(), []);
-  const getItemKey = useCallback(
-    (index: number) => `${tab}:${visibleEntries[index].id}`,
-    [tab, visibleEntries],
-  );
+  const getItemKey = useCallback((index: number) => visibleEntries[index].id, [visibleEntries]);
   const virtualizer = useVirtualizer({
     count: visibleEntries.length,
     getScrollElement: () => scrollRef.current,
     scrollToFn,
-    estimateSize: () => 64,
+    estimateSize: () => 49,
     measureElement: measureVirtualItem,
     observeElementRect: observeVirtualScrollRect,
     useAnimationFrameWithResizeObserver: true,
@@ -217,6 +219,7 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
                     entry={saved[virtualRow.index]}
                     onLoad={onLoad}
                     onDelete={undoableDelete}
+                    onRename={renameSaved}
                   />
                 )}
               </div>

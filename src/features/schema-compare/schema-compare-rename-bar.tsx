@@ -2,7 +2,7 @@ import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { renameCandidates } from "@/lib/schema-compare/diff";
-import { toggleRename, useSchemaCompareStore } from "@/lib/schema-compare/store";
+import { toggleRename, useSchemaCompareInstance } from "@/lib/schema-compare/store";
 import type { CompareResult, DiffItem } from "@/lib/schema-compare/types";
 
 export function SchemaCompareRenameBar({
@@ -12,7 +12,8 @@ export function SchemaCompareRenameBar({
   result: CompareResult;
   item: DiffItem;
 }) {
-  const renames = useSchemaCompareStore((state) => state.renames);
+  const store = useSchemaCompareInstance();
+  const renames = store((state) => state.renames);
   const feature = useNewFeatureVisibility<HTMLDivElement>("schema-compare.rename-column");
   const candidates = renameCandidates(result.items, item);
   if (candidates.length === 0) return null;
@@ -38,7 +39,7 @@ export function SchemaCompareRenameBar({
                 ? "Wieder löschen und neu anlegen"
                 : `${dropped.name} umbenennen, statt die Spalte samt Daten zu löschen`
             }
-            onClick={() => toggleRename(added.key, dropped.key, !active)}
+            onClick={() => toggleRename(added.key, dropped.key, !active, store)}
           >
             {dropped.name} → {added.name}
           </Button>

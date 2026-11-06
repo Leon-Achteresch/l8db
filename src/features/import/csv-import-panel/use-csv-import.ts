@@ -4,12 +4,14 @@ import {
   buildImportPayload,
   CSV_MAX_IMPORT_ROWS,
   CSV_PREVIEW_ROWS,
+  type CsvParseOptions,
   type CsvParseResult,
   type ImportTargetColumn,
   inferColumnTypes,
   parseCsv,
   suggestMappings,
   validateMappings,
+  withDocumentFields,
 } from "@/lib/csv-import";
 import { runCsvImport } from "@/lib/csv-import-runner";
 import { listImportColumns, readImportPreview } from "@/lib/db";
@@ -39,6 +41,8 @@ export function useCsvImport() {
   const [quote, setQuote] = useCsvImportField(scopeKey, "quote");
   const [hasHeader, setHasHeader] = useCsvImportField(scopeKey, "hasHeader");
   const [emptyField, setEmptyField] = useCsvImportField(scopeKey, "emptyField");
+  const [storedNullText, setNullText] = useCsvImportField(scopeKey, "nullText");
+  const nullText = storedNullText ?? "";
   const [targetTable, setTargetTable] = useCsvImportField(scopeKey, "targetTable");
   const [targetColumns, setTargetColumns] = useCsvImportField(scopeKey, "targetColumns");
   const [mappings, setMappings] = useCsvImportField(scopeKey, "mappings");
@@ -161,29 +165,49 @@ export function useCsvImport() {
       quote,
       hasHeader: hasHeader ?? undefined,
       emptyField,
+      nullText,
       maxRows: CSV_MAX_IMPORT_ROWS,
       partial,
     });
-  }, [format, structured, text, delimiter, quote, hasHeader, emptyField, partial]);
+  }, [format, structured, text, delimiter, quote, hasHeader, emptyField, nullText, partial]);
 
   const documentTargets = caps.query_language === "json";
   const mappingTargets: ImportTargetColumn[] = useMemo(() => {
     if (!documentTargets || !parsed || !targetTable) return targetColumns;
-    const known = new Set(targetColumns.map((column) => column.name));
-    return [
-      ...targetColumns,
-      ...parsed.headers
-        .filter((header) => header.trim() !== "" && !known.has(header))
-        .map((header) => ({
-          name: header,
-          data_type: "neues Feld",
-          is_nullable: true,
-          has_default: false,
-          is_identity: false,
-          is_generated: false,
-        })),
-    ];
+    return withDocumentFields(parsed.headers, targetColumns);
   }, [documentTargets, parsed, targetColumns, targetTable]);
+
+  const resuggestMappings = (
+    options: Pick<CsvParseOptions, "delimiter" | "quote" | "hasHeader">,
+  ) => {
+    if (format !== "csv" || text === null || targetColumns.length === 0) return;
+    const next = parseCsv(text, {
+      delimiter: delimiter ?? undefined,
+      quote,
+      hasHeader: hasHeader ?? undefined,
+      ...options,
+      maxRows: CSV_PREVIEW_ROWS,
+      partial,
+    });
+    setMappings(
+      suggestMappings(
+        next.headers,
+        documentTargets ? withDocumentFields(next.headers, targetColumns) : targetColumns,
+      ),
+    );
+  };
+  const changeDelimiter = (value: string) => {
+    setDelimiter(value);
+    resuggestMappings({ delimiter: value });
+  };
+  const changeQuote = (value: string) => {
+    setQuote(value);
+    resuggestMappings({ quote: value });
+  };
+  const changeHasHeader = (value: boolean) => {
+    setHasHeader(value);
+    resuggestMappings({ hasHeader: value });
+  };
 
   const inferredTypes = useMemo(
     () => (parsed ? inferColumnTypes(parsed.columnCount, parsed.rows) : []),
@@ -251,19 +275,7 @@ export function useCsvImport() {
         parsed
           ? suggestMappings(
               parsed.headers,
-              documentTargets
-                ? [
-                    ...columns,
-                    ...parsed.headers.map((name) => ({
-                      name,
-                      data_type: "neues Feld",
-                      is_nullable: true,
-                      has_default: false,
-                      is_identity: false,
-                      is_generated: false,
-                    })),
-                  ]
-                : columns,
+              documentTargets ? withDocumentFields(parsed.headers, columns) : columns,
             )
           : [],
       );
@@ -288,7 +300,7 @@ export function useCsvImport() {
   };
 
   const handleImport = async () => {
-    if (!connection || !parsed || blocked || running) return;
+    if (!connection || !parsed || !targetTable || blocked || running) return;
     setRunning(true);
     setOutcome(null);
     try {
@@ -309,6 +321,7 @@ export function useCsvImport() {
                 quote,
                 has_header: parsed.hasHeader,
                 empty_as_null: emptyField === "null",
+                null_text: nullText || null,
                 indices: mappings
                   .filter((mapping) => mapping.target !== null)
                   .map((mapping) => mapping.csvIndex),
@@ -336,17 +349,28 @@ export function useCsvImport() {
 
   const rowCount = parsed?.rows.length ?? 0;
   const tooManyRows = !filePath && (parsed?.truncated === true || rowCount > CSV_MAX_IMPORT_ROWS);
-  const blocked =
-    !parsed ||
-    parsed.errors.length > 0 ||
-    columnsLoading ||
-    !targetTable ||
-    (format !== "csv" && !filePath) ||
-    rowCount === 0 ||
-    tooManyRows ||
-    Boolean(conflict && !conflict.constraint) ||
-    Boolean(openTransaction) ||
-    (issues?.errors.length ?? 1) > 0;
+  const blockedReason = !parsed
+    ? "Keine Datei geladen"
+    : parsed.errors.length > 0
+      ? "Die Datei enthält Fehler"
+      : columnsLoading
+        ? "Spalten der Zieltabelle werden geladen"
+        : !targetTable
+          ? "Keine Zieltabelle ausgewählt"
+          : format !== "csv" && !filePath
+            ? "Keine Datei ausgewählt"
+            : rowCount === 0
+              ? "Die Datei enthält keine Zeilen"
+              : tooManyRows
+                ? "Zu viele Zeilen für den Import aus der Vorschau"
+                : conflict && !conflict.constraint
+                  ? "Kein Konfliktschlüssel für die Konfliktbehandlung gewählt"
+                  : openTransaction
+                    ? "Offene Transaktion zuerst abschließen"
+                    : (issues?.errors.length ?? 1) > 0
+                      ? "Zuordnung der Spalten enthält Fehler"
+                      : null;
+  const blocked = blockedReason !== null;
 
   return {
     format,
@@ -362,9 +386,12 @@ export function useCsvImport() {
     conflict,
     setConflict,
     blocked,
+    blockedReason,
     connection,
     database,
     emptyField,
+    nullText,
+    setNullText,
     fileError: parsed?.errors.map((error) => error.message).join(" ") || fileError,
     fileName,
     filePath,
@@ -382,11 +409,14 @@ export function useCsvImport() {
     running,
     schema,
     setDelimiter,
+    changeDelimiter,
     setEmptyField,
     setFileError,
     setHasHeader,
+    changeHasHeader,
     setMappings,
     setQuote,
+    changeQuote,
     tables,
     targetColumns,
     targetTable,

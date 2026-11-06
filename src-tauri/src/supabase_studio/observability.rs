@@ -411,7 +411,7 @@ async fn management_request(path: &str, query: &[(&str, String)]) -> Result<Valu
         .query(query)
         .send()
         .await
-        .map_err(|error| format!("Supabase ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Supabase", &error))?;
     response_json(response).await
 }
 

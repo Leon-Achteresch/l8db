@@ -2,7 +2,13 @@ export { detectDelimiter, detectHeader, stripBom } from "./detect";
 export type { InferredType } from "./infer";
 export { INFERRED_TYPE_LABELS, inferColumnType, inferColumnTypes, typeMismatch } from "./infer";
 export type { CsvImportPayload } from "./mapping";
-export { buildImportPayload, isRequiredColumn, suggestMappings, validateMappings } from "./mapping";
+export {
+  buildImportPayload,
+  isRequiredColumn,
+  suggestMappings,
+  validateMappings,
+  withDocumentFields,
+} from "./mapping";
 export { parseCsv, previewCsv } from "./parse";
 export type {
   CsvCell,

@@ -40,7 +40,7 @@ Grundregeln:
    gh run list --workflow ci.yml --branch development --commit "$(git rev-parse origin/development)" --limit 1 --json status,conclusion,url
    ```
    - `failure`: nicht pushen, Fehler melden.
-   - Läuft noch oder fehlt: melden. Pushen ist trotzdem möglich, weil der Canary-Lauf die CI vor der Veröffentlichung selbst ausführt.
+   - Läuft noch oder fehlt: melden. Pushen ist trotzdem möglich, weil der Canary-Lauf die schnelle CI vor der Veröffentlichung selbst ausführt. Breite Browser-/Integrations-/Performance-Prüfungen sind erst für Stable verpflichtend.
 4. Dem Nutzer melden: erwartete Version, Highlights aus `feat`/`fix`/`perf` und CI-Status. Auf Bestätigung warten.
 5. Nach Bestätigung pushen und den Lauf nennen:
    ```bash

@@ -6,7 +6,7 @@ import { formatBytes } from "@/lib/backup";
 import { copyText } from "@/lib/clipboard";
 import { type ObjectProperties, s3Presign, type TransferItem } from "@/lib/db";
 import { basename } from "@/lib/storage/s3";
-import { downloadItems, uploadPaths } from "@/lib/storage/transfers";
+import { downloadItems, uploadPaths, withOverwritePrompt } from "@/lib/storage/transfers";
 import { showCopiedMessage } from "@/lib/workspace-status";
 import type { BrowserRow } from "./use-object-listing";
 import { errorText, useStorageConnection } from "./use-storage-connection";
@@ -28,7 +28,9 @@ export function useObjectActions(bucket: string) {
       return;
     }
     try {
-      const summary = await uploadPaths(connection, bucket, prefix, paths, properties);
+      const summary = await withOverwritePrompt((overwrite) =>
+        uploadPaths(connection, bucket, prefix, paths, properties, overwrite),
+      );
       toast.success(`${summary.files} Datei(en) hochgeladen · ${formatBytes(summary.bytes)}`);
     } catch (error) {
       toast.error(`Upload fehlgeschlagen: ${errorText(error)}`);

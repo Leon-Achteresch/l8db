@@ -13,6 +13,16 @@ export type SqlFormatResult =
   | { ok: true; sql: string }
   | { ok: false; sql: string; reason: string };
 
+const COLON_PARAM_DIALECTS = new Set<SqlFormatOptions["dialect"]>([
+  "sql",
+  "postgresql",
+  "mysql",
+  "transactsql",
+  "duckdb",
+  "clickhouse",
+  "bigquery",
+]);
+
 export function formatSqlWith(sql: string, options: SqlFormatOptions): SqlFormatResult {
   try {
     return {
@@ -24,6 +34,9 @@ export function formatSqlWith(sql: string, options: SqlFormatOptions): SqlFormat
         linesBetweenQueries: options.linesBetweenQueries ?? 2,
         denseOperators: options.denseOperators ?? false,
         newlineBeforeSemicolon: options.newlineBeforeSemicolon ?? false,
+        ...(COLON_PARAM_DIALECTS.has(options.dialect)
+          ? { paramTypes: { named: [":", "@"] as (":" | "@")[] } }
+          : {}),
       }),
     };
   } catch (error) {

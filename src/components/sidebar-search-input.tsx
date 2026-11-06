@@ -1,5 +1,5 @@
 import { RegexIcon, SearchIcon, XIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
 import { SidebarInput } from "@/components/ui/sidebar";
 import { describeRegexError, type RegexCompileError } from "@/lib/regex-search";
@@ -24,6 +24,8 @@ export function SidebarSearchInput({
   regexError,
 }: SidebarSearchInputProps) {
   const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const listId = useId();
   const entries = useSidebarSearchHistory((state) => state.entries);
   const addEntry = useSidebarSearchHistory((state) => state.add);
   const removeEntry = useSidebarSearchHistory((state) => state.remove);
@@ -33,6 +35,13 @@ export function SidebarSearchInput({
     if (q === "") return entries.slice(0, 8);
     return entries.filter((e) => e.toLowerCase().includes(q) && e !== value).slice(0, 8);
   }, [entries, value]);
+  const shown = open && !regexError ? suggestions : [];
+  const pick = (entry: string) => {
+    onChange(entry);
+    addEntry(entry);
+    setOpen(false);
+    setActive(-1);
+  };
 
   return (
     <div className="relative min-w-0 flex-1">
@@ -43,15 +52,32 @@ export function SidebarSearchInput({
         onChange={(e) => {
           onChange(e.target.value);
           setOpen(true);
+          setActive(-1);
         }}
-        onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
+        role="combobox"
+        aria-expanded={shown.length > 0}
+        aria-controls={listId}
+        aria-activedescendant={shown[active] ? `${listId}-${active}` : undefined}
         onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            addEntry(value);
-            setOpen(false);
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            if (!open) {
+              setOpen(true);
+              return;
+            }
+            const step = e.key === "ArrowDown" ? 1 : -1;
+            setActive((previous) => Math.max(-1, Math.min(shown.length - 1, previous + step)));
+          } else if (e.key === "Enter") {
+            if (shown[active]) pick(shown[active]);
+            else {
+              addEntry(value);
+              setOpen(false);
+            }
+          } else if (e.key === "Escape") {
+            if (shown.length > 0) setOpen(false);
+            else if (value) onChange("");
           }
-          if (e.key === "Escape") setOpen(false);
         }}
         title={regexError ? describeRegexError(regexError) : undefined}
         className={cn("pl-8 pr-8", regexEnabled && "font-mono", regexError && "border-destructive")}
@@ -68,17 +94,27 @@ export function SidebarSearchInput({
       >
         <RegexIcon className="size-3.5" />
       </button>
-      {open && suggestions.length > 0 ? (
-        <ul className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border bg-popover py-1 shadow-md">
-          {suggestions.map((entry) => (
-            <li key={entry} className="flex items-center">
+      {shown.length > 0 ? (
+        <div
+          id={listId}
+          role="listbox"
+          className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border bg-popover py-1 shadow-md"
+        >
+          {shown.map((entry, index) => (
+            <div
+              key={entry}
+              id={`${listId}-${index}`}
+              role="option"
+              tabIndex={-1}
+              aria-selected={index === active}
+              className={cn("flex items-center", index === active && "bg-accent")}
+            >
               <button
                 type="button"
+                tabIndex={-1}
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  onChange(entry);
-                  addEntry(entry);
-                  setOpen(false);
+                  pick(entry);
                 }}
                 className="min-w-0 flex-1 truncate px-2 py-1 text-left text-sm cursor-pointer hover:bg-accent"
               >
@@ -87,6 +123,7 @@ export function SidebarSearchInput({
               <button
                 type="button"
                 title="Aus Verlauf entfernen"
+                tabIndex={-1}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   removeEntry(entry);
@@ -95,9 +132,9 @@ export function SidebarSearchInput({
               >
                 <XIcon className="size-3" />
               </button>
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       ) : null}
       {regexError ? (
         <p className="absolute left-0 right-0 top-full mt-0.5 truncate text-[11px] text-destructive">

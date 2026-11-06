@@ -190,3 +190,12 @@ test("SQLite default fetches 1000 rows while native LIMIT can fetch more", () =>
     db.close();
   }
 });
+
+test("MySQL locking reads keep LIMIT before LOCK IN SHARE MODE and TABLE statements are limited", () => {
+  expect(applySelectRowLimit("SELECT * FROM t LOCK IN SHARE MODE", "mysql")).toBe(
+    "SELECT * FROM t \nLIMIT 1000\nLOCK IN SHARE MODE",
+  );
+  expect(applySelectRowLimit("TABLE big_table", "postgres")).toBe("TABLE big_table\nLIMIT 1000\n");
+  expect(applySelectRowLimit("TABLE big_table LIMIT 5", "mysql")).toBe("TABLE big_table LIMIT 5");
+  expect(applySelectRowLimit("TABLE big_table", "sqlite")).toBe("TABLE big_table");
+});

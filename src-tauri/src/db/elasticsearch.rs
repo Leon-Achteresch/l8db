@@ -342,13 +342,38 @@ fn console_requests(input: &str) -> Option<Vec<ConsoleRequest>> {
 pub fn read_only_request(statement: &str) -> Option<bool> {
     let requests = console_requests(statement)?;
     Some(requests.iter().all(|r| {
-        let path = r.path.split('?').next().unwrap_or_default();
         matches!(r.method.as_str(), "GET" | "HEAD")
-            || (r.method == "POST"
-                && path
-                    .split('/')
-                    .any(|segment| READ_ENDPOINTS.contains(&segment)))
+            || (r.method == "POST" && read_endpoint_path(&r.path))
     }))
+}
+
+fn read_endpoint_path(path: &str) -> bool {
+    let Ok(url) = url::Url::parse("http://l8db.invalid/").and_then(|base| base.join(path)) else {
+        return false;
+    };
+    let raw = path.split(['?', '#']).next().unwrap_or_default();
+    let segments: Vec<String> = url
+        .path_segments()
+        .into_iter()
+        .flatten()
+        .map(|segment| {
+            percent_encoding::percent_decode_str(segment)
+                .decode_utf8_lossy()
+                .into_owned()
+        })
+        .collect();
+    let dotted = raw
+        .split(['/', '\\'])
+        .chain(segments.iter().map(String::as_str))
+        .any(|segment| {
+            let decoded = percent_encoding::percent_decode_str(segment).decode_utf8_lossy();
+            decoded == "." || decoded == ".." || decoded.contains(['/', '\\'])
+        });
+    !dotted
+        && segments
+            .iter()
+            .find(|segment| segment.starts_with('_'))
+            .is_some_and(|segment| READ_ENDPOINTS.contains(&segment.as_str()))
 }
 
 pub fn is_index_ddl(statement: &str) -> bool {
@@ -492,7 +517,17 @@ impl ElasticAdapter {
             };
             request = request.header("Content-Type", content_type).body(body);
         }
-        http_api::send(self.label(), request).await
+        let reply = http_api::send(self.label(), request).await?;
+        for warning in reply.headers.get_all("warning") {
+            if let Some(message) = warning.to_str().ok().and_then(warning_text) {
+                super::server_output::emit(super::server_output::ServerMessage {
+                    level: "WARNING".to_string(),
+                    message,
+                    detail: None,
+                });
+            }
+        }
+        Ok(reply)
     }
 
     async fn call(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value, String> {
@@ -1166,9 +1201,33 @@ impl DatabaseAdapter for ElasticAdapter {
     }
 }
 
+fn warning_text(header: &str) -> Option<String> {
+    let mut chars = header.split_once('"')?.1.chars();
+    let mut text = String::new();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => text.push(chars.next()?),
+            '"' => return Some(text),
+            c => text.push(c),
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn warning_headers_yield_their_quoted_text() {
+        assert_eq!(
+            warning_text(r#"299 Elasticsearch-8.11.0-abc "[types removal] \"_type\" is deprecated" "Mon, 01 Jan 2026 00:00:00 GMT""#)
+                .as_deref(),
+            Some(r#"[types removal] "_type" is deprecated"#)
+        );
+        assert_eq!(warning_text("299 OpenSearch-2.11.0 \"unterminated"), None);
+        assert_eq!(warning_text("299 -"), None);
+    }
 
     fn fields() -> Vec<Field> {
         mapping_fields(&json!({"logs": {"mappings": {"properties": {
@@ -1260,6 +1319,37 @@ mod tests {
         assert_eq!(read_only_request("POST logs/_doc\n{}"), Some(false));
         assert_eq!(read_only_request("DELETE logs"), Some(false));
         assert_eq!(read_only_request("SELECT 1"), None);
+        for path in [
+            "_search/../logs/_delete_by_query",
+            "_search/%2e%2e/logs/_delete_by_query",
+            "_search/%2E%2E/logs/_delete_by_query",
+            "_search\\..\\logs\\_delete_by_query",
+            "_search/./../logs/_update_by_query",
+            "logs/_search%2F..%2F_delete_by_query",
+            "logs/_doc/_search",
+            "logs/_delete_by_query#/_search",
+            "logs/_delete_by_query?x=/_search",
+            "_search_x",
+        ] {
+            assert_eq!(
+                read_only_request(&format!("POST {path}\n{{}}")),
+                Some(false),
+                "{path}"
+            );
+        }
+        for path in [
+            "_search",
+            "logs/_search?size=1",
+            "_search/scroll",
+            "logs/_explain/1",
+            "_sql?format=txt",
+        ] {
+            assert_eq!(
+                read_only_request(&format!("POST {path}\n{{}}")),
+                Some(true),
+                "{path}"
+            );
+        }
         assert!(is_index_ddl("DELETE logs"));
         assert!(is_index_ddl("PUT logs\n{\"mappings\": {}}"));
         assert!(!is_index_ddl("PUT logs/_doc/1\n{}"));

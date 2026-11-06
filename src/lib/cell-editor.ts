@@ -170,3 +170,17 @@ export function buildRowUpdates(
   }
   return updates;
 }
+
+export function changedRowValues(
+  updates: Record<string, string | null>,
+  oldValues: Record<string, unknown>,
+): { updates: Record<string, string | null>; old: Record<string, unknown> } {
+  const changed: Record<string, string | null> = {};
+  const old: Record<string, unknown> = {};
+  for (const [col, next] of Object.entries(updates)) {
+    if (next === valueToUpdateText(oldValues[col])) continue;
+    changed[col] = next;
+    old[col] = oldValues[col];
+  }
+  return { updates: changed, old };
+}

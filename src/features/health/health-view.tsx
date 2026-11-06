@@ -100,25 +100,30 @@ export function HealthView() {
         </Button>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
-        {SEVERITY_ORDER.map((severity) => (
-          <span
-            key={severity}
-            className={cn(
-              "rounded-md border px-2 py-0.5 text-xs tabular-nums",
-              SEVERITY_CLASS[severity],
-            )}
-          >
-            {SEVERITY_LABEL[severity]}:{" "}
-            {issues.filter((check) => check.severity === severity).length}
-          </span>
-        ))}
-        <span className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground tabular-nums">
-          Übersprungen: {visible.filter((check) => check.status === "skipped").length}
-        </span>
+        {report.isSuccess && (
+          <>
+            {SEVERITY_ORDER.map((severity) => (
+              <span
+                key={severity}
+                className={cn(
+                  "rounded-md border px-2 py-0.5 text-xs tabular-nums",
+                  SEVERITY_CLASS[severity],
+                )}
+              >
+                {SEVERITY_LABEL[severity]}:{" "}
+                {issues.filter((check) => check.severity === severity).length}
+              </span>
+            ))}
+            <span className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground tabular-nums">
+              Übersprungen: {visible.filter((check) => check.status === "skipped").length}
+            </span>
+          </>
+        )}
         <span className="flex-1" />
         <Button
           variant={category === null ? "secondary" : "ghost"}
           size="xs"
+          aria-pressed={category === null}
           onClick={() => setCategory(null)}
         >
           Alle
@@ -128,6 +133,7 @@ export function HealthView() {
             key={value}
             variant={category === value ? "secondary" : "ghost"}
             size="xs"
+            aria-pressed={category === value}
             onClick={() => setCategory(value)}
           >
             {CATEGORY_LABEL[value]}

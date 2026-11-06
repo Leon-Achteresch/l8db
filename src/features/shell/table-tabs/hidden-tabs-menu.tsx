@@ -1,4 +1,4 @@
-import { type useNavigate, useRouter } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 import { ChevronDownIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
@@ -9,21 +9,20 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useSplitView } from "@/lib/split-view";
-import { navigateToTab, preloadTab, tabLabel } from "@/lib/tab-navigation";
-import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
+import { preloadTab, tabLabel } from "@/lib/tab-navigation";
+import { isQueryTabDirty, remoteTab, type Tab, tabKey } from "@/lib/table-tabs";
 import { iconButton } from "./constants";
 
 interface HiddenTabsMenuProps {
   hiddenTabs: Tab[];
-  split: boolean;
-  revealTab: (key: string) => void;
-  navigate: ReturnType<typeof useNavigate>;
+  onSelect: (tab: Tab) => void;
 }
 
-export function HiddenTabsMenu({ hiddenTabs, split, revealTab, navigate }: HiddenTabsMenuProps) {
+export function HiddenTabsMenu({ hiddenTabs, onSelect }: HiddenTabsMenuProps) {
   const router = useRouter();
-  const reveal = useSplitView((state) => state.reveal);
+  const preload = (tab: Tab) => {
+    if (!remoteTab(tabKey(tab))) preloadTab(router, tab);
+  };
   const [search, setSearch] = useState("");
   const query = search.trim().toLocaleLowerCase();
   const matchingTabs = hiddenTabs.filter((tab) =>
@@ -78,13 +77,9 @@ export function HiddenTabsMenu({ hiddenTabs, split, revealTab, navigate }: Hidde
         {matchingTabs.map((tab) => (
           <DropdownMenuItem
             key={tabKey(tab)}
-            onPointerEnter={() => preloadTab(router, tab)}
-            onFocus={() => preloadTab(router, tab)}
-            onSelect={() => {
-              revealTab(tabKey(tab));
-              if (split) reveal(tabKey(tab));
-              navigateToTab(navigate, tab);
-            }}
+            onPointerEnter={() => preload(tab)}
+            onFocus={() => preload(tab)}
+            onSelect={() => onSelect(tab)}
             title={tabLabel(tab)}
           >
             <span className="min-w-0 flex-1">

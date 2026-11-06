@@ -4,6 +4,7 @@ import { NODE_WIDTH } from "@/features/er-diagram/er-diagram-view/constants";
 import { estimateNodeHeight } from "@/features/er-diagram/er-diagram-view/node-dimensions";
 import type { ERTable, ForeignKeyInfo } from "@/lib/db";
 import { erForeignKeyKey } from "@/lib/er-clusters";
+import { erTableKey } from "@/lib/er-focus";
 
 const elk = new ELK({ workerUrl: elkWorkerUrl });
 
@@ -34,7 +35,7 @@ export async function computeElkLayout(
       "elk.layered.considerModelOrder.strategy": "PREFER_EDGES",
     },
     children: tables.map((t) => ({
-      id: `${t.schema}.${t.name}`,
+      id: erTableKey(t.schema, t.name),
       width: NODE_WIDTH,
       height: estimateNodeHeight(t),
     })),
@@ -42,8 +43,8 @@ export async function computeElkLayout(
       const fk = fks[0];
       return {
         id: constraintName,
-        sources: [`${fk.from_schema}.${fk.from_table}`],
-        targets: [`${fk.to_schema}.${fk.to_table}`],
+        sources: [erTableKey(fk.from_schema, fk.from_table)],
+        targets: [erTableKey(fk.to_schema, fk.to_table)],
       };
     }),
   };

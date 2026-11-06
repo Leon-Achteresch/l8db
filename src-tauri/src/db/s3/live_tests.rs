@@ -54,6 +54,7 @@ async fn s3_live_object_lifecycle() {
             dir.path().join("big.bin").to_string_lossy().into_owned(),
         ],
         &ObjectProperties::default(),
+        false,
         "up-1",
         emit,
     )
@@ -144,17 +145,43 @@ async fn s3_live_object_lifecycle() {
             &bucket,
             "copy/",
             false,
+            false,
         )
         .await
         .unwrap();
     assert_eq!(outcome.deleted, 2, "{:?}", outcome.errors);
+    let upload_dir = [TransferItem {
+        key: "in/upload/".into(),
+        version_id: None,
+        is_prefix: true,
+    }];
+    let conflict = s3
+        .copy_items(&bucket, &upload_dir, &bucket, "copy/", false, false)
+        .await
+        .unwrap_err();
+    assert!(
+        conflict.starts_with(super::ops::CONFLICT_PREFIX),
+        "{conflict}"
+    );
+    assert_eq!(
+        s3.copy_items(&bucket, &upload_dir, &bucket, "copy/", false, true)
+            .await
+            .unwrap()
+            .deleted,
+        2
+    );
+    assert!(s3
+        .copy_items(&bucket, &upload_dir, &bucket, "in/upload/sub/", true, false)
+        .await
+        .unwrap_err()
+        .contains("in sich selbst"));
     assert!(s3
         .head_object(&bucket, "copy/upload/nested/data.csv", None)
         .await
         .is_ok());
 
     let renamed = s3
-        .rename(&bucket, "copy/upload/", "moved/up")
+        .rename(&bucket, "copy/upload/", "moved/up", false)
         .await
         .unwrap();
     assert!(renamed.errors.is_empty());
@@ -166,7 +193,7 @@ async fn s3_live_object_lifecycle() {
         .head_object(&bucket, "copy/upload/a b.txt", None)
         .await
         .is_err());
-    s3.rename(&bucket, "moved/up/a b.txt", "moved/renamed.txt")
+    s3.rename(&bucket, "moved/up/a b.txt", "moved/renamed.txt", false)
         .await
         .unwrap();
     assert!(s3
@@ -174,7 +201,7 @@ async fn s3_live_object_lifecycle() {
         .await
         .is_ok());
 
-    let records = super::select::select(
+    let (records, _) = super::select::select(
         &s3,
         &bucket,
         "in/upload/nested/data.csv",
@@ -182,7 +209,7 @@ async fn s3_live_object_lifecycle() {
     )
     .await
     .unwrap();
-    let result = super::select::records_to_result(&records, 0);
+    let result = super::select::records_to_result(&records, 0, false);
     assert_eq!(result.rows, vec![serde_json::json!({"name": "y"})]);
 
     let adapter = super::S3Adapter::new(&url()).unwrap();
@@ -559,6 +586,7 @@ async fn s3_live_replace_text_keeps_properties() {
         "{\"a\":1}".into(),
         None,
         "text/plain",
+        None,
     )
     .await
     .unwrap();
@@ -575,11 +603,143 @@ async fn s3_live_replace_text_keeps_properties() {
         .unwrap();
     assert!(tags.contains("<Value>a b</Value>"));
 
-    s3.replace_text(&bucket, "new.md", "# hi".into(), None, "text/markdown")
-        .await
-        .unwrap();
+    s3.replace_text(
+        &bucket,
+        "new.md",
+        "# hi".into(),
+        None,
+        "text/markdown",
+        None,
+    )
+    .await
+    .unwrap();
     let fresh = s3.head_object(&bucket, "new.md", None).await.unwrap();
     assert_eq!(fresh.content_type.as_deref(), Some("text/markdown"));
+
+    s3.delete_bucket(&bucket, true).await.unwrap();
+}
+
+#[tokio::test]
+#[ignore]
+async fn s3_live_safety_checks() {
+    let s3 = S3::connect(&url()).await.unwrap();
+    let bucket = bucket_name("safe");
+    s3.create_bucket(&bucket, None, false).await.unwrap();
+
+    let dotted = s3
+        .put_bytes(&bucket, "a/../x", b"x".to_vec(), &[])
+        .await
+        .unwrap_err();
+    assert!(dotted.contains("Pfadsegmente"), "{dotted}");
+    let invalid = s3
+        .put_bytes(
+            &bucket,
+            "meta.txt",
+            b"x".to_vec(),
+            &[("x-amz-meta-mein feld".into(), "v".into())],
+        )
+        .await
+        .unwrap_err();
+    assert!(invalid.contains("Metadaten-Schlüssel"), "{invalid}");
+
+    s3.put_bytes(
+        &bucket,
+        "cr\rkey.txt",
+        b"x".to_vec(),
+        &[("x-amz-meta-autor".into(), "Müller".into())],
+    )
+    .await
+    .unwrap();
+    let listing = s3
+        .list_objects(&bucket, "", None, None, None)
+        .await
+        .unwrap();
+    assert_eq!(listing.objects[0].key, "cr\rkey.txt");
+    let head = s3.head_object(&bucket, "cr\rkey.txt", None).await.unwrap();
+    s3.replace_text(
+        &bucket,
+        "cr\rkey.txt",
+        "neu".into(),
+        None,
+        "text/plain",
+        head.etag.as_deref(),
+    )
+    .await
+    .unwrap();
+    let stale = s3
+        .replace_text(
+            &bucket,
+            "cr\rkey.txt",
+            "alt".into(),
+            None,
+            "text/plain",
+            head.etag.as_deref(),
+        )
+        .await
+        .unwrap_err();
+    assert!(stale.contains("geändert"), "{stale}");
+    let after = s3.head_object(&bucket, "cr\rkey.txt", None).await.unwrap();
+    assert_ne!(after.metadata.get("autor").map(String::as_str), Some(""));
+
+    s3.put_bytes(&bucket, "b.txt", b"b".to_vec(), &[])
+        .await
+        .unwrap();
+    s3.put_bytes(&bucket, "c.txt", b"c".to_vec(), &[])
+        .await
+        .unwrap();
+    let conflict = s3
+        .rename(&bucket, "b.txt", "c.txt", false)
+        .await
+        .unwrap_err();
+    assert!(
+        conflict.starts_with(super::ops::CONFLICT_PREFIX),
+        "{conflict}"
+    );
+    s3.rename(&bucket, "b.txt", "c.txt", true).await.unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("c.txt"), "lokal").unwrap();
+    let upload_conflict = transfer::upload(
+        &s3,
+        &bucket,
+        "",
+        &[dir.path().join("c.txt").to_string_lossy().into_owned()],
+        &ObjectProperties::default(),
+        false,
+        "safe-up",
+        events().1,
+    )
+    .await
+    .unwrap_err();
+    assert!(upload_conflict.starts_with(super::ops::CONFLICT_PREFIX));
+    let item = |key: &str| TransferItem {
+        key: key.into(),
+        version_id: None,
+        is_prefix: false,
+    };
+    let summary = transfer::download(
+        &s3,
+        &bucket,
+        &[item("c.txt"), item("cr\rkey.txt")],
+        &dir.path().to_string_lossy(),
+        "safe-down",
+        events().1,
+    )
+    .await
+    .unwrap();
+    assert!(summary.errors.is_empty(), "{:?}", summary.errors);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("c.txt")).unwrap(),
+        "lokal"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("c (2).txt")).unwrap(),
+        "b"
+    );
+
+    let pinned = url().replacen('?', &format!("/{bucket}?"), 1);
+    let adapter = super::S3Adapter::new(&pinned).unwrap();
+    adapter.test_connection().await.unwrap();
 
     s3.delete_bucket(&bucket, true).await.unwrap();
 }

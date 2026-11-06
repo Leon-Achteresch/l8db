@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import { createBufferedJsonStorage } from "@/lib/buffered-storage";
 import type { ChartFile } from "@/lib/chart-file";
 import { createId } from "@/lib/dashboards";
+import { syncAcrossWindows } from "@/lib/window-sync";
 
 export type DashboardDrawerKind = "dashboards" | "charts";
 export const DRAWER_MIN_WIDTH = 280;
@@ -54,4 +55,9 @@ export const useDashboardWorkspaceStore = create<DashboardWorkspaceState>()(
       storage: createBufferedJsonStorage(() => window.localStorage),
     },
   ),
+);
+
+syncAcrossWindows(
+  "l8db.dashboard-workspace",
+  () => void useDashboardWorkspaceStore.persist.rehydrate(),
 );

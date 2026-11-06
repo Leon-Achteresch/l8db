@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { buildCompareApplyPlan } from "../src/lib/compare-apply-plan";
+import {
+  buildCompareApplyPlan,
+  destructiveStatements,
+  parseTableColumns,
+} from "../src/lib/compare-apply-plan";
 import { EMPTY_COMPARE_SIDE } from "../src/lib/compare-types";
 
 const side = {
@@ -183,5 +187,40 @@ describe("Vergleich: geprüfte Änderungsskripte", () => {
         before.replace("SYS_C0013 PRIMARY KEY", "UQ_LOCK UNIQUE"),
       ),
     ).toThrow("Constraints");
+  });
+});
+
+describe("Vergleich: Umbenennen, Leerzeichen und Kommentare", () => {
+  test("erkennt umbenannte Spalten statt ADD und DROP", () => {
+    const plan = buildCompareApplyPlan(
+      "postgres",
+      side,
+      base,
+      base.replace("name text NULL", "full_name text NULL"),
+    );
+    expect(plan).toEqual([
+      'ALTER TABLE "destination"."users" RENAME COLUMN "name" TO "full_name";',
+    ]);
+    expect(destructiveStatements(plan)).toEqual([]);
+  });
+  test("markiert gelöschte Spalten als destruktiv", () => {
+    const plan = buildCompareApplyPlan(
+      "postgres",
+      side,
+      base,
+      base.replace("\n  name text NULL", ""),
+    );
+    expect(destructiveStatements(plan)).toEqual([
+      'ALTER TABLE "destination"."users" DROP COLUMN "name";',
+    ]);
+  });
+  test("liest quotierte Spaltennamen mit Leerzeichen", () => {
+    expect(parseTableColumns(`${base}\n  "my col" text NULL`).columns[2].name).toBe("my col");
+  });
+  test("View-Entwurf mit führendem Kommentar wird angenommen", () => {
+    const view = { ...side, objectType: "view" as const };
+    expect(buildCompareApplyPlan("postgres", view, "SELECT 1", "-- Hinweis\nSELECT 2;")).toEqual([
+      'CREATE OR REPLACE VIEW "destination"."users" AS SELECT 2',
+    ]);
   });
 });

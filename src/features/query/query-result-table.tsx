@@ -20,7 +20,9 @@ import { applyMasks } from "@/lib/masking";
 import { useActiveMasks } from "@/lib/masking-display";
 import { MasterSelectionContext, useMasterDetail } from "@/lib/master-detail";
 import { IS_CHROMIUM } from "@/lib/platform";
+import { useQueryQolSettings } from "@/lib/query-qol-settings";
 import { useQueryWorkspace } from "@/lib/query-workspace";
+import { resultColumnWidths } from "@/lib/result-column-sizing";
 import {
   activeFilterCount,
   applyResultView,
@@ -52,6 +54,7 @@ interface QueryResultTableProps {
   error: string | null;
   kind?: DatabaseKind;
   masked?: boolean;
+  timestampMenu?: boolean;
   onInspect?: (column: string, value: unknown, row: number) => void;
 }
 
@@ -62,6 +65,7 @@ export const QueryResultTable = memo(function QueryResultTable({
   error,
   kind,
   masked = false,
+  timestampMenu = true,
   onInspect,
 }: QueryResultTableProps) {
   const { active: resultMasks } = useActiveMasks(rawResult?.columns ?? []);
@@ -190,7 +194,7 @@ export const QueryResultTable = memo(function QueryResultTable({
     count: visibleRows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => estimatedRowHeight,
-    overscan: IS_CHROMIUM ? 0 : Math.ceil(256 / estimatedRowHeight),
+    overscan: IS_CHROMIUM ? 0 : Math.min(16, Math.ceil(256 / estimatedRowHeight)),
     rangeExtractor: rowRangeExtractor,
     measureElement: (element, entry, instance) => {
       const size = measureVirtualItem(element, entry, instance);
@@ -240,13 +244,18 @@ export const QueryResultTable = memo(function QueryResultTable({
     setFilters({});
   };
 
-  const autoSizeColumns = () => {
+  const timestamps = useQueryQolSettings((s) => s.timestamps);
+  const autoSizeColumns = (content = false) => {
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     if (!context) return;
-    context.font = `${(workspace.resultFontSize * uiScale) / 100}px ${getComputedStyle(document.body).fontFamily}`;
-    const nextWidths = Object.fromEntries(
-      columns.map((column) => [column, Math.ceil(context.measureText(column).width) + 48]),
+    context.font = `${(workspace.resultFontSize * uiScale) / 100}px ${getComputedStyle(scrollRef.current?.querySelector("td[data-col]") ?? document.body).fontFamily}`;
+    const nextWidths = resultColumnWidths(
+      columns,
+      visibleRows,
+      (text) => context.measureText(text).width,
+      content,
+      timestamps,
     );
     setAutoColumnWidths(nextWidths);
   };
@@ -261,12 +270,14 @@ export const QueryResultTable = memo(function QueryResultTable({
   return (
     <div className="flex h-full flex-col">
       <ResultToolbar
+        timestampMenu={timestampMenu}
         visibleCount={visibleRows.length}
         totalCount={rows.length}
         filterCount={filterCount}
         filterRowOpen={filterRowOpen}
         viewActive={viewActive}
-        onAutoSize={autoSizeColumns}
+        onAutoSize={() => autoSizeColumns(false)}
+        onContentSize={() => autoSizeColumns(true)}
         onToggleFilterRow={() => setFilterRowOpen((open) => !open)}
         onReset={resetView}
       />
@@ -300,7 +311,7 @@ export const QueryResultTable = memo(function QueryResultTable({
                 if (item.spacer)
                   return (
                     <th
-                      key={`gap-${item.index}`}
+                      key={item.key}
                       aria-hidden
                       colSpan={item.span}
                       style={{ width: item.width, padding: 0 }}
@@ -323,7 +334,7 @@ export const QueryResultTable = memo(function QueryResultTable({
                   if (item.spacer)
                     return (
                       <th
-                        key={`gap-${item.index}`}
+                        key={item.key}
                         aria-hidden
                         colSpan={item.span}
                         style={{ width: item.width, padding: 0 }}

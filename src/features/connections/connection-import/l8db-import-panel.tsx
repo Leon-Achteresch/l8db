@@ -179,7 +179,17 @@ export function L8dbImportPanel({ onClose }: Props) {
         <Button variant="outline" onClick={onClose} disabled={busy}>
           Abbrechen
         </Button>
-        <Button onClick={confirm} disabled={busy || !candidates || importable === 0}>
+        <Button
+          onClick={confirm}
+          disabled={busy || !candidates || importable === 0}
+          disabledReason={
+            busy
+              ? "Import läuft bereits"
+              : !candidates
+                ? "Noch keine Datei gelesen"
+                : "Keine importierbaren Verbindungen ausgewählt"
+          }
+        >
           {importable === 0 ? "Importieren" : `${importable} importieren`}
         </Button>
       </DialogFooter>

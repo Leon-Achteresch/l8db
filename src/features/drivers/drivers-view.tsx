@@ -11,6 +11,7 @@ import { type DatabaseKind, installDriver } from "@/lib/db";
 import { summarizeDrivers } from "@/lib/drivers";
 import { loadProviders, refreshDriverStatus, useProvidersStore } from "@/lib/providers";
 import { cn } from "@/lib/utils";
+import { JdbcManager } from "./jdbc-manager";
 
 export function DriversView() {
   const providers = useProvidersStore((state) => state.providers);
@@ -32,6 +33,9 @@ export function DriversView() {
     setRefreshing(true);
     try {
       await loadProviders();
+      await refreshDriverStatus("jdbc");
+    } catch (error) {
+      toast.error(`Treiberstatus konnte nicht geprüft werden: ${String(error)}`);
     } finally {
       setRefreshing(false);
     }
@@ -142,6 +146,7 @@ export function DriversView() {
             )}
           </div>
         )}
+        <JdbcManager />
       </div>
     </main>
   );

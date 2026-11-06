@@ -15,9 +15,15 @@ interface SaveQueryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (name: string) => void;
+  existingNames?: string[];
 }
 
-export function SaveQueryDialog({ open, onOpenChange, onSave }: SaveQueryDialogProps) {
+export function SaveQueryDialog({
+  open,
+  onOpenChange,
+  onSave,
+  existingNames = [],
+}: SaveQueryDialogProps) {
   const [name, setName] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -27,6 +33,10 @@ export function SaveQueryDialog({ open, onOpenChange, onSave }: SaveQueryDialogP
       setTimeout(() => inputRef.current?.focus(), 0);
     }
   }, [open]);
+
+  const overwrite = existingNames.some(
+    (existing) => existing.toLowerCase() === name.trim().toLowerCase(),
+  );
 
   const handleSave = () => {
     const trimmed = name.trim();
@@ -53,13 +63,18 @@ export function SaveQueryDialog({ open, onOpenChange, onSave }: SaveQueryDialogP
               if (e.key === "Enter") handleSave();
             }}
           />
+          {overwrite && (
+            <p className="text-xs text-muted-foreground">
+              Eine gespeicherte Query mit diesem Namen wird überschrieben.
+            </p>
+          )}
         </div>
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             Abbrechen
           </Button>
           <Button size="sm" onClick={handleSave} disabled={!name.trim()}>
-            Speichern
+            {overwrite ? "Überschreiben" : "Speichern"}
           </Button>
         </DialogFooter>
       </DialogContent>

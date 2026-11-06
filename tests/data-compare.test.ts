@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
 import {
   buildSyncScript,
   canonicalValue,
@@ -10,6 +9,7 @@ import {
   planDataCompare,
   valuesEqual,
 } from "../src/lib/data-compare";
+import { splitSqlStatements } from "../src/lib/sql-statements";
 
 const COLUMNS = [
   { name: "id", data_type: "integer" },
@@ -44,6 +44,17 @@ describe("planDataCompare", () => {
     expect(result.error).toBeNull();
     expect(result.keyColumns).toEqual(["id", "name"]);
     expect(result.compareColumns).toEqual(["amount"]);
+  });
+
+  test("akzeptiert dieselben Schlüssel in anderer Reihenfolge", () => {
+    const result = planDataCompare({
+      leftColumns: COLUMNS,
+      rightColumns: COLUMNS,
+      leftKeyColumns: ["id", "name"],
+      rightKeyColumns: ["name", "id"],
+    });
+    expect(result.error).toBeNull();
+    expect(result.keyColumns).toEqual(["id", "name"]);
   });
 
   test("lehnt fehlenden Primärschlüssel ab", () => {
@@ -227,6 +238,23 @@ describe("buildSyncScript", () => {
     expect(script.keys).toContain("id=2");
   });
 
+  test("PostgreSQL-Skript ist ein atomarer DO-Block mit Abbruch bei geänderter Zielzeile", () => {
+    const script = buildSyncScript({
+      rows,
+      direction: "left_to_right",
+      target: { schema: "public", table: "kunden" },
+      keyColumns,
+      compareColumns,
+      kind: "postgres",
+    });
+    expect(script.sql).toStartWith("DO $l8db_sync$\nBEGIN\n");
+    expect(script.sql).toEndWith("END\n$l8db_sync$;\n");
+    expect(script.sql).toContain(
+      "IF NOT FOUND THEN\n  RAISE EXCEPTION USING MESSAGE = 'Zielzeile wurde seit dem Vergleich geändert: id=2';",
+    );
+    expect(splitSqlStatements(script.sql, "postgres").statements).toHaveLength(1);
+  });
+
   test("dreht die Richtung um", () => {
     const script = buildSyncScript({
       rows,
@@ -320,7 +348,7 @@ describe("Sync-Skript je Datenbank", () => {
     const script = build("mysql");
     expect(script.sql).toContain("DELETE FROM `app`.`t` WHERE `id` = 3;");
     expect(script.sql).toContain(
-      "INSERT INTO `app`.`t` (`id`, `name`, `data`, `flag`, `ratio`) VALUES (1, 'a''b\\\\c', X'00FF', 1, 1.5);",
+      "INSERT INTO `app`.`t` (`id`, `name`, `data`, `flag`, `ratio`) VALUES (1, CONCAT('a''b', LEFT('\\\\\\\\', 1), 'c'), X'00FF', 1, 1.5);",
     );
     expect(script.sql).toContain("`name` <=> 'x'");
     expect(script.sql).not.toContain("`ratio` <=>");

@@ -445,22 +445,27 @@ impl DatabaseAdapter for OdbcAdapter {
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
         let sql = sql.trim().to_string();
-        let ((columns, rows, truncated), affected) = self
+        let (outcome, messages) = self
             .run(move |conn| {
-                let mut statement = conn.preallocate().map_err(map_err)?;
-                let fetched = match statement.execute(&sql, ()).map_err(map_err)? {
-                    Some(cursor) => Some(read_cursor(cursor, Some(10_000))?),
-                    None => None,
-                };
-                match fetched {
-                    Some(result) => Ok((result, None)),
-                    None => {
-                        let affected = statement.row_count().map_err(map_err)?.map(|n| n as u64);
-                        Ok(((vec![], vec![], false), affected))
+                Ok(super::server_output::capture_driver_log(|| {
+                    let mut statement = conn.preallocate().map_err(map_err)?;
+                    let fetched = match statement.execute(&sql, ()).map_err(map_err)? {
+                        Some(cursor) => Some(read_cursor(cursor, Some(10_000))?),
+                        None => None,
+                    };
+                    match fetched {
+                        Some(result) => Ok((result, None)),
+                        None => {
+                            let affected =
+                                statement.row_count().map_err(map_err)?.map(|n| n as u64);
+                            Ok::<_, String>(((vec![], vec![], false), affected))
+                        }
                     }
-                }
+                }))
             })
             .await?;
+        messages.into_iter().for_each(super::server_output::emit);
+        let ((columns, rows, truncated), affected) = outcome?;
         Ok(QueryResult {
             rows: rows_to_objects(&columns, rows),
             columns,

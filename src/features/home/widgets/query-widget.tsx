@@ -8,7 +8,7 @@ import { useSqlQuery } from "@/features/dashboard/use-dataset-query";
 import { queryErrorMessage } from "@/lib/connection-url";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import type { HomeWidget } from "@/lib/home-layout";
-import { isReadOnlyFor } from "@/lib/perf-test/sql-noise";
+import { isReadOnlyFor } from "@/lib/read-only-statement";
 import { useTableTabs } from "@/lib/table-tabs";
 import { HomeQueryDialog } from "../home-query-dialog";
 
@@ -31,7 +31,7 @@ export function QueryWidget({
   const [editing, setEditing] = useState(false);
   const sql = widget.sql?.trim() ?? "";
   const readOnly = sql !== "" && isReadOnlyFor(language, sql);
-  const query = useSqlQuery(readOnly ? sql : "");
+  const query = useSqlQuery(readOnly ? sql : "", undefined, ROW_LIMIT);
   const title = widget.title || "Abfrage";
   const columns = query.data?.columns ?? [];
   const rows = query.data?.rows ?? [];
@@ -50,8 +50,8 @@ export function QueryWidget({
           </h2>
           {query.data && (
             <p className="mt-0.5 text-[10px] text-muted-foreground">
-              {rows.length > ROW_LIMIT
-                ? `${ROW_LIMIT} von ${rows.length.toLocaleString("de-DE")} Zeilen`
+              {query.data.truncated
+                ? `Erste ${ROW_LIMIT} Zeilen`
                 : `${rows.length.toLocaleString("de-DE")} Zeilen`}{" "}
               · {query.data.execution_time_ms} ms
             </p>

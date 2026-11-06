@@ -247,7 +247,7 @@ test.skipIf(!enabled)(
         await page.getByRole("tab", { name: /^Sitzungen/ }).click();
         const sid = (await row("uib_sleeper").locator("td").first().innerText()).trim();
         await row("uib_sleeper").getByRole("button", { name: "Beenden" }).click();
-        await page.getByText(`Sitzung ${sid} beendet.`, { exact: true }).waitFor();
+        await page.getByText(`Sitzung SID ${sid} beendet.`, { exact: true }).waitFor();
         expect(await sleeper).toMatch(/ORA-000(28|31)|ORA-03113|DPI-1080/);
         await row("uib_sleeper").waitFor({ state: "detached", timeout: 15_000 });
         await row("uib_waiter").waitFor();

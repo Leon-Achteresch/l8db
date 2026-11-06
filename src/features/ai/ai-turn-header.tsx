@@ -1,5 +1,7 @@
+import { ChevronRight, CircleStop, ListChecks, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
-import { AiWorkRow } from "./ai-work-row";
+import { cn } from "@/lib/utils";
+import { ThinkingShimmer } from "./beui/agents/loading-states";
 
 function duration(ms: number) {
   if (ms < 1000) return "unter 1 s";
@@ -42,14 +44,30 @@ export function AiTurnHeader({
         ? `Gestoppt nach ${duration(durationMs)}`
         : "Gestoppt"
       : `${steps ? `${count} · ` : ""}${duration(durationMs ?? 0)}`;
+  const Icon = streaming ? LoaderCircle : stopped ? CircleStop : ListChecks;
   return (
-    <div className="tabular-nums">
-      <AiWorkRow
-        tone={streaming ? "active" : stopped ? "failed" : "lead"}
-        label={label}
-        onToggle={onToggle}
-        open={open}
+    <button
+      type="button"
+      disabled={!onToggle}
+      aria-expanded={onToggle ? open : undefined}
+      onClick={onToggle}
+      className={cn(
+        "-ml-1.5 flex h-7 items-center gap-1.5 rounded-full px-2 text-[12px] tabular-nums text-muted-foreground outline-none transition-colors enabled:hover:bg-muted enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
+        stopped && !streaming && "text-destructive/90 enabled:hover:text-destructive",
+      )}
+    >
+      <Icon
+        className={cn(
+          "size-3.5 shrink-0",
+          streaming && "animate-spin text-primary motion-reduce:animate-none",
+        )}
       />
-    </div>
+      {streaming ? <ThinkingShimmer className="font-normal">{label}</ThinkingShimmer> : label}
+      {onToggle && (
+        <ChevronRight
+          className={cn("size-3 shrink-0 transition-transform duration-200", open && "rotate-90")}
+        />
+      )}
+    </button>
   );
 }

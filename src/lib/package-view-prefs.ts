@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 
 export const PACKAGE_OUTLINE_MIN_WIDTH = 160;
 export const PACKAGE_OUTLINE_MAX_WIDTH = 480;
@@ -30,6 +31,6 @@ export const usePackageViewPrefs = create<PackageViewPrefsState>()(
           widths: { ...state.widths, [key]: clampPackageOutlineWidth(width) },
         })),
     }),
-    { name: "l8db.package-view" },
+    { name: "l8db.package-view", storage: createSafeJsonStorage() },
   ),
 );

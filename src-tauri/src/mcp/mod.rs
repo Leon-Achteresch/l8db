@@ -14,6 +14,7 @@ pub mod health;
 pub mod insight;
 pub mod nosql;
 mod objects;
+pub(crate) use objects::{schema_map, schema_map_supported, SchemaMap};
 pub mod open;
 mod overview;
 mod persist;
@@ -21,6 +22,7 @@ pub mod redact;
 pub(crate) mod sandbox;
 mod script;
 pub mod server;
+mod watch;
 pub mod workflow;
 
 #[cfg(all(test, feature = "duckdb"))]

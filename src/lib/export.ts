@@ -10,6 +10,7 @@ export interface CsvOptions {
   nullText: string;
   lineEnding: CsvLineEnding;
   bom: boolean;
+  escapeFormulas?: boolean;
 }
 
 export const DEFAULT_CSV_OPTIONS: CsvOptions = {
@@ -19,6 +20,7 @@ export const DEFAULT_CSV_OPTIONS: CsvOptions = {
   nullText: "",
   lineEnding: "\n",
   bom: false,
+  escapeFormulas: true,
 };
 
 export const CSV_DELIMITERS = [
@@ -50,8 +52,15 @@ export function csvValueText(value: unknown): string | null {
   return String(value);
 }
 
+export function defuseFormula(text: string): string {
+  return /^[=+\-@\t\r]/.test(text) && !/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(text)
+    ? `'${text}`
+    : text;
+}
+
 export function csvField(value: unknown, options: CsvOptions): string {
-  const raw = csvValueText(value);
+  const plain = csvValueText(value);
+  const raw = plain !== null && options.escapeFormulas !== false ? defuseFormula(plain) : plain;
   const text = raw ?? options.nullText;
   const needsQuote =
     (raw !== null && (raw === "" || raw === options.nullText)) ||

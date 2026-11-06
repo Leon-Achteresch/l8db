@@ -1,38 +1,30 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { EPISODE_KINDS } from "@/features/transfer/cinema/transfer-cinema-episodes";
+import type { EpisodeKind } from "@/features/transfer/cinema/transfer-cinema-sim";
+import { TransferCinemaStage } from "@/features/transfer/cinema/transfer-cinema-stage";
 import { cn } from "@/lib/utils";
-import { drawScene } from "./transfer-cinematic-draw";
-import {
-  createScene,
-  type Phase,
-  phaseAt,
-  type Scene,
-  STAGE_H,
-  STAGE_W,
-  stepScene,
-  TIMELINE,
-} from "./transfer-cinematic-sim";
+import { TransferCinemaOverlayPreview } from "./transfer-cinema-overlay-preview";
 
-const PHASE_LABELS: Record<Phase, string> = {
-  intro: "Auftritt",
-  battle: "Beschuss & Namensraub",
-  gate: "Sprungtor öffnet sich",
-  arrival: "Flaggschiff",
-  charge: "Aufladen",
-  barrage: "Sperrfeuer",
-  boom: "DROP DATABASE",
-  outro: "Abspann",
-  done: "Fertig",
+const EPISODE_LABELS: Record<EpisodeKind, string> = {
+  coffee: "Kaffeepause",
+  deadlock: "Deadlock",
+  vacuum: "VACUUM",
+  conga: "Polonaise",
+  snail: "Latenz",
+  fortress: "Indexburg",
+  rain: "Zeilenregen",
+  party: "Rollback-Party",
 };
 
-const JUMPS: { label: string; at: number }[] = [
-  { label: "Start", at: 0 },
-  { label: "Beschuss", at: TIMELINE.battle + 2 },
-  { label: "Sprungtor", at: TIMELINE.gate - 0.2 },
-  { label: "Aufladen", at: TIMELINE.charge },
-  { label: "Sperrfeuer", at: TIMELINE.barrage },
-  { label: "Explosion", at: TIMELINE.boom - 0.6 },
-  { label: "Abspann", at: TIMELINE.outro },
+const DURATIONS = [
+  { label: "15 s", seconds: 15 },
+  { label: "2 min", seconds: 120 },
+  { label: "10 min", seconds: 600 },
 ];
+
+const SPEEDS = [1, 4, 12];
+
+const TABLES = ["users", "orders", "order_items", "invoices", "customers", "payments", "audit_log"];
 
 const button =
   "h-8 rounded-md border px-3 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring";
@@ -40,72 +32,39 @@ const input =
   "h-8 w-36 rounded-md border bg-background px-2 font-mono text-xs focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none";
 
 export function TransferCinematicLab() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const phaseRef = useRef<HTMLSpanElement>(null);
-  const timeRef = useRef<HTMLSpanElement>(null);
   const [sourceName, setSourceName] = useState("staging_db");
   const [targetName, setTargetName] = useState("prod_shop");
-  const [run, setRun] = useState({ id: 0, from: 0 });
-  const [slow, setSlow] = useState(false);
+  const [duration, setDuration] = useState(120);
+  const [speed, setSpeed] = useState(1);
+  const [fail, setFail] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [loop, setLoop] = useState(true);
-  const options = useRef({ slow, paused, loop });
-  options.current = { slow, paused, loop };
+  const [run, setRun] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const [episode, setEpisode] = useState<{ kind: EpisodeKind; id: number } | null>(null);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    const source = sourceName.trim() || "quelle";
-    const target = (targetName.trim() || "ziel").slice(0, 16);
-    const fresh = () => createScene(source, target, run.id + 7);
-    let scene: Scene = fresh();
-    while (scene.t < run.from) stepScene(scene, 1 / 60);
-    let frame = 0;
-    let last = performance.now();
-    let phase: Phase | null = null;
+    if (paused) return;
+    const timer = window.setInterval(() => setElapsed((value) => value + 0.1 * speed), 100);
+    return () => window.clearInterval(timer);
+  }, [paused, speed]);
 
-    const resize = () => {
-      const ratio = window.devicePixelRatio || 1;
-      canvas.width = Math.round(canvas.clientWidth * ratio);
-      canvas.height = Math.round(canvas.clientHeight * ratio);
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
-    resize();
-
-    const tick = (now: number) => {
-      const { slow, paused, loop } = options.current;
-      const dt = Math.min(0.05, (now - last) / 1000) * (slow ? 0.3 : 1);
-      last = now;
-      if (!paused) stepScene(scene, dt);
-      if (loop && scene.t > TIMELINE.done + 1) scene = fresh();
-      ctx.setTransform(canvas.width / STAGE_W, 0, 0, canvas.height / STAGE_H, 0, 0);
-      drawScene(ctx, scene);
-      const next = phaseAt(scene.t);
-      if (next !== phase && phaseRef.current) {
-        phase = next;
-        phaseRef.current.textContent = PHASE_LABELS[next];
-      }
-      if (timeRef.current) timeRef.current.textContent = `${scene.t.toFixed(1)} s`;
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  }, [run, sourceName, targetName]);
+  const restart = () => {
+    setElapsed(0);
+    setEpisode(null);
+    setRun(run + 1);
+  };
+  const progress = Math.min(1, elapsed / duration);
+  const done = elapsed >= duration;
+  const outcome = done ? (fail ? "failure" : "success") : "running";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold tracking-tight">Transfer als Animation</h2>
+          <h2 className="text-lg font-semibold tracking-tight">Transfer-Animation</h2>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Die Quelle klaut dem Ziel Buchstabe für Buchstabe den Namen und beschießt es mit
-            Tabellen, Zeilen und JSON. Zum Schluss kommt das Flaggschiff durchs Sprungtor und macht
-            kurzen Prozess.
+            Läuft im Transfer-Overlay, solange der Transfer dauert. Zwischen dem Schusswechsel
+            kommen wechselnde Episoden, am Ende das Flaggschiff oder ein ROLLBACK.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -115,68 +74,114 @@ export function TransferCinematicLab() {
             onChange={(event) => setSourceName(event.target.value)}
             className={input}
           />
-          <span className="text-muted-foreground">klaut</span>
+          <span className="text-muted-foreground">nach</span>
           <input
             aria-label="Name des Ziels"
             value={targetName}
-            maxLength={16}
             onChange={(event) => setTargetName(event.target.value)}
             className={input}
           />
-          <button
-            type="button"
-            aria-pressed={paused}
-            onClick={() => setPaused(!paused)}
-            className={cn(button, paused && "bg-muted")}
-          >
-            Pause
-          </button>
-          <button
-            type="button"
-            aria-pressed={slow}
-            onClick={() => setSlow(!slow)}
-            className={cn(button, slow && "bg-muted")}
-          >
-            Zeitlupe
-          </button>
-          <button
-            type="button"
-            aria-pressed={loop}
-            onClick={() => setLoop(!loop)}
-            className={cn(button, loop && "bg-muted")}
-          >
-            Schleife
-          </button>
-          <button
-            type="button"
-            onClick={() => setRun({ id: run.id + 1, from: 0 })}
-            className={button}
-          >
+          <button type="button" onClick={restart} className={button}>
             Neu starten
           </button>
+          <TransferCinemaOverlayPreview
+            sourceName={sourceName}
+            targetName={targetName}
+            seconds={Math.min(duration, 120)}
+            fail={fail}
+          />
         </div>
       </div>
-      <canvas
-        ref={canvasRef}
-        role="img"
-        aria-label="Animation eines laufenden Transfers"
-        className="block aspect-video w-full rounded-xl border bg-[#f3e6d4]"
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+        <fieldset className="flex items-center gap-1.5">
+          <legend className="sr-only">Transferdauer</legend>
+          <span className="mr-1 text-muted-foreground">Dauer</span>
+          {DURATIONS.map((entry) => (
+            <button
+              key={entry.seconds}
+              type="button"
+              aria-pressed={duration === entry.seconds}
+              onClick={() => {
+                setDuration(entry.seconds);
+                restart();
+              }}
+              className={cn(button, duration === entry.seconds && "bg-muted font-medium")}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </fieldset>
+        <fieldset className="flex items-center gap-1.5">
+          <legend className="sr-only">Tempo</legend>
+          <span className="mr-1 text-muted-foreground">Tempo</span>
+          {SPEEDS.map((value) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={speed === value}
+              onClick={() => setSpeed(value)}
+              className={cn(button, speed === value && "bg-muted font-medium")}
+            >
+              {value}×
+            </button>
+          ))}
+        </fieldset>
+        <button
+          type="button"
+          aria-pressed={fail}
+          onClick={() => setFail(!fail)}
+          className={cn(button, fail && "bg-muted font-medium")}
+        >
+          Endet mit Fehler
+        </button>
+        <button
+          type="button"
+          aria-pressed={paused}
+          onClick={() => setPaused(!paused)}
+          className={cn(button, paused && "bg-muted font-medium")}
+        >
+          Pause
+        </button>
+        <button
+          type="button"
+          disabled={done}
+          onClick={() => setElapsed(duration)}
+          className={cn(button, "disabled:opacity-50")}
+        >
+          Jetzt beenden
+        </button>
+      </div>
+      <TransferCinemaStage
+        key={run}
+        sourceName={sourceName}
+        targetName={targetName}
+        speed={speed}
+        paused={paused}
+        seed={run + 7}
+        episode={episode}
+        input={{
+          progress,
+          rows: Math.floor(progress * 1_842_330),
+          table: TABLES[Math.min(TABLES.length - 1, Math.floor(progress * TABLES.length))],
+          outcome,
+        }}
+        className="rounded-xl border"
       />
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-3">
-          <span ref={phaseRef} className="font-medium" />
-          <span ref={timeRef} className="font-mono tabular-nums text-muted-foreground" />
-        </div>
+        <span className="font-mono tabular-nums text-muted-foreground">
+          {Math.min(elapsed, duration).toFixed(0)} / {duration} s · {Math.round(progress * 100)} %
+        </span>
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-muted-foreground">Springen zu</span>
-          {JUMPS.map((jump) => (
+          <span className="mr-1 text-muted-foreground">Episode starten</span>
+          {EPISODE_KINDS.map((kind) => (
             <button
-              key={jump.label}
+              key={kind}
               type="button"
-              onClick={() => setRun({ id: run.id + 1, from: jump.at })}
-              className={button}
+              disabled={done}
+              onClick={() => setEpisode({ kind, id: (episode?.id ?? 0) + 1 })}
+              className={cn(button, "disabled:opacity-50")}
             >
-              {jump.label}
+              {EPISODE_LABELS[kind]}
             </button>
           ))}
         </div>

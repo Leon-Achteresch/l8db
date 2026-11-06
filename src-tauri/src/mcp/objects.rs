@@ -3,7 +3,7 @@ use super::catalog::{
 };
 use super::config::{McpConfig, McpConnection};
 use super::discovery::{mask_hidden, Notes, View};
-use super::insight::{bulk_query, edges_from, keys_from, number, text_cell};
+use super::insight::{bulk_query, edges_from, keys_from, keys_query, number, text_cell};
 use super::redact::Redactor;
 use super::server::{adapter, arg_str, run, Server};
 use crate::db::{DatabaseAdapter, DatabaseKind, QueryResult};
@@ -282,6 +282,142 @@ async fn routines(
     out
 }
 
+fn parse_relations(kind: DatabaseKind, rows: Vec<Vec<String>>) -> Vec<Relation> {
+    rows.into_iter()
+        .filter_map(|row| {
+            let kind = relation_kind(kind, &row[2])?;
+            let comment = Some(row[5].trim())
+                .filter(|text| !text.is_empty() && !(kind == Kind::View && *text == "VIEW"))
+                .map(|text| text.chars().take(500).collect());
+            Some(Relation {
+                schema: row[0].clone(),
+                name: row[1].clone(),
+                kind,
+                rows: int(&row[3]),
+                bytes: int(&row[4]).filter(|bytes| *bytes > 0),
+                comment,
+            })
+        })
+        .collect()
+}
+
+#[derive(serde::Serialize, Debug, Default, PartialEq)]
+pub(crate) struct SchemaMapTable {
+    pub name: String,
+    pub rows: Option<i64>,
+    pub bytes: Option<i64>,
+    pub comment: Option<String>,
+}
+
+#[derive(serde::Serialize, Debug, Default, PartialEq)]
+pub(crate) struct SchemaMapLink {
+    pub from: [String; 2],
+    pub to: [String; 2],
+}
+
+#[derive(serde::Serialize, Debug, Default, PartialEq)]
+pub(crate) struct SchemaMap {
+    pub tables: Vec<SchemaMapTable>,
+    pub links: Vec<SchemaMapLink>,
+    pub warning: Option<String>,
+}
+
+fn own_segments_sql(kind: DatabaseKind, schema: &str) -> Option<String> {
+    if kind != DatabaseKind::Oracle {
+        return None;
+    }
+    literal(schema).map(|schema| {
+        format!(
+            "SELECT segment_name AS a, SUM(bytes) AS b FROM user_segments WHERE USER = {schema} \
+             AND segment_type IN ('TABLE', 'TABLE PARTITION', 'TABLE SUBPARTITION') GROUP BY segment_name"
+        )
+    })
+}
+
+pub(crate) fn schema_map_supported(kind: DatabaseKind) -> bool {
+    matches!(
+        kind,
+        DatabaseKind::Postgres
+            | DatabaseKind::Mysql
+            | DatabaseKind::Mssql
+            | DatabaseKind::Oracle
+            | DatabaseKind::Clickhouse
+            | DatabaseKind::Sqlite
+            | DatabaseKind::Duckdb
+    )
+}
+
+pub(crate) async fn schema_map(
+    adapter: &dyn DatabaseAdapter,
+    kind: DatabaseKind,
+    schema: &str,
+) -> Result<SchemaMap, String> {
+    let scope = [schema.to_string()];
+    let mut warning = None;
+    let mut tables: Vec<SchemaMapTable> = match relations_sql(kind, &scope, &scope) {
+        Some(sql) => match fetch(adapter, &sql).await {
+            Ok(rows) => parse_relations(kind, rows)
+                .into_iter()
+                .filter(|relation| relation.kind != Kind::View && relation.schema == schema)
+                .map(|relation| SchemaMapTable {
+                    name: relation.name,
+                    rows: relation.rows,
+                    bytes: relation.bytes,
+                    comment: relation.comment,
+                })
+                .collect(),
+            Err(error) => {
+                warning = Some(error);
+                Vec::new()
+            }
+        },
+        None => Vec::new(),
+    };
+    if let Some(sql) = own_segments_sql(kind, schema) {
+        for row in fetch(adapter, &sql).await.unwrap_or_default() {
+            let Some(bytes) = int(&row[1]).filter(|bytes| *bytes > 0) else {
+                continue;
+            };
+            match tables.iter_mut().find(|table| table.name == row[0]) {
+                Some(table) => table.bytes = Some(bytes),
+                None if warning.is_some() => tables.push(SchemaMapTable {
+                    name: row[0].clone(),
+                    bytes: Some(bytes),
+                    ..SchemaMapTable::default()
+                }),
+                None => {}
+            }
+        }
+    }
+    let links = match keys_query(kind, Some(schema)) {
+        Some(sql) => {
+            count();
+            adapter
+                .execute_query(&sql)
+                .await
+                .map(|result| schema_links(edges_from(keys_from(&result)), schema))
+                .unwrap_or_default()
+        }
+        None => Vec::new(),
+    };
+    Ok(SchemaMap {
+        tables,
+        links,
+        warning,
+    })
+}
+
+fn schema_links(edges: Vec<super::insight::Edge>, schema: &str) -> Vec<SchemaMapLink> {
+    edges
+        .into_iter()
+        .filter(|edge| edge.from.0 == schema || edge.to.0 == schema)
+        .map(|edge| SchemaMapLink {
+            from: [edge.from.0, edge.from.1],
+            to: [edge.to.0, edge.to.1],
+        })
+        .collect()
+}
+
 pub(super) async fn load(
     adapter: &dyn DatabaseAdapter,
     kind: DatabaseKind,
@@ -298,25 +434,8 @@ pub(super) async fn load(
     }
     match relations_sql(kind, schemas, allowlist) {
         Some(sql) => {
-            objects.relations = fetch(adapter, &sql)
-                .await
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|row| {
-                    let kind = relation_kind(kind, &row[2])?;
-                    let comment = Some(row[5].trim())
-                        .filter(|text| !text.is_empty() && !(kind == Kind::View && *text == "VIEW"))
-                        .map(|text| text.chars().take(500).collect());
-                    Some(Relation {
-                        schema: row[0].clone(),
-                        name: row[1].clone(),
-                        kind,
-                        rows: int(&row[3]),
-                        bytes: int(&row[4]).filter(|bytes| *bytes > 0),
-                        comment,
-                    })
-                })
-                .collect();
+            objects.relations =
+                parse_relations(kind, fetch(adapter, &sql).await.unwrap_or_default());
         }
         None => {
             count();
@@ -903,7 +1022,7 @@ impl Server {
         let started = Instant::now();
         count();
         let result = run(config, connection.kind, async {
-            adapter.execute_query(sql).await
+            adapter.execute_query(&sql).await
         })
         .await
         .ok()?;
@@ -1219,6 +1338,101 @@ mod tests {
                 && text.contains("1 views, 1 triggers"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn schema_map_links_keep_only_edges_touching_the_schema() {
+        let edge = |from: (&str, &str), to: (&str, &str)| super::super::insight::Edge {
+            from: (from.0.into(), from.1.into()),
+            to: (to.0.into(), to.1.into()),
+            pairs: Vec::new(),
+        };
+        let links = schema_links(
+            vec![
+                edge(("public", "orders"), ("public", "users")),
+                edge(("storage", "objects"), ("public", "users")),
+                edge(("auth", "sessions"), ("auth", "users")),
+            ],
+            "public",
+        );
+        assert_eq!(
+            links,
+            vec![
+                SchemaMapLink {
+                    from: ["public".into(), "orders".into()],
+                    to: ["public".into(), "users".into()],
+                },
+                SchemaMapLink {
+                    from: ["storage".into(), "objects".into()],
+                    to: ["public".into(), "users".into()],
+                },
+            ]
+        );
+        assert!(!schema_map_supported(DatabaseKind::Redis));
+        assert!(schema_map_supported(DatabaseKind::Postgres));
+        let scoped = keys_query(DatabaseKind::Mssql, Some("o'neil")).unwrap();
+        assert!(scoped.contains(
+            " WHERE (SCHEMA_NAME(t1.schema_id) = 'o''neil' OR SCHEMA_NAME(t2.schema_id) = 'o''neil') ORDER BY"
+        ));
+        assert!(keys_query(DatabaseKind::Postgres, Some("public"))
+            .unwrap()
+            .contains(
+                "con.contype = 'f' AND (n1.nspname = 'public' OR n2.nspname = 'public') ORDER BY"
+            ));
+        assert!(!bulk_query(DatabaseKind::Mysql)
+            .unwrap()
+            .contains("{filter}"));
+        assert!(keys_query(DatabaseKind::Mysql, Some("a\\b")).is_none());
+        assert!(bulk_query(DatabaseKind::Oracle).is_none());
+        let oracle = keys_query(DatabaseKind::Oracle, Some("HR")).unwrap();
+        assert!(oracle.contains("FROM all_constraints c"));
+        assert!(!oracle.contains("dba_"));
+        assert!(oracle
+            .contains("c.constraint_type = 'R' AND (c.owner = 'HR' OR r.owner = 'HR') ORDER BY"));
+        assert!(oracle.ends_with("WHERE ROWNUM <= 50000"));
+        let segments = own_segments_sql(DatabaseKind::Oracle, "HR").unwrap();
+        assert!(segments.contains("FROM user_segments WHERE USER = 'HR'"));
+        assert!(own_segments_sql(DatabaseKind::Postgres, "public").is_none());
+        assert!(own_segments_sql(DatabaseKind::Oracle, "a\\b").is_none());
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[tokio::test]
+    async fn duckdb_schema_map_lists_tables_of_one_schema_with_estimates() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("map.duckdb");
+        {
+            let db = duckdb::Connection::open(&path).unwrap();
+            db.execute_batch(
+                "CREATE TABLE orders(id INTEGER);
+                 INSERT INTO orders SELECT i FROM range(500) t(i);
+                 COMMENT ON TABLE orders IS 'Bestellungen';
+                 CREATE VIEW open_orders AS SELECT id FROM orders;
+                 CREATE SCHEMA archive;
+                 CREATE TABLE archive.orders(id INTEGER);",
+            )
+            .unwrap();
+        }
+        let adapter = crate::db::create_adapter_from_string(
+            DatabaseKind::Duckdb,
+            &path.to_string_lossy(),
+            None,
+            crate::db::pool::PoolState::default(),
+        )
+        .unwrap();
+        let map = schema_map(adapter.as_ref(), DatabaseKind::Duckdb, "main")
+            .await
+            .unwrap();
+        assert_eq!(
+            map.tables
+                .iter()
+                .map(|table| table.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["orders"]
+        );
+        assert_eq!(map.tables[0].rows, Some(500));
+        assert_eq!(map.tables[0].comment.as_deref(), Some("Bestellungen"));
+        assert!(map.links.is_empty());
     }
 
     #[cfg(feature = "duckdb")]

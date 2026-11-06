@@ -14,6 +14,7 @@ import { cancelSession, terminateSession } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { useHasNewFeatures } from "@/lib/new-features";
 import { useLocksQuery, useSessionsQuery } from "@/lib/queries";
+import { sessionActionMessage, sessionIdLabel } from "@/lib/session-actions";
 import {
   type BlockingInfo,
   computeBlocking,
@@ -46,7 +47,7 @@ export function SessionsView() {
   const [highlightedPid, setHighlightedPid] = useState<number | null>(null);
   const { data: sessions, isLoading, isError, error, refetch } = useSessionsQuery();
   const { data: locks, error: locksError, refetch: refetchLocks } = useLocksQuery();
-  const idLabel = connection?.kind === "oracle" ? "SID" : "PID";
+  const idLabel = sessionIdLabel(connection?.kind);
   const capabilities = useActiveCapabilities();
   const showBlocking = Boolean(capabilities?.sessions && capabilities?.locks);
   const serverInfoNew = useHasNewFeatures("sessions.server-info");
@@ -112,10 +113,8 @@ export function SessionsView() {
         pid,
         database ?? undefined,
       );
-      toast.success(
-        cancelled
-          ? `Abfrage auf ${idLabel} ${pid} abgebrochen.`
-          : `${idLabel} ${pid}: nichts abzubrechen.`,
+      (cancelled ? toast.success : toast.info)(
+        sessionActionMessage("cancel", cancelled, connection.kind, pid),
       );
       refresh();
     } catch (err) {
@@ -135,13 +134,15 @@ export function SessionsView() {
       return;
     setActingPid(pid);
     try {
-      await terminateSession(
+      const terminated = await terminateSession(
         connection.kind,
         effectiveConnectionString(connection),
         pid,
         database ?? undefined,
       );
-      toast.success(`Sitzung ${pid} beendet.`);
+      (terminated ? toast.success : toast.info)(
+        sessionActionMessage("terminate", terminated, connection.kind, pid),
+      );
       refresh();
     } catch (err) {
       toast.error(typeof err === "string" ? err : String(err));
@@ -163,7 +164,9 @@ export function SessionsView() {
       <header className="flex shrink-0 items-center gap-2">
         <ActivityIcon className="size-5 text-primary" />
         <h1 className="text-xl font-bold tracking-tight">Sitzungen & Locks</h1>
-        <span className="text-xs text-muted-foreground">aktualisiert alle 5 s</span>
+        {!(isError && sessions === undefined) && (
+          <span className="text-xs text-muted-foreground">aktualisiert alle 5 s</span>
+        )}
         {blockedCount > 0 && (
           <Badge variant="destructive" className="ml-2 px-1.5 py-0 text-[10px]">
             {blockedCount} blockiert

@@ -88,7 +88,6 @@ export function PromptInput({
 }: PromptInputProps) {
   const reduce = useReducedMotion() ?? false;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const measurementRef = useRef<HTMLDivElement>(null);
   const [internalValue, setInternalValue] = useState(defaultValue);
   const [internalModel, setInternalModel] = useState(defaultModel ?? models[0]?.value);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -99,15 +98,16 @@ export function PromptInput({
   const canSubmit = Boolean(currentValue.trim()) && !disabled && (!loading || queueable);
   const resizeTextarea = useCallback(() => {
     const textarea = textareaRef.current;
-    const measurement = measurementRef.current;
-    if (!textarea || !measurement || textarea.value !== currentValue) return;
+    if (!textarea || textarea.value !== currentValue) return;
     const lineHeight = 24;
-    const nextHeight = Math.min(
-      Math.max(measurement.scrollHeight, minRows * lineHeight),
-      maxRows * lineHeight,
-    );
-    const height = `${nextHeight}px`;
-    if (textarea.style.height !== height) textarea.style.height = height;
+    const style = getComputedStyle(textarea);
+    const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(
+      Math.max(textarea.scrollHeight, minRows * lineHeight + padding),
+      maxRows * lineHeight + padding,
+      Math.max(window.innerHeight * 0.4, minRows * lineHeight + padding),
+    )}px`;
   }, [currentValue, maxRows, minRows]);
   useLayoutEffect(() => {
     resizeTextarea();
@@ -115,9 +115,18 @@ export function PromptInput({
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(resizeTextarea);
+    let width = textarea.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (textarea.clientWidth === width) return;
+      width = textarea.clientWidth;
+      resizeTextarea();
+    });
     observer.observe(textarea);
-    return () => observer.disconnect();
+    window.addEventListener("resize", resizeTextarea);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", resizeTextarea);
+    };
   }, [resizeTextarea]);
   const setValue = (next: string) => {
     if (value === undefined) setInternalValue(next);
@@ -157,13 +166,6 @@ export function PromptInput({
         className,
       )}
     >
-      <div
-        ref={measurementRef}
-        aria-hidden="true"
-        className="pointer-events-none invisible absolute inset-x-2 top-0 whitespace-pre-wrap px-2 text-sm leading-6 [overflow-wrap:break-word]"
-      >
-        {`${currentValue}\u200b`}
-      </div>
       <textarea
         ref={(node) => {
           textareaRef.current = node;
@@ -178,7 +180,7 @@ export function PromptInput({
         {...textareaProps}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={handleKeyDown}
-        className="scrollbar-hide block w-full resize-none overflow-y-auto bg-transparent px-2 pt-1.5 text-xs leading-6 text-foreground outline-none placeholder:text-muted-foreground/55"
+        className="scrollbar-hide block w-full resize-none overflow-y-auto bg-transparent px-2 pt-1.5 text-[13px] leading-6 text-foreground outline-none placeholder:text-muted-foreground/60"
       />
 
       <div className="mt-1 flex min-h-8 items-center gap-1">

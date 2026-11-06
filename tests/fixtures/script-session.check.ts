@@ -73,3 +73,26 @@ test("single queries do not pin a session", async () => {
   await executeQuery("mssql", connection.connectionString, "SELECT 1", "ms");
   expect(calls.find((call) => call.command === "execute_query")?.args.session).toBeUndefined();
 });
+
+test("large scripts write one history entry instead of one per statement", async () => {
+  const { useQueryHistoryStore } = await import("../../src/lib/query-history");
+  useQueryHistoryStore.setState({ entries: [] });
+  const writes = { count: 0 };
+  const setItem = globalThis.localStorage.setItem;
+  globalThis.localStorage.setItem = (key: string, value: string) => {
+    if (key === "l8db.query-history") writes.count++;
+    setItem(key, value);
+  };
+  const sql = Array.from({ length: 2000 }, (_, i) => `UPDATE t SET a = ${i} WHERE id = ${i};`).join(
+    "\n",
+  );
+  const started = performance.now();
+  await runSqlScript({ connection, database: "ms", sql, mode: "autocommit" });
+  const elapsed = performance.now() - started;
+  globalThis.localStorage.setItem = setItem;
+  const entries = useQueryHistoryStore.getState().entries;
+  expect(entries).toHaveLength(1);
+  expect(entries[0].sql.length).toBeLessThanOrEqual(20_000);
+  expect(writes.count).toBeLessThanOrEqual(2);
+  console.log(`2000-statement script: ${elapsed.toFixed(0)} ms, history writes ${writes.count}`);
+});

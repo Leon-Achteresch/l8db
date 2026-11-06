@@ -21,7 +21,14 @@ export function parseDashboard(text: string): DashboardFile {
   const pages = sanitizePages(parsed.pages);
   if (pages.length) parsed.pages = pages;
   else delete parsed.pages;
+  parsed.refreshSec = sanitizeRefresh(parsed.refreshSec);
   return parsed;
+}
+
+export function sanitizeRefresh(value: unknown): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 10 && value <= 86_400
+    ? value
+    : 0;
 }
 
 export function sanitizePages(value: unknown): DashboardPage[] {

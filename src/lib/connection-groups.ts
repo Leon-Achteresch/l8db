@@ -41,6 +41,7 @@ export function matchingHostRule(
   rules: HostGroupRule[],
 ): HostGroupRule | undefined {
   const host = connectionSummary(connection.connectionString, connection.kind).host;
+  const bare = host.replace(/^\[|\]$/g, "");
   const label = serverLabel(connection);
   return rules.find((rule) =>
     rule.pattern
@@ -49,7 +50,7 @@ export function matchingHostRule(
       .filter(Boolean)
       .some((part) => {
         const [regex] = hostPatternRegexes(part);
-        return regex.test(host) || (/[:/]/.test(part) && regex.test(label));
+        return regex.test(host) || regex.test(bare) || (/[:/]/.test(part) && regex.test(label));
       }),
   );
 }

@@ -177,8 +177,9 @@ export function s3DeleteBucket(
   connectionString: string,
   bucket: string,
   force = false,
+  jobId?: string,
 ): Promise<void> {
-  return invoke("s3_delete_bucket", { connectionString, bucket, force });
+  return invoke("s3_delete_bucket", { connectionString, bucket, force, jobId });
 }
 
 export function s3ListObjects(
@@ -250,8 +251,16 @@ export function s3PutObjectText(
   key: string,
   text: string,
   contentType?: string,
+  expectedEtag?: string | null,
 ): Promise<string | null> {
-  return invoke("s3_put_object_text", { connectionString, bucket, key, text, contentType });
+  return invoke("s3_put_object_text", {
+    connectionString,
+    bucket,
+    key,
+    text,
+    contentType,
+    expectedEtag,
+  });
 }
 
 export function s3CreateFolder(
@@ -275,7 +284,7 @@ export function s3DeletePrefix(
   connectionString: string,
   bucket: string,
   prefix: string,
-  options: { allVersions?: boolean; bypassGovernance?: boolean } = {},
+  options: { allVersions?: boolean; bypassGovernance?: boolean; jobId?: string } = {},
 ): Promise<DeleteOutcome> {
   return invoke("s3_delete_prefix", { connectionString, bucket, prefix, ...options });
 }
@@ -287,6 +296,7 @@ export function s3CopyObjects(
   bucket: string,
   destinationPrefix: string,
   moveItems: boolean,
+  options: { overwrite?: boolean; jobId?: string } = {},
 ): Promise<DeleteOutcome> {
   return invoke("s3_copy_objects", {
     connectionString,
@@ -295,6 +305,7 @@ export function s3CopyObjects(
     bucket,
     destinationPrefix,
     moveItems,
+    ...options,
   });
 }
 
@@ -303,8 +314,9 @@ export function s3RenameObject(
   bucket: string,
   from: string,
   to: string,
+  options: { overwrite?: boolean; jobId?: string } = {},
 ): Promise<DeleteOutcome> {
-  return invoke("s3_rename_object", { connectionString, bucket, from, to });
+  return invoke("s3_rename_object", { connectionString, bucket, from, to, ...options });
 }
 
 export function s3RestoreVersion(
@@ -405,8 +417,9 @@ export function s3BucketStats(
   connectionString: string,
   bucket: string,
   prefix = "",
+  jobId?: string,
 ): Promise<BucketStats> {
-  return invoke("s3_bucket_stats", { connectionString, bucket, prefix });
+  return invoke("s3_bucket_stats", { connectionString, bucket, prefix, jobId });
 }
 
 export function s3SearchObjects(
@@ -415,8 +428,9 @@ export function s3SearchObjects(
   prefix: string,
   query: string,
   limit = 500,
+  jobId?: string,
 ): Promise<{ objects: ObjectEntry[]; truncated: boolean }> {
-  return invoke("s3_search_objects", { connectionString, bucket, prefix, query, limit });
+  return invoke("s3_search_objects", { connectionString, bucket, prefix, query, limit, jobId });
 }
 
 export function s3SelectObject(
@@ -435,6 +449,7 @@ export function s3Upload(
   paths: string[],
   transferId: string,
   properties?: ObjectProperties,
+  overwrite = false,
 ): Promise<TransferSummary> {
   return invoke("s3_upload", {
     connectionString,
@@ -443,6 +458,7 @@ export function s3Upload(
     paths,
     transferId,
     properties: properties ?? null,
+    overwrite,
   });
 }
 

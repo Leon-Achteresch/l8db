@@ -140,7 +140,7 @@ export function isCellInSelection(
 export function serializeSelectionCell(value: unknown): string {
   if (value === null || value === undefined) return "";
   const text = typeof value === "object" ? JSON.stringify(value) : String(value);
-  return text.replace(/\r\n|\r|\n/g, " ").replace(/\t/g, " ");
+  return /[\t\r\n]|^"/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 export function selectionToTsv(

@@ -31,6 +31,7 @@ export interface AiProfile {
   endpoint: string;
   model: string;
   effort: string;
+  fast?: boolean;
   mode: string;
   approval?: string;
   config?: Record<string, unknown>;
@@ -121,6 +122,8 @@ export interface AiModel {
   id: string;
   name: string;
   efforts?: unknown[];
+  fast?: boolean;
+  default?: boolean;
 }
 export interface AiModels {
   models: AiModel[];

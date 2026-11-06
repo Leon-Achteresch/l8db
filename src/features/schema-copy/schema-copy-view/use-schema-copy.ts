@@ -136,6 +136,7 @@ export function useSchemaCopy(connection: SavedConnection | null) {
     const url = effectiveConnectionString(connection);
     const messages: string[] = [];
     const failedData: string[] = [];
+    let failed = 0;
     for (const name of selected) {
       try {
         await executeSchemaObjectCopy(
@@ -166,13 +167,22 @@ export function useSchemaCopy(connection: SavedConnection | null) {
           }
         }
       } catch (error) {
+        failed++;
         messages.push(`${name}: fehlgeschlagen — ${errorMessage(error)}`);
       }
     }
     setLog(messages);
     setDataRetry(failedData);
     setRunning(false);
-    toast.success(`${selected.length} Objekt(e) verarbeitet.`);
+    if (failed > 0 && failed === selected.length)
+      toast.error(`Alle ${failed} Objekt(e) fehlgeschlagen.`);
+    else if (failed > 0 || failedData.length > 0)
+      toast.warning(
+        `${selected.length - failed} von ${selected.length} Objekt(en) erstellt${
+          failed > 0 ? `, ${failed} fehlgeschlagen` : ""
+        }${failedData.length > 0 ? `, Datentransfer bei ${failedData.length} abgebrochen` : ""}.`,
+      );
+    else toast.success(`${selected.length} Objekt(e) verarbeitet.`);
     await loadEntries();
   };
 

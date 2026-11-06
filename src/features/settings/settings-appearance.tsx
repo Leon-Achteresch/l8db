@@ -3,9 +3,9 @@ import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
+import { SettingsSeasonal } from "@/features/settings/settings-seasonal";
 import { SettingsTableAppearance } from "@/features/settings/settings-table-appearance";
 import { islandName, previewIsland } from "@/lib/dynamic-island";
-import { SPIDER_PREVIEW_QUIP, visitSpider } from "@/lib/seasonal";
 import { UI_SCALE_MAX, UI_SCALE_MIN, UI_SCALE_STEP, useSettingsStore } from "@/lib/settings";
 
 export function SettingsAppearance({ onboarding = false }: { onboarding?: boolean }) {
@@ -22,7 +22,6 @@ export function SettingsAppearance({ onboarding = false }: { onboarding?: boolea
     setSidebarExtraCompact,
     setNavInHeader,
     setDynamicIsland,
-    setSeasonalAccents,
     setUiScale,
     setUiDensity,
     resetAppearance,
@@ -110,31 +109,7 @@ export function SettingsAppearance({ onboarding = false }: { onboarding?: boolea
       </SettingsRow>
       {onboarding ? null : (
         <>
-          <SettingsRow settingId="seasonal-accents" featureId="settings.appearance.seasonal">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!seasonalAccents}
-                onClick={(event) => {
-                  const button = event.currentTarget.getBoundingClientRect();
-                  const row = event.currentTarget.closest("[data-setting-id]");
-                  const top =
-                    row?.previousElementSibling?.getBoundingClientRect().bottom ??
-                    row?.getBoundingClientRect().top ??
-                    button.top;
-                  visitSpider({ x: button.left - 40, top, y: top + 14 }, SPIDER_PREVIEW_QUIP, true);
-                }}
-              >
-                Vorschau
-              </Button>
-              <Switch
-                aria-label="Saisonale Akzente"
-                checked={seasonalAccents}
-                onCheckedChange={setSeasonalAccents}
-              />
-            </div>
-          </SettingsRow>
+          <SettingsSeasonal />
           <SettingsTableAppearance />
           <SettingsRow settingId="reset-appearance">
             <Button

@@ -55,6 +55,8 @@ test("publisher handles delayed draft listings, avoids republishing and limits d
       "extension-market",
       "dashboard-workspace",
       "mcp-open",
+      "ai-issue-report",
+      "split-dnd",
     ]);
     state = JSON.parse(readFileSync(statePath, "utf8"));
     expect(state.assets).toHaveLength(3);
@@ -82,6 +84,8 @@ test("publisher handles delayed draft listings, avoids republishing and limits d
       "extension-market",
       "dashboard-workspace",
       "mcp-open",
+      "ai-issue-report",
+      "split-dnd",
     ]);
     state.media.body = "invalid";
     writeFileSync(statePath, JSON.stringify(state));

@@ -51,24 +51,40 @@ function rustPackages() {
       if (dep.dep_kinds.some((kind) => kind.kind === null)) stack.push(dep.pkg);
     }
   }
-  return [...seen]
-    .filter((id) => !metadata.workspace_members.includes(id))
-    .map((id) => packages.get(id))
-    .map((pkg) => {
-      const dir = dirname(pkg.manifest_path);
-      const texts = licenseTexts(dir);
-      if (pkg.license_file) {
-        const file = join(dir, pkg.license_file);
-        if (existsSync(file)) texts.push(readFileSync(file, "utf8").replace(/\r\n?/g, "\n").trim());
-      }
-      return {
-        name: pkg.name,
-        version: pkg.version,
-        ecosystem: "Rust",
-        spdx: pkg.license ?? "",
-        texts,
-      };
-    });
+  const nativeOpenSsl = metadata.packages.find((pkg) => pkg.name === "openssl-src");
+  const nativeNotices = nativeOpenSsl
+    ? [
+        {
+          name: "OpenSSL",
+          version: nativeOpenSsl.version.split("+")[1],
+          ecosystem: "native",
+          spdx: "Apache-2.0",
+          texts: licenseTexts(join(dirname(nativeOpenSsl.manifest_path), "openssl")),
+        },
+      ]
+    : [];
+  return [
+    ...nativeNotices,
+    ...[...seen]
+      .filter((id) => !metadata.workspace_members.includes(id))
+      .map((id) => packages.get(id))
+      .map((pkg) => {
+        const dir = dirname(pkg.manifest_path);
+        const texts = licenseTexts(dir);
+        if (pkg.license_file) {
+          const file = join(dir, pkg.license_file);
+          if (existsSync(file))
+            texts.push(readFileSync(file, "utf8").replace(/\r\n?/g, "\n").trim());
+        }
+        return {
+          name: pkg.name,
+          version: pkg.version,
+          ecosystem: "Rust",
+          spdx: pkg.license ?? "",
+          texts,
+        };
+      }),
+  ];
 }
 
 function resolvePackage(name, from) {

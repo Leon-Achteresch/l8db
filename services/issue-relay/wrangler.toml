@@ -1,0 +1,16 @@
+name = "l8db-issue-relay"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+[vars]
+REPOSITORY = "Leon-Achteresch/l8db"
+SCREENSHOT_BASE_URL = "https://REPLACE-WITH-PUBLIC-R2-URL.r2.dev"
+
+[[r2_buckets]]
+binding = "SCREENSHOTS"
+bucket_name = "l8db-issue-screenshots"
+
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+simple = { limit = 3, period = 60 }

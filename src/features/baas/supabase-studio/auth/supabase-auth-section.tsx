@@ -2,7 +2,7 @@ import { Settings2, Users } from "lucide-react";
 import { useState } from "react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { SupabaseSectionHeader } from "../supabase-section-header";
+import { BaasSectionHeader } from "../../baas-section-header";
 import { SupabaseSectionTitle } from "../supabase-section-title";
 import { SupabaseSidebarTabs } from "../supabase-sidebar-tabs";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
@@ -20,7 +20,7 @@ export function SupabaseAuthSection({ project, capabilities }: SupabaseStudioSec
 
   return (
     <div className="grid gap-5">
-      <SupabaseSectionHeader
+      <BaasSectionHeader
         title={
           <SupabaseSectionTitle
             section="Auth"

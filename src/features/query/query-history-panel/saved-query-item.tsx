@@ -1,6 +1,7 @@
-import { PlayIcon, Trash2Icon } from "lucide-react";
+import { PencilIcon, PlayIcon, Trash2Icon } from "lucide-react";
 import { memo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { firstLine } from "@/features/query/query-history-panel/format";
 import type { SavedQuery } from "@/lib/saved-queries";
 
@@ -8,13 +9,16 @@ interface SavedQueryItemProps {
   entry: SavedQuery;
   onLoad: (sql: string, mode?: "new" | "replace") => void;
   onDelete: (id: string) => void;
+  onRename: (id: string, name: string) => void;
 }
 
 export const SavedQueryItem = memo(function SavedQueryItem({
   entry,
   onLoad,
   onDelete,
+  onRename,
 }: SavedQueryItemProps) {
+  const [renaming, setRenaming] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   return (
@@ -27,13 +31,33 @@ export const SavedQueryItem = memo(function SavedQueryItem({
         if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
       }}
     >
+      {renaming && (
+        <Input
+          autoFocus
+          aria-label="Neuer Name"
+          defaultValue={entry.name}
+          className="h-7 text-xs"
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+            if (event.key === "Escape") {
+              event.currentTarget.value = entry.name;
+              setRenaming(false);
+            }
+          }}
+          onBlur={(event) => {
+            const name = event.currentTarget.value.trim();
+            if (name && name !== entry.name) onRename(entry.id, name);
+            setRenaming(false);
+          }}
+        />
+      )}
       <button
         type="button"
         className="block w-full text-left"
         onClick={() => onLoad(entry.sql, "new")}
         title="In neuem SQL-Tab öffnen"
       >
-        <p className="truncate text-xs font-medium">{entry.name}</p>
+        {!renaming && <p className="truncate text-xs font-medium">{entry.name}</p>}
         <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
           {firstLine(entry.sql)}
         </p>
@@ -48,6 +72,15 @@ export const SavedQueryItem = memo(function SavedQueryItem({
           >
             <PlayIcon className="size-3" />
             Neuer Tab
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
+            onClick={() => setRenaming(true)}
+          >
+            <PencilIcon className="size-3" />
+            Umbenennen
           </Button>
           <Button
             variant="ghost"

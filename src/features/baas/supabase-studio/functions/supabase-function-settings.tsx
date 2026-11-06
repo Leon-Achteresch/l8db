@@ -95,7 +95,7 @@ export function SupabaseFunctionSettings({
       </dl>
       <div className="grid gap-4 lg:grid-cols-2">
         <form
-          className="grid content-start gap-3 rounded-xl border bg-card p-4"
+          className="grid content-start gap-3 rounded-xl bg-muted/25 p-4"
           onSubmit={(event) => {
             event.preventDefault();
             save.mutate();
@@ -134,7 +134,7 @@ export function SupabaseFunctionSettings({
             )}
           </div>
         </form>
-        <section className="grid content-start gap-3 rounded-xl border bg-card p-4">
+        <section className="grid content-start gap-3 rounded-xl bg-muted/25 p-4">
           <h4 className="text-xs font-semibold">Versionen</h4>
           <p className="text-xs leading-relaxed text-muted-foreground">
             Ein neues Deployment ersetzt Version {data.version ?? "–"}. Löschen entfernt die

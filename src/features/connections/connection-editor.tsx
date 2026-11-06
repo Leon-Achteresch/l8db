@@ -22,13 +22,16 @@ export function ConnectionEditor({
   const {
     activeInfo,
     busy,
+    cancelTest,
     guided,
     info,
     pasteConnectionString,
     provider,
     providers,
     reduce,
+    result,
     save,
+    saving,
     selectProvider,
     setResult,
     setStep,
@@ -60,8 +63,12 @@ export function ConnectionEditor({
           variant="ghost"
           size="icon"
           aria-label="Editor schließen"
-          disabled={busy}
-          onClick={onCancel}
+          disabled={saving}
+          onClick={() => {
+            if (editor.dirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
+            cancelTest();
+            onCancel();
+          }}
         >
           <X className="size-4" />
         </Button>
@@ -139,6 +146,9 @@ export function ConnectionEditor({
                 <Button
                   type="button"
                   disabled={busy || !info.driver_status.available}
+                  disabledReason={
+                    busy ? "Vorgang läuft bereits" : "Treiber für diese Datenbank nicht verfügbar"
+                  }
                   onClick={() => {
                     requestAnimationFrame(() => setStep(2));
                   }}
@@ -148,15 +158,22 @@ export function ConnectionEditor({
                 </Button>
               ) : (
                 <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void test()}
-                  >
-                    <PlugZap className="size-4" />
-                    Testen
-                  </Button>
+                  {result.status === "testing" ? (
+                    <Button type="button" variant="outline" onClick={cancelTest}>
+                      <X className="size-4" />
+                      Test abbrechen
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => void test()}
+                    >
+                      <PlugZap className="size-4" />
+                      Testen
+                    </Button>
+                  )}
                   <Button type="submit" disabled={busy} className="h-11 min-w-36">
                     Verbindung speichern
                   </Button>

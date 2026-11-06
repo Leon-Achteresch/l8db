@@ -25,19 +25,24 @@ export function combinable(metric: { agg?: Agg }): boolean {
   return additive(metric) || metric.agg === "min" || metric.agg === "max";
 }
 
+export function numberOrNull(value: unknown): number | null {
+  const number =
+    typeof value === "number"
+      ? value
+      : typeof value === "bigint"
+        ? Number(value)
+        : typeof value === "string" && value.trim()
+          ? Number(value)
+          : Number.NaN;
+  return Number.isFinite(number) ? number : null;
+}
+
 export function combineTotal(metric: { agg?: Agg } | undefined, values: unknown[]): number | null {
   if (!metric || !combinable(metric)) return null;
   let result: number | null = null;
   for (const value of values) {
-    const number =
-      typeof value === "number"
-        ? value
-        : typeof value === "bigint"
-          ? Number(value)
-          : typeof value === "string" && value.trim()
-            ? Number(value)
-            : Number.NaN;
-    if (!Number.isFinite(number)) continue;
+    const number = numberOrNull(value);
+    if (number === null) continue;
     if (result === null) result = number;
     else if (metric.agg === "min") result = Math.min(result, number);
     else if (metric.agg === "max") result = Math.max(result, number);
@@ -85,11 +90,12 @@ export function applyOptions(
   const sorted =
     options.sortBy === "none" || !first
       ? rows
-      : [...rows].sort((a, b) =>
-          options.sortBy === "asc"
-            ? toNumber(a[first]) - toNumber(b[first])
-            : toNumber(b[first]) - toNumber(a[first]),
-        );
+      : [...rows].sort((a, b) => {
+          const x = numberOrNull(a[first]);
+          const y = numberOrNull(b[first]);
+          if (x === null || y === null) return (x === null ? 1 : 0) - (y === null ? 1 : 0);
+          return options.sortBy === "asc" ? x - y : y - x;
+        });
   return { shape: next, rows: sorted };
 }
 
@@ -146,6 +152,7 @@ export function colorSeries(
     shape.metrics.map((metric, m) => ({
       key: `series_${index}_${m}`,
       label: shape.metrics.length > 1 ? `${group} · ${metric.label}` : group,
+      agg: metric.agg,
     })),
   );
   const other = groups.indexOf(OTHER_LABEL);
@@ -159,10 +166,19 @@ export function colorSeries(
     if (group < 0) continue;
     shape.metrics.forEach((m, i) => {
       const k = `series_${group}_${i}`;
-      target[k] = toNumber(target[k]) + toNumber(row[m.key]);
+      const cell = (target[k] as unknown[] | undefined) ?? [];
+      cell.push(row[m.key]);
+      target[k] = cell;
     });
     result.set(key, target);
   }
+  for (const target of result.values())
+    for (const metric of metrics) {
+      const values = target[metric.key] as unknown[] | undefined;
+      if (values)
+        target[metric.key] =
+          values.length === 1 ? numberOrNull(values[0]) : combineTotal(metric, values);
+    }
   return { shape: { ...shape, dimension2: null, metrics }, rows: [...result.values()] };
 }
 

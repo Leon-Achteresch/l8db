@@ -31,6 +31,7 @@ import { connectionSummary, providerFor } from "@/lib/connection-url";
 import { connectionColorLabel, type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { cn } from "@/lib/utils";
 import { OpenInWindowMenuItem } from "./open-in-window-menu-item";
+import { TeamConnectionHelp } from "./team-connection-help";
 
 interface Props {
   connection: SavedConnection;
@@ -66,7 +67,10 @@ export function ConnectionPickCard({
         <ConnectionCardShell
           connection={connection}
           active={active}
-          onDoubleClick={onOpen}
+          onDoubleClick={(event) => {
+            if (active || (event.target as HTMLElement).closest("button")) return;
+            onOpen();
+          }}
           actions={
             <div className="flex items-center gap-0.5">
               <button
@@ -121,13 +125,17 @@ export function ConnectionPickCard({
                     label="Ähnliche erstellen"
                     onSelect={onCreateSimilar}
                   />
-                  <IconMenuSeparator />
-                  <IconMenuItem
-                    icon={<Trash2 />}
-                    label="Löschen"
-                    variant="destructive"
-                    onSelect={onDelete}
-                  />
+                  {!connection.team && (
+                    <>
+                      <IconMenuSeparator />
+                      <IconMenuItem
+                        icon={<Trash2 />}
+                        label="Löschen"
+                        variant="destructive"
+                        onSelect={onDelete}
+                      />
+                    </>
+                  )}
                 </IconMenuContent>
               </IconMenu>
             </div>
@@ -188,10 +196,14 @@ export function ConnectionPickCard({
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={onDuplicate}>Duplizieren</ContextMenuItem>
         <ContextMenuItem onSelect={onCreateSimilar}>Ähnliche erstellen…</ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem variant="destructive" onSelect={onDelete}>
-          Löschen…
-        </ContextMenuItem>
+        {!connection.team && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem variant="destructive" onSelect={onDelete}>
+              Löschen…
+            </ContextMenuItem>
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -311,6 +323,7 @@ function ConnectionCardShell({
           {actions}
         </div>
 
+        <TeamConnectionHelp connection={connection} />
         <div className="mt-3 text-xs">
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <Database className="size-3 shrink-0 text-muted-foreground/70" />

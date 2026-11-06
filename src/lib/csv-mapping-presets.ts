@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import type { CsvColumnMapping, CsvEmptyFieldMode } from "@/lib/csv-import";
 import { syncAcrossWindows } from "@/lib/window-sync";
 export interface CsvMappingPreset {
@@ -14,7 +15,10 @@ export interface CsvMappingPreset {
   emptyField: CsvEmptyFieldMode;
 }
 export const useCsvMappingPresets = create<{ presets: CsvMappingPreset[] }>()(
-  persist(() => ({ presets: [] as CsvMappingPreset[] }), { name: "l8db.csv-mapping-presets" }),
+  persist(() => ({ presets: [] as CsvMappingPreset[] }), {
+    name: "l8db.csv-mapping-presets",
+    storage: createSafeJsonStorage(),
+  }),
 );
 export function remapPreset(preset: CsvMappingPreset, headers: string[]): CsvColumnMapping[] {
   if (!preset.hasHeader && JSON.stringify(headers) !== JSON.stringify(preset.headers))

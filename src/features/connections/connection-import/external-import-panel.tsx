@@ -264,6 +264,13 @@ export function ExternalImportPanel({ source, onClose }: Props) {
         <Button
           onClick={() => void confirm()}
           disabled={busy || !candidates || stats.importable === 0}
+          disabledReason={
+            busy
+              ? "Import läuft bereits"
+              : !candidates
+                ? "Noch keine Verbindungen gefunden"
+                : "Keine importierbaren Verbindungen ausgewählt"
+          }
         >
           {stats.importable === 0 ? "Importieren" : `${stats.importable} importieren`}
         </Button>

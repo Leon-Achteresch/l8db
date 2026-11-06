@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { parseCsv } from "../src/lib/csv-import";
 
 import {
   cellsToTsv,
   classifyNumericCell,
   describeSelectionStats,
   isCellInSelection,
+  mergeSelectionCells,
   selectionCellCount,
   selectionRange,
-  mergeSelectionCells,
   selectionToTsv,
   serializeSelectionCell,
   summarizeSelection,
@@ -53,11 +54,18 @@ describe("selectionRange", () => {
 });
 
 describe("selectionToTsv", () => {
-  test("serialisiert NULL als leeres Feld und ersetzt Tabs und Umbrüche", () => {
+  test("serialisiert NULL als leeres Feld und quotet Tabs, Umbrüche und Anführungszeichen", () => {
     expect(serializeSelectionCell(null)).toBe("");
     expect(serializeSelectionCell(undefined)).toBe("");
-    expect(serializeSelectionCell("a\tb")).toBe("a b");
-    expect(serializeSelectionCell("a\r\nb")).toBe("a b");
+    expect(serializeSelectionCell("a\tb")).toBe('"a\tb"');
+    expect(serializeSelectionCell("a\r\nb")).toBe('"a\r\nb"');
+    expect(serializeSelectionCell('sagt "hi"')).toBe('sagt "hi"');
+    expect(serializeSelectionCell('"x" a\nb')).toBe('"""x"" a\nb"');
+    expect(serializeSelectionCell('"x"')).toBe('"""x"""');
+    const line = ["a\nb", '"q"', "x\ty"].map(serializeSelectionCell).join("\t");
+    expect(parseCsv(line, { delimiter: "\t", hasHeader: false }).rows).toEqual([
+      ["a\nb", '"q"', "x\ty"],
+    ]);
     expect(serializeSelectionCell({ a: 1 })).toBe('{"a":1}');
   });
 
@@ -66,7 +74,7 @@ describe("selectionToTsv", () => {
       { anchor: { rowIndex: 0, columnId: "name" }, focus: { rowIndex: 1, columnId: "note" } },
       columns,
     );
-    expect(selectionToTsv(rows, range)).toBe("Ada\t10.5\ta b\nLinus\t\tzeile1 zeile2");
+    expect(selectionToTsv(rows, range)).toBe('Ada\t10.5\t"a\tb"\nLinus\t\t"zeile1\nzeile2"');
   });
 
   test("kann Kopfzeile voranstellen und liefert ohne Auswahl leeren Text", () => {

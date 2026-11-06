@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Cloud, ExternalLink, Plus, RefreshCw, Unplug } from "lucide-react";
+import { Cloud, ExternalLink, Plus, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { appwriteConnect, appwriteDisconnect, appwriteProfiles } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { AppwriteProjectView } from "./appwrite-project-view";
+import { BaasDisconnectButton } from "./baas-disconnect-button";
+import { disconnectDescription } from "./disconnect-baas";
 
 export function AppwriteView({ initialId }: { initialId?: string }) {
   const queryClient = useQueryClient();
@@ -174,14 +176,13 @@ export function AppwriteView({ initialId }: { initialId?: string }) {
                   >
                     <RefreshCw className="size-3.5" /> Aktualisieren
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void disconnect()}
-                    disabled={busy}
-                  >
-                    <Unplug className="size-3.5" /> Trennen
-                  </Button>
+                  <BaasDisconnectButton
+                    description={disconnectDescription(
+                      selected?.name || selected?.project_id || "Appwrite",
+                    )}
+                    busy={busy}
+                    onConfirm={() => void disconnect()}
+                  />
                 </div>
               </div>
               <AppwriteProjectView key={selected.id} profile={selected} />

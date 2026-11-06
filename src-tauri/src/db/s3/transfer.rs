@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -13,11 +13,12 @@ use tokio_util::sync::CancellationToken;
 
 use super::client::{Request, S3};
 use super::ops::{parent_prefix, ObjectProperties, TransferItem};
-use super::xml;
 
 pub const PART_SIZE: u64 = 8 * 1024 * 1024;
 const FILE_CONCURRENCY: usize = 4;
 const PART_CONCURRENCY: usize = 3;
+const PART_RETRIES: u32 = 3;
+const HEAD_CONCURRENCY: usize = 8;
 const CANCELLED: &str = "Übertragung abgebrochen";
 
 #[derive(Debug, Clone, Serialize)]
@@ -277,6 +278,10 @@ fn upload_headers(key: &str, props: &ObjectProperties) -> Vec<(String, String)> 
 }
 
 #[allow(clippy::too_many_arguments)]
+fn part_timeout(len: u64) -> Duration {
+    Duration::from_secs(300 + len / (256 * 1024))
+}
+
 async fn upload_multipart(
     s3: &S3,
     bucket: &str,
@@ -305,16 +310,23 @@ async fn upload_multipart(
                 async move {
                     let offset = index * part_size;
                     let len = part_size.min(size - offset);
-                    let chunk = read_chunk_async(path, offset, len).await?;
-                    let response = s3
-                        .send(
-                            Request::new(Method::PUT, Some(bucket), Some(key))
-                                .query("partNumber", (index + 1).to_string())
-                                .query("uploadId", upload_id)
-                                .body(chunk)
-                                .no_timeout(),
-                        )
-                        .await?;
+                    let chunk = bytes::Bytes::from(read_chunk_async(path, offset, len).await?);
+                    let mut attempt = 0;
+                    let response = loop {
+                        let request = Request::new(Method::PUT, Some(bucket), Some(key))
+                            .query("partNumber", (index + 1).to_string())
+                            .query("uploadId", upload_id.clone())
+                            .body(chunk.clone())
+                            .timeout(part_timeout(len));
+                        match s3.send(request).await {
+                            Ok(response) => break response,
+                            Err(e) if attempt < PART_RETRIES && e.is_retryable() => {
+                                attempt += 1;
+                                tokio::time::sleep(Duration::from_secs(1 << attempt)).await;
+                            }
+                            Err(e) => return Err(e.into()),
+                        }
+                    };
                     let etag = response
                         .headers()
                         .get("etag")
@@ -331,34 +343,7 @@ async fn upload_multipart(
             .try_collect()
             .await?;
         etags.sort();
-        let body: String = etags
-            .iter()
-            .map(|(n, etag)| {
-                format!(
-                    "<Part><PartNumber>{n}</PartNumber><ETag>{}</ETag></Part>",
-                    xml::escape(etag)
-                )
-            })
-            .collect();
-        let text = s3
-            .text(
-                Request::new(Method::POST, Some(bucket), Some(key))
-                    .query("uploadId", upload_id.clone())
-                    .xml(
-                        format!("<CompleteMultipartUpload xmlns=\"{}\">{body}</CompleteMultipartUpload>", super::ops::S3_XMLNS),
-                        "application/xml",
-                    )
-                    .no_timeout(),
-            )
-            .await?;
-        match xml::parse(&text) {
-            Ok(root) if root.name == "Error" => Err(format!(
-                "S3 {}: {}",
-                root.text_of("Code").unwrap_or_default(),
-                root.text_of("Message").unwrap_or_default()
-            )),
-            _ => Ok(()),
-        }
+        s3.complete_multipart(bucket, key, &upload_id, &etags).await
     };
     let result = tokio::select! {
         r = work => r,
@@ -404,9 +389,11 @@ pub async fn upload(
     prefix: &str,
     paths: &[String],
     props: &ObjectProperties,
+    overwrite: bool,
     id: &str,
     emit: Emit,
 ) -> Result<TransferSummary, String> {
+    let (_registration, token) = register(id);
     let prefix = match prefix.trim_start_matches('/') {
         "" => String::new(),
         p if p.ends_with('/') => p.to_string(),
@@ -423,7 +410,12 @@ pub async fn upload(
     })
     .await
     .map_err(|e| e.to_string())??;
-    let (_registration, token) = register(id);
+    if !overwrite {
+        tokio::select! {
+            r = s3.ensure_free(bucket, files.iter().map(|(_, key, _)| key.as_str())) => r?,
+            _ = token.cancelled() => return Ok(cancelled_summary()),
+        }
+    }
     let tracker = Tracker {
         id: id.to_string(),
         direction: "upload",
@@ -492,11 +484,14 @@ async fn download_file(
             .await
             .map_err(|e| format!("{}: {e}", parent.display()))?;
     }
+    static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
     let temp = dest.with_file_name(format!(
-        ".{}.l8db-part",
+        ".{}.{}-{}.l8db-part",
         dest.file_name()
             .map(|n| n.to_string_lossy())
-            .unwrap_or_default()
+            .unwrap_or_default(),
+        std::process::id(),
+        TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
     let work = async {
         let mut response = s3
@@ -535,6 +530,38 @@ async fn download_file(
     result
 }
 
+fn cancelled_summary() -> TransferSummary {
+    TransferSummary {
+        files: 0,
+        bytes: 0,
+        errors: Vec::new(),
+        cancelled: true,
+    }
+}
+
+fn unique_path(path: PathBuf, taken: &mut HashSet<String>, keep_existing: bool) -> PathBuf {
+    let free = |candidate: &Path, taken: &HashSet<String>| {
+        !taken.contains(&candidate.to_string_lossy().to_lowercase())
+            && (keep_existing || !candidate.exists())
+    };
+    let mut candidate = path.clone();
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let extension = path
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    let mut n = 2;
+    while !free(&candidate, taken) {
+        candidate = path.with_file_name(format!("{stem} ({n}){extension}"));
+        n += 1;
+    }
+    taken.insert(candidate.to_string_lossy().to_lowercase());
+    candidate
+}
+
 pub async fn download(
     s3: &S3,
     bucket: &str,
@@ -543,36 +570,54 @@ pub async fn download(
     id: &str,
     emit: Emit,
 ) -> Result<TransferSummary, String> {
+    let (_registration, token) = register(id);
     let target = PathBuf::from(target);
     let single_file = items.len() == 1 && !items[0].is_prefix && !target.is_dir();
-    let mut plan: Vec<(String, Option<String>, u64, PathBuf)> = Vec::new();
-    for item in items {
-        if item.is_prefix {
+    let planning = async {
+        let mut plan: Vec<(String, Option<String>, u64, PathBuf)> = Vec::new();
+        let mut taken = HashSet::new();
+        for item in items.iter().filter(|item| item.is_prefix) {
             let base = parent_prefix(&item.key);
             for object in s3.keys_under(bucket, &item.key).await? {
-                let relative = &object.key[base.len()..];
-                let path = safe_join(&target, relative)?;
+                let path = safe_join(&target, &object.key[base.len()..])?;
                 if object.key.ends_with('/') {
                     tokio::fs::create_dir_all(&path)
                         .await
                         .map_err(|e| e.to_string())?;
                     continue;
                 }
-                plan.push((object.key.clone(), None, object.size, path));
+                let path = unique_path(path, &mut taken, false);
+                plan.push((object.key, None, object.size, path));
             }
-        } else {
-            let head = s3
-                .head_object(bucket, &item.key, item.version_id.as_deref())
-                .await?;
+        }
+        let files: Vec<&TransferItem> = items.iter().filter(|item| !item.is_prefix).collect();
+        let heads: Vec<u64> = stream::iter(0..files.len())
+            .map(|index| {
+                let item = files[index];
+                async move {
+                    s3.head_object(bucket, &item.key, item.version_id.as_deref())
+                        .await
+                        .map(|head| head.size)
+                }
+            })
+            .buffered(HEAD_CONCURRENCY)
+            .try_collect()
+            .await?;
+        for (item, size) in files.into_iter().zip(heads) {
             let path = if single_file {
                 target.clone()
             } else {
-                safe_join(&target, &item.key[parent_prefix(&item.key).len()..])?
+                let path = safe_join(&target, &item.key[parent_prefix(&item.key).len()..])?;
+                unique_path(path, &mut taken, false)
             };
-            plan.push((item.key.clone(), item.version_id.clone(), head.size, path));
+            plan.push((item.key.clone(), item.version_id.clone(), size, path));
         }
-    }
-    let (_registration, token) = register(id);
+        Ok::<_, String>(plan)
+    };
+    let plan = tokio::select! {
+        r = planning => r?,
+        _ = token.cancelled() => return Ok(cancelled_summary()),
+    };
     let tracker = Tracker {
         id: id.to_string(),
         direction: "download",
@@ -629,6 +674,18 @@ mod tests {
         assert!(safe_join(base, "a/../../x").is_err());
         assert!(safe_join(base, "//").is_err());
         assert_eq!(safe_join(base, "a:b?.txt").unwrap(), base.join("a_b_.txt"));
+    }
+
+    #[test]
+    fn unique_paths_never_collide() {
+        let mut taken = HashSet::new();
+        let base = Path::new("/nonexistent-l8db-dir");
+        let first = unique_path(base.join("x.csv"), &mut taken, false);
+        let second = unique_path(base.join("X.csv"), &mut taken, false);
+        let third = unique_path(base.join("x.csv"), &mut taken, false);
+        assert_eq!(first, base.join("x.csv"));
+        assert_eq!(second, base.join("X (2).csv"));
+        assert_eq!(third, base.join("x (3).csv"));
     }
 
     #[test]

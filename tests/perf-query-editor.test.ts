@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { type CDPSession, chromium, type Page } from "playwright";
+import { cpuThrottleRate } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
 
 const STATEMENTS = 3000;
@@ -144,7 +145,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       await page.waitForTimeout(1000);
       const cdp = await page.context().newCDPSession(page);
       await cdp.send("Performance.enable");
-      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(4) });
       await observeLongTasks(page);
       const profile = async (name: string, action: () => Promise<void>) => {
         if (process.env.L8DB_PERF_PROFILE !== name) return action();

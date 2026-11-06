@@ -95,6 +95,19 @@ export function CsvOptionsFields({ options, update }: CsvOptionsFieldsProps) {
           aria-label="UTF-8-BOM"
         />
       </div>
+
+      <div
+        className="flex items-center justify-between rounded-md border px-3 py-2"
+        title="Werten mit führendem =, +, -, @ oder Tab ein ' voranstellen, damit Excel sie nicht als Formel ausführt"
+      >
+        <Label htmlFor="csv-formulas">Formeln entschärfen</Label>
+        <Switch
+          id="csv-formulas"
+          checked={options.escapeFormulas !== false}
+          onCheckedChange={(checked) => update("escapeFormulas", checked)}
+          aria-label="Formeln entschärfen"
+        />
+      </div>
     </div>
   );
 }

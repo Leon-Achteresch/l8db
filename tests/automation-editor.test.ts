@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { newStep, newTask } from "../src/lib/automation/defaults";
+import { newSchedule, newStep, newTask } from "../src/lib/automation/defaults";
 import {
   findPlaceholders,
   renderExample,
@@ -249,5 +249,43 @@ describe("step tree", () => {
     expect(
       issues.find((issue) => issue.stepId === outer.id && issue.field === "onFailure")?.message,
     ).toBe("Sprungziel liegt nicht auf derselben Ebene.");
+  });
+});
+
+describe("numeric task settings", () => {
+  test("reject fractional, negative and oversized values", () => {
+    const fields = (task: Task) =>
+      validateTask(task)
+        .filter((issue) => issue.severity === "error")
+        .map((issue) => issue.field);
+    const base = newTask("t");
+    expect(
+      fields({
+        ...base,
+        retry: { attempts: 3, delaySeconds: 10, backoff: "fixed", maxDelaySeconds: null },
+      }),
+    ).toEqual([]);
+    expect(
+      fields({
+        ...base,
+        retry: { attempts: 1000, delaySeconds: -5, backoff: "fixed", maxDelaySeconds: 1.5 },
+      }),
+    ).toEqual(["retry.attempts", "retry.delaySeconds", "retry.maxDelaySeconds"]);
+    expect(fields({ ...base, retention: { keepDays: 0, keepRuns: 2.5 } })).toEqual([
+      "retention.keepDays",
+      "retention.keepRuns",
+    ]);
+    const schedule = (every: number, unit: "minutes" | "hours" | "days") => ({
+      ...newSchedule("interval"),
+      trigger: { type: "interval" as const, every, unit },
+    });
+    const schedules = [
+      schedule(1.5, "hours"),
+      schedule(99_999_999, "days"),
+      schedule(3660, "days"),
+    ];
+    expect(fields({ ...base, schedules })).toEqual(
+      schedules.slice(0, 2).map((entry) => `schedules.${entry.id}.every`),
+    );
   });
 });

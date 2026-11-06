@@ -1,6 +1,28 @@
 use super::*;
 
 #[test]
+fn separator_banner_is_not_a_conflict_marker() {
+    assert!(!has_conflict_markers("/*\n=======\n*/\nSELECT 1"));
+    assert!(has_conflict_markers("<<<<<<< a\nx\n=======\ny\n>>>>>>> b"));
+}
+
+#[test]
+fn git_errors_get_german_hints() {
+    assert!(
+        git_spawn_error(std::io::Error::from(std::io::ErrorKind::NotFound))
+            .starts_with("Git wurde nicht gefunden")
+    );
+    let auth =
+        git_error("fatal: could not read Username for 'https://x': terminal prompts disabled\n");
+    assert!(auth.starts_with("Anmeldung am Remote fehlgeschlagen"));
+    assert!(auth.ends_with("terminal prompts disabled"));
+    assert!(
+        git_error(" ! [rejected] main -> main (non-fast-forward)").starts_with("Der Remote-Branch")
+    );
+    assert_eq!(git_error("fatal: other\n"), "fatal: other");
+}
+
+#[test]
 fn oracle_identity_metadata_is_portable_and_preserves_semantics() {
     let row = serde_json::json!({"generation":"BY DEFAULT","onNull":"NO","options":"START WITH: 1, INCREMENT BY: 1, CACHE_SIZE: 20","sequence":"ISEQ$$_123"});
     let expected = "IDENTITY BY DEFAULT (CACHE_SIZE: 20, INCREMENT BY: 1, START WITH: 1)";
@@ -138,6 +160,7 @@ fn request(repo: &Path, action: &str) -> Request {
         paths: None,
         base: None,
         incoming: None,
+        limit: None,
     }
 }
 
@@ -226,7 +249,8 @@ async fn reads_many_files_and_keeps_the_drift_cache_outside_the_worktree() {
 fn detects_incomplete_merge_markers() {
     assert!(has_conflict_markers("<<<<<<< Aktueller Branch\nours\n"));
     assert!(has_conflict_markers(">>>>>>> Quell-Branch\n"));
-    assert!(has_conflict_markers("=======\r\n"));
+    assert!(has_conflict_markers("||||||| Gemeinsame Basis\r\n"));
+    assert!(!has_conflict_markers("=======\r\n"));
     assert!(!has_conflict_markers("SELECT '<<<<<<<' AS sample;\n"));
 }
 
@@ -247,6 +271,40 @@ fn team_configuration_rejects_secrets_and_local_profile_fields() {
     let mut missing = fixture;
     missing["targets"][0]["connectionRef"] = json!("missing-server");
     assert!(team::parse(&missing.to_string()).is_err());
+}
+
+#[test]
+fn team_variances_are_validated_and_bound_to_the_plan() {
+    let mut fixture = team_fixture();
+    let hash = control::hash("id integer\nextra text");
+    fixture["targets"][0]["variances"] = json!([
+        {"object":"t","hash":hash,"reason":"Kundenlogik LEGACY_1","until":null},
+        {"object":"old","hash":hash,"reason":"Abgelaufen","until":"2000-01-01"}
+    ]);
+    let team = team::parse(&fixture.to_string()).unwrap();
+    let target = &team.targets[0];
+    let planned = json!([{"id":"t","definition":"id integer\nextra text"}]);
+    assert!(team::verify_variances(Some(target), &planned).is_ok());
+    assert!(team::verify_variances(Some(target), &json!([])).is_err());
+    assert!(team::verify_variances(None, &planned).is_err());
+    assert!(team::verify_variances(None, &json!([])).is_ok());
+    let changed = json!([{"id":"t","definition":"id integer"}]);
+    assert!(team::verify_variances(Some(target), &changed).is_err());
+    for invalid in [
+        json!({"object":"t","hash":"ABC","reason":"x","until":null}),
+        json!({"object":"t","hash":hash,"reason":"x","until":"morgen"}),
+        json!({"object":"t","hash":hash,"reason":"x","until":null,"by":"x"}),
+    ] {
+        let mut broken = team_fixture();
+        broken["targets"][0]["variances"] = json!([invalid]);
+        assert!(team::parse(&broken.to_string()).is_err());
+    }
+    let mut duplicate = team_fixture();
+    duplicate["targets"][0]["variances"] = json!([
+        {"object":"t","hash":hash,"reason":"a","until":null},
+        {"object":"t","hash":hash,"reason":"b","until":null}
+    ]);
+    assert!(team::parse(&duplicate.to_string()).is_err());
 }
 
 #[tokio::test]
@@ -355,8 +413,7 @@ async fn rollout_review_is_bound_to_committed_team_and_database_identity() {
     git(&root, &["commit", "-m", "Team configuration"])
         .await
         .unwrap();
-    let artifact =
-        json!({"teamHash":control::hash(content.trim_end()),"execution":{"context":context}});
+    let artifact = json!({"schema":"customer_a","teamHash":control::hash(content.trim_end()),"execution":{"context":context}});
     let mut execution: runner::Request = serde_json::from_value(json!({"connection":{"kind":"postgres","connectionString":"postgres://example.invalid/app","database":"app","schema":"customer_a","projectId":"team-project"},"repo":root.to_str().unwrap(),"targetId":"customer-a","runId":"review-test","artifact":artifact.to_string()})).unwrap();
     assert!(team::verify_request(&execution).await.unwrap().is_some());
     execution.connection.schema = "customer_b".into();

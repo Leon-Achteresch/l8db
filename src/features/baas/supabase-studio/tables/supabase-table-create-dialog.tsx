@@ -155,7 +155,7 @@ export function SupabaseTableCreateDialog({
           {columns.map((column, index) => (
             <div
               key={column.uid}
-              className="grid items-center gap-2 rounded-lg border p-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto]"
+              className="grid items-center gap-2 rounded-lg p-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto_auto] bg-muted/30"
             >
               <Input
                 value={column.name}

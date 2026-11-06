@@ -48,9 +48,9 @@ fn prefix_filter(filter: Option<&str>) -> String {
 impl DatabaseAdapter for S3Adapter {
     async fn test_connection(&self) -> Result<(), String> {
         let s3 = self.client().await?;
-        match (&s3.default_bucket, timed(s3.list_buckets()).await) {
-            (Some(bucket), _) => timed(s3.head_bucket(bucket)).await,
-            (None, result) => result.map(|_| ()),
+        match &s3.default_bucket {
+            Some(bucket) => timed(s3.head_bucket(bucket)).await,
+            None => timed(s3.list_buckets()).await.map(|_| ()),
         }
     }
 

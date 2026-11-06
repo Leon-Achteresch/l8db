@@ -8,6 +8,7 @@ import { SPRING_LAYOUT } from "@/lib/ease";
 import { useModifiedSettings } from "@/lib/hooks/use-modified-settings";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import type { NewFeatureId } from "@/lib/new-features";
+import { lockedSetting, useOrganizationStore } from "@/lib/organization-state";
 import { SETTINGS_BY_ID } from "@/lib/settings-catalog";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +37,8 @@ export function SettingsRow({
   const title = setting?.title ?? fallbackTitle;
   const description = setting?.description ?? fallbackDescription;
   const changed = Boolean(settingId && modified.has(settingId));
+  useOrganizationStore((state) => state.policy);
+  const managed = Boolean(setting?.key && lockedSetting(setting.key));
 
   return (
     <motion.div
@@ -55,6 +58,7 @@ export function SettingsRow({
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
           <span>{title}</span>
+          {managed && <Badge variant="secondary">Von IT verwaltet</Badge>}
           {isNew ? <NewBadge /> : null}
           {changed ? (
             <>
@@ -65,7 +69,7 @@ export function SettingsRow({
                 type="button"
                 size="icon-xs"
                 variant="ghost"
-                disabled={resetDisabled}
+                disabled={resetDisabled || managed}
                 title={`${title} zurücksetzen`}
                 aria-label={`${title} zurücksetzen`}
                 onClick={() => settingId && reset(settingId)}
@@ -84,7 +88,9 @@ export function SettingsRow({
       </div>
       {children ? (
         <div className={cn("flex min-w-0 flex-wrap", stacked ? "w-full" : "shrink-0 justify-end")}>
-          {children}
+          <fieldset disabled={managed} className="contents">
+            {children}
+          </fieldset>
         </div>
       ) : null}
     </motion.div>

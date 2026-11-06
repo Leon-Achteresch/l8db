@@ -22,6 +22,7 @@ export const METADATA_QUERY_ROOTS = [
   "foreign-keys",
   "triggers",
   "er-schema",
+  "schema-map",
   "all-tables",
   "all-views",
   "all-matviews",

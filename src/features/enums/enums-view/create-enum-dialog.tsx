@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { asWorkbenchTab } from "@/features/shell/as-workbench-tab";
 import {
   Dialog,
@@ -13,8 +14,9 @@ import {
 } from "@/features/shell/workbench-dialog";
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery } from "@/lib/db";
-import { useActiveDatabase } from "@/lib/db-selection";
-import { quoteIdent } from "@/lib/sql-filter";
+import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
+import { createEnumSql, enumLabels } from "@/lib/enum-ddl";
+import { pgIdentifierTooLong } from "@/lib/object-rename";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 function CreateEnumDialogContent({
@@ -29,24 +31,22 @@ function CreateEnumDialogContent({
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const [saving, setSaving] = useState(false);
-  const [schema, setSchema] = useState("public");
+  const activeSchema = useActiveSchema();
+  const [schema, setSchema] = useState(activeSchema);
   const [name, setName] = useState("");
   const [values, setValues] = useState("");
 
+  const labels = enumLabels(values);
+  const tooLong = pgIdentifierTooLong(name.trim());
+
   const handleSave = async () => {
-    if (!connection || !name.trim()) return;
-    const labels = values
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean);
-    if (labels.length === 0) return;
+    if (!connection || !name.trim() || labels.length === 0 || tooLong) return;
     setSaving(true);
     try {
-      const escaped = labels.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ");
       await executeQuery(
         connection.kind,
         effectiveConnectionString(connection),
-        `CREATE TYPE ${quoteIdent(schema.trim() || "public")}.${quoteIdent(name.trim())} AS ENUM (${escaped})`,
+        createEnumSql(schema.trim() || activeSchema, name.trim(), labels),
         database ?? undefined,
       );
       toast.success(`Enum "${name.trim()}" erstellt.`);
@@ -54,6 +54,7 @@ function CreateEnumDialogContent({
       onOpenChange(false);
       setName("");
       setValues("");
+      setSchema(activeSchema);
     } catch (err) {
       toast.error(typeof err === "string" ? err : String(err));
     } finally {
@@ -84,16 +85,22 @@ function CreateEnumDialogContent({
                 onChange={(e) => setName(e.target.value)}
                 className="h-8 text-xs font-mono"
                 placeholder="z. B. mood"
+                aria-invalid={tooLong}
               />
+              {tooLong && (
+                <p className="text-[11px] text-destructive">
+                  Höchstens 63 Bytes, PostgreSQL würde den Namen sonst kürzen.
+                </p>
+              )}
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">Werte (kommagetrennt, Reihenfolge = Sortierung)</Label>
-            <Input
+            <Label className="text-xs">Werte (ein Wert pro Zeile, Reihenfolge = Sortierung)</Label>
+            <Textarea
               value={values}
               onChange={(e) => setValues(e.target.value)}
-              className="h-8 text-xs font-mono"
-              placeholder="z. B. gut, ok, schlecht"
+              className="min-h-24 text-xs font-mono"
+              placeholder={"gut\nok\nschlecht"}
             />
           </div>
         </div>
@@ -104,7 +111,7 @@ function CreateEnumDialogContent({
           <Button
             size="sm"
             onClick={handleSave}
-            disabled={saving || !name.trim() || !values.trim()}
+            disabled={saving || !name.trim() || labels.length === 0 || tooLong}
           >
             {saving ? "Erstellen…" : "Erstellen"}
           </Button>

@@ -12,6 +12,7 @@ use crate::automation::model::{IntervalUnit, Schedule, Task, Trigger};
 
 const HORIZON_DAYS: i64 = 5 * 366;
 const MAX_REJECTED: usize = 1_000;
+pub const MAX_INTERVAL_DAYS: i64 = 3_660;
 const MAX_GAP_MINUTES: i64 = 180;
 
 #[derive(Clone, Copy)]
@@ -117,7 +118,7 @@ fn days_in_month(date: NaiveDate) -> u32 {
 
 enum Kind {
     Every(Duration, DateTime<Utc>),
-    EveryDays(i64, NaiveDateTime),
+    EveryLocal(i64, NaiveDateTime),
     Days(Vec<NaiveTime>, DayRule),
     Cron(Box<Cron>),
     Once(Option<DateTime<Utc>>),
@@ -173,6 +174,25 @@ fn local_point(zone: &Zone, text: &Option<String>) -> Result<Option<DateTime<Utc
     }
 }
 
+fn cron_error(error: croner::errors::CronError) -> String {
+    use croner::errors::CronError;
+    let reason = match &error {
+        CronError::EmptyPattern => "Ausdruck fehlt",
+        CronError::IllegalCharacters(_) => "enthält ungültige Zeichen",
+        CronError::InvalidPattern(_) => "braucht 5 bis 7 Felder",
+        CronError::ComponentError(message) if message.contains("zero") => {
+            "Schrittweite darf nicht 0 sein"
+        }
+        CronError::ComponentError(message)
+            if message.contains("bounds") || message.contains("exceeded") =>
+        {
+            "Wert außerhalb des erlaubten Bereichs"
+        }
+        _ => "ein Feld ist ungültig",
+    };
+    format!("Ungültiger Cron-Ausdruck: {reason}.")
+}
+
 fn compile(schedule: &Schedule) -> Result<Plan, String> {
     let zone = match schedule.timezone.as_deref().filter(|name| !name.is_empty()) {
         Some(name) => {
@@ -207,22 +227,28 @@ fn compile(schedule: &Schedule) -> Result<Plan, String> {
             if *every < 1 {
                 return Err("Das Intervall muss mindestens 1 sein.".into());
             }
+            let seconds = match unit {
+                IntervalUnit::Minutes => 60,
+                IntervalUnit::Hours => 3_600,
+                IntervalUnit::Days => 86_400,
+            };
+            let step = *every as i64 * seconds;
+            if step > MAX_INTERVAL_DAYS * 86_400 {
+                return Err(format!(
+                    "Das Intervall darf höchstens {MAX_INTERVAL_DAYS} Tage betragen."
+                ));
+            }
             let anchor = match schedule.start_at.as_deref().filter(|text| !text.is_empty()) {
                 Some(text) => parse_local(text)?,
                 None => NaiveDate::from_ymd_opt(2000, 1, 1)
                     .and_then(|date| date.and_hms_opt(0, 0, 0))
                     .ok_or("Ungültiger Anker.")?,
             };
-            let seconds = match unit {
-                IntervalUnit::Minutes => 60,
-                IntervalUnit::Hours => 3_600,
-                IntervalUnit::Days => 0,
-            };
-            if seconds == 0 {
-                Kind::EveryDays(*every as i64, anchor)
-            } else {
+            if matches!(unit, IntervalUnit::Minutes) || step == 3_600 {
                 let anchor = zone.to_utc(anchor).ok_or("Ungültiger Anker.")?;
-                Kind::Every(Duration::seconds(*every as i64 * seconds), anchor)
+                Kind::Every(Duration::seconds(step), anchor)
+            } else {
+                Kind::EveryLocal(step, anchor)
             }
         }
         Trigger::Daily { times } => Kind::Days(parse_times(times)?, DayRule::All),
@@ -274,8 +300,7 @@ fn compile(schedule: &Schedule) -> Result<Plan, String> {
             Kind::Days(parse_times(times)?, DayRule::Nth(*nth, *weekday as u32))
         }
         Trigger::Cron { expression } => Kind::Cron(Box::new(
-            Cron::from_str(expression.trim())
-                .map_err(|error| format!("Ungültiger Cron-Ausdruck: {error}"))?,
+            Cron::from_str(expression.trim()).map_err(cron_error)?,
         )),
         Trigger::Once { at } => Kind::Once(local_point(&zone, &Some(at.clone()))?),
         Trigger::AppStart { .. } => Kind::Event,
@@ -305,13 +330,14 @@ impl Plan {
                 }
                 let step_ms = step.num_milliseconds();
                 let k = (after - *anchor).num_milliseconds() / step_ms + 1;
-                Some(*anchor + Duration::milliseconds(k * step_ms))
+                anchor.checked_add_signed(Duration::try_milliseconds(k.checked_mul(step_ms)?)?)
             }
-            Kind::EveryDays(every, anchor) => {
+            Kind::EveryLocal(step, anchor) => {
                 let anchor_utc = self.zone.to_utc(*anchor)?;
-                let mut k = ((after - anchor_utc).num_days() / every - 1).max(0);
+                let mut k = ((after - anchor_utc).num_seconds() / step - 1).max(0);
                 loop {
-                    let local = *anchor + Duration::days(k * every);
+                    let offset = Duration::try_seconds(k.checked_mul(*step)?)?;
+                    let local = anchor.checked_add_signed(offset)?;
                     if let Some(at) = self.zone.to_utc(local) {
                         if at > after {
                             return Some(at);
@@ -348,7 +374,8 @@ impl Plan {
             let next_day = (local.date() + Duration::days(1)).and_time(NaiveTime::MIN);
             return Some(self.zone.to_utc(next_day).map(before).unwrap_or(at));
         }
-        if let (Some((from, to)), Kind::Every(..) | Kind::EveryDays(..)) = (self.window, &self.kind)
+        if let (Some((from, to)), Kind::Every(..) | Kind::EveryLocal(..)) =
+            (self.window, &self.kind)
         {
             let time = local.time();
             let inside = if from < to {
@@ -408,6 +435,13 @@ pub fn next_run(task: &Task, after: DateTime<Utc>) -> Option<DateTime<Utc>> {
         .filter(|schedule| schedule.enabled)
         .filter_map(|schedule| next_runs(schedule, after, 1).ok()?.into_iter().next())
         .min()
+}
+
+pub fn never_runs(schedule: &Schedule) -> bool {
+    !matches!(
+        schedule.trigger,
+        Trigger::AppStart { .. } | Trigger::AfterTask { .. } | Trigger::Once { .. }
+    ) && next_runs(schedule, Utc::now(), 1).is_ok_and(|runs| runs.is_empty())
 }
 
 pub fn validate(schedule: &Schedule) -> Result<(), String> {
@@ -471,6 +505,106 @@ mod tests {
                 "2026-03-29T03:00:00Z"
             ]
         );
+    }
+
+    #[test]
+    fn interval_hours_keep_local_grid_and_window_in_summer() {
+        let windowed = schedule(
+            json!({"type": "interval", "every": 2, "unit": "hours"}),
+            json!({"window": {"from": "08:00", "to": "09:00"}}),
+        );
+        assert_eq!(
+            runs(&windowed, "2026-01-10T00:00:00Z", 1),
+            ["2026-01-10T07:00:00Z"]
+        );
+        assert_eq!(
+            runs(&windowed, "2026-07-10T00:00:00Z", 1),
+            ["2026-07-10T06:00:00Z"]
+        );
+        let six = schedule(
+            json!({"type": "interval", "every": 6, "unit": "hours"}),
+            json!({}),
+        );
+        assert_eq!(
+            runs(&six, "2026-07-10T00:30:00Z", 2),
+            ["2026-07-10T04:00:00Z", "2026-07-10T10:00:00Z"]
+        );
+    }
+
+    #[test]
+    fn dead_windows_and_exclusions_are_detected() {
+        let dead = schedule(
+            json!({"type": "interval", "every": 60, "unit": "minutes"}),
+            json!({"window": {"from": "09:30", "to": "09:45"}}),
+        );
+        assert!(never_runs(&dead));
+        let alive = schedule(
+            json!({"type": "interval", "every": 15, "unit": "minutes"}),
+            json!({"window": {"from": "09:30", "to": "09:45"}}),
+        );
+        assert!(!never_runs(&alive));
+        let feb30 = schedule(
+            json!({"type": "cron", "expression": "0 0 30 2 *"}),
+            json!({}),
+        );
+        assert!(never_runs(&feb30));
+        let start = schedule(json!({"type": "app_start"}), json!({}));
+        assert!(!never_runs(&start));
+    }
+
+    #[test]
+    fn cron_errors_are_german() {
+        let message = |expression: &str| {
+            validate(&schedule(
+                json!({"type": "cron", "expression": expression}),
+                json!({}),
+            ))
+            .unwrap_err()
+        };
+        assert_eq!(
+            message("*/0 * * * *"),
+            "Ungültiger Cron-Ausdruck: Schrittweite darf nicht 0 sein."
+        );
+        assert_eq!(
+            message("60 * * * *"),
+            "Ungültiger Cron-Ausdruck: Wert außerhalb des erlaubten Bereichs."
+        );
+        assert_eq!(
+            message("* *"),
+            "Ungültiger Cron-Ausdruck: braucht 5 bis 7 Felder."
+        );
+        assert!(validate(&schedule(
+            json!({"type": "cron", "expression": "@daily"}),
+            json!({})
+        ))
+        .is_ok());
+        assert!(validate(&schedule(
+            json!({"type": "cron", "expression": "0 0 0 1 1 * 2030"}),
+            json!({})
+        ))
+        .is_ok());
+    }
+
+    #[test]
+    fn huge_intervals_are_rejected_without_panic() {
+        for (every, unit) in [
+            (99_999_999u32, "days"),
+            (u32::MAX, "hours"),
+            (u32::MAX, "minutes"),
+        ] {
+            let s = schedule(
+                json!({"type": "interval", "every": every, "unit": unit}),
+                json!({}),
+            );
+            assert!(validate(&s).is_err());
+            assert!(next_runs(&s, at("2026-01-01T00:00:00Z"), 1).is_err());
+        }
+        let ok = schedule(
+            json!({"type": "interval", "every": 3_660, "unit": "days"}),
+            json!({}),
+        );
+        assert!(validate(&ok).is_ok());
+        assert!(next_runs(&ok, at("2026-01-01T00:00:00Z"), 1).is_ok());
     }
 
     #[test]

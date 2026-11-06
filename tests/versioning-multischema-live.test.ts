@@ -51,7 +51,7 @@ test.skipIf(!enabled)(
         releases: ["v2", "v2", "v2"],
       });
       await page.getByRole("button", { name: "Versionierung aktualisieren" }).click();
-      await page.getByRole("tab", { name: "Kunden", exact: true }).click();
+      await page.getByRole("tab", { name: /^Kunden(\s|$)/ }).click();
       await page.getByText("Kunde Nord", { exact: true }).waitFor();
       await page.getByText("tenant_nord_", { exact: false }).waitFor();
       await page.getByRole("button", { name: "Kundenziel hinzufügen" }).click();

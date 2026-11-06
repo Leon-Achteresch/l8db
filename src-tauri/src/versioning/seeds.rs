@@ -273,7 +273,7 @@ pub async fn run(
         }
         if target["binding"]["physicalKey"] != key || targets.iter().any(|other| other["production"] == true && other["binding"]["physicalKey"] == key) { return Err("Seed-Ziel ist verändert oder als Produktion registriert.".into()); }
         let state = transactions.execute(&tx, &format!("SELECT \"STATUS\", \"LEASE\" FROM {} WHERE \"PROJECT_ID\"={} FOR UPDATE NOWAIT", control::table(&c.schema, "STATE"), control::literal(&c.project_id))).await?;
-        if !state.rows.first().is_some_and(|row| row["STATUS"] == "ready" && row["LEASE"].is_null()) { return Err("Development-Ziel ist nicht bereit oder ein Deployment läuft.".into()); }
+        if !state.rows.first().is_some_and(|row| (row["STATUS"] == "ready" || row["STATUS"] == super::runner::READY) && row["LEASE"].is_null()) { return Err("Development-Ziel ist nicht bereit oder ein Deployment läuft.".into()); }
         let policy = transactions.execute(&tx, &format!("SELECT \"REVISION\", \"BODY\" FROM {} WHERE \"PROJECT_ID\"={} FOR UPDATE NOWAIT", control::table(&c.schema, "POLICY"), control::literal(&c.project_id))).await?;
         let body = policy.rows.first().and_then(|row| row["BODY"].as_str()).ok_or("Development-Regeln fehlen.")?;
         let policy: control::Policy = serde_json::from_str(body).map_err(|e| e.to_string())?;

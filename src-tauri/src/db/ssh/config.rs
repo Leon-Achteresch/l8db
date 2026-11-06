@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
@@ -49,28 +49,11 @@ impl RawHost {
             _ => {}
         }
     }
-
-    fn inherit(&mut self, defaults: &RawHost) {
-        fill_from(&mut self.host_name, &defaults.host_name);
-        fill_from(&mut self.user, &defaults.user);
-        if self.port.is_none() {
-            self.port = defaults.port;
-        }
-        fill_from(&mut self.identity_file, &defaults.identity_file);
-        fill_from(&mut self.identity_agent, &defaults.identity_agent);
-        fill_from(&mut self.proxy_jump, &defaults.proxy_jump);
-    }
 }
 
 fn fill(slot: &mut Option<String>, value: String) {
     if slot.is_none() {
         *slot = Some(value);
-    }
-}
-
-fn fill_from(slot: &mut Option<String>, value: &Option<String>) {
-    if slot.is_none() {
-        slot.clone_from(value);
     }
 }
 
@@ -97,6 +80,33 @@ fn is_pattern(alias: &str) -> bool {
     alias.contains(['*', '?', '!'])
 }
 
+fn glob_match(pattern: &[u8], text: &[u8]) -> bool {
+    match pattern.split_first() {
+        None => text.is_empty(),
+        Some((b'*', rest)) => (0..=text.len()).any(|skip| glob_match(rest, &text[skip..])),
+        Some((b'?', rest)) => !text.is_empty() && glob_match(rest, &text[1..]),
+        Some((first, rest)) => text
+            .split_first()
+            .is_some_and(|(head, tail)| head == first && glob_match(rest, tail)),
+    }
+}
+
+fn host_matches(patterns: &[String], host: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    let mut matched = false;
+    for pattern in patterns {
+        let pattern = pattern.to_ascii_lowercase();
+        if let Some(negated) = pattern.strip_prefix('!') {
+            if glob_match(negated.as_bytes(), host.as_bytes()) {
+                return false;
+            }
+        } else if glob_match(pattern.as_bytes(), host.as_bytes()) {
+            matched = true;
+        }
+    }
+    matched
+}
+
 fn agent_path(value: Option<String>) -> Option<String> {
     let value = value?;
     let plain = unquote(&value);
@@ -106,65 +116,167 @@ fn agent_path(value: Option<String>) -> Option<String> {
     Some(expand_home(plain).display().to_string())
 }
 
-pub fn parse_ssh_config(text: &str) -> Vec<SshConfigHost> {
-    let mut order: Vec<String> = Vec::new();
-    let mut hosts: HashMap<String, RawHost> = HashMap::new();
-    let mut defaults = RawHost::default();
-    let mut current: Vec<String> = Vec::new();
-    let mut in_defaults = false;
+const MAX_INCLUDE_DEPTH: usize = 16;
+
+fn include_files(pattern: &str, base: &Path) -> Vec<PathBuf> {
+    let expanded = expand_home(pattern);
+    let path = if expanded.is_absolute() {
+        expanded
+    } else {
+        base.join(expanded)
+    };
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if !is_pattern(&name) {
+        return vec![path];
+    }
+    let Some(parent) = path.parent() else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = std::fs::read_dir(parent)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|file| {
+                    file.is_file()
+                        && file.file_name().is_some_and(|candidate| {
+                            glob_match(name.as_bytes(), candidate.to_string_lossy().as_bytes())
+                        })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    files.sort();
+    files
+}
+
+fn collect_lines(text: &str, base: &Path, depth: usize, out: &mut Vec<(String, String)>) {
     for line in text.lines() {
         let Some((key, value)) = split_line(line) else {
             continue;
         };
+        if key == "include" {
+            if depth >= MAX_INCLUDE_DEPTH {
+                continue;
+            }
+            for pattern in value.split_whitespace().map(unquote) {
+                for file in include_files(pattern, base) {
+                    if let Ok(included) = std::fs::read_to_string(&file) {
+                        collect_lines(&included, base, depth + 1, out);
+                    }
+                }
+            }
+        } else {
+            out.push((key, value.to_string()));
+        }
+    }
+}
+
+struct Block {
+    patterns: Vec<String>,
+    entries: Vec<(String, String)>,
+}
+
+fn expand_tokens(value: &str, host: &str, user: Option<&str>, port: Option<u16>) -> String {
+    let mut out = String::new();
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        if c != '%' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('h') => out.push_str(host),
+            Some('r') => out.push_str(user.unwrap_or_default()),
+            Some('p') => out.push_str(&port.unwrap_or(22).to_string()),
+            Some('%') => out.push('%'),
+            Some(other) => {
+                out.push('%');
+                out.push(other);
+            }
+            None => out.push('%'),
+        }
+    }
+    out
+}
+
+fn resolve_host(alias: &str, blocks: &[Block]) -> RawHost {
+    let mut host = RawHost::default();
+    for block in blocks
+        .iter()
+        .filter(|block| host_matches(&block.patterns, alias))
+    {
+        for (key, value) in &block.entries {
+            host.set(key, unquote(value));
+        }
+    }
+    host.host_name = host
+        .host_name
+        .map(|name| expand_tokens(&name, alias, None, None));
+    let target = host.host_name.clone().unwrap_or_else(|| alias.to_string());
+    host.identity_file = host
+        .identity_file
+        .map(|file| expand_tokens(&file, &target, host.user.as_deref(), host.port));
+    host
+}
+
+pub fn parse_ssh_config(text: &str) -> Vec<SshConfigHost> {
+    let base = home_dir().map(|home| home.join(".ssh")).unwrap_or_default();
+    parse_ssh_config_in(text, &base)
+}
+
+fn parse_ssh_config_in(text: &str, base: &Path) -> Vec<SshConfigHost> {
+    let mut lines = Vec::new();
+    collect_lines(text, base, 0, &mut lines);
+    let mut order: Vec<String> = Vec::new();
+    let mut blocks = vec![Block {
+        patterns: vec!["*".to_string()],
+        entries: Vec::new(),
+    }];
+    for (key, value) in lines {
         match key.as_str() {
             "host" => {
-                current.clear();
-                in_defaults = false;
-                for alias in value.split_whitespace().map(unquote) {
-                    if alias == "*" {
-                        in_defaults = true;
-                    } else if !is_pattern(alias) {
-                        if !hosts.contains_key(alias) {
-                            order.push(alias.to_string());
-                            hosts.insert(alias.to_string(), RawHost::default());
-                        }
-                        current.push(alias.to_string());
+                let patterns: Vec<String> = value
+                    .split_whitespace()
+                    .map(|alias| unquote(alias).to_string())
+                    .collect();
+                for alias in &patterns {
+                    if !is_pattern(alias) && !order.contains(alias) {
+                        order.push(alias.clone());
                     }
                 }
+                blocks.push(Block {
+                    patterns,
+                    entries: Vec::new(),
+                });
             }
-            "match" => {
-                current.clear();
-                in_defaults = false;
-            }
+            "match" => blocks.push(Block {
+                patterns: Vec::new(),
+                entries: Vec::new(),
+            }),
             _ => {
-                let value = unquote(value);
-                if in_defaults {
-                    defaults.set(&key, value);
-                }
-                for alias in &current {
-                    if let Some(host) = hosts.get_mut(alias) {
-                        host.set(&key, value);
-                    }
+                if let Some(block) = blocks.last_mut() {
+                    block.entries.push((key, value));
                 }
             }
         }
     }
-    for host in hosts.values_mut() {
-        host.inherit(&defaults);
-    }
     order
         .iter()
-        .filter_map(|alias| {
-            let raw = hosts.get(alias)?;
-            Some(SshConfigHost {
+        .map(|alias| {
+            let raw = resolve_host(alias, &blocks);
+            SshConfigHost {
                 alias: alias.clone(),
                 host_name: raw.host_name.clone(),
                 user: raw.user.clone(),
                 port: raw.port,
                 identity_file: raw.identity_file.clone(),
                 identity_agent: agent_path(raw.identity_agent.clone()),
-                proxy_jump: resolve_jumps(raw.proxy_jump.as_deref(), &hosts, &defaults),
-            })
+                proxy_jump: resolve_jumps(raw.proxy_jump.as_deref(), &blocks),
+            }
         })
         .collect()
 }
@@ -198,11 +310,7 @@ fn parse_jump(spec: &str) -> SshConfigJump {
     }
 }
 
-fn resolve_jumps(
-    spec: Option<&str>,
-    hosts: &HashMap<String, RawHost>,
-    defaults: &RawHost,
-) -> Vec<SshConfigJump> {
+fn resolve_jumps(spec: Option<&str>, blocks: &[Block]) -> Vec<SshConfigJump> {
     let Some(spec) = spec.map(str::trim).filter(|value| !value.is_empty()) else {
         return Vec::new();
     };
@@ -213,13 +321,9 @@ fn resolve_jumps(
         .map(parse_jump)
         .filter(|jump| !jump.host.is_empty())
         .map(|jump| {
-            let known = hosts.get(&jump.host).unwrap_or(defaults);
+            let known = resolve_host(&jump.host, blocks);
             SshConfigJump {
-                host: known
-                    .host_name
-                    .clone()
-                    .filter(|_| hosts.contains_key(&jump.host))
-                    .unwrap_or(jump.host),
+                host: known.host_name.clone().unwrap_or(jump.host),
                 port: jump.port.or(known.port),
                 user: jump.user.or_else(|| known.user.clone()),
                 identity_file: known.identity_file.clone(),
@@ -250,7 +354,33 @@ pub async fn list_ssh_config_hosts() -> Result<Vec<SshConfigHost>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_ssh_config;
+    use super::{parse_ssh_config, parse_ssh_config_in};
+
+    #[test]
+    fn resolves_includes_wildcards_tokens_and_first_value_wins() {
+        let base = std::env::temp_dir().join(format!("l8db-ssh-config-{}", std::process::id()));
+        std::fs::create_dir_all(base.join("config.d")).expect("dir");
+        std::fs::write(
+            base.join("config.d").join("orbstack"),
+            "Host orb\n  HostName 127.0.0.1\n  Port 32222\n",
+        )
+        .expect("write");
+        let hosts = parse_ssh_config_in(
+            "Include config.d/*\nHost *\n  User early\nHost app.prod\n  HostName %h.example.com\nHost *.prod\n  User deploy\n  IdentityFile /keys/%r-%h\n",
+            &base,
+        );
+        let _ = std::fs::remove_dir_all(&base);
+        let aliases: Vec<_> = hosts.iter().map(|h| h.alias.as_str()).collect();
+        assert_eq!(aliases, ["orb", "app.prod"]);
+        assert_eq!(hosts[0].port, Some(32222));
+        let app = &hosts[1];
+        assert_eq!(app.host_name.as_deref(), Some("app.prod.example.com"));
+        assert_eq!(app.user.as_deref(), Some("early"));
+        assert_eq!(
+            app.identity_file.as_deref(),
+            Some("/keys/early-app.prod.example.com")
+        );
+    }
 
     const SAMPLE: &str = r#"
 # Kommentar

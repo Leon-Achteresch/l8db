@@ -1,10 +1,16 @@
 import { useConnectionsStore } from "@/lib/connections";
 import { versioningRepository } from "@/lib/db";
 import {
+  checksum,
+  deployKind,
+  identifier,
+  normalizeSource,
   PROJECT_PATH,
   parseProject,
   parseRelease,
   releasePath,
+  validateChangeRules,
+  validateMigration,
   validateReleaseGraph,
 } from "./model";
 import {
@@ -17,6 +23,7 @@ import type {
   DatabaseRelease,
   ReleaseReference,
   RepositoryStatus,
+  StandaloneChange,
   TargetStore,
   VersioningProject,
 } from "./types";
@@ -67,7 +74,27 @@ export async function loadRepository(repo: string) {
   return { status, project, projectText: text };
 }
 
+const committedReleases = new Map<string, Promise<DatabaseRelease[]>>();
+
 export async function loadReleases(
+  repo: string,
+  project: VersioningProject,
+  commit?: string,
+): Promise<DatabaseRelease[]> {
+  if (!commit || !/^[a-f0-9]{40,64}$/.test(commit)) return readReleases(repo, project, commit);
+  const key = JSON.stringify([repo, commit, project]);
+  let loaded = committedReleases.get(key);
+  if (!loaded) {
+    loaded = readReleases(repo, project, commit);
+    committedReleases.set(key, loaded);
+    loaded.catch(() => committedReleases.delete(key));
+    while (committedReleases.size > 4)
+      committedReleases.delete(committedReleases.keys().next().value as string);
+  }
+  return [...(await loaded)];
+}
+
+async function readReleases(
   repo: string,
   project: VersioningProject,
   commit?: string,
@@ -86,6 +113,57 @@ export async function loadReleases(
   }
   validateReleaseGraph(releases);
   return releases.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+export const changePath = (id: string) => {
+  if (!identifier(id))
+    throw new Error(
+      "Änderungs-ID: Buchstaben, Ziffern, Punkt, Bindestrich oder Unterstrich verwenden.",
+    );
+  return `database/changes/${id}.json`;
+};
+
+export async function parseChange(
+  manifest: string,
+  sql: string,
+  project: VersioningProject,
+): Promise<StandaloneChange> {
+  const change = JSON.parse(manifest) as StandaloneChange;
+  if (
+    change.format !== 1 ||
+    !identifier(change.id) ||
+    !change.title?.trim() ||
+    !sql.trim() ||
+    (await checksum(sql)) !== change.checksum
+  )
+    throw new Error(`Änderung ${change.id ?? "?"} ist ungültig oder ihre Prüfsumme stimmt nicht.`);
+  const kind = deployKind(project.kind);
+  await validateChangeRules(change, kind, new Set(project.objects.map((entry) => entry.id)), true);
+  validateMigration(sql, kind);
+  return { ...change, sql: normalizeSource(sql) };
+}
+
+export async function loadStandaloneChanges(
+  repo: string,
+  project: VersioningProject,
+  commit?: string,
+): Promise<Map<string, StandaloneChange>> {
+  const files = commit
+    ? await versioningRepository<string[]>({ action: "files", repo, revision: commit })
+    : (await versioningRepository<RepositoryStatus>({ action: "status", repo })).files;
+  const result = new Map<string, StandaloneChange>();
+  for (const path of files.filter((file) => /^database\/changes\/[^/]+\.json$/.test(file))) {
+    const [manifest, sql] = await Promise.all([
+      readFile(repo, path, commit),
+      readFile(repo, path.replace(/\.json$/, ".sql"), commit),
+    ]);
+    if (manifest === null || sql === null) throw new Error(`Änderung ${path} ist unvollständig.`);
+    const change = await parseChange(manifest, sql, project);
+    if (changePath(change.id) !== path)
+      throw new Error("Änderungs-ID und Dateiname unterscheiden sich.");
+    result.set(change.id, change);
+  }
+  return result;
 }
 
 export async function resolveRelease(
@@ -114,6 +192,24 @@ export async function committedRelease(repo: string, project: VersioningProject,
   const release = await parseRelease(committed, project);
   if (release.id !== id) throw new Error("Release-ID stimmt nicht mit dem Manifest überein.");
   return { release, reference: { id, commit: status.head, path } };
+}
+
+export async function committedChange(repo: string, project: VersioningProject, id: string) {
+  const status = await versioningRepository<RepositoryStatus>({ action: "status", repo });
+  if (!status.head) throw new Error("Bitte zuerst einen Commit erstellen.");
+  const path = changePath(id);
+  const sqlPath = path.replace(/\.json$/, ".sql");
+  const [manifest, sql, committedManifest, committedSql] = await Promise.all([
+    readFile(repo, path),
+    readFile(repo, sqlPath),
+    readFile(repo, path, status.head),
+    readFile(repo, sqlPath, status.head),
+  ]);
+  if (!manifest || !sql || manifest !== committedManifest || sql !== committedSql)
+    throw new Error("Änderung enthält nicht commitete Teile. Bitte zuerst committen.");
+  const change = await parseChange(manifest, sql, project);
+  if (change.id !== id) throw new Error("Änderungs-ID stimmt nicht mit der Datei überein.");
+  return { change, reference: { id, commit: status.head, path } };
 }
 
 export async function committedTeamConfiguration(

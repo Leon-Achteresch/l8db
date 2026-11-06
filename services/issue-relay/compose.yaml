@@ -1,0 +1,28 @@
+services:
+  relay:
+    image: l8db-issue-relay:local
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: https://issues.leon-achteresch.de
+      GITHUB_APP_ID: '5606404'
+      GITHUB_INSTALLATION_ID: '178437458'
+      GITHUB_APP_PRIVATE_KEY_FILE: /run/secrets/github-app.pem
+      TRUST_PROXY: '1'
+    volumes:
+      - screenshots:/data
+      - /data/l8db-issue-relay/secrets/github-app.pem:/run/secrets/github-app.pem:ro
+    expose:
+      - '3000'
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  screenshots:

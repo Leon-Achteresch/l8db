@@ -76,7 +76,7 @@ export function ConnectionBulkEditDialog({ open, group, onOpenChange }: Props) {
       for (const connection of current) {
         queryClient.removeQueries({ predicate: (query) => query.queryKey[1] === connection.id });
       }
-      toast.success(`${current.length} Connections aktualisiert`);
+      toast.success(`${current.length} Verbindungen aktualisiert`);
       onOpenChange(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
@@ -91,7 +91,7 @@ export function ConnectionBulkEditDialog({ open, group, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>Host und Service-Name bearbeiten</DialogTitle>
           <DialogDescription>
-            Die Werte werden für alle {group.connections.length} Connections dieser Gruppe gesetzt.
+            Die Werte werden für alle {group.connections.length} Verbindungen dieser Gruppe gesetzt.
             Benutzer, Passwörter, Tags und Schema-Filter bleiben erhalten.
           </DialogDescription>
         </DialogHeader>

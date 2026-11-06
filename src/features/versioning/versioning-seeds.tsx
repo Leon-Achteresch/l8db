@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DatagenColumnRow } from "@/features/datagen/datagen-column-row";
 import { useConnectionsStore } from "@/lib/connections";
 import { type DatagenPlan, datagenPlan, datagenSeedScript, versioningRunSeed } from "@/lib/db";
+import { errorMessageOf } from "@/lib/error-details";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { checksum, deployKind } from "@/lib/versioning/model";
@@ -47,7 +48,7 @@ export function VersioningSeeds({ workspace }: { workspace: VersioningWorkspace 
         }
       })
       .catch((cause) => {
-        if (active) setLoadError(String(cause));
+        if (active) setLoadError(errorMessageOf(cause));
       });
     return () => {
       active = false;

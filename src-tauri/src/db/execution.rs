@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use futures_util::FutureExt;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
@@ -22,6 +24,8 @@ pub struct ExecutionOptions {
     pub query_timeout: Option<u64>,
     pub connection_timeout: Option<u64>,
     pub max_rows: Option<usize>,
+    #[serde(default)]
+    pub no_time_limit: bool,
 }
 
 #[derive(Clone)]
@@ -118,6 +122,12 @@ pub fn result_row_cap(maximum: usize) -> usize {
 }
 
 pub fn query_duration() -> Duration {
+    if CONTEXT
+        .try_with(|ctx| ctx.options.no_time_limit)
+        .unwrap_or(false)
+    {
+        return Duration::from_secs(UNCLAMPED_MAX_SECONDS);
+    }
     let max = if UNCLAMPED.try_with(|_| ()).is_ok() {
         UNCLAMPED_MAX_SECONDS
     } else {
@@ -136,6 +146,27 @@ pub fn query_duration() -> Duration {
 }
 
 pub const UNCLAMPED_MAX_SECONDS: u64 = 30 * 24 * 60 * 60;
+
+pub async fn shielded<T, F>(future: F) -> T
+where
+    F: Future<Output = T>,
+{
+    match CONTEXT.try_with(Context::clone) {
+        Ok(context) => {
+            CONTEXT
+                .scope(
+                    Context {
+                        cancel: CancellationToken::new(),
+                        interrupted: Arc::new(AtomicBool::new(false)),
+                        ..context
+                    },
+                    future,
+                )
+                .await
+        }
+        Err(_) => future.await,
+    }
+}
 
 pub async fn without_query_limit<T, F>(future: F) -> T
 where
@@ -163,6 +194,9 @@ pub fn timeout_message() -> String {
         query_duration().as_secs()
     )
 }
+
+const PANIC_MESSAGE: &str =
+    "Interner Fehler bei der Ausführung. Details stehen im App-Log; vor erneutem Schreiben den Serverzustand prüfen.";
 
 pub fn cancel(id: &str) -> Result<bool, String> {
     let entries = registry()
@@ -208,9 +242,10 @@ where
                 cancel,
                 interrupted: Arc::new(AtomicBool::new(false)),
             },
-            future,
+            AssertUnwindSafe(future).catch_unwind(),
         )
         .await
+        .unwrap_or_else(|_| Err(PANIC_MESSAGE.into()))
 }
 
 pub async fn run_query<T, F>(
@@ -317,6 +352,7 @@ pub async fn connect_postgres(
     config: &tokio_postgres::Config,
     ssl: &super::connection::PgTls,
 ) -> Result<tokio_postgres::Client, String> {
+    let sink = super::server_output::sink();
     let (client, connection) = connect(async {
         config
             .connect(super::connection::tls_connector(ssl)?)
@@ -324,9 +360,7 @@ pub async fn connect_postgres(
             .map_err(super::map_pg_err)
     })
     .await?;
-    tokio::spawn(async move {
-        let _ = connection.await;
-    });
+    tokio::spawn(super::server_output::forward_notices(connection, sink));
     Ok(client)
 }
 
@@ -437,6 +471,27 @@ mod tests {
         .await;
         assert_eq!(unclamped.unwrap(), 900);
         assert_eq!(query_duration().as_secs(), 30);
+        let unlimited = run(
+            Some(ExecutionOptions {
+                query_timeout: Some(30),
+                no_time_limit: true,
+                ..Default::default()
+            }),
+            false,
+            async { Ok(query_duration().as_secs()) },
+        )
+        .await;
+        assert_eq!(unlimited.unwrap(), UNCLAMPED_MAX_SECONDS);
+        let zero = run(
+            Some(ExecutionOptions {
+                query_timeout: Some(0),
+                ..Default::default()
+            }),
+            false,
+            async { Ok(query_duration().as_secs()) },
+        )
+        .await;
+        assert_eq!(zero.unwrap(), 5);
     }
 
     #[tokio::test]
@@ -481,5 +536,40 @@ mod tests {
         .await
         .unwrap();
         assert!(!cancel("execution-test").unwrap());
+    }
+
+    #[tokio::test]
+    async fn panicking_job_returns_error_and_unregisters() {
+        let result: Result<(), String> = run(
+            Some(ExecutionOptions {
+                job_id: Some("execution-panic".into()),
+                ..Default::default()
+            }),
+            true,
+            async { panic!("adapter bug") },
+        )
+        .await;
+        assert_eq!(result.unwrap_err(), PANIC_MESSAGE);
+        assert!(!cancel("execution-panic").unwrap());
+    }
+
+    #[tokio::test]
+    async fn shielded_cleanup_ignores_the_users_cancellation() {
+        run(
+            Some(ExecutionOptions {
+                job_id: Some("execution-shielded".into()),
+                ..Default::default()
+            }),
+            true,
+            async {
+                assert!(cancel("execution-shielded")?);
+                assert!(cancellation_token().is_cancelled());
+                assert!(!shielded(async { cancellation_token().is_cancelled() }).await);
+                assert!(cancellation_token().is_cancelled());
+                Ok(())
+            },
+        )
+        .await
+        .unwrap();
     }
 }

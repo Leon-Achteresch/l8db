@@ -50,7 +50,7 @@ export function SupabaseFunctionSource({ reference, slug }: { reference: string;
       )}
       {source.isLoading && <p className="text-xs text-muted-foreground">Quellcode wird geladen…</p>}
       {source.data?.format === "eszip" && (
-        <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+        <p className="rounded-lg p-3 text-xs text-muted-foreground bg-muted/30">
           Supabase liefert diese Funktion nur als gebündeltes ESZIP ({formatSize(source.data.size)}
           ). Lade sie herunter und entpacke sie mit der Supabase CLI.
         </p>
@@ -71,7 +71,7 @@ export function SupabaseFunctionSource({ reference, slug }: { reference: string;
               </li>
             ))}
           </ul>
-          <pre className="max-h-[60vh] overflow-auto rounded-xl border bg-muted/30 p-3 font-mono text-xs">
+          <pre className="max-h-[60vh] overflow-auto rounded-xl bg-muted/30 p-3 font-mono text-xs">
             {file?.content ?? `Binärdatei (${formatSize(file?.size ?? 0)})`}
           </pre>
         </div>

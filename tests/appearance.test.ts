@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeUiDensity, normalizeUiScale } from "../src/lib/settings";
+import {
+  LAYOUT_APPEARANCE_DEFAULTS,
+  normalizeUiDensity,
+  normalizeUiScale,
+  TABLE_APPEARANCE_DEFAULTS,
+  useSettingsStore,
+} from "../src/lib/settings";
 
 describe("stored appearance settings", () => {
   test("old or invalid scale settings preserve a readable default", () => {
@@ -19,5 +25,21 @@ describe("stored appearance settings", () => {
     for (const value of ["normal", undefined, null, "dense", 1]) {
       expect(normalizeUiDensity(value)).toBe("normal");
     }
+  });
+});
+
+describe("onboarding appearance steps", () => {
+  test("table and layout defaults are separate and together match the full reset", () => {
+    const table = Object.keys(TABLE_APPEARANCE_DEFAULTS);
+    const layout = Object.keys(LAYOUT_APPEARANCE_DEFAULTS);
+    expect(table.filter((key) => layout.includes(key))).toEqual([]);
+    useSettingsStore.setState({ uiScale: 120, tableStyle: "zebra" as never });
+    useSettingsStore.setState(TABLE_APPEARANCE_DEFAULTS);
+    expect(useSettingsStore.getState().uiScale).toBe(120);
+    useSettingsStore.getState().resetAppearance();
+    expect(useSettingsStore.getState()).toMatchObject({
+      ...LAYOUT_APPEARANCE_DEFAULTS,
+      ...TABLE_APPEARANCE_DEFAULTS,
+    });
   });
 });

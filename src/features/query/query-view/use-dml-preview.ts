@@ -182,10 +182,10 @@ export function useDmlPreview(
 
   const preview = useCallback(
     (sql: string) => {
-      const bound = caps.query_language === "sql" && hasBindParameters(sql);
+      const bound = caps.query_language === "sql" && hasBindParameters(sql, connection?.kind);
       return open(sql, true, bound);
     },
-    [open, caps.query_language],
+    [open, caps.query_language, connection?.kind],
   );
 
   const stop = useCallback(() => {

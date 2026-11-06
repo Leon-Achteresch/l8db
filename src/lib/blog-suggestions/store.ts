@@ -1,6 +1,7 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { useSettingsStore } from "@/lib/settings";
 import { websiteUrl } from "@/lib/website";
 import { syncAcrossWindows } from "@/lib/window-sync";
@@ -87,6 +88,7 @@ export const useBlogSuggestionStore = create<BlogState>()(
     }),
     {
       name: STORAGE_KEY,
+      storage: createSafeJsonStorage(),
       partialize: ({ posts, checkedAt, history, lastShownAt }) => ({
         posts,
         checkedAt,

@@ -1,7 +1,7 @@
 import { Download, Loader } from "lucide";
 import { TerminalIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
-
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { QueryResult } from "@/lib/db";
 import { DATA_EXPORT_FORMATS } from "@/lib/export-formats";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
 
 import { ResultAskAiButton } from "./result-ask-ai-button";
@@ -37,12 +38,15 @@ export function ResultActions({
 }: ResultActionsProps) {
   const { exporting, setCsvExportOpen, setXlsxExportOpen, setDataExportFormat, handleExportJson } =
     exportState;
+  const outputFeature = useNewFeatureVisibility<HTMLButtonElement>("query.server-output");
   return (
     <>
       {serverOutput && (
         <Button
-          size="icon-sm"
+          ref={outputFeature.ref}
+          size={outputFeature.isNew ? "sm" : "icon-sm"}
           variant={outputOpen ? "secondary" : "ghost"}
+          className={outputFeature.isNew ? "h-7 gap-1 px-1.5" : undefined}
           aria-label="Server-Ausgabe umschalten"
           aria-pressed={outputOpen}
           title="Server-Ausgabe öffnen"
@@ -50,6 +54,7 @@ export function ResultActions({
           onClick={onToggleOutput}
         >
           <TerminalIcon className="size-3.5" />
+          {outputFeature.isNew && <NewBadge />}
         </Button>
       )}
       {result && result.columns.length > 0 && <ResultAskAiButton result={result} sql={sql} />}

@@ -3,6 +3,9 @@ use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+static PROGRESS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, Value>>> =
+    std::sync::LazyLock::new(Default::default);
+
 fn a<T: DeserializeOwned>(x: &Value, key: &str) -> Result<T, String> {
     serde_json::from_value(x.get(key).cloned().unwrap_or(Value::Null))
         .map_err(|e| format!("{key}: {e}"))
@@ -24,7 +27,7 @@ async fn dispatch(
     tx: &super::transaction::TransactionState,
 ) -> Result<Value, String> {
     match command {
-        "list_providers" => Ok(json!(crate::db::commands::list_providers())),
+        "list_providers" => Ok(json!(crate::db::commands::list_providers().await)),
         "list_schemas" => crate::db::commands::list_schemas(
             a(x, "kind")?,
             a(x, "connectionString")?,
@@ -102,6 +105,20 @@ async fn dispatch(
             a(x, "sql")?,
             st(&tx),
             a(x, "options")?,
+        )
+        .await
+        .map(|v| json!(v)),
+        "execute_with_binds" => crate::db::commands::execute_with_binds(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            a(x, "database")?,
+            a(x, "txId")?,
+            a(x, "sql")?,
+            a(x, "binds")?,
+            st(&pool),
+            st(&tx),
+            a(x, "options")?,
+            a(x, "session")?,
         )
         .await
         .map(|v| json!(v)),
@@ -309,6 +326,62 @@ async fn dispatch(
         )
         .await
         .map(|v| json!(v)),
+        "schema_partition_ddl" => crate::db::schema_catalog::schema_partition_ddl(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            a(x, "database")?,
+            a(x, "schema")?,
+            a(x, "tables")?,
+            st(&pool),
+        )
+        .await
+        .map(|v| json!(v)),
+        "plan_transfer" => crate::db::execution::run(
+            a(x, "options")?,
+            true,
+            crate::db::transfer::plan(
+                &crate::db::transfer::Endpoint {
+                    kind: a(x, "kind")?,
+                    connection_string: a(x, "connectionString")?,
+                    database: a(x, "database")?,
+                },
+                &a(x, "request")?,
+                pool.clone(),
+            ),
+        )
+        .await
+        .map(|v| json!(v)),
+        "transfer_progress" => Ok(PROGRESS
+            .lock()
+            .unwrap()
+            .get(x["jobId"].as_str().unwrap_or_default())
+            .cloned()
+            .unwrap_or(Value::Null)),
+        "run_transfer" => {
+            let target = crate::db::transfer::Endpoint {
+                kind: a(x, "kind")?,
+                connection_string: a(x, "connectionString")?,
+                database: a(x, "database")?,
+            };
+            let request: crate::db::transfer::RunRequest = a(x, "request")?;
+            let job = x["options"]["jobId"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            let report = move |progress: crate::db::transfer::Progress| {
+                PROGRESS
+                    .lock()
+                    .unwrap()
+                    .insert(job.clone(), json!(progress));
+            };
+            crate::db::execution::run(
+                a(x, "options")?,
+                true,
+                crate::db::transfer::run(&target, &request, pool.clone(), &report),
+            )
+            .await
+            .map(|v| json!(v))
+        }
         "explain_query" => crate::db::commands::explain_query(
             a(x, "kind")?,
             a(x, "connectionString")?,
@@ -316,6 +389,7 @@ async fn dispatch(
             a(x, "sql")?,
             a(x, "analyze")?,
             st(&pool),
+            a(x, "options")?,
         )
         .await
         .map(|v| json!(v)),

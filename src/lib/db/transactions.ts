@@ -1,3 +1,4 @@
+import type { ServerMessage } from "./admin";
 import { invoke, type QueryExecutionOptions } from "./core";
 import type { DatabaseKind } from "./providers";
 import type { ExtensionInfo, FunctionInfo, PackageMemberInfo, QueryResult } from "./types";
@@ -40,7 +41,7 @@ export async function transactionDatabaseChanges(txId: string): Promise<Transact
   return invoke("transaction_database_changes", { txId });
 }
 
-export async function transactionServerOutput(txId: string): Promise<string[]> {
+export async function transactionServerOutput(txId: string): Promise<ServerMessage[]> {
   return invoke("transaction_server_output", { txId });
 }
 

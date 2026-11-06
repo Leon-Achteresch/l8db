@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export type DashboardPaletteMode = "connection" | "vivid";
@@ -10,6 +11,7 @@ export const useDashboardPalette = create<{
 }>()(
   persist((set) => ({ mode: "connection", setMode: (mode) => set({ mode }) }), {
     name: "l8db.dashboard-palette",
+    storage: createSafeJsonStorage(),
   }),
 );
 

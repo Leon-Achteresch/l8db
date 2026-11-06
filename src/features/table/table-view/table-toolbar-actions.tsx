@@ -1,14 +1,19 @@
 import { ClipboardPasteIcon, PlusIcon, SparklesIcon } from "lucide-react";
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { TestDataDialog } from "@/features/datagen/test-data-dialog";
 import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
 import { MaskingToggle } from "@/features/table/masking-toggle";
 import { PasteRowsDialog } from "@/features/table/paste-rows-dialog";
 import { RedisKeyActions } from "@/features/table/redis-key-actions";
+import { RowWatchMenuItem } from "@/features/table/row-watch-menu-item";
 import { TableExtensionActions } from "@/features/table/table-extension-actions";
+import { TimestampDisplayMenu } from "@/features/table/timestamp-display-menu";
+import { PluginToolbar } from "@/features/ui-plugins/plugin-toolbar";
 import { useReadOnlyConnection } from "@/lib/connections";
 import type { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
+import { useHasNewFeatures } from "@/lib/new-features";
+import { RowWatchContext } from "@/lib/workbench/row-watch-context";
 import { TableActionsMenu, TableExportMenu } from "./table-export-menu";
 
 import type { useTableViewModel } from "./use-table-view-model";
@@ -22,6 +27,8 @@ type Props = Pick<
   | "tableTab"
   | "insertRowMutation"
   | "data"
+  | "tableRows"
+  | "columnDetails"
   | "refetch"
   | "exporting"
   | "setCsvExportOpen"
@@ -29,6 +36,7 @@ type Props = Pick<
   | "setDataExportFormat"
   | "handleExport"
   | "requestAddRow"
+  | "pluginTable"
 > & {
   schema: string;
   table: string;
@@ -44,6 +52,8 @@ export function TableToolbarActions({
   tableTab,
   insertRowMutation,
   data,
+  tableRows,
+  columnDetails,
   refetch,
   exporting,
   setCsvExportOpen,
@@ -51,12 +61,16 @@ export function TableToolbarActions({
   setDataExportFormat,
   handleExport,
   requestAddRow,
+  pluginTable,
   schema,
   table,
 }: Props) {
   const readOnly = useReadOnlyConnection();
   const [testDataOpen, setTestDataOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
+  const { scope: watchScope } = useContext(RowWatchContext);
+  const watchNew = useHasNewFeatures("table.rows.watch") && Boolean(watchScope);
+  const timeNew = useHasNewFeatures("query.results.timestamps");
   const isData = tableTab === "data";
   const canTestData = isData && connection && caps.test_data;
   const canPaste =
@@ -66,17 +80,28 @@ export function TableToolbarActions({
   const canExport = isData && data;
   return (
     <div className="ml-auto flex items-center gap-1">
+      <PluginToolbar
+        info={pluginTable}
+        stateKey={stateKey}
+        rows={tableRows}
+        columnNames={data?.columns}
+        columnDetails={columnDetails}
+        refresh={() => void refetch()}
+      />
       <ObjectAdminMenu schema={schema} name={table} objectType="table" />
       {isData && caps.query_language === "redis" && (
         <RedisKeyActions key={`${connection?.id}:${database}`} />
       )}
-      {(canMask ||
+      {(isData ||
+        canMask ||
         canTestData ||
         canPaste ||
         canAdd ||
         canExport ||
         extensionActions.actions.length > 0) && (
-        <TableActionsMenu isNew={extensionActions.isNew}>
+        <TableActionsMenu isNew={extensionActions.isNew || (isData && (watchNew || timeNew))}>
+          {isData && <RowWatchMenuItem />}
+          {isData && <TimestampDisplayMenu />}
           {canAdd && (
             <IconMenuItem
               icon={<PlusIcon />}

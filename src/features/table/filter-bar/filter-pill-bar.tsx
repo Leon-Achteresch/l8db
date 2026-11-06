@@ -14,8 +14,9 @@ export function FilterPillBar(props: FilterBarProps) {
   const ai = useFilterAi(model);
   const simple = model.mode === "simple";
   return (
-    <div className="shrink-0 border-b bg-muted/30 px-3 py-2">
+    <div className="shrink-0 border-b bg-muted/30 px-3 py-1">
       <div className="flex min-h-7 flex-wrap items-center gap-1.5">
+        {props.leading}
         <FilterModeToggle mode={model.mode} sqlLabel={model.sqlLabel} onChange={model.switchMode} />
         {simple ? (
           <>

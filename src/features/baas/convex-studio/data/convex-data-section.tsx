@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { Database } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { NewBadge } from "@/components/new-badge";
@@ -9,6 +10,7 @@ import {
   convexDataResolve,
 } from "@/lib/db/convex-studio-data";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { BaasSidebarPortal } from "../../baas-sidebar-portal";
 import type { ConvexStudioSectionProps } from "../convex-studio-sections";
 import { ConvexDataConfirmDialog } from "./convex-data-confirm-dialog";
@@ -19,7 +21,7 @@ import { ConvexDataTableView } from "./convex-data-table-view";
 import { dataKey, withoutSystemFields } from "./convex-data-utils";
 
 export function ConvexDataSection({ deployment }: ConvexStudioSectionProps) {
-  const feature = useNewFeatureVisibility<HTMLHeadingElement>("baas.convex.studio.data");
+  const feature = useNewFeatureVisibility<HTMLSpanElement>("baas.convex.studio.data");
   const queryClient = useQueryClient();
   const [table, setTable] = useState<string | null>(null);
   const [detail, setDetail] = useState<{ table: string; document: ConvexDocument } | null>(null);
@@ -56,14 +58,15 @@ export function ConvexDataSection({ deployment }: ConvexStudioSectionProps) {
           onDeleted={() => setTable(null)}
         />
       ) : (
-        <div className="space-y-2 p-5">
-          <h2 ref={feature.ref} className="flex items-center gap-2 text-base font-semibold">
-            Daten {feature.isNew && <NewBadge />}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Wähle links eine Tabelle oder erstelle eine neue.
-          </p>
-        </div>
+        <BaasEmptyState
+          icon={Database}
+          title={
+            <span ref={feature.ref} className="flex items-center justify-center gap-2">
+              Wähle eine Tabelle {feature.isNew && <NewBadge />}
+            </span>
+          }
+          description="Links findest du alle Tabellen des Deployments. Öffne eine, um Dokumente wie in einer Datenbank zu durchsuchen, zu filtern und direkt in den Zellen zu bearbeiten."
+        />
       )}
       <ConvexDataDocumentSheet
         entry={detail}

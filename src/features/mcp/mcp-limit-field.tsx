@@ -38,6 +38,7 @@ export function McpLimitField({
 
       <div className="flex items-center gap-2 pt-1">
         <Input
+          key={value}
           id={id}
           type="number"
           min={min}
@@ -45,10 +46,12 @@ export function McpLimitField({
           defaultValue={value}
           className="h-8 font-mono text-xs bg-background"
           onBlur={(e) => {
-            const next = Number(e.target.value);
-            if (Number.isFinite(next)) {
-              onChange(Math.min(max, Math.max(min, Math.round(next))));
-            }
+            const raw = e.target.value.trim();
+            const next = Number(raw);
+            const clamped =
+              raw && Number.isFinite(next) ? Math.min(max, Math.max(min, Math.round(next))) : value;
+            e.target.value = String(clamped);
+            if (clamped !== value) onChange(clamped);
           }}
         />
         {unit ? (

@@ -25,10 +25,11 @@ import type { SchemaCopyObjectType } from "@/lib/db";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { formatMenuShortcut, MENU_KEYS, menuKeyHandler } from "@/lib/hotkeys";
 import { buildInvalidSet, isFunctionInvalid, isPackageInvalid } from "@/lib/invalid-objects";
+import { middleClick } from "@/lib/middle-click";
 import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { packageOid } from "@/lib/plsql";
 import { useInvalidObjectsQuery } from "@/lib/queries";
-import { compileSearchPatterns, splitSearchPatterns } from "@/lib/regex-search";
+import { compileSearchPatterns, searchMatcher } from "@/lib/regex-search";
 import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
 import { useSidebarSearch } from "@/lib/sidebar-search";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -61,14 +62,8 @@ export function SidebarFunctionList({
   );
   const regexError = compiled && !compiled.ok ? compiled.error : null;
   const filtered = useMemo(() => {
-    const patterns = splitSearchPatterns(deferredSearch);
-    if (patterns.length === 0 || (compiled && !compiled.ok)) return items;
-    const matches = compiled?.ok
-      ? (value: string) => compiled.regexes.some((regex) => regex.test(value))
-      : (value: string) => {
-          const lower = value.toLowerCase();
-          return patterns.some((pattern) => lower.includes(pattern.toLowerCase()));
-        };
+    const matches = searchMatcher(deferredSearch, compiled);
+    if (!matches) return items;
     return items?.filter((item) => matches(item.name) || matches(item.identity_args));
   }, [items, deferredSearch, compiled]);
   const navigate = useNavigate();
@@ -166,7 +161,21 @@ export function SidebarFunctionList({
                     asChild
                     onKeyDown={menuKeyHandler(copyNameActions(item.name, qualifiedName))}
                   >
-                    <SidebarMenuButton onClick={() => open(item)}>
+                    <SidebarMenuButton
+                      onClick={() => open(item)}
+                      {...middleClick(
+                        target
+                          ? undefined
+                          : () =>
+                              item.return_type === "PACKAGE"
+                                ? openPackageTab({ schema: item.schema, name: item.name })
+                                : openFunctionTab({
+                                    schema: item.schema,
+                                    name: item.name,
+                                    oid: item.oid,
+                                  }),
+                      )}
+                    >
                       {item.return_type === "PACKAGE" ? (
                         <PackageIcon className="text-muted-foreground" />
                       ) : (

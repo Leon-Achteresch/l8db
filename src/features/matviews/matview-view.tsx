@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 
 import type { SortingState } from "@tanstack/react-table";
 import { RefreshCwIcon, RefreshCwOffIcon, Trash2Icon } from "lucide-react";
@@ -7,11 +8,12 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ObjectDropDialog } from "@/features/object-admin/object-drop-dialog";
 import { DataTable } from "@/features/table/data-table";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { useActiveConnection } from "@/lib/connections";
-import { dropMaterializedView, refreshMaterializedView } from "@/lib/db";
+import { refreshMaterializedView } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useMaterializedViewsQuery, useTableRowCountQuery, useTableRowsQuery } from "@/lib/queries";
 import { approximateRowCount, exactRowCount } from "@/lib/row-count";
@@ -30,7 +32,9 @@ export function MatviewView({ schema, name }: MatviewViewProps) {
   const rowLimit = useSettingsStore((s) => s.rowLimit);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [page, setPage] = useState(0);
-  const [busy, setBusy] = useState<"refresh" | "concurrent" | "drop" | null>(null);
+  const [busy, setBusy] = useState<"refresh" | "concurrent" | null>(null);
+  const [dropOpen, setDropOpen] = useState(false);
+  const navigate = useNavigate();
 
   const { data: matviews } = useMaterializedViewsQuery(schema);
   const info = matviews?.find((m) => m.name === name);
@@ -77,27 +81,6 @@ export function MatviewView({ schema, name }: MatviewViewProps) {
     }
   };
 
-  const handleDrop = async () => {
-    if (!connection || busy) return;
-    if (!window.confirm(`Materialized View "${schema}.${name}" wirklich löschen?`)) return;
-    setBusy("drop");
-    try {
-      await dropMaterializedView(
-        connection.kind,
-        effectiveConnectionString(connection),
-        schema,
-        name,
-        database ?? undefined,
-      );
-      toast.success("Materialized View gelöscht.");
-      refreshQueries();
-    } catch (err) {
-      toast.error(typeof err === "string" ? err : String(err));
-    } finally {
-      setBusy(null);
-    }
-  };
-
   if (!connection) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
@@ -132,8 +115,12 @@ export function MatviewView({ schema, name }: MatviewViewProps) {
             variant="ghost"
             className="h-7 gap-1.5 px-2.5 text-xs"
             onClick={() => void handleRefresh(true)}
-            disabled={busy !== null}
-            title="Benötigt einen Unique-Index, blockiert keine Leser"
+            disabled={busy !== null || info?.is_populated === false}
+            title={
+              info?.is_populated === false
+                ? "Nicht möglich, solange die View leer ist (NO DATA). Erst normal aktualisieren."
+                : "Benötigt einen Unique-Index, blockiert keine Leser"
+            }
           >
             <RefreshCwOffIcon className="size-3.5" />
             {busy === "concurrent" ? "Aktualisiere…" : "Concurrently"}
@@ -142,7 +129,7 @@ export function MatviewView({ schema, name }: MatviewViewProps) {
             size="sm"
             variant="ghost"
             className="h-7 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-destructive"
-            onClick={() => void handleDrop()}
+            onClick={() => setDropOpen(true)}
             disabled={busy !== null}
           >
             <Trash2Icon className="size-3.5" />
@@ -186,6 +173,14 @@ export function MatviewView({ schema, name }: MatviewViewProps) {
           />
         )}
       </div>
+      <ObjectDropDialog
+        open={dropOpen}
+        onOpenChange={setDropOpen}
+        schema={schema}
+        name={name}
+        objectType="materialized_view"
+        onDropped={() => void navigate({ to: "/" })}
+      />
     </div>
   );
 }

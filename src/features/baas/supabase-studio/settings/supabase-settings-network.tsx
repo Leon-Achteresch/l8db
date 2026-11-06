@@ -45,12 +45,12 @@ export function SupabaseSettingsNetwork({ reference }: { reference: string }) {
   }
 
   return (
-    <section className="rounded-2xl border bg-card p-5">
+    <section className="rounded-2xl bg-muted/25 p-5">
       <div className="flex items-center gap-2">
         <ShieldCheck className="size-4 text-muted-foreground" />
         <h3 className="text-sm font-semibold">Netzwerk & SSL</h3>
       </div>
-      <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border bg-background/50 p-3">
+      <div className="mt-4 flex items-center justify-between gap-3 rounded-lg bg-background/50 p-3">
         <div>
           <p className="text-xs font-medium">SSL erzwingen</p>
           <p className="text-[11px] text-muted-foreground">
@@ -75,7 +75,7 @@ export function SupabaseSettingsNetwork({ reference }: { reference: string }) {
       {ssl.data?.appliedSuccessfully === false && (
         <p className="mt-2 text-xs text-muted-foreground">Änderung wird noch angewendet.</p>
       )}
-      <div className="mt-3 rounded-lg border bg-background/50 p-3">
+      <div className="mt-3 rounded-lg bg-background/50 p-3">
         <p className="text-xs font-medium">Netzwerkbeschränkungen</p>
         {network.isPending ? (
           <p className="mt-1 text-xs text-muted-foreground">Wird geladen…</p>

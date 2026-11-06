@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as BaasRouteImport } from './routes/baas'
+import { Route as CloudAccountsRouteImport } from './routes/cloud-accounts'
 import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DevRouteImport } from './routes/dev'
@@ -19,9 +20,11 @@ import { Route as DocsRouteImport } from './routes/docs'
 import { Route as DriversRouteImport } from './routes/drivers'
 import { Route as McpRouteImport } from './routes/mcp'
 import { Route as ReleaseNotesRouteImport } from './routes/release-notes'
+import { Route as WorkspacesRouteImport } from './routes/workspaces'
 import { Route as AppPlainRouteImport } from './routes/_app._plain'
 import { Route as AppWorkspaceRouteImport } from './routes/_app._workspace'
 import { Route as AppAiRouteImport } from './routes/_app.ai'
+import { Route as AppFederationRouteImport } from './routes/_app.federation'
 import { Route as AppPlainAvailableExtensionsRouteImport } from './routes/_app._plain.available-extensions'
 import { Route as AppWorkspaceIndexRouteImport } from './routes/_app._workspace.index'
 import { Route as AppWorkspaceAutomationRouteImport } from './routes/_app._workspace.automation'
@@ -75,6 +78,11 @@ const BaasRoute = BaasRouteImport.update({
   path: '/baas',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CloudAccountsRoute = CloudAccountsRouteImport.update({
+  id: '/cloud-accounts',
+  path: '/cloud-accounts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ConnectionsRoute = ConnectionsRouteImport.update({
   id: '/connections',
   path: '/connections',
@@ -110,6 +118,11 @@ const ReleaseNotesRoute = ReleaseNotesRouteImport.update({
   path: '/release-notes',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkspacesRoute = WorkspacesRouteImport.update({
+  id: '/workspaces',
+  path: '/workspaces',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppPlainRoute = AppPlainRouteImport.update({
   id: '/_plain',
   getParentRoute: () => AppRoute,
@@ -121,6 +134,11 @@ const AppWorkspaceRoute = AppWorkspaceRouteImport.update({
 const AppAiRoute = AppAiRouteImport.update({
   id: '/ai',
   path: '/ai',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFederationRoute = AppFederationRouteImport.update({
+  id: '/federation',
+  path: '/federation',
   getParentRoute: () => AppRoute,
 } as any)
 const AppPlainAvailableExtensionsRoute =
@@ -333,6 +351,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppWorkspaceIndexRoute
   '/about': typeof AboutRoute
   '/baas': typeof BaasRoute
+  '/cloud-accounts': typeof CloudAccountsRoute
   '/connections': typeof ConnectionsRoute
   '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
@@ -340,7 +359,9 @@ export interface FileRoutesByFullPath {
   '/drivers': typeof DriversRoute
   '/mcp': typeof McpRoute
   '/release-notes': typeof ReleaseNotesRoute
+  '/workspaces': typeof WorkspacesRoute
   '/ai': typeof AppAiRoute
+  '/federation': typeof AppFederationRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
   '/automation': typeof AppWorkspaceAutomationRoute
   '/backup': typeof AppWorkspaceBackupRoute
@@ -383,6 +404,7 @@ export interface FileRoutesByTo {
   '/': typeof AppWorkspaceIndexRoute
   '/about': typeof AboutRoute
   '/baas': typeof BaasRoute
+  '/cloud-accounts': typeof CloudAccountsRoute
   '/connections': typeof ConnectionsRoute
   '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
@@ -390,7 +412,9 @@ export interface FileRoutesByTo {
   '/drivers': typeof DriversRoute
   '/mcp': typeof McpRoute
   '/release-notes': typeof ReleaseNotesRoute
+  '/workspaces': typeof WorkspacesRoute
   '/ai': typeof AppAiRoute
+  '/federation': typeof AppFederationRoute
   '/available-extensions': typeof AppPlainAvailableExtensionsRoute
   '/automation': typeof AppWorkspaceAutomationRoute
   '/backup': typeof AppWorkspaceBackupRoute
@@ -433,6 +457,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/about': typeof AboutRoute
   '/baas': typeof BaasRoute
+  '/cloud-accounts': typeof CloudAccountsRoute
   '/connections': typeof ConnectionsRoute
   '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
@@ -440,9 +465,11 @@ export interface FileRoutesById {
   '/drivers': typeof DriversRoute
   '/mcp': typeof McpRoute
   '/release-notes': typeof ReleaseNotesRoute
+  '/workspaces': typeof WorkspacesRoute
   '/_app/_plain': typeof AppPlainRouteWithChildren
   '/_app/_workspace': typeof AppWorkspaceRouteWithChildren
   '/_app/ai': typeof AppAiRoute
+  '/_app/federation': typeof AppFederationRoute
   '/_app/_plain/available-extensions': typeof AppPlainAvailableExtensionsRoute
   '/_app/_workspace/automation': typeof AppWorkspaceAutomationRoute
   '/_app/_workspace/backup': typeof AppWorkspaceBackupRoute
@@ -488,6 +515,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/baas'
+    | '/cloud-accounts'
     | '/connections'
     | '/dashboard'
     | '/dev'
@@ -495,7 +523,9 @@ export interface FileRouteTypes {
     | '/drivers'
     | '/mcp'
     | '/release-notes'
+    | '/workspaces'
     | '/ai'
+    | '/federation'
     | '/available-extensions'
     | '/automation'
     | '/backup'
@@ -538,6 +568,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/baas'
+    | '/cloud-accounts'
     | '/connections'
     | '/dashboard'
     | '/dev'
@@ -545,7 +576,9 @@ export interface FileRouteTypes {
     | '/drivers'
     | '/mcp'
     | '/release-notes'
+    | '/workspaces'
     | '/ai'
+    | '/federation'
     | '/available-extensions'
     | '/automation'
     | '/backup'
@@ -587,6 +620,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/about'
     | '/baas'
+    | '/cloud-accounts'
     | '/connections'
     | '/dashboard'
     | '/dev'
@@ -594,9 +628,11 @@ export interface FileRouteTypes {
     | '/drivers'
     | '/mcp'
     | '/release-notes'
+    | '/workspaces'
     | '/_app/_plain'
     | '/_app/_workspace'
     | '/_app/ai'
+    | '/_app/federation'
     | '/_app/_plain/available-extensions'
     | '/_app/_workspace/automation'
     | '/_app/_workspace/backup'
@@ -641,6 +677,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AboutRoute: typeof AboutRoute
   BaasRoute: typeof BaasRoute
+  CloudAccountsRoute: typeof CloudAccountsRoute
   ConnectionsRoute: typeof ConnectionsRoute
   DashboardRoute: typeof DashboardRoute
   DevRoute: typeof DevRoute
@@ -648,6 +685,7 @@ export interface RootRouteChildren {
   DriversRoute: typeof DriversRoute
   McpRoute: typeof McpRoute
   ReleaseNotesRoute: typeof ReleaseNotesRoute
+  WorkspacesRoute: typeof WorkspacesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -671,6 +709,13 @@ declare module '@tanstack/react-router' {
       path: '/baas'
       fullPath: '/baas'
       preLoaderRoute: typeof BaasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cloud-accounts': {
+      id: '/cloud-accounts'
+      path: '/cloud-accounts'
+      fullPath: '/cloud-accounts'
+      preLoaderRoute: typeof CloudAccountsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connections': {
@@ -722,6 +767,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReleaseNotesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/workspaces': {
+      id: '/workspaces'
+      path: '/workspaces'
+      fullPath: '/workspaces'
+      preLoaderRoute: typeof WorkspacesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/_plain': {
       id: '/_app/_plain'
       path: ''
@@ -741,6 +793,13 @@ declare module '@tanstack/react-router' {
       path: '/ai'
       fullPath: '/ai'
       preLoaderRoute: typeof AppAiRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/federation': {
+      id: '/_app/federation'
+      path: '/federation'
+      fullPath: '/federation'
+      preLoaderRoute: typeof AppFederationRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/_plain/available-extensions': {
@@ -1124,12 +1183,14 @@ interface AppRouteChildren {
   AppPlainRoute: typeof AppPlainRouteWithChildren
   AppWorkspaceRoute: typeof AppWorkspaceRouteWithChildren
   AppAiRoute: typeof AppAiRoute
+  AppFederationRoute: typeof AppFederationRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppPlainRoute: AppPlainRouteWithChildren,
   AppWorkspaceRoute: AppWorkspaceRouteWithChildren,
   AppAiRoute: AppAiRoute,
+  AppFederationRoute: AppFederationRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
@@ -1138,6 +1199,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AboutRoute: AboutRoute,
   BaasRoute: BaasRoute,
+  CloudAccountsRoute: CloudAccountsRoute,
   ConnectionsRoute: ConnectionsRoute,
   DashboardRoute: DashboardRoute,
   DevRoute: DevRoute,
@@ -1145,6 +1207,7 @@ const rootRouteChildren: RootRouteChildren = {
   DriversRoute: DriversRoute,
   McpRoute: McpRoute,
   ReleaseNotesRoute: ReleaseNotesRoute,
+  WorkspacesRoute: WorkspacesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

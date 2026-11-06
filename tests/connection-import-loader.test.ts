@@ -16,6 +16,10 @@ mock.module("@tauri-apps/api/core", () => ({
 
 mock.module("@tauri-apps/plugin-dialog", () => ({
   open: async () => picked,
+  save: async () => null,
+  ask: async () => false,
+  confirm: async () => false,
+  message: async () => undefined,
 }));
 
 mock.module("@tauri-apps/plugin-fs", () => ({
@@ -29,6 +33,9 @@ mock.module("@tauri-apps/plugin-fs", () => ({
     fsReads.push(path);
     throw new Error(`forbidden path: ${path}`);
   },
+  writeTextFile: async () => undefined,
+  writeFile: async () => undefined,
+  exists: async () => false,
 }));
 
 const { addDataGripSshConfigs, detectDbeaverImport, pickExternalImport } = await import(

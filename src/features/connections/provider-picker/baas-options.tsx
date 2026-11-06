@@ -1,7 +1,11 @@
 import { Cloud } from "lucide-react";
 import { NewBadge } from "@/components/new-badge";
 import { ProviderLogo } from "@/components/provider-logo";
-import { BAAS_PROVIDERS, type BaasProvider } from "@/features/baas/baas-providers";
+import {
+  BAAS_AS_DATABASE,
+  BAAS_PROVIDERS,
+  type BaasProvider,
+} from "@/features/baas/baas-providers";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
 export function BaasOptions({ onSelect }: { onSelect: (provider: BaasProvider) => void }) {
@@ -17,7 +21,9 @@ export function BaasOptions({ onSelect }: { onSelect: (provider: BaasProvider) =
         {feature.isNew && <NewBadge />}
       </p>
       <div className="flex flex-wrap gap-1.5">
-        {BAAS_PROVIDERS.map((provider) => (
+        {BAAS_PROVIDERS.filter(
+          (provider) => !BAAS_AS_DATABASE.some((item) => item.id === provider.id),
+        ).map((provider) => (
           <button
             key={provider.id}
             type="button"

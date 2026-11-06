@@ -17,6 +17,8 @@ import {
   scrubUrlPassword,
   storeSecret,
 } from "@/lib/secrets";
+import { enforceTeamConnection } from "@/lib/team/merge";
+import { isMainWindow, windowConnectionId } from "@/lib/window-role";
 import { syncAcrossWindows } from "@/lib/window-sync";
 import type { ConnectionInput, SavedConnection } from "./types";
 
@@ -47,13 +49,7 @@ export function createConnectionId(): string {
   return createId();
 }
 
-const windowParams = new URLSearchParams(
-  typeof window === "undefined" ? "" : (window.location?.search ?? ""),
-);
-
-export const windowConnectionId: string | null = windowParams.get("connection");
-
-export const isMainWindow = windowConnectionId === null && !windowParams.has("window");
+export { isMainWindow, windowConnectionId };
 
 export const RECENT_CONNECTION_LIMIT = 10;
 
@@ -213,9 +209,8 @@ const scrubbingStorage: StateStorage = {
           if (typeof connection?.connectionString === "string") {
             const scrubbed = scrubUrlPassword(connection.connectionString);
             const { value, secrets } = splitSecretParams(scrubbed);
-            connection.connectionString = querySecretInKeychain(connection, secrets)
-              ? value
-              : scrubbed;
+            querySecretInKeychain(connection, secrets);
+            connection.connectionString = value;
           }
           if ("tunnelPort" in connection) {
             connection.tunnelPort = null;
@@ -272,7 +267,7 @@ export const useConnectionsStore = create<ConnectionsState>()(
               ? connection
               : connection.temporary
                 ? { temporary: true, ...input, id }
-                : { team: connection.team, ...input, id },
+                : enforceTeamConnection({ ...input, id, team: connection.team }),
           ),
         })),
       removeConnection: (id) => {
@@ -320,7 +315,11 @@ export const useConnectionsStore = create<ConnectionsState>()(
       addImported: (imported) =>
         set((state) => {
           const known = new Set(state.connections.map((connection) => connection.id));
-          const fresh = imported.filter((connection) => !known.has(connection.id));
+          const fresh = imported.filter((connection) => {
+            if (known.has(connection.id)) return false;
+            known.add(connection.id);
+            return true;
+          });
           return { connections: [...state.connections, ...fresh] };
         }),
       setActiveId: (id) =>

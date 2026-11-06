@@ -75,13 +75,20 @@ export function QueryViewDialogs({
   substitution,
 }: QueryViewDialogsProps) {
   const navigate = useNavigate();
-  const saveQuery = useSavedQueriesStore((state) => state.saveQuery);
+  const { queries: savedQueries, saveQuery, updateQuery } = useSavedQueriesStore();
   return (
     <>
       <SaveQueryDialog
         open={saveDialog.open}
         onOpenChange={saveDialog.onOpenChange}
-        onSave={(name) => saveQuery(name, sql)}
+        existingNames={savedQueries.map((query) => query.name)}
+        onSave={(name) => {
+          const existing = savedQueries.find(
+            (query) => query.name.toLowerCase() === name.toLowerCase(),
+          );
+          if (existing) updateQuery(existing.id, name, sql);
+          else saveQuery(name, sql);
+        }}
       />
 
       <SnippetManagerDialog
@@ -102,7 +109,9 @@ export function QueryViewDialogs({
         values={bind.values}
         onValuesChange={bind.onValuesChange}
         onConfirm={bind.onConfirm}
+        onSkip={bind.onSkip}
         inline={!caps.bind_parameters}
+        context={connection ? { connectionId: connection.id, database, sql: bind.sql } : undefined}
       />
 
       <ScriptRunDialog
@@ -112,6 +121,7 @@ export function QueryViewDialogs({
         mode={script.scriptMode}
         unterminated={script.scriptSplit.unterminated}
         transactions={caps.transactions}
+        sqlplus={connection?.kind === "oracle"}
         onConfirm={(mode, stopOnError) => {
           script.setScriptDialogOpen(false);
           void script.runScript(mode, stopOnError);

@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { COMPARE_COLOR, fmtNumber, fmtShare, fmtValue, fmtValueCompact } from "@/lib/dashboards";
+import {
+  COMPARE_COLOR,
+  fmtNumber,
+  fmtShare,
+  fmtValue,
+  fmtValueCompact,
+  OTHER_LABEL,
+} from "@/lib/dashboards";
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { cn } from "@/lib/utils";
 import { ChartTooltip } from "./chart-tooltip";
@@ -13,6 +20,7 @@ import {
   hoveredIndex,
 } from "./chart-utils";
 import { DeltaBadge } from "./delta-badge";
+import { NoPositiveValues } from "./no-positive-values";
 import { polar, sectorPath } from "./svg-geometry";
 
 const MAX_SLICES = 8;
@@ -21,17 +29,25 @@ export function Donut({ rows, shape, options, compare }: ChartProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const ring = useElementSize<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
-  const all = categories(rows, shape)
-    .map((item, i) => ({ ...item, before: compare?.values[i] ?? null }))
-    .filter((item) => item.value > 0);
-  const head = all.length > MAX_SLICES ? all.slice(0, MAX_SLICES - 1) : all;
-  const rest = all.slice(head.length);
+  const values = categories(rows, shape).map((item, i) => ({
+    ...item,
+    before: compare?.values[i] ?? null,
+  }));
+  const all = values.filter((item) => item.value > 0);
+  const negative = values.filter((item) => item.value < 0).length;
+  const top = new Set(
+    [...all]
+      .sort((a, b) => b.value - a.value)
+      .slice(0, all.length > MAX_SLICES ? MAX_SLICES - 1 : all.length),
+  );
+  const head = all.filter((item) => top.has(item));
+  const rest = all.filter((item) => !top.has(item));
   const items = [
     ...head.map((item, i) => ({ ...item, color: color(i + options.colorOffset) })),
     ...(rest.length
       ? [
           {
-            name: `Sonstige (${rest.length})`,
+            name: `${OTHER_LABEL} (${rest.length})`,
             value: rest.reduce((s, i) => s + i.value, 0),
             before: compare ? rest.reduce((s, i) => s + (i.before ?? 0), 0) : null,
             color: COMPARE_COLOR,
@@ -39,7 +55,7 @@ export function Donut({ rows, shape, options, compare }: ChartProps) {
         ]
       : []),
   ];
-  const total = items.reduce((s, i) => s + i.value, 0) || 1;
+  const total = items.reduce((s, i) => s + i.value, 0);
   const side = width > height * 1.4;
   const size = Math.min(ring.width, ring.height);
   const cx = ring.width / 2;
@@ -56,6 +72,8 @@ export function Donut({ rows, shape, options, compare }: ChartProps) {
   const hovered = hover !== null ? slices[hover] : undefined;
   const tipAt = hovered ? polar(cx, cy, outer, (hovered.from + hovered.to) / 2) : [0, 0];
   const center = hovered?.item ?? null;
+
+  if (!items.length) return <NoPositiveValues negative={negative} />;
 
   return (
     <div
@@ -159,6 +177,11 @@ export function Donut({ rows, shape, options, compare }: ChartProps) {
             </li>
           );
         })}
+        {negative > 0 && (
+          <li className="px-1 py-0.5 text-muted-foreground">
+            {negative} negative Werte ausgeblendet
+          </li>
+        )}
       </ul>
     </div>
   );

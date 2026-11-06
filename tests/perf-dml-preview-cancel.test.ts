@@ -43,6 +43,8 @@ mock.module("@tauri-apps/api/core", () => ({
 
 const { deriveDmlPreview, runDmlPreview } = await import("../src/lib/dml-preview");
 const { dmlPreviewExecutor } = await import("../src/lib/dml-preview/executor");
+const { FALLBACK_PROVIDERS, useProvidersStore } = await import("../src/lib/providers");
+useProvidersStore.setState({ providers: FALLBACK_PROVIDERS, loaded: true });
 
 const PREVIEWS = 200;
 const connection = {

@@ -26,6 +26,18 @@ import {
 } from "../registries";
 import { dispatchRpc } from "./dispatch-rpc";
 
+export function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, item) =>
+    item && typeof item === "object" && !Array.isArray(item)
+      ? Object.fromEntries(
+          Object.keys(item)
+            .sort()
+            .map((key) => [key, item[key]]),
+        )
+      : item,
+  );
+}
+
 export class ExtensionManagerBase {
   readonly registry = new ExtensionRegistry();
   readonly commands = new CommandRegistry();
@@ -93,6 +105,44 @@ export class ExtensionManagerBase {
       this.log(id, "info", extension.state);
     }
     this.changed();
+  }
+  refreshInstalled() {
+    return this.serial(async () => {
+      const stored = await this.storage.list();
+      const next = new Map(stored.map((entry) => [entry.archive.manifest.id, entry]));
+      for (const current of this.registry.list()) {
+        const id = current.archive.manifest.id;
+        const replacement = next.get(id);
+        if (
+          replacement &&
+          stableJson({
+            archive: current.archive,
+            enabled: current.enabled,
+            grants: current.grants,
+            configuration: current.configuration,
+            developmentPath: current.developmentPath,
+          }) === stableJson(replacement)
+        ) {
+          next.delete(id);
+          continue;
+        }
+        await this.stop(id);
+        this.release(id);
+        this.registry.remove(id);
+      }
+      for (const entry of next.values()) {
+        const extension: ExtensionDescriptor = { ...entry, state: "discovered" };
+        this.registry.add(extension);
+        try {
+          this.prepare(extension);
+        } catch (error) {
+          this.fail(extension, error);
+        }
+      }
+      this.changed();
+      await this.trigger("onStartup");
+      if (this.core.database()) await this.trigger("onDatabaseOpen");
+    });
   }
   protected prepare(extension: ExtensionDescriptor) {
     const id = extension.archive.manifest.id;

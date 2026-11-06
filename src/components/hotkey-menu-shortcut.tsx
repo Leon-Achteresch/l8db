@@ -3,6 +3,8 @@ import { formatMenuShortcut, useResolvedHotkey } from "@/lib/hotkeys";
 
 export function HotkeyMenuShortcut({ command }: { command: string }) {
   return (
-    <ContextMenuShortcut>{formatMenuShortcut(useResolvedHotkey(command))}</ContextMenuShortcut>
+    <ContextMenuShortcut data-hotkey={command}>
+      {formatMenuShortcut(useResolvedHotkey(command))}
+    </ContextMenuShortcut>
   );
 }

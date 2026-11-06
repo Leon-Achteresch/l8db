@@ -58,9 +58,19 @@ test("production matrices use explicit runners and immutable action references",
   }
   const rust = Bun.YAML.parse(readFileSync(".github/actions/setup-rust/action.yml", "utf8"));
   expect(rust.runs.steps[0].with.toolchain).toMatch(/^\d+\.\d+\.\d+$/);
-  expect(rust.runs.steps[1].env.CACHE).toContain("inputs.cache");
-  expect(rust.runs.steps[1].run).toContain("TARGETS//,/-");
-  expect(rust.runs.steps[2].with["shared-key"]).toContain("steps.key.outputs.shared");
+  const key = rust.runs.steps.find((step: { id?: string }) => step.id === "key");
+  const cache = rust.runs.steps.find((step: { uses?: string }) =>
+    step.uses?.startsWith("Swatinem/rust-cache@"),
+  );
+  expect(key.env.CACHE).toContain("inputs.cache");
+  expect(key.run).toContain("TARGETS//,/-");
+  expect(cache.with["shared-key"]).toContain("steps.key.outputs.shared");
+  const perl = rust.runs.steps.find(
+    (step: { name?: string }) => step.name === "Select Strawberry Perl for vendored OpenSSL",
+  );
+  expect(perl.if).toContain("Windows");
+  expect(perl.run).toContain("PERL=$perl");
+  expect(perl.run).toContain("Test-Path");
 });
 
 test("macOS architectures compile in parallel and unpublished snapshots can be reused", () => {

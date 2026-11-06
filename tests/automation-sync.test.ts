@@ -147,7 +147,7 @@ describe("buildAutomationConnection", () => {
     expect(unlocked.connectionString).not.toContain("default_transaction_read_only");
   });
 
-  test("Schreibschutz ohne Fähigkeit bleibt aus", () => {
+  test("Schreibschutz ohne native Option bleibt für Automationen verbindlich", () => {
     const mysql = buildAutomationConnection({
       ...base,
       id: "my",
@@ -155,7 +155,7 @@ describe("buildAutomationConnection", () => {
       connectionString: "mysql://root:pw@localhost:3306/app",
       readOnly: true,
     });
-    expect(mysql.readOnly).toBe(false);
+    expect(mysql.readOnly).toBe(true);
     expect(mysql.connectionString).toBe("mysql://root@localhost:3306/app");
     const production = buildAutomationConnection({
       ...base,
@@ -164,7 +164,7 @@ describe("buildAutomationConnection", () => {
       connectionString: "mysql://root:pw@localhost:3306/app",
       environment: "production",
     });
-    expect(production.readOnly).toBe(false);
+    expect(production.readOnly).toBe(true);
     expect(production.productionLocked).toBe(true);
   });
 

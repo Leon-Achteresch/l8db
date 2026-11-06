@@ -51,7 +51,7 @@ export function LogsStatementsTab({ reference, refetchInterval }: LogsTabProps) 
     <LogsQueryState query={query}>
       {(data) =>
         !data.installed ? (
-          <div className="space-y-2 rounded-xl border p-4 text-xs">
+          <div className="space-y-2 rounded-xl p-4 text-xs bg-muted/30">
             <p>
               Die Erweiterung <code>pg_stat_statements</code> ist nicht installiert. Ohne sie gibt
               es keine Abfragestatistiken.

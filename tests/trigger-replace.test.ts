@@ -9,10 +9,12 @@ const transactions = new Map<string, Store>();
 let failRestore = false;
 let denyDefiner = false;
 let denyTrigger = false;
+let triggerComment: string | null = null;
 
 function apply(store: Store, sql: string) {
   for (const statement of sql.split(/;\n/).filter((part) => part.trim())) {
     if (/^CREATE TABLE \S+ LIKE \S+$/.test(statement)) continue;
+    if (/^(?:ALTER TABLE|COMMENT ON TRIGGER) /.test(statement)) continue;
     const droppedTable = /^DROP TABLE IF EXISTS `app`\.(`[^`]+`)$/.exec(statement);
     if (droppedTable) {
       for (const [name, body] of store) if (body.includes(droppedTable[1])) store.delete(name);
@@ -51,6 +53,13 @@ mock.module("@tauri-apps/api/core", () => ({
         }
         return { columns: [], rows: [], rows_affected: 0, execution_time_ms: 3 };
       }
+      case "execute_query_with_params":
+        return {
+          columns: ["comment"],
+          rows: [{ comment: triggerComment }],
+          rows_affected: null,
+          execution_time_ms: 1,
+        };
       case "begin_transaction": {
         const id = `tx${transactions.size + 1}`;
         transactions.set(id, new Map(committed));
@@ -80,9 +89,8 @@ const { useSettingsStore } = await import("../src/lib/settings");
 const { useConnectionsStore } = await import("../src/lib/connections/store");
 const { PRODUCTION_LOCK_MESSAGE } = await import("../src/lib/environments");
 const { answerSqlConfirmation, useSqlConfirmation } = await import("../src/lib/sql-confirmation");
-const { mysqlTriggerCheckSql, replaceTrigger, triggerDropSql } = await import(
-  "../src/features/triggers/trigger-view/replace-trigger"
-);
+const { mysqlTriggerCheckSql, replaceTrigger, triggerDropSql, triggerNameFromDefinition } =
+  await import("../src/features/triggers/trigger-view/replace-trigger");
 
 let confirmations = 0;
 useSqlConfirmation.subscribe((state) => {
@@ -115,6 +123,7 @@ beforeEach(() => {
   failRestore = false;
   denyDefiner = false;
   denyTrigger = false;
+  triggerComment = null;
   confirmations = 0;
   useSettingsStore.setState({ confirmDestructiveQueries: true, productionReadOnly: false });
   useConnectionsStore.setState({
@@ -158,6 +167,40 @@ describe("replaceTrigger", () => {
     expect(sql).toEqual([
       `${triggerDropSql("postgres", "app", "t", "trg")}CREATE TRIGGER trg AFTER INSERT ON t`,
     ]);
+  });
+
+  test("postgres keeps a disabled trigger disabled and restores its comment", async () => {
+    triggerComment = "it's audited";
+    await replaceTrigger({
+      ...replacement("postgres", "CREATE TRIGGER trg2 AFTER INSERT ON t;"),
+      enabled: "DISABLED",
+    });
+    const sql = calls.filter((c) => c.command === "execute_query").map((c) => c.sql);
+    expect(sql).toEqual([
+      `${triggerDropSql("postgres", "app", "t", "trg")}CREATE TRIGGER trg2 AFTER INSERT ON t;
+ALTER TABLE "app"."t" DISABLE TRIGGER "trg2";
+COMMENT ON TRIGGER "trg2" ON "app"."t" IS 'it''s audited'`,
+    ]);
+    expect([...committed.keys()]).toEqual(["trg2"]);
+  });
+
+  test("triggerNameFromDefinition reads the created trigger name", () => {
+    expect(triggerNameFromDefinition("postgres", "CREATE TRIGGER MyTrig AFTER INSERT ON t")).toBe(
+      "mytrig",
+    );
+    expect(
+      triggerNameFromDefinition("postgres", 'CREATE OR REPLACE TRIGGER "My""Trig" BEFORE UPDATE'),
+    ).toBe('My"Trig');
+    expect(
+      triggerNameFromDefinition(
+        "mysql",
+        "CREATE DEFINER=`root`@`%` TRIGGER `app`.`Neu` BEFORE INSERT ON `t` FOR EACH ROW SET @a = 1",
+      ),
+    ).toBe("Neu");
+    expect(triggerNameFromDefinition("sqlite", "CREATE TRIGGER IF NOT EXISTS main.t2 AFTER")).toBe(
+      "t2",
+    );
+    expect(triggerNameFromDefinition("postgres", "SELECT 1")).toBeNull();
   });
 
   test("sqlite runs drop and create inside one managed transaction", async () => {
