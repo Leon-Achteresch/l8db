@@ -20,7 +20,6 @@ export {
 } from "./core";
 export * from "./datagen";
 export * from "./debugger";
-export * from "./federation";
 export * from "./file-open";
 export * from "./firebase";
 export * from "./health";

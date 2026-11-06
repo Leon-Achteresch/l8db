@@ -979,6 +979,23 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     keywords: ["team", "firma", "unternehmen", "verbindungen", "admin", "datei", "json", "appdata"],
   },
   {
+    id: "team-workspaces",
+    tabId: "general",
+    title: "Team-Workspaces",
+    description:
+      "Eigener Server für gemeinsame Verbindungen, Rechte, SQL-Abfragen, Freigaben und Audit.",
+    keywords: [
+      "workspace",
+      "team",
+      "server",
+      "freigabe",
+      "einladung",
+      "rechte",
+      "audit",
+      "gemeinsam",
+    ],
+  },
+  {
     id: "sync-secrets",
     tabId: "general",
     title: "Passwörter synchronisieren",

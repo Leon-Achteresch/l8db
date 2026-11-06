@@ -17,7 +17,6 @@ mod convex_studio;
 mod db;
 mod desktop;
 mod extension_process;
-mod federation;
 mod file_open;
 mod firebase;
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -184,8 +183,6 @@ pub fn run() {
             db::jdbc::jdbc_save_profile,
             db::jdbc::jdbc_remove_profile,
             db::jdbc::jdbc_close_profile,
-            federation::federation_query,
-            federation::federation_catalog,
             workspaces::client::workspace_profiles,
             workspaces::client::workspace_login,
             workspaces::client::workspace_accept_invitation,
