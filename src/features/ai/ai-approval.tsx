@@ -6,7 +6,9 @@ import { RecommendationCard } from "@/components/primitives/recommendation-card"
 import { Button } from "@/components/ui/button";
 import { approvalSummary } from "@/lib/ai/approval-presentation";
 import { type AiEvent, aiApprove, aiRespond } from "@/lib/db/ai";
+import { pickElement } from "@/lib/dom-picker";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { captureRedactedScreenshot } from "@/lib/issue-screenshot";
 import { AiIssueCard } from "./ai-issue-card";
 import { AiSchemaField } from "./ai-schema-field";
 
@@ -20,13 +22,16 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
   const [content, setContent] = useState<Record<string, unknown>>({});
   const [advanced, setAdvanced] = useState("");
   const [pending, setPending] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
   const region = useRef<HTMLFieldSetElement>(null);
+  const picking = useRef<AbortController | null>(null);
   const impact = useNewFeatureVisibility<HTMLDivElement>("ai.chat.dry-run");
   const data = event.data;
   const id = String(data.id);
   useEffect(() => {
     if (id) region.current?.focus({ preventScroll: true });
   }, [id]);
+  useEffect(() => () => picking.current?.abort(), []);
   const details =
     data.details && typeof data.details === "object"
       ? (data.details as Record<string, unknown>)
@@ -91,8 +96,24 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
             }),
           ),
         });
-      } else await aiApprove(runId, id, allow);
+      } else if (allow && picked) await aiRespond(runId, id, { allowed: true, screenshot: picked });
+      else await aiApprove(runId, id, allow);
       onResolved(id);
+    } catch (error) {
+      onError(String(error));
+    } finally {
+      setPending(false);
+    }
+  };
+  const pick = async () => {
+    setPending(true);
+    picking.current = new AbortController();
+    try {
+      const element = await pickElement(picking.current.signal);
+      if (!element || picking.current.signal.aborted) return;
+      const png = await captureRedactedScreenshot(element);
+      if (png) setPicked(png);
+      else onError("Bereich konnte nicht aufgenommen werden.");
     } catch (error) {
       onError(String(error));
     } finally {
@@ -142,10 +163,11 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
         <AiIssueCard
           title={details.title}
           body={details.body}
-          screenshot={preview ?? undefined}
+          screenshot={picked ? `data:image/png;base64,${picked}` : (preview ?? undefined)}
           pending={pending}
           onPublish={() => void act(true)}
           onCancel={() => void act(false)}
+          onPick={() => void pick()}
         />
       ) : questionInput ? (
         <ApprovalCard

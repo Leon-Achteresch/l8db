@@ -59,10 +59,14 @@ impl Run {
 
     pub async fn approve(&self, title: &str, details: Value) -> Result<bool, String> {
         Ok(self
-            .wait("approval", title, details, true)
+            .approval(title, details)
             .await?
             .as_bool()
             .unwrap_or(false))
+    }
+
+    pub async fn approval(&self, title: &str, details: Value) -> Result<Value, String> {
+        self.wait("approval", title, details, true).await
     }
 
     pub fn auto(&self, mcp: bool) -> bool {
@@ -121,7 +125,8 @@ impl Run {
             .remove(&key);
         let allowed = result.ok().and_then(Result::ok).unwrap_or(json!(false));
         if announce {
-            self.emit("approvalResolved", json!({"id": id, "allowed": allowed}));
+            let shown = allowed.get("allowed").unwrap_or(&allowed);
+            self.emit("approvalResolved", json!({"id": id, "allowed": shown}));
         }
         Ok(allowed)
     }

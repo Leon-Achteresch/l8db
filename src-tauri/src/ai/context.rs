@@ -441,13 +441,17 @@ async fn report_issue(run: &Run, args: Value) -> Value {
     if let Some(png) = screenshot {
         details["screenshot"] = json!(format!("data:image/png;base64,{png}"));
     }
-    if !run
-        .approve("GitHub-Issue erstellen", details)
+    let answer = run
+        .approval("GitHub-Issue erstellen", details)
         .await
-        .unwrap_or(false)
-    {
+        .unwrap_or_default();
+    if answer != json!(true) && answer["allowed"] != json!(true) {
         return text_result(Err("Benutzer hat das Issue abgelehnt.".into()));
     }
+    let screenshot = answer["screenshot"]
+        .as_str()
+        .filter(|png| !png.is_empty())
+        .or(screenshot);
     let id = super::new_id();
     run.emit(
         "tool",

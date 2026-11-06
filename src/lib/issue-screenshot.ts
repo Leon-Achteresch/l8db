@@ -1,8 +1,8 @@
-import { toPng } from "html-to-image";
+import { toCanvas } from "html-to-image";
 
 const MARK = "data-l8db-redact";
 const STYLE_ID = "l8db-redact-style";
-const EXCLUDED = new Set(["ai-workspace"]);
+export const CHAT_SURFACES = "#ai-workspace, #ai-page-surface, [aria-label='AI-Chat']";
 
 const KEEP = "label, th, kbd, [role='columnheader']";
 const MEDIA = "input, textarea, select, img, video, canvas, iframe, [contenteditable='true']";
@@ -147,8 +147,25 @@ function shown(node: HTMLElement): boolean {
   );
 }
 
-export async function captureRedactedScreenshot(): Promise<string | null> {
+function crop(source: HTMLCanvasElement, area: DOMRect): string {
+  const scale = source.width / window.innerWidth;
+  const left = Math.max(0, area.left);
+  const top = Math.max(0, area.top);
+  const width = Math.round((Math.min(window.innerWidth, area.right) - left) * scale);
+  const height = Math.round((Math.min(window.innerHeight, area.bottom) - top) * scale);
+  if (width < 1 || height < 1) return "";
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) return "";
+  context.drawImage(source, left * scale, top * scale, width, height, 0, 0, width, height);
+  return canvas.toDataURL();
+}
+
+export async function captureRedactedScreenshot(target?: Element): Promise<string | null> {
   const root = document.body;
+  const area = target?.getBoundingClientRect();
   markSensitive(root);
   const deadline = performance.now() + CAPTURE_BUDGET_MS;
   const native = window.getComputedStyle;
@@ -164,7 +181,7 @@ export async function captureRedactedScreenshot(): Promise<string | null> {
       },
     });
   try {
-    const url = await toPng(root, {
+    const canvas = await toCanvas(root, {
       pixelRatio: Math.min(window.devicePixelRatio || 1, 1.5),
       width: window.innerWidth,
       height: window.innerHeight,
@@ -172,12 +189,13 @@ export async function captureRedactedScreenshot(): Promise<string | null> {
       filter: (node) => {
         if (!(node instanceof HTMLElement)) return true;
         if (performance.now() > deadline) throw new Error("Screenshot zu aufwendig");
-        if (EXCLUDED.has(node.id) || node.getAttribute("aria-label") === "AI-Chat") return false;
+        if (node.matches(CHAT_SURFACES)) return false;
         if (!shown(node)) return false;
         if (!node.hasAttribute(MARK) && sensitive(node)) node.setAttribute(MARK, "");
         return true;
       },
     });
+    const url = area ? crop(canvas, area) : canvas.toDataURL();
     return url.slice(url.indexOf(",") + 1) || null;
   } finally {
     window.getComputedStyle = native;
