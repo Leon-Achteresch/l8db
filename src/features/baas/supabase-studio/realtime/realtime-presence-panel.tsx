@@ -25,7 +25,7 @@ export function RealtimePresencePanel({
   const keys = Object.keys(presence);
 
   return (
-    <div className="space-y-2 rounded-xl border p-3">
+    <div className="space-y-2 rounded-xl p-3 bg-muted/30">
       <p className="text-xs font-medium">Presence ({keys.length})</p>
       <Textarea
         className="min-h-20 font-mono text-xs"

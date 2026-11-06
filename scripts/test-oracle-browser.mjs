@@ -84,12 +84,14 @@ try {
     server: { host: "127.0.0.1", port: vitePort, strictPort: true, hmr: false, watch: null },
   });
   await vite.listen();
-  const tests = start("bun", [
-    "test",
+  const files = process.env.L8DB_ORACLE_BROWSER_TESTS?.split(",").filter(Boolean) ?? [
     "tests/oracle-query-browser.test.ts",
     "tests/oracle-objects-browser.test.ts",
     "tests/oracle-compare-browser.test.ts",
-  ]);
+    "tests/oracle-transfer-browser.test.ts",
+    "tests/oracle-sqlplus-browser.test.ts",
+  ];
+  const tests = start("bun", ["test", ...files]);
   const [code] = await once(tests, "exit");
   if (code !== 0) process.exitCode = code ?? 1;
 } catch (error) {

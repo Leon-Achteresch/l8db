@@ -11,6 +11,7 @@ import { useSettingsStore } from "@/lib/settings";
 import { useSidebarPanel } from "@/lib/sidebar-panel";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
+import { ShortcutHint } from "./shortcut-hint";
 import { WorkspaceStatus } from "./workspace-status";
 
 const VersioningPanel = lazy(() =>
@@ -36,6 +37,7 @@ export function AppLayout() {
       className="min-h-0 flex-1"
     >
       <ConnectionAuthGuard />
+      <ShortcutHint />
       <PanelErrorBoundary
         label="Die Seitenleiste"
         source="sidebar"

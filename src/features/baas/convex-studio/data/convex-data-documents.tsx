@@ -1,19 +1,16 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowDown,
-  ArrowUp,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  Filter,
-  PenLine,
-  Plus,
-  RefreshCw,
-  Trash2,
-} from "lucide-react";
-import { useState } from "react";
+import type { SortingState, Updater } from "@tanstack/react-table";
+import { Download, FileJson, Filter, FilterX, Plus, Table2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import {
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+} from "@/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +18,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { DataTable } from "@/features/table/data-table";
+import { TableDataError } from "@/features/table/table-data-error";
+import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
+import { changedRowValues } from "@/lib/cell-editor";
 import { copyWithToast } from "@/lib/clipboard";
 import {
   type ConvexDataSchema,
@@ -32,49 +33,55 @@ import {
   convexDataInsert,
   convexDataPatch,
 } from "@/lib/db/convex-studio-data";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasEmptyState } from "../../baas-empty-state";
 import type { ConvexStudioDeployment } from "../convex-studio-sections";
 import { ConvexDataConfirmDialog } from "./convex-data-confirm-dialog";
 import { ConvexDataDocumentDialog } from "./convex-data-document-dialog";
 import { ConvexDataFilterPanel } from "./convex-data-filter-panel";
 import {
   activeFilterCount,
-  cellPreview,
   compileFilter,
   dataKey,
+  documentColumnDetails,
   documentColumns,
+  documentRows,
   documentsText,
   EMPTY_FILTER,
   type FilterState,
-  formatCreationTime,
-  isConvexId,
+  idReferences,
   PAGE_SIZE,
+  parseEditedValue,
   saveDocuments,
   schemaFields,
-  validatorText,
 } from "./convex-data-utils";
 
 export function ConvexDataDocuments({
   deployment,
   table,
   schema,
+  total,
   onOpenDocument,
   onOpenReference,
 }: {
   deployment: ConvexStudioDeployment;
   table: string;
   schema: ConvexDataSchema | undefined;
+  total: number | null | undefined;
   onOpenDocument: (document: ConvexDocument) => void;
   onOpenReference: (id: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const feature = useNewFeatureVisibility<HTMLDivElement>("baas.convex.studio.data.grid");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
   const [filter, setFilter] = useState<FilterState>(EMPTY_FILTER);
   const [showFilters, setShowFilters] = useState(false);
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
   const [offsets, setOffsets] = useState([0]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [dialog, setDialog] = useState<"insert" | "patch" | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [dialog, setDialog] = useState<{ mode: "insert" } | { mode: "patch"; id: string } | null>(
+    null,
+  );
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const indexes = schema?.indexes ?? [];
   const schemaTable = schema?.tables.find((item) => item.tableName === table);
@@ -94,19 +101,49 @@ export function ConvexDataDocuments({
     enabled: filterError === null,
     placeholderData: keepPreviousData,
   });
-  const page = documents.data?.documents ?? [];
-  const columns = documentColumns(page, schemaTable);
-  const selectedIds = page.filter((item) => selected.has(item._id)).map((item) => item._id);
+  const page = useMemo(() => documents.data?.documents ?? [], [documents.data]);
+  const columns = useMemo(() => documentColumns(page, schemaTable), [page, schemaTable]);
+  const filtered = activeFilterCount(filter) > 0;
   const searching = filter.mode === "search";
+  const pageIndex = cursors.length - 1;
+  const offset = offsets.at(-1) ?? 0;
+  const rows = useMemo(() => documentRows(page), [page]);
+  const sorting = useMemo<SortingState>(
+    () => (searching ? [] : [{ id: "_creationTime", desc: order === "desc" }]),
+    [searching, order],
+  );
+  const columnDetails = useMemo(
+    () => documentColumnDetails(columns, table, fields),
+    [columns, table, fields],
+  );
+  const documentById = (id: unknown) => page.find((item) => item._id === id);
 
   function reset() {
     setCursors([null]);
     setOffsets([0]);
-    setSelected(new Set());
+  }
+
+  function changeSorting(updater: Updater<SortingState>) {
+    const next = typeof updater === "function" ? updater(sorting) : updater;
+    const entry = next.find((item) => item.id === "_creationTime");
+    setOrder(entry && !entry.desc ? "asc" : "desc");
+    reset();
+  }
+
+  function changePage(next: number) {
+    if (next < pageIndex) {
+      setCursors((value) => value.slice(0, Math.max(1, next + 1)));
+      setOffsets((value) => value.slice(0, Math.max(1, next + 1)));
+      return;
+    }
+    if (documents.isFetching || documents.isPlaceholderData) return;
+    const nextCursor = documents.data?.cursor ?? null;
+    if (next !== pageIndex + 1 || !documents.data?.has_more || !nextCursor) return;
+    setCursors((value) => [...value, nextCursor]);
+    setOffsets((value) => [...value, offset + page.length]);
   }
 
   async function refresh(delta = 0) {
-    setSelected(new Set());
     if (delta)
       queryClient.setQueryData<ConvexDataTables>([...dataKey(deployment), "tables"], (data) =>
         data
@@ -126,6 +163,24 @@ export function ConvexDataDocuments({
     ]);
   }
 
+  async function saveRow(
+    id: string,
+    updates: Record<string, string | null>,
+    oldValues: Record<string, unknown>,
+  ) {
+    const original = documentById(id) ?? oldValues;
+    const changed = changedRowValues(updates, oldValues).updates;
+    const patch = Object.fromEntries(
+      Object.entries(changed).map(([field, text]) => [
+        field,
+        parseEditedValue(text, original[field], fields?.[field]?.fieldType),
+      ]),
+    );
+    if (Object.keys(patch).length === 0) return;
+    await convexDataPatch(deployment, table, [id], patch);
+    await refresh();
+  }
+
   async function exportPage(format: "json" | "jsonl", target: "copy" | "save") {
     setMessage(null);
     try {
@@ -141,32 +196,27 @@ export function ConvexDataDocuments({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b px-3 py-1.5">
+      <div
+        ref={feature.ref}
+        className="flex shrink-0 flex-wrap items-center gap-1.5 bg-muted/30 px-3 py-1.5"
+      >
         <Button
-          variant={activeFilterCount(filter) ? "secondary" : "outline"}
+          variant={filtered ? "secondary" : "ghost"}
           size="sm"
+          aria-pressed={showFilters}
           onClick={() => setShowFilters((value) => !value)}
         >
           <Filter className="size-3.5" /> Filter
-          {activeFilterCount(filter) ? ` (${activeFilterCount(filter)})` : ""}
+          {filtered ? ` (${activeFilterCount(filter)})` : ""}
         </Button>
-        <Button size="sm" onClick={() => setDialog("insert")}>
+        <Button size="sm" onClick={() => setDialog({ mode: "insert" })}>
           <Plus className="size-3.5" /> Dokument
         </Button>
-        {selectedIds.length > 0 && (
-          <>
-            <Button variant="outline" size="sm" onClick={() => setDialog("patch")}>
-              <PenLine className="size-3.5" /> Felder setzen ({selectedIds.length})
-            </Button>
-            <Button variant="destructive" size="sm" onClick={() => setConfirmDelete(true)}>
-              <Trash2 className="size-3.5" /> {selectedIds.length} löschen
-            </Button>
-          </>
-        )}
+        {feature.isNew && <NewBadge />}
         <div className="ml-auto flex items-center gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" disabled={page.length === 0}>
+              <Button variant="ghost" size="sm" disabled={page.length === 0}>
                 <Download className="size-3.5" /> Export
               </Button>
             </DropdownMenuTrigger>
@@ -186,20 +236,12 @@ export function ConvexDataDocuments({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Dokumente aktualisieren"
-            onClick={() => void refresh()}
-            disabled={documents.isFetching}
-          >
-            <RefreshCw className={`size-3.5 ${documents.isFetching ? "animate-spin" : ""}`} />
-          </Button>
         </div>
       </div>
       {showFilters && (
-        <div className="shrink-0 border-b px-3 py-2">
+        <div className="shrink-0 border-b bg-muted/20 px-3 py-2">
           <ConvexDataFilterPanel
+            key={JSON.stringify(filter)}
             table={table}
             columns={columns}
             indexes={indexes}
@@ -227,191 +269,140 @@ export function ConvexDataDocuments({
         </div>
       )}
       {documents.isError ? (
-        <p role="alert" className="p-4 text-xs text-destructive">
-          {String(documents.error)}
-        </p>
+        <TableDataError
+          title="Dokumente konnten nicht geladen werden"
+          error={documents.error}
+          onRetry={() => void documents.refetch()}
+        />
       ) : documents.isPending && filterError === null ? (
-        <p className="p-4 text-xs text-muted-foreground">Dokumente werden geladen…</p>
+        <TableDataSkeleton />
+      ) : page.length === 0 && pageIndex === 0 && filterError === null ? (
+        filtered ? (
+          <BaasEmptyState
+            icon={FilterX}
+            title="Keine passenden Dokumente."
+            description="Kein Dokument erfüllt die aktiven Filter. Passe die Bedingungen an oder setze sie zurück."
+          >
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setFilter(EMPTY_FILTER);
+                reset();
+              }}
+            >
+              <FilterX className="size-3.5" /> Filter zurücksetzen
+            </Button>
+          </BaasEmptyState>
+        ) : (
+          <BaasEmptyState
+            icon={Table2}
+            title="Die Tabelle ist leer."
+            description={
+              <>
+                Füge Dokumente als JSON ein oder importiere eine Datei über die Tabellenaktionen.
+                Mutations deiner App schreiben ebenfalls hierher.
+              </>
+            }
+          >
+            <Button size="sm" onClick={() => setDialog({ mode: "insert" })}>
+              <Plus className="size-3.5" /> Dokument einfügen
+            </Button>
+          </BaasEmptyState>
+        )
       ) : (
-        <>
-          <div className="min-h-0 flex-1 overflow-auto">
-            <table className="min-w-full border-separate border-spacing-0 text-left text-xs">
-              <caption className="sr-only">Dokumente der Tabelle {table}</caption>
-              <thead className="sticky top-0 z-10 bg-muted">
-                <tr className="[&>th]:border-b [&>th]:border-r [&>th]:border-border/70">
-                  <th
-                    scope="col"
-                    className="w-10 px-2 py-2 text-right font-normal text-muted-foreground"
-                  >
-                    #
-                  </th>
-                  <th scope="col" className="w-8 px-2 py-2">
-                    <Checkbox
-                      aria-label="Alle Dokumente der Seite auswählen"
-                      checked={page.length > 0 && selectedIds.length === page.length}
-                      onCheckedChange={(value) =>
-                        setSelected(new Set(value === true ? page.map((item) => item._id) : []))
-                      }
-                    />
-                  </th>
-                  {columns.map((column) => (
-                    <th key={column} scope="col" className="px-3 py-1.5 font-medium">
-                      {column === "_creationTime" ? (
-                        <button
-                          type="button"
-                          disabled={searching}
-                          onClick={() => {
-                            setOrder((value) => (value === "desc" ? "asc" : "desc"));
-                            reset();
-                          }}
-                          className="flex items-center gap-1 whitespace-nowrap hover:text-foreground disabled:opacity-60"
-                          aria-label={`Sortierung umkehren (aktuell ${order === "desc" ? "absteigend" : "aufsteigend"})`}
+        <DataTable
+          key={`${deployment.profileId}:${deployment.deploymentName}:${table}`}
+          stateKey={`convex:${deployment.profileId}:${deployment.deploymentName}:${table}`}
+          scrollIdentity={JSON.stringify([expression, cursor])}
+          className="h-full min-h-0 flex-1"
+          columns={columns}
+          data={rows}
+          emptyMessage="Keine Dokumente auf dieser Seite."
+          sorting={sorting}
+          sortableColumns={searching ? [] : ["_creationTime"]}
+          onSortingChange={changeSorting}
+          isFetching={documents.isFetching}
+          onSaveRow={saveRow}
+          canEditCell={(_, column) => !column.startsWith("_")}
+          page={pageIndex}
+          pageSize={PAGE_SIZE}
+          rowOffset={offset}
+          countLabel={
+            !filtered && typeof total === "number"
+              ? total.toLocaleString("de-DE")
+              : documents.data?.has_more
+                ? "mehr"
+                : (offset + page.length).toLocaleString("de-DE")
+          }
+          hasNextPage={Boolean(documents.data?.has_more)}
+          onPageChange={changePage}
+          onDeleteRow={(id) => setDeleting(id)}
+          onRefresh={() => refresh()}
+          columnDetails={columnDetails}
+          rowMenuItems={(row) => {
+            const document = documentById(row.__ctid__);
+            if (!document) return null;
+            const references = idReferences(document);
+            return (
+              <>
+                <ContextMenuItem onSelect={() => onOpenDocument(document)}>
+                  <FileJson className="size-3.5" /> Dokument öffnen
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={() => setDialog({ mode: "patch", id: document._id })}>
+                  Felder setzen…
+                </ContextMenuItem>
+                {references.length > 0 && (
+                  <ContextMenuSub>
+                    <ContextMenuSubTrigger>Referenz öffnen</ContextMenuSubTrigger>
+                    <ContextMenuSubContent className="max-h-80 overflow-y-auto">
+                      {references.map((reference) => (
+                        <ContextMenuItem
+                          key={reference.path}
+                          className="font-mono"
+                          onSelect={() => onOpenReference(reference.id)}
                         >
-                          <span className="font-mono">{column}</span>
-                          {!searching &&
-                            (order === "desc" ? (
-                              <ArrowDown className="size-3" />
-                            ) : (
-                              <ArrowUp className="size-3" />
-                            ))}
-                        </button>
-                      ) : (
-                        <span className="font-mono whitespace-nowrap">{column}</span>
-                      )}
-                      {fields?.[column] && (
-                        <span className="block max-w-48 truncate text-[10px] font-normal text-muted-foreground">
-                          {validatorText(fields[column].fieldType)}
-                          {fields[column].optional ? "?" : ""}
-                        </span>
-                      )}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {page.map((document, index) => (
-                  <tr
-                    key={document._id}
-                    className="hover:bg-muted/40 [&>td]:border-b [&>td]:border-r [&>td]:border-border/60"
-                  >
-                    <td className="px-2 py-1.5 text-right align-top text-muted-foreground tabular-nums">
-                      {(offsets.at(-1) ?? 0) + index + 1}
-                    </td>
-                    <td className="px-2 py-1.5 align-top">
-                      <Checkbox
-                        aria-label="Dokument auswählen"
-                        checked={selected.has(document._id)}
-                        onCheckedChange={(value) =>
-                          setSelected((current) => {
-                            const next = new Set(current);
-                            if (value === true) next.add(document._id);
-                            else next.delete(document._id);
-                            return next;
-                          })
-                        }
-                      />
-                    </td>
-                    {columns.map((column) => {
-                      const value = document[column];
-                      const reference = column !== "_id" && isConvexId(value);
-                      return (
-                        <td key={column} className="max-w-64 px-3 py-1.5 align-top">
-                          <button
-                            type="button"
-                            title={
-                              reference ? "Referenziertes Dokument öffnen" : "Dokument anzeigen"
-                            }
-                            onClick={() =>
-                              reference ? onOpenReference(value) : onOpenDocument(document)
-                            }
-                            className={`block max-w-64 truncate text-left font-mono hover:underline ${value === undefined ? "text-muted-foreground italic" : ""} ${reference ? "text-primary" : ""}`}
-                          >
-                            {column === "_creationTime"
-                              ? formatCreationTime(value)
-                              : value === undefined
-                                ? "unset"
-                                : cellPreview(value).slice(0, 200)}
-                          </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {page.length === 0 && filterError === null && (
-              <p className="p-4 text-xs text-muted-foreground">
-                {activeFilterCount(filter) ? "Keine passenden Dokumente." : "Die Tabelle ist leer."}
-              </p>
-            )}
-          </div>
-          <div className="flex h-9 shrink-0 items-center gap-2 border-t px-3 text-xs text-muted-foreground">
-            <span className="tabular-nums">
-              Seite {cursors.length}
-              {page.length ? ` · ${page.length} Dokumente` : ""}
-            </span>
-            {selectedIds.length > 0 && <span>{selectedIds.length} ausgewählt</span>}
-            <span className="ml-auto" />
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Zurück"
-              disabled={cursors.length === 1 || documents.isFetching}
-              onClick={() => {
-                setCursors((value) => value.slice(0, -1));
-                setOffsets((value) => value.slice(0, -1));
-                setSelected(new Set());
-              }}
-            >
-              <ChevronLeft className="size-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Weiter"
-              disabled={!documents.data?.has_more || documents.isFetching}
-              onClick={() => {
-                const next = documents.data?.cursor ?? null;
-                if (next) {
-                  setCursors((value) => [...value, next]);
-                  setOffsets((value) => [...value, (value.at(-1) ?? 0) + page.length]);
-                }
-                setSelected(new Set());
-              }}
-            >
-              <ChevronRight className="size-3.5" />
-            </Button>
-          </div>
-        </>
+                          {reference.path}
+                        </ContextMenuItem>
+                      ))}
+                    </ContextMenuSubContent>
+                  </ContextMenuSub>
+                )}
+                <ContextMenuSeparator />
+              </>
+            );
+          }}
+        />
       )}
       {dialog && (
         <ConvexDataDocumentDialog
-          mode={dialog}
+          mode={dialog.mode}
           table={table}
-          count={selectedIds.length}
-          initial={dialog === "insert" ? "{\n  \n}" : "{}"}
+          count={1}
+          initial={dialog.mode === "insert" ? "{\n  \n}" : "{}"}
           onOpenChange={(open) => !open && setDialog(null)}
           onSubmit={async (items) => {
-            if (dialog === "insert") {
+            if (dialog.mode === "insert") {
               const inserted = await convexDataInsert(deployment, table, items);
               setMessage(`${inserted} Dokumente eingefügt.`);
               await refresh(inserted);
               return;
             }
-            await convexDataPatch(deployment, table, selectedIds, items[0]);
-            setMessage(`${selectedIds.length} Dokumente aktualisiert.`);
+            await convexDataPatch(deployment, table, [dialog.id], items[0]);
+            setMessage("Dokument aktualisiert.");
             await refresh();
           }}
         />
       )}
       <ConvexDataConfirmDialog
-        open={confirmDelete}
-        title={`${selectedIds.length} Dokumente löschen?`}
-        description={`Die ausgewählten Dokumente werden endgültig aus ${table} gelöscht.`}
+        open={deleting !== null}
+        title="Dokument löschen?"
+        description={`Das Dokument ${deleting ?? ""} wird endgültig aus ${table} gelöscht.`}
         action="Löschen"
-        onOpenChange={setConfirmDelete}
+        onOpenChange={(open) => !open && setDeleting(null)}
         onConfirm={async () => {
-          const deleted = await convexDataDelete(deployment, table, selectedIds);
+          if (!deleting) return;
+          const deleted = await convexDataDelete(deployment, table, [deleting]);
           setMessage(`${deleted} Dokumente gelöscht.`);
           await refresh(-deleted);
         }}

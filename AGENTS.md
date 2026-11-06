@@ -32,7 +32,7 @@ Keep checks fast: run only what the change can break, once at the end, not after
 | `src-tauri/**/*.rs` | `cargo check`, plus `cargo test <module>` if logic changed |
 
 - Every runtime feature, including small additions, needs a scoped performance regression test. Extend an existing scenario when possible. Cover realistic large inputs, latency (median/p95), retained memory or bounded allocations/DOM, and database request counts/concurrency where applicable; include cancellation and idle behavior for background work. Functional correctness alone does not establish performance.
-- Run the feature's performance tests once after implementation and record the measured workload and limits. `bun run test:perf:core` covers shared cache/grid budgets; browser, constrained CPU/heap, and PostgreSQL suites run in `.github/workflows/performance.yml`. Document a baseline and resulting measurements for optimizations. Do not loosen budgets to make a regression pass.
+- Run the feature's performance tests once after implementation and record the measured workload and limits. `bun run test:perf:core` covers shared cache/grid budgets; browser (`test:perf:browser`), constrained CPU/heap (`test:perf:constrained`) and PostgreSQL (`scripts/test-load-perf.sh`) suites run locally only; there is no performance CI. Document a baseline and resulting measurements for optimizations. Do not loosen budgets to make a regression pass.
 - Real platform results and CPU/heap simulation are separate evidence. Never claim every computer or database family was tested; record OS, architecture, CPU, RAM, runtime, and missing coverage. Prefer eliminating duplicate reads, bounding results and caches, and cancelling abandoned work over increasing database concurrency or automatic polling.
 
 - Do not run unless the user asks or `/release` requires it: full `bun run test`, `cargo clippy`, full `cargo test`, unrelated browser/perf/integration/E2E tests, `production:check`, `tauri build`. Scoped performance tests required above are included in the change's checks.
@@ -77,6 +77,12 @@ Keep checks fast: run only what the change can break, once at the end, not after
 - `src/features/` — feature modules (views + feature-specific UI). One exported React component per file; main route entry is `{feature}-view.tsx`.
 - `src/features/shell/` — app chrome (`app-layout`, `table-tabs`, `app-header`, `transaction-panel`).
 - `src/components/ui/` — shared shadcn primitives only.
+
+## UI design
+
+- Few borders: structure with spacing, typography, and subtle background tints (`bg-muted/40`) instead of outlines, dividers, and cards.
+- Little text: no explanatory subtitles or helper sentences when a label, icon, or state already says it. Short labels, numbers, and logos over prose.
+- Interactive elements must look interactive (hover/press feedback, cursor, clear on/off state) without needing a caption.
 
 ## NEW badges for features
 

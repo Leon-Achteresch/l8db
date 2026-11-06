@@ -2,7 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { MutableRefObject } from "react";
 import { toast } from "sonner";
 import { errorText, vaultSave } from "@/features/community-extensions/password-manager";
-import { connectionError } from "@/lib/connection-url";
+import { connectionError, isProfileConnection, kindFromUrl } from "@/lib/connection-url";
 import {
   type CloudAuth,
   type ConnectionEnvironment,
@@ -24,10 +24,12 @@ import {
   extractUrlPassword,
   loadSecret,
   rememberSecret,
+  scrubUrlPassword,
   storeSecret,
 } from "@/lib/secrets";
 import {
   activateConnection,
+  activateConnectionWithToast,
   closeSshTunnel,
   proxySecretAccount,
   serializeJumpSecrets,
@@ -41,6 +43,7 @@ type ConnectionUrlActions = ReturnType<typeof createConnectionUrlActions>;
 
 export interface ConnectionOperationsContext {
   operation: MutableRefObject<boolean>;
+  abort: MutableRefObject<AbortController | null>;
   setResult: (value: TestResult) => void;
   withLiveUrl: ConnectionUrlActions["withLiveUrl"];
   configuration: ConnectionUrlActions["configuration"];
@@ -63,6 +66,7 @@ export interface ConnectionOperationsContext {
   maskRules: MaskRule[];
   tags: string;
   cloudAuth: CloudAuth | null;
+  passwordCleared: boolean;
   vault: { host: ExtensionManager; name: string } | null;
   onSaved: () => void;
 }
@@ -70,11 +74,38 @@ export interface ConnectionOperationsContext {
 export async function databasePasswordToSave(
   connectionString: string,
   connection: Pick<SavedConnection, "id" | "connectionString"> | undefined,
+  cleared = false,
 ): Promise<string | null> {
+  if (isProfileConnection(kindFromUrl(connectionString))) return null;
   const typed = extractUrlPassword(connectionString);
-  if (typed !== null || !connection) return typed;
+  if (typed !== null || !connection || cleared) return typed;
   if (extractUrlPassword(connection.connectionString) !== null) return null;
   return loadSecret(connection.id);
+}
+
+const ENDPOINT_FIELDS = [
+  "kind",
+  "connectionString",
+  "sslMode",
+  "ssh",
+  "proxy",
+  "commandTunnel",
+  "readOnly",
+  "cloudAuth",
+  "environment",
+] as const;
+
+export function endpointChanged(
+  previous: Partial<SavedConnection>,
+  next: Partial<SavedConnection>,
+): boolean {
+  return ENDPOINT_FIELDS.some((key) => {
+    const normalize = (value: unknown) =>
+      key === "connectionString"
+        ? scrubUrlPassword(String(value ?? ""))
+        : JSON.stringify(value ?? (key === "readOnly" ? false : null));
+    return normalize(previous[key]) !== normalize(next[key]);
+  });
 }
 
 export async function closeUnsharedTunnel(id: string): Promise<void> {
@@ -85,6 +116,7 @@ export async function closeUnsharedTunnel(id: string): Promise<void> {
 export function createConnectionOperations(ctx: ConnectionOperationsContext) {
   const {
     operation,
+    abort,
     setResult,
     withLiveUrl,
     configuration,
@@ -107,6 +139,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
     maskRules,
     tags,
     cloudAuth,
+    passwordCleared,
     vault,
     onSaved,
   } = ctx;
@@ -115,15 +148,26 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
     if (operation.current) return;
     operation.current = true;
     setResult({ status: "testing" });
+    const controller = new AbortController();
+    abort.current = controller;
     const started = performance.now();
     try {
-      await withLiveUrl((liveKind, url) => testConnectionString(liveKind, url));
+      await withLiveUrl((liveKind, url) => testConnectionString(liveKind, url), controller.signal);
       setResult({ status: "success", ms: Math.round(performance.now() - started) });
     } catch (error) {
-      setResult({ status: "error", message: connectionError(error) });
+      setResult(
+        controller.signal.aborted
+          ? { status: "idle" }
+          : { status: "error", message: connectionError(error) },
+      );
     } finally {
+      abort.current = null;
       operation.current = false;
     }
+  }
+
+  function cancelTest() {
+    abort.current?.abort();
   }
 
   async function scanSchemas() {
@@ -152,20 +196,51 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
     try {
       if (!name.trim()) throw new Error("Gib der Verbindung einen Namen.");
       const config = await configuration();
+      const profileConnection = isProfileConnection(config.kind);
+      const savedReadOnly = config.kind === "spacetimedb" || readOnly;
       const configInfo = providers.find((entry) => entry.kind === config.kind) ?? info;
       const id = connection?.id ?? crypto.randomUUID();
-      const dbPassword = await databasePasswordToSave(config.connectionString, connection);
-      if (connection && useConnectionsStore.getState().activeId === id) {
-        const outcome = await activateConnection(null);
-        if (!outcome.ok) throw new Error(outcome.error);
+      const dbPassword = await databasePasswordToSave(
+        config.connectionString,
+        connection,
+        passwordCleared,
+      );
+      const wasActive = Boolean(connection) && useConnectionsStore.getState().activeId === id;
+      const desiredSecrets: [string, string | null][] = [
+        [id, dbPassword],
+        [sshSecretAccount(id), config.ssh && config.secret ? config.secret : null],
+        [sshJumpSecretAccount(id), config.ssh ? serializeJumpSecrets(config.secrets.jumps) : null],
+        [proxySecretAccount(id), config.proxy ? config.secrets.proxy : null],
+      ];
+      let reconnect = false;
+      if (connection && wasActive) {
+        const stored = profileConnection
+          ? desiredSecrets.map(() => null)
+          : await Promise.all(
+              desiredSecrets.map(([account]) => loadSecret(account).catch(() => null)),
+            );
+        reconnect =
+          endpointChanged(connection, {
+            ...config,
+            sslMode: ssl,
+            readOnly: savedReadOnly,
+            cloudAuth,
+            environment,
+          }) ||
+          desiredSecrets.some(([, value], index) => (value || null) !== (stored[index] || null));
+        if (reconnect) {
+          const outcome = await activateConnection(null);
+          if (!outcome.ok) throw new Error(outcome.error);
+        }
       }
+      const keepConnected = wasActive && !reconnect;
       if (dbPassword) {
         await storeSecret(id, dbPassword).catch(() =>
           toast.warning(
             "Datenbankpasswort gilt nur in dieser Sitzung: Schlüsselbund nicht verfügbar.",
           ),
         );
-      } else if (connection) {
+      } else if (connection && !profileConnection) {
         await deleteSecret(id);
       }
       if (config.ssh && config.secret) {
@@ -174,27 +249,26 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
             "SSH-Zugangsdaten gelten nur in dieser Sitzung: Schlüsselbund nicht verfügbar.",
           ),
         );
-      } else if (connection) {
+      } else if (connection && !profileConnection) {
         await deleteSecret(sshSecretAccount(id));
       }
-      const jumpSecrets = config.ssh ? serializeJumpSecrets(config.secrets.jumps) : null;
-      const networkSecrets: [string, string | null][] = [
-        [sshJumpSecretAccount(id), jumpSecrets],
-        [proxySecretAccount(id), config.proxy ? config.secrets.proxy : null],
-      ];
-      for (const [account, value] of networkSecrets) {
+      for (const [account, value] of desiredSecrets.slice(2)) {
         if (value) {
           await storeSecret(account, value).catch(() =>
             toast.warning(
               "Netzwerk-Zugangsdaten gelten nur in dieser Sitzung: Schlüsselbund nicht verfügbar.",
             ),
           );
-        } else if (connection) {
+        } else if (connection && !profileConnection) {
           await deleteSecret(account).catch(() => undefined);
         }
       }
-      if (usesTunnel(connection)) await closeUnsharedTunnel(id);
-      queryClient.removeQueries({ predicate: (query) => query.queryKey[1] === id });
+      if (keepConnected)
+        void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[1] === id });
+      else {
+        if (usesTunnel(connection)) await closeUnsharedTunnel(id);
+        queryClient.removeQueries({ predicate: (query) => query.queryKey[1] === id });
+      }
       const input = {
         name: name.trim(),
         kind: config.kind,
@@ -203,15 +277,15 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
         ssh: config.ssh,
         proxy: config.proxy,
         commandTunnel: config.commandTunnel,
-        tunnelPort: null,
+        tunnelPort: keepConnected ? (connection?.tunnelPort ?? null) : null,
         favorite: connection?.favorite ?? false,
-        readOnly: readOnly && configInfo.capabilities.read_only_mode,
+        readOnly: savedReadOnly,
         cloudAuth,
         schemas: configInfo.capabilities.schemas && schemaFilter.length ? schemaFilter : null,
         showSingleSchemaSwitcher,
         color,
         environment,
-        vault: connection?.vault,
+        vault: profileConnection ? undefined : connection?.vault,
         maskRules: maskRules.filter((rule) => rule.pattern.trim()),
         tags: [
           ...new Set(
@@ -231,7 +305,8 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
           connections: [...state.connections, { ...input, id }],
         }));
       toast.success("Verbindung gespeichert");
-      if (vault) {
+      if (reconnect) void activateConnectionWithToast(id);
+      if (vault && !profileConnection) {
         const stored = vaultSave(vault.host, id).then(async () => {
           useConnectionsStore.setState((state) => ({
             connections: state.connections.map((entry) =>
@@ -255,5 +330,5 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
     }
   }
 
-  return { test, scanSchemas, save };
+  return { test, cancelTest, scanSchemas, save };
 }

@@ -1,4 +1,11 @@
 export {
+  isReadOnlyFor,
+  isReadOnlyStatement,
+  perfStatement,
+  readOnlyRequirement,
+  stripSqlNoise,
+} from "@/lib/read-only-statement";
+export {
   buildPerfTestSql,
   buildSavedPerfTest,
   emptyMetrics,
@@ -35,13 +42,6 @@ export {
   perfRunAsSavedPlan,
 } from "./file";
 export { type PerfLoopOptions, type PerfLoopOutcome, runPerfLoop } from "./run";
-export {
-  isReadOnlyFor,
-  isReadOnlyStatement,
-  perfStatement,
-  readOnlyRequirement,
-  stripSqlNoise,
-} from "./sql-noise";
 export type {
   PerfMode,
   PerfRun,

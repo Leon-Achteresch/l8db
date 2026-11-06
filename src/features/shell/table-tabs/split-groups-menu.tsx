@@ -11,8 +11,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { SplitGroup } from "@/lib/split-view";
 import { tabLabel } from "@/lib/tab-navigation";
+import type { TemplateEntry } from "@/lib/ui-plugins/registry";
 import { cn } from "@/lib/utils";
 import { iconButton } from "./constants";
+import { TemplateItems } from "./template-items";
 
 interface SplitGroupsMenuProps {
   groups: SplitGroup[];
@@ -21,6 +23,8 @@ interface SplitGroupsMenuProps {
   triggerRef: React.Ref<HTMLButtonElement>;
   onOpen: (group: SplitGroup) => void;
   onDelete: (group: SplitGroup) => void;
+  templates: readonly TemplateEntry[];
+  onOpenTemplate: (entry: TemplateEntry) => void;
 }
 
 export function SplitGroupsMenu({
@@ -30,6 +34,8 @@ export function SplitGroupsMenu({
   triggerRef,
   onOpen,
   onDelete,
+  templates,
+  onOpenTemplate,
 }: SplitGroupsMenuProps) {
   const label = `Tab-Gruppen (${groups.length})`;
   return (
@@ -83,6 +89,7 @@ export function SplitGroupsMenu({
             </div>
           );
         })}
+        <TemplateItems templates={templates} onOpenTemplate={onOpenTemplate} />
       </DropdownMenuContent>
     </DropdownMenu>
   );

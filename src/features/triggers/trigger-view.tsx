@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { Loader, Play, ShieldCheck } from "lucide";
 import { RotateCcwIcon, TriangleAlertIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
@@ -13,11 +14,16 @@ import { useObjectDraft } from "@/lib/hooks/use-object-draft";
 import { objectDraftKey } from "@/lib/object-drafts";
 import { useTriggersQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
-import { useTableTabs } from "@/lib/table-tabs";
+import { type Tab, useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 import { triggerStatus } from "./trigger-status";
 import { FeedbackPanel } from "./trigger-view/feedback-panel";
-import { replaceTrigger, triggerDropSql, triggerErrorPrefix } from "./trigger-view/replace-trigger";
+import {
+  replaceTrigger,
+  triggerDropSql,
+  triggerErrorPrefix,
+  triggerNameFromDefinition,
+} from "./trigger-view/replace-trigger";
 import { TriggerEditorPane } from "./trigger-view/trigger-editor-pane";
 
 type ValidationState =
@@ -42,6 +48,7 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const openTab = useTableTabs((state) => state.openTriggerTab);
   const { data: triggers, isLoading, isError, error } = useTriggersQuery(schema, table);
 
@@ -122,11 +129,35 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
         trigger: triggerName,
         original: trigger?.definition ?? "",
         definition: currentValue,
+        enabled: trigger?.enabled,
       });
       setExecution({ status: "success", time });
       setValidation({ status: "idle" });
       setDraft(null);
       await queryClient.invalidateQueries({ queryKey: ["triggers"] });
+      const renamed = triggerNameFromDefinition(connection.kind, currentValue);
+      if (renamed && renamed !== triggerName) {
+        const rename = (tabs: Tab[]) =>
+          tabs.map((tab) =>
+            tab.kind === "trigger" &&
+            tab.schema === schema &&
+            tab.table === table &&
+            tab.trigger === triggerName
+              ? { ...tab, trigger: renamed }
+              : tab,
+          );
+        useTableTabs.setState((state) => ({
+          tabs: rename(state.tabs),
+          tabsByConnection: {
+            ...state.tabsByConnection,
+            [connection.id]: rename(state.tabsByConnection[connection.id] ?? state.tabs),
+          },
+        }));
+        void navigate({
+          to: "/triggers/$schema/$table/$trigger",
+          params: { schema, table, trigger: renamed },
+        });
+      }
     } catch (e) {
       setExecution({ status: "error", message: String(e) });
     }
@@ -137,9 +168,11 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
     table,
     triggerName,
     trigger?.definition,
+    trigger?.enabled,
     currentValue,
     queryClient,
     setDraft,
+    navigate,
   ]);
 
   if (!connection) {

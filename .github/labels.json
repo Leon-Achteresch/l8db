@@ -5,6 +5,11 @@
     "description": "Something is not working"
   },
   {
+    "name": "ai-report",
+    "color": "8250df",
+    "description": "Reported automatically from l8db"
+  },
+  {
     "name": "enhancement",
     "color": "a2eeef",
     "description": "New feature or improvement"

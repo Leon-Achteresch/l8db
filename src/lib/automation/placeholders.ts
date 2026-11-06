@@ -16,6 +16,7 @@ export const PLACEHOLDER_FILTERS = [
   { name: "sql", description: "Für SQL-Textliterale escapen" },
   { name: "json", description: "Als JSON-String-Inhalt escapen" },
   { name: "url", description: "Für URLs prozent-kodieren" },
+  { name: "shell", description: "Als ein Shell-Wort quoten (in sh -c, ohne Anführungszeichen)" },
   { name: "filename", description: "Zeichen ersetzen, die in Dateinamen verboten sind" },
   { name: "upper", description: "In Großbuchstaben" },
   { name: "lower", description: "In Kleinbuchstaben" },

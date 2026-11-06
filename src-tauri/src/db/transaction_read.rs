@@ -1,6 +1,9 @@
 use super::{map_pg_err, ora, oracle, quote, DatabaseKind, TransactionEntry, TransactionManager};
 use crate::db::execution::guarded;
-use crate::db::postgres::{capped_count, capped_count_sql, relation_name, table_page_sql};
+use crate::db::postgres::{
+    capped_count, capped_count_sql, primary_key_columns, relation_name, table_page_sql,
+    RELATION_COLUMNS_SQL,
+};
 use crate::db::{attach_row_keys, quote_ident, where_clause, DatabaseAdapter, RowCount, TableData};
 
 #[derive(Clone)]
@@ -105,11 +108,12 @@ impl TransactionManager {
             TransactionEntry::Pg(c, ssl) => {
                 let conn = c.lock().await?;
                 pg_read(&conn, ssl, async {
-                    let column_rows = conn.query(
-                        "SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position",
-                        &[&request.schema, &request.table],
-                    ).await.map_err(map_pg_err)?;
+                    let column_rows = conn
+                        .query(RELATION_COLUMNS_SQL, &[&request.schema, &request.table])
+                        .await
+                        .map_err(map_pg_err)?;
                     let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
+                    let primary_key = primary_key_columns(&column_rows);
                     let order = request
                         .order_by
                         .as_deref()
@@ -121,10 +125,16 @@ impl TransactionManager {
                         &where_sql,
                         order,
                         !request.is_view,
+                        &primary_key,
                     );
-                    let data = conn.query(&sql, &[&request.limit.max(0), &request.offset.max(0)])
-                        .await.map_err(map_pg_err)?;
-                    Ok(TableData { columns, rows: data.iter().map(|row| row.get(0)).collect() })
+                    let data = conn
+                        .query(&sql, &[&request.limit.max(0), &request.offset.max(0)])
+                        .await
+                        .map_err(map_pg_err)?;
+                    Ok(TableData {
+                        columns,
+                        rows: data.iter().map(|row| row.get(0)).collect(),
+                    })
                 })
                 .await
             }

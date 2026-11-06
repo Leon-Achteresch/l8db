@@ -27,6 +27,15 @@ export const SCRIPT_RUN_MODE_TEXT: Record<ScriptRunMode, string> = {
     "Jedes Statement wird sofort und endgültig ausgeführt (Autocommit). Ein Rollback ist nicht möglich.",
 };
 
+export const SQLPLUS_MODE_TEXT: Record<ScriptRunMode, string> = {
+  "existing-transaction":
+    "Wie SQL*Plus in der offenen Transaktion: COMMIT, ROLLBACK, WHENEVER SQLERROR … und EXIT im Skript schließen sie ab; DDL committet implizit.",
+  "new-transaction":
+    "Wie SQL*Plus: Autocommit ist aus. COMMIT, ROLLBACK, WHENEVER SQLERROR … und EXIT wirken im Skript, DDL committet implizit. Was am Ende offen ist, bleibt im Transaktionspanel.",
+  autocommit:
+    "Wie SET AUTOCOMMIT ON: Jedes Statement wird sofort festgeschrieben. ROLLBACK und WHENEVER … ROLLBACK können nichts zurücknehmen.",
+};
+
 interface ScriptRunDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -35,6 +44,7 @@ interface ScriptRunDialogProps {
   unterminated: boolean;
   onConfirm: (mode: ScriptRunMode, stopOnError: boolean) => void;
   transactions?: boolean;
+  sqlplus?: boolean;
 }
 
 export function ScriptRunDialog({
@@ -45,8 +55,10 @@ export function ScriptRunDialog({
   unterminated,
   onConfirm,
   transactions = false,
+  sqlplus = false,
 }: ScriptRunDialogProps) {
   const [selectedMode, setSelectedMode] = useState(mode);
+  const forcedStop = selectedMode !== "autocommit" && !sqlplus;
   const [stopOnError, setStopOnError] = useState(true);
   useEffect(() => {
     if (open) {
@@ -88,7 +100,9 @@ export function ScriptRunDialog({
                     <SelectItem value="autocommit">Autocommit</SelectItem>
                     {transactions && (
                       <SelectItem value="new-transaction">
-                        Neue Transaktion, danach prüfen
+                        {sqlplus
+                          ? "SQL*Plus: Autocommit aus, Transaktion prüfen"
+                          : "Neue Transaktion, danach prüfen"}
                       </SelectItem>
                     )}
                   </>
@@ -96,19 +110,20 @@ export function ScriptRunDialog({
               </SelectContent>
             </Select>
           </div>
-          <p>{SCRIPT_RUN_MODE_TEXT[selectedMode]}</p>
+          <p>{(sqlplus ? SQLPLUS_MODE_TEXT : SCRIPT_RUN_MODE_TEXT)[selectedMode]}</p>
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={selectedMode !== "autocommit" || stopOnError}
-              disabled={selectedMode !== "autocommit"}
+              checked={forcedStop || stopOnError}
+              disabled={forcedStop}
               onChange={(event) => setStopOnError(event.target.checked)}
             />
             Bei Fehler stoppen
           </label>
           <p>
-            In einer Transaktion stoppt der Ablauf beim ersten Fehler. Bei Autocommit können Sie das
-            Fortsetzen ausdrücklich wählen.
+            {sqlplus
+              ? "Gilt, bis das Skript WHENEVER SQLERROR oder WHENEVER OSERROR setzt; danach entscheidet das Skript wie in SQL*Plus. Statements laufen wie in SQL*Plus ohne Zeitlimit, Abbrechen über Stopp."
+              : "In einer Transaktion stoppt der Ablauf beim ersten Fehler. Bei Autocommit können Sie das Fortsetzen ausdrücklich wählen."}
           </p>
           {unterminated && (
             <p className="text-amber-600 dark:text-amber-400">
@@ -123,7 +138,7 @@ export function ScriptRunDialog({
           </Button>
           <Button
             size="sm"
-            onClick={() => onConfirm(selectedMode, selectedMode !== "autocommit" || stopOnError)}
+            onClick={() => onConfirm(selectedMode, forcedStop || stopOnError)}
             disabled={statementCount === 0 || unterminated}
           >
             Skript ausführen

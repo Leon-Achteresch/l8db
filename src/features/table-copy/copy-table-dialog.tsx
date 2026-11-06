@@ -24,6 +24,8 @@ import { providerFor } from "@/lib/connection-url";
 import type { TableCopyMode } from "@/lib/db";
 import { type TableCopySource, useTableCopy } from "./copy-table-dialog/use-table-copy";
 
+const DEFAULT_DATABASE = "__l8db_default_database__";
+
 const MODE_LABELS: Record<TableCopyMode, string> = {
   create: "Neu anlegen",
   truncate: "Leeren und füllen",
@@ -77,6 +79,29 @@ export function CopyTableDialog({
               }
             />
           </div>
+          {(copy.databases?.length ?? 0) > 1 && (
+            <div className="space-y-2">
+              <Label>Zieldatenbank</Label>
+              <Select
+                value={copy.targetDatabase ?? DEFAULT_DATABASE}
+                onValueChange={(value) =>
+                  copy.setTargetDatabase(value === DEFAULT_DATABASE ? null : value)
+                }
+              >
+                <SelectTrigger className="w-full min-w-0" aria-label="Zieldatenbank">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent searchable>
+                  <SelectItem value={DEFAULT_DATABASE}>Standard der Verbindung</SelectItem>
+                  {(copy.databases ?? []).map((entry) => (
+                    <SelectItem key={entry} value={entry}>
+                      {entry}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-2">
             <Label>Zielschema</Label>
             <Select
@@ -145,6 +170,9 @@ export function CopyTableDialog({
           </div>
         )}
 
+        {copy.sameTable && (
+          <p className="text-sm text-destructive">Quelle und Ziel sind identisch.</p>
+        )}
         {copy.readOnly && (
           <p className="text-sm text-destructive">Die Zielverbindung ist schreibgeschützt.</p>
         )}

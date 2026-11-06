@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import catalog from "../scripts/feature-videos/catalog.json";
 import {
   assetUrls,
   deletableReleases,
@@ -54,6 +55,27 @@ const context = { version: "0.6.132", platform: "macos", easyMode: false, capabi
 describe("feature feed", () => {
   test("accepts bounded media from the dedicated release", () =>
     expect(parseFeed(feed(), now).items).toHaveLength(1));
+  test("the new issue clip preserves the feed format for older installations", () => {
+    const definition = catalog.find((item) => item.id === "ai-issue-report");
+    if (!definition) throw new Error("Issue-Clip fehlt im Katalog");
+    const prefix = `${ASSET_BASE}feature-video-ai-issue-report-1/fv-ai-issue-report-1`;
+    const entry = video({
+      ...definition,
+      actionId: "settings",
+      releaseVersion: "0.17.0",
+      minAppVersion: "0.17.0",
+      poster: `${prefix}.jpg`,
+      sources: [
+        { url: `${prefix}.mp4`, type: "video/mp4", bytes: 1000 },
+        { url: `${prefix}.webm`, type: "video/webm", bytes: 1000 },
+      ],
+    });
+    const parsed = parseFeed(feed([video(), entry]), now);
+    expect(eligibleVideos(parsed, context).map((item) => item.id)).toEqual(["easy-mode"]);
+    expect(
+      eligibleVideos(parsed, { ...context, version: "0.17.0" }).map((item) => item.id),
+    ).toContain("ai-issue-report");
+  });
   test("accepts dashboard navigation while keeping the automatic clip duration bounded", () => {
     expect(
       parseFeed(feed([video({ actionTarget: "dashboard", durationSeconds: 30 })]), now).items[0]

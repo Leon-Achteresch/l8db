@@ -102,7 +102,7 @@ export function useTableHeader({
               if (item.spacer)
                 return (
                   <th
-                    key={`gap-${item.index}`}
+                    key={item.key}
                     aria-hidden
                     colSpan={item.span}
                     className="sticky top-0 z-20 border-b border-border bg-muted"

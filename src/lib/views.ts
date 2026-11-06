@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import type { TableColumnPref } from "@/lib/table-column-prefs";
 import type { TableViewState } from "@/lib/table-view-state";
 import { syncAcrossWindows } from "@/lib/window-sync";
@@ -107,6 +108,7 @@ export const useViewsStore = create<ViewsState>()(
     }),
     {
       name: "l8db.views",
+      storage: createSafeJsonStorage(),
     },
   ),
 );

@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { s3ListObjects, s3ListObjectVersions, s3SearchObjects } from "@/lib/db";
+import { cancelExecution, s3ListObjects, s3ListObjectVersions, s3SearchObjects } from "@/lib/db";
 import { basename } from "@/lib/storage/s3";
 import { useStorageConnection } from "./use-storage-connection";
 
@@ -58,9 +58,11 @@ export function useObjectListing(
     enabled: Boolean(url) && (mode !== "search" || Boolean(search.trim())),
     initialPageParam: null as Page["next"],
     getNextPageParam: (last: Page) => last.next ?? undefined,
-    queryFn: async ({ pageParam }): Promise<Page> => {
+    queryFn: async ({ pageParam, signal }): Promise<Page> => {
       if (mode === "search") {
-        const result = await s3SearchObjects(url, bucket, prefix, search, 1000);
+        const jobId = crypto.randomUUID();
+        signal.addEventListener("abort", () => void cancelExecution(jobId));
+        const result = await s3SearchObjects(url, bucket, prefix, search, 1000, jobId);
         return {
           rows: result.objects.map((o) => ({
             id: `object:${o.key}`,
@@ -83,7 +85,7 @@ export function useObjectListing(
         });
         return {
           rows: [
-            ...(pageParam ? [] : page.prefixes.map(folderRow)),
+            ...page.prefixes.map(folderRow),
             ...page.versions.map((v) => ({
               id: `version:${v.key}:${v.version_id}`,
               kind: "object" as const,

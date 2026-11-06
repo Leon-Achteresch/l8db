@@ -7,6 +7,7 @@ import {
   HistoryIcon,
   LayersIcon,
   NetworkIcon,
+  PuzzleIcon,
   ShieldCheckIcon,
   ShieldIcon,
   TableIcon,
@@ -136,7 +137,7 @@ export function TableDetailTabBar({
             {visible.length ? (
               <TabsList variant="line" className="h-9 w-max" aria-label="Tabellenansichten">
                 {visible.map((tab) => {
-                  const Icon = icons[tab.id];
+                  const Icon = icons[tab.id as keyof typeof icons] ?? PuzzleIcon;
                   return (
                     <TabsTrigger key={tab.id} value={tab.id} data-tab-id={tab.id}>
                       <Icon className="size-3.5" />

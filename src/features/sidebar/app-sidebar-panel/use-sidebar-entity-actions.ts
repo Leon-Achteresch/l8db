@@ -8,7 +8,8 @@ import { dropTable, getTableDdl, listTableColumnsDetailed, truncateTable } from 
 import { useActiveCapabilities, useActiveDatabase, useDbSelectionStore } from "@/lib/db-selection";
 import { EMPTY_CSV_IMPORT, useImportWorkspace } from "@/lib/import-workspace";
 import { favoriteId, useObjectFavoritesStore } from "@/lib/object-favorites";
-import { quoteIdent } from "@/lib/sql-filter/quote";
+import { openDetached } from "@/lib/split-view";
+import { previewQuery } from "@/lib/sql-filter/quote";
 import { SQL_TEMPLATE_LABELS, type SqlTemplate, templateSql } from "@/lib/sql-templates";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableExportRequest } from "@/lib/table-export-request";
@@ -66,21 +67,9 @@ export function useSidebarEntityActions(type: "table" | "view") {
     }
   };
 
-  const selectSql = (itemSchema: string, itemName: string) => {
-    const kind = activeConnection?.kind;
-    const table = `${itemSchema ? `${quoteIdent(itemSchema, kind)}.` : ""}${quoteIdent(itemName, kind)}`;
-    if (kind === "mssql") return `SELECT TOP (100) * FROM ${table}`;
-    if (kind === "oracle") return `SELECT * FROM ${table} FETCH FIRST 100 ROWS ONLY`;
-    return `SELECT * FROM ${table} LIMIT 100`;
-  };
-
   const handleOpenInEditor = (itemSchema: string, itemName: string) => {
     const id = openQueryTabWithSql(
-      caps.query_language === "json"
-        ? JSON.stringify({ find: itemName, filter: {} }, null, 2)
-        : caps.query_language === "redis"
-          ? "SCAN 0 MATCH * COUNT 100"
-          : selectSql(itemSchema, itemName),
+      previewQuery(itemSchema, itemName, activeConnection?.kind, caps.query_language),
     );
     navigate({ to: "/query/$id", params: { id } });
   };
@@ -141,9 +130,11 @@ export function useSidebarEntityActions(type: "table" | "view") {
   };
 
   const openInNewTab = (itemSchema: string, itemName: string) =>
-    type === "view"
-      ? openViewEditorTab({ schema: itemSchema, view: itemName })
-      : openTab({ schema: itemSchema, table: itemName, entityType: "table" });
+    openDetached(() =>
+      type === "view"
+        ? openViewEditorTab({ schema: itemSchema, view: itemName })
+        : openTab({ schema: itemSchema, table: itemName, entityType: "table" }),
+    );
 
   const handleExport = (itemSchema: string, itemName: string) => {
     useTableExportRequest.setState({ request: { schema: itemSchema, table: itemName } });

@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { appendLogLines, type BackupMode, formatBytes, progressPercent } from "@/lib/backup";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import type { SavedConnection } from "@/lib/connections";
 import {
   type BackupLogEvent,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/db";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { finishTask, startTask, updateTask } from "@/lib/tasks";
+import { syncAcrossWindows } from "@/lib/window-sync";
 
 interface BackupToolPathsState {
   paths: Record<string, string>;
@@ -32,9 +34,15 @@ export const useBackupToolPaths = create<BackupToolPathsState>()(
           return { paths };
         }),
     }),
-    { name: "l8db.backup-tools", partialize: (state) => ({ paths: state.paths }) },
+    {
+      name: "l8db.backup-tools",
+      storage: createSafeJsonStorage(),
+      partialize: (state) => ({ paths: state.paths }),
+    },
   ),
 );
+
+syncAcrossWindows("l8db.backup-tools", () => void useBackupToolPaths.persist.rehydrate());
 
 interface BackupJobState {
   logs: Record<string, string[]>;

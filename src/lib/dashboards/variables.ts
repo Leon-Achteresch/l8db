@@ -13,7 +13,17 @@ export const EMPTY_SCOPE: VariableScope = { variables: [], values: {} };
 
 const TOKEN = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
 const QUOTED_OR_TOKEN =
-  /('(?:[^'\\]|\\.|'')*'|"(?:[^"\\]|\\.|"")*")|\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
+  /('(?:[^'\\]|\\.|'')*'|"(?:[^"\\]|\\.|"")*"|--[^\n]*|\/\*[\s\S]*?\*\/)|\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
+const STANDARD_QUOTED_OR_TOKEN =
+  /('(?:[^']|'')*'|"(?:[^"]|"")*"|--[^\n]*|\/\*[\s\S]*?\*\/)|\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
+const BACKSLASH_KINDS = new Set<DatabaseKind | null>([
+  null,
+  "mysql",
+  "odbc",
+  "clickhouse",
+  "snowflake",
+  "bigquery",
+]);
 const WHOLE_TOKEN = /^\s*\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}\s*$/;
 
 export function variableName(label: string): string {
@@ -62,7 +72,8 @@ export function substituteVariables(
   kind: DatabaseKind | null,
 ): string {
   if (!sql.includes("{{")) return sql;
-  return sql.replace(QUOTED_OR_TOKEN, (token, quoted: string | undefined, name: string) => {
+  const pattern = BACKSLASH_KINDS.has(kind) ? QUOTED_OR_TOKEN : STANDARD_QUOTED_OR_TOKEN;
+  return sql.replace(pattern, (token, quoted: string | undefined, name: string) => {
     if (quoted) return token;
     const variable = scope.variables.find((v) => v.name === name);
     if (!variable) return token;

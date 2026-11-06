@@ -10,7 +10,9 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use russh::client::{self, Handle};
-use russh::keys::known_hosts::{check_known_hosts_path, learn_known_hosts_path};
+use russh::keys::known_hosts::{
+    check_known_hosts_path, known_host_keys_path, learn_known_hosts_path,
+};
 use russh::keys::{HashAlg, PublicKey, PublicKeyOrCertificate};
 use russh::Channel;
 use serde::{Deserialize, Serialize};
@@ -168,50 +170,81 @@ impl TunnelHandler {
                 key_fingerprint(pinned)
             )));
         }
-        let path = known_hosts_path();
-        if let Some(ref path) = path {
-            if path.exists() {
-                match check_known_hosts_path(&self.host, self.port, server_key, path) {
-                    Ok(true) => return Ok(()),
-                    Ok(false) => {}
-                    Err(e) => {
+        verify_known_host(
+            known_hosts_path(),
+            &self.host,
+            self.port,
+            server_key,
+            self.accept_new_host_key,
+        )
+    }
+}
+
+fn verify_known_host(
+    path: Option<PathBuf>,
+    host: &str,
+    port: u16,
+    server_key: &PublicKey,
+    accept_new_host_key: bool,
+) -> Result<(), SshError> {
+    if let Some(ref path) = path {
+        if path.exists() {
+            match check_known_hosts_path(host, port, server_key, path) {
+                Ok(true) => return Ok(()),
+                Ok(false) => {
+                    if let Some((line, known)) = known_host_keys_path(host, port, path)
+                        .unwrap_or_default()
+                        .first()
+                    {
                         return Err(SshError(format!(
-                            "known_hosts konnte nicht geprüft werden ({}): {e}",
-                            path.display()
+                            "Für {host}:{port} ist in {} (Zeile {line}) nur ein Host-Key anderen Typs hinterlegt ({:?}), der Server meldet {}. Der Key wird nicht automatisch übernommen. Prüfe den Fingerprint und ergänze ihn in known_hosts.",
+                            path.display(),
+                            known.algorithm(),
+                            key_fingerprint(server_key)
                         )));
                     }
                 }
-            }
-        }
-        if self.accept_new_host_key {
-            if let Some(ref path) = path {
-                if let Some(parent) = path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                learn_known_hosts_path(&self.host, self.port, server_key, path).map_err(|e| {
-                    SshError(format!(
-                        "Host-Key konnte nicht in {} gespeichert werden: {e}",
+                Err(russh::keys::Error::KeyChanged { line }) => {
+                    return Err(SshError(format!(
+                        "WARNUNG: Der SSH-Host-Key von {host}:{port} hat sich geändert ({}). Das kann ein Man-in-the-Middle-Angriff sein oder der Server wurde neu aufgesetzt. Prüfe den Fingerprint beim Administrator und entferne erst dann Zeile {line} in {}.",
+                        key_fingerprint(server_key),
                         path.display()
-                    ))
-                })?;
+                    )));
+                }
+                Err(e) => {
+                    return Err(SshError(format!(
+                        "known_hosts konnte nicht geprüft werden ({}): {e}",
+                        path.display()
+                    )));
+                }
             }
-            return Ok(());
         }
-        let hint = match path {
-            Some(p) => format!(
-                "Aktiviere in den Einstellungen „Neue SSH-Host-Keys akzeptieren“, um ihn beim ersten Verbinden in {} zu speichern.",
-                p.display()
-            ),
-            None => "HOME ist nicht gesetzt, known_hosts kann nicht geprüft werden.".to_string(),
-        };
-        Err(SshError(format!(
-            "Unbekannter SSH-Host-Key für {}:{} ({}). {}",
-            self.host,
-            self.port,
-            key_fingerprint(server_key),
-            hint
-        )))
     }
+    if accept_new_host_key {
+        if let Some(ref path) = path {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            learn_known_hosts_path(host, port, server_key, path).map_err(|e| {
+                SshError(format!(
+                    "Host-Key konnte nicht in {} gespeichert werden: {e}",
+                    path.display()
+                ))
+            })?;
+        }
+        return Ok(());
+    }
+    let hint = match path {
+        Some(p) => format!(
+            "Aktiviere in den Einstellungen „Neue SSH-Host-Keys akzeptieren“, um ihn beim ersten Verbinden in {} zu speichern.",
+            p.display()
+        ),
+        None => "HOME ist nicht gesetzt, known_hosts kann nicht geprüft werden.".to_string(),
+    };
+    Err(SshError(format!(
+        "Unbekannter SSH-Host-Key für {host}:{port} ({}). {hint}",
+        key_fingerprint(server_key)
+    )))
 }
 
 impl client::Handler for TunnelHandler {

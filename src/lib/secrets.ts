@@ -4,6 +4,7 @@ import {
   deleteSecret as removeSecret,
 } from "@/lib/db";
 import { isTrackedSecret, recordSecretEdit } from "@/lib/secret-edits";
+import { reportSecretStorage } from "@/lib/secret-storage-status";
 
 const sessionSecrets = new Map<string, string>();
 const generations = new Map<string, number>();
@@ -25,7 +26,13 @@ export async function storeSecret(account: string, secret: string): Promise<void
   bump(account);
   sessionSecrets.set(account, secret);
   const previous = await storedValue(account);
-  await persistSecret(account, secret);
+  try {
+    await persistSecret(account, secret);
+    reportSecretStorage(account, true);
+  } catch (error) {
+    reportSecretStorage(account, false);
+    throw error;
+  }
   if (isTrackedSecret(account) && previous !== secret) recordSecretEdit(account);
 }
 
@@ -60,6 +67,7 @@ export async function loadSecret(account: string): Promise<string | null> {
 export async function deleteSecret(account: string): Promise<void> {
   bump(account);
   sessionSecrets.delete(account);
+  reportSecretStorage(account, true);
   if (!isTrackedSecret(account)) return removeSecret(account);
   const previous = await storedValue(account);
   await removeSecret(account);
@@ -195,13 +203,12 @@ export function replaceUrlUser(url: string, user: string): string {
 }
 
 export function withSslModeParam(value: string, sslMode: string): string {
-  if (!value.trim()) return "";
-  const url = new URL(value.trim());
-  const params = url.search
-    .slice(1)
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const query = trimmed.indexOf("?");
+  const params = (query < 0 ? "" : trimmed.slice(query + 1))
     .split("&")
     .filter((part) => part && decodeURIComponent(part.split("=")[0]) !== "sslmode");
   params.push(`sslmode=${encodeURIComponent(sslMode)}`);
-  url.search = params.join("&");
-  return url.toString();
+  return `${query < 0 ? trimmed : trimmed.slice(0, query)}?${params.join("&")}`;
 }

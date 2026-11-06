@@ -12,6 +12,7 @@ import {
 import {
   cancelExecution,
   copyTableToConnection,
+  listDatabases,
   listSchemas,
   type TableCopyMode,
   type TableCopyOutcome,
@@ -32,6 +33,7 @@ export function useTableCopy(source: TableCopySource | null, onClose: () => void
   const database = useActiveDatabase();
   const connections = useConnectionsStore((state) => state.connections);
   const [targetId, setTargetId] = useState("");
+  const [targetDb, setTargetDb] = useState<string | null>(null);
   const [targetSchema, setTargetSchema] = useState("");
   const [targetTable, setTargetTable] = useState("");
   const [mode, setMode] = useState<TableCopyMode>("create");
@@ -45,6 +47,7 @@ export function useTableCopy(source: TableCopySource | null, onClose: () => void
   useEffect(() => {
     if (!source) return;
     setTargetId("");
+    setTargetDb(null);
     setTargetSchema("");
     setTargetTable(source.name);
     setMode("create");
@@ -53,9 +56,24 @@ export function useTableCopy(source: TableCopySource | null, onClose: () => void
 
   const target = connections.find((entry) => entry.id === targetId) ?? null;
   const sameConnection = target?.id === connection?.id;
-  const targetDatabase = sameConnection ? (database ?? undefined) : undefined;
+  const targetDatabase = targetDb ?? undefined;
   const readOnly = isReadOnlyConnection(target);
   const unsupported = Boolean(target && !capabilitiesFor(target.kind).table_copy);
+  const sameTable =
+    sameConnection &&
+    (targetDatabase ?? null) === (database ?? null) &&
+    targetSchema === source?.schema &&
+    targetTable.trim() === source?.name;
+
+  const databasesQuery = useQuery({
+    queryKey: ["table-copy-databases", targetId],
+    queryFn: async () => {
+      const ready = await prepareConnection(targetId);
+      return listDatabases(ready.kind, effectiveConnectionString(ready));
+    },
+    enabled: Boolean(source && target && !unsupported),
+    retry: false,
+  });
 
   const schemasQuery = useQuery({
     queryKey: ["table-copy-schemas", targetId, targetDatabase],
@@ -91,6 +109,7 @@ export function useTableCopy(source: TableCopySource | null, onClose: () => void
     Boolean(source && connection && target && targetTable.trim()) &&
     !readOnly &&
     !unsupported &&
+    !sameTable &&
     (schemas?.length === 0 || Boolean(targetSchema));
 
   const run = async (dryRun: boolean) => {
@@ -148,9 +167,18 @@ export function useTableCopy(source: TableCopySource | null, onClose: () => void
     target,
     setTargetId: (id: string) => {
       setTargetId(id);
+      setTargetDb(id === connection?.id ? (database ?? null) : null);
       setTargetSchema("");
       setPreview(null);
     },
+    databases: databasesQuery.data,
+    targetDatabase: targetDb,
+    setTargetDatabase: (name: string | null) => {
+      setTargetDb(name);
+      setTargetSchema("");
+      setPreview(null);
+    },
+    sameTable,
     schemas,
     schemasError: schemasQuery.error,
     targetSchema,

@@ -391,7 +391,7 @@ pub fn body_with_paths(message: &Message) -> String {
     format!("{}\n\nAusgaben:\n{paths}", message.body)
 }
 
-async fn native(title: &str, body: &str) -> Result<(), String> {
+pub(crate) async fn native(title: &str, body: &str) -> Result<(), String> {
     let (title, body) = (title.to_string(), body.to_string());
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "macos")]

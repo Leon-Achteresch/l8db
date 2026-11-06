@@ -48,11 +48,12 @@ export function PasswordPromptDialog() {
     (needsUser(connection) || (Boolean(message) && asksTeamUser(connection)));
 
   useEffect(() => {
-    if (!connection) return;
+    if (!connection || !resolve) return;
     setUser(currentUser(connection));
     setPassword("");
     setSave(Boolean(message) || needsUser(connection));
-  }, [connection, message]);
+    (askUser ? userRef : passwordRef).current?.focus();
+  }, [connection, message, resolve, askUser]);
 
   function finish(answer: { user?: string; password: string; save: boolean } | null) {
     resolve?.(answer);
@@ -141,7 +142,12 @@ export function PasswordPromptDialog() {
             <Button type="button" tabIndex={0} variant="outline" onClick={() => finish(null)}>
               Abbrechen
             </Button>
-            <Button type="submit" tabIndex={0} disabled={askUser && !user.trim()}>
+            <Button
+              type="submit"
+              tabIndex={0}
+              disabled={askUser && !user.trim()}
+              disabledReason="Kein Benutzername eingegeben"
+            >
               Verbinden
             </Button>
           </DialogFooter>

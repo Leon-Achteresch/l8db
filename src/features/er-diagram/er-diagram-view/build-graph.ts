@@ -2,6 +2,7 @@ import type { Edge } from "@xyflow/react";
 import type { TableNodeType } from "@/features/er-diagram/er-diagram-view/types";
 import type { ERTable, ForeignKeyInfo } from "@/lib/db";
 import { erForeignKeyKey } from "@/lib/er-clusters";
+import { erTableKey } from "@/lib/er-focus";
 
 export function buildEdges(foreignKeys: ForeignKeyInfo[]): Edge[] {
   const edgeGroups = new Map<string, ForeignKeyInfo[]>();
@@ -14,8 +15,8 @@ export function buildEdges(foreignKeys: ForeignKeyInfo[]): Edge[] {
   const edges: Edge[] = [];
   for (const [constraintName, fks] of edgeGroups) {
     const fk = fks[0];
-    const sourceId = `${fk.from_schema}.${fk.from_table}`;
-    const targetId = `${fk.to_schema}.${fk.to_table}`;
+    const sourceId = erTableKey(fk.from_schema, fk.from_table);
+    const targetId = erTableKey(fk.to_schema, fk.to_table);
     const label =
       fks.length === 1
         ? `${fk.from_column} → ${fk.to_column}`
@@ -55,12 +56,12 @@ export function buildNodes(
   const fkColumns = new Set<string>();
   const targetColumns = new Set<string>();
   for (const fk of foreignKeys) {
-    fkColumns.add(`${fk.from_schema}.${fk.from_table}.${fk.from_column}`);
-    targetColumns.add(`${fk.to_schema}.${fk.to_table}.${fk.to_column}`);
+    fkColumns.add(JSON.stringify([fk.from_schema, fk.from_table, fk.from_column]));
+    targetColumns.add(JSON.stringify([fk.to_schema, fk.to_table, fk.to_column]));
   }
 
   return tables.map((table) => {
-    const key = `${table.schema}.${table.name}`;
+    const key = erTableKey(table.schema, table.name);
     const pos = positions.get(key) ?? { x: 0, y: 0 };
     return {
       id: key,
@@ -74,8 +75,8 @@ export function buildNodes(
           dataType: col.data_type,
           isPrimaryKey: col.is_primary_key,
           isNullable: col.is_nullable,
-          isForeignKey: fkColumns.has(`${table.schema}.${table.name}.${col.name}`),
-          isTarget: targetColumns.has(`${table.schema}.${table.name}.${col.name}`),
+          isForeignKey: fkColumns.has(JSON.stringify([table.schema, table.name, col.name])),
+          isTarget: targetColumns.has(JSON.stringify([table.schema, table.name, col.name])),
         })),
       },
     };

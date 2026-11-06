@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { safeSetItem } from "@/lib/buffered-storage";
 import { type CompareSideSelection, EMPTY_COMPARE_SIDE } from "@/lib/compare-types";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import {
@@ -147,7 +148,7 @@ export function useDatabaseDrift(workspace: VersioningWorkspace) {
     controller.current?.abort();
     clearDriftMemo();
     setSourceState(value);
-    localStorage.setItem(sourceKey(project.id, status?.branch), JSON.stringify(value));
+    safeSetItem(localStorage, sourceKey(project.id, status?.branch), JSON.stringify(value));
     setEntries(null);
     setSelected([]);
     setFocus(null);

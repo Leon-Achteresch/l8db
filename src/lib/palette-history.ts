@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export type PaletteUsage = { count: number; last: number };
@@ -26,7 +27,7 @@ export const usePaletteHistoryStore = create<PaletteHistoryState>()(
       record: (id) =>
         set((state) => ({ history: recordPaletteUse(state.history, id, Date.now()) })),
     }),
-    { name: "l8db.palette-history" },
+    { name: "l8db.palette-history", storage: createSafeJsonStorage() },
   ),
 );
 

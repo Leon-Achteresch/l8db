@@ -1,8 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { XIcon } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useState } from "react";
+import { Activity, lazy, Suspense, useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useStore } from "zustand";
 import { Button } from "@/components/ui/button";
+import { afterPaint } from "@/lib/after-paint";
 import { type DashboardDesign, DEFAULT_DASHBOARD_DESIGN } from "@/lib/dashboard-design";
 import {
   addPage,
@@ -172,7 +173,11 @@ export function DashboardEditor({
       },
       widgetsOnPage(dashboard.widgets, pages, activePage),
     );
-    useChartTabsStore.getState().open({ dashboardId: dashboard.id, widget, dataset, isNew: true });
+    afterPaint(() =>
+      useChartTabsStore
+        .getState()
+        .open({ dashboardId: dashboard.id, widget, dataset, isNew: true }),
+    );
   }, [dashboard.datasets, dashboard.widgets, dashboard.id, dashboard.pages, pages, activePage]);
 
   const addBlock = (type: BlockKind) =>
@@ -412,7 +417,7 @@ export function DashboardEditor({
                   startEdit(id);
                 }}
               />
-              {activeTab ? (
+              {activeTab && (
                 <Suspense fallback={null}>
                   <ChartStudio
                     key={activeTab.id}
@@ -431,7 +436,8 @@ export function DashboardEditor({
                     onClose={() => useChartTabsStore.getState().close(activeTab.id)}
                   />
                 </Suspense>
-              ) : (
+              )}
+              <Activity mode={activeTab ? "hidden" : "visible"}>
                 <div className="flex min-h-0 flex-1">
                   {sidebarNav && pageNav}
                   <DashboardCanvas
@@ -443,7 +449,7 @@ export function DashboardEditor({
                     onOpenCharts={editing ? openCharts : undefined}
                   />
                 </div>
-              )}
+              </Activity>
             </div>
             {designDraft && !presentation.presenting && (
               <Suspense fallback={null}>

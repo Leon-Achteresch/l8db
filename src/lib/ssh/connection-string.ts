@@ -1,3 +1,4 @@
+import { isProfileConnection, parseProfileConnection } from "@/lib/connection-url/profile-pointer";
 import {
   cloudAuthConnectionString,
   isReadOnlyConnection,
@@ -33,6 +34,16 @@ export function tunneledConnectionString(
   port: number,
   kind: DatabaseKind = "postgres",
 ): string {
+  if (kind === "mongodb") {
+    const rewritten = rewriteHostPort(value, "127.0.0.1", port);
+    if (/[?&]directConnection=/i.test(rewritten)) return rewritten;
+    const separator = rewritten.includes("?")
+      ? "&"
+      : /^[^:]+:\/\/[^/]*$/.test(rewritten)
+        ? "/?"
+        : "?";
+    return `${rewritten}${separator}directConnection=true`;
+  }
   if (kind !== "postgres") return rewriteHostPort(value, "127.0.0.1", port);
   const url = new URL(value);
   url.port = String(port);
@@ -50,14 +61,20 @@ export function tunneledConnectionString(
 export const READ_ONLY_OPTION = "-c default_transaction_read_only=on";
 
 export function readOnlyConnectionString(value: string): string {
-  const url = new URL(value);
-  const params = url.search
-    .slice(1)
-    .split("&")
-    .filter((part) => part && decodeURIComponent(part.split("=")[0]) !== "options");
-  params.push(`options=${encodeURIComponent(READ_ONLY_OPTION)}`);
-  url.search = params.join("&");
-  return url.toString();
+  const query = value.indexOf("?");
+  const base = query < 0 ? value : value.slice(0, query);
+  const params: string[] = [];
+  let options = "";
+  for (const part of (query < 0 ? "" : value.slice(query + 1)).split("&")) {
+    if (!part) continue;
+    const eq = part.indexOf("=");
+    if (decodeURIComponent(eq < 0 ? part : part.slice(0, eq)) !== "options") params.push(part);
+    else if (eq >= 0)
+      options = `${options} ${decodeURIComponent(part.slice(eq + 1).replace(/\+/g, " "))}`.trim();
+  }
+  if (!options.endsWith(READ_ONLY_OPTION)) options = `${options} ${READ_ONLY_OPTION}`.trim();
+  params.push(`options=${encodeURIComponent(options)}`);
+  return `${base}?${params.join("&")}`;
 }
 
 export function proxyUserConnectionString(
@@ -92,14 +109,21 @@ registerReadOnlyResolver((connectionString) => {
 });
 
 export function effectiveConnectionString(connection: SavedConnection): string {
+  if (isProfileConnection(connection.kind)) {
+    const pointer = connection.connectionString.trim();
+    parseProfileConnection(pointer, connection.kind);
+    if (usesTunnel(connection))
+      throw new Error("Netzwerkzugang für diese Verbindung wird im Profil verwaltet.");
+    return pointer;
+  }
   const cached = peekSecret(connection.id);
   const raw =
     cached && extractUrlPassword(connection.connectionString) === null
       ? injectUrlPassword(connection.connectionString, cached)
       : connection.connectionString;
   const serverReadOnly =
-    isReadOnlyConnection(connection) ||
-    (isProductionLocked(connection) && capabilitiesFor(connection.kind).read_only_mode);
+    capabilitiesFor(connection.kind).read_only_mode &&
+    (isReadOnlyConnection(connection) || isProductionLocked(connection));
   const base = cloudAuthConnectionString(
     proxyUserConnectionString(serverReadOnly ? readOnlyConnectionString(raw) : raw, connection),
     connection,

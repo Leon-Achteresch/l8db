@@ -949,6 +949,15 @@ impl DatabaseAdapter for BigqueryAdapter {
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let started = Instant::now();
         let (schema, rows, response) = self.run(sql).await?;
+        for warning in response["errors"].as_array().into_iter().flatten() {
+            super::server_output::emit(super::server_output::ServerMessage {
+                level: "WARNING".to_string(),
+                message: str_of(&warning["message"]).to_string(),
+                detail: Some(str_of(&warning["reason"]))
+                    .filter(|reason| !reason.is_empty())
+                    .map(|reason| format!("Grund {reason}")),
+            });
+        }
         let columns = column_names(&schema);
         Ok(QueryResult {
             rows: rows_to_objects(&columns, rows),
@@ -1251,7 +1260,7 @@ mod tests {
                         json!({"jobComplete": true, "jobReference": {"jobId": "j2", "location": "EU"}, "numDmlAffectedRows": "5"})
                     } else {
                         assert!(
-                            sql.contains("FROM `proj`.`ds`.`orders` WHERE id > 1 ORDER BY `info`.`city` DESC LIMIT 10 OFFSET 0")
+                            sql.contains("FROM `proj`.`ds`.`orders` WHERE (id > 1) ORDER BY `info`.`city` DESC LIMIT 10 OFFSET 0")
                                 || sql == "SELECT 1",
                             "{sql}"
                         );

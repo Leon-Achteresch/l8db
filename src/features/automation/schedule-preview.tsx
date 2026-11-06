@@ -103,7 +103,7 @@ export function SchedulePreview({ schedule, taskNames, blocked }: Props) {
           <p className="text-[11px] font-medium text-muted-foreground">Nächste Läufe</p>
           {state.status === "ready" && state.runs.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              Keine Termine – liegt alles in der Vergangenheit oder außerhalb des Zeitraums?
+              Keine Termine in den nächsten 5 Jahren. Zeitfenster, Ausnahmen und Zeitraum prüfen.
             </p>
           ) : (
             <ol

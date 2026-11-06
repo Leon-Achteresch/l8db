@@ -17,7 +17,10 @@ pub struct Resolved {
     pub kind: DatabaseKind,
     pub url: String,
     pub database: Option<String>,
+    pub schemas: Option<Vec<String>>,
+    pub mask_rules: Vec<crate::mcp::config::RedactRule>,
     pub read_only: bool,
+    pub production_locked: bool,
     pub environment: Option<String>,
     pub via: Via,
 }
@@ -55,6 +58,15 @@ pub fn unsupported_reason(connection: &AutomationConnection) -> Option<String> {
         return Some(
             "Objektspeicher-Verbindungen unterstützen keine Automatisierungsschritte.".into(),
         );
+    }
+    if matches!(
+        connection.kind,
+        DatabaseKind::Jdbc | DatabaseKind::Workspace
+    ) && (connection.ssh.is_some()
+        || connection.proxy.is_some()
+        || connection.command_tunnel.is_some())
+    {
+        return Some("Profilverbindungen verwalten ihren Netzwerkzugriff selbst. Entferne SSH-, Proxy- und Befehls-Tunnel aus dieser Verbindung.".into());
     }
     None
 }
@@ -155,7 +167,15 @@ fn has_user_without_password(raw: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn is_profile_reference(value: &str) -> bool {
+    let value = value.trim();
+    value.starts_with("jdbc:l8db:") || value.starts_with("workspace://")
+}
+
 pub fn with_password(raw: &str, password: Option<&str>) -> String {
+    if is_profile_reference(raw) {
+        return raw.to_string();
+    }
     let Some(password) = password.filter(|password| !password.is_empty()) else {
         return raw.to_string();
     };
@@ -172,6 +192,9 @@ pub fn with_password(raw: &str, password: Option<&str>) -> String {
 }
 
 pub fn with_secret_params(value: &str, secrets: Option<&str>) -> String {
+    if is_profile_reference(value) {
+        return value.to_string();
+    }
     let Some(secrets) = secrets
         .map(|s| s.trim_start_matches(['?', '&']))
         .filter(|s| !s.is_empty())
@@ -419,7 +442,11 @@ pub async fn resolve(
         return Err(reason);
     }
     let raw = connection.connection_string.clone();
-    let password = if connection.kind.is_file_based() {
+    let managed = matches!(
+        connection.kind,
+        DatabaseKind::Jdbc | DatabaseKind::Workspace
+    );
+    let password = if connection.kind.is_file_based() || managed {
         None
     } else {
         secret(connection.id.clone()).await?
@@ -427,6 +454,7 @@ pub async fn resolve(
     if services.require_password
         && password.is_none()
         && !connection.kind.is_file_based()
+        && !managed
         && has_user_without_password(&raw)
     {
         return Err(format!(
@@ -434,7 +462,11 @@ pub async fn resolve(
             connection.name
         ));
     }
-    let params = secret(format!("{}:params", connection.id)).await?;
+    let params = if managed {
+        None
+    } else {
+        secret(format!("{}:params", connection.id)).await?
+    };
     let base = with_secret_params(&with_password(&raw, password.as_deref()), params.as_deref());
     let settings = services.store.settings().await?;
     let uses_ssh = connection
@@ -530,7 +562,10 @@ pub async fn resolve(
         kind: connection.kind,
         url,
         database: database.map(str::to_string),
-        read_only: connection.read_only,
+        schemas: connection.schemas,
+        mask_rules: connection.mask_rules,
+        read_only: connection.read_only || connection.kind == DatabaseKind::Spacetimedb,
+        production_locked: connection.production_locked,
         environment: connection.environment,
         via,
     });
@@ -876,6 +911,50 @@ mod tests {
             )),
             None
         );
+    }
+
+    #[tokio::test]
+    async fn managed_profiles_ignore_ordinary_secrets_and_reject_tunnels() {
+        for (kind, reference) in [
+            (DatabaseKind::Jdbc, "jdbc:l8db:reporting"),
+            (DatabaseKind::Workspace, "workspace://team/reporting"),
+        ] {
+            let id = unique("profile");
+            let profile = connection(&id, "Profile", kind, reference);
+            let (_dir, services) = services(vec![profile.clone()]).await;
+            crate::db::secrets::store_secret(id.clone(), "stale-password".into())
+                .await
+                .unwrap();
+            crate::db::secrets::store_secret(format!("{id}:params"), "options=stale".into())
+                .await
+                .unwrap();
+            let resolved = resolve(&services, &mut ConnectionCache::new(), &id, None)
+                .await
+                .unwrap();
+            assert_eq!(resolved.url, reference);
+            assert_eq!(resolved.via, Via::Direct);
+            assert_eq!(with_password(reference, Some("stale")), reference);
+            assert_eq!(
+                with_secret_params(reference, Some("password=stale")),
+                reference
+            );
+            let mut tunneled = profile;
+            tunneled.ssh = Some(SshDescriptor {
+                host: "invalid.example".into(),
+                port: 22,
+                user: "root".into(),
+                auth: SshAuthKind::Agent,
+                key_file: String::new(),
+                agent_socket: None,
+                jump_hosts: Vec::new(),
+                remote_host: String::new(),
+                remote_port: 5432,
+            });
+            assert!(unsupported_reason(&tunneled)
+                .unwrap()
+                .contains("Profilverbindungen"));
+            assert!(services.ssh.list().await.is_empty());
+        }
     }
 
     #[test]

@@ -10,14 +10,14 @@ use super::pool::{PoolState, PoolUse};
 use super::server_output::{self, ServerMessage};
 use super::{build_object_ddl, ObjectAuditInfo, ObjectDdlRequest, ObjectDependent};
 use super::{
-    map_pg_err, quote_ident, quote_literal, redact_connection_string, validate_table_filter,
-    AddColumnRequest, AlterColumnRequest, AlterRoleOptions, AlterSequenceRequest,
-    AvailableExtensionInfo, ColumnInfo, ColumnMatch, CompileErrorInfo, CompileResult,
-    ConnectionConfig, ConstraintInfo, CreateRoleOptions, DatabaseAdapter, DependencyInfo,
-    DetailedColumnInfo, ERColumn, ERSchema, ERTable, ExtensionInfo, ForeignKeyInfo, FunctionInfo,
-    IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, PrivilegeChange, ProxyUserInfo,
-    QueryResult, RoleInfo, RolePrivileges, RowCount, SchedulerJobInfo, SchemaPrivileges,
-    SequenceInfo, SourceMatch, SslMode, TableData, TableInfo, TablePrivileges, TriggerInfo,
+    map_pg_err, quote_ident, quote_literal, redact_connection_string, AddColumnRequest,
+    AlterColumnRequest, AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo,
+    ColumnMatch, CompileErrorInfo, CompileResult, ConstraintInfo, CreateRoleOptions,
+    DatabaseAdapter, DependencyInfo, DetailedColumnInfo, ERColumn, ERSchema, ERTable,
+    ExtensionInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome,
+    InvalidObjectInfo, PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo, RolePrivileges,
+    RowCount, SchedulerJobInfo, SchemaPrivileges, SequenceInfo, SourceMatch, TableData, TableInfo,
+    TablePrivileges, TriggerInfo,
 };
 
 const SEARCH_SNIPPET_LEN: usize = 240;
@@ -155,37 +155,6 @@ impl PostgresAdapter {
         }
     }
 
-    pub fn from_config(config: ConnectionConfig, pool_state: PoolState) -> Self {
-        let ssl = super::connection::PgTls {
-            mode: config.ssl_mode.unwrap_or(SslMode::Prefer),
-            ..Default::default()
-        };
-        let mut pg = Config::new();
-        pg.host(&config.host)
-            .port(config.port)
-            .user(&config.user)
-            .password(&config.password)
-            .dbname(&config.database)
-            .ssl_mode(ssl.mode.to_pg())
-            .application_name("l8db")
-            .connect_timeout(super::execution::connection_duration());
-        if config.read_only {
-            pg.options(super::connection::READ_ONLY_OPTION);
-        }
-        let pool_key = super::connection::connection_key(
-            &format!("{pg:?}{:?}{}", config.password, ssl.mode.as_url_param()),
-            None,
-        );
-        Self {
-            session: None,
-            config: pg,
-            pool_state,
-            pool_key,
-            ssl,
-            read_only: config.read_only,
-        }
-    }
-
     pub fn from_connection_string(
         connection_string: &str,
         database: Option<&str>,
@@ -276,6 +245,33 @@ impl PostgresAdapter {
         super::execution::guarded(token, &self.ssl, self.session.as_deref(), future).await
     }
 
+    async fn role_password(
+        &self,
+        name: &str,
+        password: Option<&str>,
+    ) -> Result<Option<String>, String> {
+        let Some(password) = password.filter(|p| !p.is_empty()) else {
+            return Ok(None);
+        };
+        let conn = self.get_meta().await?;
+        let row = self
+            .timed(conn.cancel_token(), async {
+                conn.query_one(
+                    "SELECT current_setting('password_encryption'), current_setting('server_version_num')::int",
+                    &[],
+                )
+                .await
+                .map_err(map_pg_err)
+            })
+            .await?;
+        Ok(Some(hashed_role_password(
+            name,
+            password,
+            row.get::<_, String>(0).as_str(),
+            row.get::<_, i32>(1),
+        )))
+    }
+
     async fn run_ddl(&self, statements: &[String], commit: bool) -> Result<(), String> {
         let mut conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async {
@@ -294,6 +290,159 @@ impl PostgresAdapter {
         })
         .await
     }
+}
+
+fn check_pg_identifier(name: &str) -> Result<(), String> {
+    if name.len() > 63 {
+        return Err(format!(
+            "Der Name \"{name}\" ist {} Bytes lang. PostgreSQL erlaubt höchstens 63 Bytes (Umlaute zählen doppelt) und würde ihn sonst kürzen.",
+            name.len()
+        ));
+    }
+    Ok(())
+}
+
+fn hashed_role_password(name: &str, password: &str, encryption: &str, version: i32) -> String {
+    if version >= 100000 && encryption == "scram-sha-256" {
+        postgres_protocol::password::scram_sha_256(password.as_bytes())
+    } else {
+        postgres_protocol::password::md5(password.as_bytes(), name)
+    }
+}
+
+fn create_role_statements(options: &CreateRoleOptions, password: Option<&str>) -> Vec<String> {
+    let mut with_opts = vec![if options.can_login {
+        "LOGIN"
+    } else {
+        "NOLOGIN"
+    }
+    .to_string()];
+    for (enabled, keyword) in [
+        (options.superuser, "SUPERUSER"),
+        (options.create_db, "CREATEDB"),
+        (options.create_role, "CREATEROLE"),
+        (options.replication, "REPLICATION"),
+        (options.bypass_rls, "BYPASSRLS"),
+    ] {
+        if enabled {
+            with_opts.push(keyword.to_string());
+        }
+    }
+    if let Some(limit) = options.conn_limit {
+        with_opts.push(format!("CONNECTION LIMIT {limit}"));
+    }
+    if let Some(password) = password {
+        with_opts.push(format!("PASSWORD {}", quote_literal(password)));
+    }
+    if let Some(valid) = options.valid_until.as_deref().filter(|v| !v.is_empty()) {
+        with_opts.push(format!("VALID UNTIL {}", quote_literal(valid)));
+    }
+    let name = quote_ident(&options.name);
+    let mut statements = vec![format!("CREATE ROLE {name} WITH {}", with_opts.join(" "))];
+    statements.extend(
+        options
+            .member_of
+            .iter()
+            .map(|role| format!("GRANT {} TO {name}", quote_ident(role))),
+    );
+    statements
+}
+
+fn alter_role_statements(options: &AlterRoleOptions, password: Option<&str>) -> Vec<String> {
+    let mut with_opts = Vec::new();
+    for (value, on, off) in [
+        (options.superuser, "SUPERUSER", "NOSUPERUSER"),
+        (options.can_login, "LOGIN", "NOLOGIN"),
+        (options.create_db, "CREATEDB", "NOCREATEDB"),
+        (options.create_role, "CREATEROLE", "NOCREATEROLE"),
+        (options.replication, "REPLICATION", "NOREPLICATION"),
+        (options.bypass_rls, "BYPASSRLS", "NOBYPASSRLS"),
+    ] {
+        if let Some(value) = value {
+            with_opts.push(if value { on } else { off }.to_string());
+        }
+    }
+    if let Some(limit) = options.conn_limit {
+        with_opts.push(format!("CONNECTION LIMIT {limit}"));
+    }
+    if let Some(password) = password {
+        with_opts.push(format!("PASSWORD {}", quote_literal(password)));
+    }
+    if options.clear_valid_until {
+        with_opts.push("VALID UNTIL 'infinity'".to_string());
+    } else if let Some(valid) = options.valid_until.as_deref().filter(|v| !v.is_empty()) {
+        with_opts.push(format!("VALID UNTIL {}", quote_literal(valid)));
+    }
+    let name = quote_ident(&options.name);
+    let mut statements = Vec::new();
+    if !with_opts.is_empty() {
+        statements.push(format!("ALTER ROLE {name} WITH {}", with_opts.join(" ")));
+    }
+    statements.extend(
+        options
+            .grant_roles
+            .iter()
+            .map(|role| format!("GRANT {} TO {name}", quote_ident(role))),
+    );
+    statements.extend(
+        options
+            .revoke_roles
+            .iter()
+            .map(|role| format!("REVOKE {} FROM {name}", quote_ident(role))),
+    );
+    statements
+}
+
+fn alter_column_statements(schema: &str, table: &str, changes: &AlterColumnRequest) -> Vec<String> {
+    let tbl = format!("{}.{}", quote_ident(schema), quote_ident(table));
+    let col = quote_ident(&changes.old_name);
+    let mut stmts: Vec<String> = Vec::new();
+    if let Some(ref dt) = changes.data_type {
+        let using = changes
+            .using
+            .as_deref()
+            .map(str::trim)
+            .filter(|u| !u.is_empty())
+            .map(|u| format!(" USING {u}"))
+            .unwrap_or_default();
+        stmts.push(format!(
+            "ALTER TABLE {tbl} ALTER COLUMN {col} TYPE {dt}{using}"
+        ));
+    }
+    if let Some(not_null) = changes.set_not_null {
+        let action = if not_null { "SET" } else { "DROP" };
+        stmts.push(format!(
+            "ALTER TABLE {tbl} ALTER COLUMN {col} {action} NOT NULL"
+        ));
+    }
+    if changes.drop_default {
+        stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} DROP DEFAULT"));
+    } else if let Some(ref def) = changes.new_default {
+        stmts.push(format!(
+            "ALTER TABLE {tbl} ALTER COLUMN {col} SET DEFAULT {def}"
+        ));
+    }
+    if let Some(ref new_name) = changes.new_name {
+        stmts.push(format!(
+            "ALTER TABLE {tbl} RENAME COLUMN {col} TO {}",
+            quote_ident(new_name)
+        ));
+    }
+    stmts
+}
+
+fn view_options_clause(options: &[String]) -> String {
+    if options.is_empty() {
+        return String::new();
+    }
+    let options: Vec<String> = options
+        .iter()
+        .map(|option| match option.split_once('=') {
+            Some((key, value)) => format!("{}={}", quote_ident(key), quote_literal(value)),
+            None => quote_ident(option),
+        })
+        .collect();
+    format!(" WITH ({})", options.join(", "))
 }
 
 async fn guarded_transaction(
@@ -340,6 +489,29 @@ pub(crate) async fn begin_guarded(
         return Ok(());
     }
     conn.batch_execute(&format!("ROLLBACK; {begin}")).await
+}
+
+fn drop_extension_sql(name: &str, cascade: bool) -> String {
+    format!(
+        "DROP EXTENSION IF EXISTS {}{}",
+        quote_ident(name),
+        if cascade { " CASCADE" } else { " RESTRICT" }
+    )
+}
+
+#[cfg(test)]
+mod drop_extension_tests {
+    #[test]
+    fn drops_extensions_without_cascade_unless_requested() {
+        assert_eq!(
+            super::drop_extension_sql("postgis", false),
+            "DROP EXTENSION IF EXISTS \"postgis\" RESTRICT"
+        );
+        assert_eq!(
+            super::drop_extension_sql("uuid-ossp", true),
+            "DROP EXTENSION IF EXISTS \"uuid-ossp\" CASCADE"
+        );
+    }
 }
 
 pub(crate) fn ends_transaction(sql: &str) -> bool {
@@ -722,17 +894,29 @@ pub(crate) fn table_page_sql(
     where_clause: &str,
     order: Option<(&str, bool)>,
     with_ctid: bool,
+    primary_key: &[String],
 ) -> String {
-    let (inner_order, outer_order) = match order {
-        Some((column, desc)) => {
-            let direction = if desc { "DESC" } else { "ASC" };
-            let column = quote_ident(column);
-            (
-                format!(" ORDER BY t.{column} {direction}"),
-                format!(" ORDER BY p.{column} {direction}"),
-            )
-        }
-        None => (String::new(), String::new()),
+    let keys: Vec<String> = match order {
+        Some((column, desc)) => vec![format!(
+            "{} {}",
+            quote_ident(column),
+            if desc { "DESC" } else { "ASC" }
+        )],
+        None => primary_key.iter().map(|key| quote_ident(key)).collect(),
+    };
+    let (inner_order, outer_order) = if keys.is_empty() {
+        (String::new(), String::new())
+    } else {
+        let list = |alias: &str| {
+            keys.iter()
+                .map(|key| format!("{alias}.{key}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        (
+            format!(" ORDER BY {}", list("t")),
+            format!(" ORDER BY {}", list("p")),
+        )
     };
     let (projection, ctid) = if with_ctid {
         (
@@ -749,14 +933,23 @@ pub(crate) fn table_page_sql(
     )
 }
 
-const RELATION_COLUMNS_SQL: &str = "SELECT a.attname::text, \
-            format_type(CASE WHEN ty.typtype = 'd' THEN ty.typbasetype ELSE a.atttypid END, NULL) \
+pub(crate) const RELATION_COLUMNS_SQL: &str = "SELECT a.attname::text, \
+            format_type(CASE WHEN ty.typtype = 'd' THEN ty.typbasetype ELSE a.atttypid END, NULL), \
+            COALESCE(a.attnum = ANY(pk.indkey), false) \
      FROM pg_catalog.pg_attribute a \
      JOIN pg_catalog.pg_class c ON c.oid = a.attrelid \
      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
      JOIN pg_catalog.pg_type ty ON ty.oid = a.atttypid \
+     LEFT JOIN pg_catalog.pg_index pk ON pk.indrelid = c.oid AND pk.indisprimary \
      WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped \
      ORDER BY a.attnum";
+
+pub(crate) fn primary_key_columns(rows: &[tokio_postgres::Row]) -> Vec<String> {
+    rows.iter()
+        .filter(|row| row.get::<_, bool>(2))
+        .map(|row| row.get(0))
+        .collect()
+}
 
 pub(crate) const LOCK_GUARD: &str = "lock_timeout = '5s'";
 pub(crate) const STREAM_IDLE_GUARD: &str = "idle_in_transaction_session_timeout = '5min'";
@@ -1342,12 +1535,7 @@ impl DatabaseAdapter for PostgresAdapter {
         is_view: bool,
         allow_raw_filter: bool,
     ) -> Result<TableData, String> {
-        let trimmed = filter.map(str::trim).filter(|f| !f.is_empty());
-        if !allow_raw_filter {
-            if let Some(expression) = trimmed {
-                validate_table_filter(expression)?;
-            }
-        }
+        let where_sql = super::where_clause_in(filter, allow_raw_filter, false)?;
         let conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async {
             let column_rows = conn
@@ -1355,24 +1543,19 @@ impl DatabaseAdapter for PostgresAdapter {
                 .await
                 .map_err(map_pg_err)?;
             let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
+            let primary_key = primary_key_columns(&column_rows);
 
-            let where_clause = match filter {
-                Some(expression) if !expression.trim().is_empty() => {
-                    format!(" WHERE {}", expression.trim())
-                }
-                _ => String::new(),
-            };
             let order = order_by
                 .filter(|column| columns.iter().any(|name| name == column))
                 .map(|column| (column, order_desc));
-            let sql = table_page_sql(schema, table, &where_clause, order, !is_view);
+            let sql = table_page_sql(schema, table, &where_sql, order, !is_view, &primary_key);
             let data_rows = match conn.query(&sql, &[&limit, &offset]).await {
                 Ok(rows) => rows,
                 Err(e)
                     if !is_view
                         && e.code() == Some(&tokio_postgres::error::SqlState::UNDEFINED_COLUMN) =>
                 {
-                    let sql = table_page_sql(schema, table, &where_clause, order, false);
+                    let sql = table_page_sql(schema, table, &where_sql, order, false, &primary_key);
                     conn.query(&sql, &[&limit, &offset])
                         .await
                         .map_err(map_pg_err)?
@@ -1400,16 +1583,8 @@ impl DatabaseAdapter for PostgresAdapter {
         if request.format == FileFormat::Csv {
             export::validate_csv_options(&request.options)?;
         }
-        let trimmed = request
-            .filter
-            .as_deref()
-            .map(str::trim)
-            .filter(|f| !f.is_empty());
-        if !request.allow_raw_filter {
-            if let Some(expression) = trimmed {
-                validate_table_filter(expression)?;
-            }
-        }
+        let where_clause =
+            super::where_clause_in(request.filter.as_deref(), request.allow_raw_filter, false)?;
 
         let conn = super::execution::connect_postgres(&self.config, &self.ssl).await?;
         let column_rows = conn
@@ -1425,10 +1600,6 @@ impl DatabaseAdapter for PostgresAdapter {
             return Err("Keine Spalten für den Export gefunden.".to_string());
         }
 
-        let where_clause = match trimmed {
-            Some(expression) => format!(" WHERE {expression}"),
-            None => String::new(),
-        };
         let order_clause = match request.order_by.as_deref() {
             Some(column) if columns.iter().any(|name| name == column) => {
                 let direction = if request.order_desc { "DESC" } else { "ASC" };
@@ -1571,25 +1742,14 @@ impl DatabaseAdapter for PostgresAdapter {
         filter: Option<&str>,
         allow_raw_filter: bool,
     ) -> Result<i64, String> {
-        let trimmed = filter.map(str::trim).filter(|f| !f.is_empty());
-        if !allow_raw_filter {
-            if let Some(expression) = trimmed {
-                validate_table_filter(expression)?;
-            }
-        }
+        let where_sql = super::where_clause_in(filter, allow_raw_filter, false)?;
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
-            let where_clause = match filter {
-                Some(expression) if !expression.trim().is_empty() => {
-                    format!(" WHERE {}", expression.trim())
-                }
-                _ => String::new(),
-            };
             let sql = format!(
                 "SELECT COUNT(*) FROM {}.{}{}",
                 quote_ident(schema),
                 quote_ident(table),
-                where_clause,
+                where_sql,
             );
             conn.query_one(&sql, &[])
                 .await
@@ -1607,21 +1767,18 @@ impl DatabaseAdapter for PostgresAdapter {
         allow_raw_filter: bool,
         cap: i64,
     ) -> Result<RowCount, String> {
-        let trimmed = filter.map(str::trim).filter(|f| !f.is_empty());
-        if !allow_raw_filter {
-            if let Some(expression) = trimmed {
-                validate_table_filter(expression)?;
-            }
-        }
-        let where_clause = trimmed
-            .map(|expression| format!(" WHERE {expression}"))
-            .unwrap_or_default();
-        let sql = capped_count_sql(schema, table, &where_clause, cap);
+        let where_sql = super::where_clause_in(filter, allow_raw_filter, false)?;
+        let sql = capped_count_sql(schema, table, &where_sql, cap);
         let name = relation_name(schema, table);
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
             let row = conn.query_one(&sql, &[&name]).await.map_err(map_pg_err)?;
-            Ok(capped_count(row.get(0), row.get(1), cap, trimmed.is_some()))
+            Ok(capped_count(
+                row.get(0),
+                row.get(1),
+                cap,
+                !where_sql.is_empty(),
+            ))
         })
         .await
     }
@@ -1877,10 +2034,26 @@ impl DatabaseAdapter for PostgresAdapter {
         dry_run: bool,
     ) -> Result<(), String> {
         self.ensure_writable()?;
+        let conn = self.get_meta().await?;
+        let options: Vec<String> = self
+            .timed(conn.cancel_token(), async {
+                conn.query(
+                    "SELECT unnest(c.reloptions) FROM pg_class c \
+                     JOIN pg_namespace n ON n.oid = c.relnamespace \
+                     WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = 'v'",
+                    &[&schema, &view],
+                )
+                .await
+                .map_err(map_pg_err)
+                .map(|rows| rows.iter().map(|r| r.get::<_, String>(0)).collect())
+            })
+            .await?;
+        drop(conn);
         let ddl = format!(
-            "CREATE OR REPLACE VIEW {}.{} AS {}",
+            "CREATE OR REPLACE VIEW {}.{}{} AS {}",
             quote_ident(schema),
             quote_ident(view),
+            view_options_clause(&options),
             body
         );
         self.run_ddl(&[ddl], !dry_run).await
@@ -2209,138 +2382,24 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn create_role(&self, options: &CreateRoleOptions) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(conn.cancel_token(), async {
-            let mut parts = vec![format!("CREATE ROLE {}", quote_ident(&options.name))];
-            let mut with_opts = Vec::new();
-
-            if options.can_login {
-                with_opts.push("LOGIN".to_string());
-            } else {
-                with_opts.push("NOLOGIN".to_string());
-            }
-            if options.superuser {
-                with_opts.push("SUPERUSER".to_string());
-            }
-            if options.create_db {
-                with_opts.push("CREATEDB".to_string());
-            }
-            if options.create_role {
-                with_opts.push("CREATEROLE".to_string());
-            }
-            if options.replication {
-                with_opts.push("REPLICATION".to_string());
-            }
-            if options.bypass_rls {
-                with_opts.push("BYPASSRLS".to_string());
-            }
-            if let Some(limit) = options.conn_limit {
-                with_opts.push(format!("CONNECTION LIMIT {limit}"));
-            }
-            if let Some(ref password) = options.password {
-                if !password.is_empty() {
-                    with_opts.push(format!("PASSWORD '{}'", password.replace('\'', "''")));
-                }
-            }
-            if let Some(ref valid) = options.valid_until {
-                if !valid.is_empty() {
-                    with_opts.push(format!("VALID UNTIL '{}'", valid.replace('\'', "''")));
-                }
-            }
-
-            if !with_opts.is_empty() {
-                parts.push(format!("WITH {}", with_opts.join(" ")));
-            }
-
-            let sql = parts.join(" ");
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-
-            for role in &options.member_of {
-                let grant_sql = format!(
-                    "GRANT {} TO {}",
-                    quote_ident(role),
-                    quote_ident(&options.name)
-                );
-                conn.execute(grant_sql.as_str(), &[])
-                    .await
-                    .map_err(map_pg_err)?;
-            }
-
-            Ok(())
-        })
-        .await
+        check_pg_identifier(&options.name)?;
+        let password = self
+            .role_password(&options.name, options.password.as_deref())
+            .await?;
+        self.run_ddl(&create_role_statements(options, password.as_deref()), true)
+            .await
     }
 
     async fn alter_role(&self, options: &AlterRoleOptions) -> Result<(), String> {
         self.ensure_writable()?;
-        let conn = self.get_conn().await?;
-        self.timed(conn.cancel_token(), async {
-            let mut with_opts = Vec::new();
-
-            if let Some(v) = options.superuser {
-                with_opts.push(if v { "SUPERUSER" } else { "NOSUPERUSER" }.to_string());
-            }
-            if let Some(v) = options.can_login {
-                with_opts.push(if v { "LOGIN" } else { "NOLOGIN" }.to_string());
-            }
-            if let Some(v) = options.create_db {
-                with_opts.push(if v { "CREATEDB" } else { "NOCREATEDB" }.to_string());
-            }
-            if let Some(v) = options.create_role {
-                with_opts.push(if v { "CREATEROLE" } else { "NOCREATEROLE" }.to_string());
-            }
-            if let Some(v) = options.replication {
-                with_opts.push(if v { "REPLICATION" } else { "NOREPLICATION" }.to_string());
-            }
-            if let Some(v) = options.bypass_rls {
-                with_opts.push(if v { "BYPASSRLS" } else { "NOBYPASSRLS" }.to_string());
-            }
-            if let Some(limit) = options.conn_limit {
-                with_opts.push(format!("CONNECTION LIMIT {limit}"));
-            }
-            if let Some(ref password) = options.password {
-                if !password.is_empty() {
-                    with_opts.push(format!("PASSWORD '{}'", password.replace('\'', "''")));
-                }
-            }
-            if options.clear_valid_until {
-                with_opts.push("VALID UNTIL 'infinity'".to_string());
-            } else if let Some(ref valid) = options.valid_until {
-                if !valid.is_empty() {
-                    with_opts.push(format!("VALID UNTIL '{}'", valid.replace('\'', "''")));
-                }
-            }
-
-            if !with_opts.is_empty() {
-                let sql = format!(
-                    "ALTER ROLE {} WITH {}",
-                    quote_ident(&options.name),
-                    with_opts.join(" ")
-                );
-                conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            }
-
-            for role in &options.grant_roles {
-                let sql = format!(
-                    "GRANT {} TO {}",
-                    quote_ident(role),
-                    quote_ident(&options.name)
-                );
-                conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            }
-
-            for role in &options.revoke_roles {
-                let sql = format!(
-                    "REVOKE {} FROM {}",
-                    quote_ident(role),
-                    quote_ident(&options.name)
-                );
-                conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
-            }
-
-            Ok(())
-        })
-        .await
+        let password = self
+            .role_password(&options.name, options.password.as_deref())
+            .await?;
+        let statements = alter_role_statements(options, password.as_deref());
+        if statements.is_empty() {
+            return Ok(());
+        }
+        self.run_ddl(&statements, true).await
     }
 
     async fn drop_role(&self, name: &str) -> Result<(), String> {
@@ -2356,11 +2415,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
     async fn drop_table(&self, schema: &str, table: &str) -> Result<(), String> {
         self.ensure_writable()?;
-        let sql = format!(
-            "DROP TABLE {}.{} CASCADE",
-            quote_ident(schema),
-            quote_ident(table)
-        );
+        let sql = format!("DROP TABLE {}.{}", quote_ident(schema), quote_ident(table));
         self.run_ddl(&[sql], true).await
     }
 
@@ -2495,6 +2550,7 @@ impl DatabaseAdapter for PostgresAdapter {
         column: &AddColumnRequest,
     ) -> Result<(), String> {
         self.ensure_writable()?;
+        check_pg_identifier(&column.name)?;
         let mut sql = format!(
             "ALTER TABLE {}.{} ADD COLUMN {} {}",
             quote_ident(schema),
@@ -2518,38 +2574,30 @@ impl DatabaseAdapter for PostgresAdapter {
         changes: &AlterColumnRequest,
     ) -> Result<(), String> {
         self.ensure_writable()?;
-        let tbl = format!("{}.{}", quote_ident(schema), quote_ident(table));
-        let col = quote_ident(&changes.old_name);
-        let mut stmts: Vec<String> = Vec::new();
-        if let Some(ref dt) = changes.data_type {
-            stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} TYPE {dt}"));
-        }
-        if let Some(not_null) = changes.set_not_null {
-            if not_null {
-                stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} SET NOT NULL"));
-            } else {
-                stmts.push(format!(
-                    "ALTER TABLE {tbl} ALTER COLUMN {col} DROP NOT NULL"
-                ));
-            }
-        }
-        if changes.drop_default {
-            stmts.push(format!("ALTER TABLE {tbl} ALTER COLUMN {col} DROP DEFAULT"));
-        } else if let Some(ref def) = changes.new_default {
-            stmts.push(format!(
-                "ALTER TABLE {tbl} ALTER COLUMN {col} SET DEFAULT {def}"
-            ));
-        }
         if let Some(ref new_name) = changes.new_name {
-            stmts.push(format!(
-                "ALTER TABLE {tbl} RENAME COLUMN {col} TO {}",
-                quote_ident(new_name)
-            ));
+            check_pg_identifier(new_name)?;
         }
-        self.run_ddl(&stmts, true).await
+        self.run_ddl(&alter_column_statements(schema, table, changes), true)
+            .await
     }
 
     async fn drop_column(&self, schema: &str, table: &str, column: &str) -> Result<(), String> {
+        self.ensure_writable()?;
+        let sql = format!(
+            "ALTER TABLE {}.{} DROP COLUMN {}",
+            quote_ident(schema),
+            quote_ident(table),
+            quote_ident(column)
+        );
+        self.run_ddl(&[sql], true).await
+    }
+
+    async fn drop_column_cascade(
+        &self,
+        schema: &str,
+        table: &str,
+        column: &str,
+    ) -> Result<(), String> {
         self.ensure_writable()?;
         let sql = format!(
             "ALTER TABLE {}.{} DROP COLUMN {} CASCADE",
@@ -3035,13 +3083,12 @@ impl DatabaseAdapter for PostgresAdapter {
                      t.tgname, \
                      n.nspname, \
                      c.relname, \
-                     CASE \
-                         WHEN t.tgtype::int & 4 = 4 THEN 'INSERT' \
-                         WHEN t.tgtype::int & 8 = 8 THEN 'DELETE' \
-                         WHEN t.tgtype::int & 16 = 16 THEN 'UPDATE' \
-                         WHEN t.tgtype::int & 32 = 32 THEN 'TRUNCATE' \
-                         ELSE 'UNKNOWN' \
-                     END, \
+                     COALESCE(NULLIF(concat_ws(' OR ', \
+                         CASE WHEN t.tgtype::int & 4 = 4 THEN 'INSERT' END, \
+                         CASE WHEN t.tgtype::int & 16 = 16 THEN 'UPDATE' END, \
+                         CASE WHEN t.tgtype::int & 8 = 8 THEN 'DELETE' END, \
+                         CASE WHEN t.tgtype::int & 32 = 32 THEN 'TRUNCATE' END \
+                     ), ''), 'UNKNOWN'), \
                      CASE \
                          WHEN t.tgtype::int & 2 = 2 THEN 'BEFORE' \
                          WHEN t.tgtype::int & 64 = 64 THEN 'INSTEAD OF' \
@@ -3265,11 +3312,11 @@ impl DatabaseAdapter for PostgresAdapter {
         .await
     }
 
-    async fn uninstall_extension(&self, name: &str) -> Result<(), String> {
+    async fn uninstall_extension(&self, name: &str, cascade: bool) -> Result<(), String> {
         self.ensure_writable()?;
         let conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async {
-            let sql = format!("DROP EXTENSION IF EXISTS {} CASCADE", quote_ident(name));
+            let sql = drop_extension_sql(name, cascade);
             conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
             Ok(())
         })
@@ -4235,9 +4282,22 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn list_subscriptions(&self) -> Result<Vec<super::SubscriptionInfo>, String> {
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
+            let readable: bool = conn
+                .query_one(
+                    "SELECT has_column_privilege('pg_catalog.pg_subscription', 'subconninfo', 'SELECT')",
+                    &[],
+                )
+                .await
+                .map_err(map_pg_err)?
+                .get(0);
             conn.query(
-                "SELECT subname, subenabled, subconninfo, subslotname, subpublications \
-                 FROM pg_subscription ORDER BY subname",
+                &format!(
+                    "SELECT subname, subenabled, {}, subslotname, subpublications \
+                     FROM pg_subscription \
+                     WHERE subdbid = (SELECT oid FROM pg_database WHERE datname = current_database()) \
+                     ORDER BY subname",
+                    if readable { "subconninfo" } else { "NULL::text" }
+                ),
                 &[],
             )
             .await
@@ -4245,11 +4305,13 @@ impl DatabaseAdapter for PostgresAdapter {
             .map(|rows| {
                 rows.into_iter()
                     .map(|row| {
-                        let raw: String = row.get(2);
+                        let raw: Option<String> = row.get(2);
                         super::SubscriptionInfo {
                             name: row.get(0),
                             enabled: row.get(1),
-                            connection_string: redact_connection_string(&raw),
+                            connection_string: raw
+                                .map(|raw| redact_connection_string(&raw))
+                                .unwrap_or_else(|| "(keine Leseberechtigung)".into()),
                             slot_name: row.get(3),
                             publications: row.get(4),
                         }
@@ -4286,7 +4348,11 @@ impl DatabaseAdapter for PostgresAdapter {
                 .join(", ");
             let mut options = vec![format!(
                 "enabled = {}",
-                if req.enabled { "true" } else { "false" }
+                if req.enabled && req.connect {
+                    "true"
+                } else {
+                    "false"
+                }
             )];
             options.push(format!(
                 "connect = {}",
@@ -5432,12 +5498,108 @@ fn routine_ddl_in_pg_temp(sql: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        bind_row, bind_wrapped_sql, capped_count, ends_transaction, escape_string_literal,
-        infer_view_foreign_keys, like_pattern, read_only_batch_guard, requalify_outside_literals,
-        routine_ddl_in_pg_temp, session_guards, single_read_statement, source_snippet,
-        PostgresAdapter, SimpleResult,
+        alter_column_statements, alter_role_statements, bind_row, bind_wrapped_sql, capped_count,
+        check_pg_identifier, create_role_statements, ends_transaction, escape_string_literal,
+        hashed_role_password, infer_view_foreign_keys, like_pattern, read_only_batch_guard,
+        requalify_outside_literals, routine_ddl_in_pg_temp, session_guards, single_read_statement,
+        source_snippet, view_options_clause, PostgresAdapter, SimpleResult,
     };
+    use crate::db::{AlterColumnRequest, AlterRoleOptions, CreateRoleOptions};
+
+    #[test]
+    fn identifiers_are_limited_to_63_bytes() {
+        assert!(check_pg_identifier(&"x".repeat(63)).is_ok());
+        assert!(check_pg_identifier(&"ä".repeat(32)).is_err());
+    }
+
+    #[test]
+    fn type_change_uses_optional_using_expression() {
+        let changes = AlterColumnRequest {
+            old_name: "n".into(),
+            new_name: None,
+            data_type: Some("integer".into()),
+            set_not_null: None,
+            new_default: None,
+            drop_default: false,
+            using: Some(" n::integer ".into()),
+        };
+        assert_eq!(
+            alter_column_statements("public", "t", &changes),
+            ["ALTER TABLE \"public\".\"t\" ALTER COLUMN \"n\" TYPE integer USING n::integer"]
+        );
+    }
+
+    #[test]
+    fn role_passwords_are_sent_hashed() {
+        let scram = hashed_role_password("bob", "geheim", "scram-sha-256", 170000);
+        assert!(scram.starts_with("SCRAM-SHA-256$4096:"));
+        assert!(!scram.contains("geheim"));
+        assert_eq!(
+            hashed_role_password("bob", "geheim", "md5", 170000),
+            postgres_protocol::password::md5(b"geheim", "bob")
+        );
+        let create = create_role_statements(
+            &CreateRoleOptions {
+                name: "bob".into(),
+                password: Some("geheim".into()),
+                superuser: false,
+                can_login: true,
+                create_db: false,
+                create_role: false,
+                replication: false,
+                bypass_rls: false,
+                conn_limit: None,
+                valid_until: Some("2030-01-01T00:00:00+01:00".into()),
+                member_of: vec!["readers".into()],
+            },
+            Some("SCRAM-SHA-256$x"),
+        );
+        assert_eq!(
+            create,
+            [
+                "CREATE ROLE \"bob\" WITH LOGIN PASSWORD 'SCRAM-SHA-256$x' VALID UNTIL '2030-01-01T00:00:00+01:00'",
+                "GRANT \"readers\" TO \"bob\"",
+            ]
+        );
+        let alter = alter_role_statements(
+            &AlterRoleOptions {
+                name: "bob".into(),
+                password: None,
+                superuser: None,
+                can_login: Some(false),
+                create_db: None,
+                create_role: None,
+                replication: None,
+                bypass_rls: None,
+                conn_limit: None,
+                valid_until: None,
+                clear_valid_until: false,
+                grant_roles: vec![],
+                revoke_roles: vec!["readers".into()],
+            },
+            None,
+        );
+        assert_eq!(
+            alter,
+            [
+                "ALTER ROLE \"bob\" WITH NOLOGIN",
+                "REVOKE \"readers\" FROM \"bob\"",
+            ]
+        );
+    }
     use crate::db::RowCount;
+
+    #[test]
+    fn view_replace_keeps_reloptions() {
+        assert_eq!(view_options_clause(&[]), "");
+        assert_eq!(
+            view_options_clause(&[
+                "security_invoker=true".to_string(),
+                "check_option=cascaded".to_string()
+            ]),
+            " WITH (\"security_invoker\"='true', \"check_option\"='cascaded')"
+        );
+    }
 
     #[test]
     fn escaped_literal_survives_quotes_and_backslashes_in_any_string_mode() {
@@ -5865,6 +6027,7 @@ mod tests {
                 null_text: String::new(),
                 line_ending: "\n".into(),
                 bom: false,
+                escape_formulas: true,
             },
         };
         for limit in [1, 1000, 1001] {
@@ -6036,6 +6199,7 @@ mod tests {
             null_text: String::new(),
             line_ending: "\n".into(),
             bom: false,
+            escape_formulas: true,
         };
         for count in [100_000, 1_000_000] {
             adapter.execute_query(&format!("DROP TABLE IF EXISTS export_benchmark; CREATE TABLE export_benchmark AS SELECT n AS id, repeat('x',64) AS value FROM generate_series(1,{count}) n; CREATE UNIQUE INDEX ON export_benchmark(id); ANALYZE export_benchmark")).await.unwrap();
@@ -6141,6 +6305,101 @@ mod tests {
     fn lab_adapter() -> PostgresAdapter {
         PostgresAdapter::from_connection_string(&lab_connection_string(), None, create_pool_state())
             .expect("adapter")
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn notices_are_captured_per_statement_without_the_output_toggle() {
+        use crate::db::commands::{output_sink, take_output};
+        use crate::db::server_output::capture;
+        let url = lab_connection_string();
+        let pool = create_pool_state();
+        let adapter = PostgresAdapter::from_connection_string(&url, None, pool.clone()).unwrap();
+        let take = || take_output(crate::db::DatabaseKind::Postgres, &url, None, pool.clone());
+        take().await.unwrap();
+        let mut statement_ms = Vec::new();
+        let mut take_ms = Vec::new();
+        for _ in 0..5 {
+            let started = std::time::Instant::now();
+            capture(
+                output_sink(&url, None),
+                adapter.execute_query(
+                    "DO $$BEGIN FOR i IN 1..5000 LOOP RAISE NOTICE 'n %', i; END LOOP; END$$",
+                ),
+            )
+            .await
+            .unwrap();
+            statement_ms.push(started.elapsed().as_secs_f64() * 1000.0);
+            let started = std::time::Instant::now();
+            let messages = take().await.unwrap();
+            take_ms.push(started.elapsed().as_secs_f64() * 1000.0);
+            assert_eq!(messages.len(), 2000);
+            assert_eq!(messages[0].message, "n 3001");
+            assert_eq!(messages[1999].message, "n 5000");
+            assert_eq!(messages[1999].level, "NOTICE");
+        }
+        statement_ms.sort_by(f64::total_cmp);
+        take_ms.sort_by(f64::total_cmp);
+        eprintln!(
+            "performance postgres-notice-capture: notices=5000 retained=2000 statement_median_ms={:.1} statement_max_ms={:.1} take_median_ms={:.3} take_max_ms={:.3} runs=5",
+            statement_ms[2], statement_ms[4], take_ms[2], take_ms[4]
+        );
+        assert!(take_ms[4] < 20.0, "{take_ms:?}");
+
+        let error = capture(
+            output_sink(&url, None),
+            adapter.execute_query(
+                "DO $$BEGIN RAISE WARNING 'vorher'; RAISE EXCEPTION 'kaputt'; END$$",
+            ),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("kaputt"), "{error}");
+        let messages = take().await.unwrap();
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert_eq!(
+            (messages[0].level.as_str(), messages[0].message.as_str()),
+            ("WARNING", "vorher")
+        );
+
+        adapter
+            .execute_query("DO $$BEGIN RAISE NOTICE 'ohne Ziel'; END$$")
+            .await
+            .unwrap();
+        assert!(take().await.unwrap().is_empty());
+
+        adapter.set_server_output(true).await.unwrap();
+        capture(
+            output_sink(&url, None),
+            adapter.execute_query("DO $$BEGIN RAISE INFO 'sitzung'; END$$"),
+        )
+        .await
+        .unwrap();
+        let messages = take().await.unwrap();
+        adapter.set_server_output(false).await.unwrap();
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert_eq!(
+            (messages[0].level.as_str(), messages[0].message.as_str()),
+            ("INFO", "sitzung")
+        );
+
+        let tx = crate::db::transaction::create_transaction_state();
+        let id = tx
+            .begin(crate::db::DatabaseKind::Postgres, &url, None, &pool)
+            .await
+            .unwrap();
+        tx.execute(&id, "DO $$BEGIN RAISE NOTICE 'in tx'; END$$")
+            .await
+            .unwrap();
+        let output = tx.server_output(&id).await.unwrap();
+        assert_eq!(output.len(), 1, "{output:?}");
+        assert_eq!(
+            (output[0].level.as_str(), output[0].message.as_str()),
+            ("NOTICE", "in tx")
+        );
+        assert!(take().await.unwrap().is_empty());
+        tx.rollback(&id).await.unwrap();
+        assert!(tx.server_output(&id).await.is_err());
     }
 
     #[tokio::test]

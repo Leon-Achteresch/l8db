@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitionResources xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <displayName>l8db</displayName>
+  <description>Group Policy for l8db</description>
+  <resources>
+    <stringTable>
+      <string id="l8db">l8db</string>
+      <string id="Settings">Settings</string>
+      <string id="SUPPORTED_l8db">l8db with Group Policy support</string>
+      <string id="Organization">Organization</string>
+      <string id="Organization_Help">The organization's name and an optional support note. Users see both in Settings under the organization policy.
+
+Any l8db policy you set makes the app a managed installation; the name shows who manages it.
+
+Disabled or Not Configured: no name.</string>
+      <string id="AllowAi">Allow AI features</string>
+      <string id="AllowAi_Help">The AI assistant and every AI call the app makes.
+
+Disabled: blocked; the app rejects the related backend calls.
+
+Enabled or Not Configured: allowed.</string>
+      <string id="AllowExtensions">Allow extensions</string>
+      <string id="AllowExtensions_Help">Community extensions and UI plugins.
+
+Disabled: blocked; the app rejects the related backend calls.
+
+Enabled or Not Configured: allowed.</string>
+      <string id="AllowPersonalSync">Allow personal sync</string>
+      <string id="AllowPersonalSync_Help">Syncing personal connections and settings.
+
+Disabled: blocked; the app rejects the related backend calls.
+
+Enabled or Not Configured: allowed.</string>
+      <string id="AllowMcp">Allow MCP server</string>
+      <string id="AllowMcp_Help">The MCP server for external AI clients, including "l8db mcp".
+
+Disabled: blocked; the app rejects the related backend calls.
+
+Enabled or Not Configured: allowed.</string>
+      <string id="RequireSignedReleases">Require signed releases</string>
+      <string id="RequireSignedReleases_Help">Production migrations run only from Git commits with a valid signature by one of the listed signers. Enter one fingerprint per line, as "git show --format=%GF" prints it. At least one signer is required.
+
+The workstation needs the matching public keys, and for SSH signatures a trusted allowedSignersFile.
+
+Disabled or Not Configured: no restriction.</string>
+      <string id="Connections">Team connections (JSON)</string>
+      <string id="Connections_Help">Connection profiles for every user on this computer, as a JSON array on one line like "connections" in policy.json; the box is single-line. Profiles add to the team file and win on matching IDs.
+
+Do not enter passwords or other credentials: every user on this computer can read the value.
+
+The box holds at most 32,767 characters. For more profiles, use the "Policy" registry value or the policy.json file.
+
+Disabled or Not Configured: no profiles.</string>
+      <string id="ProductionReadOnly">Open production read-only</string>
+      <string id="ProductionReadOnly_Help">Production connections open read-only by default.
+
+Enabled: turned on. Disabled: turned off. Either way, users cannot change the setting.
+
+Not Configured: users decide.</string>
+      <string id="ProductionConfirmCommit">Confirm commits on production</string>
+      <string id="ProductionConfirmCommit_Help">The app asks before every commit on a production connection.
+
+Enabled: turned on. Disabled: turned off. Either way, users cannot change the setting.
+
+Not Configured: users decide.</string>
+      <string id="ProductionAutoRollback">Roll back open production transactions</string>
+      <string id="ProductionAutoRollback_Help">Open transactions on production connections are rolled back automatically.
+
+Enabled: turned on. Disabled: turned off. Either way, users cannot change the setting.
+
+Not Configured: users decide.</string>
+      <string id="ConfirmDestructiveQueries">Guard destructive queries</string>
+      <string id="ConfirmDestructiveQueries_Help">The app asks before DELETE, DROP, TRUNCATE and similar statements.
+
+Enabled: turned on. Disabled: turned off. Either way, users cannot change the setting.
+
+Not Configured: users decide.</string>
+      <string id="SshTrustNewHosts">Accept new SSH host keys</string>
+      <string id="SshTrustNewHosts_Help">Unknown SSH host keys are saved without asking. Keep this off on managed workstations.
+
+Enabled: turned on. Disabled: turned off. Either way, users cannot change the setting.
+
+Not Configured: users decide.</string>
+      <string id="CrashReports">Send crash reports</string>
+      <string id="CrashReports_Help">The app sends crash reports.
+
+Enabled: turned on. Disabled: turned off. Either way, users cannot change the setting.
+
+Not Configured: users decide.</string>
+      <string id="UsageMetrics">Send usage and performance data</string>
+      <string id="UsageMetrics_Help">The app sends usage and performance data.
+
+Enabled: turned on. Disabled: turned off. Either way, users cannot change the setting.
+
+Not Configured: users decide.</string>
+      <string id="AutoUpdateCheck">Check for updates automatically</string>
+      <string id="AutoUpdateCheck_Help">The app checks for new versions on its own. Turn off when software distribution delivers updates.
+
+Enabled: turned on. Disabled: turned off. Either way, users cannot change the setting.
+
+Not Configured: users decide.</string>
+      <string id="AutoUpdateInstall">Install updates automatically</string>
+      <string id="AutoUpdateInstall_Help">Updates that are found install without asking.
+
+Enabled: turned on. Disabled: turned off. Either way, users cannot change the setting.
+
+Not Configured: users decide.</string>
+      <string id="SslDefaultMode">Default SSL mode</string>
+      <string id="SslDefaultMode_Help">The SSL mode new connections are created with. Users cannot change it.
+
+Disabled or Not Configured: users decide.</string>
+      <string id="UpdateChannel">Update channel</string>
+      <string id="UpdateChannel_Help">The channel the app gets updates from. Users cannot change it.
+
+Disabled or Not Configured: users decide.</string>
+      <string id="SslDefaultMode_Disable">No SSL (disable)</string>
+      <string id="SslDefaultMode_Prefer">Prefer SSL (prefer)</string>
+      <string id="SslDefaultMode_Require">Require SSL (require)</string>
+      <string id="SslDefaultMode_VerifyCa">Verify certificate authority (verify-ca)</string>
+      <string id="SslDefaultMode_VerifyFull">Verify certificate and host name (verify-full)</string>
+      <string id="UpdateChannel_Stable">Stable</string>
+      <string id="UpdateChannel_Canary">Canary</string>
+    </stringTable>
+    <presentationTable>
+      <presentation id="Organization">
+        <textBox refId="Organization"><label>Organization name</label></textBox>
+        <textBox refId="Support"><label>Support note (optional)</label></textBox>
+      </presentation>
+      <presentation id="RequireSignedReleases">
+        <listBox refId="TrustedReleaseSigners">Approved signers</listBox>
+      </presentation>
+      <presentation id="Connections">
+        <textBox refId="Connections"><label>Connections as a JSON array on one line</label></textBox>
+      </presentation>
+      <presentation id="SslDefaultMode">
+        <dropdownList refId="SslDefaultMode" noSort="true" defaultItem="4">SSL mode</dropdownList>
+      </presentation>
+      <presentation id="UpdateChannel">
+        <dropdownList refId="UpdateChannel" noSort="true" defaultItem="0">Channel</dropdownList>
+      </presentation>
+    </presentationTable>
+  </resources>
+</policyDefinitionResources>

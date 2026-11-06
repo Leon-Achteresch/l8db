@@ -1,9 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ListIcon, PlusIcon, Trash2Icon } from "lucide-react";
-import { motion } from "motion/react";
+import { ListIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -16,42 +24,39 @@ import {
 import { useActiveConnection } from "@/lib/connections";
 import { executeQuery } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
-import { SPRING_LAYOUT } from "@/lib/ease";
+import { dropEnumSql } from "@/lib/enum-ddl";
 import { useEnumsQuery } from "@/lib/queries";
-import { quoteIdent } from "@/lib/sql-filter";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { CreateEnumDialog } from "./enums-view/create-enum-dialog";
+import { EnumEntryCard } from "./enums-view/enum-entry-card";
 
 export function EnumsView() {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dropTarget, setDropTarget] = useState<{ schema: string; name: string } | null>(null);
   const { data: enums, isLoading } = useEnumsQuery();
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["enums"] });
   };
 
-  const handleDrop = async (schema: string, name: string) => {
-    if (!connection) return;
-    if (
-      !window.confirm(
-        `Enum-Typ "${schema}.${name}" wirklich löschen? Genutzte Spalten verhindern das Löschen.`,
-      )
-    )
-      return;
+  const handleDrop = async () => {
+    if (!connection || !dropTarget) return;
     try {
       await executeQuery(
         connection.kind,
         effectiveConnectionString(connection),
-        `DROP TYPE ${quoteIdent(schema)}.${quoteIdent(name)}`,
+        dropEnumSql(dropTarget.schema, dropTarget.name),
         database ?? undefined,
       );
-      toast.success(`Enum "${name}" gelöscht.`);
+      toast.success(`Enum "${dropTarget.name}" gelöscht.`);
       refresh();
     } catch (err) {
       toast.error(typeof err === "string" ? err : String(err));
+    } finally {
+      setDropTarget(null);
     }
   };
 
@@ -102,45 +107,40 @@ export function EnumsView() {
           </Empty>
         ) : (
           <div className="flex flex-col gap-2">
-            {enums!.map((entry) => (
-              <motion.div
+            {enums?.map((entry) => (
+              <EnumEntryCard
                 key={`${entry.schema}.${entry.name}`}
-                layout
-                transition={{ layout: SPRING_LAYOUT }}
-                className="rounded-lg border p-4"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-sm font-medium">
-                    {entry.schema}.{entry.name}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="ml-auto size-7 hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => void handleDrop(entry.schema, entry.name)}
-                    title={`Enum "${entry.name}" löschen`}
-                  >
-                    <Trash2Icon className="size-3.5" />
-                  </Button>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {entry.values.map((value) => (
-                    <Badge
-                      key={value}
-                      variant="secondary"
-                      className="px-1.5 py-0 font-mono text-[11px]"
-                    >
-                      {value}
-                    </Badge>
-                  ))}
-                </div>
-              </motion.div>
+                entry={entry}
+                onChanged={refresh}
+                onDrop={() => setDropTarget({ schema: entry.schema, name: entry.name })}
+              />
             ))}
           </div>
         )}
       </div>
 
       <CreateEnumDialog open={dialogOpen} onOpenChange={setDialogOpen} onSuccess={refresh} />
+      <AlertDialog
+        open={dropTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDropTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Enum-Typ &quot;{dropTarget?.schema}.{dropTarget?.name}&quot; löschen?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Der Typ wird unwiderruflich gelöscht. Spalten, die ihn nutzen, verhindern das Löschen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleDrop()}>Löschen</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }

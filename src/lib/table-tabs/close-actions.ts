@@ -10,6 +10,7 @@ export function createCloseActions(
 ): Pick<
   TabsState,
   | "closeTab"
+  | "closeTabs"
   | "closeOtherTabs"
   | "closeTabsToRight"
   | "closeAllTabs"
@@ -26,6 +27,20 @@ export function createCloseActions(
         return {
           ...storeFor(
             state.tabs.filter((t) => tabKey(t) !== key),
+            state,
+          ),
+          recentlyClosed: pushRecentlyClosed(state.recentlyClosed, closed),
+        };
+      }),
+
+    closeTabs: (keys) =>
+      set((state) => {
+        const closing = new Set(keys);
+        const closed = state.tabs.filter((t) => closing.has(tabKey(t)));
+        if (closed.length === 0) return state;
+        return {
+          ...storeFor(
+            state.tabs.filter((t) => !closing.has(tabKey(t))),
             state,
           ),
           recentlyClosed: pushRecentlyClosed(state.recentlyClosed, closed),

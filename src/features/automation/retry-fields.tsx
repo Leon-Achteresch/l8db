@@ -12,6 +12,7 @@ interface Props {
   value: RetryPolicy | null;
   onChange: (value: RetryPolicy | null) => void;
   offLabel: string;
+  error?: (field: string) => string | null;
 }
 
 const BACKOFF: { value: Backoff; label: string }[] = [
@@ -32,7 +33,7 @@ export function describeRetry(retry: RetryPolicy): string {
   return `${times}, Pausen ${pauses.map((pause) => `${pause} s`).join(", ")}${more}.`;
 }
 
-export function RetryFields({ value, onChange, offLabel }: Props) {
+export function RetryFields({ value, onChange, offLabel, error }: Props) {
   const id = useId();
   const patch = (next: Partial<RetryPolicy>) => value && onChange({ ...value, ...next });
 
@@ -50,7 +51,7 @@ export function RetryFields({ value, onChange, offLabel }: Props) {
       </div>
       {value && (
         <div className="grid grid-cols-2 gap-3 animate-in fade-in-0 slide-in-from-top-1 duration-200 motion-reduce:animate-none @lg/step:grid-cols-3">
-          <FormRow label="Versuche">
+          <FormRow label="Versuche" error={error?.("retry.attempts")}>
             <Input
               type="number"
               min={0}
@@ -60,7 +61,7 @@ export function RetryFields({ value, onChange, offLabel }: Props) {
               onChange={(event) => patch({ attempts: Number(event.target.value) || 0 })}
             />
           </FormRow>
-          <FormRow label="Pause (s)">
+          <FormRow label="Pause (s)" error={error?.("retry.delaySeconds")}>
             <Input
               type="number"
               min={0}
@@ -69,7 +70,7 @@ export function RetryFields({ value, onChange, offLabel }: Props) {
               onChange={(event) => patch({ delaySeconds: Number(event.target.value) || 0 })}
             />
           </FormRow>
-          <FormRow label="Max. Pause (s)">
+          <FormRow label="Max. Pause (s)" error={error?.("retry.maxDelaySeconds")}>
             <Input
               type="number"
               min={0}

@@ -173,8 +173,9 @@ test.skipIf(!enabled)(
         await page.locator("button", { hasText: "SELECT 'nie' FROM dual;" }).innerText(),
       ).toContain("nicht ausgeführt");
       expect(
-        (await oracleFailures(page)).filter((failure) => failure.command === "execute_query")
-          .length,
+        (await oracleFailures(page)).filter(
+          (failure) => failure.command === "execute_in_transaction",
+        ).length,
       ).toBe(1);
     });
   },

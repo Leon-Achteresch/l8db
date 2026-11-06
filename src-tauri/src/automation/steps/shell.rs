@@ -50,6 +50,170 @@ fn kill_tree(child: &mut tokio::process::Child) {
     let _ = child.start_kill();
 }
 
+const POSIX_SHELLS: &[&str] = &["sh", "bash", "zsh", "dash", "ksh", "mksh", "ash"];
+const OTHER_SHELLS: &[&str] = &["cmd", "powershell", "pwsh", "fish"];
+
+fn base_name(value: &str) -> String {
+    let name = value
+        .trim()
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    name.strip_suffix(".exe")
+        .map(str::to_string)
+        .unwrap_or(name)
+}
+
+fn placeholders(template: &str) -> impl Iterator<Item = (usize, usize)> + '_ {
+    let mut at = 0;
+    std::iter::from_fn(move || loop {
+        let start = at + template[at..].find('$')?;
+        let tail = &template[start..];
+        if tail.starts_with("$${") {
+            at = start + 3;
+        } else if tail.starts_with("${") {
+            let end = start + tail.find('}')?;
+            at = end + 1;
+            return Some((start, end));
+        } else {
+            at = start + 1;
+        }
+    })
+}
+
+fn posix_unsafe(script: &str) -> Option<String> {
+    #[derive(PartialEq)]
+    enum Quote {
+        None,
+        Single,
+        Double,
+        Ansi,
+        Comment,
+        Heredoc,
+    }
+    let spans: Vec<(usize, usize)> = placeholders(script).collect();
+    let mut state = Quote::None;
+    let mut escaped = false;
+    let mut previous = ' ';
+    let mut index = 0;
+    while index < script.len() {
+        if let Some(&(start, end)) = spans.iter().find(|(start, _)| *start == index) {
+            let content = &script[start + 2..end];
+            let last = content.rsplit('|').next().map(str::trim);
+            if state != Quote::None || escaped || !content.contains('|') || last != Some("shell") {
+                return Some(content.to_string());
+            }
+            index = end + 1;
+            previous = '}';
+            continue;
+        }
+        let Some(c) = script[index..].chars().next() else {
+            break;
+        };
+        let next = script[index + c.len_utf8()..].chars().next();
+        match state {
+            Quote::Single => {
+                if c == '\'' {
+                    state = Quote::None;
+                }
+            }
+            Quote::Double | Quote::Ansi => {
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if (state == Quote::Double && c == '"')
+                    || (state == Quote::Ansi && c == '\'')
+                {
+                    state = Quote::None;
+                }
+            }
+            Quote::Comment => {
+                if c == '\n' {
+                    state = Quote::None;
+                }
+            }
+            Quote::Heredoc => {}
+            Quote::None => {
+                if escaped {
+                    escaped = false;
+                } else {
+                    match c {
+                        '\\' => escaped = true,
+                        '\'' => state = Quote::Single,
+                        '"' => state = Quote::Double,
+                        '$' if next == Some('\'') => {
+                            state = Quote::Ansi;
+                            index += 1;
+                        }
+                        '#' if previous.is_whitespace() || ";&|()<>".contains(previous) => {
+                            state = Quote::Comment
+                        }
+                        '<' if next == Some('<') => state = Quote::Heredoc,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        previous = c;
+        index += c.len_utf8();
+    }
+    None
+}
+
+pub fn script_issue(rendered: &[String], templates: &[String]) -> Option<String> {
+    if let Some(ssh) = rendered.iter().position(|word| base_name(word) == "ssh") {
+        if let Some(content) = templates.iter().skip(ssh + 1).find_map(|t| posix_unsafe(t)) {
+            return Some(format!(
+                "Platzhalter „${{{content}}}“ steht ungeschützt in einem ssh-Befehl. ssh gibt die Argumente an die Shell des Servers weiter, daher „${{…|shell}}“ nutzen."
+            ));
+        }
+    }
+    let shell = rendered.iter().position(|word| {
+        let name = base_name(word);
+        POSIX_SHELLS.contains(&name.as_str()) || OTHER_SHELLS.contains(&name.as_str())
+    })?;
+    let name = base_name(&rendered[shell]);
+    if OTHER_SHELLS.contains(&name.as_str()) {
+        let powershell = name == "pwsh" || name == "powershell";
+        let mut safe = false;
+        let mut command = false;
+        for (word, template) in rendered.iter().zip(templates).skip(shell + 1) {
+            if let Some((start, end)) = placeholders(template).next().filter(|_| !safe) {
+                return Some(format!(
+                    "Platzhalter „{}“ darf in Befehlen für cmd, PowerShell oder fish nicht stehen. Werte als Umgebungsvariablen übergeben.",
+                    &template[start..=end]
+                ));
+            }
+            let lower = word.to_ascii_lowercase();
+            command |= powershell
+                && matches!(
+                    lower.as_str(),
+                    "-command" | "-c" | "-encodedcommand" | "-ec"
+                );
+            safe |= powershell && !command && matches!(lower.as_str(), "-file" | "-f");
+        }
+        return None;
+    }
+    let flag = rendered.iter().skip(shell + 1).position(|word| {
+        word.starts_with('-')
+            && !word.starts_with("--")
+            && word[1..].chars().all(|c| c.is_ascii_alphabetic())
+            && word.contains('c')
+    })? + shell
+        + 1;
+    let script = if rendered.get(flag + 1).is_some_and(|word| word == "--") {
+        flag + 2
+    } else {
+        flag + 1
+    };
+    let content = posix_unsafe(templates.get(script)?)?;
+    Some(format!(
+        "Platzhalter „${{{content}}}“ steht ungeschützt im Shell-Skript. „${{…|shell}}“ außerhalb von Anführungszeichen nutzen oder den Wert als weiteres Argument übergeben und im Skript \"$1\" verwenden."
+    ))
+}
+
 pub async fn shell(ctx: &mut StepContext<'_>, config: &Action) -> Result<StepOutcome, String> {
     let Action::Shell {
         program,
@@ -62,14 +226,22 @@ pub async fn shell(ctx: &mut StepContext<'_>, config: &Action) -> Result<StepOut
     else {
         return Err(wrong_action());
     };
+    let templates: Vec<String> = std::iter::once(program.clone())
+        .chain(args.iter().cloned())
+        .collect();
     let program = ctx.vars.render(program)?;
     if program.trim().is_empty() {
         return Err("Programm fehlt.".into());
     }
-    let mut command = crate::process::command(program.trim());
+    let mut words = vec![program.trim().to_string()];
     for arg in args {
-        command.arg(ctx.vars.render(arg)?);
+        words.push(ctx.vars.render(arg)?);
     }
+    if let Some(message) = script_issue(&words, &templates) {
+        return Err(message);
+    }
+    let mut command = crate::process::command(program.trim());
+    command.args(&words[1..]);
     if let Some(dir) = cwd.as_deref().filter(|d| !d.trim().is_empty()) {
         command.current_dir(resolve_path(ctx, dir).await?);
     }
@@ -219,5 +391,41 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(10));
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert_ne!(unsafe { libc::kill(pid, 0) }, 0, "Prozess läuft noch");
+    }
+}
+
+#[cfg(test)]
+mod guard_tests {
+    use super::script_issue;
+
+    fn check(words: &[&str]) -> Option<String> {
+        let words: Vec<String> = words.iter().map(|w| w.to_string()).collect();
+        script_issue(&words, &words)
+    }
+
+    #[test]
+    fn placeholders_in_shell_scripts_need_the_shell_filter() {
+        assert!(check(&["sh", "-c", "echo ${x}"]).is_some());
+        assert!(check(&["/bin/bash", "-lc", "echo ${x|trim}"]).is_some());
+        assert!(check(&["env", "bash", "-c", "rm ${x|shell|upper}"]).is_some());
+        assert!(check(&["sh", "-c", "echo \"${x|shell}\""]).is_some());
+        assert!(check(&["sh", "-c", "echo '${x|shell}'"]).is_some());
+        assert!(check(&["sh", "-c", "echo $'a ${x|shell}'"]).is_some());
+        assert!(check(&["sh", "-c", "echo \\${x|shell}"]).is_some());
+        assert!(check(&["sh", "-c", "# it's\necho ${x|shell}"]).is_none());
+        assert!(check(&["sh", "-c", "# note ${x|shell}"]).is_some());
+        assert!(check(&["sh", "-c", "cat <<EOF\n${x|shell}\nEOF"]).is_some());
+        assert!(check(&["sh", "-c", "echo ${x|shell} > ${date|filename|shell}"]).is_none());
+        assert!(check(&["sh", "-c", "echo \"$1\" $${HOME}", "_", "${x}"]).is_none());
+        assert!(check(&["pg_dump", "-c", "${x}"]).is_none());
+        assert!(check(&["cmd.exe", "/c", "echo ${x}"]).is_some());
+        assert!(check(&["pwsh", "-Command", "Write-Output ${x|shell}"]).is_some());
+        assert!(check(&["pwsh", "-File", "run.ps1", "${x}"]).is_none());
+        assert!(check(&["cmd", "/c", "tool.exe", "-f", "${x}"]).is_some());
+        assert!(check(&["fish", "-c", "echo hi", "-f", "${x}"]).is_some());
+        assert!(check(&["pwsh", "-Command", "x", "-f", "${x}"]).is_some());
+        assert!(check(&["sh", "-c", "--", "rm ${x}"]).is_some());
+        assert!(check(&["ssh", "host", "rm ${x}"]).is_some());
+        assert!(check(&["ssh", "host", "rm ${x|shell}"]).is_none());
     }
 }

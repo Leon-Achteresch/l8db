@@ -19,15 +19,15 @@ for _ in $(seq 1 120); do
   sleep 1
 done
 for _ in $(seq 1 180); do
-  docker logs "$oracle" 2>&1 | grep -q "DATABASE IS READY TO USE" && break
+  docker logs "$oracle" 2>&1 | grep -F "DATABASE IS READY TO USE" >/dev/null && break
   sleep 2
 done
-docker logs "$oracle" 2>&1 | grep -q "DATABASE IS READY TO USE"
+docker logs "$oracle" 2>&1 | grep -F "DATABASE IS READY TO USE" >/dev/null
 {
   echo "WHENEVER SQLERROR EXIT FAILURE ROLLBACK"
   echo "ALTER SESSION SET CONTAINER=FREEPDB1;"
   echo "GRANT EXECUTE ON SYS.DBMS_LOCK TO SYSTEM;"
-  for schema in L8DB_DEV L8DB_CUSTOMER_A L8DB_CUSTOMER_B; do
+  for schema in L8DB_DEV L8DB_CUSTOMER_A L8DB_CUSTOMER_B L8DB_LEGACY_1; do
     cat <<SQL
 CREATE USER $schema IDENTIFIED BY $password;
 GRANT CREATE SESSION, CREATE TABLE, CREATE SEQUENCE, CREATE VIEW, CREATE PROCEDURE, CREATE TRIGGER TO $schema;
@@ -56,5 +56,6 @@ Versioning lab ready
   export L8DB_VERSIONING_ORACLE_TEST_URL_DEV=oracle://L8DB_DEV:$password@127.0.0.1:55441/FREEPDB1
   export L8DB_VERSIONING_ORACLE_TEST_URL_A=oracle://L8DB_CUSTOMER_A:$password@127.0.0.1:55441/FREEPDB1
   export L8DB_VERSIONING_ORACLE_TEST_URL_B=oracle://L8DB_CUSTOMER_B:$password@127.0.0.1:55441/FREEPDB1
+  export L8DB_VERSIONING_ORACLE_TEST_URL_LEGACY=oracle://L8DB_LEGACY_1:$password@127.0.0.1:55441/FREEPDB1
   Stop: scripts/versioning-lab.sh down
 INFO

@@ -89,7 +89,7 @@ export function ConvexLogsDetail({
               {execution.lines.length === 0 ? (
                 <p className="text-xs text-muted-foreground">Keine Logzeilen.</p>
               ) : (
-                <div className="max-h-80 overflow-auto rounded-md border font-mono text-xs">
+                <div className="max-h-80 overflow-auto rounded-md font-mono text-xs">
                   {execution.lines.map((line, index) => (
                     <div
                       key={`${index}-${line.timestampMs}`}

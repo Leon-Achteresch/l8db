@@ -1,10 +1,26 @@
 import { ChevronDown } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AiSession } from "@/lib/ai/store";
+import { aiBranches } from "@/lib/ai/thread";
 import type { AiMessage } from "@/lib/db/ai";
 import { AiAssistantMessage } from "./ai-assistant-message";
 import { AiUserMessage } from "./ai-user-message";
 import { MessageScroller } from "./beui/agents/message-scroller";
+
+const same = (before: unknown, after: unknown) =>
+  Object.is(before, after) ||
+  (Array.isArray(before) &&
+    Array.isArray(after) &&
+    before.length === after.length &&
+    before.every((value, index) => value === after[index]));
+const sameProps = <P extends object>(before: P, after: P) => {
+  const keys = Object.keys(after) as (keyof P)[];
+  return (
+    keys.length === Object.keys(before).length && keys.every((key) => same(before[key], after[key]))
+  );
+};
+const UserMessage = memo(AiUserMessage, sameProps);
+const AssistantMessage = memo(AiAssistantMessage, sameProps);
 
 interface Props {
   messages: AiMessage[];
@@ -28,6 +44,20 @@ export function AiTranscript({
 }: Props) {
   const viewport = useRef<HTMLElement>(null);
   const [following, setFollowing] = useState(true);
+  const latest = useRef({ onEdit, onRetry, onBranch, onAsk });
+  useLayoutEffect(() => {
+    latest.current = { onEdit, onRetry, onBranch, onAsk };
+  });
+  const handlers = useMemo(
+    () => ({
+      edit: (message: AiMessage, text: string) => latest.current.onEdit(message, text),
+      retry: (message: AiMessage) => latest.current.onRetry(message),
+      branch: (id: string | undefined) => latest.current.onBranch(id),
+      ask: (question: string) => latest.current.onAsk(question),
+    }),
+    [],
+  );
+  const branches = aiBranches(session);
   useEffect(() => {
     if (runId) viewport.current?.scrollTo({ top: viewport.current.scrollHeight });
   }, [runId]);
@@ -41,32 +71,33 @@ export function AiTranscript({
         viewportRef={viewport}
         className="h-full"
         viewportClassName="px-4 pt-5 pb-6 sm:px-6"
-        contentClassName="mx-auto w-full max-w-[44rem] space-y-3 [&>[data-from=user]:not(:first-child)]:mt-7 [&>[data-from=user]:not(:first-child)]:border-t [&>[data-from=user]:not(:first-child)]:pt-6"
+        contentClassName="mx-auto w-full max-w-[44rem] space-y-3 [&>[data-from=user]:not(:first-child)]:mt-6"
       >
-        {messages.map((message, index) =>
-          message.role === "user" ? (
-            <AiUserMessage
+        {messages.map((message, index) => {
+          const last = index === messages.length - 1;
+          return message.role === "user" ? (
+            <UserMessage
               key={message.id ?? index}
               message={message}
-              session={session}
+              siblings={branches.get(message.id)}
               disabled={Boolean(runId)}
-              onEdit={onEdit}
-              onBranch={onBranch}
+              onEdit={handlers.edit}
+              onBranch={handlers.branch}
             />
           ) : (
-            <AiAssistantMessage
+            <AssistantMessage
               key={message.id ?? index}
               message={message}
-              session={session}
-              streaming={Boolean(runId) && index === messages.length - 1}
-              status={runStatus}
+              siblings={branches.get(message.id)}
+              streaming={Boolean(runId) && last}
+              status={runId && last ? runStatus : ""}
               disabled={Boolean(runId)}
-              onRetry={onRetry}
-              onBranch={onBranch}
-              onFollowup={!runId && index === messages.length - 1 ? onAsk : undefined}
+              onRetry={handlers.retry}
+              onBranch={handlers.branch}
+              onFollowup={!runId && last ? handlers.ask : undefined}
             />
-          ),
-        )}
+          );
+        })}
       </MessageScroller>
       {!following && (
         <button
@@ -74,7 +105,7 @@ export function AiTranscript({
           onClick={() =>
             viewport.current?.scrollTo({ top: viewport.current.scrollHeight, behavior: "smooth" })
           }
-          className="absolute bottom-3 left-1/2 flex h-7 -translate-x-1/2 items-center gap-1 rounded-full border bg-background px-2.5 text-xs text-muted-foreground shadow-[0_4px_12px_-4px_oklch(0_0_0/18%)] outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute bottom-3 left-1/2 flex h-7 -translate-x-1/2 items-center gap-1 rounded-full bg-card px-3 text-xs text-muted-foreground shadow-[0_0_0_1px_color-mix(in_oklab,var(--foreground)_6%,transparent),0_6px_16px_-6px_oklch(0_0_0/25%)] outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronDown className="size-3.5" />
           Zum Ende

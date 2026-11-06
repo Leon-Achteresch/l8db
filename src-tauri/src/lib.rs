@@ -9,6 +9,7 @@ mod baas_self_hosted_live_tests;
 mod branching;
 mod check_cli;
 mod cli;
+mod cloud_accounts;
 mod community_extensions;
 mod connection_import;
 mod convex;
@@ -16,19 +17,29 @@ mod convex_studio;
 mod db;
 mod desktop;
 mod extension_process;
+mod federation;
 mod file_open;
 mod firebase;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod group_policy;
 mod index_advisor;
+mod issues;
 mod mcp;
+mod organization;
+mod payments;
 mod pocketbase;
 mod process;
+mod query_notification;
 mod supabase;
 mod supabase_studio;
 mod sync;
 mod team;
+mod ui_plugin_proposals;
+mod ui_plugins;
 mod updates;
 mod versioning;
 mod windows;
+mod workspaces;
 
 #[cfg(target_os = "windows")]
 fn set_memory_target(window: &tauri::Window, low: bool) {
@@ -67,6 +78,9 @@ pub fn run() {
         return;
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--workspace-server") {
+        std::process::exit(workspaces::cli(&args));
+    }
     if cli::wants(&args) {
         std::process::exit(cli::main(&args));
     }
@@ -147,12 +161,79 @@ pub fn run() {
         .manage(community_extensions::ExtensionStoreLock::default())
         .manage(file_open::PendingOpenFiles::new(initial_files))
         .manage(windows::WindowConnections::default())
+        .manage(ui_plugins::UiPluginWatcher::default())
+        .manage(ui_plugin_proposals::Proposals::default())
         .manage(std::sync::Arc::new(ai::AiState::default()))
         .manage(db::pool::create_pool_state())
         .manage(db::transaction::create_transaction_state())
         .manage(db::ssh::create_ssh_state())
         .manage(automation::AutomationState::default())
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(organization::guard(tauri::generate_handler![
+            payments::payments_connect,
+            payments::payments_status,
+            payments::payments_disconnect,
+            payments::payments_list,
+            payments::payments_mutate,
+            payments::payments_setup_preview,
+            payments::payments_setup,
+            db::jdbc::jdbc_status,
+            db::jdbc::jdbc_catalog,
+            db::jdbc::jdbc_profiles,
+            db::jdbc::jdbc_import_jar,
+            db::jdbc::jdbc_remove_jar,
+            db::jdbc::jdbc_save_profile,
+            db::jdbc::jdbc_remove_profile,
+            db::jdbc::jdbc_close_profile,
+            federation::federation_query,
+            federation::federation_catalog,
+            workspaces::client::workspace_profiles,
+            workspaces::client::workspace_login,
+            workspaces::client::workspace_accept_invitation,
+            workspaces::client::workspace_disconnect,
+            workspaces::client::workspace_request,
+            workspaces::client::workspace_local_status,
+            workspaces::client::workspace_local_start,
+            workspaces::client::workspace_local_stop,
+            cloud_accounts::spacetime::cloud_spacetime_add,
+            cloud_accounts::spacetime::cloud_spacetime_databases,
+            cloud_accounts::spacetime::cloud_spacetime_schema,
+            cloud_accounts::spacetime::cloud_spacetime_create_connection,
+            cloud_accounts::spacetime::cloud_spacetime_call_reducer,
+            cloud_accounts::cloud_accounts,
+            cloud_accounts::cloud_account_remove,
+            cloud_accounts::planetscale::cloud_planetscale_add_token,
+            cloud_accounts::planetscale::cloud_planetscale_organizations,
+            cloud_accounts::planetscale::cloud_planetscale_databases,
+            cloud_accounts::planetscale::cloud_planetscale_branches,
+            cloud_accounts::planetscale::cloud_planetscale_create_credential,
+            cloud_accounts::planetscale::cloud_planetscale_credentials,
+            cloud_accounts::planetscale::cloud_planetscale_revoke_credential,
+            cloud_accounts::oauth::cloud_neon_oauth_config,
+            cloud_accounts::oauth::cloud_neon_oauth_start,
+            cloud_accounts::oauth::cloud_neon_oauth_finish,
+            cloud_accounts::oauth::cloud_neon_oauth_cancel,
+            cloud_accounts::neon::cloud_neon_add_api_key,
+            cloud_accounts::neon::cloud_neon_organizations,
+            cloud_accounts::neon::cloud_neon_projects,
+            cloud_accounts::neon::cloud_neon_branches,
+            cloud_accounts::neon::cloud_neon_databases,
+            cloud_accounts::neon::cloud_neon_roles,
+            cloud_accounts::neon::cloud_neon_create_connection,
+            cloud_accounts::neon::cloud_neon_auth,
+            cloud_accounts::neon::cloud_neon_auth_enable,
+            cloud_accounts::neon::cloud_neon_auth_users,
+            cloud_accounts::neon::cloud_neon_auth_create_user,
+            cloud_accounts::neon::cloud_neon_auth_delete_user,
+            cloud_accounts::neon::cloud_neon_auth_set_roles,
+            cloud_accounts::neon::cloud_neon_storage,
+            cloud_accounts::neon::cloud_neon_buckets,
+            cloud_accounts::neon::cloud_neon_create_bucket,
+            cloud_accounts::neon::cloud_neon_objects,
+            cloud_accounts::neon::cloud_neon_functions,
+            cloud_accounts::neon::cloud_neon_function,
+            query_notification::notify_query_completion,
+            organization::organization_policy,
+            mcp::server::validate_read_query,
             ai::ai_environment,
             ai::ai_status,
             ai::ai_set_key,
@@ -300,10 +381,6 @@ pub fn run() {
             supabase::supabase_is_connected,
             supabase::supabase_projects,
             supabase::supabase_database_endpoint,
-            supabase::supabase_buckets,
-            supabase::supabase_bucket_details,
-            supabase::supabase_create_bucket,
-            supabase::supabase_update_bucket_public,
             supabase::supabase_delete_bucket,
             supabase::supabase_functions,
             supabase::supabase_delete_function,
@@ -393,22 +470,12 @@ pub fn run() {
             supabase_studio::tables::supabase_studio_tables_alter_column,
             supabase_studio::tables::supabase_studio_tables_drop_column,
             supabase::supabase_backups,
-            supabase::supabase_tables,
-            supabase::supabase_table_columns,
-            supabase::supabase_table_rows,
             supabase::supabase_has_project_key,
             supabase::supabase_set_project_key,
             supabase::supabase_import_project_key,
             supabase::supabase_delete_project_key,
-            supabase::supabase_objects,
-            supabase::supabase_upload_object,
-            supabase::supabase_delete_object,
-            supabase::supabase_move_object,
             supabase::supabase_preview_object,
             supabase::supabase_download_object,
-            supabase::supabase_auth_users,
-            supabase::supabase_create_auth_user,
-            supabase::supabase_update_auth_user_email,
             supabase::supabase_delete_auth_user,
             firebase::firebase_connect,
             firebase::firebase_profiles,
@@ -521,7 +588,6 @@ pub fn run() {
             db::commands::install_driver,
             db::commands::oracle_tns_names,
             db::commands::oracle_open_tnsnames,
-            db::commands::test_connection,
             db::commands::test_connection_string,
             db::commands::list_databases,
             db::commands::list_schemas,
@@ -554,6 +620,7 @@ pub fn run() {
             db::commands::execute_in_transaction_with_params,
             db::commands::transaction_database_changes,
             db::commands::transaction_server_output,
+            db::commands::execute_with_binds,
             db::commands::update_row_in_transaction,
             db::commands::insert_row_in_transaction,
             db::commands::duplicate_row_in_transaction,
@@ -642,6 +709,17 @@ pub fn run() {
             db::secrets::load_secret,
             db::secrets::delete_secret,
             team::team_connections,
+            ui_plugin_proposals::ui_plugin_proposals_start,
+            ui_plugin_proposals::ui_plugin_proposals_pending,
+            ui_plugin_proposals::ui_plugin_proposals_finish,
+            ui_plugins::ui_plugins_scan,
+            ui_plugins::ui_plugins_read_bundle,
+            ui_plugins::ui_plugins_export_bundle,
+            ui_plugins::ui_plugins_write,
+            ui_plugins::ui_plugins_remove,
+            ui_plugins::ui_plugins_write_support,
+            ui_plugins::ui_plugins_write_sdk,
+            ui_plugins::ui_plugins_watch,
             sync::sync_test,
             sync::sync_fetch,
             sync::sync_store,
@@ -692,7 +770,8 @@ pub fn run() {
             db::commands::create_schema,
             db::commands::drop_schema,
             db::commands::get_database_overview,
-        ])
+            db::commands::get_schema_map,
+        ]))
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|_app, _event| {

@@ -7,10 +7,19 @@ import type {
   Table,
   VisibilityState,
 } from "@tanstack/react-table";
-import { type CSSProperties, type Dispatch, memo, type SetStateAction, useCallback } from "react";
+import {
+  type CSSProperties,
+  type Dispatch,
+  memo,
+  type SetStateAction,
+  useCallback,
+  useContext,
+  useMemo,
+} from "react";
 import type { ForeignKeyInfo } from "@/lib/db";
 import type { GridCellRef } from "@/lib/grid-selection";
 import type { ColumnWindowItem } from "@/lib/hooks/use-column-window";
+import { type PluginRowCells, pluginCellState, UiPluginGridContext } from "@/lib/ui-plugins/grid";
 import { cn } from "@/lib/utils";
 import { DataTableCell } from "./data-table-cell";
 import type {
@@ -104,6 +113,11 @@ export const DataTableRow = memo(function DataTableRow({
     (element: HTMLTableRowElement | null) => measureElement(element, dynamicHeight),
     [measureElement, dynamicHeight],
   );
+  const pluginGrid = useContext(UiPluginGridContext);
+  const pluginCells = useMemo<PluginRowCells | null>(
+    () => (pluginGrid?.cell || pluginGrid?.align ? { row, states: new Map() } : null),
+    [pluginGrid, row],
+  );
   const ruleBackground =
     ruleColor && !isMarked && !isRowEditing
       ? `color-mix(in oklab, ${ruleColor} 18%, var(--background))`
@@ -135,7 +149,7 @@ export const DataTableRow = memo(function DataTableRow({
         if (item.spacer)
           return (
             <td
-              key={`gap-${item.index}`}
+              key={item.key}
               aria-hidden
               colSpan={item.span}
               style={{ width: item.width, padding: 0 }}
@@ -187,6 +201,11 @@ export const DataTableRow = memo(function DataTableRow({
             isMatch={isMatch}
             isActiveMatch={isActiveMatch}
             hasOutgoingFk={outgoingFkByColumn.has(columnId)}
+            plugin={
+              pluginGrid && pluginCells && cellIndex > 0
+                ? pluginCellState(pluginGrid, pluginCells, columnId)
+                : undefined
+            }
           />
         );
       })}

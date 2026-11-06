@@ -58,7 +58,7 @@ export function LogsSessionsTab({ reference, refetchInterval }: LogsTabProps) {
       ) : rows.length === 0 ? (
         <p className="text-xs text-muted-foreground">Keine aktiven Sitzungen.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border">
+        <div className="overflow-x-auto rounded-xl">
           <DatabaseTable
             headers={["PID", "Rolle", "Client", "Status", "Wartet auf", "Dauer", "Abfrage", ""]}
           >

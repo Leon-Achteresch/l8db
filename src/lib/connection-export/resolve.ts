@@ -2,7 +2,7 @@ import type { HostGroupRule } from "@/lib/connection-groups";
 import { createConnectionId, type SavedConnection, type SshConnection } from "@/lib/connections";
 import { connectionEnvironment } from "@/lib/environments";
 import { type DuplicateStrategy, findDuplicate, type ImportCandidate } from "./parse";
-import type { ExportedConnection } from "./types";
+import { type ExportedConnection, TEXT_FIELDS } from "./types";
 
 export function toCandidate(
   parsed: ExportedConnection | string,
@@ -12,12 +12,16 @@ export function toCandidate(
 ): ImportCandidate {
   if (typeof parsed === "string")
     return { index, profile: null, label: fallbackLabel, error: parsed, duplicateOf: null };
+  const duplicateOf = findDuplicate(parsed, existing);
   return {
     index,
     profile: parsed,
     label: parsed.name,
-    error: null,
-    duplicateOf: findDuplicate(parsed, existing),
+    error:
+      parsed.commandTunnelOmitted && !duplicateOf?.commandTunnel?.command
+        ? "Der Tunnel-Befehl wird nicht exportiert. Lege diese Verbindung samt Befehls-Tunnel manuell an."
+        : null,
+    duplicateOf,
   };
 }
 
@@ -47,6 +51,11 @@ function toSavedConnection(profile: ExportedConnection): SavedConnection {
     ...(profile.environment !== undefined ? { environment: profile.environment } : {}),
     ...(profile.readOnly !== undefined ? { readOnly: profile.readOnly } : {}),
     ...(profile.maskRules ? { maskRules: profile.maskRules.map((rule) => ({ ...rule })) } : {}),
+    ...(profile.cloudAuth ? { cloudAuth: { ...profile.cloudAuth } } : {}),
+    ...(profile.proxyUser ? { proxyUser: profile.proxyUser } : {}),
+    ...Object.fromEntries(
+      TEXT_FIELDS.filter((key) => profile[key]).map((key) => [key, profile[key]]),
+    ),
   };
 }
 
@@ -79,6 +88,9 @@ export function resolveImport(
             ...toSavedConnection(candidate.profile),
             id: createConnectionId(),
             name: `${candidate.profile.name} (Kopie)`,
+            ...(candidate.profile.commandTunnelOmitted && candidate.duplicateOf.commandTunnel
+              ? { commandTunnel: { ...candidate.duplicateOf.commandTunnel } }
+              : {}),
           },
           rules,
         ),

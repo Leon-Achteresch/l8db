@@ -18,6 +18,7 @@ export function useColumnSizing(
   typeInfoByColumn: Map<string, ReturnType<typeof getColumnTypeInfo>>,
   data: TableRow[],
   gridStyle: GridStyle,
+  defaultWidths?: Readonly<Record<string, number>>,
 ) {
   const contentFit = gridStyle.style !== "classic";
   const [classicSizing, setClassicSizing] = useTableViewState(stateKey, "columnSizing", {});
@@ -30,7 +31,7 @@ export function useColumnSizing(
       const sample = data.length > SAMPLE_ROWS ? data.slice(0, SAMPLE_ROWS) : data;
       const fitted: ColumnSizingState = {};
       for (const column of order) {
-        const saved = contentSizing[column];
+        const saved = contentSizing[column] ?? defaultWidths?.[column];
         if (saved !== undefined) {
           fitted[column] = saved;
           continue;
@@ -49,14 +50,15 @@ export function useColumnSizing(
       }
       return fitted;
     }
-    if (!fitColumnsToHeader) return classicSizing;
-    const fitted: Record<string, number> = { ...classicSizing };
+    const sized = defaultWidths ? { ...defaultWidths, ...classicSizing } : classicSizing;
+    if (!fitColumnsToHeader) return sized;
+    const fitted: Record<string, number> = { ...sized };
     for (const column of order) {
       const minWidth = fitHeaderColumnWidth(
         measureHeaderTitleWidth(column, typeInfoByColumn.get(column)?.label),
         fkByColumn.has(column),
       );
-      fitted[column] = Math.max(minWidth, classicSizing[column] ?? 0);
+      fitted[column] = Math.max(minWidth, sized[column] ?? 0);
     }
     return fitted;
   }, [
@@ -70,6 +72,7 @@ export function useColumnSizing(
     uiScale,
     fitColumnsToHeader,
     classicSizing,
+    defaultWidths,
   ]);
   const setColumnSizing = useCallback(
     (update: Updater<ColumnSizingState>) => {

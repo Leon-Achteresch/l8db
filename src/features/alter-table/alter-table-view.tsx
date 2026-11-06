@@ -12,14 +12,23 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { AddColumnRow } from "@/features/alter-table/alter-table-view/add-column-row";
 import { DataTypeCombobox } from "@/features/alter-table/alter-table-view/data-type-combobox";
-import { defaultDataType } from "@/features/alter-table/alter-table-view/data-types";
+import {
+  columnEditSupport,
+  DEFAULT_EXPRESSION_HINT,
+  defaultDataType,
+  dropColumnDescription,
+} from "@/features/alter-table/alter-table-view/data-types";
 import { useAlterTable } from "@/features/alter-table/alter-table-view/use-alter-table";
 import { TableConstraintsEditor } from "@/features/constraints/table-constraints-editor";
 import { ObjectAdminMenu } from "@/features/object-admin/object-admin-menu";
+import { columnTypeLabel } from "@/lib/column-type";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
 
@@ -44,6 +53,9 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
     setAddForm,
     dropTarget,
     setDropTarget,
+    dropCascade,
+    setDropCascade,
+    dropError,
     saving,
     handleStartEdit,
     handleCancelEdit,
@@ -52,6 +64,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
     handleDropColumn,
   } = useAlterTable(schema, table);
   const capabilities = useActiveCapabilities();
+  const support = columnEditSupport(connection?.kind);
 
   if (!connection) {
     return (
@@ -120,13 +133,35 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Spalte &quot;{dropTarget}&quot; löschen?</AlertDialogTitle>
             <AlertDialogDescription>
-              Die Spalte und alle abhängigen Constraints werden unwiderruflich gelöscht (DROP COLUMN
-              CASCADE).
+              {dropColumnDescription(connection.kind)}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {support.dropCascade && (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="drop-column-cascade"
+                checked={dropCascade}
+                onCheckedChange={(checked) => setDropCascade(checked === true)}
+              />
+              <Label htmlFor="drop-column-cascade" className="text-xs font-normal">
+                CASCADE — abhängige Views, Constraints und Indizes mitlöschen
+              </Label>
+            </div>
+          )}
+          {dropError && (
+            <p className="whitespace-pre-wrap rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+              {dropError}
+            </p>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={saving}>Abbrechen</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDropColumn} disabled={saving}>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDropColumn();
+              }}
+              disabled={saving}
+            >
               {saving ? <Spinner className="size-4" /> : null}
               Löschen
             </AlertDialogAction>
@@ -166,38 +201,53 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                 <>
                   <div className="bg-background px-3 py-1.5">
                     <Input
+                      aria-label={`Name von ${col.name}`}
                       value={editForm.new_name ?? col.name}
                       onChange={(e) => setEditForm((f) => ({ ...f, new_name: e.target.value }))}
                       className="h-7 text-xs"
                       autoFocus
                     />
                   </div>
-                  <div className="bg-background px-3 py-1.5">
-                    <DataTypeCombobox
-                      value={editForm.data_type ?? col.data_type}
-                      onChange={(v) => setEditForm((f) => ({ ...f, data_type: v }))}
-                      kind={connection.kind}
-                    />
-                  </div>
-                  <div className="flex items-center bg-background px-3 py-1.5">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setEditForm((f) => ({ ...f, set_not_null: !(f.set_not_null ?? false) }))
-                      }
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      {editForm.set_not_null ? "NO" : "YES"}
-                    </button>
-                  </div>
-                  <div className="bg-background px-3 py-1.5">
-                    <Input
-                      value={editForm.new_default ?? ""}
-                      onChange={(e) => setEditForm((f) => ({ ...f, new_default: e.target.value }))}
-                      placeholder="DEFAULT"
-                      className="h-7 text-xs"
-                    />
-                  </div>
+                  {support.renameOnly ? (
+                    <div className="col-span-3 flex items-center bg-background px-4 py-1.5 text-xs text-muted-foreground">
+                      <span className="mr-2 font-mono">
+                        {columnTypeLabel(col.data_type, col.character_maximum_length)}
+                      </span>
+                      Diese Datenbank kann bestehende Spalten nur umbenennen.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="bg-background px-3 py-1.5">
+                        <DataTypeCombobox
+                          value={editForm.data_type ?? col.data_type}
+                          onChange={(v) => setEditForm((f) => ({ ...f, data_type: v }))}
+                          kind={connection.kind}
+                        />
+                      </div>
+                      <div className="flex items-center bg-background px-3 py-1.5">
+                        <Switch
+                          size="sm"
+                          checked={!(editForm.set_not_null ?? false)}
+                          onCheckedChange={(nullable) =>
+                            setEditForm((f) => ({ ...f, set_not_null: !nullable }))
+                          }
+                          aria-label={`NULL-Werte in ${col.name} erlauben`}
+                        />
+                      </div>
+                      <div className="bg-background px-3 py-1.5">
+                        <Input
+                          aria-label={`Standardwert von ${col.name}`}
+                          title={DEFAULT_EXPRESSION_HINT}
+                          value={editForm.new_default ?? ""}
+                          onChange={(e) =>
+                            setEditForm((f) => ({ ...f, new_default: e.target.value }))
+                          }
+                          placeholder="SQL-Ausdruck, z. B. 'Text'"
+                          className="h-7 font-mono text-xs"
+                        />
+                      </div>
+                    </>
+                  )}
                   <div className="flex items-center gap-1 bg-background px-3 py-1.5">
                     <Button
                       variant="ghost"
@@ -205,6 +255,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                       className="size-6"
                       onClick={handleSaveEdit}
                       disabled={saving}
+                      aria-label="Speichern"
                     >
                       <SaveIcon className="size-3.5" />
                     </Button>
@@ -213,10 +264,29 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                       size="icon"
                       className="size-6"
                       onClick={handleCancelEdit}
+                      aria-label="Abbrechen"
                     >
                       <XIcon className="size-3.5" />
                     </Button>
                   </div>
+                  {editForm.data_type !== undefined &&
+                    editForm.data_type.trim() !== col.data_type && (
+                      <div className="col-span-5 flex flex-wrap items-center gap-2 bg-background px-4 py-1.5 text-xs text-muted-foreground">
+                        <span className="text-amber-600 dark:text-amber-500">
+                          Typänderungen wandeln bestehende Werte um und können sie kürzen oder
+                          fehlschlagen lassen.
+                        </span>
+                        {support.using && (
+                          <Input
+                            aria-label="USING-Ausdruck für die Typänderung"
+                            value={editForm.using ?? ""}
+                            onChange={(e) => setEditForm((f) => ({ ...f, using: e.target.value }))}
+                            placeholder={`USING (optional), z. B. ${col.name}::${editForm.data_type.trim()}`}
+                            className="h-7 max-w-md font-mono text-xs"
+                          />
+                        )}
+                      </div>
+                    )}
                 </>
               ) : (
                 <>
@@ -227,8 +297,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                     <span className="truncate">{col.name}</span>
                   </div>
                   <div className="flex items-center bg-background px-4 py-2 font-mono text-xs text-muted-foreground">
-                    {col.data_type}
-                    {col.character_maximum_length !== null && `(${col.character_maximum_length})`}
+                    {columnTypeLabel(col.data_type, col.character_maximum_length)}
                   </div>
                   <div className="flex items-center bg-background px-4 py-2 text-xs text-muted-foreground">
                     {col.is_nullable ? "YES" : "NO"}
@@ -236,12 +305,13 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                   <div className="flex items-center bg-background px-4 py-2 font-mono text-xs text-muted-foreground">
                     <span className="truncate">{col.column_default ?? ""}</span>
                   </div>
-                  <div className="flex items-center gap-1 bg-background px-3 py-2 opacity-0 transition-opacity group-hover:opacity-100">
+                  <div className="flex items-center gap-1 bg-background px-3 py-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
                     <Button
                       variant="ghost"
                       size="icon"
                       className="size-6"
                       onClick={() => handleStartEdit(col)}
+                      aria-label={`Spalte ${col.name} bearbeiten`}
                     >
                       <PencilIcon className="size-3.5" />
                     </Button>
@@ -250,6 +320,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                       size="icon"
                       className="size-6 text-destructive hover:text-destructive"
                       onClick={() => setDropTarget(col.name)}
+                      aria-label={`Spalte ${col.name} löschen`}
                     >
                       <TrashIcon className="size-3.5" />
                     </Button>
@@ -265,10 +336,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
             table={table}
             columns={(columns ?? []).map((col) => ({
               name: col.name,
-              data_type:
-                col.character_maximum_length !== null && !col.data_type.includes("(")
-                  ? `${col.data_type}(${col.character_maximum_length})`
-                  : col.data_type,
+              data_type: columnTypeLabel(col.data_type, col.character_maximum_length),
               is_primary_key: col.is_primary_key,
             }))}
           />

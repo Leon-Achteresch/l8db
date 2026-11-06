@@ -1,6 +1,7 @@
 import {
   Activity,
   Code2,
+  CreditCard,
   Database,
   FolderOpen,
   LayoutDashboard,
@@ -19,6 +20,7 @@ import { SupabaseDatabaseSection } from "./database/supabase-database-section";
 import { SupabaseFunctionsSection } from "./functions/supabase-functions-section";
 import { SupabaseLogsSection } from "./logs/supabase-logs-section";
 import { SupabaseOverviewSection } from "./overview/supabase-overview-section";
+import { SupabasePaymentsSection } from "./payments/supabase-payments-section";
 import { SupabasePoliciesSection } from "./policies/supabase-policies-section";
 import { SupabaseRealtimeSection } from "./realtime/supabase-realtime-section";
 import { SupabaseSettingsSection } from "./settings/supabase-settings-section";
@@ -42,6 +44,7 @@ export type SupabaseStudioSectionId =
   | "functions"
   | "realtime"
   | "logs"
+  | "payments"
   | "settings";
 
 export interface SupabaseStudioSection {
@@ -140,6 +143,15 @@ export const SUPABASE_STUDIO_SECTIONS: SupabaseStudioSection[] = [
     icon: Radio,
     component: SupabaseRealtimeSection,
     unavailable: needsKey,
+  },
+  {
+    id: "payments",
+    group: "Dienste",
+    label: "Zahlungen",
+    icon: CreditCard,
+    component: SupabasePaymentsSection,
+    unavailable: (capabilities) =>
+      capabilities.management ? null : "Benötigt einen Supabase-Zugangstoken (nur Cloud-Projekte).",
   },
   {
     id: "logs",

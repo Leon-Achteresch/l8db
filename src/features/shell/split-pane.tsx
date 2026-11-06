@@ -1,11 +1,12 @@
-import { useDraggable, useDroppable } from "@dnd-kit/react";
+import { useDraggable } from "@dnd-kit/react";
 import { useNavigate } from "@tanstack/react-router";
 import { warn as splitDebug } from "@tauri-apps/plugin-log";
-import { GripVerticalIcon, XIcon } from "lucide-react";
+import { XIcon } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { toast } from "sonner";
 import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { SplitDropPreview } from "@/features/shell/split-workspace/split-drop-preview";
 import { TabPaneContent } from "@/features/shell/tab-pane-content";
 import { ConnectionScopeContext, useConnectionsStore, usesTunnel } from "@/lib/connections";
 import {
@@ -18,14 +19,16 @@ import { ensurePassword } from "@/lib/password-prompt";
 import { sameTable } from "@/lib/split-links";
 import { usePaneConnectionId, usePaneTabs, useSplitView } from "@/lib/split-view";
 import { ensureSshTunnel } from "@/lib/ssh";
-import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
-import { type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
+import { navigateToTab } from "@/lib/tab-navigation";
+import { tabKey, useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 import { WorkspacePaneContext } from "@/lib/workspace-pane";
 
 import { ColorDot } from "./split-pane/color-dot";
 import { MasterSelect } from "./split-pane/master-select";
 import { PaneNumber } from "./split-pane/pane-number";
+import { PaneSnapAssist } from "./split-pane/pane-snap-assist";
+import { PaneTabStrip } from "./split-pane/pane-tab-strip";
 import { ScopedTableContent } from "./split-pane/scoped-table-content";
 
 const MasterDetailResult = lazy(() =>
@@ -36,16 +39,12 @@ const MasterDetailResult = lazy(() =>
 
 const ACTIVE_VALUE = "__active__";
 
-interface SplitPaneProps {
-  index: number;
-  focused: boolean;
-  tab: Tab | undefined;
-  onFocus: () => void;
-  onClose: () => void;
-}
-
-export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPaneProps) {
+export function SplitPane({ index, focused }: { index: number; focused: boolean }) {
   const navigate = useNavigate();
+  const paneTabs = usePaneTabs();
+  const tab = paneTabs[index];
+  const focusPane = useSplitView((state) => state.focusPane);
+  const closePane = useSplitView((state) => state.closePane);
   const connections = useConnectionsStore((state) => state.connections);
   const setPaneConnection = useSplitView((state) => state.setPaneConnection);
   const setPaneTab = useSplitView((state) => state.setPaneTab);
@@ -63,16 +62,10 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
   const sourceColumn = useMasterDetail((state) =>
     linkKey ? state.sourceColumns[linkKey] : undefined,
   );
-  const feedsNext = useSplitView((state) => state.masters.includes(index));
-  const synced = usePaneTabs().some((other, pane) => pane !== index && sameTable(tab, other));
+  const synced = paneTabs.some((other, pane) => pane !== index && sameTable(tab, other));
   const overrideId = usePaneConnectionId(key);
   const override = connections.find((entry) => entry.id === overrideId) ?? null;
-  const { ref: dropRef, isDropTarget } = useDroppable({
-    id: `pane:${index}`,
-    type: "pane",
-    accept: ["tab", "pane"],
-  });
-  const { ref: dragRef, handleRef } = useDraggable({
+  const { ref: dragRef } = useDraggable({
     id: `pane-drag:${index}`,
     type: "pane",
     data: { index },
@@ -105,7 +98,7 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
     if (tab?.kind !== "table" && !remote) {
       setPaneConnection(key, id);
       if (!focused && tab) navigateToTab(navigate, tab);
-      onFocus();
+      focusPane(index);
       return;
     }
     if (tab?.kind !== "table") {
@@ -113,6 +106,7 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
       setPaneConnection(`split-detail:${index}`, id);
       return;
     }
+    focusPane(index);
     if (!id) openTab(tab);
     setPaneTab(index, id, tab);
     void splitDebug(
@@ -123,61 +117,58 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
 
   return (
     <WorkspacePaneContext.Provider value={{ index, focused }}>
-      <div
-        ref={dropRef}
+      <section
         data-split-pane={index}
-        onMouseDown={() => {
+        aria-label={`Bereich ${index + 1}`}
+        onMouseDown={(event) => {
+          const { target } = event;
+          if (!(target instanceof Element) || !event.currentTarget.contains(target)) return;
+          if (target.closest("[data-tab-key]")) return;
           if (!focused && tab && !remote) navigateToTab(navigate, tab);
-          onFocus();
+          focusPane(index);
         }}
         className={cn(
           "relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background",
           "after:pointer-events-none after:absolute after:inset-0 after:z-30",
-          isDropTarget
-            ? "bg-primary/5 after:ring-2 after:ring-inset after:ring-primary"
-            : focused
-              ? "after:ring-2 after:ring-inset after:ring-primary"
-              : "after:ring-1 after:ring-inset after:ring-border/80",
+          focused
+            ? "after:ring-2 after:ring-inset after:ring-primary"
+            : "after:ring-1 after:ring-inset after:ring-border/80",
         )}
       >
         <div
-          ref={dragRef}
           className={cn(
-            "@container flex h-7 shrink-0 items-center gap-1 border-b border-border/70 bg-muted/40",
+            "@container flex h-8 shrink-0 items-center gap-1 border-b border-border/70 bg-muted/40",
             synced ? "px-3" : "px-1",
           )}
           style={override ? { backgroundColor: `${override.color ?? "#64748b"}1a` } : undefined}
-          title={override ? `Verbindung: ${override.name}` : undefined}
         >
           <span
-            ref={handleRef}
+            ref={dragRef}
             title="Bereich verschieben"
-            className="grid size-5 shrink-0 cursor-grab place-items-center text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
+            className="grid shrink-0 cursor-grab place-items-center rounded-sm active:cursor-grabbing"
           >
-            <GripVerticalIcon className="size-3.5" />
+            <PaneNumber index={index} />
           </span>
-          <PaneNumber index={index} />
-          <span className="min-w-[4.5rem] flex-1 truncate text-xs font-medium text-muted-foreground">
-            {detailSql && feedsNext
-              ? "Detail → Master · "
-              : detailSql
-                ? "Detail · "
-                : feedsNext
-                  ? "Master · "
-                  : ""}
-            {tab ? tabLabel(tab) : detailSql ? "SQL-Abfrage" : "Leer"}
-          </span>
+          {!tab && detailSql && (
+            <span className="shrink-0 px-1 text-xs font-medium text-muted-foreground">
+              SQL-Abfrage
+            </span>
+          )}
+          <PaneTabStrip index={index} focused={focused} />
           <MasterSelect index={index} />
           <Select value={overrideId ?? ACTIVE_VALUE} onValueChange={selectConnection}>
             <SelectTrigger
               size="sm"
               onMouseDown={(event) => event.stopPropagation()}
               aria-label="Verbindung für diesen Bereich"
-              className="h-5 max-w-36 gap-1 border-0 px-1 py-0 text-xs shadow-none dark:bg-transparent dark:hover:bg-foreground/10"
+              title={override ? `Verbindung: ${override.name}` : "Aktive Verbindung"}
+              className="h-5 max-w-36 shrink-0 gap-1 border-0 px-1 py-0 text-xs shadow-none dark:bg-transparent dark:hover:bg-foreground/10"
             >
               <span className="flex min-w-0 items-center gap-1.5">
                 <ColorDot color={override?.color} />
-                <span className="truncate">{override ? override.name : "Aktive Verbindung"}</span>
+                <span className="hidden truncate @3xl:inline">
+                  {override ? override.name : "Aktive Verbindung"}
+                </span>
               </span>
             </SelectTrigger>
             <SelectContent searchable onMouseDown={(event) => event.stopPropagation()}>
@@ -199,15 +190,21 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
-              onClose();
+              const next = closePane(index);
+              const shown = useTableTabs.getState().tabs.find((entry) => tabKey(entry) === next);
+              if (shown) navigateToTab(navigate, shown);
             }}
             aria-label="Bereich schließen"
+            title="Bereich schließen – die Tabs bleiben oben in der Tab-Leiste geöffnet"
             className="grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/10 hover:text-foreground"
           >
             <XIcon className="size-3.5" />
           </button>
         </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div
+          data-drop-zone={`pane:${index}`}
+          className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
           {tab || detailSql ? (
             <ConnectionScopeContext.Provider value={overrideId}>
               <PanelErrorBoundary
@@ -242,16 +239,11 @@ export function SplitPane({ index, focused, tab, onFocus, onClose }: SplitPanePr
               </PanelErrorBoundary>
             </ConnectionScopeContext.Provider>
           ) : (
-            <div className="flex h-full min-h-0 flex-1 items-center justify-center p-6">
-              <p className="max-w-56 text-center text-sm text-muted-foreground">
-                {override
-                  ? `Objekt von ${override.name} in der Sidebar wählen.`
-                  : "Tab hierher ziehen oder in der Sidebar öffnen."}
-              </p>
-            </div>
+            <PaneSnapAssist index={index} override={override?.name ?? null} />
           )}
+          <SplitDropPreview pane={index} />
         </div>
-      </div>
+      </section>
     </WorkspacePaneContext.Provider>
   );
 }

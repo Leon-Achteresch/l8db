@@ -6,11 +6,17 @@ import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility"
 
 interface MultiTargetButtonProps {
   disabled: boolean;
+  disabledReason?: string;
   running: boolean;
   onOpen: () => void;
 }
 
-export function MultiTargetButton({ disabled, running, onOpen }: MultiTargetButtonProps) {
+export function MultiTargetButton({
+  disabled,
+  disabledReason,
+  running,
+  onOpen,
+}: MultiTargetButtonProps) {
   const feature = useNewFeatureVisibility<HTMLButtonElement>("query.multi-target");
   return (
     <Button
@@ -21,6 +27,7 @@ export function MultiTargetButton({ disabled, running, onOpen }: MultiTargetButt
       data-tour="query-multi-target"
       onClick={onOpen}
       disabled={disabled}
+      disabledReason={disabledReason}
       title="Dieselbe Abfrage auf mehreren Datenbanken, Schemas oder Verbindungen ausführen"
     >
       <LayersIcon className={running ? "size-3 animate-pulse" : "size-3"} />

@@ -213,7 +213,7 @@ pub fn pg_dump_args(options: &BackupOptions, path: &str) -> Result<Vec<String>, 
     args.extend(clean_list(&options.exclude_schemas).map(|s| format!("--exclude-schema={s}")));
     args.extend(clean_list(&options.include_tables).map(|t| format!("--table={t}")));
     args.extend(clean_list(&options.exclude_tables).map(|t| format!("--exclude-table={t}")));
-    if options.clean && format == "p" {
+    if options.clean && format == "p" && options.content != "data" {
         args.push("--clean".into());
         if options.if_exists {
             args.push("--if-exists".into());
@@ -279,7 +279,7 @@ pub fn pg_restore_args(
         "data" => args.push("--data-only".into()),
         _ => {}
     }
-    if options.clean {
+    if options.clean && options.content != "data" {
         args.push("--clean".into());
         if options.if_exists {
             args.push("--if-exists".into());
@@ -954,27 +954,53 @@ pub async fn probe(
     }
 }
 
-struct PartialOutput {
-    path: PathBuf,
-    existed: bool,
+const SQLITE_BUSY_LIMIT: Duration = Duration::from_secs(30);
+
+struct StagedOutput {
+    target: PathBuf,
+    staging: PathBuf,
 }
 
-impl PartialOutput {
+impl StagedOutput {
     fn new(path: &str) -> Self {
-        let path = PathBuf::from(path);
-        let existed = path.exists();
-        Self { path, existed }
+        let target = PathBuf::from(path);
+        let name = target
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or_default();
+        let staging = target.with_file_name(format!(".l8db-partial-{nanos}-{name}"));
+        Self { target, staging }
+    }
+
+    fn path(&self) -> String {
+        self.staging.display().to_string()
     }
 
     fn discard(&self) {
-        if self.existed {
-            return;
-        }
-        if self.path.is_dir() {
-            let _ = std::fs::remove_dir_all(&self.path);
+        if self.staging.is_dir() {
+            let _ = std::fs::remove_dir_all(&self.staging);
         } else {
-            let _ = std::fs::remove_file(&self.path);
+            let _ = std::fs::remove_file(&self.staging);
         }
+    }
+
+    fn commit(&self) -> Result<(), String> {
+        let replace = |error: std::io::Error| {
+            self.discard();
+            format!("Sicherung konnte nicht abgelegt werden: {error}")
+        };
+        if self.target.exists() && (self.target.is_dir() || self.staging.is_dir()) {
+            if self.target.is_dir() {
+                std::fs::remove_dir_all(&self.target).map_err(replace)?;
+            } else {
+                std::fs::remove_file(&self.target).map_err(replace)?;
+            }
+        }
+        std::fs::rename(&self.staging, &self.target).map_err(replace)
     }
 }
 
@@ -982,9 +1008,9 @@ async fn run_tool(
     invocation: Invocation,
     emit: Emit,
     job_id: Option<String>,
-    output: Option<PartialOutput>,
+    output: Option<&StagedOutput>,
 ) -> Result<(String, Vec<String>), String> {
-    let command = invocation.display();
+    let mut command = invocation.display();
     let result = run_process(
         &invocation,
         emit,
@@ -993,7 +1019,13 @@ async fn run_tool(
     )
     .await;
     match result {
-        Ok(tail) => Ok((command, tail)),
+        Ok(tail) => {
+            if let Some(output) = output {
+                output.commit()?;
+                command = command.replace(&output.path(), &output.target.display().to_string());
+            }
+            Ok((command, tail))
+        }
         Err(error) => {
             if let Some(output) = output {
                 output.discard();
@@ -1034,6 +1066,7 @@ fn sqlite_copy(
     let backup = rusqlite::backup::Backup::new(&source, &mut destination)
         .map_err(|e| format!("SQLite-Sicherung konnte nicht gestartet werden: {e}"))?;
     let mut last = Instant::now();
+    let mut busy_since: Option<Instant> = None;
     loop {
         if cancelled.load(Ordering::Relaxed) {
             return Err(CANCELLED.into());
@@ -1059,8 +1092,15 @@ fn sqlite_copy(
                 );
                 return Ok(());
             }
-            rusqlite::backup::StepResult::More => {}
-            _ => std::thread::sleep(Duration::from_millis(50)),
+            rusqlite::backup::StepResult::More => busy_since = None,
+            _ => {
+                if busy_since.get_or_insert_with(Instant::now).elapsed() > SQLITE_BUSY_LIMIT {
+                    return Err(
+                        "Die Datenbankdatei ist seit 30 Sekunden gesperrt (offene Schreibtransaktion?). Vorgang abgebrochen.".into(),
+                    );
+                }
+                std::thread::sleep(Duration::from_millis(50))
+            }
         }
     }
 }
@@ -1110,6 +1150,8 @@ pub async fn backup(
                 &request.tool_paths,
             )
             .await?;
+            let staged = StagedOutput::new(&path);
+            let staging = staged.path();
             let args = if globals {
                 let db = env
                     .iter()
@@ -1120,10 +1162,10 @@ pub async fn backup(
                     "--verbose".into(),
                     "--globals-only".into(),
                     format!("--database={db}"),
-                    format!("--file={path}"),
+                    format!("--file={staging}"),
                 ]
             } else {
-                pg_dump_args(options, &path)?
+                pg_dump_args(options, &staging)?
             };
             let invocation = Invocation {
                 program: tool.path.clone().unwrap_or_default().into(),
@@ -1132,8 +1174,7 @@ pub async fn backup(
                 stdin_file: None,
                 secrets,
             };
-            let (command, tail) =
-                run_tool(invocation, emit, job_id, Some(PartialOutput::new(&path))).await?;
+            let (command, tail) = run_tool(invocation, emit, job_id, Some(&staged)).await?;
             (
                 if options.format.is_empty() {
                     "plain".to_string()
@@ -1153,8 +1194,9 @@ pub async fn backup(
             let tool = backup_tools::locate_one("mysqldump", &request.tool_paths).await?;
             let mariadb = tool.is_mariadb();
             let option_file = secret_file(&mysql_option_file(&target.password))?;
+            let staged = StagedOutput::new(&path);
             let mut args = mysql_connection_args(&target, mariadb, Some(option_file.path()));
-            args.extend(mysqldump_args(options, &db, mariadb, &path)?);
+            args.extend(mysqldump_args(options, &db, mariadb, &staged.path())?);
             let invocation = Invocation {
                 program: tool.path.clone().unwrap_or_default().into(),
                 args,
@@ -1162,8 +1204,7 @@ pub async fn backup(
                 stdin_file: None,
                 secrets: vec![target.password.clone()],
             };
-            let (command, tail) =
-                run_tool(invocation, emit, job_id, Some(PartialOutput::new(&path))).await?;
+            let (command, tail) = run_tool(invocation, emit, job_id, Some(&staged)).await?;
             drop(option_file);
             ("sql".to_string(), command, tail)
         }
@@ -1171,6 +1212,7 @@ pub async fn backup(
             let uri = mongo_uri_for_database(connection_string, database)?;
             let tool = backup_tools::locate_one("mongodump", &request.tool_paths).await?;
             let config = secret_file(&mongo_config(&uri))?;
+            let staged = StagedOutput::new(&path);
             let secrets = url::Url::parse(&uri)
                 .ok()
                 .and_then(|url| url.password().map(decode))
@@ -1178,13 +1220,12 @@ pub async fn backup(
                 .collect();
             let invocation = Invocation {
                 program: tool.path.clone().unwrap_or_default().into(),
-                args: mongodump_args(options, config.path(), &path)?,
+                args: mongodump_args(options, config.path(), &staged.path())?,
                 env: Vec::new(),
                 stdin_file: None,
                 secrets,
             };
-            let (command, tail) =
-                run_tool(invocation, emit, job_id, Some(PartialOutput::new(&path))).await?;
+            let (command, tail) = run_tool(invocation, emit, job_id, Some(&staged)).await?;
             drop(config);
             ("archive".to_string(), command, tail)
         }
@@ -1448,6 +1489,41 @@ mod tests {
 
     fn options() -> BackupOptions {
         BackupOptions::default()
+    }
+
+    #[test]
+    fn clean_is_dropped_for_data_only() {
+        let options = BackupOptions {
+            clean: true,
+            content: "data".into(),
+            ..options()
+        };
+        let args = pg_restore_args(&options, "custom", "app", "/tmp/app.dump");
+        assert!(args.contains(&"--data-only".to_string()));
+        assert!(!args.contains(&"--clean".to_string()));
+        let dump = pg_dump_args(&options, "/tmp/app.sql").unwrap();
+        assert!(!dump.contains(&"--clean".to_string()));
+    }
+
+    #[test]
+    fn staged_output_keeps_existing_backup_until_success() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("app.dump");
+        std::fs::write(&target, "old").unwrap();
+        let failed = StagedOutput::new(target.to_str().unwrap());
+        std::fs::write(failed.path(), "half").unwrap();
+        failed.discard();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "old");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+        let done = StagedOutput::new(target.to_str().unwrap());
+        std::fs::create_dir(done.path()).unwrap();
+        std::fs::write(Path::new(&done.path()).join("toc.dat"), "new").unwrap();
+        done.commit().unwrap();
+        assert_eq!(
+            std::fs::read_to_string(target.join("toc.dat")).unwrap(),
+            "new"
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
     #[test]

@@ -1,8 +1,8 @@
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasSectionHeader } from "../../baas-section-header";
 import { BaasSidebarPortal } from "../../baas-sidebar-portal";
-import { SupabaseSectionHeader } from "../supabase-section-header";
 import type { SupabaseStudioSectionProps } from "../supabase-studio-sections";
 import { SupabaseTableEditor } from "./supabase-table-editor";
 import { SupabaseTablesBrowser } from "./supabase-tables-browser";
@@ -62,7 +62,7 @@ export function SupabaseTablesSection({ project, capabilities }: SupabaseStudioS
         />
       ) : (
         <div className="min-h-0 flex-1 space-y-5 overflow-auto p-5">
-          <SupabaseSectionHeader
+          <BaasSectionHeader
             title="Tabellen"
             titleRef={feature.ref}
             isNew={feature.isNew}

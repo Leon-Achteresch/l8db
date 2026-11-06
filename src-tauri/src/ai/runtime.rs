@@ -93,6 +93,10 @@ impl Run {
         self.wait("notebook", "Notebook", details, false).await
     }
 
+    pub async fn issue(&self, details: Value) -> Result<Value, String> {
+        self.wait("issue", "Issue", details, false).await
+    }
+
     async fn wait(
         &self,
         kind: &str,

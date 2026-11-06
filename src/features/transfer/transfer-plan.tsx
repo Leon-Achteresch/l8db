@@ -1,5 +1,6 @@
-import { TriangleAlertIcon } from "lucide-react";
+import { SquareArrowOutUpRightIcon, TriangleAlertIcon } from "lucide-react";
 import { useMemo } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,6 +12,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { copyWithToast } from "@/lib/clipboard";
 import type { TransferPlan, TransferStatement } from "@/lib/db";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
 const PHASES: { key: keyof TransferPlan; label: string }[] = [
   { key: "preData", label: "Struktur vor dem Laden" },
@@ -21,9 +23,6 @@ const PHASES: { key: keyof TransferPlan; label: string }[] = [
 
 function script(plan: TransferPlan): string {
   const sections = [
-    plan.createSchemas.length > 0
-      ? `-- Schemas anlegen\n${plan.createSchemas.map((schema) => `-- ${schema}`).join("\n")}`
-      : "",
     ...PHASES.map(({ key, label }) => {
       const statements = plan[key] as TransferStatement[];
       if (statements.length === 0) return "";
@@ -33,28 +32,33 @@ function script(plan: TransferPlan): string {
   const data = `-- Daten: ${plan.tables.length} Tabellen in dieser Reihenfolge\n${plan.tables
     .map((table) => `--   ${table.targetSchema}.${table.targetName}`)
     .join("\n")}`;
-  return [sections[0], sections[1], sections[2], data, sections[3], sections[4]]
-    .filter(Boolean)
-    .join("\n\n");
+  return [sections[0], sections[1], data, sections[2], sections[3]].filter(Boolean).join("\n\n");
 }
 
 export function TransferPlanDetails({
   plan,
   open,
   tab,
+  targetName,
+  busy,
   onOpenChange,
+  onOpenEditor,
 }: {
   plan: TransferPlan;
   open: boolean;
   tab: string;
+  targetName: string;
+  busy: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenEditor: (sql: string) => void;
 }) {
   const text = useMemo(() => script(plan), [plan]);
+  const editor = useNewFeatureVisibility<HTMLButtonElement>("transfer.editor");
   const columns = plan.tables.reduce((sum, table) => sum + table.columns.length, 0);
   const statements = plan.preData.length + plan.postData.length + plan.finalize.length;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-4xl">
+      <DialogContent className="flex h-[92vh] max-h-[92vh] w-[96vw] max-w-[96vw] flex-col sm:max-w-[min(96vw,1600px)]">
         <DialogHeader>
           <DialogTitle>Übertragungsplan</DialogTitle>
           <DialogDescription className="tabular-nums">
@@ -78,9 +82,22 @@ export function TransferPlanDetails({
             >
               Skript kopieren
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              title={`Öffnet das Skript als neuen SQL-Tab der Verbindung ${targetName}.`}
+              ref={editor.ref}
+              disabled={busy}
+              disabledReason="Übertragung oder Planung läuft noch"
+              onClick={() => onOpenEditor(text)}
+            >
+              <SquareArrowOutUpRightIcon data-icon="inline-start" />
+              Im Editor öffnen
+              {editor.isNew && <NewBadge />}
+            </Button>
           </div>
           <TabsContent value="tables" className="min-h-0 flex-1 overflow-auto rounded-xl border">
-            <table className="w-full text-xs">
+            <table className="w-full text-[13px]">
               <thead className="sticky top-0 bg-background text-left text-muted-foreground">
                 <tr>
                   <th className="px-2 py-1.5 font-medium">#</th>
@@ -117,7 +134,7 @@ export function TransferPlanDetails({
             </table>
           </TabsContent>
           <TabsContent value="script" className="min-h-0 flex-1 overflow-auto">
-            <pre className="rounded-xl border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap">
+            <pre className="min-h-full rounded-xl border bg-muted/40 p-4 font-mono text-[13px] leading-relaxed whitespace-pre-wrap">
               {text}
             </pre>
           </TabsContent>

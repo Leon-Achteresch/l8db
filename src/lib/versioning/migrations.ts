@@ -5,14 +5,65 @@ import {
 } from "@/lib/compare-apply-plan";
 import { quoteIdentifier } from "@/lib/export";
 import { columnDefinitionSql } from "@/lib/migration-script/sql";
-import { deployKind, validateMigration } from "./model";
+import { checksum, deployKind, destructiveStatement, validateMigration } from "./model";
 import { sqlCode } from "./sql-code";
-import type { DatabaseRelease, ObjectSnapshot, VersioningKind } from "./types";
+import type { DatabaseRelease, ObjectSnapshot, ReleaseMigration, VersioningKind } from "./types";
 
 export interface MigrationDraft {
   sql: string;
   changes: { label: string; status: "added" | "changed" | "removed"; generated: boolean }[];
   issues: { label: string; reason: string }[];
+  parts?: { id: string; code: boolean; before: string | null; statements: string[] }[];
+  removals?: number;
+}
+
+const CODE_TYPES = new Set(["view", "routine", "procedure", "package"]);
+
+function joinStatements(kind: VersioningKind, statements: string[]) {
+  return statements
+    .map((statement) =>
+      kind === "oracle" ? statement.replace(/\n\/\s*$/, "") : `${statement.replace(/;\s*$/, "")};`,
+    )
+    .join(kind === "oracle" ? "\n/\n" : "\n\n");
+}
+
+export async function splitMigrations(
+  kind: VersioningKind,
+  id: string,
+  draft: MigrationDraft,
+): Promise<ReleaseMigration[] | null> {
+  if (!draft.parts?.length || draft.removals || draft.issues.length) return null;
+  const firstCode = draft.parts.findIndex((part) => part.code);
+  if (firstCode >= 0 && draft.parts.slice(firstCode).some((part) => !part.code)) return null;
+  const structural = draft.parts.filter((part) => !part.code);
+  const migrations: ReleaseMigration[] = [];
+  if (structural.length) {
+    const sql = joinStatements(
+      kind,
+      structural.flatMap((part) => part.statements),
+    );
+    migrations.push({
+      id: "schema",
+      title: `Schemaänderungen ${id}`,
+      sql,
+      checksum: await checksum(sql),
+      touches: structural.map((part) => part.id),
+      before: Object.fromEntries(structural.map((part) => [part.id, part.before])),
+    });
+  }
+  for (const [index, part] of draft.parts.filter((entry) => entry.code).entries()) {
+    const sql = joinStatements(kind, part.statements);
+    migrations.push({
+      id: `code-${index + 1}`,
+      title: `Programmcode ${part.id}`,
+      kind: "repeatable",
+      sql,
+      checksum: await checksum(sql),
+      touches: [part.id],
+      before: { [part.id]: part.before },
+    });
+  }
+  return migrations;
 }
 
 function createTable(kind: VersioningKind, snapshot: ObjectSnapshot) {
@@ -125,11 +176,14 @@ export function generateMigration(
   before: DatabaseRelease,
   current: ObjectSnapshot[],
   allowDrops = false,
+  additiveOnly = false,
 ): MigrationDraft {
   const changes: MigrationDraft["changes"] = [];
   const issues: MigrationDraft["issues"] = [];
   const statements: string[] = [];
   const deferred: string[] = [];
+  const parts: NonNullable<MigrationDraft["parts"]> = [];
+  let removals = 0;
   const rank = (item: ObjectSnapshot) =>
     ({
       sequence: 0,
@@ -164,11 +218,25 @@ export function generateMigration(
               );
       if (!allowDrops && generated.some((sql) => /\bDROP\b/i.test(sqlCode(sql))))
         throw new Error("Entfernungen erst ausdrücklich freigeben oder manuell schreiben.");
+      if (additiveOnly && !allowDrops && generated.some(destructiveStatement))
+        throw new Error(
+          "Nur additiv: Typwechsel und Verkürzungen ausdrücklich freigeben oder manuell schreiben.",
+        );
+      const part = {
+        id: item.object.id,
+        code: CODE_TYPES.has(item.object.selection.objectType),
+        before: old?.checksum ?? null,
+        statements: [] as string[],
+      };
       for (const sql of generated) {
         if (!old && item.object.selection.objectType === "table" && /^ALTER TABLE\b/.test(sql))
           deferred.push(sql);
-        else statements.push(sql);
+        else {
+          statements.push(sql);
+          part.statements.push(sql);
+        }
       }
+      parts.push(part);
       change.generated = true;
     } catch (cause) {
       issues.push({ label, reason: cause instanceof Error ? cause.message : String(cause) });
@@ -188,6 +256,7 @@ export function generateMigration(
       } as Partial<Record<typeof objectType, string>>
     )[objectType];
     const generated = Boolean(allowDrops && type);
+    removals++;
     changes.push({ label, status: "removed", generated });
     if (generated)
       statements.push(
@@ -200,11 +269,32 @@ export function generateMigration(
           "Objektentfernung ausdrücklich freigeben oder eine DROP-Migration mit geprüften Abhängigkeiten ergänzen.",
       });
   }
-  const sql = [...statements, ...deferred]
-    .map((statement) =>
-      kind === "oracle" ? statement.replace(/\n\/\s*$/, "") : `${statement.replace(/;\s*$/, "")};`,
-    )
-    .join(kind === "oracle" ? "\n/\n" : "\n\n");
+  const sql = joinStatements(kind, [...statements, ...deferred]);
   if (sql) validateMigration(sql, deployKind(kind));
-  return { sql, changes, issues };
+  if (deferred.length) {
+    const structural = [...parts].reverse().find((part) => !part.code);
+    if (structural) structural.statements.push(...deferred);
+    else removals++;
+  }
+  return { sql, changes, issues, parts, removals };
+}
+
+export async function groundwork(
+  kind: VersioningKind,
+  id: string,
+  objects: ObjectSnapshot[],
+): Promise<ReleaseMigration[]> {
+  const empty = { objects: [] } as unknown as DatabaseRelease;
+  const draft = generateMigration(kind, empty, objects);
+  if (!draft.sql || draft.issues.length) return [];
+  return [
+    {
+      id: "grundstand",
+      title: `Grundstand ${id} für leere Datenbanken`,
+      sql: draft.sql,
+      checksum: await checksum(draft.sql),
+      touches: objects.map((entry) => entry.object.id),
+      before: Object.fromEntries(objects.map((entry) => [entry.object.id, null])),
+    },
+  ];
 }

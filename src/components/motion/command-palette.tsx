@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { measureVirtualItem } from "@/lib/virtual-item-measurement";
 import { CommandPaletteOption } from "./command-palette/command-palette-option";
 import { LIST_HEIGHT_SPRING, PANEL_SPRING } from "./command-palette/constants";
+import { pendingEnterItem } from "./command-palette/pending-enter";
 import type { CommandItem, CommandPaletteProps } from "./command-palette/types";
 
 export type { CommandItem, CommandPaletteProps } from "./command-palette/types";
@@ -99,7 +100,9 @@ export function CommandPalette({
   const canTouch = useTouchCapable();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const lastPointer = useRef<{ x: number; y: number } | null>(null);
   const listFrameRef = useRef<HTMLDivElement>(null);
+  const pendingEnter = useRef<string | null>(null);
   const previousScroll = useRef<{ list: HTMLDivElement | null; active: number } | null>(null);
   const listHeight = useSpring(0, LIST_HEIGHT_SPRING);
 
@@ -246,9 +249,24 @@ export function CommandPalette({
   // Clearing the query would drop the cursor on its own, but only if it had
   // changed; `moveTo(null)` covers reopening on an already-empty query.
   useOnOpen(open, () => {
+    pendingEnter.current = null;
     setQuery(initialQuery);
     moveTo(null);
   });
+
+  useEffect(() => {
+    const track = (event: PointerEvent) => {
+      lastPointer.current = { x: event.clientX, y: event.clientY };
+    };
+    document.addEventListener("pointermove", track, { passive: true });
+    return () => document.removeEventListener("pointermove", track);
+  }, []);
+
+  const pointerMovedTo = (event: React.PointerEvent, item: CommandItem, index: number) => {
+    const last = lastPointer.current;
+    if (index === active || (last?.x === event.clientX && last?.y === event.clientY)) return;
+    moveTo(item.id);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -262,11 +280,19 @@ export function CommandPalette({
 
   const selectItem = (item: CommandItem) => {
     if (rankedQuery !== search) return;
+    pendingEnter.current = null;
     if (item.featureId) markNewFeatureSeen(item.featureId);
     onSelectItem?.(item);
     setOpen(false);
     item.onSelect();
   };
+
+  useEffect(() => {
+    if (pendingEnter.current === null || rankedQuery !== search) return;
+    const item = pendingEnterItem(pendingEnter.current, rankedQuery, search, rows);
+    pendingEnter.current = null;
+    if (item) selectItem(item);
+  });
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.target !== inputRef.current || e.nativeEvent.isComposing) return;
@@ -278,6 +304,10 @@ export function CommandPalette({
       moveActive(-1);
     } else if (e.key === "Enter") {
       e.preventDefault();
+      if (rankedQuery !== search) {
+        pendingEnter.current = search;
+        return;
+      }
       const it = rows[active];
       if (it) {
         selectItem(it);
@@ -285,6 +315,7 @@ export function CommandPalette({
     }
   };
 
+  const hasItems = items.length > 0;
   useLayoutEffect(() => {
     const list = listRef.current;
     const frame = listFrameRef.current;
@@ -292,7 +323,7 @@ export function CommandPalette({
     let measured = false;
     const observer = new ResizeObserver(([entry]) => {
       const height = Math.round(entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height);
-      if (measured && !reduce) {
+      if (measured && hasItems && !reduce) {
         listHeight.set(height);
         return;
       }
@@ -302,7 +333,7 @@ export function CommandPalette({
     });
     observer.observe(list);
     return () => observer.disconnect();
-  }, [mounted, open, reduce, listHeight]);
+  }, [mounted, open, reduce, listHeight, hasItems]);
 
   useEffect(() => {
     if (!open) {
@@ -460,7 +491,9 @@ export function CommandPalette({
                                   uid={uid}
                                   reduce={reduce}
                                   hasIcons={hasIcons}
-                                  onHover={() => moveTo(it.id)}
+                                  onPointerMove={(event) =>
+                                    pointerMovedTo(event, it, row.itemIndex)
+                                  }
                                   onSelect={() => selectItem(it)}
                                 />
                               ) : (

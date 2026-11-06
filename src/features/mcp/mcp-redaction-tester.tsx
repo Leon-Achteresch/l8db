@@ -43,7 +43,7 @@ export function McpRedactionTester({ config }: McpRedactionTesterProps) {
             </Badge>
           )}
         </div>
-        <span className="text-[11px] text-muted-foreground">Echtzeit-Vorschau der Redaktion</span>
+        <span className="text-[11px] text-muted-foreground">Live-Vorschau der Maskierung</span>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

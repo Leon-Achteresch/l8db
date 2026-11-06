@@ -1,7 +1,10 @@
+import { useTheme } from "next-themes";
 import { type ReactNode, useEffect } from "react";
+import { activeThemeCssVars } from "@/lib/app-themes";
 import { detectProvider } from "@/lib/connection-url";
 import { useActiveConnection } from "@/lib/connections";
-import { resolveDbTheme, themeCssVars, useDbThemeStore } from "@/lib/db-theme";
+import { useDbThemeStore } from "@/lib/db-theme";
+import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 export function DbThemeRoot({ children, className }: { children: ReactNode; className?: string }) {
@@ -12,14 +15,20 @@ export function DbThemeRoot({ children, className }: { children: ReactNode; clas
   const providerId =
     previewProvider ??
     (connection ? detectProvider(connection.connectionString, connection.kind) : null);
+  const { resolvedTheme } = useTheme();
+  const mode = resolvedTheme === "dark" ? "dark" : "light";
+  const themeId = useSettingsStore((state) =>
+    mode === "dark" ? state.darkTheme : state.lightTheme,
+  );
+  const dbThemes = useSettingsStore((state) => state.dbThemes);
 
   useEffect(() => {
-    const vars = themeCssVars(resolveDbTheme(kind, providerId));
+    const vars = activeThemeCssVars(themeId, mode, dbThemes, kind, providerId);
     const root = document.documentElement;
     for (const [name, value] of Object.entries(vars)) {
       root.style.setProperty(name, value);
     }
-  }, [kind, providerId]);
+  }, [kind, providerId, mode, themeId, dbThemes]);
 
   return (
     <div

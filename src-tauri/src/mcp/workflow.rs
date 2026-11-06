@@ -555,7 +555,11 @@ fn risky(action: &Action) -> bool {
     matches!(
         action,
         Action::Restore { .. }
+            | Action::Sql { .. }
             | Action::Datagen { .. }
+            | Action::Transfer { .. }
+            | Action::TableCopy { .. }
+            | Action::Import { .. }
             | Action::FileMove { .. }
             | Action::FileDelete { .. }
             | Action::Unzip { .. }
@@ -1007,5 +1011,15 @@ mod tests {
         let (_, risky, details) = plan.approval().unwrap();
         assert!(risky);
         assert_eq!(details["command"], "ls -la");
+
+        let sql_plan = super::plan(
+            &services,
+            &json!({"action": "create", "spec": {"name": "Sql", "steps": [
+                {"name": "löschen", "action": {"type": "sql", "connections": ["db"], "sql": "DELETE FROM kunden"}}
+            ]}}),
+        )
+        .await
+        .unwrap();
+        assert!(sql_plan.approval().unwrap().1);
     }
 }

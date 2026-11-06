@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export interface EditorAiSettings {
@@ -50,6 +51,7 @@ export const useEditorAiSettings = create<EditorAiState>()(
     }),
     {
       name: "l8db.ai.editor",
+      storage: createSafeJsonStorage(),
       version: 1,
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<EditorAiSettings>;

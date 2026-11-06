@@ -139,32 +139,34 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
           />
         ) : (
           <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-            <TableViewsPanel
-              schema={schema}
-              table={view}
-              activeFilter={filter}
-              filterRaw={filterRaw}
-              onSelectView={(nextFilter, raw, saved) => {
-                handleFilterChange(nextFilter, raw);
-                if (saved?.state?.sorting) setSorting(saved.state.sorting);
-                if (stateKey && saved?.state)
-                  useTableViewStateStore.getState().patch(stateKey, {
-                    ...saved.state,
-                    filter: nextFilter,
-                    filterRaw: raw ?? false,
-                    page: 0,
-                  });
-                if (connection && saved?.layout)
-                  useTableColumnPrefs
-                    .getState()
-                    .setPref(
-                      tableColumnPrefKey(connection.id, schema, view, database),
-                      saved.layout,
-                    );
-              }}
-            />
             <div className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden">
               <TableFilterBar
+                leading={
+                  <TableViewsPanel
+                    schema={schema}
+                    table={view}
+                    activeFilter={filter}
+                    filterRaw={filterRaw}
+                    onSelectView={(nextFilter, raw, saved) => {
+                      handleFilterChange(nextFilter, raw);
+                      if (saved?.state?.sorting) setSorting(saved.state.sorting);
+                      if (stateKey && saved?.state)
+                        useTableViewStateStore.getState().patch(stateKey, {
+                          ...saved.state,
+                          filter: nextFilter,
+                          filterRaw: raw ?? false,
+                          page: 0,
+                        });
+                      if (connection && saved?.layout)
+                        useTableColumnPrefs
+                          .getState()
+                          .setPref(
+                            tableColumnPrefKey(connection.id, schema, view, database),
+                            saved.layout,
+                          );
+                    }}
+                  />
+                }
                 key={stateKey}
                 stateKey={stateKey}
                 columns={data?.columns ?? []}

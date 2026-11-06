@@ -246,6 +246,7 @@ async fn import(
             quote: file.quote.clone(),
             has_header: file.has_header,
             empty_as_null: true,
+            null_text: None,
             indices: (0..file.columns.len()).collect(),
             format: file.format,
             sheet: file.sheet.clone(),

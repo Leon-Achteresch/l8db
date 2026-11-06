@@ -14,9 +14,36 @@ fix/* von main ──PR──▶ main, danach main ──▶ development und /ca
 2. `/canary` schiebt `canary` per Fast-Forward auf `development`. Jeder Push auf `canary` startet **Release** im Canary-Kanal und veröffentlicht ein Pre-Release `vX.Y.Z-canary.N` (siehe [Canary-Kanal](#canary-kanal)).
 3. `/release` öffnet den PR `canary` → `main`, der mit Merge-Commit gemergt wird. Auf `main` kommt also nur, was vorher als Canary erschienen ist. Jeder Push auf `main` startet **Release** im Stable-Kanal. `prepare` liest die Conventional Commits seit dem letzten stabilen Tag: `feat` erhöht Minor, `fix` und `perf` Patch, `!` oder `BREAKING CHANGE:` Major (vor 1.0 Minor). Ohne solche Commits (nur `docs`, `ci`, `chore`, …) wird nichts veröffentlicht. Ist der Commit bereits veröffentlicht, wird alles übersprungen.
 
+## Schnelle Agenten-CI und vollständige Stable-Prüfung
+
+- Jeder Push auf `development` und jeder PR nach `development` prüft Produktionskonfiguration, Formatierung, Frontend-Build inklusive TypeScript, isolierte Unit-Tests, `cargo check --locked`, Rust-Formatierung und die Linux-Kernbudgets. Überholte CI- und Performance-Läufe werden weiterhin abgebrochen. Es laufen keine nativen Paketbuilds pro Agenten-Push.
+- PRs nach `main` und manuell gestartete CI-Läufe behalten die vollständigen Prüfungen: zusätzlich Dependency-Audits, Chromium/WebKit einschließlich CSP/Extension-Isolation, Rust-Clippy mit/ohne Default-Features, Rust-Tests und PostgreSQL/SSH/CLI-Integration. Main-PRs behalten die vorhandenen nativen macOS-/Windows-Pflichtchecks.
+- Es gibt keine täglichen Test- oder Build-Läufe ohne Freigabe. Die vollständige Performance-Matrix läuft für Main-PRs, Stable-Releases und auf manuellen Aufruf: echte Linux-/macOS-/Windows-Runner, Chromium/WebKit, CPU-/Heap-Simulation und PostgreSQL. Alle Jobs eines Workflows prüfen die unveränderliche `github.sha`. Manuelle Performance-Filter bleiben verfügbar. Die Concurrency-Gruppen enthalten den Workflow-Namen, damit unabhängige Aufrufe keine Release-Prüfung abbrechen können.
+- Canary verwendet die schnelle CI. Stable verwendet volle CI **und die vollständige Performance-Matrix als Veröffentlichungssperre**. Fehlerhafte Budgets werden nicht aufgeweicht. Native Installation/Upgrade, Signaturen, Notarisierung und Artefaktintegrität bleiben in beiden Kanälen verpflichtend.
+- Canary kompiliert mit `opt-level=2`, `lto=false`, `codegen-units=16`; Stable behält `3`, `thin`, `1`. Die Caches `release-canary` und `release-stable` sind getrennt. Die App-Funktionen und enthaltenen Datenbanktreiber bleiben gleich. Das schnellere Compilerprofil kann die Laufzeitleistung von Canary gegenüber Stable beeinflussen; Canary ist kein Stable-Performance-Nachweis.
+- Dependabot bündelt Minor-/Patch-Updates pro Ökosystem und öffnet maximal zwei PRs je Ökosystem gleichzeitig. Major-Updates bleiben getrennt.
+
+## Freigegebenes Stable über Nacht
+
+1. Canary wie bisher veröffentlichen, dann mit `/release` einen PR `canary` → `main` öffnen. Der PR muss die vollen CI-Pflichtchecks bestehen. Für ein Nacht-Release den PR noch nicht manuell mergen.
+2. Nach ausdrücklicher Freigabe des Nutzers die **vollständige Commit-SHA** dieses veröffentlichten Canary als Repository-Variable setzen:
+   ```sh
+   gh variable set NIGHTLY_RELEASE_SHA --body <40-stellige-canary-sha>
+   ```
+   Die Variable ist die Freigabe für genau diesen Commit. Ein Branchname, ein Tag, ein neu gepushter Canary oder eine Freigabe eines älteren Commits genügt nicht. Widerruf: `gh variable delete NIGHTLY_RELEASE_SHA`.
+3. **Nightly stable release** prüft täglich um **01:17 UTC** (02:17 CET / 03:17 CEST), ob der aktuelle Canary exakt der Freigabe entspricht, als Pre-Release veröffentlicht wurde und einen offenen internen Release-PR hat. Unmittelbar vor dem Merge werden Freigabe und Canary erneut geprüft. Gemergt wird ohne Admin-Bypass mit `--merge --match-head-commit <sha>`; GitHub erzwingt die bestehenden Rulesets und Pflichtchecks.
+4. Der Merge nutzt `RELEASE_PR_TOKEN`, damit der Push auf `main` den normalen Release-Workflow auslöst. Dieser baut Stable neu mit dem Produktionsprofil und veröffentlicht erst nach voller CI, voller Performance-Matrix und allen nativen Paketprüfungen. Ein Canary-Binary wird nicht als Stable umetikettiert. Die Uhrzeit ist der früheste Start; GitHub-Wartezeiten und Tests können die Veröffentlichung verzögern.
+5. Nach dem Merge die Variable löschen. Bei einem gescheiterten Stable-Build denselben Release-Lauf wiederholen; keinen weiteren Merge erzeugen. Neue Canaries brauchen eine neue ausdrückliche Freigabe.
+
+Ohne Variable wird der Nacht-Job übersprungen: keine Runner, keine Nacht-Tests, keine Builds und keine Veröffentlichung. Beliebig viele Canaries können davor erscheinen; weder ihre Anzahl noch ihr Alter erteilt eine Freigabe. Der manuelle Workflow-Start ist standardmäßig ein **Dry Run** und verändert nichts. `dry_run: false` ist nur auf `main` erlaubt und verwendet dieselbe exakte Freigabe. Nach erfolgreichem Merge verweigert die fehlende offene PR einen weiteren Merge.
+
+`RELEASE_PR_TOKEN` braucht zusätzlich **Variables: Read** für den erneuten Freigabeabruf. Sein Benutzer muss PRs gemäß den Repository-Regeln mergen dürfen. Fehlende Rechte oder noch laufende/fehlgeschlagene Pflichtchecks blockieren den Merge, ohne Admin-Bypass.
+
+Zeitpläne und neue manuelle Workflows sind erst aktiv, wenn ihre Dateien auf dem Default-Branch **`main`** liegen. Das Einchecken auf `development` aktiviert die schnelle Push-CI sofort; es gibt dabei weder eine Freigabe noch ein Release. Zur erstmaligen Aktivierung die Änderungen über den normalen Canary-/Release-Weg nach `main` bringen. Siehe [GitHub: Workflow-Trigger](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
+
 Die folgenden Schritte gelten für beide Kanäle.
 
-1. Die CI und vier unsignierte Produktionskompilierungen laufen parallel: macOS arm64 und macOS x86_64 getrennt, dazu Linux und Windows. Der macOS-Paketierjob fügt beide Architekturen mit `lipo` zum Universal-Binary zusammen. Kompilierungsjobs haben Leserechte und erhalten keine Signierschlüssel. Rust ist auf `1.99.0` in `.github/actions/setup-rust/action.yml`, Bun auf `1.3.10` und Node auf `24.14.0` festgelegt. CI, PR-Builds und Produktionsbuilds haben eigene Cache-Namespaces; Zielarchitekturen fließen in die Schlüssel ein. GitHub Actions sind auf Commit-SHAs festgelegt und bleiben über Dependabot aktualisierbar.
+1. Die jeweilige Kanal-CI und vier unsignierte Produktionskompilierungen laufen parallel: macOS arm64 und macOS x86_64 getrennt, dazu Linux und Windows. Der macOS-Paketierjob fügt beide Architekturen mit `lipo` zum Universal-Binary zusammen. Kompilierungsjobs haben Leserechte und erhalten keine Signierschlüssel. Rust ist auf `1.99.0` in `.github/actions/setup-rust/action.yml`, Bun auf `1.3.10` und Node auf `24.14.0` festgelegt. CI, PR-Builds und Produktionsbuilds haben eigene Cache-Namespaces; Zielarchitekturen fließen in die Schlüssel ein. GitHub Actions sind auf Commit-SHAs festgelegt und bleiben über Dependabot aktualisierbar.
 2. Nach erfolgreichen Prüfungen und Kompilierungen wird ein Release-Entwurf für den konkreten Commit angelegt. Separate Jobs prüfen die übertragenen Binärdateien und paketieren sie mit `tauri bundle`, ohne erneut zu kompilieren. Nur diese Jobs erhalten die jeweiligen Signierzugänge. macOS behält Developer ID, Hardened Runtime, Notarisierung und Gatekeeper-Prüfung.
 3. Auf jedem Betriebssystem laufen native Installations- und Upgrade-Prüfungen. Die vorherige stabile Version und die neue Version werden gestartet; die native CLI muss funktionieren und die GUI darf beim Start nicht abstürzen. Windows prüft NSIS-Upgrade und MSI-Inhalt, Linux AppImage-Ersetzung und Debian-Inhalt, macOS DMG-Installation und App-Ersetzung. Die enthaltenen Programme müssen dem gebauten beziehungsweise signierten Programm entsprechen. Tests laufen ausschließlich auf isolierten GitHub-Runnern.
 4. `finalize` lädt alle Artefakte herunter, prüft Größen, SHA-256, Paketformate, Plattformzuordnung und Updater-Signaturen gegen den eingecheckten öffentlichen Schlüssel. Die Signaturen im Manifest müssen exakt den geprüften `.sig`-Dateien entsprechen. Erst danach werden `latest.json`, `SHA256SUMS` und `release-metadata.json` hochgeladen und der Release veröffentlicht. Ein älterer Release darf `latest` nicht ersetzen.
@@ -59,11 +86,19 @@ Die Job-Tabelle in der Release-Zusammenfassung zeigt Laufzeiten und Ergebnisse. 
 
 ## Einmalige Einrichtung
 
-`RELEASE_PR_TOKEN` bleibt ein auf dieses Repository beschränkter Fine-grained Personal Access Token mit **Contents: Read and write** und **Pull requests: Read and write**. Er wird nur noch für den Packaging-PR (`automation/packaging`) verwendet, damit dessen `pull_request`-Checks starten. Die eigentlichen Releases benötigen ihn nicht. Rulesets, Reviews und Pflichtchecks für `main` bleiben aktiv.
+`RELEASE_PR_TOKEN` bleibt ein auf dieses Repository beschränkter Fine-grained Personal Access Token mit **Contents: Read and write** und **Pull requests: Read and write**. Er wird für den Packaging-PR (`automation/packaging`) und freigegebene nächtliche Release-PR-Merges verwendet, damit deren GitHub-Events die Folgeworkflows starten. Für Nacht-Releases zusätzlich **Variables: Read** vergeben. Die eigentlichen Releases benötigen ihn nicht. Rulesets, Reviews und Pflichtchecks für `main` bleiben aktiv.
 
 Für `canary` verhindert ein eigenes Ruleset Force-Pushes und das Löschen des Branches, damit `canary` nur per Fast-Forward wächst und die Canary-Zählung zur Historie passt.
 
 Für Signierung und Notarisierung gelten weiterhin die unten beschriebenen Secrets. Es gibt keinen unsignierten Produktions-Fallback.
+
+## Messstand dieser Umstellung (1. November 2026)
+
+Der bestehende Development-Lauf `41305205531` brauchte für Rust 21:31 Minuten, Rust-Tests 23:36 Minuten und Integration 25:39 Minuten. Die Integration scheiterte erst danach an fehlendem Bun; dessen Installation ist jetzt vorangestellt. Im Performance-Lauf `41305205499` bestanden die Kernbudgets, während Browser-/Throttle-Budgets fehlschlugen. Diese bestehenden Fehler sind nicht behoben; sie blockieren Stable weiterhin. Es werden keine Budgets gelockert.
+
+Lokal: `bun run test:release` bestand mit 65 Tests, dazu actionlint 1.7.12, Produktionskonfiguration und der schreibfreie Aufruf ohne Freigabe. Die Auswahlprüfung simuliert 500 Entscheidungen über jeweils 100 PRs und 1.000 veröffentlichte Canaries: Median **0,069 ms**, p95 **0,187 ms**, gemessene zusätzliche gehaltene JS-Heap-Bytes nach GC **0**; Grenzen p95 < 5 ms und Heap-Zuwachs < 4 MiB. Ohne Freigabe gibt es null API-Aufrufe; der Promotion-Test begrenzt die expliziten API-Aufrufe auf fünf plus zweimaliges paginiertes Lesen der Release-Historie. Es gibt keine Hintergrundabfragen und keine eigene Parallelisierung.
+
+Umgebung: Debian 13, Linux x86_64, KVM/QEMU mit 8 vCPUs und 15 GiB RAM, Bun 1.3.10, Node 20.19.2. GitHub verwendet weiterhin Node 24.14.0. Die lokalen Messungen betreffen die Release-Auswahl, nicht die reale Kompilierungszeit. Es wurden keine Installer gebaut oder veröffentlicht; tatsächliche warme Canary-/Stable-Buildzeiten, macOS, Windows und native Upgrade-Tests müssen die nächsten autorisierten GitHub-Release-Läufe belegen.
 
 ## Lokal prüfen
 
@@ -137,7 +172,9 @@ Team-ID, Hardened Runtime, Ticket und Gatekeeper geprüft. Schlägt eine Prüfun
 fehl, bleibt der Release ein Entwurf. Der temporäre Schlüsselbund wird auch nach
 Fehlern entfernt. Es gibt keinen unsignierten Fallback.
 
-Windows bleibt ohne Plattformzertifikat; Windows kann deshalb beim Installieren
+Windows-Codesigning ist optional. Fehlt `WINDOWS_CERTIFICATE`, werden Binary und Installer unsigniert veröffentlicht. Für eine Signatur braucht es die Repository-Secrets `WINDOWS_CERTIFICATE` (Base64-kodiertes exportierbares PFX mit privatem Codesigning-Key) und `WINDOWS_CERTIFICATE_PASSWORD`. Die Pipeline importiert den Schlüssel ausschließlich im Paketierjob, aktiviert SHA-256-Authenticode und Zeitstempel und prüft Binary, MSI und NSIS gegen denselben Herausgeber. Temporäre PFX-Datei und Zertifikat werden anschließend entfernt. Hardwaregebundene Schlüssel benötigen stattdessen einen passenden externen Signierdienst; dafür ist diese PFX-Konfiguration nicht geeignet. Ist ein Zertifikat hinterlegt, aber ungültig, bricht der Lauf ab.
+
+Eine gültige Signatur verhindert nicht jede zusätzliche Reputationsprüfung; Windows kann beim Installieren
 oder ersten Start warnen. macOS wird ab Version 12 mit aktuellem WebKit
 (Safari 16.4 oder neuer) unterstützt.
 Der Windows-Installer fordert mindestens WebView2 111 an. Diese Laufzeitgrenzen

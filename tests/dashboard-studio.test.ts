@@ -104,6 +104,20 @@ describe("dashboard studio sql", () => {
         null,
       ),
     ).toBe("SELECT '{{tage}}', 'it''s {{tage}}', \"{{tage}}\", 7");
+    const scope = { variables: [days], values: { tage: "7" } };
+    expect(
+      substituteVariables(
+        "-- user's filter\nWHERE d = {{tage}} /* {{tage}} */ AND n = 'x'",
+        scope,
+        "postgres",
+      ),
+    ).toBe("-- user's filter\nWHERE d = 7 /* {{tage}} */ AND n = 'x'");
+    expect(substituteVariables("SELECT 'C:\\' AS p, {{tage}}", scope, "postgres")).toBe(
+      "SELECT 'C:\\' AS p, 7",
+    );
+    expect(substituteVariables("SELECT 'a\\'b', {{tage}}", scope, "mysql")).toBe(
+      "SELECT 'a\\'b', 7",
+    );
   });
 
   test("variable names are sql friendly", () => {

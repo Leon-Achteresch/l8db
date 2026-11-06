@@ -39,21 +39,23 @@ export function NotebookBook({
   const page = (index: number, side: "left" | "right") => (
     <div
       className={cn(
-        "nb-paper relative flex min-h-0 flex-1 flex-col overflow-auto px-8 pt-11 pb-10",
+        "relative flex min-h-0 flex-1 flex-col overflow-auto bg-[var(--nb-paper)]",
         side === "left" ? "nb-page-left" : "nb-page-right",
       )}
     >
-      {pages[index]}
-      {pageNumber(index) !== null && (
-        <span
-          className={cn(
-            "pointer-events-none sticky top-full mt-auto self-end pt-4 font-mono text-[10px] text-muted-foreground",
-            side === "left" && "self-start",
-          )}
-        >
-          {pageNumber(index)}
-        </span>
-      )}
+      <div className="nb-lines relative flex flex-auto shrink-0 flex-col px-8 pt-11 pb-10">
+        {pages[index]}
+        {pageNumber(index) !== null && (
+          <span
+            className={cn(
+              "pointer-events-none sticky top-full mt-auto self-end pt-4 font-mono text-[10px] text-muted-foreground",
+              side === "left" && "self-start",
+            )}
+          >
+            {pageNumber(index)}
+          </span>
+        )}
+      </div>
     </div>
   );
 

@@ -1,10 +1,11 @@
+import { ChevronDown } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function RecommendationCard({
   title,
   children,
+  icon,
   meta,
   details,
   detailsLabel = "Details",
@@ -14,6 +15,7 @@ export function RecommendationCard({
 }: {
   title: ReactNode;
   children?: ReactNode;
+  icon?: ReactNode;
   meta?: ReactNode;
   details?: ReactNode;
   detailsLabel?: string;
@@ -25,40 +27,55 @@ export function RecommendationCard({
   return (
     <div
       className={cn(
-        "w-full overflow-hidden rounded-xl border bg-card text-card-foreground shadow-xs animate-in fade-in slide-in-from-bottom-1 duration-300",
+        "w-full rounded-2xl bg-card p-3.5 text-card-foreground shadow-[0_1px_2px_oklch(0_0_0/5%),0_8px_24px_-12px_oklch(0_0_0/16%)] animate-in fade-in slide-in-from-bottom-1 duration-300",
         className,
       )}
     >
-      <div className="px-3.5 pt-3 pb-3">
-        <p className="text-[13px] font-medium leading-snug">{title}</p>
-        {children && (
-          <div className="mt-1.5 text-xs leading-relaxed break-words text-muted-foreground">
-            {children}
-          </div>
+      <div className="flex items-start gap-2.5">
+        {icon && (
+          <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 [&_svg]:size-3.5">
+            {icon}
+          </span>
         )}
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold leading-snug">{title}</p>
+          {meta && (
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+              {meta}
+            </div>
+          )}
+        </div>
       </div>
+      {children && (
+        <div className="mt-3 text-xs leading-relaxed break-words text-muted-foreground">
+          {children}
+        </div>
+      )}
       {details && (
         <div
           className="grid transition-[grid-template-rows,opacity] duration-300 ease-smooth-out"
           style={{ gridTemplateRows: open ? "1fr" : "0fr", opacity: open ? 1 : 0 }}
         >
           <div inert={!open} className="overflow-hidden">
-            <div className="border-t bg-muted/20 px-3.5 py-2.5">{details}</div>
+            <div className="mt-2 rounded-xl bg-muted/60 px-3 py-2.5">{details}</div>
           </div>
         </div>
       )}
-      <div className="flex items-center justify-between gap-3 border-t bg-muted/30 px-2.5 py-2">
-        <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-          {meta}
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {details && (
-            <Button size="xs" variant="ghost" aria-expanded={open} onClick={() => setOpen(!open)}>
-              {detailsLabel}
-            </Button>
-          )}
-          {actions}
-        </div>
+      <div className="mt-3 flex items-center gap-1.5">
+        {details && (
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+            className="-ml-1 flex h-7 items-center gap-1 rounded-md px-1 text-[11px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {detailsLabel}
+            <ChevronDown
+              className={cn("size-3 transition-transform duration-200", open && "rotate-180")}
+            />
+          </button>
+        )}
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">{actions}</div>
       </div>
     </div>
   );

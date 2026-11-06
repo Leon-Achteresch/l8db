@@ -70,7 +70,7 @@ export function SupabaseSettingsApi({
   }
 
   return (
-    <section className="rounded-2xl border bg-card p-5">
+    <section className="rounded-2xl bg-muted/25 p-5">
       <div className="flex items-center gap-2">
         <KeyRound className="size-4 text-muted-foreground" />
         <h3 className="text-sm font-semibold">API</h3>
@@ -100,7 +100,7 @@ export function SupabaseSettingsApi({
         </dd>
       </dl>
       {revealed && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg border bg-background/50 px-3 py-2">
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-background/50 px-3 py-2">
           <code className="min-w-0 flex-1 truncate text-xs">
             {stored.isPending ? "…" : stored.isError ? String(stored.error) : stored.data}
           </code>
@@ -140,7 +140,7 @@ export function SupabaseSettingsApi({
             </Button>
           </div>
         </div>
-        <pre className="mt-2 overflow-x-auto rounded-lg border bg-background/50 p-3 font-mono text-xs">
+        <pre className="mt-2 overflow-x-auto rounded-lg bg-background/50 p-3 font-mono text-xs">
           {snippet}
         </pre>
         {usePublic && keys.isError && (

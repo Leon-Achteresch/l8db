@@ -122,8 +122,10 @@ pub async fn compare(
     if request.key_columns.is_empty() {
         return Err("Vergleich benötigt eindeutige Schlüssel.".into());
     }
-    let left = read(&request.left, pool_state).await?;
-    let right = read(&request.right, pool_state).await?;
+    let (left, right) = tokio::try_join!(
+        read(&request.left, pool_state),
+        read(&request.right, pool_state)
+    )?;
     let compare_columns = if request.compare_all && request.compare_columns.is_empty() {
         left.columns
             .iter()

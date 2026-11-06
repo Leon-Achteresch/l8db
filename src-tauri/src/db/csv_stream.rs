@@ -17,6 +17,8 @@ pub struct CsvFileSource {
     pub has_header: bool,
     #[serde(default)]
     pub empty_as_null: bool,
+    #[serde(default)]
+    pub null_text: Option<String>,
     pub indices: Vec<usize>,
     #[serde(default)]
     pub format: super::import_source::ImportFormat,
@@ -28,30 +30,62 @@ pub struct CsvFileSource {
     pub keys: Vec<String>,
 }
 
-pub fn preview(path: &str) -> Result<serde_json::Value, String> {
+const SAMPLE_BYTES: u64 = 2 * 1024 * 1024;
+
+const CP1252_HIGH: [char; 32] = [
+    '\u{20ac}', '\u{81}', '\u{201a}', '\u{192}', '\u{201e}', '\u{2026}', '\u{2020}', '\u{2021}',
+    '\u{2c6}', '\u{2030}', '\u{160}', '\u{2039}', '\u{152}', '\u{8d}', '\u{17d}', '\u{8f}',
+    '\u{90}', '\u{2018}', '\u{2019}', '\u{201c}', '\u{201d}', '\u{2022}', '\u{2013}', '\u{2014}',
+    '\u{2dc}', '\u{2122}', '\u{161}', '\u{203a}', '\u{153}', '\u{9d}', '\u{17e}', '\u{178}',
+];
+
+fn cp1252_char(byte: u8) -> char {
+    match byte {
+        0x80..=0x9f => CP1252_HIGH[(byte - 0x80) as usize],
+        _ => byte as char,
+    }
+}
+
+fn is_windows_1252(sample: &[u8], partial: bool) -> bool {
+    match std::str::from_utf8(sample) {
+        Ok(_) => false,
+        Err(error) => !partial || error.error_len().is_some(),
+    }
+}
+
+fn read_sample(path: &str) -> Result<(Vec<u8>, bool), String> {
     let file = File::open(path).map_err(|error| error.to_string())?;
     let metadata = file.metadata().map_err(|error| error.to_string())?;
     if !metadata.is_file() || metadata.len() > MAX_FILE_BYTES {
         return Err("CSV-Vorschau benötigt eine reguläre Datei bis 1 GiB.".into());
     }
     let mut bytes = Vec::new();
-    file.take(2 * 1024 * 1024)
+    file.take(SAMPLE_BYTES)
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
     let partial = metadata.len() > bytes.len() as u64;
+    Ok((bytes, partial))
+}
+
+pub fn preview(path: &str) -> Result<serde_json::Value, String> {
+    let (mut bytes, partial) = read_sample(path)?;
+    if is_windows_1252(&bytes, partial) {
+        let text: String = bytes.iter().map(|byte| cp1252_char(*byte)).collect();
+        return Ok(
+            serde_json::json!({ "text": text, "partial": partial, "encoding": "windows-1252" }),
+        );
+    }
     if let Err(error) = std::str::from_utf8(&bytes) {
-        if !partial || error.error_len().is_some() {
-            return Err("CSV-Datei ist kein gültiges UTF-8.".into());
-        }
         bytes.truncate(error.valid_up_to());
     }
     let text = String::from_utf8(bytes).map_err(|error| error.to_string())?;
-    Ok(serde_json::json!({ "text": text, "partial": partial }))
+    Ok(serde_json::json!({ "text": text, "partial": partial, "encoding": "utf-8" }))
 }
 
 struct Utf8Chars {
     bytes: Bytes<std::io::Take<BufReader<File>>>,
     consumed: u64,
+    single_byte: bool,
 }
 
 impl Iterator for Utf8Chars {
@@ -61,6 +95,10 @@ impl Iterator for Utf8Chars {
         let first = self.bytes.next()?;
         Some((|| {
             let first = first.map_err(|error| error.to_string())?;
+            if self.single_byte {
+                self.consumed += 1;
+                return Ok(cp1252_char(first));
+            }
             let length = match first {
                 0..=127 => 1,
                 194..=223 => 2,
@@ -118,6 +156,8 @@ impl CsvRows {
         if file.metadata().map_err(|error| error.to_string())?.len() > MAX_FILE_BYTES {
             return Err("CSV-Datei überschreitet 1 GiB.".into());
         }
+        let (sample, partial) = read_sample(&source.path)?;
+        let single_byte = is_windows_1252(&sample, partial);
         let mut reader = BufReader::new(file);
         if reader
             .fill_buf()
@@ -130,6 +170,7 @@ impl CsvRows {
             characters: Utf8Chars {
                 bytes: reader.take(MAX_FILE_BYTES + 1).bytes(),
                 consumed: 0,
+                single_byte,
             }
             .peekable(),
             source: source.clone(),
@@ -162,7 +203,7 @@ impl CsvRows {
                 if values.is_empty() && !started {
                     return Ok(None);
                 }
-                values.push(Self::field(field, quoted, self.source.empty_as_null));
+                values.push(self.field(field, quoted));
                 return Ok(Some(values));
             };
             size += character.len_utf8();
@@ -195,11 +236,8 @@ impl CsvRows {
                 continue;
             }
             if self.source.delimiter.starts_with(character) {
-                values.push(Self::field(
-                    std::mem::take(&mut field),
-                    quoted,
-                    self.source.empty_as_null,
-                ));
+                let text = std::mem::take(&mut field);
+                values.push(self.field(text, quoted));
                 quoted = false;
                 started = false;
                 continue;
@@ -214,7 +252,7 @@ impl CsvRows {
                     start_line = self.line;
                     continue;
                 }
-                values.push(Self::field(field, quoted, self.source.empty_as_null));
+                values.push(self.field(field, quoted));
                 return Ok(Some(values));
             }
             field.push(character);
@@ -222,8 +260,15 @@ impl CsvRows {
         }
     }
 
-    fn field(text: String, quoted: bool, empty_as_null: bool) -> Option<String> {
-        if text.is_empty() && !quoted && empty_as_null {
+    fn field(&self, text: String, quoted: bool) -> Option<String> {
+        let null_text = self
+            .source
+            .null_text
+            .as_deref()
+            .filter(|value| !value.is_empty());
+        if !quoted
+            && ((text.is_empty() && self.source.empty_as_null) || null_text == Some(text.as_str()))
+        {
             None
         } else {
             Some(text)
@@ -286,6 +331,36 @@ mod tests {
         let result = preview(file.path().to_str().unwrap()).unwrap();
         assert_eq!(result["partial"], true);
         assert_eq!(result["text"].as_str().unwrap().len(), 2 * 1024 * 1024 - 1);
+    }
+
+    #[test]
+    fn windows_1252_files_and_null_text_are_understood() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(b"name;preis\nM\xfcller \x80;NULL\n\"NULL\";1\n")
+            .unwrap();
+        let path = file.path().to_str().unwrap();
+        let result = preview(path).unwrap();
+        assert_eq!(result["encoding"], "windows-1252");
+        assert!(result["text"].as_str().unwrap().contains("Müller €"));
+        let source = CsvFileSource {
+            path: path.into(),
+            delimiter: ";".into(),
+            quote: "\"".into(),
+            has_header: true,
+            null_text: Some("NULL".into()),
+            indices: vec![0, 1],
+            ..Default::default()
+        };
+        assert_eq!(
+            CsvRows::open(&source)
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap(),
+            vec![
+                vec![Some("Müller €".into()), None],
+                vec![Some("NULL".into()), Some("1".into())],
+            ]
+        );
     }
 
     #[test]

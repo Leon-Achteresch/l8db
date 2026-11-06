@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
+import { cpuThrottleRate } from "../scripts/performance-report";
 import { POSTGRES_CAPABILITIES } from "../src/lib/providers";
 import { seedApp } from "./fixtures/perf-app";
 
@@ -183,7 +184,7 @@ test.skipIf(!ENABLED)(
       const tablesTab = page.locator('[data-slot="tabs-trigger"][aria-label="Tabellen"]');
       await packagesTab.waitFor({ timeout: 30000 });
       await page.waitForTimeout(1500);
-      await cdp?.send("Emulation.setCPUThrottlingRate", { rate: RATE });
+      await cdp?.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(RATE) });
 
       const metrics = async (): Promise<Record<string, number>> => {
         if (!cdp) return { LayoutCount: 0, RecalcStyleCount: 0, ScriptDuration: 0 };

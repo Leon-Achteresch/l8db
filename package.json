@@ -15,6 +15,7 @@
     "url": "https://github.com/Leon-Achteresch/l8db/issues"
   },
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks",
     "dev": "vite",
     "dev:ai": "tauri dev --config src-tauri/tauri.ai-dev.conf.json",
     "build": "tsc -p tsconfig.app.json && vite build",
@@ -24,8 +25,9 @@
     "lint": "biome lint ./src",
     "format": "biome format --write ./src",
     "check": "biome check ./src",
-    "test": "bun test tests",
-    "test:release": "bun test tests/release-artifacts.test.ts tests/release-integrity.test.ts tests/release-plan.test.ts tests/release-signing.test.ts tests/release-workflows.test.ts tests/packaging-update.test.ts tests/changelog.test.ts tests/version.test.ts",
+    "test": "bun scripts/test-tests.ts",
+    "test:cli": "bun scripts/test-cli.ts",
+    "test:release": "bun test tests/ci-profiles.test.ts tests/nightly-release.test.ts tests/release-artifacts.test.ts tests/release-integrity.test.ts tests/release-plan.test.ts tests/release-signing.test.ts tests/release-workflows.test.ts tests/packaging-update.test.ts tests/changelog.test.ts tests/version.test.ts",
     "test:browser": "bun scripts/test-browser.ts",
     "test:integration": "bash scripts/test-postgres-ssh.sh",
     "pr:report": "bun scripts/pr-report.ts",
@@ -120,6 +122,7 @@
     "shiki": "^4.5.0",
     "sonner": "^2.0.8",
     "sql-formatter": "^15.8.2",
+    "sucrase": "^3.35.0",
     "tailwind-merge": "^3.7.0",
     "thesvg": "^3.3.8",
     "tw-animate-css": "^1.4.0",
@@ -137,6 +140,7 @@
     "@types/react-dom": "^19.3.0",
     "@types/semver": "^7.8.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "fake-indexeddb": "^6.2.6",
     "playwright": "^1.63.0",
     "shadcn": "^4.22.1",
     "tailwindcss": "^4.3.3",
@@ -148,6 +152,7 @@
     "examples/*"
   ],
   "overrides": {
+    "minimatch": "^11.0.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "dompurify": "^3.4.17",
@@ -161,7 +166,13 @@
     "body-parser": "^2.4.0",
     "fast-uri": "^3.1.9",
     "undici": "^7.30.1",
-    "zod": "^4.6.6"
+    "zod": "^4.6.6",
+    "qs": "^6.17.0",
+    "seroval": "^1.6.11",
+    "seroval-plugins": "^1.6.11",
+    "@hono/node-server": "^2.1.3",
+    "systeminformation": "^5.33.16",
+    "deepmerge": "file:packages/secure-deepmerge"
   },
   "packageManager": "bun@1.3.10",
   "patchedDependencies": {

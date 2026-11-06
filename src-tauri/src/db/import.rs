@@ -228,6 +228,17 @@ fn is_number(value: &str) -> bool {
         && trimmed.parse::<f64>().is_ok_and(f64::is_finite)
 }
 
+fn decimal_comma(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let (whole, fraction) = trimmed.split_once(',')?;
+    let digits = whole.strip_prefix(['+', '-']).unwrap_or(whole);
+    (!digits.is_empty()
+        && !fraction.is_empty()
+        && digits.bytes().all(|byte| byte.is_ascii_digit())
+        && fraction.bytes().all(|byte| byte.is_ascii_digit()))
+    .then(|| format!("{whole}.{fraction}"))
+}
+
 pub fn parse_bool(value: &str) -> Option<bool> {
     match value.trim().to_ascii_lowercase().as_str() {
         "true" | "t" | "yes" | "y" | "1" | "ja" | "wahr" | "on" => Some(true),
@@ -273,10 +284,17 @@ pub fn literal(dialect: Dialect, data_type: &str, value: Option<&str>) -> String
     let Some(value) = value else {
         return "NULL".into();
     };
-    if dialect == Dialect::Postgres {
-        return super::quote_literal(value);
-    }
     let class = classify(data_type);
+    let decimal = (class == TypeClass::Decimal)
+        .then(|| decimal_comma(value))
+        .flatten();
+    let value = decimal.as_deref().unwrap_or(value);
+    if dialect == Dialect::Postgres {
+        return match (class, parse_bool(value)) {
+            (TypeClass::Bool, Some(flag)) => if flag { "'true'" } else { "'false'" }.into(),
+            _ => super::quote_literal(value),
+        };
+    }
     match class {
         TypeClass::Integer | TypeClass::Decimal if is_number(value) => value.trim().to_string(),
         TypeClass::Integer | TypeClass::Decimal
@@ -622,7 +640,7 @@ fn catalog_sql(dialect: Dialect, schema: &str, table: &str) -> Result<String, St
             lit(table)
         ),
         Dialect::Oracle => format!(
-            "SELECT column_name, data_type, CASE WHEN nullable = 'Y' THEN 1 ELSE 0 END, CASE WHEN default_length > 0 THEN 1 ELSE 0 END, CASE WHEN identity_column = 'YES' THEN 1 ELSE 0 END, CASE WHEN virtual_column = 'YES' THEN 1 ELSE 0 END, column_id FROM all_tab_cols WHERE owner = {} AND table_name = {} AND hidden_column = 'NO' ORDER BY column_id",
+            "SELECT column_name, data_type, CASE WHEN nullable = 'Y' THEN 1 ELSE 0 END, CASE WHEN default_length > 0 THEN 1 ELSE 0 END, CASE WHEN identity_column = 'YES' THEN 1 ELSE 0 END, CASE WHEN virtual_column = 'YES' AND default_length > 0 THEN 1 ELSE 0 END, column_id FROM all_tab_cols WHERE owner = {} AND table_name = {} AND hidden_column = 'NO' ORDER BY column_id",
             lit(schema),
             lit(table)
         ),
@@ -1455,6 +1473,25 @@ mod tests {
             "CAST('2024-01-02T03:04:05.500' AS datetime2)"
         );
         assert_eq!(literal(Dialect::Postgres, "integer", Some("7")), "'7'");
+        assert_eq!(literal(Dialect::Postgres, "boolean", Some("ja")), "'true'");
+        assert_eq!(
+            literal(Dialect::Postgres, "numeric(10,2)", Some("-1,5")),
+            "'-1.5'"
+        );
+        assert_eq!(
+            literal(Dialect::Mysql, "decimal(10,2)", Some(" 12,25 ")),
+            "12.25"
+        );
+        assert_eq!(
+            literal(Dialect::Mysql, "decimal(10,2)", Some("1,234,5")),
+            "'1,234,5'"
+        );
+        assert_eq!(literal(Dialect::Postgres, "text", Some("1,5")), "'1,5'");
+        assert_eq!(literal(Dialect::Postgres, "bool", Some("Nein")), "'false'");
+        assert_eq!(
+            literal(Dialect::Postgres, "boolean", Some("vielleicht")),
+            "'vielleicht'"
+        );
         assert_eq!(literal(Dialect::Oracle, "VARCHAR2(10)", None), "NULL");
         let long = "x".repeat(3500);
         let clob = literal(Dialect::Oracle, "CLOB", Some(&long));

@@ -1,4 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
+import { stat } from "@tauri-apps/plugin-fs";
 import { ArchiveIcon, FileIcon, FolderIcon, TerminalIcon } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
@@ -8,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { BACKUP_FORMATS, backupFormat, backupToolFor, defaultBackupOptions } from "@/lib/backup";
 import { backupScope, runBackupJob, useBackupJobs } from "@/lib/backup-runner";
+import { safeSetItem } from "@/lib/buffered-storage";
 import { copyWithToast } from "@/lib/clipboard";
 import { providerFor } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
@@ -59,6 +61,7 @@ export function BackupPanel({
   const [pattern, setPattern] = useState<string | null>(null);
   const [serverPath, setServerPath] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [overwrite, setOverwrite] = useState<string | null>(null);
   const scope = backupScope("backup", connection.id, database);
   const jobId = useBackupJobs((state) => state.lastJob[scope]);
   const command = useBackupJobs((state) => (jobId ? state.outcomes[jobId]?.command : undefined));
@@ -93,7 +96,7 @@ export function BackupPanel({
       });
       if (typeof picked === "string") {
         setFolder(picked);
-        localStorage.setItem(FOLDER_KEY, picked);
+        safeSetItem(localStorage, FOLDER_KEY, picked);
       }
     } catch (failure) {
       setError(String(failure));
@@ -102,6 +105,17 @@ export function BackupPanel({
 
   const start = async () => {
     setError(null);
+    if (path && !format?.serverSide && overwrite !== path) {
+      const exists = await stat(path).then(
+        () => true,
+        () => false,
+      );
+      if (exists) {
+        setOverwrite(path);
+        return;
+      }
+    }
+    setOverwrite(null);
     const previous = useBackupJobs.getState().lastJob[scope];
     try {
       await runBackupJob({ mode: "backup", connection, database, path, options });
@@ -195,7 +209,7 @@ export function BackupPanel({
                     className="h-8 pl-8 font-mono text-xs md:text-xs"
                     onChange={(event) => setFolder(event.target.value)}
                     onBlur={() => {
-                      if (folder.trim()) localStorage.setItem(FOLDER_KEY, folder.trim());
+                      if (folder.trim()) safeSetItem(localStorage, FOLDER_KEY, folder.trim());
                     }}
                   />
                 </div>
@@ -258,6 +272,12 @@ export function BackupPanel({
             </Button>
           </p>
         )}
+        {overwrite === path && (
+          <p role="alert" className="text-xs text-amber-600 dark:text-amber-400">
+            {fileName} existiert bereits und wird erst nach erfolgreicher Sicherung ersetzt. Zum
+            Fortfahren auf „Überschreiben“ klicken.
+          </p>
+        )}
         {error && (
           <p role="alert" className="whitespace-pre-wrap break-words text-xs text-destructive">
             {error}
@@ -289,7 +309,9 @@ export function BackupPanel({
                 ? "Sicherung läuft…"
                 : format?.noFile
                   ? "BGSAVE auslösen"
-                  : "Sicherung starten"}
+                  : overwrite === path
+                    ? "Überschreiben"
+                    : "Sicherung starten"}
             </Button>
           </>,
           actions,

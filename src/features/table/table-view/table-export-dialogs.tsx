@@ -16,6 +16,7 @@ export function TableExportDialogs({
   exportColumns,
   exportRows,
   fullExportSource,
+  columnTypes,
 }: Pick<
   TableExport,
   | "csvExportOpen"
@@ -27,7 +28,7 @@ export function TableExportDialogs({
   | "exportColumns"
   | "exportRows"
   | "fullExportSource"
-> & { table: string }) {
+> & { table: string; columnTypes?: { name: string; data_type: string }[] }) {
   return (
     <>
       <CsvExportDialog
@@ -54,6 +55,7 @@ export function TableExportDialogs({
         rows={exportRows}
         defaultFileName={`${table}.xlsx`}
         defaultSheetName={table}
+        columnTypes={columnTypes}
       />
     </>
   );

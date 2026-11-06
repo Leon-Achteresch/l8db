@@ -262,6 +262,66 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
   },
 ];
 
+FALLBACK_PROVIDERS.push(
+  {
+    id: "jdbc",
+    name: "JDBC",
+    group: "Weitere Treiber",
+    kind: "jdbc",
+    default_port: null,
+    file_based: false,
+    url_schemes: ["jdbc"],
+    placeholder: "jdbc:l8db:profil-id",
+    hint: "JDBC-Profil unter Treiber anlegen. Benötigt JDK 17 oder neuer und den JDBC-Treiber des Herstellers.",
+    hosts: [],
+    driver: { type: "runtime_library", library: "JDK 17+ und JDBC-JAR" },
+    capabilities: {
+      ...UNAVAILABLE_CAPABILITIES,
+      schemas: true,
+      views: true,
+      bind_parameters: true,
+      query_cancel: true,
+    },
+    driver_status: {
+      available: false,
+      detail:
+        "JDBC-Laufzeit noch nicht geprüft. Unter Treiber werden JDK und JDBC-Profile verwaltet.",
+      install: [],
+      install_command: null,
+    },
+  },
+  {
+    id: "workspace",
+    name: "Workspace",
+    group: "Team",
+    kind: "workspace",
+    default_port: null,
+    file_based: false,
+    url_schemes: ["workspace"],
+    placeholder: "workspace://profil-id/verbindung-id",
+    hint: "Verbindung unter Workspaces hinzufügen. Rechte und Zugangsdaten verwaltet der Workspace-Server.",
+    hosts: [],
+    driver: { type: "builtin" },
+    capabilities: { ...UNAVAILABLE_CAPABILITIES, schemas: true, query_cancel: true },
+    driver_status: FALLBACK_DRIVER,
+  },
+  {
+    id: "spacetimedb",
+    name: "SpacetimeDB",
+    group: "Cloud & HTTP",
+    kind: "spacetimedb",
+    default_port: null,
+    file_based: false,
+    url_schemes: ["spacetimedb"],
+    placeholder: "spacetimedb://token:identity-token@maincloud.spacetimedb.com/datenbank",
+    hint: "SQL-Abfragen sind schreibgeschützt. Das Identity-Token wird als Passwort gespeichert.",
+    hosts: ["maincloud.spacetimedb.com"],
+    driver: { type: "builtin" },
+    capabilities: { ...UNAVAILABLE_CAPABILITIES, dashboard_parallelism: 1 },
+    driver_status: FALLBACK_DRIVER,
+  },
+);
+
 type BooleanCapability = {
   [K in keyof Capabilities]: Capabilities[K] extends boolean ? K : never;
 }[keyof Capabilities];

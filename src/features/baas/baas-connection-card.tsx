@@ -22,7 +22,7 @@ import { SPRING_LAYOUT } from "@/lib/ease";
 import { activateConnectionWithToast } from "@/lib/ssh";
 import { BAAS_PROVIDERS } from "./baas-providers";
 import { type BaasSection, DATABASE_LABEL, PROVIDER_SECTIONS, SECTION_INFO } from "./baas-sections";
-import { disconnectBaas } from "./disconnect-baas";
+import { disconnectBaas, disconnectDescription } from "./disconnect-baas";
 import { SupabaseDatabaseConnectDialog } from "./supabase-database-connect-dialog";
 import type { BaasConnection } from "./use-baas-connections";
 import { useSupabaseDatabase } from "./use-supabase-database";
@@ -204,9 +204,10 @@ export function BaasConnectionCard({
           <AlertDialogHeader>
             <AlertDialogTitle>{providerName}-Zugang entfernen?</AlertDialogTitle>
             <AlertDialogDescription>
-              {connection.provider === "supabase" && !connection.url
-                ? "Der Supabase-Zugangstoken wird aus dem Schlüsselbund entfernt. Das betrifft alle Supabase-Projekte. Verbundene Datenbanken bleiben als Verbindung erhalten."
-                : `„${connection.name}“ und die gespeicherten Zugangsdaten werden aus l8db entfernt. Das Projekt selbst bleibt erhalten.`}
+              {disconnectDescription(
+                connection.name,
+                connection.provider === "supabase" && !connection.url,
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

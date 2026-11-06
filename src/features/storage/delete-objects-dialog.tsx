@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { s3DeleteObjects, s3DeletePrefix } from "@/lib/db";
+import { runStorageJob } from "@/lib/storage/transfers";
 import { ConfirmActionDialog } from "./confirm-action-dialog";
 import type { BrowserRow } from "./use-object-listing";
 import { useStorageConnection } from "./use-storage-connection";
@@ -33,6 +34,7 @@ export function DeleteObjectsDialog({
   const folders = rows?.filter((row) => row.kind === "folder") ?? [];
   const objects = rows?.filter((row) => row.kind === "object") ?? [];
   const specificVersions = objects.some((row) => row.versionId);
+  const permanentFolders = folders.length > 0 && (allVersions || versionsMode);
 
   return (
     <ConfirmActionDialog
@@ -47,14 +49,14 @@ export function DeleteObjectsDialog({
           {folders.length ? `${folders.length} Ordner inklusive Inhalt` : ""}
           {folders.length && objects.length ? " und " : ""}
           {objects.length ? `${objects.length} Objekt(e)` : ""}
-          {specificVersions
-            ? " – die gewählten Versionen werden endgültig entfernt."
-            : allVersions
-              ? " werden mit allen Versionen endgültig gelöscht."
+          {permanentFolders
+            ? " werden mit allen Versionen endgültig gelöscht. Das lässt sich nicht rückgängig machen."
+            : specificVersions
+              ? " – die gewählten Versionen werden endgültig entfernt."
               : " werden gelöscht. In versionierten Buckets entsteht ein Delete-Marker."}
         </>
       }
-      confirmLabel="Löschen"
+      confirmLabel={permanentFolders || specificVersions ? "Endgültig löschen" : "Löschen"}
       onOpenChange={(open) => !open && onClose()}
       onConfirm={async () => {
         if (!rows) return;
@@ -71,10 +73,17 @@ export function DeleteObjectsDialog({
           errors.push(...outcome.errors);
         }
         for (const folder of folders) {
-          const outcome = await s3DeletePrefix(url, bucket, folder.key, {
-            allVersions: allVersions || versionsMode,
-            bypassGovernance: bypass,
-          });
+          const outcome = await runStorageJob(
+            connection,
+            bucket,
+            `Ordner löschen · ${folder.name || folder.key}`,
+            (jobId) =>
+              s3DeletePrefix(url, bucket, folder.key, {
+                allVersions: permanentFolders,
+                bypassGovernance: bypass,
+                jobId,
+              }),
+          );
           deleted += outcome.deleted;
           errors.push(...outcome.errors);
         }

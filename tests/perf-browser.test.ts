@@ -5,7 +5,7 @@ import { chromium, webkit } from "playwright";
 import type { UiDensity } from "../src/lib/settings";
 import { type TableStyle, tableRowHeight } from "../src/lib/table-style";
 import { requestCounts } from "./fixtures/perf-app-requests";
-import { profileWebKit } from "./fixtures/perf-webkit-profile";
+import { expectFrame, FRAME_BUDGETS, profileWebKit } from "./fixtures/perf-webkit-profile";
 
 type Sample = {
   fps: number;
@@ -252,6 +252,7 @@ for (const kind of ["table", "result"])
                 {
                   browser: browser.version(),
                   engine: WEBKIT ? "webkit" : "chromium",
+                  frameBudgets: FRAME_BUDGETS,
                   profilingEnabled: Boolean(process.env.L8DB_PERF_PROFILE),
                   sourceHash: Bun.hash(source).toString(16),
                   styleHash: Bun.hash(css).toString(16),
@@ -616,10 +617,10 @@ for (const kind of ["table", "result"])
             }
           }
           for (const axis of ["vertical", "horizontal", "diagonal"] as const) {
-            expect(result[axis].fps).toBeGreaterThan(59);
-            expect(result[axis].p95).toBeLessThan(21);
-            expect(result[axis].worst).toBeLessThan(50);
-            expect(result[axis].frames).toBeGreaterThan((DURATION / 1000) * 55);
+            expectFrame(result[axis].fps).toBeGreaterThan(59);
+            expectFrame(result[axis].p95).toBeLessThan(21);
+            expectFrame(result[axis].worst).toBeLessThan(50);
+            expectFrame(result[axis].frames).toBeGreaterThan((DURATION / 1000) * 55);
           }
         } finally {
           await browser.close();

@@ -226,14 +226,14 @@ mod tests {
         );
         assert!(!plain.tls && !plain.verify);
         assert!(
-            ok(
+            !ok(
                 Mssql,
                 "mssql://sa@db/erp?trustServerCertificate=true&encrypt=true"
             )
             .verify
         );
         assert!(
-            ok(
+            !ok(
                 Mssql,
                 "mssql://sa@db/erp?TrustServerCertificate=true&encrypt=true"
             )

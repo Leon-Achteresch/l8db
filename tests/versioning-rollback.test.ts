@@ -117,6 +117,12 @@ describe("release rollback", () => {
     ).rejects.toThrow("lokale Änderungen");
     expect(writes).toEqual([]);
     files.set(pkg.path, committed.get(pkg.path) as string);
+    files.set(extra.path, "CREATE VIEW extra AS SELECT 2 FROM dual\n");
+    await expect(
+      restoreReleaseFiles("/repo", project, projectText, old, "a".repeat(40)),
+    ).rejects.toThrow("lokale Änderungen");
+    expect(writes).toEqual([]);
+    files.set(extra.path, committed.get(extra.path) as string);
     const result = await restoreReleaseFiles("/repo", project, projectText, old, "a".repeat(40));
     expect(files.get(pkg.path)).toBe("PACKAGE ORDER_SERVICE AS v1 END;\n");
     expect(files.get(pkg.bodyPath as string)).toBe("BODY v1\n");

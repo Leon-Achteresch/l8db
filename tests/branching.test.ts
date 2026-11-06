@@ -3,6 +3,7 @@ import {
   effectiveRules,
   invalidRules,
   setRule,
+  strategiesFor,
   suggestedRules,
   uncovered,
 } from "../src/lib/branching/masking";
@@ -166,6 +167,29 @@ test("invalid masking rules are rejected before they reach the database", () => 
   ]);
   expect(problems).toHaveLength(4);
   expect(problems.at(-1)).toContain("existiert nicht");
+});
+
+test("eindeutige und per Fremdschlüssel verbundene Spalten verlangen passende Maskierung", () => {
+  const columns = [
+    column("token", { unique: true, notNull: true }),
+    column("email", { unique: true }),
+    { ...column("customer_email"), table: "orders", references: ["public.customers.email"] },
+  ];
+  expect(strategiesFor(columns[0])).toEqual(["keep", "hash", "email"]);
+  const problems = invalidRules(columns, [
+    { schema: "public", table: "customers", column: "token", strategy: "redact" },
+    { schema: "public", table: "customers", column: "email", strategy: "email" },
+  ]);
+  expect(problems).toEqual([
+    expect.stringContaining("eindeutige Spalte"),
+    expect.stringContaining("Fremdschlüssel"),
+  ]);
+  expect(
+    invalidRules(columns, [
+      { schema: "public", table: "customers", column: "email", strategy: "email" },
+      { schema: "public", table: "orders", column: "customer_email", strategy: "email" },
+    ]),
+  ).toEqual([]);
 });
 
 test("team rules win and strict databases ignore personal rules", () => {

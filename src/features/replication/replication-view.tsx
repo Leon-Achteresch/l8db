@@ -14,10 +14,12 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConfirmActionDialog } from "@/features/storage/confirm-action-dialog";
 import { useActiveConnection } from "@/lib/connections";
 import { dropPublication, dropSubscription } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import { errorMessageOf } from "@/lib/error-details";
 import { usePublicationsQuery, useSubscriptionsQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { CreatePublicationDialog } from "./replication-view/create-publication-dialog";
@@ -30,51 +32,31 @@ export function ReplicationView() {
   const [tab, setTab] = useState("publications");
   const [pubDialogOpen, setPubDialogOpen] = useState(false);
   const [subDialogOpen, setSubDialogOpen] = useState(false);
-  const { data: publications, isLoading: pubsLoading } = usePublicationsQuery();
-  const { data: subscriptions, isLoading: subsLoading } = useSubscriptionsQuery();
+  const [pendingDrop, setPendingDrop] = useState<{
+    kind: "publication" | "subscription";
+    name: string;
+  } | null>(null);
+  const { data: publications, isLoading: pubsLoading, error: pubsError } = usePublicationsQuery();
+  const { data: subscriptions, isLoading: subsLoading, error: subsError } = useSubscriptionsQuery();
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["publications"] });
     void queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
   };
 
-  const handleDropPub = async (name: string) => {
-    if (!connection) return;
-    if (!window.confirm(`Publikation "${name}" wirklich löschen?`)) return;
-    try {
-      await dropPublication(
-        connection.kind,
-        effectiveConnectionString(connection),
-        name,
-        database ?? undefined,
-      );
-      toast.success(`Publikation "${name}" gelöscht.`);
-      refresh();
-    } catch (err) {
-      toast.error(typeof err === "string" ? err : String(err));
-    }
-  };
-
-  const handleDropSub = async (name: string) => {
-    if (!connection) return;
-    if (
-      !window.confirm(
-        `Subskription "${name}" wirklich löschen? Der Provider-Slot wird dabei mit gelöscht.`,
-      )
-    )
-      return;
-    try {
-      await dropSubscription(
-        connection.kind,
-        effectiveConnectionString(connection),
-        name,
-        database ?? undefined,
-      );
-      toast.success(`Subskription "${name}" gelöscht.`);
-      refresh();
-    } catch (err) {
-      toast.error(typeof err === "string" ? err : String(err));
-    }
+  const confirmDrop = async () => {
+    if (!connection || !pendingDrop) return;
+    const drop = pendingDrop.kind === "publication" ? dropPublication : dropSubscription;
+    await drop(
+      connection.kind,
+      effectiveConnectionString(connection),
+      pendingDrop.name,
+      database ?? undefined,
+    );
+    toast.success(
+      `${pendingDrop.kind === "publication" ? "Publikation" : "Subskription"} "${pendingDrop.name}" gelöscht.`,
+    );
+    refresh();
   };
 
   if (!connection) {
@@ -115,6 +97,10 @@ export function ReplicationView() {
           </div>
           {pubsLoading ? (
             <p className="p-8 text-center text-sm text-muted-foreground">Lade Publikationen…</p>
+          ) : pubsError ? (
+            <p role="alert" className="p-8 text-center text-sm text-destructive">
+              Publikationen konnten nicht geladen werden: {errorMessageOf(pubsError)}
+            </p>
           ) : (publications?.length ?? 0) === 0 ? (
             <Empty>
               <EmptyHeader>
@@ -155,7 +141,7 @@ export function ReplicationView() {
                       variant="ghost"
                       size="icon"
                       className="ml-auto size-7 hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => void handleDropPub(pub.name)}
+                      onClick={() => setPendingDrop({ kind: "publication", name: pub.name })}
                       title={`Publikation "${pub.name}" löschen`}
                     >
                       <Trash2Icon className="size-3.5" />
@@ -207,6 +193,10 @@ export function ReplicationView() {
           </div>
           {subsLoading ? (
             <p className="p-8 text-center text-sm text-muted-foreground">Lade Subskriptionen…</p>
+          ) : subsError ? (
+            <p role="alert" className="p-8 text-center text-sm text-destructive">
+              Subskriptionen konnten nicht geladen werden: {errorMessageOf(subsError)}
+            </p>
           ) : (subscriptions?.length ?? 0) === 0 ? (
             <Empty>
               <EmptyHeader>
@@ -251,7 +241,7 @@ export function ReplicationView() {
                       variant="ghost"
                       size="icon"
                       className="ml-auto size-7 hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => void handleDropSub(sub.name)}
+                      onClick={() => setPendingDrop({ kind: "subscription", name: sub.name })}
                       title={`Subskription "${sub.name}" löschen`}
                     >
                       <Trash2Icon className="size-3.5" />
@@ -282,6 +272,20 @@ export function ReplicationView() {
         open={subDialogOpen}
         onOpenChange={setSubDialogOpen}
         onSuccess={refresh}
+      />
+      <ConfirmActionDialog
+        open={pendingDrop !== null}
+        title={pendingDrop?.kind === "publication" ? "Publikation löschen" : "Subskription löschen"}
+        description={
+          pendingDrop?.kind === "publication"
+            ? `Publikation "${pendingDrop.name}" wirklich löschen?`
+            : `Subskription "${pendingDrop?.name}" wirklich löschen? Der Provider-Slot wird dabei mit gelöscht.`
+        }
+        confirmLabel="Löschen"
+        onOpenChange={(open) => {
+          if (!open) setPendingDrop(null);
+        }}
+        onConfirm={confirmDrop}
       />
     </main>
   );

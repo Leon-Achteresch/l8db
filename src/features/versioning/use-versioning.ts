@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { safeSetItem } from "@/lib/buffered-storage";
 import type { CompareSideSelection } from "@/lib/compare-types";
 import { useConnectionsStore } from "@/lib/connections";
 import { versioningRepository } from "@/lib/db";
@@ -55,7 +56,7 @@ export function useVersioning() {
         : null;
       if (request !== refreshRevision.current || dirtyRef.current) return;
       setRepo(loaded.status.repo);
-      localStorage.setItem("l8db.versioning.repo", loaded.status.repo);
+      safeSetItem(localStorage, "l8db.versioning.repo", loaded.status.repo);
       setStatus(loaded.status);
       setProject(loaded.project);
       setProjectText(loaded.projectText);

@@ -82,6 +82,12 @@ describe("team connection merge", () => {
     expect(teamConnectionId("https://other.de", "erp")).not.toBe(teamConnectionId(HUB, "erp"));
   });
 
+  test("a duplicate id keeps the first entry and warns", () => {
+    const merge = mergeTeamConnections([], HUB, [erp, { ...erp, name: "ERP doppelt" }]);
+    expect(merge.connections.map((connection) => connection.name)).toEqual(["ERP"]);
+    expect(merge.warnings[0]).toContain("Doppelte id");
+  });
+
   test("keeps local edits and the database user unless the admin changes that field", () => {
     const first = mergeTeamConnections([], HUB, [erp]).connections[0];
     const edited = {
@@ -151,7 +157,7 @@ describe("team connection merge", () => {
         id: "n",
         name: "Ntlm",
         kind: "mssql",
-        connectionString: "mssql://x:1433/db?integratedSecurity=true",
+        connectionString: "mssql://x:1433/db?integratedSecurity=invalid",
       },
       {
         id: "k",
@@ -165,7 +171,12 @@ describe("team connection merge", () => {
         kind: "influxdb",
         connectionString: "influxdb://h:8086/b?token=abc",
       },
-      { id: "w", name: "Win", kind: "mssql", connectionString: "Server=h;Trusted_Connection=yes" },
+      {
+        id: "w",
+        name: "Win",
+        kind: "mssql",
+        connectionString: "Server=h;Trusted_Connection=invalid",
+      },
     ]);
     expect(risky.connections).toHaveLength(0);
     expect(risky.warnings).toHaveLength(4);
@@ -193,7 +204,7 @@ describe("team connection merge", () => {
         id: "a4",
         name: "Encoded",
         kind: "mssql",
-        connectionString: "mssql://h/x?integrated%5FSecurity=true",
+        connectionString: "mssql://h/x?integrated%5FSecurity=invalid",
       },
     ]);
     expect(aliases.connections).toHaveLength(0);
@@ -322,7 +333,8 @@ describe("team file sync", () => {
     expect(calls).toHaveLength(0);
     useTeamStore.setState({ lastSyncAt: Date.now() - 61_000 });
     window.dispatchEvent(new Event("focus"));
-    for (let i = 0; i < 100 && calls.length === 0; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+    for (let i = 0; i < 100 && calls.length === 0; i++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
     expect(calls.map((call) => call.command)).toEqual(["team_connections"]);
   });
 

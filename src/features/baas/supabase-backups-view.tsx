@@ -26,7 +26,7 @@ export function SupabaseBackupsView({ reference }: { reference: string }) {
   const recovery = backups.data?.physical_backup_data;
 
   return (
-    <section className="rounded-2xl border bg-card p-5">
+    <section className="rounded-2xl bg-muted/25 p-5">
       <div className="flex items-center justify-between gap-3">
         <div ref={feature.ref} className="flex items-center gap-2">
           <ArchiveRestore className="size-4 text-muted-foreground" />
@@ -58,7 +58,7 @@ export function SupabaseBackupsView({ reference }: { reference: string }) {
       ) : (
         <>
           <div className="mt-4 flex flex-wrap gap-3 text-xs">
-            <div className="rounded-lg border bg-background/50 px-3 py-2">
+            <div className="rounded-lg bg-background/50 px-3 py-2">
               <span className="text-muted-foreground">Point-in-Time Recovery: </span>
               <span className="font-medium">
                 {backups.data.pitr_enabled == null
@@ -69,7 +69,7 @@ export function SupabaseBackupsView({ reference }: { reference: string }) {
               </span>
             </div>
             {recovery && (
-              <div className="rounded-lg border bg-background/50 px-3 py-2">
+              <div className="rounded-lg bg-background/50 px-3 py-2">
                 <span className="text-muted-foreground">Wiederherstellungszeitraum: </span>
                 <span className="font-medium">
                   {formatUnixDate(recovery.earliest_physical_backup_date_unix)} –{" "}
@@ -81,7 +81,7 @@ export function SupabaseBackupsView({ reference }: { reference: string }) {
           {backups.data.backups.length === 0 ? (
             <p className="mt-4 text-xs text-muted-foreground">Keine Backups verfügbar.</p>
           ) : (
-            <div className="mt-4 max-h-64 divide-y overflow-auto rounded-lg border px-3">
+            <div className="mt-4 max-h-64 divide-y overflow-auto rounded-lg px-3 bg-muted/30">
               {backups.data.backups.map((backup, index) => (
                 <div
                   key={backup.id ?? `${backup.inserted_at ?? "backup"}-${index}`}

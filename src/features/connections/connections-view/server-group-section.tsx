@@ -22,7 +22,6 @@ import {
 } from "@/lib/connection-groups";
 import { providerFor } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
-import { capabilitiesFor } from "@/lib/providers";
 
 export function ServerGroupSection<T extends Groupable>({
   group,
@@ -111,10 +110,15 @@ export function ConnectionServerGroupSection({
               Host &amp; Service
             </Button>
           )}
-          {group.connections.length > 1 && capabilitiesFor(group.kind).schemas && (
-            <Button variant="outline" size="xs" onClick={() => setSchemasToUser(group)}>
+          {group.connections.length > 1 && group.kind === "oracle" && (
+            <Button
+              variant="outline"
+              size="xs"
+              title="Setzt den Schema-Filter jeder Verbindung auf ihren Benutzer"
+              onClick={() => setSchemasToUser(group)}
+            >
               <KeyRound className="size-3.5" />
-              Schema = User
+              Schema = Benutzer
             </Button>
           )}
           <IconMenu>

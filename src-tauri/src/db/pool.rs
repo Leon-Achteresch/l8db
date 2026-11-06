@@ -22,7 +22,7 @@ type PoolEntry = Arc<OnceCell<PgPool>>;
 type SharedEntry = Arc<OnceCell<Arc<dyn Any + Send + Sync>>>;
 
 pub struct PoolManager {
-    pools: Mutex<HashMap<(String, PoolUse, u64), PoolEntry>>,
+    pools: Mutex<HashMap<(String, PoolUse, u64, u16), PoolEntry>>,
     shared: Mutex<HashMap<String, SharedEntry>>,
     seal_files: bool,
 }
@@ -80,10 +80,13 @@ impl PoolManager {
         let timeout = super::execution::connection_duration();
         let entry = {
             let secs = timeout.as_secs();
+            let transport_port = super::neon_websocket::managed_port(&config);
             let mut pools = self.pools.lock().await;
-            pools.retain(|(key, _, entry_secs), _| key != connection_key || *entry_secs == secs);
+            pools.retain(|(key, _, entry_secs, entry_port), _| {
+                key != connection_key || (*entry_secs == secs && *entry_port == transport_port)
+            });
             pools
-                .entry((connection_key.to_string(), pool_use, secs))
+                .entry((connection_key.to_string(), pool_use, secs, transport_port))
                 .or_default()
                 .clone()
         };
@@ -130,7 +133,7 @@ impl PoolManager {
         self.pools
             .lock()
             .await
-            .retain(|(key, _, _), _| key != connection_key);
+            .retain(|(key, _, _, _), _| key != connection_key);
         let prefix = format!("{connection_key}#");
         self.shared
             .lock()
@@ -360,12 +363,12 @@ mod tests {
                 .keys()
                 .next()
                 .cloned()
-                .map(|(key, use_, secs)| (key, use_, secs + 1))
+                .map(|(key, use_, secs, port)| (key, use_, secs + 1, port))
                 .expect("entry");
             pools.clear();
             pools.insert(entry, PoolEntry::default());
             pools.insert(
-                ("other".to_string(), PoolUse::Query, 1),
+                ("other".to_string(), PoolUse::Query, 1, 0),
                 PoolEntry::default(),
             );
         }
@@ -374,7 +377,10 @@ mod tests {
             .await
             .expect("pool");
         let pools = manager.pools.lock().await;
-        assert_eq!(pools.keys().filter(|(key, _, _)| key == "key").count(), 1);
+        assert_eq!(
+            pools.keys().filter(|(key, _, _, _)| key == "key").count(),
+            1
+        );
         assert_eq!(pools.len(), 2);
     }
 }

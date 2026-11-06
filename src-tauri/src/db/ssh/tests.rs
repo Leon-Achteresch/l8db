@@ -985,3 +985,108 @@ fn ssh_reconnect_backoff_grows_and_is_capped() {
     assert_eq!(super::reconnect_backoff(3), super::RECONNECT_BACKOFF * 4);
     assert_eq!(super::reconnect_backoff(40), super::RECONNECT_BACKOFF_MAX);
 }
+
+#[tokio::test]
+#[ignore]
+async fn tunnel_rsa_key_formats_end_to_end() {
+    std::env::set_var("L8DB_KNOWN_HOSTS", lab_known_hosts());
+    let path = std::path::PathBuf::from(lab_env("L8DB_E2E_RSA_KEY_FILE"));
+    let dir = path.parent().unwrap();
+    let manager = manager();
+    for (file, passphrase) in [
+        ("rsa-client", None),
+        ("rsa-encrypted", Some("lab-rsa-passphrase".to_string())),
+        ("rsa-pkcs1", None),
+    ] {
+        let start = std::time::Instant::now();
+        let info = manager
+            .open(request(
+                "e2e-rsa",
+                SshAuthRequest::Key {
+                    key_file: dir.join(file).to_string_lossy().into_owned(),
+                    passphrase,
+                },
+            ))
+            .await
+            .expect("RSA authentication against OpenSSH");
+        assert_eq!(query_through_tunnel(info.local_port).await.unwrap(), 42);
+        manager.close("e2e-rsa").await.unwrap();
+        assert!(manager.list().await.is_empty());
+        assert!(
+            tokio::net::TcpStream::connect(("127.0.0.1", info.local_port))
+                .await
+                .is_err()
+        );
+        assert!(start.elapsed() < std::time::Duration::from_secs(5));
+    }
+    assert!(manager
+        .open(request(
+            "e2e-rsa-wrong",
+            SshAuthRequest::Key {
+                key_file: dir.join("rsa-encrypted").to_string_lossy().into_owned(),
+                passphrase: Some("wrong-passphrase".into()),
+            }
+        ))
+        .await
+        .is_err());
+    assert!(manager.list().await.is_empty());
+}
+
+fn test_key(line: &str) -> russh::keys::PublicKey {
+    russh::keys::PublicKey::from_openssh(line).expect("key")
+}
+
+const KEY_A: &str =
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDxjA3G46pzzFPqY7jiAJ0ryeZkPVD09vrLkCbwN3vxJ";
+const KEY_B: &str =
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG449MS1c+jVEcBuWmXpElYa1qLisayjOl90Dk+657tF";
+const KEY_ECDSA: &str = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEaL6irl9EXvk/Z/fJj8MMhYjYQUslZC34o0uritVl8foKZZdsKXLn3ybbZ0YSMHM/prTatjPE0nNEc27HpGl5U=";
+
+fn known_hosts_with(name: &str, line: &str) -> std::path::PathBuf {
+    let path = std::env::temp_dir().join(format!("l8db-known-hosts-{name}-{}", std::process::id()));
+    std::fs::write(&path, format!("[db.example]:2222 {line}\n")).expect("write");
+    path
+}
+
+#[test]
+fn changed_host_key_reports_a_clear_warning() {
+    let path = known_hosts_with("changed", KEY_A);
+    let error = super::verify_known_host(
+        Some(path.clone()),
+        "db.example",
+        2222,
+        &test_key(KEY_B),
+        true,
+    )
+    .unwrap_err()
+    .0;
+    assert!(error.contains("hat sich geändert"), "{error}");
+    assert!(error.contains("Zeile 1"), "{error}");
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn key_of_another_type_is_never_learned_automatically() {
+    let path = known_hosts_with("other-type", KEY_ECDSA);
+    let error = super::verify_known_host(
+        Some(path.clone()),
+        "db.example",
+        2222,
+        &test_key(KEY_A),
+        true,
+    )
+    .unwrap_err()
+    .0;
+    assert!(error.contains("anderen Typs"), "{error}");
+    let content = std::fs::read_to_string(&path).expect("read");
+    assert_eq!(content.lines().count(), 1);
+    assert!(super::verify_known_host(
+        Some(path.clone()),
+        "db.example",
+        2222,
+        &test_key(KEY_ECDSA),
+        false
+    )
+    .is_ok());
+    let _ = std::fs::remove_file(path);
+}

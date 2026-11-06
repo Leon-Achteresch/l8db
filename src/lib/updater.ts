@@ -85,7 +85,20 @@ function flushPendingState(): void {
   window.dispatchEvent(new Event("pagehide"));
 }
 
-export async function installUpdateAndRelaunch(
+let installing: Promise<boolean> | null = null;
+
+export function installUpdateAndRelaunch(
+  update: Update,
+  onProgress?: (percent: number) => void,
+  canRelaunch?: () => Promise<boolean>,
+): Promise<boolean> {
+  installing ??= runInstall(update, onProgress, canRelaunch).finally(() => {
+    installing = null;
+  });
+  return installing;
+}
+
+async function runInstall(
   update: Update,
   onProgress?: (percent: number) => void,
   canRelaunch?: () => Promise<boolean>,

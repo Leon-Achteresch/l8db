@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
-import { reportScenario } from "../scripts/performance-report";
+import { cpuThrottleRate, reportScenario } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
 import { interactionPercentiles } from "./fixtures/perf-app-interactions";
 import {
@@ -132,7 +132,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       await page.keyboard.press("Escape");
       await palette.waitFor({ state: "hidden" });
       const profiler = engine === "chromium" ? await page.context().newCDPSession(page) : null;
-      await profiler?.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+      await profiler?.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(4) });
       await profiler?.send("HeapProfiler.collectGarbage");
       const heapBefore = (await profiler?.send("Runtime.getHeapUsage"))?.usedSize ?? null;
       const readsBefore = await page.evaluate(
@@ -413,7 +413,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         /mac/i.test(`${navigator.platform} ${navigator.userAgent}`) ? "Meta+k" : "Control+k",
       );
       const profiler = engine === "chromium" ? await page.context().newCDPSession(page) : null;
-      await profiler?.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+      await profiler?.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(4) });
       await page.keyboard.press(hotkey);
       const palette = page.getByRole("dialog", { name: "Command palette" });
       await palette.waitFor();
@@ -568,7 +568,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         /mac/i.test(`${navigator.platform} ${navigator.userAgent}`) ? "Meta+k" : "Control+k",
       );
       const cdp = engine === "chromium" ? await page.context().newCDPSession(page) : null;
-      await cdp?.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+      await cdp?.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(4) });
       const tools = page.getByRole("button", { name: "Weitere Werkzeuge" });
       await tools.click();
       await page.getByRole("menuitem", { name: /Verlauf & Gespeichertes/ }).click();

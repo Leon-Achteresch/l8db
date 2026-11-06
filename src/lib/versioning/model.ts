@@ -2,6 +2,7 @@ import { splitSqlStatements } from "@/lib/sql-statements";
 import { validateSafety } from "./safety";
 import { sqlCode } from "./sql-code";
 import type {
+  ChangeRules,
   DatabaseRelease,
   DeployKind,
   ObjectDifference,
@@ -56,7 +57,8 @@ export function parseProject(text: string): VersioningProject {
     !identifier(project.id) ||
     !project.name?.trim() ||
     !isVersioningKind(project.kind) ||
-    !Array.isArray(project.objects)
+    !Array.isArray(project.objects) ||
+    (project.additiveOnly !== undefined && typeof project.additiveOnly !== "boolean")
   )
     throw new Error("Ungültiges Versionierungsprojekt.");
   const ids = new Set<string>();
@@ -105,18 +107,91 @@ export function parseProject(text: string): VersioningProject {
   return project;
 }
 
+export const releaseParents = (release: Pick<DatabaseRelease, "format" | "parent" | "parents">) =>
+  release.format === 2 ? (release.parents ?? []) : release.parent ? [release.parent] : [];
+
+export async function validateCheckList(checks: unknown, kind: DeployKind) {
+  if (checks === undefined) return;
+  if (!Array.isArray(checks)) throw new Error("Prüfungen müssen eine Liste sein.");
+  await validateSafety(
+    {
+      phase: "custom",
+      compatibility: "online",
+      notes: "",
+      lockTimeoutMs: 5000,
+      statementTimeoutMs: 60000,
+      preconditions: checks,
+      postconditions: [],
+    },
+    kind,
+  );
+}
+
+export async function validateChangeRules(
+  rules: ChangeRules,
+  kind: DeployKind,
+  objects: Set<string>,
+  required: boolean,
+) {
+  const ids = (value: unknown) =>
+    Array.isArray(value) && value.every((entry) => typeof entry === "string" && entry.length > 0);
+  if (
+    (rules.kind !== undefined && rules.kind !== "versioned" && rules.kind !== "repeatable") ||
+    (required && rules.touches === undefined) ||
+    (rules.touches !== undefined &&
+      (!ids(rules.touches) ||
+        new Set(rules.touches).size !== rules.touches.length ||
+        rules.touches.some((id) => !objects.has(id)))) ||
+    (rules.requires !== undefined && !ids(rules.requires)) ||
+    (rules.data !== undefined && typeof rules.data !== "boolean") ||
+    (rules.destructive !== undefined && typeof rules.destructive !== "boolean") ||
+    (rules.before !== undefined &&
+      (typeof rules.before !== "object" ||
+        rules.before === null ||
+        Object.entries(rules.before).some(
+          ([id, hash]) =>
+            !rules.touches?.includes(id) ||
+            (hash !== null && (typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash))),
+        ))) ||
+    (rules.kind === "repeatable" && rules.touches?.length !== 1)
+  )
+    throw new Error("Änderungsregeln sind ungültig: touches, before, requires oder kind prüfen.");
+  await validateCheckList(rules.preconditions, kind);
+  await validateCheckList(rules.postconditions, kind);
+  const unchecked = (rules.touches ?? []).filter((id) => !(id in (rules.before ?? {})));
+  if (unchecked.length && !rules.preconditions?.length && rules.kind !== "repeatable")
+    throw new Error(
+      `Für ${unchecked.join(", ")} fehlt ein erwarteter Vorher-Stand. Vorbedingung ergänzen.`,
+    );
+}
+
 export async function parseRelease(
   text: string,
   project: VersioningProject,
 ): Promise<DatabaseRelease> {
   const release = JSON.parse(text) as DatabaseRelease;
+  const parents = release.format === 2 ? release.parents : undefined;
   if (
-    release.format !== 1 ||
+    (release.format !== 1 && release.format !== 2) ||
     !identifier(release.id) ||
     release.projectId !== project.id ||
     release.kind !== project.kind ||
     !deployable(release.kind) ||
-    (release.parent !== null && (!identifier(release.parent) || release.parent === release.id)) ||
+    (release.format === 1 &&
+      (release.parent === undefined ||
+        (release.parent !== null &&
+          (!identifier(release.parent) || release.parent === release.id)))) ||
+    (release.format === 2 &&
+      (release.parent !== undefined ||
+        !Array.isArray(parents) ||
+        parents.length > 16 ||
+        new Set(parents).size !== parents.length ||
+        parents.some((id) => !identifier(id) || id === release.id) ||
+        (release.changes !== undefined &&
+          (!Array.isArray(release.changes) ||
+            new Set(release.changes).size !== release.changes.length ||
+            release.changes.some((id) => !identifier(id)))))) ||
+    (release.format === 1 && release.changes !== undefined) ||
     !Array.isArray(release.objects) ||
     !Array.isArray(release.migrations) ||
     (release.track !== undefined && !identifier(release.track)) ||
@@ -128,6 +203,10 @@ export async function parseRelease(
   parseProject(
     JSON.stringify({ ...project, objects: release.objects.map((entry) => entry.object) }),
   );
+  const objectIds = new Set([
+    ...release.objects.map((entry) => entry.object.id),
+    ...project.objects.map((entry) => entry.id),
+  ]);
   const ids = new Set<string>();
   for (const migration of release.migrations) {
     if (
@@ -139,6 +218,15 @@ export async function parseRelease(
       (await checksum(migration.sql)) !== migration.checksum
     )
       throw new Error("Migration fehlt, ist doppelt oder ihre Prüfsumme stimmt nicht.");
+    if (release.format === 1 && Object.keys(migration).some((key) => !LEGACY_KEYS.has(key)))
+      throw new Error("Änderungsregeln benötigen Release-Format 2.");
+    if (release.format === 2)
+      await validateChangeRules(
+        migration,
+        release.kind,
+        objectIds,
+        (release.parents?.length ?? 0) > 1,
+      );
     validateMigration(migration.sql, release.kind);
     ids.add(migration.id);
   }
@@ -151,6 +239,19 @@ export async function parseRelease(
       throw new Error("Objekt-Prüfsumme stimmt nicht.");
   }
   return release;
+}
+
+const LEGACY_KEYS = new Set(["id", "title", "sql", "checksum"]);
+
+export function destructiveStatement(sql: string): boolean {
+  const tokens = sql
+    .toUpperCase()
+    .split(/[^A-Z0-9_$#]+/)
+    .filter(Boolean);
+  return (
+    tokens.some((token) => ["DROP", "TRUNCATE", "MODIFY"].includes(token)) ||
+    (tokens.includes("ALTER") && tokens.includes("TYPE"))
+  );
 }
 
 export function validateMigration(sql: string, kind: DeployKind): string[] {
@@ -197,30 +298,58 @@ export function validateMigration(sql: string, kind: DeployKind): string[] {
 
 export const releaseTrack = (release: Pick<DatabaseRelease, "track">) => release.track ?? "main";
 
+export function releaseAncestry(
+  map: Map<string, DatabaseRelease>,
+  id: string,
+  strict = true,
+): DatabaseRelease[] {
+  const order: DatabaseRelease[] = [];
+  const done = new Set<string>();
+  const active = new Set<string>();
+  const stack: { id: string; next: number }[] = [{ id, next: 0 }];
+  active.add(id);
+  while (stack.length) {
+    const frame = stack[stack.length - 1];
+    const release = map.get(frame.id);
+    if (!release) {
+      if (strict) throw new Error(`Release ${frame.id} fehlt. Passenden Git-Branch laden.`);
+      stack.pop();
+      active.delete(frame.id);
+      done.add(frame.id);
+      continue;
+    }
+    const parents = releaseParents(release);
+    if (frame.next < parents.length) {
+      const parent = parents[frame.next++];
+      if (active.has(parent)) throw new Error("Zyklische Release-Abhängigkeit.");
+      if (done.has(parent)) continue;
+      active.add(parent);
+      stack.push({ id: parent, next: 0 });
+      continue;
+    }
+    stack.pop();
+    active.delete(frame.id);
+    done.add(frame.id);
+    order.push(release);
+  }
+  return order;
+}
+
 export function validateReleaseGraph(releases: DatabaseRelease[]) {
   const map = new Map(releases.map((release) => [release.id, release]));
   if (map.size !== releases.length) throw new Error("Doppelte Release-ID.");
   for (const release of releases) {
-    const visited = new Set<string>();
-    const migrations = new Set<string>();
-    let current: DatabaseRelease | undefined = release;
-    while (current) {
-      if (visited.has(current.id)) throw new Error("Zyklische Release-Abhängigkeit.");
-      visited.add(current.id);
-      for (const migration of current.migrations) {
-        if (migrations.has(migration.id))
-          throw new Error(
-            `Migrations-ID ${migration.id} wurde in dieser Vorgängerkette bereits verwendet.`,
-          );
-        migrations.add(migration.id);
-      }
-      if (!current.parent) break;
-      const parent = map.get(current.parent);
-      if (!parent) throw new Error(`Release ${current.parent} fehlt. Passenden Git-Branch laden.`);
-      if (releaseTrack(parent) !== "main" && releaseTrack(parent) !== releaseTrack(current))
+    for (const id of releaseParents(release)) {
+      const parent = map.get(id);
+      if (!parent) throw new Error(`Release ${id} fehlt. Passenden Git-Branch laden.`);
+      if (releaseTrack(parent) !== "main" && releaseTrack(parent) !== releaseTrack(release))
         throw new Error("Eine Kundenvariante darf nicht in eine fremde Release-Linie wechseln.");
-      current = parent;
     }
+  }
+  const done = new Set<string>();
+  for (const release of releases) {
+    if (done.has(release.id)) continue;
+    for (const entry of releaseAncestry(map, release.id)) done.add(entry.id);
   }
 }
 
@@ -247,34 +376,4 @@ export function compareSnapshots(
             : "changed",
     };
   });
-}
-
-export function releaseChain(
-  releases: DatabaseRelease[],
-  from: string,
-  to: string,
-): DatabaseRelease[] {
-  const map = new Map(releases.map((release) => [release.id, release]));
-  if (map.size !== releases.length) throw new Error("Doppelte Release-ID.");
-  const chain: DatabaseRelease[] = [];
-  const visited = new Set<string>();
-  let id: string | null = to;
-  while (id !== from) {
-    if (id === null)
-      throw new Error(
-        "Das Ziel ist kein Nachfolger des Kundenstands. Downgrades benötigen einen eigenen geprüften Release.",
-      );
-    if (visited.has(id)) throw new Error("Zyklische Release-Abhängigkeit.");
-    visited.add(id);
-    const release = map.get(id);
-    if (!release) throw new Error(`Release ${id} fehlt. Passenden Git-Branch laden.`);
-    chain.unshift(release);
-    id = release.parent;
-  }
-  const migrations = chain.flatMap((release) =>
-    release.migrations.map((migration) => migration.id),
-  );
-  if (new Set(migrations).size !== migrations.length)
-    throw new Error("Migrations-IDs müssen über den gesamten Updatepfad eindeutig sein.");
-  return chain;
 }

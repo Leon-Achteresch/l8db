@@ -1,8 +1,8 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "@/lib/settings";
 import { requestSqlConfirmation } from "@/lib/sql-confirmation";
-import { destructiveStatements } from "@/lib/sql-safety";
-import { finishTask, startTask, updateTask } from "@/lib/tasks";
+import { destructiveStatements, writesData } from "@/lib/sql-safety";
+import { finishTask, isTaskActive, startTask, updateTask, useTasksStore } from "@/lib/tasks";
 import {
   recordDatabaseOperation,
   traceCommand,
@@ -20,6 +20,7 @@ export interface QueryExecutionOptions {
   session?: string;
   pooled?: boolean;
   queryTimeout?: number;
+  noTimeLimit?: boolean;
   maxRows?: number;
   connectionId?: string;
 }
@@ -30,11 +31,12 @@ const SQL_COMMANDS = new Set([
   "execute_in_transaction",
   "execute_in_transaction_with_params",
   "execute_script",
+  "execute_with_binds",
 ]);
 const CONFIGURED_COMMANDS = new Set([
   ...SQL_COMMANDS,
+  "explain_query",
   "preview_dml",
-  "test_connection",
   "test_connection_string",
   "list_databases",
   "list_schemas",
@@ -150,10 +152,12 @@ export function isReadOnlyActive(connectionString?: unknown): boolean {
   }
 }
 
-function needsProductionGuard(command: string): boolean {
-  return (
-    SQL_COMMANDS.has(command) || (WRITE_COMMANDS.has(command) && command !== "begin_transaction")
-  );
+function runsSql(command: string, args?: Record<string, unknown>): boolean {
+  return SQL_COMMANDS.has(command) || (command === "explain_query" && args?.analyze === true);
+}
+
+function needsProductionGuard(command: string, args?: Record<string, unknown>): boolean {
+  return runsSql(command, args) || (WRITE_COMMANDS.has(command) && command !== "begin_transaction");
 }
 
 function nestedConnectionString(value: unknown): string | undefined {
@@ -187,7 +191,7 @@ async function readOnlyGuard(args: Record<string, unknown>): Promise<void> {
 }
 
 async function productionGuard(command: string, args: Record<string, unknown>): Promise<void> {
-  const sqlCommand = SQL_COMMANDS.has(command);
+  const sqlCommand = runsSql(command, args);
   const [{ operationConnections }, { productionWriteBlock }] = await Promise.all([
     import("@/lib/operation-context"),
     import("@/lib/environments"),
@@ -222,11 +226,24 @@ export async function invoke<T>(command: string, args?: Record<string, unknown>)
 }
 
 async function invokeCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (WRITE_COMMANDS.has(command) && isReadOnlyActive(args?.connectionString))
+    throw new Error(READ_ONLY_MESSAGE);
+  if (runsSql(command, args)) {
+    const { operationConnections } = await import("@/lib/operation-context");
+    const { isReadOnlyConnection } = await import("@/lib/connections");
+    const connection = operationConnections(args ?? {}, "exact").find(isReadOnlyConnection);
+    if (connection || isReadOnlyActive(args?.connectionString)) {
+      const kind = connection?.kind ?? args?.kind;
+      const sql = String(args?.sql ?? "");
+      if (writesData(sql, String(kind))) throw new Error(READ_ONLY_MESSAGE);
+      await tauriInvoke("validate_read_query", { kind, sql });
+    }
+  }
   if (WRITE_COMMANDS.has(command)) {
     if (isReadOnlyActive(args?.connectionString)) throw new Error(READ_ONLY_MESSAGE);
     await readOnlyGuard(args ?? {});
   }
-  if (needsProductionGuard(command)) await productionGuard(command, args ?? {});
+  if (needsProductionGuard(command, args)) await productionGuard(command, args ?? {});
   const settings = useSettingsStore.getState();
   const options = (args?.options ?? {}) as QueryExecutionOptions;
   let taskId: string | undefined;
@@ -235,8 +252,9 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
     connectionTimeout: settings.connectionTimeout,
     ...(options.jobId ? { jobId: options.jobId } : {}),
     ...(options.maxRows ? { maxRows: options.maxRows } : {}),
+    ...(options.noTimeLimit ? { noTimeLimit: true } : {}),
   };
-  if (SQL_COMMANDS.has(command)) {
+  if (runsSql(command, args)) {
     const { operationContext } = await import("@/lib/operation-context");
     const context = operationContext(args ?? {});
     if (!options.confirmed)
@@ -257,10 +275,29 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
       taskId = startTask(
         {
           id: jobId,
-          title: command === "execute_script" ? "SQL-Skript" : "SQL-Abfrage",
+          title:
+            command === "execute_script"
+              ? "SQL-Skript"
+              : command === "explain_query"
+                ? "EXPLAIN ANALYZE"
+                : "SQL-Abfrage",
           ...context,
         },
-        cancellable ? () => cancelExecution(jobId) : undefined,
+        cancellable
+          ? async () => {
+              const accepted = await cancelExecution(jobId);
+              const task = useTasksStore.getState().tasks.find((entry) => entry.id === jobId);
+              if (!accepted && task && isTaskActive(task))
+                finishTask(
+                  jobId,
+                  undefined,
+                  new Error(
+                    "Der Server führt diese Abfrage nicht mehr aus; das Ergebnis ist nicht angekommen.",
+                  ),
+                );
+              return accepted;
+            }
+          : undefined,
       );
     options.onJob?.(jobId);
   }
@@ -295,8 +332,6 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
   }
   const kind = typeof args?.kind === "string" ? args.kind : "unknown";
   try {
-    if (WRITE_COMMANDS.has(command) && isReadOnlyActive(args?.connectionString))
-      throw new Error(READ_ONLY_MESSAGE);
     const result = await traceCommand(command, { kind }, () =>
       tauriInvoke<T>(
         command,

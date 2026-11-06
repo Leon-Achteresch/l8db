@@ -17,6 +17,7 @@ export interface CsvParseOptions {
   hasHeader?: boolean;
   maxRows?: number;
   emptyField?: CsvEmptyFieldMode;
+  nullText?: string;
 }
 
 export interface CsvParseError {

@@ -174,13 +174,13 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
               data-grid-scroll
               style={{ contain: "strict" }}
               className={cn(
-                "relative min-h-0 flex-1 basis-0 overflow-auto overscroll-none [scrollbar-gutter:stable] transition-opacity",
+                "relative min-h-0 flex-1 basis-0 overflow-auto overscroll-none bg-background [scrollbar-gutter:stable] transition-opacity",
                 isFetching && "opacity-85",
                 table.getState().columnSizingInfo.isResizingColumn &&
                   "cursor-col-resize select-none",
               )}
             >
-              <div className="pb-3">
+              <div className="w-max min-w-full bg-background pb-3">
                 <DragDropProvider
                   sensors={headerSensors}
                   onDragStart={(event) => {
@@ -268,12 +268,14 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                       visibleColumns={visibleColumns}
                       columnNames={columnNames}
                       stateKey={props.stateKey}
+                      watchScope={props.watchScope}
                       emptyMessage={emptyMessage}
                       onSaveRow={onSaveRow}
                       canEditCell={canEditCell}
                       rowOffset={rowOffset}
                       onInsertRow={onInsertRow}
                       onDeleteRow={onDeleteRow}
+                      rowMenuItems={props.rowMenuItems}
                       columnDetails={columnDetails}
                     />
                   </table>
@@ -300,6 +302,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                   : rows.length
               }
               page={navPage}
+              rowOffset={rowOffset}
               pageSize={pageSize}
               totalCount={totalCount}
               countLabel={countLabel}

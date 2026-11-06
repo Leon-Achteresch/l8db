@@ -19,6 +19,8 @@ export async function preflightFleet(
   targets: DatabaseTarget[],
   connections: SavedConnection[],
   releaseId: string,
+  overrides: Record<string, string[]> = {},
+  change = false,
 ): Promise<FleetResult[]> {
   if (!targets.length) throw new Error("Mindestens eine Datenbank auswählen.");
   const results: FleetResult[] = [];
@@ -27,9 +29,18 @@ export async function preflightFleet(
     try {
       const connection = connections.find((connection) => connection.id === target.connectionId);
       if (!connection) throw new Error("Zielverbindung fehlt.");
-      const plan = await planDeployment(repo, project, target, connection, releaseId);
-      if (plan.differences.some((difference) => difference.status !== "unchanged"))
-        throw new Error("Direkte Datenbankänderungen erkannt. Stand zuerst abgleichen.");
+      const plan = await planDeployment(repo, project, target, connection, releaseId, {
+        overrides: overrides[target.id] ?? [],
+        change,
+      });
+      if (plan.drift.length) {
+        results.push({
+          target,
+          plan,
+          error: `Direkte Datenbankänderungen erkannt (${plan.drift.map((item) => item.label).join(", ")}). Stand zuerst abgleichen.`,
+        });
+        continue;
+      }
       const gate = plan.releases.length ? blockingGate(plan.delivery) : null;
       if (gate)
         throw new Error(
@@ -62,6 +73,7 @@ export async function deployFleet(
   onProgress?: (message: string) => void,
   waveLimit = 1000,
   snapshot = false,
+  change = false,
 ) {
   const { store } = await readTargets(repo, project.id);
   const targets = reviewed.map((plan) => {
@@ -69,7 +81,15 @@ export async function deployFleet(
     if (!target) throw new Error("Ein freigegebenes Datenbankziel wurde entfernt.");
     return target;
   });
-  const preflight = await preflightFleet(repo, project, targets, connections, releaseId);
+  const preflight = await preflightFleet(
+    repo,
+    project,
+    targets,
+    connections,
+    releaseId,
+    Object.fromEntries(reviewed.map((plan) => [plan.target.id, plan.overrides])),
+    change,
+  );
   if (!Number.isInteger(waveLimit) || waveLimit < 1 || waveLimit > 1000)
     throw new Error("Ungültige Wellengröße.");
   for (const [index, result] of preflight.entries()) {

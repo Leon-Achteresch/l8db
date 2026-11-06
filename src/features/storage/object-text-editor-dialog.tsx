@@ -46,6 +46,13 @@ export function ObjectTextEditorDialog({
   }, [row]);
 
   const isJson = row?.key.toLowerCase().endsWith(".json") ?? false;
+  const dirty = content.data !== undefined && text !== content.data;
+
+  function close() {
+    if (busy) return;
+    if (dirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
+    onClose();
+  }
 
   async function save() {
     if (!row) return;
@@ -60,7 +67,7 @@ export function ObjectTextEditorDialog({
     setBusy(true);
     setError(null);
     try {
-      await s3PutObjectText(url, bucket, row.key, text);
+      await s3PutObjectText(url, bucket, row.key, text, undefined, row.etag);
       await queryClient.invalidateQueries({ queryKey: ["s3", connection?.id] });
       toast.success(`${row.name} gespeichert`);
       onClose();
@@ -72,7 +79,7 @@ export function ObjectTextEditorDialog({
   }
 
   return (
-    <Dialog open={row !== null} onOpenChange={(open) => !open && !busy && onClose()}>
+    <Dialog open={row !== null} onOpenChange={(open) => !open && close()}>
       <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="truncate">{row?.name}</DialogTitle>
@@ -113,7 +120,7 @@ export function ObjectTextEditorDialog({
               JSON formatieren
             </Button>
           )}
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={close}>
             Abbrechen
           </Button>
           <Button

@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Upload } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -44,9 +44,11 @@ import { ConnectionServerGroupSection } from "./connections-view/server-group-se
 import { setSchemasToUser } from "./connections-view/set-schemas-to-user";
 import { ConnectionsToolbar } from "./connections-view/toolbar";
 import { HostGroupRulesDialog } from "./host-group-rules-dialog";
+import { SecretStorageNotice } from "./secret-storage-notice";
 
 export function ConnectionsView() {
   const connections = useConnectionsStore((state) => state.connections);
+  const connecting = useRef(false);
   const activeId = useConnectionsStore((state) => state.activeId);
   const favoriteServerKeys = useConnectionsStore((state) => state.favoriteServerKeys);
   const serverOrder = useConnectionsStore((state) => state.serverOrder);
@@ -194,13 +196,13 @@ export function ConnectionsView() {
   }
 
   async function connect(id: string | null) {
-    if (useConnectionSwitch.getState().isSwitching) return;
-    if (id === null) {
-      await disconnectActiveConnection(queryClient);
-      return;
-    }
-    if (await activateConnectionWithToast(id)) {
-      await navigate({ to: "/" });
+    if (connecting.current || useConnectionSwitch.getState().isSwitching) return;
+    connecting.current = true;
+    try {
+      if (id === null) await disconnectActiveConnection(queryClient);
+      else if (await activateConnectionWithToast(id)) await navigate({ to: "/" });
+    } finally {
+      connecting.current = false;
     }
   }
 
@@ -230,6 +232,7 @@ export function ConnectionsView() {
       className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-background"
     >
       <div className="relative flex h-full min-h-0 w-full flex-col p-4 md:p-6">
+        <SecretStorageNotice />
         {(editorId || totalConnections > 0) && (
           <header className="mb-4 flex shrink-0 items-center justify-between gap-4">
             <div className="min-w-0">

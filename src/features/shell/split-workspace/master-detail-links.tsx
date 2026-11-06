@@ -10,6 +10,7 @@ import {
   syncAnchor,
 } from "@/lib/split-links";
 import { usePaneTabs, useSplitView } from "@/lib/split-view";
+import { useSplitLayout } from "@/lib/ui-plugins/split-layout";
 
 export function MasterDetailLinks() {
   const ref = useRef<HTMLDivElement>(null);
@@ -19,11 +20,12 @@ export function MasterDetailLinks() {
   const [boxes, setBoxes] = useState<PaneBox[]>([]);
   const [hovered, setHovered] = useState<string | null>(null);
   const count = panes.length;
+  const layout = useSplitLayout();
 
   useLayoutEffect(() => {
     const overlay = ref.current;
     const container = overlay?.parentElement;
-    if (!overlay || !container || count < 2) return;
+    if (!overlay || !container || count < 2 || !layout) return;
     const elements = [...container.querySelectorAll<HTMLElement>("[data-split-pane]")];
     const measure = () => {
       const origin = overlay.getBoundingClientRect();
@@ -44,7 +46,7 @@ export function MasterDetailLinks() {
     for (const element of elements) observer.observe(element);
     measure();
     return () => observer.disconnect();
-  }, [count]);
+  }, [count, layout]);
 
   const links = masters.flatMap((master, detail) =>
     master !== null && boxes[master] && boxes[detail] && canLink(masters, paneTabs, master, detail)

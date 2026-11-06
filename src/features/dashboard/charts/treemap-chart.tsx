@@ -3,15 +3,20 @@ import { fmtShare, fmtValue, fmtValueCompact } from "@/lib/dashboards";
 import { useElementSize } from "@/lib/hooks/use-element-size";
 import { ChartTooltip } from "./chart-tooltip";
 import { type ChartProps, categories, dimAttr, hoveredIndex } from "./chart-utils";
+import { NoPositiveValues } from "./no-positive-values";
 import { squarify } from "./svg-geometry";
 
 export function TreemapChart({ rows, shape, options, interactive = false }: ChartProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
-  const items = categories(rows, shape, options.colorOffset).filter((i) => i.value > 0);
-  const total = items.reduce((s, i) => s + i.value, 0) || 1;
+  const values = categories(rows, shape, options.colorOffset);
+  const items = values.filter((i) => i.value > 0);
+  const total = items.reduce((s, i) => s + i.value, 0);
   const tiles = squarify(items, 0, 0, width, height);
   const hovered = hover !== null ? tiles[hover] : undefined;
+
+  if (!items.length)
+    return <NoPositiveValues negative={values.filter((i) => i.value < 0).length} />;
 
   return (
     <div ref={ref} className="relative h-full w-full">

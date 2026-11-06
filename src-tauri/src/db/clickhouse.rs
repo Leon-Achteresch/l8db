@@ -623,7 +623,8 @@ impl DatabaseAdapter for ClickhouseAdapter {
             .iter()
             .map(|r| DetailedColumnInfo {
                 name: text(&r[0]),
-                is_nullable: text(&r[1]).starts_with("Nullable("),
+                is_nullable: text(&r[1]).starts_with("Nullable(")
+                    || text(&r[1]).starts_with("LowCardinality(Nullable("),
                 data_type: text(&r[1]),
                 column_default: text_opt(&r[2]),
                 is_primary_key: int(&r[3]) == 1,
@@ -640,17 +641,12 @@ impl DatabaseAdapter for ClickhouseAdapter {
         table: &str,
         column: &AddColumnRequest,
     ) -> Result<(), String> {
-        let data_type = if column.is_nullable && !column.data_type.starts_with("Nullable(") {
-            format!("Nullable({})", column.data_type)
-        } else {
-            column.data_type.clone()
-        };
         let mut sql = format!(
             "ALTER TABLE {}.{} ADD COLUMN {} {}",
             quote(schema),
             quote(table),
             quote(&column.name),
-            data_type
+            nullable_type(&column.data_type, column.is_nullable)
         );
         if let Some(d) = column.default_value.as_deref().filter(|d| !d.is_empty()) {
             sql.push_str(&format!(" DEFAULT {d}"));
@@ -665,37 +661,57 @@ impl DatabaseAdapter for ClickhouseAdapter {
         changes: &AlterColumnRequest,
     ) -> Result<(), String> {
         let target = format!("{}.{}", quote(schema), quote(table));
-        if let Some(data_type) = changes.data_type.as_deref().filter(|t| !t.is_empty()) {
-            self.exec(&format!(
-                "ALTER TABLE {target} MODIFY COLUMN {} {data_type}",
-                quote(&changes.old_name)
-            ))
-            .await?;
+        let column = quote(&changes.old_name);
+        let requested = changes.data_type.as_deref().filter(|t| !t.is_empty());
+        let data_type = match (requested, changes.set_not_null) {
+            (Some(t), Some(not_null)) => Some(nullable_type(t, !not_null)),
+            (Some(t), None) => Some(t.to_string()),
+            (None, Some(not_null)) => {
+                let current = self
+                    .rows(&format!(
+                        "SELECT type FROM system.columns WHERE database = {} AND table = {} AND name = {}",
+                        lit(schema),
+                        lit(table),
+                        lit(&changes.old_name)
+                    ))
+                    .await?
+                    .first()
+                    .map(|r| text(&r[0]))
+                    .ok_or_else(|| format!("Unbekannte Spalte: {}", changes.old_name))?;
+                Some(nullable_type(&current, !not_null))
+            }
+            (None, None) => None,
+        };
+        let mut statements = Vec::new();
+        if let Some(data_type) = data_type {
+            statements.push(format!(
+                "ALTER TABLE {target} MODIFY COLUMN {column} {data_type}"
+            ));
         }
         if changes.drop_default {
-            self.exec(&format!(
-                "ALTER TABLE {target} MODIFY COLUMN {} REMOVE DEFAULT",
-                quote(&changes.old_name)
-            ))
-            .await?;
+            statements.push(format!(
+                "ALTER TABLE {target} MODIFY COLUMN {column} REMOVE DEFAULT"
+            ));
         } else if let Some(d) = changes.new_default.as_deref().filter(|d| !d.is_empty()) {
-            self.exec(&format!(
-                "ALTER TABLE {target} MODIFY COLUMN {} DEFAULT {d}",
-                quote(&changes.old_name)
-            ))
-            .await?;
+            statements.push(format!(
+                "ALTER TABLE {target} MODIFY COLUMN {column} DEFAULT {d}"
+            ));
         }
         if let Some(new_name) = changes
             .new_name
             .as_deref()
             .filter(|n| !n.is_empty() && *n != changes.old_name)
         {
-            self.exec(&format!(
-                "ALTER TABLE {target} RENAME COLUMN {} TO {}",
-                quote(&changes.old_name),
+            statements.push(format!(
+                "ALTER TABLE {target} RENAME COLUMN {column} TO {}",
                 quote(new_name)
-            ))
-            .await?;
+            ));
+        }
+        let total = statements.len();
+        for (applied, sql) in statements.iter().enumerate() {
+            self.exec(sql)
+                .await
+                .map_err(|e| super::partially_applied(e, applied, total))?;
         }
         Ok(())
     }
@@ -795,9 +811,60 @@ impl DatabaseAdapter for ClickhouseAdapter {
     }
 }
 
+fn nullable_type(data_type: &str, nullable: bool) -> String {
+    let data_type = data_type.trim();
+    let inner = data_type
+        .strip_prefix("Nullable(")
+        .and_then(|t| t.strip_suffix(')'))
+        .unwrap_or(data_type);
+    if let Some(low) = inner
+        .strip_prefix("LowCardinality(")
+        .and_then(|t| t.strip_suffix(')'))
+    {
+        let low = low
+            .strip_prefix("Nullable(")
+            .and_then(|t| t.strip_suffix(')'))
+            .unwrap_or(low);
+        return if nullable {
+            format!("LowCardinality(Nullable({low}))")
+        } else {
+            format!("LowCardinality({low})")
+        };
+    }
+    if !nullable || !nullable_allowed(inner) {
+        return inner.to_string();
+    }
+    format!("Nullable({inner})")
+}
+
+fn nullable_allowed(data_type: &str) -> bool {
+    !["Array(", "Map(", "Tuple(", "Nested(", "Variant(", "Dynamic"]
+        .iter()
+        .any(|prefix| data_type.starts_with(prefix))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nullable_wrapping_respects_composite_types() {
+        assert_eq!(nullable_type("String", true), "Nullable(String)");
+        assert_eq!(nullable_type("Nullable(String)", false), "String");
+        assert_eq!(nullable_type("Array(String)", true), "Array(String)");
+        assert_eq!(
+            nullable_type("Map(String, String)", true),
+            "Map(String, String)"
+        );
+        assert_eq!(
+            nullable_type("LowCardinality(String)", true),
+            "LowCardinality(Nullable(String))"
+        );
+        assert_eq!(
+            nullable_type("LowCardinality(Nullable(String))", false),
+            "LowCardinality(String)"
+        );
+    }
 
     #[test]
     fn unquotes_only_exact_wide_values() {
@@ -813,7 +880,7 @@ mod tests {
             value,
             serde_json::json!([
                 42,
-                12.5,
+                "12.50",
                 "9007199254740993",
                 "12345678901234567890.12345",
                 "abc"

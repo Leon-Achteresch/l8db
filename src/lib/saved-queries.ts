@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export interface SavedQuery {
@@ -19,7 +20,7 @@ interface SavedQueriesState {
 
 export const useSavedQueriesStore = create<SavedQueriesState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       queries: [],
 
       saveQuery: (name, sql) => {
@@ -39,13 +40,10 @@ export const useSavedQueriesStore = create<SavedQueriesState>()(
         })),
 
       importQueries: (incoming) => {
-        if (incoming.length === 0) return 0;
-        set((state) => {
-          const known = new Set(state.queries.map((q) => q.id));
-          const added = incoming.filter((q) => !known.has(q.id));
-          return { queries: [...added, ...state.queries] };
-        });
-        return incoming.length;
+        const known = new Set(get().queries.map((q) => q.id));
+        const added = incoming.filter((q) => !known.has(q.id) && known.add(q.id));
+        if (added.length) set((state) => ({ queries: [...added, ...state.queries] }));
+        return added.length;
       },
 
       updateQuery: (id, name, sql) =>
@@ -55,6 +53,7 @@ export const useSavedQueriesStore = create<SavedQueriesState>()(
     }),
     {
       name: "l8db.saved-queries",
+      storage: createSafeJsonStorage(),
       partialize: (state) => ({ queries: state.queries }),
     },
   ),

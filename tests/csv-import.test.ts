@@ -11,6 +11,7 @@ import {
   stripBom,
   suggestMappings,
   validateMappings,
+  withDocumentFields,
 } from "../src/lib/csv-import";
 
 const target = (name: string, overrides: Partial<ImportTargetColumn> = {}): ImportTargetColumn => ({
@@ -221,5 +222,40 @@ describe("CSV structure regressions", () => {
     const preview = previewCsv('v\na\nb\n"unfinished', { hasHeader: true, maxRows: 1 });
     expect(preview.truncated).toBe(true);
     expect(preview.errors).toEqual([]);
+  });
+});
+
+describe("detection regressions", () => {
+  test("keeps single-column data with commas in one column", () => {
+    const result = parseCsv("Name\nMüller, Hans\nMeier, Eva");
+    expect(result.headers).toEqual(["Name"]);
+    expect(result.rows).toEqual([["Müller, Hans"], ["Meier, Eva"]]);
+    expect(detectDelimiter("a,b\n1,2")).toBe(",");
+  });
+  test("detects a header row with an empty trailing cell", () => {
+    const result = parseCsv("id,name,\n1,a,x\n2,b,y");
+    expect(result.hasHeader).toBe(true);
+    expect(result.headers).toEqual(["id", "name", "Spalte 3"]);
+    expect(detectHeader([["", ""]])).toBe(false);
+    expect(detectHeader([["a", "", "A"]])).toBe(false);
+  });
+  test("re-suggested mappings drop columns that vanished after a delimiter change", () => {
+    const targets = [target("a"), target("b"), target("c")];
+    const reparsed = parseCsv("a,b,c\n1,2,3", { delimiter: ";" });
+    const mappings = suggestMappings(reparsed.headers, targets);
+    expect(mappings).toEqual([{ csvIndex: 0, target: null }]);
+    expect(withDocumentFields(["a", "x", " "], targets).map((t) => t.name)).toEqual([
+      "a",
+      "b",
+      "c",
+      "x",
+    ]);
+  });
+});
+
+describe("German CSV conventions", () => {
+  test("maps the configured NULL text to NULL but keeps quoted values", () => {
+    const result = parseCsv('a;b\nNULL;"NULL"\n', { nullText: "NULL" });
+    expect(result.rows).toEqual([[null, "NULL"]]);
   });
 });

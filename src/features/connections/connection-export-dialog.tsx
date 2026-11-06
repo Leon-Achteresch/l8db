@@ -69,7 +69,8 @@ export function ConnectionExportDialog({ open, connections, onOpenChange }: Prop
           <DialogTitle>Verbindungen exportieren</DialogTitle>
           <DialogDescription>
             Passwörter, Tokens, SSH-Geheimnisse und Tunnelports werden nicht exportiert. Name,
-            Anbieter, Tags, Farbe und Verbindungsparameter bleiben erhalten.
+            Anbieter, Tags, Farbe, Anmeldeart, Beschreibung und Verbindungsparameter bleiben
+            erhalten.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-1">
@@ -104,11 +105,23 @@ export function ConnectionExportDialog({ open, connections, onOpenChange }: Prop
             ))}
           </div>
         </div>
+        {connections.some(
+          (connection) => selected.has(connection.id) && connection.commandTunnel?.command?.trim(),
+        ) && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            Tunnel-Befehle werden aus Sicherheitsgründen nicht exportiert. Verbindungen mit
+            Befehls-Tunnel lassen sich deshalb nicht importieren und müssen manuell angelegt werden.
+          </p>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             Abbrechen
           </Button>
-          <Button onClick={() => void exportSelected()} disabled={busy || selected.size === 0}>
+          <Button
+            onClick={() => void exportSelected()}
+            disabled={busy || selected.size === 0}
+            disabledReason={busy ? "Export läuft bereits" : "Keine Verbindung ausgewählt"}
+          >
             {selected.size === 0 ? "Exportieren" : `${selected.size} exportieren`}
           </Button>
         </DialogFooter>

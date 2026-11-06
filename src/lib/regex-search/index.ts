@@ -3,6 +3,7 @@ export {
   compileSearchPatterns,
   escapeRegexLiteral,
   regexSearchFlags,
+  searchMatcher,
   splitSearchPatterns,
 } from "./patterns";
 export type {

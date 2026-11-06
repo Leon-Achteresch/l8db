@@ -11,8 +11,13 @@ import { OnboardingIntro } from "@/features/onboarding/onboarding-intro";
 import { OnboardingThemePreview } from "@/features/onboarding/onboarding-theme-preview";
 import { SettingsAppearance } from "@/features/settings/settings-appearance";
 import { SettingsTableAppearance } from "@/features/settings/settings-table-appearance";
+import { TeamGettingStarted } from "@/features/settings/team-getting-started";
 import { EASE_OUT } from "@/lib/ease";
-import { useSettingsStore } from "@/lib/settings";
+import {
+  LAYOUT_APPEARANCE_DEFAULTS,
+  TABLE_APPEARANCE_DEFAULTS,
+  useSettingsStore,
+} from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 export function Onboarding() {
@@ -24,7 +29,6 @@ export function Onboarding() {
   const setCrashReports = useSettingsStore((s) => s.setCrashReports);
   const usageMetrics = useSettingsStore((s) => s.usageMetrics);
   const setUsageMetrics = useSettingsStore((s) => s.setUsageMetrics);
-  const resetAppearance = useSettingsStore((s) => s.resetAppearance);
   const { theme, setTheme } = useTheme();
   const [step, setStep] = useState(0);
   const [shownDone, setShownDone] = useState(done);
@@ -38,6 +42,16 @@ export function Onboarding() {
   }, []);
 
   const steps = [
+    {
+      id: "team-workflow",
+      title: "Sicher mit Datenbanken arbeiten",
+      subtitle: "Verbindungen, persönliche Rechte und der Ablauf für Änderungen.",
+      content: (
+        <div className="mt-8">
+          <TeamGettingStarted />
+        </div>
+      ),
+    },
     {
       id: "theme",
       title: "Wie soll l8db aussehen?",
@@ -185,8 +199,10 @@ export function Onboarding() {
   const current = steps[Math.max(step, 1) - 1];
   const last = step === steps.length;
   const skipAppearance = () => {
-    resetAppearance();
-    setStep(steps.findIndex((s) => s.id === "mode") + 1);
+    useSettingsStore.setState(
+      current.id === "tables" ? TABLE_APPEARANCE_DEFAULTS : LAYOUT_APPEARANCE_DEFAULTS,
+    );
+    setStep(step + 1);
   };
 
   return (

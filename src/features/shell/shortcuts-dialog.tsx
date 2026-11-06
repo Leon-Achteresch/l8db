@@ -68,7 +68,7 @@ function ShortcutsDialogContent({ open, onOpenChange }: ShortcutsDialogProps) {
             aria-label="Tastenkürzel durchsuchen"
           />
         </div>
-        <ScrollArea className="max-h-[60vh] w-full overflow-x-clip">
+        <ScrollArea className="max-h-[60vh] w-full overflow-x-clip [&_[data-slot=scroll-area-viewport]>div]:!block">
           <div className="flex flex-col gap-4 pr-4">
             {groups.length === 0 && (
               <p className="py-6 text-center text-sm text-muted-foreground">Keine Treffer</p>

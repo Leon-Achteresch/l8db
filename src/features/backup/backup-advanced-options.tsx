@@ -9,6 +9,7 @@ interface BackupAdvancedOptionsProps {
   mode: BackupMode;
   options: BackupOptions;
   disabled?: boolean;
+  plainSql?: boolean;
   onChange: (patch: Partial<BackupOptions>) => void;
 }
 
@@ -19,24 +20,37 @@ interface Toggle {
   hint?: string;
 }
 
-function togglesFor(kind: DatabaseKind, mode: BackupMode, options: BackupOptions): Toggle[] {
+function togglesFor(
+  kind: DatabaseKind,
+  mode: BackupMode,
+  options: BackupOptions,
+  plainSql: boolean,
+): Toggle[] {
   const backup = mode === "backup";
   const pg = kind === "postgres";
+  const pgArchive = pg && !plainSql;
+  const clean = options.content !== "data";
   const list: (Toggle | false)[] = [
-    pg &&
+    pgArchive &&
+      clean &&
       (backup ? options.format === "plain" : true) && {
         key: "clean",
         label: "Objekte vorher löschen (--clean)",
         short: "Vorher löschen",
       },
-    pg &&
+    pgArchive &&
+      clean &&
       options.clean && {
         key: "ifExists",
         label: "Nur vorhandene löschen (--if-exists)",
         short: "Nur vorhandene",
       },
-    pg && { key: "noOwner", label: "Eigentümer weglassen (--no-owner)", short: "Ohne Eigentümer" },
-    pg && {
+    pgArchive && {
+      key: "noOwner",
+      label: "Eigentümer weglassen (--no-owner)",
+      short: "Ohne Eigentümer",
+    },
+    pgArchive && {
       key: "noPrivileges",
       label: "Rechte weglassen (--no-privileges)",
       short: "Ohne Rechte",
@@ -112,10 +126,11 @@ export function BackupAdvancedOptions({
   mode,
   options,
   disabled,
+  plainSql = false,
   onChange,
 }: BackupAdvancedOptionsProps) {
   if (kind === "postgres" && options.format === "globals" && mode === "backup") return null;
-  const toggles = togglesFor(kind, mode, options);
+  const toggles = togglesFor(kind, mode, options, plainSql);
   if (toggles.length === 0) return null;
   const active = toggles.filter((toggle) => options[toggle.key]).map((toggle) => toggle.short);
 

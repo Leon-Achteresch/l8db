@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { versioningRepository } from "@/lib/db";
+import { errorMessageOf } from "@/lib/error-details";
 import { historyMarks, parseReleaseCommits } from "@/lib/versioning/history";
 import { deployable } from "@/lib/versioning/model";
 import { findTickets } from "@/lib/versioning/review";
@@ -15,6 +17,7 @@ import type { VersioningWorkspace } from "./use-versioning";
 import { VersioningHistoryRow } from "./versioning-history-row";
 
 const LANE = 14;
+const PAGE = 120;
 
 export function VersioningHistoryPanel({
   workspace,
@@ -28,12 +31,13 @@ export function VersioningHistoryPanel({
   const [commits, setCommits] = useState<GitGraphCommit[]>([]);
   const [releaseCommits, setReleaseCommits] = useState(new Map<string, string>());
   const [error, setError] = useState("");
+  const [limit, setLimit] = useState(PAGE);
   const key = status ? `${status.head}\0${status.branches.join("\0")}` : "";
   useEffect(() => {
     if (!key) return;
     let active = true;
     Promise.all([
-      versioningRepository<string>({ action: "graph", repo }),
+      versioningRepository<string>({ action: "graph", repo, limit }),
       versioningRepository<string>({ action: "release-commits", repo }),
     ])
       .then(([graph, added]) => {
@@ -43,12 +47,12 @@ export function VersioningHistoryPanel({
         setError("");
       })
       .catch((cause) => {
-        if (active) setError(String(cause));
+        if (active) setError(errorMessageOf(cause));
       });
     return () => {
       active = false;
     };
-  }, [repo, key]);
+  }, [repo, key, limit]);
   const marks = useMemo(
     () => historyMarks(releases, targets?.targets ?? [], releaseCommits),
     [releases, targets, releaseCommits],
@@ -65,7 +69,8 @@ export function VersioningHistoryPanel({
     <section aria-label="Verlauf" className="flex min-h-0 flex-1 flex-col">
       <p className="flex h-9 shrink-0 items-center px-4 text-[11px] text-muted-foreground">
         {status.branches.length} Branches · letzte {commits.length} Commits
-        {deploys && " · Rechtsklick auf einen Release-Commit zum Ausrollen oder Zurücknehmen"}
+        {deploys &&
+          " · Rechtsklick oder „…“ an einem Release-Commit zum Ausrollen oder Zurücknehmen"}
       </p>
       <div className="min-h-0 flex-1 overflow-auto overscroll-contain pb-2">
         {error && <p className="px-4 py-2 text-xs text-destructive">{error}</p>}
@@ -94,6 +99,18 @@ export function VersioningHistoryPanel({
             />
           ))}
         </ol>
+        {commits.length >= limit && limit < 5000 && (
+          <div className="px-4 py-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              onClick={() => setLimit((current) => Math.min(5000, current + PAGE))}
+            >
+              Ältere Commits laden
+            </Button>
+          </div>
+        )}
       </div>
     </section>
   );

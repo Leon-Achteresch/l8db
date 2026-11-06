@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import type { QueryRunTarget } from "@/lib/query-run-target";
 
 export interface QueryWorkspaceOptions {
@@ -96,6 +97,7 @@ export const useQueryWorkspace = create<
     }),
     {
       name: "l8db.query-workspace",
+      storage: createSafeJsonStorage(),
       version: 1,
       migrate: (persisted, version) => {
         const state = sanitizeWorkspace(persisted);

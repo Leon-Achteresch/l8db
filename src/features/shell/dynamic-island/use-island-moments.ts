@@ -18,7 +18,7 @@ import {
 import { isProduction } from "@/lib/environments";
 import { useSettingsStore } from "@/lib/settings";
 import { useConnectionSwitch } from "@/lib/ssh";
-import { isQueryTask, isTaskActive, useTasksStore } from "@/lib/tasks";
+import { isOwnTask, isQueryTask, isTaskActive, useTasksStore } from "@/lib/tasks";
 import { getAppVersion } from "@/lib/updater";
 
 const AWAY_MS = 30 * 60_000;
@@ -72,7 +72,7 @@ export function useIslandMoments() {
       useTasksStore.subscribe((state, previous) => {
         const running = new Set(previous.tasks.filter(isTaskActive).map((task) => task.id));
         for (const task of state.tasks) {
-          if (!running.has(task.id) || isTaskActive(task)) continue;
+          if (!running.has(task.id) || isTaskActive(task) || !isOwnTask(task)) continue;
           const done = taskMoment(task);
           if (done) showIslandMoment(done);
           if (task.status !== "success" || !isQueryTask(task)) continue;

@@ -42,7 +42,7 @@ export function ErFocusPanel({
         <SelectContent position="popper" searchable>
           {tables.map((table) => (
             <SelectItem key={erTableKeyOf(table)} value={erTableKeyOf(table)}>
-              {erTableKeyOf(table)}
+              {table.schema}.{table.name}
             </SelectItem>
           ))}
         </SelectContent>

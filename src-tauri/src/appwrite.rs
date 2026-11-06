@@ -325,7 +325,7 @@ async fn get<T: serde::de::DeserializeOwned>(
         .header("X-Appwrite-Response-Format", "2.3.0")
         .send()
         .await
-        .map_err(|error| format!("Appwrite ist nicht erreichbar: {error}"))?;
+        .map_err(|error| crate::supabase::network_error("Appwrite", &error))?;
     let status = response.status();
     if !status.is_success() {
         let hint = match status.as_u16() {
@@ -335,7 +335,7 @@ async fn get<T: serde::de::DeserializeOwned>(
             429 => "Appwrite-Limit erreicht. Bitte später erneut versuchen.",
             _ => "Anfrage fehlgeschlagen.",
         };
-        return Err(format!("Appwrite HTTP {}: {hint}", status.as_u16()));
+        return Err(crate::supabase::write_error("Appwrite", response, hint).await);
     }
     response
         .json::<T>()
@@ -469,10 +469,12 @@ pub async fn appwrite_create_bucket(
     .await
     .map_err(|_| "Appwrite Storage ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "Appwrite HTTP {}: Bucket konnte nicht erstellt werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "Appwrite",
+            response,
+            "Bucket konnte nicht erstellt werden.",
+        )
+        .await);
     }
     let bucket: AppwriteBucket = response
         .json()
@@ -506,10 +508,12 @@ pub async fn appwrite_rename_bucket(
     .await
     .map_err(|_| "Appwrite Storage ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "Appwrite HTTP {}: Bucket konnte nicht umbenannt werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "Appwrite",
+            response,
+            "Bucket konnte nicht umbenannt werden.",
+        )
+        .await);
     }
     let bucket: AppwriteBucket = response
         .json()
@@ -534,10 +538,12 @@ pub async fn appwrite_delete_bucket(id: String, bucket_id: String) -> Result<(),
     .await
     .map_err(|_| "Appwrite Storage ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "Appwrite HTTP {}: Bucket konnte nicht gelöscht werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "Appwrite",
+            response,
+            "Bucket konnte nicht gelöscht werden.",
+        )
+        .await);
     }
     Ok(())
 }
@@ -633,10 +639,7 @@ async fn upload_path(
                 413 => "Datei überschreitet das Größenlimit des Buckets.",
                 _ => "Upload fehlgeschlagen.",
             };
-            return Err(format!(
-                "Appwrite HTTP {}: {hint}",
-                response.status().as_u16()
-            ));
+            return Err(crate::supabase::write_error("Appwrite", response, hint).await);
         }
         let uploaded: UploadedFile = response
             .json()
@@ -717,10 +720,12 @@ pub async fn appwrite_rename_file(
         .await
         .map_err(|_| "Appwrite Storage ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "Appwrite HTTP {}: Datei konnte nicht umbenannt werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "Appwrite",
+            response,
+            "Datei konnte nicht umbenannt werden.",
+        )
+        .await);
     }
     let remote: AppwriteFile = response
         .json()
@@ -753,10 +758,12 @@ pub async fn appwrite_delete_file(
         .await
         .map_err(|_| "Appwrite Storage ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "Appwrite HTTP {}: Datei konnte nicht gelöscht werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "Appwrite",
+            response,
+            "Datei konnte nicht gelöscht werden.",
+        )
+        .await);
     }
     Ok(())
 }
@@ -930,10 +937,12 @@ pub async fn appwrite_create_user(
         .json(&serde_json::json!({"userId": "unique()", "email": email, "password": password, "name": name}))
         .send().await.map_err(|_| "Appwrite Auth ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "Appwrite HTTP {}: Benutzer konnte nicht erstellt werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "Appwrite",
+            response,
+            "Benutzer konnte nicht erstellt werden.",
+        )
+        .await);
     }
     let user: AppwriteUser = response
         .json()
@@ -969,10 +978,12 @@ pub async fn appwrite_update_user_email(
     .await
     .map_err(|_| "Appwrite Auth ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "Appwrite HTTP {}: Benutzer konnte nicht geändert werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "Appwrite",
+            response,
+            "Benutzer konnte nicht geändert werden.",
+        )
+        .await);
     }
     let user: AppwriteUser = response
         .json()
@@ -997,10 +1008,12 @@ pub async fn appwrite_delete_user(id: String, user_id: String) -> Result<(), Str
     .await
     .map_err(|_| "Appwrite Auth ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "Appwrite HTTP {}: Benutzer konnte nicht gelöscht werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "Appwrite",
+            response,
+            "Benutzer konnte nicht gelöscht werden.",
+        )
+        .await);
     }
     Ok(())
 }
@@ -1018,10 +1031,12 @@ pub async fn appwrite_delete_function(id: String, function_id: String) -> Result
     .await
     .map_err(|_| "Appwrite Functions ist nicht erreichbar.".to_string())?;
     if !response.status().is_success() {
-        return Err(format!(
-            "Appwrite HTTP {}: Function konnte nicht gelöscht werden.",
-            response.status().as_u16()
-        ));
+        return Err(crate::supabase::write_error(
+            "Appwrite",
+            response,
+            "Function konnte nicht gelöscht werden.",
+        )
+        .await);
     }
     Ok(())
 }

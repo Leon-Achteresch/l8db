@@ -1,4 +1,7 @@
+import { heapSize } from "bun:jsc";
 import { expect, mock, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { reportScenario } from "../scripts/performance-report";
@@ -88,10 +91,10 @@ function measure(run: () => void, runs = 40) {
 
 function retainedBytes(run: () => void): number {
   Bun.gc(true);
-  const before = process.memoryUsage().heapUsed;
+  const before = heapSize();
   run();
   Bun.gc(true);
-  return process.memoryUsage().heapUsed - before;
+  return heapSize() - before;
 }
 
 const conditions: FilterCondition[] = Array.from({ length: 25 }, (_, index) => ({
@@ -284,4 +287,16 @@ test("one request per question, cancellation stops it and idle bars send nothing
   expect(tokens.chip.length + tokens.pill.length).toBeLessThan(120_000);
   expect(bars.medianMs).toBeLessThan(20);
   expect(render.medianMs).toBeLessThan(40);
+});
+
+test("date filter inputs load the date picker only when the calendar opens", () => {
+  const imports = new Bun.Transpiler({ loader: "tsx" }).scanImports(
+    readFileSync(resolve(import.meta.dir, "../src/features/filters/date-filter-input.tsx"), "utf8"),
+  );
+  expect(imports.find((entry) => entry.path === "./date-filter-panel")?.kind).toBe(
+    "dynamic-import",
+  );
+  expect(imports.filter((entry) => /date-fns|react-day-picker|calendar/.test(entry.path))).toEqual(
+    [],
+  );
 });

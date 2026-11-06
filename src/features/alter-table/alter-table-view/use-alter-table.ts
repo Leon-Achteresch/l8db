@@ -1,7 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { defaultDataType } from "@/features/alter-table/alter-table-view/data-types";
+import {
+  defaultDataType,
+  nullableLocked,
+} from "@/features/alter-table/alter-table-view/data-types";
 import { useActiveConnection } from "@/lib/connections";
 import {
   type AddColumnRequest,
@@ -54,14 +57,26 @@ export function useAlterTable(schema: string, table: string) {
     data_type: defaultDataType(connection?.kind),
     is_nullable: true,
   });
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [dropTarget, setDropTargetState] = useState<string | null>(null);
+  const [dropCascade, setDropCascade] = useState(false);
+  const [dropError, setDropError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const setDropTarget = (target: string | null) => {
+    setDropTargetState(target);
+    setDropCascade(false);
+    setDropError(null);
+  };
+
   const invalidate = async () => {
-    await queryClient.invalidateQueries({
-      queryKey: ["table-columns-detailed", connection?.id, database, schema, table],
-    });
-    await queryClient.invalidateQueries({ queryKey: ["columns"] });
+    await Promise.all(
+      [
+        ["table-columns-detailed", connection?.id, database, schema, table],
+        ["columns"],
+        ["columns-detailed"],
+        ["er-schema"],
+      ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+    );
   };
 
   const handleStartEdit = (col: DetailedColumnInfo) => {
@@ -92,11 +107,15 @@ export function useAlterTable(schema: string, table: string) {
         drop_default: false,
       };
 
-      if (editForm.new_name && editForm.new_name !== original.name) {
-        changes.new_name = editForm.new_name;
+      const newName = editForm.new_name?.trim();
+      if (newName && newName !== original.name) {
+        changes.new_name = newName;
       }
-      if (editForm.data_type && editForm.data_type !== original.data_type) {
-        changes.data_type = editForm.data_type;
+      const dataType = editForm.data_type?.trim();
+      if (dataType && dataType !== original.data_type) {
+        changes.data_type = dataType;
+        const using = editForm.using?.trim();
+        if (using) changes.using = using;
       }
       const wantNotNull = editForm.set_not_null ?? false;
       if (wantNotNull !== !original.is_nullable) {
@@ -132,7 +151,8 @@ export function useAlterTable(schema: string, table: string) {
   };
 
   const handleAddColumn = async () => {
-    if (!connection || !addForm.name.trim()) return;
+    const name = addForm.name.trim();
+    if (!connection || !name) return;
     setSaving(true);
     try {
       await addColumn(
@@ -140,10 +160,15 @@ export function useAlterTable(schema: string, table: string) {
         effectiveConnectionString(connection),
         schema,
         table,
-        addForm,
+        {
+          ...addForm,
+          name,
+          data_type: addForm.data_type.trim(),
+          is_nullable: addForm.is_nullable && !nullableLocked(connection.kind, addForm.data_type),
+        },
         database ?? undefined,
       );
-      toast.success(`Spalte "${addForm.name}" hinzugefügt.`);
+      toast.success(`Spalte "${name}" hinzugefügt.`);
       setAddingColumn(false);
       setAddForm({ name: "", data_type: defaultDataType(connection?.kind), is_nullable: true });
       await invalidate();
@@ -165,12 +190,13 @@ export function useAlterTable(schema: string, table: string) {
         table,
         dropTarget,
         database ?? undefined,
+        dropCascade,
       );
       toast.success(`Spalte "${dropTarget}" gelöscht.`);
       setDropTarget(null);
       await invalidate();
     } catch (err) {
-      toast.error(typeof err === "string" ? err : String(err));
+      setDropError(String(err));
     } finally {
       setSaving(false);
     }
@@ -190,6 +216,9 @@ export function useAlterTable(schema: string, table: string) {
     setAddForm,
     dropTarget,
     setDropTarget,
+    dropCascade,
+    setDropCascade,
+    dropError,
     saving,
     handleStartEdit,
     handleCancelEdit,

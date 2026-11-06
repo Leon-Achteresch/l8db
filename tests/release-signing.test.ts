@@ -28,6 +28,12 @@ describe("production release credentials", () => {
     });
   }
 
+  test("does not require a Windows signing certificate", () => {
+    const result = Bun.spawnSync(["bash", "-e", "-c", gate], {
+      env: { PATH: process.env.PATH, ...credentials, WINDOWS_CERTIFICATE: "" },
+    });
+    expect(result.exitCode).toBe(0);
+  });
   test("allows a fully configured release to proceed", () => {
     const result = Bun.spawnSync(["bash", "-e", "-c", gate], {
       env: { PATH: process.env.PATH, ...credentials },

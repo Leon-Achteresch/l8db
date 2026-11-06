@@ -203,8 +203,10 @@ export async function scanDrift(
     (() => {
       try {
         return parseIgnore(ignoreText);
-      } catch {
-        return { format: 1 as const, patterns: [] };
+      } catch (error) {
+        throw new Error(
+          `${IGNORE_PATH} ist ungültig und muss in den Ausschluss-Einstellungen korrigiert werden: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     })(),
   );
@@ -368,7 +370,11 @@ export async function recheckDrift(
       let definition: string | null = null;
       try {
         definition = (await captureObject(connection, source.database, entry.object)).definition;
-      } catch {
+      } catch (error) {
+        if (entry.database !== null)
+          throw new Error(
+            `${entry.object.selection.schema}.${entry.object.selection.objectName} konnte nicht erneut gelesen werden: ${error instanceof Error ? error.message : String(error)}`,
+          );
         definition = null;
       }
       const current =

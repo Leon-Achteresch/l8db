@@ -9,7 +9,10 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { getDataTypeGroups } from "@/features/alter-table/alter-table-view/data-types";
+import {
+  getDataTypeGroups,
+  isListedDataType,
+} from "@/features/alter-table/alter-table-view/data-types";
 import type { DatabaseKind } from "@/lib/db";
 import { cn } from "@/lib/utils";
 
@@ -22,14 +25,26 @@ export interface DataTypeComboboxProps {
 
 export function DataTypeCombobox({ value, onChange, kind, className }: DataTypeComboboxProps) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const groups = useMemo(() => getDataTypeGroups(kind), [kind]);
 
-  const allTypes = useMemo(() => groups.flatMap((g) => g.types), [groups]);
-
-  const isCustom = value !== "" && !allTypes.includes(value.toLowerCase());
+  const isCustom = value !== "" && !isListedDataType(groups, value);
+  const custom = search.trim();
+  const offerCustom = custom !== "" && !isListedDataType(groups, custom);
+  const select = (next: string) => {
+    onChange(next);
+    setSearch("");
+    setOpen(false);
+  };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setSearch("");
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -44,23 +59,30 @@ export function DataTypeCombobox({ value, onChange, kind, className }: DataTypeC
       </PopoverTrigger>
       <PopoverContent className="w-56 p-0" align="start">
         <Command>
-          <CommandInput autoFocus placeholder="Typ suchen…" className="h-8 text-xs" />
+          <CommandInput
+            autoFocus
+            value={search}
+            onValueChange={setSearch}
+            placeholder="Typ suchen oder eingeben…"
+            className="h-8 text-xs"
+          />
           <CommandList className="max-h-60">
             <CommandEmpty>Kein Typ gefunden.</CommandEmpty>
+            {offerCustom && (
+              <CommandGroup heading="Eigener Typ">
+                <CommandItem value={custom} onSelect={() => select(custom)} className="text-xs">
+                  <span className="font-mono">„{custom}“ verwenden</span>
+                </CommandItem>
+              </CommandGroup>
+            )}
             {groups.map((group) => (
               <CommandGroup key={group.label} heading={group.label}>
                 {group.types.map((t) => (
-                  <CommandItem
-                    key={t}
-                    value={t}
-                    onSelect={(v) => {
-                      onChange(v);
-                      setOpen(false);
-                    }}
-                    className="text-xs"
-                  >
+                  <CommandItem key={t} value={t} onSelect={() => select(t)} className="text-xs">
                     <span className="font-mono">{t}</span>
-                    {value.toLowerCase() === t && <CheckIcon className="ml-auto size-3.5" />}
+                    {value.toLowerCase() === t.toLowerCase() && (
+                      <CheckIcon className="ml-auto size-3.5" />
+                    )}
                   </CommandItem>
                 ))}
               </CommandGroup>

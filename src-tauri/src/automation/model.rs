@@ -1038,6 +1038,10 @@ pub struct AutomationConnection {
     pub kind: DatabaseKind,
     pub connection_string: String,
     #[serde(default)]
+    pub schemas: Option<Vec<String>>,
+    #[serde(default)]
+    pub mask_rules: Vec<crate::mcp::config::RedactRule>,
+    #[serde(default)]
     pub read_only: bool,
     #[serde(default)]
     pub production_locked: bool,
@@ -1215,6 +1219,8 @@ pub struct AlertState {
     pub last_notified_at: Option<String>,
     pub last_value: Option<String>,
     pub muted_until: Option<String>,
+    #[serde(default)]
+    pub notified_status: Option<AlertStatus>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

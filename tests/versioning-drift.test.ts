@@ -56,14 +56,13 @@ mock.module("../src/lib/compare-definition", () => ({
 }));
 mock.module("../src/lib/versioning/capture", () => ({
   ...capture,
-  captureObject: async (_connection: unknown, _database: unknown, object: ManagedObject) => ({
-    object,
-    definition: database[object.selection.objectName ?? ""],
-    checksum: "",
-  }),
+  captureObject: async (_connection: unknown, _database: unknown, object: ManagedObject) => {
+    if (object.selection.objectName === "broken") throw new Error("Tunnel getrennt");
+    return { object, definition: database[object.selection.objectName ?? ""], checksum: "" };
+  },
 }));
 
-const { saveDrift, scanDrift } = await import("../src/lib/versioning/drift");
+const { recheckDrift, saveDrift, scanDrift } = await import("../src/lib/versioning/drift");
 
 const managed = (name: string): ManagedObject => ({
   id: name,
@@ -157,6 +156,49 @@ test("detects changed, new and dropped objects and writes the database state bac
   const saved = JSON.parse(files.get("database/project.json") ?? "") as VersioningProject;
   expect(saved.objects.map((object) => object.selection.objectName)).toEqual(["orders", "fresh"]);
   expect(await scanDrift("/r", saved, connection, source)).toEqual([]);
+});
+
+test("Recheck meldet Lesefehler statt einer angeblichen Datenbankänderung", async () => {
+  const connection = { id: "c", kind: "mysql" } as SavedConnection;
+  const source = {
+    connectionId: "c",
+    database: null,
+    schema: "app",
+    objectType: "table" as const,
+    objectName: null,
+    objectOid: null,
+  };
+  const entry = (database: Record<string, string> | null) => ({
+    object: managed("broken"),
+    status: database ? ("changed" as const) : ("removed" as const),
+    repository: {},
+    database,
+  });
+  await expect(recheckDrift(connection, source, [entry({ x: "y" })])).rejects.toThrow(
+    "Tunnel getrennt",
+  );
+  expect(await recheckDrift(connection, source, [entry(null)])).toEqual([]);
+});
+
+test("ungültige ignore.json bricht den Scan mit klarer Meldung ab", async () => {
+  files.set("database/ignore.json", "{kaputt");
+  const connection = { id: "c", kind: "mysql" } as SavedConnection;
+  const project: VersioningProject = { format: 1, id: "p", name: "P", kind: "mysql", objects: [] };
+  const source = {
+    connectionId: "c",
+    database: null,
+    schema: "app",
+    objectType: "table" as const,
+    objectName: null,
+    objectOid: null,
+  };
+  try {
+    await expect(scanDrift("/r", project, connection, source)).rejects.toThrow(
+      "database/ignore.json ist ungültig",
+    );
+  } finally {
+    files.delete("database/ignore.json");
+  }
 });
 
 afterAll(() => {

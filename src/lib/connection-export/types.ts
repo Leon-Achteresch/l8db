@@ -1,4 +1,5 @@
 import type {
+  CloudAuth,
   ConnectionEnvironment,
   ConnectionTag,
   NetworkProxy,
@@ -13,6 +14,9 @@ export const CONNECTION_EXPORT_FORMAT = "l8db-connections";
 export const CONNECTION_EXPORT_VERSION = 1;
 
 const KIND_SET: Record<DatabaseKind, true> = {
+  jdbc: true,
+  workspace: true,
+  spacetimedb: true,
   postgres: true,
   mysql: true,
   sqlite: true,
@@ -48,6 +52,8 @@ export const ENVIRONMENTS: ConnectionEnvironment[] = [
 export const SECRET_PARAM =
   /^(password|passwd|pwd|pass|token|secret|api[_-]?key|api[_-]?token|access[_-]?key|secret[_-]?key|auth[_-]?token|credential[s]?|sslpassword|ssl[_-]?key[_-]?password|passphrase)$/i;
 
+export const TEXT_FIELDS = ["description", "owner", "contact", "runbook"] as const;
+
 export interface ExportedSsh {
   host: string;
   port: number;
@@ -76,6 +82,13 @@ export interface ExportedConnection {
   environment?: ConnectionEnvironment | null;
   readOnly?: boolean;
   maskRules?: MaskRule[];
+  cloudAuth?: CloudAuth | null;
+  proxyUser?: string;
+  description?: string;
+  owner?: string;
+  contact?: string;
+  runbook?: string;
+  commandTunnelOmitted?: boolean;
 }
 
 export interface ConnectionExportFile {

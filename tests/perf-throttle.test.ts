@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { type Browser, chromium, type Page, webkit } from "playwright";
+import { cpuThrottleRate } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
 
 const ENABLED = Boolean(process.env.L8DB_PERF_THROTTLE);
@@ -159,7 +160,7 @@ beforeAll(async () => {
   await page.waitForTimeout(1500);
   if (!WEBKIT) {
     const cdp = await page.context().newCDPSession(page);
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate: RATE });
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(RATE) });
   }
 }, 300000);
 
@@ -511,7 +512,10 @@ test.skipIf(!ENABLED)(
     expect(Math.max(0, ...durations)).toBeLessThanOrEqual(Math.max(96, RATE * 18));
     await page.getByRole("menuitem", { name: "Bibliothek" }).hover();
     await page.getByRole("menuitem", { name: "Snippets verwalten…" }).click();
-    await page.getByRole("dialog", { name: "SQL-Snippets" }).waitFor();
+    await page
+      .locator("[data-workbench-content]")
+      .getByRole("heading", { name: "SQL-Snippets" })
+      .waitFor();
     await page.keyboard.press("Escape");
     await page.getByRole("menuitem", { name: "Bibliothek" }).waitFor({ state: "hidden" });
   },
@@ -667,10 +671,8 @@ test.skipIf(!ENABLED)(
     await navigate("/query");
     await page.locator(".monaco-editor .view-lines").first().click();
     await page.keyboard.type("select perf wide", { delay: 5 });
-    await page
-      .getByRole("button", { name: /Ausführen/ })
-      .first()
-      .click();
+    await page.locator('[data-tour="query-run"]').click();
+    await page.getByRole("button", { name: "Klassische Ergebnisansicht" }).click();
     await page.getByRole("button", { name: "Ergebnisoptionen" }).click();
     await page.keyboard.press("Escape");
     await page.keyboard.press("ControlOrMeta+f");

@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { createJSONStorage, persist, type StateStorage } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { createQuotaSafeStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export interface QueryHistoryEntry {
@@ -27,8 +28,8 @@ interface QueryHistoryState {
 }
 
 export const DEFAULT_HISTORY_LIMIT = 500;
-export const MAX_HISTORY_SQL_LENGTH = 200000;
-export const MAX_HISTORY_TOTAL_SQL_LENGTH = 2_000_000;
+export const MAX_HISTORY_SQL_LENGTH = 20_000;
+export const MAX_HISTORY_TOTAL_SQL_LENGTH = 500_000;
 
 function createId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -51,34 +52,12 @@ export function retainHistory(
       if (seen.has(entry.id)) return false;
       seen.add(entry.id);
       const count = counts.get(entry.connectionId) ?? 0;
+      if (count >= limit || used + entry.sql.length > budget) return false;
       counts.set(entry.connectionId, count + 1);
       used += entry.sql.length;
-      return count < limit && used <= budget;
+      return true;
     });
 }
-
-const quotaSafeStorage: StateStorage = {
-  getItem: (name) => localStorage.getItem(name),
-  removeItem: (name) => localStorage.removeItem(name),
-  setItem: (name, value) => {
-    let payload = value;
-    for (;;) {
-      try {
-        localStorage.setItem(name, payload);
-        return;
-      } catch (error) {
-        const parsed = JSON.parse(payload) as { state?: { entries?: QueryHistoryEntry[] } };
-        const entries = parsed.state?.entries ?? [];
-        if (entries.length === 0) throw error;
-        parsed.state = {
-          ...parsed.state,
-          entries: entries.slice(0, Math.floor(entries.length / 2)),
-        };
-        payload = JSON.stringify(parsed);
-      }
-    }
-  },
-};
 
 export const useQueryHistoryStore = create<QueryHistoryState>()(
   persist(
@@ -126,7 +105,7 @@ export const useQueryHistoryStore = create<QueryHistoryState>()(
     }),
     {
       name: "l8db.query-history",
-      storage: createJSONStorage(() => quotaSafeStorage),
+      storage: createJSONStorage(() => createQuotaSafeStorage("entries")),
       merge: (saved, current) => {
         const state = saved as Partial<QueryHistoryState> | undefined;
         const retentionLimit = Math.min(
