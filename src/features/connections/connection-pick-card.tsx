@@ -67,17 +67,14 @@ export function ConnectionPickCard({
         <ConnectionCardShell
           connection={connection}
           active={active}
-          connected={active}
           onDoubleClick={(event) => {
             if (active || (event.target as HTMLElement).closest("button")) return;
             onOpen();
           }}
           actions={
             <div className="flex items-center gap-0.5">
-              <Button
+              <button
                 type="button"
-                variant="ghost"
-                size="icon-xs"
                 aria-label={
                   favorite
                     ? `${connection.name} aus Favoriten entfernen`
@@ -89,11 +86,12 @@ export function ConnectionPickCard({
                   onToggleFavorite();
                 }}
                 className={cn(
-                  favorite ? "text-amber-500" : "text-muted-foreground hover:text-foreground",
+                  "grid size-7 place-items-center rounded-md transition-colors hover:bg-muted",
+                  favorite ? "text-amber-500" : "text-muted-foreground/60 hover:text-foreground",
                 )}
               >
                 <Star className={cn("size-3.5", favorite && "fill-current")} />
-              </Button>
+              </button>
               <IconMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -146,10 +144,10 @@ export function ConnectionPickCard({
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
               {connection.temporary ? (
                 <Button
-                  variant="outline"
-                  size="sm"
-                  className="px-3 text-control"
+                  variant="ghost"
+                  size="xs"
                   onClick={() => saveTemporary(connection.id)}
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <Save className="size-3" />
                   Verbindung speichern
@@ -157,9 +155,9 @@ export function ConnectionPickCard({
               ) : (
                 <Button
                   variant="ghost"
-                  size="sm"
-                  className="rounded-lg px-3 text-control"
+                  size="xs"
                   onClick={onEdit}
+                  className="text-muted-foreground hover:text-foreground"
                 >
                   <Pencil className="size-3" />
                   Bearbeiten
@@ -167,22 +165,12 @@ export function ConnectionPickCard({
               )}
               <div className="flex items-center gap-1">
                 {active ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="rounded-lg px-3 text-control"
-                    onClick={onOpen}
-                  >
+                  <Button variant="outline" size="xs" onClick={onOpen}>
                     <Unplug className="size-3" />
                     Trennen
                   </Button>
                 ) : (
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="rounded-lg px-3 text-control"
-                    onClick={onOpen}
-                  >
+                  <Button variant="default" size="xs" onClick={onOpen} className="gap-1 shadow-2xs">
                     <Play className="size-3" />
                     Verbinden
                   </Button>
@@ -269,7 +257,6 @@ export function ConnectionSelectCard({
 function ConnectionCardShell({
   connection,
   active,
-  connected = false,
   actions,
   footer,
   className,
@@ -277,7 +264,6 @@ function ConnectionCardShell({
 }: {
   connection: SavedConnection;
   active: boolean;
-  connected?: boolean;
   actions: ReactNode;
   footer?: ReactNode;
 } & ComponentProps<typeof motion.article>) {
@@ -294,8 +280,8 @@ function ConnectionCardShell({
       animate={{ opacity: 1, scale: 1 }}
       {...rest}
       className={cn(
-        "group relative flex flex-col justify-between overflow-hidden rounded-lg border bg-card p-4 transition-colors duration-150 hover:border-foreground/20",
-        active ? "border-primary/40 ring-1 ring-primary/15" : "border-border",
+        "group relative flex flex-col justify-between overflow-hidden rounded-xl border bg-card p-4 transition-colors duration-150 hover:border-foreground/20",
+        active ? "border-primary/40 ring-1 ring-primary/15" : "border-border/80",
         className,
       )}
     >
@@ -317,11 +303,9 @@ function ConnectionCardShell({
               )}
             >
               <ProviderLogo providerId={provider.id} kind={connection.kind} className="size-5" />
-              {!connected && (
-                <span className="absolute -bottom-1 -right-1">
-                  <ConnectionStatusIndicator connectionId={connection.id} />
-                </span>
-              )}
+              <span className="absolute -bottom-1 -right-1">
+                <ConnectionStatusIndicator connectionId={connection.id} />
+              </span>
             </div>
             <div className="min-w-0 flex-1">
               <h3
@@ -330,17 +314,10 @@ function ConnectionCardShell({
               >
                 {connection.name}
               </h3>
-              <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-                <span className="truncate">
-                  {provider.name}
-                  {colorLabel ? ` · ${colorLabel}` : ""}
-                </span>
-                {connected && (
-                  <span className="shrink-0 rounded-sm border border-emerald-500/30 bg-emerald-500/10 px-1.5 text-[11px] leading-4 font-medium text-emerald-600 dark:text-emerald-400">
-                    Verbunden
-                  </span>
-                )}
-              </div>
+              <p className="truncate text-[11px] text-muted-foreground">
+                {provider.name}
+                {colorLabel ? ` · ${colorLabel}` : ""}
+              </p>
             </div>
           </div>
           {actions}
@@ -350,10 +327,10 @@ function ConnectionCardShell({
         <div className="mt-3 text-xs">
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <Database className="size-3 shrink-0 text-muted-foreground/70" />
-            <span className="truncate font-mono font-medium text-foreground">
+            <span className="truncate font-mono font-medium text-foreground/90">
               {target || "Standard"}
             </span>
-            {schema && <span className="truncate text-muted-foreground">/ {schema}</span>}
+            {schema && <span className="truncate text-muted-foreground/80">/ {schema}</span>}
           </div>
           <div className="mt-1.5 flex items-center gap-1.5 text-muted-foreground">
             <User className="size-3 shrink-0 text-muted-foreground/70" />
@@ -362,7 +339,7 @@ function ConnectionCardShell({
                 (connection.team ? "Benutzer beim ersten Verbinden" : "Kein Benutzer")}
             </span>
             {endpoint.host && (
-              <span className="truncate text-muted-foreground">
+              <span className="truncate text-muted-foreground/60">
                 @{endpoint.host}
                 {endpoint.port ? `:${endpoint.port}` : ""}
               </span>

@@ -379,11 +379,8 @@ export function SidebarConnectionPicker({
                               <span className="truncate text-xs font-medium">{row.name}</span>
                               {row.connection?.tags?.[0] && (
                                 <span
-                                  className="max-w-16 shrink-0 truncate rounded-sm px-1 text-[11px] leading-4"
-                                  style={{
-                                    backgroundColor: `color-mix(in oklab, ${row.connection.tags[0].color} 16%, transparent)`,
-                                    color: `color-mix(in oklab, ${row.connection.tags[0].color} 70%, var(--foreground))`,
-                                  }}
+                                  className="max-w-16 shrink-0 truncate rounded px-1 font-mono text-[9px] text-white"
+                                  style={{ backgroundColor: row.connection.tags[0].color }}
                                 >
                                   {row.connection.tags[0].name}
                                 </span>

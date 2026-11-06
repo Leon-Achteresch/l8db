@@ -16,7 +16,7 @@ const VIEW_LABELS: Record<string, string> = {
   ai: "KI",
   notebook: "Notebooks",
   workbench: "Workbench",
-  "query-builder": "Abfrage-Builder",
+  "query-builder": "Query Builder",
   "er-diagram": "ER-Diagramm",
   compare: "Vergleich",
   "schema-compare": "Schema-Vergleich",

@@ -40,17 +40,14 @@ export function SidebarConnectionTriggerContent({
         </span>
         {!isSwitching && activeConnection?.tags?.[0] && (
           <span
-            className="inline-flex max-w-20 shrink-0 truncate rounded-sm px-1.5 text-[11px] leading-4 font-medium"
-            style={{
-              backgroundColor: `color-mix(in oklab, ${activeConnection.tags[0].color} 16%, transparent)`,
-              color: `color-mix(in oklab, ${activeConnection.tags[0].color} 70%, var(--foreground))`,
-            }}
+            className="inline-flex max-w-20 shrink-0 truncate rounded px-1.5 py-px text-[9px] font-medium text-white"
+            style={{ backgroundColor: activeConnection.tags[0].color }}
           >
             {activeConnection.tags[0].name}
           </span>
         )}
         {!isSwitching && (activeConnection?.tags?.length ?? 0) > 1 && (
-          <span className="shrink-0 text-[11px] text-muted-foreground">
+          <span className="shrink-0 font-mono text-[9px] text-muted-foreground">
             +{(activeConnection?.tags?.length ?? 0) - 1}
           </span>
         )}

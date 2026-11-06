@@ -4,7 +4,6 @@ import { MorphIcon } from "morphicons/react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { QueryEditorSettingsPopover } from "@/features/query/query-editor-settings-popover";
 import { afterPaint } from "@/lib/after-paint";
 import { useQueryWorkspace } from "@/lib/query-workspace";
@@ -36,7 +35,6 @@ export function ToolbarViewControls({
       {isSql && (
         <Button
           size="icon-sm"
-          className="size-8"
           variant={navigatorVisible ? "secondary" : "ghost"}
           aria-label="Schema-Navigator umschalten"
           title="Schema und Statement-Navigator"
@@ -54,7 +52,7 @@ export function ToolbarViewControls({
       <Button
         size="sm"
         variant={analysisOpen ? "secondary" : "ghost"}
-        className="h-8 gap-1.5 px-1.5 text-xs"
+        className="h-7 gap-1.5 px-2 text-xs @min-[62rem]/qtb:px-3"
         aria-pressed={analysisOpen}
         onClick={onOpenAnalysis}
         title="Explain und Performance-Test"
@@ -62,10 +60,8 @@ export function ToolbarViewControls({
         <GaugeIcon className="size-3.5" />
         <span className="sr-only @min-[62rem]/qtb:not-sr-only">Analyse</span>
       </Button>
-      <Separator orientation="vertical" className="mx-0.5 my-2" />
       <Button
         size="icon-sm"
-        className="size-8"
         variant={editorFocus ? "secondary" : "ghost"}
         title="Editor-Fokus umschalten"
         aria-label="Editor-Fokus umschalten"
@@ -76,7 +72,6 @@ export function ToolbarViewControls({
       </Button>
       <Button
         size="icon-sm"
-        className="size-8"
         variant={resultFocus ? "secondary" : "ghost"}
         title="Ergebnis vergrößern umschalten"
         aria-label="Ergebnis vergrößern umschalten"
@@ -85,7 +80,6 @@ export function ToolbarViewControls({
       >
         <PanelBottomIcon className="size-3.5" />
       </Button>
-      <Separator orientation="vertical" className="mx-0.5 my-2" />
       <QueryEditorSettingsPopover />
       {toolsMenu}
     </div>

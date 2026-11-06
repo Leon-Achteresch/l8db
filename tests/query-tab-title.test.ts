@@ -62,6 +62,5 @@ describe("queryTabLabel", () => {
   test("falls back to Query n", () => {
     expect(queryTabLabel({ title: "Query 2", sql: "" })).toBe("Query 2");
     expect(queryTabLabel({ title: "Query 2", sql: "select * from x" })).toBe("Select x");
-    expect(queryTabLabel({ title: "Abfrage 3", sql: "select * from x" })).toBe("Select x");
   });
 });

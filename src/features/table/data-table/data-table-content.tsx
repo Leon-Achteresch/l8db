@@ -1,5 +1,5 @@
 import { DragDropProvider } from "@dnd-kit/react";
-import { type CSSProperties, memo, useId, useMemo, useRef } from "react";
+import { type CSSProperties, memo, useId, useMemo } from "react";
 import { gridColumnTemplate } from "@/lib/column-window";
 import { useSpiderVisit } from "@/lib/hooks/use-spider-visit";
 import { reorderVisibleColumns } from "@/lib/table-column-prefs";
@@ -17,7 +17,6 @@ import { EditTargetContext } from "./edit-target-context";
 import { GridStyleContext } from "./grid-style-context";
 import { useColumnDragPreview } from "./use-column-drag-preview";
 import { useDataTable } from "./use-data-table";
-import { useScrollEdgeFade } from "./use-scroll-edge-fade";
 
 export const DataTableContent = memo(function DataTableContent(props: DataTableProps) {
   const {
@@ -118,8 +117,6 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
     waveRefs,
   } = useDataTable(props);
   useSpiderVisit(scrollRef, columnNames, data);
-  const edgeFadeRef = useRef<HTMLDivElement>(null);
-  useScrollEdgeFade(scrollRef, edgeFadeRef);
   const columnScope = useId();
   const gridColumns = useMemo(() => gridColumnTemplate(columnWidths), [columnWidths]);
   const dragPreview = useColumnDragPreview({
@@ -294,11 +291,6 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                 </DragDropProvider>
               </div>
             </div>
-            <div
-              ref={edgeFadeRef}
-              aria-hidden
-              className="pointer-events-none absolute right-0 bottom-0 z-30 w-6 bg-gradient-to-l from-background to-transparent opacity-0 transition-opacity"
-            />
             <PageWave
               direction="up"
               ref={waveRefs.up}

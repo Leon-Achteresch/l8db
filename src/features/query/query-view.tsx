@@ -236,11 +236,10 @@ export function QueryView({ tabId }: QueryViewProps) {
         className="flex h-full min-w-0 flex-1 flex-col"
       >
         <div
-          data-icon-chrome
-          className="@container/qtb flex h-12 shrink-0 flex-nowrap items-center gap-1 overflow-hidden border-b bg-card px-3"
+          className="@container/qtb flex h-12 shrink-0 flex-nowrap items-center gap-1.5 overflow-hidden border-b bg-card px-3"
           data-tour="query-toolbar"
         >
-          <div className="-mx-1 flex min-w-0 flex-1 items-center gap-3 overflow-x-auto px-1 py-1 [scrollbar-width:none]">
+          <div className="-mx-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1 py-1 [scrollbar-width:none]">
             <RunControls
               actions={actions}
               exec={exec}
@@ -251,45 +250,44 @@ export function QueryView({ tabId }: QueryViewProps) {
               showScript={isSql}
               onOpenScript={script.handleOpenScriptDialog}
               shortcutLabel={shortcutLabel}
-            >
-              {caps.dml_preview && (
-                <DmlPreviewButton
-                  disabled={exec.isRunning || !connection || !sql.trim()}
-                  disabledReason={
-                    exec.isRunning
-                      ? "Eine Abfrage läuft bereits"
-                      : !connection
-                        ? "Keine Verbindung aktiv"
-                        : "Kein SQL im Editor"
-                  }
-                  shortcut={shortcutLabel("query.preview")}
-                  onPreview={() => void actions.handlePreview()}
-                />
-              )}
-              {caps.multi_target_query && (
-                <MultiTargetButton
-                  disabled={!connection}
-                  disabledReason="Keine Verbindung aktiv"
-                  running={multiTargetRun.running}
-                  onOpen={() => setMultiTargetOpen(true)}
-                />
-              )}
-              {isSql && <SelectRowLimit />}
-              {connection && isSql && (
-                <SqlStatesButton
-                  key={JSON.stringify([connection.id, database, tabId])}
-                  connectionId={connection.id}
-                  database={database}
-                  tabId={tabId}
-                  sql={sql}
-                  running={exec.isRunning}
-                  onRestore={(text) => {
-                    editorApiRef.current?.replaceText(text);
-                    editorSync.flush();
-                  }}
-                />
-              )}
-            </RunControls>
+            />
+            {caps.dml_preview && (
+              <DmlPreviewButton
+                disabled={exec.isRunning || !connection || !sql.trim()}
+                disabledReason={
+                  exec.isRunning
+                    ? "Eine Abfrage läuft bereits"
+                    : !connection
+                      ? "Keine Verbindung aktiv"
+                      : "Kein SQL im Editor"
+                }
+                shortcut={shortcutLabel("query.preview")}
+                onPreview={() => void actions.handlePreview()}
+              />
+            )}
+            {caps.multi_target_query && (
+              <MultiTargetButton
+                disabled={!connection}
+                disabledReason="Keine Verbindung aktiv"
+                running={multiTargetRun.running}
+                onOpen={() => setMultiTargetOpen(true)}
+              />
+            )}
+            {isSql && <SelectRowLimit />}
+            {connection && isSql && (
+              <SqlStatesButton
+                key={JSON.stringify([connection.id, database, tabId])}
+                connectionId={connection.id}
+                database={database}
+                tabId={tabId}
+                sql={sql}
+                running={exec.isRunning}
+                onRestore={(text) => {
+                  editorApiRef.current?.replaceText(text);
+                  editorSync.flush();
+                }}
+              />
+            )}
           </div>
           <ToolbarViewControls
             isSql={isSql}

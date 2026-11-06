@@ -109,7 +109,7 @@ export function useTableHeader({
                         role={gridColumn ? "columnheader" : undefined}
                         aria-colindex={gridColumn}
                         title="Rechtsklick: Spalten"
-                        className="w-12 sticky top-0 left-0 z-40 border-b border-r border-border border-b-foreground/15 bg-muted px-3 py-1 text-center align-middle leading-4"
+                        className="w-12 sticky top-0 left-0 z-40 border-b border-r border-border bg-muted px-3 py-2 text-center align-middle"
                         style={{ width: header.getSize(), gridColumn }}
                       >
                         {header.isPlaceholder

@@ -27,27 +27,13 @@ export const TABLE_DETAIL_TABS: {
   { id: "triggers", label: "Trigger", entity: "table", capability: "triggers" },
   { id: "indexes", label: "Indizes", entity: "table", capability: "indexes" },
   { id: "constraints", label: "Constraints", entity: "table", capability: "constraints" },
-  { id: "partitions", label: "Partitionen", entity: "table", capability: "partitions" },
   { id: "rls", label: "RLS", entity: "table", capability: "rls" },
+  { id: "partitions", label: "Partitionen", entity: "table", capability: "partitions" },
   { id: "grants", label: "Rechte", capability: "object_grants" },
   { id: "used-by", label: "Verwendet in", capability: "used_by" },
   { id: "performance", label: "Leistung" },
   { id: "audit", label: "Audit", capability: "object_admin" },
 ];
-
-export const TABLE_DETAIL_TAB_GROUPS: { label: string; ids: TableDetailTab[] }[] = [
-  { label: "Inhalt", ids: ["data", "columns", "definition"] },
-  { label: "Struktur", ids: ["triggers", "indexes", "constraints", "partitions"] },
-  { label: "Sicherheit", ids: ["rls", "grants"] },
-  { label: "Analyse", ids: ["used-by", "performance", "audit"] },
-];
-
-export function tableDetailTabGroup(id: string): number {
-  return Math.max(
-    0,
-    TABLE_DETAIL_TAB_GROUPS.findIndex((group) => group.ids.includes(id as TableDetailTab)),
-  );
-}
 
 export function availableTableDetailTabs(isView: boolean, caps: Capabilities, easyMode = false) {
   return TABLE_DETAIL_TABS.filter(

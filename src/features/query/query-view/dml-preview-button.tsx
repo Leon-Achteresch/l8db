@@ -23,15 +23,15 @@ export function DmlPreviewButton({
       data-hotkey="query.preview"
       ref={feature.ref}
       size="sm"
-      variant="ghost"
-      className="h-8 gap-1.5 px-2 text-xs"
+      variant="outline"
+      className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
       data-tour="query-dml-preview"
       onClick={onPreview}
       disabled={disabled}
       disabledReason={disabledReason}
       title={`Betroffene Zeilen eines UPDATE, DELETE, MERGE oder INSERT … SELECT anzeigen, ohne auszuführen (${shortcut})`}
     >
-      <ScanEyeIcon className="size-3.5" />
+      <ScanEyeIcon className="size-3" />
       <span className="sr-only @min-[54rem]/qtb:not-sr-only">Vorschau</span>
       {feature.isNew && <NewBadge />}
     </Button>

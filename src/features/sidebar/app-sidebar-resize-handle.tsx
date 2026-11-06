@@ -1,18 +1,12 @@
-import { useSettingsStore } from "@/lib/settings";
 import {
   clampSidebarWidth,
-  effectiveSidebarWidth,
   SIDEBAR_PANEL_MAX_WIDTH,
   SIDEBAR_PANEL_MIN_WIDTH,
   useSidebarPanel,
 } from "@/lib/sidebar-panel";
 
 export function AppSidebarResizeHandle() {
-  const navExpanded = useSettingsStore((state) => state.navRailExpanded);
-  const panelWidth = effectiveSidebarWidth(
-    useSidebarPanel((state) => state.width),
-    navExpanded,
-  );
+  const panelWidth = useSidebarPanel((state) => state.width);
   const setWidth = useSidebarPanel((state) => state.setWidth);
   const setIsResizing = useSidebarPanel((state) => state.setIsResizing);
 
@@ -21,7 +15,7 @@ export function AppSidebarResizeHandle() {
     event.stopPropagation();
     const wrapper = event.currentTarget.closest<HTMLElement>("[data-slot=sidebar-wrapper]");
     const startX = event.clientX;
-    const startWidth = panelWidth;
+    const startWidth = useSidebarPanel.getState().width;
     let nextWidth = startWidth;
 
     const handlePointerMove = (moveEvent: PointerEvent) => {

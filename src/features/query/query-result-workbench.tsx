@@ -148,7 +148,7 @@ export function QueryResultWorkbench({
       <div className="relative flex h-full items-center justify-center bg-muted/10 p-8">
         <SeasonalCorner className="size-24 text-foreground/20" />
         <div className="max-w-sm space-y-3 text-center">
-          <div className="mx-auto flex size-8 items-center justify-center rounded-lg border bg-background font-mono text-base text-muted-foreground">
+          <div className="mx-auto flex size-10 items-center justify-center rounded-lg border bg-background font-mono text-lg text-muted-foreground">
             ↳
           </div>
           <p className="text-sm font-medium">Bereit für deine nächste Abfrage</p>

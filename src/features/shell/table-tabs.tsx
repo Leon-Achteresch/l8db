@@ -216,7 +216,7 @@ export function TableTabs() {
     <div
       data-drop-zone="master"
       className={cn(
-        "relative flex min-w-0 flex-1 items-center gap-1 rounded-md transition-colors",
+        "relative flex min-w-0 flex-1 items-center gap-1 rounded-full transition-colors",
         caret !== null && "bg-primary/10 ring-1 ring-inset ring-primary/50",
       )}
     >

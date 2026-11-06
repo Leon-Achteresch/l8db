@@ -33,7 +33,6 @@ import "monaco-editor/features/longLinesHelper/register";
 import "monaco-editor/features/middleScroll/register";
 import "monaco-editor/features/multicursor/register";
 import "monaco-editor/features/parameterHints/register";
-import "monaco-editor/features/placeholderText/register";
 import "monaco-editor/features/quickCommand/register";
 import "monaco-editor/features/quickHelp/register";
 import "monaco-editor/features/quickOutline/register";

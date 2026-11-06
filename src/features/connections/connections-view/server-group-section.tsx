@@ -58,7 +58,7 @@ export function ServerGroupSection<T extends Groupable>({
         </div>
         {actions}
       </header>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(18rem,100%),1fr))] gap-3.5">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(15rem,100%),1fr))] gap-3.5">
         {children}
       </div>
     </section>
