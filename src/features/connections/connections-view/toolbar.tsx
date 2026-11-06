@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import { Download, FolderTree, MoreHorizontal, Plus, Search, Star, Upload } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 import { IconMenu, IconMenuContent, IconMenuItem } from "@/components/icon-menu";
@@ -34,12 +33,6 @@ export function ConnectionsToolbar({
   const importIsNew = useHasNewFeatures("connections.import");
   return (
     <>
-      <Button variant="outline" size="sm" asChild>
-        <Link to="/cloud-accounts">Cloud-Konten</Link>
-      </Button>
-      <Button variant="outline" size="sm" asChild>
-        <Link to="/workspaces">Team-Workspaces</Link>
-      </Button>
       {connections.length > 0 && (
         <>
           <div className="relative w-48 min-w-0 sm:w-64 md:w-80">

@@ -1,7 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, Users } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useState } from "react";
-import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -19,7 +18,6 @@ import {
   workspaceProfiles,
   workspaceRequest,
 } from "@/lib/db/workspaces";
-import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { WorkspaceAudit } from "./workspace-audit";
 import { WorkspaceConnections } from "./workspace-connections";
 import { WorkspaceInvitations } from "./workspace-invitations";
@@ -28,9 +26,8 @@ import { WorkspacePending } from "./workspace-pending";
 import { WorkspaceQueries } from "./workspace-queries";
 import { WorkspaceUsers } from "./workspace-users";
 
-export function WorkspacesView() {
+export function WorkspacesPanel() {
   const queryClient = useQueryClient();
-  const feature = useNewFeatureVisibility<HTMLDivElement>("connections.workspaces");
   const [selected, setSelected] = useState("");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,58 +64,46 @@ export function WorkspacesView() {
   }
 
   return (
-    <main className="h-full overflow-auto p-6 lg:p-8">
-      <header className="mb-6 flex flex-wrap items-start gap-4">
-        <div ref={feature.ref} className="flex-1">
-          <p className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <Users className="size-4" />
-            Gemeinsam arbeiten{feature.isNew && <NewBadge />}
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight">Team-Workspaces</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Gemeinsame Verbindungen, Rechte, SQL-Abfragen und nachvollziehbare Freigaben.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {profiles.data && profiles.data.length > 0 && (
-            <>
-              <Select
-                value={profile?.id ?? ""}
-                onValueChange={(id) => {
-                  setSelected(id);
-                  setError(null);
-                }}
-              >
-                <SelectTrigger className="max-w-80" aria-label="Team-Workspace">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {profiles.data.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.user.email} · {item.endpoint}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  void queryClient.invalidateQueries({ queryKey: ["workspace", profile?.id] })
-                }
-              >
-                <RefreshCw className="size-3.5" />
-                Aktualisieren
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => void disconnect()}>
-                Abmelden
-              </Button>
-            </>
-          )}
-          <Button size="sm" onClick={() => setAdding((value) => !value)}>
-            Workspace hinzufügen
-          </Button>
-        </div>
+    <div className="flex flex-col">
+      <header className="mb-6 flex flex-wrap items-center gap-2">
+        {profiles.data && profiles.data.length > 0 && (
+          <>
+            <Select
+              value={profile?.id ?? ""}
+              onValueChange={(id) => {
+                setSelected(id);
+                setError(null);
+              }}
+            >
+              <SelectTrigger className="max-w-80" aria-label="Team-Workspace">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {profiles.data.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.user.email} · {item.endpoint}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                void queryClient.invalidateQueries({ queryKey: ["workspace", profile?.id] })
+              }
+            >
+              <RefreshCw className="size-3.5" />
+              Aktualisieren
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => void disconnect()}>
+              Abmelden
+            </Button>
+          </>
+        )}
+        <Button size="sm" onClick={() => setAdding((value) => !value)}>
+          Workspace hinzufügen
+        </Button>
       </header>
       {(error || profiles.isError) && (
         <p role="alert" className="mb-4 text-sm text-destructive">
@@ -200,6 +185,6 @@ export function WorkspacesView() {
           </Button>
         </footer>
       )}
-    </main>
+    </div>
   );
 }

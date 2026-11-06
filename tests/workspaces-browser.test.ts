@@ -1,9 +1,18 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { type Browser, chromium } from "playwright";
+import { type Browser, chromium, type Page } from "playwright";
 import { seedSupabaseStudio } from "./fixtures/supabase-studio-mock";
 
 const enabled = Boolean(process.env.L8DB_WORKSPACES_BROWSER);
 const appUrl = process.env.L8DB_WORKSPACES_URL ?? "http://localhost:1420";
+
+async function openWorkspaces(page: Page) {
+  await page.goto(`${appUrl}/settings?tab=general`);
+  await page
+    .locator("[data-setting-id='team-workspaces']")
+    .getByRole("button", { name: "Öffnen", exact: true })
+    .click();
+  await page.getByRole("heading", { name: "Team-Workspaces", exact: true }).waitFor();
+}
 let browser: Browser;
 
 beforeAll(async () => {
@@ -164,8 +173,7 @@ test.skipIf(!enabled)(
       };
     });
     const started = performance.now();
-    await page.goto(`${appUrl}/workspaces`);
-    await page.getByRole("heading", { name: "Team-Workspaces", exact: true }).waitFor();
+    await openWorkspaces(page);
     await page.getByText("Shared DB", { exact: true }).waitFor();
     await page.getByRole("tab", { name: "Benutzer und Rechte" }).click();
     await page.getByRole("combobox", { name: "Verbindung für Rechteverwaltung" }).click();
@@ -316,7 +324,7 @@ test.skipIf(!enabled)(
       };
     }, fullSql);
     try {
-      await page.goto(`${appUrl}/workspaces`);
+      await openWorkspaces(page);
       await page.getByRole("tab", { name: "Freigaben", exact: true }).click();
       const foreign = page.locator("article").filter({ hasText: "UPDATE accounts" });
       const own = page.locator("article").filter({ hasText: "DELETE FROM audit_entries" });

@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { LockKeyhole } from "lucide-react";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { ProviderLogo } from "@/components/provider-logo";
@@ -161,6 +162,14 @@ export function ConnectionDetailsStep({
         >
           Andere Datenbank wählen
         </button>
+      )}
+      {(mode === "string" ? quickProviderId : provider) === "neon" && (
+        <Link
+          to="/cloud-accounts"
+          className="self-start text-[11px] text-muted-foreground underline"
+        >
+          Mit Neon-Konto verbinden und Branch auswählen
+        </Link>
       )}
       {!info.file_based && !isProfileConnection(mode === "string" ? quickKind : kind) && (
         <SegmentedControl

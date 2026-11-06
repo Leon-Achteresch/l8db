@@ -48,7 +48,7 @@ Verbindliche Maschinenrichtlinien und der vollständige Ablauf für IT, DBA und 
 
 ## Zentraler Team-Workspace
 
-Die dateibasierten Team-Verbindungen oben bleiben ein eigener Weg. Unter **Team-Workspaces** lässt sich zusätzlich ein zentraler Workspace mit Anmeldung, Einladungen, Admin-/Mitgliederrollen, Verbindungsrechten, gemeinsamen SQL-Abfragen, Freigaben und Auditprotokoll verwenden. Gespeicherte Verbindungen enthalten nur `workspace://profil-id/verbindung-id`; Sitzungen liegen im Backend-Schlüsselbund.
+Die dateibasierten Team-Verbindungen oben bleiben ein eigener Weg. In den Einstellungen unter **Allgemein → Team-Workspaces** lässt sich zusätzlich ein zentraler Workspace mit Anmeldung, Einladungen, Admin-/Mitgliederrollen, Verbindungsrechten, gemeinsamen SQL-Abfragen, Freigaben und Auditprotokoll verwenden. Gespeicherte Verbindungen enthalten nur `workspace://profil-id/verbindung-id`; Sitzungen liegen im Backend-Schlüsselbund.
 
 Der lokale Server wird in der Oberfläche gestartet. Für einen eigenständigen Server:
 
