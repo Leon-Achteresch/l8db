@@ -1,6 +1,7 @@
 import { type ReactNode, type Ref, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
-import { useSidebarPanel } from "@/lib/sidebar-panel";
+import { useSettingsStore } from "@/lib/settings";
+import { effectiveSidebarWidth, useSidebarPanel } from "@/lib/sidebar-panel";
 import { BaasSidebarSlot } from "./baas-sidebar-portal";
 import { BaasStudioNav, type BaasStudioTab } from "./baas-studio-nav";
 
@@ -31,7 +32,11 @@ export function BaasStudioFrame({
   fullBleed?: boolean;
   children: ReactNode;
 }) {
-  const width = useSidebarPanel((state) => state.width);
+  const navExpanded = useSettingsStore((state) => state.navRailExpanded);
+  const width = effectiveSidebarWidth(
+    useSidebarPanel((state) => state.width),
+    navExpanded,
+  );
   const active = tabs.find((tab) => tab.value === value);
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
 

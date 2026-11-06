@@ -209,7 +209,7 @@ export function TableFilterPanel({
             onApply={onApply}
           />
         ) : (
-          <span className="hidden text-xs text-muted-foreground sm:inline">Keine Filter aktiv</span>
+          <span className="sr-only">Keine Filter aktiv</span>
         )}
 
         {rules.map((rule) => (

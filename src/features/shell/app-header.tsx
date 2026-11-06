@@ -124,6 +124,7 @@ export function AppHeader() {
 
   return (
     <header
+      data-icon-chrome
       ref={headerRef}
       data-tauri-drag-region="deep"
       className={cn(
@@ -260,7 +261,7 @@ export function AppHeader() {
             >
               <GitPullRequestIcon className="size-4" strokeWidth={1.75} />
               {hasNewVersioningFeatures ? (
-                <NewBadge className="absolute -right-2 -top-1.5 px-1 text-[8px]" />
+                <NewBadge className="absolute -right-2.5 -top-0.5 px-1 text-[8px]" />
               ) : null}
               {versioning.pending > 0 ? (
                 <span
@@ -339,7 +340,7 @@ export function AppHeader() {
           >
             <Sparkles className="size-4" strokeWidth={1.75} />
             {hasNewAiFeatures && !aiOpen && !aiPage ? (
-              <NewBadge className="absolute -right-2 -top-1.5 px-1 text-[8px]" />
+              <NewBadge className="absolute -right-2.5 -top-0.5 px-1 text-[8px]" />
             ) : null}
           </button>
         </Tooltip>
@@ -362,7 +363,13 @@ export function AppHeader() {
         <Tooltip content="Einstellungen" side="bottom">
           <Link
             to="/settings"
-            aria-label={hasNewSettingsFeatures ? "Einstellungen, neue Funktionen" : "Einstellungen"}
+            aria-label={
+              update
+                ? "Einstellungen, Update verfügbar"
+                : hasNewSettingsFeatures
+                  ? "Einstellungen, neue Funktionen"
+                  : "Einstellungen"
+            }
             className={cn(
               "relative inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
               "hover:bg-muted hover:text-foreground",
@@ -370,14 +377,13 @@ export function AppHeader() {
             )}
           >
             <Settings className="size-4" strokeWidth={1.75} />
-            {hasNewSettingsFeatures ? (
-              <NewBadge className="absolute -right-2 -top-1.5 px-1 text-[8px]" />
-            ) : null}
             {update ? (
               <span
                 aria-hidden
-                className="absolute -bottom-0.5 -left-0.5 size-2 rounded-full bg-red-500 ring-2 ring-card"
+                className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-info ring-2 ring-card"
               />
+            ) : hasNewSettingsFeatures ? (
+              <NewBadge className="absolute -right-2.5 -top-0.5 px-1 text-[8px]" />
             ) : null}
           </Link>
         </Tooltip>

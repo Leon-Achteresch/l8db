@@ -231,12 +231,12 @@ export function ConnectionsView() {
       data-tour="connections-page"
       className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-background"
     >
-      <div className="relative flex h-full min-h-0 w-full flex-col p-4 md:p-6">
+      <div className="relative flex h-full min-h-0 w-full flex-col px-6 py-7">
         <SecretStorageNotice />
         {(editorId || totalConnections > 0) && (
-          <header className="mb-4 flex shrink-0 items-center justify-between gap-4">
+          <header className="mb-6 flex shrink-0 items-center justify-between gap-4">
             <div className="min-w-0">
-              <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
+              <h1 className="truncate text-[22px] font-semibold tracking-tight text-foreground">
                 {editorId
                   ? selected
                     ? "Verbindung bearbeiten"
@@ -244,7 +244,7 @@ export function ConnectionsView() {
                   : "Verbindungen"}
               </h1>
               {!editorId && (
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                <p className="mt-1 truncate text-xs text-muted-foreground">
                   {totalConnections === 0
                     ? "Starte mit einer neuen Verbindung oder importiere bestehende Profile."
                     : `${totalConnections} ${totalConnections === 1 ? "Verbindung" : "Verbindungen"}${grouped ? ` auf ${allGroups.length} ${allGroups.length === 1 ? "Host" : "Hosts"}` : ""}${activeConnection ? ` · ${activeConnection.name} aktiv` : ""}`}
@@ -324,7 +324,7 @@ export function ConnectionsView() {
               renderGroup={renderGroup}
               extra={
                 baasCards.length > 0 && (
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(min(15rem,100%),1fr))] gap-3.5">
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(min(18rem,100%),1fr))] gap-3.5">
                     {baasCards}
                   </div>
                 )
@@ -332,7 +332,7 @@ export function ConnectionsView() {
             />
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(min(15rem,100%),1fr))] gap-3.5">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(min(18rem,100%),1fr))] gap-3.5">
                 {filtered.map(renderCard)}
                 {baasCards}
               </div>

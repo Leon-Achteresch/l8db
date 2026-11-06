@@ -105,7 +105,7 @@ export function useTableHeader({
                     key={item.key}
                     aria-hidden
                     colSpan={item.span}
-                    className="sticky top-0 z-20 border-b border-border bg-muted"
+                    className="sticky top-0 z-20 border-b border-border border-b-foreground/15 bg-muted"
                     style={{ width: item.width, padding: 0 }}
                   />
                 );
@@ -116,7 +116,7 @@ export function useTableHeader({
                     <ContextMenuTrigger asChild>
                       <th
                         title="Rechtsklick: Spalten"
-                        className="w-12 sticky top-0 left-0 z-40 border-b border-r border-border bg-muted px-3 py-2 text-center align-middle"
+                        className="w-12 sticky top-0 left-0 z-40 border-b border-r border-border border-b-foreground/15 bg-muted px-3 py-1 text-center align-middle leading-4"
                         style={{ width: header.getSize() }}
                       >
                         {header.isPlaceholder

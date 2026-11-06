@@ -2,6 +2,12 @@ import { squarify } from "@/features/dashboard/charts/svg-geometry";
 import type { DatabaseOverview, SchemaMap, SchemaMapLink, TableInfo } from "@/lib/db";
 
 export const ATLAS_TILE_LIMIT = 24;
+export const ATLAS_GRID_LIMIT = 24;
+export const ATLAS_GRID_ROW = 68;
+export const ATLAS_GRID_ROW_COMPACT = 60;
+const ATLAS_GRID_COLS = 4;
+const ATLAS_CELL_MIN = 204;
+const ATLAS_CELL_MAX = 244;
 
 export type AtlasMetric = "bytes" | "rows" | "links" | null;
 
@@ -69,11 +75,30 @@ export function joinAtlas(tables: TableInfo[], map: SchemaMap | undefined): Atla
   });
 }
 
+export function atlasHasMeta(tables: AtlasTable[]): boolean {
+  return tables.some(
+    (table) =>
+      table.rows != null || table.bytes != null || table.links > 0 || Boolean(table.comment),
+  );
+}
+
 export function atlasMetric(tables: AtlasTable[]): AtlasMetric {
   if (tables.some((table) => (table.bytes ?? 0) > 0)) return "bytes";
   if (tables.some((table) => (table.rows ?? 0) > 0)) return "rows";
   if (tables.some((table) => table.links > 0)) return "links";
   return null;
+}
+
+export function atlasGrid(
+  count: number,
+  metric: AtlasMetric,
+  width = 0,
+): { cols: number; rows: number; cell: number } | null {
+  if (metric === "bytes" || metric === "rows" || count < 1 || count > ATLAS_GRID_LIMIT) return null;
+  const fit = width > 0 ? Math.max(1, Math.floor(width / ATLAS_CELL_MIN)) : ATLAS_GRID_COLS;
+  const cols = Math.min(count, fit);
+  const cell = width > 0 ? Math.min(ATLAS_CELL_MAX, width / fit) : 0;
+  return { cols, rows: Math.ceil(count / cols), cell };
 }
 
 export interface RankedSchema {
@@ -134,8 +159,20 @@ export function layoutAtlas(
     }
     shown[at] = entry;
   }
+  const grid = atlasGrid(shown.length, metric, width);
+  const cells = grid
+    ? width > 0 && height > 0
+      ? shown.map((item, index) => ({
+          item,
+          x: (index % grid.cols) * grid.cell,
+          y: Math.floor(index / grid.cols) * (height / grid.rows),
+          width: grid.cell,
+          height: height / grid.rows,
+        }))
+      : []
+    : squarify(shown, 0, 0, width, height);
   return {
-    tiles: squarify(shown, 0, 0, width, height).map(({ item, x, y, width: w, height: h }) => ({
+    tiles: cells.map(({ item, x, y, width: w, height: h }) => ({
       ...item.table,
       x,
       y,

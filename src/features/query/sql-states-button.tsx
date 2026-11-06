@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import { useEditorCheckpoints } from "@/lib/ai/editor/checkpoints";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -80,11 +81,12 @@ export function SqlStatesButton({ connectionId, database, tabId, sql, running, o
     setSelected({ name: entry.name, sql: entry.value.sql });
   return (
     <>
+      <Separator orientation="vertical" className="mx-0.5 my-2" />
       <Button
         ref={feature.ref}
         variant="ghost"
         size="sm"
-        className="relative size-7 shrink-0 px-0"
+        className="relative size-8 shrink-0 px-0"
         aria-label="SQL-Stände"
         title="SQL-Stände und Varianten"
         onClick={() => {

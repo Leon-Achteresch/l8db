@@ -1,7 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   type CSSProperties,
-  type ReactNode,
   type RefObject,
   useEffect,
   useLayoutEffect,
@@ -16,8 +15,9 @@ import { useIslandView } from "@/features/shell/dynamic-island/use-island-view";
 import { dismissIslandMoment, useIslandStore } from "@/lib/dynamic-island";
 import { EASE_OUT } from "@/lib/ease";
 import { useElementSize } from "@/lib/hooks/use-element-size";
+import { cn } from "@/lib/utils";
 
-const IDLE_WIDTH = 180;
+const IDLE_WIDTH = 264;
 const ACTIVE_WIDTH = 220;
 const SHRINK_DELAY = 0.07;
 const BACKLOG_DURATION = 1600;
@@ -26,11 +26,11 @@ const PERCENT = new Intl.NumberFormat("de-DE", { style: "percent" });
 interface Props {
   buttonRef: RefObject<HTMLButtonElement | null>;
   shortcut: string;
-  badge?: ReactNode;
+  isNew?: boolean;
   onOpen: () => void;
 }
 
-export function DynamicIsland({ buttonRef, shortcut, badge, onOpen }: Props) {
+export function DynamicIsland({ buttonRef, shortcut, isNew, onOpen }: Props) {
   useIslandMoments();
   const view = useIslandView();
   const reduce = useReducedMotion();
@@ -85,7 +85,7 @@ export function DynamicIsland({ buttonRef, shortcut, badge, onOpen }: Props) {
         onPointerEnter={() => setHovered(true)}
         onPointerLeave={() => setHovered(false)}
         style={{ width: pill.width || undefined, WebkitAppRegion: "no-drag" } as CSSProperties}
-        className="group relative h-7 max-w-full text-foreground transition-[scale] dark:text-white duration-150 ease-out active:scale-[0.96]"
+        className="group relative h-7 max-w-full text-foreground transition-[scale] duration-150 ease-out active:scale-[0.96]"
       >
         {pill.width ? (
           <IslandPill width={pill.width} tone={view.tone ?? "neutral"} delay={pill.delay} />
@@ -119,10 +119,14 @@ export function DynamicIsland({ buttonRef, shortcut, badge, onOpen }: Props) {
             className="pointer-events-none absolute top-0 left-1/2 flex h-7 w-max -translate-x-1/2 items-center justify-center gap-2 px-2.5 text-xs @max-[8rem]/header-search:px-1.5"
           >
             <IslandSymbol glyph={view.glyph} />
-            <span className="min-w-0 truncate font-medium @max-[8rem]/header-search:hidden">
+            <span
+              className={cn(
+                "min-w-0 truncate @max-[8rem]/header-search:hidden",
+                view.idle ? "text-current/60" : "font-medium",
+              )}
+            >
               {view.title}
             </span>
-            {view.idle ? badge : null}
             {view.detail ? (
               <span className="min-w-0 truncate text-current/55 @max-[14rem]/header-search:hidden">
                 {view.detail}
@@ -162,6 +166,13 @@ export function DynamicIsland({ buttonRef, shortcut, badge, onOpen }: Props) {
             ) : null}
           </motion.div>
         </AnimatePresence>
+        {isNew && view.idle ? (
+          <span
+            role="img"
+            aria-label="Neu"
+            className="pointer-events-none absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary ring-2 ring-background"
+          />
+        ) : null}
         <span className="sr-only" aria-live="polite">
           {announcement}
         </span>

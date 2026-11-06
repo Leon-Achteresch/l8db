@@ -37,8 +37,9 @@ export function QueryEditorSettingsPopover() {
         <Button
           size="sm"
           variant="ghost"
-          className="h-7 gap-1.5 px-2 text-xs @min-[62rem]/qtb:px-3"
+          className="h-8 gap-1.5 px-1.5 text-xs"
           title="Query Editor anpassen"
+          aria-label="Query Editor anpassen"
         >
           <Settings2Icon className="size-3.5" />
           <span className="sr-only @min-[62rem]/qtb:not-sr-only">Anpassen</span>

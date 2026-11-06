@@ -2,6 +2,7 @@ import type { ComponentProps, RefObject } from "react";
 
 import { type QueryEditorApi, QueryEditorPane } from "@/features/query/query-editor-pane";
 import { QueryEditorStatusbar } from "@/features/query/query-editor-statusbar";
+import { formatHotkeyDisplay, resolveHotkey, useHotkeysStore } from "@/lib/hotkeys";
 
 import type { QueryViewCapabilities } from "./types";
 import type { EditorCursorState } from "./use-editor-cursor-state";
@@ -45,6 +46,9 @@ export function QueryEditorContent({
   onSave,
   onSearchTabs,
 }: QueryEditorContentProps) {
+  const runHotkey = useHotkeysStore((state) =>
+    formatHotkeyDisplay(resolveHotkey("query.run", state.overrides)),
+  );
   return (
     <>
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -55,6 +59,11 @@ export function QueryEditorContent({
               : caps.query_language === "json"
                 ? "json"
                 : "sql"
+          }
+          placeholder={
+            caps.query_language === "redis" || caps.query_language === "json"
+              ? undefined
+              : `SQL eingeben · ${runHotkey} ausführen`
           }
           ref={editorApiRef}
           value={sql}

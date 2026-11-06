@@ -47,6 +47,8 @@ export type AppSidebarNavItem = {
   group?: number;
 };
 
+export const navGroupLabels = ["Verbindung", "Arbeiten", "Diagnose", "Werkzeuge"];
+
 export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
   navMain: [
     {
@@ -81,7 +83,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       featureScope: "dashboard",
     },
     {
-      title: "Übersicht",
+      title: "Start",
       url: "/",
       icon: House,
       activeIcon: HousePlug,
@@ -103,7 +105,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       available: (caps) => caps.query_language === "sql",
     },
     {
-      title: "Invalid Objects",
+      title: "Ungültige Objekte",
       url: "/invalid-objects",
       group: 2,
       icon: TriangleAlert,
@@ -112,7 +114,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     },
     { title: "Monitor", url: "/monitor", icon: Activity, activeIcon: ChartSpline, group: 2 },
     {
-      title: "Health",
+      title: "Zustand",
       url: "/health",
       group: 2,
       icon: HeartPulse,
@@ -121,7 +123,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       available: (caps) => caps.health_advisor,
     },
     {
-      title: "Query Builder",
+      title: "Abfrage-Builder",
       url: "/query-builder",
       group: 1,
       icon: Blocks,

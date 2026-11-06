@@ -1,6 +1,6 @@
 import { splitSqlStatements } from "@/lib/sql-statements";
 
-const AUTO_TITLE = /^Query \d+$/;
+const AUTO_TITLE = /^(Query|Abfrage) \d+$/;
 const VERBS: Record<string, string> = {
   SELECT: "Select",
   VALUES: "Select",

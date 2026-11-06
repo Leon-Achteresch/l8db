@@ -5,8 +5,7 @@ import { cn } from "@/lib/utils";
 const ISLAND_SPRING = { type: "spring", stiffness: 420, damping: 26, mass: 0.9 } as const;
 const CAP = 14;
 const BASE = 100;
-const PART =
-  "absolute top-0 left-1/2 h-7 border-border bg-card group-hover:bg-muted dark:border-white/10 dark:bg-black dark:group-hover:bg-neutral-900";
+const PART = "absolute top-0 left-1/2 h-7 border-border bg-muted group-hover:bg-accent";
 const GLOWS: [IslandTone, string][] = [
   ["success", "shadow-[0_0_18px_-1px_rgb(52_211_153/0.6)]"],
   ["error", "shadow-[0_0_18px_-1px_rgb(248_113_113/0.6)]"],
