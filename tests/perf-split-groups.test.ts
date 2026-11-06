@@ -136,7 +136,10 @@ test("saved split views stay cheap with many tabs and groups", async () => {
       );
   });
   const allGroups = Object.fromEntries(
-    Array.from({ length: 20 }, (_, index) => [`c${index}`, groups]),
+    Array.from({ length: 20 }, (_, index) => [
+      `c${index}`,
+      groups.map((group, position) => (position % 2 ? group : { ...group, shared: true })),
+    ]),
   );
   const foreignConnections = Array.from({ length: 20 }, (_, index) => ({
     id: `c${index}`,
@@ -168,7 +171,7 @@ test("saved split views stay cheap with many tabs and groups", async () => {
     foreignGroups: foreignCount,
     bytes,
   });
-  expect(foreignCount).toBe(19 * MAX_SPLIT_GROUPS);
+  expect(foreignCount).toBe((19 * MAX_SPLIT_GROUPS) / 2);
   expect(foreign.p95Ms / 100).toBeLessThan(0.5);
   expect(groups).toHaveLength(MAX_SPLIT_GROUPS);
   expect(groups[0].name).toBe("Ansicht 11");

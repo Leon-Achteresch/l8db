@@ -240,6 +240,7 @@ export const NEW_FEATURES = {
   "split.pane-objects": "0.8.0",
   "split.scroll-sync": "0.8.0",
   "split.saved-views": "0.16.0",
+  "split.saved-views.shared": NEXT_FEATURE_VERSION,
   "split.pane-tabs": NEXT_FEATURE_VERSION,
   "split.master-tabs": NEXT_FEATURE_VERSION,
   "settings.hotkeys.shortcut-hints": NEXT_FEATURE_VERSION,

@@ -74,6 +74,8 @@ export function TableTabs() {
   const deleteGroup = useSplitView((state) => state.deleteGroup);
   const openGroup = groups.find((group) => group.id === activeGroup);
   const groupFeature = useNewFeatureVisibility<HTMLButtonElement>("split.saved-views");
+  const sharedFeature = useNewFeatureVisibility<HTMLDivElement>("split.saved-views.shared");
+  const setGroupShared = useSplitView((state) => state.setGroupShared);
   const masterFeature = useNewFeatureVisibility<HTMLButtonElement>("split.master-tabs");
   const seenFeatures = useSeenNewFeatures();
   const splitTabsNew =
@@ -333,8 +335,13 @@ export function TableTabs() {
           groups={groups}
           foreign={foreignGroups}
           activeGroup={hasSplit ? activeGroup : null}
-          isNew={groupFeature.isNew}
+          isNew={groupFeature.isNew || sharedFeature.isNew}
           triggerRef={groupFeature.ref}
+          sharedNew={sharedFeature.isNew}
+          sharedRef={sharedFeature.ref}
+          onToggleShared={(group, connectionId) =>
+            setGroupShared(group.id, !group.shared, connectionId)
+          }
           onOpen={(group, connectionId) => void handleOpenGroup(group, connectionId)}
           onDelete={(group, connectionId) => deleteGroup(group.id, connectionId)}
           templates={templates}

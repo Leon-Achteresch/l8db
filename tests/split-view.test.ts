@@ -713,11 +713,14 @@ describe("Gespeicherte Ansichten", () => {
     expect(state().orientation).toBe("vertical");
   });
 
-  test("Gruppen anderer Verbindungen sind sichtbar und löschbar", () => {
+  test("nur allgemein verfügbare Gruppen erscheinen in anderen Verbindungen", () => {
     const { a, users, orders, group } = savedSplit();
     const b = addConnection("b");
     useConnectionsStore.getState().setActiveId(b.id);
     const { connections } = useConnectionsStore.getState();
+    expect(foreignSplitGroups(state().groups, b.id, connections)).toEqual([]);
+
+    state().setGroupShared(group.id, true, a.id);
     const foreign = foreignSplitGroups(state().groups, b.id, connections);
     expect(foreign.map((entry) => entry.connectionId)).toEqual([a.id]);
     expect(foreign[0].group.id).toBe(group.id);
@@ -727,8 +730,12 @@ describe("Gespeicherte Ansichten", () => {
     state().collapse();
     state().openGroup(group.id);
     expect(state().panes).toEqual([users, orders]);
+    state().moveTab(users, 1);
+    expect(state().groups[a.id][0].shared).toBe(true);
 
     useConnectionsStore.getState().setActiveId(b.id);
+    state().setGroupShared(group.id, false, a.id);
+    expect(foreignSplitGroups(state().groups, b.id, connections)).toEqual([]);
     state().deleteGroup(group.id, a.id);
     expect(state().groups[a.id]).toEqual([]);
   });

@@ -1,4 +1,4 @@
-import { LayoutPanelLeftIcon, Trash2Icon } from "lucide-react";
+import { GlobeIcon, LayoutPanelLeftIcon, Trash2Icon } from "lucide-react";
 import type * as React from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
@@ -24,6 +24,9 @@ interface SplitGroupsMenuProps {
   foreign: readonly ForeignSplitGroup[];
   onOpen: (group: SplitGroup, connectionId?: string) => void;
   onDelete: (group: SplitGroup, connectionId?: string) => void;
+  onToggleShared: (group: SplitGroup, connectionId?: string) => void;
+  sharedNew: boolean;
+  sharedRef: React.Ref<HTMLDivElement>;
   templates: readonly TemplateEntry[];
   onOpenTemplate: (entry: TemplateEntry) => void;
 }
@@ -36,6 +39,9 @@ export function SplitGroupsMenu({
   foreign,
   onOpen,
   onDelete,
+  onToggleShared,
+  sharedNew,
+  sharedRef,
   templates,
   onOpenTemplate,
 }: SplitGroupsMenuProps) {
@@ -66,7 +72,7 @@ export function SplitGroupsMenu({
         className="max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] w-80 max-w-[calc(100vw-2rem)]"
       >
         <DropdownMenuLabel>Tab-Gruppen</DropdownMenuLabel>
-        {entries.map(({ group, connectionId, connectionName }) => {
+        {entries.map(({ group, connectionId, connectionName }, index) => {
           const members = group.tabs.map((tab) => (tab ? tabLabel(tab) : "Leer")).join(" | ");
           const detail = connectionName ? `${connectionName} · ${members}` : members;
           return (
@@ -81,6 +87,27 @@ export function SplitGroupsMenu({
                   <span className="block truncate font-medium">{group.name}</span>
                   <span className="block truncate text-[10px] text-muted-foreground">{detail}</span>
                 </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                ref={index === 0 ? sharedRef : undefined}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  onToggleShared(group, connectionId);
+                }}
+                aria-label={
+                  group.shared
+                    ? `${group.name} nur für diese Verbindung`
+                    : `${group.name} allgemein verfügbar machen`
+                }
+                aria-pressed={Boolean(group.shared)}
+                title={group.shared ? "Allgemein verfügbar" : "Nur diese Verbindung"}
+                className={cn(
+                  "relative shrink-0",
+                  group.shared ? "text-primary" : "text-muted-foreground/60",
+                )}
+              >
+                <GlobeIcon className="size-3.5" />
+                {index === 0 && sharedNew && <NewBadge className="absolute -top-1 right-0" />}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={(event) => {
