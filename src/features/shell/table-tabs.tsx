@@ -35,10 +35,12 @@ import {
   placeOpenTab,
   type SplitGroup,
   standaloneTabs,
+  useForeignSplitGroups,
   useSplitGroups,
   useSplitShown,
   useSplitView,
 } from "@/lib/split-view";
+import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { useDropPreview } from "@/lib/tab-drop";
 import { navigateToTab, preloadTab, tabLabel } from "@/lib/tab-navigation";
 import { remoteTab, sameTabBarTabs, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
@@ -67,6 +69,7 @@ export function TableTabs() {
   const layout = useSplitLayout();
   const activeGroup = useSplitView((state) => state.activeGroup);
   const groups = useSplitGroups();
+  const foreignGroups = useForeignSplitGroups();
   const renameGroup = useSplitView((state) => state.renameGroup);
   const deleteGroup = useSplitView((state) => state.deleteGroup);
   const openGroup = groups.find((group) => group.id === activeGroup);
@@ -164,8 +167,11 @@ export function TableTabs() {
     if (tab) navigateToTab(navigate, tab);
   };
 
-  const handleOpenGroup = (group: SplitGroup) => {
-    if (hasSplit && group.id === activeGroup) {
+  const handleOpenGroup = async (group: SplitGroup, connectionId?: string) => {
+    if (connectionId) {
+      if (useConnectionSwitch.getState().isSwitching) return;
+      if (!(await activateConnectionWithToast(connectionId))) return;
+    } else if (hasSplit && group.id === activeGroup) {
       handleShowSplit();
       return;
     }
@@ -322,14 +328,15 @@ export function TableTabs() {
           </button>
         </Tooltip>
       )}
-      {!easyMode && (groups.length > 0 || templates.length > 0) && (
+      {!easyMode && (groups.length > 0 || foreignGroups.length > 0 || templates.length > 0) && (
         <SplitGroupsMenu
           groups={groups}
+          foreign={foreignGroups}
           activeGroup={hasSplit ? activeGroup : null}
           isNew={groupFeature.isNew}
           triggerRef={groupFeature.ref}
-          onOpen={handleOpenGroup}
-          onDelete={(group) => deleteGroup(group.id)}
+          onOpen={(group, connectionId) => void handleOpenGroup(group, connectionId)}
+          onDelete={(group, connectionId) => deleteGroup(group.id, connectionId)}
           templates={templates}
           onOpenTemplate={handleOpenTemplate}
         />

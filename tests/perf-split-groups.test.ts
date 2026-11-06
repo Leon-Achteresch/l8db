@@ -15,9 +15,8 @@ Object.defineProperty(globalThis, "window", {
 
 const { useConnectionsStore } = await import("../src/lib/connections");
 const { tabKey, useTableTabs } = await import("../src/lib/table-tabs");
-const { MAX_SPLIT_GROUPS, openDetached, standaloneTabs, useSplitView } = await import(
-  "../src/lib/split-view"
-);
+const { MAX_SPLIT_GROUPS, foreignSplitGroups, openDetached, standaloneTabs, useSplitView } =
+  await import("../src/lib/split-view");
 const { resolveDrop } = await import("../src/lib/tab-drop");
 
 test("saved split views stay cheap with many tabs and groups", async () => {
@@ -136,6 +135,18 @@ test("saved split views stay cheap with many tabs and groups", async () => {
         { paneTabs, single: [], active: null },
       );
   });
+  const allGroups = Object.fromEntries(
+    Array.from({ length: 20 }, (_, index) => [`c${index}`, groups]),
+  );
+  const foreignConnections = Array.from({ length: 20 }, (_, index) => ({
+    id: `c${index}`,
+    name: `Verbindung ${index}`,
+  }));
+  let foreignCount = 0;
+  const foreign = await measureScenario(() => {
+    for (let index = 0; index < 100; index++)
+      foreignCount = foreignSplitGroups(allGroups, `c${index % 20}`, foreignConnections).length;
+  });
   const bytes = storage.get("l8db.split-view")?.length ?? 0;
 
   await reportScenario("split-saved-views", {
@@ -153,8 +164,12 @@ test("saved split views stay cheap with many tabs and groups", async () => {
     switchView,
     detach,
     drop,
+    foreign,
+    foreignGroups: foreignCount,
     bytes,
   });
+  expect(foreignCount).toBe(19 * MAX_SPLIT_GROUPS);
+  expect(foreign.p95Ms / 100).toBeLessThan(0.5);
   expect(groups).toHaveLength(MAX_SPLIT_GROUPS);
   expect(groups[0].name).toBe("Ansicht 11");
   expect(focus.p95Ms / 100).toBeLessThan(1);

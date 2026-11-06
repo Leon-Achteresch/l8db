@@ -14,9 +14,14 @@ Object.defineProperty(globalThis, "window", {
 
 const { useConnectionsStore } = await import("../src/lib/connections");
 const { remoteTab, remoteTableTab, tabKey, useTableTabs } = await import("../src/lib/table-tabs");
-const { MAX_SPLIT_PANES, isSplitShown, openDetached, standaloneTabs, useSplitView } = await import(
-  "../src/lib/split-view"
-);
+const {
+  MAX_SPLIT_PANES,
+  foreignSplitGroups,
+  isSplitShown,
+  openDetached,
+  standaloneTabs,
+  useSplitView,
+} = await import("../src/lib/split-view");
 
 await useConnectionsStore.persist.rehydrate();
 await useTableTabs.persist.rehydrate();
@@ -706,6 +711,26 @@ describe("Gespeicherte Ansichten", () => {
     expect(useTableTabs.getState().tabs.map(tabKey)).toEqual([users, orders]);
     expect(state().panes).toEqual([users, orders]);
     expect(state().orientation).toBe("vertical");
+  });
+
+  test("Gruppen anderer Verbindungen sind sichtbar und löschbar", () => {
+    const { a, users, orders, group } = savedSplit();
+    const b = addConnection("b");
+    useConnectionsStore.getState().setActiveId(b.id);
+    const { connections } = useConnectionsStore.getState();
+    const foreign = foreignSplitGroups(state().groups, b.id, connections);
+    expect(foreign.map((entry) => entry.connectionId)).toEqual([a.id]);
+    expect(foreign[0].group.id).toBe(group.id);
+    expect(foreignSplitGroups(state().groups, a.id, connections)).toEqual([]);
+
+    useConnectionsStore.getState().setActiveId(a.id);
+    state().collapse();
+    state().openGroup(group.id);
+    expect(state().panes).toEqual([users, orders]);
+
+    useConnectionsStore.getState().setActiveId(b.id);
+    state().deleteGroup(group.id, a.id);
+    expect(state().groups[a.id]).toEqual([]);
   });
 
   test("gleicher Split nutzt die vorhandene Gruppe, ein neuer legt eine weitere an", () => {
