@@ -1188,6 +1188,53 @@ mod tests {
         );
     }
 
+    #[test]
+    fn transaction_path_fits_the_windows_main_thread_stack() {
+        let dir = tempfile::tempdir().unwrap();
+        let url = format!(
+            "sqlite://{}?mode=rwc",
+            dir.path().join("stack.sqlite").display()
+        );
+        std::thread::Builder::new()
+            .stack_size(1 << 20)
+            .spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                let pool = super::super::pool::create_pool_state();
+                let tx = TransactionManager {
+                    transactions: Mutex::new(HashMap::new()),
+                };
+                let begin = tx.begin(DatabaseKind::Sqlite, &url, None, &pool);
+                let begin_size = std::mem::size_of_val(&begin);
+                let id = runtime.block_on(begin).unwrap();
+                runtime
+                    .block_on(tx.execute(&id, "CREATE TABLE t (id INTEGER PRIMARY KEY, note TEXT)"))
+                    .unwrap();
+                let values = HashMap::from([("note".to_string(), Some("x".to_string()))]);
+                let insert = tx.insert_row(&id, "main", "t", &values);
+                let insert_size = std::mem::size_of_val(&insert);
+                runtime.block_on(insert).unwrap();
+                let execute = tx.execute(
+                    &id,
+                    "DELETE FROM t WHERE coalesce(note, '') = 'x' AND id IS NOT NULL",
+                );
+                let execute_size = std::mem::size_of_val(&execute);
+                runtime.block_on(execute).unwrap();
+                runtime.block_on(tx.commit(&id)).unwrap();
+                eprintln!(
+                    "future bytes: begin {begin_size}, insert_row {insert_size}, execute {execute_size}"
+                );
+                for size in [begin_size, insert_size, execute_size] {
+                    assert!(size < 64 * 1024, "{size}");
+                }
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn sqlite_binary_roundtrip() {
         let dir = std::env::temp_dir().join(format!("l8db-bin-{}.sqlite", std::process::id()));
