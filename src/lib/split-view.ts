@@ -104,7 +104,7 @@ interface SplitState {
   groups: Record<string, SplitGroup[]>;
   openGroup: (id: string) => Tab | null;
   renameGroup: (id: string, name: string) => void;
-  deleteGroup: (id: string) => void;
+  deleteGroup: (id: string, connectionId?: string) => void;
   byConnection: Record<string, SplitSnapshot>;
   paneConnections: Record<string, string>;
   setPaneConnection: (tabKey: string, connectionId: string | null) => void;
@@ -420,14 +420,14 @@ export const useSplitView = create<SplitState>()(
               },
             };
           }),
-        deleteGroup: (id) => {
+        deleteGroup: (id, connectionId) => {
           const state = get();
-          const scope = scopeKey();
+          const scope = connectionId ?? scopeKey();
           const groups = {
             ...state.groups,
             [scope]: (state.groups[scope] ?? []).filter((group) => group.id !== id),
           };
-          if (state.activeGroup !== id) {
+          if (state.activeGroup !== id || scope !== scopeKey()) {
             set({ groups });
             return;
           }
@@ -714,6 +714,34 @@ export function usePaneTabList(index: number): Tab[] {
 }
 
 const NO_GROUPS: SplitGroup[] = [];
+
+export type ForeignSplitGroup = { connectionId: string; connectionName: string; group: SplitGroup };
+
+export function foreignSplitGroups(
+  groups: Record<string, SplitGroup[]>,
+  activeId: string | null,
+  connections: readonly { id: string; name: string }[],
+): ForeignSplitGroup[] {
+  return connections.flatMap((connection) =>
+    connection.id === activeId
+      ? []
+      : (groups[connection.id] ?? []).map((group) => ({
+          connectionId: connection.id,
+          connectionName: connection.name,
+          group,
+        })),
+  );
+}
+
+export function useForeignSplitGroups(): ForeignSplitGroup[] {
+  const groups = useSplitView((state) => state.groups);
+  const activeId = useConnectionsStore((state) => state.activeId);
+  const connections = useConnectionsStore((state) => state.connections);
+  return useMemo(
+    () => foreignSplitGroups(groups, activeId, connections),
+    [groups, activeId, connections],
+  );
+}
 
 export function useSplitGroups(): SplitGroup[] {
   const scope = keyForConnection(useConnectionsStore((state) => state.activeId));

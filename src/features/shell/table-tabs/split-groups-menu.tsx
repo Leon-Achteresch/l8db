@@ -9,7 +9,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { SplitGroup } from "@/lib/split-view";
+import type { ForeignSplitGroup, SplitGroup } from "@/lib/split-view";
 import { tabLabel } from "@/lib/tab-navigation";
 import type { TemplateEntry } from "@/lib/ui-plugins/registry";
 import { cn } from "@/lib/utils";
@@ -21,8 +21,9 @@ interface SplitGroupsMenuProps {
   activeGroup: string | null;
   isNew: boolean;
   triggerRef: React.Ref<HTMLButtonElement>;
-  onOpen: (group: SplitGroup) => void;
-  onDelete: (group: SplitGroup) => void;
+  foreign: readonly ForeignSplitGroup[];
+  onOpen: (group: SplitGroup, connectionId?: string) => void;
+  onDelete: (group: SplitGroup, connectionId?: string) => void;
   templates: readonly TemplateEntry[];
   onOpenTemplate: (entry: TemplateEntry) => void;
 }
@@ -32,12 +33,18 @@ export function SplitGroupsMenu({
   activeGroup,
   isNew,
   triggerRef,
+  foreign,
   onOpen,
   onDelete,
   templates,
   onOpenTemplate,
 }: SplitGroupsMenuProps) {
-  const label = `Tab-Gruppen (${groups.length})`;
+  const total = groups.length + foreign.length;
+  const label = `Tab-Gruppen (${total})`;
+  const entries = [
+    ...groups.map((group) => ({ group, connectionId: undefined, connectionName: undefined })),
+    ...foreign,
+  ];
   return (
     <DropdownMenu>
       <Tooltip content={label} side="bottom" wrapperClassName="shrink-0">
@@ -49,7 +56,7 @@ export function SplitGroupsMenu({
             className={`${iconButton} relative w-11 gap-0.5`}
           >
             <LayoutPanelLeftIcon className="size-3.5" />
-            <span className="text-[10px] tabular-nums">{groups.length}</span>
+            <span className="text-[10px] tabular-nums">{total}</span>
             {isNew && <NewBadge className="absolute -top-1.5 left-6" />}
           </button>
         </DropdownMenuTrigger>
@@ -59,27 +66,26 @@ export function SplitGroupsMenu({
         className="max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] w-80 max-w-[calc(100vw-2rem)]"
       >
         <DropdownMenuLabel>Tab-Gruppen</DropdownMenuLabel>
-        {groups.map((group) => {
+        {entries.map(({ group, connectionId, connectionName }) => {
           const members = group.tabs.map((tab) => (tab ? tabLabel(tab) : "Leer")).join(" | ");
+          const detail = connectionName ? `${connectionName} · ${members}` : members;
           return (
-            <div key={group.id} className="flex items-center gap-0.5">
+            <div key={`${connectionId ?? ""}:${group.id}`} className="flex items-center gap-0.5">
               <DropdownMenuItem
-                onSelect={() => onOpen(group)}
-                title={`${group.name}: ${members}`}
+                onSelect={() => onOpen(group, connectionId)}
+                title={`${group.name}: ${detail}`}
                 aria-current={group.id === activeGroup ? "page" : undefined}
                 className={cn("min-w-0 flex-1", group.id === activeGroup && "bg-primary/10")}
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{group.name}</span>
-                  <span className="block truncate text-[10px] text-muted-foreground">
-                    {members}
-                  </span>
+                  <span className="block truncate text-[10px] text-muted-foreground">{detail}</span>
                 </span>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={(event) => {
                   event.preventDefault();
-                  onDelete(group);
+                  onDelete(group, connectionId);
                 }}
                 aria-label={`Tab-Gruppe ${group.name} löschen`}
                 className="shrink-0 text-muted-foreground"
