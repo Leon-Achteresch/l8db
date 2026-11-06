@@ -3,12 +3,14 @@ import {
   Check,
   CircleAlert,
   CircleDot,
+  Crosshair,
   Eye,
   Image,
   LoaderCircle,
   ShieldCheck,
 } from "lucide-react";
 import { useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ISSUE_LABELS, ISSUE_REPOSITORY } from "@/lib/ai/issue-presentation";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { AiIssueGithubPreview } from "./ai-issue-github-preview";
 
 export function AiIssueCard({
@@ -30,6 +33,7 @@ export function AiIssueCard({
   pending = false,
   onPublish,
   onCancel,
+  onPick,
 }: {
   title: string;
   body: string;
@@ -40,8 +44,10 @@ export function AiIssueCard({
   pending?: boolean;
   onPublish?: () => void;
   onCancel?: () => void;
+  onPick?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const picker = useNewFeatureVisibility<HTMLButtonElement>("ai.chat.issue-cards.area-picker");
   const label =
     status === "draft"
       ? "Bereit zur Prüfung"
@@ -117,6 +123,20 @@ export function AiIssueCard({
         {onCancel && (
           <Button size="sm" variant="ghost" disabled={pending} onClick={onCancel}>
             Abbrechen
+          </Button>
+        )}
+        {onPick && (
+          <Button
+            ref={picker.ref}
+            size="sm"
+            variant="ghost"
+            disabled={pending}
+            title="Element für den Screenshot wählen · ↑ ↓ Ebene · Esc abbrechen"
+            onClick={onPick}
+          >
+            <Crosshair className="size-3.5" />
+            Bereich wählen
+            {picker.isNew && <NewBadge />}
           </Button>
         )}
         {url && (

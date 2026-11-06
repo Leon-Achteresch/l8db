@@ -66,6 +66,7 @@ export const NEW_FEATURES = {
   "ai.chat.context-mentions": "0.14.0",
   "ai.chat.dry-run": "0.15.0",
   "ai.chat.issue-cards": NEXT_FEATURE_VERSION,
+  "ai.chat.issue-cards.area-picker": NEXT_FEATURE_VERSION,
   "ai.chat.fast-mode": NEXT_FEATURE_VERSION,
   "ai.chat.editor-edits": "0.14.0",
   "ai.chat.editor-context": "0.14.0",
