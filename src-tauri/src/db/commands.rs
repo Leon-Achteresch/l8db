@@ -945,21 +945,26 @@ pub async fn execute_with_binds(
     session: Option<String>,
 ) -> Result<super::BoundResult, String> {
     let cap = super::execution::result_row_cap(MAX_RESULT_ROWS);
-    super::execution::run_query(options, kind.capabilities().query_cancel, async {
-        super::execution::with_row_limit(cap + 1, async {
-            if let Some(tx_id) = tx_id {
-                return tx_state.execute_with_binds(&tx_id, &sql, &binds).await;
-            }
-            let adapter = create_adapter_from_string(
-                kind,
-                &connection_string,
-                database.as_deref(),
-                pool_state.inner().clone(),
-            )?;
-            super::execution::with_session(session, adapter.execute_with_binds(&sql, &binds)).await
-        })
-        .await
-    })
+    Box::pin(super::execution::run_query(
+        options,
+        kind.capabilities().query_cancel,
+        async {
+            super::execution::with_row_limit(cap + 1, async {
+                if let Some(tx_id) = tx_id {
+                    return Box::pin(tx_state.execute_with_binds(&tx_id, &sql, &binds)).await;
+                }
+                let adapter = create_adapter_from_string(
+                    kind,
+                    &connection_string,
+                    database.as_deref(),
+                    pool_state.inner().clone(),
+                )?;
+                super::execution::with_session(session, adapter.execute_with_binds(&sql, &binds))
+                    .await
+            })
+            .await
+        },
+    ))
     .await
     .map(|mut bound| {
         bound.result = truncate_rows(bound.result, cap);
@@ -2943,5 +2948,74 @@ mod metadata_performance_tests {
         );
         assert!(durations[8] < 250.0, "{durations:?}");
         assert!(result_bytes < 2 * 1024 * 1024);
+    }
+
+    trait FutureSize<Args> {
+        fn future_size(&self) -> usize;
+    }
+
+    macro_rules! future_size_for {
+        ($($arg:ident),*) => {
+            impl<F, Fut, $($arg),*> FutureSize<($($arg,)*)> for F
+            where
+                F: Fn($($arg),*) -> Fut,
+            {
+                fn future_size(&self) -> usize {
+                    std::mem::size_of::<Fut>()
+                }
+            }
+        };
+    }
+
+    future_size_for!(A, B);
+    future_size_for!(A, B, C, D);
+    future_size_for!(A, B, C, D, E);
+    future_size_for!(A, B, C, D, E, G);
+    future_size_for!(A, B, C, D, E, G, H, I, J, K);
+
+    #[test]
+    fn transaction_command_futures_stay_small_for_the_windows_main_thread() {
+        let sizes = [
+            ("begin_transaction", begin_transaction.future_size()),
+            (
+                "execute_in_transaction",
+                execute_in_transaction.future_size(),
+            ),
+            (
+                "execute_in_transaction_with_params",
+                execute_in_transaction_with_params.future_size(),
+            ),
+            (
+                "insert_row_in_transaction",
+                insert_row_in_transaction.future_size(),
+            ),
+            (
+                "update_row_in_transaction",
+                update_row_in_transaction.future_size(),
+            ),
+            (
+                "duplicate_row_in_transaction",
+                duplicate_row_in_transaction.future_size(),
+            ),
+            (
+                "delete_row_in_transaction",
+                delete_row_in_transaction.future_size(),
+            ),
+            (
+                "transaction_database_changes",
+                transaction_database_changes.future_size(),
+            ),
+            (
+                "transaction_server_output",
+                transaction_server_output.future_size(),
+            ),
+            ("execute_with_binds", execute_with_binds.future_size()),
+            ("commit_transaction", commit_transaction.future_size()),
+            ("rollback_transaction", rollback_transaction.future_size()),
+        ];
+        eprintln!("command future bytes: {sizes:?}");
+        for (name, size) in sizes {
+            assert!(size < 16 * 1024, "{name}: {size}");
+        }
     }
 }
