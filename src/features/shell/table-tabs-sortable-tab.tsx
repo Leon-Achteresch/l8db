@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { memo, type RefObject } from "react";
+import { toast } from "sonner";
 import { CopyAsMenu } from "@/components/copy-as-menu";
 import { HotkeyMenuShortcut } from "@/components/hotkey-menu-shortcut";
 import {
@@ -27,7 +28,9 @@ import {
 import { AiFlash } from "@/features/automation/ai-flash";
 import { PluginTabItem } from "@/features/shell/table-tabs/plugin-tab-item";
 import { SPRING, SPRING_PRESS } from "@/lib/ease";
+import { useSavedTabsStore } from "@/lib/saved-tabs";
 import { useSettingsStore } from "@/lib/settings";
+import { captureSharedTab, copySharedTabLink } from "@/lib/shared-tab-open";
 import type { SplitEdge } from "@/lib/split-layout";
 import { isBoundToSplit, useSplitView } from "@/lib/split-view";
 import { underPointer } from "@/lib/tab-drop";
@@ -318,6 +321,30 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
                 Aus geteilter Ansicht lösen
               </ContextMenuItem>
             )}
+          </>
+        )}
+        {(tab.kind === "table" || tab.kind === "query") && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onSelect={() => {
+                const shared = captureSharedTab(tab);
+                if (shared) void copySharedTabLink(shared);
+              }}
+            >
+              Link kopieren
+            </ContextMenuItem>
+            <ContextMenuItem
+              onSelect={() => {
+                const shared = captureSharedTab(tab);
+                if (!shared) return;
+                if (useSavedTabsStore.getState().saveTab(shared, label))
+                  toast.success(`${label} global gespeichert`);
+                else toast.error(`${label} konnte nicht gespeichert werden`);
+              }}
+            >
+              Global speichern
+            </ContextMenuItem>
           </>
         )}
         {tab.kind === "table" && (
