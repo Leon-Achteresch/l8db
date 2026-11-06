@@ -1,16 +1,16 @@
 import { hexToBytes } from "@/lib/value-viewers/binary";
 
-const DBEAVER_KEY_HEX = "babb4a9f774ab853c96c2d653dfe544a";
+const encoder = new TextEncoder();
 
-const NAVICAT_KEY = "libcckeylibcckey";
+const DBEAVER_KEY = hexToBytes("babb4a9f774ab853c96c2d653dfe544a") as Uint8Array;
 
-const NAVICAT_IV = "libcciv libcciv ";
+const NAVICAT_KEY = encoder.encode("libcckeylibcckey");
+
+const NAVICAT_IV = encoder.encode("libcciv libcciv ");
 
 const AES_BLOCK = 16;
 
 const MAX_PASSWORD_HEX = 4096;
-
-const encoder = new TextEncoder();
 
 const strictDecoder = new TextDecoder("utf-8", { fatal: true });
 
@@ -20,16 +20,15 @@ function cryptoApi(): SubtleCrypto {
   return subtle;
 }
 
-const keys = new Map<string, Promise<CryptoKey>>();
+const keys = new Map<Uint8Array, Promise<CryptoKey>>();
 
 function aesKey(raw: Uint8Array): Promise<CryptoKey> {
-  const id = Array.from(raw, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  let key = keys.get(id);
+  let key = keys.get(raw);
   if (!key) {
     key = cryptoApi().importKey("raw", raw as BufferSource, { name: "AES-CBC" }, false, [
       "decrypt",
     ]);
-    keys.set(id, key);
+    keys.set(raw, key);
   }
   return key;
 }
@@ -65,11 +64,7 @@ export async function decryptDbeaverCredentials(
   file: Uint8Array,
 ): Promise<Record<string, unknown> | null> {
   if (file.length <= AES_BLOCK) return null;
-  const plain = await aesCbcDecrypt(
-    hexToBytes(DBEAVER_KEY_HEX) as Uint8Array,
-    file.slice(0, AES_BLOCK),
-    file.slice(AES_BLOCK),
-  );
+  const plain = await aesCbcDecrypt(DBEAVER_KEY, file.slice(0, AES_BLOCK), file.slice(AES_BLOCK));
   if (!plain) return null;
   const text = decodeText(plain);
   if (text === null) return null;
@@ -95,7 +90,7 @@ export async function decryptNavicatPassword(value: string): Promise<string | nu
   if (value.length > MAX_PASSWORD_HEX) return null;
   const bytes = hexToBytes(value.trim());
   if (!bytes?.length) return null;
-  const plain = await aesCbcDecrypt(encoder.encode(NAVICAT_KEY), encoder.encode(NAVICAT_IV), bytes);
+  const plain = await aesCbcDecrypt(NAVICAT_KEY, NAVICAT_IV, bytes);
   if (!plain) return null;
   const text = decodeText(plain);
   return text !== null && printable(text) ? text : null;
