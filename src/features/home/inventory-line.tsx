@@ -38,14 +38,14 @@ export function InventoryLine({ database, schema }: { database: string | null; s
 
   return (
     <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-[13px] text-muted-foreground">
-      {database && <span className="font-medium text-foreground">{database}</span>}
+      {database && <span className="font-mono text-foreground">{database}</span>}
       {sized && <span className="tabular-nums text-foreground">{overview.data?.size_pretty}</span>}
       {(database || sized) && (
         <span aria-hidden="true" className="text-border">
           /
         </span>
       )}
-      {caps.schemas && <span className="font-medium">{schema}</span>}
+      {caps.schemas && <span className="font-mono">{schema}</span>}
       {items.map(({ one, many, query }) => (
         <span key={many} className="flex items-baseline gap-1">
           {query.isPending ? (

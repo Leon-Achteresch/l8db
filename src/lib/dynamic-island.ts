@@ -185,7 +185,7 @@ export function greetingMoment(
       title: named(special.text, special.anonymous ? null : name, special.end),
       detail: special.detail,
       tone: "celebrate",
-      duration: 3000,
+      duration: 5000,
     };
   const part = DAYPARTS.find((entry) => date.getHours() < entry.until) ?? DAYPARTS[0];
   const phrase = part.phrases[Math.floor(pick * part.phrases.length)] ?? part.phrases[0];
@@ -194,7 +194,7 @@ export function greetingMoment(
     glyph: { kind: "emoji", emoji: part.emoji, effect: "wave" },
     title: named(phrase.text, name, phrase.end),
     detail: weekdayNote(date),
-    duration: 2400,
+    duration: 4200,
   };
 }
 

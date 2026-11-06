@@ -105,7 +105,7 @@ export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps
               <motion.div
                 layoutId="active-settings-tab-bg"
                 transition={{ layout: SPRING_LAYOUT }}
-                className="absolute inset-0 rounded-md bg-muted before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-primary"
+                className="absolute inset-0 rounded-md bg-muted"
               />
             ) : null}
             <div
@@ -118,7 +118,7 @@ export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps
               {hasUpdate ? (
                 <span
                   aria-hidden
-                  className="absolute -right-1 -top-1 size-1.5 rounded-full bg-info ring-2 ring-background"
+                  className="absolute -right-1 -top-1 size-2 rounded-full bg-red-500 ring-2 ring-background"
                 />
               ) : null}
             </div>
@@ -127,9 +127,6 @@ export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps
                 <span className="truncate">{tab.label}</span>
                 {hasNewFeatures(`settings.${tab.id}`, seenFeatures) ? <NewBadge /> : null}
               </div>
-              {hasUpdate ? (
-                <span className="block text-xs font-normal text-info">Update verfügbar</span>
-              ) : null}
             </div>
           </button>
         );

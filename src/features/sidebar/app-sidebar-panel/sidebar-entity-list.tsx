@@ -5,8 +5,6 @@ import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
 import { usePaneTabTarget } from "@/lib/pane-tab-target";
-import { useSettingsStore } from "@/lib/settings";
-import { effectiveSidebarWidth, useSidebarPanel } from "@/lib/sidebar-panel";
 import { SidebarEntityResults } from "./sidebar-entity-results";
 import { SidebarPickResults } from "./sidebar-pick-results";
 import { useSidebarEntityFilter } from "./use-sidebar-entity-filter";
@@ -29,10 +27,6 @@ export function SidebarEntityList({
   type,
 }: SidebarEntityListProps) {
   const target = usePaneTabTarget();
-  const panelWidth = effectiveSidebarWidth(
-    useSidebarPanel((state) => state.width),
-    useSettingsStore((state) => state.navRailExpanded),
-  );
   const current = target?.current;
   const {
     search,
@@ -65,15 +59,13 @@ export function SidebarEntityList({
       >
         <SidebarSearchInput
           placeholder={
-            panelWidth < 200
-              ? "Suchen…"
-              : searchIncludeColumns && panelWidth >= 260
-                ? type === "table"
-                  ? "Tabellen & Spalten…"
-                  : "Views & Spalten…"
-                : type === "table"
-                  ? "Tabellen…"
-                  : "Views…"
+            searchIncludeColumns
+              ? type === "table"
+                ? "Tabellen & Spalten…"
+                : "Views & Spalten…"
+              : type === "table"
+                ? "Tabellen…"
+                : "Views…"
           }
           value={search}
           onChange={setSearch}

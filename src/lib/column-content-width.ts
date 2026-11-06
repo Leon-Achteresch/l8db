@@ -1,11 +1,10 @@
-import { cellMonoCharWidth } from "@/lib/column-header-width";
 import {
   type GridColumnKind,
   jsonEntries,
   shortUuid,
   timestampDisplay,
 } from "@/lib/grid-cell-format";
-import { cellPreviewWidth, tableCellPreview } from "@/lib/table-cell-preview";
+import { tableCellPreview } from "@/lib/table-cell-preview";
 import type { TableStyle } from "@/lib/table-style";
 
 const MONO_CHAR = 7.22;
@@ -88,28 +87,4 @@ export function contentColumnWidth({
   const min = style === "profile" ? PROFILE_COLUMN_MIN : CONTENT_COLUMN_MIN;
   const clamped = Math.min(CONTENT_COLUMN_MAX, Math.max(min, Math.ceil(width)));
   return Math.round((clamped * uiScale) / 100);
-}
-
-export const CLASSIC_COLUMN_MAX = 320;
-const CLASSIC_PADDING = 32;
-const HEADER_ICON = 16;
-
-export type ClassicWidthInput = {
-  name: string;
-  icons: number;
-  values: readonly unknown[];
-};
-
-export function classicColumnWidth({ name, icons, values }: ClassicWidthInput): number {
-  const char = cellMonoCharWidth();
-  let longest = name.length + (icons * HEADER_ICON) / char;
-  const count = Math.min(values.length, SAMPLE_ROWS);
-  for (let i = 0; i < count; i++) {
-    const length = tableCellPreview(values[i], PREVIEW_LIMIT).text.length;
-    if (length > longest) longest = length;
-  }
-  return Math.min(
-    CLASSIC_COLUMN_MAX,
-    Math.max(Math.ceil(longest * char + CLASSIC_PADDING), cellPreviewWidth(Math.ceil(longest))),
-  );
 }

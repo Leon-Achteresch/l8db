@@ -13,7 +13,7 @@ export function unwrapDataType(dataType: string): string {
   }
 }
 
-export function kindFromDataType(dataType: string): ColumnTypeKind | null {
+function kindFromDataType(dataType: string): ColumnTypeKind | null {
   const lower = unwrapDataType(dataType);
   if (/^(?:array|map|tuple|nested|variant|dynamic|json)\(/.test(lower)) return "json";
   if (/^(?:enum(?:8|16)?\(|ipv[46]|fixedstring)/.test(lower)) return "text";
@@ -25,13 +25,6 @@ export function kindFromDataType(dataType: string): ColumnTypeKind | null {
     return "number";
   if (/char|text|clob|string/.test(lower)) return "text";
   return null;
-}
-
-export function shortTypeLabel(dataType: string): string {
-  return dataType
-    .replace("timestamp without time zone", "timestamp")
-    .replace("timestamp with time zone", "timestamptz")
-    .replace("character varying", "varchar");
 }
 
 export function getColumnTypeInfo(col: string, rows: TableRow[], detail?: DetailedColumnInfo) {
@@ -80,18 +73,11 @@ export function getColumnTypeInfo(col: string, rows: TableRow[], detail?: Detail
     }
   }
 
-  return {
-    ...typeInfoFor(type),
-    dataType: detail?.data_type ? unwrapDataType(detail.data_type) : undefined,
-  };
-}
-
-function typeInfoFor(type: ColumnTypeKind) {
   switch (type) {
     case "key":
       return {
         kind: "key" as const,
-        label: "key",
+        label: "id",
         align: "text-left" as const,
         iconName: "Key",
       };

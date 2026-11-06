@@ -88,7 +88,7 @@ export function QueryToolsMenu({
         <Button
           size="icon-sm"
           variant="ghost"
-          className="relative size-8"
+          className="relative"
           aria-label="Weitere Werkzeuge"
           title="Verlauf, Server-Ausgabe, Datei und Bearbeiten"
         >

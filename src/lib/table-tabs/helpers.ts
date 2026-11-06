@@ -6,8 +6,8 @@ import type { ClosedTab, Tab, TabsState } from "./types";
 export function nextQueryTitle(tabs: Tab[]): string {
   const used = new Set(tabs.filter((t) => t.kind === "query").map((t) => t.title));
   let n = 1;
-  while (used.has(`Abfrage ${n}`)) n += 1;
-  return `Abfrage ${n}`;
+  while (used.has(`Query ${n}`)) n += 1;
+  return `Query ${n}`;
 }
 
 const MAX_RECENTLY_CLOSED = 100;

@@ -145,7 +145,7 @@ export const DataTableRow = memo(function DataTableRow({
           ? "bg-primary/10"
           : isRowEditing
             ? "bg-primary/[0.03]"
-            : "bg-background hover:bg-muted/60",
+            : "bg-background hover:bg-muted/15",
       )}
     >
       {columnWindow.map((item) => {

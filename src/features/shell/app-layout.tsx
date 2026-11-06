@@ -8,7 +8,7 @@ import { AppSidebar } from "@/features/sidebar/app-sidebar";
 import { useAiStore } from "@/lib/ai/store";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { useSettingsStore } from "@/lib/settings";
-import { effectiveSidebarWidth, useSidebarPanel } from "@/lib/sidebar-panel";
+import { useSidebarPanel } from "@/lib/sidebar-panel";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 import { ShortcutHint } from "./shortcut-hint";
@@ -24,11 +24,7 @@ export function AppLayout() {
   const fullAiPage = useRouterSelect((state) => state.location.pathname === "/ai");
   const aiSplit = useAiStore((state) => state.open) && !fullAiPage;
   const easyMode = useSettingsStore((state) => state.easyMode);
-  const navExpanded = useSettingsStore((state) => state.navRailExpanded);
-  const panelWidth = effectiveSidebarWidth(
-    useSidebarPanel((s) => s.width),
-    navExpanded,
-  );
+  const panelWidth = useSidebarPanel((s) => s.width);
   const panelOpen = useTransactionStore((s) => s.panelOpen);
 
   return (

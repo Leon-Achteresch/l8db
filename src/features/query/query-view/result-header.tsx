@@ -19,7 +19,6 @@ export function ResultHeader({ isRunning, error, result, statusText, actions }: 
       <ResultTitle />
       <span
         role="status"
-        hidden={!isRunning && !error && !result}
         className={cn(
           "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10px]",
           isRunning
@@ -30,7 +29,13 @@ export function ResultHeader({ isRunning, error, result, statusText, actions }: 
         )}
       >
         <span className={cn("size-1.5 rounded-full bg-current", isRunning && "animate-pulse")} />
-        {isRunning ? "Wird ausgeführt" : error ? "Fehlgeschlagen" : "Abgeschlossen"}
+        {isRunning
+          ? "Wird ausgeführt"
+          : error
+            ? "Fehlgeschlagen"
+            : result
+              ? "Abgeschlossen"
+              : "Bereit"}
       </span>
       {statusText && (
         <span className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground">

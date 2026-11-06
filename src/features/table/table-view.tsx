@@ -208,13 +208,8 @@ export function TableView(props: TableViewProps) {
         <div
           className="flex shrink-0 items-center border-b bg-muted/30 px-3"
           data-tour="table-toolbar"
-          data-icon-chrome
         >
-          <TableDetailTabBar
-            tabs={availableTabs}
-            activeTab={tableTab}
-            onTabChange={(id) => setDetailTab(id as TableDetailTab)}
-          />
+          <TableDetailTabBar tabs={availableTabs} activeTab={tableTab} />
           <TableToolbarActions
             extensionActions={extensionActions}
             connection={connection}

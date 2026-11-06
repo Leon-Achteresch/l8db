@@ -149,7 +149,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
           <Icon className="relative size-3" />
         )}
       </span>
-      <span className={cn("truncate", isActive ? "font-semibold" : "font-medium")}>{label}</span>
+      <span className="truncate font-medium">{label}</span>
       {color && (
         <span
           aria-hidden="true"
@@ -182,7 +182,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
           }}
           onDoubleClick={(event) => event.stopPropagation()}
           className={cn(
-            "group relative isolate flex h-7 shrink-0 cursor-grab items-center rounded-md pl-1 pr-0.5 text-xs transition-[background-color,box-shadow,color] duration-200 active:cursor-grabbing",
+            "group relative isolate flex h-7 shrink-0 cursor-grab items-center rounded-full pl-1 pr-0.5 text-xs transition-[background-color,box-shadow,color] duration-200 active:cursor-grabbing",
             isActive
               ? "text-foreground"
               : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
@@ -194,10 +194,10 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
             <span
               aria-hidden="true"
               className={cn(
-                "pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-md bg-card shadow-xs after:absolute after:inset-x-0 after:bottom-0 after:h-0.5",
+                "pointer-events-none absolute inset-0 -z-10 rounded-full bg-card",
                 dimmed
-                  ? "ring-1 ring-inset ring-border/80 after:bg-primary/40"
-                  : "ring-1 ring-inset ring-border after:bg-primary",
+                  ? "ring-1 ring-inset ring-border/80"
+                  : "shadow-[0_1px_3px_color-mix(in_oklab,var(--primary)_14%,transparent)] ring-1 ring-inset ring-primary/10",
               )}
             />
           )}
@@ -212,7 +212,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
             aria-busy={isPending || undefined}
             title={label}
             aria-current={isActive ? (dimmed ? "true" : "page") : undefined}
-            className="flex h-full min-w-0 max-w-44 items-center gap-1.5 rounded-md pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            className="flex h-full min-w-0 max-w-44 items-center gap-1.5 rounded-full pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
             {tabItem ? (
               <PluginTabItem tab={tab} active={isActive} tabItem={tabItem}>
@@ -239,7 +239,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
               aria-label={`${label} schließen`}
               data-hotkey={isActive ? "tab.close" : undefined}
               className={cn(
-                "grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground/70 transition-[background-color,color,opacity,transform] duration-200 hover:bg-foreground/10 hover:text-foreground motion-safe:active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground/70 transition-[background-color,color,opacity,transform] duration-200 hover:bg-foreground/10 hover:text-foreground motion-safe:active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 closeButton === "always" || (closeButton === "auto" && isActive)
                   ? "opacity-100"
                   : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",

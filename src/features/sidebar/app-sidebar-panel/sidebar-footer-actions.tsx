@@ -63,7 +63,7 @@ export function SidebarFooterActions({ caps }: SidebarFooterActionsProps) {
         asChild
         variant="ghost"
         size="sm"
-        className="h-8 min-w-0 flex-1 justify-start gap-2 px-2 text-xs font-normal"
+        className="h-8 min-w-0 flex-1 justify-start gap-2 px-2 font-normal"
       >
         <Link to={first.to}>
           <first.icon className="size-4 text-muted-foreground" />
@@ -73,11 +73,7 @@ export function SidebarFooterActions({ caps }: SidebarFooterActionsProps) {
       {more.length ? (
         <IconMenu>
           <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 shrink-0 gap-1.5 px-2 text-xs font-normal"
-            >
+            <Button variant="ghost" size="sm" className="h-8 shrink-0 gap-1.5 px-2 font-normal">
               <EllipsisIcon className="size-4 text-muted-foreground" />
               Mehr
             </Button>

@@ -22,17 +22,16 @@ export function MultiTargetButton({
     <Button
       ref={feature.ref}
       size="sm"
-      variant="ghost"
-      className="h-8 gap-1.5 px-2 text-xs"
-      aria-label="Mehrere Ziele"
+      variant="outline"
+      className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
       data-tour="query-multi-target"
       onClick={onOpen}
       disabled={disabled}
       disabledReason={disabledReason}
       title="Dieselbe Abfrage auf mehreren Datenbanken, Schemas oder Verbindungen ausführen"
     >
-      <LayersIcon className={running ? "size-3.5 animate-pulse" : "size-3.5"} />
-      <span className="sr-only @min-[54rem]/qtb:not-sr-only">Ziele</span>
+      <LayersIcon className={running ? "size-3 animate-pulse" : "size-3"} />
+      <span className="sr-only @min-[54rem]/qtb:not-sr-only">Mehrere Ziele</span>
       {feature.isNew && <NewBadge />}
     </Button>
   );

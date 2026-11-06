@@ -58,11 +58,7 @@ export function ObjectAdminMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 gap-1.5 px-2 text-sm text-foreground/60 hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground"
-          >
+          <Button size="sm" variant="ghost" className="h-7 gap-1.5 px-2.5 text-xs">
             <SettingsIcon className="size-3.5" />
             Objekt
           </Button>
