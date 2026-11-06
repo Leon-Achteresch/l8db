@@ -70,6 +70,7 @@ export type SplitGroup = {
   orientation: SplitOrientation;
   focusedPane: number;
   layout?: SplitTree;
+  shared?: boolean;
 };
 
 type Live = Pick<SplitState, "panes" | "paneTabs" | "layout" | "masters" | "focusedPane">;
@@ -104,6 +105,7 @@ interface SplitState {
   groups: Record<string, SplitGroup[]>;
   openGroup: (id: string) => Tab | null;
   renameGroup: (id: string, name: string) => void;
+  setGroupShared: (id: string, shared: boolean, connectionId?: string) => void;
   deleteGroup: (id: string, connectionId?: string) => void;
   byConnection: Record<string, SplitSnapshot>;
   paneConnections: Record<string, string>;
@@ -420,6 +422,18 @@ export const useSplitView = create<SplitState>()(
               },
             };
           }),
+        setGroupShared: (id, shared, connectionId) =>
+          set((state) => {
+            const scope = connectionId ?? scopeKey();
+            return {
+              groups: {
+                ...state.groups,
+                [scope]: (state.groups[scope] ?? []).map((group) =>
+                  group.id === id ? { ...group, shared } : group,
+                ),
+              },
+            };
+          }),
         deleteGroup: (id, connectionId) => {
           const state = get();
           const scope = connectionId ?? scopeKey();
@@ -725,11 +739,13 @@ export function foreignSplitGroups(
   return connections.flatMap((connection) =>
     connection.id === activeId
       ? []
-      : (groups[connection.id] ?? []).map((group) => ({
-          connectionId: connection.id,
-          connectionName: connection.name,
-          group,
-        })),
+      : (groups[connection.id] ?? [])
+          .filter((group) => group.shared)
+          .map((group) => ({
+            connectionId: connection.id,
+            connectionName: connection.name,
+            group,
+          })),
   );
 }
 
