@@ -5,10 +5,10 @@ import { useActiveConnection } from "@/lib/connections";
 import { confirmSqlExecution } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { notebookVariables, prepareCellSql, useNotebookStore } from "@/lib/notebook";
+import { prepareConnection } from "@/lib/prepare-connection";
 import { capabilitiesFor } from "@/lib/providers";
 import { invalidateTableReads } from "@/lib/query-client";
 import { useQueryHistoryStore } from "@/lib/query-history";
-import { prepareConnection } from "@/lib/schema-compare/store";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cancelTask } from "@/lib/tasks";
 

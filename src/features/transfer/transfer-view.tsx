@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { getDatabaseOverview, type SchemaSize } from "@/lib/db";
-import { prepareConnection } from "@/lib/schema-compare/store";
+import { prepareConnection } from "@/lib/prepare-connection";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { TransferCinema } from "./cinema/transfer-cinema";
 import { TransferEndpoint } from "./transfer-endpoint";

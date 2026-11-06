@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { cancelExecution } from "@/lib/db";
+import { prepareConnection } from "@/lib/prepare-connection";
 import {
   dryRunKind,
   type RunStep,
@@ -31,7 +32,7 @@ import {
   supportsDdlRollback,
 } from "@/lib/schema-compare/run";
 import type { SyncStatement } from "@/lib/schema-compare/script";
-import { prepareConnection, runSchemaCompare } from "@/lib/schema-compare/store";
+import { runSchemaCompare } from "@/lib/schema-compare/store";
 import type { CompareResult } from "@/lib/schema-compare/types";
 import { cn } from "@/lib/utils";
 

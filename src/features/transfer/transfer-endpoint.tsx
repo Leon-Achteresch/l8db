@@ -14,8 +14,8 @@ import { useConnectionsStore, visibleSchemas } from "@/lib/connections";
 import { listDatabases, listSchemas } from "@/lib/db";
 import { databaseFromConnectionString } from "@/lib/db-selection";
 import { useConnectionEnvironment } from "@/lib/environments";
+import { prepareConnection } from "@/lib/prepare-connection";
 import { capabilitiesFor } from "@/lib/providers";
-import { prepareConnection } from "@/lib/schema-compare/store";
 import { effectiveConnectionString } from "@/lib/ssh";
 import type { TransferSide } from "./transfer-view/use-transfer";
 
