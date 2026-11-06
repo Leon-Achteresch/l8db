@@ -10,6 +10,8 @@ import { NewBadge } from "@/components/new-badge";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { iconButton } from "@/features/shell/table-tabs/constants";
 import { HiddenTabsMenu } from "@/features/shell/table-tabs/hidden-tabs-menu";
+import { SavedTabsMenu } from "@/features/shell/table-tabs/saved-tabs-menu";
+import { SharedTabDialog } from "@/features/shell/table-tabs/shared-tab-dialog";
 import { SplitGroupTab } from "@/features/shell/table-tabs/split-group-tab";
 import { SplitGroupsMenu } from "@/features/shell/table-tabs/split-groups-menu";
 import { TabGroupLabel } from "@/features/shell/table-tabs/tab-group-label";
@@ -360,6 +362,7 @@ export function TableTabs() {
           </button>
         </Tooltip>
       )}
+      <SavedTabsMenu />
       <Tooltip content="SQL-Datei öffnen" side="bottom" wrapperClassName="shrink-0">
         <button
           type="button"
@@ -377,6 +380,7 @@ export function TableTabs() {
           style={{ left: caret }}
         />
       )}
+      <SharedTabDialog />
       <CloseConfirmDialog
         pendingClose={pendingClose}
         setPendingClose={setPendingClose}

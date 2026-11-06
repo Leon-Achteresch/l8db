@@ -17,6 +17,7 @@ export const NEW_FEATURES = {
   "query.editor.variants": NEXT_FEATURE_VERSION,
   "query.parameters.sets": NEXT_FEATURE_VERSION,
   "workspace.investigations": NEXT_FEATURE_VERSION,
+  "workspace.saved-tabs": NEXT_FEATURE_VERSION,
   "table.rows.watch": NEXT_FEATURE_VERSION,
   "query.results.keep-on-error": NEXT_FEATURE_VERSION,
   "query.results.timestamps": NEXT_FEATURE_VERSION,
