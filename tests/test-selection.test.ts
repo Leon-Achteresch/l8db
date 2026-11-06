@@ -11,11 +11,19 @@ test("default regression selection keeps performance budgets in the separate loc
         "tests/nested/perf-versioning-ledger.test.ts",
         "tests/a.test.ts",
         "tests/performance-report.test.ts",
+        "tests/perf-load.test.ts",
+        "tests/perf-test.test.ts",
       ],
     ),
   ).toEqual({
     flags: [],
-    files: ["tests/a.test.ts", "tests/performance-report.test.ts", "tests/z.test.ts"],
+    files: [
+      "tests/a.test.ts",
+      "tests/perf-load.test.ts",
+      "tests/perf-test.test.ts",
+      "tests/performance-report.test.ts",
+      "tests/z.test.ts",
+    ],
   });
 });
 

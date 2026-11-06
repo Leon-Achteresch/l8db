@@ -6,6 +6,15 @@ export function selectTestFiles(args: string[], discovered: string[]) {
     flags: args.filter((arg) => !selected.includes(arg)),
     files: selected.length
       ? selected
-      : discovered.filter((file) => !basename(file).startsWith("perf-")).sort(),
+      : discovered
+          .filter((file) => {
+            const name = basename(file);
+            return (
+              !name.startsWith("perf-") ||
+              name === "perf-test.test.ts" ||
+              name === "perf-load.test.ts"
+            );
+          })
+          .sort(),
   };
 }
