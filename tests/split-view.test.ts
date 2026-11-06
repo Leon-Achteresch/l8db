@@ -692,6 +692,22 @@ describe("Gespeicherte Ansichten", () => {
     expect(state().panes).toEqual([]);
   });
 
+  test("Gruppe lässt sich nach Schließen aller Tabs und Neustart wieder öffnen", async () => {
+    const { a, users, orders, group } = savedSplit();
+    state().renameGroup(group.id, "Bestellungen");
+    state().collapse();
+    useTableTabs.getState().closeAllTabs();
+    expect(useTableTabs.getState().tabs).toEqual([]);
+    await useSplitView.persist.rehydrate();
+    const [restored] = state().groups[a.id];
+    expect(restored.name).toBe("Bestellungen");
+
+    state().openGroup(restored.id);
+    expect(useTableTabs.getState().tabs.map(tabKey)).toEqual([users, orders]);
+    expect(state().panes).toEqual([users, orders]);
+    expect(state().orientation).toBe("vertical");
+  });
+
   test("gleicher Split nutzt die vorhandene Gruppe, ein neuer legt eine weitere an", () => {
     const { a, users, orders, items, group } = savedSplit();
     state().collapse();
