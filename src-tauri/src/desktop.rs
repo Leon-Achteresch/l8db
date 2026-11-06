@@ -3,7 +3,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 use regex::Regex;
 use sentry::integrations::log::LogFilter;
-use tauri::Runtime;
+use tauri::{Manager, Runtime};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 
 const SENTRY_DSN: &str = "https://a0ed238540409e2a6ac907ef008a6ecd@o4512165553635328.ingest.de.sentry.io/4512165557436496";
@@ -37,6 +37,9 @@ pub fn install_logger<R: Runtime>(
         .timezone_strategy(TimezoneStrategy::UseLocal)
         .split(app)?;
     app.plugin(plugin)?;
+    if let Ok(dir) = app.path().app_log_dir() {
+        crate::issues::set_log_dir(dir);
+    }
     let logger =
         sentry::integrations::log::SentryLogger::with_dest(logger).filter(
             |metadata| match metadata.level() {
