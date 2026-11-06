@@ -13,7 +13,6 @@ export interface UpdateMetadata {
 export function checkUpdate(
   channel: UpdateChannel,
   timeout: number,
-  rollback = false,
 ): Promise<UpdateMetadata | null> {
-  return invoke<UpdateMetadata | null>("check_update", { channel, timeout, rollback });
+  return invoke<UpdateMetadata | null>("check_update", { channel, timeout });
 }

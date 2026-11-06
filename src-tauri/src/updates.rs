@@ -81,7 +81,6 @@ pub async fn check_update<R: Runtime>(
     webview: Webview<R>,
     channel: String,
     timeout: u64,
-    rollback: Option<bool>,
 ) -> Result<Option<UpdateMetadata>, String> {
     let policy = crate::organization::current(false)?;
     let channel = policy
@@ -99,8 +98,14 @@ pub async fn check_update<R: Runtime>(
         builder = builder
             .endpoints(vec![canary_endpoint(timeout).await?])
             .map_err(|error| error.to_string())?;
-    } else if rollback.unwrap_or(false) {
-        builder = builder.version_comparator(|current, release| release.version != current);
+    } else {
+        builder = builder.version_comparator(|current, release| {
+            if current.pre.is_empty() {
+                release.version > current
+            } else {
+                release.version != current
+            }
+        });
     }
     let updater = builder.build().map_err(|error| error.to_string())?;
     let Some(update) = updater.check().await.map_err(|error| error.to_string())? else {

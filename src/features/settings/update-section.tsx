@@ -3,29 +3,13 @@ import { RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { SegmentedControl } from "@/components/motion/segmented-control";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useUpdatePrompt } from "@/lib/hooks/use-update-prompt";
 import { type UpdateChannel, useSettingsStore } from "@/lib/settings";
-import {
-  checkForStableRollback,
-  checkForUpdates,
-  getAppVersion,
-  presentUpdate,
-  setPendingUpdate,
-} from "@/lib/updater";
+import { checkForUpdates, getAppVersion, presentUpdate, setPendingUpdate } from "@/lib/updater";
 
 type Status =
   | { kind: "idle" }
@@ -41,8 +25,6 @@ export function UpdateSection() {
     pending ? { kind: "available" } : { kind: "idle" },
   );
   const [version, setVersion] = useState<string | null>(null);
-  const [rollbackOpen, setRollbackOpen] = useState(false);
-  const isCanaryBuild = Boolean(version?.includes("-canary."));
   const { autoUpdateCheck, autoUpdateInstall, setAutoUpdateCheck, setAutoUpdateInstall } =
     useSettingsStore();
   const skippedUpdateVersion = useSettingsStore((s) => s.skippedUpdateVersion);
@@ -93,29 +75,7 @@ export function UpdateSection() {
   function onChannelChange(channel: UpdateChannel) {
     setUpdateChannel(channel);
     setPendingUpdate(null);
-    if (channel === "stable" && isCanaryBuild) {
-      setStatus({ kind: "idle" });
-      setRollbackOpen(true);
-      return;
-    }
     void onCheck();
-  }
-
-  async function onRollback() {
-    setRollbackOpen(false);
-    setStatus({ kind: "checking" });
-    try {
-      const update = await checkForStableRollback();
-      if (update) {
-        setSkippedUpdateVersion(null);
-        setStatus({ kind: "available" });
-        presentUpdate(update);
-      } else {
-        setStatus({ kind: "failed", message: "Keine stabile Version gefunden" });
-      }
-    } catch {
-      setStatus({ kind: "failed", message: "Update-Prüfung fehlgeschlagen" });
-    }
   }
 
   function onShowSkipped() {
@@ -151,35 +111,6 @@ export function UpdateSection() {
           ]}
         />
       </SettingsRow>
-      {updateChannel === "stable" && isCanaryBuild ? (
-        <SettingsRow
-          title="Canary-Version installiert"
-          description={`l8db ${version}`}
-          featureId="settings.about.stable-rollback"
-        >
-          <Button
-            variant="outline"
-            onClick={() => setRollbackOpen(true)}
-            disabled={status.kind === "checking"}
-          >
-            Auf Stable zurückrollen
-          </Button>
-        </SettingsRow>
-      ) : null}
-      <AlertDialog open={rollbackOpen} onOpenChange={setRollbackOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Auf Stable zurückrollen?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {`l8db ${version ?? ""} wird durch die letzte stabile Version ersetzt. Ohne Rollback bleibt die Canary-Version, bis eine neuere stabile Version erscheint.`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Canary behalten</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void onRollback()}>Zurückrollen</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       <SettingsRow settingId="updates">
         <Switch
           checked={autoUpdateCheck}
