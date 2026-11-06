@@ -812,7 +812,7 @@ pub async fn begin_transaction(
     tx_state: tauri::State<'_, TransactionState>,
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<String, String> {
-    super::execution::run(
+    Box::pin(super::execution::run(
         options,
         matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
         async {
@@ -834,7 +834,7 @@ pub async fn begin_transaction(
             })
             .await
         },
-    )
+    ))
     .await
 }
 
@@ -845,9 +845,11 @@ pub async fn execute_in_transaction(
     tx_state: tauri::State<'_, TransactionState>,
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
-    super::execution::run_query(options, tx_state.supports_cancel(&tx_id).await, async {
-        tx_state.execute(&tx_id, &sql).await
-    })
+    Box::pin(super::execution::run_query(
+        options,
+        tx_state.supports_cancel(&tx_id).await,
+        async { tx_state.execute(&tx_id, &sql).await },
+    ))
     .await
 }
 
@@ -856,7 +858,7 @@ pub async fn transaction_database_changes(
     tx_id: String,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<Vec<super::oracle::TxTableChanges>, String> {
-    tx_state.oracle_changes(&tx_id).await
+    Box::pin(tx_state.oracle_changes(&tx_id)).await
 }
 
 #[tauri::command]
@@ -864,7 +866,7 @@ pub async fn transaction_server_output(
     tx_id: String,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<Vec<super::server_output::ServerMessage>, String> {
-    tx_state.server_output(&tx_id).await
+    Box::pin(tx_state.server_output(&tx_id)).await
 }
 
 #[tauri::command]
@@ -875,9 +877,11 @@ pub async fn execute_in_transaction_with_params(
     tx_state: tauri::State<'_, TransactionState>,
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
-    super::execution::run_query(options, tx_state.supports_cancel(&tx_id).await, async {
-        tx_state.execute_with_params(&tx_id, &sql, &params).await
-    })
+    Box::pin(super::execution::run_query(
+        options,
+        tx_state.supports_cancel(&tx_id).await,
+        async { tx_state.execute_with_params(&tx_id, &sql, &params).await },
+    ))
     .await
 }
 
@@ -890,9 +894,7 @@ pub async fn update_row_in_transaction(
     updates: std::collections::HashMap<String, Option<String>>,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<String, String> {
-    tx_state
-        .update_row(&tx_id, &schema, &table, &ctid, &updates)
-        .await
+    Box::pin(tx_state.update_row(&tx_id, &schema, &table, &ctid, &updates)).await
 }
 
 #[tauri::command]
@@ -903,7 +905,7 @@ pub async fn insert_row_in_transaction(
     values: std::collections::HashMap<String, Option<String>>,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<serde_json::Value, String> {
-    tx_state.insert_row(&tx_id, &schema, &table, &values).await
+    Box::pin(tx_state.insert_row(&tx_id, &schema, &table, &values)).await
 }
 
 #[tauri::command]
@@ -914,7 +916,7 @@ pub async fn duplicate_row_in_transaction(
     ctid: String,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<serde_json::Value, String> {
-    tx_state.duplicate_row(&tx_id, &schema, &table, &ctid).await
+    Box::pin(tx_state.duplicate_row(&tx_id, &schema, &table, &ctid)).await
 }
 
 #[tauri::command]
@@ -925,7 +927,7 @@ pub async fn delete_row_in_transaction(
     ctid: String,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<(), String> {
-    tx_state.delete_row(&tx_id, &schema, &table, &ctid).await
+    Box::pin(tx_state.delete_row(&tx_id, &schema, &table, &ctid)).await
 }
 
 #[tauri::command]
@@ -973,7 +975,7 @@ pub async fn commit_transaction(
     tx_id: String,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<(), String> {
-    tx_state.commit(&tx_id).await
+    Box::pin(tx_state.commit(&tx_id)).await
 }
 
 #[tauri::command]
@@ -981,7 +983,7 @@ pub async fn rollback_transaction(
     tx_id: String,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<(), String> {
-    tx_state.rollback(&tx_id).await
+    Box::pin(tx_state.rollback(&tx_id)).await
 }
 
 #[tauri::command]
