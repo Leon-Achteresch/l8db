@@ -12,7 +12,10 @@ static QUOTED: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r#"(^|[\s=(,:\[])(?:'(?:[^'\n]|'')*'|"[^"\n]*")"#).expect("quoted pattern")
 });
 static HOST_PORT: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"\b[A-Za-z0-9][A-Za-z0-9.-]*:\d{2,5}\b").expect("host pattern")
+    regex::Regex::new(
+        r"\b(?:[A-Za-z0-9.-]*[A-Za-z][A-Za-z0-9.-]*|\d{1,3}(?:\.\d{1,3}){3}):\d{2,5}\b",
+    )
+    .expect("host pattern")
 });
 
 fn scrub_log_line(line: &str) -> String {
@@ -185,14 +188,14 @@ mod tests {
                 "[d][t][INFO][x] info {i}\n[d][t][WARN][x] warn {i}\n"
             ));
         }
-        log.push_str("[d][t][ERROR][l8db_lib] panic: couldn't reach db.intern:5432 WHERE name = 'Max' password=hunter2\n");
+        log.push_str("[2026-11-06][12:34:05][ERROR][l8db_lib] panic: couldn't reach db.intern:5432 or 10.0.0.7:1521 WHERE name = 'Max' password=hunter2\n");
         std::fs::write(dir.path().join("l8db.log"), &log).unwrap();
         let started = std::time::Instant::now();
         let text = recent_log(dir.path());
         assert!(started.elapsed() < Duration::from_secs(1));
         assert_eq!(text.lines().count(), LOG_LINES);
         assert!(text.len() <= LOG_LINES * 401 * 4);
-        assert!(text.ends_with("panic: couldn't reach <host> WHERE name = '…' password=<redacted>"));
+        assert!(text.ends_with("[2026-11-06][12:34:05][ERROR][l8db_lib] panic: couldn't reach <host> or <host> WHERE name = '…' password=<redacted>"));
         assert!(!text.contains("info") && !text.contains("alt"));
         assert!(recent_log(&dir.path().join("fehlt")).is_empty());
     }
