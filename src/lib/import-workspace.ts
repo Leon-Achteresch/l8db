@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ScriptRunEntry } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import type { CsvColumnMapping, CsvEmptyFieldMode, ImportTargetColumn } from "@/lib/csv-import";
 import type { CsvImportOutcome, ImportFormat, ImportPreview } from "@/lib/db";
 
@@ -29,6 +30,7 @@ export interface CsvImportDraft {
   quote: string;
   hasHeader: boolean | null;
   emptyField: CsvEmptyFieldMode;
+  nullText?: string;
   targetTable: string | null;
   targetColumns: ImportTargetColumn[];
   mappings: CsvColumnMapping[];
@@ -57,6 +59,7 @@ export const EMPTY_CSV_IMPORT: CsvImportDraft = {
   quote: '"',
   hasHeader: null,
   emptyField: "null",
+  nullText: "",
   targetTable: null,
   targetColumns: [],
   mappings: [],
@@ -87,6 +90,7 @@ export const useImportWorkspace = create<ImportWorkspace>()(
     }),
     {
       name: "l8db.import-workspace",
+      storage: createSafeJsonStorage(),
       partialize: (state) => ({
         sql: Object.fromEntries(
           Object.entries(state.sql).map(([key, draft]) => [

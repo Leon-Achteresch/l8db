@@ -3,6 +3,7 @@ import { fingerprintKey, fingerprintSql } from "../src/lib/versioning/fingerprin
 import { ignoreMatcher, parseIgnore, validateIgnore } from "../src/lib/versioning/ignore";
 import {
   migrationScript,
+  scriptLedger,
   scriptName,
   scriptNames,
   terminate,
@@ -229,6 +230,82 @@ describe("migration scripts", () => {
       "migration-Kunde_A-Live-Kunde_A_Live-v1-v2.sql",
       "migration-Kunde_A-Live-Kunde_A_Live-v1-v2-2.sql",
     ]);
+  });
+});
+
+describe("migration scripts with ledger", () => {
+  const execution = (mode?: string) => ({
+    execution: {
+      fromId: "v1",
+      fromHash: "f".repeat(64),
+      ...(mode ? { mode } : {}),
+      objects: [{ id: "orders", definition: "CREATE TABLE ORDERS (ID NUMBER)" }],
+      variances: [],
+      releases: [
+        {
+          id: mode ? "v1" : "v2",
+          hash: "e".repeat(64),
+          changes: [
+            {
+              id: "v2/m",
+              checksum: "c".repeat(64),
+              kind: "versioned",
+              touches: [{ id: "orders" }],
+            },
+          ],
+        },
+      ],
+    },
+  });
+  const plan = (kind: "oracle" | "postgres", mode?: string) => ({
+    target: {
+      id: "t",
+      name: "Kunde A",
+      connectionId: "c",
+      database: null,
+      schema: "APP",
+      production: false,
+      history: [],
+      release: null,
+    },
+    from: { id: "v1", kind } as DatabaseRelease,
+    to: { id: "v2", kind, migrations: [] } as unknown as DatabaseRelease,
+    reference: { id: "v2", commit: "a".repeat(40), path: "database/releases/v2.json" },
+    releases: [{ id: "v2", kind, migrations: [] } as unknown as DatabaseRelease],
+    sql: ["ALTER TABLE APP.ORDERS ADD (NOTE VARCHAR2(10))"],
+    reviewArtifact: JSON.stringify(execution(mode)),
+  });
+  const projectFor = (kind: "oracle" | "postgres") =>
+    ({ id: "p", name: "Shop", kind, objects: [] }) as unknown as VersioningProject;
+  test("ticks changes, settles objects and advances the state behind a guard", async () => {
+    const oracle = plan("oracle");
+    const ledger = await scriptLedger(oracle, projectFor("oracle"));
+    const script = migrationScript({ ...oracle, ledger }, "Shop");
+    expect(script.indexOf("DECLARE n NUMBER")).toBeLessThan(
+      script.indexOf("ALTER TABLE APP.ORDERS"),
+    );
+    expect(script).toContain(`'v2/m', '${"c".repeat(64)}', 'versioned', 'script', 'v2'`);
+    expect(script).toContain('MERGE INTO "APP"."L8DB_VERSIONING_OBJECTS"');
+    expect(script).toContain(`"RELEASE_HASH" = '${"e".repeat(64)}' WHERE`);
+    expect(script).toContain("END;\n/");
+    expect(script.trimEnd().endsWith("COMMIT;")).toBe(true);
+    const postgres = plan("postgres");
+    const pgScript = migrationScript(
+      { ...postgres, ledger: await scriptLedger(postgres, projectFor("postgres")) },
+      "Shop",
+    );
+    expect(pgScript).toContain("DO $l8db$ BEGIN IF (SELECT COUNT(*)");
+    expect(pgScript).toContain('ON CONFLICT ("PROJECT_ID", "OBJECT_ID")');
+    expect(pgScript.match(/COMMIT;/g)).toHaveLength(1);
+  });
+  test("single changes tick without release and leave objects alone", async () => {
+    const single = plan("postgres", "change");
+    const ledger = await scriptLedger(single, projectFor("postgres"));
+    expect(ledger?.statements[0]).toContain("'script', NULL");
+    expect(ledger?.statements.some((statement) => statement.includes("OBJECTS"))).toBe(false);
+    expect(
+      await scriptLedger({ ...single, reviewArtifact: undefined }, projectFor("postgres")),
+    ).toBe(undefined);
   });
 });
 

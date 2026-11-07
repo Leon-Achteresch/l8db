@@ -1,10 +1,21 @@
 "use client";
 
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
-import * as React from "react";
+import type * as React from "react";
 
 export function DropdownMenuTrigger({
+  onPointerDown,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
-  return <DropdownMenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />;
+  return (
+    <DropdownMenuPrimitive.Trigger
+      data-slot="dropdown-menu-trigger"
+      onPointerDown={(event) => {
+        onPointerDown?.(event);
+        if (!event.defaultPrevented && event.button === 0 && !event.ctrlKey)
+          event.currentTarget.focus({ preventScroll: true });
+      }}
+      {...props}
+    />
+  );
 }

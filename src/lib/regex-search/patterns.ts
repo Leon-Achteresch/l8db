@@ -12,12 +12,6 @@ export function splitSearchPatterns(raw: string): string[] {
     .filter(Boolean);
 }
 
-function normalizeSearchPattern(pattern: string): string {
-  if (/[\\.+?^${}()[\]|{}]/.test(pattern)) return pattern;
-  const wildcardPattern = pattern.split("*").map(escapeRegexLiteral).join(".*");
-  return `^${wildcardPattern}$`;
-}
-
 export function compileSearchPatterns(
   raw: string,
   options: RegexSearchOptions = {},
@@ -29,7 +23,7 @@ export function compileSearchPatterns(
   const regexes: RegExp[] = [];
   let offset = 0;
   for (const pattern of patterns) {
-    const compiled = compileRegexSearch(normalizeSearchPattern(pattern), options);
+    const compiled = compileRegexSearch(pattern, options);
     if (!compiled.ok) {
       return {
         ok: false,
@@ -43,6 +37,20 @@ export function compileSearchPatterns(
     offset += pattern.length + 1;
   }
   return { ok: true, regexes, flags: regexSearchFlags(options) };
+}
+
+export function searchMatcher(
+  raw: string,
+  compiled: SearchPatternCompileResult | null,
+): ((value: string) => boolean) | null {
+  const patterns = splitSearchPatterns(raw);
+  if (patterns.length === 0 || compiled?.ok === false) return null;
+  if (compiled?.ok) return (value) => compiled.regexes.some((regex) => regex.test(value));
+  const lower = patterns.map((pattern) => pattern.toLowerCase());
+  return (value) => {
+    const text = value.toLowerCase();
+    return lower.some((pattern) => text.includes(pattern));
+  };
 }
 
 export function regexSearchFlags(options: RegexSearchOptions = {}): string {

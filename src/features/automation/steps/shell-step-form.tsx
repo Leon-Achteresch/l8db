@@ -8,6 +8,7 @@ import { TemplateInput } from "../template-input";
 export function ShellStepForm({ action, onChange }: StepFormProps<"shell">) {
   const programError = useFieldError("program");
   const codesError = useFieldError("successCodes");
+  const argsError = useFieldError("args");
 
   return (
     <div className="flex flex-col gap-4">
@@ -17,7 +18,8 @@ export function ShellStepForm({ action, onChange }: StepFormProps<"shell">) {
         hint={
           <>
             Läuft ohne Shell. Für Pipes oder Umleitungen <code className="font-mono">sh</code> mit{" "}
-            <code className="font-mono">-c</code> nutzen.
+            <code className="font-mono">-c</code> nutzen. Platzhalter im Skript brauchen{" "}
+            <code className="font-mono">|shell</code>.
           </>
         }
       >
@@ -28,7 +30,11 @@ export function ShellStepForm({ action, onChange }: StepFormProps<"shell">) {
           onChange={(program) => onChange({ ...action, program })}
         />
       </FormRow>
-      <FormRow label="Argumente" hint="Ein Argument pro Eintrag, Enter fügt hinzu.">
+      <FormRow
+        label="Argumente"
+        error={argsError}
+        hint="Ein Argument pro Eintrag, Enter fügt hinzu."
+      >
         <ChipsInput
           value={action.args}
           itemLabel="Argument"

@@ -1,11 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Cloud, ExternalLink, Plus, RefreshCw, Unplug } from "lucide-react";
+import { Cloud, ExternalLink, Plus, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { firebaseConnect, firebaseDisconnect, firebaseProfiles } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { BaasDisconnectButton } from "./baas-disconnect-button";
+import { disconnectDescription } from "./disconnect-baas";
 import { FirebaseProjectView } from "./firebase-project-view";
 
 export function FirebaseView({ initialId }: { initialId?: string }) {
@@ -132,14 +134,13 @@ export function FirebaseView({ initialId }: { initialId?: string }) {
                   >
                     <RefreshCw className="size-3.5" /> Aktualisieren
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void disconnect()}
-                    disabled={busy}
-                  >
-                    <Unplug className="size-3.5" /> Trennen
-                  </Button>
+                  <BaasDisconnectButton
+                    description={disconnectDescription(
+                      selected?.displayName || selected?.projectId || "Firebase",
+                    )}
+                    busy={busy}
+                    onConfirm={() => void disconnect()}
+                  />
                 </div>
               </div>
               <FirebaseProjectView key={selected.projectId} profile={selected} />

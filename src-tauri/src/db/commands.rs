@@ -13,15 +13,15 @@ pub fn configure_execution_defaults(
 use super::pool::PoolState;
 use super::transaction::TransactionState;
 use super::{
-    create_adapter, create_adapter_from_string, AddColumnRequest, AlterColumnRequest,
-    AlterRoleOptions, AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ColumnMatch,
-    CompileErrorInfo, CompileResult, ConnectionConfig, ConstraintInfo, CreateMatviewRequest,
-    CreatePolicyRequest, CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest,
-    CreateTableRequest, DatabaseKind, DependencyInfo, DetailedColumnInfo, ERSchema, ExtensionInfo,
-    ForeignKeyInfo, FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo,
-    ObjectGrantInfo, PackageMemberInfo, PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo,
-    RolePrivileges, SchedulerJobInfo, ScriptStatementResult, SequenceInfo, SourceMatch,
-    SynonymInfo, TableData, TableInfo, TriggerInfo,
+    create_adapter_from_string, AddColumnRequest, AlterColumnRequest, AlterRoleOptions,
+    AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ColumnMatch, CompileErrorInfo,
+    CompileResult, ConstraintInfo, CreateMatviewRequest, CreatePolicyRequest,
+    CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest, CreateTableRequest,
+    DatabaseKind, DependencyInfo, DetailedColumnInfo, ERSchema, ExtensionInfo, ForeignKeyInfo,
+    FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, ObjectGrantInfo,
+    PackageMemberInfo, PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo, RolePrivileges,
+    SchedulerJobInfo, ScriptStatementResult, SequenceInfo, SourceMatch, SynonymInfo, TableData,
+    TableInfo, TriggerInfo,
 };
 use super::{ObjectAuditInfo, ObjectDdlRequest};
 
@@ -38,14 +38,33 @@ async fn run_schema_metadata<T>(
     .await
 }
 
-#[tauri::command(async)]
-pub fn list_providers() -> Vec<super::provider::ProviderInfo> {
-    super::provider::list_providers()
+#[tauri::command]
+pub async fn list_providers() -> Vec<super::provider::ProviderInfo> {
+    let mut providers = super::provider::list_providers();
+    if let Some(available) = super::jdbc::cached_available() {
+        for provider in &mut providers {
+            if provider.kind == DatabaseKind::Jdbc {
+                provider.driver_status.available = available;
+                if available {
+                    provider.driver_status.detail =
+                        "JDK 17+ gefunden; JDBC-Profil unter Treiber einrichten.".into();
+                }
+            }
+        }
+    }
+    providers
 }
 
-#[tauri::command(async)]
-pub fn driver_status(kind: DatabaseKind) -> super::provider::DriverStatus {
-    super::provider::kind_driver_status(kind)
+#[tauri::command]
+pub async fn driver_status(kind: DatabaseKind) -> super::provider::DriverStatus {
+    let mut status = super::provider::kind_driver_status(kind);
+    if kind == DatabaseKind::Jdbc {
+        status.available = super::jdbc::refresh_available().await;
+        if status.available {
+            status.detail = "JDK 17+ gefunden; JDBC-Profil unter Treiber einrichten.".into();
+        }
+    }
+    status
 }
 
 #[tauri::command(async)]
@@ -67,23 +86,6 @@ pub fn oracle_open_tnsnames(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
     super::provider::install_driver(kind).await
-}
-
-#[tauri::command]
-pub async fn test_connection(
-    config: ConnectionConfig,
-    pool_state: tauri::State<'_, PoolState>,
-    options: Option<super::execution::ExecutionOptions>,
-) -> Result<(), String> {
-    super::execution::run(options, false, async {
-        super::execution::connect(async {
-            create_adapter(config, pool_state.inner().clone())?
-                .test_connection()
-                .await
-        })
-        .await
-    })
-    .await
 }
 
 #[tauri::command]
@@ -641,13 +643,16 @@ pub async fn execute_query(
             database.as_deref(),
             pool_state.inner().clone(),
         )?;
-        let run = super::execution::with_session(session, async {
-            if pooled == Some(true) {
-                adapter.execute_pooled_query(&sql).await
-            } else {
-                adapter.execute_query(&sql).await
-            }
-        });
+        let run = super::server_output::capture(
+            output_sink(&connection_string, database.as_deref()),
+            super::execution::with_session(session, async {
+                if pooled == Some(true) {
+                    adapter.execute_pooled_query(&sql).await
+                } else {
+                    adapter.execute_query(&sql).await
+                }
+            }),
+        );
         if kind == DatabaseKind::Oracle {
             return capped_query(run).await;
         }
@@ -673,18 +678,30 @@ pub async fn execute_query_with_params(
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
     super::execution::run_query(options, kind.capabilities().query_cancel, async {
-        capped_query(
-            create_adapter_from_string(
-                kind,
-                &connection_string,
-                database.as_deref(),
-                pool_state.inner().clone(),
-            )?
-            .execute_query_with_params(&sql, &params),
-        )
+        let adapter = create_adapter_from_string(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner().clone(),
+        )?;
+        capped_query(super::server_output::capture(
+            output_sink(&connection_string, database.as_deref()),
+            adapter.execute_query_with_params(&sql, &params),
+        ))
         .await
     })
     .await
+}
+
+fn output_key(connection_string: &str, database: Option<&str>) -> String {
+    super::cloud_auth::pool_key(connection_string, database.filter(|db| !db.is_empty()))
+}
+
+pub(crate) fn output_sink(
+    connection_string: &str,
+    database: Option<&str>,
+) -> super::server_output::Messages {
+    super::server_output::messages(&output_key(connection_string, database))
 }
 
 #[tauri::command]
@@ -795,7 +812,7 @@ pub async fn begin_transaction(
     tx_state: tauri::State<'_, TransactionState>,
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<String, String> {
-    super::execution::run(
+    Box::pin(super::execution::run(
         options,
         matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
         async {
@@ -817,7 +834,7 @@ pub async fn begin_transaction(
             })
             .await
         },
-    )
+    ))
     .await
 }
 
@@ -828,9 +845,11 @@ pub async fn execute_in_transaction(
     tx_state: tauri::State<'_, TransactionState>,
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
-    super::execution::run_query(options, tx_state.supports_cancel(&tx_id).await, async {
-        tx_state.execute(&tx_id, &sql).await
-    })
+    Box::pin(super::execution::run_query(
+        options,
+        tx_state.supports_cancel(&tx_id).await,
+        async { tx_state.execute(&tx_id, &sql).await },
+    ))
     .await
 }
 
@@ -839,15 +858,15 @@ pub async fn transaction_database_changes(
     tx_id: String,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<Vec<super::oracle::TxTableChanges>, String> {
-    tx_state.oracle_changes(&tx_id).await
+    Box::pin(tx_state.oracle_changes(&tx_id)).await
 }
 
 #[tauri::command]
 pub async fn transaction_server_output(
     tx_id: String,
     tx_state: tauri::State<'_, TransactionState>,
-) -> Result<Vec<String>, String> {
-    tx_state.server_output(&tx_id).await
+) -> Result<Vec<super::server_output::ServerMessage>, String> {
+    Box::pin(tx_state.server_output(&tx_id)).await
 }
 
 #[tauri::command]
@@ -858,9 +877,11 @@ pub async fn execute_in_transaction_with_params(
     tx_state: tauri::State<'_, TransactionState>,
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<QueryResult, String> {
-    super::execution::run_query(options, tx_state.supports_cancel(&tx_id).await, async {
-        tx_state.execute_with_params(&tx_id, &sql, &params).await
-    })
+    Box::pin(super::execution::run_query(
+        options,
+        tx_state.supports_cancel(&tx_id).await,
+        async { tx_state.execute_with_params(&tx_id, &sql, &params).await },
+    ))
     .await
 }
 
@@ -873,9 +894,7 @@ pub async fn update_row_in_transaction(
     updates: std::collections::HashMap<String, Option<String>>,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<String, String> {
-    tx_state
-        .update_row(&tx_id, &schema, &table, &ctid, &updates)
-        .await
+    Box::pin(tx_state.update_row(&tx_id, &schema, &table, &ctid, &updates)).await
 }
 
 #[tauri::command]
@@ -886,7 +905,7 @@ pub async fn insert_row_in_transaction(
     values: std::collections::HashMap<String, Option<String>>,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<serde_json::Value, String> {
-    tx_state.insert_row(&tx_id, &schema, &table, &values).await
+    Box::pin(tx_state.insert_row(&tx_id, &schema, &table, &values)).await
 }
 
 #[tauri::command]
@@ -897,7 +916,7 @@ pub async fn duplicate_row_in_transaction(
     ctid: String,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<serde_json::Value, String> {
-    tx_state.duplicate_row(&tx_id, &schema, &table, &ctid).await
+    Box::pin(tx_state.duplicate_row(&tx_id, &schema, &table, &ctid)).await
 }
 
 #[tauri::command]
@@ -908,7 +927,52 @@ pub async fn delete_row_in_transaction(
     ctid: String,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<(), String> {
-    tx_state.delete_row(&tx_id, &schema, &table, &ctid).await
+    Box::pin(tx_state.delete_row(&tx_id, &schema, &table, &ctid)).await
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn execute_with_binds(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    tx_id: Option<String>,
+    sql: String,
+    binds: Vec<super::BindVariable>,
+    pool_state: tauri::State<'_, PoolState>,
+    tx_state: tauri::State<'_, TransactionState>,
+    options: Option<super::execution::ExecutionOptions>,
+    session: Option<String>,
+) -> Result<super::BoundResult, String> {
+    let cap = super::execution::result_row_cap(MAX_RESULT_ROWS);
+    Box::pin(super::execution::run_query(
+        options,
+        kind.capabilities().query_cancel,
+        async {
+            super::execution::with_row_limit(cap + 1, async {
+                if let Some(tx_id) = tx_id {
+                    return Box::pin(tx_state.execute_with_binds(&tx_id, &sql, &binds)).await;
+                }
+                let adapter = create_adapter_from_string(
+                    kind,
+                    &connection_string,
+                    database.as_deref(),
+                    pool_state.inner().clone(),
+                )?;
+                super::execution::with_session(session, adapter.execute_with_binds(&sql, &binds))
+                    .await
+            })
+            .await
+        },
+    ))
+    .await
+    .map(|mut bound| {
+        bound.result = truncate_rows(bound.result, cap);
+        for bind in &mut bound.binds {
+            bind.cursor = bind.cursor.take().map(|cursor| truncate_rows(cursor, cap));
+        }
+        bound
+    })
 }
 
 #[tauri::command]
@@ -916,7 +980,7 @@ pub async fn commit_transaction(
     tx_id: String,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<(), String> {
-    tx_state.commit(&tx_id).await
+    Box::pin(tx_state.commit(&tx_id)).await
 }
 
 #[tauri::command]
@@ -924,7 +988,7 @@ pub async fn rollback_transaction(
     tx_id: String,
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<(), String> {
-    tx_state.rollback(&tx_id).await
+    Box::pin(tx_state.rollback(&tx_id)).await
 }
 
 #[tauri::command]
@@ -1517,16 +1581,20 @@ pub async fn drop_column(
     schema: String,
     table: String,
     column: String,
+    cascade: Option<bool>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(
+    let adapter = create_adapter_from_string(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
-    )?
-    .drop_column(&schema, &table, &column)
-    .await
+    )?;
+    if cascade.unwrap_or(false) {
+        adapter.drop_column_cascade(&schema, &table, &column).await
+    } else {
+        adapter.drop_column(&schema, &table, &column).await
+    }
 }
 
 #[tauri::command]
@@ -1649,6 +1717,7 @@ pub async fn uninstall_extension(
     connection_string: String,
     database: Option<String>,
     name: String,
+    cascade: Option<bool>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
     create_adapter_from_string(
@@ -1657,7 +1726,7 @@ pub async fn uninstall_extension(
         database.as_deref(),
         pool_state.inner().clone(),
     )?
-    .uninstall_extension(&name)
+    .uninstall_extension(&name, cascade.unwrap_or(false))
     .await
 }
 
@@ -1691,7 +1760,11 @@ pub async fn execute_script(
         options,
         matches!(
             kind,
-            DatabaseKind::Postgres | DatabaseKind::Sqlite | DatabaseKind::Athena
+            DatabaseKind::Postgres
+                | DatabaseKind::Sqlite
+                | DatabaseKind::Athena
+                | DatabaseKind::Jdbc
+                | DatabaseKind::Workspace
         ),
         async {
             create_adapter_from_string(
@@ -1808,14 +1881,18 @@ pub async fn explain_query(
     sql: String,
     analyze: bool,
     pool_state: tauri::State<'_, PoolState>,
+    options: Option<super::execution::ExecutionOptions>,
 ) -> Result<serde_json::Value, String> {
-    create_adapter_from_string(
-        kind,
-        &connection_string,
-        database.as_deref(),
-        pool_state.inner().clone(),
-    )?
-    .explain_query(&sql, analyze)
+    super::execution::run_query(options, kind.capabilities().query_cancel, async {
+        create_adapter_from_string(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner().clone(),
+        )?
+        .explain_query(&sql, analyze)
+        .await
+    })
     .await
 }
 
@@ -2292,6 +2369,26 @@ pub async fn drop_schema(
 }
 
 #[tauri::command]
+pub async fn get_schema_map(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<crate::mcp::SchemaMap, String> {
+    if !crate::mcp::schema_map_supported(kind) {
+        return Ok(crate::mcp::SchemaMap::default());
+    }
+    let adapter = create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?;
+    crate::mcp::schema_map(adapter.as_ref(), kind, &schema).await
+}
+
+#[tauri::command]
 pub async fn get_database_overview(
     kind: DatabaseKind,
     connection_string: String,
@@ -2316,14 +2413,17 @@ pub async fn set_server_output(
     enabled: bool,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<(), String> {
-    create_adapter_from_string(
+    let adapter = create_adapter_from_string(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
-    )?
-    .set_server_output(enabled)
-    .await
+    )?;
+    super::server_output::set_enabled(
+        &output_key(&connection_string, database.as_deref()),
+        enabled,
+    );
+    adapter.set_server_output(enabled).await
 }
 
 #[tauri::command]
@@ -2333,14 +2433,25 @@ pub async fn take_server_output(
     database: Option<String>,
     pool_state: tauri::State<'_, PoolState>,
 ) -> Result<Vec<super::server_output::ServerMessage>, String> {
-    create_adapter_from_string(
+    take_output(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
-    )?
-    .take_server_output()
+    )
     .await
+}
+
+pub(crate) async fn take_output(
+    kind: DatabaseKind,
+    connection_string: &str,
+    database: Option<&str>,
+    pool: PoolState,
+) -> Result<Vec<super::server_output::ServerMessage>, String> {
+    let adapter = create_adapter_from_string(kind, connection_string, database, pool)?;
+    let mut messages = super::server_output::take(&output_key(connection_string, database));
+    messages.extend(adapter.take_server_output().await?);
+    Ok(messages)
 }
 
 #[tauri::command]
@@ -2837,5 +2948,74 @@ mod metadata_performance_tests {
         );
         assert!(durations[8] < 250.0, "{durations:?}");
         assert!(result_bytes < 2 * 1024 * 1024);
+    }
+
+    trait FutureSize<Args> {
+        fn future_size(&self) -> usize;
+    }
+
+    macro_rules! future_size_for {
+        ($($arg:ident),*) => {
+            impl<F, Fut, $($arg),*> FutureSize<($($arg,)*)> for F
+            where
+                F: Fn($($arg),*) -> Fut,
+            {
+                fn future_size(&self) -> usize {
+                    std::mem::size_of::<Fut>()
+                }
+            }
+        };
+    }
+
+    future_size_for!(A, B);
+    future_size_for!(A, B, C, D);
+    future_size_for!(A, B, C, D, E);
+    future_size_for!(A, B, C, D, E, G);
+    future_size_for!(A, B, C, D, E, G, H, I, J, K);
+
+    #[test]
+    fn transaction_command_futures_stay_small_for_the_windows_main_thread() {
+        let sizes = [
+            ("begin_transaction", begin_transaction.future_size()),
+            (
+                "execute_in_transaction",
+                execute_in_transaction.future_size(),
+            ),
+            (
+                "execute_in_transaction_with_params",
+                execute_in_transaction_with_params.future_size(),
+            ),
+            (
+                "insert_row_in_transaction",
+                insert_row_in_transaction.future_size(),
+            ),
+            (
+                "update_row_in_transaction",
+                update_row_in_transaction.future_size(),
+            ),
+            (
+                "duplicate_row_in_transaction",
+                duplicate_row_in_transaction.future_size(),
+            ),
+            (
+                "delete_row_in_transaction",
+                delete_row_in_transaction.future_size(),
+            ),
+            (
+                "transaction_database_changes",
+                transaction_database_changes.future_size(),
+            ),
+            (
+                "transaction_server_output",
+                transaction_server_output.future_size(),
+            ),
+            ("execute_with_binds", execute_with_binds.future_size()),
+            ("commit_transaction", commit_transaction.future_size()),
+            ("rollback_transaction", rollback_transaction.future_size()),
+        ];
+        eprintln!("command future bytes: {sizes:?}");
+        for (name, size) in sizes {
+            assert!(size < 16 * 1024, "{name}: {size}");
+        }
     }
 }

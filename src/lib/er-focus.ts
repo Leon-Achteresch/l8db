@@ -13,7 +13,21 @@ export interface ErFocus {
 export const EMPTY_ER_SCHEMA: ERSchema = { tables: [], foreign_keys: [] };
 
 export function erTableKey(schema: string, name: string): string {
-  return `${schema}.${name}`;
+  return JSON.stringify([schema, name]);
+}
+
+export function parseErTableKey(key: string): { schema: string; table: string } | null {
+  try {
+    const parsed: unknown = JSON.parse(key);
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === 2 &&
+      typeof parsed[0] === "string" &&
+      typeof parsed[1] === "string"
+    )
+      return { schema: parsed[0], table: parsed[1] };
+  } catch {}
+  return null;
 }
 
 export function erTableKeyOf(table: ERTable): string {

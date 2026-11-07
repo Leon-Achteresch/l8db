@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { formatBytes } from "@/lib/backup";
-import { s3BucketStats } from "@/lib/db";
+import { cancelExecution, s3BucketStats } from "@/lib/db";
 import { SettingsCard } from "./settings-card";
 import { useStorageConnection } from "./use-storage-connection";
 
@@ -9,7 +9,11 @@ export function BucketStatsCard({ bucket }: { bucket: string }) {
   const { connection, url } = useStorageConnection();
   const stats = useQuery({
     queryKey: ["s3", connection?.id, "stats", bucket],
-    queryFn: () => s3BucketStats(url, bucket),
+    queryFn: ({ signal }) => {
+      const jobId = crypto.randomUUID();
+      signal.addEventListener("abort", () => void cancelExecution(jobId));
+      return s3BucketStats(url, bucket, "", jobId);
+    },
     enabled: false,
   });
   const data = stats.data;

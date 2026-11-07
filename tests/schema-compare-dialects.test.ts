@@ -119,6 +119,30 @@ describe("MySQL", () => {
     ]);
   });
 
+  test("MySQL: NULL nach NOT NULL ohne Typänderung gilt als datenverändernd", () => {
+    const value = result(
+      "mysql",
+      [
+        table("app", "`id` int NOT NULL"),
+        object("column", "name", "`name` varchar(40) NOT NULL", "t", {
+          type: "varchar(40)",
+          nullable: "NO",
+        }),
+      ],
+      [
+        table("app", "`id` int NOT NULL"),
+        object("column", "name", "`name` varchar(40) NULL", "t", {
+          type: "varchar(40)",
+          nullable: "YES",
+        }),
+      ],
+    );
+    const statement = buildSyncScript(value, all(value)).statements.find((item) =>
+      item.sql.includes("MODIFY COLUMN"),
+    );
+    expect(statement?.dangerous).toBe(true);
+  });
+
   test("ersetzt Routinen per DROP und CREATE und rendert DELIMITER", () => {
     const value = result(
       "mysql",

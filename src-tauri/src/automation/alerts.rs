@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 use serde_json::Value;
 
-use crate::automation::model::{AlertCondition, AlertState, AlertStatus, NotifyWhen};
+use crate::automation::model::{AlertCondition, AlertState, AlertStatus, Comparator, NotifyWhen};
 use crate::automation::runtime::rfc3339;
 use crate::automation::vars;
 use crate::db::QueryResult;
@@ -38,8 +38,11 @@ fn first_value(result: &QueryResult, column: Option<&str>) -> Result<String, Str
         Value::Object(cells) => result.columns.get(index).and_then(|name| cells.get(name)),
         other => Some(other),
     };
-    cell.map(text)
-        .ok_or_else(|| "Die Abfrage lieferte keine Spalte.".into())
+    match cell {
+        None => Err("Die Abfrage lieferte keine Spalte.".into()),
+        Some(Value::Null) => Err("Der Wert ist NULL.".into()),
+        Some(cell) => Ok(text(cell)),
+    }
 }
 
 fn evaluation(status: AlertStatus, value: Option<String>, message: String) -> AlertEvaluation {
@@ -91,6 +94,20 @@ pub fn evaluate(
                 Ok(value) => value,
                 Err(error) => return evaluation(AlertStatus::Error, None, error),
             };
+            let ordered = matches!(
+                op,
+                Comparator::Eq
+                    | Comparator::Ne
+                    | Comparator::Gt
+                    | Comparator::Gte
+                    | Comparator::Lt
+                    | Comparator::Lte
+            );
+            let finite = |text: &str| text.trim().parse::<f64>().is_ok_and(f64::is_finite);
+            if ordered && finite(threshold) && !finite(&value) {
+                let message = format!("Wert „{value}“ ist keine Zahl.");
+                return evaluation(AlertStatus::Error, Some(value), message);
+            }
             match vars::compare(&value, *op, threshold) {
                 Ok(triggered) => {
                     let message = format!("Wert {value}, Schwelle {threshold}.");
@@ -123,7 +140,15 @@ pub fn transition(
     if before != state.status {
         state.since = Some(stamp.clone());
     }
-    let notify = match (before, state.status) {
+    let notified = state.notified_status.unwrap_or(
+        if before != AlertStatus::Ok && state.last_notified_at.is_some() {
+            AlertStatus::Triggered
+        } else {
+            AlertStatus::Ok
+        },
+    );
+    state.notified_status = Some(notified);
+    let notify = match (notified, state.status) {
         (AlertStatus::Triggered, AlertStatus::Triggered) => match rearm_minutes {
             Some(minutes)
                 if parse(&state.last_notified_at)
@@ -140,8 +165,13 @@ pub fn transition(
     if parse(&state.muted_until).is_some_and(|until| until > now) {
         return (state, None);
     }
-    if notify == Some(NotifyWhen::AlertTriggered) {
-        state.last_notified_at = Some(stamp);
+    match notify {
+        Some(NotifyWhen::AlertTriggered) => {
+            state.last_notified_at = Some(stamp);
+            state.notified_status = Some(AlertStatus::Triggered);
+        }
+        Some(_) => state.notified_status = Some(AlertStatus::Ok),
+        None => {}
     }
     (state, notify)
 }
@@ -149,7 +179,6 @@ pub fn transition(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::automation::model::Comparator;
     use serde_json::json;
 
     fn at(minutes: i64) -> DateTime<Utc> {
@@ -396,6 +425,48 @@ mod tests {
             current = Some(next);
         }
         assert_eq!(sent, [true, false, false, true, false, true]);
+    }
+
+    #[test]
+    fn values_that_are_null_nan_or_text_are_errors() {
+        let condition = |op: Comparator| AlertCondition::Value {
+            column: Some("total".into()),
+            op,
+            threshold: "100".into(),
+        };
+        for total in [json!(null), json!("NaN"), json!("9 MB")] {
+            let rows = result(vec![json!({"id": 1, "total": total})]);
+            for op in [Comparator::Lt, Comparator::Eq, Comparator::Gte] {
+                assert_eq!(evaluate(&condition(op), &rows).status, AlertStatus::Error);
+            }
+        }
+        let rows = result(vec![json!({"id": 1, "total": "abc"})]);
+        let text = AlertCondition::Value {
+            column: Some("total".into()),
+            op: Comparator::Eq,
+            threshold: "abc".into(),
+        };
+        assert_eq!(evaluate(&text, &rows).status, AlertStatus::Triggered);
+    }
+
+    #[test]
+    fn resolves_after_error_and_reports_after_mute() {
+        let (fired, notify) = transition(None, &eval(AlertStatus::Triggered), at(0), None);
+        assert_eq!(notify, Some(NotifyWhen::AlertTriggered));
+        let (failed, notify) = transition(Some(&fired), &eval(AlertStatus::Error), at(1), None);
+        assert_eq!(notify, None);
+        let (again, notify) = transition(Some(&failed), &eval(AlertStatus::Triggered), at(2), None);
+        assert_eq!(notify, None);
+        let (failed, _) = transition(Some(&again), &eval(AlertStatus::Error), at(3), None);
+        let (_, notify) = transition(Some(&failed), &eval(AlertStatus::Ok), at(4), None);
+        assert_eq!(notify, Some(NotifyWhen::AlertResolved));
+
+        let mut muted = state(AlertStatus::Ok, None);
+        muted.muted_until = Some(rfc3339(at(30)));
+        let (silent, notify) = transition(Some(&muted), &eval(AlertStatus::Triggered), at(0), None);
+        assert_eq!(notify, None);
+        let (_, notify) = transition(Some(&silent), &eval(AlertStatus::Triggered), at(31), None);
+        assert_eq!(notify, Some(NotifyWhen::AlertTriggered));
     }
 
     #[test]

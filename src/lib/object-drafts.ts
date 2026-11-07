@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export interface ObjectDraft {
@@ -38,7 +39,11 @@ export const useObjectDrafts = create<DraftsState>()(
           return { drafts };
         }),
     }),
-    { name: "l8db.object-drafts", partialize: (state) => ({ drafts: state.drafts }) },
+    {
+      name: "l8db.object-drafts",
+      storage: createSafeJsonStorage(),
+      partialize: (state) => ({ drafts: state.drafts }),
+    },
   ),
 );
 

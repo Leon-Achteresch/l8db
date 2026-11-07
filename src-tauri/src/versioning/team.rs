@@ -52,6 +52,74 @@ pub struct Target {
     operators: Option<Vec<String>>,
     administrators: Option<Vec<String>>,
     reviewers: Option<Vec<String>>,
+    #[serde(default)]
+    pub variances: Vec<Variance>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Variance {
+    pub object: String,
+    pub hash: String,
+    reason: String,
+    until: Option<String>,
+}
+
+impl Variance {
+    fn valid(&self) -> bool {
+        valid(&self.object)
+            && valid(&self.reason)
+            && self.hash.len() == 64
+            && self
+                .hash
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            && self.until.as_deref().is_none_or(|until| {
+                until.len() == 10 && chrono::NaiveDate::parse_from_str(until, "%Y-%m-%d").is_ok()
+            })
+    }
+
+    pub fn active(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
+        self.until.as_deref().is_none_or(|until| {
+            chrono::NaiveDate::parse_from_str(until, "%Y-%m-%d")
+                .ok()
+                .and_then(|date| date.and_hms_opt(0, 0, 0))
+                .is_some_and(|start| start.and_utc() > now)
+        })
+    }
+}
+
+pub fn verify_variances(target: Option<&Target>, planned: &Value) -> Result<(), String> {
+    let planned = planned
+        .as_array()
+        .ok_or("Festgehaltene Abweichungen fehlen im Ausführungsplan")?;
+    let now = chrono::Utc::now();
+    let expected: HashMap<&str, &str> = target
+        .map(|target| {
+            target
+                .variances
+                .iter()
+                .filter(|variance| variance.active(now))
+                .map(|variance| (variance.object.as_str(), variance.hash.as_str()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut seen = HashSet::new();
+    for variance in planned {
+        let id = variance["id"].as_str().unwrap_or_default();
+        let definition = variance["definition"].as_str().unwrap_or_default();
+        if !seen.insert(id)
+            || expected.get(id).copied() != Some(super::control::hash(definition).as_str())
+        {
+            return Err(format!(
+                "Festgehaltene Abweichung {id} passt nicht zur Git-Teamkonfiguration. Neu planen."
+            ));
+        }
+    }
+    if seen.len() != expected.len() {
+        return Err("Festgehaltene Abweichungen fehlen im Ausführungsplan. Neu planen.".into());
+    }
+    Ok(())
 }
 
 pub async fn committed(root: &Path) -> Result<Option<String>, String> {
@@ -100,8 +168,15 @@ pub async fn verify_request(request: &super::runner::Request) -> Result<Option<V
         .cloned()
         .ok_or("Rollout-Ziel fehlt in der Git-Teamkonfiguration")?;
     let c = &request.connection;
-    let physical = super::seeds::physical_key(c.kind, &c.schema, &artifact["execution"]["context"]);
+    let physical =
+        super::seeds::physical_key(c.kind, &target.schema, &artifact["execution"]["context"]);
     if team.project_id != c.project_id
+        || artifact["schema"]
+            != if target.schema.is_empty() {
+                Value::Null
+            } else {
+                json!(target.schema)
+            }
         || target.database != c.database
         || target.ledger_schema.as_deref().unwrap_or(&target.schema) != c.schema
         || artifact["teamHash"]
@@ -241,6 +316,15 @@ pub fn parse(content: &str) -> Result<Configuration, String> {
                             .as_ref()
                             .is_some_and(|values| values.iter().any(|value| !valid(value)))
                     })
+                || entry.variances.len() > 5000
+                || entry.variances.iter().any(|variance| !variance.valid())
+                || entry
+                    .variances
+                    .iter()
+                    .map(|variance| variance.object.as_str())
+                    .collect::<HashSet<_>>()
+                    .len()
+                    != entry.variances.len()
         })
         || config.branches.iter().any(|(name, entry)| {
             !valid(name)

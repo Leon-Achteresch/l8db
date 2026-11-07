@@ -1,5 +1,11 @@
+import {
+  splitSecretParams,
+  stripConnectionSecrets,
+  withSecretParams,
+} from "@/lib/connection-export/export";
 import { SECRET_PARAM } from "@/lib/connection-export/types";
 import type { SavedConnection } from "@/lib/connections/types";
+import { extractUrlPassword, injectUrlPassword } from "@/lib/secrets";
 
 const isString = (value: unknown): value is string => typeof value === "string";
 const isPort = (value: unknown) => Number.isInteger(value) && (value as number) > 0;
@@ -44,6 +50,18 @@ const TEAM_FIELDS = {
   environment: (value: unknown) =>
     value === null || oneOf(["development", "test", "staging", "production"])(value),
   schemas: (value: unknown) => value === null || (Array.isArray(value) && value.every(isString)),
+  cloudAuth: (value: unknown) =>
+    value === null ||
+    (isRecord(value) &&
+      oneOf(["aws_iam", "entra"])(value.mode) &&
+      ["awsProfile", "awsRegion", "tenant"].every(
+        (key) => value[key] == null || isString(value[key]),
+      )),
+  description: (value: unknown) => isString(value) && value.length <= 4096,
+  owner: (value: unknown) => isString(value) && value.length <= 200,
+  contact: (value: unknown) => isString(value) && value.length <= 1000,
+  runbook: (value: unknown) =>
+    isString(value) && value.length <= 2048 && /^https:\/\//i.test(value),
 } satisfies Record<string, (value: unknown) => boolean>;
 
 const FIELDS = Object.keys(TEAM_FIELDS) as (keyof typeof TEAM_FIELDS)[];
@@ -51,8 +69,6 @@ const FIELDS = Object.keys(TEAM_FIELDS) as (keyof typeof TEAM_FIELDS)[];
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const USERINFO_PASSWORD = /:\/\/[^/@?#]*:[^/@?#]*@/;
 const FORBIDDEN_PARAMS = new Set([
-  "integratedsecurity",
-  "trustedconnection",
   "privatekey",
   "privatekeyfile",
   "privatekeypath",
@@ -110,6 +126,12 @@ export const TEAM_KINDS = [
   "elasticsearch",
   "influxdb",
   "snowflake",
+  "bigquery",
+  "athena",
+  "dynamodb",
+  "s3",
+  "sqlite_http",
+  "odbc",
 ];
 const AUTHORITY = /^([a-z][a-z0-9+.-]*:\/\/)([^/?#]*)/i;
 
@@ -155,6 +177,24 @@ function pick(entry: unknown): Record<string, unknown> | string {
   const forbidden = keys.find(forbiddenParam);
   if (forbidden)
     return `${label}: Parameter „${forbidden}“ ist für Team-Verbindungen nicht erlaubt, übersprungen`;
+  if (
+    parameters(connectionString).some(
+      ([key, value]) =>
+        ["integratedsecurity", "trustedconnection"].includes(
+          key.toLowerCase().replace(/[\s_-]/g, ""),
+        ) && !/^(true|false|yes|no|sspi|1|0)$/i.test(value),
+    )
+  )
+    return `${label}: ungültige integrierte Anmeldung, übersprungen`;
+  if (
+    source.kind === "odbc" &&
+    parameters(connectionString).some(
+      ([key, value]) =>
+        key.toLowerCase() === "filedsn" ||
+        (key.toLowerCase() === "driver" && /[\\/]|\.(dll|so|dylib)/i.test(value)),
+    )
+  )
+    return `${label}: lokale ODBC-Treiberpfade sind nicht erlaubt, übersprungen`;
   const picked: Record<string, unknown> = { id: source.id };
   for (const field of FIELDS)
     if (source[field] !== undefined && TEAM_FIELDS[field](source[field]))
@@ -171,6 +211,54 @@ function pick(entry: unknown): Record<string, unknown> | string {
     };
   }
   return picked;
+}
+
+export const TEAM_SECURITY_FIELDS = [
+  "kind",
+  "sslMode",
+  "readOnly",
+  "environment",
+  "schemas",
+  "cloudAuth",
+  "proxy",
+  "description",
+  "owner",
+  "contact",
+  "runbook",
+] as const;
+
+export function enforceTeamConnection(connection: SavedConnection): SavedConnection {
+  const base = connection.team?.base;
+  if (!base) return connection;
+  if (
+    !connection.commandTunnel &&
+    base.connectionString === connection.connectionString &&
+    base.ssh === connection.ssh &&
+    TEAM_SECURITY_FIELDS.every((field) =>
+      same(connection[field], field === "sslMode" ? (base[field] ?? "prefer") : base[field]),
+    )
+  )
+    return connection;
+  const next = { ...connection };
+  for (const field of TEAM_SECURITY_FIELDS)
+    Object.assign(next, { [field]: field === "sslMode" ? (base[field] ?? "prefer") : base[field] });
+  if (typeof base.connectionString === "string") {
+    next.connectionString = withSecretParams(
+      carryCredentials(base.connectionString, connection.connectionString),
+      splitSecretParams(connection.connectionString).secrets,
+    );
+    const password = extractUrlPassword(connection.connectionString);
+    const user = (value: string) => value.match(AUTHORITY)?.[2].split("@")[0].split(":")[0];
+    if (
+      password &&
+      base.connectionString.includes("@") &&
+      user(base.connectionString) === user(connection.connectionString)
+    )
+      next.connectionString = injectUrlPassword(next.connectionString, password);
+  }
+  next.ssh = withLocalKeys(base.ssh, connection.ssh) as SavedConnection["ssh"];
+  if (connection.commandTunnel) next.commandTunnel = null;
+  return same(next, connection) ? connection : next;
 }
 
 export function withoutPassword(value: string): string {
@@ -256,8 +344,14 @@ export function mergeTeamConnections(
   const warnings: string[] = [];
   for (const entry of entries) {
     const picked = pick(entry);
-    if (typeof picked === "string") warnings.push(picked);
-    else remote.set(teamConnectionId(hub, picked.id as string), picked);
+    if (typeof picked === "string") {
+      warnings.push(picked);
+      continue;
+    }
+    const key = teamConnectionId(hub, picked.id as string);
+    if (remote.has(key))
+      warnings.push(`Doppelte id „${String(picked.id)}“: späterer Eintrag übersprungen.`);
+    else remote.set(key, picked);
   }
   const removed: string[] = [];
   const retargeted: string[] = [];
@@ -289,7 +383,7 @@ export function mergeTeamConnections(
       if (moved) retargeted.push(connection.id);
       next.connectionString = same(incoming.connectionString, base.connectionString)
         ? moved
-          ? withoutPassword(connection.connectionString)
+          ? stripConnectionSecrets(connection.connectionString)
           : connection.connectionString
         : carryCredentials(
             incoming.connectionString as string,
@@ -298,13 +392,18 @@ export function mergeTeamConnections(
           );
     }
     if (!changed) {
-      connections.push(connection);
+      const enforced = enforceTeamConnection(connection);
+      if (enforced !== connection) updated++;
+      connections.push(enforced);
       continue;
     }
     updated++;
     const { id, ...fields } = incoming;
     connections.push({
-      ...(next as unknown as SavedConnection),
+      ...enforceTeamConnection({
+        ...(next as unknown as SavedConnection),
+        team: { hub, id: incoming.id as string, base: fields },
+      }),
       team: { hub, id: id as string, base: fields },
     });
   }

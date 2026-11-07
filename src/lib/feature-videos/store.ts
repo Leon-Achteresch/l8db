@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
+import { syncAcrossWindows } from "@/lib/window-sync";
 import { DAY, FEED_URL, type FeatureVideoFeed, parseFeed } from "./model";
 
 type History = Record<string, { status: "offered" | "seen" | "dismissed"; at: number }>;
@@ -68,6 +70,7 @@ export const useFeatureVideoStore = create<VideoState>()(
     }),
     {
       name: "l8db.feature-videos",
+      storage: createSafeJsonStorage(),
       partialize: ({ feed, checkedAt, history }) => ({ feed, checkedAt, history }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<VideoState> | null;
@@ -90,6 +93,8 @@ export const useFeatureVideoStore = create<VideoState>()(
     },
   ),
 );
+
+syncAcrossWindows("l8db.feature-videos", () => void useFeatureVideoStore.persist.rehydrate());
 
 export async function refreshFeatureVideos(force = false): Promise<void> {
   const state = useFeatureVideoStore.getState();

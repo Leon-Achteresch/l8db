@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { studioTablesList, studioTablesSchemas } from "@/lib/db/supabase-studio-tables";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { BaasSidebarItem } from "../../baas-sidebar-item";
 import { SupabaseTableCreateDialog } from "./supabase-table-create-dialog";
 import { KIND_LABELS, type StudioTableRef } from "./supabase-tables-utils";
@@ -119,7 +120,13 @@ export function SupabaseTablesBrowser({
           {String(tables.error)}
         </p>
       ) : tables.data.tables.length === 0 ? (
-        <p className="px-2 text-xs text-muted-foreground">Keine Tabellen gefunden.</p>
+        <BaasEmptyState
+          compact
+          className="p-4"
+          icon={Table2}
+          title="Keine Tabellen gefunden."
+          description="Lege über + eine Tabelle an oder wähle ein anderes Schema."
+        />
       ) : (
         <div className="grid gap-0.5">
           {tables.data.tables.map((entry) => (

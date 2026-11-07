@@ -35,7 +35,7 @@ export function initialPolicy(target: DatabaseTarget): SharedPolicy {
     pinnedRelease: target.pinnedRelease ?? null,
     paused: target.paused ?? false,
     production: target.production,
-    requireApproval: target.requireApproval ?? false,
+    requireApproval: target.production || (target.requireApproval ?? false),
     operators: target.operators ?? [],
     administrators: target.administrators ?? [],
     reviewers: target.reviewers ?? [],

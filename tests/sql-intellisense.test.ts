@@ -134,6 +134,16 @@ describe("suggestCompletions", () => {
     );
     expect(fn).toMatchObject({ kind: "function", insertText: "calc_total($0)", snippet: true });
   });
+  it("converts user snippets like the snippet menu", () => {
+    const snippet = suggestCompletions(registry, "SELECT ", "SELECT ", [
+      {
+        name: "Nach ID",
+        shortcut: "byid",
+        body: "SELECT * FROM ${table:users} WHERE id = $1 AND x = '${cursor}'",
+      },
+    ]).find((s) => s.label === "byid");
+    expect(snippet?.insertText).toBe("SELECT * FROM ${1:users} WHERE id = \\$1 AND x = '$0'");
+  });
   it("detects package qualifier", () => {
     expect(packageForQualifier(registry, "  pkg_emp.ge")?.name).toBe("PKG_EMP");
     expect(packageForQualifier(registry, "  hr.")).toBeNull();

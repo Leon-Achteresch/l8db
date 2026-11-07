@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SavedQuery } from "@/lib/saved-queries";
+import { type SavedQuery, useSavedQueriesStore } from "@/lib/saved-queries";
 import {
   buildSavedQueryExport,
   findSavedQueryDuplicate,
@@ -128,4 +128,14 @@ describe("resolve", () => {
     expect(uniqueCopyName("A", ["A (Kopie)"])).toBe("A (Kopie 2)");
     expect(uniqueCopyName("A", ["A (Kopie)", "A (Kopie 2)"])).toBe("A (Kopie 3)");
   });
+});
+
+test("importQueries counts and stores only new, unique ids", () => {
+  useSavedQueriesStore.setState({ queries: [] });
+  const existing = useSavedQueriesStore.getState().saveQuery("A", "SELECT 1");
+  const fresh = query("neu", "B", "SELECT 2");
+  expect(useSavedQueriesStore.getState().importQueries([existing, fresh, fresh])).toBe(1);
+  expect(useSavedQueriesStore.getState().queries.map((entry) => entry.name)).toEqual(["B", "A"]);
+  useSavedQueriesStore.getState().updateQuery("neu", "B2", "SELECT 3");
+  expect(useSavedQueriesStore.getState().queries[0]).toMatchObject({ name: "B2", sql: "SELECT 3" });
 });

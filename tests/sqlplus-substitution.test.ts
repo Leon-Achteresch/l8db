@@ -34,7 +34,7 @@ test("SQL*Plus settings parse like SQL*Plus", () => {
     value: "emp x",
   });
   expect(parseSqlPlusCommand("def n=5")).toEqual({ type: "define", name: "N", value: "5" });
-  expect(parseSqlPlusCommand("DEFINE")).toEqual({ type: "other" });
+  expect(parseSqlPlusCommand("DEFINE")).toEqual({ type: "define-show", name: null });
   expect(parseSqlPlusCommand("UNDEF a b")).toEqual({ type: "undefine", names: ["A", "B"] });
   expect(parseSqlPlusCommand("SET DEFINE OFF")).toEqual({ type: "set-define", marker: null });
   expect(parseSqlPlusCommand("set def '^'")).toEqual({ type: "set-define", marker: "^" });
@@ -61,7 +61,12 @@ test("&& answers become session defines, & answers are asked again with the last
   substitute(parts[1].text, session.state, answers ?? {});
   await askMissingVariables(parts, session, ask);
   expect(asked[1]).toEqual({ names: ["ONCE"], defaults: { PERM: "perm", ONCE: "once" } });
-  expect(createSubstitutionState()).toEqual({ defines: {}, marker: "&", escape: null });
+  expect(createSubstitutionState()).toEqual({
+    defines: {},
+    marker: "&",
+    escape: null,
+    concat: ".",
+  });
   await expect(askMissingVariables(parts, substitutionSession("other"), undefined)).rejects.toThrow(
     "&PERM",
   );

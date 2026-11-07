@@ -1,21 +1,25 @@
+import { dlopen, FFIType } from "bun:ffi";
 import { appendFile, mkdir } from "node:fs/promises";
 import { arch, cpus, release, totalmem } from "node:os";
 import { resolve } from "node:path";
 import {
+  type CpuCalibration,
+  calibratedCpuRate,
   combineFileRuns,
   confirmedFailures,
   executedTestCount,
   type FileRun,
+  fileBudgets,
+  medianResources,
   normalizeProcessResources,
-  resourceViolations,
   testNamePattern,
   testOutcomes,
-  workloadResources,
 } from "./performance-report";
 
 const SUITES = {
   core: [
     "tests/perf-budget.test.ts",
+    "tests/perf-definition-merge.test.ts",
     "tests/query-client.test.ts",
     "tests/query-cache-budget.test.ts",
     "tests/perf-query-cache.test.ts",
@@ -25,19 +29,29 @@ const SUITES = {
     "tests/perf-rows-window.test.ts",
     "tests/perf-query-history-format.test.ts",
     "tests/perf-home-activity.test.ts",
+    "tests/perf-home-atlas.test.ts",
     "tests/perf-result-compare.test.ts",
+    "tests/perf-query-qol.test.ts",
+    "tests/perf-workbench-qol.test.ts",
     "tests/supabase-studio-redesign.test.ts",
     "tests/perf-history-modal-boundary.test.ts",
+    "tests/perf-ai-persist.test.ts",
+    "tests/perf-shortcut-hints.test.ts",
     "tests/perf-virtual-item-measurement.test.ts",
     "tests/observe-virtual-scroll-rect.test.ts",
     "tests/perf-grid-window-range.test.ts",
+    "tests/perf-column-slots.test.ts",
+    "tests/perf-grid-style.test.ts",
+    "tests/perf-grid-edge-fade.test.ts",
     "tests/perf-fresh-element-scroll.test.ts",
     "tests/perf-app-requests.test.ts",
     "tests/perf-query-statement-outline.test.ts",
     "tests/perf-plsql-members.test.ts",
     "tests/perf-sql-intellisense.test.ts",
     "tests/perf-tab-state.test.ts",
+    "tests/perf-shared-tabs.test.ts",
     "tests/perf-split-groups.test.ts",
+    "tests/perf-ui-plugins.test.ts",
     "tests/perf-dml-preview.test.ts",
     "tests/perf-dml-preview-cancel.test.ts",
     "tests/perf-multi-target.test.ts",
@@ -47,6 +61,7 @@ const SUITES = {
     "tests/perf-live-monitor.test.ts",
     "tests/perf-dashboard-bi.test.ts",
     "tests/perf-versioning-pipeline.test.ts",
+    "tests/perf-versioning-ledger.test.ts",
     "tests/perf-versioning-drift.test.ts",
     "tests/perf-versioning-review.test.ts",
     "tests/perf-sync.test.ts",
@@ -56,6 +71,8 @@ const SUITES = {
     "tests/perf-transfer-cinematic.test.ts",
     "tests/perf-seasonal.test.ts",
     "tests/perf-secret-save.test.ts",
+    "tests/perf-organization-policy.test.ts",
+    "tests/organization-extension-rpc.test.ts",
     "tests/perf-connection-import.test.ts",
     "tests/perf-connection-import-datagrip.test.ts",
     "tests/abandoned-jobs.test.ts",
@@ -80,9 +97,42 @@ const SUITES = {
     "tests/perf-palette-loading.test.ts",
     "tests/perf-onboarding.test.ts",
     "tests/perf-seasonal-browser.test.ts",
+    "tests/query-qol-browser.test.ts",
+    "tests/perf-ai-stream.test.ts",
   ],
   throttle: ["tests/perf-throttle.test.ts"],
 } as const;
+
+function windowsCpuTime() {
+  const { symbols } = dlopen("kernel32.dll", {
+    OpenProcess: { args: [FFIType.u32, FFIType.i32, FFIType.u32], returns: FFIType.ptr },
+    GetProcessTimes: {
+      args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr],
+      returns: FFIType.i32,
+    },
+    CloseHandle: { args: [FFIType.ptr], returns: FFIType.i32 },
+  });
+  return (pid: number) => {
+    const handle = symbols.OpenProcess(0x1000, 0, pid);
+    if (!handle) throw new Error(`OpenProcess failed for process ${pid}`);
+    return () => {
+      const [creation, exit, kernel, user] = Array.from({ length: 4 }, () => new BigUint64Array(1));
+      const read = symbols.GetProcessTimes(handle, creation, exit, kernel, user);
+      symbols.CloseHandle(handle);
+      if (!read) throw new Error(`GetProcessTimes failed for process ${pid}`);
+      return { user: user[0] / 10n, system: kernel[0] / 10n };
+    };
+  };
+}
+
+function calibrateCpu(): CpuCalibration {
+  const measured = Bun.spawnSync(
+    [process.execPath, resolve(import.meta.dir, "performance-report.ts")],
+    { stderr: "inherit" },
+  );
+  if (!measured.success) throw new Error("CPU calibration failed");
+  return JSON.parse(measured.stdout.toString());
+}
 
 export function parsePerformanceArgs(args: string[]) {
   let suite: keyof typeof SUITES = "core";
@@ -129,6 +179,8 @@ async function run() {
       return;
     }
   }
+  const calibration = suite !== "core" && engine === "chromium" ? calibrateCpu() : null;
+  if (calibration) console.log(`CPU calibration: ${JSON.stringify(calibration)}`);
   const files: readonly string[] = SUITES[suite];
   const command = [
     process.execPath,
@@ -138,7 +190,7 @@ async function run() {
   ];
   const limits = {
     peakRssBytes: (suite === "core" ? 512 : 1024) * 1024 * 1024,
-    cpuMs: (suite === "core" ? 30 : 600) * 1000,
+    cpuMs: (suite === "core" ? 8 : 600) * 1000,
   };
   const cpuRate = profile === "constrained" ? 4 : 1;
   const heapLimitMb = profile === "constrained" ? 256 : 512;
@@ -156,8 +208,10 @@ async function run() {
     L8DB_PERF_STYLED: "1",
     L8DB_PERF_THROTTLE: suite === "throttle" ? "1" : "",
     L8DB_PERF_CPU_RATE: String(cpuRate),
+    L8DB_PERF_CPU_CALIBRATION: calibration ? JSON.stringify(calibration) : "",
     L8DB_PERF_HEAP_LIMIT_MB: String(heapLimitMb),
   };
+  const trackCpuTime = process.platform === "win32" ? windowsCpuTime() : null;
   const runFiles = async (selected: readonly string[], pattern = filter) => {
     const child = Bun.spawn(
       [process.execPath, "test", ...selected, ...(pattern ? ["--test-name-pattern", pattern] : [])],
@@ -168,6 +222,7 @@ async function run() {
         timeout: suite === "core" ? 60_000 : 900_000,
       },
     );
+    const readCpuTime = trackCpuTime?.(child.pid);
     let outputTail = "";
     let results = "";
     const capture = async (stream: ReadableStream<Uint8Array>) => {
@@ -192,13 +247,19 @@ async function run() {
       capture(child.stdout),
       capture(child.stderr),
     ]);
+    const cpuTime = readCpuTime?.();
     const usage = child.resourceUsage();
     const unmatched = Boolean(filter) && /matched 0 tests/.test(outputTail);
     return {
       exitCode: unmatched && exitCode !== 0 ? 0 : exitCode,
       signal: child.signalCode,
       executedTests: unmatched ? 0 : executedTestCount(outputTail),
-      resources: usage ? normalizeProcessResources(usage, process.platform) : null,
+      resources: usage
+        ? normalizeProcessResources(
+            cpuTime ? { maxRSS: usage.maxRSS, cpuTime } : usage,
+            process.platform,
+          )
+        : null,
       outcomes: testOutcomes(results),
     };
   };
@@ -206,49 +267,59 @@ async function run() {
   let signal: string | null = null;
   let retries: { failed: string[]; confirmed: string[]; attempts: object[] } | null = null;
   let startup: FileRun["resources"] = null;
-  if (suite === "core") {
-    startup = (await runFiles(["tests/performance-report.test.ts"], "^l8db startup baseline$"))
-      .resources;
-    for (const file of files) {
-      const result = await runFiles([file]);
-      signal ??= result.signal;
-      fileRuns.push({ file, ...result });
-    }
-  } else {
-    const result = await runFiles(files);
-    signal = result.signal;
+  const confirmRun = async (
+    selected: readonly string[],
+    result: Awaited<ReturnType<typeof runFiles>>,
+  ) => {
     const failed = [...result.outcomes]
       .filter(([, outcome]) => outcome === "fail")
       .map(([name]) => name);
-    if (result.exitCode !== 0 && result.signal === null && failed.length > 0) {
-      const reruns = [];
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const rerun = await runFiles(files, testNamePattern(failed));
-        reruns.push({ outcomes: rerun.outcomes, executedTests: rerun.executedTests });
-      }
-      const confirmed = confirmedFailures(failed, reruns);
-      retries = {
-        failed,
-        confirmed,
-        attempts: reruns.map((rerun) => ({
+    if (result.exitCode === 0 || result.signal !== null || failed.length === 0) return;
+    const reruns = [];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const rerun = await runFiles(selected, testNamePattern(failed));
+      reruns.push({ outcomes: rerun.outcomes, executedTests: rerun.executedTests });
+    }
+    const confirmed = confirmedFailures(failed, reruns);
+    retries = {
+      failed: [...(retries?.failed ?? []), ...failed],
+      confirmed: [...(retries?.confirmed ?? []), ...confirmed],
+      attempts: [
+        ...(retries?.attempts ?? []),
+        ...reruns.map((rerun) => ({
           executedTests: rerun.executedTests,
           failed: [...rerun.outcomes]
             .filter(([, outcome]) => outcome === "fail")
             .map(([name]) => name),
         })),
-      };
-      if (confirmed.length === 0) result.exitCode = 0;
+      ],
+    };
+    if (confirmed.length === 0) result.exitCode = 0;
+  };
+  if (suite === "core") {
+    const samples = [];
+    for (let sample = 0; sample < 5; sample++)
+      samples.push(
+        (await runFiles(["tests/performance-report.test.ts"], "^l8db startup baseline$")).resources,
+      );
+    startup = medianResources(samples);
+    for (const file of files) {
+      const result = await runFiles([file]);
+      signal ??= result.signal;
+      await confirmRun([file], result);
+      fileRuns.push({ file, ...result });
     }
+  } else {
+    const result = await runFiles(files);
+    signal = result.signal;
+    await confirmRun(files, result);
     fileRuns.push({ file: files.join(" "), ...result });
   }
   const combined = combineFileRuns(fileRuns);
   const { exitCode, executedTests, resources } = combined;
   const wallMs = performance.now() - started;
-  const budgeted =
-    resources && suite === "core" ? workloadResources(resources, startup, files.length) : resources;
-  const violations = budgeted
-    ? resourceViolations(budgeted, limits)
-    : ["Resource usage unavailable"];
+  const budgets = fileBudgets(fileRuns, limits, startup);
+  const violations = budgets.violations;
   if (executedTests === null) violations.push("Executed test count was not reported");
   else if (executedTests === 0) violations.push("No tests executed");
   for (const file of combined.failedFiles) violations.push(`Test run failed: ${file}`);
@@ -275,20 +346,23 @@ async function run() {
     runtime: Bun.version,
     command,
     cpuRate: suite === "throttle" ? cpuRate : null,
+    appliedCpuRate: suite === "throttle" ? calibratedCpuRate(cpuRate, calibration) : null,
+    cpuCalibration: calibration,
     heapLimitMb: suite === "throttle" ? heapLimitMb : null,
     wallMs,
     resources,
     startupResources: startup,
-    budgetedResources: budgeted,
+    budgetedResources: budgets.budgetedResources,
+    mostExpensiveFile: budgets.mostExpensiveFile,
     resourceScope:
       suite === "core"
-        ? "OS resource usage per test file subprocess: peak RSS is the largest file, CPU time is summed"
+        ? "OS resource usage per test file subprocess: each file's peak RSS and CPU time minus the start-up cost must stay within the limits; resources and budgetedResources sum CPU time over all files as information"
         : "OS resource usage for the test subprocess; not a summed application process tree",
     limits,
     exitCode,
     executedTests,
     signal,
-    files: fileRuns.map(({ outcomes: _outcomes, ...run }) => run),
+    files: budgets.files,
     retries,
     violations,
   };

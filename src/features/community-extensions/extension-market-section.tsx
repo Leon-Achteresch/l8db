@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import { useExtensionSources } from "@/lib/extensions/management";
 import {
   COMMUNITY_MARKET_REPOSITORY,
   COMMUNITY_MARKET_URL,
@@ -51,10 +52,14 @@ export function ExtensionMarketSection({ community = false }: { community?: bool
     setPending(entry.id);
     try {
       const archive = await downloadMarketExtension(entry, fetch, catalogUrl);
-      if (installed.some((item) => item.archive.manifest.id === entry.id))
+      if (installed.some((item) => item.archive.manifest.id === entry.id)) {
         await host.updateExtension(archive);
-      else await host.installExtension(archive);
-      toast.success(`${entry.name} installiert. Jetzt unter „Installiert“ aktivieren.`);
+        toast.success(`${entry.name} aktualisiert.`);
+      } else {
+        await host.installExtension(archive);
+        useExtensionSources.getState().mark(`full:${archive.manifest.id}`, "Galerie");
+        toast.success(`${entry.name} installiert. Jetzt unter „Installiert“ aktivieren.`);
+      }
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : String(cause));
     } finally {

@@ -111,10 +111,8 @@ export function SavedQueriesImportDialog({ open, onOpenChange, onCloseAutoFocus 
       toast.info("Keine Queries importiert.");
       return;
     }
-    store.importQueries(resolved);
-    toast.success(
-      resolved.length === 1 ? "1 Query importiert" : `${resolved.length} Queries importiert`,
-    );
+    const count = store.importQueries(resolved);
+    toast.success(count === 1 ? "1 Query importiert" : `${count} Queries importiert`);
     close(false);
   }
 

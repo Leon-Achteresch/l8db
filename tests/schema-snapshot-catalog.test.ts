@@ -269,6 +269,18 @@ describe("Snapshot als Vergleichsseite", () => {
     ]);
   });
 
+  test("ein späterer Lauf wird nicht von einem früheren überschrieben", async () => {
+    const source = snapshotFile("/tmp/a.json", "A", table("A", "T", [["ID", "NUMBER(10)"]]));
+    const target = snapshotFile("/tmp/b.json", "B", table("B", "T", [["ID", "NUMBER"]]));
+    useSchemaCompareStore.setState({ types: ["table"] });
+    const slow = runSchemaCompare({ source, target });
+    await runSchemaCompare({ source, target: { ...target, schema: null } });
+    await slow;
+    const state = useSchemaCompareStore.getState();
+    expect(state.error).toBe("Bitte Quelle und Ziel vollständig auswählen.");
+    expect(state.result).toBeNull();
+  });
+
   test("meldet unterschiedliche Datenbankarten", async () => {
     const source = snapshotFile("/tmp/a.json", "A", []);
     files.set("/tmp/pg.json", files.get("/tmp/a.json")?.replace('"oracle"', '"postgres"') ?? "");

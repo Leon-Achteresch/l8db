@@ -85,6 +85,9 @@ export function SchedulerJobsPanel() {
       <div className="flex flex-col items-center gap-2 p-8 text-center">
         <CalendarClockIcon className="size-5 text-muted-foreground" />
         <p className="max-w-xl text-sm text-muted-foreground">{String(error)}</p>
+        <Button size="sm" variant="outline" onClick={refresh}>
+          Erneut versuchen
+        </Button>
       </div>
     );
   }

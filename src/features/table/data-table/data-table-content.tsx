@@ -1,5 +1,6 @@
 import { DragDropProvider } from "@dnd-kit/react";
-import { memo, useId, useMemo } from "react";
+import { type CSSProperties, memo, useId, useMemo } from "react";
+import { gridColumnTemplate } from "@/lib/column-window";
 import { useSpiderVisit } from "@/lib/hooks/use-spider-visit";
 import { reorderVisibleColumns } from "@/lib/table-column-prefs";
 import { cn } from "@/lib/utils";
@@ -117,6 +118,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
   } = useDataTable(props);
   useSpiderVisit(scrollRef, columnNames, data);
   const columnScope = useId();
+  const gridColumns = useMemo(() => gridColumnTemplate(columnWidths), [columnWidths]);
   const dragPreview = useColumnDragPreview({
     scope: columnScope,
     scrollRef,
@@ -174,13 +176,13 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
               data-grid-scroll
               style={{ contain: "strict" }}
               className={cn(
-                "relative min-h-0 flex-1 basis-0 overflow-auto overscroll-none [scrollbar-gutter:stable] transition-opacity",
+                "relative min-h-0 flex-1 basis-0 overflow-auto overscroll-none bg-background [scrollbar-gutter:stable] transition-opacity",
                 isFetching && "opacity-85",
                 table.getState().columnSizingInfo.isResizingColumn &&
                   "cursor-col-resize select-none",
               )}
             >
-              <div className="pb-3">
+              <div className="w-max min-w-full bg-background pb-3">
                 <DragDropProvider
                   sensors={headerSensors}
                   onDragStart={(event) => {
@@ -204,8 +206,15 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                   <style ref={dragPreview.styleRef} />
                   <table
                     data-column-scope={columnScope}
+                    data-grid-layout={columnWindow.enabled || undefined}
+                    role={columnWindow.enabled ? "table" : undefined}
+                    aria-colcount={columnWindow.enabled ? columnWidths.length : undefined}
                     className="min-w-full border-separate border-spacing-0 text-sm table-fixed"
-                    style={{ width: tableWidth }}
+                    style={
+                      columnWindow.enabled
+                        ? ({ width: tableWidth, "--grid-columns": gridColumns } as CSSProperties)
+                        : { width: tableWidth }
+                    }
                   >
                     <colgroup>
                       {visibleColumns.map((column, index) => (
@@ -268,12 +277,14 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                       visibleColumns={visibleColumns}
                       columnNames={columnNames}
                       stateKey={props.stateKey}
+                      watchScope={props.watchScope}
                       emptyMessage={emptyMessage}
                       onSaveRow={onSaveRow}
                       canEditCell={canEditCell}
                       rowOffset={rowOffset}
                       onInsertRow={onInsertRow}
                       onDeleteRow={onDeleteRow}
+                      rowMenuItems={props.rowMenuItems}
                       columnDetails={columnDetails}
                     />
                   </table>
@@ -300,6 +311,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                   : rows.length
               }
               page={navPage}
+              rowOffset={rowOffset}
               pageSize={pageSize}
               totalCount={totalCount}
               countLabel={countLabel}

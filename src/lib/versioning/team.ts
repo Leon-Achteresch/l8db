@@ -30,6 +30,7 @@ const fields = [
   "operators",
   "administrators",
   "reviewers",
+  "variances",
 ] as const;
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -41,6 +42,28 @@ const text = (value: unknown): value is string =>
   !value.includes("\0");
 const exact = (value: unknown, keys: readonly string[]) =>
   object(value) && Object.keys(value).every((key) => keys.includes(key));
+
+export function validVariances(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length > 5000) return false;
+  const seen = new Set<string>();
+  return value.every((entry) => {
+    const valid =
+      exact(entry, ["object", "hash", "reason", "until"]) &&
+      text(entry.object) &&
+      !seen.has(entry.object) &&
+      typeof entry.hash === "string" &&
+      /^[a-f0-9]{64}$/.test(entry.hash) &&
+      text(entry.reason) &&
+      (entry.until === null ||
+        entry.until === undefined ||
+        (typeof entry.until === "string" &&
+          /^\d{4}-\d{2}-\d{2}$/.test(entry.until) &&
+          !Number.isNaN(Date.parse(entry.until))));
+    if (valid) seen.add(entry.object as string);
+    return valid;
+  });
+}
 
 export function parseTeamConfiguration(raw: string, projectId: string): TeamConfiguration {
   const team = JSON.parse(raw) as TeamConfiguration;
@@ -114,7 +137,8 @@ export function parseTeamConfiguration(raw: string, projectId: string): TeamConf
       [target.operators, target.reviewers, target.administrators].some(
         (value) =>
           value !== undefined && (!Array.isArray(value) || value.some((entry) => !text(entry))),
-      )
+      ) ||
+      !validVariances(target.variances)
     )
       throw new Error("Gemeinsame Kundenzuordnung ist ungültig.");
     ids.add(target.id);

@@ -1,3 +1,5 @@
+import { replaceSchemeUrls } from "@/lib/scheme-urls";
+
 export type AiRichBlock = (
   | {
       type: "tool";
@@ -7,6 +9,7 @@ export type AiRichBlock = (
       output: string;
       sql?: string;
       title?: string;
+      body?: string;
       chart?: { chart: string; x?: string; y?: string[] };
     }
   | {
@@ -30,15 +33,18 @@ export type AiRichBlock = (
   | { type: "decision"; id: string; title: string; outcome: "allowed" | "denied" | "answered" }
 ) & { at?: number };
 
+const redactUrls = (value: string) =>
+  replaceSchemeUrls(
+    value,
+    "[^\\s/@:]+:[^\\s/@]+@",
+    (url) => `${url.slice(0, url.indexOf("://") + 3)}[redacted]@`,
+  );
 export const text = (value: unknown, limit = 16000) =>
   typeof value === "string"
-    ? value
-        .slice(0, limit)
-        .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[redacted]@")
-        .replace(
-          /((?:authorization|api[_-]?key|access[_-]?token|token|password|secret)\s*[:=]\s*)(?:Bearer\s+)?[^\s,;]+/gi,
-          "$1[redacted]",
-        )
+    ? redactUrls(value.slice(0, limit)).replace(
+        /((?:authorization|api[_-]?key|access[_-]?token|token|password|secret)\s*[:=]\s*)(?:Bearer\s+)?[^\s,;]+/gi,
+        "$1[redacted]",
+      )
     : "";
 export const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -72,6 +78,9 @@ export function toolDetails(value: unknown, name: string) {
   return {
     ...(sql ? { sql } : {}),
     ...(title ? { title } : {}),
+    ...(name === "report_issue" && typeof args.body === "string"
+      ? { body: text(args.body, 60000) }
+      : {}),
     ...(name === "visualize" && CHART_KINDS.includes(kind)
       ? {
           chart: {
@@ -131,6 +140,7 @@ export function mergeAiRich(
             output: block.output || old.output,
             sql: block.sql ?? old.sql,
             title: block.title ?? old.title,
+            body: block.body ?? old.body,
             chart: block.chart ?? old.chart,
           }
         : { ...block, ...position },
@@ -160,8 +170,8 @@ export function sanitizeAiRich(value: unknown): AiRichBlock[] {
           : "cancelled",
         output: text(block.output),
         ...toolDetails(
-          { sql: block.sql, title: block.title, ...record(block.chart) },
-          record(block.chart).chart ? "visualize" : "",
+          { sql: block.sql, title: block.title, body: block.body, ...record(block.chart) },
+          record(block.chart).chart ? "visualize" : text(block.name, 300),
         ),
       });
     if (block.type === "diff")

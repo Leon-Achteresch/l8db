@@ -44,12 +44,37 @@ export async function seedApp(
         rowCount <= 10_000 ? Array.from({ length: rowCount }, (_, row) => rowAt(row)) : [];
       const invoke = async (command: string, args: Record<string, unknown> | undefined) => {
         switch (command) {
+          case "organization_policy":
+            return {
+              managed: false,
+              path: "/etc/l8db/policy.json",
+              organization: "",
+              support: "",
+              settings: {},
+              allowAi: true,
+              allowExtensions: true,
+              allowPersonalSync: true,
+              allowMcp: true,
+              connections: [],
+            };
           case "list_databases":
             return ["l8db_perf"];
           case "list_schemas":
             return ["public", ...Array.from({ length: overviewSchemas }, (_, i) => `schema_${i}`)];
           case "list_tables":
             return names.map((name) => ({ schema: "public", name }));
+          case "get_schema_map":
+            return {
+              tables: names.map((name, i) => ({
+                name,
+                rows: (i * 7919) % 5_000_000,
+                bytes: ((i * 7919) % 5_000_000) * 120 + 8192,
+                comment: null,
+              })),
+              links: names.flatMap((name, i) =>
+                i % 3 === 0 ? [] : [{ from: ["public", name], to: ["public", names[i - 1]] }],
+              ),
+            };
           case "list_views":
             return names.slice(0, 400).map((name) => ({ schema: "public", name: `v_${name}` }));
           case "list_materialized_views":

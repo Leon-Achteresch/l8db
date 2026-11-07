@@ -1,4 +1,4 @@
-import { releaseTrack } from "./model";
+import { lineStatus } from "./change-plan";
 import type { DatabaseRelease, RepositoryStatus, TargetStore } from "./types";
 
 export function changedFiles(changes: string): Map<string, string> {
@@ -34,29 +34,10 @@ export function pendingVersioningCount(
       )
         return true;
       if (target.paused) return false;
-      const allowed = new Set<string>();
-      if (target.pinnedRelease) {
-        let id: string | null = target.pinnedRelease;
-        while (id && !allowed.has(id)) {
-          allowed.add(id);
-          id = available.get(id)?.parent ?? null;
-        }
-      }
-      return [...available.values()].some((release) => {
-        if (
-          releaseTrack(release) !== (target.track ?? "main") ||
-          (target.pinnedRelease && !allowed.has(release.id))
-        )
-          return false;
-        const seen = new Set<string>();
-        let parent = release.parent;
-        while (parent && !seen.has(parent)) {
-          if (parent === target.release?.id) return true;
-          seen.add(parent);
-          parent = available.get(parent)?.parent ?? null;
-        }
-        return false;
-      });
+      return (
+        lineStatus(available, target.track ?? "main", target.pinnedRelease, target.release.id)
+          .pending > 0
+      );
     }).length ?? 0;
   return files.size + pending + Number(dirty);
 }

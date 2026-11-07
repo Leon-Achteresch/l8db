@@ -71,3 +71,15 @@ test("Hunks überführen den Entwurf zufällig veränderter Texte vollständig i
     expect(merged).toBe(source);
   }
 });
+
+test("fasst völlig verschiedene große Definitionen in einem vollständigen Hunk zusammen", () => {
+  const source = Array.from({ length: 3_000 }, (_, index) => `  source_column_${index} text`).join(
+    "\n",
+  );
+  const draft = Array.from({ length: 3_000 }, (_, index) => `  draft_column_${index} text`).join(
+    "\n",
+  );
+  expect(definitionHunks(source, draft)).toEqual([
+    { sourceStart: 0, sourceEnd: 3_000, draftStart: 0, draftEnd: 3_000 },
+  ]);
+});

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
+import { cpuThrottleRate } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
@@ -47,7 +48,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       await page.waitForTimeout(500);
       if (throttled) {
         const cdp = await page.context().newCDPSession(page);
-        await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+        await cdp.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(4) });
         await page.evaluate(() => {
           const durations: number[] = [];
           Object.assign(window, { __memberClickDurations: durations });

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { sidebarMenuButtonVariants } from "@/components/ui/sidebar/shared";
 import { supabaseFunctions } from "@/lib/db";
 import { cn } from "@/lib/utils";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { statusLabel } from "../supabase-services";
 import { FUNCTION_SLUG, useSupabaseFunctionSlugs } from "./supabase-functions-store";
 
@@ -91,11 +92,17 @@ export function SupabaseFunctionsList({
         <p className="text-xs text-muted-foreground">Funktionen werden geladen…</p>
       )}
       {items.length === 0 && !functions.isLoading && !functions.isError && (
-        <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-          {cloud
-            ? "Noch keine Edge Functions. Lege eine neue an."
-            : "Selbst gehostet gibt es keine Liste. Füge bekannte Slugs hinzu (z. B. hello)."}
-        </p>
+        <BaasEmptyState
+          compact
+          className="p-4"
+          icon={Code2}
+          title={cloud ? "Noch keine Edge Functions." : "Keine Liste verfügbar."}
+          description={
+            cloud
+              ? "Lege eine neue an."
+              : "Selbst gehostet gibt es keine Liste. Füge bekannte Slugs hinzu (z. B. hello)."
+          }
+        />
       )}
       <ul className="grid gap-0.5">
         {items.map((item) => (

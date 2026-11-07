@@ -4,6 +4,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 export function IconButton({
   "aria-label": label,
+  disabledReason,
   ...props
 }: ComponentProps<typeof Button> & { "aria-label": string }) {
   return (
@@ -18,7 +19,9 @@ export function IconButton({
             <Button {...props} aria-label={label} />
           )}
         </TooltipTrigger>
-        <TooltipContent sideOffset={6}>{label}</TooltipContent>
+        <TooltipContent sideOffset={6}>
+          {props.disabled && disabledReason ? disabledReason : label}
+        </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

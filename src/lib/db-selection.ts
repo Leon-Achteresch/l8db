@@ -1,6 +1,7 @@
 import { useContext } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { useActiveConnection } from "@/lib/connections";
 import type { Capabilities } from "@/lib/db";
 import { useCapabilities } from "@/lib/providers";
@@ -42,6 +43,7 @@ export const useDbSelectionStore = create<DbSelectionState>()(
     }),
     {
       name: "l8db.db-selection",
+      storage: createSafeJsonStorage(),
       partialize: (state) => ({
         databaseByConnection: state.databaseByConnection,
         schemaByConnection: state.schemaByConnection,

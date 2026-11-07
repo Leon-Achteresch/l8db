@@ -116,7 +116,7 @@ export function SupabaseAuthConfigPanel({ reference, capabilities }: Props) {
 
   return (
     <div className="grid gap-4">
-      <div className="grid gap-2 rounded-lg border p-3 text-xs">
+      <div className="grid gap-2 rounded-lg p-3 text-xs bg-muted/30">
         <p className="font-medium">Aktive Einstellungen</p>
         {settings.isPending ? (
           <p className="text-muted-foreground">Einstellungen werden geladen…</p>
@@ -156,7 +156,7 @@ export function SupabaseAuthConfigPanel({ reference, capabilities }: Props) {
         )}
       </div>
       {capabilities.self_hosted ? (
-        <p className="rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
+        <p className="rounded-lg bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
           Bei selbst gehosteten Instanzen liegt die Auth-Konfiguration in der .env des Docker-Setups
           (z. B. SITE_URL, ADDITIONAL_REDIRECT_URLS, DISABLE_SIGNUP, ENABLE_EMAIL_AUTOCONFIRM,
           JWT_EXPIRY, SMTP_*, GOTRUE_EXTERNAL_*). Nach einer Änderung den auth-Container neu
@@ -208,7 +208,7 @@ export function SupabaseAuthConfigPanel({ reference, capabilities }: Props) {
             const groupKeys = keys.filter((key) => groupOf(key) === group.label);
             if (groupKeys.length === 0) return null;
             return (
-              <fieldset key={group.label} className="grid gap-2 rounded-lg border p-3">
+              <fieldset key={group.label} className="grid gap-2 rounded-lg p-3 bg-muted/30">
                 <legend className="px-1 text-xs font-medium">{group.label}</legend>
                 {groupKeys.map((key) => {
                   const original = config.data[key] ?? null;

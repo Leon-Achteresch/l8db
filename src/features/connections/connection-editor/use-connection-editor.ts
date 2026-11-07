@@ -3,7 +3,7 @@ import { useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { usePasswordManager } from "@/features/community-extensions/password-manager";
 import { initialSslMode } from "@/lib/connection-defaults";
-import { detectProvider, kindFromUrl } from "@/lib/connection-url";
+import { detectProvider, isProfileConnection, kindFromUrl } from "@/lib/connection-url";
 import type { ConnectionEnvironment, SshAuth } from "@/lib/connections";
 import { oracleTnsNames, type SslMode } from "@/lib/db";
 import { useDbThemeStore } from "@/lib/db-theme";
@@ -34,7 +34,7 @@ export function useConnectionEditor({
   const extensionHost = useExtensionHost();
   const vault = usePasswordManager();
   const [storeInVault, setStoreInVault] = useState(connection ? Boolean(connection.vault) : true);
-  const [value, setValue] = useState(connection?.connectionString ?? initialUrl ?? "");
+  const [value, setValue] = useState(seed?.connectionString ?? initialUrl ?? "");
   const [provider, setProvider] = useState(
     seed
       ? detectProvider(seed.connectionString, seed.kind)
@@ -64,6 +64,8 @@ export function useConnectionEditor({
   const [database, setDatabase] = useState(initial.database);
   const [user, setUser] = useState(initial.user);
   const [password, setPassword] = useState(initial.password);
+  const [keychainPassword, setKeychainPassword] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
   const [file, setFile] = useState(initial.file);
   const [extraParams, setExtraParams] = useState(initial.extraParams);
   const [trusted, setTrusted] = useState(initial.trusted);
@@ -102,6 +104,7 @@ export function useConnectionEditor({
   const [scanError, setScanError] = useState<string | null>(null);
   const busy = saving || result.status === "testing";
   const operation = useRef(false);
+  const abort = useRef<AbortController | null>(null);
   const withSsl = (url: string) => (caps.ssl ? withSslModeParam(url, ssl) : url);
   const windowsAuth = kind === "mssql" && trusted;
   const quickKind = kindFromUrl(value) ?? kind;
@@ -142,11 +145,20 @@ export function useConnectionEditor({
 
   useEffect(() => {
     const id = connection?.id;
-    if (!id) return;
-    void loadSecret(id).then((secret) => {
-      if (secret) setPassword((current) => current || secret);
-    });
-  }, [connection?.id]);
+    if (!id || isProfileConnection(connection?.kind)) return;
+    let active = true;
+    void loadSecret(id)
+      .then((secret) => {
+        if (!active) return;
+        if (!secret) return;
+        setKeychainPassword(true);
+        setPassword((current) => current || secret);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [connection?.id, connection?.kind]);
 
   useEffect(() => {
     if (result.status !== "testing") return;
@@ -189,8 +201,9 @@ export function useConnectionEditor({
     cloudAuth: cloudAuthValue,
   });
 
-  const { test, scanSchemas, save } = createConnectionOperations({
+  const { test, cancelTest, scanSchemas, save } = createConnectionOperations({
     operation,
+    abort,
     setResult,
     withLiveUrl,
     configuration,
@@ -213,7 +226,11 @@ export function useConnectionEditor({
     maskRules,
     tags,
     cloudAuth: cloudAuthValue,
-    vault: vault && storeInVault ? { host: extensionHost, name: vault.name } : null,
+    passwordCleared: keychainPassword && !password && mode !== "string" && !cloudAuthValue,
+    vault:
+      vault && storeInVault && !isProfileConnection(mode === "string" ? quickKind : kind)
+        ? { host: extensionHost, name: vault.name }
+        : null,
     onSaved,
   });
 
@@ -259,18 +276,55 @@ export function useConnectionEditor({
                 ? "Pfad-Präfix (optional)"
                 : "Datenbank";
   const activeInfo = mode === "string" ? quickInfo : info;
+  const snapshot = JSON.stringify(
+    [
+      name,
+      value,
+      provider,
+      host,
+      port,
+      database,
+      user,
+      file,
+      extraParams,
+      trusted,
+      tnsAlias,
+      sshEnabled,
+      sshHost,
+      sshPort,
+      sshUser,
+      sshAuth,
+      sshKey,
+      sshPassword,
+      network,
+      cloudAuth,
+      ssl,
+      tags,
+      color,
+      readOnly,
+      environment,
+      maskRules,
+      schemaFilter,
+      showSingleSchemaSwitcher,
+    ],
+    (key, entry) => (key === "secret" ? undefined : entry),
+  );
+  const [initialSnapshot] = useState(snapshot);
+  const dirty = passwordTouched || snapshot !== initialSnapshot;
 
   return {
     activeInfo,
     advancedOpen,
     applySshConfig,
     busy,
+    cancelTest,
     caps,
     cloudAuth,
     cloudAuthActive: Boolean(cloudAuthValue),
     color,
     database,
     databaseLabel,
+    dirty,
     environment,
     maskRules,
     setEnvironment,
@@ -300,6 +354,7 @@ export function useConnectionEditor({
     reduce,
     result,
     save,
+    saving,
     scanError,
     scanSchemas,
     scannedSchemas,
@@ -314,7 +369,10 @@ export function useConnectionEditor({
     setFile,
     setHost,
     setName,
-    setPassword,
+    setPassword: (next: string) => {
+      setPasswordTouched(true);
+      setPassword(next);
+    },
     setPort,
     setProvider,
     setReadOnly,

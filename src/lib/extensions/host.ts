@@ -10,11 +10,11 @@ import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-sele
 import { gridCellText } from "@/lib/grid-search";
 import { loadSecret, rememberSecret } from "@/lib/secrets";
 import { effectiveConnectionString, readOnlyConnectionString } from "@/lib/ssh";
+import { syncAcrossWindows } from "@/lib/window-sync";
 import { version } from "../../../package.json";
 import type {
   CoreServices,
   DatabaseInfo,
-  FetchOptions,
   ProcessOptions,
   ProcessOutput,
   ProcessResult,
@@ -24,41 +24,12 @@ import type {
   QueryResult,
 } from "./contracts";
 import { ExtensionError } from "./contracts";
+import { runFetch } from "./fetch";
 import { ExtensionManager } from "./manager";
 import { useExtensionPrompts } from "./prompts";
 import { bindQueryParams } from "./query-params";
 import { SandboxRuntime } from "./sandbox-runtime";
-import { TauriExtensionStorage } from "./tauri-storage";
-
-const FETCH_BODY_LIMIT = 1024 * 1024;
-
-async function runFetch(url: string, options: FetchOptions) {
-  const timeoutMs = options.timeoutMs ?? 15000;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      method: options.method ?? "GET",
-      headers: options.headers,
-      body: options.body,
-      redirect: "error",
-      signal: controller.signal,
-    });
-    const headers: Record<string, string> = {};
-    response.headers.forEach((value, key) => {
-      if (!(key in headers)) headers[key] = value;
-    });
-    const text = await response.text();
-    if (text.length > FETCH_BODY_LIMIT)
-      throw new ExtensionError("ProtocolError", "Response body exceeds 1 MiB");
-    return { status: response.status, headers, body: text };
-  } catch (error) {
-    if (error instanceof ExtensionError) throw error;
-    throw new ExtensionError("NetworkError", String(error));
-  } finally {
-    clearTimeout(timer);
-  }
-}
+import { EXTENSION_STORAGE_REVISION, TauriExtensionStorage } from "./tauri-storage";
 
 export function createExtensionHost() {
   const database = (): DatabaseInfo | null => {
@@ -259,9 +230,15 @@ export function createExtensionHost() {
           })
           .catch((error) => manager.log("host", "error", String(error)));
       };
+      const storage = syncAcrossWindows(EXTENSION_STORAGE_REVISION, () => {
+        void manager
+          .refreshInstalled()
+          .catch((error) => manager.log("host", "error", String(error)));
+      });
       const connections = useConnectionsStore.subscribe(update);
       const selections = useDbSelectionStore.subscribe(update);
       dispose = () => {
+        storage();
         connections();
         selections();
       };

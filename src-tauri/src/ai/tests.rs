@@ -46,6 +46,10 @@ fn policy(id: &str) -> McpConnection {
 }
 
 fn run(allow: Option<bool>) -> (Run, Arc<Mutex<Vec<Value>>>) {
+    answering(allow.map(Value::from))
+}
+
+fn answering(answer: Option<Value>) -> (Run, Arc<Mutex<Vec<Value>>>) {
     let state = Arc::new(AiState::default());
     let events = Arc::new(Mutex::new(vec![]));
     let captured = events.clone();
@@ -56,7 +60,7 @@ fn run(allow: Option<bool>) -> (Run, Arc<Mutex<Vec<Value>>>) {
         };
         let event: Value = serde_json::from_str(&body).unwrap();
         if event["kind"] == "approval" {
-            if let Some(allow) = allow {
+            if let Some(answer) = answer.clone() {
                 let key = format!(
                     "fixture-window:fixture-run:{}",
                     event["data"]["id"].as_str().unwrap()
@@ -67,7 +71,7 @@ fn run(allow: Option<bool>) -> (Run, Arc<Mutex<Vec<Value>>>) {
                     .unwrap()
                     .remove(&key)
                     .unwrap();
-                sender.send(json!(allow)).unwrap();
+                sender.send(answer).unwrap();
             }
         }
         captured.lock().unwrap().push(event);
@@ -291,6 +295,25 @@ fn native_plan_keeps_private_database_tools_read_only_even_when_writes_are_selec
             .iter()
             .all(|connection| connection.read_only && !connection.allow_ddl));
     }
+}
+
+#[tokio::test]
+async fn approval_answer_can_carry_a_picked_screenshot() {
+    let (run, events) = answering(Some(json!({"allowed": true, "screenshot": "iVBOR"})));
+    let answer = run
+        .approval("GitHub-Issue erstellen", json!({}))
+        .await
+        .unwrap();
+    assert_eq!(answer["screenshot"], "iVBOR");
+    let resolved = events
+        .lock()
+        .unwrap()
+        .iter()
+        .find(|event| event["kind"] == "approvalResolved")
+        .cloned()
+        .unwrap();
+    assert_eq!(resolved["data"]["allowed"], true);
+    assert!(!run.approve("x", json!({})).await.unwrap());
 }
 
 #[tokio::test]

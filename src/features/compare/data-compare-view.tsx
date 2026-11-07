@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -13,8 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DataCompareRowsTable } from "@/features/compare/data-compare-rows-table";
 import { CATEGORY_ICON, CATEGORY_LABEL } from "@/features/compare/data-compare-view/constants";
-import { cellText, sideLabel } from "@/features/compare/data-compare-view/lib";
+import { sideLabel } from "@/features/compare/data-compare-view/lib";
 import type { CategoryFilter } from "@/features/compare/data-compare-view/types";
 import { useDataCompare } from "@/features/compare/data-compare-view/use-data-compare";
 import type { DataDiffCategory, SyncDirection } from "@/lib/data-compare";
@@ -45,6 +45,8 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
     visibleRows,
     script,
     toggleRow,
+    setRowsSelected,
+    cancelCompare,
     copyScript,
     openScript,
   } = useDataCompare(left, right);
@@ -52,16 +54,26 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Button size="sm" onClick={() => void runCompare()} disabled={!ready || running}>
+        <Button
+          size="sm"
+          onClick={() => void runCompare()}
+          disabled={!ready || running}
+          disabledReason={running ? "Vergleich läuft bereits" : "Quell- und Zieltabelle auswählen"}
+        >
           <MorphIcon
             icon={running ? Loader : Play}
             className={cn("size-3.5", running && "animate-spin")}
           />
           {running ? "Vergleiche…" : "Vergleichen"}
         </Button>
+        {running && (
+          <Button size="sm" variant="outline" onClick={() => void cancelCompare()}>
+            Abbrechen
+          </Button>
+        )}
         <span className="text-xs text-muted-foreground">
           Bis zu 1 Million Zeilen und 64 MiB Rohdaten je Seite; gleiche Spaltenstruktur und
-          eindeutige Schlüssel erforderlich. Abbruch über die Aufgabenübersicht.
+          eindeutige Schlüssel erforderlich.
         </span>
       </div>
 
@@ -118,7 +130,7 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
                   <SelectItem value="all" className="text-xs">
                     Alle
                   </SelectItem>
-                  {(["only_left", "only_right", "changed", "equal"] as DataDiffCategory[]).map(
+                  {(["only_left", "only_right", "changed"] as DataDiffCategory[]).map(
                     (category) => {
                       const Icon = CATEGORY_ICON[category];
                       return (
@@ -134,61 +146,13 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
             </div>
           </div>
 
-          <ScrollArea className="max-h-80 rounded-md border">
-            <table className="w-full text-xs">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="w-8 px-2 py-1"></th>
-                  <th className="px-2 py-1 text-left font-medium">Kategorie</th>
-                  <th className="px-2 py-1 text-left font-medium">Schlüssel</th>
-                  <th className="px-2 py-1 text-left font-medium">Unterschiede</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRows.map((row) => {
-                  const CategoryIcon = CATEGORY_ICON[row.category];
-                  return (
-                    <tr key={row.keyText} className="border-t">
-                      <td className="px-2 py-1">
-                        {row.category !== "equal" && (
-                          <Checkbox
-                            checked={selected.has(row.keyText)}
-                            onCheckedChange={() => toggleRow(row.keyText)}
-                          />
-                        )}
-                      </td>
-                      <td className="px-2 py-1">
-                        <span className="inline-flex items-center gap-1.5">
-                          <CategoryIcon className="size-3.5" />
-                          {CATEGORY_LABEL[row.category]}
-                        </span>
-                      </td>
-                      <td className="px-2 py-1 font-mono">
-                        {state.keyColumns
-                          .map((column) => `${column}=${cellText(row.keyValues[column])}`)
-                          .join(", ")}
-                      </td>
-                      <td className="px-2 py-1 font-mono text-muted-foreground">
-                        {row.differences
-                          .map(
-                            (diff) =>
-                              `${diff.column}: ${cellText(diff.left)} → ${cellText(diff.right)}`,
-                          )
-                          .join(" | ")}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {visibleRows.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-2 py-4 text-center text-muted-foreground">
-                      Keine Zeilen in dieser Kategorie.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </ScrollArea>
+          <DataCompareRowsTable
+            rows={visibleRows}
+            keyColumns={state.keyColumns}
+            selected={selected}
+            onToggle={toggleRow}
+            onSelectAll={setRowsSelected}
+          />
 
           <div className="flex flex-wrap items-center gap-2">
             <Label className="text-xs">Richtung</Label>
@@ -231,7 +195,13 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
                 <ClipboardCopyIcon className="size-3.5" />
                 Kopieren
               </Button>
-              <Button size="sm" variant="outline" onClick={openScript} disabled={!script?.sql}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={openScript}
+                disabled={!script?.sql}
+                disabledReason="Kein Abgleichsskript vorhanden"
+              >
                 <SquareArrowOutUpRightIcon className="size-3.5" />
                 Als Query-Tab
               </Button>
@@ -248,8 +218,10 @@ export function DataCompareView({ left, right }: DataCompareViewProps) {
             {script?.sql || "Keine Änderungen ausgewählt."}
           </pre>
           <span className="text-xs text-muted-foreground">
-            Das Skript wird nur erzeugt und nie automatisch ausgeführt; UPDATE prüft den erwarteten
-            Altstand, DELETE nur bei aktivierter Option.
+            Das Skript wird nur erzeugt und nie automatisch ausgeführt. PostgreSQL: ein atomarer
+            DO-Block, der abbricht, wenn eine Zielzeile seit dem Vergleich geändert wurde. Andere
+            Datenbanken: UPDATE prüft den Altstand und trifft dann still 0 Zeilen; Skript bei Bedarf
+            selbst in eine Transaktion fassen. DELETE nur bei aktivierter Option.
           </span>
         </>
       )}

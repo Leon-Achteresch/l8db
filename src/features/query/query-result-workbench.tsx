@@ -1,4 +1,3 @@
-import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   BracesIcon,
   ChartColumnIcon,
@@ -17,7 +16,6 @@ import {
   useCallback,
   useDeferredValue,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { toast } from "sonner";
@@ -30,7 +28,8 @@ import {
   IconMenuSubContent,
   IconMenuSubTrigger,
 } from "@/components/icon-menu";
-import { Cobweb } from "@/components/seasonal/cobweb";
+import { NewBadge } from "@/components/new-badge";
+import { SeasonalCorner } from "@/components/seasonal/seasonal-corner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenuRadioGroup,
@@ -40,17 +39,21 @@ import {
 import { Input } from "@/components/ui/input";
 import { CreateViewDialog, isViewableSelect } from "@/features/query/create-view-dialog";
 import { ResultTitle } from "@/features/query/query-view/result-title";
+import { TimestampDisplayMenu } from "@/features/table/timestamp-display-menu";
+import { afterPaint } from "@/lib/after-paint";
 import { copyText } from "@/lib/clipboard";
 import { useConnectionsStore } from "@/lib/connections/store";
 import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { COPY_FORMATS, type CopyFormat, serializeRows } from "@/lib/export";
 import { gridCellText } from "@/lib/grid-search";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { useCapabilities } from "@/lib/providers";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { temporaryViewMode } from "@/lib/session-views";
 import { cn } from "@/lib/utils";
 import { showCopiedMessage } from "@/lib/workspace-status";
 import { QueryCellInspector } from "./query-cell-inspector";
+import { QueryJsonRows } from "./query-json-rows";
 import { useMaskedQueryResult } from "./query-result-masking";
 import { QueryResultTable } from "./query-result-table";
 import type { ResultChartBinding } from "./result-chart/types";
@@ -75,6 +78,7 @@ export function QueryResultWorkbench({
   statusText,
   actions,
   chart,
+  previous = false,
 }: {
   stateKey?: string;
   result: QueryResult | null;
@@ -84,7 +88,9 @@ export function QueryResultWorkbench({
   statusText?: string | null;
   actions?: ReactNode;
   chart?: ResultChartBinding;
+  previous?: boolean;
 }) {
+  const timeNew = useHasNewFeatures("query.results.timestamps");
   const workspace = useQueryWorkspace();
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -98,7 +104,6 @@ export function QueryResultWorkbench({
     viewsSupported &&
     Boolean(chart?.sqlCapable && viewConnection && !viewConnection.readOnly) &&
     isViewableSelect(chart?.sql ?? "");
-  const jsonScrollRef = useRef<HTMLPreElement>(null);
   const inspectCell = useCallback(
     (column: string, value: unknown, row: number) => setCell({ column, value, row }),
     [],
@@ -128,17 +133,6 @@ export function QueryResultWorkbench({
           },
     [masked, term],
   );
-  const visibleRows = filtered?.rows ?? [];
-  const jsonVirtualizer = useVirtualizer({
-    count: workspace.resultView === "json" && filtered ? visibleRows.length + 2 : 0,
-    getScrollElement: () => jsonScrollRef.current,
-    estimateSize: (index) =>
-      (index === 0 || index === visibleRows.length + 1 ? 1 : (filtered?.columns.length ?? 0) + 3) *
-      workspace.resultFontSize *
-      1.5,
-    overscan: 3,
-    initialRect: { width: 700, height: 700 },
-  });
   const handleCopy = async (format: CopyFormat) => {
     try {
       await copyText(serializeRows(result?.columns ?? [], filtered?.rows ?? [], format));
@@ -152,7 +146,7 @@ export function QueryResultWorkbench({
   if (!result)
     return (
       <div className="relative flex h-full items-center justify-center bg-muted/10 p-8">
-        <Cobweb className="size-24 text-foreground/20" />
+        <SeasonalCorner className="size-24 text-foreground/20" />
         <div className="max-w-sm space-y-3 text-center">
           <div className="mx-auto flex size-10 items-center justify-center rounded-lg border bg-background font-mono text-lg text-muted-foreground">
             ↳
@@ -197,7 +191,13 @@ export function QueryResultWorkbench({
           )}
         >
           <span className={cn("size-1.5 rounded-full bg-current", isLoading && "animate-pulse")} />
-          {isLoading ? "Wird ausgeführt" : error ? "Fehlgeschlagen" : "Abgeschlossen"}
+          {isLoading
+            ? "Wird ausgeführt"
+            : error
+              ? "Fehlgeschlagen"
+              : previous
+                ? "Vorheriger Lauf"
+                : "Abgeschlossen"}
         </span>
         {statusText && (
           <span className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground">
@@ -226,19 +226,28 @@ export function QueryResultWorkbench({
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          <IconMenu>
+          <IconMenu modal={false}>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" className="size-7" variant="ghost" aria-label="Ergebnisoptionen">
+              <Button
+                size="icon"
+                className="relative size-7"
+                variant="ghost"
+                aria-label="Ergebnisoptionen"
+              >
                 <MoreHorizontal className="size-4" />
+                {timeNew && <NewBadge className="absolute -right-1 -top-1" />}
               </Button>
             </DropdownMenuTrigger>
             <IconMenuContent>
+              <TimestampDisplayMenu />
               <DropdownMenuRadioGroup
                 value={chartView ? "chart" : workspace.resultView}
                 onValueChange={(value) =>
-                  value === "chart" && chart
-                    ? chart.onChange({ ...chart.state, view: "chart" })
-                    : showGrid(value as "table" | "json")
+                  afterPaint(() =>
+                    value === "chart" && chart
+                      ? chart.onChange({ ...chart.state, view: "chart" })
+                      : showGrid(value as "table" | "json"),
+                  )
                 }
               >
                 <IconMenuRadioItem icon={<TableIcon />} label="Tabelle" value="table" />
@@ -299,44 +308,11 @@ export function QueryResultWorkbench({
           </Suspense>
         </div>
       ) : workspace.resultView === "json" ? (
-        <pre
-          ref={jsonScrollRef}
-          className="min-h-0 flex-1 overflow-auto bg-muted/10 p-4 font-mono"
-          style={{
-            fontSize: `${workspace.resultFontSize / 16}rem`,
-            lineHeight: 1.5,
-            contain: "strict",
-          }}
-          data-slot="query-json-rows"
-          tabIndex={-1}
-        >
-          <div className="relative" style={{ height: jsonVirtualizer.getTotalSize() }}>
-            {jsonVirtualizer.getVirtualItems().map((virtualRow) => {
-              const index = virtualRow.index;
-              const row = visibleRows[index - 1];
-              const text =
-                index === 0
-                  ? "[\n"
-                  : index === visibleRows.length + 1
-                    ? "]"
-                    : `${JSON.stringify(row, null, 2)
-                        .split("\n")
-                        .map((line) => `  ${line}`)
-                        .join("\n")}${index < visibleRows.length ? ",\n" : "\n"}`;
-              return (
-                <div
-                  key={virtualRow.key}
-                  data-index={index}
-                  ref={jsonVirtualizer.measureElement}
-                  className="absolute top-0 left-0"
-                  style={{ transform: `translateY(${virtualRow.start}px)` }}
-                >
-                  {text}
-                </div>
-              );
-            })}
-          </div>
-        </pre>
+        <QueryJsonRows
+          rows={filtered?.rows}
+          columnCount={filtered?.columns.length ?? 0}
+          fontSize={workspace.resultFontSize}
+        />
       ) : (
         <div className="min-h-0 flex-1">
           <QueryResultTable
@@ -345,6 +321,7 @@ export function QueryResultWorkbench({
             isLoading={false}
             error={null}
             masked
+            timestampMenu={false}
             onInspect={inspectCell}
           />
         </div>

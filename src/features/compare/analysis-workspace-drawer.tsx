@@ -49,13 +49,18 @@ export function AnalysisWorkspaceDrawer({
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button size="icon-sm" variant="ghost" aria-label="Arbeitsstände" title="Arbeitsstände">
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Gespeicherte Vergleiche"
+          title="Gespeicherte Vergleiche"
+        >
           <FolderOpenIcon className="size-3.5" />
         </Button>
       </SheetTrigger>
       <SheetContent className="flex flex-col gap-0">
         <SheetHeader>
-          <SheetTitle>Arbeitsstände</SheetTitle>
+          <SheetTitle>Gespeicherte Vergleiche</SheetTitle>
           <SheetDescription>Vergleichsauswahl speichern und später wieder öffnen.</SheetDescription>
         </SheetHeader>
         <form

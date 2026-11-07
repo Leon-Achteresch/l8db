@@ -44,7 +44,7 @@ function sampleLines(text: string, limit: number): string[] {
 export function detectDelimiter(text: string, quote = '"'): string {
   const lines = sampleLines(stripBom(text), 10);
   if (lines.length === 0) return ",";
-  let best = ",";
+  let best = "\t";
   let bestScore = -1;
   for (const delimiter of CSV_DELIMITERS) {
     const counts = lines.map((line) => countDelimiterOutsideQuotes(line, delimiter, quote));
@@ -69,10 +69,8 @@ function looksNumeric(value: string): boolean {
 export function detectHeader(records: CsvCell[][]): boolean {
   const first = records[0];
   if (!first || first.length === 0) return false;
-  const cells = first.map((c) => c ?? "");
-  if (cells.some((c) => c.trim() === "")) return false;
+  const cells = first.map((c) => (c ?? "").trim()).filter((c) => c !== "");
+  if (cells.length === 0) return false;
   if (cells.some(looksNumeric)) return false;
-  const unique = new Set(cells.map((c) => c.trim().toLowerCase()));
-  if (unique.size !== cells.length) return false;
-  return true;
+  return new Set(cells.map((c) => c.toLowerCase())).size === cells.length;
 }

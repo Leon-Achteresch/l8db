@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 
 const MAX_ENTRIES = 25;
 
@@ -25,6 +26,6 @@ export const useSidebarSearchHistory = create<SidebarSearchHistoryState>()(
       remove: (query) => set((state) => ({ entries: state.entries.filter((e) => e !== query) })),
       clear: () => set({ entries: [] }),
     }),
-    { name: "l8db.sidebar-search-history" },
+    { name: "l8db.sidebar-search-history", storage: createSafeJsonStorage() },
   ),
 );

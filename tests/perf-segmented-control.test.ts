@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
-import { reportScenario } from "../scripts/performance-report";
+import { cpuThrottleRate, reportScenario } from "../scripts/performance-report";
 
 test.skipIf(!process.env.L8DB_PERF_BROWSER)(
   "50 segmented controls keep selection and keyboard movement within the interaction budget",
@@ -52,7 +52,7 @@ test.skipIf(!process.env.L8DB_PERF_BROWSER)(
       await page.getByRole("radiogroup").last().waitFor();
       if (engine === "chromium")
         await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", {
-          rate: 4,
+          rate: await cpuThrottleRate(4),
         });
       const control = page.getByRole("radiogroup", { name: "Control 0", exact: true });
       for (let index = 1; index <= 9; index++) {

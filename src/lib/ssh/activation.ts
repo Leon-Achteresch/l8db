@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 import { create } from "zustand";
 import { withTimeout } from "@/lib/async";
-import { connectionError, isAuthFailure } from "@/lib/connection-url";
+import { connectionError, isAuthFailure, isProfileConnection } from "@/lib/connection-url";
 import { useConnectionsStore, usesTunnel } from "@/lib/connections";
 import { closeSshTunnel, connectionInOtherWindow, testConnectionString } from "@/lib/db";
 import { ensurePassword } from "@/lib/password-prompt";
@@ -45,6 +45,8 @@ async function performActivation(
       };
     }
     if (id && !next) return { ok: false, error: "Verbindung nicht gefunden." };
+    if (next && isProfileConnection(next.kind) && usesTunnel(next))
+      return { ok: false, error: "Netzwerkzugang für diese Verbindung wird im Profil verwaltet." };
     if (usesTunnel(next)) {
       const outcome = await ensureSshTunnel(next, sshPassword);
       if (!outcome.ok) return outcome;

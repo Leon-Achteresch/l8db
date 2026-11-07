@@ -14,6 +14,7 @@ export const POSTGRES_TYPES: DataTypeGroup[] = [
       "bigint",
       "decimal",
       "numeric",
+      "numeric(10, 2)",
       "real",
       "double precision",
       "smallserial",
@@ -23,7 +24,7 @@ export const POSTGRES_TYPES: DataTypeGroup[] = [
   },
   {
     label: "Text",
-    types: ["character varying", "varchar", "character", "char", "text", "citext"],
+    types: ["character varying", "varchar(255)", "character", "char(1)", "text", "citext"],
   },
   {
     label: "Datum / Zeit",
@@ -116,10 +117,153 @@ export const CLICKHOUSE_TYPES: DataTypeGroup[] = [
   },
 ];
 
+const MYSQL_TYPES: DataTypeGroup[] = [
+  {
+    label: "Numerisch",
+    types: ["tinyint", "smallint", "int", "bigint", "decimal(10, 2)", "float", "double"],
+  },
+  {
+    label: "Text",
+    types: ["varchar(255)", "char(1)", "text", "mediumtext", "longtext", "enum('a', 'b')"],
+  },
+  { label: "Datum / Zeit", types: ["date", "datetime", "timestamp", "time", "year"] },
+  { label: "Boolean", types: ["boolean"] },
+  { label: "Binär", types: ["varbinary(255)", "blob", "longblob"] },
+  { label: "JSON", types: ["json"] },
+];
+
+const MSSQL_TYPES: DataTypeGroup[] = [
+  {
+    label: "Numerisch",
+    types: ["tinyint", "smallint", "int", "bigint", "decimal(18, 2)", "float", "real", "money"],
+  },
+  {
+    label: "Text",
+    types: ["nvarchar(255)", "nvarchar(max)", "varchar(255)", "varchar(max)", "nchar(1)"],
+  },
+  { label: "Datum / Zeit", types: ["date", "datetime2", "datetimeoffset", "time"] },
+  { label: "Boolean", types: ["bit"] },
+  { label: "Binär", types: ["varbinary(max)"] },
+  { label: "UUID", types: ["uniqueidentifier"] },
+  { label: "Sonstige", types: ["xml"] },
+];
+
+const ORACLE_TYPES: DataTypeGroup[] = [
+  {
+    label: "Numerisch",
+    types: ["NUMBER", "NUMBER(10)", "NUMBER(10, 2)", "BINARY_FLOAT", "BINARY_DOUBLE"],
+  },
+  { label: "Text", types: ["VARCHAR2(255)", "NVARCHAR2(255)", "CHAR(1)", "CLOB", "NCLOB"] },
+  {
+    label: "Datum / Zeit",
+    types: ["DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "INTERVAL DAY TO SECOND"],
+  },
+  { label: "Binär", types: ["RAW(16)", "BLOB"] },
+];
+
+const SQLITE_TYPES: DataTypeGroup[] = [
+  { label: "Speicherklassen", types: ["INTEGER", "REAL", "TEXT", "BLOB", "NUMERIC"] },
+];
+
+const DUCKDB_TYPES: DataTypeGroup[] = [
+  {
+    label: "Numerisch",
+    types: [
+      "TINYINT",
+      "SMALLINT",
+      "INTEGER",
+      "BIGINT",
+      "HUGEINT",
+      "DECIMAL(18, 3)",
+      "FLOAT",
+      "DOUBLE",
+    ],
+  },
+  { label: "Text", types: ["VARCHAR"] },
+  { label: "Datum / Zeit", types: ["DATE", "TIME", "TIMESTAMP", "TIMESTAMPTZ", "INTERVAL"] },
+  { label: "Boolean", types: ["BOOLEAN"] },
+  { label: "Binär", types: ["BLOB"] },
+  { label: "UUID", types: ["UUID"] },
+  { label: "JSON", types: ["JSON"] },
+  { label: "Verschachtelt", types: ["VARCHAR[]", "INTEGER[]", "MAP(VARCHAR, VARCHAR)"] },
+];
+
+const CASSANDRA_TYPES: DataTypeGroup[] = [
+  {
+    label: "Numerisch",
+    types: ["tinyint", "smallint", "int", "bigint", "varint", "decimal", "float", "double"],
+  },
+  { label: "Text", types: ["text", "ascii"] },
+  { label: "Datum / Zeit", types: ["timestamp", "date", "time", "duration"] },
+  { label: "Boolean", types: ["boolean"] },
+  { label: "Binär", types: ["blob"] },
+  { label: "UUID", types: ["uuid", "timeuuid"] },
+  { label: "Sammlungen", types: ["list<text>", "set<text>", "map<text, text>"] },
+  { label: "Sonstige", types: ["inet"] },
+];
+
+const GENERIC_TYPES: DataTypeGroup[] = [
+  { label: "Numerisch", types: ["integer", "bigint", "numeric(10, 2)", "double precision"] },
+  { label: "Text", types: ["varchar(255)", "char(1)"] },
+  { label: "Datum / Zeit", types: ["date", "timestamp"] },
+  { label: "Boolean", types: ["boolean"] },
+];
+
+const TYPES_BY_KIND: Partial<Record<DatabaseKind, DataTypeGroup[]>> = {
+  postgres: POSTGRES_TYPES,
+  clickhouse: CLICKHOUSE_TYPES,
+  mysql: MYSQL_TYPES,
+  mssql: MSSQL_TYPES,
+  oracle: ORACLE_TYPES,
+  sqlite: SQLITE_TYPES,
+  sqlite_http: SQLITE_TYPES,
+  duckdb: DUCKDB_TYPES,
+  cassandra: CASSANDRA_TYPES,
+};
+
+const DEFAULT_TYPE: Partial<Record<DatabaseKind, string>> = {
+  postgres: "text",
+  clickhouse: "String",
+  mysql: "varchar(255)",
+  mssql: "nvarchar(255)",
+  oracle: "VARCHAR2(255)",
+  sqlite: "TEXT",
+  sqlite_http: "TEXT",
+  duckdb: "VARCHAR",
+  cassandra: "text",
+};
+
 export function defaultDataType(kind: DatabaseKind | undefined): string {
-  return kind === "clickhouse" ? "String" : "text";
+  return (kind && DEFAULT_TYPE[kind]) ?? "varchar(255)";
 }
 
 export function getDataTypeGroups(kind: DatabaseKind): DataTypeGroup[] {
-  return kind === "clickhouse" ? CLICKHOUSE_TYPES : POSTGRES_TYPES;
+  return TYPES_BY_KIND[kind] ?? GENERIC_TYPES;
 }
+
+export function isListedDataType(groups: DataTypeGroup[], value: string): boolean {
+  const needle = value.trim().toLowerCase();
+  return groups.some((g) => g.types.some((t) => t.toLowerCase() === needle));
+}
+
+export function columnEditSupport(kind: DatabaseKind | undefined) {
+  return {
+    renameOnly: kind === "sqlite" || kind === "sqlite_http" || kind === "cassandra",
+    addConstraints: kind !== "cassandra",
+    using: kind === "postgres",
+    dropCascade: kind === "postgres",
+  };
+}
+
+export function nullableLocked(kind: DatabaseKind | undefined, dataType: string): boolean {
+  return kind === "clickhouse" && /^(?:Array|Map|Tuple|Nested|Variant)\(|^Dynamic\b/.test(dataType);
+}
+
+export function dropColumnDescription(kind: DatabaseKind | undefined): string {
+  if (kind === "postgres")
+    return "Die Spalte und ihre Daten werden unwiderruflich gelöscht. Hängen Views, Constraints oder andere Objekte von ihr ab, bricht PostgreSQL ab, solange CASCADE nicht aktiviert ist.";
+  return "Die Spalte und ihre Daten werden unwiderruflich gelöscht. Abhängige Indizes oder Constraints behandelt die Datenbank nach ihren eigenen Regeln.";
+}
+
+export const DEFAULT_EXPRESSION_HINT =
+  "Standardwert als SQL-Ausdruck: Text in einfachen Anführungszeichen ('abc'), Zahlen und Funktionen direkt (0, now()).";

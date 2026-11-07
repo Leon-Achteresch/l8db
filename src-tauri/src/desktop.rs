@@ -3,7 +3,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 use regex::Regex;
 use sentry::integrations::log::LogFilter;
-use tauri::Runtime;
+use tauri::{Manager, Runtime};
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind, TimezoneStrategy};
 
 const SENTRY_DSN: &str = "https://a0ed238540409e2a6ac907ef008a6ecd@o4512165553635328.ingest.de.sentry.io/4512165557436496";
@@ -37,6 +37,9 @@ pub fn install_logger<R: Runtime>(
         .timezone_strategy(TimezoneStrategy::UseLocal)
         .split(app)?;
     app.plugin(plugin)?;
+    if let Ok(dir) = app.path().app_log_dir() {
+        crate::issues::set_log_dir(dir);
+    }
     let logger =
         sentry::integrations::log::SentryLogger::with_dest(logger).filter(
             |metadata| match metadata.level() {
@@ -45,9 +48,27 @@ pub fn install_logger<R: Runtime>(
                 _ => LogFilter::Ignore,
             },
         );
-    log::set_boxed_logger(Box::new(logger))?;
+    log::set_boxed_logger(Box::new(ServerOutputLogger(logger)))?;
     log::set_max_level(level);
     Ok(())
+}
+
+struct ServerOutputLogger<L>(L);
+
+impl<L: log::Log> log::Log for ServerOutputLogger<L> {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        self.0.enabled(metadata)
+    }
+
+    fn log(&self, record: &log::Record) {
+        if !crate::db::server_output::capture_log_record(record) {
+            self.0.log(record);
+        }
+    }
+
+    fn flush(&self) {
+        self.0.flush();
+    }
 }
 
 pub fn install_panic_hook() {
@@ -101,6 +122,10 @@ fn scrub_breadcrumb(
 
 #[tauri::command]
 pub async fn set_crash_reporting(enabled: bool) {
+    let enabled = crate::organization::current(false)
+        .ok()
+        .map(|policy| policy.policy.settings.crash_reports.unwrap_or(enabled))
+        .unwrap_or(false);
     let mut guard = SENTRY
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());

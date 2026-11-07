@@ -3,6 +3,7 @@ import type {
   ChannelRef,
   Flow,
   OutputSpec,
+  RetryPolicy,
   Schedule,
   Severity,
   Step,
@@ -280,8 +281,7 @@ function stepIssues(
       checkFlow(push, "then", step.action.then, steps);
       checkFlow(push, "otherwise", step.action.otherwise, steps);
     }
-    if (step.retry && (step.retry.attempts < 0 || step.retry.attempts > 20))
-      push("retry.attempts", "Wiederholungen zwischen 0 und 20.");
+    if (step.retry) for (const [field, message] of retryIssues(step.retry)) push(field, message);
     if (step.timeoutSeconds !== null && !(step.timeoutSeconds > 0))
       push("timeoutSeconds", "Timeout muss größer als 0 sein.");
     const scope = step.action.type === "loop" ? [...items, step.action.item] : items;
@@ -303,6 +303,23 @@ function stepIssues(
       issues.push(...stepIssues(task, step.action.steps, known, scope));
   }
   return issues;
+}
+
+const MAX_INTERVAL_DAYS = 3660;
+const INTERVAL_DAYS = { minutes: 1 / 1440, hours: 1 / 24, days: 1 } as const;
+
+function retryIssues(retry: RetryPolicy): [string, string][] {
+  const out: [string, string][] = [];
+  if (!Number.isInteger(retry.attempts) || retry.attempts < 0 || retry.attempts > 20)
+    out.push(["retry.attempts", "Wiederholungen als ganze Zahl zwischen 0 und 20."]);
+  if (!Number.isInteger(retry.delaySeconds) || retry.delaySeconds < 0)
+    out.push(["retry.delaySeconds", "Pause als ganze Zahl ab 0."]);
+  if (
+    retry.maxDelaySeconds !== null &&
+    (!Number.isInteger(retry.maxDelaySeconds) || retry.maxDelaySeconds < 0)
+  )
+    out.push(["retry.maxDelaySeconds", "Höchstpause als ganze Zahl ab 0."]);
+  return out;
 }
 
 export function stepVariables(steps: Step[]): string[] {
@@ -331,7 +348,12 @@ export function scheduleIssues(schedule: Schedule, task: Task): ValidationIssue[
       if (error) push("times", error);
     }
   }
-  if (trigger.type === "interval" && !(trigger.every >= 1)) push("every", "Intervall ab 1.");
+  if (trigger.type === "interval") {
+    if (!Number.isInteger(trigger.every) || trigger.every < 1)
+      push("every", "Intervall als ganze Zahl ab 1.");
+    else if (trigger.every * INTERVAL_DAYS[trigger.unit] > MAX_INTERVAL_DAYS)
+      push("every", `Intervall höchstens ${MAX_INTERVAL_DAYS} Tage.`);
+  }
   if (trigger.type === "weekly" && !trigger.weekdays.length) push("weekdays", "Wochentag fehlt.");
   if (trigger.type === "monthly" && !trigger.days.length && !trigger.lastDay)
     push("days", "Tag fehlt.");
@@ -339,10 +361,6 @@ export function scheduleIssues(schedule: Schedule, task: Task): ValidationIssue[
     push("days", "Tage zwischen 1 und 31.");
   if (trigger.type === "cron" && blank(trigger.expression))
     push("expression", "Cron-Ausdruck fehlt.");
-  if (trigger.type === "cron" && trigger.expression.trim()) {
-    const fields = trigger.expression.trim().split(/\s+/).length;
-    if (fields !== 5 && fields !== 6) push("expression", "Cron braucht 5 oder 6 Felder.");
-  }
   if (trigger.type === "once" && !LOCAL_DATETIME_PATTERN.test(trigger.at))
     push("at", "Zeitpunkt fehlt.");
   if (trigger.type === "after_task") {
@@ -419,6 +437,12 @@ export function validateTask(task: Task): ValidationIssue[] {
     push("timeoutSeconds", "Timeout muss größer als 0 sein.");
   if (task.maxConsecutiveFailures !== null && !(task.maxConsecutiveFailures >= 1))
     push("maxConsecutiveFailures", "Mindestens 1.");
+  if (task.retry) for (const [field, message] of retryIssues(task.retry)) push(field, message);
+  for (const key of ["keepDays", "keepRuns"] as const) {
+    const value = task.retention?.[key];
+    if (value != null && !(Number.isInteger(value) && value >= 1))
+      push(`retention.${key}`, "Ganze Zahl ab 1.");
+  }
   for (const schedule of task.schedules) issues.push(...scheduleIssues(schedule, task));
   for (const rule of task.notifications) {
     for (const issue of channelIssues(rule.channel))

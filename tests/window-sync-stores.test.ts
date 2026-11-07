@@ -17,6 +17,8 @@ const { useObjectDrafts } = await import("../src/lib/object-drafts.ts?window-syn
 const { useAnalysisWorkspaces } = await import("../src/lib/analysis-workspaces.ts?window-sync");
 const { useCsvMappingPresets } = await import("../src/lib/csv-mapping-presets.ts?window-sync");
 const { useSettingsStore } = await import("../src/lib/settings.ts?window-sync");
+const { useTourStore } = await import("../src/lib/tour/store.ts?window-sync");
+const { useFeatureVideoStore } = await import("../src/lib/feature-videos/store.ts?window-sync");
 
 function otherWindowWrites(key: string, state: unknown, version = 0): void {
   const value = JSON.stringify({ state, version });
@@ -177,5 +179,34 @@ describe("other user-data stores across windows", () => {
     }>("l8db.settings");
     expect(persisted.searchIncludeColumns).toBe(true);
     expect(persisted.searchIncludePackageMembers).toBe(false);
+  });
+});
+
+describe("tour and feature videos across windows", () => {
+  test("a dismissed offer and finished chapters reach the other window without moving its tour", () => {
+    useTourStore.setState({ active: true, chapterIndex: 2, completedChapterIds: [] });
+    otherWindowWrites("l8db.tour", {
+      active: false,
+      chapterIndex: 0,
+      completedChapterIds: ["basics"],
+      offerDismissed: true,
+    });
+    expect(useTourStore.getState()).toMatchObject({
+      active: true,
+      chapterIndex: 2,
+      completedChapterIds: ["basics"],
+      offerDismissed: true,
+    });
+  });
+
+  test("a video history from another window is taken over", async () => {
+    otherWindowWrites("l8db.feature-videos", {
+      feed: null,
+      checkedAt: 0,
+      history: { intro: { status: "dismissed", at: Date.now() } },
+    });
+    for (let i = 0; i < 5 && !useFeatureVideoStore.getState().history.intro; i += 1)
+      await Bun.sleep(5);
+    expect(useFeatureVideoStore.getState().history.intro?.status).toBe("dismissed");
   });
 });

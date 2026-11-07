@@ -19,6 +19,7 @@ import {
   useLiveMonitorStore,
 } from "@/lib/live-monitor";
 import { useLocksQuery, useSessionsQuery } from "@/lib/queries";
+import { sessionActionMessage, sessionIdLabel } from "@/lib/session-actions";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -211,12 +212,8 @@ export function useLiveMonitor() {
         pid,
         database ?? undefined,
       );
-      toast.success(
-        action === "cancel"
-          ? result
-            ? `Abfrage auf PID ${pid} gestoppt.`
-            : `PID ${pid}: nichts zu stoppen.`
-          : `Sitzung ${pid} beendet.`,
+      (result ? toast.success : toast.info)(
+        sessionActionMessage(action, result, connection.kind, pid),
       );
       refresh();
     } catch (error) {
@@ -273,7 +270,7 @@ export function useLiveMonitor() {
       runAction(
         pid,
         "terminate",
-        `Sitzung mit PID ${pid} wirklich beenden? Offene Transaktionen gehen verloren.`,
+        `Sitzung mit ${sessionIdLabel(connection?.kind)} ${pid} wirklich beenden? Offene Transaktionen gehen verloren.`,
       ),
     copyQuery: (sql: string) => void copyWithToast(sql, "Abfrage"),
     openInEditor: (sql: string, pid: number) => {

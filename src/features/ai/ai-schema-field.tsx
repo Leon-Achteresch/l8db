@@ -1,6 +1,6 @@
 import { useId } from "react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 interface Props {
   name: string;
@@ -19,7 +19,7 @@ export function AiSchemaField({ name, schema, value, onChange, required, disable
       : {};
   if (schema.type === "object" && Object.keys(properties).length)
     return (
-      <fieldset className="space-y-3 rounded-lg bg-muted/30 p-3">
+      <fieldset className="space-y-3 rounded-xl bg-muted/50 p-3">
         <legend className="px-1 text-xs font-medium">{label}</legend>
         {Object.entries(properties).map(([key, child]) => (
           <AiSchemaField
@@ -41,8 +41,8 @@ export function AiSchemaField({ name, schema, value, onChange, required, disable
       </fieldset>
     );
   return (
-    <div className="space-y-2">
-      <label htmlFor={id} className="block text-xs font-medium">
+    <div className="mt-3 space-y-1.5">
+      <label htmlFor={id} className="block text-xs font-medium text-foreground">
         {label}
         {required ? " *" : ""}
       </label>
@@ -52,18 +52,23 @@ export function AiSchemaField({ name, schema, value, onChange, required, disable
         </p>
       )}
       {Array.isArray(schema.enum) ? (
-        <fieldset className="flex flex-wrap gap-2" aria-label={label}>
+        <fieldset className="flex flex-wrap gap-1.5" aria-label={label}>
           {schema.enum.map((choice, index) => (
-            <Button
+            <button
               key={String(choice)}
-              size="sm"
-              variant={value === choice ? "secondary" : "outline"}
+              type="button"
               disabled={disabled}
               onClick={() => onChange(choice)}
               aria-pressed={value === choice}
+              className={cn(
+                "h-8 rounded-full px-3.5 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                value === choice
+                  ? "bg-primary font-medium text-primary-foreground"
+                  : "bg-muted/70 text-foreground/85 hover:bg-muted",
+              )}
             >
               {String(Array.isArray(schema.enumNames) ? schema.enumNames[index] : choice)}
-            </Button>
+            </button>
           ))}
         </fieldset>
       ) : schema.type === "boolean" ? (
@@ -82,13 +87,14 @@ export function AiSchemaField({ name, schema, value, onChange, required, disable
           id={id}
           disabled={disabled}
           aria-label={label}
-          className="min-h-20 w-full rounded-md border bg-background p-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="min-h-20 w-full rounded-xl bg-muted/60 p-2.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
           placeholder="Ein Wert pro Zeile"
           value={Array.isArray(value) ? value.join("\n") : ""}
           onChange={(event) => onChange(event.target.value.split("\n").filter(Boolean))}
         />
       ) : (
         <Input
+          className="h-9 rounded-xl border-0 bg-muted/60 shadow-none"
           id={id}
           disabled={disabled}
           type={schema.type === "number" || schema.type === "integer" ? "number" : "text"}

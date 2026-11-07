@@ -1,4 +1,5 @@
 import gt from "semver/functions/gt";
+import { assertExtensionsAllowed } from "@/lib/extensions/management";
 import { validateArchive } from "../../../packages/extension-api/src/manifest";
 import type {
   ExtensionArchive,
@@ -27,6 +28,7 @@ function widenedGrants(previous: ExtensionManifest, next: ExtensionManifest): Pe
 export class ExtensionManager extends ExtensionManagerBase {
   installExtension(archive: ExtensionArchive, developmentPath?: string) {
     return this.serial(async () => {
+      assertExtensionsAllowed();
       const validated = validateArchive(archive);
       const extension: ExtensionDescriptor = {
         archive: validated,
@@ -51,6 +53,7 @@ export class ExtensionManager extends ExtensionManagerBase {
   }
   enableExtension(id: string, grants: Permission[]) {
     return this.serial(async () => {
+      assertExtensionsAllowed();
       const extension = this.registry.get(id);
       this.permissions.validate(extension.archive.manifest, grants);
       this.loader.validate(structuredClone(extension));
@@ -93,6 +96,7 @@ export class ExtensionManager extends ExtensionManagerBase {
   }
   updateExtension(archive: ExtensionArchive, developmentPath?: string) {
     return this.serial(async () => {
+      assertExtensionsAllowed();
       const validated = validateArchive(archive);
       const id = validated.manifest.id;
       const extension = this.registry.get(id);
@@ -100,7 +104,7 @@ export class ExtensionManager extends ExtensionManagerBase {
       if (!gt(validated.manifest.version, previous))
         throw new ExtensionError(
           "ManifestValidationError",
-          `Version ${validated.manifest.version} is not newer than ${previous}`,
+          `Version ${validated.manifest.version} ist nicht neuer als die installierte ${previous}.`,
         );
       const wasEnabled = extension.enabled;
       await this.stop(id);
@@ -147,16 +151,17 @@ export class ExtensionManager extends ExtensionManagerBase {
     return this.serial(async () => {
       const extension = this.registry.get(id);
       if (archive) {
+        assertExtensionsAllowed();
         const validated = validateArchive(archive);
         if (validated.manifest.id !== id)
           throw new ExtensionError(
             "ManifestValidationError",
-            "Development reload cannot change ID",
+            "Ein Entwicklungs-Neuladen darf die Erweiterungs-ID nicht ändern.",
           );
         if (JSON.stringify(validated.manifest) !== JSON.stringify(extension.archive.manifest))
           throw new ExtensionError(
             "ManifestValidationError",
-            "Manifest changed: reinstall to review permissions and contributions",
+            "Das Manifest hat sich geändert. Bitte neu installieren, um Berechtigungen und Beiträge erneut zu prüfen.",
           );
         extension.archive = validated;
       }

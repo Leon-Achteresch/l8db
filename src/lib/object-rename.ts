@@ -27,5 +27,11 @@ export function objectRenameIssue(name: string, next: string): string | null {
   if (next.trim() === name) return "Der Name ist unverändert.";
   if (next.includes('"') || next.includes("\0"))
     return "Der Name darf keine Anführungszeichen oder Nullzeichen enthalten.";
+  if (pgIdentifierTooLong(next.trim()))
+    return "Der Name darf höchstens 63 Bytes lang sein (Umlaute zählen doppelt).";
   return null;
+}
+
+export function pgIdentifierTooLong(name: string): boolean {
+  return new TextEncoder().encode(name).length > 63;
 }

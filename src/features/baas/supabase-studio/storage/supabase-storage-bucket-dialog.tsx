@@ -112,7 +112,7 @@ export function SupabaseStorageBucketDialog({
               required
             />
           </div>
-          <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+          <div className="flex items-center justify-between gap-3 rounded-lg p-3 bg-muted/30">
             <div>
               <Label htmlFor="storage-bucket-public">Öffentlicher Bucket</Label>
               <p className="text-xs text-muted-foreground">

@@ -1,5 +1,32 @@
 type Scorable = { label: string; group?: string; hint?: string; keywords?: string[] };
 
+const UMLAUTS: Record<string, [string, string]> = {
+  ä: ["a", "ae"],
+  ö: ["o", "oe"],
+  ü: ["u", "ue"],
+  ß: ["ss", "ss"],
+};
+
+const ASCII = /^\p{ASCII}*$/u;
+
+function foldChar(character: string, expand: boolean) {
+  const lower = character.toLowerCase();
+  const umlaut = UMLAUTS[lower];
+  if (umlaut) return umlaut[expand ? 1 : 0];
+  return ASCII.test(lower) ? lower : lower.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function fold(text: string, expand = false) {
+  if (ASCII.test(text)) return text.toLowerCase();
+  let folded = "";
+  for (const character of text) folded += foldChar(character, expand);
+  return folded;
+}
+
+export function commandNeedle(query: string) {
+  return fold(query.trim());
+}
+
 function matchPositions(needle: string, hay: string): number[] | null {
   const index = hay.indexOf(needle);
   if (index >= 0) return Array.from({ length: needle.length }, (_, i) => index + i);
@@ -43,40 +70,48 @@ function textScore(needle: string, hay: string) {
   return positions ? fuzzyScore(positions, hay) : 0;
 }
 
-const lowered = new WeakMap<Scorable, { label: string; rest: string[] }>();
+type Haystacks = { label: string; rest: string[] };
+
+const lowered = new WeakMap<Scorable, Haystacks[]>();
 
 function haystacks(item: Scorable) {
   let entry = lowered.get(item);
   if (!entry) {
-    const label = item.label.toLowerCase();
-    const rest = [item.group ?? "", item.hint ?? "", ...(item.keywords ?? [])].map((h) =>
-      h.toLowerCase(),
-    );
-    entry = { label, rest };
+    const texts = [item.group ?? "", item.hint ?? "", ...(item.keywords ?? [])];
+    const base = { label: fold(item.label), rest: texts.map((text) => fold(text)) };
+    const expanded = { label: fold(item.label, true), rest: texts.map((text) => fold(text, true)) };
+    entry =
+      expanded.label === base.label && expanded.rest.every((text, i) => text === base.rest[i])
+        ? [base]
+        : [base, expanded];
     lowered.set(item, entry);
   }
   return entry;
 }
 
-function partScore(part: string, label: string, rest: string[]) {
-  let best = textScore(part, label);
-  if (best >= 1000) return best;
-  for (const hay of rest) {
-    const score = textScore(part, hay) / 2;
-    if (score > best) best = score;
+function partScore(part: string, variants: Haystacks[]) {
+  let best = 0;
+  for (const { label, rest } of variants) {
+    const direct = textScore(part, label);
+    if (direct > best) best = direct;
+    if (best >= 1000) return best;
+    for (const hay of rest) {
+      const score = textScore(part, hay) / 2;
+      if (score > best) best = score;
+    }
   }
   return best;
 }
 
 export function scoreNeedle(needle: string, item: Scorable) {
   if (!needle) return 1;
-  const { label, rest } = haystacks(item);
+  const variants = haystacks(item);
   const tokens = needle.split(/\s+/);
-  const whole = partScore(needle, label, rest);
+  const whole = partScore(needle, variants);
   if (tokens.length === 1) return whole;
   let sum = 0;
   for (const token of tokens) {
-    const score = partScore(token, label, rest);
+    const score = partScore(token, variants);
     if (score === 0) return 0;
     sum += score;
   }
@@ -84,15 +119,15 @@ export function scoreNeedle(needle: string, item: Scorable) {
 }
 
 export function commandMatchRanges(query: string, text: string) {
-  const needle = query.trim().toLowerCase();
+  const needle = commandNeedle(query);
   if (!needle) return [];
-  const hay = text.toLowerCase();
+  const hay = fold(text);
   const offsets: { start: number; end: number }[] = [];
-  if (hay.length !== text.length) {
+  if (!ASCII.test(text)) {
     let start = 0;
     for (const character of text) {
       const end = start + character.length;
-      for (let i = 0; i < character.toLowerCase().length; i++) offsets.push({ start, end });
+      for (let i = 0; i < foldChar(character, false).length; i++) offsets.push({ start, end });
       start = end;
     }
   }
@@ -117,13 +152,13 @@ export function commandMatchRanges(query: string, text: string) {
 }
 
 export function commandScore(query: string, item: Scorable) {
-  const needle = query.trim().toLowerCase();
+  const needle = commandNeedle(query);
   if (!needle) return 1;
   return scoreNeedle(needle, item);
 }
 
 export function rankCommands<T extends Scorable>(items: T[], query: string) {
-  const needle = query.trim().toLowerCase();
+  const needle = commandNeedle(query);
   if (!needle) return items;
   const scored: { item: T; score: number }[] = [];
   for (const item of items) {

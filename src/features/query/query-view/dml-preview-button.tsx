@@ -6,14 +6,21 @@ import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility"
 
 interface DmlPreviewButtonProps {
   disabled: boolean;
+  disabledReason?: string;
   shortcut: string;
   onPreview: () => void;
 }
 
-export function DmlPreviewButton({ disabled, shortcut, onPreview }: DmlPreviewButtonProps) {
+export function DmlPreviewButton({
+  disabled,
+  disabledReason,
+  shortcut,
+  onPreview,
+}: DmlPreviewButtonProps) {
   const feature = useNewFeatureVisibility<HTMLButtonElement>("query.dml-preview");
   return (
     <Button
+      data-hotkey="query.preview"
       ref={feature.ref}
       size="sm"
       variant="outline"
@@ -21,6 +28,7 @@ export function DmlPreviewButton({ disabled, shortcut, onPreview }: DmlPreviewBu
       data-tour="query-dml-preview"
       onClick={onPreview}
       disabled={disabled}
+      disabledReason={disabledReason}
       title={`Betroffene Zeilen eines UPDATE, DELETE, MERGE oder INSERT … SELECT anzeigen, ohne auszuführen (${shortcut})`}
     >
       <ScanEyeIcon className="size-3" />

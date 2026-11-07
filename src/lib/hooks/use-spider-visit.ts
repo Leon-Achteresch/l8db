@@ -2,13 +2,13 @@ import { type RefObject, useEffect } from "react";
 import { useActiveConnectionId, useConnectionsStore } from "@/lib/connections";
 import { isProduction } from "@/lib/environments";
 import {
-  claimSpiderVisit,
-  isHalloween,
+  claimHolidayVisit,
+  currentHoliday,
+  holidayVisitedToday,
   leaveSpider,
   SPIDER_DELAY_MS,
-  spiderVisitedToday,
   useSeasonalStore,
-  visitSpider,
+  visitHoliday,
 } from "@/lib/seasonal";
 import { useSettingsStore } from "@/lib/settings";
 
@@ -20,7 +20,8 @@ export function useSpiderVisit(
   const enabled = useSettingsStore((state) => state.seasonalAccents);
   const connectionId = useActiveConnectionId();
   useEffect(() => {
-    if (!enabled || !isHalloween(new Date()) || spiderVisitedToday()) return;
+    const holiday = currentHoliday();
+    if (!enabled || !holiday || holidayVisitedToday(holiday)) return;
     let cancelled = false;
     let visit = 0;
     const timer = window.setTimeout(() => {
@@ -45,11 +46,16 @@ export function useSpiderVisit(
         rect.width < 320 ||
         rect.height < 160 ||
         !element.contains(document.elementFromPoint(spot.x, spot.y + 22)) ||
-        !claimSpiderVisit()
+        !claimHolidayVisit(holiday)
       )
         return;
-      void import("@/lib/spider-quip").then(({ spiderQuip }) => {
-        if (!cancelled) visit = visitSpider(spot, spiderQuip(columns, rows));
+      void import("@/lib/seasonal-quip").then(({ seasonalQuip }) => {
+        if (
+          !cancelled &&
+          useSettingsStore.getState().seasonalAccents &&
+          !useSeasonalStore.getState().visit
+        )
+          visit = visitHoliday(holiday, spot, seasonalQuip(holiday, columns, rows));
       });
     }, SPIDER_DELAY_MS);
     return () => {

@@ -7,7 +7,7 @@ use crate::db::{pool::PoolState, postgres_health};
 pub fn tool_definition() -> Value {
     json!({
         "name": "health",
-        "description": "Read-only PostgreSQL health checks for security, schema and performance (RLS, missing keys, unindexed foreign keys, unused indexes, bloat, slow queries). Returns findings with severity and fix SQL, never executed.",
+        "description": "Read-only PostgreSQL health checks (RLS, missing keys, unindexed foreign keys, unused indexes, bloat, slow queries): findings with severity and fix SQL, never executed.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": server::database_arg(),

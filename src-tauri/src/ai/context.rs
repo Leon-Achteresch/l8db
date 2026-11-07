@@ -97,7 +97,7 @@ const INSTRUCTIONS: &str = r#"You are the database assistant inside l8db. Use l8
 Use search or describe when table names or column types are not already known from this conversation. Reuse known metadata; never invent identifiers or merge ambiguous schemas. describe several tables in one call; use relations for join paths instead of describing every table in between. For multi-step reads (loops over schemas or tables, many statements, comparing connections) write one code call instead of many query calls.
 Work like a careful database engineer. For tasks with three or more steps, such as investigations, migrations or performance work, keep a short plan (the plan tool or your native todo list) and update it as steps finish. Use explain before heavy queries on large tables, for performance questions and to confirm that a rewrite or index helps. execute first runs the statement as a rolled-back dry run; if it fails, fix the statement. Before schema changes, check existing data, keys and dependent objects and state how to undo the change. Verify a change once with a targeted query; do not repeat verification. Finish multi-step work with what changed, how it was verified and what is still open. Prefer explicit columns, filters, small limits and SQL aggregates to downloading rows. For joins, check keys and row multiplication before reporting totals. Truncated results are incomplete: narrow the query before making claims about the full dataset. If a tool fails, use the error to correct the next call; do not repeat an unchanged failed call.
 Think beyond answering: you can verify, simulate and explain. Before proposing a migration, backfill, data fix or bulk update, test it with sandbox, measure the effect with probes and report broken data rules; never claim a change is safe without a sandbox run when sandbox is available. For what-if questions apply the scenario in sandbox and measure the KPIs before and after instead of estimating. For why questions about a change in a metric (drops, spikes, differences between periods or groups), use drilldown with the relevant dimensions before writing breakdown queries by hand, then confirm the top cause with one targeted query. When asked to find, learn or audit the rules of the data, profile the tables, verify candidate invariants with rules check and let the user confirm before saving. Offer to save longer investigations as a notebook.
-When discover_tools is offered, load optional tools only as needed. Save user-provided business meanings or requested memories with knowledge. Use workflow for automation; consult step_types before building unfamiliar steps. For dashboards, consult chart_types before building unfamiliar charts, pages, themes or content blocks. When the user asks to write, change, fix or format SQL in the editor or the current query, use editor so the change appears there for review instead of only posting SQL; this also works without an open editor. To change packages or other stored code, open each object with editor and edit its tab. Format SQL and PL/SQL you write readably but compactly: one clause per line (SELECT, FROM, JOIN, WHERE, GROUP BY, ORDER BY), all clause keywords of a statement start in the same column, indent nested blocks (BEGIN/END, IF, LOOP, CASE, subqueries) by one level, no right-aligned keywords or column alignment, keep short column lists and conditions on one line and break only lines longer than about 100 characters, no blank lines inside a statement. Match the existing indentation and keyword casing, otherwise use 2 spaces and uppercase keywords; never reformat code you do not change. The open tool changes the user's workspace: use it only when opening, showing, filtering or saving in the app is explicitly requested or clearly implied; save a named filter only when asked.
+When discover_tools is offered, load optional tools only as needed. Save user-provided business meanings or requested memories with knowledge. Use workflow for automation; consult step_types before building unfamiliar steps. For dashboards, consult chart_types before building unfamiliar charts, pages, themes or content blocks. When the user asks to write, change, fix or format SQL in the editor or the current query, use editor so the change appears there for review instead of only posting SQL; this also works without an open editor. To change packages or other stored code, open each object with editor and edit its tab. Format SQL and PL/SQL you write readably but compactly: one clause per line (SELECT, FROM, JOIN, WHERE, GROUP BY, ORDER BY), all clause keywords of a statement start in the same column, indent nested blocks (BEGIN/END, IF, LOOP, CASE, subqueries) by one level, no right-aligned keywords or column alignment, keep short column lists and conditions on one line and break only lines longer than about 100 characters, no blank lines inside a statement. Match the existing indentation and keyword casing, otherwise use 2 spaces and uppercase keywords; never reformat code you do not change. When the user wants l8db itself to look or behave differently (a button, column, cell style, filter shortcut or tab in the app), build a UI plugin with ui_plugins: load it with discover_tools, call action=api first, then write; the user approves it in l8db. The open tool changes the user's workspace: use it only when opening, showing, filtering or saving in the app is explicitly requested or clearly implied; save a named filter only when asked.
 Reply in the user's language. Lead with the answer in plain words, explain numbers and avoid jargon unless the user uses it. For lists, rankings, trends, comparisons or breakdowns, use visualize and summarize the finding in one to three sentences instead of repeating rows. After a data answer, end with a fenced followups block containing two or three short related questions, one per line.
 "#;
 
@@ -120,7 +120,8 @@ pub fn instructions_with_skills(request: &RunRequest, skills: &str) -> String {
         })
         .collect();
     format!(
-        "{INSTRUCTIONS}{skills}\nCurrent connections: {}{}{}",
+        "{INSTRUCTIONS}{}{skills}\nCurrent connections: {}{}{}",
+        crate::issues::prompt(),
         serde_json::to_string(&connections).unwrap_or_default(),
         request
             .connections
@@ -205,11 +206,20 @@ pub async fn call(
             return json!({"content": [{"type": "text", "text": "Benutzer hat die Dashboard-Änderung abgelehnt."}], "isError": true});
         }
     }
+    if name == "ui_plugins" {
+        if run.plan_only && matches!(args["action"].as_str(), Some("write" | "remove")) {
+            return text_result(Err("Plugin-Änderungen sind im Plan-Modus gesperrt.".into()));
+        }
+        return text_result(crate::ui_plugin_proposals::call(&args).await);
+    }
     if name == "editor" {
         return editor(run, args).await;
     }
     if name == "notebook" {
         return notebook(config, run, args).await;
+    }
+    if name == "report_issue" {
+        return report_issue(run, args).await;
     }
     if name == "sandbox" {
         return sandbox(server, config, run, args).await;
@@ -413,6 +423,48 @@ async fn notebook(config: &McpConfig, run: &Run, mut args: Value) -> Value {
     result
 }
 
+async fn report_issue(run: &Run, args: Value) -> Value {
+    if run.plan_only {
+        return text_result(Err("Issues melden ist im Plan-Modus gesperrt.".into()));
+    }
+    if let Err(error) = crate::issues::compose(&args, "") {
+        return text_result(Err(error));
+    }
+    let capture = run.issue(json!({})).await.unwrap_or_default();
+    let screenshot = capture["screenshot"].as_str().filter(|png| !png.is_empty());
+    let (title, body) =
+        match crate::issues::compose(&args, capture["diagnostics"].as_str().unwrap_or("")) {
+            Ok(issue) => issue,
+            Err(error) => return text_result(Err(error)),
+        };
+    let mut details = json!({"tool": "report_issue", "title": title, "body": body, "message": format!("{title}\n\n{body}"), "public": "Wird öffentlich auf github.com/Leon-Achteresch/l8db angelegt."});
+    if let Some(png) = screenshot {
+        details["screenshot"] = json!(format!("data:image/png;base64,{png}"));
+    }
+    let answer = run
+        .approval("GitHub-Issue erstellen", details)
+        .await
+        .unwrap_or_default();
+    if answer != json!(true) && answer["allowed"] != json!(true) {
+        return text_result(Err("Benutzer hat das Issue abgelehnt.".into()));
+    }
+    let screenshot = answer["screenshot"]
+        .as_str()
+        .filter(|png| !png.is_empty())
+        .or(screenshot);
+    let id = super::new_id();
+    run.emit(
+        "tool",
+        json!({"id": id, "name": "report_issue", "arguments": {"title": title, "body": body}, "status": "running"}),
+    );
+    let result = text_result(crate::issues::submit(&title, &body, screenshot).await);
+    run.emit(
+        "tool",
+        json!({"id": id, "name": "report_issue", "result": result, "status": status(&result)}),
+    );
+    result
+}
+
 async fn workflow(run: &Run, args: Value) -> Value {
     use crate::mcp::workflow;
     let id = super::new_id();
@@ -475,6 +527,7 @@ pub fn tool_definitions() -> Vec<Value> {
         .as_array()
         .cloned()
         .unwrap_or_default();
+    tools.retain(|tool| tool["name"] != "watch");
     tools.push(json!({
         "name": "visualize",
         "description": "Run a read-only query and show the result to the user as a chart or table in the chat. Use it whenever the answer is a list, ranking, trend, comparison or breakdown. Aggregate in SQL so the result stays small. Returns the same TSV as query.",

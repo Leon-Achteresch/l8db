@@ -51,9 +51,12 @@ export function CsvImportPanel({
     conflict,
     setConflict,
     blocked,
+    blockedReason,
     connection,
     database,
     emptyField,
+    nullText,
+    setNullText,
     fileError,
     fileName,
     filePath,
@@ -70,11 +73,14 @@ export function CsvImportPanel({
     running,
     schema,
     setDelimiter,
+    changeDelimiter,
     setEmptyField,
     setFileError,
     setHasHeader,
+    changeHasHeader,
     setMappings,
     setQuote,
+    changeQuote,
     tables,
     targetColumns,
     targetTable,
@@ -144,11 +150,13 @@ export function CsvImportPanel({
             <CsvParseOptions
               parsed={parsed}
               quote={quote}
-              setDelimiter={setDelimiter}
-              setQuote={setQuote}
-              setHasHeader={setHasHeader}
+              changeDelimiter={changeDelimiter}
+              changeQuote={changeQuote}
+              changeHasHeader={changeHasHeader}
               emptyField={emptyField}
               setEmptyField={setEmptyField}
+              nullText={nullText}
+              setNullText={setNullText}
             />
           )}
         </div>
@@ -378,7 +386,12 @@ export function CsvImportPanel({
                 {targetTable}
               </span>
             )}
-            <Button size="sm" disabled={blocked || running} onClick={() => void handleImport()}>
+            <Button
+              size="sm"
+              disabled={blocked || running}
+              disabledReason={running ? "Import läuft bereits" : blockedReason}
+              onClick={() => void handleImport()}
+            >
               {running ? <Spinner className="size-3.5" /> : <UploadIcon />}
               {running ? "Import läuft…" : "Importieren"}
             </Button>

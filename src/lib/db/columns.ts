@@ -36,6 +36,7 @@ export interface ImportFileSource {
   quote: string;
   has_header: boolean;
   empty_as_null: boolean;
+  null_text?: string | null;
   indices: number[];
   format?: ImportFormat;
   sheet?: string | null;
@@ -97,6 +98,7 @@ export interface TableExportRequest {
     nullText: string;
     lineEnding: string;
     bom: boolean;
+    escapeFormulas?: boolean;
   };
   masks: { column: string; mode: MaskMode; text?: string | null }[];
   maxRows?: number | null;
@@ -143,6 +145,7 @@ export interface AlterColumnRequest {
   set_not_null?: boolean;
   new_default?: string;
   drop_default: boolean;
+  using?: string;
 }
 
 export async function listTableColumnsDetailed(
@@ -204,6 +207,7 @@ export async function dropColumn(
   table: string,
   column: string,
   database?: string,
+  cascade = false,
 ): Promise<void> {
   await invoke("drop_column", {
     kind,
@@ -212,6 +216,7 @@ export async function dropColumn(
     schema,
     table,
     column,
+    cascade,
   });
 }
 

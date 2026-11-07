@@ -29,10 +29,16 @@ export function aiThread(tree?: Tree): AiMessage[] {
   return path;
 }
 
-export function aiSiblings(tree: Tree, id: string | undefined): AiMessage[] {
-  const parent = parents(tree.messages);
-  if (!parent.has(id)) return [];
-  return tree.messages.filter((message) => parent.get(message.id) === parent.get(id));
+export function aiBranches(tree?: Tree): Map<string | undefined, (string | undefined)[]> {
+  const groups = new Map<string | null | undefined, (string | undefined)[]>();
+  const branches = new Map<string | undefined, (string | undefined)[]>();
+  for (const [id, parent] of parents(tree?.messages ?? [])) {
+    const siblings = groups.get(parent) ?? [];
+    groups.set(parent, siblings);
+    siblings.push(id);
+    branches.set(id, siblings);
+  }
+  return branches;
 }
 
 export function aiLatestLeaf(tree: Tree, id: string | undefined): string | undefined {

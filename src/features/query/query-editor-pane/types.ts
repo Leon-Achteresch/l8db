@@ -6,6 +6,7 @@ import type { BookmarkSlots } from "@/lib/table-tabs";
 
 export interface QueryEditorApi {
   insertSnippet: (body: string) => void;
+  replaceText: (text: string) => void;
   insertText: (text: string) => void;
   focus: () => void;
   action: (id: string) => void;

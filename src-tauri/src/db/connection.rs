@@ -6,8 +6,6 @@ use tokio_postgres::Config;
 
 use super::SslMode;
 
-pub const READ_ONLY_OPTION: &str = "-c default_transaction_read_only=on";
-
 pub fn options_are_read_only(options: Option<&str>) -> bool {
     options
         .map(|value| {
@@ -99,6 +97,7 @@ pub fn parse_pg_url(value: &str) -> Result<PgUrl, String> {
     if !matches!(url.scheme(), "postgres" | "postgresql") {
         return Err("Eine postgresql:// oder postgres:// URL ist erforderlich".to_string());
     }
+    super::neon_websocket::target(&url)?;
     let role = proxy_user(&url);
     let mut tls = PgTls::default();
     let mut schema = None;
@@ -157,13 +156,18 @@ pub fn parse_pg_url(value: &str) -> Result<PgUrl, String> {
 
 pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, PgTls), String> {
     let resolved = super::cloud_auth::resolve(value)?;
+    let original = parse_pg_url(&resolved)?;
+    let parsed = match super::neon_websocket::rewrite_connection_url(&resolved)? {
+        Some(forwarded) => parse_pg_url(&forwarded)?,
+        None => original,
+    };
     let PgUrl {
         mut config,
         tls,
         schema,
         role,
         ..
-    } = parse_pg_url(&resolved)?;
+    } = parsed;
     config
         .ssl_mode(tls.mode.to_pg())
         .connect_timeout(super::execution::connection_duration());
@@ -187,6 +191,10 @@ pub fn parse_connection(value: &str, database: Option<&str>) -> Result<(Config, 
 
 pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String> {
     let parsed = parse_pg_url(value.trim())?;
+    let websocket = super::neon_websocket::target(
+        &url::Url::parse(value.trim()).map_err(|_| "Ungültige PostgreSQL-URL".to_string())?,
+    )?
+    .is_some();
     let host = match parsed.config.get_hosts().first() {
         Some(tokio_postgres::config::Host::Tcp(host)) => host.to_ascii_lowercase(),
         #[cfg(unix)]
@@ -196,9 +204,13 @@ pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String
     Ok(super::endpoint::EndpointIdentity {
         host: host.trim_matches(['[', ']']).to_string(),
         port: Some(parsed.config.get_ports().first().copied().unwrap_or(5432)),
-        transport: String::new(),
-        tls: parsed.tls.mode >= SslMode::Require,
-        verify: parsed.tls.mode >= SslMode::VerifyCa,
+        transport: if websocket {
+            "neon-ws".into()
+        } else {
+            String::new()
+        },
+        tls: websocket || parsed.tls.mode >= SslMode::Require,
+        verify: websocket || parsed.tls.mode >= SslMode::VerifyCa,
         database: parsed.config.get_dbname().unwrap_or_default().to_string(),
         schema: parsed.schema.unwrap_or_default(),
         user: parsed.config.get_user().unwrap_or_default().to_string(),

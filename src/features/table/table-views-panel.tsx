@@ -62,8 +62,8 @@ export function TableViewsPanel({
   const nextColor = VIEW_COLORS[savedViews.length % VIEW_COLORS.length];
 
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b bg-background px-3 py-1.5">
-      <div className="flex h-[max(1.875rem,calc(2rem+var(--ui-density-step)))] min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="flex min-w-0 flex-1 items-center gap-1">
+      <div className="flex min-h-7 min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <TableViewChip
           schema={schema}
           table={table}

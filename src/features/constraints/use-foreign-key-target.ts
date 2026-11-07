@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { columnTypeLabel } from "@/lib/column-type";
 import { useActiveConnection } from "@/lib/connections";
 import type { ColumnRef } from "@/lib/constraint-designer";
 import { listSchemas, listTableColumnsDetailed, listTables } from "@/lib/db";
@@ -65,10 +66,7 @@ export function useForeignKeyTarget({ schema, table, self }: ForeignKeyTargetOpt
     : table
       ? (columnsQuery.data?.map((c) => ({
           name: c.name,
-          data_type:
-            c.character_maximum_length !== null && !c.data_type.includes("(")
-              ? `${c.data_type}(${c.character_maximum_length})`
-              : c.data_type,
+          data_type: columnTypeLabel(c.data_type, c.character_maximum_length),
           is_primary_key: c.is_primary_key,
         })) ?? null)
       : null;

@@ -20,6 +20,11 @@ export function StepFlowFields({ step, onChange }: Props) {
   const successError = useFieldError("onSuccess");
   const failureError = useFieldError("onFailure");
   const timeoutError = useFieldError("timeoutSeconds");
+  const retryErrors: Record<string, string | null> = {
+    "retry.attempts": useFieldError("retry.attempts"),
+    "retry.delaySeconds": useFieldError("retry.delaySeconds"),
+    "retry.maxDelaySeconds": useFieldError("retry.maxDelaySeconds"),
+  };
   const isCondition = step.action.type === "condition";
   const retryable = step.action.type !== "fail" && !isCondition;
   const inherited = task.retry
@@ -80,6 +85,7 @@ export function StepFlowFields({ step, onChange }: Props) {
             value={step.retry}
             offLabel={inherited}
             onChange={(retry) => onChange({ ...step, retry })}
+            error={(field) => retryErrors[field] ?? null}
           />
         </FormRow>
       ) : (

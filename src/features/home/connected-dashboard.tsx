@@ -13,8 +13,10 @@ import { useHomeLayoutStore } from "@/lib/home-layout";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useRefreshConnection, useTablesQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
+import { HomeAtlas } from "./atlas/home-atlas";
 import { HomeAddWidgetMenu } from "./home-add-widget-menu";
 import { HomeGrid } from "./home-grid";
+import { InventoryLine } from "./inventory-line";
 
 export function ConnectedDashboard({ connection }: { connection: SavedConnection }) {
   const database = useActiveDatabase();
@@ -37,31 +39,39 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
   }
 
   return (
-    <main className="workspace-canvas flex-1 overflow-auto" data-tour="dashboard">
+    <main className="workspace-canvas relative isolate flex-1 overflow-auto" data-tour="dashboard">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-80 opacity-80 [background:radial-gradient(55%_100%_at_12%_0%,color-mix(in_oklch,var(--chart-1)_16%,transparent),transparent_70%),radial-gradient(45%_80%_at_62%_0%,color-mix(in_oklch,var(--chart-2)_11%,transparent),transparent_70%)]"
+      />
       <motion.div
         initial={reduce ? false : { opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mx-auto max-w-[1400px] px-6 py-8 lg:px-9"
+        className="@container/home relative isolate mx-auto max-w-[1440px] px-6 py-7 lg:px-9"
       >
-        <header className="mb-7 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="mb-3 flex items-center gap-2">
-              <span className="eyebrow">Arbeitsplatz</span>
+        <header className="mb-6 grid gap-x-6 gap-y-4 md:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="min-w-0">
+            <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+              <span className="eyebrow">{provider.name}</span>
               <span className="text-muted-foreground/40">/</span>
-              <span className="text-[11px] text-muted-foreground">{provider.name}</span>
+              <span className="max-w-72 truncate font-mono">{endpoint.host}</span>
+              <span className="text-muted-foreground/40">·</span>
+              <span>
+                {connection.ssh?.host ? "SSH-Tunnel · " : ""}TLS{" "}
+                {connection.sslMode === "disable" ? "deaktiviert" : connection.sslMode}
+              </span>
+              <AnimatedBadge
+                size="sm"
+                className="ml-1"
+                status={tables.isError ? "danger" : tables.isPending ? "loading" : "success"}
+              >
+                {tables.isError ? "Verbindung prüfen" : tables.isPending ? "Lädt" : "Verbunden"}
+              </AnimatedBadge>
             </div>
             <h1 className="text-3xl font-semibold tracking-[-0.045em]">{connection.name}</h1>
-            <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span className="font-mono">{database}</span>
-              {caps.schemas && (
-                <>
-                  <span className="size-1 rounded-full bg-border" />
-                  <span>Schema {schema}</span>
-                </>
-              )}
-              <span className="size-1 rounded-full bg-border" />
-              <span className="max-w-72 truncate">{endpoint.host}</span>
-            </p>
+            <div className="mt-2">
+              <InventoryLine database={database} schema={schema} />
+            </div>
           </div>
           <div className="flex items-center gap-2" data-tour="dashboard-actions">
             <DisconnectButton />
@@ -70,7 +80,15 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
               variant="outline"
               size="sm"
               aria-pressed={editing}
-              onClick={() => setEditing((current) => !current)}
+              onClick={() => {
+                setEditing(!editing);
+                if (!editing)
+                  requestAnimationFrame(() =>
+                    document
+                      .getElementById("home-pinboard")
+                      ?.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" }),
+                  );
+              }}
             >
               <SlidersHorizontal className="size-3.5" />
               Anpassen
@@ -91,51 +109,43 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
             </Button>
           </div>
         </header>
-        <div className="mb-6 flex items-center gap-3">
-          <AnimatedBadge
-            size="sm"
-            status={tables.isError ? "danger" : tables.isPending ? "loading" : "success"}
-          >
-            {tables.isError
-              ? "Verbindung prüfen"
-              : tables.isPending
-                ? "Objekte laden"
-                : "Daten geladen"}
-          </AnimatedBadge>
-          <span className="text-[11px] text-muted-foreground">
-            {connection.ssh?.host ? "SSH-Tunnel · " : ""}TLS{" "}
-            {connection.sslMode === "disable" ? "deaktiviert" : connection.sslMode}
-          </span>
-        </div>
-        {editing && (
-          <section
-            aria-label="Startseite anpassen"
-            className="sticky top-3 z-20 mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-popover px-4 py-2.5 shadow-sm"
-          >
-            <p className="text-xs text-muted-foreground">
-              Widgets ziehen, an der Ecke in der Größe ändern oder entfernen.
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={!customized}
-                onClick={() => {
-                  if (window.confirm("Startseite dieser Verbindung auf den Standard zurücksetzen?"))
-                    resetLayout(connection.id);
-                }}
-              >
-                Zurücksetzen
-              </Button>
-              <HomeAddWidgetMenu connectionId={connection.id} />
-              <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
-                <Check className="size-3.5" />
-                Fertig
-              </Button>
-            </div>
-          </section>
-        )}
-        <HomeGrid connectionId={connection.id} editing={editing} />
+        <HomeAtlas connection={connection} />
+        <section aria-labelledby="home-pinboard" className="mt-12">
+          <h2 id="home-pinboard" className="eyebrow mb-3">
+            Pinnwand
+          </h2>
+          {editing && (
+            <section
+              aria-label="Pinnwand anpassen"
+              className="sticky top-3 z-20 mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-popover px-4 py-2.5 shadow-sm"
+            >
+              <p className="text-xs text-muted-foreground">
+                Widgets ziehen, an der Ecke in der Größe ändern oder entfernen.
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!customized}
+                  onClick={() => {
+                    if (
+                      window.confirm("Alle Widgets von der Pinnwand dieser Verbindung entfernen?")
+                    )
+                      resetLayout(connection.id);
+                  }}
+                >
+                  Leeren
+                </Button>
+                <HomeAddWidgetMenu connectionId={connection.id} />
+                <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
+                  <Check className="size-3.5" />
+                  Fertig
+                </Button>
+              </div>
+            </section>
+          )}
+          <HomeGrid connectionId={connection.id} editing={editing} />
+        </section>
       </motion.div>
     </main>
   );

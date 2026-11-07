@@ -7,6 +7,7 @@ import { s3CreateFolder, s3RenameObject } from "@/lib/db";
 import { useTableScrollState } from "@/lib/hooks/use-table-scroll-state";
 import { setBucketDropHandler } from "@/lib/storage/drop-target";
 import { basename, parentPrefix } from "@/lib/storage/s3";
+import { runStorageJob, withOverwritePrompt } from "@/lib/storage/transfers";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { CopyMoveDialog } from "./copy-move-dialog";
 import { DeleteObjectsDialog } from "./delete-objects-dialog";
@@ -202,6 +203,8 @@ export function ObjectBrowser({
               mode={mode}
               selected={selected}
               readOnly={actions.readOnly}
+              filtered={needle !== "" && mode !== "search"}
+              scrollRef={scrollRef}
               onSelect={select}
               onToggle={(row) =>
                 setSelected((current) => {
@@ -277,7 +280,18 @@ export function ObjectBrowser({
         onOpenChange={(open) => !open && setRenameRow(null)}
         onSubmit={async (value) => {
           if (!renameRow) return;
-          const outcome = await s3RenameObject(actions.url, bucket, renameRow.key, value.trim());
+          const outcome = await runStorageJob(
+            actions.connection,
+            bucket,
+            `Umbenennen · ${basename(renameRow.key)}`,
+            (jobId) =>
+              withOverwritePrompt((overwrite) =>
+                s3RenameObject(actions.url, bucket, renameRow.key, value.trim(), {
+                  overwrite,
+                  jobId,
+                }),
+              ),
+          );
           await actions.refresh();
           if (outcome.errors.length) throw new Error(outcome.errors.join("\n"));
           toast.success(`${basename(renameRow.key)} umbenannt`);

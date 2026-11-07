@@ -1,3 +1,4 @@
+import type { DatabaseKind } from "@/lib/db";
 import type { BindParamOccurrence, BindParamRef } from "./types";
 
 const IDENT_START = /[A-Za-z_]/;
@@ -46,11 +47,11 @@ function skipSingleQuoted(sql: string, index: number, escapeString: boolean): nu
   return sql.length;
 }
 
-function skipDoubleQuoted(sql: string, index: number): number {
+function skipQuoted(sql: string, index: number, quote: string): number {
   let i = index + 1;
   while (i < sql.length) {
-    if (sql[i] === '"') {
-      if (sql[i + 1] === '"') {
+    if (sql[i] === quote) {
+      if (sql[i + 1] === quote) {
         i += 2;
         continue;
       }
@@ -78,12 +79,15 @@ function isEscapeStringStart(sql: string, index: number): boolean {
   return before === undefined || !IDENT_PART.test(before);
 }
 
-export function scanBindParams(sql: string): BindParamOccurrence[] {
+const BACKSLASH_KINDS: (DatabaseKind | undefined)[] = ["mysql", "clickhouse"];
+
+export function scanBindParams(sql: string, kind?: DatabaseKind): BindParamOccurrence[] {
   const found: BindParamOccurrence[] = [];
+  const backslash = BACKSLASH_KINDS.includes(kind);
   let i = 0;
   while (i < sql.length) {
     const c = sql[i];
-    if (c === "-" && sql[i + 1] === "-") {
+    if ((c === "-" && sql[i + 1] === "-") || (kind === "mysql" && c === "#")) {
       i = skipLineComment(sql, i);
       continue;
     }
@@ -92,11 +96,11 @@ export function scanBindParams(sql: string): BindParamOccurrence[] {
       continue;
     }
     if (c === "'") {
-      i = skipSingleQuoted(sql, i, isEscapeStringStart(sql, i));
+      i = skipSingleQuoted(sql, i, backslash || isEscapeStringStart(sql, i));
       continue;
     }
-    if (c === '"') {
-      i = skipDoubleQuoted(sql, i);
+    if (c === '"' || c === "`") {
+      i = skipQuoted(sql, i, c);
       continue;
     }
     if (c === "$") {
@@ -121,6 +125,10 @@ export function scanBindParams(sql: string): BindParamOccurrence[] {
         i += 2;
         continue;
       }
+      if (i > 0 && /[A-Za-z0-9_\]"`]/.test(sql[i - 1])) {
+        i += 1;
+        continue;
+      }
       let j = i + 1;
       if (j < sql.length && IDENT_START.test(sql[j])) {
         while (j < sql.length && IDENT_PART.test(sql[j])) j += 1;
@@ -136,8 +144,8 @@ export function scanBindParams(sql: string): BindParamOccurrence[] {
   return found;
 }
 
-export function detectBindParams(sql: string): BindParamRef[] {
-  const occurrences = scanBindParams(sql);
+export function detectBindParams(sql: string, kind?: DatabaseKind): BindParamRef[] {
+  const occurrences = scanBindParams(sql, kind);
   const positional = new Set<string>();
   const named: string[] = [];
   for (const occurrence of occurrences) {
@@ -156,6 +164,6 @@ export function detectBindParams(sql: string): BindParamRef[] {
   return [...positionalRefs, ...namedRefs];
 }
 
-export function editorBindParams(sql: string): BindParamRef[] {
-  return detectBindParams(sql).filter((ref) => !/^(new|old)$/i.test(ref.name));
+export function editorBindParams(sql: string, kind?: DatabaseKind): BindParamRef[] {
+  return detectBindParams(sql, kind).filter((ref) => !/^(new|old)$/i.test(ref.name));
 }

@@ -4,6 +4,23 @@
 
 A transfer runs in two steps. `plan_transfer` reads the source and returns a plan with DDL statements per phase, the table load order, column mappings, warnings and objects that need manual work. The UI shows the plan; `run_transfer` executes exactly this plan.
 
+## Selection and scope
+
+- **Schemas and tables.** Every checked schema has a table dropdown ("Tabellen" column). By default all tables are transferred; the dropdown (search, virtualized list, "Treffer wählen", "Alle", "Keine") narrows a schema to chosen tables (`SchemaPair.tables`, `None` = all). With a table selection only those tables move, together with their columns, keys, indexes, constraints, triggers, comments and grants. Foreign keys to tables that are not selected are dropped with a plan warning. Sequences, object types, functions, procedures and packages whose names appear in the DDL of the chosen tables and their parts (defaults, triggers, column types) are kept, transitively, so a trigger keeps the package it calls; views and unreferenced objects are not transferred. PostgreSQL partitions of a chosen partitioned table are added to the selection. Selected tables that no longer exist in the source are skipped with a warning; an empty selection is rejected.
+- **Scope ("Umfang", `PlanRequest.content`).** `all` (default) creates structure and loads data. `structure` runs only the DDL phases and opens no source reader. `data` loads into existing, empty target tables: the plan contains no DDL, fails when a target schema or table is missing, reads foreign keys to load parents first, keeps identity handling (identity columns of the Oracle target tables that are `GENERATED ALWAYS` are switched to `BY DEFAULT` for the load and restored with `START WITH LIMIT VALUE`; the target's own identity settings are kept) and sequence sync. Enabled Oracle triggers on the target tables are disabled for the load and re-enabled afterwards, so the copied rows are not changed again; other families keep their triggers active and the plan warns about it. Before writing, every target table is checked to be empty. On targets without transactional DDL (Oracle, MySQL, ClickHouse) a failure deletes the rows of already loaded tables in reverse load order and restores identity settings.
+- Overwrite (section 5) is only available for `all`/`structure` without a table selection.
+
+## Planning large databases
+
+Planning reads the source catalog once per schema instead of once per table:
+
+- **Oracle source:** one dedicated connection streams a handful of schema-wide dictionary queries (`ALL_TAB_COLS`, `ALL_CONSTRAINTS`/`ALL_CONS_COLUMNS`, `ALL_INDEXES`/`ALL_IND_COLUMNS`, foreign keys, and defaults only for mapped transfers, since `DATA_DEFAULT` is a `LONG` and prevents array fetches), 1,000 rows per round trip. Previously every table cost three to six dictionary queries.
+- **Other sources:** per-table catalog reads run with at most 8 in flight and without the duplicate constraint read.
+- Load order, table lookups, identity/materialized-view matching and conflict checks are linear (`load_order` is Kahn's algorithm with the previous tie-breaking).
+- A plan runs as a cancellable job; the UI cancels an abandoned plan when the selection changes.
+
+Measured with `transfer_live_oracle_plan_budget` on macOS 27.0, Apple M3 (8 cores, 16 GB), Oracle AI Database 26ai Free 23.26 in Docker (`gvenzl/oracle-free:23-slim`, arm64), debug build, 1,502 tables (each with primary key, foreign key, unique key, check and index): the old per-table read took 63.9–67.4 s; the complete plan now takes 0.23–0.33 s median and 2.0–3.2 s p95 (first, cold run) over five runs, a two-table selection 0.18–0.26 s, peak RSS +22–31 MiB, cancellation 32–101 ms (three test runs). The test also checks that the bulk reader returns exactly what the per-table reader returns. Other database families, Linux, Windows and release builds were not measured.
+
 ## 1. Type conventions
 
 There are two modes, chosen automatically:
@@ -47,7 +64,7 @@ Tables, columns, primary keys, unique constraints, indexes, foreign keys and sta
 
 Code objects (views, materialized views, functions, procedures, Oracle packages and package bodies, object types and type bodies, triggers, synonyms, MySQL events, SQL Server modules) are dialect code. They cannot be translated mechanically: PL/SQL packages have package state, overloading, `%TYPE`/`%ROWTYPE`, autonomous transactions and `DBMS_*` APIs that have no equivalent in T-SQL, PL/pgSQL or MySQL's procedure language.
 
-- **Native mode** transfers them in full: the catalog DDL is executed on the target in dependency order (types → sequences → tables → constraints → views (dependency-sorted) → package specifications → functions/procedures → package bodies/type bodies → triggers → comments). Oracle objects are compiled on creation; invalid objects are reported after the run through the existing invalid-object check. Grants are not transferred, because roles and users are server-level objects that usually differ between source and target.
+- **Native mode** transfers them in full: the catalog DDL is executed on the target in dependency order (types → sequences → tables → constraints → views (dependency-sorted) → package specifications → functions/procedures → package bodies/type bodies → triggers → comments). Oracle objects are compiled on creation; invalid objects are reported after the run through the existing invalid-object check. Grants are not transferred, because roles and users are server-level objects that usually differ between source and target. Exception: Oracle → Oracle transfers object grants as optional statements; a grant whose grantee does not exist in the target becomes a warning instead of failing the run (see section 5).
 - **Mapped mode** never executes source dialect code on the target. Every such object appears in the plan under "Manuell nachziehen" with its type, name, reason and source DDL, so it can be ported by hand (or with the SQL editor) after the transfer. Check constraints are also listed there; they are dialect expressions.
 - Oracle specifics: package specification and body are separate objects and created in that order. `ISEQ$$_` identity sequences are skipped, since identity columns recreate them. Synonyms pointing into other schemas are created as-is and may be invalid until those schemas exist.
 - PostgreSQL specifics: extensions are not installed. Objects that depend on an extension type fail in the plan preview and are reported. `OWNED BY` for sequences is restored.
@@ -64,7 +81,7 @@ The order follows what `pg_dump`/`pg_restore` do:
 
 Data path: the source is read in pages of 5,000 rows. PostgreSQL uses a server-side cursor (`DECLARE … NO SCROLL CURSOR`, `FETCH FORWARD`). Other sources use keyset pagination on a single-column primary key, and ordered `OFFSET` pages otherwise. Rows are written as multi-row INSERT batches through the shared import writer (`import::BatchWriter`: Oracle 100, SQL Server 500, ClickHouse 5,000, otherwise 1,000 rows or 2 MiB of SQL), with explicit identity values (`OVERRIDING SYSTEM VALUE` for PostgreSQL, `IDENTITY_INSERT` for SQL Server). No per-row round trip is made; a failing batch is replayed row by row only to name the exact failing row.
 
-What is deliberately not done: disabling constraints or triggers on existing objects (`session_replication_role`, `FOREIGN_KEY_CHECKS=0`, `NOCHECK`). These need elevated rights, and they leave the database without integrity checks if the run dies halfway. Because the transfer creates the constraints itself after the load, nothing needs to be disabled.
+What is deliberately not done: disabling constraints or triggers on existing objects (`session_replication_role`, `FOREIGN_KEY_CHECKS=0`, `NOCHECK`). These need elevated rights, and they leave the database without integrity checks if the run dies halfway. Because the transfer creates the constraints itself after the load, nothing needs to be disabled. Exception: "Nur Daten" into Oracle disables the enabled triggers of the target tables (`ALTER TRIGGER … DISABLE`, needs `ALTER ANY TRIGGER` for foreign schemas) and re-enables them at the end, also after a failed run; if the app process dies during the load, they stay disabled.
 
 ## 4. Consistency: never half a database
 
@@ -90,14 +107,14 @@ What is deliberately not done: disabling constraints or triggers on existing obj
 - target schemas exist or can be created
 - none of the planned tables, views, sequences or code objects already exists
 
-A conflict aborts with the list of conflicting names. The transfer never overwrites or merges into existing objects, and compensation only ever drops objects the same run created.
+A conflict aborts with the list of conflicting names. The transfer never overwrites or merges into existing objects, and compensation only ever drops objects the same run created. The only exception is the explicit overwrite mode for Oracle → Oracle (section 5).
 
 **Verification.** After the load, every target table is counted inside the target transaction (or right after its load, when there is no global transaction). The count must equal the number of rows read from the source snapshot, otherwise the run fails and rolls back. Foreign keys created in post-data validate referential integrity. The result lists rows per table, the atomicity mode used and any leftovers.
 
 ## Limits
 
 - Single statements are subject to the query timeout (at most 300 s). Very large index builds or foreign-key validations may need a higher timeout in the settings or a manual index build.
-- Oracle binary values above the SQL literal limit (2,000 bytes for `HEXTORAW`) and SQL Server rows above the batch literal size load slowly or fail. SQL Server batches are 500 rows.
+- Oracle binary values above the SQL literal limit (2,000 bytes for `HEXTORAW`) and SQL Server rows above the batch literal size load slowly or fail when Oracle is only one side of the transfer. SQL Server batches are 500 rows. Oracle → Oracle binds values and has no literal limit.
 - Views, materialized views and code objects in mapped mode are listed for manual porting and not translated.
 - Users, roles, grants, tablespaces, database links, jobs and server configuration are not transferred.
 
@@ -106,8 +123,32 @@ A conflict aborts with the list of conflicting names. The transfer never overwri
 `cargo test transfer` runs the unit tests plus live SQLite → DuckDB and SQLite rollback tests. The ignored live tests need throwaway databases, passed as env vars:
 
 - `L8DB_TR_PG_URL` (required for the matrix), `L8DB_TR_MYSQL_URL`, `L8DB_TR_ORACLE_URL`, `L8DB_TR_MSSQL_URL`
-- `L8DB_TR_ORACLE_SYSTEM_URL` for `transfer_live_oracle_native_packages` (creates and drops the users `TR_SRC` and `TR_DST`)
+- `L8DB_TR_ORACLE_SYSTEM_URL` for `transfer_live_oracle_native_packages` (creates and drops the users `TR_SRC` and `TR_DST`), `transfer_live_oracle_bulk_budget` (users `TR_PERF_SRC`/`TR_PERF_DST`, row count via `L8DB_TR_ORACLE_PERF_ROWS`, default 100,000) and `transfer_live_oracle_plan_budget` (users `TR_BIG_SRC`/`TR_BIG_DST`, table count via `L8DB_TR_ORACLE_PLAN_TABLES`, default 1,500; plan speed against the per-table path, equality of both readers, cancellation, memory, and "Nur Daten" with a table selection including failure cleanup)
 
 ```sh
 cargo test --lib transfer_live -- --ignored --test-threads=1
 ```
+
+`transfer_live_oracle_bulk_budget` copies 100,000 rows (`NUMBER`, `VARCHAR2`, `TIMESTAMP`, `TIMESTAMP WITH TIME ZONE`, `RAW`, every tenth row a 4 KB `CLOB`) Oracle → Oracle, cancels a first run after the first batch and checks the cleanup, then verifies content hashes of both sides. Budgets: at most rows / 500 + 1 array inserts (`V$SQL` executions), peak RSS growth below 64 MiB, batch p95 below 500 ms, more than 5,000 rows/s, cancellation below 2 s. Measured on macOS 27.0.1, Apple M3 (8 cores, 16 GB), Oracle AI Database 26ai Free 23.26.3 in Docker (`gvenzl/oracle-free:23-slim`, arm64), debug build, five runs: 3.7–5.1 s (19,400–27,300 rows/s), batch median 14–20 ms and p95 21–43 ms, 199 array inserts, peak RSS +12–17 MiB, cancellation reacted in about 20 ms and left nothing behind. The previous text path was not measured for comparison; Linux, Windows, release builds and other Oracle versions were not measured.
+
+`sqlite_to_duckdb_selected_tables_structure_then_data` covers table selection, "Nur Struktur" and "Nur Daten" locally. `tests/perf-transfer-selection.test.tsx` bounds the table dropdown (50,000 tables render 19 rows) and the catalog filter for a table selection (652,000 catalog objects in about 25–30 ms).
+
+The complete Oracle → Oracle path (every object type, every value, overwrite, failure cleanup, table selection with "Nur Struktur" followed by "Nur Daten") is covered end to end by `tests/oracle-transfer-browser.test.ts`, which drives the real UI against the Oracle lab (`bun run test:oracle-browser`).
+
+## 5. Oracle → Oracle
+
+Oracle → Oracle uses its own typed data path (`src-tauri/src/db/transfer_oracle.rs`) instead of the generic text reader and writer:
+
+- Values travel in their native binary form through array DML (`Batch`, 500 rows or 16 MiB per round trip). `NUMBER` is passed as Oracle's exact decimal text, `BINARY_FLOAT`/`BINARY_DOUBLE` keep NaN, ±Infinity and their extremes, `DATE`, `TIMESTAMP` and `INTERVAL` stay typed, `TIMESTAMP WITH TIME ZONE` keeps its region name (`TZR`), `BOOLEAN` stays boolean.
+- `CLOB`, `NCLOB`, `BLOB`, `LONG` and `LONG RAW` are copied in full without size limits. `XMLTYPE` goes through `XMLSERIALIZE`/`XMLPARSE`, `JSON` through `JSON_SERIALIZE`/`JSON()`.
+- User-defined object types, `VARRAY`s and nested tables are rebuilt attribute by attribute as instances of the target schema's types.
+- Each table is loaded in one transaction (autocommit off), counted, and committed only when the count matches. The source stays in one `SET TRANSACTION READ ONLY` snapshot for all tables.
+- Code objects are created in dependency order; one that only compiles once a later object exists (a view calling a function, a package body using a view) is kept and the target schemas are recompiled once at the end (`DBMS_UTILITY.COMPILE_SCHEMA`). Objects still invalid afterwards are reported as warnings, separately for objects that are invalid in the source as well.
+- Plans are rejected when a column has a type whose content cannot be copied faithfully (`BFILE`, `ANYDATA`/`ANYTYPE`/`ANYDATASET`, `VECTOR`, `MLSLABEL`, `REF`).
+
+Structure comes from the catalog as for every native transfer. Oracle → Oracle adds object grants (optional, see section 2), materialized view logs (created after the load, or before it when a fast-refreshable materialized view needs them), nested table storage clauses, invisible and virtual columns, deferrable and `NOVALIDATE`/`DISABLE` constraint states and disabled triggers. Materialized views are rebuilt by `BUILD IMMEDIATE` and not loaded row by row. Internal objects (nested table storage, `MLOG$_` tables, system constraints on hidden columns) are recreated by Oracle and skipped.
+
+**Overwrite ("Ziel vollständig überschreiben").** Off by default. When on, the plan lists every object of the target schemas that will be dropped, and the start button asks for the target schema name to be typed. The run then empties the target schemas (repeated drop passes until nothing droppable is left: tables with `CASCADE CONSTRAINTS PURGE`, types with `FORCE`, scheduler objects through `DBMS_SCHEDULER`), checks that the schema really is empty and only then creates and loads. Objects that cannot be dropped are reported as warnings. Only the confirmed list is dropped: if objects appeared in the target after planning, the run stops before deleting anything and asks for a new plan. Overwrite is refused for Oracle-maintained schemas (`ORACLE_MAINTAINED = 'Y'`), when objects of other schemas depend on the target (foreign keys into it, columns or types using its types), since dropping would change those schemas too (read from the `DBA_` views; without access to them the `ALL_` views only show dependents the target user can see), and when source and target are the same database (same `CON_DBID` and `DB_UNIQUE_NAME`) and a target schema is also a source schema, so a source can never be deleted by mistake. Oracle DDL cannot be rolled back: if the run fails after the target was emptied, compensation removes what the run created and the target schema stays empty; the previous content is gone.
+
+Limits: object attributes of type `NUMBER` inside user-defined types pass through the driver's number conversion; nested table elements are copied in order without gaps (deleted element positions are compacted). Database links, scheduler jobs, users, roles and tablespaces are not transferred.
+

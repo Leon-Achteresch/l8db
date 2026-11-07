@@ -1,8 +1,10 @@
 import { memo, useMemo } from "react";
 import { DataTableCellBadge } from "@/features/table/data-table-cell/data-table-cell-badge";
 import { useMasterDetail } from "@/lib/master-detail";
+import { useQueryQolSettings } from "@/lib/query-qol-settings";
 import { resultCellText } from "@/lib/result-grid";
 import { cellPreviewLimit, truncateCellPreview } from "@/lib/table-cell-preview";
+import { timestampCellText } from "@/lib/timestamp-display";
 import { cn } from "@/lib/utils";
 import { cellValueBadge } from "@/lib/value-viewers/detect";
 
@@ -16,6 +18,7 @@ type QueryResultCellProps = {
   active: boolean;
   fontSize: number;
   width: number;
+  gridColumn?: number;
   onInspect?: (column: string, value: unknown, row: number) => void;
 };
 
@@ -29,10 +32,12 @@ export const QueryResultCell = memo(function QueryResultCell({
   active,
   fontSize,
   width,
+  gridColumn,
   onInspect,
 }: QueryResultCellProps) {
   const isNull = value === null || value === undefined;
-  const text = resultCellText(value);
+  const timestamps = useQueryQolSettings((s) => s.timestamps);
+  const text = timestampCellText(value, timestamps) ?? resultCellText(value);
   const badge = useMemo(() => cellValueBadge(value), [value]);
   const display = isNull
     ? "NULL"
@@ -58,7 +63,9 @@ export const QueryResultCell = memo(function QueryResultCell({
         }
       }}
       data-col={column}
-      style={{ fontSize: `${fontSize}px` }}
+      role={gridColumn ? "cell" : undefined}
+      aria-colindex={gridColumn}
+      style={{ fontSize: `${fontSize}px`, gridColumn }}
       title={isNull ? undefined : onInspect ? display : text}
       className={cn(
         active && "ring-1 ring-inset ring-primary bg-primary/10",

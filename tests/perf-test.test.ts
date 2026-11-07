@@ -5,15 +5,15 @@ import {
   buildPerfTestSql,
   buildSavedPerfTest,
   defaultPerfFileName,
-  normalizeRepeats,
   isReadOnlyStatement,
-  parsePerfTestFile,
+  normalizeRepeats,
   PERF_FILE_KIND,
   PERF_FILE_VERSION,
   PERF_MAX_REPEATS,
-  perfRunAsSavedPlan,
   type PerfRun,
   type PerfTestDefinition,
+  parsePerfTestFile,
+  perfRunAsSavedPlan,
   runMetricsFromPlan,
   serializePerfTest,
   stripSqlNoise,
@@ -96,10 +96,7 @@ describe("buildPerfTestSql", () => {
 
   test("lässt LIMIT und Klauseln weg, wenn nichts gesetzt ist", () => {
     expect(
-      buildPerfTestSql(
-        { ...definition, filter: "  ", orderBy: "", limit: null },
-        "mysql",
-      ),
+      buildPerfTestSql({ ...definition, filter: "  ", orderBy: "", limit: null }, "mysql"),
     ).toBe("SELECT * FROM `public`.`kunde`");
   });
 });
@@ -238,10 +235,35 @@ describe("Freie Abfrage als Performance-Test", () => {
 
   test("lehnt schreibende oder mehrteilige Anweisungen ab", () => {
     expect(isReadOnlyStatement("delete from kunde")).toBe(false);
-    expect(isReadOnlyStatement("with t as (insert into k values (1) returning *) select * from t")).toBe(
-      false,
-    );
+    expect(
+      isReadOnlyStatement("with t as (insert into k values (1) returning *) select * from t"),
+    ).toBe(false);
     expect(isReadOnlyStatement("select 1; select 2")).toBe(false);
+    for (const sql of [
+      "SELECT pg_terminate_backend(123)",
+      "SELECT setval('s', 1)",
+      "SELECT nextval('s')",
+      "SELECT lo_unlink(1)",
+      "SELECT * INTO new_t FROM t",
+      "SELECT * FROM dblink('x', 'delete from t') AS t(a int)",
+    ])
+      expect(isReadOnlyStatement(sql)).toBe(false);
+    for (const sql of [
+      `SELECT "setval"('s', 1)`,
+      "SELECT pg_try_advisory_lock(1)",
+      "SELECT public.nextval('s')",
+    ])
+      expect(isReadOnlyStatement(sql)).toBe(false);
+    for (const sql of [
+      `SELECT "a'b", setval('s', 1), "c'd"`,
+      "SELECT `a'b`, setval(1), `c'd`",
+      "SELECT [a'b], setval(1), [c'd]",
+      "SELECT $$'$$, setval(1), $$'$$",
+      "SELECT E'\\'', setval(1), ''",
+    ])
+      expect(isReadOnlyStatement(sql)).toBe(false);
+    expect(isReadOnlyStatement("SELECT 'insert into' AS hint, 'it''s' FROM t")).toBe(true);
+    expect(isReadOnlyStatement("SELECT pg_stat_activity_count FROM stats")).toBe(true);
     expect(isReadOnlyStatement("   ")).toBe(false);
   });
 

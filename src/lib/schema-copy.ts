@@ -1,5 +1,5 @@
 import { listSchemas } from "@/lib/db";
-import { prepareConnection } from "@/lib/schema-compare/store";
+import { prepareConnection } from "@/lib/prepare-connection";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 export async function loadCopyTargetSchemas(

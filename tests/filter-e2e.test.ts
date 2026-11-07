@@ -137,7 +137,7 @@ test.skipIf(!process.env.L8DB_FILTER_E2E)(
 
       let fetch = await run("name = 'K7'");
       expect(fetch.error).toBeUndefined();
-      expect(fetch.sql).toContain(`"name"::text ILIKE 'K7' ESCAPE '!'`);
+      expect(fetch.sql).toContain(`"name" = 'K7'`);
       expect(fetch.rows).toBe(1);
       await page.getByText("k7", { exact: true }).waitFor();
       expect(await page.getByText("k70", { exact: true }).count()).toBe(0);

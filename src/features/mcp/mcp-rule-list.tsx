@@ -1,4 +1,6 @@
 import { Plus, Shield } from "lucide-react";
+import { useRef } from "react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { McpRuleItem } from "@/features/mcp/mcp-rule-item";
@@ -12,6 +14,8 @@ interface McpRuleListProps {
 }
 
 export function McpRuleList({ title, description, rules, onChange }: McpRuleListProps) {
+  const latest = useRef(rules);
+  latest.current = rules;
   const activeCount = rules.filter((r) => r.enabled).length;
 
   const setRule = (index: number, patch: Partial<RedactRule>) => {
@@ -19,7 +23,17 @@ export function McpRuleList({ title, description, rules, onChange }: McpRuleList
   };
 
   const removeRule = (index: number) => {
+    const removed = rules[index];
     onChange(rules.filter((_, i) => i !== index));
+    toast(`Regel „${removed.name}“ gelöscht`, {
+      action: {
+        label: "Rückgängig",
+        onClick: () => {
+          const current = latest.current;
+          onChange([...current.slice(0, index), removed, ...current.slice(index)]);
+        },
+      },
+    });
   };
 
   const addRule = () => {

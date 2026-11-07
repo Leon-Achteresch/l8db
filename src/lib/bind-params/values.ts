@@ -80,10 +80,6 @@ export function validateBindParams(
       if (!raw || Number.isNaN(Date.parse(raw))) {
         errors.push(`${ref.label}: Kein gültiger Zeitstempel.`);
       }
-      continue;
-    }
-    if (entry.type === "text" && entry.value.length === 0) {
-      errors.push(`${ref.label}: Wert fehlt.`);
     }
   }
   return errors;
@@ -94,12 +90,12 @@ export function buildParameterizedQuery(
   values: Record<string, BindParamValue | undefined>,
   kind?: DatabaseKind,
 ): ParameterizedQuery {
-  const refs = detectBindParams(sql);
+  const refs = detectBindParams(sql, kind);
   const order = new Map<string, number>();
   for (const [index, ref] of refs.entries()) {
     order.set(`${ref.named ? ":" : "$"}${ref.name}`, index + 1);
   }
-  const occurrences = scanBindParams(sql);
+  const occurrences = scanBindParams(sql, kind);
   let out = "";
   let cursor = 0;
   for (const occurrence of occurrences) {
@@ -163,7 +159,7 @@ export function inlineBindValues(
 ): string {
   let out = "";
   let cursor = 0;
-  for (const occurrence of scanBindParams(sql)) {
+  for (const occurrence of scanBindParams(sql, kind)) {
     out += sql.slice(cursor, occurrence.start);
     const literal = sqlLiteral(values[occurrence.name], kind);
     out += literal.startsWith("-") && out.endsWith("-") ? ` ${literal}` : literal;

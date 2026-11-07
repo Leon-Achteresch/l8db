@@ -1,0 +1,24 @@
+import { isProfileConnection } from "@/lib/connection-url/profile-pointer";
+import { type SavedConnection, useConnectionsStore, usesTunnel } from "@/lib/connections";
+import { ensurePassword } from "@/lib/password-prompt";
+import { ensureSshTunnel } from "@/lib/ssh";
+
+export async function prepareConnection(
+  id: string,
+  signal?: AbortSignal,
+): Promise<SavedConnection> {
+  const find = () => useConnectionsStore.getState().connections.find((entry) => entry.id === id);
+  if (!find()) throw new Error("Die Verbindung existiert nicht mehr.");
+  if (!(await ensurePassword(id, undefined, signal)))
+    throw new Error("Ohne Passwort kann nicht verbunden werden.");
+  const fresh = find();
+  if (fresh && isProfileConnection(fresh.kind) && usesTunnel(fresh))
+    throw new Error("Netzwerkzugang für diese Verbindung wird im Profil verwaltet.");
+  if (usesTunnel(fresh) && !fresh.tunnelPort) {
+    const outcome = await ensureSshTunnel(fresh);
+    if (!outcome.ok) throw new Error(outcome.error ?? "SSH-Tunnel konnte nicht geöffnet werden.");
+  }
+  const ready = find();
+  if (!ready) throw new Error("Die Verbindung existiert nicht mehr.");
+  return ready;
+}

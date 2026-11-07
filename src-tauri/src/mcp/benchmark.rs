@@ -18,7 +18,7 @@ const MAX_FILE_BYTES: u64 = 5 * 1024 * 1024;
 pub fn tool_definition() -> Value {
     json!({
         "name": "benchmark",
-        "description": "Time read-only statements (sql or a saved .l8perf.json/.l8workload.json file) with repeats and concurrency; returns min/median/p95/max ms and throughput per statement, no rows.",
+        "description": "Time read-only statements (sql or a .l8perf.json/.l8workload.json file) with repeats and concurrency: min/median/p95/max ms and throughput, no rows.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": server::database_arg(),

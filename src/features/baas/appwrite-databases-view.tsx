@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Database, RefreshCw, Table2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { appwriteHasMore, appwriteTotal } from "@/lib/appwrite-paging";
 import { appwriteDatabases, appwriteTables } from "@/lib/db";
 import { AppwriteColumnsView } from "./appwrite-columns-view";
 import { AppwriteRowsView } from "./appwrite-rows-view";
@@ -35,7 +36,7 @@ export function AppwriteDatabasesView({ id }: { id: string }) {
         <h3 className="text-sm font-semibold">TablesDB</h3>
         {databases.data && (
           <span className="ml-auto text-xs text-muted-foreground">
-            {databases.data.total} Datenbanken
+            {appwriteTotal(databases.data)} Datenbanken
           </span>
         )}
         <Button
@@ -75,8 +76,7 @@ export function AppwriteDatabasesView({ id }: { id: string }) {
               </button>
             ))}
           </div>
-          {databaseOffset > 0 ||
-          databaseOffset + databases.data.items.length < databases.data.total ? (
+          {databaseOffset > 0 || appwriteHasMore(databaseOffset, databases.data) ? (
             <div className="mt-3 flex items-center justify-end gap-2">
               <Button
                 variant="outline"
@@ -96,7 +96,7 @@ export function AppwriteDatabasesView({ id }: { id: string }) {
                 variant="outline"
                 size="icon-sm"
                 aria-label="Weitere Datenbanken"
-                disabled={databaseOffset + databases.data.items.length >= databases.data.total}
+                disabled={!appwriteHasMore(databaseOffset, databases.data)}
                 onClick={() => {
                   setDatabaseOffset((value) => value + 100);
                   setDatabaseId(null);
@@ -112,7 +112,7 @@ export function AppwriteDatabasesView({ id }: { id: string }) {
             <div className="flex items-center gap-2 text-xs font-medium">
               <Table2 className="size-3.5 text-muted-foreground" /> Tabellen in {selected?.name}
               {tables.data && (
-                <span className="ml-auto text-muted-foreground">{tables.data.total}</span>
+                <span className="ml-auto text-muted-foreground">{appwriteTotal(tables.data)}</span>
               )}
             </div>
             {tables.isPending ? (
@@ -141,35 +141,34 @@ export function AppwriteDatabasesView({ id }: { id: string }) {
                 ))}
               </div>
             )}
-            {tables.data &&
-              (tableOffset > 0 || tableOffset + tables.data.items.length < tables.data.total) && (
-                <div className="mt-3 flex items-center justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    aria-label="Vorherige Tabellen"
-                    disabled={tableOffset === 0}
-                    onClick={() => {
-                      setTableOffset((value) => Math.max(0, value - 100));
-                      setTableId(null);
-                    }}
-                  >
-                    <ChevronLeft className="size-3.5" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    aria-label="Weitere Tabellen"
-                    disabled={tableOffset + tables.data.items.length >= tables.data.total}
-                    onClick={() => {
-                      setTableOffset((value) => value + 100);
-                      setTableId(null);
-                    }}
-                  >
-                    <ChevronRight className="size-3.5" />
-                  </Button>
-                </div>
-              )}
+            {tables.data && (tableOffset > 0 || appwriteHasMore(tableOffset, tables.data)) && (
+              <div className="mt-3 flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Vorherige Tabellen"
+                  disabled={tableOffset === 0}
+                  onClick={() => {
+                    setTableOffset((value) => Math.max(0, value - 100));
+                    setTableId(null);
+                  }}
+                >
+                  <ChevronLeft className="size-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Weitere Tabellen"
+                  disabled={!appwriteHasMore(tableOffset, tables.data)}
+                  onClick={() => {
+                    setTableOffset((value) => value + 100);
+                    setTableId(null);
+                  }}
+                >
+                  <ChevronRight className="size-3.5" />
+                </Button>
+              </div>
+            )}
             {selected && selectedTable && (
               <div key={`${selected.id}:${selectedTable.id}`}>
                 <AppwriteColumnsView id={id} databaseId={selected.id} tableId={selectedTable.id} />

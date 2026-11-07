@@ -17,6 +17,7 @@ type QueryResultRowProps = {
   fontSize: number;
   columnScale: number;
   columnWindow: ColumnWindowItem[];
+  gridLayout: boolean;
   columns: string[];
   onInspect?: (column: string, value: unknown, row: number) => void;
   measureElement?: (element: HTMLTableRowElement | null) => void;
@@ -35,6 +36,7 @@ export const QueryResultRow = memo(function QueryResultRow({
   fontSize,
   columnScale,
   columnWindow,
+  gridLayout,
   columns,
   onInspect,
   measureElement,
@@ -42,6 +44,7 @@ export const QueryResultRow = memo(function QueryResultRow({
   return (
     <tr
       ref={measureElement}
+      role={gridLayout ? "row" : undefined}
       data-index={rowIdx}
       data-marked={isMarked || undefined}
       style={{
@@ -56,7 +59,12 @@ export const QueryResultRow = memo(function QueryResultRow({
             : "bg-background hover:bg-muted/50",
       )}
     >
-      <td className="sticky left-0 z-10 border-b border-r bg-inherit p-0 text-right font-mono text-xs text-muted-foreground">
+      <td
+        role={gridLayout ? "cell" : undefined}
+        aria-colindex={gridLayout ? 1 : undefined}
+        style={gridLayout ? { gridColumn: 1 } : undefined}
+        className="sticky left-0 z-10 border-b border-r bg-inherit p-0 text-right font-mono text-xs text-muted-foreground"
+      >
         <button
           type="button"
           aria-label={`Zeile ${rowIdx + 1} markieren`}
@@ -75,19 +83,11 @@ export const QueryResultRow = memo(function QueryResultRow({
         </button>
       </td>
       {columnWindow.map((item) => {
-        if (item.spacer)
-          return (
-            <td
-              key={`gap-${item.index}`}
-              aria-hidden
-              colSpan={item.span}
-              style={{ width: item.width, padding: 0 }}
-            />
-          );
         const col = columns[item.index - 1];
         return (
           <QueryResultCell
-            key={`col-${item.index}`}
+            key={gridLayout ? item.key : `col-${item.index}`}
+            gridColumn={gridLayout ? item.index + 1 : undefined}
             column={col}
             value={row[col]}
             row={row}

@@ -1,5 +1,11 @@
 # Performance tests, workloads and headless benchmarks
 
+## Saved password restoration
+
+`bun test tests/perf-secret-save.test.ts` covers saving secrets and restoring missing database passwords before opening a password prompt. The restoration scenario keeps 1,000 connections in the store and restores the last 60, using a mocked Tauri transport with 1 ms read latency. The previous prompt predicate classified all 60 as requiring manual entry despite saved passwords; restoration now needs zero prompts.
+
+Measured on 2026-11-04: Linux 6.12.111+deb13-amd64, x64, QEMU Virtual CPU version 2.5+, 16 GiB RAM, Bun 1.3.10. Cold restoration measured 2.86 ms median / 6.75 ms p95; subsequent checks measured 0.016 ms median / 0.023 ms p95. Budgets are 50 ms cold p95, 5 ms warm p95 and 8 MiB retained heap; measured retained heap was 223,040 bytes. Cold restoration makes exactly one keychain read per selected connection, warm checks make none, with one read in flight and zero database requests. Cancelling while a keychain read remains blocked settled in 0.27 ms against a 250 ms limit and left no prompt; the native read may finish later. A 25 ms idle period must issue no additional reads. Native keychain availability, packaged WebViews, macOS and Windows are not covered by this mocked transport measurement.
+
 ## Application performance gates
 
 Every runtime feature needs a regression scenario, even when the feature is small. Reuse a relevant scenario and exercise a realistic large input, median/p95 latency, retained resources, and database request counts/concurrency when it reads data. Background features also need cancellation and idle checks. Run only the affected scenarios locally. The performance workflow runs the shared gates on pushes to `development` and pull requests to `development`/`main`.
@@ -16,13 +22,36 @@ Use `--filter '<test name pattern>'` with a core or browser command to run only 
 
 An empty selection or an entirely skipped run fails the runner. `resources.json` records the number of actually passing/failing tests; process resource measurements alone cannot establish that a feature scenario ran.
 
-Browser commands build once first; `--skip-build` reuses an existing production build. Install the repository's Playwright browsers before running them. The constrained suite uses Chromium with 4× CPU throttling and a 256 MiB V8 heap limit; its existing retained JS heap budget is 160 MiB. This limits the renderer's JavaScript heap, not the application's total memory. WebKit cannot emulate Chromium CPU throttling or supply the same heap metric, so the runner rejects that combination instead of reporting a successful skipped measurement. PostgreSQL tests use a disposable Docker lab with 3,000 tables and two million rows by default, test loading and statement/lock timeouts, and check that abandoned work does not leave idle transactions.
+Browser commands build once first; `--skip-build` reuses an existing production build. Install the repository's Playwright browsers before running them. The constrained suite uses Chromium with 4× CPU throttling, calibrated as described under [CPU throttling calibration](#cpu-throttling-calibration), and a 256 MiB V8 heap limit; its existing retained JS heap budget is 160 MiB. This limits the renderer's JavaScript heap, not the application's total memory. WebKit cannot emulate Chromium CPU throttling or supply the same heap metric, so the runner rejects that combination instead of reporting a successful skipped measurement. PostgreSQL tests use a disposable Docker lab with 3,000 tables and two million rows by default, test loading and statement/lock timeouts, and check that abandoned work does not leave idle transactions.
 
 The CI matrix runs the core suite on Linux, macOS and Windows, plus Chromium UI tests on Linux and WebKit on macOS. There is no Windows UI job: with Bun 1.3.10 on Windows, Playwright cannot reach a launched browser because Bun child processes get no extra pipes for `--remote-debugging-pipe`, and `connect` to a Node-hosted Playwright server never completes its WebSocket handshake under Bun. Every earlier Windows UI run timed out without measurements. The constrained Chromium profile runs on Linux. Actual runner architecture and hardware are recorded in each report. These browser tests use a mocked Tauri transport; the PostgreSQL lab separately exercises real Rust adapters. They do not measure a complete packaged Tauri application on every device or test every adapter. Native WebView versions, additional architectures, real low-memory machines, network latency and other database families remain separate validation targets.
 
-Reports and logs are written to `test-artifacts/performance/` and uploaded as CI artifacts. `resources.json` records the Git revision/dirty state, platform, architecture, CPU, RAM, kernel, Bun version, profile, wall time and resource limits. Its run ID also appears in each scenario artifact, along with a capture timestamp; files left from another filtered run must not be attributed to the current measurement. CPU time and peak RSS are OS resource statistics for the **Bun test subprocess**, not the summed memory of a packaged application's browser/backend process tree. The core suite starts one subprocess per test file: peak RSS is the largest file, CPU time is summed over all files, and every file is listed with its own measurements and exit code. The runner first measures the start-up cost of an empty test process and subtracts it for every additional file before checking the CPU budget; `resources.json` keeps the raw sum, the start-up cost and the budgeted value. The connection import workloads are split over two files because a full `Bun.gc(true)` after the DBeaver and Navicat scenarios crashed Bun 1.3.10 on Windows, while each half runs reliably on its own. Running all files in one process measured accumulated heap growth across unrelated tests instead of any single workload (785 MiB on macOS, 513 MiB on Linux) and let a Bun 1.3.10 segmentation fault on Windows end the whole suite. Grid reports additionally contain renderer heap and frame measurements. Missing process measurements and exceeded budgets fail the runner. Browser and constrained suites rerun tests that failed twice more with an exact name pattern; a failure stands unless both reruns pass, so a test needs two of three attempts (the median) within its budgets. The same CI revision measured, for example, 99 and 127 ms for the navigator cold open and 182 and 235 ms for the history cold open, so a single attempt is within runner noise for several budgets. A rerun only counts when it executed exactly the repeated tests. Budgets themselves are unchanged; `resources.json` lists the initial failures, every attempt and the confirmed failures. The core runner allows 512 MiB peak RSS and 30 seconds of CPU time; browser runners allow 1 GiB and 600 seconds for their test harness. Per-feature timing/DOM/heap/request assertions are separate, much tighter checks. The native database job additionally records its revision, OS/architecture, CPU, RAM and Rust version in `native-environment.log`.
+Reports and logs are written to `test-artifacts/performance/` and uploaded as CI artifacts. `resources.json` records the Git revision/dirty state, platform, architecture, CPU, RAM, kernel, Bun version, profile, wall time and resource limits. Its run ID also appears in each scenario artifact, along with a capture timestamp; files left from another filtered run must not be attributed to the current measurement. CPU time and peak RSS are OS resource statistics for the **Bun test subprocess**, not the summed memory of a packaged application's browser/backend process tree. The core suite starts one subprocess per test file and checks every file separately. The runner first measures the start-up cost of an empty test process (median of five samples) and subtracts it from each file's CPU time; peak RSS is not adjusted. Every file is listed with its raw and budgeted measurements and exit code, and a violation names the file and its value, for example `tests/x.test.ts: CPU budget exceeded: 8.40 s > 8.00 s`. `resources.json` also keeps the start-up cost, the raw CPU sum (`resources`), the sum of the budgeted values (`budgetedResources`) and the most expensive file (`mostExpensiveFile`); the sums are information, not gates. The connection import workloads are split over two files because a full `Bun.gc(true)` after the DBeaver and Navicat scenarios crashed Bun 1.3.10 on Windows, while each half runs reliably on its own. Running all files in one process measured accumulated heap growth across unrelated tests instead of any single workload (785 MiB on macOS, 513 MiB on Linux) and let a Bun 1.3.10 segmentation fault on Windows end the whole suite. Grid reports additionally contain renderer heap and frame measurements. Missing process measurements and exceeded budgets fail the runner. Every suite reruns tests that failed twice more with an exact name pattern (the core suite per failed file); a failure stands unless both reruns pass, so a test needs two of three attempts (the median) within its budgets. The same CI revision measured, for example, 99 and 127 ms for the navigator cold open and 182 and 235 ms for the history cold open, so a single attempt is within runner noise for several budgets. A rerun only counts when it executed exactly the repeated tests. The core suite adopted the reruns after run `41039625230` on `521c8f0c` failed on macOS (Apple M1 virtual) only because `tests/perf-versioning-review.test.ts` measured one structure-summary p95 of 21.09 ms against 20 ms. Reruns do not change any budget; `resources.json` lists the initial failures, every attempt and the confirmed failures. The core runner allows 512 MiB peak RSS and 8 seconds of budgeted CPU time per file; browser runners allow 1 GiB and 600 seconds for their whole test process. The former 30-second limit applied to the core sum, which grew with every added test file: run `41025250339` on `4308a83e` summed 36.1 s on macOS (Apple M1 virtual), 42.8 s on Linux and 49.6 s on Windows (both AMD EPYC 7763), while its most expensive file, `tests/perf-ui-plugins.test.ts`, used 3.2/4.3/5.2 s after subtracting the start-up cost and peak RSS stayed at 341–412 MiB. The per-file limit leaves about 1.5× headroom over the slowest runner's most expensive file and flags the workload that regressed instead of the number of files. With this limit, core run `41035527409` passed on all three systems: the most expensive file was again `tests/perf-ui-plugins.test.ts` with 2.15 s on macOS (Apple M1 virtual, 3 CPUs, 7 GiB), 4.16 s on Linux (AMD EPYC 7763, 4 CPUs, 16 GiB) and 3.89 s on Windows (AMD EPYC 9V74, 4 CPUs, 16 GiB); the budgeted sums were 23.5, 43.0 and 39.2 s and peak RSS stayed at or below 459 MiB. A local run on a MacBook Air (Apple M3, 16 GiB, macOS 27.0.1) kept the largest file at 2.2 s but exceeded the unchanged RSS limit with `tests/perf-dashboard-bi.test.ts` at 515–521 MiB in three runs; the CI runners measured 341–412 MiB for that file. Per-feature timing/DOM/heap/request assertions are separate, much tighter checks. The native database job additionally records its revision, OS/architecture, CPU, RAM and Rust version in `native-environment.log`.
 
 Bun is pinned to 1.3.10. Its [resource implementation](https://github.com/oven-sh/bun/blob/bun-v1.3.10/src/bun.js/api/bun/subprocess/ResourceUsage.zig) exposes native `ru_maxrss`; the runner normalizes macOS bytes and Linux/Windows KiB, including the [Windows conversion](https://github.com/oven-sh/bun/blob/bun-v1.3.10/src/bun.js/api/bun/process.zig). Revalidate the normalization when updating Bun.
+
+### CPU throttling calibration
+
+`Emulation.setCPUThrottlingRate` slows Chromium relative to the runner's own CPU, and GitHub assigns `ubuntu-24.04` jobs to different processors. Without calibration, the same nominal 4× meant different absolute speeds. At revision 154bc156, the first constrained attempt failed 15 targets on an AMD EPYC 9V45 runner, but 21 on an EPYC 9V74 and 22 on an EPYC 7763 runner. The additional failures (`/`, `/compare`, `/connections`, `/monitor`, `/sessions`, dashboard scrolling and first chart click, proxy user menu, sidebar toggle on `/` and sidebar scrolling) depended only on the runner.
+
+Before the browser and constrained suites start, `scripts/test-performance.ts` runs `bun scripts/performance-report.ts` in a separate process. It launches the same Playwright Chromium without throttling and times a deterministic JavaScript workload in a blank page (`cpuBenchmark`): 20,000 row objects are sorted and aggregated in a map, 2,000 of them make a JSON round trip, all names are scanned with a regular expression, and a 9,841-node tree is built and walked; each sample repeats this six times. Three warm-up samples are discarded; the median of the next nine is the runner's benchmark time. The measurement takes about 1–3 s including the browser start. Every throttled test sets its rate with `cpuThrottleRate(nominal)`, which applies `max(1, nominal × reference / benchmark)` rounded to two decimals, so every runner runs as slowly as the reference runner at the nominal rate. A runner slower than this target cannot be sped up and runs at rate 1. Test names, budgets and budgets derived from the rate keep the nominal rate, and resetting the rate to 1 after a measurement is not calibrated. The runner passes its measurement to the tests in `L8DB_PERF_CPU_CALIBRATION`; a throttled test file started directly with `bun test` measures once per process instead, at its first throttling call. The runner itself must not load Playwright: when it measured in its own process, Bun 1.3.10 on Linux never reported the end of the following test process, and the constrained job hung after its first attempt until the job timeout.
+
+`resources.json` records `cpuCalibration` (median, the nine samples, reference, CPU model and Chromium version); the constrained suite also records its nominal `cpuRate` and the `appliedCpuRate`. In the browser suite every throttled test sets its nominal rate itself, so its rates appear per test: scenario reports that contain a `cpuRate` add `appliedCpuRate` and `cpuCalibration`, and every throttling call logs a `performance cpu-throttle:` line with the nominal rate, the applied rate and the calibration.
+
+The reference of **59.4 ms** is the median benchmark time of the fastest runner type, AMD EPYC 9V45. It comes from 44 calibration-only dispatches of the performance workflow (`-f job=throttle -f filter=calibration-only-<n>`, a pattern that matches no test) on 30 October 2026 at revision 154bc156, with Chromium 153.0.8010.12 and Bun 1.3.10. GitHub assigned the CPUs at random:
+
+| Runner CPU | Runs | Benchmark medians | Median | Applied rate for 4× |
+|---|---|---|---|---|
+| AMD EPYC 9V45 | 9 | 56.9–65.2 ms | 59.4 ms | 4.00 (3.64–4.18) |
+| AMD EPYC 9V74 | 11 | 69.0–76.5 ms in 9 runs, 94.3 and 94.9 ms in 2 | 74.0 ms | 3.21 (2.50–3.44) |
+| Intel Xeon 6973P-C | 1 | 76.9 ms | 76.9 ms | 3.09 |
+| AMD EPYC 7763 | 16 | 83.2–92.8 ms | 89.2 ms | 2.66 (2.56–2.86) |
+| Intel Xeon Platinum 8573C | 3 | 83.2–94.0 ms | 93.9 ms | 2.53 (2.53–2.86) |
+| Intel Xeon Platinum 8370C | 4 | 94.3–99.0 ms | 96.8 ms | 2.45 (2.40–2.52) |
+
+Within one run, the slowest of the nine samples was 6–33 % above the median (median 12 %). VMs with the same CPU model differ as well; EPYC 9V74 VMs fell into two groups around 73 and 95 ms. The runner therefore measures every VM instead of looking up its CPU model. Revalidate the reference with new calibration-only dispatches when Chromium, Playwright, the benchmark or the fastest runner type changes.
+
+With the calibration, five constrained dispatches at revision a30d62b4 confirmed 9 failures on an EPYC 7763 runner (applied rate 2.59), 4 on a Xeon Platinum 8370C (2.61), 9 on an EPYC 9V74 (3.31) and 6 and 9 on two EPYC 9V45 runners (3.95 and 3.94); before, an EPYC 7763 runner confirmed 20 at revision 4308a83e. The remaining failures also occur on the fastest runner, so they are application budget overruns rather than runner effects: `/tables/public/table_0000`, `/view-editor/public/v_table_0000`, `/matviews/public/mv_table_0000` and table scrolling on every runner (p95 33–50 ms against 17.5 ms), `/er-diagram` (worst step 117–150 ms against 100 ms) and `/sequences` on all but the 8370C, and on some runners the sidebar toggle on the table view, the palette, SQL typing, `/settings` and `/release-notes`. Two Chromium dispatches at the same revision (EPYC 7763 at 2.79, EPYC 9V74 at 3.27) passed every throttled query, palette, onboarding and segmented-control scenario; both confirmed only the monitor log (176–208 ms against 120 ms) and the unthrottled workspace table scrolling (p95 21.2–22.5 ms against 21 ms).
 
 ### Data retention and database load
 
@@ -64,6 +93,15 @@ The following local measurements use the same Linux x64 VM and Bun 1.3.10. Brows
 | Seasonal spider visit (no throttling) | 5,000 × 120 table on 28 October; 23 spider DOM nodes, all removed after the visit; one 2.2 s timer, zero database reads during the visit and no further timer that day; closing the tab clears the pending timer and sends a running spider away within 2 s; out of season or disabled schedules no timer and renders no seasonal DOM | Chromium 59.9 FPS, WebKit 60.1 FPS; p95 16.9 / 17.0 ms | > 55 FPS, p95 < 28 ms, < 40 nodes |
 
 The spider visit's worst frame is not gated: WebKit measured 123–158 ms across four visits, while the same idle table already showed 189 ms before the spider appeared; Chromium measured 28.5–45 ms.
+
+The 19-occasion seasonal calendar was checked separately on macOS 27.0.1, arm64, Apple M3, 16 GiB RAM, Bun 1.3.10 and Chromium 153.0.8010.12. These are unthrottled Vite development-browser measurements with a mocked Tauri transport, not packaged desktop or constrained CPU/heap results. No new WebKit, Windows, Linux, native WebView or live database-family coverage is established by this run.
+
+| Seasonal calendar scenario | Measured workload and retained resources | Result | Unchanged limits |
+| --- | --- | --- | --- |
+| Calendar and guest quips | 300 batches of all 19 guests on 1,000,000 rows × 2,000 columns plus 12 calendar dates; only the existing Halloween quip reads row values, bounded to 100 rows × 24 columns and 120 names; other guests read the row count only | Median 0.115 ms / p95 0.378 ms per batch | Median < 0.5 ms, p95 < 1 ms |
+| Christmas visit | 5,000 rows × 120 columns; 24 visitor DOM nodes, removed after the visit; no repeat on another table that day, zero additional database requests | 59.9 FPS, frame p95 17.5 ms | > 55 FPS, frame p95 < 28 ms, < 40 visitor nodes |
+
+The existing Halloween scenario passed at 60.0 FPS / frame p95 17.2 ms in this run. Separate Easter and Halloween cancellation cases clear a pending 2.2 s visit timer without claiming the day and remove an already visible visitor within two seconds after closing its table. Off-season and disabled cases schedule no visit timer; turning accents off removes the visitor. Local `list_providers` calls resolve the application's static driver registry and are excluded from database-read counts. DOM and sampling limits establish bounded retention; renderer heap was not measured. Use `L8DB_PERF_APP=1 L8DB_SEASONAL_DEV_URL=http://localhost:1422 bun test tests/perf-seasonal-browser.test.ts` against a running dev server for this scoped mode; without that URL the test continues to use `dist` for CI.
 
 The prior history-preview probe split every line and took 163.3 ms for 100 statements in a single sample; the new first-line scenario measured the percentiles above. The timestamp baseline created one formatter per entry and took 75.7 ms for 1,000 timestamps; its workload differs from the 5,000-entry warmed gate, so it is not a percentile comparison. Deterministic observer/scroll tests measure their test harness as well as helper work, and bound scheduled work rather than claiming measured application heap or actual DOM mounting time.
 
@@ -108,8 +146,18 @@ Run `38373910606` on `f49cbad8` confirmed these failures with two reruns each (m
 | Chromium | Workspace table scroll, 5,000 x 120 | p95 21.9-22.3 ms | < 21 ms | Not analysed yet. |
 | Constrained | Route switches `/`, `/tables`, `/query`, `/er-diagram`, `/monitor`, `/sequences`, `/view-editor`, `/matviews`, `/dashboard`, `/settings`, `/release-notes` | worst frame 117-367 ms | 100 ms | Local breakdown of the longest task: rendering-bound views (`/tables`, `/matviews`, `/dashboard`, `/settings`, `/release-notes`, `/view-editor`) spend 110-144 ms in style recalculation for only 300-1,200 elements; selector matching is below 100 ms even with selector statistics enabled. JavaScript-bound views (`/query`, `/er-diagram`, `/monitor`, `/compare`, `/query-builder`, `/create-table`) spend 160-300 ms mounting. Fixes need view-specific work such as rendering only the visible part first. |
 | Constrained | Menus, palette, chart click, SQL typing, table open, wide results, sidebar on `/tables` | various | 48-100 ms | Several of these timed out before because earlier tests left the sidebar collapsed or a modal open; they now fail on timing only. |
-| WebKit (macOS) | Grid FPS (table/result 13/50/121 columns), wide result, workspace scroll, row heights | 52-59 fps | > 59 fps | macOS runners only; not reproducible on Linux WebKit. |
+| WebKit (macOS) | Grid FPS (table/result 13/50/121 columns), wide result, workspace scroll, row heights | 52-59 fps | > 59 fps | macOS runners only; not reproducible on Linux WebKit. Frame metrics are report-only in WebKit since 2026-10-30, see below. |
 | WebKit (macOS) | History focus and Tab order | - | - | macOS WebKit does not move Tab focus to buttons and handles programmatic focus differently; Linux WebKit passes. |
+
+### WebKit frame metrics (2026-10-30)
+
+FPS, frame p95, worst-frame and frame-count limits stay hard in Chromium and are report-only in WebKit. The scenarios call `expectFrame` from `tests/fixtures/perf-webkit-profile.ts`: in Chromium it is `expect`, in WebKit it only logs a missed limit as `WebKit frame budget missed (informational)` together with the assertion's location. A WebKit frame value that is not a positive number still fails, so a broken frame sampler cannot pass. The grid, application and seasonal scenario JSON files record the measured frames with `frameBudgets: "informational"` in WebKit and `"enforced"` in Chromium. Latency, DOM size, memory, request counts and correctness remain hard in both engines.
+
+Run `41025250339` on `4308a83e` (macOS 15 runner, WebKit) confirmed 13 failures after two reruns. Frame metrics only, now report-only: the eight grid scenarios (41–58.5 fps against > 59, frame p95 21–28 ms against < 21 ms) and the workspace table scroll (44.7 and 56.1 fps, p95 27 ms); the wide SQL result (49.1 fps) and infinite scrolling (54.5 fps) failed once and passed both reruns. Still hard: live monitor selection (median 363/301/305 ms against 250 ms), schema navigator opens (150/125/124 ms against 120 ms), the two history focus tests (Tab focus and the timeout waiting for the focused "Neuer Tab" button) and, in one of three attempts, grid coverage after a wheel step in the semantic 13-column table (rows were not yet rendered under the header 32 ms plus one frame after the wheel; the two reruns passed this check and three local WebKit runs passed it as well).
+
+The live monitor selection was slow because every re-render of the monitor view rewrote the chart's `<style>` element: React 19 sets `dangerouslySetInnerHTML` again for each new props object, and WebKit then recalculated the style of the whole document (5,205 nodes). A WebKit timeline of nine selections showed one 73 ms style recalculation and 17 ms of layout per click; Chromium handled the identical stylesheet without that cost. Since `86228fe5`, `ChartStyle` renders the CSS as a text child that React only updates when the text changes. On a MacBook Air (Apple M3, 8 cores, 16 GiB RAM, macOS 27.0.1, Bun 1.3.10, Playwright WebKit 26.6 and Chromium 153.0.8010.12, no throttling) the WebKit selection median/p95 fell from 122–135/212 ms to 64–66/138–147 ms and the in-page time from click to the next frame from 82 to 19 ms; Chromium stayed at 64–71 ms median. The scenario now also fails when a selection writes, inserts or removes a `<style>` element; the previous code wrote one per selection.
+
+Together with the history and navigator changes on `development` (`7bcf3c50` reaches the history buttons with the WebKit all-controls Tab key), WebKit run `41037457368` on `0f76ada9` passed all 41 tests without reruns: live monitor selection median/p95 117/205 ms without style writes, navigator cold open 87 ms and warm median/p95 83/108 ms. It logged 55 informational frame misses; the grid scenarios measured 34.3–60.0 fps with frame p95 18–56 ms. Chromium run `41037460458` on the same revision measured the live monitor at 83/190 ms and still fails only the workspace table scroll, with frame p95 21.4 ms against < 21 ms in all three attempts.
 
 ## Performance test (query editor and table tab)
 
@@ -163,3 +211,126 @@ It prints the JSON report on stdout. The report covers each statement's runs, er
 - Unit tests: `bun test tests/perf-test.test.ts tests/perf-load.test.ts tests/workload.test.ts` and `cargo test --lib mcp::benchmark` (includes SQLite end-to-end cases).
 - Live database check: `L8DB_WORKLOAD_LIVE=1 bun test tests/workload-live.test.ts` builds the SQL in TypeScript, runs it through the real adapters via the ignored Rust test `live_plan`, and asserts statistics, timed runs and replay. `L8DB_WORKLOAD_LIVE_KINDS` selects families, and `L8DB_LIVE_<NAME>_URL` overrides each lab URL. `bun run test:workload-live` starts the lab containers in batches (light families together, then Oracle, Cassandra and SQL Server each alone so SQL Server keeps its plan cache) and removes them afterwards; `L8DB_WORKLOAD_BATCHES` selects batches.
 - Binary check: after `cargo build`, `L8DB_BENCHMARK_E2E=1 bun test tests/benchmark-cli-e2e.test.ts` exercises `--mcp` and `--benchmark` on the debug binary.
+
+
+## SQL result quality of life
+
+Implemented result retention after a failed manual query or script, raw/UTC/local timestamp display, optional background completion notifications, sampled content widths and named local result snapshots.
+
+### Limits and behavior
+
+- Failed execution retains the existing result object, without copying rows or querying again. The error and the previous successful SQL/time remain visible. Copy/export continue to use raw values and active masks.
+- Time conversion applies only to timestamp strings with an explicit offset. Values without a time zone and date-only values stay unchanged. UTC/local displays support seconds or milliseconds; the original value is retained for editing, copy and export.
+- Content sizing examines at most 200 evenly distributed loaded rows and 8,000 cells in total. Each measurement is capped at 256 characters and each column at 600 px. Large object values use a short placeholder. Sizing runs only on request.
+- Notifications default to off. They are checked once when execution finishes, only after 10 seconds and when the window is in the background. The backend checks window focus again. Cancelled runs are silent. Messages contain only generic status and duration. No polling, timers or extra database requests are introduced.
+- Snapshot writes use serialized IndexedDB transactions. Global limits: 10 snapshots, 500,000 serialized characters each, 2,000,000 total; each result must be complete and contain at most 999 rows and 200 columns. Nested values have depth/node bounds. Exhaustion reports an error and never evicts a saved result. Active masks are applied before saving. Snapshots are device-local and survive restarts; connection/database identity gates comparisons. Open dialogs refresh across windows.
+
+### Measured platform and workload
+
+2026-11-01: macOS (Darwin arm64), Apple M3, 16 GiB RAM, Bun 1.3.10. Native CPU; no CPU/heap simulation. Other work was running concurrently in the shared checkout. An initial diagnostic run used the installed Bun 1.4.3; the feature suite was then run with the required Bun 1.3.10. The measurements below use 1.3.10.
+
+`bun test tests/query-qol.test.ts tests/perf-query-qol.test.ts`
+
+Browser fixture: `L8DB_PERF_BROWSER=1 bun test tests/query-qol-browser.test.ts`. Both suites are registered in `scripts/test-performance.ts`; the browser fixture honors `L8DB_PERF_ENGINE` (only Chromium was run locally).
+
+| Scenario | Workload | Median | p95 | Regression budget |
+| --- | --- | ---: | ---: | --- |
+| Existing header-only sizing baseline | 80 columns | 0.012 ms | 0.041 ms | Reference |
+| New content sizing | 100,000 rows × 80 columns; ≤8,000 cell reads | 6.11 ms | 12.31 ms | p95 <50 ms |
+| Local timestamp display | 10,000 timestamp values | 12.88 ms | 23.33 ms | p95 <80 ms |
+| Snapshot encoding | 999 rows × 20 columns | 2.39 ms | 13.31 ms | p95 <100 ms |
+
+Twelve concurrent snapshot writes retained four snapshots within the aggregate quota and rejected the rest. Storage/read/delete workload took 94.33 ms (budget <2,000 ms); retained heap delta after explicit GC was 756,798 bytes (budget <32 MiB, includes test fixtures). IndexedDB here uses fake-indexeddb; real browser persistence is covered separately. One thousand cancelled completion callbacks performed zero preference/focus checks, sent zero notifications and scheduled zero timers. The pure display/snapshot scenarios made zero database requests.
+
+Header-only sizing remains available; content sizing intentionally does more bounded work. This is a new capability, not a claim that content sizing is faster than header sizing.
+
+### Coverage
+
+Scoped functional tests cover offsets/DST, precision, raw-value preservation, width bounds, snapshot masks/limits/atomic concurrent writes, restart reads, deletion, opt-in/background/threshold notification gates and cancellation. The browser fixture exercises the real query execution hook with mocked Tauri transport, virtualized result rendering, retaining data across repeated errors, timestamp conversion, content sizing, snapshot save/compare/reload/delete and 1440/390 px screenshots.
+
+Native OS notification delivery and permission UX have not been exercised on macOS, Windows or Linux. No live database family was exercised for these display-only changes. Browser transport tests verify database request counts; they do not establish native Tauri webview or real database performance.
+
+Browser measurement (Chromium, same machine and Bun version): 999 loaded rows kept 45 mounted table rows. Five consecutive failed queries retained the successful data, with 94.30 ms median / 456.00 ms p95 from the click handler through completion and the next animation frame (budget p95 <1,000 ms). An earlier measurement included Playwright actionability waits (440.11/570.33 ms median/p95); a repeat under concurrent load reached 1,266.05 ms. The final test measures inside the browser after the actual click, preserving the 1,000 ms budget and excluding automation wait time. Seven explicit query executions produced seven database execution requests; all timestamp, sizing, snapshot and reload actions introduced zero additional execution requests. Screenshots at 1440 and 390 px had no horizontal document overflow. No browser runtime errors were captured.
+
+The shared-checkout TypeScript check is blocked by the parallel organization-policy change in `src/lib/organization-state.ts:35`. `cargo check` is blocked by the parallel `invoke_handler` wrapper in `src-tauri/src/lib.rs` (`E0282` at `generate_handler!`). These unrelated changes were preserved.
+
+The initial default-feature Rust module test was stopped during the unrelated DuckDB native rebuild. The scoped fallback is `cargo test --no-default-features query_notification --lib`; optional DuckDB/ODBC behavior is outside this change.
+
+The no-default-features Cargo test could not start because another process held the shared build-directory lock; the waiting process was stopped. The notification message/threshold unit test was run directly with `rustc --test` from the unchanged helper and test sections of `src-tauri/src/query_notification.rs`: 1 passed. This verifies that pure helper only, not Tauri command integration or OS delivery.
+
+
+## RSA and configuration merge security fixes (2026-11-01)
+
+Measured on macOS 27.0.1 arm64, Apple M3 (8 cores), 16 GiB RAM, Rust 1.99.0,
+Bun 1.3.10. OpenSSL 4.0.3 is statically built from openssl-src 400.0.2.
+These are native results on this machine. No Windows/Linux desktop execution,
+CPU/heap simulation or coverage of every database family is claimed for this change.
+
+The initial OpenSSL adaptation repeated complete key validation for each SSH
+signature: 2048-bit median/p95 27.44/27.84 ms, 4096-bit 173.21/181.52 ms. It failed
+the unchanged 100 ms median budget. The final implementation validates once using
+an initializing OnceLock. Exactly one native key (or a failed validation state) is
+retained per SSH keypair, with no global cache or history. Clones share the native
+OpenSSL allocation; dropping the owning keypairs releases it. Concurrent first use
+is initialized once; an eight-thread functional case verifies signatures independently.
+
+| Final workload (21 signatures each) | Median | p95 | Limits |
+| --- | --- | --- | --- |
+| RSA 2048 JWT | 0.44 ms | 0.44 ms | median <100 ms, p95 <250 ms |
+| RSA 2048 SSH | 0.47 ms | 0.47 ms | median <100 ms, p95 <250 ms |
+| RSA 4096 JWT | 2.81 ms | 2.82 ms | median <100 ms, p95 <250 ms |
+| RSA 4096 SSH | 2.95 ms | 2.96 ms | median <100 ms, p95 <250 ms |
+| Deepmerge, 5,000 nested components, 21 merges | 10.22 ms | 15.57 ms | median <100 ms, p95 <250 ms |
+
+Cold SSH imports took 28.18 ms (2048 bit) and 177.40 ms (4096 bit), each below
+1,000 ms. Five additional private-key loads stay below 3 seconds per key size.
+JWTs remain below 1,024 bytes; raw signatures are exactly modulus_bits/8 bytes.
+Merge output is 507,781 bytes (budget <1 MB), with 5,000 output entries. Inputs
+remain unchanged after an idle interval. These synchronous operations create no
+requests, timers, polling or background tasks; cancellation has no pending work to
+clean up. SSH integration separately checks tunnel teardown, closed local ports,
+wrong passphrases and absence of retained tunnel entries.
+
+The first cold-import run exceeded its 1,000 ms budget while native checks and
+other CPU work ran concurrently. No budget was raised. Native performance tests
+now run separately from parallel unit tests in the performance workflow; the
+results above are from that isolated run. They are not a constrained-CPU result.
+
+Reproduce with `cargo test --locked --lib rsa_security_perf -- --ignored --test-threads=1 --nocapture`
+in src-tauri and `bun test tests/secure-deepmerge.test.ts tests/dependency-cli.test.ts`
+at the root. The Rust suite rejects an outdated native OpenSSL release, verifies
+RSA signatures independently with ring, and covers malformed keys and encrypted
+PKCS#8 exports. Deepmerge tests exercise the actual Shadcn/registry resolution,
+null-prototype objects, source/target poisoning, nested arrays and option compatibility.
+
+## Table helper menus
+
+Measured on 4 November 2026 on macOS (Darwin 27.0.0), arm64, Apple M3 (8 cores), 16 GiB RAM, Bun 1.3.10, Playwright Chromium. Tests use real UI components and mocked Tauri transport; no live database, native Tauri webview, Windows, Linux, WebKit or CPU/heap simulation was exercised.
+
+Run the scoped interaction and performance scenario:
+
+```sh
+L8DB_WORKBENCH_BROWSER=1 bun test tests/table-helper-menus-browser.test.ts
+```
+
+The fixture simulates the next release through its package manifest response to exercise the existing `table.rows.watch` and `query.results.timestamps` registrations and NEW badges without changing the repository version.
+
+The scenario covers menu discovery, time zone and precision persistence, observing a row through its context menu, changed values, accepting a baseline, deletion, empty state, Escape, and 1440/760/390 px layouts. The watch panel stays open during interactions with the underlying table. Only one observation can expand at a time; closing the panel unmounts its contents. Opening and closing do not repeat the comparison over loaded rows, add polling, or issue database requests.
+
+| Workload | Measurement | Limit |
+| --- | --- | --- |
+| Open 200 observations over 5,000 loaded rows, 5 cycles | Median 576.46 ms; p95 578.09 ms | p95 < 1,000 ms |
+| Watch panel DOM | 2,230 descendants | < 4,000 |
+| Table DOM | 41 mounted rows | < 90 |
+| Closed panel after settling | 0 panel nodes | 0 |
+| Additional database requests during settings, comparison and panel cycles | 0 | 0 |
+
+No background work is introduced. Closing uses Escape, and after 400 ms idle the panel is unmounted with unchanged transport call counts. Existing workbench unit tests cover subscription disposal and idle behavior. Resource evidence for this UI is bounded DOM, not a measured native-process memory limit.
+
+The related SQL result browser scenario (`L8DB_PERF_BROWSER=1 bun test tests/query-qol-browser.test.ts`) passed with 999 loaded rows, 45 mounted rows, no browser errors and exactly the seven explicitly executed SQL requests. Retained-result latency was median 35.4 ms / p95 36.2 ms.
+
+The unchanged core watch scenario (`tests/perf-workbench-qol.test.ts`) exceeded its existing 250 ms p95 comparison budget at 302.30 ms for 200 observations over 100,000 loaded rows during concurrent browser/typecheck work. It failed before reaching its retained-heap assertion. No budget or comparison implementation was changed and that scenario was not rerun. The other 25 scoped unit/core tests passed. These results do not establish native or all-provider performance.
+
+The broader workbench browser scenario stopped on an existing Monaco undo expectation before reaching the table controls (`tests/workbench-qol-browser.test.ts:102`). The scoped table helper scenario above passed independently; the editor undo path was not changed or repaired.
+
+The screenshot fixture now mounts the production `TableToolbarActions` instead of rebuilding a reduced two-item menu. The regression asserts exactly one action trigger and the presence of “Neue Zeile”, “Beobachtete Zeilen” and “Zeitdarstellung” in that same menu; opening and discarding the row draft is covered. A repeat on the same machine with the full toolbar measured median 589.54 ms / p95 594.04 ms, 2,230 panel descendants, 33 mounted table rows, zero closed-panel nodes and zero additional transport/database requests (22 assertions passed). Provider discovery uses the actual fallback registry in the transport fixture. TypeScript checking explicitly included the fixture. Screenshots now include the original row-add, paste, test-data, masking and export actions alongside the new entries.

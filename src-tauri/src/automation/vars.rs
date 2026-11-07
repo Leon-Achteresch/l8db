@@ -366,6 +366,7 @@ impl Vars {
                 quoted[1..quoted.len() - 1].to_string()
             }
             "url" => utf8_percent_encode(&value, URL_SAFE).to_string(),
+            "shell" => crate::automation::os_scheduler::posix_quote(&value),
             "upper" => value.to_uppercase(),
             "lower" => value.to_lowercase(),
             "trim" => value.trim().to_string(),
@@ -543,18 +544,20 @@ pub fn compare(left: &str, op: Comparator, right: &str) -> Result<bool, String> 
         .parse::<f64>()
         .ok()
         .zip(right.trim().parse::<f64>().ok());
-    let ordering = match numbers {
-        Some((a, b)) => a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal),
-        None => left.cmp(right),
+    let ordering = || match numbers {
+        Some((a, b)) => a
+            .partial_cmp(&b)
+            .ok_or_else(|| "NaN lässt sich nicht vergleichen.".to_string()),
+        None => Ok(left.cmp(right)),
     };
     use std::cmp::Ordering::*;
     Ok(match op {
-        Comparator::Eq => ordering == Equal,
-        Comparator::Ne => ordering != Equal,
-        Comparator::Gt => ordering == Greater,
-        Comparator::Gte => ordering != Less,
-        Comparator::Lt => ordering == Less,
-        Comparator::Lte => ordering != Greater,
+        Comparator::Eq => ordering()? == Equal,
+        Comparator::Ne => ordering()? != Equal,
+        Comparator::Gt => ordering()? == Greater,
+        Comparator::Gte => ordering()? != Less,
+        Comparator::Lt => ordering()? == Less,
+        Comparator::Lte => ordering()? != Greater,
         Comparator::Contains => left.contains(right),
         Comparator::NotContains => !left.contains(right),
         Comparator::Matches => Regex::new(right)
@@ -602,6 +605,10 @@ mod tests {
         assert_eq!(v.render("${missing:-fallback}").unwrap(), "fallback");
         assert_eq!(v.render("${task}/${run_id}").unwrap(), "Bericht/run-1");
         assert_eq!(v.render("${environment}").unwrap(), "prod");
+        assert_eq!(
+            v.render("echo ${name|shell}").unwrap(),
+            r#"echo 'O'\''Brien'"#
+        );
         let task = task(serde_json::json!([{ "name": "x", "defaultValue": "1" }]));
         let overrides = BTreeMap::from([("x".to_string(), "2".to_string())]);
         let v = Vars::new(&task, "r", None, &overrides, &BTreeMap::new()).unwrap();
@@ -716,6 +723,7 @@ mod tests {
     #[test]
     fn compare_numeric_text_regex_empty() {
         assert!(compare("10", Comparator::Gt, "9").unwrap());
+        assert!(compare("NaN", Comparator::Eq, "100").is_err());
         assert!(!compare("10", Comparator::Gt, "9a").unwrap());
         assert!(compare("1.0", Comparator::Eq, "1").unwrap());
         assert!(compare("abc", Comparator::Lt, "abd").unwrap());

@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "organization": "Beispielunternehmen",
+  "support": "Datenbankadministration / internes Serviceportal",
+  "allowAi": false,
+  "allowExtensions": false,
+  "allowPersonalSync": false,
+  "allowMcp": false,
+  "requireSignedReleases": true,
+  "trustedReleaseSigners": ["REPLACE_WITH_APPROVED_SIGNER_FINGERPRINT"],
+  "settings": {
+    "productionReadOnly": true,
+    "productionConfirmCommit": true,
+    "productionAutoRollback": true,
+    "confirmDestructiveQueries": true,
+    "sshTrustNewHosts": false,
+    "sslDefaultMode": "verify-full",
+    "crashReports": false,
+    "usageMetrics": false,
+    "autoUpdateCheck": false,
+    "autoUpdateInstall": false,
+    "updateChannel": "stable"
+  },
+  "connections": [
+    {
+      "id": "reporting",
+      "name": "Reporting · Produktion",
+      "kind": "postgres",
+      "connectionString": "postgres://reporting.internal:5432/reporting?sslmode=verify-full",
+      "sslMode": "verify-full",
+      "environment": "production",
+      "readOnly": true,
+      "owner": "Reporting-Team",
+      "contact": "Internes Serviceportal → Datenbankzugriff",
+      "description": "Freigegebene Auswertungen; ausschließlich persönliche Lesekonten verwenden.",
+      "runbook": "https://intranet.example.invalid/reporting"
+    }
+  ]
+}

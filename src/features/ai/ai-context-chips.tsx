@@ -1,4 +1,4 @@
-import { AtSign, X } from "lucide-react";
+import { AtSign, SquareCode, X } from "lucide-react";
 import { NewBadge } from "@/components/new-badge";
 import type { ChatContextItem } from "@/lib/ai/chat-context";
 
@@ -25,16 +25,22 @@ export function AiContextChips({
                 ? item.sql?.slice(0, 600)
                 : undefined
           }
-          className="flex items-center gap-1 rounded-md border bg-card py-0.5 pr-0.5 pl-1.5 text-[11px] text-muted-foreground"
+          className="flex h-6 items-center gap-1 rounded-full bg-muted pr-0.5 pl-2 text-[11px] text-muted-foreground"
         >
-          <AtSign className="size-3 shrink-0" />
-          <span className="max-w-40 truncate text-foreground">{item.label}</span>
+          {item.kind === "tab" ? (
+            <SquareCode className="size-3 shrink-0" />
+          ) : (
+            <AtSign className="size-3 shrink-0" />
+          )}
+          <span className="max-w-40 truncate text-foreground/85">
+            {item.kind === "tab" ? item.label.replace(/^Editor: /, "") : item.label}
+          </span>
           <button
             type="button"
             disabled={disabled}
             aria-label={`${item.label} aus Kontext entfernen`}
             onClick={() => onRemove(item.id)}
-            className="grid size-4 place-items-center rounded hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="grid size-5 place-items-center rounded-full hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="size-2.5" />
           </button>

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { s3DeleteBucket } from "@/lib/db";
+import { runStorageJob } from "@/lib/storage/transfers";
 import { ConfirmActionDialog } from "./confirm-action-dialog";
 import { useStorageConnection } from "./use-storage-connection";
 
@@ -37,7 +38,9 @@ export function DeleteBucketDialog({
       onOpenChange={onOpenChange}
       onConfirm={async () => {
         if (!bucket) return;
-        await s3DeleteBucket(url, bucket, force);
+        await runStorageJob(connection, bucket, `Bucket löschen · ${bucket}`, (jobId) =>
+          s3DeleteBucket(url, bucket, force, jobId),
+        );
         window.dispatchEvent(
           new CustomEvent("l8db:request-close-tab", { detail: `bucket:${bucket}` }),
         );

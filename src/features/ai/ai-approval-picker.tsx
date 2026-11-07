@@ -11,6 +11,7 @@ import {
 import { useAiStore } from "@/lib/ai/store";
 import type { AiProfile } from "@/lib/db/ai";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { cn } from "@/lib/utils";
 
 const MODES = [
   { id: "", name: "Immer fragen", hint: "Jedes Tool einzeln freigeben" },
@@ -37,11 +38,16 @@ export function AiApprovalPicker({ profile, disabled }: Props) {
           ref={feature.ref}
           type="button"
           aria-label="Freigaben auswählen"
+          title={`Freigaben: ${current.name}`}
           disabled={disabled}
-          className="flex h-7 min-w-0 shrink items-center gap-1.5 rounded-md px-2 text-[12px] outline-none transition-colors hover:bg-foreground/[0.06] focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60 data-[state=open]:bg-foreground/[0.06]"
+          className={cn(
+            "flex h-7 min-w-0 shrink items-center gap-1.5 rounded-full px-2 text-[12px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60 data-[state=open]:bg-muted",
+            current.id &&
+              "bg-amber-500/12 px-2.5 text-amber-900 hover:bg-amber-500/20 dark:text-amber-200",
+          )}
         >
-          <ShieldCheck className="size-3.5 shrink-0 opacity-70" />
-          <span className="truncate">{current.name}</span>
+          <ShieldCheck className="size-3.5 shrink-0" />
+          {current.id && <span className="truncate">{current.name}</span>}
           {feature.isNew && <NewBadge />}
         </button>
       </DropdownMenuTrigger>

@@ -1,0 +1,20 @@
+{
+  "runs": 9,
+  "medianMs": 1.1752090000000024,
+  "p95Ms": 1.329749999999997,
+  "maxMs": 1.329749999999997,
+  "columns": 400,
+  "scrollEvents": 220000,
+  "resizeCallbacks": 2200,
+  "handlerMedianMs": 0.00004099999999951365,
+  "handlerP95Ms": 0.000042000000000541604,
+  "headerReads": 2200,
+  "styleWrites": 604,
+  "scrollListeners": 1,
+  "resizeObservers": 1,
+  "reactRenders": 0,
+  "databaseRequests": 0,
+  "name": "grid-edge-fade",
+  "runId": null,
+  "capturedAt": "2026-11-06T05:42:09.451Z"
+}

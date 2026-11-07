@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { DataCompareSideSelection } from "@/features/compare/data-compare-side-picker";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import type { CompareSideSelection } from "@/lib/compare-types";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
@@ -14,7 +15,10 @@ export interface AnalysisWorkspace {
   dataRight: DataCompareSideSelection;
 }
 export const useAnalysisWorkspaces = create<{ workspaces: AnalysisWorkspace[] }>()(
-  persist(() => ({ workspaces: [] as AnalysisWorkspace[] }), { name: "l8db.analysis-workspaces" }),
+  persist(() => ({ workspaces: [] as AnalysisWorkspace[] }), {
+    name: "l8db.analysis-workspaces",
+    storage: createSafeJsonStorage(),
+  }),
 );
 export function saveAnalysisWorkspace(value: Omit<AnalysisWorkspace, "id">) {
   const name = value.name.trim();

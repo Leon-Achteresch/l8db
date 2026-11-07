@@ -609,6 +609,23 @@ fn target_column(target: &[super::ImportColumnInfo], name: &str) -> Option<Strin
         .map(|column| column.name.clone())
 }
 
+fn is_same_table(
+    kind: DatabaseKind,
+    connection_string: &str,
+    database: Option<&str>,
+    request: &TableCopyRequest,
+) -> bool {
+    let source = &request.source;
+    source.kind == kind
+        && source.connection_string == connection_string
+        && source.database.as_deref().filter(|name| !name.is_empty())
+            == database.filter(|name| !name.is_empty())
+        && source.schema.eq_ignore_ascii_case(&request.target_schema)
+        && source
+            .table
+            .eq_ignore_ascii_case(request.target_table.trim())
+}
+
 pub async fn copy_table(
     kind: DatabaseKind,
     connection_string: &str,
@@ -620,6 +637,9 @@ pub async fn copy_table(
         .ok_or("Tabellenkopie in diesen Datenbanktyp wird nicht unterstützt.")?;
     if request.target_table.trim().is_empty() {
         return Err("Zieltabelle fehlt.".into());
+    }
+    if is_same_table(kind, connection_string, database, request) {
+        return Err("Quelle und Ziel sind identisch.".into());
     }
     let source = super::create_adapter_from_string(
         request.source.kind,
@@ -891,6 +911,38 @@ mod tests {
             canonical(DatabaseKind::Clickhouse, "Nullable(Int64)", None),
             BigInt
         );
+    }
+
+    #[test]
+    fn rejects_identical_source_and_target() {
+        let url = "postgres://u@h/db";
+        let request = TableCopyRequest {
+            source: CopySource {
+                kind: DatabaseKind::Postgres,
+                connection_string: url.into(),
+                database: None,
+                schema: "public".into(),
+                table: "orders".into(),
+            },
+            target_schema: "public".into(),
+            target_table: " orders ".into(),
+            mode: CopyMode::Truncate,
+            include_primary_key: true,
+            include_indexes: false,
+            dry_run: false,
+        };
+        assert!(is_same_table(DatabaseKind::Postgres, url, None, &request));
+        assert!(!is_same_table(
+            DatabaseKind::Postgres,
+            url,
+            Some("other"),
+            &request
+        ));
+        let renamed = TableCopyRequest {
+            target_table: "orders_copy".into(),
+            ..request.clone()
+        };
+        assert!(!is_same_table(DatabaseKind::Postgres, url, None, &renamed));
     }
 
     #[test]

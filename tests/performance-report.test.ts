@@ -3,9 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  calibratedCpuRate,
   combineFileRuns,
   confirmedFailures,
   executedTestCount,
+  fileBudgets,
+  medianResources,
   normalizeProcessResources,
   resourceViolations,
   testNamePattern,
@@ -32,13 +35,16 @@ test("Bun 1.3.10 process memory is normalized across Linux, Windows and macOS", 
 });
 
 test("missing measurements and exceeded resource budgets fail the performance gate", () => {
-  const limits = { peakRssBytes: 4096, cpuMs: 10 };
-  expect(resourceViolations({ peakRssBytes: 4096, userCpuMs: 7, systemCpuMs: 3 }, limits)).toEqual(
-    [],
-  );
-  expect(resourceViolations({ peakRssBytes: 4097, userCpuMs: 8, systemCpuMs: 3 }, limits)).toEqual([
-    "Peak RSS budget exceeded",
-    "CPU budget exceeded",
+  const mib = 1024 * 1024;
+  const limits = { peakRssBytes: 4 * mib, cpuMs: 10_000 };
+  expect(
+    resourceViolations({ peakRssBytes: 4 * mib, userCpuMs: 7_000, systemCpuMs: 3_000 }, limits),
+  ).toEqual([]);
+  expect(
+    resourceViolations({ peakRssBytes: 6 * mib, userCpuMs: 8_000, systemCpuMs: 3_000 }, limits),
+  ).toEqual([
+    "Peak RSS budget exceeded: 6.0 MiB > 4.0 MiB",
+    "CPU budget exceeded: 11.00 s > 10.00 s",
   ]);
   expect(
     resourceViolations({ peakRssBytes: 0, userCpuMs: Number.NaN, systemCpuMs: 0 }, limits),
@@ -56,19 +62,27 @@ test("empty selections and skipped tests cannot establish a successful performan
 test("scenario artifacts identify their current run instead of reusing stale measurement metadata", async () => {
   const directory = await mkdtemp(join(tmpdir(), "l8db-performance-provenance-"));
   const started = Date.now();
+  const calibration = {
+    benchmarkMs: 200,
+    referenceMs: 100,
+    samplesMs: [200],
+    cpu: "Runner",
+    chromium: "153.0.8010.12",
+  };
   try {
     const source = resolve(import.meta.dir, "../scripts/performance-report.ts");
     const child = Bun.spawn(
       [
         process.execPath,
         "--eval",
-        `import { reportScenario } from ${JSON.stringify(source)}; await reportScenario("provenance", { rows: 5000, name: "stale", runId: "stale", capturedAt: "stale" });`,
+        `import { reportScenario } from ${JSON.stringify(source)}; await reportScenario("provenance", { rows: 5000, cpuRate: 4, name: "stale", runId: "stale", capturedAt: "stale" });`,
       ],
       {
         env: {
           ...process.env,
           L8DB_PERF_REPORT_DIR: directory,
           L8DB_PERF_RUN_ID: "current-run",
+          L8DB_PERF_CPU_CALIBRATION: JSON.stringify(calibration),
         },
         stdout: "pipe",
         stderr: "pipe",
@@ -85,12 +99,31 @@ test("scenario artifacts identify their current run instead of reusing stale mea
     expect(report.name).toBe("provenance");
     expect(report.runId).toBe("current-run");
     expect(report.rows).toBe(5000);
+    expect(report.cpuRate).toBe(4);
+    expect(report.appliedCpuRate).toBe(2);
+    expect(report.cpuCalibration).toEqual(calibration);
     expect(Date.parse(report.capturedAt)).toBeGreaterThanOrEqual(started);
     expect(Date.parse(report.capturedAt)).toBeLessThanOrEqual(Date.now());
     expect(output).toContain(JSON.stringify(report));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("CPU throttling slows every runner to the reference speed without speeding slow runners up", () => {
+  const runner = (benchmarkMs: number) => ({
+    benchmarkMs,
+    referenceMs: 100,
+    samplesMs: [benchmarkMs],
+    cpu: "Runner",
+    chromium: "153.0.8010.12",
+  });
+  expect(calibratedCpuRate(4, runner(100))).toBe(4);
+  expect(calibratedCpuRate(4, runner(150))).toBe(2.67);
+  expect(calibratedCpuRate(4, runner(80))).toBe(5);
+  expect(calibratedCpuRate(4, runner(600))).toBe(1);
+  expect(calibratedCpuRate(8, runner(150))).toBe(5.33);
+  expect(calibratedCpuRate(4, null)).toBe(4);
 });
 
 test("performance profiles reject unsupported throttling instead of silently skipping it", () => {
@@ -180,14 +213,67 @@ test("budget failures count only when the median of three attempts fails", () =>
   expect(confirmedFailures(failed, [rerun([]), rerun([], null)])).toEqual(failed);
 });
 
-test("per-file CPU budgets subtract the start-up cost of every extra test process", () => {
-  const total = { peakRssBytes: 400, userCpuMs: 30_000, systemCpuMs: 14_000 };
+test("per-file CPU budgets subtract the start-up cost of every test process", () => {
+  const total = { peakRssBytes: 400, userCpuMs: 3_000, systemCpuMs: 1_400 };
   const startup = { peakRssBytes: 60, userCpuMs: 500, systemCpuMs: 300 };
-  expect(workloadResources(total, startup, 29)).toEqual({
+  expect(workloadResources(total, startup)).toEqual({
     peakRssBytes: 400,
-    userCpuMs: 16_000,
-    systemCpuMs: 5_600,
+    userCpuMs: 2_500,
+    systemCpuMs: 1_100,
   });
-  expect(workloadResources(total, null, 29)).toEqual(total);
-  expect(workloadResources(total, startup, 1)).toEqual(total);
+  expect(workloadResources(total, null)).toEqual(total);
+  const cheap = { peakRssBytes: 50, userCpuMs: 30, systemCpuMs: 20 };
+  expect(workloadResources(cheap, startup)).toEqual({
+    peakRssBytes: 50,
+    userCpuMs: 0,
+    systemCpuMs: 0,
+  });
+  const limits = { peakRssBytes: 512 * 1024 * 1024, cpuMs: 8_000 };
+  expect(resourceViolations(cheap, limits, startup)).toEqual([]);
+  const run = (file: string, userCpuMs: number, peakRssBytes = 300 * 1024 * 1024) => ({
+    file,
+    exitCode: 0,
+    executedTests: 1,
+    resources: { peakRssBytes, userCpuMs, systemCpuMs: 300 },
+  });
+  const budgets = fileBudgets(
+    [
+      run("a.test.ts", 7_700),
+      run("b.test.ts", 8_600),
+      run("c.test.ts", 9_300, 600 * 1024 * 1024),
+      { file: "d.test.ts", exitCode: 1, executedTests: null, resources: null },
+    ],
+    limits,
+    startup,
+  );
+  expect(budgets.violations).toEqual([
+    "b.test.ts: CPU budget exceeded: 8.10 s > 8.00 s",
+    "c.test.ts: Peak RSS budget exceeded: 600.0 MiB > 512.0 MiB",
+    "c.test.ts: CPU budget exceeded: 8.80 s > 8.00 s",
+    "d.test.ts: Resource usage unavailable",
+  ]);
+  expect(budgets.mostExpensiveFile).toEqual({ file: "c.test.ts", budgetedCpuMs: 8_800 });
+  expect(budgets.files.map((file) => file.budgetedResources?.userCpuMs ?? null)).toEqual([
+    7_200,
+    8_100,
+    8_800,
+    null,
+  ]);
+  expect(budgets.budgetedResources).toBeNull();
+  expect(
+    fileBudgets([run("a.test.ts", 7_700), run("b.test.ts", 1_000)], limits, startup),
+  ).toMatchObject({
+    budgetedResources: { peakRssBytes: 300 * 1024 * 1024, userCpuMs: 7_700, systemCpuMs: 0 },
+    mostExpensiveFile: { file: "a.test.ts", budgetedCpuMs: 7_200 },
+    violations: [],
+  });
+  const sample = (userCpuMs: number, systemCpuMs: number) => ({
+    peakRssBytes: 60,
+    userCpuMs,
+    systemCpuMs,
+  });
+  expect(
+    medianResources([sample(469, 625), sample(16, 31), null, sample(31, 16), sample(47, 31)]),
+  ).toEqual(sample(47, 31));
+  expect(medianResources([null, null])).toBeNull();
 });

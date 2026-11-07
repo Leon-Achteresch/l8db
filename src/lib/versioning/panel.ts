@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { safeSetItem } from "@/lib/buffered-storage";
 import { useTransactionStore } from "@/lib/transactions";
 
 interface VersioningPanelState {
@@ -28,7 +29,7 @@ export const useVersioningPanel = create<VersioningPanelState>((set) => ({
   tabHost: null,
   returnPath: "/query",
   setMode: (mode) => {
-    localStorage.setItem("l8db.versioning.mode", mode);
+    safeSetItem(localStorage, "l8db.versioning.mode", mode);
     set({ mode });
   },
   setTabHost: (tabHost) => set({ tabHost }),

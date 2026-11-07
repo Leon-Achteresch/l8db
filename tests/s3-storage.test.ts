@@ -71,6 +71,29 @@ describe("s3 xml helpers", () => {
     expect(lifecycleXml(foreign)).toContain("<NoncurrentVersionTransition>");
   });
 
+  test("keeps tag, size, date and extra transition parts of lifecycle rules", () => {
+    const xml =
+      "<LifecycleConfiguration><Rule><ID>t</ID><Status>Enabled</Status><Filter><Tag><Key>purge</Key><Value>yes</Value></Tag></Filter><Expiration><Days>7</Days></Expiration></Rule><Rule><ID>a</ID><Status>Enabled</Status><Filter><And><Prefix>logs/</Prefix><Tag><Key>k</Key><Value>v</Value></Tag><ObjectSizeGreaterThan>100</ObjectSizeGreaterThan></And></Filter><Expiration><Date>2030-01-01T00:00:00Z</Date></Expiration><Transition><Days>30</Days><StorageClass>STANDARD_IA</StorageClass></Transition><Transition><Days>90</Days><StorageClass>GLACIER</StorageClass></Transition></Rule></LifecycleConfiguration>";
+    const rules = parseLifecycle(xml);
+    const out = lifecycleXml(rules);
+    expect(out).toContain("<Filter><Tag><Key>purge</Key><Value>yes</Value></Tag></Filter>");
+    expect(out).toContain(
+      "<Filter><And><Prefix>logs/</Prefix><Tag><Key>k</Key><Value>v</Value></Tag><ObjectSizeGreaterThan>100</ObjectSizeGreaterThan></And></Filter>",
+    );
+    expect(out).toContain("<Expiration><Date>2030-01-01T00:00:00Z</Date></Expiration>");
+    expect(out).toContain("<StorageClass>GLACIER</StorageClass>");
+    expect(out).toContain("<StorageClass>STANDARD_IA</StorageClass>");
+    const changed = lifecycleXml([{ ...rules[0], prefix: "tmp/" }]);
+    expect(changed).toContain(
+      "<Filter><And><Prefix>tmp/</Prefix><Tag><Key>purge</Key><Value>yes</Value></Tag></And></Filter>",
+    );
+    expect(
+      parseTags(
+        "<Tagging><TagSet><Tag><Key> k </Key><Value>  v  </Value></Tag></TagSet></Tagging>",
+      ),
+    ).toEqual([{ key: " k ", value: "  v  " }]);
+  });
+
   test("builds retention, legal hold, object lock and encryption", () => {
     const retention = retentionXml("GOVERNANCE", new Date("2030-01-02T03:04:05.678Z"));
     expect(retention).toContain("<RetainUntilDate>2030-01-02T03:04:05Z</RetainUntilDate>");

@@ -6,6 +6,7 @@ use tokio::sync::Mutex;
 
 use super::pool::PoolState;
 use super::provider::DatabaseKind;
+use super::server_output::{self, Messages, ServerMessage};
 use super::{
     map_pg_err, mssql, mysql, oracle, quote_ident, sqlite, DatabaseAdapter, QueryResult, TxSession,
 };
@@ -105,7 +106,7 @@ fn quote(kind: DatabaseKind, ident: &str) -> String {
 
 fn lit(kind: DatabaseKind, value: &str) -> String {
     match kind {
-        DatabaseKind::Mysql => mysql::lit(value),
+        DatabaseKind::Mysql => mysql::value_lit(value),
         DatabaseKind::Mssql => mssql::lit(value),
         _ => format!("'{}'", value.replace('\'', "''")),
     }
@@ -426,7 +427,7 @@ where
 }
 
 pub struct TransactionManager {
-    transactions: Mutex<HashMap<String, Arc<TransactionEntry>>>,
+    transactions: Mutex<HashMap<String, (Arc<TransactionEntry>, Messages)>>,
 }
 
 pub type TransactionState = Arc<TransactionManager>;
@@ -446,22 +447,26 @@ impl TransactionManager {
         }
     }
 
-    async fn insert_entry(&self, entry: TransactionEntry) -> String {
+    async fn insert_entry(&self, entry: TransactionEntry, output: Messages) -> String {
         let tx_id = format!("tx_{}", TX_COUNTER.fetch_add(1, Ordering::Relaxed));
         self.transactions
             .lock()
             .await
-            .insert(tx_id.clone(), Arc::new(entry));
+            .insert(tx_id.clone(), (Arc::new(entry), output));
         tx_id
     }
 
-    async fn entry(&self, tx_id: &str) -> Result<Arc<TransactionEntry>, String> {
+    async fn tx(&self, tx_id: &str) -> Result<(Arc<TransactionEntry>, Messages), String> {
         self.transactions
             .lock()
             .await
             .get(tx_id)
             .cloned()
             .ok_or_else(|| "Transaktion nicht gefunden".to_string())
+    }
+
+    async fn entry(&self, tx_id: &str) -> Result<Arc<TransactionEntry>, String> {
+        self.tx(tx_id).await.map(|(entry, _)| entry)
     }
 
     pub async fn begin(
@@ -471,6 +476,21 @@ impl TransactionManager {
         database: Option<&str>,
         pool_state: &PoolState,
     ) -> Result<String, String> {
+        let output = Messages::default();
+        let entry = server_output::capture(
+            output.clone(),
+            Self::open(kind, connection_string, database, pool_state),
+        )
+        .await?;
+        Ok(self.insert_entry(entry, output).await)
+    }
+
+    async fn open(
+        kind: DatabaseKind,
+        connection_string: &str,
+        database: Option<&str>,
+        pool_state: &PoolState,
+    ) -> Result<TransactionEntry, String> {
         match kind {
             DatabaseKind::Postgres => {}
             DatabaseKind::Oracle => {
@@ -482,14 +502,12 @@ impl TransactionManager {
                     conn.get_mut()
                         .map_err(|_| "Oracle-Verbindung ist blockiert")?,
                 );
-                return Ok(self
-                    .insert_entry(TransactionEntry::Oracle(Arc::new(conn)))
-                    .await);
+                return Ok(TransactionEntry::Oracle(Arc::new(conn)));
             }
             DatabaseKind::Dynamodb => {
                 let key = super::connection::connection_key(connection_string, database);
                 let tx = Box::new(super::dynamodb::DynamoTx::new(connection_string, key)?);
-                return Ok(self.insert_entry(TransactionEntry::Dynamo(tx)).await);
+                return Ok(TransactionEntry::Dynamo(tx));
             }
             kind => {
                 let adapter = super::create_adapter_from_string(
@@ -499,13 +517,11 @@ impl TransactionManager {
                     pool_state.clone(),
                 )?;
                 let session = adapter.begin_transaction().await?;
-                return Ok(self
-                    .insert_entry(TransactionEntry::Generic(Generic {
-                        kind,
-                        adapter,
-                        session: Mutex::new(session),
-                    }))
-                    .await);
+                return Ok(TransactionEntry::Generic(Generic {
+                    kind,
+                    adapter,
+                    session: Mutex::new(session),
+                }));
             }
         }
         let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
@@ -513,12 +529,10 @@ impl TransactionManager {
         super::postgres::begin_guarded(&conn, "BEGIN", &[super::postgres::TRANSACTION_IDLE_GUARD])
             .await
             .map_err(map_pg_err)?;
-        Ok(self
-            .insert_entry(TransactionEntry::Pg(
-                Arc::new(super::execution::PgSession::new(conn)),
-                ssl,
-            ))
-            .await)
+        Ok(TransactionEntry::Pg(
+            Arc::new(super::execution::PgSession::new(conn)),
+            ssl,
+        ))
     }
 
     pub async fn execute_with_params(
@@ -527,7 +541,16 @@ impl TransactionManager {
         sql: &str,
         params: &[Option<String>],
     ) -> Result<QueryResult, String> {
-        let entry = self.entry(tx_id).await?;
+        let (entry, output) = self.tx(tx_id).await?;
+        server_output::capture(output, self.run_with_params(entry, sql, params)).await
+    }
+
+    async fn run_with_params(
+        &self,
+        entry: Arc<TransactionEntry>,
+        sql: &str,
+        params: &[Option<String>],
+    ) -> Result<QueryResult, String> {
         let (session, ssl) = match &*entry {
             TransactionEntry::Pg(c, ssl) => (c, ssl.clone()),
             _ => {
@@ -578,6 +601,25 @@ impl TransactionManager {
         }
     }
 
+    pub async fn execute_with_binds(
+        &self,
+        tx_id: &str,
+        sql: &str,
+        binds: &[super::BindVariable],
+    ) -> Result<super::BoundResult, String> {
+        let TransactionEntry::Oracle(c) = &*self.entry(tx_id).await? else {
+            return Err(super::unsupported("SQL*Plus-Bindvariablen"));
+        };
+        let sql = sql.to_string();
+        let binds = binds.to_vec();
+        let limit = super::execution::row_limit();
+        let call = oracle::CallGuard::current("transaction");
+        ora(c.clone(), move |c| {
+            call.run(c, |c| oracle::execute_binds(c, &sql, &binds, limit))
+        })
+        .await
+    }
+
     pub async fn oracle_changes(&self, tx_id: &str) -> Result<Vec<oracle::TxTableChanges>, String> {
         match &*self.entry(tx_id).await? {
             TransactionEntry::Oracle(c) => ora(c.clone(), |c| oracle::tx_table_changes(c)).await,
@@ -585,15 +627,26 @@ impl TransactionManager {
         }
     }
 
-    pub async fn server_output(&self, tx_id: &str) -> Result<Vec<String>, String> {
-        match &*self.entry(tx_id).await? {
-            TransactionEntry::Oracle(c) => ora(c.clone(), |c| oracle::read_output(c)).await,
-            _ => Ok(vec![]),
+    pub async fn server_output(&self, tx_id: &str) -> Result<Vec<ServerMessage>, String> {
+        let (entry, output) = self.tx(tx_id).await?;
+        let mut messages = output.take();
+        if let TransactionEntry::Oracle(c) = &*entry {
+            let lines = ora(c.clone(), |c| oracle::read_output(c)).await?;
+            messages.extend(lines.into_iter().map(|message| ServerMessage {
+                level: "OUTPUT".to_string(),
+                message,
+                detail: None,
+            }));
         }
+        Ok(messages)
     }
 
     pub async fn execute(&self, tx_id: &str, sql: &str) -> Result<QueryResult, String> {
-        let entry = self.entry(tx_id).await?;
+        let (entry, output) = self.tx(tx_id).await?;
+        server_output::capture(output, self.run(entry, sql)).await
+    }
+
+    async fn run(&self, entry: Arc<TransactionEntry>, sql: &str) -> Result<QueryResult, String> {
         let (session, ssl) = match &*entry {
             TransactionEntry::Pg(c, ssl) => (c, ssl.clone()),
             TransactionEntry::Oracle(c) => {
@@ -1089,11 +1142,21 @@ mod tests {
             assert!(PgRowId::parse(invalid).is_err(), "{invalid}");
         }
         assert!(
-            !crate::db::postgres::table_page_sql("s", "t", "", None, true).contains("t.ctid AS")
+            !crate::db::postgres::table_page_sql("s", "t", "", None, true, &[])
+                .contains("t.ctid AS")
         );
         assert!(
-            crate::db::postgres::table_page_sql("s", "t", "", None, true)
+            crate::db::postgres::table_page_sql("s", "t", "", None, true, &[])
                 .contains("t.ctid::text || '@' || t.tableoid::text")
+        );
+        let keyed =
+            |order| crate::db::postgres::table_page_sql("s", "t", "", order, true, &["id".into()]);
+        assert!(keyed(None).contains("ORDER BY t.\"id\" LIMIT"));
+        assert!(keyed(None).ends_with("ORDER BY p.\"id\""));
+        assert!(keyed(Some(("name", true))).contains("ORDER BY t.\"name\" DESC LIMIT"));
+        assert!(
+            !crate::db::postgres::table_page_sql("s", "t", "", None, true, &[])
+                .contains("ORDER BY")
         );
     }
 
@@ -1121,8 +1184,55 @@ mod tests {
         );
         assert_eq!(
             super::value_lit(DatabaseKind::Mysql, &binary, "t", &value),
-            "'\\\\x0102'"
+            "_utf8mb4 X'5C7830313032'"
         );
+    }
+
+    #[test]
+    fn transaction_path_fits_the_windows_main_thread_stack() {
+        let dir = tempfile::tempdir().unwrap();
+        let url = format!(
+            "sqlite://{}?mode=rwc",
+            dir.path().join("stack.sqlite").display()
+        );
+        std::thread::Builder::new()
+            .stack_size(1 << 20)
+            .spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                let pool = super::super::pool::create_pool_state();
+                let tx = TransactionManager {
+                    transactions: Mutex::new(HashMap::new()),
+                };
+                let begin = tx.begin(DatabaseKind::Sqlite, &url, None, &pool);
+                let begin_size = std::mem::size_of_val(&begin);
+                let id = runtime.block_on(begin).unwrap();
+                runtime
+                    .block_on(tx.execute(&id, "CREATE TABLE t (id INTEGER PRIMARY KEY, note TEXT)"))
+                    .unwrap();
+                let values = HashMap::from([("note".to_string(), Some("x".to_string()))]);
+                let insert = tx.insert_row(&id, "main", "t", &values);
+                let insert_size = std::mem::size_of_val(&insert);
+                runtime.block_on(insert).unwrap();
+                let execute = tx.execute(
+                    &id,
+                    "DELETE FROM t WHERE coalesce(note, '') = 'x' AND id IS NOT NULL",
+                );
+                let execute_size = std::mem::size_of_val(&execute);
+                runtime.block_on(execute).unwrap();
+                runtime.block_on(tx.commit(&id)).unwrap();
+                eprintln!(
+                    "future bytes: begin {begin_size}, insert_row {insert_size}, execute {execute_size}"
+                );
+                for size in [begin_size, insert_size, execute_size] {
+                    assert!(size < 64 * 1024, "{size}");
+                }
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 
     #[tokio::test]
@@ -1472,6 +1582,34 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    async fn oracle_transaction_output_lines_are_server_messages() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
+            return;
+        };
+        let pool = super::super::pool::create_pool_state();
+        let tx = create_transaction_state();
+        let id = tx
+            .begin(DatabaseKind::Oracle, &url, None, &pool)
+            .await
+            .unwrap();
+        tx.execute(
+            &id,
+            "BEGIN DBMS_OUTPUT.ENABLE(NULL); DBMS_OUTPUT.PUT_LINE('eins'); DBMS_OUTPUT.PUT_LINE('zwei'); END;",
+        )
+        .await
+        .unwrap();
+        let output = tx.server_output(&id).await.unwrap();
+        let lines: Vec<_> = output
+            .iter()
+            .map(|m| (m.level.as_str(), m.message.as_str()))
+            .collect();
+        assert_eq!(lines, [("OUTPUT", "eins"), ("OUTPUT", "zwei")]);
+        assert!(tx.server_output(&id).await.unwrap().is_empty());
+        tx.rollback(&id).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn oracle_transaction_roundtrip() {
         let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
             return;
@@ -1584,6 +1722,97 @@ mod tests {
         adapter
             .execute_query("DROP TABLE L8_TX_TEST")
             .await
+            .unwrap();
+    }
+
+    #[test]
+    #[ignore]
+    fn oracle_transaction_path_fits_the_windows_main_thread_stack() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
+            return;
+        };
+        fn run<F: std::future::Future>(
+            runtime: &tokio::runtime::Runtime,
+            sizes: &mut Vec<(&'static str, usize)>,
+            name: &'static str,
+            future: F,
+        ) -> F::Output {
+            sizes.push((name, std::mem::size_of_val(&future)));
+            runtime.block_on(future)
+        }
+        std::thread::Builder::new()
+            .stack_size(1 << 20)
+            .spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                let pool = super::super::pool::create_pool_state();
+                let adapter = super::super::create_adapter_from_string(
+                    DatabaseKind::Oracle,
+                    &url,
+                    None,
+                    pool.clone(),
+                )
+                .unwrap();
+                let _ = runtime.block_on(adapter.execute_query("DROP TABLE L8_STACK_TEST"));
+                for sql in [
+                    "CREATE TABLE L8_STACK_TEST (ID NUMBER PRIMARY KEY, A VARCHAR2(20), B VARCHAR2(20), C NUMBER)",
+                    "INSERT INTO L8_STACK_TEST VALUES (1, 'x', NULL, NULL)",
+                    "INSERT INTO L8_STACK_TEST VALUES (2, 'x', 'y', 5)",
+                    "COMMIT",
+                ] {
+                    runtime.block_on(adapter.execute_query(sql)).unwrap();
+                }
+                let schema = runtime
+                    .block_on(adapter.execute_query("SELECT USER AS U FROM dual"))
+                    .unwrap()
+                    .rows[0]["U"]
+                    .as_str()
+                    .unwrap()
+                    .to_string();
+                let tx = create_transaction_state();
+                let mut sizes = Vec::new();
+                let id = run(&runtime, &mut sizes, "begin", tx.begin(DatabaseKind::Oracle, &url, None, &pool)).unwrap();
+                let deleted = run(
+                    &runtime,
+                    &mut sizes,
+                    "execute delete",
+                    tx.execute(&id, "DELETE FROM L8_STACK_TEST WHERE nvl(A, '-') = 'x' AND B IS NULL AND nvl(C, 0) = 0"),
+                )
+                .unwrap();
+                assert_eq!(deleted.rows_affected, Some(1));
+                run(
+                    &runtime,
+                    &mut sizes,
+                    "execute insert",
+                    tx.execute(&id, "INSERT INTO L8_STACK_TEST (ID, A, B, C) VALUES (10, 'n', NULL, 1)"),
+                )
+                .unwrap();
+                run(
+                    &runtime,
+                    &mut sizes,
+                    "execute update",
+                    tx.execute(&id, "UPDATE L8_STACK_TEST SET C = NULL WHERE nvl(B, '-') = 'y'"),
+                )
+                .unwrap();
+                let values = HashMap::from([
+                    ("ID".to_string(), Some("20".to_string())),
+                    ("A".to_string(), Some("grid".to_string())),
+                    ("B".to_string(), None),
+                ]);
+                run(&runtime, &mut sizes, "insert_row", tx.insert_row(&id, &schema, "L8_STACK_TEST", &values)).unwrap();
+                run(&runtime, &mut sizes, "oracle_changes", tx.oracle_changes(&id)).unwrap();
+                run(&runtime, &mut sizes, "server_output", tx.server_output(&id)).unwrap();
+                run(&runtime, &mut sizes, "rollback", tx.rollback(&id)).unwrap();
+                runtime.block_on(adapter.execute_query("DROP TABLE L8_STACK_TEST")).unwrap();
+                eprintln!("future bytes: {sizes:?}");
+                for (name, size) in sizes {
+                    assert!(size < 64 * 1024, "{name} {size}");
+                }
+            })
+            .unwrap()
+            .join()
             .unwrap();
     }
 }

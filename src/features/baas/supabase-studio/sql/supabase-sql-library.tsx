@@ -1,4 +1,4 @@
-import { PencilIcon, PlayIcon, Trash2Icon } from "lucide-react";
+import { Bookmark, History, PencilIcon, PlayIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import {
   AlertDialog,
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BaasEmptyState } from "../../baas-empty-state";
 import { SupabaseSqlNameDialog } from "./supabase-sql-name-dialog";
 import type {
   SupabaseSqlHistoryEntry,
@@ -68,9 +69,13 @@ export function SupabaseSqlLibrary({
         </TabsList>
         <TabsContent value="snippets" className="min-h-0 overflow-auto">
           {project.snippets.length === 0 ? (
-            <p className="px-2 py-4 text-xs text-muted-foreground">
-              Noch keine Snippets. Speichere die aktuelle Abfrage über „Als Snippet speichern“.
-            </p>
+            <BaasEmptyState
+              compact
+              className="m-1 p-4"
+              icon={Bookmark}
+              title="Noch keine Snippets."
+              description="Speichere die aktuelle Abfrage über „Als Snippet speichern“."
+            />
           ) : (
             <ul className="grid gap-0.5">
               {project.snippets.map((snippet) => (
@@ -120,9 +125,12 @@ export function SupabaseSqlLibrary({
         </TabsContent>
         <TabsContent value="history" className="min-h-0 overflow-auto">
           {project.history.length === 0 ? (
-            <p className="px-2 py-4 text-xs text-muted-foreground">
-              Noch keine Abfragen ausgeführt.
-            </p>
+            <BaasEmptyState
+              compact
+              className="m-1 p-4"
+              icon={History}
+              title="Noch keine Abfragen ausgeführt."
+            />
           ) : (
             <>
               <ul className="grid gap-0.5">{project.history.map(historyItem)}</ul>

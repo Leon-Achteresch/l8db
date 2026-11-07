@@ -11,6 +11,7 @@ import { copyNameActions } from "@/lib/clipboard";
 import type { SchemaCopyObjectType } from "@/lib/db";
 import { menuKeyHandler } from "@/lib/hotkeys";
 import { buildInvalidSet, isViewInvalid } from "@/lib/invalid-objects";
+import { middleClick } from "@/lib/middle-click";
 import { useInvalidObjectsQuery } from "@/lib/queries";
 import { EntityConfirmDialog } from "./entity-confirm-dialog";
 import { EntityMatchingColumns } from "./entity-matching-columns";
@@ -70,7 +71,7 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
         }}
         schema={dropTarget?.schema ?? ""}
         name={dropTarget?.name ?? ""}
-        objectType="view"
+        objectType={type}
         onDropped={() => {
           if (dropTarget && isOpen(dropTarget)) void navigate({ to: "/" });
         }}
@@ -82,14 +83,11 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
           {(index) => {
             const item = filtered[index];
             const rename = caps.object_admin ? () => setRenameTarget(item) : undefined;
-            const drop =
-              type === "view"
-                ? caps.object_admin
-                  ? () => setDropTarget(item)
-                  : undefined
-                : caps.query_language === "redis"
-                  ? undefined
-                  : () => setConfirmAction({ kind: "drop", schema: item.schema, name: item.name });
+            const drop = caps.object_admin
+              ? () => setDropTarget(item)
+              : type === "view" || caps.query_language === "redis"
+                ? undefined
+                : () => setConfirmAction({ kind: "drop", schema: item.schema, name: item.name });
 
             return (
               <SidebarMenuItem key={`${item.schema}.${item.name}`}>
@@ -136,6 +134,7 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
                           drop,
                         })}
                         onOpenView={() => openView(item.schema, item.name)}
+                        {...middleClick(() => actions.openInNewTab(item.schema, item.name))}
                       />
                     </ContextMenuTrigger>
                     <ContextMenuContent>

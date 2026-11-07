@@ -160,6 +160,27 @@ All adapters implement connection testing, database/schema/table/column discover
 
 The exact flags are `DatabaseKind::capabilities()`. Product compatibility and driver availability are separate from those flags. Use the app's driver status and provider hints when connecting.
 
+## Server messages
+
+Everything a statement returns besides rows is a `ServerMessage { level, message, detail }` (`src-tauri/src/db/server_output.rs`). The `execute_query` and `execute_query_with_params` commands run inside a capture scope for the connection key, whether or not the Server-Ausgabe toggle is on. Messages raised before an error are kept. `take_server_output` drains that buffer, followed by any adapter-specific output (Oracle DBMS_OUTPUT). Each transaction has its own buffer: `transaction_server_output(tx_id)` drains it and is removed with the transaction. Buffers keep the newest 2000 messages per key. Adapters call `server_output::emit`. Outside a scope, for example in MCP, CLI or metadata reads, `emit` does nothing.
+
+| Family | Channel | Levels |
+| --- | --- | --- |
+| Postgres | Notices from the backend connection (`RAISE`) | `NOTICE`/`WARNING`/`INFO`/`DEBUG`/`LOG` as sent, detail = `DETAIL` |
+| Oracle | DBMS_OUTPUT (unchanged) | `OUTPUT` |
+| Mssql | INFO tokens (patched tiberius, see `vendor/tiberius/L8DB-PATCH.md`) | `PRINT` → `OUTPUT`; other info → `INFO` with `Meldung n, Ebene s, Status t[, Prozedur p], Zeile l`. SQL Server sends `RAISERROR` severity 10 as level 0 |
+| Mysql/MariaDB | `SHOW WARNINGS` on the same session, only if the OK packet reports warnings, or after a server error (the error row itself is skipped) | `NOTE`/`WARNING`/`ERROR`, detail `Code n` |
+| Cassandra/Scylla | Response warnings of each page | `WARNING` |
+| Odbc | `SQL_SUCCESS_WITH_INFO` diagnostics (SQLSTATE class 01), which odbc-api only logs. The app logger captures them on the query thread instead of writing them to the log | `INFO`, detail `SQLSTATE s, nativer Fehler n` |
+| Bigquery | Non-fatal `errors[]` of a finished query | `WARNING`, detail `Grund r` |
+| Influxdb | `messages[]` of InfluxQL `/query` (v1 API) results | Level as sent, uppercased |
+| Elasticsearch/OpenSearch | `Warning` response headers (deprecations) | `WARNING` |
+| Athena | Scan and cost notice per query | `INFO` |
+
+No channel: Sqlite, SqliteHttp, Duckdb, Clickhouse (HTTP), Snowflake (SQL API), Mongodb, Redis, Dynamodb and S3. Their `server_output` capability stays off.
+
+Tests: `cargo test --lib server_output` covers the bound and timing. Lab checks (ignored): `notices_are_captured_per_statement_without_the_output_toggle` (Postgres lab), `live_info_messages_are_captured_per_statement` (`L8DB_SMOKE_MSSQL_URL`), `live_warnings_are_read_only_when_reported` (`L8DB_SMOKE_MYSQL_URL`/`L8DB_SMOKE_MARIADB_URL`; it counts `Com_show_warnings` to prove that statements without warnings add no round trip) and `oracle_transaction_output_lines_are_server_messages`.
+
 ## AWS providers
 
 DynamoDB and Athena talk to the AWS JSON APIs directly (hand-written SigV4 over `reqwest`, see [aws.rs](../src-tauri/src/db/aws.rs)); no AWS SDK is linked. URL layout:
@@ -234,6 +255,7 @@ Every session reports MODULE `l8db` and an ACTION such as `editor <pid>.<n>`, `m
 - **Transactions:** `DBMS_TRANSACTION.LOCAL_TRANSACTION_ID` tells whether the session has an open transaction before V$LOCKED_OBJECT is read. Without an open transaction there is nothing to list; with one but no V$ rights, the error says so.
 - **Compiling:** warnings from `CREATE OR REPLACE` in the editor and from package spec, body and callers are shown together. Objects compiled with debug info (`PLSQL_DEBUG` or optimize level below 2) appear only in the invalid-objects view, not in the sidebar markers, the compile-all count or deployment checks.
 - **Notices:** reconnects and extra result sets from `DBMS_SQL.RETURN_RESULT` are shown as a warning even when server output is off. Server output is read only when it is enabled.
+- **SQL*Plus scripts:** session, transaction and command behaviour of script runs are described in [sqlplus-scripts.md](sqlplus-scripts.md).
 - **Cancellation:** the editor call has an outer safety timeout (query timeout + 2 × connect timeout + 5 s); idle pings run under the connect timeout. The fallback kill only matches ACTIVE sessions of the same user and machine and is skipped when the call ends in the meantime.
 - **Data compare:** LOB columns are read through locators, so a fetch batch does not buffer 500 full LOBs. Sync scripts split CLOBs into `TO_CLOB` pieces of 1000 characters and refuse XMLTYPE, SDO_GEOMETRY, BFILE, LONG and binary values above 2000 bytes.
 - **SQL log:** passwords after `IDENTIFIED BY`, `REPLACE` and `PASSWORD '…'` are masked. Live checks: `oracle_live_tests` (ignored) run with `L8DB_SMOKE_ORACLE_URL` and, for kill and session tests, `L8DB_SMOKE_ORACLE_ADMIN_URL`.
@@ -268,3 +290,78 @@ Generic `http(s)://` URLs remain ClickHouse unless the host matches a known Elas
 Live checks (ignored): `L8DB_SMOKE_ELASTICSEARCH_URL`, `L8DB_E2E_OPENSEARCH_URL`, `L8DB_SMOKE_INFLUXDB_URL` (v2), `L8DB_E2E_INFLUXDB3_URL` and `L8DB_SMOKE_SQLITEHTTP_URL` drive `http_live_tests`; they expect the seeded indices `logs`/`big`, measurements `cpu`/`mem` and a writable libSQL server. `bun run test:http-families` starts each server in Docker, seeds these fixtures and runs the checks one family at a time (`L8DB_HTTP_FAMILIES` selects a subset). D1 is covered by a mocked HTTP server in the unit tests.
 
 `smoke_adapters_from_env` is ignored by default and runs configured `L8DB_SMOKE_<KIND>_URL` providers. It is not the mandatory integration suite. The isolated PostgreSQL/SSH suite is described in [integration-tests.md](integration-tests.md).
+
+
+## Cloud accounts and managed profiles
+
+Cloud accounts adds Neon, PlanetScale and SpacetimeDB accounts. The page opens from the Neon connection dialog ("Mit Neon-Konto verbinden"); it has no sidebar entry. Account credentials use backend-only keychain entries and are never returned by the general frontend secret commands. Database connections created from an account keep their ordinary connection ID; their database password is stored separately in the keychain.
+
+- **Neon:** API keys work without an OAuth registration. OAuth appears only when an application-owned `L8DB_NEON_OAUTH_CLIENT_ID` is configured; an integration must register its redirect URI with Neon. Optional configuration: `L8DB_NEON_OAUTH_REDIRECT_PORT`, `L8DB_NEON_OAUTH_SCOPES`, `L8DB_NEON_OAUTH_CLIENT_SECRET`. The app does not reuse the neonctl client identity. The account browser lists organizations, projects, branches, databases and roles; branch tabs cover supported Auth, Storage and Functions APIs. Those APIs can depend on the project's beta access. Unknown Auth schemas produce an explicit error.
+- **Neon over port 443:** choose WebSocket when creating the connection. `l8db_transport=neon-ws` forwards the PostgreSQL protocol through verified WSS and preserves sessions. There is no direct TCP fallback. The selected transport uses outer HTTPS encryption and sets PostgreSQL `channel_binding=disable`; the UI explains that choice. TCP connections retain their requested channel binding. This is not a stateless HTTP SQL adapter. Hosts must belong to `.neon.tech` or `.neon.build`.
+- **PlanetScale:** a service token lists organizations, databases and branches. Creating reader credentials requires explicit confirmation and selects PostgreSQL or MySQL from the database's actual engine. l8db tracks and can revoke only credentials it issued. Removing the local account does not silently revoke remote credentials.
+- **SpacetimeDB:** `spacetimedb://token:IDENTITY_TOKEN@maincloud.spacetimedb.com/database`. The placeholder username is `token`; the actual identity token belongs in the password field/keychain. Local fixture: `spacetimedb://token:TOKEN@127.0.0.1:13000/database?tls=false`. Cleartext is allowed only on loopback. Tables, schema and read-only SQL use the HTTP API; confirmed reducer calls are available from Cloud accounts. SQL responses are bounded to 10,000 rows/16 MiB. Dropping a request releases local work; no server-side cancellation acknowledgement is claimed.
+- **JDBC:** create a profile under Drivers, import the vendor's JAR after accepting that it executes code, and select a full **JDK 17 or newer** (`JAVA_HOME` or `PATH`). A JRE alone cannot run the source bridge. Connections use only `jdbc:l8db:profile-id`; driver URLs and passwords remain in the backend profile. The catalog links to vendor sources and does not bundle proprietary drivers. Metadata, paged reads, prepared parameters, SQL and process cancellation are supported; generic row editing, transactions and catalog switching are not advertised. Limits: four Java processes, 192 MiB heap each, 60-second idle cleanup, 50,000 result rows and 8 MiB responses.
+- **Workspace:** `workspace://profile-id/connection-id` refers to a login profile. The server holds the actual database credentials. See [team-hub.md](team-hub.md) for setup and limits.
+
+JDBC and Workspace references are strict identifiers. Editing, imports, automation and startup preserve them without injecting ordinary database passwords, PostgreSQL options or SSH/proxy/command tunnels. Profiles manage those settings themselves.
+
+Cloud lists keep at most five result pages. Queries do not poll on idle, window focus or reconnect; abandoned cache entries are discarded.
+
+### Reproduce the new live fixtures
+
+Run `bash scripts/test-spacetimedb-live.sh --setup-only` for the local lab. Its SDK fixture is in `tests/lab/spacetime/`; native ignored tests are in `src-tauri/src/db/spacetimedb_live_tests.rs` and read `L8DB_SPACETIME_LAB_CONFIG` from the script's protected configuration file. JDBC ignored tests use `JAVA_HOME`, `L8DB_JDBC_TEST_JAR` (H2), optional `L8DB_JDBC_POSTGRES_JAR`, and `L8DB_E2E_PG_URL`. Neon WSS ignored tests use a local PostgreSQL instance and a test WebSocket proxy; they do not establish access to the Neon cloud. Browser journeys mock the Tauri transport separately from native adapter live tests.
+
+
+## Scope of the RexaDB comparison
+
+The reference was [RexaDB source at 95504ab](https://github.com/RexaDB/RexaDB/tree/95504abdd0f807272af818f6edd007cf9349896a). Its advertised and implemented flows were compared with l8db's existing adapters, SQL editor, grid, ER diagrams, AI, automation, SSH, export and Supabase Studio. This change supplies the following gaps with an independent implementation; no RexaDB source files are included.
+
+| Area | Existing l8db entry point | Added flow |
+|---|---|---|
+| Neon | PostgreSQL connection URL | Accounts, branch browser, branch management tabs and WSS transport on port 443 |
+| Team collaboration | Password-free connections.json distribution | Central login, encrypted shared connections, roles/grants, versioned shared queries, separate-author approval and audit |
+| JDBC | Native adapters and ODBC | Vendor JAR catalog/import, backend profiles and bounded Java bridge |
+| PlanetScale / SpacetimeDB | PlanetScale URL through MySQL/PostgreSQL | Account discovery, confirmed reader credentials; Spacetime HTTP metadata/read-only SQL and confirmed reducers |
+| Supabase payments | Supabase Studio | Stripe test/live connection, project/account list scopes, admin actions, previewed setup, private billing schema and two Edge Functions |
+
+Payments setup creates the private RLS-protected l8db_billing schema, a Stripe webhook and the l8db billing webhook/checkout Edge Functions after preview and confirmation. Admin mutations use project metadata checks and stable idempotency keys. Cloud credentials were not available in the development lab: cloud calls are covered by local HTTP mocks, function runtime tests, real PostgreSQL privilege tests and browser transport mocks. A live Stripe/Supabase deployment remains separate coverage. Stripe search is eventually consistent, project-only invoice lists can be empty because automatically generated invoices lack project metadata, and local disconnect does not remove the previously created webhook/function secrets. The app does not supply an application-user subscription-status API.
+
+JDBC support is a generic adapter, not certification of every vendor's product or driver. OAuth needs an approved application registration, and beta cloud features depend on the provider account. Workspace SSO and a stateless PostgreSQL HTTP adapter are not part of this implementation.
+
+### Verification record, 5 November 2026
+
+The development lab was Debian 13 on x86_64, eight virtual CPUs, 16.8 GB RAM without swap, Bun 1.3.10 and Rust 1.99.0. TypeScript, the frontend production build, Cargo check and all-target Clippy passed. Clippy still reports warnings. Nine new Chromium feature journeys passed with mocked Tauri transport. Real native tests passed for JDBC with H2/PostgreSQL, PostgreSQL through a local WebSocket proxy, SpacetimeDB 2.14.1 and Workspace access to PostgreSQL. The billing SQL schema passed four real PostgreSQL privilege/RLS/order/idempotence tests. Both Edge Functions passed strict checking and real local HTTP execution under Deno 2.9.8; their cloud upstreams were mocked. See [PERFORMANCE.md](../PERFORMANCE.md) for measured workloads, latency and bounds.
+
+The broad Bun run initially recorded 3,979 passes, 384 skips and eleven failed files. Corrections to the new code and an isolated frozen dependency install resolved eight failed files. The remaining three performance failures (`definition-merge`, `perf-split-groups`, `perf-ui-plugins`) were reproduced on the unchanged base commit. The existing browser run recorded fourteen passes, four failures and two skips; all four failures were reproduced on that base too: toolbar overflow, editor Undo, and ambiguous compare/data-compare button locators. Font access was corrected before that comparison. Production CSP/editor workers and the extension sandbox passed separately.
+
+The full native unit run initially recorded 1,269 passes, four failures and 213 ignored tests. The new OAuth test had an incorrect expected PKCE vector; the corrected targeted test passed. Three unchanged MCP checks remain red: two latency budgets on this VM and a tools-list byte budget whose existing script-tool fixture exceeds the limit. Performance budgets were not increased, and these unrelated files were not modified. Ignored tests without a corresponding local lab do not count as passes. That Linux run supplied no macOS/Windows or live hosted Neon, PlanetScale, Stripe or Supabase result; the additional macOS evidence is recorded below.
+
+The single Opus 5.5 High review reported two P1, six P2 and two P3 findings. The user approved all confirmed findings and Spacetime hardening in one fix round. That round passed 64 scoped Rust tests and seven JDBC/WSS/Spacetime/Workspace-PostgreSQL live tests. The updated JDBC browser journey passed 56 assertions with 64 profiles. On the subsequently merged source, TypeScript, the frontend production build, nine targeted frontend tests, Cargo check and default-feature library Clippy passed.
+
+The optimized native binary at review-fix commit `3173c576` built with all default drivers, opt-level 3 and ThinLTO, using a local root-package override of 16 codegen units within 6 GiB. This was a binary build without installer bundles; tracked release settings were unchanged. The default one-unit build exceeded the local 6-GiB cap. The following MySQL live run failed at the two-second HTTP cancellation assertion. Commit `e63b345c` adds local cancellation/timeout handling for non-PostgreSQL Workspace operations; the current-source native MySQL retest was still missing at the Linux handoff and is completed below.
+
+Additional Rust-test compilation attempts after concurrent development was merged were terminated by global or cgroup memory exhaustion, even with reduced debug information, finer codegen partitions and a separate attempt without the two optional DuckDB/ODBC features. These attempts produced no test results. The current-source development binary build was also stopped under severe host memory pressure. The user authorized a temporary Oracle-lab stop. Compilation resumed with default drivers, then was interrupted at the user’s request to relocate remaining work to the MacBook through T3 Code and Git. Oracle was restarted and its image healthcheck passed. No additional Rust-test result or current-source MySQL pass is claimed for that interrupted run. The transfer record is in [rexa-validation-handoff.json](rexa-validation-handoff.json).
+
+### Native MacBook completion, 5 November 2026
+
+The clean `development` checkout was fast-forwarded to `5d6d2f94`. Additional native evidence comes from macOS 27.0.1 (26A434), arm64, Apple M3 with eight logical CPUs and 16 GiB RAM, Bun 1.3.10 and Rust 1.99.0. A frozen-lockfile install left `bun.lock` unchanged. TypeScript/Vite and 28 distinct scoped frontend tests passed; the payments tests required the repository runner's separate-process isolation because a combined Bun invocation shared another file's transport mock. All 62 Rexa commands and five feature IDs remain registered and attached to the UI.
+
+The selected MCP server/watch/artifact contracts passed 36 tests before the Workspace-only correction. Workspace then passed 13 regular tests and its ignored PostgreSQL live test against a new isolated PostgreSQL 18.6 container. Every Rust build used the default DuckDB/ODBC features and one build job; test compilation disabled incremental output and root-package debug information locally. The watch-specific ignored live fixture was not run. Existing Tiberius warnings remain; the macOS linker also warns that the large debug `__eh_frame` can affect exception-handling performance.
+
+The initial Workspace run exposed a regression in `e63b345c`: the outer cancellation select dropped SQLite's asynchronous interrupt handler while blocking SQL continued. That run was terminated and is not reported as a suite pass. The same authorized fix round now preserves native PostgreSQL/SQLite cancellation and retains the local select for MySQL. The strengthened SQLite test confirms the native interruption error, a same-connection followup under two seconds, and idle cleanup. No additional review was performed.
+
+A fresh `cargo build --locked --bin l8db` produced the current Mach-O arm64 binary with all default drivers. It uses the unoptimized development profile and existing build cache: only 24 GiB were free at the start, alongside 107 GiB of existing debug artifacts. This is not a current optimized release, installer or signing result. Tracked compiler settings were unchanged. Cargo check passed again after the correction.
+
+`tests/workspaces-mysql-live.test.ts` then passed all 560 assertions against an own loopback-only MySQL 8.4.13 Linux/aarch64 container with performance_schema. Fifteen fresh sessions over 10,000 source rows measured 40.84/46.56 ms median/p95 against unchanged 100/250 ms limits. Responses retained 1,000 rows/28,882 bytes; four active slots rejected the fifth request with 429. HTTP cancellation took 2.49 ms against a two-second limit. Four server queries were still present at cancellation; after unlocking there were zero queries, connections and idle requests. See [PERFORMANCE.md](../PERFORMANCE.md) and the [structured record](rexa-validation-handoff.json) for counts and bounds. Own lab containers/volumes were removed; pre-existing labs were preserved.
+
+The Mac client is native; the two database servers ran in Docker's Linux VM. These results are separate from CPU/heap simulation and the retained Linux JDBC/WSS/Spacetime/cloud-mock evidence. Hosted cloud services, Windows, native heap profiling and every JDBC vendor remain untested. The historical broad-suite failures above are not reclassified as passes.
+
+### Optimized MacBook release completion, 5 November 2026
+
+The clean synchronized source at `55edbe020d3b779834b703c40a6e352d64e8eb87` now also passed the actual optimized native build. On the same macOS 27.0.1 arm64 Apple M3 with 16 GiB RAM, Bun 1.3.10 and Rust/Cargo 1.99.0, `bun run tauri build --no-bundle --config '{"build":{"beforeBuildCommand":"true"}}' -- --locked --bin l8db` used the normal release profile: opt-level 3, ThinLTO, one codegen unit, strip, unwind and all default drivers including DuckDB and static unixODBC. No compiler-profile override was needed. With only about 12 GiB free internally and 119 GiB of existing debug cache, the one-job build used a new target directory on the already mounted SSD with 232 GiB free. No existing cache was deleted. The temporary Tauri command-line override reused the already verified unchanged frontend; source, lockfiles and permanent build settings stayed unchanged. Exact environment and commands are in [PERFORMANCE.md](../PERFORMANCE.md) and `macReleaseValidation` in the [structured record](rexa-validation-handoff.json).
+
+Cargo finished in 52 min 18 s. The new `/Volumes/IntensoSSD/l8db-rexa-release-55edbe02/release/l8db` is Mach-O arm64, 120,697,168 bytes, SHA-256 `906531345e222faba52d6e85736fe45b5c874021251a1ba497148a9f444054ba`. Cargo fingerprints confirm both default drivers; dynamic dependencies are Apple system libraries/frameworks only. Existing Tiberius and Tauri `STATIC_VCRUNTIME` deprecation warnings remain.
+
+The complete unchanged MySQL fixture then passed all 560 assertions against that release binary and an own loopback-only MySQL 8.4.13 Linux/aarch64 container with performance_schema. Over 10,000 source rows, 15 fresh sessions measured 7.56/9.96 ms median/p95 within unchanged 100/250 ms budgets: 15 HTTP requests, 90 source SQL statements, 150,015 source rows sent and 1,000 retained rows/28,881 bytes per response. Four slots rejected the fifth query with 429. Local HTTP cancellation took 0.34 ms; four server queries were still present then. After unlock, queries/connections were zero, and 250 ms idle produced no additional HTTP/SQL requests or audit writes. No immediate server-side MySQL cancellation or native heap profile is claimed. An initial lab-only Bun root-login failure was resolved solely by using the previously used local test password; it occurred before app startup and is preserved separately in the validation record.
+
+A subsequent `tauri bundle --bundles app --no-sign --ci` with updater artifacts disabled produced a local `.app`; its plist passed validation and its binary hash matches the tested release. This is a package-structure check, not a signed/notarized installer, Gatekeeper or GUI-launch result. Own lab container/volume and fixture processes/data were cleaned up; the SSD release cache and artifacts remain available. Existing debug/Linux evidence and accepted Windows/cloud/heap/watch coverage gaps remain separate. No new review, feature, fix round, budget change or publication occurred.

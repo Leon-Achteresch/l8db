@@ -1,7 +1,7 @@
 import { useDraggable } from "@dnd-kit/react";
 import { flexRender, type Header, type OnChangeFn, type SortingState } from "@tanstack/react-table";
 import { FilterIcon, GripVerticalIcon, PlayIcon, RotateCcwIcon } from "lucide-react";
-import { useRef } from "react";
+import { type RefObject, useCallback, useRef } from "react";
 import { CopyAsMenu } from "@/components/copy-as-menu";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +21,7 @@ import { operatorNeedsValue } from "@/lib/sql-filter";
 import { cn } from "@/lib/utils";
 
 type DataTableHeaderCellProps = {
+  gridColumn?: number;
   header: Header<Record<string, unknown>, unknown>;
   isFetching: boolean;
   sorting: SortingState;
@@ -45,6 +46,7 @@ type DataTableHeaderCellProps = {
 };
 
 export function DataTableHeaderCell({
+  gridColumn,
   header,
   isFetching,
   sorting,
@@ -71,68 +73,77 @@ export function DataTableHeaderCell({
   const pinnedOffset =
     header.column.getIsPinned() === "left" ? header.column.getStart("left") : null;
   const openFilterOnClose = useRef(false);
+  const cellRef = useRef<HTMLTableCellElement | null>(null);
+  const setCellRef = useCallback(
+    (element: HTMLTableCellElement | null) => {
+      cellRef.current = element;
+      ref(element);
+    },
+    [ref],
+  );
+  const filterShown = useRef(false);
+  if (filterOpen) filterShown.current = true;
   const tableStyle = useSettingsStore((state) => state.tableStyle);
   const classic = tableStyle === "classic";
 
   return (
     <ContextMenu>
-      <Popover open={filterOpen} onOpenChange={onFilterOpenChange}>
-        <PopoverAnchor asChild>
-          <ContextMenuTrigger asChild>
-            <th
-              ref={ref}
-              data-column-id={header.id}
+      <ContextMenuTrigger asChild>
+        <th
+          role={gridColumn ? "columnheader" : undefined}
+          aria-colindex={gridColumn}
+          ref={setCellRef}
+          data-column-id={header.id}
+          className={cn(
+            "group/th relative sticky top-0 z-20 border-b border-r border-border bg-muted text-left",
+            classic ? "px-3 py-2 align-middle" : "px-2 py-1.5",
+            tableStyle === "profile" ? "align-top" : "align-middle",
+            pinnedOffset !== null && "z-30 shadow-[1px_0_0_0_var(--border)]",
+          )}
+          style={{ width: header.getSize(), left: pinnedOffset ?? undefined, gridColumn }}
+        >
+          <div className="flex min-w-0 items-center gap-1">
+            <button
+              type="button"
+              ref={handleRef}
+              aria-label={`${header.id} verschieben`}
               className={cn(
-                "group/th relative sticky top-0 z-20 border-b border-r border-border bg-muted text-left",
-                classic ? "px-3 py-2 align-middle" : "px-2 py-1.5",
-                tableStyle === "profile" ? "align-top" : "align-middle",
-                pinnedOffset !== null && "z-30 shadow-[1px_0_0_0_var(--border)]",
+                "shrink-0 cursor-grab touch-none rounded p-0.5 text-muted-foreground/35 hover:text-muted-foreground active:cursor-grabbing",
+                classic
+                  ? "-ml-1"
+                  : "absolute top-1.5 left-0 z-10 bg-muted opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100",
               )}
-              style={{ width: header.getSize(), left: pinnedOffset ?? undefined }}
             >
-              <div className="flex min-w-0 items-center gap-1">
-                <button
-                  type="button"
-                  ref={handleRef}
-                  aria-label={`${header.id} verschieben`}
-                  className={cn(
-                    "shrink-0 cursor-grab touch-none rounded p-0.5 text-muted-foreground/35 hover:text-muted-foreground active:cursor-grabbing",
-                    classic
-                      ? "-ml-1"
-                      : "absolute top-1.5 left-0 z-10 bg-muted opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100",
-                  )}
-                >
-                  <GripVerticalIcon className="size-3.5" />
-                </button>
-                <div className="min-w-0 flex-1">
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(header.column.columnDef.header, header.getContext())}
-                </div>
-              </div>
-              {header.column.getCanResize() && (
-                <div
-                  onDoubleClick={() => header.column.resetSize()}
-                  onMouseDown={(event) => {
-                    event.stopPropagation();
-                    header.getResizeHandler()(event);
-                  }}
-                  onTouchStart={(event) => {
-                    event.stopPropagation();
-                    header.getResizeHandler()(event);
-                  }}
-                  className={cn(
-                    "absolute -right-px top-0 z-40 h-full w-2 cursor-col-resize select-none touch-none",
-                    header.column.getIsResizing()
-                      ? "bg-primary"
-                      : "bg-transparent hover:bg-primary/30",
-                  )}
-                />
+              <GripVerticalIcon className="size-3.5" />
+            </button>
+            <div className="min-w-0 flex-1">
+              {header.isPlaceholder
+                ? null
+                : flexRender(header.column.columnDef.header, header.getContext())}
+            </div>
+          </div>
+          {header.column.getCanResize() && (
+            <div
+              onDoubleClick={() => header.column.resetSize()}
+              onMouseDown={(event) => {
+                event.stopPropagation();
+                header.getResizeHandler()(event);
+              }}
+              onTouchStart={(event) => {
+                event.stopPropagation();
+                header.getResizeHandler()(event);
+              }}
+              className={cn(
+                "absolute -right-px top-0 z-40 h-full w-2 cursor-col-resize select-none touch-none",
+                header.column.getIsResizing() ? "bg-primary" : "bg-transparent hover:bg-primary/30",
               )}
-            </th>
-          </ContextMenuTrigger>
-        </PopoverAnchor>
-        {onApplyFilter && (
+            />
+          )}
+        </th>
+      </ContextMenuTrigger>
+      {onApplyFilter && filterShown.current && (
+        <Popover open={filterOpen} onOpenChange={onFilterOpenChange}>
+          <PopoverAnchor virtualRef={cellRef as RefObject<HTMLTableCellElement>} />
           <PopoverContent
             align="start"
             sideOffset={4}
@@ -203,8 +214,8 @@ export function DataTableHeaderCell({
               </Button>
             </div>
           </PopoverContent>
-        )}
-      </Popover>
+        </Popover>
+      )}
       <ContextMenuContent
         onCloseAutoFocus={(event) => {
           if (!openFilterOnClose.current) return;

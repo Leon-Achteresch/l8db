@@ -36,3 +36,47 @@ describe("redactErrorMessage entfernt Geheimnisse vollständig", () => {
     expect(redactErrorMessage("Server=db;PWD={a b};Database=x")).toContain("Database=x");
   });
 });
+
+describe("URL-Schwärzung bleibt linear und erfasst angrenzende Schemata", async () => {
+  const { connectionError } = await import("@/lib/connection-url/errors");
+  const { text } = await import("@/lib/ai/rich-core");
+  const inputs = [
+    "x".repeat(16_000),
+    "a1".repeat(8_000),
+    `a${"1".repeat(16_000)}`,
+    `a://${":".repeat(15_990)}`,
+    `a://${"a:".repeat(7_998)}`,
+    `${"a1".repeat(7_990)}://x`,
+  ];
+  const redactors: [string, (input: string) => string][] = [
+    ["redactErrorMessage", redactErrorMessage],
+    ["connectionError", connectionError],
+    ["text", (input) => text(input, 20_000)],
+  ];
+  for (const [name, redact] of redactors)
+    test(`${name} bleibt bei langen Ausgaben ohne Leerzeichen linear`, () => {
+      for (const input of inputs) {
+        redact(input);
+        const runs = Array.from({ length: 3 }, () => {
+          const start = performance.now();
+          redact(input);
+          return performance.now() - start;
+        });
+        expect(Math.min(...runs)).toBeLessThan(50);
+      }
+    });
+  test("Schema direkt nach Ziffer oder Unterstrich", () => {
+    for (const prefix of ["1", "_", "-", "x+"]) {
+      const url = `${prefix}postgres://user:pw@host/db`;
+      expect(redactErrorMessage(url)).not.toContain("pw");
+      expect(connectionError(url)).not.toContain("pw");
+      expect(text(url)).not.toContain("pw");
+    }
+    expect(text("1postgres://user:secret@host/db")).toBe("1postgres://[redacted]@host/db");
+    expect(text("see 123://u:p@h")).toBe("see 123://u:p@h");
+    expect(text("jdbc:mysql://a:b:c@h x")).toBe("jdbc:mysql://[redacted]@h x");
+    expect(connectionError("failed at postgres://u:p@h/db now")).toBe(
+      "failed at [Verbindungs-URL] now",
+    );
+  });
+});

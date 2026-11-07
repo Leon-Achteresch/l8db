@@ -1,5 +1,6 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { safeSetItem } from "@/lib/buffered-storage";
 import { csvFileName } from "@/lib/dashboards/csv";
 import type {
   StudioColumn,
@@ -112,7 +113,16 @@ export function rowKey(row: StudioRow, keyColumns: string[]): StudioRow {
   return Object.fromEntries(keyColumns.map((column) => [column, row[column]]));
 }
 
-const recentKey = (reference: string) => `l8db.supabase-studio.tables.recent.${reference}`;
+const RECENT_PREFIX = "l8db.supabase-studio.tables.recent.";
+const recentKey = (reference: string) => `${RECENT_PREFIX}${reference}`;
+
+export function forgetRecentTables(match: (reference: string) => boolean) {
+  const keys = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index));
+  for (const key of keys) {
+    if (key?.startsWith(RECENT_PREFIX) && match(key.slice(RECENT_PREFIX.length)))
+      localStorage.removeItem(key);
+  }
+}
 
 export function loadRecentTables(reference: string): StudioTableRef[] {
   try {
@@ -135,7 +145,7 @@ export function rememberRecentTable(reference: string, table: StudioTableRef): S
       (item) => item.schema !== table.schema || item.name !== table.name,
     ),
   ].slice(0, 10);
-  localStorage.setItem(recentKey(reference), JSON.stringify(next));
+  safeSetItem(localStorage, recentKey(reference), JSON.stringify(next));
   return next;
 }
 

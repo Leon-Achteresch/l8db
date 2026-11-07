@@ -20,7 +20,7 @@ import { providerFor } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore, visibleSchemas } from "@/lib/connections";
 import { previewSchemaObjectCopy, type SchemaCopyObjectType } from "@/lib/db";
 import { useActiveDatabase, useDbSelectionStore } from "@/lib/db-selection";
-import { prepareConnection } from "@/lib/schema-compare/store";
+import { prepareConnection } from "@/lib/prepare-connection";
 import { loadCopyTargetSchemas } from "@/lib/schema-copy";
 import { activateConnectionWithToast, effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";

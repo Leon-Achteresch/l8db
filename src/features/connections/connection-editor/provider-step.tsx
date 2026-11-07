@@ -1,5 +1,9 @@
 import { Button } from "@/components/ui/button";
-import type { BaasProvider } from "@/features/baas/baas-providers";
+import {
+  BAAS_AS_DATABASE,
+  BAAS_PROVIDERS,
+  type BaasProvider,
+} from "@/features/baas/baas-providers";
 import type { ProviderInfo } from "@/lib/db";
 import { BaasOptions } from "../provider-picker/baas-options";
 import { SmartPicker } from "../provider-picker/smart-picker";
@@ -25,6 +29,12 @@ export function ConnectionProviderStep({
         onSelect={selectProvider}
         onPaste={pasteConnectionString}
         hiddenIds={["supabase"]}
+        extras={BAAS_AS_DATABASE.map((item) => ({
+          id: item.id,
+          name: BAAS_PROVIDERS.find((provider) => provider.id === item.id)?.name ?? item.id,
+          category: item.category,
+          onSelect: () => selectBaas(item.id),
+        }))}
       />
       <BaasOptions onSelect={selectBaas} />
       <Button

@@ -1,6 +1,4 @@
-use super::{
-    connection, execution, map_pg_err, quote_ident, validate_table_filter, where_clause, TableData,
-};
+use super::{connection, execution, map_pg_err, quote_ident, where_clause, TableData};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
@@ -103,15 +101,14 @@ pub async fn read(
         client.batch_execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY").await.map_err(map_pg_err)?;
         let columns = client.query("SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position", &[&request.schema, &request.table]).await.map_err(map_pg_err)?.iter().map(|row| row.get::<_, String>(0)).collect::<Vec<_>>();
         if columns.is_empty() { return Err("Keine Exportspalten gefunden.".into()); }
-        let filter = request.filter.as_deref().map(str::trim).filter(|value| !value.is_empty());
-        if !request.allow_raw_filter { if let Some(filter) = filter { validate_table_filter(filter)?; } }
+        let where_sql = super::where_clause_in(request.filter.as_deref(), request.allow_raw_filter, false)?;
         let mut order = Vec::new();
         if let Some(column) = &request.order_by {
             if !columns.contains(column) { return Err("Unbekannte Sortierspalte.".into()); }
             order.push(format!("{} {}", quote_ident(column), if request.order_desc { "DESC" } else { "ASC" }));
         }
         if !request.is_view { order.push("t.ctid".into()); }
-        let sql = format!("DECLARE l8db_snapshot NO SCROLL CURSOR FOR SELECT to_jsonb(t) FROM {}.{} t{}{}", quote_ident(&request.schema), quote_ident(&request.table), filter.map(|value| format!(" WHERE {value}")).unwrap_or_default(), if order.is_empty() { String::new() } else { format!(" ORDER BY {}", order.join(", ")) });
+        let sql = format!("DECLARE l8db_snapshot NO SCROLL CURSOR FOR SELECT to_jsonb(t) FROM {}.{} t{}{}", quote_ident(&request.schema), quote_ident(&request.table), where_sql, if order.is_empty() { String::new() } else { format!(" ORDER BY {}", order.join(", ")) });
         client.query(&sql, &[]).await.map_err(map_pg_err)?;
         let mut rows = Vec::new();
         let mut bytes = 0;

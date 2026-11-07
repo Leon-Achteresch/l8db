@@ -5,11 +5,31 @@ import { resolve } from "node:path";
 const calls: { command: string; args: Record<string, unknown> }[] = [];
 const keychain = new Map<string, string>();
 const otherWindowConnections = new Set<string>();
+let tunnelGate: Promise<unknown> | null = null;
+const toasts: { message: string; options?: { action?: { onClick: () => void } } }[] = [];
+const notify = (message: string, options?: (typeof toasts)[number]["options"]) => {
+  toasts.push({ message, options });
+  return toasts.length;
+};
+
+mock.module("sonner", () => ({
+  toast: Object.assign(notify, {
+    success: notify,
+    error: notify,
+    warning: notify,
+    info: notify,
+    message: notify,
+    loading: notify,
+    dismiss: () => undefined,
+    promise: () => undefined,
+  }),
+}));
 
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown> = {}) => {
     calls.push({ command, args });
     if (command === "list_providers") return [];
+    if (command === "open_command_tunnel" && tunnelGate) return tunnelGate;
     if (command === "connection_in_other_window")
       return otherWindowConnections.has(String(args.id));
     if (command === "store_secret") keychain.set(String(args.account), String(args.secret));
@@ -51,13 +71,16 @@ const { isAuthFailure, connectionError, updateOracleConnectionTarget } = await i
   "../../src/lib/connection-url"
 );
 const { matchingHostRule, groupByServer } = await import("../../src/lib/connection-groups");
-const { databasePasswordToSave, closeUnsharedTunnel } = await import(
+const { databasePasswordToSave, closeUnsharedTunnel, endpointChanged } = await import(
   "../../src/features/connections/connection-editor/connection-operations"
 );
-const { schemaForUser } = await import(
+const { createConnectionUrlActions } = await import(
+  "../../src/features/connections/connection-editor/connection-url-actions"
+);
+const { schemaForUser, setSchemasToUser } = await import(
   "../../src/features/connections/connections-view/set-schemas-to-user"
 );
-const { connectionRemovalBlocker, unsavedQueryTabCount } = await import(
+const { connectionRemovalBlocker, removableConnectionIds, unsavedQueryTabCount } = await import(
   "../../src/features/connections/connections-view/connection-removal"
 );
 const { useTableTabs } = await import("../../src/lib/table-tabs");
@@ -285,6 +308,146 @@ describe("editor password handling", () => {
     expect(await databasePasswordToSave("postgresql://app@db/app", existing)).toBe("kept");
     expect(await databasePasswordToSave("postgresql://app@db/app", undefined)).toBeNull();
   });
+
+  test("clearing a field prefilled from the keychain removes the stored password", async () => {
+    keychain.set("prefilled", "old");
+    const existing = { id: "prefilled", connectionString: "postgresql://app@db/app" };
+    expect(await databasePasswordToSave("postgresql://app@db/app", existing, true)).toBeNull();
+    expect(await databasePasswordToSave("postgresql://app:new@db/app", existing, true)).toBe("new");
+  });
+});
+
+describe("saving the active connection", () => {
+  test("stays connected for cosmetic changes and reconnects for endpoint changes", () => {
+    const saved = {
+      kind: "postgres" as const,
+      connectionString: "postgresql://app@db/app?sslmode=prefer",
+      sslMode: "prefer" as const,
+      ssh: undefined,
+      name: "Alt",
+      color: "#fff",
+    };
+    const next = { ...saved, ssh: null, name: "Neu", color: "#000", readOnly: false };
+    expect(endpointChanged(saved, next)).toBe(false);
+    expect(
+      endpointChanged(saved, {
+        ...next,
+        connectionString: "postgresql://app:pw@db/app?sslmode=prefer",
+      }),
+    ).toBe(false);
+    expect(endpointChanged(saved, { ...next, connectionString: "postgresql://app@db2/app" })).toBe(
+      true,
+    );
+    expect(endpointChanged(saved, { ...next, readOnly: true })).toBe(true);
+    expect(endpointChanged(saved, { ...next, environment: "production" })).toBe(true);
+  });
+});
+
+describe("cancelling an editor connection test", () => {
+  test("rejects at once and closes a tunnel that opens afterwards", async () => {
+    let openTunnel: (value: unknown) => void = () => undefined;
+    tunnelGate = new Promise((done) => {
+      openTunnel = done;
+    });
+    const info = {
+      kind: "postgres",
+      file_based: false,
+      default_port: 5432,
+      url_schemes: ["postgresql"],
+      capabilities: { ssh: true, ssl: false },
+    };
+    const { withLiveUrl } = createConnectionUrlActions({
+      mode: "string",
+      value: "postgresql://app@db:5432/app",
+      kind: "postgres",
+      providers: [info],
+      info,
+      network: {
+        jumpHosts: [],
+        proxyEnabled: false,
+        commandEnabled: true,
+        commandTemplate: "kubectl port-forward svc/db {localPort}:5432",
+        commandLocalPort: "",
+        commandTimeout: "10",
+        proxyUser: "",
+      },
+      sshEnabled: false,
+      connection: undefined,
+      cloudAuth: null,
+    } as never);
+    const controller = new AbortController();
+    let ran = false;
+    const running = withLiveUrl(async () => {
+      ran = true;
+    }, controller.signal);
+    await flush();
+    controller.abort();
+    await expect(running).rejects.toThrow("abgebrochen");
+    openTunnel({ id: "t", local_port: 5555 });
+    await flush();
+    await flush();
+    tunnelGate = null;
+    expect(ran).toBe(false);
+    expect(calls.filter((call) => call.command === "close_ssh_tunnel")).toHaveLength(1);
+  });
+});
+
+describe("host group rules", () => {
+  test("IPv6 hosts match patterns without brackets", () => {
+    const rule = { id: "r6", name: "v6", pattern: "::1" };
+    expect(
+      matchingHostRule({ kind: "postgres", connectionString: "postgresql://u@[::1]:5432/db" }, [
+        rule,
+      ])?.id,
+    ).toBe("r6");
+  });
+
+  test("lists connections that would lose production through a rule change", async () => {
+    const { connectionsLeavingProduction } = await import("../../src/lib/environments");
+    const prod = {
+      id: "p",
+      name: "Prod",
+      kind: "postgres" as const,
+      connectionString: "postgresql://u@db-prod1/db",
+      sslMode: "prefer" as const,
+    };
+    const own = { ...prod, id: "o", name: "Eigene", environment: "production" as const };
+    const rule = { id: "r", name: "Prod", pattern: "db-prod*", environment: "production" as const };
+    expect(connectionsLeavingProduction([prod, own], [rule], []).map((c) => c.id)).toEqual(["p"]);
+    expect(connectionsLeavingProduction([prod, own], [rule], [rule])).toEqual([]);
+  });
+});
+
+describe("editor fields mode", () => {
+  test("host mistakes get German messages", () => {
+    const info = {
+      kind: "postgres",
+      file_based: false,
+      default_port: 5432,
+      url_schemes: ["postgresql"],
+      capabilities: { ssh: true, ssl: false },
+    };
+    const makeUrl = (host: string) =>
+      createConnectionUrlActions({
+        mode: "fields",
+        value: "",
+        kind: "postgres",
+        providers: [info],
+        info,
+        host,
+        port: "5432",
+        user: "app",
+        password: "",
+        database: "app",
+        extraParams: "",
+        windowsAuth: false,
+        withSsl: (url: string) => url,
+      } as never).makeUrl();
+    expect(() => makeUrl("db.example.com:5432")).toThrow("Feld „Port“");
+    expect(() => makeUrl("my host")).toThrow("ungültige Zeichen");
+    expect(makeUrl("::1")).toBe("postgresql://app@[::1]:5432/app");
+    expect(makeUrl("db.example.com")).toBe("postgresql://app@db.example.com:5432/app");
+  });
 });
 
 describe("tunnels shared with other windows", () => {
@@ -335,6 +498,31 @@ describe("tunnels shared with other windows", () => {
     expect(await connectionRemovalBlocker(["free"])).toContain("Transaktion");
     useTransactionStore.setState({ transactions: [] });
   });
+
+  test("team connections cannot be removed because the next sync restores them", async () => {
+    useConnectionsStore.setState({
+      connections: [
+        {
+          id: "own",
+          name: "o",
+          kind: "postgres",
+          connectionString: "postgresql://u@h/db",
+          sslMode: "prefer",
+        },
+        {
+          id: "team-1",
+          name: "t",
+          kind: "postgres",
+          connectionString: "postgresql://u@h/db",
+          sslMode: "prefer",
+          team: { hub: "file", id: "1", base: {} },
+        },
+      ],
+    });
+    expect(removableConnectionIds(["own", "team-1"])).toEqual(["own"]);
+    expect(await connectionRemovalBlocker(["team-1"])).toContain("Team-Datei");
+    expect(await connectionRemovalBlocker(["own"])).toBeNull();
+  });
 });
 
 describe("removing connections warns about unsaved query tabs", () => {
@@ -375,6 +563,32 @@ describe("schema filter set to the username", () => {
     expect(schemaForUser({ kind: "postgres", connectionString: "postgresql://Alice@db/app" })).toBe(
       "Alice",
     );
+  });
+
+  test("setting schemas to the user skips team connections and can be undone", () => {
+    const own = {
+      id: "ora-own",
+      name: "o",
+      kind: "oracle" as const,
+      connectionString: "oracle://hr@db:1521/ORCL",
+      sslMode: "prefer" as const,
+      schemas: ["OLD"],
+    };
+    const team = {
+      ...own,
+      id: "ora-team",
+      schemas: null,
+      team: { hub: "file", id: "t", base: {} },
+    };
+    useConnectionsStore.setState({ connections: [own, team] });
+    toasts.length = 0;
+    setSchemasToUser({ connections: [own, team] } as never);
+    const schemas = () =>
+      useConnectionsStore.getState().connections.map((connection) => connection.schemas ?? null);
+    expect(schemas()).toEqual([["HR"], null]);
+    expect(toasts[0]?.message).toContain("Verbindungen");
+    toasts[0]?.options?.action?.onClick();
+    expect(schemas()).toEqual([["OLD"], null]);
   });
 
   test("schema filters match case-insensitively only when no exact match exists", () => {

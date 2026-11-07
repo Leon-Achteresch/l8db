@@ -70,6 +70,27 @@ pub struct Column {
     pub root_schema: String,
     pub root_table: String,
     pub pii: Option<Pii>,
+    #[serde(default)]
+    pub unique: bool,
+    #[serde(default)]
+    pub references: Vec<String>,
+}
+
+pub fn unique_safe(strategy: Strategy) -> bool {
+    matches!(
+        strategy,
+        Strategy::Keep | Strategy::Null | Strategy::Hash | Strategy::Email | Strategy::Uuid
+    )
+}
+
+pub fn unique_suggestion(pii: Option<Pii>, category: Category, not_null: bool) -> Option<Pii> {
+    let mut pii = pii?;
+    if pii.strategy.is_some_and(|strategy| !unique_safe(strategy)) {
+        pii.strategy = [Strategy::Hash, Strategy::Uuid, Strategy::Null]
+            .into_iter()
+            .find(|strategy| compatible(*strategy, category, not_null));
+    }
+    Some(pii)
 }
 
 pub fn category(base_type: &str) -> Category {
@@ -428,6 +449,33 @@ pub fn validate(rules: &[MaskRule], columns: &[Column]) -> Result<(), String> {
                 .is_none_or(|value| value.contains('\0'))
         {
             return Err(format!("Für {label} fehlt ein fester Ersatzwert."));
+        }
+        if column.unique && !unique_safe(rule.strategy) {
+            return Err(format!(
+                "{label} ist eindeutig (Primärschlüssel, UNIQUE oder eindeutiger Index). „{:?}“ erzeugt Duplikate; „Hash“, „E-Mail“, „UUID“ oder „Unverändert“ wählen.",
+                rule.strategy
+            ));
+        }
+    }
+    let strategy = |label: &str| {
+        rules
+            .iter()
+            .find(|rule| format!("{}.{}.{}", rule.schema, rule.table, rule.column) == label)
+            .map(|rule| (rule.strategy, rule.value.clone()))
+            .unwrap_or((Strategy::Keep, None))
+    };
+    for column in columns {
+        let label = format!("{}.{}.{}", column.schema, column.table, column.column);
+        let child = strategy(&label);
+        if child.0 == Strategy::Null {
+            continue;
+        }
+        for parent in &column.references {
+            if strategy(parent) != child {
+                return Err(format!(
+                    "{label} verweist per Fremdschlüssel auf {parent}. Beide Spalten brauchen dieselbe Maskierung, sonst passen die Werte nicht mehr zusammen."
+                ));
+            }
         }
     }
     Ok(())
@@ -872,7 +920,7 @@ fn masked(plan: &Plan, value: &[u8], key: &[u8]) -> Option<String> {
     Some(match plan.strategy {
         Strategy::Keep => return Some(String::from_utf8_lossy(value).into_owned()),
         Strategy::Null => return None,
-        Strategy::Fixed => plan.value.clone().unwrap_or_default(),
+        Strategy::Fixed => fit(plan.value.clone().unwrap_or_default(), limit),
         Strategy::Redact => fit("REDACTED".into(), limit),
         Strategy::Hash => fit(crypto::hex(&digest(key, "hash", value)[..16]), limit),
         Strategy::Email => fit(
@@ -948,6 +996,8 @@ mod tests {
             root_schema: "public".into(),
             root_table: table.into(),
             pii: detect(name, category, not_null),
+            unique: false,
+            references: Vec::new(),
         }
     }
 
@@ -1152,6 +1202,48 @@ mod tests {
         )
         .unwrap_err()
         .contains("COPY-Blocks"));
+    }
+
+    #[test]
+    fn unique_and_foreign_key_columns_need_collision_free_consistent_rules() {
+        let mut token = column("sessions", "token", "text", true);
+        token.unique = true;
+        token.pii = unique_suggestion(token.pii.clone(), token.category, true);
+        assert_eq!(token.pii.as_ref().unwrap().strategy, Some(Strategy::Hash));
+        let mut child = column("orders", "customer_email", "text", false);
+        child.references = vec!["public.customers.email".into()];
+        let parent = column("customers", "email", "text", false);
+        let cols = vec![token, child, parent];
+        assert!(
+            validate(&[rule("sessions", "token", Strategy::Redact)], &cols)
+                .unwrap_err()
+                .contains("eindeutig")
+        );
+        assert!(
+            validate(&[rule("customers", "email", Strategy::Email)], &cols)
+                .unwrap_err()
+                .contains("Fremdschlüssel")
+        );
+        assert!(validate(
+            &[
+                rule("customers", "email", Strategy::Email),
+                rule("orders", "customer_email", Strategy::Email),
+                rule("sessions", "token", Strategy::Hash),
+            ],
+            &cols
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn fixed_values_are_cut_to_the_column_length() {
+        let plan = Plan {
+            strategy: Strategy::Fixed,
+            value: Some("abcdefghijkl".into()),
+            category: Category::Text,
+            max_length: Some(5),
+        };
+        assert_eq!(masked(&plan, b"x", &[0; 32]).as_deref(), Some("abcde"));
     }
 
     #[test]

@@ -1,7 +1,9 @@
 import {
   connectionSummary,
   filePath,
+  isProfileConnection,
   isTrustedConnection,
+  multiHostUrl,
   oracleConnectString,
   parseConnectionUrl,
 } from "@/lib/connection-url";
@@ -11,6 +13,7 @@ import { extractUrlPassword } from "@/lib/secrets";
 import type { Mode } from "./types";
 
 export function placeholderDefaults(info: ProviderInfo) {
+  if (isProfileConnection(info.kind)) return { host: "", port: "", database: "", user: "" };
   try {
     const url = new URL(info.placeholder);
     return {
@@ -30,6 +33,15 @@ export function seedFields(
   clearUser: boolean,
 ) {
   const defaults = placeholderDefaults(info);
+  if (isProfileConnection(info.kind))
+    return {
+      ...defaults,
+      password: "",
+      file: "",
+      extraParams: "",
+      trusted: false,
+      tnsAlias: "",
+    };
   if (!seed) {
     return {
       ...defaults,
@@ -80,7 +92,9 @@ export function seedFields(
 }
 
 export function seedMode(seed: SavedConnection | undefined, info: ProviderInfo): Mode {
+  if (isProfileConnection(info.kind)) return "string";
   if (!seed || info.file_based) return "fields";
+  if (multiHostUrl(seed.connectionString)) return "string";
   try {
     const url = parseConnectionUrl(seed.connectionString, seed.kind);
     if (seed.kind === "oracle" && oracleConnectString(url)) return "tns";

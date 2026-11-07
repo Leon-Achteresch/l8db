@@ -1,12 +1,13 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
-import { reportScenario } from "../scripts/performance-report";
+import { cpuThrottleRate, reportScenario } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
 import {
   closeWithEscape,
   interactionPercentiles,
   measureAppClick,
+  TAB_KEY,
 } from "./fixtures/perf-app-interactions";
 import {
   appRequestSnapshot,
@@ -86,7 +87,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       const operationsBefore = await appRequestSnapshot(page);
       const cdp = throttled ? await page.context().newCDPSession(page) : null;
       if (throttled) {
-        await cdp?.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+        await cdp?.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(4) });
         await page.evaluate(() => {
           const durations: number[] = [];
           Object.assign(window, { __historyClickDurations: durations });
@@ -155,13 +156,13 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       const entry = list.locator('[data-index="0"]');
       await entry.getByTitle("In neuem SQL-Tab öffnen").focus();
       await entry.getByRole("button", { name: "Neuer Tab", exact: true }).waitFor();
-      await page.keyboard.press("Tab");
+      await page.keyboard.press(TAB_KEY);
       expect(
         await entry
           .getByRole("button", { name: "Neuer Tab", exact: true })
           .evaluate((element) => element === document.activeElement),
       ).toBe(true);
-      await page.keyboard.press("Tab");
+      await page.keyboard.press(TAB_KEY);
       expect(
         await entry
           .getByRole("button", { name: "Editor ersetzen", exact: true })

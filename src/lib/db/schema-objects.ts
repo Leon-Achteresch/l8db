@@ -62,8 +62,9 @@ export async function uninstallExtension(
   connectionString: string,
   name: string,
   database?: string,
+  cascade = false,
 ): Promise<void> {
-  await invoke("uninstall_extension", { kind, connectionString, database, name });
+  await invoke("uninstall_extension", { kind, connectionString, database, name, cascade });
 }
 
 export interface AvailableExtensionInfo {

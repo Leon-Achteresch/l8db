@@ -6,7 +6,7 @@ export const PATH_LIKE = /^(\/|~\/|\.{1,2}\/|[A-Za-z]:[\\/]|:memory:$)/;
 
 export const USER_REQUIRED: DatabaseKind[] = ["postgres", "mysql", "mssql", "oracle"];
 
-export const DATABASE_REQUIRED: DatabaseKind[] = ["postgres", "oracle"];
+export const DATABASE_REQUIRED: DatabaseKind[] = ["postgres", "oracle", "spacetimedb"];
 
 export const SSLMODE_PARAM: DatabaseKind[] = ["postgres", "mysql", "mssql"];
 

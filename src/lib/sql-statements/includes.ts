@@ -8,6 +8,7 @@ export interface ScriptItem {
   end: number;
   source?: string;
   error?: string;
+  defines?: Record<string, string>;
 }
 
 export interface IncludeContext {
@@ -19,13 +20,18 @@ export interface IncludeContext {
 
 export const INCLUDE_LIMITS = { depth: 10, items: 100_000, characters: 10 * 1024 * 1024 } as const;
 
-const INCLUDE_PATTERN = /^(@@?|STA(?:RT)?\s)\s*("[^"]+"|'[^']+'|\S+)/i;
+const INCLUDE_PATTERN = /^(@@?|STA(?:RT?)?\s)\s*("[^"]+"|'[^']+'|\S+)([\s\S]*)$/i;
 
-export function includeTarget(text: string): { name: string; nested: boolean } | null {
-  const match = INCLUDE_PATTERN.exec(text.trim());
+export function includeTarget(
+  text: string,
+): { name: string; nested: boolean; args: string[] } | null {
+  const match = INCLUDE_PATTERN.exec(text.trim().replace(/;$/, ""));
   if (!match) return null;
   const name = match[2].replace(/^(["'])(.*)\1$/, "$2").replace(/;$/, "");
-  return { name, nested: match[1] === "@@" };
+  const args = (match[3].match(/'(?:[^']|'')*'|"(?:[^"]|"")*"|\S+/g) ?? []).map((arg) =>
+    /^(["']).*\1$/s.test(arg) ? arg.slice(1, -1).replaceAll(arg[0] + arg[0], arg[0]) : arg,
+  );
+  return { name, nested: match[1] === "@@", args };
 }
 
 export function scriptItems({ statements, commands }: SqlSplitResult): ScriptItem[] {
@@ -116,15 +122,25 @@ export async function expandIncludes(
         continue;
       }
       const fail = (error: string) => out.push({ ...placed, kind: "error", error });
+      if (/^(\\\\|\/\/)/.test(target.name)) {
+        fail(`Netzwerkpfade (UNC) sind für @-Dateien nicht erlaubt: ${target.name}`);
+        continue;
+      }
       if (depth >= INCLUDE_LIMITS.depth) {
         fail(
           `@-Aufrufe sind höchstens ${INCLUDE_LIMITS.depth} Ebenen tief erlaubt: ${target.name}`,
         );
         continue;
       }
+      if (target.name.includes("&")) {
+        fail(
+          `@-Dateinamen mit Substitutionsvariablen werden nicht unterstützt, weil l8db @-Dateien vor dem Lauf liest: ${target.name}`,
+        );
+        continue;
+      }
       const candidates = includeCandidates(
         target.name,
-        target.nested ? [dir] : [dir, top, ...context.searchPath],
+        target.nested ? [dir] : [top ?? dir, ...context.searchPath],
       );
       if (!candidates.length) {
         fail(
@@ -154,13 +170,19 @@ export async function expandIncludes(
         fail(`Datei ist zu groß: ${source}`);
         continue;
       }
-      const split = splitSqlStatements(found.text, "oracle");
+      const split = splitSqlStatements(found.text, "oracle", { slashRuns: true });
       if (split.unterminated) {
         fail(`Nicht abgeschlossenes Literal oder Kommentar in ${source}`);
         continue;
       }
+      const children: ScriptItem[] = scriptItems(split).map((child) => ({ ...child, source }));
+      if ((target.args.length || item.defines) && children[0])
+        children[0].defines = {
+          ...item.defines,
+          ...Object.fromEntries(target.args.map((arg, index) => [String(index + 1), arg])),
+        };
       await visit(
-        scriptItems(split).map((child) => ({ ...child, source })),
+        children,
         dirname(source),
         [...stack, source],
         anchor ?? { start: item.start, end: item.end },

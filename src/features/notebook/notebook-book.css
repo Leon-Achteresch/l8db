@@ -19,6 +19,9 @@
 }
 .nb-paper {
   background-color: var(--nb-paper);
+}
+.nb-paper,
+.nb-lines {
   background-image: repeating-linear-gradient(
     to bottom,
     transparent 0,
@@ -27,7 +30,6 @@
     var(--nb-line) 28px
   );
   background-position: 0 44px;
-  background-attachment: local;
 }
 .nb-page-left {
   border-radius: 6px 0 0 6px;

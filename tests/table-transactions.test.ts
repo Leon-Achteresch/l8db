@@ -44,6 +44,7 @@ const { useTransactionStore, getQueryTransaction, getTableTransaction, tableRead
 const { ensureManagedTransaction, runTableTransaction, finishManagedTransaction } = await import(
   "../src/lib/managed-transactions"
 );
+const { answerSqlConfirmation, useSqlConfirmation } = await import("../src/lib/sql-confirmation");
 
 function connection(kind: DatabaseKind = "oracle"): SavedConnection {
   return {
@@ -222,6 +223,31 @@ describe("table transactions", () => {
     expect(second).not.toBe(first);
     expect([...active]).toEqual([first]);
     expect(await edit("A")).toBe(first);
+  });
+
+  test("autocommit delete asks for confirmation and rolls back when declined", async () => {
+    useSettingsStore.setState({ transactionsEnabled: false });
+    const remove = () =>
+      runTableTransaction(
+        connection(),
+        null,
+        "APP",
+        "A",
+        async (txId) => txId,
+        () => ({ type: "delete", schema: "APP", table: "A", oldValues: { id: 1 } }),
+      );
+    const declined = remove();
+    await Bun.sleep(0);
+    const [request] = useSqlConfirmation.getState().requests;
+    expect(request?.title).toBe("Zeile endgültig löschen?");
+    answerSqlConfirmation(request.id, false);
+    await expect(declined).rejects.toThrow("Löschen abgebrochen.");
+    expect(calls.some((call) => call.command === "commit_transaction")).toBe(false);
+    const accepted = remove();
+    await Bun.sleep(0);
+    answerSqlConfirmation(useSqlConfirmation.getState().requests[0].id, true);
+    await accepted;
+    expect(calls.filter((call) => call.command === "commit_transaction")).toHaveLength(1);
   });
 
   test("failed session creation can be retried without a stale pending promise", async () => {

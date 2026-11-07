@@ -1,4 +1,4 @@
-import { ArrowUpRight, ChevronDown } from "lucide-react";
+import { ArrowUpRight, ChartLine, ChevronDown, Table2 } from "lucide-react";
 import { lazy, Suspense, useMemo, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { useAiFigures } from "@/lib/ai/figures";
@@ -36,11 +36,14 @@ export function AiResultCard({ block, inShelf = false }: { block: ToolBlock; inS
   if (!table || !config || !data) return null;
   const title = block.title || "Ergebnis";
   const number = figures.numbers.get(block.id);
-  const label = (
-    <>
-      Abb.<span className="ml-1 font-mono">{number ?? ""}</span>
-    </>
-  );
+  const label = number ? (
+    <span
+      title={`Abbildung ${number}`}
+      className="grid size-5 shrink-0 place-items-center rounded-md bg-primary/10 text-[11px] font-semibold tabular-nums text-primary"
+    >
+      {number}
+    </span>
+  ) : null;
   const showChart = chartable && view === "chart";
   if (figures.shelf && !inShelf)
     return (
@@ -48,11 +51,9 @@ export function AiResultCard({ block, inShelf = false }: { block: ToolBlock; inS
         type="button"
         ref={feature.ref}
         onClick={() => figures.focus(block.id)}
-        className="group/ref my-1.5 flex w-full items-center gap-3 rounded-xl border bg-card px-3 py-2.5 text-left outline-none transition-colors hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:ring-2 focus-visible:ring-ring"
+        className="group/ref my-2 flex w-full items-center gap-3 rounded-2xl bg-muted/55 px-3.5 py-2.5 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <span className="shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
-          {label}
-        </span>
+        {label}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-medium" title={title}>
             {title}
@@ -71,42 +72,39 @@ export function AiResultCard({ block, inShelf = false }: { block: ToolBlock; inS
       id={inShelf ? `ai-shelf-${block.id}` : undefined}
       data-focused={figures.focused === block.id || undefined}
       className={cn(
-        "my-2 overflow-hidden rounded-xl border bg-card shadow-[0_1px_2px_oklch(0_0_0/4%)] transition-[box-shadow,border-color] duration-500",
-        "data-focused:border-primary/50 data-focused:shadow-[0_0_0_3px_color-mix(in_oklab,var(--primary)_14%,transparent)]",
+        "my-3 overflow-hidden rounded-2xl bg-card shadow-[0_1px_2px_oklch(0_0_0/5%),0_8px_24px_-12px_oklch(0_0_0/16%)] transition-shadow duration-500",
+        "data-focused:shadow-[0_0_0_2px_color-mix(in_oklab,var(--primary)_40%,transparent),0_8px_24px_-12px_oklch(0_0_0/16%)]",
       )}
     >
-      <figcaption className="flex min-h-10 items-center gap-2 py-1.5 pr-1.5 pl-3">
-        <span className="shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-semibold text-primary">
-          {label}
-        </span>
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[13px] font-medium">
+      <figcaption className="flex min-h-11 items-center gap-2 py-1.5 pr-1.5 pl-3.5">
+        {label}
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[13px] font-semibold">
           <span className="truncate" title={title}>
             {title}
           </span>
           {feature.isNew && <NewBadge />}
         </span>
         {chartable && (
-          <fieldset
-            className="flex shrink-0 rounded-lg bg-muted p-0.5 text-[11px]"
-            aria-label="Ansicht"
-          >
+          <fieldset className="flex shrink-0 rounded-full bg-muted p-0.5" aria-label="Ansicht">
             {(
               [
-                ["chart", "Diagramm"],
-                ["table", "Tabelle"],
+                ["chart", "Diagramm", ChartLine],
+                ["table", "Tabelle", Table2],
               ] as const
-            ).map(([id, text]) => (
+            ).map(([id, text, Icon]) => (
               <button
                 key={id}
                 type="button"
                 aria-pressed={view === id}
+                aria-label={text}
+                title={text}
                 onClick={() => setView(id)}
                 className={cn(
-                  "h-6 rounded-md px-2 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
-                  view === id && "bg-background font-medium text-foreground shadow-xs",
+                  "grid h-6 w-7 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+                  view === id && "bg-background text-foreground shadow-xs",
                 )}
               >
-                {text}
+                <Icon className="size-3.5" />
               </button>
             ))}
           </fieldset>
@@ -132,11 +130,9 @@ export function AiResultCard({ block, inShelf = false }: { block: ToolBlock; inS
           </Suspense>
         </div>
       ) : (
-        <div className="border-t">
-          <AiResultTable table={table} />
-        </div>
+        <AiResultTable table={table} />
       )}
-      <div className="flex min-h-8 items-center gap-2 border-t bg-muted/25 px-3 text-[11px] text-muted-foreground">
+      <div className="flex min-h-8 items-center gap-2 px-3.5 pb-1 text-[11px] text-muted-foreground">
         <span className="min-w-0 flex-1 truncate tabular-nums">{aiRowsLabel(table.footer)}</span>
         {block.sql && (
           <button
@@ -153,7 +149,7 @@ export function AiResultCard({ block, inShelf = false }: { block: ToolBlock; inS
         )}
       </div>
       {sqlOpen && block.sql && (
-        <pre className="max-h-48 overflow-auto border-t bg-muted/25 px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/80">
+        <pre className="mx-2 mb-2 max-h-48 overflow-auto rounded-xl bg-muted/70 px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/80">
           {block.sql}
         </pre>
       )}

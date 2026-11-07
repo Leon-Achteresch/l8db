@@ -13,6 +13,7 @@ use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 use super::pool::PoolState;
+use super::server_output::ServerMessage;
 use super::{
     attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, timed, unsupported, where_clause,
     AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
@@ -154,6 +155,7 @@ fn select_expression(name: &str, data_type: &str) -> String {
         "hierarchyid" => format!("{column}.ToString() AS {column}"),
         "sql_variant" => format!("CAST({column} AS NVARCHAR(4000)) AS {column}"),
         "json" | "vector" => format!("CAST({column} AS NVARCHAR(MAX)) AS {column}"),
+        "money" | "smallmoney" => format!("CAST({column} AS DECIMAL(19,4)) AS {column}"),
         _ if BUILTIN_TYPES.contains(&data_type.as_str()) => column,
         _ => format!("{column}.ToString() AS {column}"),
     }
@@ -190,7 +192,9 @@ fn value_to_json(data: &ColumnData<'static>) -> serde_json::Value {
         ColumnData::I64(v) => v
             .map(super::exact_number::int)
             .unwrap_or(serde_json::Value::Null),
-        ColumnData::F32(v) => v.map(|f| num(f as f64)).unwrap_or(serde_json::Value::Null),
+        ColumnData::F32(v) => v
+            .map(|f| num(f.to_string().parse().unwrap_or(f64::from(f))))
+            .unwrap_or(serde_json::Value::Null),
         ColumnData::F64(v) => v.map(num).unwrap_or(serde_json::Value::Null),
         ColumnData::Bit(v) => v
             .map(serde_json::Value::Bool)
@@ -504,7 +508,7 @@ pub fn parse_mssql_url(value: &str) -> Result<MssqlUrl, String> {
     let mut application_name = None;
     let mut instance = None;
     for (key, value) in url.query_pairs() {
-        match key.as_ref() {
+        match key.to_ascii_lowercase().as_str() {
             "sslmode" => {
                 ssl = serde_json::from_value(serde_json::Value::String(value.into_owned()))
                     .map_err(|_| "Ungültiger SSL-Modus".to_string())?
@@ -810,6 +814,16 @@ fn type_sql(type_name: &str, max_length: i64, precision: i64, scale: i64) -> Str
     }
 }
 
+fn atomic_batch(statements: &[String]) -> Option<String> {
+    if statements.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "SET XACT_ABORT ON; BEGIN TRANSACTION; {}; COMMIT TRANSACTION",
+        statements.join("; ")
+    ))
+}
+
 fn alter_column_type(requested: Option<&str>, current: &str, collation: Option<&str>) -> String {
     let requested = requested.map(str::trim).filter(|t| !t.is_empty());
     let data_type = requested.unwrap_or(current);
@@ -999,6 +1013,38 @@ fn starts_batch(sql: &str) -> bool {
 }
 
 async fn run_query(client: &mut MsClient, sql: &str) -> Result<QueryResult, String> {
+    client.take_info_messages();
+    let result = run_statement(client, sql).await;
+    for info in client.take_info_messages() {
+        super::server_output::emit(info_message(info));
+    }
+    result
+}
+
+fn info_message(info: tiberius::TokenInfo) -> ServerMessage {
+    if info.number == 0 {
+        return ServerMessage {
+            level: "OUTPUT".to_string(),
+            message: info.message,
+            detail: None,
+        };
+    }
+    let procedure = if info.procedure.is_empty() {
+        String::new()
+    } else {
+        format!(", Prozedur {}", info.procedure)
+    };
+    ServerMessage {
+        level: "INFO".to_string(),
+        message: info.message,
+        detail: Some(format!(
+            "Meldung {}, Ebene {}, Status {}{procedure}, Zeile {}",
+            info.number, info.class, info.state, info.line
+        )),
+    }
+}
+
+async fn run_statement(client: &mut MsClient, sql: &str) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
     guarded(timed(async {
         if is_tx_control(sql) || starts_batch(sql) {
@@ -1203,13 +1249,14 @@ impl DatabaseAdapter for MssqlAdapter {
                 .join(", ")
         };
         let columns: Vec<String> = detailed.into_iter().map(|c| c.name).collect();
-        let order_sql = match order_by {
-            Some(col) if columns.iter().any(|c| c == col) => format!(
-                " ORDER BY {} {}",
-                quote(col),
-                if order_desc { "DESC" } else { "ASC" }
-            ),
-            _ => " ORDER BY (SELECT NULL)".to_string(),
+        let order = order_by
+            .filter(|col| columns.iter().any(|c| c == col))
+            .map(|col| (col, order_desc));
+        let terms = super::stable_order_terms(order, &pk, quote);
+        let order_sql = if terms.is_empty() {
+            " ORDER BY (SELECT NULL)".to_string()
+        } else {
+            format!(" ORDER BY {}", terms.join(", "))
         };
         let sql = format!(
             "SELECT {} FROM {}{}{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
@@ -1546,6 +1593,7 @@ impl DatabaseAdapter for MssqlAdapter {
             .into_iter()
             .next()
             .ok_or_else(|| format!("Unbekannte Spalte: {}", changes.old_name))?;
+        let mut statements = Vec::new();
         if changes.data_type.is_some() || changes.set_not_null.is_some() {
             let user_defined = int(&current, 6) == 1;
             let xml_schema = text_opt(&current, 10).map(|name| {
@@ -1594,14 +1642,13 @@ impl DatabaseAdapter for MssqlAdapter {
                 if nullable { "NULL" } else { "NOT NULL" }
             );
             let mask = text_opt(&current, 13).filter(|_| int(&current, 12) == 1);
-            self.exec(&match mask {
-                Some(function) => format!(
-                    "SET XACT_ABORT ON; BEGIN TRANSACTION; {alter}; ALTER TABLE {object} ALTER COLUMN {column} ADD MASKED WITH (FUNCTION = {}); COMMIT TRANSACTION",
+            statements.push(alter);
+            if let Some(function) = mask {
+                statements.push(format!(
+                    "ALTER TABLE {object} ALTER COLUMN {column} ADD MASKED WITH (FUNCTION = {})",
                     lit(&function)
-                ),
-                None => alter,
-            })
-            .await?;
+                ));
+            }
         }
         if changes.drop_default || changes.new_default.is_some() {
             let existing = self
@@ -1612,18 +1659,16 @@ impl DatabaseAdapter for MssqlAdapter {
                 ))
                 .await?;
             for row in existing {
-                self.exec(&format!(
+                statements.push(format!(
                     "ALTER TABLE {object} DROP CONSTRAINT {}",
                     quote(&text(&row, 0))
-                ))
-                .await?;
+                ));
             }
             if let Some(d) = changes.new_default.as_deref().filter(|d| !d.is_empty()) {
-                self.exec(&format!(
+                statements.push(format!(
                     "ALTER TABLE {object} ADD DEFAULT {d} FOR {}",
                     quote(&changes.old_name)
-                ))
-                .await?;
+                ));
             }
         }
         if let Some(new_name) = changes
@@ -1631,12 +1676,14 @@ impl DatabaseAdapter for MssqlAdapter {
             .as_deref()
             .filter(|n| !n.is_empty() && *n != changes.old_name)
         {
-            self.exec(&format!(
+            statements.push(format!(
                 "EXEC sp_rename {}, {}, 'COLUMN'",
                 lit(&format!("{object}.{}", quote(&changes.old_name))),
                 lit(new_name)
-            ))
-            .await?;
+            ));
+        }
+        if let Some(batch) = atomic_batch(&statements) {
+            self.exec(&batch).await?;
         }
         Ok(())
     }
@@ -1998,6 +2045,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn column_changes_run_in_one_transaction() {
+        assert_eq!(super::atomic_batch(&[]), None);
+        assert_eq!(
+            super::atomic_batch(&["A".to_string(), "B".to_string()]).unwrap(),
+            "SET XACT_ABORT ON; BEGIN TRANSACTION; A; B; COMMIT TRANSACTION"
+        );
+    }
+
+    #[test]
     fn unreadable_types_are_converted_for_browsing() {
         assert_eq!(select_expression("id", "int"), "[id]");
         assert_eq!(
@@ -2013,7 +2069,146 @@ mod tests {
             "CAST([v] AS NVARCHAR(4000)) AS [v]"
         );
         assert_eq!(select_expression("p", "Point"), "[p].ToString() AS [p]");
+        let parsed =
+            parse_mssql_url("mssql://sa:pw@h/db?trustServerCertificate=true&Encrypt=false")
+                .unwrap();
+        assert!(parsed.trust);
+        assert_eq!(parsed.ssl, SslMode::Disable);
+        assert_eq!(
+            select_expression("m", "money"),
+            "CAST([m] AS DECIMAL(19,4)) AS [m]"
+        );
+        assert_eq!(
+            value_to_json(&ColumnData::F32(Some(1.1))),
+            serde_json::json!(1.1)
+        );
         assert_eq!(select_expression("a]b", "nvarchar"), "[a]]b]");
+    }
+
+    fn info(number: u32, class: u8, procedure: &str, message: &str) -> tiberius::TokenInfo {
+        tiberius::TokenInfo {
+            number,
+            state: 1,
+            class,
+            message: message.to_string(),
+            server: "srv".to_string(),
+            procedure: procedure.to_string(),
+            line: 3,
+        }
+    }
+
+    #[test]
+    fn info_tokens_map_print_to_output_and_raiserror_to_info() {
+        let print = info_message(info(0, 0, "", "hallo"));
+        assert_eq!(
+            (print.level.as_str(), print.message.as_str()),
+            ("OUTPUT", "hallo")
+        );
+        assert_eq!(print.detail, None);
+        let raised = info_message(info(50000, 10, "", "achtung"));
+        assert_eq!(raised.level, "INFO");
+        assert_eq!(
+            raised.detail.as_deref(),
+            Some("Meldung 50000, Ebene 10, Status 1, Zeile 3")
+        );
+        let in_proc = info_message(info(50001, 5, "dbo.p", "x"));
+        assert_eq!(
+            in_proc.detail.as_deref(),
+            Some("Meldung 50001, Ebene 5, Status 1, Prozedur dbo.p, Zeile 3")
+        );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_info_messages_are_captured_per_statement() {
+        use crate::db::server_output::{capture, Messages};
+        let Ok(url) = std::env::var("L8DB_SMOKE_MSSQL_URL") else {
+            return;
+        };
+        let pool = crate::db::pool::create_pool_state();
+        let adapter = MssqlAdapter::new(&url, None, pool.clone(), "output".into()).unwrap();
+        let sink = Messages::default();
+        let result = capture(
+            sink.clone(),
+            adapter.execute_query("PRINT 'hallo'; RAISERROR('achtung', 10, 1); SELECT 1 AS x"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.rows.len(), 1);
+        let messages = sink.take();
+        assert_eq!(messages.len(), 2, "{messages:?}");
+        assert_eq!(
+            (messages[0].level.as_str(), messages[0].message.as_str()),
+            ("OUTPUT", "hallo")
+        );
+        assert_eq!(messages[1].level, "INFO");
+        assert_eq!(messages[1].message, "achtung");
+        assert_eq!(
+            messages[1].detail.as_deref(),
+            Some("Meldung 50000, Ebene 0, Status 1, Zeile 1")
+        );
+
+        let error = capture(
+            sink.clone(),
+            adapter.execute_query("PRINT 'vorher'; RAISERROR('kaputt', 16, 1)"),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("kaputt"), "{error}");
+        let messages = sink.take();
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert_eq!(messages[0].message, "vorher");
+
+        assert!(adapter.execute_query("PRINT 'ohne Ziel'").await.is_ok());
+        let quiet = capture(sink.clone(), adapter.execute_query("SELECT 1 AS x"))
+            .await
+            .unwrap();
+        assert_eq!(quiet.rows.len(), 1);
+        assert!(sink.take().is_empty());
+
+        let mut runs = Vec::new();
+        for _ in 0..5 {
+            let started = std::time::Instant::now();
+            capture(
+                sink.clone(),
+                adapter.execute_query(
+                    "DECLARE @i int = 1; WHILE @i <= 5000 BEGIN PRINT CONCAT('n ', @i); SET @i += 1; END",
+                ),
+            )
+            .await
+            .unwrap();
+            let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+            let started = std::time::Instant::now();
+            let messages = sink.take();
+            let take_ms = started.elapsed().as_secs_f64() * 1000.0;
+            assert_eq!(messages.len(), 2000);
+            assert_eq!(messages[1999].message, "n 5000");
+            assert!(take_ms < 5.0, "{take_ms}");
+            runs.push((elapsed, take_ms));
+        }
+        runs.sort_by(|a, b| a.0.total_cmp(&b.0));
+        eprintln!(
+            "performance mssql-print-capture: prints=5000 retained=2000 statement_median_ms={:.1} statement_max_ms={:.1} take_max_ms={:.3} runs=5",
+            runs[2].0,
+            runs[4].0,
+            runs.iter().map(|r| r.1).fold(0.0, f64::max)
+        );
+
+        let tx = crate::db::transaction::create_transaction_state();
+        let id = tx
+            .begin(crate::db::DatabaseKind::Mssql, &url, None, &pool)
+            .await
+            .unwrap();
+        tx.execute(&id, "PRINT 'in tx'").await.unwrap();
+        let output = tx.server_output(&id).await.unwrap();
+        assert_eq!(output.len(), 1, "{output:?}");
+        assert_eq!(
+            (output[0].level.as_str(), output[0].message.as_str()),
+            ("OUTPUT", "in tx")
+        );
+        assert!(tx.server_output(&id).await.unwrap().is_empty());
+        tx.rollback(&id).await.unwrap();
+        assert!(tx.server_output(&id).await.is_err());
     }
 
     #[tokio::test]
@@ -2535,6 +2730,7 @@ mod tests {
                         set_not_null: Some(false),
                         new_default: None,
                         drop_default: false,
+                        using: None,
                     },
                 )
                 .await
@@ -2552,6 +2748,7 @@ mod tests {
                     set_not_null: None,
                     new_default: None,
                     drop_default: false,
+                    using: None,
                 },
             )
             .await
@@ -2593,6 +2790,7 @@ mod tests {
                         set_not_null: Some(true),
                         new_default: None,
                         drop_default: false,
+                        using: None,
                     },
                 )
                 .await
@@ -2615,6 +2813,7 @@ mod tests {
                     set_not_null: None,
                     new_default: None,
                     drop_default: false,
+                    using: None,
                 },
             )
             .await

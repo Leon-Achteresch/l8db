@@ -110,6 +110,7 @@ export function QueryToolsMenu({
           icon={<HistoryIcon />}
           label="Verlauf & Gespeichertes"
           shortcut={shortcutLabel("query.history")}
+          data-hotkey="query.history"
           onSelect={onOpenHistory}
         />
         {serverOutput && (
@@ -153,6 +154,7 @@ export function QueryToolsMenu({
                 icon={<WandSparklesIcon />}
                 label="SQL formatieren"
                 shortcut={shortcutLabel("query.format")}
+                data-hotkey="query.format"
                 onSelect={() => editorApiRef.current?.format()}
                 disabled={!hasSql}
               />
@@ -163,6 +165,7 @@ export function QueryToolsMenu({
                 icon={<PackageSearchIcon />}
                 label="Package-Funktionen suchen"
                 shortcut={shortcutLabel("query.packageMembers")}
+                data-hotkey="query.packageMembers"
                 onSelect={() => {
                   pendingAction.current = "editor.action.quickOutline";
                 }}
@@ -190,12 +193,14 @@ export function QueryToolsMenu({
               icon={<BookmarkCheckIcon />}
               label="Setzen/entfernen"
               shortcut={shortcutLabel("query.bookmark")}
+              data-hotkey="query.bookmark"
               onSelect={() => editorApiRef.current?.toggleBookmark()}
             />
             <IconMenuItem
               icon={<ArrowDownToLineIcon />}
               label="Nächstes"
               shortcut={shortcutLabel("query.nextBookmark")}
+              data-hotkey="query.nextBookmark"
               onSelect={() => editorApiRef.current?.gotoBookmark("next")}
               disabled={bookmarkCount === 0}
             />
@@ -203,6 +208,7 @@ export function QueryToolsMenu({
               icon={<ArrowUpToLineIcon />}
               label="Vorheriges"
               shortcut={shortcutLabel("query.prevBookmark")}
+              data-hotkey="query.prevBookmark"
               onSelect={() => editorApiRef.current?.gotoBookmark("previous")}
               disabled={bookmarkCount === 0}
             />

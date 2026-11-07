@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { classifyBaseline, planChanges } from "../src/lib/versioning/change-plan";
 import {
   checksum,
   compareSnapshots,
   parseProject,
   parseRelease,
-  releaseChain,
+  releaseAncestry,
   validateMigration,
 } from "../src/lib/versioning/model";
 import { changedFiles, pendingVersioningCount } from "../src/lib/versioning/status";
@@ -80,28 +81,131 @@ describe("database versioning integrity", () => {
     ).rejects.toThrow("Prüfsumme");
   });
   test("customers on different versions receive different ordered plans", () => {
-    const versions = [release("v1", null), release("v2", "v1"), release("v3", "v2")];
-    expect(releaseChain(versions, "v1", "v3").map((value) => value.id)).toEqual(["v2", "v3"]);
-    expect(releaseChain(versions, "v2", "v3").map((value) => value.id)).toEqual(["v3"]);
-    expect(releaseChain(versions, "v3", "v3")).toEqual([]);
-    expect(() => releaseChain(versions, "v3", "v1")).toThrow("Nachfolger");
+    const versions = [
+      { ...release("v1", null), migrations: [] },
+      {
+        ...release("v2", "v1"),
+        migrations: [{ id: "m", title: "m", sql: "select 1", checksum: "a" }],
+      },
+      {
+        ...release("v3", "v2"),
+        migrations: [{ id: "m", title: "m", sql: "select 2", checksum: "b" }],
+      },
+    ];
+    const map = new Map(versions.map((value) => [value.id, value]));
+    const applied = (ids: string[]) =>
+      new Map(
+        ids.map((id) => [
+          id,
+          {
+            id,
+            checksum: id === "v2/m" ? "a" : "b",
+            kind: "versioned" as const,
+            source: "rollout" as const,
+            release: null,
+          },
+        ]),
+      );
+    expect(planChanges(map, "v3", applied([]), "v1").steps.map((step) => step.release.id)).toEqual([
+      "v2",
+      "v3",
+    ]);
+    expect(
+      planChanges(map, "v3", applied(["v2/m"]), "v2").steps.map((step) => step.release.id),
+    ).toEqual(["v3"]);
+    expect(planChanges(map, "v3", applied(["v2/m", "v3/m"]), "v3").steps).toEqual([]);
   });
-  test("missing versions, cycles and repeated migrations block rollout", () => {
-    expect(() => releaseChain([release("v3", "v2")], "v1", "v3")).toThrow("fehlt");
-    expect(() => releaseChain([release("v2", "v3"), release("v3", "v2")], "v1", "v3")).toThrow(
-      "Zyklische",
-    );
-    const migration = { id: "same", title: "same", sql: "select 1", checksum: "" };
-    expect(() =>
-      releaseChain(
-        [
-          { ...release("v2", "v1"), migrations: [migration] },
-          { ...release("v3", "v2"), migrations: [migration] },
+  test("baseline with deviations classifies each change by the touched objects", () => {
+    const entry = (id: string, checksum: string) => ({
+      object: {
+        id,
+        path: `database/objects/${id}.sql`,
+        selection: { schema: "APP", objectType: "table", objectName: id, objectOid: null },
+      },
+      definition: checksum,
+      checksum,
+    });
+    const migration = (id: string, extra: Record<string, unknown> = {}) => ({
+      id,
+      title: id,
+      sql: "select 1",
+      checksum: id,
+      ...extra,
+    });
+    const versions: DatabaseRelease[] = [
+      {
+        ...release("v1", null),
+        format: 2,
+        parent: undefined,
+        parents: [],
+        objects: [entry("a", "a1"), entry("b", "b1"), entry("c", "c1")],
+        migrations: [
+          migration("grundstand", { touches: ["a", "b"], before: { a: null, b: null } }),
         ],
-        "v1",
+      },
+      {
+        ...release("v2", "v1"),
+        objects: [entry("a", "a2"), entry("b", "b1"), entry("c", "c1")],
+        migrations: [migration("m")],
+      },
+      {
+        ...release("v3", "v2"),
+        objects: [entry("a", "a2"), entry("b", "b3"), entry("c", "c1")],
+        migrations: [migration("m"), migration("seed", { touches: [], data: true })],
+      },
+    ];
+    const map = new Map(versions.map((value) => [value.id, value]));
+    const statuses = (actual: Record<string, string>) => {
+      const result = classifyBaseline(map, "v3", new Map(Object.entries(actual)));
+      return {
+        changes: Object.fromEntries(
+          result.changes.map((change) => [change.id, `${change.status}:${change.suggested}`]),
+        ),
+        variances: result.variances.map((variance) => variance.object),
+        missing: result.missing,
+      };
+    };
+    expect(statuses({ a: "a2", b: "b3", c: "c1" })).toEqual({
+      changes: {
+        "v1/grundstand": "done:done",
+        "v2/m": "done:done",
+        "v3/m": "done:done",
+        "v3/seed": "decision:done",
+      },
+      variances: [],
+      missing: [],
+    });
+    expect(statuses({ a: "a2", b: "b1", c: "c1" }).changes).toEqual({
+      "v1/grundstand": "done:done",
+      "v2/m": "done:done",
+      "v3/m": "open:open",
+      "v3/seed": "decision:open",
+    });
+    expect(statuses({ c: "c1" }).changes["v1/grundstand"]).toBe("open:open");
+    expect(statuses({ a: "custom", b: "b3", c: "c1" })).toEqual({
+      changes: {
+        "v1/grundstand": "decision:done",
+        "v2/m": "decision:done",
+        "v3/m": "done:done",
+        "v3/seed": "decision:done",
+      },
+      variances: ["a"],
+      missing: [],
+    });
+    expect(statuses({ a: "a2", b: "b3" }).missing).toEqual(["c"]);
+    expect(statuses({ a: "a2", b: "b3", c: "c9" }).variances).toEqual(["c"]);
+  });
+  test("missing versions and cycles block rollout", () => {
+    expect(() => releaseAncestry(new Map([["v3", release("v3", "v2")]]), "v3")).toThrow("fehlt");
+    expect(() =>
+      releaseAncestry(
+        new Map([
+          ["v2", release("v2", "v3")],
+          ["v3", release("v3", "v2")],
+        ]),
         "v3",
       ),
-    ).toThrow("eindeutig");
+    ).toThrow("Zyklische");
   });
   test("drift includes missing and unmanaged objects", async () => {
     const before = { object, definition: "old", checksum: await checksum("old") };

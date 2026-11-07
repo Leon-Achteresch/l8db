@@ -1,15 +1,18 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCwIcon, XIcon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { s3AbortMultipartUpload, s3ListMultipartUploads } from "@/lib/db";
+import { ConfirmActionDialog } from "./confirm-action-dialog";
 import { errorText, formatDate, useStorageConnection } from "./use-storage-connection";
 
 export function MultipartUploads({ bucket }: { bucket: string }) {
   const { connection, url, readOnly } = useStorageConnection();
   const queryClient = useQueryClient();
+  const [confirmAll, setConfirmAll] = useState(false);
   const uploads = useQuery({
     queryKey: ["s3", connection?.id, "multipart", bucket],
     queryFn: () => s3ListMultipartUploads(url, bucket),
@@ -47,13 +50,7 @@ export function MultipartUploads({ bucket }: { bucket: string }) {
           <RefreshCwIcon className={uploads.isFetching ? "animate-spin" : undefined} />
         </IconButton>
         {!readOnly && list.length > 1 && (
-          <Button
-            size="sm"
-            variant="destructive"
-            onClick={async () => {
-              for (const upload of list) await abort(upload.key, upload.upload_id);
-            }}
-          >
+          <Button size="sm" variant="destructive" onClick={() => setConfirmAll(true)}>
             Alle abbrechen
           </Button>
         )}
@@ -108,6 +105,32 @@ export function MultipartUploads({ bucket }: { bucket: string }) {
           </tbody>
         </table>
       )}
+      <ConfirmActionDialog
+        open={confirmAll}
+        title={`${list.length} Uploads abbrechen?`}
+        description="Alle unvollständigen Multipart-Uploads dieses Buckets werden abgebrochen, auch solche, die gerade von anderen Clients oder Transfers geschrieben werden. Bereits hochgeladene Teile werden verworfen."
+        confirmLabel="Alle abbrechen"
+        onOpenChange={setConfirmAll}
+        onConfirm={async () => {
+          const errors: string[] = [];
+          for (const upload of list) {
+            try {
+              await s3AbortMultipartUpload(url, bucket, upload.key, upload.upload_id);
+            } catch (error) {
+              errors.push(`${upload.key}: ${errorText(error)}`);
+            }
+          }
+          await queryClient.invalidateQueries({
+            queryKey: ["s3", connection?.id, "multipart", bucket],
+          });
+          const aborted = list.length - errors.length;
+          if (errors.length)
+            throw new Error(
+              `${aborted} abgebrochen, ${errors.length} Fehler:\n${errors.slice(0, 5).join("\n")}`,
+            );
+          toast.success(`${aborted} Upload(s) abgebrochen`);
+        }}
+      />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -37,6 +38,7 @@ export interface TooltipProps {
 
 // Gap between trigger and tooltip, in px.
 const GAP = 8;
+const EDGE = 4;
 
 // Centering transform for the fixed-positioned anchor point, per side.
 const anchorTransform: Record<Side, string> = {
@@ -114,6 +116,7 @@ export function Tooltip({
   const id = useId();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const anchorRef = useRef<HTMLSpanElement>(null);
+  const floatingRef = useRef<HTMLSpanElement>(null);
   const hover = useHoverGesture();
   const reduce = useReducedMotion();
 
@@ -192,6 +195,15 @@ export function Tooltip({
     };
   }, [open, place]);
 
+  useLayoutEffect(() => {
+    const el = floatingRef.current;
+    if (!open || !coords || !el) return;
+    const r = el.getBoundingClientRect();
+    const dx = Math.max(0, EDGE - r.left) - Math.max(0, r.right - (window.innerWidth - EDGE));
+    const dy = Math.max(0, EDGE - r.top) - Math.max(0, r.bottom - (window.innerHeight - EDGE));
+    if (dx || dy) setCoords({ top: coords.top + dy, left: coords.left + dx });
+  }, [open, coords]);
+
   const variants = useMemo(() => (reduce ? REDUCED_VARIANTS : buildVariants(side)), [reduce, side]);
 
   if (!isValidElement(children)) return children;
@@ -246,6 +258,7 @@ export function Tooltip({
             <AnimatePresence>
               {open && coords ? (
                 <span
+                  ref={floatingRef}
                   aria-hidden
                   className="pointer-events-none fixed z-[9999]"
                   style={{

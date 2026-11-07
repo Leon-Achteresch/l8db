@@ -50,6 +50,7 @@ export const DATABASE_REQUEST_COMMANDS = [
   "get_table_ddl",
   "get_view_definition",
   "get_database_overview",
+  "get_schema_map",
   "get_er_schema",
   "get_partition_info",
   "get_table_rls",

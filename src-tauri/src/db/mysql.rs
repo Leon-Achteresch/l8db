@@ -29,6 +29,14 @@ pub fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "''"))
 }
 
+pub fn value_lit(value: &str) -> String {
+    if !value.contains('\\') {
+        return lit(value);
+    }
+    let hex: String = value.bytes().map(|b| format!("{b:02X}")).collect();
+    format!("_utf8mb4 X'{hex}'")
+}
+
 struct ColumnDefinition {
     data_type: String,
     nullable: bool,
@@ -332,6 +340,30 @@ fn value_to_json(value: Value, column: &Column) -> serde_json::Value {
             }
         )),
     }
+}
+
+fn replace_view_sql(create: &str, check: &str, schema: &str, view: &str, body: &str) -> String {
+    let attributes = create
+        .find(" SQL SECURITY ")
+        .and_then(|start| {
+            create[start..]
+                .find(" VIEW ")
+                .map(|end| create["CREATE".len()..start + end].trim())
+        })
+        .unwrap_or("");
+    let body = body.trim().trim_end_matches(';').trim_end();
+    let check = match check {
+        "CASCADED" | "LOCAL" if !body.to_uppercase().ends_with("CHECK OPTION") => {
+            format!(" WITH {check} CHECK OPTION")
+        }
+        _ => String::new(),
+    };
+    format!(
+        "CREATE OR REPLACE {attributes}{}VIEW {}.{} AS {body}{check}",
+        if attributes.is_empty() { "" } else { " " },
+        quote(schema),
+        quote(view)
+    )
 }
 
 fn cell(row: &Row, index: usize) -> String {
@@ -655,9 +687,37 @@ impl MysqlAdapter {
 }
 
 async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
+    let outcome = timed(async { Ok(read_query(conn, sql).await) }).await?;
+    let failed = match &outcome {
+        Ok(_) if conn.get_warnings() > 0 => Some(None),
+        Err(mysql_async::Error::Server(error)) => Some(Some(error.code)),
+        _ => None,
+    };
+    if let (Some(failed), true) = (failed, super::server_output::sink().is_some()) {
+        let _ = timed(emit_warnings(conn, failed)).await;
+    }
+    outcome.map_err(map_err)
+}
+
+async fn emit_warnings(conn: &mut Conn, failed: Option<u16>) -> Result<(), String> {
+    let rows: Vec<(String, u32, String)> = conn.query("SHOW WARNINGS").await.map_err(map_err)?;
+    for (level, code, message) in rows {
+        if level.eq_ignore_ascii_case("error") && failed == Some(code as u16) {
+            continue;
+        }
+        super::server_output::emit(super::server_output::ServerMessage {
+            level: level.to_uppercase(),
+            message,
+            detail: Some(format!("Code {code}")),
+        });
+    }
+    Ok(())
+}
+
+async fn read_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, mysql_async::Error> {
     let start = std::time::Instant::now();
-    timed(async {
-        let mut result = conn.query_iter(sql).await.map_err(map_err)?;
+    {
+        let mut result = conn.query_iter(sql).await?;
         let columns_meta: Vec<Column> = result.columns().map(|c| c.to_vec()).unwrap_or_default();
         let columns: Vec<String> = columns_meta
             .iter()
@@ -666,7 +726,7 @@ async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
         let columns = super::unique_column_names(columns);
         let limit = super::execution::row_limit();
         let mut rows: Vec<Row> = Vec::new();
-        while let Some(row) = result.next().await.map_err(map_err)? {
+        while let Some(row) = result.next().await? {
             if rows.len() < limit {
                 rows.push(row);
             }
@@ -676,7 +736,7 @@ async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
         } else {
             None
         };
-        result.drop_result().await.map_err(map_err)?;
+        result.drop_result().await?;
         let data: Vec<Vec<serde_json::Value>> = rows
             .into_iter()
             .map(|row| {
@@ -695,8 +755,7 @@ async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
             execution_time_ms: start.elapsed().as_millis() as u64,
             truncated: false,
         })
-    })
-    .await
+    }
 }
 
 async fn read_snapshot(conn: &mut Conn, sql: &str, max_rows: usize) -> Result<TableData, String> {
@@ -840,13 +899,14 @@ impl DatabaseAdapter for MysqlAdapter {
             .map(|c| c.name.clone())
             .collect();
         let columns: Vec<String> = detailed.into_iter().map(|c| c.name).collect();
-        let order_sql = match order_by {
-            Some(col) if columns.iter().any(|c| c == col) => format!(
-                " ORDER BY {} {}",
-                quote(col),
-                if order_desc { "DESC" } else { "ASC" }
-            ),
-            _ => String::new(),
+        let order = order_by
+            .filter(|col| columns.iter().any(|c| c == col))
+            .map(|col| (col, order_desc));
+        let terms = super::stable_order_terms(order, &pk, quote);
+        let order_sql = if terms.is_empty() {
+            String::new()
+        } else {
+            format!(" ORDER BY {}", terms.join(", "))
         };
         let sql = format!(
             "SELECT * FROM {}.{}{}{} LIMIT {} OFFSET {}",
@@ -951,13 +1011,28 @@ impl DatabaseAdapter for MysqlAdapter {
         if dry_run {
             return self.exec(&format!("EXPLAIN {body}")).await;
         }
-        self.exec(&format!(
-            "CREATE OR REPLACE VIEW {}.{} AS {}",
-            quote(schema),
-            quote(view),
-            body
-        ))
-        .await
+        let create = self
+            .rows(&format!(
+                "SHOW CREATE VIEW {}.{}",
+                quote(schema),
+                quote(view)
+            ))
+            .await?
+            .first()
+            .map(|r| cell(r, 1))
+            .ok_or_else(|| "View nicht gefunden".to_string())?;
+        let check = self
+            .rows(&format!(
+                "SELECT CHECK_OPTION FROM information_schema.VIEWS WHERE TABLE_SCHEMA = {} AND TABLE_NAME = {}",
+                lit(schema),
+                lit(view)
+            ))
+            .await?
+            .first()
+            .map(|r| cell(r, 0))
+            .unwrap_or_default();
+        self.exec(&replace_view_sql(&create, &check, schema, view, body))
+            .await
     }
 
     async fn list_functions(&self, schema: Option<&str>) -> Result<Vec<FunctionInfo>, String> {
@@ -1522,6 +1597,29 @@ mod tests {
     use crate::db::pool::create_pool_state;
 
     #[test]
+    fn value_literals_do_not_depend_on_backslash_escapes() {
+        assert_eq!(value_lit("it's"), "'it''s'");
+        assert_eq!(value_lit("a\\b"), "_utf8mb4 X'615C62'");
+    }
+
+    #[test]
+    fn view_replace_keeps_definer_security_and_check_option() {
+        let create = "CREATE ALGORITHM=MERGE DEFINER=`bob`@`%` SQL SECURITY INVOKER VIEW `v` AS select 1 AS `x`";
+        assert_eq!(
+            replace_view_sql(create, "CASCADED", "app", "v", "SELECT 2 AS x;"),
+            "CREATE OR REPLACE ALGORITHM=MERGE DEFINER=`bob`@`%` SQL SECURITY INVOKER VIEW `app`.`v` AS SELECT 2 AS x WITH CASCADED CHECK OPTION"
+        );
+        assert_eq!(
+            replace_view_sql(create, "LOCAL", "app", "v", "SELECT 2 WITH LOCAL CHECK OPTION"),
+            "CREATE OR REPLACE ALGORITHM=MERGE DEFINER=`bob`@`%` SQL SECURITY INVOKER VIEW `app`.`v` AS SELECT 2 WITH LOCAL CHECK OPTION"
+        );
+        assert_eq!(
+            replace_view_sql("", "NONE", "app", "v", "SELECT 1"),
+            "CREATE OR REPLACE VIEW `app`.`v` AS SELECT 1"
+        );
+    }
+
+    #[test]
     fn session_ids_never_wrap_to_other_sessions() {
         assert_eq!(session_pid(42), 42);
         assert_eq!(session_pid(i32::MAX as i64), i32::MAX);
@@ -1618,6 +1716,7 @@ mod tests {
             set_not_null: None,
             new_default: None,
             drop_default: false,
+            using: None,
         }
     }
 
@@ -1833,6 +1932,122 @@ mod tests {
         cell(&adapter.rows(sql).await.unwrap()[0], 0)
     }
 
+    async fn show_warnings_count(conn: &mut Conn) -> u64 {
+        let row: (String, String) = conn
+            .query_first("SHOW SESSION STATUS LIKE 'Com_show_warnings'")
+            .await
+            .unwrap()
+            .unwrap();
+        row.1.parse().unwrap()
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_warnings_are_read_only_when_reported() {
+        use crate::db::server_output::{capture, Messages};
+        for url in live_urls() {
+            let pool = create_pool_state();
+            let adapter = MysqlAdapter::new(&url, None, pool.clone(), "output".into()).unwrap();
+            let mut conn = adapter.open_conn().await.unwrap();
+            let sink = Messages::default();
+            let base = show_warnings_count(&mut conn).await;
+            let mut plain = Vec::new();
+            let mut captured = Vec::new();
+            for round in 0..200 {
+                let started = std::time::Instant::now();
+                if round % 2 == 0 {
+                    capture(sink.clone(), run_query(&mut conn, "SELECT 1 AS n"))
+                        .await
+                        .unwrap();
+                    captured.push(started.elapsed().as_secs_f64() * 1000.0);
+                } else {
+                    run_query(&mut conn, "SELECT 1 AS n").await.unwrap();
+                    plain.push(started.elapsed().as_secs_f64() * 1000.0);
+                }
+            }
+            assert_eq!(show_warnings_count(&mut conn).await, base);
+            assert!(sink.take().is_empty());
+            plain.sort_by(f64::total_cmp);
+            captured.sort_by(f64::total_cmp);
+            eprintln!(
+                "performance mysql-warning-capture: url_kind={} statements=200 show_warnings_round_trips=0 plain_median_ms={:.3} plain_p95_ms={:.3} captured_median_ms={:.3} captured_p95_ms={:.3}",
+                if url.contains("maria") { "mariadb" } else { "mysql" },
+                plain[50],
+                plain[95],
+                captured[50],
+                captured[95]
+            );
+
+            capture(
+                sink.clone(),
+                run_query(&mut conn, "SELECT CAST('1x' AS SIGNED) AS n"),
+            )
+            .await
+            .unwrap();
+            assert_eq!(show_warnings_count(&mut conn).await, base + 1);
+            let messages = sink.take();
+            assert_eq!(messages.len(), 1, "{messages:?}");
+            assert_eq!(messages[0].level, "WARNING");
+            assert!(messages[0].message.contains("1x"), "{messages:?}");
+            assert_eq!(messages[0].detail.as_deref(), Some("Code 1292"));
+
+            capture(
+                sink.clone(),
+                run_query(&mut conn, "DROP TABLE IF EXISTS l8db_output_missing"),
+            )
+            .await
+            .unwrap();
+            let messages = sink.take();
+            assert_eq!(messages[0].level, "NOTE", "{messages:?}");
+            assert_eq!(messages[0].detail.as_deref(), Some("Code 1051"));
+
+            let error = capture(
+                sink.clone(),
+                run_query(&mut conn, "SELECT * FROM l8db_output_missing"),
+            )
+            .await
+            .unwrap_err();
+            assert!(error.contains("1146"), "{error}");
+            assert!(sink.take().is_empty());
+
+            let before = show_warnings_count(&mut conn).await;
+            run_query(&mut conn, "SELECT CAST('1x' AS SIGNED) AS n")
+                .await
+                .unwrap();
+            assert_eq!(show_warnings_count(&mut conn).await, before);
+
+            capture(
+                crate::db::commands::output_sink(&url, None),
+                adapter.execute_query("SELECT CAST('2x' AS SIGNED) AS n"),
+            )
+            .await
+            .unwrap();
+            let taken = crate::db::commands::take_output(
+                crate::db::DatabaseKind::Mysql,
+                &url,
+                None,
+                pool.clone(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(taken.len(), 1, "{taken:?}");
+            assert!(taken[0].message.contains("2x"));
+
+            let tx = crate::db::transaction::create_transaction_state();
+            let id = tx
+                .begin(crate::db::DatabaseKind::Mysql, &url, None, &pool)
+                .await
+                .unwrap();
+            tx.execute(&id, "SELECT CAST('3x' AS SIGNED) AS n")
+                .await
+                .unwrap();
+            let output = tx.server_output(&id).await.unwrap();
+            assert_eq!(output.len(), 1, "{output:?}");
+            assert!(output[0].message.contains("3x"));
+            tx.rollback(&id).await.unwrap();
+        }
+    }
+
     #[tokio::test]
     #[ignore]
     async fn live_explain_analyze_rolls_back_changes() {
@@ -2015,6 +2230,7 @@ mod tests {
                                 set_not_null: None,
                                 new_default: None,
                                 drop_default: false,
+                                using: None,
                             },
                         )
                         .await
@@ -2090,6 +2306,7 @@ mod tests {
                                 set_not_null,
                                 new_default: None,
                                 drop_default: false,
+                                using: None,
                             },
                         )
                         .await

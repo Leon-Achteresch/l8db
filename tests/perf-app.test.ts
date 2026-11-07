@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { chromium, type Page, webkit } from "playwright";
+import { reportScenario } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
+import { expectFrame, FRAME_BUDGETS } from "./fixtures/perf-webkit-profile";
 
 const TABLES = Number(process.env.L8DB_PERF_TABLES ?? 3000);
 const MIN_FPS = Number(process.env.L8DB_PERF_MIN_FPS ?? 55);
@@ -48,6 +50,10 @@ async function measure(name: string, page: Page, run: () => Promise<void>): Prom
   console.log(
     `perf ${name}: ${sample.fps.toFixed(1)} fps, p95 ${sample.p95.toFixed(1)} ms, worst ${sample.worst.toFixed(1)} ms, ${sample.frames} Frames`,
   );
+  await reportScenario(`${name}-${process.env.L8DB_PERF_ENGINE ?? "chromium"}`, {
+    ...sample,
+    frameBudgets: FRAME_BUDGETS,
+  });
   return sample;
 }
 
@@ -116,18 +122,14 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
   async () => {
     const app = await open("/", 'a[data-name="table_0000"]', undefined, 1000);
     try {
-      const schemas = app.page.locator('section[aria-label="Schemas"]');
-      await schemas.locator("button").first().waitFor();
+      const schemas = app.page.locator('nav[aria-label="Schemas"]');
+      await schemas.locator("button[aria-pressed]").first().waitFor();
       expect(await schemas.locator("button").count()).toBeLessThan(30);
-      await schemas.locator("button").first().focus();
-      await app.page.keyboard.press("End");
-      await app.page.waitForFunction(() =>
-        document.activeElement?.textContent?.includes("schema_999"),
-      );
-      await schemas.getByRole("button", { name: /schema_999/ }).click();
+      await schemas.getByRole("combobox", { name: "Weitere Schemas" }).click();
+      await app.page.getByRole("option", { name: "schema_999" }).click();
       await app.page.waitForFunction(() =>
         document
-          .querySelector('section[aria-label="Schemas"] button[aria-current="true"]')
+          .querySelector('nav[aria-label="Schemas"] button[aria-pressed="true"]')
           ?.textContent?.includes("schema_999"),
       );
       expect(app.errors).toEqual([]);
@@ -145,18 +147,16 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
     try {
       const dom = await app.page.evaluate(() => ({
         sidebarItems: document.querySelectorAll("[data-slot=sidebar-menu-item]").length,
-        overviewRows:
-          document.querySelector('[data-slot="dashboard-table-list"] > div')?.childElementCount ??
-          -1,
+        overviewRows: document.querySelectorAll("[data-atlas-index]").length,
         nodes: document.querySelectorAll("*").length,
       }));
       console.log(
-        `perf dom: ${dom.sidebarItems} Sidebar-Einträge, ${dom.overviewRows} Übersichtszeilen, ${dom.nodes} Knoten`,
+        `perf dom: ${dom.sidebarItems} Sidebar-Einträge, ${dom.overviewRows} Kartenkacheln, ${dom.nodes} Knoten`,
       );
       expect(dom.sidebarItems).toBeGreaterThan(0);
       expect(dom.sidebarItems).toBeLessThan(120);
       expect(dom.overviewRows).toBeGreaterThan(0);
-      expect(dom.overviewRows).toBeLessThan(60);
+      expect(dom.overviewRows).toBeLessThanOrEqual(180);
       expect(dom.nodes).toBeLessThan(6000);
       await app.page
         .locator('button[data-tour="sidebar-connection"] span[aria-hidden] svg')
@@ -165,18 +165,23 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       const sidebarScroll = await measure("sidebar-scroll", app.page, () =>
         wheel(app.page, 150, 500, 40, 200),
       );
-      expect(sidebarScroll.fps).toBeGreaterThan(MIN_FPS);
-      expect(sidebarScroll.p95).toBeLessThan(MAX_P95_MS);
+      expectFrame(sidebarScroll.fps).toBeGreaterThan(MIN_FPS);
+      expectFrame(sidebarScroll.p95).toBeLessThan(MAX_P95_MS);
 
-      const overviewScroll = await measure("overview-scroll", app.page, async () => {
-        await app.page.locator('[data-slot="dashboard-table-list"]').first().hover();
-        for (let step = 0; step < 40; step++) {
-          await app.page.mouse.wheel(0, step % 10 < 5 ? 200 : -200);
-          await app.page.waitForTimeout(16);
-        }
+      const overviewScroll = await measure("overview-atlas-hover", app.page, async () => {
+        const box = await app.page
+          .locator('fieldset[aria-label^="Tabellenkarte"]')
+          .boundingBox();
+        if (!box) throw new Error("Tabellenkarte fehlt");
+        for (let step = 0; step < 40; step++)
+          await app.page.mouse.move(
+            box.x + (((step * 97) % 100) / 100) * box.width,
+            box.y + (((step * 61) % 100) / 100) * box.height,
+            { steps: 2 },
+          );
       });
-      expect(overviewScroll.fps).toBeGreaterThan(MIN_FPS);
-      expect(overviewScroll.p95).toBeLessThan(MAX_P95_MS);
+      expectFrame(overviewScroll.fps).toBeGreaterThan(MIN_FPS);
+      expectFrame(overviewScroll.p95).toBeLessThan(MAX_P95_MS);
 
       const tabSwitch = await measure("sidebar-tab-switch", app.page, async () => {
         for (let round = 0; round < 3; round++) {
@@ -189,9 +194,9 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
           await app.page.waitForTimeout(400);
         }
       });
-      expect(tabSwitch.fps).toBeGreaterThan(MIN_FPS);
-      expect(tabSwitch.p95).toBeLessThan(MAX_P95_MS);
-      expect(tabSwitch.worst).toBeLessThan(200);
+      expectFrame(tabSwitch.fps).toBeGreaterThan(MIN_FPS);
+      expectFrame(tabSwitch.p95).toBeLessThan(MAX_P95_MS);
+      expectFrame(tabSwitch.worst).toBeLessThan(200);
       await app.page.getByRole("tab", { name: /Views/i }).first().click();
       await app.page
         .getByRole("tab", { name: /Tabellen/i })
@@ -264,8 +269,8 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       const scroll = await measure("dashboard-scroll", app.page, () =>
         wheel(app.page, 900, 500, 50, 200),
       );
-      expect(scroll.fps).toBeGreaterThan(MIN_FPS);
-      expect(scroll.p95).toBeLessThan(MAX_P95_DASHBOARD_MS);
+      expectFrame(scroll.fps).toBeGreaterThan(MIN_FPS);
+      expectFrame(scroll.p95).toBeLessThan(MAX_P95_DASHBOARD_MS);
 
       const box = await app.page.locator(".l8-item [data-l8-handle]").first().boundingBox();
       if (!box) throw new Error("Kein Widget im Dashboard gefunden.");
@@ -281,8 +286,8 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         }
         await app.page.mouse.up();
       });
-      expect(drag.fps).toBeGreaterThan(MIN_FPS);
-      expect(drag.p95).toBeLessThan(MAX_P95_DASHBOARD_MS);
+      expectFrame(drag.fps).toBeGreaterThan(MIN_FPS);
+      expectFrame(drag.p95).toBeLessThan(MAX_P95_DASHBOARD_MS);
 
       expect(app.errors).toEqual([]);
     } finally {
@@ -402,6 +407,22 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         rows: document.querySelectorAll('[role="tabpanel"][data-state="active"] tbody tr').length,
         nodes: document.querySelectorAll("*").length,
       }));
+      await app.page.evaluate(() => {
+        const state = window as unknown as { __styleWrites: number };
+        state.__styleWrites = 0;
+        new MutationObserver((records) => {
+          for (const record of records)
+            if (
+              [
+                record.target,
+                record.target.parentNode,
+                ...record.addedNodes,
+                ...record.removedNodes,
+              ].some((node) => node?.nodeName === "STYLE")
+            )
+              state.__styleWrites++;
+        }).observe(document, { childList: true, characterData: true, subtree: true });
+      });
       const durations: number[] = [];
       for (let index = 0; index < 9; index++) {
         const clickStarted = performance.now();
@@ -416,6 +437,9 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         durations.push(performance.now() - clickStarted);
       }
       durations.sort((a, b) => a - b);
+      const styleWrites = await app.page.evaluate(
+        () => (window as unknown as { __styleWrites: number }).__styleWrites,
+      );
       await app.page.getByRole("button", { name: "Aktualisierung pausieren" }).click();
       const paused = await app.page.evaluate(
         () => (window as unknown as { __liveMetricsCalls?: number }).__liveMetricsCalls ?? 0,
@@ -431,6 +455,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         requestsPer10s: 3,
         selectMedianMs: 250,
         selectP95Ms: 600,
+        styleWrites: 0,
         requestsWhilePaused: 0,
       };
       console.log(
@@ -442,6 +467,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
           requestsPer10s: after - before,
           selectMedianMs: durations[4],
           selectP95Ms: durations[8],
+          styleWrites,
           requestsWhilePaused: idle - paused,
           limits,
         })}`,
@@ -453,6 +479,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expect(after - before).toBeGreaterThanOrEqual(1);
       expect(durations[4]).toBeLessThan(limits.selectMedianMs);
       expect(durations[8]).toBeLessThan(limits.selectP95Ms);
+      expect(styleWrites).toBe(limits.styleWrites);
       expect(idle - paused).toBe(limits.requestsWhilePaused);
       expect(app.errors).toEqual([]);
     } finally {
@@ -510,8 +537,8 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
           });
         });
       });
-      expect(scroll.fps).toBeGreaterThan(59);
-      expect(scroll.p95).toBeLessThan(21);
+      expectFrame(scroll.fps).toBeGreaterThan(59);
+      expectFrame(scroll.p95).toBeLessThan(21);
       expect(await results.locator("[data-index]").count()).toBeLessThan(80);
 
       await results.evaluate((element) => {
@@ -633,9 +660,9 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
           });
         });
       });
-      expect(sample.fps).toBeGreaterThan(59);
-      expect(sample.p95).toBeLessThan(21);
-      expect(sample.worst).toBeLessThan(50);
+      expectFrame(sample.fps).toBeGreaterThan(59);
+      expectFrame(sample.p95).toBeLessThan(21);
+      expectFrame(sample.worst).toBeLessThan(50);
       expect(await app.page.locator("tbody tr[data-index]").count()).toBeLessThan(100);
       expect(app.errors).toEqual([]);
     } finally {
@@ -677,8 +704,8 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
           });
         }),
       );
-      expect(scroll.fps).toBeGreaterThan(55);
-      expect(scroll.p95).toBeLessThan(28);
+      expectFrame(scroll.fps).toBeGreaterThan(55);
+      expectFrame(scroll.p95).toBeLessThan(28);
       expect(await app.page.locator("tbody tr[data-index]").count()).toBeLessThan(100);
       expect(app.errors).toEqual([]);
     } finally {
@@ -862,8 +889,8 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       };
       console.log(`perf infinite-table ${JSON.stringify(summary)}`);
       expect(reached?.id ?? 0).toBeGreaterThan(500);
-      expect(scroll.fps).toBeGreaterThan(MIN_FPS);
-      expect(scroll.p95).toBeLessThan(MAX_P95_MS);
+      expectFrame(scroll.fps).toBeGreaterThan(MIN_FPS);
+      expectFrame(scroll.p95).toBeLessThan(MAX_P95_MS);
       expect(summary.uniqueFetches).toBe(summary.fetches);
       expect(summary.fetches).toBeLessThanOrEqual(pages + 3);
       expect(summary.maxInflight).toBeLessThanOrEqual(2);

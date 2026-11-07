@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { changedRowValues } from "@/lib/cell-editor";
 import { useActiveConnection } from "@/lib/connections";
 import {
   deleteRowInTransaction,
@@ -26,26 +27,10 @@ export function useUpdateRowMutation(schema: string, table: string) {
       oldValues: Record<string, unknown>;
     }) => {
       const queryKey = ["rows", connection?.id, database, schema, table];
-      const changedUpdates: Record<string, string | null> = {};
-      const changedOld: Record<string, unknown> = {};
-      for (const [col, newVal] of Object.entries(updates)) {
-        const orig = oldValues[col];
-        let origStr: string | null;
-        if (orig === null || orig === undefined) {
-          origStr = null;
-        } else if (typeof orig === "object") {
-          origStr = JSON.stringify(orig);
-        } else {
-          origStr = String(orig);
-        }
-        if (newVal !== origStr) {
-          changedUpdates[col] = newVal;
-          changedOld[col] = orig;
-        }
-      }
+      const { updates: changedUpdates, old: changedOld } = changedRowValues(updates, oldValues);
 
       if (Object.keys(changedUpdates).length === 0) {
-        return { newCtid: ctid, queryKey };
+        return { newCtid: ctid, queryKey, changedUpdates };
       }
 
       const newCtid = await runTableTransaction(
@@ -64,9 +49,9 @@ export function useUpdateRowMutation(schema: string, table: string) {
         }),
       );
 
-      return { newCtid, queryKey };
+      return { newCtid, queryKey, changedUpdates };
     },
-    onSuccess: (result, { ctid, updates }) => {
+    onSuccess: (result, { ctid }) => {
       queryClient.setQueriesData<TableData>({ queryKey: result.queryKey }, (old) => {
         if (!old) return old;
         const idx = old.rows.findIndex((r) => (r as Record<string, unknown>).__ctid__ === ctid);
@@ -75,7 +60,7 @@ export function useUpdateRowMutation(schema: string, table: string) {
         updatedRows[idx] = {
           ...updatedRows[idx],
           __ctid__: result.newCtid,
-          ...Object.fromEntries(Object.entries(updates).map(([k, v]) => [k, v])),
+          ...result.changedUpdates,
         };
         return { ...old, rows: updatedRows };
       });

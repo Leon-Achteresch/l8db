@@ -2,6 +2,7 @@ import type { Hotkey } from "@tanstack/react-hotkeys";
 import { useMemo } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 import { commandById, HOTKEY_COMMANDS } from "./commands";
 
@@ -28,7 +29,7 @@ export const useHotkeysStore = create<HotkeysState>()(
         }),
       resetAll: () => set({ overrides: {} }),
     }),
-    { name: "l8db.hotkeys", version: 1 },
+    { name: "l8db.hotkeys", storage: createSafeJsonStorage(), version: 1 },
   ),
 );
 
