@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { ChatContextItem } from "@/lib/ai/chat-context";
 import { sanitizeAiRich } from "@/lib/ai/rich-core";
+import { readAiSessions, writeAiSessions } from "@/lib/ai/session-db";
 import type { AiMessage, AiProfile, AiProvider, AiServer } from "@/lib/db/ai";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
@@ -108,51 +109,68 @@ export function mergeAiRecords<T extends { id: string; updatedAt: number }>(
   }
   return [...entries.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
+const sanitizedRich = new WeakSet<object>();
+function sanitizeRich(rich: NonNullable<AiMessage["rich"]>) {
+  if (sanitizedRich.has(rich)) return rich;
+  const result = sanitizeAiRich(rich);
+  for (const block of result) Object.freeze(block);
+  sanitizedRich.add(Object.freeze(result));
+  return result;
+}
+const sanitizedMessages = new WeakMap<AiMessage, AiMessage>();
 function sanitizeSession(session: AiSession): AiSession {
   return {
     ...session,
-    messages: session.messages.map(
-      (
-        {
-          id,
-          parentId,
-          role,
-          text,
-          rich,
-          reasoning,
-          error,
-          stopped,
-          createdAt,
-          durationMs,
-          attachments,
-          context,
-          contextLabels,
-        },
-        index,
-      ) => ({
-        id: id ?? `m${index}`,
-        ...(parentId !== undefined ? { parentId } : {}),
-        role,
-        text,
-        ...(rich ? { rich: sanitizeAiRich(rich) } : {}),
-        ...(typeof reasoning === "string" && reasoning ? { reasoning } : {}),
-        ...(typeof error === "string" && error ? { error } : {}),
-        ...(stopped ? { stopped: true } : {}),
-        ...(typeof createdAt === "number" ? { createdAt } : {}),
-        ...(typeof durationMs === "number" ? { durationMs } : {}),
-        ...(Array.isArray(attachments) && attachments.length
-          ? { attachments: attachments.slice(0, 10) }
-          : {}),
-        ...(typeof context === "string" && context ? { context } : {}),
-        ...(Array.isArray(contextLabels) && contextLabels.length
-          ? {
-              contextLabels: contextLabels
-                .filter((label) => typeof label === "string")
-                .slice(0, 20),
-            }
-          : {}),
-      }),
-    ),
+    messages: session.messages.map((message, index) => {
+      const cached = sanitizedMessages.get(message);
+      if (cached) return cached;
+      const result = sanitizeMessage(message, index);
+      if (message.id !== undefined) {
+        sanitizedMessages.set(message, result);
+        sanitizedMessages.set(result, result);
+      }
+      return result;
+    }),
+  };
+}
+function sanitizeMessage(
+  {
+    id,
+    parentId,
+    role,
+    text,
+    rich,
+    reasoning,
+    error,
+    stopped,
+    createdAt,
+    durationMs,
+    attachments,
+    context,
+    contextLabels,
+  }: AiMessage,
+  index: number,
+): AiMessage {
+  return {
+    id: id ?? `m${index}`,
+    ...(parentId !== undefined ? { parentId } : {}),
+    role,
+    text,
+    ...(rich ? { rich: sanitizeRich(rich) } : {}),
+    ...(typeof reasoning === "string" && reasoning ? { reasoning } : {}),
+    ...(typeof error === "string" && error ? { error } : {}),
+    ...(stopped ? { stopped: true } : {}),
+    ...(typeof createdAt === "number" ? { createdAt } : {}),
+    ...(typeof durationMs === "number" ? { durationMs } : {}),
+    ...(Array.isArray(attachments) && attachments.length
+      ? { attachments: attachments.slice(0, 10) }
+      : {}),
+    ...(typeof context === "string" && context ? { context } : {}),
+    ...(Array.isArray(contextLabels) && contextLabels.length
+      ? {
+          contextLabels: contextLabels.filter((label) => typeof label === "string").slice(0, 20),
+        }
+      : {}),
   };
 }
 function readData(value: string | null): AiData {
@@ -267,46 +285,160 @@ export const useAiStore = create<AiState>((set) => ({
       ]),
     })),
 }));
+const SESSIONS_KEY = "l8db.ai.sessions";
+const PENDING_KEY = "l8db.ai.pending";
+const STORAGE_ERROR =
+  "AI-Daten konnten nicht lokal gespeichert werden. Lösche bei vollem Speicher ein altes Gespräch.";
+const dirty = new Set<string>();
+const writing = new Set<string>();
+let legacySessions = initial.sessions.length > 0;
+let applyingRemote = false;
+let localFailed = false;
+let sessionsFailed = false;
+let loadFailed = false;
+let flushing: Promise<void> = Promise.resolve();
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
+function report() {
+  const persistenceError = localFailed || sessionsFailed || loadFailed ? STORAGE_ERROR : "";
+  if (useAiStore.getState().persistenceError !== persistenceError)
+    useAiStore.setState({ persistenceError });
+}
+function applySessions(incoming: AiSession[]) {
+  const sessions = incoming.flatMap((session) => {
+    try {
+      return [sanitizeSession(session)];
+    } catch {
+      return [];
+    }
+  });
+  if (!sessions.length) return;
+  applyingRemote = true;
+  try {
+    useAiStore.setState((state) => ({ sessions: mergeAiRecords(state.sessions, sessions) }));
+  } finally {
+    applyingRemote = false;
+  }
+}
+function readPending(): AiSession[] {
+  try {
+    return readData(localStorage.getItem(PENDING_KEY)).sessions;
+  } catch {
+    return [];
+  }
+}
+async function loadSessions() {
+  const pending = readPending();
+  if (legacySessions || pending.length) {
+    const failed = await writeAiSessions([...initial.sessions, ...pending]);
+    if (failed.length) throw new Error("AI-Verlauf konnte nicht übernommen werden");
+    localStorage.removeItem(PENDING_KEY);
+    legacySessions = false;
+    persistData();
+  }
+  applySessions(await readAiSessions());
+  loadFailed = false;
+}
+function flushSessions(): Promise<void> {
+  flushing = flushing.then(async () => {
+    if (loadFailed) await loadSessions().catch(() => undefined);
+    if (dirty.size) {
+      for (const id of dirty) writing.add(id);
+      dirty.clear();
+      let failed: string[];
+      try {
+        failed = await writeAiSessions(
+          useAiStore.getState().sessions.filter((entry) => writing.has(entry.id)),
+        );
+      } catch {
+        failed = [...writing];
+      }
+      for (const id of failed) dirty.add(id);
+      const saved = [...writing].filter((id) => !dirty.has(id));
+      writing.clear();
+      sessionsFailed = failed.length > 0;
+      if (saved.length) notifyWindows(saved);
+    }
+    report();
+  });
+  return flushing;
+}
+function notifyWindows(ids: string[]) {
+  try {
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify({ ids, at: Math.random() }));
+  } catch {
+    return;
+  }
+}
+function persistOnHide() {
+  const ids = new Set([...dirty, ...writing]);
+  persistData();
+  if (!ids.size) return;
+  try {
+    localStorage.setItem(
+      PENDING_KEY,
+      JSON.stringify({
+        sessions: useAiStore.getState().sessions.filter((entry) => ids.has(entry.id)),
+      }),
+    );
+  } catch {
+    return;
+  }
+}
 function persistData() {
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = undefined;
+  void flushSessions();
   try {
     const state = useAiStore.getState();
     const other = readStorage();
-    const data = {
+    const value = JSON.stringify({
       profiles: mergeAiRecords(state.profiles, other.profiles),
-      sessions: mergeAiRecords(state.sessions, other.sessions),
       servers: mergeAiRecords(state.servers, other.servers),
-    };
-    const value = JSON.stringify(data);
-    if (localStorage.getItem(KEY) !== value) localStorage.setItem(KEY, value);
-    if (state.persistenceError) useAiStore.setState({ persistenceError: "" });
-  } catch {
-    useAiStore.setState({
-      persistenceError:
-        "AI-Daten konnten nicht lokal gespeichert werden. Lösche bei vollem Speicher ein altes Gespräch.",
+      ...(legacySessions ? { sessions: other.sessions } : {}),
     });
+    if (localStorage.getItem(KEY) !== value) localStorage.setItem(KEY, value);
+    localFailed = false;
+  } catch {
+    localFailed = true;
   }
+  report();
 }
 useAiStore.subscribe((state, previous) => {
-  if (
-    state.profiles === previous.profiles &&
-    state.sessions === previous.sessions &&
-    state.servers === previous.servers
-  )
+  if (state.sessions !== previous.sessions && !applyingRemote) {
+    const before = new Map(previous.sessions.map((entry) => [entry.id, entry]));
+    for (const entry of state.sessions) if (before.get(entry.id) !== entry) dirty.add(entry.id);
+  }
+  if (state.profiles === previous.profiles && state.servers === previous.servers && !dirty.size)
     return;
   if (!persistTimer) persistTimer = setTimeout(persistData, 150);
 });
+export const aiSessionsLoaded = loadSessions().catch(() => {
+  loadFailed = true;
+  report();
+});
 if (typeof window !== "undefined" && typeof window.addEventListener === "function")
-  window.addEventListener("pagehide", persistData);
+  window.addEventListener("pagehide", persistOnHide);
 syncAcrossWindows(KEY, (value) => {
   const incoming = readData(value);
   useAiStore.setState((state) => ({
     profiles: mergeAiRecords(state.profiles, incoming.profiles),
-    sessions: mergeAiRecords(state.sessions, incoming.sessions),
     servers: mergeAiRecords(state.servers, incoming.servers),
   }));
+  applySessions(incoming.sessions);
+});
+syncAcrossWindows(SESSIONS_KEY, (value) => {
+  try {
+    const ids: unknown = JSON.parse(value ?? "{}").ids;
+    if (Array.isArray(ids))
+      void readAiSessions(ids.filter((id) => typeof id === "string"))
+        .then(applySessions)
+        .catch(() => {
+          loadFailed = true;
+          if (!persistTimer) persistTimer = setTimeout(persistData, 150);
+        });
+  } catch {
+    return;
+  }
 });
 
 syncAcrossWindows(WIDTH_KEY, () => useAiStore.setState({ width: readWidth() }));

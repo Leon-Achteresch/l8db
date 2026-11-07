@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as BaasRouteImport } from './routes/baas'
+import { Route as CloudAccountsRouteImport } from './routes/cloud-accounts'
 import { Route as ConnectionsRouteImport } from './routes/connections'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DevRouteImport } from './routes/dev'
@@ -73,6 +74,11 @@ const AboutRoute = AboutRouteImport.update({
 const BaasRoute = BaasRouteImport.update({
   id: '/baas',
   path: '/baas',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CloudAccountsRoute = CloudAccountsRouteImport.update({
+  id: '/cloud-accounts',
+  path: '/cloud-accounts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConnectionsRoute = ConnectionsRouteImport.update({
@@ -333,6 +339,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppWorkspaceIndexRoute
   '/about': typeof AboutRoute
   '/baas': typeof BaasRoute
+  '/cloud-accounts': typeof CloudAccountsRoute
   '/connections': typeof ConnectionsRoute
   '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
@@ -383,6 +390,7 @@ export interface FileRoutesByTo {
   '/': typeof AppWorkspaceIndexRoute
   '/about': typeof AboutRoute
   '/baas': typeof BaasRoute
+  '/cloud-accounts': typeof CloudAccountsRoute
   '/connections': typeof ConnectionsRoute
   '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
@@ -433,6 +441,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/about': typeof AboutRoute
   '/baas': typeof BaasRoute
+  '/cloud-accounts': typeof CloudAccountsRoute
   '/connections': typeof ConnectionsRoute
   '/dashboard': typeof DashboardRoute
   '/dev': typeof DevRoute
@@ -488,6 +497,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/baas'
+    | '/cloud-accounts'
     | '/connections'
     | '/dashboard'
     | '/dev'
@@ -538,6 +548,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/baas'
+    | '/cloud-accounts'
     | '/connections'
     | '/dashboard'
     | '/dev'
@@ -587,6 +598,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/about'
     | '/baas'
+    | '/cloud-accounts'
     | '/connections'
     | '/dashboard'
     | '/dev'
@@ -641,6 +653,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AboutRoute: typeof AboutRoute
   BaasRoute: typeof BaasRoute
+  CloudAccountsRoute: typeof CloudAccountsRoute
   ConnectionsRoute: typeof ConnectionsRoute
   DashboardRoute: typeof DashboardRoute
   DevRoute: typeof DevRoute
@@ -671,6 +684,13 @@ declare module '@tanstack/react-router' {
       path: '/baas'
       fullPath: '/baas'
       preLoaderRoute: typeof BaasRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cloud-accounts': {
+      id: '/cloud-accounts'
+      path: '/cloud-accounts'
+      fullPath: '/cloud-accounts'
+      preLoaderRoute: typeof CloudAccountsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connections': {
@@ -1138,6 +1158,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AboutRoute: AboutRoute,
   BaasRoute: BaasRoute,
+  CloudAccountsRoute: CloudAccountsRoute,
   ConnectionsRoute: ConnectionsRoute,
   DashboardRoute: DashboardRoute,
   DevRoute: DevRoute,

@@ -7,6 +7,7 @@ import { copyText } from "@/lib/clipboard";
 import { useConnectionsStore } from "@/lib/connections";
 import { useTeamStore } from "@/lib/team/store";
 import { syncTeam, TEAM_HUB, teamErrorText } from "@/lib/team/sync";
+import { TeamGettingStarted } from "./team-getting-started";
 
 export function TeamPanel() {
   const { path, exists, lastSyncAt, lastError, warnings } = useTeamStore();
@@ -46,6 +47,12 @@ export function TeamPanel() {
           Die Datei legt deine IT ab, Passwörter stehen nicht darin. Beim ersten Verbinden fragt
           l8db nach Benutzer und Passwort.
         </p>
+        <details>
+          <summary className="cursor-pointer">So arbeitest du sicher im Team</summary>
+          <div className="mt-3">
+            <TeamGettingStarted />
+          </div>
+        </details>
         {lastError && (
           <p role="alert" className="flex gap-1.5 text-destructive">
             <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />

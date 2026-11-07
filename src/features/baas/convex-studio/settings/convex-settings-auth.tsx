@@ -8,7 +8,7 @@ export function ConvexSettingsAuth({ deployment }: { deployment: ConvexStudioDep
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      <section className="rounded-2xl border bg-card p-5">
+      <section className="rounded-2xl bg-muted/25 p-5">
         <h3 className="text-sm font-semibold">Authentifizierung</h3>
         <p className="mt-1 text-[11px] text-muted-foreground">
           Provider aus convex/auth.config.ts des zuletzt deployten Codes. Änderungen erfolgen per
@@ -23,7 +23,7 @@ export function ConvexSettingsAuth({ deployment }: { deployment: ConvexStudioDep
             {providers.map((provider) => (
               <li
                 key={JSON.stringify(provider)}
-                className="rounded-lg border bg-background/50 px-3 py-2 text-xs"
+                className="rounded-lg bg-background/50 px-3 py-2 text-xs"
               >
                 <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
                   {Object.entries(provider).map(([key, value]) => (
@@ -40,7 +40,7 @@ export function ConvexSettingsAuth({ deployment }: { deployment: ConvexStudioDep
           </ul>
         )}
       </section>
-      <section className="rounded-2xl border bg-card p-5">
+      <section className="rounded-2xl bg-muted/25 p-5">
         <h3 className="text-sm font-semibold">Komponenten</h3>
         <p className="mt-1 text-[11px] text-muted-foreground">
           Installierte Convex-Komponenten. Die Root-App erscheint mit leerem Pfad.
@@ -50,7 +50,7 @@ export function ConvexSettingsAuth({ deployment }: { deployment: ConvexStudioDep
         ) : components.length === 0 ? (
           <p className="mt-3 text-xs text-muted-foreground">Keine Komponenten gefunden.</p>
         ) : (
-          <ul className="mt-3 divide-y rounded-lg border bg-background/50">
+          <ul className="mt-3 divide-y rounded-lg bg-background/50">
             {components.map((component) => (
               <li
                 key={component.id ?? component.path}

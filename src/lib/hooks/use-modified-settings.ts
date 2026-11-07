@@ -1,4 +1,5 @@
 import { useTheme } from "next-themes";
+import { DEFAULT_APP_THEME } from "@/lib/app-themes";
 import { useHotkeysStore } from "@/lib/hotkeys";
 import { DEFAULT_HISTORY_LIMIT, useQueryHistoryStore } from "@/lib/query-history";
 import { useSettingsStore } from "@/lib/settings";
@@ -19,12 +20,17 @@ export function useModifiedSettings() {
     ),
   );
   if (theme && theme !== "system") modified.add("theme");
+  if (state.lightTheme !== DEFAULT_APP_THEME || state.darkTheme !== DEFAULT_APP_THEME)
+    modified.add("app-theme");
   if (historyLimit !== DEFAULT_HISTORY_LIMIT) modified.add("history-limit");
   if (Object.keys(hotkeys).length > 0) modified.add("hotkeys");
 
   const reset = (id: string) => {
     if (id === "theme") setTheme("system");
-    else if (id === "history-limit")
+    else if (id === "app-theme") {
+      state.setLightTheme(DEFAULT_APP_THEME);
+      state.setDarkTheme(DEFAULT_APP_THEME);
+    } else if (id === "history-limit")
       useQueryHistoryStore.getState().setRetentionLimit(DEFAULT_HISTORY_LIMIT);
     else if (id === "hotkeys") useHotkeysStore.getState().resetAll();
     else {

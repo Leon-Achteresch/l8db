@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { cancelExecution } from "@/lib/db";
+import { prepareConnection } from "@/lib/prepare-connection";
 import {
   dryRunKind,
   type RunStep,
@@ -31,7 +32,7 @@ import {
   supportsDdlRollback,
 } from "@/lib/schema-compare/run";
 import type { SyncStatement } from "@/lib/schema-compare/script";
-import { prepareConnection, runSchemaCompare } from "@/lib/schema-compare/store";
+import { runSchemaCompare, useSchemaCompareInstance } from "@/lib/schema-compare/store";
 import type { CompareResult } from "@/lib/schema-compare/types";
 import { cn } from "@/lib/utils";
 
@@ -96,6 +97,7 @@ export function SchemaCompareRunDialog({
   statements,
 }: SchemaCompareRunDialogProps) {
   const target = result.target;
+  const store = useSchemaCompareInstance();
   const [steps, setSteps] = useState<RunStep[]>([]);
   const [running, setRunning] = useState<"dry" | "real" | null>(null);
   const [summary, setSummary] = useState<RunSummary | null>(null);
@@ -189,7 +191,7 @@ export function SchemaCompareRunDialog({
   const close = (next: boolean) => {
     if (running) return;
     if (!next) {
-      if (executed) void runSchemaCompare();
+      if (executed) void runSchemaCompare(undefined, store);
       reset();
     }
     onOpenChange(next);
@@ -401,6 +403,7 @@ export function SchemaCompareRunDialog({
                 <Button
                   variant="secondary"
                   disabled={statements.length === 0}
+                  disabledReason="Keine Anweisungen im Skript"
                   title={
                     dryRun === "rollback"
                       ? "Skript testweise ausführen und zurückrollen"
@@ -416,6 +419,11 @@ export function SchemaCompareRunDialog({
               <Button
                 variant={dangerous.length > 0 ? "destructive" : "default"}
                 disabled={!confirmed || statements.length === 0}
+                disabledReason={
+                  statements.length === 0
+                    ? "Keine Anweisungen im Skript"
+                    : `Zur Bestätigung den Schemanamen „${result.targetSchema}“ eingeben`
+                }
                 onClick={() => void execute(false)}
               >
                 <PlayIcon className="size-3.5" />

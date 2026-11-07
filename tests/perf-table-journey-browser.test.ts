@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { type Browser, chromium, type Page } from "playwright";
+import { cpuThrottleRate } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
 
 const BASE_URL = process.env.L8DB_TABLE_JOURNEY_URL;
@@ -311,7 +312,7 @@ test.skipIf(!BASE_URL)(
       await settle(page, 1500);
       if (CPU_RATE > 1)
         await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", {
-          rate: CPU_RATE,
+          rate: await cpuThrottleRate(CPU_RATE),
         });
 
       const openTable = async (name: string) =>

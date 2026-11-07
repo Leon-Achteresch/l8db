@@ -7,3 +7,8 @@ export const BAAS_PROVIDERS: { id: BaasProvider; name: string }[] = [
   { id: "convex", name: "Convex" },
   { id: "firebase", name: "Firebase" },
 ];
+
+export const BAAS_AS_DATABASE: { id: BaasProvider; category: "sql" | "documents" }[] = [
+  { id: "supabase", category: "sql" },
+  { id: "convex", category: "documents" },
+];

@@ -95,7 +95,7 @@ fn owned_to_json(value: duckdb::types::Value) -> serde_json::Value {
         V::UInt(i) => J::from(i),
         V::UBigInt(i) => uint(i),
         V::UHugeInt(i) => decimal(&i.to_string()),
-        V::Float(f) => num(f as f64),
+        V::Float(f) => num(f.to_string().parse().unwrap_or(f64::from(f))),
         V::Double(f) => num(f),
         V::Decimal(d) => decimal(&d.to_string()),
         V::Timestamp(unit, t) => instant(unit, t)
@@ -259,6 +259,21 @@ impl DuckdbAdapter {
     async fn exec(&self, sql: String) -> Result<(), String> {
         self.run(move |c| c.execute_batch(&sql).map_err(map_err))
             .await
+    }
+
+    async fn exec_atomic(&self, statements: Vec<String>) -> Result<(), String> {
+        if statements.is_empty() {
+            return Ok(());
+        }
+        self.run(move |c| {
+            c.execute_batch("BEGIN").map_err(map_err)?;
+            let result = statements
+                .iter()
+                .try_for_each(|sql| c.execute_batch(sql).map_err(map_err));
+            let _ = c.execute_batch(if result.is_ok() { "COMMIT" } else { "ROLLBACK" });
+            result
+        })
+        .await
     }
 }
 
@@ -595,17 +610,22 @@ impl DatabaseAdapter for DuckdbAdapter {
         table: &str,
         column: &AddColumnRequest,
     ) -> Result<(), String> {
+        let target = format!("{}.{}", quote(schema), quote(table));
+        let name = quote(&column.name);
         let mut sql = format!(
-            "ALTER TABLE {}.{} ADD COLUMN {} {}",
-            quote(schema),
-            quote(table),
-            quote(&column.name),
+            "ALTER TABLE {target} ADD COLUMN {name} {}",
             column.data_type
         );
         if let Some(d) = column.default_value.as_deref().filter(|d| !d.is_empty()) {
             sql.push_str(&format!(" DEFAULT {d}"));
         }
-        self.exec(sql).await
+        let mut statements = vec![sql];
+        if !column.is_nullable {
+            statements.push(format!(
+                "ALTER TABLE {target} ALTER COLUMN {name} SET NOT NULL"
+            ));
+        }
+        self.exec_atomic(statements).await
     }
 
     async fn alter_column(
@@ -615,47 +635,39 @@ impl DatabaseAdapter for DuckdbAdapter {
         changes: &AlterColumnRequest,
     ) -> Result<(), String> {
         let target = format!("{}.{}", quote(schema), quote(table));
+        let column = quote(&changes.old_name);
+        let mut statements = Vec::new();
         if let Some(t) = changes.data_type.as_deref().filter(|t| !t.is_empty()) {
-            self.exec(format!(
-                "ALTER TABLE {target} ALTER COLUMN {} TYPE {t}",
-                quote(&changes.old_name)
-            ))
-            .await?;
+            statements.push(format!(
+                "ALTER TABLE {target} ALTER COLUMN {column} TYPE {t}"
+            ));
         }
         if changes.drop_default {
-            self.exec(format!(
-                "ALTER TABLE {target} ALTER COLUMN {} DROP DEFAULT",
-                quote(&changes.old_name)
-            ))
-            .await?;
+            statements.push(format!(
+                "ALTER TABLE {target} ALTER COLUMN {column} DROP DEFAULT"
+            ));
         } else if let Some(d) = changes.new_default.as_deref().filter(|d| !d.is_empty()) {
-            self.exec(format!(
-                "ALTER TABLE {target} ALTER COLUMN {} SET DEFAULT {d}",
-                quote(&changes.old_name)
-            ))
-            .await?;
+            statements.push(format!(
+                "ALTER TABLE {target} ALTER COLUMN {column} SET DEFAULT {d}"
+            ));
         }
         if let Some(not_null) = changes.set_not_null {
-            self.exec(format!(
-                "ALTER TABLE {target} ALTER COLUMN {} {} NOT NULL",
-                quote(&changes.old_name),
+            statements.push(format!(
+                "ALTER TABLE {target} ALTER COLUMN {column} {} NOT NULL",
                 if not_null { "SET" } else { "DROP" }
-            ))
-            .await?;
+            ));
         }
         if let Some(new_name) = changes
             .new_name
             .as_deref()
             .filter(|n| !n.is_empty() && *n != changes.old_name)
         {
-            self.exec(format!(
-                "ALTER TABLE {target} RENAME COLUMN {} TO {}",
-                quote(&changes.old_name),
+            statements.push(format!(
+                "ALTER TABLE {target} RENAME COLUMN {column} TO {}",
                 quote(new_name)
-            ))
-            .await?;
+            ));
         }
-        Ok(())
+        self.exec_atomic(statements).await
     }
 
     async fn drop_column(&self, schema: &str, table: &str, column: &str) -> Result<(), String> {
@@ -820,6 +832,72 @@ mod tests {
     use crate::db::pool::create_pool_state;
     use serde_json::json;
 
+    #[test]
+    fn real_values_use_their_shortest_text() {
+        assert_eq!(owned_to_json(duckdb::types::Value::Float(1.1)), json!(1.1));
+    }
+
+    #[tokio::test]
+    async fn column_changes_honour_not_null_and_roll_back_together() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("columns.duckdb");
+        let adapter = DuckdbAdapter::new(
+            &format!("duckdb:{}?mode=rwc", path.display()),
+            create_pool_state(),
+            "columns".into(),
+        )
+        .unwrap();
+        adapter
+            .exec("CREATE TABLE items (id INTEGER, name VARCHAR)".into())
+            .await
+            .unwrap();
+        adapter
+            .add_column(
+                "main",
+                "items",
+                &AddColumnRequest {
+                    name: "code".into(),
+                    data_type: "VARCHAR".into(),
+                    is_nullable: false,
+                    default_value: Some("'x'".into()),
+                },
+            )
+            .await
+            .unwrap();
+        let columns = adapter
+            .list_table_columns_detailed("main", "items")
+            .await
+            .unwrap();
+        let code = columns.iter().find(|c| c.name == "code").unwrap();
+        assert!(!code.is_nullable);
+        let failed = adapter
+            .alter_column(
+                "main",
+                "items",
+                &AlterColumnRequest {
+                    old_name: "name".into(),
+                    new_name: Some("id".into()),
+                    data_type: Some("TEXT".into()),
+                    set_not_null: None,
+                    new_default: Some("'neu'".into()),
+                    drop_default: false,
+                    using: None,
+                },
+            )
+            .await;
+        assert!(failed.is_err());
+        let columns = adapter
+            .list_table_columns_detailed("main", "items")
+            .await
+            .unwrap();
+        let name = columns.iter().find(|c| c.name == "name").unwrap();
+        assert!(!name
+            .column_default
+            .clone()
+            .unwrap_or_default()
+            .contains("neu"));
+    }
+
     #[tokio::test]
     async fn main_schema_is_listed_once() {
         let dir = tempfile::tempdir().unwrap();
@@ -900,7 +978,7 @@ mod tests {
                 json!("2024-01-02"),
                 json!("2024-01-02 03:04:05.123456"),
                 json!("13:14:15"),
-                json!(12.5),
+                json!("12.50"),
                 json!("12345678901234567890.123456789"),
                 json!("9007199254740993"),
                 json!("170141183460469231731687303715884105727"),
@@ -914,6 +992,42 @@ mod tests {
                 json!("2024-01-02 03:04:05"),
             ]
         );
+    }
+
+    #[test]
+    fn untyped_nulls_preserve_scalar_and_nested_values_without_poisoning_connections() {
+        let conn = Connection::open_in_memory().unwrap();
+        let (_, rows) = query_all(&conn, "SELECT NULL, [NULL, NULL], {'missing': NULL, 'value': 1}, MAP {'missing': NULL}, array_value(NULL, NULL)").unwrap();
+        assert_eq!(
+            rows[0],
+            vec![
+                json!(null),
+                json!([null, null]),
+                json!({"missing":null,"value":1}),
+                json!({"missing":null}),
+                json!([null, null])
+            ]
+        );
+        assert_eq!(query_all(&conn, "SELECT 42").unwrap().1[0], vec![json!(42)]);
+    }
+
+    #[test]
+    fn null_heavy_results_remain_bounded_and_keep_request_count_constant() {
+        let conn = Connection::open_in_memory().unwrap();
+        let mut samples = Vec::new();
+        for _ in 0..15 {
+            let start = std::time::Instant::now();
+            let (_, rows) = query_limited(&conn, "SELECT NULL AS missing, {'missing': NULL, 'value': i} AS record FROM range(1000000) t(i)", 1000).unwrap();
+            assert_eq!(rows.len(), 1000);
+            assert!(rows
+                .iter()
+                .all(|row| row[0].is_null() && row[1]["missing"].is_null()));
+            assert!(serde_json::to_vec(&rows).unwrap().len() < 100000);
+            samples.push(start.elapsed());
+        }
+        samples.sort();
+        eprintln!("DuckDB NULL decoding: 1M source rows, retained 1000 rows/<100KB JSON, 1 request/run, median {:?}, p95 {:?}, no background tasks", samples[7], samples[14]);
+        assert!(samples[14] < std::time::Duration::from_millis(500));
     }
 
     #[test]

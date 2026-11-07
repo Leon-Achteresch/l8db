@@ -166,6 +166,7 @@ export function useCsvExport({
           nullText: options.nullText,
           lineEnding: options.lineEnding,
           bom: options.bom,
+          escapeFormulas: options.escapeFormulas !== false,
         },
         masks: masks.map((m) => ({ column: m.column, mode: m.mode, text: m.text ?? null })),
         maxRows: limitValid ? limit : null,

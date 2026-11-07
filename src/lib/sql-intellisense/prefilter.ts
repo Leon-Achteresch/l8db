@@ -8,9 +8,22 @@ function isWordStart(text: string, index: number) {
 }
 
 export function mayMatchWord(candidate: string, word: string): boolean {
-  if (!word) return true;
-  const text = candidate.toLowerCase();
-  const pattern = word.toLowerCase();
+  return matchesLower(candidate, candidate.toLowerCase(), word.toLowerCase());
+}
+
+const lowered = new WeakMap<object, string>();
+
+function lowerCandidate(item: { label: string; filterText?: string }): string {
+  let text = lowered.get(item);
+  if (text === undefined) {
+    text = (item.filterText ?? item.label).toLowerCase();
+    lowered.set(item, text);
+  }
+  return text;
+}
+
+function matchesLower(candidate: string, text: string, pattern: string): boolean {
+  if (!pattern) return true;
   let position = -1;
   for (
     let start = text.indexOf(pattern[0]);
@@ -44,10 +57,11 @@ export function limitMatches<T extends { label: string; filterText?: string }>(
   let count = 0;
   for (const item of items) {
     const candidate = item.filterText ?? item.label;
-    if (!mayMatchWord(candidate, word)) continue;
+    const text = lowerCandidate(item);
+    if (!matchesLower(candidate, text, prefix)) continue;
     count++;
     if (matching.length < cap) matching.push(item);
-    const bucket = candidate.toLowerCase().startsWith(prefix) ? prefixMatches : otherMatches;
+    const bucket = text.startsWith(prefix) ? prefixMatches : otherMatches;
     if (bucket.length < cap) bucket.push(item);
   }
   if (count <= cap) return { items: matching, truncated: false };

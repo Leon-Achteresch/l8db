@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
-
+import { toast } from "sonner";
 import {
   type BindParamRef,
   type BindParamValue,
@@ -11,6 +11,7 @@ import {
 } from "@/lib/bind-params";
 import { confirmSqlExecution, type QueryResult } from "@/lib/db";
 import { invalidateAfterSql } from "@/lib/query-client";
+import { beginQueryCompletion } from "@/lib/query-completion";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { viewableSelect } from "@/lib/query-result-view";
 import { locateText } from "@/lib/sql-diagnostics";
@@ -24,6 +25,7 @@ import {
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { recordUserQueryOutcome } from "@/lib/telemetry";
+import { recordSuccessfulSql } from "@/lib/workbench/sql-states";
 
 import { executeSqlWithTransactions } from "./execute-sql";
 import { rowCountOf, withCreateNotice } from "./result-text";
@@ -88,15 +90,21 @@ export function useRunSql({
       if (connection?.kind !== "oracle") return text;
       const split = splitSqlStatements(text, connection.kind);
       if (split.statements.length !== 1 || split.commands.length > 0) return text;
-      const session = substitutionSession(tabId);
+      const session = substitutionSession(`${tabId}:${connection.id}`);
       const answers = await askMissingVariables([{ kind: "sql", text }], session, askVariables);
       return answers ? substitute(text, session.state, answers).text : null;
     },
-    [connection?.kind, tabId, askVariables],
+    [connection?.kind, connection?.id, tabId, askVariables],
   );
 
   const runSql = useCallback(
-    async (text: string, bound?: ParameterizedQuery, skipBind = false, previewed = false) => {
+    async (
+      text: string,
+      bound?: ParameterizedQuery,
+      skipBind = false,
+      previewed = false,
+      recoverySql = text,
+    ) => {
       let sql = text;
       if (!connection || !sql.trim() || runningRef.current) return;
       const split =
@@ -119,7 +127,7 @@ export function useRunSql({
         caps.query_language !== "redis" &&
         caps.query_language !== "json"
       ) {
-        const refs = editorBindParams(sql);
+        const refs = editorBindParams(sql, connection?.kind);
         if (refs.length > 0) {
           setBindValues((previous) => {
             const next: Record<string, BindParamValue> = {};
@@ -162,6 +170,7 @@ export function useRunSql({
       };
       const setResult = (res: QueryResult | null) => setResultState(withCreateNotice(res, sql));
       let executionStarted = false;
+      let finishNotification: ReturnType<typeof beginQueryCompletion> | undefined;
       try {
         await confirmSqlExecution(
           connection.kind,
@@ -170,6 +179,7 @@ export function useRunSql({
           database ?? undefined,
         );
         executionStarted = true;
+        finishNotification = beginQueryCompletion();
         const res = await executeSqlWithTransactions({
           connection,
           database,
@@ -178,6 +188,11 @@ export function useRunSql({
           transactionsCapable: caps.transactions,
           onJob: setActiveJobId,
         });
+        void recordSuccessfulSql(connection.id, database, tabId, recoverySql).catch((error) =>
+          toast.error("Erfolgreicher SQL-Stand konnte nicht gespeichert werden", {
+            description: String(error),
+          }),
+        );
         setExecutedSql(sql);
         const viewText =
           !bound && res.columns.length > 0 ? viewableSelect(sql, connection.kind) : null;
@@ -192,13 +207,16 @@ export function useRunSql({
             database: database ?? null,
           });
         finishHistory({ rowCount: rowCountOf(res), error: null });
+        finishNotification("success");
       } catch (err) {
         const message = String(err);
         setError(message);
         const base = locateText(editorSqlRef.current, sql, cursorOffsetRef.current);
         setErrorSource(base === null ? null : { text: sql, base });
         setViewSource(null);
-        setResult(null);
+        finishNotification?.(
+          /abgebrochen|cancelled|canceled/i.test(message) ? "cancelled" : "error",
+        );
         finishHistory({ rowCount: null, error: message });
       } finally {
         if (executionStarted) await invalidateAfterSql(queryClient, connection.id, database, sql);
@@ -260,7 +278,13 @@ export function useRunSql({
       void runSql(pending, buildParameterizedQuery(pending, bindValues, connection?.kind));
     } else {
       markQueryTabExecuted(tabId, pending);
-      void runSql(inlineBindValues(pending, bindValues, connection?.kind), undefined, true);
+      void runSql(
+        inlineBindValues(pending, bindValues, connection?.kind),
+        undefined,
+        true,
+        false,
+        pending,
+      );
     }
   }, [
     bindPendingSql,
@@ -277,6 +301,7 @@ export function useRunSql({
     prepareSql,
     bind: {
       open: bindDialogOpen,
+      sql: bindPendingSql ?? "",
       onOpenChange: (open: boolean) => {
         setBindDialogOpen(open);
         if (!open) setBindPendingSql(null);
@@ -285,6 +310,12 @@ export function useRunSql({
       values: bindValues,
       onValuesChange: setBindValues,
       onConfirm: handleBindConfirm,
+      onSkip: () => {
+        const pending = bindPendingSql;
+        setBindDialogOpen(false);
+        setBindPendingSql(null);
+        if (pending) void runSql(pending, undefined, true);
+      },
     },
   };
 }

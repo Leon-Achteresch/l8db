@@ -48,7 +48,7 @@ export function McpLimitsSection({ config, onUpdateConfig }: McpLimitsSectionPro
 
         <McpLimitField
           label="Zeichen pro Antwort"
-          description="Maximale Gesamtlänge der JSON-Antwort an das KI-Tool"
+          description="Maximale Gesamtlänge der Antwort an das KI-Tool"
           value={config.maxChars}
           unit="Zeichen"
           min={500}

@@ -662,12 +662,19 @@ JOIN pg_class c2 ON c2.oid = con.confrelid JOIN pg_namespace n2 ON n2.oid = c2.r
 CROSS JOIN LATERAL unnest(con.conkey, con.confkey) WITH ORDINALITY AS u(f, t, o) \
 JOIN pg_attribute a1 ON a1.attrelid = con.conrelid AND a1.attnum = u.f \
 JOIN pg_attribute a2 ON a2.attrelid = con.confrelid AND a2.attnum = u.t \
-WHERE con.contype = 'f' ORDER BY 1, 2, 3, u.o LIMIT 50000";
+WHERE con.contype = 'f'{filter} ORDER BY 1, 2, 3, u.o LIMIT 50000";
 
 const MYSQL_KEYS: &str = "SELECT CONSTRAINT_NAME, TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME \
 FROM information_schema.KEY_COLUMN_USAGE \
-WHERE REFERENCED_TABLE_NAME IS NOT NULL AND TABLE_SCHEMA NOT IN ('mysql', 'sys', 'performance_schema', 'information_schema') \
+WHERE REFERENCED_TABLE_NAME IS NOT NULL AND TABLE_SCHEMA NOT IN ('mysql', 'sys', 'performance_schema', 'information_schema'){filter} \
 ORDER BY CONSTRAINT_NAME, TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION LIMIT 50000";
+
+const ORACLE_KEYS: &str = "SELECT * FROM (SELECT c.constraint_name AS fk_name, c.owner AS from_owner, c.table_name AS from_table, cc.column_name AS from_column, \
+r.owner AS to_owner, r.table_name AS to_table, rc.column_name AS to_column FROM all_constraints c \
+JOIN all_cons_columns cc ON cc.owner = c.owner AND cc.constraint_name = c.constraint_name \
+JOIN all_constraints r ON r.owner = c.r_owner AND r.constraint_name = c.r_constraint_name \
+JOIN all_cons_columns rc ON rc.owner = r.owner AND rc.constraint_name = r.constraint_name AND rc.position = cc.position \
+WHERE c.constraint_type = 'R'{filter} ORDER BY c.constraint_name, c.owner, c.table_name, cc.position) WHERE ROWNUM <= 50000";
 
 const MSSQL_KEYS: &str = "SELECT TOP 50000 fk.name, SCHEMA_NAME(t1.schema_id), t1.name, c1.name, SCHEMA_NAME(t2.schema_id), t2.name, c2.name \
 FROM sys.foreign_key_columns fkc \
@@ -675,16 +682,40 @@ JOIN sys.foreign_keys fk ON fk.object_id = fkc.constraint_object_id \
 JOIN sys.tables t1 ON t1.object_id = fkc.parent_object_id \
 JOIN sys.columns c1 ON c1.object_id = fkc.parent_object_id AND c1.column_id = fkc.parent_column_id \
 JOIN sys.tables t2 ON t2.object_id = fkc.referenced_object_id \
-JOIN sys.columns c2 ON c2.object_id = fkc.referenced_object_id AND c2.column_id = fkc.referenced_column_id \
+JOIN sys.columns c2 ON c2.object_id = fkc.referenced_object_id AND c2.column_id = fkc.referenced_column_id{filter} \
 ORDER BY fk.name, fkc.constraint_column_id";
 
-pub(super) fn bulk_query(kind: DatabaseKind) -> Option<&'static str> {
-    match kind {
-        DatabaseKind::Postgres => Some(POSTGRES_KEYS),
-        DatabaseKind::Mysql => Some(MYSQL_KEYS),
-        DatabaseKind::Mssql => Some(MSSQL_KEYS),
-        _ => None,
-    }
+pub(super) fn bulk_query(kind: DatabaseKind) -> Option<String> {
+    keys_query(kind, None)
+}
+
+pub(super) fn keys_query(kind: DatabaseKind, schema: Option<&str>) -> Option<String> {
+    let (template, from, to, clause) = match kind {
+        DatabaseKind::Postgres => (POSTGRES_KEYS, "n1.nspname", "n2.nspname", " AND"),
+        DatabaseKind::Mysql => (
+            MYSQL_KEYS,
+            "TABLE_SCHEMA",
+            "REFERENCED_TABLE_SCHEMA",
+            " AND",
+        ),
+        DatabaseKind::Mssql => (
+            MSSQL_KEYS,
+            "SCHEMA_NAME(t1.schema_id)",
+            "SCHEMA_NAME(t2.schema_id)",
+            " WHERE",
+        ),
+        DatabaseKind::Oracle if schema.is_some() => (ORACLE_KEYS, "c.owner", "r.owner", " AND"),
+        _ => return None,
+    };
+    let filter = match schema {
+        None => String::new(),
+        Some(schema) if schema.contains(['\\', '\0']) => return None,
+        Some(schema) => {
+            let literal = format!("'{}'", schema.replace('\'', "''"));
+            format!("{clause} ({from} = {literal} OR {to} = {literal})")
+        }
+    };
+    Some(template.replace("{filter}", &filter))
 }
 
 pub(super) fn build_graph(nodes: Vec<(String, String)>, keys: Vec<ForeignKeyInfo>) -> Graph {

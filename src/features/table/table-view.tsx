@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { ObjectAuditPanel } from "@/features/object-admin/object-audit-panel";
+import { RowWatchProvider } from "@/features/table/row-watch-provider";
 import { TableColumnsList } from "@/features/table/table-columns-list";
 import { TableConstraintsList } from "@/features/table/table-constraints-list";
 import { TableDetailTabBar } from "@/features/table/table-detail-tab-bar";
@@ -10,6 +11,7 @@ import { TablePartitionsPanel } from "@/features/table/table-partitions-panel";
 import { TableRlsPanel } from "@/features/table/table-rls-panel";
 import { TableTriggersList } from "@/features/table/table-triggers-list";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
+import { PluginDetailTabsContent } from "@/features/ui-plugins/plugin-detail-tabs-content";
 import { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
 import { TablePerfPanel } from "./table-view/lazy-panels";
@@ -41,6 +43,8 @@ export function TableView(props: TableViewProps) {
     stateKey,
     caps,
     availableTabs,
+    pluginTable,
+    pluginTabs,
     viewTab,
     tableTab,
     tableRows,
@@ -150,137 +154,170 @@ export function TableView(props: TableViewProps) {
     />
   );
 
+  const watchScope =
+    stateKey &&
+    !masked &&
+    (isView ? viewTab : tableTab) === "data" &&
+    (columnDetails ?? []).some((column) => column.is_primary_key)
+      ? stateKey
+      : undefined;
+
   if (isView) {
     return (
-      <ViewDetailTabs
-        extensionActions={extensionActions}
-        caps={caps}
-        availableTabs={availableTabs}
-        viewTab={viewTab}
-        data={data}
-        exporting={exporting}
-        csvExportOpen={csvExportOpen}
-        setCsvExportOpen={setCsvExportOpen}
-        xlsxExportOpen={xlsxExportOpen}
-        dataExportFormat={dataExportFormat}
-        setXlsxExportOpen={setXlsxExportOpen}
-        setDataExportFormat={setDataExportFormat}
-        exportColumns={exportColumns}
-        exportRows={exportRows}
-        fullExportSource={fullExportSource}
-        handleExport={handleExport}
-        setDetailTab={setDetailTab}
-        filter={filter}
-        schema={schema}
-        table={table}
-        dataContent={dataContent}
-      />
+      <RowWatchProvider scope={watchScope} rows={tableRows}>
+        <ViewDetailTabs
+          extensionActions={extensionActions}
+          caps={caps}
+          availableTabs={availableTabs}
+          pluginTable={pluginTable}
+          pluginTabs={pluginTabs}
+          stateKey={stateKey}
+          columnDetails={columnDetails}
+          refetch={refetch}
+          viewTab={viewTab}
+          data={data}
+          tableRows={tableRows}
+          exporting={exporting}
+          csvExportOpen={csvExportOpen}
+          setCsvExportOpen={setCsvExportOpen}
+          xlsxExportOpen={xlsxExportOpen}
+          dataExportFormat={dataExportFormat}
+          setXlsxExportOpen={setXlsxExportOpen}
+          setDataExportFormat={setDataExportFormat}
+          exportColumns={exportColumns}
+          exportRows={exportRows}
+          fullExportSource={fullExportSource}
+          handleExport={handleExport}
+          setDetailTab={setDetailTab}
+          filter={filter}
+          schema={schema}
+          table={table}
+          dataContent={dataContent}
+        />
+      </RowWatchProvider>
     );
   }
 
   return (
-    <Tabs
-      value={tableTab}
-      onValueChange={(v) => setDetailTab(v as TableDetailTab)}
-      className="flex h-full min-h-0 flex-1 flex-col gap-0 overflow-hidden"
-    >
-      <div
-        className="flex shrink-0 items-center border-b bg-muted/30 px-3"
-        data-tour="table-toolbar"
+    <RowWatchProvider scope={watchScope} rows={tableRows}>
+      <Tabs
+        value={tableTab}
+        onValueChange={(v) => setDetailTab(v as TableDetailTab)}
+        className="flex h-full min-h-0 flex-1 flex-col gap-0 overflow-hidden"
       >
-        <TableDetailTabBar tabs={availableTabs} activeTab={tableTab} />
-        <TableToolbarActions
-          extensionActions={extensionActions}
-          connection={connection}
-          database={database}
+        <div
+          className="flex shrink-0 items-center border-b bg-muted/30 px-3"
+          data-tour="table-toolbar"
+        >
+          <TableDetailTabBar tabs={availableTabs} activeTab={tableTab} />
+          <TableToolbarActions
+            extensionActions={extensionActions}
+            connection={connection}
+            database={database}
+            stateKey={stateKey}
+            caps={caps}
+            tableTab={tableTab}
+            insertRowMutation={insertRowMutation}
+            data={data}
+            tableRows={tableRows}
+            columnDetails={columnDetails}
+            refetch={refetch}
+            exporting={exporting}
+            setCsvExportOpen={setCsvExportOpen}
+            setXlsxExportOpen={setXlsxExportOpen}
+            setDataExportFormat={setDataExportFormat}
+            handleExport={handleExport}
+            requestAddRow={requestAddRow}
+            pluginTable={pluginTable}
+            schema={schema}
+            table={table}
+          />
+        </div>
+
+        <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {caps.query_language === "redis" && (
+            <p className="border-b px-3 py-1.5 text-xs text-muted-foreground">
+              Key, TTL und vollständige Strings per Doppelklick bearbeiten. Keys per Rechtsklick auf
+              den Spaltenkopf filtern. Sammlungen und gekürzte Werte unter „Key verwalten“ lesen und
+              ändern. Vorschau: bis zu 100 Einträge bzw. 4 KiB; size zeigt die Gesamtgröße.
+            </p>
+          )}
+          {dataContent}
+        </TabsContent>
+
+        <TabsContent value="columns" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TableColumnsList schema={schema} table={table} editable />
+        </TabsContent>
+
+        <TabsContent value="triggers" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TableTriggersList schema={schema} table={table} />
+        </TabsContent>
+
+        <TabsContent value="indexes" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TableIndexesList schema={schema} table={table} />
+        </TabsContent>
+
+        <TabsContent value="constraints" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TableConstraintsList schema={schema} table={table} />
+        </TabsContent>
+
+        <TabsContent value="rls" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TableRlsPanel schema={schema} table={table} />
+        </TabsContent>
+
+        <TabsContent value="partitions" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TablePartitionsPanel schema={schema} table={table} />
+        </TabsContent>
+
+        <TabsContent value="grants" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TableGrantsPanel schema={schema} name={table} />
+        </TabsContent>
+
+        <TabsContent value="used-by" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TableUsedByPanel schema={schema} name={table} />
+        </TabsContent>
+
+        <TabsContent value="performance" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <Suspense
+            fallback={
+              <div role="status" className="p-4 text-sm text-muted-foreground">
+                Ansicht wird geladen…
+              </div>
+            }
+          >
+            <TablePerfPanel schema={schema} table={table} filter={filter} isView={false} />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="audit" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {caps.object_admin && (
+            <ObjectAuditPanel schema={schema} name={table} objectType="table" />
+          )}
+        </TabsContent>
+
+        <PluginDetailTabsContent
+          entries={pluginTabs}
+          info={pluginTable}
           stateKey={stateKey}
-          caps={caps}
-          tableTab={tableTab}
-          insertRowMutation={insertRowMutation}
-          data={data}
-          refetch={refetch}
-          exporting={exporting}
+          rows={tableRows}
+          columnNames={data?.columns}
+          columnDetails={columnDetails}
+        />
+
+        <TableExportDialogs
+          table={table}
+          csvExportOpen={csvExportOpen}
           setCsvExportOpen={setCsvExportOpen}
+          xlsxExportOpen={xlsxExportOpen}
+          dataExportFormat={dataExportFormat}
           setXlsxExportOpen={setXlsxExportOpen}
           setDataExportFormat={setDataExportFormat}
-          handleExport={handleExport}
-          requestAddRow={requestAddRow}
-          schema={schema}
-          table={table}
+          exportColumns={exportColumns}
+          exportRows={exportRows}
+          fullExportSource={fullExportSource}
+          columnTypes={columnDetails}
         />
-      </div>
-
-      <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {caps.query_language === "redis" && (
-          <p className="border-b px-3 py-1.5 text-xs text-muted-foreground">
-            Key, TTL und vollständige Strings per Doppelklick bearbeiten. Keys per Rechtsklick auf
-            den Spaltenkopf filtern. Sammlungen und gekürzte Werte unter „Key verwalten“ lesen und
-            ändern. Vorschau: bis zu 100 Einträge bzw. 4 KiB; size zeigt die Gesamtgröße.
-          </p>
-        )}
-        {dataContent}
-      </TabsContent>
-
-      <TabsContent value="columns" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <TableColumnsList schema={schema} table={table} editable />
-      </TabsContent>
-
-      <TabsContent value="triggers" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <TableTriggersList schema={schema} table={table} />
-      </TabsContent>
-
-      <TabsContent value="indexes" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <TableIndexesList schema={schema} table={table} />
-      </TabsContent>
-
-      <TabsContent value="constraints" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <TableConstraintsList schema={schema} table={table} />
-      </TabsContent>
-
-      <TabsContent value="rls" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <TableRlsPanel schema={schema} table={table} />
-      </TabsContent>
-
-      <TabsContent value="partitions" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <TablePartitionsPanel schema={schema} table={table} />
-      </TabsContent>
-
-      <TabsContent value="grants" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <TableGrantsPanel schema={schema} name={table} />
-      </TabsContent>
-
-      <TabsContent value="used-by" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <TableUsedByPanel schema={schema} name={table} />
-      </TabsContent>
-
-      <TabsContent value="performance" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <Suspense
-          fallback={
-            <div role="status" className="p-4 text-sm text-muted-foreground">
-              Ansicht wird geladen…
-            </div>
-          }
-        >
-          <TablePerfPanel schema={schema} table={table} filter={filter} isView={false} />
-        </Suspense>
-      </TabsContent>
-
-      <TabsContent value="audit" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {caps.object_admin && <ObjectAuditPanel schema={schema} name={table} objectType="table" />}
-      </TabsContent>
-
-      <TableExportDialogs
-        table={table}
-        csvExportOpen={csvExportOpen}
-        setCsvExportOpen={setCsvExportOpen}
-        xlsxExportOpen={xlsxExportOpen}
-        dataExportFormat={dataExportFormat}
-        setXlsxExportOpen={setXlsxExportOpen}
-        setDataExportFormat={setDataExportFormat}
-        exportColumns={exportColumns}
-        exportRows={exportRows}
-        fullExportSource={fullExportSource}
-      />
-    </Tabs>
+      </Tabs>
+    </RowWatchProvider>
   );
 }

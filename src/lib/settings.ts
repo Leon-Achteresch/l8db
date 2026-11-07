@@ -1,15 +1,17 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-
+import { DEFAULT_APP_THEME, normalizeAppTheme } from "@/lib/app-themes";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { type DmlPreviewMode, normalizeDmlPreviewMode } from "@/lib/dml-preview/mode";
 import { type FilterBarStyle, normalizeFilterBarStyle } from "@/lib/filter-bar-style";
+import { applyOrganizationSettings, withOrganizationSettings } from "@/lib/organization-state";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
 import { normalizeTableStyle, type TableStyle } from "@/lib/table-style";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export type SqlKeywordCase = "upper" | "lower" | "preserve";
 export type UiDensity = "compact" | "normal" | "spacious";
-export type SslDefaultMode = "prefer" | "require" | "disable" | "verify-full";
+export type SslDefaultMode = "prefer" | "require" | "disable" | "verify-ca" | "verify-full";
 export type EditorWhitespace = "none" | "boundary" | "selection" | "trailing" | "all";
 export type EditorWrappingIndent = "same" | "indent" | "deepIndent";
 export type EditorAcceptSuggestionOnEnter = "on" | "smart" | "off";
@@ -108,7 +110,11 @@ export interface SettingsState {
   sidebarExtraCompact: boolean;
   navInHeader: boolean;
   dynamicIsland: boolean;
+  shortcutHints: boolean;
   seasonalAccents: boolean;
+  lightTheme: string;
+  darkTheme: string;
+  dbThemes: boolean;
   fitColumnsToHeader: boolean;
   monochromeCells: boolean;
   tableStyle: TableStyle;
@@ -181,7 +187,11 @@ export interface SettingsState {
   setSidebarExtraCompact: (value: boolean) => void;
   setNavInHeader: (value: boolean) => void;
   setDynamicIsland: (value: boolean) => void;
+  setShortcutHints: (value: boolean) => void;
   setSeasonalAccents: (value: boolean) => void;
+  setLightTheme: (value: string) => void;
+  setDarkTheme: (value: string) => void;
+  setDbThemes: (value: boolean) => void;
   setFitColumnsToHeader: (value: boolean) => void;
   setMonochromeCells: (value: boolean) => void;
   setTableStyle: (value: TableStyle) => void;
@@ -190,6 +200,25 @@ export interface SettingsState {
   setSslDefaultMode: (v: SslDefaultMode) => void;
   resetToDefaults: () => void;
 }
+
+export const LAYOUT_APPEARANCE_DEFAULTS = {
+  uiScale: 100,
+  uiDensity: "normal",
+  sidebarExtraCompact: false,
+  navInHeader: false,
+  dynamicIsland: true,
+  seasonalAccents: true,
+  lightTheme: DEFAULT_APP_THEME,
+  darkTheme: DEFAULT_APP_THEME,
+  dbThemes: false,
+} satisfies Partial<SettingsState>;
+
+export const TABLE_APPEARANCE_DEFAULTS = {
+  fitColumnsToHeader: true,
+  monochromeCells: true,
+  tableStyle: "classic",
+  filterBarStyle: "classic",
+} satisfies Partial<SettingsState>;
 
 export const UI_SCALE_MIN = 80;
 export const UI_SCALE_MAX = 150;
@@ -280,7 +309,11 @@ export const DEFAULT_SETTINGS = {
   sidebarExtraCompact: false,
   navInHeader: false,
   dynamicIsland: true,
+  shortcutHints: true,
   seasonalAccents: true,
+  lightTheme: DEFAULT_APP_THEME,
+  darkTheme: DEFAULT_APP_THEME,
+  dbThemes: false,
   fitColumnsToHeader: true,
   monochromeCells: true,
   tableStyle: "classic" as TableStyle,
@@ -291,7 +324,7 @@ export const DEFAULT_SETTINGS = {
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
-    (set) => ({
+    withOrganizationSettings<SettingsState>((set) => ({
       ...DEFAULT_SETTINGS,
       setEasyMode: (easyMode) => set({ easyMode }),
       setTableDetailTabVisible: (tab, visible) =>
@@ -388,25 +421,17 @@ export const useSettingsStore = create<SettingsState>()(
       setSidebarExtraCompact: (sidebarExtraCompact) => set({ sidebarExtraCompact }),
       setNavInHeader: (navInHeader) => set({ navInHeader }),
       setDynamicIsland: (dynamicIsland) => set({ dynamicIsland }),
+      setShortcutHints: (shortcutHints) => set({ shortcutHints }),
       setSeasonalAccents: (seasonalAccents) => set({ seasonalAccents }),
+      setLightTheme: (lightTheme) => set({ lightTheme: normalizeAppTheme(lightTheme) }),
+      setDarkTheme: (darkTheme) => set({ darkTheme: normalizeAppTheme(darkTheme) }),
+      setDbThemes: (dbThemes) => set({ dbThemes }),
       setFitColumnsToHeader: (fitColumnsToHeader) => set({ fitColumnsToHeader }),
       setMonochromeCells: (monochromeCells) => set({ monochromeCells }),
       setTableStyle: (tableStyle) => set({ tableStyle: normalizeTableStyle(tableStyle) }),
       setFilterBarStyle: (filterBarStyle) =>
         set({ filterBarStyle: normalizeFilterBarStyle(filterBarStyle) }),
-      resetAppearance: () =>
-        set({
-          uiScale: 100,
-          uiDensity: "normal",
-          sidebarExtraCompact: false,
-          navInHeader: false,
-          dynamicIsland: true,
-          seasonalAccents: true,
-          fitColumnsToHeader: true,
-          monochromeCells: true,
-          tableStyle: "classic",
-          filterBarStyle: "classic",
-        }),
+      resetAppearance: () => set({ ...LAYOUT_APPEARANCE_DEFAULTS, ...TABLE_APPEARANCE_DEFAULTS }),
       setConnectionTimeout: (connectionTimeout) => set({ connectionTimeout }),
       setSslDefaultMode: (sslDefaultMode) => set({ sslDefaultMode }),
       resetToDefaults: () =>
@@ -415,17 +440,19 @@ export const useSettingsStore = create<SettingsState>()(
           tourFinished: state.tourFinished,
           onboardingDone: state.onboardingDone,
         })),
-    }),
+    })),
     {
       name: "l8db.settings",
-      version: 1,
-      migrate: (persisted, version) =>
-        version < 1
-          ? { ...(persisted as Record<string, unknown>), productionReadOnly: true }
-          : persisted,
+      storage: createSafeJsonStorage(),
+      version: 2,
+      migrate: (persisted, version) => ({
+        ...(persisted as Record<string, unknown>),
+        ...(version < 1 ? { productionReadOnly: true } : {}),
+        ...(version < 2 ? { dbThemes: false } : {}),
+      }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<SettingsState> | undefined;
-        return {
+        return applyOrganizationSettings({
           ...current,
           ...saved,
           easyMode: saved?.easyMode === true,
@@ -442,7 +469,11 @@ export const useSettingsStore = create<SettingsState>()(
           sidebarObjectNav: saved?.sidebarObjectNav === "select" ? "select" : "tabs",
           navInHeader: saved?.navInHeader === true,
           dynamicIsland: saved?.dynamicIsland !== false,
+          shortcutHints: saved?.shortcutHints !== false,
           seasonalAccents: saved?.seasonalAccents !== false,
+          lightTheme: normalizeAppTheme(saved?.lightTheme),
+          darkTheme: normalizeAppTheme(saved?.darkTheme),
+          dbThemes: saved?.dbThemes === true,
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
           monochromeCells: saved?.monochromeCells !== false,
           tableStyle: normalizeTableStyle(saved?.tableStyle),
@@ -450,7 +481,7 @@ export const useSettingsStore = create<SettingsState>()(
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
           dmlPreviewMode: normalizeDmlPreviewMode(saved?.dmlPreviewMode),
           updateChannel: saved?.updateChannel === "canary" ? "canary" : "stable",
-        };
+        });
       },
     },
   ),

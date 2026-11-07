@@ -57,13 +57,17 @@ export interface TransferEndpoint {
 export interface TransferSchemaPair {
   source: string;
   target: string;
+  tables?: string[];
 }
+
+export type TransferContent = "all" | "structure" | "data";
 
 export interface TransferStatement {
   sql: string;
   objectType?: string | null;
   schema?: string | null;
   name?: string | null;
+  optional?: boolean;
 }
 
 export interface TransferColumn {
@@ -96,7 +100,6 @@ export interface TransferPlan {
   native: boolean;
   atomic: boolean;
   schemas: TransferSchemaPair[];
-  createSchemas: string[];
   tables: TransferTable[];
   preData: TransferStatement[];
   beforeLoad: TransferStatement[];
@@ -111,6 +114,10 @@ export interface TransferPlan {
   manual: TransferManualObject[];
   warnings: string[];
   conflicts: string[];
+  replace: boolean;
+  mirror: boolean;
+  replaced: string[];
+  content: TransferContent;
 }
 
 export interface TransferOutcome {
@@ -141,10 +148,18 @@ export interface TransferProgress {
 export async function planTransfer(
   kind: DatabaseKind,
   connectionString: string,
-  request: { source: TransferEndpoint; schemas: TransferSchemaPair[]; foldNames: boolean },
+  request: {
+    source: TransferEndpoint;
+    schemas: TransferSchemaPair[];
+    foldNames: boolean;
+    replace: boolean;
+    mirror: boolean;
+    content: TransferContent;
+  },
   database?: string,
+  options?: QueryExecutionOptions,
 ): Promise<TransferPlan> {
-  return invoke("plan_transfer", { kind, connectionString, database, request });
+  return invoke("plan_transfer", { kind, connectionString, database, request, options });
 }
 
 export async function runTransfer(

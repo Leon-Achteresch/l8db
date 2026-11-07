@@ -4,8 +4,10 @@ import {
   connectionError,
   detectProvider,
   filePath,
+  isProfileConnection,
   isTrustedConnection,
   kindFromUrl,
+  multiHostUrl,
   oracleConnectString,
   parseConnectionUrl,
 } from "@/lib/connection-url";
@@ -71,7 +73,12 @@ export function createConnectionInputActions(ctx: ConnectionInputActionsContext)
     const next = providers.find((entry) => entry.id === id);
     if (!next) return;
     setProvider(id);
-    if (mode === "tns" && next.kind !== "oracle") setMode("fields");
+    if (isProfileConnection(next.kind)) {
+      setMode("string");
+      if (kindFromUrl(value) !== next.kind) setValue("");
+    }
+    if (mode === "tns" && next.kind !== "oracle" && !isProfileConnection(next.kind))
+      setMode("fields");
     setPreview(next.kind, next.id);
     setResult({ status: "idle" });
     const nextDefaults = placeholderDefaults(next);
@@ -98,10 +105,14 @@ export function createConnectionInputActions(ctx: ConnectionInputActionsContext)
     try {
       if (next !== "string" && value.trim()) {
         const inputKind = kindFromUrl(value) ?? kind;
+        if (isProfileConnection(inputKind))
+          throw new Error("Profilverbindungen werden ausschließlich im URL-Modus bearbeitet.");
         const inputInfo = providers.find((entry) => entry.kind === inputKind) ?? info;
         setProvider(detectProvider(value, inputKind));
         if (inputInfo.file_based) setFile(filePath(value));
         else {
+          if (multiHostUrl(value))
+            throw new Error("Mehrere Hosts lassen sich nur im URL-Modus bearbeiten.");
           const url = parseConnectionUrl(value, inputKind);
           const alias = inputKind === "oracle" ? oracleConnectString(url) : null;
           if (alias) setTnsAlias(alias);

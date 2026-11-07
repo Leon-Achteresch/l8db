@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { errorMessageOf } from "@/lib/error-details";
 import { encode, readFile, saveFile } from "@/lib/versioning/repository";
 import {
   DEFAULT_TICKETS,
@@ -21,7 +22,11 @@ export function useTickets(workspace: VersioningWorkspace) {
       try {
         return { text, configuration: parseTickets(text), problem: null };
       } catch (error) {
-        return { text, configuration: DEFAULT_TICKETS, problem: String(error) };
+        return {
+          text,
+          configuration: DEFAULT_TICKETS,
+          problem: `Ungültige Ticket-Konfiguration in ${TICKETS_PATH}: ${errorMessageOf(error)}`,
+        };
       }
     },
   });

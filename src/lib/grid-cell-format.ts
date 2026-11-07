@@ -73,6 +73,11 @@ export function categoryColorIndex(value: string): number {
     hash ^= value.charCodeAt(i);
     hash = Math.imul(hash, 16777619);
   }
+  hash += hash << 13;
+  hash ^= hash >>> 7;
+  hash += hash << 3;
+  hash ^= hash >>> 17;
+  hash += hash << 5;
   return (hash >>> 0) % CATEGORY_COLORS;
 }
 

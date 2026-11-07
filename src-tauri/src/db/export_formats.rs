@@ -128,13 +128,13 @@ pub enum ParquetKind {
 }
 
 pub fn parquet_kind_for_type(data_type: &str) -> ParquetKind {
-    let lower = data_type.trim().to_ascii_lowercase();
+    let lower = super::import::base_type(data_type);
     let base = lower.split('(').next().unwrap_or("").trim().to_string();
-    let base = base.strip_prefix("nullable(").unwrap_or(&base).to_string();
     if lower.ends_with("[]") || lower.starts_with("array") {
         return ParquetKind::Text;
     }
     match base.as_str() {
+        "bit" if lower != "bit" && lower.replace(' ', "") != "bit(1)" => ParquetKind::Text,
         "bool" | "boolean" | "bit" => ParquetKind::Bool,
         "smallint" | "integer" | "int" | "bigint" | "int2" | "int4" | "int8" | "tinyint"
         | "mediumint" | "smallserial" | "serial" | "bigserial" | "int16" | "int32" | "int64"
@@ -206,6 +206,16 @@ fn parse_timestamp(text: &str) -> Option<i64> {
         })
 }
 
+fn without_era(text: &str) -> Option<(&str, i64)> {
+    use chrono::Datelike;
+    let Some(rest) = text.strip_suffix(" BC") else {
+        return Some((text, 0));
+    };
+    let common = chrono::NaiveDate::parse_from_str(rest.get(..10)?, "%Y-%m-%d").ok()?;
+    let before = common.with_year(1 - common.year())?;
+    Some((rest, (before - common).num_days()))
+}
+
 fn parquet_value(
     kind: ParquetKind,
     column: &str,
@@ -242,15 +252,27 @@ fn parquet_value(
                 .or_else(|| text.trim().parse().ok())
                 .ok_or_else(mismatch)?,
         ),
-        ParquetKind::Date => {
-            let date = chrono::NaiveDate::parse_from_str(text.get(..10).unwrap_or(""), "%Y-%m-%d")
-                .map_err(|_| mismatch())?;
-            let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).expect("epoch");
-            ParquetValue::Date((date - epoch).num_days() as i32)
-        }
-        ParquetKind::Timestamp { .. } => {
-            ParquetValue::Timestamp(parse_timestamp(text.trim()).ok_or_else(mismatch)?)
-        }
+        ParquetKind::Date => match text.trim() {
+            "infinity" => ParquetValue::Date(i32::MAX),
+            "-infinity" => ParquetValue::Date(i32::MIN),
+            trimmed => {
+                let (plain, shift) = without_era(trimmed).ok_or_else(mismatch)?;
+                let date =
+                    chrono::NaiveDate::parse_from_str(plain.get(..10).unwrap_or(""), "%Y-%m-%d")
+                        .map_err(|_| mismatch())?;
+                let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).expect("epoch");
+                ParquetValue::Date(((date - epoch).num_days() + shift) as i32)
+            }
+        },
+        ParquetKind::Timestamp { .. } => match text.trim() {
+            "infinity" => ParquetValue::Timestamp(i64::MAX),
+            "-infinity" => ParquetValue::Timestamp(i64::MIN),
+            trimmed => {
+                let (plain, shift) = without_era(trimmed).ok_or_else(mismatch)?;
+                let micros = parse_timestamp(plain).ok_or_else(mismatch)?;
+                ParquetValue::Timestamp(micros + shift * 86_400_000_000)
+            }
+        },
         ParquetKind::Text => ParquetValue::Text(text),
     }))
 }
@@ -743,6 +765,23 @@ pub mod tests {
         );
         assert_eq!(parquet_kind_for_type("date"), ParquetKind::Date);
         assert_eq!(parquet_kind_for_type("integer[]"), ParquetKind::Text);
+        assert_eq!(parquet_kind_for_type("bit(8)"), ParquetKind::Text);
+        assert_eq!(parquet_kind_for_type("bit(1)"), ParquetKind::Bool);
+        assert_eq!(parquet_kind_for_type("bit"), ParquetKind::Bool);
+        assert_eq!(parquet_kind_for_type("Nullable(Int64)"), ParquetKind::Int64);
+        let date = |text: &str| parquet_value(ParquetKind::Date, "d", &serde_json::json!(text));
+        assert_eq!(date("infinity"), Ok(Some(ParquetValue::Date(i32::MAX))));
+        assert_eq!(date("-infinity"), Ok(Some(ParquetValue::Date(i32::MIN))));
+        assert_eq!(
+            date("0001-01-01 BC"),
+            Ok(Some(ParquetValue::Date(-719_528)))
+        );
+        let stamp = parquet_value(
+            ParquetKind::Timestamp { utc: false },
+            "t",
+            &serde_json::json!("infinity"),
+        );
+        assert_eq!(stamp, Ok(Some(ParquetValue::Timestamp(i64::MAX))));
         let values = [
             serde_json::json!(1),
             serde_json::json!(2.5),

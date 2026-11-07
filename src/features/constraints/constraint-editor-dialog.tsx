@@ -74,6 +74,7 @@ function ConstraintEditorDialogContent({
     withDefaults(initial ?? emptyConstraint(allowedKinds[0] ?? "foreign_key"), schema),
   );
   const [previewSql, setPreviewSql] = useState("");
+  const [previewSpec, setPreviewSpec] = useState<TableConstraintSpec | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -102,6 +103,7 @@ function ConstraintEditorDialogContent({
         .then((sql) => {
           if (cancelled) return;
           setPreviewSql(sql);
+          setPreviewSpec(spec);
           setPreviewError(null);
         })
         .catch((err) => {
@@ -124,8 +126,11 @@ function ConstraintEditorDialogContent({
     setSpec(withDefaults({ ...emptyConstraint(nextKind), name: spec.name }, schema));
   };
 
+  const previewReady = !preview || (previewSql !== "" && previewSpec === spec);
+  const suggestedName = suggestedConstraintName(table, spec);
+
   const handleSubmit = async () => {
-    if (issues.length > 0 || submitting) return;
+    if (issues.length > 0 || submitting || !previewReady) return;
     setSubmitting(true);
     try {
       const trimmedName = spec.name?.trim() || null;
@@ -171,11 +176,23 @@ function ConstraintEditorDialogContent({
               id="constraint-name"
               value={spec.name ?? ""}
               onChange={(e) => setSpec({ ...spec, name: e.target.value })}
-              placeholder={suggestedConstraintName(table, spec)}
+              placeholder="Automatisch"
               className="h-8 font-mono text-xs"
             />
             <p className="text-[11px] text-muted-foreground">
               Leer lassen, damit die Datenbank einen Namen vergibt.
+              {suggestedName && !spec.name?.trim() && (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    className="font-mono underline underline-offset-2 hover:text-foreground"
+                    onClick={() => setSpec({ ...spec, name: suggestedName })}
+                  >
+                    {suggestedName} übernehmen
+                  </button>
+                </>
+              )}
             </p>
           </div>
 
@@ -262,7 +279,7 @@ function ConstraintEditorDialogContent({
           </Button>
           <Button
             size="sm"
-            disabled={issues.length > 0 || submitting || (Boolean(preview) && !previewSql)}
+            disabled={issues.length > 0 || submitting || !previewReady}
             onClick={() => void handleSubmit()}
           >
             {submitting && <Spinner className="size-3.5" />}

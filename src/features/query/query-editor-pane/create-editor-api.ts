@@ -11,6 +11,17 @@ export function createEditorApi(
   gotoBookmarkLine: (direction: "next" | "previous") => void,
 ): QueryEditorApi {
   return {
+    replaceText: (text) => {
+      const editor = editorRef.current;
+      const model = editor?.getModel();
+      if (!editor || !model) return;
+      editor.pushUndoStop();
+      editor.executeEdits("sql-state", [
+        { range: model.getFullModelRange(), text, forceMoveMarkers: true },
+      ]);
+      editor.pushUndoStop();
+      editor.focus();
+    },
     insertText: (text: string) => {
       const editor = editorRef.current;
       const selection = editor?.getSelection();

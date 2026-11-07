@@ -18,7 +18,7 @@ import { cancelExecution, compareTableDataRemote } from "@/lib/db";
 import { capabilitiesFor } from "@/lib/providers";
 import { activateConnection, effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
-import { finishTask, startTask, updateTask } from "@/lib/tasks";
+import { cancelTask, finishTask, startTask, updateTask } from "@/lib/tasks";
 import { showCopiedMessage } from "@/lib/workspace-status";
 
 export function useDataCompare(left: DataCompareSideSelection, right: DataCompareSideSelection) {
@@ -32,6 +32,7 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
   const [direction, setDirection] = useState<SyncDirection>("left_to_right");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [includeDeletes, setIncludeDeletes] = useState(false);
+  const [job, setJob] = useState<string | null>(null);
 
   const leftConnection = connections.find((item) => item.id === left.connectionId) ?? null;
   const rightConnection = connections.find((item) => item.id === right.connectionId) ?? null;
@@ -61,13 +62,14 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
         return backendStarted ? cancelExecution(job) : true;
       },
     );
+    setJob(job);
     const unlisten = await listen<{ jobId: string; rows: number }>(
       "data-compare-progress",
       (event) => {
         if (event.payload.jobId === job)
           updateTask(job, {
             progress: event.payload.rows,
-            detail: "Zeilen der aktuellen Seite werden gelesen.",
+            detail: "Zeilen beider Seiten werden gelesen.",
           });
       },
     ).catch(() => () => {});
@@ -141,7 +143,23 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
     } finally {
       unlisten();
       setRunning(false);
+      setJob(null);
     }
+  };
+
+  const cancelCompare = async () => {
+    if (job) await cancelTask(job);
+  };
+
+  const setRowsSelected = (keys: string[], value: boolean) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const key of keys) {
+        if (value) next.add(key);
+        else next.delete(key);
+      }
+      return next;
+    });
   };
 
   const visibleRows = useMemo(() => {
@@ -247,6 +265,8 @@ export function useDataCompare(left: DataCompareSideSelection, right: DataCompar
     visibleRows,
     script,
     toggleRow,
+    setRowsSelected,
+    cancelCompare,
     copyScript,
     openScript,
   };

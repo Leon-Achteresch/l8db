@@ -33,6 +33,17 @@ pub fn quote(ident: &str) -> String {
     format!("\"{}\"", ident.replace('"', "\"\""))
 }
 
+fn new_column_name(name: &str) -> String {
+    let mut chars = name.chars();
+    let plain = chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '$' | '#'));
+    if plain {
+        name.to_ascii_uppercase()
+    } else {
+        name.to_string()
+    }
+}
+
 fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
@@ -2069,13 +2080,37 @@ impl DatabaseAdapter for OracleAdapter {
         let (columns, cols, rows) = self
             .run_browse(move |c| {
                 let columns = table_columns(c, &schema, &table, false)?;
-                let order_sql = match order_by {
-                    Some(col) if columns.iter().any(|c| *c == col) => format!(
-                        " ORDER BY {} {}",
-                        quote(&col),
-                        if order_desc { "DESC" } else { "ASC" }
-                    ),
-                    _ => String::new(),
+                let keys: Vec<String> = if is_view {
+                    Vec::new()
+                } else {
+                    fetch(
+                        c,
+                        &format!(
+                            "SELECT cc.column_name FROM all_constraints k JOIN all_cons_columns cc \
+                             ON cc.owner = k.owner AND cc.constraint_name = k.constraint_name \
+                             WHERE k.owner = {} AND k.table_name = {} AND k.constraint_type = 'P' \
+                             ORDER BY cc.position",
+                            lit(&schema),
+                            lit(&table)
+                        ),
+                    )?
+                    .iter()
+                    .map(|row| s(row, 0))
+                    .collect()
+                };
+                let order = order_by
+                    .as_deref()
+                    .filter(|col| columns.iter().any(|c| c == col))
+                    .map(|col| (col, order_desc));
+                let mut terms =
+                    super::stable_order_terms(order, &keys, |col| format!("t.{}", quote(col)));
+                if keys.is_empty() && order.is_some() && !is_view {
+                    terms.push("t.ROWID".to_string());
+                }
+                let order_sql = if terms.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ORDER BY {}", terms.join(", "))
                 };
                 let legacy = legacy_paging(c);
                 let sql = page_sql(
@@ -2216,6 +2251,18 @@ impl DatabaseAdapter for OracleAdapter {
             });
         }
         Ok(results)
+    }
+
+    async fn execute_with_binds(
+        &self,
+        sql: &str,
+        binds: &[super::BindVariable],
+    ) -> Result<super::BoundResult, String> {
+        let sql = sql.to_string();
+        let binds = binds.to_vec();
+        let limit = super::execution::row_limit();
+        self.run(move |c| execute_binds(c, &sql, &binds, limit))
+            .await
     }
 
     async fn validate_sql(&self, sql: &str) -> Result<(), String> {
@@ -2989,7 +3036,7 @@ impl DatabaseAdapter for OracleAdapter {
             "ALTER TABLE {}.{} ADD ({} {}",
             quote(schema),
             quote(table),
-            quote(&column.name),
+            quote(&new_column_name(&column.name)),
             column.data_type
         );
         if let Some(d) = column.default_value.as_deref().filter(|d| !d.is_empty()) {
@@ -3021,25 +3068,30 @@ impl DatabaseAdapter for OracleAdapter {
         if let Some(not_null) = changes.set_not_null {
             modify.push(if not_null { "NOT NULL" } else { "NULL" }.to_string());
         }
+        let mut statements = Vec::new();
         if !modify.is_empty() {
-            self.exec(format!(
+            statements.push(format!(
                 "ALTER TABLE {target} MODIFY ({} {})",
                 quote(&changes.old_name),
                 modify.join(" ")
-            ))
-            .await?;
+            ));
         }
         if let Some(new_name) = changes
             .new_name
             .as_deref()
             .filter(|n| !n.is_empty() && *n != changes.old_name)
         {
-            self.exec(format!(
+            statements.push(format!(
                 "ALTER TABLE {target} RENAME COLUMN {} TO {}",
                 quote(&changes.old_name),
-                quote(new_name)
-            ))
-            .await?;
+                quote(&new_column_name(new_name))
+            ));
+        }
+        let total = statements.len();
+        for (applied, sql) in statements.into_iter().enumerate() {
+            self.exec(sql)
+                .await
+                .map_err(|e| super::partially_applied(e, applied, total))?;
         }
         Ok(())
     }
@@ -3498,13 +3550,17 @@ impl DatabaseAdapter for OracleAdapter {
                 "SELECT owner, COUNT(*) FROM all_tables GROUP BY owner ORDER BY owner".to_string(),
             )
             .await?;
-        let sizes: Vec<(String, i64)> = self
+        let segments = match self
             .rows("SELECT owner, SUM(bytes) FROM dba_segments GROUP BY owner".to_string())
             .await
-            .unwrap_or_default()
-            .iter()
-            .map(|r| (s(r, 0), i(r, 1)))
-            .collect();
+        {
+            Ok(rows) => rows,
+            Err(_) => self
+                .rows("SELECT USER, SUM(bytes) FROM user_segments".to_string())
+                .await
+                .unwrap_or_default(),
+        };
+        let sizes: Vec<(String, i64)> = segments.iter().map(|r| (s(r, 0), i(r, 1))).collect();
         let schemas: Vec<SchemaSize> = tables
             .iter()
             .map(|r| {
@@ -3937,6 +3993,15 @@ fn find_client_lib_in(candidates: &[PathBuf]) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn plain_new_column_names_follow_oracle_case() {
+        assert_eq!(super::new_column_name("name"), "NAME");
+        assert_eq!(super::new_column_name("order_id$2"), "ORDER_ID$2");
+        assert_eq!(super::new_column_name("Mixed Case"), "Mixed Case");
+        assert_eq!(super::new_column_name("1st"), "1st");
+        assert_eq!(super::new_column_name("größe"), "größe");
+    }
+
+    #[test]
     fn script_results_sum_affected_rows_and_report_progress() {
         let dml = |rows| super::QueryResult {
             columns: vec![],
@@ -4084,6 +4149,35 @@ mod tests {
         );
         assert_eq!(find_client_lib_in(&[empty]), None);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sqlplus_bind_types_and_exec_lines_map_like_sqlplus() {
+        assert!(matches!(
+            bind_type("number"),
+            Ok(OracleType::Number(0, -127))
+        ));
+        assert!(matches!(
+            bind_type("VARCHAR2(30 CHAR)"),
+            Ok(OracleType::Varchar2(120))
+        ));
+        assert!(matches!(bind_type("varchar2"), Ok(OracleType::Varchar2(1))));
+        assert!(matches!(
+            bind_type("CHAR(5000)"),
+            Ok(OracleType::Char(2000))
+        ));
+        assert!(matches!(bind_type("REFCURSOR"), Ok(OracleType::RefCursor)));
+        assert!(bind_type("DATE").unwrap_err().starts_with("SP2-0553"));
+        assert_eq!(single_statement("EXEC :n := 5"), "BEGIN :n := 5; END;");
+        assert_eq!(
+            single_statement("exec pkg.run(1, -\n  2)"),
+            "BEGIN pkg.run(1, \n  2); END;"
+        );
+        assert_eq!(single_statement("COMMIT;"), "COMMIT");
+        assert_eq!(
+            single_statement("SELECT 1 FROM dual;"),
+            "SELECT 1 FROM dual"
+        );
     }
 
     #[test]
@@ -5198,6 +5292,7 @@ mod tests {
                 set_not_null: Some(false),
                 new_default: Some("'y'".into()),
                 drop_default: false,
+                using: None,
             },
         )
         .await
@@ -5212,6 +5307,7 @@ mod tests {
                 set_not_null: None,
                 new_default: None,
                 drop_default: true,
+                using: None,
             },
         )
         .await
@@ -5459,7 +5555,7 @@ fn table_columns(
     insertable: bool,
 ) -> Result<Vec<String>, String> {
     let extra = if insertable {
-        " AND virtual_column = 'NO' AND identity_column = 'NO'"
+        " AND (virtual_column = 'NO' OR NVL(default_length, 0) = 0) AND identity_column = 'NO'"
     } else {
         ""
     };
@@ -5712,9 +5808,157 @@ pub fn tx_fetch_rows(
     })
 }
 
+fn single_statement(sql: &str) -> String {
+    match sql::split_statements(sql).as_slice() {
+        [one] => prepare(one),
+        _ => prepare(sql),
+    }
+}
+
+fn bind_type(data_type: &str) -> Result<OracleType, String> {
+    let upper = data_type.trim().to_ascii_uppercase();
+    let (base, size) = match upper.split_once('(') {
+        Some((base, rest)) => (
+            base.trim().to_string(),
+            rest.trim_end_matches(')')
+                .split_whitespace()
+                .next()
+                .and_then(|n| n.parse::<u32>().ok()),
+        ),
+        None => (upper.clone(), None),
+    };
+    let size = size.unwrap_or(1).clamp(1, 32767);
+    let size = if upper.contains(" CHAR") {
+        size.saturating_mul(4).min(32767)
+    } else {
+        size
+    };
+    Ok(match base.as_str() {
+        "NUMBER" => OracleType::Number(0, -127),
+        "BINARY_FLOAT" => OracleType::BinaryFloat,
+        "BINARY_DOUBLE" => OracleType::BinaryDouble,
+        "CHAR" => OracleType::Char(size.min(2000)),
+        "NCHAR" => OracleType::NChar(size.min(2000)),
+        "VARCHAR2" => OracleType::Varchar2(size),
+        "NVARCHAR2" => OracleType::NVarchar2(size),
+        "CLOB" => OracleType::CLOB,
+        "NCLOB" => OracleType::NCLOB,
+        "REFCURSOR" => OracleType::RefCursor,
+        "BOOLEAN" => OracleType::Boolean,
+        _ => {
+            return Err(format!(
+                "SP2-0553: Nicht unterstützter VARIABLE-Typ: {data_type}"
+            ))
+        }
+    })
+}
+
+pub fn execute_binds(
+    c: &Connection,
+    sql: &str,
+    binds: &[super::BindVariable],
+    limit: usize,
+) -> Result<super::BoundResult, String> {
+    let start = std::time::Instant::now();
+    let statement = single_statement(sql);
+    let mut stmt = c
+        .statement(&statement)
+        .fetch_array_size(limit.clamp(1, MAX_FETCH_ARRAY) as u32)
+        .build()
+        .map_err(|e| map_sql_err(e, &statement))?;
+    let mut used: Vec<(String, OracleType)> = Vec::new();
+    for name in stmt.bind_names().iter().map(|n| n.to_ascii_uppercase()) {
+        if used.iter().any(|(seen, _)| *seen == name) {
+            continue;
+        }
+        let spec = binds
+            .iter()
+            .find(|b| b.name.eq_ignore_ascii_case(&name))
+            .ok_or_else(|| format!("SP2-0552: Bindvariable \"{name}\" ist nicht deklariert."))?;
+        used.push((name, bind_type(&spec.data_type)?));
+    }
+    for (name, kind) in &used {
+        let value = binds
+            .iter()
+            .find(|b| b.name.eq_ignore_ascii_case(name))
+            .and_then(|b| b.value.clone());
+        let bound = match (kind, value) {
+            (OracleType::RefCursor, _) | (_, None) => stmt.bind(name.as_str(), kind),
+            (OracleType::Boolean, Some(v)) => {
+                stmt.bind(name.as_str(), &(&v.eq_ignore_ascii_case("TRUE"), kind))
+            }
+            (_, Some(v)) => stmt.bind(name.as_str(), &(&v, kind)),
+        };
+        bound.map_err(|e| map_sql_err(e, &statement))?;
+    }
+    let mut result = QueryResult {
+        columns: vec![],
+        rows: vec![],
+        rows_affected: None,
+        execution_time_ms: 0,
+        truncated: false,
+    };
+    if is_query(&statement) {
+        let rows = super::sql_log::logged(
+            "query",
+            &statement,
+            |_| None,
+            || stmt.query(&[]).map_err(|e| map_sql_err(e, &statement)),
+        )?;
+        let (columns, rows) = read_grid(rows, limit)?;
+        result.rows = rows_to_objects(&columns, rows);
+        result.columns = columns;
+    } else {
+        super::sql_log::logged(
+            "execute",
+            &statement,
+            |_| None,
+            || stmt.execute(&[]).map_err(|e| map_sql_err(e, &statement)),
+        )?;
+        if !is_plsql(&statement) {
+            result.rows_affected = Some(stmt.row_count().map_err(map_err)?);
+        }
+    }
+    let mut values = Vec::new();
+    for (name, kind) in &used {
+        let mut value = super::BindValue {
+            name: name.clone(),
+            value: None,
+            cursor: None,
+        };
+        match kind {
+            OracleType::RefCursor => {
+                let cursor: Option<oracle::sql_type::RefCursor> =
+                    stmt.bind_value(name.as_str()).map_err(map_err)?;
+                if let Some(mut cursor) = cursor {
+                    let (columns, rows) = read_grid(cursor.query().map_err(map_err)?, limit)?;
+                    value.cursor = Some(QueryResult {
+                        rows: rows_to_objects(&columns, rows),
+                        columns,
+                        rows_affected: None,
+                        execution_time_ms: 0,
+                        truncated: false,
+                    });
+                }
+            }
+            OracleType::Boolean => {
+                let flag: Option<bool> = stmt.bind_value(name.as_str()).map_err(map_err)?;
+                value.value = flag.map(|b| if b { "TRUE" } else { "FALSE" }.to_string());
+            }
+            _ => value.value = stmt.bind_value(name.as_str()).map_err(map_err)?,
+        }
+        values.push(value);
+    }
+    result.execution_time_ms = start.elapsed().as_millis() as u64;
+    Ok(super::BoundResult {
+        result,
+        binds: values,
+    })
+}
+
 pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
-    let statement = prepare(sql);
+    let statement = single_statement(sql);
     let statement = statement.as_str();
     if is_query(statement) {
         let (columns, rows) = run_query(c, statement)?;

@@ -52,6 +52,7 @@ const { useSettingsStore } = await import("../src/lib/settings");
 const { useWriteModeStore } = await import("../src/lib/environments");
 const { operationConnections } = await import("../src/lib/operation-context");
 const { FALLBACK_PROVIDERS, useProvidersStore } = await import("../src/lib/providers");
+const { usePasswordPrompt } = await import("../src/lib/password-prompt");
 
 beforeEach(() => {
   useProvidersStore.setState({ providers: FALLBACK_PROVIDERS, loaded: true });
@@ -862,5 +863,89 @@ describe("preflight before the partial notice", () => {
       onUpdate: () => undefined,
     }).done;
     expect(invocations.map((entry) => entry.command)).toEqual(["execute_query"]);
+  });
+});
+
+describe("password prompts of several targets", () => {
+  const runWithPrompts = (ids: string[], updates: Map<string, TargetRun>) => {
+    useConnectionsStore.setState({ connections: ids.map((id) => connection(id)) });
+    invocations.length = 0;
+    return startMultiTargetRun({
+      targets: ids.map((id) => multiTarget(id)),
+      sql: "SELECT 1",
+      concurrency: 4,
+      perServerLimit: 8,
+      timeoutSeconds: 10,
+      maxRows: 10,
+      executor: multiTargetExecutor(false),
+      onUpdate: (run) => updates.set(run.id, run),
+    });
+  };
+  const prompted = () => usePasswordPrompt.getState().connection?.id ?? null;
+
+  test("simultaneous prompts queue up; each can be answered or cancelled", async () => {
+    const updates = new Map<string, TargetRun>();
+    const handle = runWithPrompts(["pw-a", "pw-b", "pw-c"], updates);
+    await tick();
+    expect(prompted()).toBe("pw-a");
+    usePasswordPrompt.getState().resolve?.({ password: "secret-a", save: false });
+    await tick();
+    expect(prompted()).toBe("pw-b");
+    usePasswordPrompt.getState().resolve?.(null);
+    await tick();
+    expect(prompted()).toBe("pw-c");
+    usePasswordPrompt.getState().resolve?.({ password: "secret-c", save: false });
+    await handle.done;
+    expect(prompted()).toBeNull();
+    expect(updates.get(multiTarget("pw-a").id)?.status).toBe("done");
+    expect(updates.get(multiTarget("pw-b").id)).toMatchObject({
+      status: "error",
+      error: "Ohne Passwort kann nicht verbunden werden.",
+    });
+    expect(updates.get(multiTarget("pw-c").id)?.status).toBe("done");
+    const urls = invocations
+      .filter((entry) => entry.command === "execute_query")
+      .map((entry) => new URL(String(entry.args.connectionString)).password);
+    expect(urls.sort()).toEqual(["secret-a", "secret-c"]);
+  });
+
+  test("cancel all ends a run that waits for passwords and withdraws its prompts", async () => {
+    const updates = new Map<string, TargetRun>();
+    const handle = runWithPrompts(["pw-d", "pw-e"], updates);
+    await tick();
+    expect(prompted()).toBe("pw-d");
+    handle.cancelAll();
+    await handle.done;
+    expect(prompted()).toBeNull();
+    expect(updates.get(multiTarget("pw-d").id)?.status).toBe("cancelled");
+    expect(updates.get(multiTarget("pw-e").id)?.status).toBe("cancelled");
+    expect(invocations.some((entry) => entry.command === "execute_query")).toBe(false);
+  });
+
+  test("cancelling one target keeps the prompt its sibling target still needs", async () => {
+    const updates = new Map<string, TargetRun>();
+    useConnectionsStore.setState({ connections: [connection("pw-f")] });
+    invocations.length = 0;
+    const first = multiTarget("pw-f", "one");
+    const second = multiTarget("pw-f", "two");
+    const handle = startMultiTargetRun({
+      targets: [first, second],
+      sql: "SELECT 1",
+      concurrency: 4,
+      perServerLimit: 8,
+      timeoutSeconds: 10,
+      maxRows: 10,
+      executor: multiTargetExecutor(false),
+      onUpdate: (run) => updates.set(run.id, run),
+    });
+    await tick();
+    handle.cancel(first.id);
+    await tick();
+    expect(updates.get(first.id)?.status).toBe("cancelled");
+    expect(prompted()).toBe("pw-f");
+    usePasswordPrompt.getState().resolve?.({ password: "secret-f", save: false });
+    await handle.done;
+    expect(updates.get(second.id)?.status).toBe("done");
+    expect(prompted()).toBeNull();
   });
 });

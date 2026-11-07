@@ -9,5 +9,13 @@ export function TableFilterBar(props: FilterBarProps) {
   const style = useSettingsStore((state) => state.filterBarStyle);
   const redis = useActiveCapabilities().query_language === "redis";
   if (style === "classic" || redis) return <TableFilterPanel {...props} />;
-  return style === "omnibar" ? <FilterOmnibar {...props} /> : <FilterPillBar {...props} />;
+  if (style !== "omnibar") return <FilterPillBar {...props} />;
+  return (
+    <>
+      {props.leading ? (
+        <div className="flex h-9 shrink-0 items-center border-b px-3">{props.leading}</div>
+      ) : null}
+      <FilterOmnibar {...props} />
+    </>
+  );
 }

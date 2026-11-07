@@ -181,3 +181,37 @@ describe("Versionierung respektiert Schutzmechanismen", () => {
     ).rejects.toThrow(READ_ONLY_MESSAGE);
   });
 });
+
+describe("EXPLAIN ANALYZE respektiert Schutzmechanismen", () => {
+  test("blockiert schreibende Statements auf schreibgeschützten Verbindungen", async () => {
+    const readOnly = connection("ro", "duckdb", "duckdb:///data/shop.duckdb", { readOnly: true });
+    useConnectionsStore.setState({ connections: [readOnly] });
+    const args = {
+      connectionString: effectiveConnectionString(readOnly),
+      kind: "duckdb",
+      sql: "DELETE FROM t",
+    };
+    await expect(invoke("explain_query", { ...args, analyze: true })).rejects.toThrow(
+      READ_ONLY_MESSAGE,
+    );
+    expect(invocations).not.toContain("explain_query");
+    await invoke("explain_query", { ...args, analyze: false });
+    expect(invocations).toContain("explain_query");
+  });
+
+  test("blockiert schreibende Statements auf gesperrter Produktion", async () => {
+    useSettingsStore.setState({ productionReadOnly: true });
+    const url = "mysql://app@db.example.com:3306/shop";
+    const prod = connection("prod", "mysql", url, { environment: "production" });
+    useConnectionsStore.setState({ connections: [prod] });
+    await expect(
+      invoke("explain_query", {
+        connectionString: effectiveConnectionString(prod),
+        kind: "mysql",
+        sql: "DELETE t FROM t JOIN u ON u.id = t.id",
+        analyze: true,
+      }),
+    ).rejects.toThrow(LOCKED);
+    expect(invocations).not.toContain("explain_query");
+  });
+});

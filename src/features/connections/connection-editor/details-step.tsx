@@ -1,9 +1,11 @@
+import { Link } from "@tanstack/react-router";
 import { LockKeyhole } from "lucide-react";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { endpointFromPlaceholder, isAwsKind } from "@/lib/aws";
+import { isProfileConnection } from "@/lib/connection-url";
 import type { SavedConnection } from "@/lib/connections";
 import { ConnectionAdvancedOptions } from "../connection-advanced-options";
 import { ConnectionField } from "../connection-field";
@@ -161,7 +163,15 @@ export function ConnectionDetailsStep({
           Andere Datenbank wählen
         </button>
       )}
-      {!info.file_based && (
+      {(mode === "string" ? quickProviderId : provider) === "neon" && (
+        <Link
+          to="/cloud-accounts"
+          className="self-start text-[11px] text-muted-foreground underline"
+        >
+          Mit Neon-Konto verbinden und Branch auswählen
+        </Link>
+      )}
+      {!info.file_based && !isProfileConnection(mode === "string" ? quickKind : kind) && (
         <SegmentedControl
           value={mode}
           onChange={switchMode}
@@ -256,6 +266,13 @@ export function ConnectionDetailsStep({
       {mode === "string" && value.trim() ? (
         <p className="truncate text-[11px] text-muted-foreground">Erkannt: {quickInfo.name}</p>
       ) : null}
+      {isProfileConnection(mode === "string" ? quickKind : kind) && (
+        <p className="text-xs text-muted-foreground">
+          {quickKind === "jdbc"
+            ? "Profil und Zugangsdaten werden unter Treiber verwaltet. Hier wird nur der Profilverweis gespeichert."
+            : "Profil, Zugangsdaten und Berechtigungen werden unter Workspaces verwaltet. Hier wird nur der Verbindungsverweis gespeichert."}
+        </p>
+      )}
       {kind === "oracle" && mode === "string" && (
         <p className="text-[11px] text-muted-foreground">
           Oracle geht auch als Key-Value: User Id=scott;Password=tiger;Data Source=host:1521/service
@@ -275,8 +292,8 @@ export function ConnectionDetailsStep({
         defaultOpen={advancedOpen}
         ssl={ssl}
         onSsl={setSsl}
-        readOnly={readOnly}
-        onReadOnly={setReadOnly}
+        readOnly={quickKind === "spacetimedb" || readOnly}
+        onReadOnly={(value) => setReadOnly(quickKind === "spacetimedb" || value)}
         sshEnabled={sshEnabled}
         onSshEnabled={setSshEnabled}
         sshHost={sshHost}
@@ -313,7 +330,7 @@ export function ConnectionDetailsStep({
         connection={connection}
       />
       <ConnectionTestResultStatus result={result} elapsed={elapsed} />
-      {vault ? (
+      {vault && !isProfileConnection(mode === "string" ? quickKind : kind) ? (
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <Checkbox

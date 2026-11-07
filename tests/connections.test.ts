@@ -116,6 +116,7 @@ const {
   isTrustedConnection,
   updateOracleConnectionEndpoint,
   sslModeFromUrl,
+  connectionUrlString,
 } = await import("../src/lib/connection-url");
 const {
   withSslModeParam,
@@ -131,6 +132,7 @@ const {
   activateConnection,
   restoreSshTunnel,
   tunneledConnectionString,
+  readOnlyConnectionString,
 } = await import("../src/lib/ssh");
 const { truncateTable, executeQuery } = await import("../src/lib/db");
 
@@ -327,6 +329,41 @@ describe("Other providers", () => {
       user: "",
     });
   });
+  test("accepts multi-host URLs with ports and keeps every host", () => {
+    const mongo = "mongodb://u:p@h1:27017,h2:27018/db?replicaSet=rs";
+    expect(parseConnectionUrl(mongo).hostname).toBe("h1");
+    expect(connectionUrlString(mongo)).toBe(mongo);
+    expect(connectionSummary(mongo).host).toBe("h1");
+    const pg = "postgresql://u@h1:5432,h2:5433/app";
+    expect(connectionUrlString(pg, "postgres")).toBe(pg);
+    expect(withSslModeParam(pg, "require")).toBe(`${pg}?sslmode=require`);
+    expect(() => parseConnectionUrl("mongodb://u@h1:27017,h2:99999/db")).toThrow("Port");
+    expect(() => parseConnectionUrl("mongodb://u@h1:27017,/db")).toThrow("leeren");
+  });
+  test("keeps own PostgreSQL options when forcing read-only", () => {
+    const result = readOnlyConnectionString(
+      "postgresql://u@h/db?options=-c%20search_path%3Dfoo&application_name=x",
+    );
+    expect(decodeURIComponent(new URL(result).searchParams.get("options") ?? "")).toBe(
+      "-c search_path=foo -c default_transaction_read_only=on",
+    );
+    expect(result).toContain("application_name=x");
+    expect(readOnlyConnectionString(result)).toBe(result);
+    expect(readOnlyConnectionString("postgresql://u@h/db")).toBe(
+      "postgresql://u@h/db?options=-c%20default_transaction_read_only%3Don",
+    );
+  });
+  test("connects tunneled MongoDB directly to the forwarded member", () => {
+    expect(tunneledConnectionString("mongodb://u@db:27017", 6502, "mongodb")).toBe(
+      "mongodb://u@127.0.0.1:6502/?directConnection=true",
+    );
+    expect(tunneledConnectionString("mongodb://db/app?replicaSet=rs", 6502, "mongodb")).toBe(
+      "mongodb://127.0.0.1:6502/app?replicaSet=rs&directConnection=true",
+    );
+    expect(
+      tunneledConnectionString("mongodb://db/app?directConnection=false", 6502, "mongodb"),
+    ).toBe("mongodb://127.0.0.1:6502/app?directConnection=false");
+  });
   test("rewrites host and port for tunneled non-PostgreSQL URLs", () => {
     expect(
       tunneledConnectionString("mysql://u:p@db.internal:3306/app?ssl-mode=required", 6500, "mysql"),
@@ -334,6 +371,16 @@ describe("Other providers", () => {
     expect(tunneledConnectionString("redis://db.internal/0", 6501, "redis")).toBe(
       "redis://127.0.0.1:6501/0",
     );
+  });
+  test("keeps own SSH, proxy and validation messages instead of guessing", () => {
+    for (const message of [
+      "Der SSL-Modus in der URL wird nicht unterstützt.",
+      "SSH-Server bastion:22: TCP-Verbindung fehlgeschlagen: Connection refused",
+      "Weiterleitung zur Datenbank abgelehnt: Connection refused",
+      "Proxy: SOCKS5 connect timed out",
+    ])
+      expect(connectionError(new Error(message))).toBe(message);
+    expect(connectionError("SSL error: certificate verify failed")).toContain("TLS-Verbindung");
   });
   test("redacts credentials of any scheme and maps foreign auth errors", () => {
     expect(connectionError("Failed mysql://user:secret@host/app")).not.toContain("secret");
@@ -1002,6 +1049,148 @@ describe("Server groups", () => {
 });
 
 describe("Passwort-Abfrage", () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  test("lädt gespeicherte Passwörter auch nach der Startinitialisierung", async () => {
+    const { ensurePassword, usePasswordPrompt } = await import("../src/lib/password-prompt");
+    const connection = {
+      ...direct,
+      id: "late-keychain-password",
+      connectionString: scrubUrlPassword(direct.connectionString),
+    };
+    useConnectionsStore.setState({ connections: [connection] });
+    keychain.set(connection.id, "saved@password");
+    const pending = ensurePassword(connection.id);
+    await tick();
+    const prompted = usePasswordPrompt.getState().connection;
+    usePasswordPrompt.getState().resolve?.(null);
+    expect(await pending).toBe(true);
+    expect(prompted).toBeNull();
+    expect(extractUrlPassword(useConnectionsStore.getState().connections[0].connectionString)).toBe(
+      "saved@password",
+    );
+    expect(storage.get("l8db.connections")).not.toContain("saved");
+  });
+
+  test("nutzt Sitzungspasswörter ohne erneuten Schlüsselbundzugriff", async () => {
+    const { ensurePassword, usePasswordPrompt } = await import("../src/lib/password-prompt");
+    const id = "cached-prompt-password";
+    await storeSecret(id, "session-password");
+    useConnectionsStore.setState({
+      connections: [{ ...direct, id, connectionString: scrubUrlPassword(direct.connectionString) }],
+    });
+    calls.length = 0;
+    const pending = ensurePassword(id);
+    await tick();
+    usePasswordPrompt.getState().resolve?.(null);
+    expect(await pending).toBe(true);
+    expect(calls).not.toContain("load_secret");
+    expect(extractUrlPassword(useConnectionsStore.getState().connections[0].connectionString)).toBe(
+      "session-password",
+    );
+  });
+
+  test("fragt bei Schlüsselbundfehlern und versucht beim nächsten Verbinden erneut zu laden", async () => {
+    const { ensurePassword, usePasswordPrompt } = await import("../src/lib/password-prompt");
+    const id = "transient-keychain-password";
+    useConnectionsStore.setState({
+      connections: [{ ...direct, id, connectionString: scrubUrlPassword(direct.connectionString) }],
+    });
+    keychain.set(id, "recovered-password");
+    keychainUnavailable = true;
+    const first = ensurePassword(id);
+    await tick();
+    expect(usePasswordPrompt.getState().connection?.id).toBe(id);
+    usePasswordPrompt.getState().resolve?.(null);
+    expect(await first).toBe(false);
+    keychainUnavailable = false;
+    const retry = ensurePassword(id);
+    await tick();
+    usePasswordPrompt.getState().resolve?.(null);
+    expect(await retry).toBe(true);
+    expect(extractUrlPassword(useConnectionsStore.getState().connections[0].connectionString)).toBe(
+      "recovered-password",
+    );
+  });
+
+  test("fragt bei fehlendem gespeicherten Passwort weiterhin nach", async () => {
+    const { ensurePassword, usePasswordPrompt } = await import("../src/lib/password-prompt");
+    const id = "missing-keychain-password";
+    useConnectionsStore.setState({
+      connections: [{ ...direct, id, connectionString: scrubUrlPassword(direct.connectionString) }],
+    });
+    const pending = ensurePassword(id);
+    await tick();
+    expect(usePasswordPrompt.getState().connection?.id).toBe(id);
+    usePasswordPrompt.getState().resolve?.({ password: "entered-password", save: false });
+    expect(await pending).toBe(true);
+    expect(extractUrlPassword(useConnectionsStore.getState().connections[0].connectionString)).toBe(
+      "entered-password",
+    );
+    expect(keychain.has(id)).toBe(false);
+  });
+
+  test.each(["abort", "remove", "retarget"] as const)(
+    "verwirft verspätete Passwortantworten nach %s",
+    async (action) => {
+      const { ensurePassword, usePasswordPrompt } = await import("../src/lib/password-prompt");
+      const id = `late-password-${action}`;
+      const url = scrubUrlPassword(direct.connectionString);
+      useConnectionsStore.setState({ connections: [{ ...direct, id, connectionString: url }] });
+      keychain.set(id, "old-target-password");
+      pausedSecretAccount = id;
+      const controller = new AbortController();
+      let settled = false;
+      const pending = ensurePassword(id, undefined, controller.signal).then((result) => {
+        settled = true;
+        return result;
+      });
+      await tick();
+      expect(resumeSecretLoad).toBeTruthy();
+      if (action === "abort") {
+        controller.abort();
+        await tick();
+      }
+      if (action === "remove") useConnectionsStore.setState({ connections: [] });
+      if (action === "retarget")
+        useConnectionsStore.setState({
+          connections: [{ ...direct, id, connectionString: "postgresql://user@other-host/app" }],
+        });
+      const settledBeforeResume = settled;
+      resumeSecretLoad?.();
+      await tick();
+      const prompted = usePasswordPrompt.getState().connection;
+      usePasswordPrompt.getState().resolve?.(null);
+      expect(await pending).toBe(false);
+      if (action === "abort") expect(settledBeforeResume).toBe(true);
+      expect(prompted).toBeNull();
+      expect(useConnectionsStore.getState().connections[0]?.connectionString ?? "").not.toContain(
+        "old-target-password",
+      );
+    },
+  );
+
+  test("bewahrt ein Passwort, das während des Ladens eingegeben wurde", async () => {
+    const { ensurePassword, usePasswordPrompt } = await import("../src/lib/password-prompt");
+    const id = "concurrent-password-entry";
+    useConnectionsStore.setState({
+      connections: [{ ...direct, id, connectionString: scrubUrlPassword(direct.connectionString) }],
+    });
+    keychain.set(id, "stored-password");
+    pausedSecretAccount = id;
+    const pending = ensurePassword(id);
+    await tick();
+    useConnectionsStore.setState({
+      connections: [{ ...direct, id, connectionString: "postgresql://user:typed@localhost/app" }],
+    });
+    resumeSecretLoad?.();
+    expect(await pending).toBe(true);
+    expect(usePasswordPrompt.getState().connection).toBeNull();
+    expect(extractUrlPassword(useConnectionsStore.getState().connections[0].connectionString)).toBe(
+      "typed",
+    );
+  });
+
   test("fragt nur bei Benutzer ohne Passwort", async () => {
     const { needsPassword } = await import("../src/lib/password-prompt");
     const base = { id: "1", name: "x", kind: "postgres" } as const;

@@ -100,16 +100,20 @@ describe("statementAtOffset", () => {
     expect(statementAtOffset(sql, 9)?.text).toBe("SELECT 1;");
   });
 
-  test("returns null in the gap between statements", () => {
-    expect(statementAtOffset(sql, 10)).toBeNull();
+  test("uses the previous statement in a blank or comment gap", () => {
+    expect(statementAtOffset(sql, 10)?.text).toBe("SELECT 1;");
+    expect(statementAtOffset("SELECT 1;\n-- Notiz", 14)?.text).toBe("SELECT 1;");
+    expect(statementAtOffset("SELECT 1;\nSELECT 2;", 3)?.text).toBe("SELECT 1;");
   });
 
   test("returns null on empty input", () => {
     expect(statementAtOffset("   \n", 2)).toBeNull();
   });
 
-  test("returns null when boundaries are unclear", () => {
-    expect(statementAtOffset("SELECT 1; SELECT 'offen", 3)).toBeNull();
+  test("keeps finished statements before an unterminated one", () => {
+    expect(statementAtOffset("SELECT 1; SELECT 'offen", 3)?.text).toBe("SELECT 1;");
+    expect(statementAtOffset("SELECT 1; SELECT 'offen", 20)).toBeNull();
+    expect(statementAtOffset("SELECT 1;\n/* offen", 15)).toBeNull();
   });
 
   test("falls back to the last statement in trailing whitespace", () => {
@@ -377,4 +381,27 @@ test("oracle pl/sql blocks and mixed scripts count as transactional", () => {
     isTransactionalStatement("CREATE TABLE a (x int);\nCREATE TABLE b (x int);", "oracle"),
   ).toBe(false);
   expect(isTransactionalStatement("BEGIN", "postgres")).toBe(false);
+});
+
+describe("Dialekt-Besonderheiten beim Splitten", () => {
+  test("Backslash-Escapes in ClickHouse und flache Kommentare in MySQL", () => {
+    expect(splitSqlStatements("SELECT 'a\\';b'; SELECT 2", "clickhouse").statements).toHaveLength(
+      2,
+    );
+    const mysql = splitSqlStatements("/* a /* b */ SELECT 1; SELECT 2", "mysql");
+    expect(mysql.unterminated).toBe(false);
+    expect(mysql.statements).toHaveLength(2);
+  });
+
+  test("Cassandra-BATCH bleibt ein Statement", () => {
+    const batch =
+      "BEGIN UNLOGGED BATCH\n  INSERT INTO t (a) VALUES (1);\n  INSERT INTO t (a) VALUES (2);\n  INSERT INTO t (a) VALUES (3);\nAPPLY BATCH;";
+    const { statements } = splitSqlStatements(`${batch}\nSELECT * FROM t;`, "cassandra");
+    expect(statements.map((s) => s.text)).toEqual([batch, "SELECT * FROM t;"]);
+  });
+
+  test("MSSQL GO <n> wiederholt den Batch", () => {
+    const { statements } = splitSqlStatements("SELECT 1\nGO 3\nSELECT 2", "mssql");
+    expect(statements.map((s) => s.text)).toEqual(["SELECT 1", "SELECT 1", "SELECT 1", "SELECT 2"]);
+  });
 });

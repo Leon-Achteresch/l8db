@@ -47,7 +47,7 @@ path(from:string,to:string):Promise<string>};";
 pub fn tool_definition() -> Value {
     json!({
         "name": "code",
-        "description": format!("Read-only JS `async () => {{…}}` for multi-step work: loops over schemas or tables, many statements, comparing connections. Sandboxed (no network, files, env); only the return value (array of flat objects as TSV) and console.log come back. Statements are checked like query; errors throw. ${{v}} in sql is a literal (array: (a,b)); names only via id(). P: glob (orders_*) or RegExp; tables largest first. Max 500 statements, 4 parallel, 10000 rows each.\n{DTS}"),
+        "description": format!("Read-only JS `async () => {{…}}` for multi-step work (loops, many statements, comparing connections). Sandboxed (no network, files, env); returns the return value (flat objects as TSV) and console.log. Statements are checked like query; errors throw. ${{v}} in sql is a literal (array: (a,b)); names only via id(). P: glob (orders_*) or RegExp; tables largest first. Max 500 statements, 4 parallel, 10000 rows each.\n{DTS}"),
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": database_arg(),

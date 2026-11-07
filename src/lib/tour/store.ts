@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { useSettingsStore } from "@/lib/settings";
+import { syncAcrossWindows } from "@/lib/window-sync";
 
 interface TourState {
   active: boolean;
@@ -117,6 +119,7 @@ export const useTourStore = create<TourState>()(
     }),
     {
       name: "l8db.tour",
+      storage: createSafeJsonStorage(),
       partialize: (state) => ({
         active: state.active,
         chapterIndex: state.chapterIndex,
@@ -128,3 +131,16 @@ export const useTourStore = create<TourState>()(
     },
   ),
 );
+
+syncAcrossWindows("l8db.tour", (value) => {
+  try {
+    const saved = (JSON.parse(value ?? "null") as { state?: Partial<TourState> } | null)?.state;
+    if (!saved) return;
+    useTourStore.setState((state) => ({
+      completedChapterIds: Array.isArray(saved.completedChapterIds)
+        ? saved.completedChapterIds
+        : state.completedChapterIds,
+      offerDismissed: saved.offerDismissed === true || state.offerDismissed,
+    }));
+  } catch {}
+});

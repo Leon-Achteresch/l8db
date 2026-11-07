@@ -24,8 +24,35 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     id: "theme",
     tabId: "appearance",
     title: "Erscheinungsbild",
-    description: "Hell, dunkel oder dem System folgen.",
-    keywords: ["theme", "dark", "light", "system", "farbe", "modus", "hell", "dunkel"],
+    description: "Farbschema: hell, dunkel oder dem System folgen.",
+    keywords: [
+      "theme",
+      "dark",
+      "light",
+      "system",
+      "farbe",
+      "modus",
+      "hell",
+      "dunkel",
+      "farbschema",
+    ],
+  },
+  {
+    id: "app-theme",
+    tabId: "appearance",
+    title: "Themes",
+    description:
+      "Je ein Theme für den hellen und den dunklen Modus wählen: linker Kreis hell, rechter Kreis dunkel.",
+    keywords: ["theme", "farbe", "akzent", "rose", "grove", "ocean", "ember", "iris", "graphite"],
+  },
+  {
+    id: "db-themes",
+    tabId: "appearance",
+    title: "Datenbank-Themes",
+    description:
+      "Färbt die Oberfläche passend zur aktiven Datenbank ein. Ausgeschaltet gilt nur das gewählte Theme.",
+    keywords: ["datenbank", "farbe", "akzent", "postgres", "mysql", "theme"],
+    key: "dbThemes",
   },
   {
     id: "filter-operators",
@@ -198,9 +225,17 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     tabId: "appearance",
     title: "Saisonale Akzente",
     description:
-      "Vom 18. bis 31. Oktober trägt das Logo einen Hexenhut, leere Ergebnisse bekommen Spinnweben und eine kleine Spinne schaut höchstens einmal am Tag in deine Ergebnisse, nie bei Produktionsverbindungen. Ein Klick scheucht sie weg.",
+      "Kleine Logo-Accessoires und 19 süße Feiertagsgäste begleiten dich durchs Jahr: von Hops dem Osterhasen bis Tanni dem Weihnachtsbaum. Höchstens ein kurzer Besuch am Tag, nie bei Produktionsverbindungen. Alle Feiertage lassen sich einzeln vorführen.",
     keywords: [
       "halloween",
+      "feiertage",
+      "ostern",
+      "weihnachten",
+      "nikolaus",
+      "silvester",
+      "valentinstag",
+      "karneval",
+      "advent",
       "saison",
       "spinne",
       "hexenhut",
@@ -944,6 +979,23 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     keywords: ["team", "firma", "unternehmen", "verbindungen", "admin", "datei", "json", "appdata"],
   },
   {
+    id: "team-workspaces",
+    tabId: "general",
+    title: "Team-Workspaces",
+    description:
+      "Eigener Server für gemeinsame Verbindungen, Rechte, SQL-Abfragen, Freigaben und Audit.",
+    keywords: [
+      "workspace",
+      "team",
+      "server",
+      "freigabe",
+      "einladung",
+      "rechte",
+      "audit",
+      "gemeinsam",
+    ],
+  },
+  {
     id: "sync-secrets",
     tabId: "general",
     title: "Passwörter synchronisieren",
@@ -992,11 +1044,41 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     ],
   },
   {
+    id: "ui-plugins",
+    tabId: "extensions",
+    title: "UI-Plugins",
+    description:
+      "Tabellen, Tab-Leiste und geteilte Ansichten mit eigenen React-Plugins umbauen, auch per KI.",
+    keywords: [
+      "ui-plugin",
+      "build your own ui",
+      "oberfläche",
+      "anpassen",
+      "react",
+      "tabelle",
+      "zelle",
+      "tab-leiste",
+      "split",
+      "kanban",
+      "ki",
+      "galerie",
+    ],
+  },
+  {
     id: "hotkeys",
     tabId: "hotkeys",
     title: "Tastenkürzel",
     description: "Tastenbelegungen für die Befehle der Anwendung anpassen.",
     keywords: ["tastatur", "hotkey", "shortcut"],
+  },
+  {
+    id: "shortcut-hints",
+    tabId: "hotkeys",
+    title: "Tastenkürzel-Tipps",
+    description:
+      "Klickst du öfter auf eine Aktion, die auch ein Tastenkürzel hat, zeigt l8db ab und zu einen kurzen Hinweis. Höchstens alle zehn Minuten und nie für Kürzel, die du schon nutzt.",
+    keywords: ["tipp", "hinweis", "shortcut missed", "key promoter", "lernen", "tastatur"],
+    key: "shortcutHints",
   },
 ];
 

@@ -2,7 +2,7 @@ import { CircleCheckIcon, CircleXIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
-import type { TransferOutcome, TransferProgress } from "@/lib/db";
+import type { TransferContent, TransferOutcome, TransferProgress } from "@/lib/db";
 
 const PHASE_LABELS: Record<TransferProgress["progress"]["phase"], string> = {
   pre: "Struktur wird angelegt",
@@ -12,11 +12,13 @@ const PHASE_LABELS: Record<TransferProgress["progress"]["phase"], string> = {
 };
 
 export function TransferRunStatus({
+  content,
   running,
   progress,
   outcome,
   onCancel,
 }: {
+  content: TransferContent;
   running: boolean;
   progress: TransferProgress["progress"] | null;
   outcome: TransferOutcome | null;
@@ -57,7 +59,9 @@ export function TransferRunStatus({
       <div className="flex flex-col gap-1 text-sm">
         <span className="flex items-center gap-2 font-medium text-emerald-700 dark:text-emerald-400">
           <CircleCheckIcon className="size-4" />
-          {outcome.rows} Zeilen in {outcome.tables.length} Tabellen übertragen und verifiziert.
+          {content === "structure"
+            ? `Struktur von ${outcome.tables.length} Tabellen angelegt.`
+            : `${outcome.rows} Zeilen in ${outcome.tables.length} Tabellen übertragen und verifiziert.`}
         </span>
         {outcome.warnings.map((warning) => (
           <span key={warning} className="text-xs text-amber-700 dark:text-amber-400">

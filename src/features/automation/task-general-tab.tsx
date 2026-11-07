@@ -104,6 +104,7 @@ export function TaskGeneralTab({ task, tasks, issues, onChange }: Props) {
             value={task.retry}
             onChange={(retry) => onChange({ retry })}
             offLabel="Nicht wiederholen"
+            error={error}
           />
         </FormRow>
         <FormRow
@@ -159,7 +160,7 @@ export function TaskGeneralTab({ task, tasks, issues, onChange }: Props) {
         description="Leer = Standard aus den Automatisierungs-Einstellungen."
       >
         <div className="flex flex-wrap gap-4">
-          <FormRow label="Tage" className="w-40">
+          <FormRow label="Tage" className="w-40" error={error("retention.keepDays")}>
             <Input
               type="number"
               min={1}
@@ -169,7 +170,7 @@ export function TaskGeneralTab({ task, tasks, issues, onChange }: Props) {
               onChange={(event) => setRetention({ keepDays: optionalNumber(event.target.value) })}
             />
           </FormRow>
-          <FormRow label="Läufe" className="w-40">
+          <FormRow label="Läufe" className="w-40" error={error("retention.keepRuns")}>
             <Input
               type="number"
               min={1}

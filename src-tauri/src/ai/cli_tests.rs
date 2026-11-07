@@ -581,3 +581,21 @@ fn search_paths_include_user_install_dirs() {
     let unique: std::collections::HashSet<_> = paths.iter().collect();
     assert_eq!(unique.len(), paths.len());
 }
+
+#[test]
+fn claude_fast_notice_reports_rejected_fast_mode_only_when_requested() {
+    let profile = |fast: bool| -> Profile {
+        serde_json::from_value(json!({"id": "claude", "provider": "claude", "fast": fast})).unwrap()
+    };
+    let init = json!({"type": "system", "subtype": "init", "fast_mode_state": "off", "fast_mode_disabled_reason": "extra_usage_disabled"});
+    assert!(claude_fast_notice(&profile(true), &init)
+        .unwrap()
+        .contains("Extra-Usage"));
+    assert!(claude_fast_notice(&profile(false), &init).is_none());
+    assert!(claude_fast_notice(
+        &profile(true),
+        &json!({"subtype": "init", "fast_mode_state": "on"})
+    )
+    .is_none());
+    assert!(claude_fast_notice(&profile(true), &json!({"subtype": "hook_started"})).is_none());
+}

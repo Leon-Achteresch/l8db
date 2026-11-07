@@ -91,7 +91,7 @@ test.skipIf(!process.env.L8DB_TABLE_BROWSER_URL)(
       });
       await page.goto(`${process.env.L8DB_TABLE_BROWSER_URL}/compare`);
       expect(await page.getByLabel("Vergleichsmodus").count()).toBe(0);
-      await page.getByRole("button", { name: "Arbeitsstände", exact: true }).click();
+      await page.getByRole("button", { name: "Gespeicherte Vergleiche", exact: true }).click();
       await page.getByText("Noch keine Arbeitsstände gespeichert.").waitFor();
       expect(await page.getByText("Custom data", { exact: true }).count()).toBe(0);
       expect(await page.evaluate(() => localStorage.getItem("l8db.analysis-workspaces"))).toContain(

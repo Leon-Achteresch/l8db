@@ -12,7 +12,7 @@ use crate::db::{self, DatabaseAdapter, DatabaseKind, QueryResult, TxSession};
 pub fn tool_definition() -> Value {
     json!({
         "name": "script",
-        "description": "Multi-statement script where scripts are enabled; each statement is checked like query/execute. One transaction: commit at the end, rollback on the first error, commit=false is a dry run; writes need confirm=true. No BEGIN/ROLLBACK/SAVEPOINT. Oracle SQL*Plus: / terminators, DEFINE and &x, SET DEFINE OFF, SET ESCAPE, PROMPT, EXEC, SET SERVEROUTPUT ON, WHENEVER SQLERROR, EXIT; no @file.",
+        "description": "Multi-statement script (if enabled); statements are checked like query/execute. One transaction (rollback on the first error, commit=false is a dry run); writes need confirm=true. No BEGIN/ROLLBACK/SAVEPOINT. Oracle SQL*Plus: / terminators, DEFINE and &x, SET DEFINE OFF, SET ESCAPE, PROMPT, EXEC, SET SERVEROUTPUT ON, WHENEVER SQLERROR, EXIT; no @file.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": super::server::database_arg(),
@@ -304,14 +304,16 @@ fn preview(sql: &str) -> String {
 
 enum Runner {
     Session(Box<dyn TxSession>),
-    Direct(Box<dyn DatabaseAdapter>),
+    Direct(Box<dyn DatabaseAdapter>, db::server_output::Messages),
 }
 
 impl Runner {
     async fn execute(&mut self, sql: &str) -> Result<QueryResult, String> {
         match self {
             Runner::Session(session) => session.execute(sql).await,
-            Runner::Direct(adapter) => adapter.execute_query(sql).await,
+            Runner::Direct(adapter, sink) => {
+                db::server_output::capture(sink.clone(), adapter.execute_query(sql)).await
+            }
         }
     }
 
@@ -325,17 +327,17 @@ impl Runner {
                 })
                 .await
                 .map(|_| ()),
-            Runner::Direct(adapter) => adapter.set_server_output(enabled).await,
+            Runner::Direct(adapter, _) => adapter.set_server_output(enabled).await,
         }
     }
 
     async fn take_output(&mut self) -> Result<Vec<String>, String> {
         match self {
             Runner::Session(session) => session.server_output().await,
-            Runner::Direct(adapter) => Ok(adapter
-                .take_server_output()
-                .await?
+            Runner::Direct(adapter, sink) => Ok(sink
+                .take()
                 .into_iter()
+                .chain(adapter.take_server_output().await?)
                 .map(|message| message.message)
                 .collect()),
         }
@@ -345,7 +347,7 @@ impl Runner {
         match self {
             Runner::Session(session) if commit => session.commit().await,
             Runner::Session(session) => session.rollback().await,
-            Runner::Direct(_) => Ok(()),
+            Runner::Direct(..) => Ok(()),
         }
     }
 }
@@ -405,7 +407,7 @@ impl Server {
             .clamp(1, config.max_rows.max(1));
 
         let mut runner = if connection.writes_blocked() {
-            Runner::Direct(adapter(connection, &self.pool)?)
+            Runner::Direct(adapter(connection, &self.pool)?, Default::default())
         } else {
             let url = connection_url(connection)?;
             match db::import::open_session(
@@ -418,7 +420,7 @@ impl Server {
             {
                 Ok(session) => Runner::Session(session),
                 Err(e) if e.contains("nicht unterstützt") => {
-                    Runner::Direct(adapter(connection, &self.pool)?)
+                    Runner::Direct(adapter(connection, &self.pool)?, Default::default())
                 }
                 Err(e) => return Err(e),
             }

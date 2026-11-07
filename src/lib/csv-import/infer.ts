@@ -24,6 +24,7 @@ export const INFERRED_TYPE_LABELS: Record<InferredType, string> = {
 const BOOLEAN_WORDS = new Set(["true", "false", "t", "f", "yes", "no", "ja", "nein"]);
 const INTEGER = /^[+-]?\d+$/;
 const DECIMAL = /^[+-]?(\d+\.\d*|\.\d+|\d+)([eE][+-]?\d+)?$/;
+const DECIMAL_COMMA = /^[+-]?\d+,\d+$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/;
 
@@ -32,7 +33,7 @@ function classify(value: string): InferredType {
   if (text === "") return "empty";
   if (BOOLEAN_WORDS.has(text.toLowerCase())) return "boolean";
   if (INTEGER.test(text)) return text.length > 1 && /^[+-]?0\d/.test(text) ? "text" : "integer";
-  if (DECIMAL.test(text)) return "decimal";
+  if (DECIMAL.test(text) || DECIMAL_COMMA.test(text)) return "decimal";
   if (DATE.test(text) && !Number.isNaN(Date.parse(text))) return "date";
   if (TIMESTAMP.test(text) && !Number.isNaN(Date.parse(text.replace(" ", "T")))) return "timestamp";
   if ((text.startsWith("{") || text.startsWith("[")) && isJson(text)) return "json";

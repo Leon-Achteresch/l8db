@@ -11,7 +11,8 @@ import {
 
 const writeText = mock(async (_text: string) => {});
 const copyToast = mock((_title: string) => 1);
-mock.module("sonner", () => ({ toast: { success: copyToast, getToasts: () => [] } }));
+const errorToast = mock((_title: string) => 1);
+mock.module("sonner", () => ({ toast: { success: copyToast, error: errorToast, getToasts: () => [] } }));
 mock.module("@tauri-apps/plugin-clipboard-manager", () => ({
   writeText,
   readText: async () => "",
@@ -77,6 +78,9 @@ describe("Footer-Status", () => {
     try {
       await expect(copyText("private contents")).rejects.toThrow("denied");
       expect(useWorkspaceStatusStore.getState().message).toBeNull();
+      expect(errorToast).toHaveBeenCalledWith(
+        "Kopieren fehlgeschlagen: Kein Zugriff auf die Zwischenablage.",
+      );
     } finally {
       if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
       else Reflect.deleteProperty(globalThis, "navigator");

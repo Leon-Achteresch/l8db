@@ -79,7 +79,7 @@ export function SupabaseProjectKey({ reference }: { reference: string }) {
   }
 
   return (
-    <section className="rounded-2xl border bg-card p-5">
+    <section className="rounded-2xl bg-muted/25 p-5">
       <div className="flex items-center gap-2">
         <KeyRound className="size-4 text-muted-foreground" />
         <h3 className="text-sm font-semibold">Projekt API Key</h3>
@@ -95,7 +95,19 @@ export function SupabaseProjectKey({ reference }: { reference: string }) {
           <p className="text-xs text-muted-foreground">
             Storage-Dateien und Auth-Benutzer sind verbunden.
           </p>
-          <Button variant="ghost" size="sm" onClick={() => void remove()} disabled={busy}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Den gespeicherten Secret API Key aus dem Schlüsselbund entfernen? Storage-Dateien und Auth-Benutzer sind danach erst nach erneutem Hinterlegen wieder erreichbar.",
+                )
+              )
+                void remove();
+            }}
+            disabled={busy}
+          >
             <Trash2 className="size-3.5" /> Key entfernen
           </Button>
         </div>

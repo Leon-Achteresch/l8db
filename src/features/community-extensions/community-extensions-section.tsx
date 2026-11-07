@@ -12,11 +12,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { readCommunityExtension } from "@/lib/db";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import { useExtensionSources } from "@/lib/extensions/management";
 import { useExtensionHost } from "@/lib/extensions/react-context";
 import { CommunityExtensionCard } from "./community-extension-card";
 import { errorText } from "./password-manager";
 
-export function CommunityExtensionsSection() {
+export function CommunityExtensionsSection({ controlsOnly = false }: { controlsOnly?: boolean }) {
   const host = useExtensionHost();
   const [, refresh] = useReducer((value) => value + 1, 0);
   const [pending, setPending] = useState(false);
@@ -45,10 +46,11 @@ export function CommunityExtensionsSection() {
           },
     );
     if (typeof path !== "string") return;
-    await host.installExtension(
-      await readCommunityExtension(path, development),
-      development ? path : undefined,
-    );
+    const archive = await readCommunityExtension(path, development);
+    await host.installExtension(archive, development ? path : undefined);
+    useExtensionSources
+      .getState()
+      .mark(`full:${archive.manifest.id}`, development ? "Eigene" : "Import");
   };
   const extensions = host.listExtensions();
   return (
@@ -81,16 +83,18 @@ export function CommunityExtensionsSection() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <fieldset disabled={pending} className="min-w-0 space-y-3">
-        {extensions.map((extension) => (
-          <CommunityExtensionCard
-            key={extension.archive.manifest.id}
-            extension={extension}
-            run={run}
-          />
-        ))}
-      </fieldset>
-      {!extensions.length && (
+      {!controlsOnly && (
+        <fieldset disabled={pending} className="min-w-0 space-y-3">
+          {extensions.map((extension) => (
+            <CommunityExtensionCard
+              key={extension.archive.manifest.id}
+              extension={extension}
+              run={run}
+            />
+          ))}
+        </fieldset>
+      )}
+      {!controlsOnly && !extensions.length && (
         <p className="rounded-2xl border border-dashed px-4 py-6 text-center text-xs text-muted-foreground">
           Noch keine Erweiterungen installiert. Unter „Entdecken“ findest du offizielle
           Erweiterungen.

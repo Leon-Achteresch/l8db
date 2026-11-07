@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { aiLatestLeaf, aiSiblings, aiThread } from "@/lib/ai/thread";
+import { aiBranches, aiLatestLeaf, aiThread } from "@/lib/ai/thread";
 import type { AiMessage } from "@/lib/db/ai";
 
 const m = (id: string, parentId?: string | null): AiMessage => ({
@@ -25,8 +25,10 @@ test("edits and retries branch from the shared parent and switch by leaf", () =>
     m("a2c", "u2b"),
   ];
   expect(aiThread({ messages }).map((entry) => entry.id)).toEqual(["u1", "a1", "u2b", "a2c"]);
-  expect(aiSiblings({ messages }, "u2b").map((entry) => entry.id)).toEqual(["u2", "u2b"]);
-  expect(aiSiblings({ messages }, "a2b").map((entry) => entry.id)).toEqual(["a2b", "a2c"]);
+  const branches = aiBranches({ messages });
+  expect(branches.get("u2b")).toEqual(["u2", "u2b"]);
+  expect(branches.get("a2b")).toEqual(["a2b", "a2c"]);
+  expect(branches.get("a1")).toEqual(["a1"]);
   const leafId = aiLatestLeaf({ messages }, "u2");
   expect(leafId).toBe("a2");
   expect(aiThread({ messages, leafId }).map((entry) => entry.id)).toEqual(["u1", "a1", "u2", "a2"]);

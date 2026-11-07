@@ -1,5 +1,6 @@
 import { CommunityExtensionsSection } from "@/features/community-extensions/community-extensions-section";
 import { ExtensionMarketSection } from "@/features/community-extensions/extension-market-section";
+import { UiPluginsSection } from "@/features/ui-plugins/settings/ui-plugins-section";
 
 export function SettingsExtensionsTab() {
   return (
@@ -10,7 +11,8 @@ export function SettingsExtensionsTab() {
           Erweiterungen installieren, freigeben und einrichten.
         </p>
       </div>
-      <CommunityExtensionsSection />
+      <CommunityExtensionsSection controlsOnly />
+      <UiPluginsSection />
       <ExtensionMarketSection />
       <ExtensionMarketSection community />
     </div>

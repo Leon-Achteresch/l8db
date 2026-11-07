@@ -33,7 +33,7 @@ export function SupabaseSqlResult({
   );
 
   return (
-    <div className="flex min-h-0 flex-col overflow-hidden rounded-md border">
+    <div className="flex min-h-0 flex-col overflow-hidden rounded-md">
       {result && !error && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-1.5 text-xs text-muted-foreground">
           <span className="font-medium text-foreground tabular-nums">

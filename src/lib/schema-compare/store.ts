@@ -1,7 +1,9 @@
 import { readTextFile } from "@tauri-apps/plugin-fs";
-import { create } from "zustand";
+import { createContext, useContext } from "react";
+import { create, type StoreApi, type UseBoundStore } from "zustand";
 import { persist } from "zustand/middleware";
-import { type SavedConnection, useConnectionsStore, usesTunnel } from "@/lib/connections";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
+import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import {
   type CatalogObject,
   type CatalogObjectType,
@@ -10,19 +12,28 @@ import {
   loadPartitionDdl,
   loadSchemaCatalog,
 } from "@/lib/db";
-import { ensurePassword } from "@/lib/password-prompt";
+import { prepareConnection } from "@/lib/prepare-connection";
 import {
   buildCatalogSnapshot,
   type CatalogSnapshot,
   parseCatalogSnapshot,
 } from "@/lib/schema-snapshot";
-import { effectiveConnectionString, ensureSshTunnel } from "@/lib/ssh";
+import { effectiveConnectionString } from "@/lib/ssh";
+import { useTableTabs } from "@/lib/table-tabs";
+import { syncAcrossWindows } from "@/lib/window-sync";
 import {
   compareCatalogs,
   defaultSelection,
   limitDifferences,
   markMissingTablespaces,
 } from "./diff";
+import {
+  LEGACY_SCHEMA_COMPARE_ID,
+  loadCompareResult,
+  saveCompareResult,
+  schemaCompareIds,
+  schemaCompareKey,
+} from "./persistence";
 import {
   type CompareResult,
   type CompareSide,
@@ -48,40 +59,95 @@ interface SchemaCompareState {
   error: string | null;
 }
 
-export const useSchemaCompareStore = create<SchemaCompareState>()(
-  persist(
-    (): SchemaCompareState => ({
-      source: EMPTY_SIDE,
-      target: EMPTY_SIDE,
-      types: null,
-      options: DEFAULT_COMPARE_OPTIONS,
-      result: null,
-      selection: {},
-      renames: {},
-      renamePrior: {},
-      activeKey: null,
-      loading: null,
-      error: null,
-    }),
-    {
-      name: "l8db.schema-compare",
-      merge: (persisted, current) => {
-        const saved = (persisted ?? {}) as Partial<SchemaCompareState>;
-        return {
-          ...current,
-          ...saved,
-          options: { ...DEFAULT_COMPARE_OPTIONS, ...saved.options },
-        };
-      },
-      partialize: (state) => ({
-        source: state.source,
-        target: state.target,
-        types: state.types,
-        options: state.options,
+export type SchemaCompareStore = UseBoundStore<StoreApi<SchemaCompareState>>;
+
+function createSchemaCompareStore(name: string): { store: SchemaCompareStore; stop: () => void } {
+  const store = create<SchemaCompareState>()(
+    persist(
+      (): SchemaCompareState => ({
+        source: EMPTY_SIDE,
+        target: EMPTY_SIDE,
+        types: null,
+        options: DEFAULT_COMPARE_OPTIONS,
+        result: null,
+        selection: {},
+        renames: {},
+        renamePrior: {},
+        activeKey: null,
+        loading: null,
+        error: null,
       }),
-    },
-  ),
-);
+      {
+        name,
+        storage: createSafeJsonStorage(),
+        merge: (persisted, current) => {
+          const saved = (persisted ?? {}) as Partial<SchemaCompareState>;
+          return {
+            ...current,
+            ...saved,
+            options: { ...DEFAULT_COMPARE_OPTIONS, ...saved.options },
+          };
+        },
+        partialize: (state) => ({
+          source: state.source,
+          target: state.target,
+          types: state.types,
+          options: state.options,
+          selection: state.selection,
+          renames: state.renames,
+          renamePrior: state.renamePrior,
+          activeKey: state.activeKey,
+        }),
+      },
+    ),
+  );
+  let restored: CompareResult | null = null;
+  store.subscribe((state, previous) => {
+    if (state.result !== previous.result && state.result !== restored)
+      void saveCompareResult(name, state.result);
+  });
+  void loadCompareResult(name).then((result) => {
+    if (!result || store.getState().result || store.getState().loading) return;
+    restored = result;
+    store.setState({ result });
+  });
+  const stopSync = syncAcrossWindows(name, () => void store.persist.rehydrate());
+  return { store, stop: stopSync };
+}
+
+const stores = new Map<string, { store: SchemaCompareStore; stop: () => void }>();
+
+export function schemaCompareStore(id: string = LEGACY_SCHEMA_COMPARE_ID): SchemaCompareStore {
+  let entry = stores.get(id);
+  if (!entry) {
+    entry = createSchemaCompareStore(schemaCompareKey(id));
+    stores.set(id, entry);
+  }
+  return entry.store;
+}
+
+const openIds = (state: ReturnType<typeof useTableTabs.getState>) =>
+  schemaCompareIds([state.tabs, ...Object.values(state.tabsByConnection)]);
+
+let opened = openIds(useTableTabs.getState());
+
+useTableTabs.subscribe((state) => {
+  const open = openIds(state);
+  for (const id of opened) {
+    if (open.has(id) || id === LEGACY_SCHEMA_COMPARE_ID) continue;
+    stores.get(id)?.stop();
+    stores.delete(id);
+  }
+  opened = open;
+});
+
+export const useSchemaCompareStore = schemaCompareStore();
+
+export const SchemaCompareInstance = createContext<SchemaCompareStore>(useSchemaCompareStore);
+
+export function useSchemaCompareInstance(): SchemaCompareStore {
+  return useContext(SchemaCompareInstance);
+}
 
 export function connectionFor(side: CompareSide): SavedConnection | null {
   return (
@@ -104,20 +170,6 @@ export function sideLabel(side: CompareSide): string {
       .join(" · ");
   const connection = connectionFor(side);
   return [connection?.name ?? "?", side.database, side.schema].filter(Boolean).join(" · ");
-}
-
-export async function prepareConnection(id: string): Promise<SavedConnection> {
-  const find = () => useConnectionsStore.getState().connections.find((entry) => entry.id === id);
-  if (!find()) throw new Error("Die Verbindung existiert nicht mehr.");
-  if (!(await ensurePassword(id))) throw new Error("Ohne Passwort kann nicht verbunden werden.");
-  const fresh = find();
-  if (usesTunnel(fresh) && !fresh.tunnelPort) {
-    const outcome = await ensureSshTunnel(fresh);
-    if (!outcome.ok) throw new Error(outcome.error ?? "SSH-Tunnel konnte nicht geöffnet werden.");
-  }
-  const ready = find();
-  if (!ready) throw new Error("Die Verbindung existiert nicht mehr.");
-  return ready;
 }
 
 export function activeTypes(
@@ -249,12 +301,18 @@ async function targetTablespaces(connection: SavedConnection, side: CompareSide)
   );
 }
 
-export async function runSchemaCompare(sides?: {
-  source: CompareSide;
-  target: CompareSide;
-}): Promise<void> {
-  const state = useSchemaCompareStore.getState();
-  const set = useSchemaCompareStore.setState;
+const latestRuns = new WeakMap<SchemaCompareStore, number>();
+
+export async function runSchemaCompare(
+  sides?: { source: CompareSide; target: CompareSide },
+  store: SchemaCompareStore = useSchemaCompareStore,
+): Promise<void> {
+  const state = store.getState();
+  const run = (latestRuns.get(store) ?? 0) + 1;
+  latestRuns.set(store, run);
+  const set = (patch: Partial<SchemaCompareState>) => {
+    if (run === latestRuns.get(store)) store.setState(patch);
+  };
   const { source, target } = sides ?? state;
   try {
     if (
@@ -351,12 +409,20 @@ export async function runSchemaCompare(sides?: {
       loading: null,
     });
   } catch (error) {
-    set({ loading: null, error: error instanceof Error ? error.message : String(error) });
+    set({
+      loading: null,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
-export function toggleRename(sourceKey: string, targetKey: string, enabled: boolean): void {
-  useSchemaCompareStore.setState((state) => {
+export function toggleRename(
+  sourceKey: string,
+  targetKey: string,
+  enabled: boolean,
+  store: SchemaCompareStore = useSchemaCompareStore,
+): void {
+  store.setState((state) => {
     const selection = { ...state.selection };
     const renamePrior = { ...state.renamePrior };
     const renames: Record<string, string> = {};
@@ -379,10 +445,15 @@ export function toggleRename(sourceKey: string, targetKey: string, enabled: bool
   });
 }
 
-export function reverseSchemaCompare(): Promise<void> {
-  const { result, source, target } = useSchemaCompareStore.getState();
-  return runSchemaCompare({
-    source: result?.target ?? target,
-    target: result?.source ?? source,
-  });
+export function reverseSchemaCompare(
+  store: SchemaCompareStore = useSchemaCompareStore,
+): Promise<void> {
+  const { result, source, target } = store.getState();
+  return runSchemaCompare(
+    {
+      source: result?.target ?? target,
+      target: result?.source ?? source,
+    },
+    store,
+  );
 }

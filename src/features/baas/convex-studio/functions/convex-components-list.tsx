@@ -9,7 +9,7 @@ export function ConvexComponentsList({
   modules: ConvexStudioModule[];
 }) {
   return (
-    <div className="overflow-auto rounded-xl border">
+    <div className="overflow-auto rounded-xl">
       <table className="w-full text-xs">
         <thead className="bg-muted/40 text-left text-muted-foreground">
           <tr>

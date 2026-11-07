@@ -29,7 +29,7 @@ const WRITERS: [&str; 3] = ["billing", "fin", "erp"];
 const BIG_LINES: usize = 5_200;
 
 pub(super) const BUDGET: &[(&str, usize)] = &[
-    ("tools/list", 11_935),
+    ("tools/list", 13_182),
     ("instructions", 950),
     ("byok start catalog", 10_622),
     ("shop.revenue_per_customer", 1_450),

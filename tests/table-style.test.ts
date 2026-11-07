@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { CATEGORY_BAR_CLASSES, CATEGORY_PILL_CLASSES } from "../src/lib/category-colors";
 import {
   CONTENT_COLUMN_MAX,
   CONTENT_COLUMN_MIN,
@@ -8,6 +9,7 @@ import {
 } from "../src/lib/column-content-width";
 import { columnProfile } from "../src/lib/column-profile";
 import {
+  CATEGORY_COLORS,
   categoryColorIndex,
   isCategorical,
   isEnumDataType,
@@ -103,7 +105,25 @@ test("enum detection ignores ordinary text and network types", () => {
 test("category colors are stable per value", () => {
   expect(categoryColorIndex("paid")).toBe(categoryColorIndex("paid"));
   expect(categoryColorIndex("paid")).toBeGreaterThanOrEqual(0);
-  expect(categoryColorIndex("paid")).toBeLessThan(6);
+  expect(categoryColorIndex("paid")).toBeLessThan(CATEGORY_COLORS);
+});
+
+test("short status codes use distinct badge and profile colors", () => {
+  const colors = ["ANG", "AKT", "INA"].map(categoryColorIndex);
+  expect(new Set(colors.map((index) => CATEGORY_PILL_CLASSES[index])).size).toBe(3);
+  expect(new Set(colors.map((index) => CATEGORY_BAR_CLASSES[index])).size).toBe(3);
+});
+
+test("category colors stay within both palettes for arbitrary text", () => {
+  expect(CATEGORY_PILL_CLASSES).toHaveLength(CATEGORY_COLORS);
+  expect(CATEGORY_BAR_CLASSES).toHaveLength(CATEGORY_COLORS);
+  for (const value of ["", "ANG", "AKT", "INA", "äöü", "状态", "🟢", "x".repeat(1024)]) {
+    const index = categoryColorIndex(value);
+    expect(Number.isInteger(index)).toBe(true);
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect(index).toBeLessThan(CATEGORY_COLORS);
+    expect(categoryColorIndex(value)).toBe(index);
+  }
 });
 
 test("json previews list the first keys and summarize nested values", () => {

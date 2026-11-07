@@ -1,0 +1,16 @@
+{
+  "tables": 20000,
+  "links": 60000,
+  "tiles": 24,
+  "layoutMedianMs": 0.6105749999999943,
+  "layoutP95Ms": 0.6211000000000013,
+  "searchMedianMs": 0.3563250000000039,
+  "searchP95Ms": 0.36493339999999536,
+  "neighborsMedianMs": 0.9778437499999996,
+  "neighborsP95Ms": 0.9814750000000003,
+  "joinMedianMs": 3.0317081999999997,
+  "joinP95Ms": 3.5348418000000037,
+  "name": "home-atlas-layout",
+  "runId": null,
+  "capturedAt": "2026-11-06T05:42:07.073Z"
+}

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
-import { reportScenario } from "../scripts/performance-report";
+import { cpuThrottleRate, reportScenario } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
@@ -80,7 +80,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       expect(historyHostZIndex).toBe(50);
       if (engine === "chromium")
         await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", {
-          rate: 4,
+          rate: await cpuThrottleRate(4),
         });
       const metrics = await page.evaluate(async () => {
         const nodesBefore = document.querySelectorAll("*").length;
@@ -160,11 +160,13 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       await page.goto(`http://localhost:${server.port}/`);
       await page.getByRole("dialog", { name: "Willkommen bei l8db" }).waitFor();
       await page.keyboard.press("Escape");
+      await page.getByRole("heading", { name: "Sicher mit Datenbanken arbeiten" }).waitFor();
+      await page.getByRole("button", { name: "Weiter", exact: true }).click();
       await page.getByRole("button", { name: "Weiter", exact: true }).click();
       await page.getByRole("heading", { name: "Wie sollen deine Tabellen aussehen?" }).waitFor();
       if (engine === "chromium")
         await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", {
-          rate: 4,
+          rate: await cpuThrottleRate(4),
         });
       const metrics = await page.evaluate(async () => {
         const frame = () => new Promise(requestAnimationFrame);

@@ -1,8 +1,13 @@
+import { useContext, useMemo } from "react";
+import { toast } from "sonner";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { buildDuplicatePrefill } from "@/lib/row-duplicate";
 import { rowRuleColor } from "@/lib/row-rules";
 import { useSettingsStore } from "@/lib/settings";
+import { UiPluginGridContext } from "@/lib/ui-plugins/grid";
+import { RowWatchContext } from "@/lib/workbench/row-watch-context";
+import { saveRowWatch } from "@/lib/workbench/row-watches";
 import { DataTableRow } from "../data-table-row";
 import type { DataTableProps } from "../data-table-types";
 import { copyCellValue } from "./copy-cell-value";
@@ -56,7 +61,14 @@ type Props = Pick<
 > &
   Pick<
     DataTableProps,
-    "emptyMessage" | "onSaveRow" | "canEditCell" | "onInsertRow" | "onDeleteRow" | "columnDetails"
+    | "watchScope"
+    | "emptyMessage"
+    | "onSaveRow"
+    | "canEditCell"
+    | "onInsertRow"
+    | "onDeleteRow"
+    | "rowMenuItems"
+    | "columnDetails"
   > & {
     columnNames: string[];
     stateKey?: string;
@@ -113,22 +125,32 @@ export function DataTableBody({
   rowOffset,
   onInsertRow,
   onDeleteRow,
+  rowMenuItems,
   columnDetails,
   stateKey,
+  watchScope,
 }: Props) {
   const monochromeCells = useSettingsStore((state) => state.monochromeCells);
   const [rules] = useTableViewState(stateKey, "rowRules", []);
+  const { changedRows } = useContext(RowWatchContext);
+  const primaryKeys = useMemo(
+    () =>
+      (columnDetails ?? []).filter((column) => column.is_primary_key).map((column) => column.name),
+    [columnDetails],
+  );
+  const pluginGrid = useContext(UiPluginGridContext);
 
   return (
     <ContextMenu eager onOpenChange={(open) => !open && setMenuRow(null)}>
       <ContextMenuTrigger asChild highlight={false}>
         <tbody
           ref={tbodyRef}
+          role={columnWindow.enabled ? "rowgroup" : undefined}
           onContextMenuCapture={(event) => {
             const tr = (event.target as HTMLElement).closest<HTMLTableRowElement>("tr[data-ctid]");
             const ctid = tr?.dataset.ctid;
             const row = ctid ? rows[Number(tr?.dataset.rowIndex)] : undefined;
-            if (!ctid || !row || !hasRowActions) {
+            if (!ctid || !row || (!hasRowActions && !watchScope)) {
               event.stopPropagation();
               return;
             }
@@ -164,10 +186,15 @@ export function DataTableBody({
                     customCellColumns={customCellColumns}
                     monochromeCells={monochromeCells}
                     isMarked={markedRows.has(row.original)}
-                    ruleColor={rules.length ? rowRuleColor(row.original, rules) : undefined}
+                    ruleColor={
+                      (rules.length ? rowRuleColor(row.original, rules) : undefined) ??
+                      pluginGrid?.rowColor?.(row.original) ??
+                      (changedRows.has(row.original) ? "var(--primary)" : undefined)
+                    }
                     isContextMenuTarget={!!menuRow && menuRow.ctid === rowCtid}
                     toggleRowMarker={toggleRowMarker}
                     columnWindow={columnWindow.items}
+                    gridLayout={columnWindow.enabled}
                     measureElement={measureRow}
                     editingCell={editingCell?.rowIndex === rowIndex ? editingCell : null}
                     activeCell={activeCell?.rowIndex === rowIndex ? activeCell : null}
@@ -222,6 +249,16 @@ export function DataTableBody({
             scrollRef.current?.scrollTo({ top: 0, left: 0 });
           }}
           onDeleteRow={onDeleteRow}
+          extraItems={rowMenuItems?.(menuRow.original)}
+          onWatch={
+            watchScope && primaryKeys.length
+              ? () => {
+                  void saveRowWatch(watchScope, menuRow.original, primaryKeys, columnNames)
+                    .then(() => toast.success("Datensatz wird beobachtet"))
+                    .catch((error) => toast.error(String(error)));
+                }
+              : undefined
+          }
         />
       )}
     </ContextMenu>

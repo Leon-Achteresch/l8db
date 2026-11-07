@@ -12,11 +12,11 @@ export function emptyCondition(column = ""): Condition {
 export function parsePatterns(raw: string, useRegex: boolean): ((name: string) => boolean)[] {
   const parts = splitSearchPatterns(raw);
   if (parts.length === 0) return [];
+  if (useRegex) {
+    const compiled = compileSearchPatterns(raw, { global: false });
+    return compiled.ok ? compiled.regexes.map((regex) => (name: string) => regex.test(name)) : [];
+  }
   return parts.map((pattern) => {
-    if (useRegex) {
-      const compiled = compileSearchPatterns(pattern, { global: false });
-      if (compiled.ok) return (name: string) => compiled.regexes.some((regex) => regex.test(name));
-    }
     const lower = pattern.toLowerCase();
     return (name: string) => name.toLowerCase().includes(lower);
   });

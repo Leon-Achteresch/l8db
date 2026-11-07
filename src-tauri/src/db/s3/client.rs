@@ -31,6 +31,15 @@ pub struct S3Error {
 }
 
 impl S3Error {
+    pub fn is_retryable(&self) -> bool {
+        self.code == "Verbindungsfehler"
+            || self.status >= 500
+            || matches!(
+                self.code.as_str(),
+                "SlowDown" | "RequestTimeout" | "InternalError"
+            )
+    }
+
     pub fn is_missing(&self) -> bool {
         self.status == 404
             || self.code.starts_with("NoSuch")
@@ -123,6 +132,57 @@ impl<'a> Request<'a> {
         self.timeout = None;
         self
     }
+
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+}
+
+pub fn has_dot_segment(key: &str) -> bool {
+    key.split('/')
+        .any(|segment| segment == "." || segment == "..")
+}
+
+pub fn dot_segment_error(key: &str) -> String {
+    format!(
+        "Der Schlüssel „{key}“ enthält „.“- oder „..“-Pfadsegmente und kann per HTTP nicht eindeutig angesprochen werden. Bitte das Objekt mit einem anderen Werkzeug umbenennen."
+    )
+}
+
+fn invalid_header(name: &str, value: &str) -> Option<S3Error> {
+    if reqwest::header::HeaderName::from_bytes(name.as_bytes()).is_ok()
+        && reqwest::header::HeaderValue::from_str(value).is_ok()
+    {
+        return None;
+    }
+    let message = match name.strip_prefix("x-amz-meta-") {
+        Some(meta) => format!(
+            "Metadaten-Schlüssel „{meta}“ oder sein Wert ist ungültig. Erlaubt sind Buchstaben, Ziffern und -_.!#$%&'*+^`|~, ohne Leerzeichen, Doppelpunkt oder Zeilenumbruch."
+        ),
+        None => format!("Header „{name}“ enthält einen ungültigen Wert (z. B. einen Zeilenumbruch)."),
+    };
+    Some(S3Error {
+        status: 0,
+        code: "Ungültige Anfrage".to_string(),
+        message,
+    })
+}
+
+fn error_hint(code: &str) -> Option<&'static str> {
+    Some(match code {
+        "InvalidAccessKeyId" => "Access Key ist dem Server unbekannt.",
+        "SignatureDoesNotMatch" => "Secret Key passt nicht zum Access Key.",
+        "NoSuchBucket" => "Der Bucket existiert nicht.",
+        "AccessDenied" => "Zugriff verweigert: fehlende Berechtigung oder falsche Zugangsdaten.",
+        "ExpiredToken" | "InvalidToken" => "Das Session-Token ist abgelaufen oder ungültig.",
+        "RequestTimeTooSkewed" => "Die Systemzeit weicht zu stark von der Serverzeit ab.",
+        "SlowDown" | "ServiceUnavailable" => {
+            "Der Server ist überlastet. Bitte später erneut versuchen."
+        }
+        "EntityTooLarge" => "Das Objekt ist für diese Operation zu groß.",
+        _ => return None,
+    })
 }
 
 pub fn md5_base64(bytes: &[u8]) -> String {
@@ -367,6 +427,20 @@ impl S3 {
         let query = canonical_query(&req.query);
         let amz_date = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
         let payload_hash = aws::hex(&Sha256::digest(&req.body));
+        if let Some(key) = req.key.filter(|key| has_dot_segment(key)) {
+            return Err(S3Error {
+                status: 0,
+                code: "Ungültiger Schlüssel".to_string(),
+                message: dot_segment_error(key),
+            });
+        }
+        if let Some(error) = req
+            .headers
+            .iter()
+            .find_map(|(name, value)| invalid_header(name, value))
+        {
+            return Err(error);
+        }
         let mut headers = req.headers.clone();
         headers.push(("host".into(), target.host.clone()));
         headers.push(("x-amz-date".into(), amz_date.clone()));
@@ -399,11 +473,15 @@ impl S3 {
                 request = request.header(name.as_str(), value.as_str());
             }
         }
-        request
-            .body(req.body.clone())
-            .send()
-            .await
-            .map_err(|e| transport(format!("{} nicht erreichbar: {e}", self.endpoint)))
+        request.body(req.body.clone()).send().await.map_err(|e| {
+            if e.is_timeout() {
+                transport(format!("Zeitüberschreitung bei {}", self.endpoint))
+            } else if e.is_builder() {
+                transport(format!("Ungültige Anfrage: {e}"))
+            } else {
+                transport(format!("{} nicht erreichbar: {e}", self.endpoint))
+            }
+        })
     }
 
     pub async fn send(&self, req: Request<'_>) -> Result<reqwest::Response, S3Error> {
@@ -463,6 +541,11 @@ async fn read_error(response: reqwest::Response) -> S3Error {
                 String::new()
             }
         });
+    let message = match (error_hint(&code), message.is_empty()) {
+        (Some(hint), true) => hint.to_string(),
+        (Some(hint), false) => format!("{hint} ({message})"),
+        (None, _) => message,
+    };
     S3Error {
         status,
         code,
@@ -473,6 +556,36 @@ async fn read_error(response: reqwest::Response) -> S3Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_dot_segments_and_invalid_headers() {
+        assert!(has_dot_segment("../x"));
+        assert!(has_dot_segment("a/./b"));
+        assert!(has_dot_segment("dir/.."));
+        assert!(!has_dot_segment("a/.hidden/..b"));
+        assert!(invalid_header("x-amz-meta-mein feld", "v")
+            .unwrap()
+            .message
+            .contains("mein feld"));
+        assert!(invalid_header("x-amz-meta-autor", "a\nb").is_some());
+        assert!(invalid_header("x-amz-meta-autor", "Müller").is_none());
+        assert_eq!(
+            error_hint("NoSuchBucket"),
+            Some("Der Bucket existiert nicht.")
+        );
+        assert!(S3Error {
+            status: 503,
+            code: "SlowDown".into(),
+            message: String::new()
+        }
+        .is_retryable());
+        assert!(!S3Error {
+            status: 403,
+            code: "AccessDenied".into(),
+            message: String::new()
+        }
+        .is_retryable());
+    }
 
     fn client(path_style: bool, endpoint: &str) -> S3 {
         S3 {

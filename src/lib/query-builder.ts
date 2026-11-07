@@ -205,7 +205,7 @@ export function parseColumnOptionValue(value: string): { source: QuerySource; co
 }
 
 const VIEW_HEADER =
-  /^\s*CREATE\s+(?:OR\s+(?:REPLACE|ALTER)\s+)?(?:NO\s+)?(?:FORCE\s+)?(?:TEMP(?:ORARY)?\s+)?(?:MATERIALIZED\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?[\s\S]*?\sAS\s+/i;
+  /^\s*CREATE\s+(?:OR\s+(?:REPLACE|ALTER)\s+)?(?:NO\s+)?(?:FORCE\s+)?(?:TEMP(?:ORARY)?\s+)?(?:MATERIALIZED\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"(?:[^"]|"")*"|`[^`]*`|\[[^\]]*\]|[^"`[])*?\sAS\s+/i;
 
 export function viewSelectBody(definition: string): string {
   return definition.replace(VIEW_HEADER, "").trim();

@@ -1,0 +1,648 @@
+import { expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { chromium, webkit } from "playwright";
+import type { UiDensity } from "../src/lib/settings";
+import { type TableStyle, tableRowHeight } from "../src/lib/table-style";
+import { requestCounts } from "./fixtures/perf-app-requests";
+import { profileWebKit } from "./fixtures/perf-webkit-profile";
+
+type Sample = {
+  fps: number;
+  p95: number;
+  p99: number;
+  worst: number;
+  overBudgetPercent: number;
+  frames: number;
+};
+
+type PerfResult = {
+  vertical: Sample;
+  horizontal: Sample;
+  diagonal: Sample;
+  mountMs: number;
+  renderedRows: number;
+  renderedCells: number;
+  rowsAfterScroll: number;
+  fps: number;
+  worstFrameMs: number;
+  horizontalHeights: number[];
+  horizontalFps: number;
+  horizontalWorstFrameMs: number;
+  heapMb: number | null;
+  totalRows: number;
+};
+
+const WEBKIT = process.env.L8DB_PERF_ENGINE === "webkit";
+
+const HOST_CSS =
+  "html,body,#root{margin:0;height:100%}#root{display:flex;flex-direction:column;height:600px}";
+const CSS =
+  HOST_CSS +
+  ".flex{display:flex}.flex-col{flex-direction:column}.flex-1{flex:1 1 0%}.basis-0{flex-basis:0}" +
+  ".min-h-0{min-height:0}.overflow-auto{overflow:auto}.overflow-hidden{overflow:hidden}.relative{position:relative}" +
+  ".h-full{height:100%}.border-spacing-0{border-spacing:0}.table-fixed{table-layout:fixed}.min-w-full{min-width:100%}" +
+  ".truncate{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.whitespace-nowrap{white-space:nowrap}.text-ellipsis{text-overflow:ellipsis}.leading-5{line-height:1.25rem}.sticky{position:sticky}.top-0{top:0}.left-0{left:0}";
+
+const ROWS = Number(process.env.L8DB_PERF_ROWS ?? 5000);
+const DURATION = Number(process.env.L8DB_PERF_DURATION ?? 2000);
+const TEXT_SIZE = Number(process.env.L8DB_PERF_TEXT_SIZE ?? 0);
+const SCALE = Number(process.env.L8DB_PERF_SCALE ?? 100);
+const DENSITY = process.env.L8DB_PERF_DENSITY ?? "normal";
+const STEP = Number(process.env.L8DB_PERF_STEP ?? 120);
+const FK = process.env.L8DB_PERF_FK === "1";
+const ROW_DENSITY: UiDensity = DENSITY === "compact" || DENSITY === "spacious" ? DENSITY : "normal";
+
+for (const kind of ["table", "result"])
+  for (const [columns, style] of [
+    [12, "classic"],
+    [49, "classic"],
+    [120, "classic"],
+    ...(kind === "table" && (process.env.L8DB_PERF_STYLED || process.env.L8DB_PERF_CSS)
+      ? [
+          [12, "semantic"],
+          [49, "semantic"],
+        ]
+      : []),
+  ] as [number, TableStyle][]) {
+    test.skipIf(!process.env.L8DB_PERF_BROWSER)(
+      `${kind}${style === "classic" ? "" : ` (${style})`}: FPS, DOM-Größe und Mount-Zeit bei ${ROWS} × ${columns + 1} Zellen`,
+      async () => {
+        const bundle = await Bun.build({
+          entrypoints: ["tests/fixtures/perf-browser.tsx"],
+          plugins: [
+            {
+              name: "app-alias",
+              setup(build) {
+                build.onResolve(
+                  { filter: /(?:^@tauri-apps\/api\/core$|(?:^|\/)core\.js$)/ },
+                  (args) => {
+                    if (
+                      !args.path.startsWith("@tauri-apps/") &&
+                      !args.resolveDir.replaceAll("\\", "/").includes("@tauri-apps/api")
+                    )
+                      return;
+                    return {
+                      path: Bun.resolveSync("@tauri-apps/api/core", import.meta.dir),
+                      namespace: "browser-tauri",
+                    };
+                  },
+                );
+                build.onLoad({ filter: /.*/, namespace: "browser-tauri" }, async (args) => ({
+                  contents: await readFile(args.path, "utf8"),
+                  loader: "js",
+                }));
+                build.onResolve({ filter: /\?worker$/ }, ({ path }) => ({
+                  path,
+                  namespace: "unused-grid-worker",
+                }));
+                build.onLoad({ filter: /.*/, namespace: "unused-grid-worker" }, () => ({
+                  contents:
+                    'export default class Worker { constructor() { throw new Error("A grid-only fixture must not start an editor worker") } }',
+                  loader: "js",
+                }));
+                build.onResolve({ filter: /^@\/router$/ }, () => ({
+                  path: "router",
+                  namespace: "router-stub",
+                }));
+                build.onLoad({ filter: /.*/, namespace: "router-stub" }, () => ({
+                  contents: "export const router = null;",
+                  loader: "js",
+                }));
+                build.onResolve({ filter: /^@\// }, ({ path }) => ({
+                  path: Bun.resolveSync(
+                    resolve(import.meta.dir, "../src", path.slice(2)),
+                    import.meta.dir,
+                  ),
+                }));
+              },
+            },
+          ],
+          target: "browser",
+          format: "esm",
+          minify: !process.env.L8DB_PERF_PROFILE,
+          define: {
+            "process.env.NODE_ENV": '"production"',
+            "import.meta.env.DEV": "false",
+            "import.meta.env.PROD": "true",
+          },
+        });
+        if (!bundle.success) throw new Error(bundle.logs.map(String).join("\n"));
+        const source = await bundle.outputs[0].text();
+        const stylesheet =
+          process.env.L8DB_PERF_CSS ??
+          (process.env.L8DB_PERF_STYLED
+            ? `dist${(await Bun.file("dist/index.html").text()).match(/rel="stylesheet"[^>]+href="([^"]+)"/)![1]}`
+            : undefined);
+        const css = stylesheet ? (await Bun.file(stylesheet).text()) + HOST_CSS : CSS;
+        const server = Bun.serve({
+          port: 0,
+          fetch: (request) => {
+            const pathname = new URL(request.url).pathname;
+            if (pathname.startsWith("/assets/"))
+              return new Response(Bun.file(resolve("dist/assets", pathname.split("/").at(-1)!)));
+            return pathname === "/perf.js"
+              ? new Response(source, { headers: { "Content-Type": "text/javascript" } })
+              : new Response(
+                  `<!doctype html><html><head><base href="/assets/"><style>${css}</style></head><body><div id="root"></div><script type="module" src="/perf.js"></script></body></html>`,
+                  { headers: { "Content-Type": "text/html" } },
+                );
+          },
+        });
+        const browser = await (process.env.L8DB_PERF_ENGINE === "webkit"
+          ? webkit
+          : chromium
+        ).launch({ headless: true });
+        try {
+          const page = await browser.newPage({ viewport: { width: 1200, height: 600 } });
+          if (FK)
+            await page.addInitScript(() => {
+              const state = window as unknown as {
+                gridInvocations: string[];
+                __TAURI_INTERNALS__: { invoke: (command: string) => Promise<unknown> };
+              };
+              state.gridInvocations = [];
+              state.__TAURI_INTERNALS__ = {
+                invoke: async (command) => {
+                  state.gridInvocations.push(command);
+                  if (command === "mcp_config")
+                    return {
+                      enabled: false,
+                      connections: [],
+                      redaction: { columns: [], values: [], replacement: "***" },
+                    };
+                  if (
+                    command === "list_table_columns_detailed" ||
+                    command === "list_constraints" ||
+                    command === "column_value_options"
+                  )
+                    return [];
+                  throw new Error(`Unexpected grid request: ${command}`);
+                },
+              };
+            });
+          const profiler =
+            process.env.L8DB_PERF_PROFILE && !WEBKIT
+              ? await page.context().newCDPSession(page)
+              : null;
+          if (profiler) {
+            await profiler.send("Profiler.enable");
+            await profiler.send("Profiler.start");
+            await profiler.send("Tracing.start", {
+              categories: "devtools.timeline,blink.user_timing,v8",
+              transferMode: "ReturnAsStream",
+            });
+          }
+          const label = `${kind}/${columns}${style === "classic" ? "" : `/${style}`}`;
+          const errors: string[] = [];
+          page.on("pageerror", (error) => errors.push(error.message));
+          await page.goto(
+            `http://localhost:${server.port}?columns=${columns}&kind=${kind}&rows=${ROWS}&duration=${DURATION}&textSize=${TEXT_SIZE}&scale=${SCALE}&density=${DENSITY}&step=${STEP}&fk=${FK ? 1 : 0}&tableStyle=${style}`,
+          );
+          const stopWebKitProfile =
+            process.env.L8DB_PERF_PROFILE && WEBKIT
+              ? await profileWebKit(page, `/tmp/l8db-perf-${kind}-${columns}.webkit-profile.json`)
+              : null;
+          await page.waitForFunction(() => document.querySelector('tbody tr[data-index="0"]'));
+          await page.waitForTimeout(500);
+          console.log("DEBUG", JSON.stringify(await page.evaluate(async () => {
+            const scroller = document.querySelector(".overflow-auto")!;
+            const out: unknown[] = [];
+            for (let left = 0; left < scroller.scrollWidth; left += 300) {
+              scroller.scrollLeft = left;
+              await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+              const row = document.querySelector("tbody tr[data-index]")!;
+              const tall = [...row.querySelectorAll("td")].map((td) => {
+                const inner = td.firstElementChild as HTMLElement | null;
+                return { col: td.getAttribute("data-col"), h: td.getBoundingClientRect().height, html: td.innerHTML.slice(0, 160), lh: getComputedStyle(td).lineHeight, ff: getComputedStyle(td).fontFamily.slice(0, 30), fs: getComputedStyle(td).fontSize, ih: inner?.getBoundingClientRect().height };
+              });
+              out.push({ left, row: row.getBoundingClientRect().height, tall: tall.filter((c) => c.h > 29.01) });
+            }
+            return out;
+          })));
+          await page.waitForFunction(() => "result" in window);
+          const result = (await page.evaluate(
+            () => (window as unknown as { result: Promise<PerfResult> }).result,
+          )) as PerfResult;
+          const measurementRequests = FK
+            ? requestCounts(
+                await page.evaluate(
+                  () => (window as unknown as { gridInvocations: string[] }).gridInvocations,
+                ),
+              )
+            : null;
+          if (measurementRequests) {
+            expect(measurementRequests.databaseRequests).toBe(0);
+            expect(measurementRequests.unknownRequests).toBe(0);
+          }
+          await stopWebKitProfile?.();
+          if (profiler) {
+            const profile = await profiler.send("Profiler.stop");
+            await Bun.write(
+              `/tmp/l8db-perf-${kind}-${columns}.cpuprofile`,
+              JSON.stringify(profile.profile),
+            );
+            const completed = new Promise<{ stream: string }>((resolve) =>
+              profiler.once("Tracing.tracingComplete", resolve),
+            );
+            await profiler.send("Tracing.end");
+            const { stream } = await completed;
+            let trace = "";
+            for (;;) {
+              const chunk = await profiler.send("IO.read", { handle: stream });
+              trace += chunk.data;
+              if (chunk.eof) break;
+            }
+            await profiler.send("IO.close", { handle: stream });
+            await Bun.write(`/tmp/l8db-perf-${kind}-${columns}.trace.json`, trace);
+          }
+          console.log(
+            `perf ${label}: mount ${result.mountMs.toFixed(0)} ms, ${result.renderedRows}/${result.totalRows} rows, ${result.renderedCells} cells im DOM, ${result.fps.toFixed(1)} fps, worst frame ${result.worstFrameMs.toFixed(1)} ms, heap ${result.heapMb === null ? "n/a" : `${result.heapMb.toFixed(1)} MB`}, horizontal ${result.horizontalFps.toFixed(1)} fps, worst ${result.horizontalWorstFrameMs.toFixed(1)} ms`,
+          );
+          for (const axis of ["vertical", "horizontal", "diagonal"] as const)
+            console.log(`${label} ${axis}: ${JSON.stringify(result[axis])}`);
+          if (process.env.L8DB_PERF_REPORT_DIR) {
+            const name = `${WEBKIT ? "webkit" : "chromium"}-${kind}-${ROWS}-${columns}-${TEXT_SIZE}-${SCALE}-${DENSITY}-${FK ? "fk" : "plain"}-${style}`;
+            await Bun.write(
+              resolve(process.env.L8DB_PERF_REPORT_DIR, `${name}.json`),
+              JSON.stringify(
+                {
+                  browser: browser.version(),
+                  engine: WEBKIT ? "webkit" : "chromium",
+                  profilingEnabled: Boolean(process.env.L8DB_PERF_PROFILE),
+                  sourceHash: Bun.hash(source).toString(16),
+                  styleHash: Bun.hash(css).toString(16),
+                  foreignKeys: FK,
+                  measurementRequests,
+                  rows: ROWS,
+                  columns: columns + 1,
+                  duration: DURATION,
+                  textSize: TEXT_SIZE,
+                  scale: SCALE,
+                  density: DENSITY,
+                  step: STEP,
+                  ...result,
+                },
+                null,
+                2,
+              ),
+            );
+            await page.screenshot({
+              path: resolve(process.env.L8DB_PERF_REPORT_DIR, `${name}.png`),
+            });
+          }
+          expect(errors).toEqual([]);
+          expect(result.renderedRows).toBeGreaterThan(0);
+          expect(result.renderedRows).toBeLessThan(80);
+          expect(result.rowsAfterScroll).toBeGreaterThan(0);
+          expect(result.rowsAfterScroll).toBeLessThan(80);
+          expect(result.renderedCells).toBeLessThan(1200);
+          expect(result.mountMs).toBeLessThan(3000);
+          if (stylesheet && kind === "table") {
+            const height = tableRowHeight(style, ROW_DENSITY, SCALE);
+            expect(result.horizontalHeights).toEqual([height]);
+          }
+          const scrollBox = await page.locator(".overflow-auto").first().boundingBox();
+          if (!scrollBox) throw new Error("scroll container has no bounds");
+          await page.mouse.move(
+            scrollBox.x + scrollBox.width / 2,
+            scrollBox.y + scrollBox.height / 2,
+          );
+          for (let turn = 0; turn < 16; turn++) {
+            const direction = turn % 8 < 4 ? 1 : -1;
+            await page.mouse.wheel(240 * direction, 240 * direction);
+            await page.waitForTimeout(32);
+            const coverage = await page.evaluate(async () => {
+              await new Promise(requestAnimationFrame);
+              const scroller = document.querySelector(".overflow-auto")!;
+              const box = scroller.getBoundingClientRect();
+              const header = document.querySelector("thead th")!.getBoundingClientRect();
+              return [header.bottom + 10, box.bottom - 20].every((y) => {
+                const cell = document.elementFromPoint(box.left + 80, y)?.closest("td");
+                return !!cell?.closest("tr[data-index]") && !cell.hasAttribute("aria-hidden");
+              });
+            });
+            expect(coverage).toBe(true);
+          }
+          await page
+            .locator(".overflow-auto")
+            .first()
+            .evaluate((element) => {
+              element.scrollTop = 0;
+              element.scrollLeft = 0;
+            });
+          await page.waitForFunction(() => document.querySelector('tbody tr[data-index="0"]'));
+          if (kind === "table") {
+            const cell = page.locator('tbody tr[data-index="4"] td[data-col="col_1"]');
+            await cell.dblclick();
+            const input = page.locator("tbody input");
+            await input.fill("unsaved buffered edit");
+            const originalInput = await input.elementHandle();
+            if (!originalInput) throw new Error("editing input not found");
+            await page
+              .locator(".overflow-auto")
+              .first()
+              .evaluate((element) => {
+                element.scrollTop = 30;
+                element.scrollLeft = 30;
+              });
+            await page.waitForTimeout(200);
+            expect(
+              await originalInput.evaluate(
+                (element) =>
+                  element.isConnected &&
+                  document.activeElement === element &&
+                  (element as HTMLInputElement).value === "unsaved buffered edit",
+              ),
+            ).toBe(true);
+            expect(await page.evaluate(() => "saved" in window)).toBe(false);
+            await page.setViewportSize({ width: 900, height: 520 });
+            await page.locator("#root").evaluate((element) => {
+              element.style.height = "520px";
+            });
+            await page.waitForTimeout(200);
+            expect(
+              await originalInput.evaluate(
+                (element) =>
+                  element.isConnected &&
+                  document.activeElement === element &&
+                  (element as HTMLInputElement).value === "unsaved buffered edit",
+              ),
+            ).toBe(true);
+            await input.press("Escape");
+          }
+          await page.setViewportSize({ width: 900, height: 520 });
+          await page.locator("#root").evaluate((element) => {
+            element.style.height = "520px";
+          });
+          await page
+            .locator(".overflow-auto")
+            .first()
+            .evaluate((element) => {
+              element.scrollTop = 1200;
+              element.scrollLeft = 900;
+            });
+          await page.waitForTimeout(200);
+          expect(
+            await page.evaluate(() => {
+              const box = document.querySelector(".overflow-auto")!.getBoundingClientRect();
+              const header = document.querySelector("thead th")!.getBoundingClientRect();
+              return [header.bottom + 10, box.bottom - 20].every((y) =>
+                [box.left + 80, box.right - 20].every((x) => {
+                  const cell = document.elementFromPoint(x, y)?.closest("td");
+                  return !!cell?.closest("tr[data-index]") && !cell.hasAttribute("aria-hidden");
+                }),
+              );
+            }),
+          ).toBe(true);
+          await page.setViewportSize({ width: 1200, height: 600 });
+          await page.locator("#root").evaluate((element) => {
+            element.style.height = "600px";
+          });
+          await page
+            .locator(".overflow-auto")
+            .first()
+            .evaluate((element) => {
+              element.scrollTop = 0;
+              element.scrollLeft = 0;
+            });
+          await page.waitForFunction(() => document.querySelector('tbody tr[data-index="0"]'));
+          if (FK && kind === "table") {
+            const cell = page.locator('tbody tr[data-index="1"] td[data-col="id"]');
+            await cell
+              .locator('[data-slot="hover-card-trigger"]')
+              .click({ modifiers: ["ControlOrMeta"] });
+            expect(
+              await page.evaluate(() => (window as unknown as { navigated: unknown }).navigated),
+            ).toEqual({ schema: "public", table: "parents", filter: '"id" = 1' });
+          }
+          if (TEXT_SIZE > 0) {
+            const cell = page.locator('tbody tr[data-index="0"] td[data-col="col_0"]');
+            expect((await cell.textContent())!.length).toBeLessThanOrEqual(
+              kind === "table" ? 501 : 201,
+            );
+            if (kind === "table") {
+              await cell.dblclick();
+              expect((await page.locator("tbody input").inputValue()).length).toBe(TEXT_SIZE);
+              await page.locator("tbody input").press("Escape");
+              await cell.click();
+              await page.getByTitle("Anzeigen / bearbeiten", { exact: true }).click();
+              await page.getByRole("dialog").waitFor();
+              expect(await page.getByRole("dialog").locator("pre").textContent()).toBe(
+                "x".repeat(TEXT_SIZE),
+              );
+              await page.keyboard.press("Escape");
+            } else {
+              await cell.getByRole("button").click();
+              expect(
+                await page.evaluate(
+                  () =>
+                    (window as unknown as { inspected: { value: string } }).inspected.value.length,
+                ),
+              ).toBe(TEXT_SIZE);
+              expect((await cell.getAttribute("title"))!.length).toBeLessThanOrEqual(201);
+            }
+          }
+          if (columns === 49) {
+            const unchanged = await page.evaluate(async () => {
+              const scroller = document.querySelector<HTMLElement>(".overflow-auto")!;
+              const settle = () => new Promise((resolve) => setTimeout(resolve, 200));
+              const start =
+                (document.querySelector<HTMLElement>(
+                  'tbody tr[data-index="0"] td[data-col="col_1"]',
+                )?.offsetLeft ?? 0) + 20;
+              scroller.scrollLeft = start;
+              await settle();
+              const row = document.querySelector('tbody tr[data-index="0"]')!;
+              const cells = [...row.children];
+              const headers = [...document.querySelectorAll("thead th")];
+              scroller.scrollLeft = start + 30;
+              await settle();
+              return {
+                cells:
+                  cells.length === row.children.length &&
+                  cells.every((cell, index) => cell === row.children[index]),
+                headers:
+                  headers.length === document.querySelectorAll("thead th").length &&
+                  headers.every(
+                    (header, index) => header === document.querySelectorAll("thead th")[index],
+                  ),
+              };
+            });
+            expect(unchanged).toEqual({ cells: true, headers: true });
+            if (kind === "table") {
+              const header = page.locator("thead th").filter({
+                has: page.getByRole("button", { name: "col_4 verschieben", exact: true }),
+              });
+              const width = await header.evaluate(
+                (element) => element.getBoundingClientRect().width,
+              );
+              const resizeHandle = await header.locator(".cursor-col-resize").boundingBox();
+              if (!resizeHandle) throw new Error("column resize handle not found");
+              await page.mouse.move(resizeHandle.x + resizeHandle.width / 2, resizeHandle.y + 10);
+              await page.mouse.down();
+              await page.mouse.move(
+                resizeHandle.x + resizeHandle.width / 2 + 60,
+                resizeHandle.y + 10,
+              );
+              await page.mouse.up();
+              await page.waitForFunction((expected) => {
+                const cell = document.querySelector(
+                  'tbody tr[data-index="0"] td[data-col="col_4"]',
+                );
+                return cell && Math.abs(cell.getBoundingClientRect().width - expected) < 2;
+              }, width + 60);
+              expect(
+                await header.evaluate((element) => element.getBoundingClientRect().width),
+              ).toBeCloseTo(width + 60, 0);
+              await header.click({ button: "right" });
+              await page
+                .getByRole("menuitem", { name: "Aufsteigend sortieren", exact: true })
+                .click();
+              await header.locator("span.text-primary > svg").waitFor();
+              await header.click({ button: "right" });
+              await page.getByRole("menuitem", { name: "Spalte ausblenden", exact: true }).click();
+              await header.waitFor({ state: "detached" });
+              expect(await page.locator('tbody td[data-col="col_4"]').count()).toBe(0);
+            }
+          }
+          if (columns === 120) {
+            await page
+              .locator(".overflow-auto")
+              .first()
+              .evaluate((element) => {
+                element.scrollLeft = element.scrollWidth;
+                element.scrollTop = element.scrollHeight;
+              });
+            await page.waitForFunction(
+              (last) =>
+                document.querySelector(`tbody tr[data-index="${last}"] td[data-col="col_119"]`),
+              ROWS - 1,
+            );
+            expect(await page.locator("tbody td:not([aria-hidden])").count()).toBeLessThan(1200);
+            await page
+              .locator(".overflow-auto")
+              .first()
+              .evaluate((element) => {
+                element.scrollTop = 0;
+              });
+            await page.waitForFunction(() =>
+              document.querySelector('tbody tr[data-index="0"] td[data-col="col_119"]'),
+            );
+            if (kind === "table") {
+              await page
+                .locator("thead th")
+                .filter({ hasText: "col_119" })
+                .click({ button: "right" });
+              await page.getByRole("menuitem", { name: "Spalte links fixieren" }).click();
+              await page
+                .locator(".overflow-auto")
+                .first()
+                .evaluate((element) => {
+                  element.scrollLeft = 0;
+                });
+              const cell = page.locator('tbody tr[data-index="0"] td[data-col="col_119"]');
+              await cell.dblclick();
+              const input = page.locator("tbody input");
+              await input.fill("performance edit");
+              await input.press("Enter");
+              await page.waitForFunction(() => "saved" in window);
+              expect(
+                await page.evaluate(
+                  () =>
+                    (window as unknown as { saved: { updates: Record<string, string> } }).saved
+                      .updates.col_119,
+                ),
+              ).toBe("performance edit");
+              await page.waitForFunction(() => !document.querySelector("tbody input"));
+              await cell.dblclick();
+              await page.locator('tbody tr[data-index="1"] td[data-col="col_119"]').click();
+              expect(await page.locator("tbody input").count()).toBe(0);
+              const pinnedX = await cell.evaluate(
+                (element) => element.getBoundingClientRect().left,
+              );
+              await page
+                .locator(".overflow-auto")
+                .first()
+                .evaluate((element) => {
+                  element.scrollLeft = 2000;
+                });
+              await page.waitForFunction(
+                () => document.querySelector(".overflow-auto")!.scrollLeft >= 2000,
+              );
+              expect(
+                Math.abs(
+                  (await cell.evaluate((element) => element.getBoundingClientRect().left)) -
+                    pinnedX,
+                ),
+              ).toBeLessThan(2);
+            } else {
+              await page
+                .getByTitle("Lokal sortieren nach col_119 (Umschalt-Klick für mehrere Spalten)")
+                .click();
+              await page.getByRole("button", { name: "Filter", exact: true }).click();
+              await page
+                .getByRole("textbox", { name: "Filter für col_119", exact: true })
+                .fill("__no_matching_value__");
+              await page.waitForFunction(() => document.body.textContent?.includes("0 von "));
+              await page.getByRole("textbox", { name: "Filter für col_119", exact: true }).fill("");
+              await page.waitForFunction(() => document.querySelector('tbody tr[data-index="0"]'));
+            }
+          }
+          expect(errors).toEqual([]);
+          if (kind === "result" && columns === 12) {
+            for (const options of [
+              { scale: 80, density: "compact" as const, font: 10, row: 26 },
+              { scale: 100, density: "normal" as const, font: 20, row: 26 },
+              { scale: 150, density: "spacious" as const, font: 20, row: 48 },
+            ]) {
+              await page.evaluate((settings) => {
+                (
+                  window as unknown as {
+                    configureGrid: (options: typeof settings) => void;
+                  }
+                ).configureGrid(settings);
+              }, options);
+              await page.waitForTimeout(200);
+              expect(
+                await page
+                  .locator('tbody tr[data-index="0"] td[data-col="col_0"]')
+                  .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+              ).toBeCloseTo((options.font * options.scale) / 100, 1);
+              for (const top of [2000, Number.MAX_SAFE_INTEGER, 1000, 0]) {
+                await page
+                  .locator(".overflow-auto")
+                  .first()
+                  .evaluate((element, position) => {
+                    element.scrollTop = position;
+                  }, top);
+                await page.waitForTimeout(200);
+                expect(
+                  await page.evaluate(() => {
+                    const box = document.querySelector(".overflow-auto")!.getBoundingClientRect();
+                    const header = document.querySelector("thead th")!.getBoundingClientRect();
+                    return [header.bottom + 10, box.bottom - 20].every((y) => {
+                      const cell = document.elementFromPoint(box.left + 80, y)?.closest("td");
+                      return !!cell?.closest("tr[data-index]") && !cell.hasAttribute("aria-hidden");
+                    });
+                  }),
+                ).toBe(true);
+                expect(await page.locator("tbody tr[data-index]").count()).toBeLessThan(80);
+              }
+              expect(await page.locator('tbody tr[data-index="0"]').count()).toBe(1);
+            }
+          }
+          for (const axis of ["vertical", "horizontal", "diagonal"] as const) {
+            expect(result[axis].fps).toBeGreaterThan(59);
+            expect(result[axis].p95).toBeLessThan(21);
+            expect(result[axis].worst).toBeLessThan(50);
+            expect(result[axis].frames).toBeGreaterThan((DURATION / 1000) * 55);
+          }
+        } finally {
+          await browser.close();
+          server.stop(true);
+        }
+      },
+      Math.max(60000, DURATION * 3 + 30000),
+    );
+  }

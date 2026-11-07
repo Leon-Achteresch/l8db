@@ -1,17 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
-export type HomeWidgetKind =
-  | "metrics"
-  | "tables"
-  | "recent"
-  | "storage"
-  | "er-diagram"
-  | "performance"
-  | "chart"
-  | "query"
-  | "note";
+export type HomeWidgetKind = "performance" | "chart" | "query" | "note";
 
 export interface HomeWidget {
   id: string;
@@ -36,24 +28,13 @@ export const HOME_WIDGETS: Record<
   HomeWidgetKind,
   { label: string; w: number; h: number; minW: number; minH: number; single: boolean }
 > = {
-  metrics: { label: "Kennzahlen", w: 12, h: 2, minW: 3, minH: 2, single: true },
-  tables: { label: "Tabellen", w: 7, h: 7, minW: 3, minH: 4, single: true },
-  recent: { label: "Letzte Abfragen", w: 7, h: 7, minW: 3, minH: 3, single: true },
-  storage: { label: "Speicher & Schemas", w: 5, h: 9, minW: 3, minH: 4, single: true },
-  "er-diagram": { label: "ER-Diagramm", w: 5, h: 4, minW: 3, minH: 4, single: true },
   performance: { label: "Performance", w: 7, h: 8, minW: 4, minH: 5, single: true },
   chart: { label: "Dashboard-Chart", w: 6, h: 7, minW: 2, minH: 3, single: false },
   query: { label: "Abfrage-Ergebnis", w: 6, h: 7, minW: 3, minH: 3, single: false },
   note: { label: "Notiz", w: 4, h: 4, minW: 2, minH: 2, single: false },
 };
 
-export const DEFAULT_HOME_LAYOUT: HomeWidget[] = [
-  { id: "metrics", kind: "metrics", x: 0, y: 0, w: 12, h: 2 },
-  { id: "tables", kind: "tables", x: 0, y: 2, w: 7, h: 7 },
-  { id: "recent", kind: "recent", x: 0, y: 9, w: 7, h: 7 },
-  { id: "storage", kind: "storage", x: 7, y: 2, w: 5, h: 9 },
-  { id: "er-diagram", kind: "er-diagram", x: 7, y: 11, w: 5, h: 4 },
-];
+export const DEFAULT_HOME_LAYOUT: HomeWidget[] = [];
 
 function freeSpot(widgets: HomeWidget[], w: number, h: number): { x: number; y: number } {
   const bottom = Math.max(0, ...widgets.map((widget) => widget.y + widget.h));
@@ -127,6 +108,7 @@ export const useHomeLayoutStore = create<HomeLayoutState>()(
     }),
     {
       name: STORAGE_KEY,
+      storage: createSafeJsonStorage(),
       merge: (persisted, current) => ({
         ...current,
         layouts: sanitizeHomeLayouts((persisted as Partial<HomeLayoutState> | undefined)?.layouts),

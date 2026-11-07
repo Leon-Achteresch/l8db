@@ -1,11 +1,39 @@
 import { expect, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { chromium, webkit } from "playwright";
+import { chromium, type Page, webkit } from "playwright";
 import manifest from "../package.json";
 import { featureStorageKey, NEW_FEATURES } from "../src/lib/new-features";
 import config from "../src-tauri/tauri.conf.json";
 import { seedAiWorkspace } from "./fixtures/ai-workspace";
+
+type StoredSession = { messages: { text: string; rich?: { type: string }[] }[] };
+
+const aiHistory = (page: Page) =>
+  page.evaluate(
+    () =>
+      new Promise<string>((resolve) => {
+        const request = indexedDB.open("l8db.ai");
+        request.onupgradeneeded = () => request.transaction?.abort();
+        request.onerror = () => resolve("[]");
+        request.onsuccess = () => {
+          const database = request.result;
+          const all = database.transaction("sessions").objectStore("sessions").getAll();
+          all.onsuccess = () => {
+            database.close();
+            resolve(JSON.stringify(all.result));
+          };
+        };
+      }),
+  );
+
+async function waitForHistory(page: Page, check: (sessions: StoredSession[]) => boolean) {
+  const deadline = Date.now() + 10_000;
+  while (!check(JSON.parse(await aiHistory(page)))) {
+    if (Date.now() > deadline) throw new Error("AI-Verlauf wurde nicht gespeichert");
+    await Bun.sleep(100);
+  }
+}
 
 const enabled = process.env.L8DB_AI_BROWSER ?? process.env.L8DB_PRODUCTION_BROWSER;
 test.skipIf(!enabled)(
@@ -60,6 +88,54 @@ test.skipIf(!enabled)(
       expect(Number(await resize.getAttribute("aria-valuenow"))).toBe(oldWidth + 76);
       expect(await page.evaluate(() => window.getSelection()?.toString())).toBe("");
 
+      const fastToggle = panel.getByRole("button", { name: "Fast-Modus", exact: true });
+      expect(await fastToggle.getAttribute("aria-pressed")).toBe("false");
+      await fastToggle.click();
+      expect(await fastToggle.getAttribute("aria-pressed")).toBe("true");
+      await fastToggle.click();
+      const composer = panel.getByLabel("Nachricht an AI");
+      const growth = await composer.evaluate((node) => {
+        const textarea = node as HTMLTextAreaElement;
+        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+        const type = (value: string) => {
+          const start = performance.now();
+          setter?.call(textarea, value);
+          textarea.dispatchEvent(new Event("input", { bubbles: true }));
+          return { ms: performance.now() - start, height: textarea.offsetHeight };
+        };
+        const base = textarea.offsetHeight;
+        const steps = Array.from({ length: 200 }, (_, line) =>
+          type(
+            Array.from({ length: line + 1 }, (_, row) => `SELECT ${row} FROM orders`).join("\n"),
+          ),
+        );
+        const paste = type(Array.from({ length: 5000 }, (_, row) => `-- row ${row}`).join("\n"));
+        const scrolls = textarea.scrollHeight > textarea.clientHeight;
+        type("");
+        const ms = steps.map((step) => step.ms).sort((a, b) => a - b);
+        return {
+          base,
+          third: steps[2].height,
+          capped: steps.at(-1)?.height ?? 0,
+          paste,
+          scrolls,
+          reset: textarea.offsetHeight,
+          median: ms[Math.floor(ms.length / 2)],
+          p95: ms[Math.floor(ms.length * 0.95)],
+          viewport: window.innerHeight,
+        };
+      });
+      console.info("AI composer growth", growth);
+      expect(growth.third).toBeGreaterThan(growth.base);
+      expect(growth.capped).toBeLessThanOrEqual(Math.min(8 * 24 + 6, growth.viewport * 0.4) + 1);
+      expect(growth.capped).toBeGreaterThan(growth.third);
+      expect(growth.paste.height).toBe(growth.capped);
+      expect(growth.scrolls).toBe(true);
+      expect(growth.reset).toBe(growth.base);
+      expect(growth.median).toBeLessThan(8);
+      expect(growth.p95).toBeLessThan(16);
+      expect(growth.paste.ms).toBeLessThan(50);
+
       await panel.getByRole("button", { name: "Anbieter und Modell auswählen" }).click();
       await page.getByRole("button", { name: /^Anbieter wechseln/ }).click();
       await page.getByRole("radio", { name: "Gemini CLI", exact: true }).click();
@@ -73,17 +149,26 @@ test.skipIf(!enabled)(
       await panel.getByRole("button", { name: "Reasoning auswählen" }).click();
       await page.getByRole("menuitemradio", { name: "high" }).click();
       await panel.getByLabel("Nachricht an AI").fill("@Anal");
-      await panel.getByRole("option", { name: "@Analytics", exact: true }).click();
+      await panel.getByRole("option", { name: "Analytics Verbindung", exact: true }).click();
       await panel.getByRole("button", { name: "Kontext", exact: true }).click();
-      expect(await page.getByLabel("@Analytics", { exact: true }).isChecked()).toBe(true);
+      expect(
+        await page
+          .getByRole("menuitemcheckbox", { name: /^Analytics/ })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
       const skillsSeenKey = featureStorageKey("ai.context.skills");
       const skillsAreNew = manifest.version === NEW_FEATURES["ai.context.skills"];
       if (skillsAreNew)
         expect(await page.evaluate((key) => localStorage.getItem(key), skillsSeenKey)).toBeNull();
-      await page.getByLabel("SQL review", { exact: true }).check();
+      await page.keyboard.press("Escape");
+      await panel
+        .getByRole("button", { name: "Anhänge, Wissen, Skills und MCP-Server", exact: true })
+        .click();
+      const skill = page.getByRole("menuitemcheckbox", { name: /^SQL review/ });
+      await skill.click();
       if (skillsAreNew)
         await page.waitForFunction((key) => localStorage.getItem(key) === "1", skillsSeenKey);
-      expect(await page.getByLabel("SQL review", { exact: true }).isChecked()).toBe(true);
+      expect(await skill.getAttribute("aria-checked")).toBe("true");
       await page.keyboard.press("Escape");
       await panel.getByLabel("Nachricht an AI").fill("Inspect the selected databases");
       await panel.getByRole("button", { name: "Nachricht senden", exact: true }).click();
@@ -126,13 +211,13 @@ test.skipIf(!enabled)(
               .responses[0].answer,
         ),
       ).toEqual({ answers: { goal: { answers: ["Users and relationships"] } } });
-      await page.waitForFunction(
-        () =>
-          JSON.parse(localStorage.getItem("l8db.ai") ?? "{}").sessions?.[0]?.messages?.at(-1)
-            ?.text === "Streamed schema \n\ncomplete.",
+      await waitForHistory(page, (sessions) =>
+        sessions.some(
+          (session) => session.messages.at(-1)?.text === "Streamed schema \n\ncomplete.",
+        ),
       );
       const usagePanel = panel.getByRole("region", { name: "Kontext, Tokens und Kosten" });
-      expect(await usagePanel.textContent()).toContain("Kontext 4%");
+      expect(await usagePanel.textContent()).toBe("4%");
       expect(await usagePanel.textContent()).not.toContain("Eingabe");
       await usagePanel.getByRole("button", { name: "Nutzungsdetails anzeigen" }).click();
       const usageDetails = page.getByRole("dialog", { name: "Nutzungsdetails" });
@@ -145,7 +230,8 @@ test.skipIf(!enabled)(
         (page.viewportSize()?.height ?? 720) + 1,
       );
       await page.keyboard.press("Escape");
-      const persisted = await page.evaluate(() => localStorage.getItem("l8db.ai"));
+      const persisted =
+        (await page.evaluate(() => localStorage.getItem("l8db.ai"))) + (await aiHistory(page));
       expect(persisted).not.toContain("postgresql://");
       expect(persisted).not.toContain("connectionString");
       expect(persisted).toContain("totalTokens");
@@ -161,8 +247,7 @@ test.skipIf(!enabled)(
       await page.getByRole("button", { name: /^Anbieter wechseln/ }).click();
       await page.getByRole("radio", { name: "OpenAI · API", exact: true }).click();
       await page.keyboard.press("Escape");
-      await panel.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
-      await page.getByRole("menuitem", { name: "KI-Einstellungen" }).click();
+      await page.getByRole("button", { name: "KI-Einstellungen", exact: true }).click();
       await panel
         .getByLabel("API-Schlüssel", { exact: true })
         .fill("fixture-api-key-never-persist");
@@ -170,17 +255,17 @@ test.skipIf(!enabled)(
       await page.waitForFunction(() =>
         (window as unknown as { aiFixture: { keys: string[] } }).aiFixture.keys.includes("openai"),
       );
-      expect(await page.evaluate(() => localStorage.getItem("l8db.ai"))).not.toContain(
-        "fixture-api-key-never-persist",
-      );
+      expect(
+        (await page.evaluate(() => localStorage.getItem("l8db.ai"))) + (await aiHistory(page)),
+      ).not.toContain("fixture-api-key-never-persist");
+      await page.getByRole("button", { name: "KI-Einstellungen", exact: true }).click();
       await panel.getByRole("button", { name: "Anbieter und Modell auswählen" }).click();
       await page.getByRole("button", { name: /^Anbieter wechseln/ }).click();
       await page.getByRole("radio", { name: "OpenAI-compatible · API", exact: true }).click();
       await page.keyboard.press("Escape");
-      await panel.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
-      await page.getByRole("menuitem", { name: "KI-Einstellungen" }).click();
+      await page.getByRole("button", { name: "KI-Einstellungen", exact: true }).click();
       await panel.getByLabel("API-Endpoint", { exact: true }).fill("http://localhost:11434/v1");
-      await panel.getByRole("button", { name: "Zurück zum Gespräch", exact: true }).click();
+      await page.getByRole("button", { name: "KI-Einstellungen", exact: true }).click();
       await panel.getByLabel("Nachricht an AI").fill("Test local model without API key");
       await panel.getByRole("button", { name: "Nachricht senden", exact: true }).click();
       await panel.getByText("Local compatible response", { exact: true }).waitFor();
@@ -219,7 +304,7 @@ test.skipIf(!enabled)(
       );
       await panel.getByLabel("Nachricht an AI").fill("choice-fixture");
       await panel.getByRole("button", { name: "Nachricht senden", exact: true }).click();
-      await approval.getByRole("radio", { name: "Schema · Inspect structure" }).click();
+      await approval.getByRole("button", { name: /^Schema.*Inspect structure/ }).click();
       await approval.getByRole("button", { name: "Antwort senden", exact: true }).click();
       await page.waitForFunction(
         () =>
@@ -266,10 +351,12 @@ test.skipIf(!enabled)(
       ).toBe(true);
       expect(await answerTable.getByRole("row").count()).toBe(5);
       expect(await answerTable.textContent()).not.toContain("---");
-      expect(await panel.getByText("Plan des Agents", { exact: true }).count()).toBeGreaterThan(0);
+      expect(await panel.getByText("Plan", { exact: true }).count()).toBeGreaterThan(0);
       expect(await panel.getByText("query.sql", { exact: true }).count()).toBeGreaterThan(0);
       expect(await panel.getByText("Tool verwendet", { exact: false }).count()).toBe(0);
-      expect(await panel.getByText("execute_query", { exact: true }).count()).toBeGreaterThan(0);
+      expect(
+        await panel.getByText("execute_query ausgeführt", { exact: true }).count(),
+      ).toBeGreaterThan(0);
       const toolResultLabel = await panel
         .getByRole("button")
         .filter({ hasText: "execute_query" })
@@ -285,32 +372,34 @@ test.skipIf(!enabled)(
             window as unknown as { aiFixture: { approvals: { allow: boolean }[] } }
           ).aiFixture.approvals.at(-1)?.allow === false,
       );
-      await page.waitForFunction(() =>
-        JSON.parse(localStorage.getItem("l8db.ai") ?? "{}").sessions.some(
-          (session: { messages: { rich?: { type: string }[] }[] }) =>
-            session.messages.some((message) =>
-              message.rich?.some((block) => block.type === "image"),
-            ),
+      await waitForHistory(page, (sessions) =>
+        sessions.some((session) =>
+          session.messages.some((message) => message.rich?.some((block) => block.type === "image")),
         ),
       );
-      await page.waitForFunction(() =>
-        localStorage.getItem("l8db.ai")?.includes('"outcome":"denied"'),
+      await waitForHistory(page, (sessions) =>
+        JSON.stringify(sessions).includes('"outcome":"denied"'),
       );
       await page.reload();
-      await panel.getByRole("treeitem", { name: "empty-schema", exact: false }).click();
+      await panel.getByRole("button", { name: /^empty-schema/ }).click();
       await panel.getByAltText("Bild aus Agent-Ergebnis").waitFor();
       expect(await panel.getByText("SQL proposal", { exact: true }).isVisible()).toBe(true);
-      expect(
-        await panel.getByText("Write fixture row · Abgelehnt", { exact: true }).isVisible(),
-      ).toBe(true);
-      const savedHistory = await page.evaluate(() => localStorage.getItem("l8db.ai"));
+      await panel
+        .getByRole("button", { name: /Schritte/ })
+        .last()
+        .click();
+      expect(await panel.getByText("Write fixture row", { exact: true }).last().isVisible()).toBe(
+        true,
+      );
+      expect(await panel.getByText("Abgelehnt", { exact: true }).last().isVisible()).toBe(true);
+      const savedHistory = await aiHistory(page);
       await page.evaluate(() => {
-        const original = Storage.prototype.setItem;
+        const original = IDBObjectStore.prototype.put;
         Object.assign(window, { aiStorageFull: true });
-        Storage.prototype.setItem = function (key, value) {
-          if (key === "l8db.ai" && (window as unknown as { aiStorageFull: boolean }).aiStorageFull)
+        IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore["put"]>) {
+          if ((window as unknown as { aiStorageFull: boolean }).aiStorageFull)
             throw new DOMException("Quota exceeded", "QuotaExceededError");
-          original.call(this, key, value);
+          return original.apply(this, args);
         };
       });
       await panel.getByRole("button", { name: "Neues Gespräch", exact: true }).click();
@@ -320,14 +409,13 @@ test.skipIf(!enabled)(
         .getByRole("alert")
         .filter({ hasText: "AI-Daten konnten nicht lokal gespeichert werden" });
       await storageError.waitFor();
-      expect(await page.evaluate(() => localStorage.getItem("l8db.ai"))).toBe(savedHistory);
-      await panel.getByRole("button", { name: "Agent stoppen", exact: true }).click();
+      expect(await aiHistory(page)).toBe(savedHistory);
       await page.evaluate(() => Object.assign(window, { aiStorageFull: false }));
-      await panel.getByRole("button", { name: "Actions for quota-fixture", exact: true }).click();
-      await page.getByRole("button", { name: "quota-fixture löschen", exact: true }).click();
-      await page.waitForFunction(() => localStorage.getItem("l8db.ai")?.includes('"deleted":true'));
+      await panel.getByRole("button", { name: "Aktionen für quota-fixture", exact: true }).click();
+      await page.getByRole("menuitem", { name: "quota-fixture löschen", exact: true }).click();
+      await waitForHistory(page, (sessions) => JSON.stringify(sessions).includes('"deleted":true'));
       await storageError.waitFor({ state: "hidden" });
-      const recoveredHistory = await page.evaluate(() => localStorage.getItem("l8db.ai"));
+      const recoveredHistory = await aiHistory(page);
       expect(recoveredHistory).toContain('"deleted":true');
       expect(recoveredHistory).toContain("SQL proposal");
       expect(recoveredHistory).not.toContain("persistenceError");
@@ -337,5 +425,5 @@ test.skipIf(!enabled)(
       server.stop(true);
     }
   },
-  45000,
+  120_000,
 );

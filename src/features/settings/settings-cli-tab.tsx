@@ -53,6 +53,26 @@ export function SettingsCliTab() {
       </div>
 
       <div className="space-y-3">
+        <SettingsRow
+          title="Arbeitsplatz prüfen"
+          description="IT-Richtlinie, Team-Datei und Schlüsselbund im Terminal prüfen. Es werden keine Zugangsdaten ausgegeben."
+          featureId="settings.cli.doctor"
+          stacked
+        >
+          <CliCommandList
+            examples={[
+              {
+                command: "l8db doctor -o json",
+                description: "Konfiguration prüfen; Schlüsselbund bleibt ungeprüft",
+              },
+              {
+                command: "l8db doctor --test-keychain --strict",
+                description:
+                  "Schlüsselbund zusätzlich prüfen und bei offenen Schritten mit Fehlercode enden",
+              },
+            ]}
+          />
+        </SettingsRow>
         <SettingsRow settingId="cli-install" featureId="settings.cli.install">
           <div className="flex items-center gap-2">
             {status ? (

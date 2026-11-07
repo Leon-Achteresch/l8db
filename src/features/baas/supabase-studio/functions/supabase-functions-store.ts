@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 const STORAGE_KEY = "l8db.supabase-studio.function-slugs";
@@ -35,7 +36,7 @@ export const useSupabaseFunctionSlugs = create<FunctionSlugsState>()(
           },
         })),
     }),
-    { name: STORAGE_KEY },
+    { name: STORAGE_KEY, storage: createSafeJsonStorage() },
   ),
 );
 

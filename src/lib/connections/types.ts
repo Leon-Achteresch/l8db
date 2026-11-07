@@ -109,6 +109,10 @@ export interface SavedConnection {
   temporary?: boolean;
   vault?: boolean;
   team?: TeamLink | null;
+  description?: string;
+  owner?: string;
+  contact?: string;
+  runbook?: string;
 }
 
 export function usesTunnel<

@@ -153,11 +153,27 @@ export function restoreBlockReason(
   return null;
 }
 
+export function isPlainSqlRestore(kind: DatabaseKind, path: string): boolean {
+  return kind === "postgres" && /\.sql$/i.test(path.trim());
+}
+
+export function plainSqlRestoreOptions(options: BackupOptions): BackupOptions {
+  return {
+    ...options,
+    content: "all",
+    clean: false,
+    ifExists: false,
+    noOwner: false,
+    noPrivileges: false,
+    jobs: null,
+  };
+}
+
 export function restoreEffects(kind: DatabaseKind, options: BackupOptions): string[] {
   const effects: string[] = [];
   if (kind === "sqlite")
     effects.push("Die Datenbankdatei wird vollständig durch die Sicherung ersetzt.");
-  if (kind === "postgres" && options.clean)
+  if (kind === "postgres" && options.clean && options.content !== "data")
     effects.push("Vorhandene Objekte werden vor dem Einspielen gelöscht (--clean).");
   if (kind === "mongodb" && options.drop)
     effects.push("Vorhandene Collections werden vor dem Einspielen gelöscht (--drop).");

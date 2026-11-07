@@ -1,12 +1,13 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
-import { reportScenario } from "../scripts/performance-report";
+import { cpuThrottleRate, reportScenario } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
 import {
   closeWithEscape,
   interactionPercentiles,
   measureAppClick,
+  TAB_KEY,
 } from "./fixtures/perf-app-interactions";
 import {
   appRequestSnapshot,
@@ -54,7 +55,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         outsideToasters: document.querySelectorAll("[data-sonner-toaster]").length,
       }));
       const cdp = throttled ? await page.context().newCDPSession(page) : null;
-      await cdp?.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+      await cdp?.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(4) });
       await cdp?.send("HeapProfiler.collectGarbage");
       const heapBefore = (await cdp?.send("Runtime.getHeapUsage"))?.usedSize ?? null;
       const before = await appRequestSnapshot(page);
@@ -88,7 +89,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         true,
       );
       for (let index = 0; index < 25; index++) {
-        await page.keyboard.press("Tab");
+        await page.keyboard.press(TAB_KEY);
         expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(
           true,
         );
@@ -169,7 +170,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         await exportDialog.evaluate((element) => element.contains(document.activeElement)),
       ).toBe(true);
       for (let index = 0; index < 10; index++) {
-        await page.keyboard.press("Tab");
+        await page.keyboard.press(TAB_KEY);
         expect(
           await exportDialog.evaluate((element) => element.contains(document.activeElement)),
         ).toBe(true);

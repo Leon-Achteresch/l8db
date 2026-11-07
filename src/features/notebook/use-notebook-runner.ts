@@ -5,10 +5,11 @@ import { useActiveConnection } from "@/lib/connections";
 import { confirmSqlExecution } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { notebookVariables, prepareCellSql, useNotebookStore } from "@/lib/notebook";
+import { prepareConnection } from "@/lib/prepare-connection";
 import { capabilitiesFor } from "@/lib/providers";
 import { invalidateTableReads } from "@/lib/query-client";
+import { beginQueryCompletion } from "@/lib/query-completion";
 import { useQueryHistoryStore } from "@/lib/query-history";
-import { prepareConnection } from "@/lib/schema-compare/store";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { cancelTask } from "@/lib/tasks";
 
@@ -19,7 +20,7 @@ export function useNotebookRunner() {
   const cancelled = useRef(false);
 
   const runCell = useCallback(
-    async (id: string): Promise<boolean> => {
+    async (id: string, notify = true): Promise<boolean> => {
       const store = useNotebookStore.getState();
       const index = store.doc.cells.findIndex((c) => c.id === id);
       const cell = store.doc.cells[index];
@@ -41,6 +42,7 @@ export function useNotebookRunner() {
         return false;
       }
       store.setRunning(id, true);
+      const finish = notify ? beginQueryCompletion() : undefined;
       let target: { id: string; database: string | null } | null = null;
       let sql = cell.source;
       try {
@@ -89,9 +91,11 @@ export function useNotebookRunner() {
           rowCount: result.columns.length ? result.rows.length : result.rows_affected,
           error: null,
         });
+        finish?.("success");
         return true;
       } catch (error) {
         fail(error);
+        finish?.("error");
         if (target)
           useQueryHistoryStore.getState().record({
             connectionId: target.id,
@@ -113,10 +117,14 @@ export function useNotebookRunner() {
   const runMany = useCallback(
     async (ids: string[]) => {
       cancelled.current = false;
+      const finish = beginQueryCompletion();
+      let ok = true;
       for (const id of ids) {
         if (cancelled.current) break;
-        if (!(await runCell(id))) break;
+        ok = await runCell(id, false);
+        if (!ok) break;
       }
+      finish(cancelled.current ? "cancelled" : ok ? "success" : "error");
     },
     [runCell],
   );

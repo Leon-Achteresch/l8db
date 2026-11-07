@@ -2,8 +2,8 @@ import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { listSchemas } from "@/lib/db/catalog";
 import { cancelExecution } from "@/lib/db/core";
 import { executeQuery } from "@/lib/db/rows";
+import { prepareConnection } from "@/lib/prepare-connection";
 import { supports } from "@/lib/providers";
-import { prepareConnection } from "@/lib/schema-compare/store";
 import { schemaScopedConnectionString } from "@/lib/schema-scoped-url";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { MultiTargetCancelled } from "./limiter";
@@ -19,18 +19,56 @@ export function targetConnectionString(connection: SavedConnection, target: Mult
   return schemaScopedConnectionString(base, target.schema);
 }
 
+interface Preparation {
+  promise: Promise<SavedConnection>;
+  controller: AbortController;
+  waiting: number;
+  settled: boolean;
+}
+
 export function multiTargetExecutor(
   write: boolean,
-  prepare: (connectionId: string) => Promise<SavedConnection> = prepareConnection,
+  prepare: (
+    connectionId: string,
+    signal: AbortSignal,
+  ) => Promise<SavedConnection> = prepareConnection,
 ): MultiTargetExecutor {
-  const prepared = new Map<string, Promise<SavedConnection>>();
-  const ready = (connectionId: string) => {
-    let pending = prepared.get(connectionId);
-    if (!pending) {
-      pending = prepare(connectionId);
-      prepared.set(connectionId, pending);
+  const prepared = new Map<string, Preparation>();
+  const ready = (connectionId: string, signal?: AbortSignal): Promise<SavedConnection> => {
+    if (signal?.aborted) return Promise.reject(new MultiTargetCancelled());
+    let entry = prepared.get(connectionId);
+    if (!entry) {
+      const controller = new AbortController();
+      const created: Preparation = {
+        promise: prepare(connectionId, controller.signal),
+        controller,
+        waiting: 0,
+        settled: false,
+      };
+      const settle = () => {
+        created.settled = true;
+      };
+      created.promise.then(settle, settle);
+      prepared.set(connectionId, created);
+      entry = created;
     }
-    return pending;
+    const current = entry;
+    current.waiting++;
+    if (!signal) return current.promise;
+    return new Promise((resolve, reject) => {
+      const onAbort = () => {
+        current.waiting--;
+        if (current.waiting === 0 && !current.settled) {
+          current.controller.abort();
+          if (prepared.get(connectionId) === current) prepared.delete(connectionId);
+        }
+        reject(new MultiTargetCancelled());
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+      current.promise.then(resolve, reject).finally(() => {
+        signal.removeEventListener("abort", onAbort);
+      });
+    });
   };
   return {
     execute: async ({
@@ -43,7 +81,7 @@ export function multiTargetExecutor(
       onExecuting,
       preflight,
     }) => {
-      const connection = await ready(target.connectionId);
+      const connection = await ready(target.connectionId, signal);
       if (signal?.aborted) throw new MultiTargetCancelled();
       const url = targetConnectionString(connection, target);
       if (preflight) {

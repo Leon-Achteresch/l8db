@@ -493,6 +493,56 @@ pub async fn verify(
     Ok(())
 }
 
+pub async fn exists(adapter: &dyn DatabaseAdapter, old: &Snapshot) -> Result<bool, String> {
+    Ok(match old.kind.as_str() {
+        "table" => adapter
+            .list_tables(Some(&old.schema))
+            .await?
+            .iter()
+            .any(|v| v.name == old.name),
+        "view" => adapter
+            .list_views(Some(&old.schema))
+            .await?
+            .iter()
+            .any(|v| v.name == old.name),
+        "materialized_view" => adapter
+            .list_materialized_views(Some(&old.schema))
+            .await?
+            .iter()
+            .any(|v| v.name == old.name),
+        "sequence" => adapter
+            .list_sequences(Some(&old.schema))
+            .await?
+            .iter()
+            .any(|v| v.name == old.name),
+        "routine" | "procedure" | "package" => {
+            let routines = if old.kind == "procedure" {
+                adapter.list_procedures(Some(&old.schema)).await?
+            } else {
+                adapter.list_functions(Some(&old.schema)).await?
+            };
+            routines.iter().any(|r| {
+                if old.kind == "package" {
+                    r.name == old.name && r.return_type == "PACKAGE"
+                } else {
+                    format!("{}({})", r.name, r.identity_args) == old.name
+                }
+            })
+        }
+        _ => return Err("Objekt hat unbekannten Typ".into()),
+    })
+}
+
+pub async fn verify_absent(adapter: &dyn DatabaseAdapter, object: &Snapshot) -> Result<(), String> {
+    if exists(adapter, object).await? {
+        return Err(format!(
+            "Objekt existiert bereits, die Änderung erwartet es noch nicht: {}.{}",
+            object.schema, object.name
+        ));
+    }
+    Ok(())
+}
+
 pub async fn verify_removed(
     adapter: &dyn DatabaseAdapter,
     previous: &[Snapshot],
@@ -503,44 +553,7 @@ pub async fn verify_removed(
             .iter()
             .any(|new| new.schema == old.schema && new.kind == old.kind && new.name == old.name)
     }) {
-        let exists = match old.kind.as_str() {
-            "table" => adapter
-                .list_tables(Some(&old.schema))
-                .await?
-                .iter()
-                .any(|v| v.name == old.name),
-            "view" => adapter
-                .list_views(Some(&old.schema))
-                .await?
-                .iter()
-                .any(|v| v.name == old.name),
-            "materialized_view" => adapter
-                .list_materialized_views(Some(&old.schema))
-                .await?
-                .iter()
-                .any(|v| v.name == old.name),
-            "sequence" => adapter
-                .list_sequences(Some(&old.schema))
-                .await?
-                .iter()
-                .any(|v| v.name == old.name),
-            "routine" | "procedure" | "package" => {
-                let routines = if old.kind == "procedure" {
-                    adapter.list_procedures(Some(&old.schema)).await?
-                } else {
-                    adapter.list_functions(Some(&old.schema)).await?
-                };
-                routines.iter().any(|r| {
-                    if old.kind == "package" {
-                        r.name == old.name && r.return_type == "PACKAGE"
-                    } else {
-                        format!("{}({})", r.name, r.identity_args) == old.name
-                    }
-                })
-            }
-            _ => return Err("Entferntes Objekt hat unbekannten Typ".into()),
-        };
-        if exists {
+        if exists(adapter, old).await? {
             return Err(format!(
                 "Entferntes Objekt existiert weiterhin: {}.{}",
                 old.schema, old.name

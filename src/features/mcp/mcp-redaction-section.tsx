@@ -88,14 +88,14 @@ export function McpRedactionSection({ config, onUpdateConfig }: McpRedactionSect
 
       <div className="grid gap-4 xl:grid-cols-2">
         <McpRuleList
-          title="Spaltenregeln (Column Masking)"
+          title="Spaltenregeln"
           description="Maskiert gesamte Spalten anhand ihres Namens (z. B. passwort, secret, kreditkarte). Groß-/Kleinschreibung wird ignoriert."
           rules={config.redaction.columns}
           onChange={updateColumns}
         />
 
         <McpRuleList
-          title="Wertregeln (Value Pattern Masking)"
+          title="Wertregeln"
           description="Erkennt und maskiert Muster wie E-Mails, Telefonnummern, IBANs oder Tokens innerhalb von Tabellenzellen."
           rules={config.redaction.values}
           onChange={updateValues}

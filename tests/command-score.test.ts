@@ -96,3 +96,24 @@ test("Unterstreichung verwendet den kompaktesten Fuzzy-Treffer", () => {
   expect(commandMatchRanges("", "customers")).toEqual([]);
   expect(commandMatchRanges("xyz", "customers")).toEqual([]);
 });
+
+test("Umlaute, ß und Akzente lassen sich ohne Sonderzeichen suchen", () => {
+  const items = [
+    { label: "Übersicht öffnen" },
+    { label: "Größe ändern" },
+    { label: "Verbindung schließen" },
+    { label: "Tabelle löschen" },
+    { label: "Café-Daten" },
+  ];
+  const labels = (query: string) => rankCommands(items, query).map((item) => item.label);
+  expect(labels("ubersicht")).toEqual(["Übersicht öffnen"]);
+  expect(labels("uebersicht")).toEqual(["Übersicht öffnen"]);
+  expect(labels("übersicht")).toEqual(["Übersicht öffnen"]);
+  expect(labels("grosse")).toEqual(["Größe ändern"]);
+  expect(labels("groesse")).toEqual(["Größe ändern"]);
+  expect(labels("schliessen")).toEqual(["Verbindung schließen"]);
+  expect(labels("loschen")).toEqual(["Tabelle löschen"]);
+  expect(labels("cafe")).toEqual(["Café-Daten"]);
+  expect(commandMatchRanges("grosse", "Größe ändern")).toEqual([{ start: 0, end: 5 }]);
+  expect(commandMatchRanges("uber", "Übersicht")).toEqual([{ start: 0, end: 4 }]);
+});

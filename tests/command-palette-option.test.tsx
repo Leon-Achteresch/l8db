@@ -18,7 +18,7 @@ function renderOption(query: string) {
       uid: "palette",
       reduce: true,
       hasIcons: false,
-      onHover: () => {},
+      onPointerMove: () => {},
       onSelect: () => {},
     }),
   );

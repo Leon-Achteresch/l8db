@@ -82,12 +82,30 @@ pub async fn check_update<R: Runtime>(
     channel: String,
     timeout: u64,
 ) -> Result<Option<UpdateMetadata>, String> {
+    let policy = crate::organization::current(false)?;
+    let channel = policy
+        .policy
+        .settings
+        .update_channel
+        .as_deref()
+        .unwrap_or(&channel);
+    if !["stable", "canary"].contains(&channel) {
+        return Err("Ungültiger Updatekanal".into());
+    }
     let timeout = Duration::from_millis(timeout);
     let mut builder = webview.updater_builder().timeout(timeout);
     if channel == "canary" {
         builder = builder
             .endpoints(vec![canary_endpoint(timeout).await?])
             .map_err(|error| error.to_string())?;
+    } else {
+        builder = builder.version_comparator(|current, release| {
+            if current.pre.is_empty() {
+                release.version > current
+            } else {
+                release.version != current
+            }
+        });
     }
     let updater = builder.build().map_err(|error| error.to_string())?;
     let Some(update) = updater.check().await.map_err(|error| error.to_string())? else {

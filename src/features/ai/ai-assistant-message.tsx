@@ -3,7 +3,6 @@ import { Fragment, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { stripAiFollowups } from "@/lib/ai/result";
 import { interleaveAiRich } from "@/lib/ai/rich";
-import type { AiSession } from "@/lib/ai/store";
 import type { AiMessage } from "@/lib/db/ai";
 import { useSettingsStore } from "@/lib/settings";
 import { AiAnswer } from "./ai-answer";
@@ -17,7 +16,7 @@ import { ResponseAction } from "./beui/agents/streaming-response";
 
 export function AiAssistantMessage({
   message,
-  session,
+  siblings,
   streaming,
   status,
   disabled,
@@ -26,7 +25,7 @@ export function AiAssistantMessage({
   onFollowup,
 }: {
   message: AiMessage;
-  session?: AiSession;
+  siblings?: (string | undefined)[];
   streaming: boolean;
   status: string;
   disabled: boolean;
@@ -36,7 +35,8 @@ export function AiAssistantMessage({
 }) {
   const easyMode = useSettingsStore((state) => state.easyMode);
   const [open, setOpen] = useState(false);
-  const showWork = !easyMode || open;
+  const live = streaming && !easyMode;
+  const showWork = live || open;
   const parts = interleaveAiRich(message.text, message.rich);
   const work = message.rich?.filter((block) => block.type === "tool" || block.type === "decision");
   const hasWork = Boolean(message.reasoning || work?.length);
@@ -55,12 +55,8 @@ export function AiAssistantMessage({
       data-from="assistant"
       aria-label="Antwort"
       aria-busy={streaming}
-      className="group/message relative min-w-0 space-y-1.5 pl-6"
+      className="group/message relative min-w-0 space-y-1.5"
     >
-      <span
-        aria-hidden="true"
-        className="absolute top-3 bottom-4 left-[7px] w-px bg-gradient-to-b from-border via-border to-transparent"
-      />
       {(streaming || message.stopped || (hasWork && message.durationMs !== undefined)) && (
         <AiTurnHeader
           streaming={streaming}
@@ -68,8 +64,8 @@ export function AiAssistantMessage({
           durationMs={message.durationMs}
           stopped={message.stopped}
           steps={work?.length ?? 0}
-          open={open}
-          onToggle={easyMode && hasWork ? () => setOpen(!open) : undefined}
+          open={showWork}
+          onToggle={hasWork && !live ? () => setOpen(!open) : undefined}
         />
       )}
       {showWork && message.reasoning && (
@@ -100,7 +96,7 @@ export function AiAssistantMessage({
       {message.error && (
         <div
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-xs"
+          className="flex items-start gap-2.5 rounded-2xl bg-destructive/[0.08] px-3.5 py-2.5 text-xs"
         >
           <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-destructive" />
           <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-foreground/80">
@@ -110,7 +106,7 @@ export function AiAssistantMessage({
             <Button
               size="sm"
               variant="ghost"
-              className="-my-1 h-6 shrink-0 px-2 text-xs"
+              className="-my-1 h-6 shrink-0 rounded-full bg-background/70 px-2.5 text-xs hover:bg-background"
               disabled={disabled}
               onClick={() => onRetry(message)}
             >
@@ -135,7 +131,7 @@ export function AiAssistantMessage({
             <RotateCcw className="size-3.5" />
           </ResponseAction>
           <AiBranchSwitcher
-            session={session}
+            siblings={siblings}
             id={message.id}
             disabled={disabled}
             onBranch={onBranch}

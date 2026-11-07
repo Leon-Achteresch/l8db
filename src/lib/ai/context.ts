@@ -94,6 +94,8 @@ export function mergeAiModels(
                 id,
                 name: String(model.name ?? model.displayName ?? id),
                 efforts: Array.isArray(model.efforts) ? model.efforts : undefined,
+                fast: model.fast === true || model.supportsFastMode === true,
+                default: model.default === true || model.isDefault === true,
               },
             ]
           : [];
@@ -137,6 +139,13 @@ export function thoughtLevel(models: AiModels): { id: string; choices: string[] 
   return null;
 }
 
+export function fastSupported(profile: AiProfile, models: AiModels): boolean {
+  if (profile.provider !== "codex" && profile.provider !== "claude") return false;
+  const model =
+    models.models.find((entry) => entry.id === (profile.model || "default")) ??
+    (profile.model ? undefined : models.models.find((entry) => entry.default));
+  return Boolean(model?.fast);
+}
 export function modelEfforts(profile: AiProfile, models: AiModels, cli: boolean): string[] {
   const raw =
     models.models.find((model) => model.id === (profile.model || "default"))?.efforts ?? [];

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export type AutomationViewId = "tasks" | "history" | "alerts" | "settings";
@@ -38,6 +39,7 @@ export const useAutomationUiState = create<AutomationUiState>()(
     }),
     {
       name: STORAGE_KEY,
+      storage: createSafeJsonStorage(),
       partialize: ({ collapsedFolders, listWidth, lastView, stepView }) => ({
         collapsedFolders,
         listWidth,

@@ -1,8 +1,13 @@
+import { replaceSchemeUrls } from "@/lib/scheme-urls";
+
 const AUTH_ERROR_PATTERN =
   /password authentication|28P01|Access denied for user '[^']*'@'[^']*'(?!\s*to database)|Login failed|Authentication failed|NOAUTH|WRONGPASS|invalid password|ORA-01017|ORA-01005|Oracle-Passwort fehlt/i;
 
 const INTERRUPTED_QUERY_PATTERN =
   /Query-Timeout|SQLSTATE (57014|55P03)|abgebrochen|Abbruch|canceling statement|lock timeout|Lock wait timeout|ORA-01013/i;
+
+const OWN_MESSAGE_PATTERN =
+  /^(SSH|Sprung-Host|Weiterleitung|Proxy|Verbindung zum Proxy|Tunnel-Befehl|Befehls-Tunnel|Lokaler|Zielhost|Pageant|known_hosts|Unbekannter SSH|Host-Key|Der |Die |Das |Gib |Setze |Wähle |Mehrere |Sonderzeichen |Ports )/;
 
 export const AUTH_FAILED_MESSAGE =
   "Anmeldung fehlgeschlagen. Prüfe Benutzer und Datenbankpasswort.";
@@ -30,11 +35,15 @@ export function queryErrorMessage(error: unknown): string | null {
 }
 
 export function connectionError(error: unknown): string {
-  const message = errorText(error)
-    .replace(/(password|pwd)(\s*=\s*)("[^"]*"|'[^']*'|[^;\s]*)/gi, "$1$2***")
-    .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s]+/gi, "[Verbindungs-URL]");
+  const message = replaceSchemeUrls(
+    errorText(error).replace(/(password|pwd)(\s*=\s*)("[^"]*"|'[^']*'|[^;\s]*)/gi, "$1$2***"),
+    "[^\\s]+",
+    () => "[Verbindungs-URL]",
+  );
   if (/__TAURI|invoke|undefined.*(properties|function)/i.test(message))
     return "Zum Testen und Verbinden öffne l8db als Desktop-App.";
+  const plain = message.replace(/^Error:\s*/, "");
+  if (OWN_MESSAGE_PATTERN.test(plain)) return plain;
   if (AUTH_ERROR_PATTERN.test(message)) return AUTH_FAILED_MESSAGE;
   if (
     /Oracle-Host \S+ (antwortet nicht|ist nicht erreichbar|kann nicht aufgelöst werden)/.test(

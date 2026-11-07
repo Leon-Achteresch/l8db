@@ -135,24 +135,73 @@ pub fn locked<T>(work: impl FnOnce() -> T) -> T {
     work()
 }
 
+fn frontend_account(account: &str) -> Result<(), String> {
+    if account.starts_with("backend:") {
+        Err("Dieser Zugang ist ausschließlich im Backend verfügbar.".into())
+    } else {
+        Ok(())
+    }
+}
+
+fn backend_account(account: &str) -> Result<(), String> {
+    if account.starts_with("backend:") && account.len() <= 512 {
+        Ok(())
+    } else {
+        Err("Ungültiger Backend-Zugang.".into())
+    }
+}
+
+pub(crate) async fn backend_secret(account: String) -> Result<Option<String>, String> {
+    backend_account(&account)?;
+    blocking(move || backend::get(&account)).await
+}
+
+pub(crate) async fn set_backend_secret(account: String, secret: String) -> Result<(), String> {
+    backend_account(&account)?;
+    blocking(move || locked(|| backend::set(&account, &secret))).await
+}
+
+pub(crate) async fn remove_backend_secret(account: String) -> Result<(), String> {
+    backend_account(&account)?;
+    blocking(move || locked(|| backend::delete(&account))).await
+}
+
 #[tauri::command]
 pub async fn store_secret(account: String, secret: String) -> Result<(), String> {
+    frontend_account(&account)?;
     blocking(move || locked(|| backend::set(&account, &secret))).await
 }
 
 #[tauri::command]
 pub async fn load_secret(account: String) -> Result<Option<String>, String> {
+    frontend_account(&account)?;
     blocking(move || backend::get(&account)).await
 }
 
 #[tauri::command]
 pub async fn delete_secret(account: String) -> Result<(), String> {
+    frontend_account(&account)?;
     blocking(move || locked(|| backend::delete(&account))).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::{delete_secret, keychain_lock, load_secret, locked, store_secret};
+
+    #[tokio::test]
+    async fn backend_accounts_are_unavailable_over_the_frontend_bridge() {
+        assert!(load_secret("backend:cloud:neon:test".into()).await.is_err());
+        assert!(
+            store_secret("backend:payments:test".into(), "secret".into())
+                .await
+                .is_err()
+        );
+        assert!(delete_secret("backend:workspace:test".into())
+            .await
+            .is_err());
+        assert!(super::backend_account("regular-connection").is_err());
+        assert!(super::frontend_account("regular-connection").is_ok());
+    }
 
     #[test]
     fn keychain_writes_wait_for_a_running_sync_merge() {

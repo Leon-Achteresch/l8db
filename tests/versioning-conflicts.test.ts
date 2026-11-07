@@ -29,6 +29,7 @@ describe("versioning merge conflicts", () => {
     expect(mergeConflicts("<<<<<<< Aktueller Branch\nunfinished")).toHaveLength(0);
     expect(hasMergeMarkers("<<<<<<< Aktueller Branch\nunfinished")).toBe(true);
     expect(hasMergeMarkers("SELECT '<<<<<<<' AS literal;\n")).toBe(false);
+    expect(hasMergeMarkers("/*\n=======\n*/\nSELECT 1;\n")).toBe(false);
   });
 
   test("resolves Windows line endings without changing adjacent lines", () => {

@@ -228,3 +228,105 @@ Die unveränderte native Tauri-Probe mit 20.000 × 121 Datenspalten und zehn Sek
 Der vollständige Workspace mit 5.000 × 120 Datenzellen erreichte in WebKit 57,6 FPS, p95 22 ms und maximal 45 ms. Damit bleiben die Abnahmeschwellen auch bei geringerer Hintergrundlast verletzt. Andere Apps erklären die verbleibenden Probleme nicht allein.
 
 Ein zusätzlicher Versuch halbierte den Zeilen- und Spaltenpuffer auf 128 Pixel. Die breite Tabellenansicht bestand damit die Komponentenprüfung einschließlich Wheel- und Funktionsprüfungen (60,03–60,05 FPS, maximal 40 ms, 177 DOM-Zellen beim Mount). Der Workspace verfehlte mit 59,8 FPS und maximal 51 ms weiterhin die Grenze; das SQL-Ergebnis zeigte einen Frame mit 108 ms. Der Versuch wurde verworfen, der Puffer bleibt bei 256 Pixeln. Diese einzelnen Läufe belegen keine statistisch gesicherte Verbesserung oder Verschlechterung der Ausreißer.
+
+
+## Rexa-Abgleich: neue Verbindungen und Verwaltungsansichten (5. November 2026)
+
+Gemessen im Linux-Entwicklungs-VM: Debian 13, Linux 6.12.111, x86_64, QEMU Virtual CPU (8 vCPU), 16.775.348.224 Byte RAM, kein Swap; Bun 1.3.10, Rust 1.99.0. Die breite Testsuite lief auf dem gemeinsam genutzten Entwicklungsrechner mit weiteren Build-/Labprozessen. Die Werte sind keine isolierte Hardwarebaseline und kein Nachweis für macOS, Windows oder alle Datenbankfamilien. Browserprüfungen verwenden Chromium und gemockten Tauri-Transport; echte Adapter-/HTTP-/PostgreSQL-Tests sind separate Nachweise.
+
+| Szenario | Umfang | Median | p95 | Begrenzung und Ergebnis |
+|---|---|---:|---:|---|
+| Profilverweise | 10.000 JDBC-/Workspace-Profile × 11 | 28,62 ms | 42,27 ms | Heapdelta 4.524.820 Byte, 100 Zusammenfassungen behalten, 0 DB-/Leerlaufanfragen |
+| Cloud-Projektseiten | 20 × 100 Projekte | 0,70 ms/Seite | 0,94 ms/Seite | 5 Seiten/500 Projekte behalten, genau 20 Anfragen |
+| Cloud-Ansicht, Serverrendering | 50 Konten, 100 Projekte | 7,04 ms | 14,68 ms | 198.226 Byte Markup, 0 DB-Anfragen beim Rendern |
+| Zahlungen, vor Datumsformatierer-Wiederverwendung | 500 Abos, 15 Renderdurchläufe | 69,30 ms | 90,04 ms | Medianbudget von 60 ms verletzt |
+| Zahlungen, nach Änderung | gleicher Testumfang | 31,42 ms | 52,52 ms | bestehende Budgets erfüllt, 5 Seiten/500 Zeilen, 20 Anfragen für 20 Seiten, Heapdelta 25.081.503 Byte |
+
+Die Zahlungsoptimierung erstellt den deutschen Datumsformatierer einmal statt für jede Tabellenzelle. Die Vorher-/Nachherläufe hatten unterschiedliche Hintergrundlast; daraus wird kein genauer Beschleunigungsfaktor abgeleitet. Grenzwerte wurden nicht erhöht. Weitere Prüfungen belegen verworfene veraltete Antworten und keine automatischen Abfragen bei Leerlauf, Fokus- oder Netzwechsel.
+
+Die zugehörigen Szenarien stehen in `tests/managed-connections.test.ts`, `tests/cloud-accounts-perf.test.ts`, `tests/payments-perf.test.ts`, `tests/workspaces-perf.test.tsx` sowie den Federation-/JDBC-/Workspace-/Payments-/Cloud-Browsersuiten. Der volle Bun-Lauf schreibt jede Datei isoliert nach `test-artifacts/unit/`; ursprüngliche Fehler des Durchgangs bleiben zusätzlich in `/tmp/l8db-rexa-bun-full.log` erhalten. Live-Abdeckung und fehlende Cloud-Zugangsdaten müssen getrennt vom Browsertransport bewertet werden.
+
+### Echte Laufzeiten und Datenbankadapter
+
+| Szenario | Umfang | Median | p95 | Begrenzung und Ergebnis |
+|---|---|---:|---:|---|
+| JDBC / H2 | 100.000 Quellzeilen, 15 × 1.000 Ergebniszeilen | 18,43 ms | 26,37 ms | 169.787 Byte Antwort, eine gleichzeitige Anfrage |
+| JDBC / PostgreSQL 18.6 | 100.000 Quellzeilen, 9 × 1.000 Ergebniszeilen | 21,96 ms | 63,49 ms | Antwort unter 256 KiB; Parameter, Präzision, Ergebnisgrenzen und Leseschutz geprüft |
+| Neon-WebSocket / lokales PostgreSQL | 9 × 100.000 Zeilen, insgesamt 57,6 MB Text | 305,41 ms | 389,91 ms | Session-Wiederverwendung, Rollback, Abbruch und echtes pg_dump 18.6 bestanden |
+| SpacetimeDB 2.14.1 | 10.000 Kunden und 10.000 Bestellungen, 9 × 1.000 Ergebniszeilen | 54,76 ms | 61,21 ms | maximal 210.839 Byte/Seite, neun SQL-Anfragen; vier parallele Anfragen begrenzt auf vier |
+| Workspace-Metadaten / lokales HTTP und SQLite | 10.000 Benutzer, 50.000 Audit-Einträge | 7,93 ms | 17,27 ms | 100 Einträge/Seite, zwei Anfragen/Durchlauf, 20.546 Byte Antwort |
+| Billing-Webhook / Deno 2.9.8 | 31 × 128 KiB, echte lokale HTTP-Anfragen | 1,68 ms | 2,93 ms | zusammen mit Checkout 62 HTTP-/155 simulierte Upstream-Anfragen |
+| Billing-Checkout / Deno 2.9.8 | 31 echte lokale HTTP-Anfragen | 0,96 ms | 1,54 ms | Heap und externer Speicher zusammen +8.923.907 Byte, RSS +2.981.888 Byte |
+
+JDBC lief unter Temurin JDK 21.0.13+9; die Java-Bridge wurde zusätzlich mit `javac --release 17` kompiliert. Das ersetzt keinen Lauf unter einem tatsächlichen JDK 17. H2 2.3.232 und der PostgreSQL-JDBC-Treiber 42.7.7 sind die geprüften Treiber. Abbruch und Disconnect blieben unter 500 ms; Timeout und Leerlaufbereinigung wurden ebenfalls geprüft.
+
+Die Neon-Prüfung verwendet einen lokalen WebSocket-Proxy vor echtem PostgreSQL, keinen gehosteten Neon-Endpunkt. SpacetimeDB lief mit dem offiziellen SDK und Server 2.14.1. Das Verwerfen einer HTTP-Anfrage gibt lokale Arbeit frei; ein sofortiger serverseitiger Abbruch wird nicht behauptet. In den nativen Szenarien entstanden im Leerlauf keine zusätzlichen Anfragen.
+
+Die beiden Billing-Funktionen wurden mit echtem Deno inklusive HTTP-Server, Streams und WebCrypto ausgeführt und mit dessen TypeScript-Prüfer geprüft. Nur Stripe-/Supabase-Upstreams waren simuliert. Geprüft wurden unter anderem rohe UTF-8-Signaturen, Zeitfenster, Größenlimits, Origin, JWT, Preise, Idempotenz und Fehlerbereinigung. Für den sequenziellen Performance-Durchlauf galt eine gleichzeitige Anfrage; nach 250 ms Leerlauf gab es keine weiteren Requests. Der Deno-Lauf fand während einer speicherbegrenzten PostgreSQL-Testkompilierung statt und ist keine isolierte Hardwarebaseline. Das Limit von 64 MiB Speicherzuwachs und die Latenzbudgets von 100/250 ms wurden eingehalten.
+
+### Freigegebene Review-Korrekturen
+
+Nach dem einmaligen Opus-5.5-High-Review und der Freigabe aller bestätigten Funde wurden 64 gezielte Rust-Tests sowie sieben echte JDBC-/WSS-/Spacetime-/Workspace-PostgreSQL-Livetests ausgeführt. Alle bestanden. Die nachfolgenden Werte stammen aus dieser Korrekturrunde; die früheren Messungen oben bleiben als getrennte Nachweise erhalten.
+
+| Szenario | Umfang | Median | p95 | Begrenzung und Ergebnis |
+|---|---|---:|---:|---|
+| JDK-Statuscache | 9 × 100 Zugriffe | 0,117 ms | 0,153 ms | keine JDK-Prozesse beim Cache-/Registry-Workload; vier gleichzeitige Prüfungen starten zusammen einen Prozess |
+| Provider-Registry | neun Listenabrufe | 7,38 ms | 80,70 ms | kein JDK-Prozess beim App-Start; frische Prüfung erst bei explizitem Treiberzugriff |
+| JDBC / H2, Syntaxfehler | neun Fehler / neun Anfragen | 0,53 ms | 11,06 ms | dieselbe PID und temporäre Sitzung bleiben erhalten; keine Prozessneustarts |
+| Neon-Listenercache | 9 × 1.000 Treffer, zusätzlich 64 konkurrierende Wiederverwendungs-/Idle-Fälle | 1,34 ms | 1,47 ms | ein Listener, höchstens vier Arc-Besitzer, keine Upstream-/Leerlaufanfragen |
+| Spacetime-SQL-Prüfer | 262.195 Byte SQL × 31 | 0,86 ms | 0,96 ms | 262.195 Byte behaltene Ausgabe, keine DB-Anfragen oder Hintergrundarbeit; Budgets 50/100 ms |
+| Federation / SQLite | 2 × 20.000 Zeilen, zusammengesetzter PK `(tenant,id)` | 1.252,7 ms | 1.308,6 ms | volle Schlüsselordnung, Seiten höchstens 512 Zeilen, 82 COUNT-/Datenseitenoperationen, Rohwerte unter 8 MiB; Budgets 3.000/5.000 ms |
+| Workspace-Loginbegrenzung | 1.024 Clients × 15 Durchläufe | 48,04 ms | 56,79 ms | höchstens 768 Zähler, geschätzte Schlüssel-/Bucketkapazität 135.579 Byte, keine Passwortjobs/DB-Anfragen/Hintergrundarbeit; Budgets 100/250 ms |
+
+Der neue Federation-Test deckt tatsächlich wechselnde ungeordnete SQLite-Scans, zusammengesetzte Schlüssel, den Übergang 512/513 Zeilen, Views, fehlende/NULL-/duplizierte Schlüssel und echtes `SQLITE_FULL` mit zurückgerollter Ladecharge ab. Die 64-MiB-Rohdatengrenze und das 32-MiB-SQLite-Limit je Alias wurden nicht erhöht. Quellen über 512 Zeilen benötigen eine belegbar stabile und begrenzte Adapterstrategie; zusätzliche Schema-/View-/PK-Metadatenabfragen zählen nicht zu den 82 COUNT-/Datenseitenoperationen.
+
+Die wiederholten JDBC-Datenläufe ergaben H2 17,74/27,10 ms, PostgreSQL 20,04/80,43 ms; Neon-WSS 332,66/360,40 ms und SpacetimeDB 59,28/64,29 ms (jeweils Median/p95, gleiche Datensätze und Grenzen wie oben). Für die Workspace-Metadatenseiten waren es 9,89/21,17 ms bei weiterhin 20.546 Byte Antwort. Unterschiedliche Hintergrundlast erlaubt daraus keinen präzisen Beschleunigungsfaktor. Vor Testausführung wurde über die gemeinsame Cargo-Sperre auf parallel laufende Kompilierungen gewartet; Warte- und Kompilierzeit sind nicht Teil dieser Funktionslatenzen.
+
+Der aktualisierte JDBC-Browserlauf prüfte 64 Profile in drei Durchläufen mit 56 Assertions: Median 993,6 ms, p95 7.385,2 ms bei unveränderten Budgets von 8.000/12.000 ms, weniger als 3.000 DOM-Knoten und keinen Leerlaufanfragen. JDK-Statusänderungen nach expliziter Prüfung und externe Registry-Aktualisierungen wurden ebenfalls abgedeckt. Gleichzeitig lief der native ThinLTO-Build; diese Werte sind ein bestandener Budgettest unter Hintergrundlast und keine isolierte Performancebaseline. Der Browser verwendete weiterhin simulierten Tauri-Transport.
+
+### Zusätzlicher nativer MacBook-Nachweis und Abschluss
+
+Am 5. November 2026: macOS 27.0.1 (26A434), arm64, Apple M3 mit acht logischen CPUs, 17.179.869.184 Byte RAM, Bun 1.3.10, Rust/Cargo 1.99.0. Das war der reale Entwicklungs-Mac mit anderen regulären Prozessen, keine CPU-/Heap-Simulation und keine isolierte Hardwarebaseline. Native Rust-Tests und Binary enthielten DuckDB und ODBC. Testkompilierung: ein Build-Job, `CARGO_INCREMENTAL=0`, `--config profile.test.package.l8db.debug=0`. Das native Binary entstand mit `CARGO_BUILD_JOBS=1 cargo build --locked --bin l8db` im unoptimierten Entwicklungsprofil ohne Release-/Codegen-Overrides. Wegen anfangs 24 GiB freiem Speicher und 107 GiB bestehendem Debugcache wurde kein zusätzlicher Releasecache aufgebaut. Die Quellkonfiguration blieb unverändert; der Linker warnt bei diesem Debugbuild vor einem großen `__eh_frame` und möglichen Auswirkungen auf Exception Handling.
+
+| Szenario | Umfang | Median | p95 | Begrenzung und Ergebnis |
+|---|---|---:|---:|---|
+| Workspace / echtes MySQL 8.4.13 | 10.000 Quellzeilen, 15 Leseanfragen mit jeweils frischer Sitzung | 40,84 ms | 46,56 ms | Budgets 100/250 ms; 15 HTTP-Anfragen, 90 Quell-SQL-Anweisungen, 150.015 serverseitig gesendete Zeilen; 1.000 Ergebniszeilen/28.882 Byte je Antwort behalten, Grenze 128 KiB |
+| Workspace-Metadaten / lokales HTTP und SQLite | 10.000 Benutzer, 50.000 Audit-Einträge | 2,60 ms | 3,01 ms | zwei Anfragen/Durchlauf, 100 Einträge/Seite, 20.546 Byte Antwort, keine Hintergrundjobs |
+| Workspace-Loginbegrenzung | 1.024 Clients × 15 Durchläufe | 21,79 ms | 22,37 ms | maximal 768 Zähler/130.140 Byte Schlüssel-/Bucketkapazität, keine Passwortjobs/DB-Anfragen/Hintergrundarbeit |
+| Profilverweise | 10.000 Profile × 11 | 9,90 ms | 19,76 ms | Heapdelta 4.504.495 Byte, 100 Zusammenfassungen, keine DB-/Leerlaufanfragen |
+| Artefakt-JSON | 2.000 Migrationen, 344.914 Byte Eingabe | 10,49 ms | 10,70 ms | keine DB-Anfragen |
+| MCP-Leseschutz | 2.000 Spalten, 22.909 Byte SQL | 11,17 ms | 11,25 ms | keine DB-Anfragen, Eingabegrenze weiter 4 MiB |
+
+Der vollständige MySQL-Test bestand mit 560 Assertions in 6,69 Sekunden einschließlich Start/Restart und Fixture-Einrichtung; die Latenzwerte messen nur die 15 Abfragen. Vier am Tabellenlock wartende Abfragen belegten die vier Slots; die fünfte erhielt HTTP 429. Der lokale HTTP-Abbruch dauerte 2,49 ms (Grenze zwei Sekunden). Zu diesem Zeitpunkt waren weiterhin vier serverseitige Queries vorhanden. Erst nach Unlock waren Queries und offene Verbindungen null; 250 ms Leerlauf erzeugten keine zusätzlichen Requests/SQL-Anweisungen/Auditeinträge. Die 15 frischen Sitzungen wurden vollständig abgebaut. Ergebniszeilen und Antwortgröße belegen begrenzte Ergebnisaufbewahrung, keine Messung des nativen Gesamtheaps oder RSS und kein serverseitiges 1.000-Zeilen-Limit.
+
+Die erste zusätzliche Rust-Ausführung bestand die 36 MCP-/Watch-/Artefakt-Verträge, hing dann aber bei vier SQLite-Abfragen: Der äußere Abbruch aus `e63b345c` ließ SQLite-Arbeiter weiterrechnen, bevor deren eigener Interrupt laufen konnte. Der Lauf wurde beendet und zählt nicht als vollständiger Pass. Die Korrektur innerhalb derselben freigegebenen Fix-Runde erhält PostgreSQL-/SQLite-Nativabbruch und beschränkt den äußeren Abbruch auf MySQL. Danach bestanden 13 reguläre Workspace-Tests und der ignorierte PostgreSQL-Livetest. Ein bestehender SQLite-Test verlangt jetzt ausdrücklich den nativen Interruptfehler und eine erfolgreiche Folgeabfrage auf derselben Verbindung: 0,635 ms bis zum Abbruch, 0,662 ms für die Folgeabfrage, jeweils unverändertes Limit zwei Sekunden, null aktive Jobs und keine zusätzlichen Audit-Schreibvorgänge in 80 ms Leerlauf. Das sind Einzelmessungen, keine Median-/p95-Verteilung des Abbruchs.
+
+MySQL 8.4.13 und PostgreSQL 18.6 liefen als eigene Linux/aarch64-Container in Docker 29.9.1, nur auf Loopback gebunden. Client/Binary und Rust-Tests liefen nativ auf macOS. Die eigenen Container und anonymen Volumes wurden entfernt; fremde Container und Linux-Labs blieben unverändert. Frühere Linux-Messungen bleiben eigenständige Nachweise, ohne daraus einen plattformübergreifenden Beschleunigungsfaktor abzuleiten. Dieser erste Mac-Durchgang enthielt noch keinen aktuellen optimierten Release-Nachweis; dieser folgt im nächsten Abschnitt. Ein Watch-spezifischer ignorierter Livetest, Windows, vollständiges Heap-Profiling, zusätzliche JDBC-Vendoren und echte gehostete Cloud-Upstreams bleiben getrennte Abdeckungslücken. Es gab keine weitere Review-Runde und keine Lockerung der Budgets.
+
+### Optimierter nativer Mac-Releaseabschluss, 5. November 2026
+
+Quellstand `55edbe020d3b779834b703c40a6e352d64e8eb87`, nach Git-Synchronisierung sauber und unverändert. Umgebung wie im vorherigen Mac-Nachweis: macOS 27.0.1 (26A434), arm64, Apple M3, acht logische CPUs, 17.179.869.184 Byte RAM, Bun 1.3.10 (30e609e0), Rust/Cargo 1.99.0 und Docker 29.9.1. Der reale Entwicklungs-Mac führte reguläre Hintergrundprozesse aus; beim MySQL-Lauf lief kein schwerer Build parallel. Das ist keine isolierte Hardwarebaseline oder CPU-/Heap-Simulation.
+
+Vor dem Build waren intern etwa 12 GiB frei und 119 GiB Debugcache vorhanden; die bereits eingebundene IntensoSSD bot 232 GiB. Dort entstand ein eigener Cargo-Targetcache, ohne bestehende Caches oder fremde Dateien zu löschen. Die RAM-Druckabfrage meldete zu Beginn 61 % systemweiten freien Speicher. Es gab keinen vorhandenen Releasecache im Checkout oder am verwendeten SSD-Ziel. Das normale Releaseprofil bestand beim ersten Versuch ohne Compiler-Overrides: Opt-Level 3, ThinLTO, eine Codegen-Unit, Strip und `panic=unwind`, mit allen Defaulttreibern einschließlich DuckDB und statischem unixODBC. Cargo-Fingerprints bestätigen `default`, `duckdb`, `odbc`; Tauri aktiviert zusätzlich `custom-protocol`. `otool -L` zeigt nur Apple-Systembibliotheken und Frameworks, keine dynamische unixODBC-Abhängigkeit.
+
+Aus dem Projektwurzelverzeichnis:
+
+```sh
+PATH=/private/tmp/l8db-bun-1310/bun-darwin-aarch64:$PATH CARGO_TARGET_DIR=/Volumes/IntensoSSD/l8db-rexa-release-55edbe02 CARGO_BUILD_JOBS=1 TMPDIR=/Volumes/IntensoSSD/l8db-rexa-release-55edbe02/tmp /usr/bin/time -l bun run tauri build --no-bundle --config '{"build":{"beforeBuildCommand":"true"}}' -- --locked --bin l8db
+```
+
+Das temporäre Tauri-Override verwendete das bereits bestandene, unveränderte TypeScript-/Vite-Ergebnis erneut. Das vorhandene `dist` vom selben Frontendstand enthält 623 Dateien/22.685.936 Byte; sein SHA-256 ist `656f2a09231c545bc2a5495e1a65eb7a381f9bcf7d93323677339338323ddb3f` (sortierte relative Dateipfade, jeweils NUL und Dateiinhalt). Quell-/Lockfiles und dauerhafte Cargo-/Tauri-Konfiguration blieben unverändert. Die Kompilierung dauerte laut Cargo 52 min 18 s, laut `/usr/bin/time -l` 3.139,26 s mit maximal 5.507.317.760 Byte Resident Set. Dieser Speicherwert betrifft den Build, nicht den Laufzeitheap der App. Es blieben die bekannten Tiberius- und `STATIC_VCRUNTIME`-Deprecation-Warnungen.
+
+Ergebnis: `/Volumes/IntensoSSD/l8db-rexa-release-55edbe02/release/l8db`, Mach-O 64-bit arm64, 120.697.168 Byte, SHA-256 `906531345e222faba52d6e85736fe45b5c874021251a1ba497148a9f444054ba`.
+
+Der vollständige unveränderte `tests/workspaces-mysql-live.test.ts` lief mit `L8DB_WORKSPACE_SERVER_BIN` auf dieses neue Releasebinary und einem eigenen, ausschließlich an Loopback gebundenen MySQL-8.4.13-Linux/aarch64-Container mit `performance_schema=1`. Ein erster Labversuch scheiterte vor dem Appstart am Bun-Root-TCP-Login mit MySQL 1045, während derselbe Login mit der MySQL-CLI funktionierte. Nur das Rootpasswort des eigenen Labs wurde auf das zuvor verwendete lokale Testpasswort gesetzt; danach bestanden ein separater Bun-Logincheck und die vollständige Fixture. Die genaue Ursache dieses passwortabhängigen Verhaltens wurde nicht ermittelt. Anwendung, Fixture und Budgets wurden dafür nicht verändert.
+
+| Release-Szenario | Umfang | Median | p95 | Ergebnis und unveränderte Grenzen |
+|---|---|---:|---:|---|
+| Workspace / echtes MySQL 8.4.13 | 10.000 Quellzeilen, 15 frische Lesesitzungen | 7,56 ms | 9,96 ms | 100/250-ms-Budgets bestanden; 15 HTTP-Anfragen, 90 SQL-Anweisungen (höchstens 120), 150.015 gesendete Quellzeilen (höchstens 150.120); 1.000 Ergebniszeilen/28.881 Byte je Antwort behalten, unter 128 KiB |
+
+Die vollständige Fixture bestand mit 560 Assertions, einem Test und null Fehlern in 808 ms einschließlich Start/Restart und Einrichtung (Testkörper 741,22 ms). Die Latenzverteilung umfasst nur die 15 Leseanfragen. Alle 15 frischen Verbindungen wurden abgebaut. Vier wartende Queries belegten die vier Slots; die fünfte Anfrage erhielt HTTP 429. Der lokale HTTP-Abbruch dauerte 0,34 ms bei unverändert zwei Sekunden Limit, eine Einzelmessung. Dabei liefen serverseitig noch vier Queries; ein unmittelbarer serverseitiger MySQL-Abbruch ist weiterhin nicht zugesichert. Nach Unlock waren Queries und Verbindungen null; 250 ms Idle erzeugten null weitere HTTP-/SQL-Anfragen und Auditeinträge. Ergebnisgrenzen belegen begrenzte Aufbewahrung, kein serverseitiges 1.000-Zeilen-Limit und kein natives Heap-/RSS-Profil.
+
+Zusätzlich erzeugte `bun run tauri bundle --bundles app --no-sign --ci --config '{"bundle":{"createUpdaterArtifacts":false}}'` mit denselben PATH-/Target-/TMPDIR-Einstellungen eine lokale `release/bundle/macos/l8db.app`. `plutil -lint` bestätigte die `Info.plist`; das enthaltene Binary hat denselben SHA-256 wie das getestete Releasebinary. Das ist ein lokaler Paketstrukturcheck ohne Signierung, Notarisierung, DMG/Installer, Gatekeeper- oder GUI-Startnachweis und ohne Veröffentlichung.
+
+Das eigene MySQL-Lab samt anonymem Volume und die Fixture-Prozesse/-Daten sind entfernt. Der neue SSD-Cache samt Binary und `.app` bleibt erhalten (zusammen etwa 4,4 GiB); fremde Labs/Dateien und Linux-Oracle wurden nicht angefasst. Lokale Logs liegen unter `/private/tmp/l8db-rexa-mac-release-*.log`; die dauerhaften Werte stehen auch in `docs/rexa-validation-handoff.json` unter `macReleaseValidation`. Die früheren Debug-/Linux-Ergebnisse bleiben separate Nachweise, ohne daraus einen präzisen Beschleunigungsfaktor abzuleiten. Die übrigen Abdeckungslücken bleiben bestehen; es gab kein weiteres Review, keine weitere Fix-Runde und keine Budgetlockerung.

@@ -15,11 +15,14 @@ export {
 export type { OracleKeyValue } from "./oracle-key-value";
 export { isOracleKeyValue, parseOracleKeyValue } from "./oracle-key-value";
 export {
+  connectionUrlString,
   filePath,
   isTrustedConnection,
   kindFromUrl,
+  multiHostUrl,
   parseConnectionUrl,
   sslModeFromUrl,
 } from "./parse";
+export { isProfileConnection, parseProfileConnection } from "./profile-pointer";
 export { connectionSummary, detectProvider, providerFor } from "./summary";
 export { joinKeySecret, searchParam, splitKeySecret, withSearchParam } from "./warehouse";

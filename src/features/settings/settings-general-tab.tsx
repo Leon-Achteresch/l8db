@@ -4,11 +4,13 @@ import { toast } from "sonner";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { OrganizationPanel } from "@/features/settings/organization-panel";
 import { PortableWorkspacePanel } from "@/features/settings/portable-workspace-panel";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { SettingsTableTabs } from "@/features/settings/settings-table-tabs";
 import { SyncPanel } from "@/features/settings/sync-panel";
 import { TeamPanel } from "@/features/settings/team-panel";
+import { TeamWorkspacesRow } from "@/features/settings/team-workspaces-row";
 import { TourSection } from "@/features/settings/tour-section";
 import { useSettingsStore } from "@/lib/settings";
 
@@ -43,6 +45,7 @@ export function SettingsGeneralTab() {
       </div>
 
       <div className="space-y-3">
+        <OrganizationPanel />
         <SettingsRow settingId="easy-mode">
           <Switch checked={easyMode} onCheckedChange={setEasyMode} aria-label="Easy Mode" />
         </SettingsRow>
@@ -94,6 +97,8 @@ export function SettingsGeneralTab() {
         <SyncPanel />
 
         <TeamPanel />
+
+        <TeamWorkspacesRow />
 
         <SettingsRow settingId="reset">
           <Button variant="outline" size="sm" onClick={handleReset}>

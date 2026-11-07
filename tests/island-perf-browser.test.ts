@@ -9,6 +9,7 @@ import {
 } from "bun:test";
 import { type Browser, type CDPSession, chromium, type Page, webkit } from "playwright";
 import type { ViteDevServer } from "vite";
+import { cpuThrottleRate } from "../scripts/performance-report";
 import { seedApp } from "./fixtures/perf-app";
 
 const ENABLED = Boolean(process.env.L8DB_ISLAND_PERF);
@@ -266,7 +267,7 @@ beforeAll(async () => {
   if (!WEBKIT) {
     cdp = await page.context().newCDPSession(page);
     await cdp.send("Performance.enable");
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate: RATE });
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(RATE) });
   }
   await settle();
 }, 300000);

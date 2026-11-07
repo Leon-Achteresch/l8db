@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import type { SyncProvider, SyncSecretBase, SyncTarget } from "@/lib/db/sync";
 import { syncAcrossWindows } from "@/lib/window-sync";
 import type { SyncBase } from "./payload";
@@ -167,6 +168,7 @@ export const useSyncStore = create<SyncState>()(
     }),
     {
       name: SYNC_STORE_KEY,
+      storage: createSafeJsonStorage(),
       partialize: (state) => ({
         provider: state.provider,
         webdavUrl: state.webdavUrl,

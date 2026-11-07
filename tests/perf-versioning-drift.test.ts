@@ -1,3 +1,4 @@
+import { heapSize } from "bun:jsc";
 import { afterAll, expect, mock, test } from "bun:test";
 import { arch, cpus, release as osRelease, platform, totalmem } from "node:os";
 import type { SavedConnection } from "../src/lib/connections";
@@ -134,7 +135,7 @@ test("working copy check reads only changed objects on large schemas", async () 
   expect(cold.cacheWrites).toBe(1);
 
   const samples: number[] = [];
-  const heapBefore = process.memoryUsage().heapUsed;
+  const heapBefore = heapSize();
   for (let run = 0; run < RUNS; run++) {
     reset();
     const started = performance.now();
@@ -147,7 +148,7 @@ test("working copy check reads only changed objects on large schemas", async () 
     expect(counters.cacheWrites).toBe(0);
   }
   Bun.gc(true);
-  const heapGrowthMb = (process.memoryUsage().heapUsed - heapBefore) / 2 ** 20;
+  const heapGrowthMb = (heapSize() - heapBefore) / 2 ** 20;
 
   for (const name of ["t00010", "t02500", "t04999"]) {
     fingerprints.set(name, `fp-${name}-2`);

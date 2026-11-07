@@ -15,6 +15,17 @@ async fn connect(connection_string: &str) -> Result<S3, String> {
     S3::connect(connection_string).await
 }
 
+async fn job<T>(
+    job_id: Option<String>,
+    future: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    let options = crate::db::execution::ExecutionOptions {
+        job_id: job_id.filter(|id| !id.is_empty()),
+        ..Default::default()
+    };
+    crate::db::execution::run(Some(options), true, future).await
+}
+
 #[derive(Serialize)]
 pub struct SearchResult {
     pub objects: Vec<ObjectEntry>,
@@ -48,11 +59,10 @@ pub async fn s3_delete_bucket(
     connection_string: String,
     bucket: String,
     force: Option<bool>,
+    job_id: Option<String>,
 ) -> Result<(), String> {
-    connect(&connection_string)
-        .await?
-        .delete_bucket(&bucket, force.unwrap_or(false))
-        .await
+    let s3 = connect(&connection_string).await?;
+    job(job_id, s3.delete_bucket(&bucket, force.unwrap_or(false))).await
 }
 
 #[tauri::command]
@@ -150,6 +160,7 @@ pub async fn s3_put_object_text(
     key: String,
     text: String,
     content_type: Option<String>,
+    expected_etag: Option<String>,
 ) -> Result<Option<String>, String> {
     let s3 = connect(&connection_string).await?;
     s3.replace_text(
@@ -158,6 +169,7 @@ pub async fn s3_put_object_text(
         text,
         content_type,
         transfer::guess_content_type(&key),
+        expected_etag.as_deref(),
     )
     .await
 }
@@ -194,19 +206,22 @@ pub async fn s3_delete_prefix(
     prefix: String,
     all_versions: Option<bool>,
     bypass_governance: Option<bool>,
+    job_id: Option<String>,
 ) -> Result<DeleteOutcome, String> {
     if prefix.is_empty() {
         return Err("Ein leeres Präfix würde den ganzen Bucket leeren.".to_string());
     }
-    connect(&connection_string)
-        .await?
-        .delete_prefix(
+    let s3 = connect(&connection_string).await?;
+    job(
+        job_id,
+        s3.delete_prefix(
             &bucket,
             &prefix,
             all_versions.unwrap_or(false),
             bypass_governance.unwrap_or(false),
-        )
-        .await
+        ),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -217,22 +232,27 @@ pub async fn s3_copy_objects(
     bucket: String,
     destination_prefix: String,
     move_items: Option<bool>,
+    overwrite: Option<bool>,
+    job_id: Option<String>,
 ) -> Result<DeleteOutcome, String> {
     let destination = match destination_prefix.trim_start_matches('/') {
         "" => String::new(),
         p if p.ends_with('/') => p.to_string(),
         p => format!("{p}/"),
     };
-    connect(&connection_string)
-        .await?
-        .copy_items(
+    let s3 = connect(&connection_string).await?;
+    job(
+        job_id,
+        s3.copy_items(
             &source_bucket,
             &items,
             &bucket,
             &destination,
             move_items.unwrap_or(false),
-        )
-        .await
+            overwrite.unwrap_or(false),
+        ),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -241,11 +261,15 @@ pub async fn s3_rename_object(
     bucket: String,
     from: String,
     to: String,
+    overwrite: Option<bool>,
+    job_id: Option<String>,
 ) -> Result<DeleteOutcome, String> {
-    connect(&connection_string)
-        .await?
-        .rename(&bucket, &from, &to)
-        .await
+    let s3 = connect(&connection_string).await?;
+    job(
+        job_id,
+        s3.rename(&bucket, &from, &to, overwrite.unwrap_or(false)),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -339,6 +363,9 @@ pub async fn s3_presign(
     if !matches!(method.as_str(), "GET" | "PUT") {
         return Err("Presigned URLs gibt es für GET und PUT.".to_string());
     }
+    if super::client::has_dot_segment(&key) {
+        return Err(super::client::dot_segment_error(&key));
+    }
     let mut extra = Vec::new();
     if let Some(v) = version_id.filter(|v| !v.is_empty()) {
         extra.push(("versionId".to_string(), v));
@@ -387,11 +414,14 @@ pub async fn s3_bucket_stats(
     connection_string: String,
     bucket: String,
     prefix: Option<String>,
+    job_id: Option<String>,
 ) -> Result<BucketStats, String> {
-    connect(&connection_string)
-        .await?
-        .bucket_stats(&bucket, prefix.as_deref().unwrap_or(""))
-        .await
+    let s3 = connect(&connection_string).await?;
+    job(
+        job_id,
+        s3.bucket_stats(&bucket, prefix.as_deref().unwrap_or("")),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -401,16 +431,19 @@ pub async fn s3_search_objects(
     prefix: Option<String>,
     query: String,
     limit: Option<usize>,
+    job_id: Option<String>,
 ) -> Result<SearchResult, String> {
-    let (objects, truncated) = connect(&connection_string)
-        .await?
-        .search(
+    let s3 = connect(&connection_string).await?;
+    let (objects, truncated) = job(
+        job_id,
+        s3.search(
             &bucket,
             prefix.as_deref().unwrap_or(""),
             query.trim(),
             limit.unwrap_or(500).clamp(1, 5000),
-        )
-        .await?;
+        ),
+    )
+    .await?;
     Ok(SearchResult { objects, truncated })
 }
 
@@ -423,10 +456,11 @@ pub async fn s3_select_object(
 ) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
     let s3 = connect(&connection_string).await?;
-    let records = super::select::select(&s3, &bucket, &key, &expression).await?;
+    let (records, truncated) = super::select::select(&s3, &bucket, &key, &expression).await?;
     Ok(super::select::records_to_result(
         &records,
         start.elapsed().as_millis() as u64,
+        truncated,
     ))
 }
 
@@ -444,6 +478,7 @@ pub async fn s3_upload(
     prefix: Option<String>,
     paths: Vec<String>,
     properties: Option<ObjectProperties>,
+    overwrite: Option<bool>,
     transfer_id: String,
 ) -> Result<TransferSummary, String> {
     let s3 = connect(&connection_string).await?;
@@ -453,6 +488,7 @@ pub async fn s3_upload(
         prefix.as_deref().unwrap_or(""),
         &paths,
         &properties.unwrap_or_default(),
+        overwrite.unwrap_or(false),
         &transfer_id,
         emitter(app),
     )

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 
 export type ExplainViewMode = "tree" | "graph" | "flame" | "text";
 export type ExplainGraphDirection = "DOWN" | "RIGHT";
@@ -19,6 +20,6 @@ export const useExplainViewPrefs = create<ExplainViewPrefsState>()(
       setView: (view) => set({ view }),
       setDirection: (direction) => set({ direction }),
     }),
-    { name: "l8db.explain-view" },
+    { name: "l8db.explain-view", storage: createSafeJsonStorage() },
   ),
 );

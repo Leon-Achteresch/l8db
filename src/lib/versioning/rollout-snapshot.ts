@@ -2,7 +2,7 @@ import { useBackupToolPaths } from "@/lib/backup-runner";
 import { runBranchingJob } from "@/lib/branching/jobs";
 import type { SavedConnection } from "@/lib/connections";
 import { branchingSnapshot } from "@/lib/db";
-import { prepareConnection } from "@/lib/schema-compare/store";
+import { prepareConnection } from "@/lib/prepare-connection";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { targetStage } from "./delivery";
 import type { DatabaseTarget, VersioningProject } from "./types";

@@ -7,6 +7,8 @@ use serde_json::{Map, Value};
 use std::time::Instant;
 
 const MAX_ROWS: usize = 1000;
+const MAX_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
+const SQL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
 const MAX_QUERY_BYTES: usize = 1_000_000;
 const MAX_ERROR_CHARS: usize = 4000;
 const READ_ONLY_BLOCKED: &[&str] = &[
@@ -205,6 +207,17 @@ pub(crate) fn shape_result(
     }
 }
 
+fn send_error(error: &reqwest::Error) -> String {
+    if error.is_timeout() {
+        format!(
+            "Zeitüberschreitung nach {} Minuten: Der Status der Anweisung ist unbekannt. Sie kann auf dem Server weiterlaufen oder bereits ausgeführt sein. Vor erneutem Ausführen prüfen.",
+            SQL_TIMEOUT.as_secs() / 60
+        )
+    } else {
+        crate::supabase::network_error("Supabase-Datenbank", error)
+    }
+}
+
 async fn send(reference: &str, query: &str, read_only: bool) -> Result<Vec<Value>, String> {
     let mut payload = serde_json::json!({ "query": query });
     if read_only {
@@ -222,16 +235,21 @@ async fn send(reference: &str, query: &str, read_only: bool) -> Result<Vec<Value
             ))
             .bearer_auth(token().await?)
     };
-    let response = request
+    let mut response = request
         .json(&payload)
+        .timeout(SQL_TIMEOUT)
         .send()
         .await
-        .map_err(|error| format!("Supabase-Datenbank ist nicht erreichbar: {error}"))?;
+        .map_err(|error| send_error(&error))?;
     let status = response.status();
-    let body = response
-        .text()
-        .await
-        .map_err(|error| format!("Antwort konnte nicht gelesen werden: {error}"))?;
+    let (body, _, truncated) = super::edge::read_bounded(&mut response, MAX_RESPONSE_BYTES).await?;
+    if truncated {
+        return Err(format!(
+            "Das Ergebnis ist größer als {} MB. Bitte mit LIMIT oder weniger Spalten eingrenzen.",
+            MAX_RESPONSE_BYTES / 1024 / 1024
+        ));
+    }
+    let body = String::from_utf8_lossy(&body);
     if !status.is_success() {
         return Err(error_message(status.as_u16(), &body));
     }

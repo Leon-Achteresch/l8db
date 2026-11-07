@@ -63,7 +63,7 @@ export function ConvexSettingsExport({ deployment }: { deployment: ConvexStudioD
   }
 
   return (
-    <section className="rounded-2xl border bg-card p-5">
+    <section className="rounded-2xl bg-muted/25 p-5">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">Snapshot-Export</h3>
         <Button
@@ -97,7 +97,7 @@ export function ConvexSettingsExport({ deployment }: { deployment: ConvexStudioD
           {String(status.error)}
         </p>
       ) : latest ? (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/50 p-3 text-xs">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-background/50 p-3 text-xs">
           <div className="space-y-0.5">
             <p className="font-medium">
               Letzter Export: {STATE_LABELS[latest.state] ?? latest.state}

@@ -1,7 +1,9 @@
 import {
+  AlertTriangleIcon,
   CheckCircle2Icon,
   CircleDashedIcon,
   CircleMinusIcon,
+  CopyIcon,
   LoaderIcon,
   XCircleIcon,
   XIcon,
@@ -9,10 +11,26 @@ import {
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { copyWithToast } from "@/lib/clipboard";
 import type { QueryResult } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { scriptTranscript } from "@/lib/sqlplus-output";
+import { ScriptEntryOutput } from "./script-entry-output";
 
-export type ScriptRunStatus = "pending" | "running" | "success" | "error" | "skipped" | "ignored";
+export type ScriptRunStatus =
+  | "pending"
+  | "running"
+  | "success"
+  | "warning"
+  | "error"
+  | "skipped"
+  | "ignored";
+
+export interface ScriptRunMessage {
+  level: string;
+  message: string;
+  detail?: string | null;
+}
 
 export interface ScriptRunEntry {
   index: number;
@@ -26,6 +44,9 @@ export interface ScriptRunEntry {
   error: string | null;
   source?: string;
   result?: QueryResult;
+  output?: ScriptRunMessage[];
+  feedback?: string | null;
+  note?: string;
 }
 
 interface ScriptResultListProps {
@@ -34,7 +55,7 @@ interface ScriptResultListProps {
   onSelect: (entry: ScriptRunEntry) => void;
   onClose: () => void;
   note: string;
-  featureId?: "query.sqlplus-scripts";
+  featureId?: "query.sqlplus-session";
 }
 
 function firstLine(sql: string): string {
@@ -45,6 +66,7 @@ function firstLine(sql: string): string {
 function statusIcon(status: ScriptRunStatus) {
   if (status === "success") return <CheckCircle2Icon className="size-3.5 text-emerald-500" />;
   if (status === "error") return <XCircleIcon className="size-3.5 text-destructive" />;
+  if (status === "warning") return <AlertTriangleIcon className="size-3.5 text-amber-500" />;
   if (status === "running") return <LoaderIcon className="size-3.5 animate-spin" />;
   if (status === "ignored") return <CircleMinusIcon className="size-3.5 text-amber-500" />;
   return <CircleDashedIcon className="size-3.5 text-muted-foreground" />;
@@ -70,8 +92,10 @@ export function ScriptResultList({
   featureId,
 }: ScriptResultListProps) {
   const failed = entries.filter((entry) => entry.status === "error").length;
+  const warned = entries.filter((entry) => entry.status === "warning").length;
   const done = entries.filter((entry) => entry.status === "success").length;
   const { ref, isNew } = useNewFeatureVisibility<HTMLSpanElement>(featureId);
+  const output = useNewFeatureVisibility<HTMLButtonElement>("query.script-output");
 
   return (
     <div className="flex max-h-64 shrink-0 flex-col border-t bg-card/40">
@@ -83,12 +107,25 @@ export function ScriptResultList({
         <span className="text-muted-foreground">
           {done}/{entries.length} erfolgreich
           {failed > 0 ? ` · ${failed} fehlgeschlagen` : ""}
+          {warned > 0 ? ` · ${warned} mit Warnung` : ""}
         </span>
         <span className="truncate text-muted-foreground">· {note}</span>
         <Button
+          ref={output.ref}
+          size={output.isNew ? "sm" : "icon"}
+          variant="ghost"
+          className={output.isNew ? "ml-auto h-6 gap-1 px-1.5" : "ml-auto size-6"}
+          aria-label="Skriptprotokoll kopieren"
+          title="Protokoll kopieren"
+          onClick={() => void copyWithToast(scriptTranscript(entries), "Skriptprotokoll")}
+        >
+          <CopyIcon className="size-3" />
+          {output.isNew && <NewBadge />}
+        </Button>
+        <Button
           size="icon"
           variant="ghost"
-          className="ml-auto size-6"
+          className="size-6"
           aria-label="Skriptergebnisse schließen"
           onClick={onClose}
         >
@@ -116,8 +153,11 @@ export function ScriptResultList({
                   <span className="block truncate text-muted-foreground">aus {entry.source}</span>
                 )}
                 {entry.error && (
-                  <span className="block truncate text-destructive">{entry.error}</span>
+                  <span className="block whitespace-pre-wrap break-words text-destructive">
+                    {entry.error}
+                  </span>
                 )}
+                <ScriptEntryOutput entry={entry} />
               </span>
               <span className="shrink-0 tabular-nums text-muted-foreground">{detailOf(entry)}</span>
             </button>

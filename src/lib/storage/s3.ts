@@ -77,8 +77,8 @@ export interface S3Tag {
 export function parseTags(xml: string | null): S3Tag[] {
   const root = xml ? parseS3Xml(xml) : null;
   return children(child(root, "TagSet"), "Tag").map((tag) => ({
-    key: textOf(tag, "Key"),
-    value: textOf(tag, "Value"),
+    key: child(tag, "Key")?.text ?? "",
+    value: child(tag, "Value")?.text ?? "",
   }));
 }
 
@@ -86,8 +86,7 @@ export function tagsXml(tags: S3Tag[]): string {
   const body = tags
     .filter((tag) => tag.key.trim())
     .map(
-      (tag) =>
-        `<Tag><Key>${escapeXml(tag.key.trim())}</Key><Value>${escapeXml(tag.value)}</Value></Tag>`,
+      (tag) => `<Tag><Key>${escapeXml(tag.key)}</Key><Value>${escapeXml(tag.value)}</Value></Tag>`,
     )
     .join("");
   return `<Tagging><TagSet>${body}</TagSet></Tagging>`;
@@ -114,6 +113,7 @@ export interface LifecycleRule {
   expiredDeleteMarker: boolean;
   transitionDays: number | null;
   transitionClass: string;
+  filterConditions: string[];
   extra: string;
 }
 
@@ -138,33 +138,57 @@ function serialize(node: XmlNode): string {
   return `<${node.name}>${node.children.map(serialize).join("")}</${node.name}>`;
 }
 
+function onlyParts(node: XmlNode | undefined, allowed: string[]): boolean {
+  return !node || node.children.every((part) => allowed.includes(part.name));
+}
+
 export function parseLifecycle(xml: string | null): LifecycleRule[] {
   const root = xml ? parseS3Xml(xml) : null;
   return children(root, "Rule").map((rule) => {
     const filter = child(rule, "Filter");
-    const expiration = child(rule, "Expiration");
-    const transition = child(rule, "Transition");
+    const and = child(filter, "And");
+    const filterConditions = [...(filter?.children ?? []), ...(and?.children ?? [])]
+      .filter((part) => part.name !== "Prefix" && part.name !== "And")
+      .map(serialize);
+    const raw: XmlNode[] = [];
+    const editable = (node: XmlNode | undefined, allowed: string[]) => {
+      if (onlyParts(node, allowed)) return node;
+      if (node) raw.push(node);
+      return undefined;
+    };
+    const expiration = editable(child(rule, "Expiration"), ["Days", "ExpiredObjectDeleteMarker"]);
+    const transitions = children(rule, "Transition");
+    const transition = editable(transitions[0], ["Days", "StorageClass"]);
+    raw.push(...transitions.slice(1));
+    const noncurrent = editable(child(rule, "NoncurrentVersionExpiration"), ["NoncurrentDays"]);
+    const abort = editable(child(rule, "AbortIncompleteMultipartUpload"), ["DaysAfterInitiation"]);
     return {
       id: textOf(rule, "ID"),
       enabled: textOf(rule, "Status") === "Enabled",
-      prefix:
-        textOf(filter, "Prefix") ||
-        textOf(child(filter, "And"), "Prefix") ||
-        textOf(rule, "Prefix"),
+      prefix: child(filter, "Prefix")?.text ?? child(and, "Prefix")?.text ?? textOf(rule, "Prefix"),
       expirationDays: days(textOf(expiration, "Days")),
       expiredDeleteMarker: textOf(expiration, "ExpiredObjectDeleteMarker") === "true",
-      noncurrentDays: days(textOf(child(rule, "NoncurrentVersionExpiration"), "NoncurrentDays")),
-      abortMultipartDays: days(
-        textOf(child(rule, "AbortIncompleteMultipartUpload"), "DaysAfterInitiation"),
-      ),
+      noncurrentDays: days(textOf(noncurrent, "NoncurrentDays")),
+      abortMultipartDays: days(textOf(abort, "DaysAfterInitiation")),
       transitionDays: days(textOf(transition, "Days")),
       transitionClass: textOf(transition, "StorageClass"),
-      extra: rule.children
-        .filter((part) => !KNOWN_RULE_PARTS.has(part.name))
+      filterConditions,
+      extra: [...raw, ...rule.children.filter((part) => !KNOWN_RULE_PARTS.has(part.name))]
         .map(serialize)
         .join(""),
     };
   });
+}
+
+function filterXml(rule: LifecycleRule): string {
+  const conditions = rule.filterConditions;
+  if (!conditions.length) return `<Filter><Prefix>${escapeXml(rule.prefix)}</Prefix></Filter>`;
+  const all = rule.prefix
+    ? [`<Prefix>${escapeXml(rule.prefix)}</Prefix>`, ...conditions]
+    : conditions;
+  return all.length === 1
+    ? `<Filter>${all[0]}</Filter>`
+    : `<Filter><And>${all.join("")}</And></Filter>`;
 }
 
 export function lifecycleXml(rules: LifecycleRule[]): string {
@@ -173,7 +197,7 @@ export function lifecycleXml(rules: LifecycleRule[]): string {
       const parts = [
         `<ID>${escapeXml(rule.id.trim() || `rule-${index + 1}`)}</ID>`,
         `<Status>${rule.enabled ? "Enabled" : "Disabled"}</Status>`,
-        `<Filter><Prefix>${escapeXml(rule.prefix)}</Prefix></Filter>`,
+        filterXml(rule),
       ];
       if (rule.expirationDays)
         parts.push(`<Expiration><Days>${rule.expirationDays}</Days></Expiration>`);
@@ -210,6 +234,7 @@ export function emptyLifecycleRule(index: number): LifecycleRule {
     expiredDeleteMarker: false,
     transitionDays: null,
     transitionClass: "",
+    filterConditions: [],
     extra: "",
   };
 }

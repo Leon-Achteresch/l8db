@@ -111,7 +111,25 @@ export function PointSeriesChart({
           const stroke = seriesColor(i, shape, options);
           const top = tops[i];
           const line = curvePath(top, options.curve);
-          const last = top[top.length - 1];
+          const key = shape.metrics[i].key;
+          const gaps = !area && data.some((row) => row[key] === null);
+          const path = gaps
+            ? top
+                .map((point, j) => (data[j][key] === null ? null : point))
+                .reduce<Point[][]>(
+                  (runs, point) => {
+                    if (!point) runs.push([]);
+                    else runs[runs.length - 1].push(point);
+                    return runs;
+                  },
+                  [[]],
+                )
+                .map((run) => curvePath(run, options.curve))
+                .join("")
+            : line;
+          let lastIndex = top.length - 1;
+          while (!area && lastIndex >= 0 && data[lastIndex][key] === null) lastIndex--;
+          const last = top[lastIndex];
           return (
             <g key={shape.metrics[i].key}>
               {area && (
@@ -125,7 +143,7 @@ export function PointSeriesChart({
                 />
               )}
               <path
-                d={line}
+                d={path}
                 fill="none"
                 stroke={stroke}
                 strokeWidth={2}
@@ -135,19 +153,21 @@ export function PointSeriesChart({
               {!area &&
                 options.labels &&
                 n <= MAX_DOTS &&
-                top.map(([px, py], j) => (
-                  <text
-                    key={`l${String(data[j].name)}`}
-                    x={px}
-                    y={py - 9}
-                    textAnchor="middle"
-                    fontSize={10}
-                    fill="var(--muted-foreground)"
-                    className="tabular-nums"
-                  >
-                    {fmtValueCompact(stack[j][1] - stack[j][0], { ...options, unit: "" })}
-                  </text>
-                ))}
+                top.map(([px, py], j) =>
+                  data[j][key] === null ? null : (
+                    <text
+                      key={`l${String(data[j].name)}`}
+                      x={px}
+                      y={py - 9}
+                      textAnchor="middle"
+                      fontSize={10}
+                      fill="var(--muted-foreground)"
+                      className="tabular-nums"
+                    >
+                      {fmtValueCompact(stack[j][1] - stack[j][0], { ...options, unit: "" })}
+                    </text>
+                  ),
+                )}
               {last && (
                 <circle
                   cx={last[0]}
@@ -215,7 +235,7 @@ export function PointSeriesChart({
           )}
           {hover !== null &&
             tops.map((top, i) =>
-              top[hover] ? (
+              top[hover] && (area || data[hover][shape.metrics[i].key] !== null) ? (
                 <circle
                   key={shape.metrics[i].key}
                   cx={top[hover][0]}
@@ -238,7 +258,7 @@ export function PointSeriesChart({
           entries={[
             ...shape.metrics.map((m, i) => ({
               label: m.label,
-              value: fmtValue(Number(hovered[m.key]) || 0, options),
+              value: hovered[m.key] === null ? "–" : fmtValue(Number(hovered[m.key]) || 0, options),
               color: seriesColor(i, shape, options),
             })),
             ...(compare && ghostValue !== null && ghostValue !== undefined

@@ -61,10 +61,17 @@ export function insertRegexPattern(
   return { value: next, cursor: start + snippet.length };
 }
 
+function optionalAfter(pattern: string, index: number): boolean {
+  const next = pattern[index];
+  if (next === "?" || next === "*") return true;
+  const bounds = next === "{" ? /^\{(\d+)(,\d*)?\}/.exec(pattern.slice(index)) : null;
+  return bounds !== null && Number(bounds[1]) === 0;
+}
+
 export function regexLiteralPrefilter(pattern: string): string {
   let best = "";
   let current = "";
-  let classDepth = 0;
+  const groups: { best: string; lookaround: boolean }[] = [];
 
   const flush = (trimLast: boolean) => {
     const candidate = trimLast ? current.slice(0, -1) : current;
@@ -79,20 +86,41 @@ export function regexLiteralPrefilter(pattern: string): string {
       index += 1;
       continue;
     }
-    if (classDepth > 0) {
-      if (char === "]") classDepth -= 1;
-      continue;
-    }
     if (char === "[") {
       flush(false);
-      classDepth += 1;
+      for (index += 1; index < pattern.length && pattern[index] !== "]"; index += 1)
+        if (pattern[index] === "\\") index += 1;
+      continue;
+    }
+    if (char === "|") return "";
+    if (char === "(") {
+      flush(false);
+      let lookaround = false;
+      if (pattern[index + 1] === "?") {
+        const rest = pattern.slice(index + 2);
+        if (rest.startsWith(":")) index += 2;
+        else if (/^<[A-Za-z_$]/.test(rest)) index = pattern.indexOf(">", index);
+        else {
+          lookaround = true;
+          index += rest.startsWith("<") ? 3 : 2;
+        }
+      }
+      groups.push({ best, lookaround });
+      continue;
+    }
+    if (char === ")") {
+      flush(false);
+      const group = groups.pop();
+      if (group && (group.lookaround || optionalAfter(pattern, index + 1))) best = group.best;
       continue;
     }
     if (isQuantifierStart(char) || char === "{") {
       flush(current.length > 0);
+      const bounds = char === "{" ? /^\{\d+(,\d*)?\}/.exec(pattern.slice(index)) : null;
+      if (bounds) index += bounds[0].length - 1;
       continue;
     }
-    if ("()|^$.".includes(char)) {
+    if ("^$.".includes(char)) {
       flush(false);
       continue;
     }

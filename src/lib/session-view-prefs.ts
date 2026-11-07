@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createSafeJsonStorage } from "@/lib/buffered-storage";
 
 import type { SessionGrouping } from "@/lib/session-filters";
 
@@ -25,6 +26,6 @@ export const useSessionViewPrefs = create<SessionViewPrefsState>()(
         })),
       setCollapsedGroups: (collapsedGroups) => set({ collapsedGroups }),
     }),
-    { name: "l8db.session-view" },
+    { name: "l8db.session-view", storage: createSafeJsonStorage() },
   ),
 );

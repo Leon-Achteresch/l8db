@@ -29,6 +29,7 @@ impl Catalog {
             .into_iter()
             .filter(|tool| match tool["name"].as_str().unwrap_or("") {
                 "script" => false,
+                "report_issue" => crate::issues::relay().is_ok(),
                 "execute" => config
                     .connections
                     .iter()
@@ -65,7 +66,7 @@ impl Catalog {
         loaded.push(super::harness::plan_definition());
         loaded.push(json!({
             "name": "discover_tools",
-            "description": "Load more tools: data rules, notebooks, dashboards, workflows, benchmarks, health checks, open in l8db, knowledge, attachment import, external MCPs. Search by query or exact names; empty arguments list all. Loaded tools are callable from the next round on.",
+            "description": "Load more tools: l8db UI plugins (buttons, columns, tabs), GitHub issue reports for l8db bugs, data rules, notebooks, dashboards, workflows, benchmarks, health checks, open in l8db, knowledge, attachment import, external MCPs. Search by query or exact names; empty arguments list all. Loaded tools are callable from the next round on.",
             "inputSchema": {"type": "object", "properties": {
                 "query": {"type": "string", "description": "Tool name or words describing the task"},
                 "names": {"type": "array", "items": {"type": "string"}, "maxItems": 8, "description": "Exact tool names to load"}

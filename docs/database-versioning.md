@@ -69,6 +69,38 @@ Unterschiedliche Versionsstände benötigen keine dauerhaften Kundenbranches. Ab
 
 Für solche Varianten unterstützt der Dateieditor einen Drei-Wege-Merge: gemeinsamer Basis-Commit, neuer Produkt-Commit und aktueller Kundenentwurf. Konflikte bleiben sichtbar und müssen aufgelöst werden. Das Ergebnis kann als eigener Release mit passender Vorgängerkette gepflegt werden. Ein Kundenrelease darf keine Migrationen aus einer fremden Vorgängerkette überspringen. l8db übernimmt keine automatische fachliche Zusammenführung kundenspezifischer Logik.
 
+## Abhakliste pro Ziel
+
+Jedes Ziel führt eine Abhakliste angewendeter Änderungen. Die Tabelle `L8DB_VERSIONING_CHANGES` speichert pro Projekt die Änderungs-ID (`<release>/<migration>` oder die ID einer eigenständigen Änderung), Prüfsumme, Art, Quelle (`rollout`, `baseline`, `migrated`, `script`), Release, Lauf und Zeitpunkt. `L8DB_VERSIONING_OBJECTS` hält pro Objekt den zuletzt angewendeten Hash. Geplant wird nicht mehr über eine Vorgängerkette, sondern über alle Änderungen im Abschluss des Zielreleases, die noch nicht abgehakt sind. Ein reiner Datenrelease läuft dadurch nie zweimal.
+
+Releases im Format 2 haben `parents` statt `parent`. Ein Merge-Release mit zwei Vorgängern führt einen Hotfix-Zweig und die Hauptlinie wieder zusammen; ein Kunde auf dem Hotfix sieht dann wieder offene Updates statt „Aktuell“. Migrationen können `touches`, `before` und `requires` angeben. Ohne Angabe leitet l8db die berührten Objekte aus dem Unterschied zum ersten Vorgänger ab. Geprüft werden vor jedem Schritt nur die berührten Objekte; die übrigen verwalteten Objekte vergleicht der Backend-Lauf vor dem Setzen der Sperre mit dem Sollstand.
+
+Der Ruhestatus in `L8DB_VERSIONING_STATE` ist `ready2`. Ältere l8db-Versionen erwarten `ready` und brechen deshalb ab, statt die Abhakliste zu umgehen. Bestehende Ziele werden beim ersten Planen automatisch umgestellt: l8db trägt die Änderungen des aktuellen Releases mit Quelle `migrated` ein. Enthält dieser Abschluss Datenänderungen, verlangt die Umstellung eine ausdrückliche Bestätigung über **Abhakliste übernehmen**. Produktive Steuerschemas benötigen das Recht, die beiden neuen Tabellen anzulegen; sonst nennt die Meldung die nötige DBA-Aktion.
+
+Ein leeres Ziel lässt sich onboarden: Der erste Release erhält die Migration `grundstand`, die alle verwalteten Objekte anlegt.
+
+### Abweichungen und Altkunden
+
+Bekannte, gewollte Abweichungen eines Ziels stehen in `database/team.json` unter `variances` (`object`, `hash`, `reason`, optional `until` als Datum). Sie werden per Pull Request geprüft. Beim Planen liest l8db nur die berührten Objekte und die Abweichungen. Hat sich eine Abweichung beim Kunden verändert, blockiert der Plan. Ändert eine Änderung ein Abweichungsobjekt über einen Vorher-Stand, wird sie abgewiesen; verträglich sind nur Änderungen mit SQL-Vorbedingung. Das Backend prüft die Abweichungen gegen die committete Teamkonfiguration und schreibt ihre Hashes ins Journal.
+
+**Mit Altstand aufnehmen** ordnet jede Änderung des gewählten Releases ein: Die berührten Objekte entsprechen dem Stand danach (erledigt), dem Stand davor (offen) oder keinem von beiden (Entscheidung). Datenänderungen sind immer eine Entscheidung. Unerklärte Objekte werden als Abweichung vorgeschlagen und brauchen einen Grund. Nach der Bestätigung füllt l8db die Abhakliste mit `baseline`, ohne SQL im Anwendungsschema auszuführen. Offene Änderungen spielt der nächste Rollout ein. Danach muss `database/team.json` committet werden. Bei 5.000 Objekten und 2.000 Änderungen dauert die Einordnung im Median 23 ms (Apple M3, Bun 1.4.3).
+
+### Programmcode
+
+Views, Routinen, Prozeduren und Packages werden beim Erzeugen eines Releases zu eigenen wiederholbaren Änderungen (`kind: "repeatable"`, genau ein berührtes Objekt), solange das erzeugte SQL unverändert bleibt. Für sie gelten drei Hashes: Soll (Release), Zuletzt (`L8DB_VERSIONING_OBJECTS`) und Ist (Kunde). Ist gleich Soll: nichts einspielen, nur abhaken. Ist gleich festgehaltener Abweichung: überspringen. Ist gleich Zuletzt: einspielen. Sonst wurde der Code direkt beim Kunden geändert; Plan und Backend blockieren für genau dieses Objekt. Auflösen lässt sich das über **Ins Repository übernehmen** (Kundencode in die Arbeitskopie), **Als Abweichung festhalten** (`team.json`) oder **Überschreiben freigeben** (Teil des freigegebenen Plans). Übersprungene Änderungen stehen im Ereignis unter `skippedChanges`. **Code-Drift prüfen** zeigt den Zustand aller Code-Objekte bei allen Kunden mit einer Abhaklisten-Abfrage je Ziel.
+
+### Einzeländerungen, Merge-Releases und Angleichen
+
+**Einzeländerung anlegen** (Releases) legt `database/changes/<id>.json` und `.sql` an: SQL, berührte Objekte, optional der vorausgesetzte Stand aus dem neuesten Release und SQL-Vorbedingungen. Nach dem Merge in `main` steht sie unter Kunden im Zielauswahlfeld als `Änderung <id>` und lässt sich an mehrere Ziele verteilen. Es gelten dieselben Auslieferungsregeln wie für Releases; als Nachweis dient der Pull Request mit der Änderungsdatei. Ein Einzelrollout hakt nur diese Änderung ab und lässt den Release des Ziels stehen. Ein zweiter Versuch wird abgewiesen. Führt ein späterer Release die Änderung unter `changes`, läuft sie dort nicht erneut. Bis dahin gelten ihre Objekte als vorgezogen (`ahead`): Die Vorabprüfung lässt sie aus, das Backend prüft, dass die Änderung abgehakt ist und diese Objekte berührt.
+
+Beim Erzeugen eines Releases lässt sich ein zweiter Vorgänger wählen. Der Release erhält dann `parents` mit beiden IDs und führt Hotfix-Zweig und Hauptlinie zusammen.
+
+**Auf Standard angleichen** (Menü eines Ziels) holt einen Kunden zurück auf die Standardlinie. Die Vorschau zeigt die offenen Änderungen bis zum gewählten Standard-Release und erzeugt aus den Abweichungen eine Angleich-Änderung, die den Kundenstand auf den aktuellen Release des Ziels zurückführt. Entfernungen müssen ausdrücklich freigegeben werden. Ablauf: Angleich-Änderung committen und als Einzeländerung ausrollen, dann **Abschließen** (Abweichungen entfernen, Linie `main`, keine Fixierung, `team.json` committen), danach den Standard-Release wie gewohnt ausrollen.
+
+### Nur additiv
+
+`additiveOnly: true` in `database/project.json` (Schalter unter Releases, Standard aus) erlaubt nur Änderungen ohne `DROP`, `TRUNCATE`, `MODIFY` oder Spaltentypwechsel. Der Generator meldet solche Anweisungen als offenen Punkt, der Plan bricht ab und das Backend prüft die Regel anhand der `project.json` im freigegebenen Commit. Eine Migration mit `destructive: true` ist ausdrücklich freigegeben.
+
 ## Ein Repository für viele Kunden: Reviews und Pipeline
 
 Alle Kunden eines Produkts teilen ein Git-Repository mit dem Remote `origin` auf GitHub (auch Enterprise Server), GitLab, Azure DevOps oder Gitea/Forgejo. Änderungen gelangen nur über Pull Requests in den Hauptbranch, also den Standardbranch des Remotes. Jeder Kunde hat getrennte Verbindungen für Test- und Produktivsystem, gegebenenfalls auf verschiedenen Servern.
@@ -88,7 +120,9 @@ Ticket-Schlüssel werden in Branchnamen, Commit-Nachrichten, Pull-Request-Titeln
 
 ### Migrationsskripte für Systeme ohne direkten Rollout
 
-Unter **Kunden → Rollout prüfen** speichert das Dateisymbol das geplante SQL eines Ziels als `.sql`-Datei, bei mehreren Zielen eine Datei pro Ziel in einem gewählten Ordner (`migration-<Kunde>-<Umgebung>-<von>-<nach>.sql`). Der Kopf nennt Kunde, Umgebung, Schema, Release-Pfad und Commit. PostgreSQL-Skripte laufen mit `psql` in einer Transaktion mit `ON_ERROR_STOP`, Oracle-Skripte mit SQL*Plus/SQLcl und `WHENEVER SQLERROR EXIT`; PL/SQL-Blöcke enden mit `/`. Vor- und Nachprüfungen, Sperren und Ledger laufen dabei nicht mit. Nach der manuellen Ausführung den Release unter **Stand abgleichen** bestätigen.
+Unter **Kunden → Rollout prüfen** speichert das Dateisymbol das geplante SQL eines Ziels als `.sql`-Datei, bei mehreren Zielen eine Datei pro Ziel in einem gewählten Ordner (`migration-<Kunde>-<Umgebung>-<von>-<nach>.sql`). Der Kopf nennt Kunde, Umgebung, Schema, Release-Pfad und Commit. PostgreSQL-Skripte laufen mit `psql` in einer Transaktion mit `ON_ERROR_STOP`, Oracle-Skripte mit SQL*Plus/SQLcl und `WHENEVER SQLERROR EXIT`; PL/SQL-Blöcke enden mit `/`. Das Skript schreibt die Abhakliste mit: Zu Beginn prüft ein Block, dass das Ziel noch auf dem geplanten Ausgangsrelease steht und kein Rollout läuft. Am Ende trägt es jede Änderung mit Quelle `script` in `L8DB_VERSIONING_CHANGES` ein, setzt die Objekt-Hashes und schreibt den neuen Stand in `L8DB_VERSIONING_STATE`, nur wenn der Ausgangsstand noch stimmt. Ein zweiter Lauf bricht deshalb ab. Vor- und Nachprüfungen sowie Sperren laufen nicht mit. Nach der manuellen Ausführung den Release unter **Stand abgleichen** bestätigen. Ein Skript mit 2.000 Änderungen und 5.000 Objekten entsteht im Median in 7 ms (Apple M3, Bun 1.4.3).
+
+Jede Vorprüfung unter Kunden merkt sich pro Ziel die offenen Änderungen bis zum Linienende. Kunden- und Pipeline-Ansicht zeigen sie zusammen mit der Zahl aktiver Abweichungen neben dem Status, bis der nächste Rollout die Zahl veraltet.
 
 ### Git-Plattform verbinden
 

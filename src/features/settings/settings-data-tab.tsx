@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { MultiTargetSettingsRow } from "@/features/settings/multi-target-settings-row";
+import { SettingsNumberInput } from "@/features/settings/settings-number-input";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSettingsStore } from "@/lib/settings";
@@ -71,36 +72,28 @@ export function SettingsDataTab() {
                 </Button>
               ))}
             </div>
-            <Input
-              type="number"
+            <SettingsNumberInput
               min={10}
               max={5000}
               step={50}
               aria-label="Zeilenlimit"
               value={rowLimit}
-              onChange={(event) => {
-                const value = Number.parseInt(event.target.value, 10);
-                if (!Number.isNaN(value) && value >= 10 && value <= 5000) setRowLimit(value);
-              }}
-              className="h-8 w-16 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              onCommit={setRowLimit}
+              className="w-16"
             />
           </div>
         </SettingsRow>
 
         <SettingsRow settingId="timeout">
           <div className="flex items-center gap-2">
-            <Input
-              type="number"
+            <SettingsNumberInput
               min={5}
               max={300}
               step={5}
               aria-label="Query-Timeout"
               value={queryTimeout}
-              onChange={(event) => {
-                const value = Number.parseInt(event.target.value, 10);
-                if (!Number.isNaN(value) && value >= 5 && value <= 300) setQueryTimeout(value);
-              }}
-              className="h-8 w-16 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              onCommit={setQueryTimeout}
+              className="w-16"
             />
             <span className="text-xs text-muted-foreground">Sekunden</span>
           </div>

@@ -82,6 +82,9 @@ export const PROVIDER_SLUG: Record<string, string | null> = {
 };
 
 export const KIND_SLUG: Record<DatabaseKind, string | null> = {
+  jdbc: null,
+  workspace: null,
+  spacetimedb: null,
   postgres: "postgresql",
   mysql: "mysql",
   sqlite: "sqlite",

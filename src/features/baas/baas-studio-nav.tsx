@@ -64,7 +64,7 @@ export function BaasStudioNav({
                     value={tab.value}
                     disabled={Boolean(tab.disabledReason)}
                     title={tab.disabledReason ?? undefined}
-                    className="h-9 flex-none gap-1.5 rounded-none px-2 text-xs font-medium after:inset-x-2! [&_svg]:size-3.5!"
+                    className="my-1 h-8 flex-none gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors after:inset-x-2.5! after:-bottom-[5px]! hover:bg-foreground/5 data-active:text-foreground [&_svg]:size-3.5! data-active:[&_svg]:text-primary"
                   >
                     <tab.icon />
                     {tab.label}

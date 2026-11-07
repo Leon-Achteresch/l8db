@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useConnectionsStore } from "@/lib/connections";
+import { errorMessageOf } from "@/lib/error-details";
 import { control, type PolicyRecord } from "@/lib/versioning/control";
 import { identifier, releaseTrack } from "@/lib/versioning/model";
 import { readTargets, saveTargets } from "@/lib/versioning/repository";
@@ -64,7 +65,7 @@ export function VersioningTargetPolicy({
         setLoadError(null);
       })
       .catch((error) => {
-        if (active) setLoadError(String(error));
+        if (active) setLoadError(errorMessageOf(error));
       });
     return () => {
       active = false;

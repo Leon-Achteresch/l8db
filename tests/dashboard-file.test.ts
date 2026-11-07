@@ -31,6 +31,16 @@ test("roundtrip", () => {
   expect(parseDashboard(serializeDashboard(dashboard)).name).toBe("Sales");
 });
 
+test("imported refresh intervals follow the MCP limits", () => {
+  const refresh = (refreshSec: unknown) =>
+    parseDashboard(JSON.stringify({ ...dashboard, refreshSec })).refreshSec;
+  expect(refresh(60)).toBe(60);
+  expect(refresh(0.05)).toBe(0);
+  expect(refresh(5)).toBe(0);
+  expect(refresh(100_000)).toBe(0);
+  expect(refresh("30")).toBe(0);
+});
+
 test("dashboard files preserve free CSS and its enabled state", () => {
   const design = {
     css: ":root { --dash-color-1: #f0f; } @media (width > 800px) { .dashboard-widget { border-radius: 20px; } }",

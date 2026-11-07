@@ -1,20 +1,20 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  DEFAULT_CSV_OPTIONS,
-  type ColumnMask,
   applyMasks,
-  maskedValue,
-  UnsupportedValueError,
   buildInsertStatements,
+  type ColumnMask,
   csvField,
   csvOptionsError,
   csvPreview,
+  DEFAULT_CSV_OPTIONS,
   identifierStyleForKind,
+  maskedValue,
   parseCsv,
   quoteIdentifier,
   serializeCsv,
   sqlLiteral,
+  UnsupportedValueError,
 } from "../src/lib/export";
 
 const columns = ["id", "name", "note"];
@@ -120,7 +120,9 @@ describe("insert-export", () => {
     expect(sqlLiteral(true, "c")).toBe("TRUE");
     expect(sqlLiteral("O'Brien", "c")).toBe("'O''Brien'");
     expect(sqlLiteral({ a: [1, null] }, "c")).toBe("'{\"a\":[1,null]}'");
-    expect(sqlLiteral(new Date("2024-01-02T03:04:05.000Z"), "c")).toBe("'2024-01-02T03:04:05.000Z'");
+    expect(sqlLiteral(new Date("2024-01-02T03:04:05.000Z"), "c")).toBe(
+      "'2024-01-02T03:04:05.000Z'",
+    );
   });
 
   test("unbekannte Typen verhindern den Export", () => {
@@ -194,5 +196,20 @@ describe("Spaltenmaskierung", () => {
     expect(file).not.toContain("a@b.de");
     expect(file).not.toContain("secret");
     expect(file.split("\n")[1]).toBe("1,***,NULL");
+  });
+});
+
+describe("formula defusing", () => {
+  test("prefixes spreadsheet formulas but keeps signed numbers", () => {
+    const options = DEFAULT_CSV_OPTIONS;
+    expect(csvField('=HYPERLINK("http://x","klick")', options)).toBe(
+      '"\'=HYPERLINK(""http://x"",""klick"")"',
+    );
+    expect(csvField("@SUM(A1)", options)).toBe("'@SUM(A1)");
+    expect(csvField("-5", options)).toBe("-5");
+    expect(csvField("+1.5e3", options)).toBe("+1.5e3");
+    expect(csvField(-3, options)).toBe("-3");
+    expect(csvField("=1+1", { ...options, escapeFormulas: false })).toBe("=1+1");
+    expect(csvField("=1+1", { ...options, escapeFormulas: undefined })).toBe("'=1+1");
   });
 });

@@ -73,6 +73,9 @@ export const CATEGORIES: Category[] = [
 ];
 
 const CATEGORY_BY_KIND: Record<DatabaseKind, CategoryId> = {
+  jdbc: "other",
+  workspace: "sql",
+  spacetimedb: "sql",
   postgres: "sql",
   mysql: "sql",
   mssql: "sql",

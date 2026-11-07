@@ -1,0 +1,18 @@
+{
+  "runs": 9,
+  "medianMs": 0.8954999999999984,
+  "p95Ms": 1.0844159999999974,
+  "maxMs": 1.0844159999999974,
+  "sourceColumns": 100000,
+  "viewportUpdates": 5000,
+  "columnWidth": 160,
+  "viewportWidth": 1176,
+  "pixelStep": 30,
+  "changedWindows": 470,
+  "largestWindow": 17,
+  "retainedWindows": 1,
+  "databaseRequests": 0,
+  "name": "grid-partial-column-windows",
+  "runId": null,
+  "capturedAt": "2026-11-06T05:42:09.494Z"
+}

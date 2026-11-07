@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import {
   defaultBackupOptions,
+  isPlainSqlRestore,
+  plainSqlRestoreOptions,
   restoreBlockReason,
   restoreConfirmationPhrase,
   restoreEffects,
@@ -58,6 +60,8 @@ export function RestorePanel({
     defaultBackupOptions(kind, "restore"),
   );
   const [path, setPath] = useState(initialPath);
+  const plainSql = isPlainSqlRestore(kind, path);
+  const effectiveOptions = plainSql ? plainSqlRestoreOptions(options) : options;
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scope = backupScope("restore", connection.id, database);
@@ -95,7 +99,13 @@ export function RestorePanel({
     setError(null);
     const previous = useBackupJobs.getState().lastJob[scope];
     try {
-      await runBackupJob({ mode: "restore", connection, database, path, options });
+      await runBackupJob({
+        mode: "restore",
+        connection,
+        database,
+        path,
+        options: effectiveOptions,
+      });
       await queryClient.invalidateQueries({
         predicate: (query) => isConnectionQuery(query.queryKey, connection.id),
       });
@@ -155,18 +165,28 @@ export function RestorePanel({
             </Button>
           )}
         </BackupField>
-        <BackupOptionsFields
-          kind={kind}
-          mode="restore"
-          options={options}
-          disabled={running}
-          onChange={(patch) => setOptions((current) => ({ ...current, ...patch }))}
-        />
+        {plainSql ? (
+          <BackupField label="">
+            <span className="text-xs text-muted-foreground">
+              SQL-Datei: wird mit psql eingespielt. Umfang, Löschen, Eigentümer, Rechte und
+              parallele Jobs gelten nur für pg_restore.
+            </span>
+          </BackupField>
+        ) : (
+          <BackupOptionsFields
+            kind={kind}
+            mode="restore"
+            options={options}
+            disabled={running}
+            onChange={(patch) => setOptions((current) => ({ ...current, ...patch }))}
+          />
+        )}
       </BackupSection>
 
       <BackupAdvancedOptions
         kind={kind}
         mode="restore"
+        plainSql={plainSql}
         options={options}
         disabled={running}
         onChange={(patch) => setOptions((current) => ({ ...current, ...patch }))}
@@ -194,7 +214,7 @@ export function RestorePanel({
         endpoint={endpoint}
         database={database}
         source={path}
-        effects={restoreEffects(kind, options)}
+        effects={restoreEffects(kind, effectiveOptions)}
         phrase={restoreConfirmationPhrase(database, connection.name)}
         onCancel={() => setConfirming(false)}
         onConfirm={() => void start()}

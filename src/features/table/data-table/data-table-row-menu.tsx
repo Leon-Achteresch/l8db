@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   ContextMenuContent,
   ContextMenuItem,
@@ -24,7 +25,9 @@ type Props = {
   canDuplicate: boolean;
   duplicateDisabled: boolean;
   onDuplicate: () => void;
+  onWatch?: () => void;
   onDeleteRow?: (ctid: string, oldValues: Record<string, unknown>) => void;
+  extraItems?: ReactNode;
 };
 
 export function DataTableRowMenu({
@@ -35,6 +38,8 @@ export function DataTableRowMenu({
   duplicateDisabled,
   onDuplicate,
   onDeleteRow,
+  onWatch,
+  extraItems,
 }: Props) {
   return (
     <ContextMenuContent>
@@ -42,6 +47,7 @@ export function DataTableRowMenu({
         Zeile {menuRow.rowIndex + 1 + rowOffset}
       </ContextMenuLabel>
       <ContextMenuSeparator />
+      {extraItems}
       <ContextMenuSub>
         <ContextMenuSubTrigger>Kopieren als</ContextMenuSubTrigger>
         <ContextMenuSubContent>
@@ -71,6 +77,7 @@ export function DataTableRowMenu({
           </ContextMenuItem>
         </ContextMenuSubContent>
       </ContextMenuSub>
+      {onWatch && <ContextMenuItem onSelect={onWatch}>Datensatz beobachten</ContextMenuItem>}
       {canDuplicate && (
         <ContextMenuItem disabled={duplicateDisabled} onSelect={onDuplicate}>
           Zeile duplizieren

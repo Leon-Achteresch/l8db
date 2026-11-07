@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { appwriteHasMore, appwriteTotal } from "@/lib/appwrite-paging";
 import {
   appwriteBuckets,
   appwriteDeleteFile,
@@ -165,7 +166,9 @@ export function AppwriteStorageView({ id }: { id: string }) {
           <Archive className="size-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold">Storage</h3>
           {buckets.data && (
-            <span className="text-xs text-muted-foreground">{buckets.data.total} Buckets</span>
+            <span className="text-xs text-muted-foreground">
+              {appwriteTotal(buckets.data)} Buckets
+            </span>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -257,7 +260,7 @@ export function AppwriteStorageView({ id }: { id: string }) {
               </button>
             ))}
           </div>
-          {bucketOffset > 0 || bucketOffset + buckets.data.items.length < buckets.data.total ? (
+          {bucketOffset > 0 || appwriteHasMore(bucketOffset, buckets.data) ? (
             <div className="mt-3 flex items-center justify-end gap-2">
               <Button
                 variant="outline"
@@ -272,7 +275,7 @@ export function AppwriteStorageView({ id }: { id: string }) {
                 variant="outline"
                 size="icon-sm"
                 aria-label="Weitere Buckets"
-                disabled={bucketOffset + buckets.data.items.length >= buckets.data.total}
+                disabled={!appwriteHasMore(bucketOffset, buckets.data)}
                 onClick={() => {
                   setBucketOffset((value) => value + 100);
                   setBucketId(null);
@@ -346,7 +349,7 @@ export function AppwriteStorageView({ id }: { id: string }) {
             <div className="flex items-center gap-2 text-xs font-medium">
               <File className="size-3.5 text-muted-foreground" /> Dateien in {selected?.name}
               {files.data && (
-                <span className="ml-auto text-muted-foreground">{files.data.total}</span>
+                <span className="ml-auto text-muted-foreground">{appwriteTotal(files.data)}</span>
               )}
             </div>
             {files.isPending ? (
@@ -393,38 +396,38 @@ export function AppwriteStorageView({ id }: { id: string }) {
                 ))}
               </div>
             )}
-            {files.data &&
-              (fileOffset > 0 || fileOffset + files.data.items.length < files.data.total) && (
-                <div className="mt-3 flex items-center justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    aria-label="Vorherige Dateien"
-                    disabled={fileOffset === 0}
-                    onClick={() => {
-                      setFileOffset((value) => Math.max(0, value - 100));
-                      setPreview(null);
-                    }}
-                  >
-                    <ChevronLeft className="size-3.5" />
-                  </Button>
-                  <span className="text-xs text-muted-foreground">
-                    {fileOffset + 1}–{fileOffset + files.data.items.length} / {files.data.total}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    aria-label="Weitere Dateien"
-                    disabled={fileOffset + files.data.items.length >= files.data.total}
-                    onClick={() => {
-                      setFileOffset((value) => value + 100);
-                      setPreview(null);
-                    }}
-                  >
-                    <ChevronRight className="size-3.5" />
-                  </Button>
-                </div>
-              )}
+            {files.data && (fileOffset > 0 || appwriteHasMore(fileOffset, files.data)) && (
+              <div className="mt-3 flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Vorherige Dateien"
+                  disabled={fileOffset === 0}
+                  onClick={() => {
+                    setFileOffset((value) => Math.max(0, value - 100));
+                    setPreview(null);
+                  }}
+                >
+                  <ChevronLeft className="size-3.5" />
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {fileOffset + 1}–{fileOffset + files.data.items.length} /{" "}
+                  {appwriteTotal(files.data)}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Weitere Dateien"
+                  disabled={!appwriteHasMore(fileOffset, files.data)}
+                  onClick={() => {
+                    setFileOffset((value) => value + 100);
+                    setPreview(null);
+                  }}
+                >
+                  <ChevronRight className="size-3.5" />
+                </Button>
+              </div>
+            )}
             {preview && preview.bucketId === selected?.id && (
               <>
                 <div ref={manageFeature.ref} className="mt-4 flex flex-wrap items-center gap-2">
