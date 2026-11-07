@@ -270,10 +270,7 @@ async fn run_check(adapter: &dyn DatabaseAdapter, check: &CheckSpec) -> CheckRes
                     } else {
                         (
                             "failed",
-                            format!(
-                                "Skalarwert weicht vom erwarteten Wert ab: erwartet {expected}, erhalten {}.",
-                                actual.unwrap_or(&Value::Null)
-                            ),
+                            format!("Skalarwert weicht vom erwarteten Wert {expected} ab."),
                         )
                     }
                 }
