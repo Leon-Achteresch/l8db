@@ -77,7 +77,7 @@ tauri-plugin-single-instance = "2"
 regex = "1"
 rquickjs = "0.14"
 parquet = { version = "60", default-features = false, features = ["snap", "zstd", "lz4", "flate2-zlib-rs", "json"] }
-calamine = { version = "0.37", features = ["dates"] }
+calamine = { version = "0.38", features = ["dates"] }
 toml_edit = "0.25"
 openssl = { version = "0.10.81", features = ["vendored"] }
 pkcs8 = { version = "0.11", features = ["pem", "encryption", "3des"] }
