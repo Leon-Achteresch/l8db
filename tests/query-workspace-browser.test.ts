@@ -132,11 +132,10 @@ test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
       await page.locator("[data-slot=query-json-rows]").click();
       await page.keyboard.press("ControlOrMeta+f");
       await page.getByRole("textbox", { name: "Ergebnisse durchsuchen" }).fill("elio");
-      if (
-        !(await page.locator("pre").innerText()).includes("elio") ||
-        (await page.locator("pre").innerText()).includes("mara")
-      )
-        throw Error("Result search failed");
+      await page.waitForFunction(() => {
+        const text = [...document.querySelectorAll("pre")].map((node) => node.textContent).join();
+        return text.includes("elio") && !text.includes("mara");
+      });
       await page.getByRole("textbox", { name: "Ergebnisse durchsuchen" }).fill("");
       await page.getByRole("button", { name: "Ergebnisoptionen" }).click();
       await page.getByRole("menuitemradio", { name: "Tabelle", exact: true }).click();
