@@ -97,7 +97,7 @@ test.skipIf(!process.env.L8DB_WORKBENCH_BROWSER)(
             ?.textContent?.includes("customers") &&
           !document.querySelector(".monaco-editor .view-lines")?.textContent?.includes("broken"),
       );
-      await page.locator(".monaco-editor textarea").first().focus();
+      await page.locator(".monaco-editor .view-lines").first().click();
       await page.keyboard.press("ControlOrMeta+Z");
       await page.waitForFunction(() =>
         document.querySelector(".monaco-editor .view-lines")?.textContent?.includes("broken"),

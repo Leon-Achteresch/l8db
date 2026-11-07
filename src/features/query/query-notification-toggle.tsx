@@ -20,7 +20,7 @@ export function QueryNotificationToggle() {
       onClick={() => setEnabled(!enabled)}
     >
       <BellIcon className="size-3.5" />
-      <span className="sr-only @min-[64rem]/qtb:not-sr-only">Meldungen</span>
+      <span className="sr-only @min-[70rem]/qtb:not-sr-only">Meldungen</span>
       {feature.isNew && <NewBadge />}
     </Button>
   );

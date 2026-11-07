@@ -71,8 +71,8 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
       expect(await page.locator(".merge-reference-change").count()).toBe(0);
       expect(await page.locator("select:visible").count()).toBe(0);
       expect(await page.getByLabel("Vergleichsmodus").count()).toBe(0);
-      await page.getByRole("button", { name: "Arbeitsstände", exact: true }).click();
-      const drawer = page.getByRole("dialog", { name: "Arbeitsstände" });
+      await page.getByRole("button", { name: "Gespeicherte Vergleiche", exact: true }).click();
+      const drawer = page.getByRole("dialog", { name: "Gespeicherte Vergleiche" });
       await drawer.getByLabel("Name des Arbeitsstands").fill("Gespeicherter Vergleich");
       await drawer.getByRole("button", { name: "Speichern", exact: true }).click();
       await drawer
@@ -80,7 +80,7 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
         .first()
         .click();
       await drawer.waitFor({ state: "hidden" });
-      await page.getByRole("button", { name: "Arbeitsstände", exact: true }).click();
+      await page.getByRole("button", { name: "Gespeicherte Vergleiche", exact: true }).click();
       await drawer
         .getByRole("button", { name: "Gespeicherter Vergleich entfernen", exact: true })
         .click();
