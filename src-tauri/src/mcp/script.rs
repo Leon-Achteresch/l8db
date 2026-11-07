@@ -12,7 +12,7 @@ use crate::db::{self, DatabaseAdapter, DatabaseKind, QueryResult, TxSession};
 pub fn tool_definition() -> Value {
     json!({
         "name": "script",
-        "description": "Multi-statement script where scripts are enabled; each statement is checked like query/execute. One transaction: commit at the end, rollback on the first error, commit=false is a dry run; writes need confirm=true. No BEGIN/ROLLBACK/SAVEPOINT. Oracle SQL*Plus: / terminators, DEFINE and &x, SET DEFINE OFF, SET ESCAPE, PROMPT, EXEC, SET SERVEROUTPUT ON, WHENEVER SQLERROR, EXIT; no @file.",
+        "description": "Multi-statement script (if enabled); statements are checked like query/execute. One transaction (rollback on the first error, commit=false is a dry run); writes need confirm=true. No BEGIN/ROLLBACK/SAVEPOINT. Oracle SQL*Plus: / terminators, DEFINE and &x, SET DEFINE OFF, SET ESCAPE, PROMPT, EXEC, SET SERVEROUTPUT ON, WHENEVER SQLERROR, EXIT; no @file.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": super::server::database_arg(),

@@ -19,7 +19,7 @@ fn auto_refresh_arg() -> Value {
 pub fn tool_definition() -> Value {
     json!({
         "name": "open",
-        "description": "Show in the user's l8db window: open a table, set or clear its filter, save it as a named view, turn on auto-refresh, open SQL in a new editor tab (not run), or show several tables/SQL side by side in a split view with master-detail links (selecting a master row filters its detail pane). Only when the user asks to see something in l8db; use query to answer questions.",
+        "description": "Show in the user's l8db window: a table (filter, saved view, auto-refresh), SQL in a new editor tab (not run), or a split view of tables/SQL with master-detail links. Only when asked; use query for answers.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": super::server::database_arg(),
@@ -28,13 +28,13 @@ pub fn tool_definition() -> Value {
             "saveAs": {"type": "string", "description": "View name, only when asked"},
             "sql": {"type": "string"},
             "autoRefresh": auto_refresh_arg(),
-            "split": {"type": "array", "maxItems": MAX_SPLIT, "description": "Extra panes next to pane 1 (table or sql), numbered 2.. in order", "items": {"type": "object", "properties": {
+            "split": {"type": "array", "maxItems": MAX_SPLIT, "description": "Extra panes, numbered 2.. in order", "items": {"type": "object", "properties": {
                 "table": {"type": "string"},
                 "sql": {"type": "string"},
                 "filter": {"type": "string"},
-                "autoRefresh": auto_refresh_arg(),
-                "master": {"type": "integer", "description": "Earlier pane number whose selected row drives this pane"},
-                "link": {"type": "string", "description": "Read-only detail SELECT using :master.COLUMN; omit for table panes (foreign key) or sql panes that use :master.COLUMN"}
+                "autoRefresh": {"type": "integer", "enum": AUTO_REFRESH_SECONDS},
+                "master": {"type": "integer", "description": "Earlier pane whose selected row drives this one"},
+                "link": {"type": "string", "description": "Detail SELECT using :master.COLUMN; omit for table panes (foreign key) or sql using :master.COLUMN"}
             }}},
             "orientation": {"type": "string", "enum": ["horizontal", "vertical"]}
         }, "required": ["connection"]}

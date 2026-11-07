@@ -125,7 +125,7 @@ struct Watches(Arc<Inner>);
 pub(super) fn tool_definition() -> Value {
     json!({
         "name": "watch",
-        "description": "Watch PostgreSQL rows by primary key; changes are pushed as short diffs (channel messages, else read them with action=changes). action: add (table, ids, columns, minutes ≤480, default 60), list, changes, remove (watch id or all).",
+        "description": "Watch PostgreSQL rows by primary key; changes arrive as short diffs (channel messages, else action=changes). action: add (table, ids, columns, minutes ≤480, default 60), list, changes, remove (id or all).",
         "inputSchema": {"type": "object", "properties": {
             "action": {"type": "string", "enum": ["add", "list", "changes", "remove"]},
             "connection": {"type": "string"},

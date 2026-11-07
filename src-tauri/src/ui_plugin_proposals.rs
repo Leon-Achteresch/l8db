@@ -22,7 +22,7 @@ impl Drop for Pending {
 }
 
 pub fn definition() -> Value {
-    json!({"name":"ui_plugins", "description":"UI plugins of the l8db app. Call api first for the SDK. write/remove wait up to 120 s for the user's approval in l8db, then return status or compile errors with line. Never grants HTTP.", "inputSchema":{"type":"object","properties":{"action":{"type":"string","enum":["list","read","write","remove","status","api"]},"name":{"type":"string"},"source":{"type":"string"}},"required":["action"]}})
+    json!({"name":"ui_plugins", "description":"l8db UI plugins. Call api first for the SDK. write/remove wait up to 120 s for approval in l8db, then return status or compile errors. Never grants HTTP.", "inputSchema":{"type":"object","properties":{"action":{"type":"string","enum":["list","read","write","remove","status","api"]},"name":{"type":"string"},"source":{"type":"string"}},"required":["action"]}})
 }
 
 pub async fn call(args: &Value) -> Result<String, String> {

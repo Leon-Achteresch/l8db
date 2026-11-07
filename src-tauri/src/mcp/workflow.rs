@@ -78,7 +78,7 @@ Variable: {"name","kind":"text|number|boolean|date|choice|secret","defaultValue"
 pub fn tool_definition() -> Value {
     json!({
         "name": "workflow",
-        "description": "l8db automation workflows; changes appear live. Call step_types before building steps. Edits take spec with changed fields (arrays replace); add_step takes after (step or \"start\") and parent (loop step); run takes vars, environment, fromStep, wait. Workflows by id or name, steps by id, name or number.",
+        "description": "l8db automation workflows, changes appear live. Call step_types first. Edits take spec with changed fields (arrays replace); add_step takes after (step or \"start\") and parent (loop step); run takes vars, environment, fromStep, wait. Workflows by id/name, steps by id/name/number.",
         "inputSchema": {
             "type": "object",
             "properties": {

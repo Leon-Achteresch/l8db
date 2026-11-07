@@ -788,7 +788,7 @@ pub fn tool_definition() -> Value {
     });
     json!({
         "name": "dashboard",
-        "description": "Dashboards in the l8db app: charts from read-only SQL or a builder, filters, pages, theme, content blocks. Call action=chart_types first for spec and design guide. Saving runs the SQL; fix errors and retry. Design: 2-4 kpi tiles on top, never a bare number (time dimension or dateColumn), then trend and breakdowns; then arrange and run.",
+        "description": "l8db dashboards: charts from read-only SQL or a builder, filters, pages, theme, content blocks. Call action=chart_types first. kpi: never a bare number. Saving runs the SQL; fix errors and retry, then arrange and run.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -798,7 +798,7 @@ pub fn tool_definition() -> Value {
                 "name": {"type": "string"},
                 "refreshSec": {"type": "integer", "description": "0 = off"},
                 "design": {"type": ["object", "null"], "description": "create/update: free dashboard CSS (max 256 KiB). null resets. Scoped to this dashboard, all CSS properties supported. Stable selectors: .dashboard-surface (:root/:scope), .dashboard-toolbar, .dashboard-filters, .dashboard-canvas, .dashboard-grid, .dashboard-widget, .dashboard-widget-header, .dashboard-widget-title, .dashboard-widget-subtitle, .dashboard-widget-summary, .dashboard-widget-content, [data-widget-id=\"chart-id\"], [data-chart-type=\"kpi\"]. Theme variables: --background, --foreground, --card, --border, --muted-foreground. Chart colors: --dash-accent, --dash-color-1 through --dash-color-8, --dash-compare. Use unique @keyframes/font names. @import is not loaded; external URLs follow app CSP. CSS-only updates do not execute database queries.", "properties": {"css": {"type": "string"}, "enabled": {"type": "boolean"}}, "required": ["css", "enabled"], "additionalProperties": false},
-                "pages": {"type": ["array", "null"], "items": {"type": "object", "properties": {"id": {"type": "string", "description": "1-40 chars A-Z a-z 0-9 _ -; generated from the name when missing"}, "name": {"type": "string", "description": "Tab label, 1-60 chars"}, "hidden": {"type": "boolean"}}, "required": ["name"]}, "description": "create/update: dashboard pages (max 30), replaces the list. Charts on removed pages move to the first page. [] or null = one implicit page."},
+                "pages": {"type": ["array", "null"], "items": {"type": "object", "properties": {"id": {"type": "string", "description": "1-40 chars A-Z a-z 0-9 _ -; generated from the name when missing"}, "name": {"type": "string", "description": "Tab label, 1-60 chars"}, "hidden": {"type": "boolean"}}, "required": ["name"]}, "description": "create/update: pages (max 30), replaces the list. Charts on removed pages move to the first page. [] or null = one implicit page."},
                 "theme": {"type": ["object", "null"], "description": "create/update: branding. update merges key by key (a key set to null removes it), theme null resets. Colors: #hex or rgb()/rgba()/hsl()/hsla()/oklch()/oklab() only. logo: data:image/... URL (png, jpeg, gif, webp, svg+xml; max 512 KiB), remote images are blocked.", "properties": {
                     "brand": {"type": ["string", "null"], "description": "Company or page title in the branded header, max 80 chars"},
                     "tagline": {"type": ["string", "null"], "description": "Max 160 chars"},
@@ -819,7 +819,7 @@ pub fn tool_definition() -> Value {
                 }},
                 "chart": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1},
-                "variables": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "label": {"type": "string"}, "type": {"type": "string", "enum": ["select", "text", "number", "date"]}, "default": {"type": ["string", "number"]}, "options": {"type": "array", "items": {"type": "string"}}, "optionsSql": {"type": "string"}}, "required": ["name"]}, "description": "Dashboard filters (create, update replaces the list). Empty value means no filter: builder filters bound to it are skipped, in SQL it becomes NULL."},
+                "variables": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "label": {"type": "string"}, "type": {"type": "string", "enum": ["select", "text", "number", "date"]}, "default": {"type": ["string", "number"]}, "options": {"type": "array", "items": {"type": "string"}}, "optionsSql": {"type": "string"}}, "required": ["name"]}, "description": "Filters (create, update replaces the list). Empty value means no filter: builder filters bound to it are skipped, in SQL it becomes NULL."},
                 "table": {"type": "string", "description": "joins: schema.table"},
                 "tables": {"type": "array", "items": {"type": "string"}},
                 "values": {"type": "object"},
