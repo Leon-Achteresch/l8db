@@ -136,7 +136,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           cache: tests
-      - run: cargo test --locked -- --skip catalog_stages_overview_search_and_persistence_stay_fast_bounded_and_cached
+      - run: cargo test --locked -- --test-threads=1 --skip catalog_stages_overview_search_and_persistence_stay_fast_bounded_and_cached
         working-directory: src-tauri
 
   rust-integration:
