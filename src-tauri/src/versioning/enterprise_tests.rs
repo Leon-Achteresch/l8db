@@ -574,6 +574,8 @@ async fn lost_commit_reply(
         .await
         .unwrap();
     adapter.execute_query(&format!("CREATE TABLE {} (\"PROJECT_ID\" VARCHAR(100) PRIMARY KEY, \"RELEASE_ID\" VARCHAR(100), \"RELEASE_HASH\" VARCHAR(64), \"LEASE\" VARCHAR(64), \"STATUS\" VARCHAR(20))",control::table(schema,"STATE"))).await.unwrap();
+    adapter.execute_query(&format!("CREATE TABLE {} (\"PROJECT_ID\" VARCHAR(100) NOT NULL, \"CHANGE_ID\" VARCHAR(255) NOT NULL, \"CHECKSUM\" VARCHAR(64) NOT NULL, \"KIND\" VARCHAR(20) NOT NULL, \"SOURCE\" VARCHAR(20) NOT NULL, \"RELEASE_ID\" VARCHAR(100), \"RUN_ID\" VARCHAR(100), \"APPLIED_AT\" TIMESTAMP NOT NULL, \"APPLIED_BY\" VARCHAR(256) NOT NULL, PRIMARY KEY (\"PROJECT_ID\", \"CHANGE_ID\"))",control::table(schema,"CHANGES"))).await.unwrap();
+    adapter.execute_query(&format!("CREATE TABLE {} (\"PROJECT_ID\" VARCHAR(100) NOT NULL, \"OBJECT_ID\" VARCHAR(100) NOT NULL, \"APPLIED_HASH\" VARCHAR(64) NOT NULL, \"CHANGE_ID\" VARCHAR(255), \"APPLIED_AT\" TIMESTAMP NOT NULL, PRIMARY KEY (\"PROJECT_ID\", \"OBJECT_ID\"))",control::table(schema,"OBJECTS"))).await.unwrap();
     let object = snapshot::Snapshot {
         schema: schema.clone(),
         source_schema: schema.clone(),
@@ -585,7 +587,7 @@ async fn lost_commit_reply(
     let definition = snapshot::definition(adapter, connection.kind, &object)
         .await
         .unwrap();
-    let from = json!({"format":1,"id":"v1","kind":"postgres","projectId":connection.project_id,"parent":null,"objects":[{"object":{"selection":{"schema":schema,"objectName":"snapshot_probe","objectType":"table"}},"definition":definition,"checksum":control::hash(&definition)}],"migrations":[]});
+    let from = json!({"format":1,"id":"v1","kind":"postgres","projectId":connection.project_id,"parent":null,"objects":[{"object":{"id":"snapshot_probe","selection":{"schema":schema,"objectName":"snapshot_probe","objectType":"table"}},"definition":definition,"checksum":control::hash(&definition)}],"migrations":[]});
     let sql = format!("INSERT INTO {schema}.snapshot_probe VALUES (9)");
     let mut next = from.clone();
     next["id"] = json!("v2");
@@ -595,7 +597,7 @@ async fn lost_commit_reply(
     let to_hash = control::hash(&next.to_string());
     adapter
         .execute_query(&format!(
-            "INSERT INTO {} VALUES ({},'v1',{},NULL,'ready')",
+            "INSERT INTO {} VALUES ({},'v1',{},NULL,'ready2')",
             control::table(schema, "STATE"),
             control::literal(&connection.project_id),
             control::literal(&from_hash)
@@ -647,7 +649,7 @@ async fn lost_commit_reply(
     .unwrap();
     let commit = super::git(&repo, &["rev-parse", "HEAD"]).await.unwrap();
     let reference = json!({"id":"v2","commit":commit.trim(),"path":"database/releases/v2.json"});
-    let artifact=json!({"schema":null,"policyRevision":policy["revision"],"execution":{"context":context,"fromId":"v1","fromHash":from_hash,"fromObjects":objects,"reference":reference,"releases":[{"id":"v2","hash":to_hash,"objects":objects,"statements":[{"id":"v2:m:1","migration":"m","sql":sql}],"preconditions":[],"postconditions":[],"settings":["SET LOCAL lock_timeout = '5000ms'","SET LOCAL statement_timeout = '60000ms'","SET LOCAL idle_in_transaction_session_timeout = '60000ms'",format!("SET LOCAL search_path = {}, pg_temp",control::quote(schema)),"SET LOCAL row_security = off"],"oracleTimeout":60000}]}}).to_string();
+    let artifact=json!({"schema":null,"policyRevision":policy["revision"],"execution":{"format":2,"context":context,"fromId":"v1","fromHash":from_hash,"fromObjects":objects,"reference":reference,"objects":[{"id":"snapshot_probe","schema":schema,"sourceSchema":schema,"name":"snapshot_probe","kind":"table","definition":definition}],"variances":[],"releases":[{"id":"v2","hash":to_hash,"objects":objects,"statements":[{"id":"v2:m:1","migration":"v2/m","sql":sql}],"changes":[{"id":"v2/m","checksum":control::hash(&sql),"kind":"versioned","requires":[],"touches":[],"preconditions":[],"postconditions":[]}],"preconditions":[],"postconditions":[],"settings":["SET LOCAL lock_timeout = '5000ms'","SET LOCAL statement_timeout = '60000ms'","SET LOCAL idle_in_transaction_session_timeout = '60000ms'",format!("SET LOCAL search_path = {}, pg_temp",control::quote(schema)),"SET LOCAL row_security = off"],"oracleTimeout":60000}]}}).to_string();
     std::fs::write(repo.join(".git/l8db-targets.json"),json!({"format":1,"projectId":connection.project_id,"targets":[{"id":"edge","history":[],"release":{"id":"v1"}}]}).to_string()).unwrap();
     *super::runner::LOST_COMMIT.lock().unwrap() = Some(id.clone());
     let run = super::runner::Request {
@@ -668,7 +670,8 @@ async fn lost_commit_reply(
     let status = super::runner::status(&id).await.unwrap();
     *super::runner::LOST_COMMIT.lock().unwrap() = None;
     assert_eq!(status.status, "failed");
-    assert!(status.error.unwrap().contains("Commit-Antwort"));
+    let error = status.error.unwrap_or_default();
+    assert!(error.contains("Commit-Antwort"), "{error}");
     assert_eq!(
         adapter
             .execute_query(&format!("SELECT id FROM {schema}.snapshot_probe"))
