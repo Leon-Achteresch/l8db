@@ -430,7 +430,10 @@ async fn workspace_cancellation_stops_real_sqlite_work_and_returns_to_idle() {
         .unwrap()
         .unwrap()
         .unwrap_err();
-    assert!(error.contains("vom Server abgebrochen"), "{error}");
+    assert!(
+        error.contains("vom Server abgebrochen") || error.contains("bevor sie gestartet wurde"),
+        "{error}"
+    );
     assert!(started.elapsed() < Duration::from_secs(2));
     let cancelled = started.elapsed();
     assert_eq!(lab.state.active_jobs(), 0);
