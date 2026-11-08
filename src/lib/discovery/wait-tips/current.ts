@@ -6,7 +6,17 @@ export interface VisibleWaitTip {
   hotkey?: string;
 }
 
-export const useWaitTipStore = create<{ tip: VisibleWaitTip | null }>()(() => ({ tip: null }));
+export const useWaitTipStore = create<{
+  tip: VisibleWaitTip | null;
+  commit: (() => void) | null;
+}>()(() => ({ tip: null, commit: null }));
+
+export function commitWaitTip(): void {
+  const { commit } = useWaitTipStore.getState();
+  if (!commit) return;
+  useWaitTipStore.setState({ commit: null });
+  commit();
+}
 
 export function useWaitTip(): VisibleWaitTip | null {
   return useWaitTipStore((state) => state.tip);

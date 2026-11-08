@@ -102,6 +102,8 @@ export async function refreshRoadmap(force = false): Promise<boolean> {
   const wait = force ? ROADMAP_MANUAL_MS : ROADMAP_INTERVAL_MS;
   if (state.loading || now - state.checkedAt < wait) return false;
   useRoadmapStore.setState({ loading: true, checkedAt: now, error: null });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ROADMAP_TIMEOUT_MS);
   try {
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       useRoadmapStore.setState({ error: "offline" });
@@ -110,7 +112,7 @@ export async function refreshRoadmap(force = false): Promise<boolean> {
     const response = await fetch(ROADMAP_URL, {
       credentials: "omit",
       cache: "no-cache",
-      signal: AbortSignal.timeout(ROADMAP_TIMEOUT_MS),
+      signal: controller.signal,
       headers: { Accept: "application/vnd.github+json" },
     });
     if (response.status === 404) {
@@ -129,6 +131,7 @@ export async function refreshRoadmap(force = false): Promise<boolean> {
       error: typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "failed",
     });
   } finally {
+    clearTimeout(timeout);
     useRoadmapStore.setState({ loading: false, feed: cachedRoadmap() });
   }
   return true;

@@ -1,4 +1,4 @@
-import { type RetryOptions, retrySurface } from "../promoter/retry-surface";
+import { type RetryOptions, releaseChannel, retrySurface } from "../promoter/retry-surface";
 import { onFeatureUsed } from "../usage";
 import { shouldAskFeedback, useFeedbackStore } from "./store";
 
@@ -23,5 +23,6 @@ export function installFeedback(retry?: RetryOptions): () => void {
     stop();
     cancelPending?.();
     cancelPending = null;
+    releaseChannel("feedback");
   };
 }

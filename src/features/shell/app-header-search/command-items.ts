@@ -75,6 +75,7 @@ export function buildFeatureItems(
     context: entry.area,
     icon: Compass,
     summary: entry.summary,
+    videoId: entry.videoId,
     featureId: newFeatureId(entry.id) ?? (index === 0 ? "discover.palette-features" : undefined),
     onSelect: () => {
       setOpen(false);

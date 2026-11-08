@@ -49,7 +49,12 @@ export const AtlasTile = memo(function AtlasTile({
       {(feature.steps?.length || feature.videoId) && (
         <span className="flex gap-1">
           {feature.steps?.length ? (
-            <button type="button" className={SECONDARY} onClick={() => startGuide(feature.id)}>
+            <button
+              type="button"
+              data-feature="discover.guide"
+              className={SECONDARY}
+              onClick={() => startGuide(feature.id)}
+            >
               <MousePointer2 className="size-3" />
               Zeig's mir
             </button>

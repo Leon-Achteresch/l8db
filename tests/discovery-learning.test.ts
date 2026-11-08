@@ -115,15 +115,20 @@ const { advanceLesson, checkSatisfied, lessonAvailable, pruneLessonProgress } = 
   "../src/lib/discovery/lessons/progress"
 );
 const { useLessonsStore } = await import("../src/lib/discovery/lessons/store");
-const { handleLessonSignal, startLesson, endLesson } = await import(
+const { handleLessonSignal, resumeLesson, startLesson, endLesson } = await import(
   "../src/lib/discovery/lessons/runtime"
 );
 const { DEMO_ROWS, demoDatabasePath, demoSeedSql, openDemoDatabase } = await import(
   "../src/lib/discovery/lessons/demo-db"
 );
 const { useConnectionsStore } = await import("../src/lib/connections");
-const { aiFeatureIds, featureSearchContext, FEATURE_CONTEXT_MAX_BYTES, isFeatureQuestion } =
-  await import("../src/lib/ai/feature-search");
+const {
+  activeFeatureContext,
+  aiFeatureIds,
+  featureSearchContext,
+  FEATURE_CONTEXT_MAX_BYTES,
+  isFeatureQuestion,
+} = await import("../src/lib/ai/feature-search");
 
 import type { Capabilities } from "../src/lib/db";
 import type { FeatureEntry } from "../src/lib/discovery/types";
@@ -303,6 +308,32 @@ describe("guide", () => {
     expect(prodLink.clicks).toBe(0);
   });
 
+  test("switching to production while the cursor moves cancels the auto-click", async () => {
+    const link = element("one", { tagName: "A" });
+    anchors = [link];
+    guide.startGuide("x", { steps: [{ ...steps[0], safeClick: true }] });
+    await sleep(5);
+    expect(useGuideStore.getState().guide?.autoClick).toBe(true);
+    useConnectionsStore.setState({
+      connections: [
+        {
+          id: "p",
+          name: "Prod",
+          kind: "postgres",
+          connectionString: "postgres://db",
+          sslMode: "disable",
+          ssh: null,
+          environment: "production",
+        },
+      ],
+      activeId: "p",
+    });
+    await sleep(300);
+    expect(link.clicks).toBe(0);
+    expect(useGuideStore.getState().guide?.phase).toBe("waiting");
+    expect(useGuideStore.getState().guide?.autoClick).toBe(false);
+  });
+
   test("no auto-click without safeClick or for non-navigation elements", async () => {
     const tab = element("one", { role: "tab" });
     anchors = [tab];
@@ -473,6 +504,66 @@ describe("lessons", () => {
   });
 });
 
+describe("lesson resume", () => {
+  afterEach(() => {
+    guide.stopGuide();
+    useLessonsStore.setState({ active: null });
+  });
+
+  test("resuming after switching connections re-activates the demo database", async () => {
+    useConnectionsStore.setState({ connections: [], activeId: null });
+    useLessonsStore.setState({ progress: {} });
+    const other = useConnectionsStore.getState().addConnection({
+      name: "Eigene",
+      kind: "postgres",
+      connectionString: "postgres://localhost/eigene",
+      sslMode: "disable",
+      ssh: null,
+    });
+    const activated: (string | null)[] = [];
+    const deps = {
+      directory: async () => "/tmp/",
+      execute: async () => undefined,
+      activate: async (id: string | null) => {
+        activated.push(id);
+        useConnectionsStore.setState({ activeId: id });
+        return true;
+      },
+    };
+    expect(await startLesson("first-query", deps)).toBe(true);
+    const demoId = useLessonsStore.getState().active?.connectionId ?? null;
+    expect(demoId).not.toBeNull();
+    useConnectionsStore.setState({ activeId: other.id });
+    useLessonsStore.setState({
+      active: { ...(useLessonsStore.getState().active as never), paused: true },
+    });
+    expect(handleLessonSignal({ feature: "query.workspace" })).toBe(false);
+    expect(await resumeLesson(deps)).toBe(true);
+    expect(useConnectionsStore.getState().activeId).toBe(demoId);
+    expect(useLessonsStore.getState().active?.paused).toBe(false);
+    expect(handleLessonSignal({ feature: "query.workspace" })).toBe(true);
+    await endLesson(deps);
+  });
+
+  test("resuming after the demo connection vanished ends the lesson", async () => {
+    useConnectionsStore.setState({ connections: [], activeId: null });
+    useLessonsStore.setState({
+      active: { lessonId: "first-query", connectionId: "weg", previousId: null, paused: true },
+    });
+    const activated: (string | null)[] = [];
+    expect(
+      await resumeLesson({
+        activate: async (id) => {
+          activated.push(id);
+          return true;
+        },
+      }),
+    ).toBe(false);
+    expect(activated).toEqual([]);
+    expect(useLessonsStore.getState().active).toBeNull();
+  });
+});
+
 describe("ai feature search", () => {
   test("detects how-questions only", () => {
     expect(isFeatureQuestion("Wie vergleiche ich zwei Schemas?")).toBe(true);
@@ -495,6 +586,11 @@ describe("ai feature search", () => {
     );
     const bounded = featureSearchContext("wie vergleiche ich", {}, huge);
     expect(new TextEncoder().encode(bounded).length).toBeLessThanOrEqual(FEATURE_CONTEXT_MAX_BYTES);
+  });
+
+  test("without an active connection capability features stay findable", () => {
+    useConnectionsStore.setState({ connections: [], activeId: null });
+    expect(activeFeatureContext("Wie erstelle ich ein ER-Diagramm?")).toContain("er-diagram");
   });
 
   test("card ids are known and limited", () => {

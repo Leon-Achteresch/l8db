@@ -58,6 +58,7 @@ export function CommandPalette({
   commandFeatureId,
   history = NO_HISTORY,
   onSelectItem,
+  renderPreview,
 }: CommandPaletteProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const controlled = controlledOpen !== undefined;
@@ -529,6 +530,7 @@ export function CommandPalette({
                     )}
                   </div>
                 </motion.div>
+                {renderPreview && rows[active] ? renderPreview(rows[active]) : null}
                 {commandFeatureId ? (
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
                     <span>↑ ↓ Auswählen</span>
@@ -536,7 +538,7 @@ export function CommandPalette({
                     <button
                       type="button"
                       onClick={() => {
-                        setQuery(commandsOnly ? search : `> ${query}`);
+                        setQuery(commandsOnly ? search : `> ${search}`);
                         inputRef.current?.focus();
                       }}
                       className="ml-auto rounded px-1 py-0.5 hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"

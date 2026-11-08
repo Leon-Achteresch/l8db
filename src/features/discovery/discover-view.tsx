@@ -1,7 +1,8 @@
 import { useNavigate } from "@tanstack/react-router";
 import { DiscoverTabContent } from "@/features/discovery/discover-tab-content";
-import { DISCOVER_TABS } from "@/features/discovery/discover-tabs";
+import { DISCOVER_TABS, visibleDiscoverTabs } from "@/features/discovery/discover-tabs";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
+import { useTeamStore } from "@/lib/team/store";
 import { cn } from "@/lib/utils";
 
 export function DiscoverView() {
@@ -9,7 +10,8 @@ export function DiscoverView() {
   const requested = useRouterSelect(
     (state) => (state.location.search as { tab?: string }).tab ?? DISCOVER_TABS[0]?.id,
   );
-  const tabs = DISCOVER_TABS.filter((tab) => !tab.visible || tab.visible());
+  const teamExists = useTeamStore((state) => state.exists);
+  const tabs = visibleDiscoverTabs({ teamExists });
   const active = tabs.find((tab) => tab.id === requested) ?? tabs[0];
 
   return (

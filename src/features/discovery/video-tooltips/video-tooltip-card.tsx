@@ -1,6 +1,7 @@
 import { NewBadge } from "@/components/new-badge";
 import { FeatureClip } from "@/features/discovery/video-tooltips/feature-clip";
 import type { FeatureEntry } from "@/lib/discovery/types";
+import { SUPPRESS_TOOLTIPS_CSS } from "@/lib/discovery/video-tooltips/controller";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
 const WIDTH = 240;
@@ -22,6 +23,7 @@ export function VideoTooltipCard({ entry, rect }: { entry: FeatureEntry; rect: D
         ...(below ? { top: rect.bottom + GAP } : { bottom: window.innerHeight - rect.top + GAP }),
       }}
     >
+      <style>{SUPPRESS_TOOLTIPS_CSS}</style>
       <FeatureClip videoId={entry.videoId} title={entry.title} />
       <p className="flex items-center gap-1.5 px-1 text-xs font-medium">
         {entry.title}

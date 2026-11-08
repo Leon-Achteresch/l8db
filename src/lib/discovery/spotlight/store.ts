@@ -12,6 +12,7 @@ export const SPOTLIGHT_SURFACE_ID = "release";
 interface SpotlightState {
   seenVersion: string | null;
   lastActive: number | null;
+  previousActive: number | null | undefined;
   open: SpotlightContent | null;
   explicit: boolean;
   sessionShown: boolean;
@@ -30,6 +31,7 @@ export const useSpotlightStore = create<SpotlightState>()(
     (set, get) => ({
       seenVersion: null,
       lastActive: null,
+      previousActive: undefined,
       open: null,
       explicit: false,
       sessionShown: false,
@@ -37,7 +39,8 @@ export const useSpotlightStore = create<SpotlightState>()(
         if (get().seenVersion !== version) set({ seenVersion: version });
       },
       touch: (now = Date.now()) => {
-        const { lastActive } = get();
+        const { lastActive, previousActive } = get();
+        if (previousActive === undefined) set({ previousActive: lastActive });
         if (lastActive === null || !sameDay(lastActive, now)) set({ lastActive: now });
       },
       show: (open, explicit) =>
@@ -69,6 +72,11 @@ export const useSpotlightStore = create<SpotlightState>()(
 
 syncAcrossWindows(SPOTLIGHT_STORAGE_KEY, () => void useSpotlightStore.persist.rehydrate());
 onDiscoveryReset(() => useSpotlightStore.setState({ seenVersion: null, lastActive: null }));
+
+export function refreshSeenVersion(): string | null {
+  void useSpotlightStore.persist.rehydrate();
+  return useSpotlightStore.getState().seenVersion;
+}
 
 export async function openSpotlight(): Promise<boolean> {
   const [{ FEATURE_CATALOG }, { manualSpotlightContent }, { requestSurface }] = await Promise.all([

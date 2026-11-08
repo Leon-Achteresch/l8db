@@ -19,7 +19,13 @@ function clip(value: unknown, max: number): string | null {
 
 export function teamTipEnd(until: string): number {
   const date = DATE_ONLY.exec(until);
-  if (date) return new Date(Number(date[1]), Number(date[2]) - 1, Number(date[3]) + 1).getTime();
+  if (date) {
+    const [year, month, day] = [Number(date[1]), Number(date[2]) - 1, Number(date[3])];
+    const start = new Date(year, month, day);
+    if (start.getFullYear() !== year || start.getMonth() !== month || start.getDate() !== day)
+      return Number.NaN;
+    return new Date(year, month, day + 1).getTime();
+  }
   return /^\d{4}-\d{2}-\d{2}T/.test(until) ? Date.parse(until) : Number.NaN;
 }
 

@@ -173,8 +173,8 @@ async function runStep(index: number): Promise<void> {
     () => {
       current.timer = null;
       if (session !== current || controller.signal.aborted) return;
-      if (!autoClick) {
-        patch({ phase: "waiting" });
+      if (!autoClick || !element.isConnected || !canAutoClick(step, element, activeConnection())) {
+        patch({ phase: "waiting", autoClick: false });
         return;
       }
       grace(current);

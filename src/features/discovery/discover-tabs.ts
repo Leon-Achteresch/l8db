@@ -9,14 +9,17 @@ import {
   Users,
 } from "lucide-react";
 import type { ComponentType } from "react";
-import { useTeamStore } from "@/lib/team/store";
 
 export interface DiscoverTab {
   id: string;
   label: string;
   icon: LucideIcon;
   load: () => Promise<{ default: ComponentType }>;
-  visible?: () => boolean;
+  visible?: (context: DiscoverTabContext) => boolean;
+}
+
+export interface DiscoverTabContext {
+  teamExists: boolean;
 }
 
 export const DISCOVER_TABS: DiscoverTab[] = [
@@ -78,10 +81,14 @@ export const DISCOVER_TABS: DiscoverTab[] = [
     id: "team",
     label: "Team",
     icon: Users,
-    visible: () => useTeamStore.getState().exists,
+    visible: (context) => context.teamExists,
     load: () =>
       import("@/features/discovery/team-tips/discover-team-tab").then(({ DiscoverTeamTab }) => ({
         default: DiscoverTeamTab,
       })),
   },
 ];
+
+export function visibleDiscoverTabs(context: DiscoverTabContext): DiscoverTab[] {
+  return DISCOVER_TABS.filter((tab) => !tab.visible || tab.visible(context));
+}

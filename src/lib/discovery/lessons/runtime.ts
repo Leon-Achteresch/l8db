@@ -2,7 +2,12 @@ import { toast } from "sonner";
 import { useConnectionsStore } from "@/lib/connections";
 import { isProduction } from "@/lib/environments";
 import { startGuide, stopGuide } from "../guide";
-import { closeDemoDatabase, type DemoDatabaseDeps, openDemoDatabase } from "./demo-db";
+import {
+  activateDemoConnection,
+  closeDemoDatabase,
+  type DemoDatabaseDeps,
+  openDemoDatabase,
+} from "./demo-db";
 import { lessonById } from "./lessons";
 import { advanceLesson, type LessonSignal } from "./progress";
 import { useLessonsStore } from "./store";
@@ -79,10 +84,20 @@ export async function startLesson(id: string, deps?: DemoDatabaseDeps): Promise<
   return true;
 }
 
-export function resumeLesson(): boolean {
+export async function resumeLesson(deps?: Pick<DemoDatabaseDeps, "activate">): Promise<boolean> {
   const { active, setActive } = useLessonsStore.getState();
   if (!active) return false;
-  setActive({ ...active, paused: false });
+  if (active.connectionId && !(await activateDemoConnection(active.connectionId, deps))) {
+    if (useLessonsStore.getState().active === active) {
+      setActive(null);
+      stopGuide();
+    }
+    toast("Demo-Datenbank nicht mehr verfügbar", { description: "Lektion neu starten" });
+    return false;
+  }
+  const current = useLessonsStore.getState().active;
+  if (!current || current.lessonId !== active.lessonId) return false;
+  setActive({ ...current, paused: false });
   return showLessonStep();
 }
 

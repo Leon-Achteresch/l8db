@@ -7,6 +7,7 @@ import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { useAiStore } from "@/lib/ai/store";
 import { highlightFeature } from "@/lib/discovery/highlight";
+import { resolveClip } from "@/lib/discovery/video-tooltips/media";
 import {
   describeElementForIssue,
   issueDraftFor,
@@ -37,6 +38,9 @@ export function WhatsThisPopover({
   const hotkey = useResolvedHotkey(match.hotkey ?? "");
   const command = match.hotkey ? commandById(match.hotkey) : undefined;
   const entry = match.entry;
+  const hasVideo = useFeatureVideoStore(
+    (state) => resolveClip(entry?.videoId, state.feed, true) !== null,
+  );
 
   const report = async () => {
     const description = describeElementForIssue(element, pathname, match);
@@ -94,7 +98,7 @@ export function WhatsThisPopover({
           )}
         </div>
         <div className="flex flex-wrap gap-1">
-          {entry?.videoId && (
+          {entry?.videoId && hasVideo && (
             <Button
               size="sm"
               variant="secondary"

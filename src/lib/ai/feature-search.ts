@@ -57,7 +57,7 @@ export function activeFeatureContext(text: string): string {
   const { connections, activeId } = useConnectionsStore.getState();
   const kind = connections.find((connection) => connection.id === activeId)?.kind;
   return featureSearchContext(text, {
-    capabilities: capabilitiesFor(kind),
+    capabilities: kind ? capabilitiesFor(kind) : undefined,
     easyMode: useSettingsStore.getState().easyMode,
   });
 }

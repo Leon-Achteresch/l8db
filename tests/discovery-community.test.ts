@@ -52,7 +52,9 @@ const {
 const { useFeatureUsageStore } = await import("../src/lib/discovery/usage");
 const { DiscoverRecapTab } = await import("../src/features/discovery/recap/discover-recap-tab");
 const { createUsageStatisticsStore } = await import("../src/lib/usage-statistics");
-const { DISCOVER_TABS } = await import("../src/features/discovery/discover-tabs");
+const { DISCOVER_TABS, visibleDiscoverTabs } = await import(
+  "../src/features/discovery/discover-tabs"
+);
 const { NEW_FEATURES } = await import("../src/lib/new-features");
 
 const now = new Date(2026, 10, 8, 12).getTime();
@@ -245,6 +247,23 @@ describe("roadmap feed", () => {
     expect(useRoadmapStore.getState().error).toBe("missing");
   });
 
+  test("works on WebViews without AbortSignal.timeout", async () => {
+    const original = AbortSignal.timeout;
+    Object.defineProperty(AbortSignal, "timeout", { value: undefined, configurable: true });
+    try {
+      useRoadmapStore.setState({ checkedAt: 0, feed: null, fetchedAt: 0 });
+      globalThis.fetch = (async () =>
+        new Response(
+          release({ schemaVersion: 1, items: [item("ohne")] }),
+        )) as unknown as typeof fetch;
+      await refreshRoadmap();
+      expect(useRoadmapStore.getState().error).toBeNull();
+      expect(cachedRoadmap()?.items[0]?.id).toBe("ohne");
+    } finally {
+      Object.defineProperty(AbortSignal, "timeout", { value: original, configurable: true });
+    }
+  });
+
   test("the cache expires after 48 hours, also after a restart", async () => {
     const feed = parseRoadmap({ schemaVersion: 1, items: [item("a")] });
     useRoadmapStore.setState({ feed, fetchedAt: now - ROADMAP_CACHE_MS + 1000 });
@@ -331,10 +350,12 @@ describe("team tips", () => {
 
   test("the team tab is only visible with a team file", () => {
     const team = DISCOVER_TABS.find((tab) => tab.id === "team");
-    useTeamStore.setState({ exists: false });
-    expect(team?.visible?.()).toBe(false);
-    useTeamStore.setState({ exists: true });
-    expect(team?.visible?.()).toBe(true);
+    expect(team?.visible?.({ teamExists: false })).toBe(false);
+    expect(team?.visible?.({ teamExists: true })).toBe(true);
+    const ids = (teamExists: boolean) => visibleDiscoverTabs({ teamExists }).map((tab) => tab.id);
+    expect(ids(false)).not.toContain("team");
+    expect(ids(true)).toContain("team");
+    expect(ids(true).length).toBe(DISCOVER_TABS.length);
   });
 });
 

@@ -1,7 +1,8 @@
 import { Lightbulb } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
+import { useEffect } from "react";
 import { NewBadge } from "@/components/new-badge";
-import { useWaitTip, type VisibleWaitTip } from "@/lib/discovery/wait-tips/current";
+import { commitWaitTip, useWaitTip, type VisibleWaitTip } from "@/lib/discovery/wait-tips/current";
 import { EASE_OUT } from "@/lib/ease";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { formatHotkeyDisplay, useResolvedHotkey } from "@/lib/hotkeys";
@@ -15,6 +16,9 @@ export function WaitTip() {
   const reduce = useReducedMotion();
   const hotkey = useResolvedHotkey(tip?.hotkey ?? "");
   const { ref, isNew } = useNewFeatureVisibility<HTMLParagraphElement>("discover.wait-tips");
+  useEffect(() => {
+    if (tip) commitWaitTip();
+  }, [tip]);
   if (!tip) return null;
   return (
     <motion.p

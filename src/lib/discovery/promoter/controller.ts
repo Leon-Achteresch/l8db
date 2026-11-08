@@ -2,7 +2,7 @@ import type { Capabilities } from "@/lib/db";
 import { type FeatureEvent, onFeatureEvent } from "../events";
 import { useFeatureUsageStore } from "../usage";
 import { evaluatePromoterRules, pushPromoterEvent } from "./engine";
-import { type RetryOptions, retrySurface } from "./retry-surface";
+import { type RetryOptions, releaseChannel, retrySurface } from "./retry-surface";
 import { usePromoterStore } from "./store";
 
 export const PROMOTER_PRIORITY = 3;
@@ -46,5 +46,6 @@ export function installPromoter(
     cancelPending?.();
     cancelPending = null;
     events.length = 0;
+    releaseChannel("promoter");
   };
 }
