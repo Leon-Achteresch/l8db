@@ -239,6 +239,7 @@ export function AppHeader() {
             side="bottom"
           >
             <button
+              data-feature="versioning"
               type="button"
               aria-label={
                 versioning.pending ? `Versionierung: ${versioning.pending} offen` : "Versionierung"
@@ -307,6 +308,7 @@ export function AppHeader() {
 
         <Tooltip content="Treiber" side="bottom">
           <Link
+            data-feature="drivers"
             to="/drivers"
             aria-label="Treiber"
             className={cn(
@@ -321,6 +323,7 @@ export function AppHeader() {
 
         <Tooltip content="AI-Arbeitsbereich" side="bottom">
           <button
+            data-feature="ai.chat"
             id="ai-workspace-trigger"
             type="button"
             aria-label="AI-Arbeitsbereich"
@@ -346,6 +349,7 @@ export function AppHeader() {
         {!easyMode && (
           <Tooltip content="MCP" side="bottom">
             <Link
+              data-feature="mcp"
               to="/mcp"
               aria-label="MCP"
               className={cn(

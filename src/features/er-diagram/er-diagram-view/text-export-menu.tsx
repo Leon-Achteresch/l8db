@@ -72,6 +72,7 @@ export function TextExportMenu({ schema }: { schema: ERSchema }) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
+          data-feature="er-diagram.text-export"
           ref={feature.ref}
           type="button"
           disabled={empty}

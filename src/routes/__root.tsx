@@ -35,6 +35,12 @@ const BlogSuggestionHost = lazy(() =>
   })),
 );
 
+const DiscoveryHost = lazy(() =>
+  import("@/features/discovery/discovery-host").then(({ DiscoveryHost }) => ({
+    default: DiscoveryHost,
+  })),
+);
+
 const TasksDialog = lazy(() =>
   import("@/features/shell/tasks-dialog").then(({ TasksDialog }) => ({ default: TasksDialog })),
 );
@@ -90,6 +96,11 @@ function RootComponent() {
         {backgroundReady && (
           <Suspense fallback={null}>
             <BlogSuggestionHost />
+          </Suspense>
+        )}
+        {backgroundReady && (
+          <Suspense fallback={null}>
+            <DiscoveryHost />
           </Suspense>
         )}
         <Toaster />

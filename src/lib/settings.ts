@@ -2,6 +2,11 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DEFAULT_APP_THEME, normalizeAppTheme } from "@/lib/app-themes";
 import { createSafeJsonStorage } from "@/lib/buffered-storage";
+import {
+  DEFAULT_DISCOVERY_SETTINGS,
+  type DiscoverySettings,
+  normalizeDiscoverySettings,
+} from "@/lib/discovery/channels";
 import { type DmlPreviewMode, normalizeDmlPreviewMode } from "@/lib/dml-preview/mode";
 import { type FilterBarStyle, normalizeFilterBarStyle } from "@/lib/filter-bar-style";
 import { applyOrganizationSettings, withOrganizationSettings } from "@/lib/organization-state";
@@ -45,6 +50,8 @@ export interface SettingsState {
   setAutoFeatureVideos: (value: boolean) => void;
   blogSuggestions: boolean;
   setBlogSuggestions: (value: boolean) => void;
+  discovery: DiscoverySettings;
+  setDiscovery: (value: Partial<DiscoverySettings>) => void;
   autoUpdateCheck: boolean;
   crashReports: boolean;
   setCrashReports: (value: boolean) => void;
@@ -247,6 +254,7 @@ export const DEFAULT_SETTINGS = {
   transactionsPerTable: true,
   autoFeatureVideos: true,
   blogSuggestions: true,
+  discovery: DEFAULT_DISCOVERY_SETTINGS,
   autoUpdateCheck: true,
   crashReports: false,
   usageMetrics: false,
@@ -342,6 +350,10 @@ export const useSettingsStore = create<SettingsState>()(
       setTransactionsPerTable: (transactionsPerTable) => set({ transactionsPerTable }),
       setAutoFeatureVideos: (autoFeatureVideos) => set({ autoFeatureVideos }),
       setBlogSuggestions: (blogSuggestions) => set({ blogSuggestions }),
+      setDiscovery: (value) =>
+        set((state) => ({
+          discovery: normalizeDiscoverySettings({ ...state.discovery, ...value }),
+        })),
       setAutoUpdateCheck: (autoUpdateCheck) =>
         set((state) => ({
           autoUpdateCheck,
@@ -458,6 +470,7 @@ export const useSettingsStore = create<SettingsState>()(
           easyMode: saved?.easyMode === true,
           autoFeatureVideos: saved?.autoFeatureVideos !== false,
           blogSuggestions: saved?.blogSuggestions !== false,
+          discovery: normalizeDiscoverySettings(saved?.discovery),
           onboardingDone: saved?.onboardingDone === true,
           crashReports: saved?.crashReports === true,
           usageMetrics: saved?.usageMetrics === true,

@@ -139,6 +139,7 @@ export function ExportButtons({
   return (
     <div className="rounded-md bg-card border border-border shadow-sm flex items-center">
       <button
+        data-feature="er-diagram.export"
         type="button"
         onClick={() => doExport("png")}
         disabled={exporting || nodes.length === 0}

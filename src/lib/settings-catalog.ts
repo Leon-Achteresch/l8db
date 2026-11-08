@@ -582,6 +582,21 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "blogSuggestions",
   },
   {
+    id: "discovery",
+    tabId: "discovery",
+    title: "Funktionen entdecken",
+    description: "Passende Funktionen von l8db vorschlagen, wenn gerade nichts los ist.",
+    keywords: ["entdecken", "tipps", "hinweise", "lernen", "funktionen", "discovery", "vorschläge"],
+    key: "discovery",
+  },
+  {
+    id: "discovery-reset",
+    tabId: "discovery",
+    title: "Fortschritt zurücksetzen",
+    description: "Genutzte Funktionen und gezeigte Hinweise vergessen.",
+    keywords: ["entdecken", "zurücksetzen", "fortschritt", "reset"],
+  },
+  {
     id: "release-notes",
     tabId: "about",
     title: "Release Notes",

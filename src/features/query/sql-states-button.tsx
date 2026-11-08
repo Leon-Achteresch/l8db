@@ -81,6 +81,7 @@ export function SqlStatesButton({ connectionId, database, tabId, sql, running, o
   return (
     <>
       <Button
+        data-feature="query.editor.checkpoints"
         ref={feature.ref}
         variant="ghost"
         size="sm"

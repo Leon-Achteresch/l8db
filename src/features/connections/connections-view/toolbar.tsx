@@ -58,6 +58,7 @@ export function ConnectionsToolbar({
         </>
       )}
       <Button
+        data-feature="connections.add"
         variant="default"
         size="sm"
         data-tour="connection-add"

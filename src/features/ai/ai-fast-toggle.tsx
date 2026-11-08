@@ -17,6 +17,7 @@ export function AiFastToggle({ profile, models, disabled }: Props) {
   const fast = Boolean(profile.fast);
   return (
     <button
+      data-feature="ai.chat.fast-mode"
       ref={feature.ref}
       type="button"
       aria-label="Fast-Modus"

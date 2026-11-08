@@ -9,6 +9,7 @@ import { SettingsAboutTab } from "@/features/settings/settings-about-tab";
 import { SettingsAppearanceTab } from "@/features/settings/settings-appearance-tab";
 import { SettingsCliTab } from "@/features/settings/settings-cli-tab";
 import { SettingsDataTab } from "@/features/settings/settings-data-tab";
+import { SettingsDiscoveryTab } from "@/features/settings/settings-discovery-tab";
 import { SettingsEditorTab } from "@/features/settings/settings-editor-tab";
 import { SettingsExtensionsTab } from "@/features/settings/settings-extensions-tab";
 import { SettingsGeneralTab } from "@/features/settings/settings-general-tab";
@@ -163,6 +164,7 @@ export function SettingsView() {
                   {category === "cli" ? <SettingsCliTab /> : null}
                   {category === "extensions" ? <SettingsExtensionsTab /> : null}
                   {category === "hotkeys" ? <SettingsHotkeysTab /> : null}
+                  {category === "discovery" ? <SettingsDiscoveryTab /> : null}
                   {category === "statistics" ? <SettingsUsageTab /> : null}
                   {category === "about" ? <SettingsAboutTab /> : null}
                 </>

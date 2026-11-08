@@ -240,6 +240,7 @@ export function SchemaCompareView({ tabId }: { tabId?: string } = {}) {
             <ArrowLeftRightIcon className="size-3.5" />
           </Button>
           <Button
+            data-feature="schema-compare.run"
             ref={tabsFeature.ref}
             variant="ghost"
             size={tabsFeature.isNew ? "sm" : "icon-sm"}

@@ -32,6 +32,7 @@ export function SavedTabsMenu() {
       <Tooltip content={label} side="bottom" wrapperClassName="shrink-0">
         <DropdownMenuTrigger asChild>
           <button
+            data-feature="workspace.saved-tabs"
             ref={feature.ref}
             type="button"
             aria-label={label}

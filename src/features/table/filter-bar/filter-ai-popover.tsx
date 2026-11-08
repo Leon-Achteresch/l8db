@@ -44,6 +44,7 @@ export function FilterAiPopover({ ai, model }: { ai: FilterAi; model: FilterBarM
     >
       <PopoverTrigger asChild>
         <Button
+          data-feature="table.filter.ai"
           ref={feature.ref}
           type="button"
           variant="outline"

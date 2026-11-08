@@ -3,6 +3,7 @@ import {
   Blocks,
   CalendarClock,
   ChartSpline,
+  Compass,
   Diff,
   FileDiff,
   GitCompare,
@@ -22,6 +23,7 @@ import {
   NotebookText,
   OctagonAlert,
   SquareTerminal,
+  Telescope,
   Terminal,
   TriangleAlert,
   Waypoints,
@@ -38,6 +40,7 @@ export type AppSidebarNavItem = {
   activeIcon: IconNode;
   available?: (caps: Capabilities) => boolean;
   featureScope?: string;
+  feature?: string;
   connectionFree?: boolean;
   group?: number;
 };
@@ -47,6 +50,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "Dashboard",
       url: "/dashboard",
+      feature: "dashboard",
       icon: LayoutDashboard,
       activeIcon: LayoutGrid,
       featureScope: "dashboard",
@@ -54,6 +58,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "Übersicht",
       url: "/",
+      feature: "home",
       icon: House,
       activeIcon: HousePlug,
       available: (caps) => caps.overview,
@@ -61,6 +66,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "SQL-Arbeitsplatz",
       url: "/query",
+      feature: "query.workspace",
       icon: SquareTerminal,
       activeIcon: Terminal,
       group: 1,
@@ -68,6 +74,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "SQL-Notebooks",
       url: "/notebook",
+      feature: "notebook",
       group: 1,
       icon: NotebookPen,
       activeIcon: NotebookText,
@@ -76,15 +83,24 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "Invalid Objects",
       url: "/invalid-objects",
+      feature: "invalid-objects",
       group: 2,
       icon: TriangleAlert,
       activeIcon: OctagonAlert,
       available: (caps) => caps.compile_objects,
     },
-    { title: "Monitor", url: "/monitor", icon: Activity, activeIcon: ChartSpline, group: 2 },
+    {
+      title: "Monitor",
+      url: "/monitor",
+      feature: "monitor",
+      icon: Activity,
+      activeIcon: ChartSpline,
+      group: 2,
+    },
     {
       title: "Health",
       url: "/health",
+      feature: "health",
       group: 2,
       icon: HeartPulse,
       activeIcon: HeartPlus,
@@ -94,6 +110,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "Query Builder",
       url: "/query-builder",
+      feature: "query-builder",
       group: 1,
       icon: Blocks,
       activeIcon: Grid2x2Plus,
@@ -102,6 +119,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "ER-Diagramm",
       url: "/er-diagram",
+      feature: "er-diagram",
       group: 1,
       icon: Waypoints,
       activeIcon: Network,
@@ -111,6 +129,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "Vergleich",
       url: "/compare",
+      feature: "compare",
       group: 3,
       icon: Diff,
       activeIcon: FileDiff,
@@ -119,6 +138,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "Schema-Vergleich",
       url: "/schema-compare",
+      feature: "schema-compare",
       group: 3,
       icon: GitCompareArrows,
       activeIcon: GitCompare,
@@ -128,6 +148,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "Gespeicherte Pläne",
       url: "/saved-plan",
+      feature: "saved-plan",
       group: 2,
       icon: ListTree,
       activeIcon: ListChecks,
@@ -136,10 +157,21 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
     {
       title: "Automatisierung",
       url: "/automation",
+      feature: "automation",
       group: 3,
       icon: Zap,
       activeIcon: CalendarClock,
       featureScope: "automation",
+      connectionFree: true,
+    },
+    {
+      title: "Entdecken",
+      url: "/discover",
+      feature: "discover",
+      group: 4,
+      icon: Compass,
+      activeIcon: Telescope,
+      featureScope: "discover",
       connectionFree: true,
     },
   ],

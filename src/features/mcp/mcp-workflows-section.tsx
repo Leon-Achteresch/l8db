@@ -28,6 +28,7 @@ export function McpWorkflowsSection({ enabled, onToggle }: McpWorkflowsSectionPr
           </p>
         </div>
         <Switch
+          data-feature="mcp.workflows"
           checked={enabled}
           onCheckedChange={onToggle}
           aria-label="KI-Clients dürfen Workflows steuern"

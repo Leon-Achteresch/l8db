@@ -112,7 +112,12 @@ export function NotebookToolbar({
             <SquareIcon className="size-3" /> Abbrechen
           </Button>
         ) : (
-          <Button size="sm" className="h-7 gap-1.5 text-xs" onClick={onRunAll}>
+          <Button
+            size="sm"
+            className="h-7 gap-1.5 text-xs"
+            onClick={onRunAll}
+            data-feature="notebook.run-all"
+          >
             <PlayIcon className="size-3" /> Alle ausführen
             <span className="text-[10px] opacity-70">⇧⌘↵</span>
           </Button>

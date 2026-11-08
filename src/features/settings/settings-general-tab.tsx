@@ -47,7 +47,12 @@ export function SettingsGeneralTab() {
       <div className="space-y-3">
         <OrganizationPanel />
         <SettingsRow settingId="easy-mode">
-          <Switch checked={easyMode} onCheckedChange={setEasyMode} aria-label="Easy Mode" />
+          <Switch
+            checked={easyMode}
+            onCheckedChange={setEasyMode}
+            aria-label="Easy Mode"
+            data-feature="settings.easy-mode"
+          />
         </SettingsRow>
         {!easyMode && <SettingsTableTabs />}
 

@@ -10,6 +10,7 @@ import {
   type ParameterizedQuery,
 } from "@/lib/bind-params";
 import { confirmSqlExecution, type QueryResult } from "@/lib/db";
+import { beginQueryEvent } from "@/lib/discovery/events";
 import { invalidateAfterSql } from "@/lib/query-client";
 import { beginQueryCompletion } from "@/lib/query-completion";
 import { useQueryHistoryStore } from "@/lib/query-history";
@@ -157,8 +158,10 @@ export function useRunSql({
       setScriptActiveIndex(null);
       setError(null);
       const startedAt = performance.now();
+      let finishEvent: ((ok: boolean) => void) | undefined;
       const finishHistory = (outcome: { rowCount: number | null; error: string | null }) => {
         recordUserQueryOutcome(connection.kind, outcome.error, performance.now() - startedAt);
+        finishEvent?.(!outcome.error);
         recordHistory({
           connectionId: connection.id,
           database: database ?? null,
@@ -179,6 +182,7 @@ export function useRunSql({
           database ?? undefined,
         );
         executionStarted = true;
+        finishEvent = beginQueryEvent(sql, connection.kind);
         finishNotification = beginQueryCompletion();
         const res = await executeSqlWithTransactions({
           connection,

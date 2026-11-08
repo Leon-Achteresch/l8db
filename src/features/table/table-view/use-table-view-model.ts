@@ -3,6 +3,7 @@ import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConnectionScopeContext, useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
+import { recordFeatureEvent } from "@/lib/discovery/events";
 import { openScopedTable, useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { useRedisRowEdit } from "@/lib/hooks/use-redis-row-edit";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
@@ -82,6 +83,10 @@ export function useTableViewModel({
   useEffect(() => {
     if (stateKey && !inDrawer) useTableViewStateStore.getState().keepDetailTab(stateKey);
   }, [stateKey, inDrawer]);
+  const family = connection?.kind ?? null;
+  useEffect(() => {
+    if (baseStateKey) recordFeatureEvent("table.opened", { family, drawer: Boolean(inDrawer) });
+  }, [baseStateKey, family, inDrawer]);
   const setDetailTab = useCallback(
     (tab: TableDetailTab) => {
       const store = useTableViewStateStore.getState();
@@ -223,6 +228,7 @@ export function useTableViewModel({
 
   const handleFilterChange = useCallback(
     (newFilter: string, raw = true) => {
+      if (newFilter.trim()) recordFeatureEvent("table.filtered", { mode: raw ? "sql" : "simple" });
       setFilter(newFilter);
       setFilterRaw(raw);
       setPage(0);

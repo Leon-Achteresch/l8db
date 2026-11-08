@@ -115,6 +115,7 @@ export function TransferView() {
             Skript anzeigen
           </Button>
           <Button
+            data-feature="transfer.start"
             size="sm"
             onClick={() =>
               plan?.replace && plan.replaced.length > 0

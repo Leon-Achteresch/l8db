@@ -214,6 +214,7 @@ export function AppHotkeys() {
     { id: "menu.about", action: () => void navigate({ to: "/about" }) },
     { id: "menu.docs", action: () => void navigate({ to: "/docs" }) },
     { id: "menu.releaseNotes", action: () => void navigate({ to: "/release-notes" }) },
+    { id: "menu.discover", action: () => void navigate({ to: "/discover" }) },
     {
       id: "menu.bugReport",
       action: () => void navigate({ to: "/settings", search: { tab: "about" } }),

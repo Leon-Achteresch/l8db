@@ -1,6 +1,15 @@
 import { useHotkey, useHotkeys } from "@tanstack/react-hotkeys";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Database, Keyboard, Plug, Puzzle, Search, Sparkles, TextSearch } from "lucide-react";
+import {
+  Compass,
+  Database,
+  Keyboard,
+  Plug,
+  Puzzle,
+  Search,
+  Sparkles,
+  TextSearch,
+} from "lucide-react";
 import {
   type CSSProperties,
   lazy,
@@ -274,6 +283,27 @@ export function AppHeaderSearch() {
         useTourStore.getState().startFromBeginning();
       },
     };
+    const discoverItem: CommandItem = {
+      id: "help:discover",
+      label: "Entdecken",
+      kind: "command",
+      group: "Hilfe",
+      icon: Compass,
+      keywords: [
+        "entdecken",
+        "funktionen",
+        "features",
+        "neu",
+        "lernen",
+        "tipps",
+        "hilfe",
+        "discover",
+      ],
+      onSelect: () => {
+        setOpen(false);
+        void navigate({ to: "/discover" });
+      },
+    };
     const shortcutsItem: CommandItem = {
       id: "help:shortcuts",
       label: "Tastenkürzel anzeigen",
@@ -314,6 +344,7 @@ export function AppHeaderSearch() {
       ...hotkeyItems,
       ...diagramExportItems,
       tourItem,
+      discoverItem,
       shortcutsItem,
       ...settingsItems,
     ];
@@ -351,6 +382,7 @@ export function AppHeaderSearch() {
         />
       ) : (
         <button
+          data-feature="search.commands"
           type="button"
           ref={searchButtonRef}
           data-tour="header-search"

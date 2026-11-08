@@ -264,6 +264,7 @@ export function DashboardToolbar({
               <LibraryIcon />
             </IconButton>
             <Button
+              data-feature="dashboard.present"
               ref={presentFeature.ref}
               variant="ghost"
               size="sm"
@@ -328,7 +329,12 @@ export function DashboardToolbar({
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button size="sm" className="h-7" onClick={onNewChart}>
+                <Button
+                  size="sm"
+                  className="h-7"
+                  onClick={onNewChart}
+                  data-feature="dashboard.new-chart"
+                >
                   <PlusIcon /> Chart erstellen
                   {hasNew && <NewBadge />}
                 </Button>

@@ -20,6 +20,7 @@ export function MultiTargetButton({
   const feature = useNewFeatureVisibility<HTMLButtonElement>("query.multi-target");
   return (
     <Button
+      data-feature="query.multi-target"
       ref={feature.ref}
       size="sm"
       variant="outline"
