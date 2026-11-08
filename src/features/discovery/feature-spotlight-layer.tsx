@@ -83,7 +83,7 @@ export function FeatureSpotlightLayer() {
           key={target.id}
           role="status"
           aria-live="polite"
-          className="pointer-events-none fixed z-[200] rounded-xl ring-2 ring-primary shadow-[0_0_0_9999px_color-mix(in_oklab,var(--background)_45%,transparent)]"
+          className="pointer-events-none fixed z-[200] rounded-xl ring-2 ring-primary shadow-[0_0_0_9999px_color-mix(in_oklab,var(--background)_45%,transparent)] forced-colors:outline-2 forced-colors:outline-[color:Highlight]"
           style={box}
           initial={{ opacity: 0, scale: 1.08 }}
           animate={{ opacity: 1, scale: 1 }}

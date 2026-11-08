@@ -44,7 +44,7 @@ export function CheatsheetDialog({
         onOpenChange(next);
       }}
     >
-      <DialogContent className="max-w-3xl gap-4" aria-describedby={undefined}>
+      <DialogContent className="gap-4 sm:max-w-3xl" aria-describedby={undefined}>
         <DialogTitle ref={feature.ref} className="flex items-center gap-2">
           Spickzettel
           {feature.isNew && <NewBadge />}

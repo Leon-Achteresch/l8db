@@ -541,7 +541,7 @@ export function CommandPalette({
                         setQuery(commandsOnly ? search : `> ${search}`);
                         inputRef.current?.focus();
                       }}
-                      className="ml-auto rounded px-1 py-0.5 hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+                      className="ml-auto inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
                     >
                       {commandsOnly ? "Alle durchsuchen" : "> Befehle"}
                       {!commandsOnly && commandFeature.isNew ? <NewBadge /> : null}

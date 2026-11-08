@@ -111,6 +111,7 @@ const {
 const {
   clearHighlight,
   highlightFeature,
+  isAnchorVisible,
   setHighlightNavigator,
   useHighlightStore,
   waitForAnchor,
@@ -549,6 +550,21 @@ describe("coordinator", () => {
 });
 
 describe("highlight", () => {
+  test("a disabled button inside a closed tooltip trigger still counts as visible", () => {
+    const button = element("query.run");
+    const wrapped = {
+      ...button,
+      closest: (selector: string) =>
+        selector.includes('[data-state="closed"]') ? {} : button.closest(selector),
+    };
+    const hidden = {
+      ...button,
+      closest: (selector: string) => (selector.includes("[hidden]") ? {} : null),
+    };
+    expect(isAnchorVisible(wrapped as unknown as HTMLElement)).toBe(true);
+    expect(isAnchorVisible(hidden as unknown as HTMLElement)).toBe(false);
+  });
+
   test("waiting for an anchor times out, aborts and resolves on mutation", async () => {
     const started = performance.now();
     expect(await waitForAnchor("notebook", { timeoutMs: 30 })).toBeNull();

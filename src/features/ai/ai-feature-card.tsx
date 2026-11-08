@@ -17,7 +17,7 @@ export function AiFeatureCard({ id }: { id: string }) {
       ref={ref}
       className="my-2 flex flex-wrap items-center gap-3 rounded-xl bg-muted/50 px-4 py-3"
     >
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-56">
         <p className="flex items-center gap-2 text-sm font-medium text-foreground">
           {entry.title}
           {shortcut && (
