@@ -4,11 +4,6 @@ import { commandById } from "@/lib/hotkeys/commands";
 export const WHATS_THIS_COMMAND = "help.whatsThis";
 
 const TARGET = "[data-feature], [data-hotkey]";
-const VALUE_SURFACES =
-  'td, table, [role="grid"], [role="treegrid"], [role="gridcell"], [role="cell"], [role="row"], .monaco-editor, input, textarea, select, [contenteditable="true"], [contenteditable=""], [data-l8db-redact]';
-const LABELLED =
-  "button, a, label, h1, h2, h3, h4, [role='button'], [role='tab'], [role='menuitem'], [role='option'], [role='switch'], [role='checkbox']";
-const MAX_TEXT = 60;
 
 export interface WhatsThisMatch {
   entry: FeatureEntry | null;
@@ -63,27 +58,15 @@ export function resolveWhatsThis(element: Element): WhatsThisMatch {
   return { entry: null, feature, hotkey, anchor: null };
 }
 
-function visibleLabel(element: Element): string {
-  if (element.closest(VALUE_SURFACES)) return "";
-  const labelled = element.closest(LABELLED);
-  const raw =
-    element.getAttribute("aria-label") ??
-    labelled?.getAttribute("aria-label") ??
-    element.getAttribute("title") ??
-    labelled?.textContent ??
-    "";
-  const text = raw.replace(/\s+/g, " ").trim();
-  return text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT - 1)}…` : text;
-}
-
 export function describeElementForIssue(
   element: Element,
   pathname: string,
   match: WhatsThisMatch,
 ): string {
   const role = element.getAttribute("role");
-  const label = visibleLabel(element);
   const command = match.hotkey ? commandById(match.hotkey) : undefined;
+  const label =
+    (match.feature ? match.entry?.title : undefined) ?? command?.label ?? match.entry?.title;
   const lines = [
     `Element: <${element.tagName.toLowerCase()}>${role ? ` role=${role}` : ""}${label ? ` „${label}“` : ""}`,
     match.feature ? `data-feature: ${match.feature}` : null,
@@ -96,6 +79,7 @@ export function describeElementForIssue(
   return lines.filter(Boolean).join("\n");
 }
 
-export function issueDraftFor(description: string): string {
-  return `Ich möchte ein Problem mit diesem Element melden und daraus ein Issue erstellen.\n\n${description}\n\nWas passiert: `;
+export function issueDraftFor(description: string, screenshotRef: string | null = null): string {
+  const details = screenshotRef ? `${description}\n${screenshotRef}` : description;
+  return `Ich möchte ein Problem mit diesem Element melden und daraus ein Issue erstellen.\n\n${details}\n\nWas passiert: `;
 }

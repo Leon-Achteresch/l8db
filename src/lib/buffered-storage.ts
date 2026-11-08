@@ -93,7 +93,11 @@ export function createChangedOnlyJsonStorage<S>(
 export function createBufferedJsonStorage<S>(
   getStorage: () => KeyValueStorage,
   delay = 250,
-): PersistStorage<S> & { flush: () => void; dispose: () => void } {
+): PersistStorage<S> & {
+  flush: () => void;
+  setNow: (key: string, value: StorageValue<S>) => void;
+  dispose: () => void;
+} {
   const pending = new Map<string, StorageValue<S>>();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -105,6 +109,7 @@ export function createBufferedJsonStorage<S>(
       if (getStorage().getItem(key) !== json) getStorage().setItem(key, json);
       pending.delete(key);
     }
+    unlisten();
   };
   const flushInBackground = () => {
     try {
@@ -113,14 +118,26 @@ export function createBufferedJsonStorage<S>(
       reportStorageFailure("Tabs und Arbeitsbereiche", error);
     }
   };
+  const win = typeof window !== "undefined" ? window : undefined;
+  const doc = typeof document !== "undefined" ? document : undefined;
   const onVisibility = () => {
-    if (document.visibilityState === "hidden") flushInBackground();
+    if (doc?.visibilityState === "hidden") flushInBackground();
   };
-  if (typeof window !== "undefined") {
-    window.addEventListener?.("pagehide", flushInBackground);
-    window.addEventListener?.("beforeunload", flushInBackground);
+  let listening = false;
+  function listen() {
+    if (listening) return;
+    listening = true;
+    win?.addEventListener?.("pagehide", flushInBackground);
+    win?.addEventListener?.("beforeunload", flushInBackground);
+    doc?.addEventListener?.("visibilitychange", onVisibility);
   }
-  if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisibility);
+  function unlisten() {
+    if (!listening) return;
+    listening = false;
+    win?.removeEventListener?.("pagehide", flushInBackground);
+    win?.removeEventListener?.("beforeunload", flushInBackground);
+    doc?.removeEventListener?.("visibilitychange", onVisibility);
+  }
 
   return {
     getItem: (key) => {
@@ -131,6 +148,7 @@ export function createBufferedJsonStorage<S>(
     },
     setItem: (key, value) => {
       pending.set(key, value);
+      listen();
       timer ??= setTimeout(flushInBackground, delay);
     },
     removeItem: (key) => {
@@ -138,18 +156,18 @@ export function createBufferedJsonStorage<S>(
       if (pending.size === 0) {
         clearTimeout(timer);
         timer = undefined;
+        unlisten();
       }
       return getStorage().removeItem(key);
     },
     flush,
+    setNow: (key, value) => {
+      pending.set(key, value);
+      flush();
+    },
     dispose: () => {
       flushInBackground();
-      if (typeof window !== "undefined") {
-        window.removeEventListener?.("pagehide", flushInBackground);
-        window.removeEventListener?.("beforeunload", flushInBackground);
-      }
-      if (typeof document !== "undefined")
-        document.removeEventListener("visibilitychange", onVisibility);
+      unlisten();
     },
   };
 }

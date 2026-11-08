@@ -37,10 +37,14 @@ export function setHighlightNavigator(next: HighlightNavigator | null): () => vo
   };
 }
 
-export function findAnchor(id: string, root: ParentNode = document): HTMLElement | null {
+export function findAnchor(
+  id: string,
+  root: ParentNode = document,
+  visibleOnly = false,
+): HTMLElement | null {
   const matches = root.querySelectorAll<HTMLElement>(featureSelector(id));
   for (const element of matches) if (isAnchorVisible(element)) return element;
-  return matches[0] ?? null;
+  return visibleOnly ? null : (matches[0] ?? null);
 }
 
 export function isAnchorVisible(element: HTMLElement): boolean {
@@ -58,7 +62,7 @@ export function waitForAnchor(
     root = document,
   }: { signal?: AbortSignal; timeoutMs?: number; root?: ParentNode } = {},
 ): Promise<HTMLElement | null> {
-  const found = findAnchor(id, root);
+  const found = findAnchor(id, root, true);
   if (found || signal?.aborted) return Promise.resolve(signal?.aborted ? null : found);
   return new Promise((resolve) => {
     let observer: MutationObserver | null = null;
@@ -72,7 +76,7 @@ export function waitForAnchor(
     };
     const check = () => {
       frame = 0;
-      const element = findAnchor(id, root);
+      const element = findAnchor(id, root, true);
       if (element) finish(element);
     };
     const schedule = () => {
@@ -87,7 +91,7 @@ export function waitForAnchor(
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ["data-feature", "hidden", "data-state", "aria-hidden"],
+        attributeFilter: ["data-feature", "hidden", "data-state", "aria-hidden", "class", "style"],
       });
     }
   });

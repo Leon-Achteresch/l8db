@@ -654,7 +654,7 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
     size: "major",
     related: ["ai.history", "query.ai-edit", "mcp"],
     steps: [
-      { anchor: "ai.chat", title: "KI-Arbeitsbereich öffnen", safeClick: true },
+      { anchor: "ai.chat", title: "KI-Arbeitsbereich öffnen" },
       { anchor: "ai.chat.fast-mode", title: "Schnellen Modus wählen", route: "/ai" },
       { anchor: "ai.history", title: "Frühere Gespräche", route: "/ai" },
     ],
@@ -841,7 +841,7 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
     hiddenInEasyMode: true,
     related: ["versioning.releases", "versioning.reviews", "schema-compare"],
     steps: [
-      { anchor: "versioning", title: "Versionierung öffnen", safeClick: true },
+      { anchor: "versioning", title: "Versionierung öffnen" },
       {
         anchor: "versioning.database",
         title: "Datenbank-Bereich",

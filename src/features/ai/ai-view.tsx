@@ -541,7 +541,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               .catch(() => undefined);
           } else if (event.kind === "issue") {
             const requestId = String(event.data.id);
-            void handleChatIssueRequest()
+            void handleChatIssueRequest(
+              turn.filter((message) => message.role === "user").map((message) => message.text),
+            )
               .catch(() => ({ diagnostics: "", screenshot: null }))
               .then((answer) => aiRespond(id, requestId, answer))
               .catch(() => undefined);

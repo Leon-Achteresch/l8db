@@ -85,6 +85,7 @@ Object.assign(globalThis, {
 const { FEATURE_AREAS, FEATURE_CATALOG, featureById, featuresByArea, searchFeatures } =
   await import("../src/lib/discovery/catalog");
 const {
+  applyUsageFromOtherWindow,
   featureForLocation,
   featureUsed,
   installFeatureUsageTracking,
@@ -93,6 +94,7 @@ const {
   pruneFeatureUsage,
   recordFeatureUse,
   resetDiscoveryProgress,
+  USAGE_FLUSH_MS,
   useFeatureUsageStore,
 } = await import("../src/lib/discovery/usage");
 const { beginQueryEvent, onFeatureEvent, recordFeatureEvent } = await import(
@@ -434,6 +436,101 @@ describe("usage", () => {
   });
 });
 
+describe("usage persistence", () => {
+  const original = (window as unknown as { localStorage: Storage }).localStorage;
+  const map = new Map<string, string>();
+  let writes = 0;
+  const full = {
+    getItem: (key: string) => map.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      writes++;
+      map.set(key, value);
+    },
+    removeItem: (key: string) => void map.delete(key),
+    key: (index: number) => [...map.keys()][index] ?? null,
+    get length() {
+      return map.size;
+    },
+    clear: () => map.clear(),
+  };
+  const stored = () => map.get("l8db.discovery.usage") ?? "";
+
+  beforeEach(() => {
+    map.clear();
+    writes = 0;
+    Object.assign(window, { localStorage: full });
+  });
+
+  afterEach(() => {
+    Object.assign(window, { localStorage: original });
+  });
+
+  test("reset removes progress but keeps preferences and caches", () => {
+    map.set("l8db.discovery.other", "{}");
+    map.set("l8db.discovery.lessons", "{}");
+    map.set("l8db.discovery.modifier-overlay", '{"state":{"enabled":false}}');
+    map.set("l8db.discovery.roadmap", '{"state":{"feed":null}}');
+    resetDiscoveryProgress();
+    expect(map.has("l8db.discovery.other")).toBe(false);
+    expect(map.has("l8db.discovery.lessons")).toBe(false);
+    expect(map.get("l8db.discovery.modifier-overlay")).toContain("false");
+    expect(map.has("l8db.discovery.roadmap")).toBe(true);
+  });
+
+  test("first use persists at once, later uses are batched until hidden", () => {
+    const realSetTimeout = globalThis.setTimeout;
+    const realClearTimeout = globalThis.clearTimeout;
+    const live = new Set<unknown>();
+    globalThis.setTimeout = ((fn: () => void, ms?: number) => {
+      const id = realSetTimeout(() => {
+        live.delete(id);
+        fn();
+      }, ms);
+      if (ms === USAGE_FLUSH_MS) live.add(id);
+      return id;
+    }) as typeof setTimeout;
+    globalThis.clearTimeout = ((id: ReturnType<typeof setTimeout>) => {
+      live.delete(id);
+      realClearTimeout(id);
+    }) as typeof clearTimeout;
+    try {
+      resetDiscoveryProgress();
+      expect(live.size).toBe(0);
+      writes = 0;
+      recordFeatureUse("notebook", 1);
+      expect(stored()).toContain('"notebook":{"count":1');
+      expect(writes).toBe(1);
+      expect(live.size).toBe(0);
+      for (let index = 2; index <= 50; index++) recordFeatureUse("notebook", index);
+      expect(writes).toBe(1);
+      expect(stored()).toContain('"notebook":{"count":1');
+      expect(live.size).toBe(1);
+      Object.assign(fakeDocument, { visibilityState: "hidden" });
+      for (const listener of documentListeners.get("visibilitychange") ?? []) listener({});
+      expect(writes).toBe(2);
+      expect(stored()).toContain('"notebook":{"count":50');
+      expect(live.size).toBe(0);
+    } finally {
+      Object.assign(fakeDocument, { visibilityState: "visible" });
+      globalThis.setTimeout = realSetTimeout;
+      globalThis.clearTimeout = realClearTimeout;
+    }
+  });
+
+  test("usage from another window is merged, not dropped", () => {
+    resetDiscoveryProgress();
+    recordFeatureUse("notebook", 1);
+    recordFeatureUse("notebook", 2);
+    applyUsageFromOtherWindow(
+      JSON.stringify({ state: { usage: { dashboard: { count: 4, first: 5, last: 6 } } } }),
+    );
+    expect(useFeatureUsageStore.getState().usage.notebook?.count).toBe(2);
+    expect(useFeatureUsageStore.getState().usage.dashboard?.count).toBe(4);
+    applyUsageFromOtherWindow(null);
+    expect(useFeatureUsageStore.getState().usage).toEqual({});
+  });
+});
+
 describe("events", () => {
   test("query events carry hashes and timing but no SQL", () => {
     const events: { name: string; data: Record<string, unknown> }[] = [];
@@ -581,6 +678,26 @@ describe("highlight", () => {
     for (const observer of observers) observer.callback();
     expect((await pending)?.feature).toBe("notebook");
     expect(observers.every((observer) => observer.disconnected)).toBe(true);
+  });
+
+  test("waiting ignores a hidden anchor until it becomes visible or the timeout hits", async () => {
+    const hidden = element("notebook", false);
+    anchors = [hidden];
+    const pending = waitForAnchor("notebook", { timeoutMs: 5000 });
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(settled).toBe(false);
+    const visible = element("notebook");
+    anchors = [hidden, visible];
+    for (const observer of observers) observer.callback();
+    expect(await pending).toBe(visible);
+
+    anchors = [hidden];
+    expect(await waitForAnchor("notebook", { timeoutMs: 30 })).toBe(hidden);
+    anchors = [];
   });
 
   test("highlightFeature navigates, shows the ring and reports hidden or missing anchors", async () => {

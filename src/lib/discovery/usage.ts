@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import { createSafeJsonStorage } from "@/lib/buffered-storage";
+import { type PersistStorage, persist } from "zustand/middleware";
+import { createBufferedJsonStorage, reportStorageFailure } from "@/lib/buffered-storage";
 import { useSettingsStore } from "@/lib/settings";
 import { syncAcrossWindows } from "@/lib/window-sync";
 import { FEATURE_CATALOG, featureById } from "./catalog";
@@ -17,7 +17,12 @@ export {
 
 export const USAGE_STORAGE_KEY = "l8db.discovery.usage";
 export const DISCOVERY_STORAGE_PREFIX = "l8db.discovery.";
+export const DISCOVERY_PRESERVED_KEYS: readonly string[] = [
+  "l8db.discovery.modifier-overlay",
+  "l8db.discovery.roadmap",
+];
 export const MAX_EXTRA_FEATURES = 256;
+export const USAGE_FLUSH_MS = 2000;
 const CLICK_ROUTE_WINDOW_MS = 2000;
 const FEATURE_ID = /^[a-z0-9][a-z0-9._-]{0,79}$/i;
 
@@ -65,6 +70,34 @@ export function pruneFeatureUsage(value: unknown): FeatureUsage {
   return result;
 }
 
+const bufferedUsage = createBufferedJsonStorage<{ usage: FeatureUsage }>(
+  () => window.localStorage,
+  USAGE_FLUSH_MS,
+);
+let writeNow = false;
+
+const usageStorage: PersistStorage<{ usage: FeatureUsage }> = {
+  getItem: bufferedUsage.getItem,
+  removeItem: bufferedUsage.removeItem,
+  setItem: (key, value) => {
+    if (!writeNow) return bufferedUsage.setItem(key, value);
+    try {
+      bufferedUsage.setNow(key, value);
+    } catch (error) {
+      reportStorageFailure(USAGE_STORAGE_KEY, error);
+    }
+  },
+};
+
+function setNow(state: Partial<UsageState>, set: (state: Partial<UsageState>) => void): void {
+  writeNow = true;
+  try {
+    set(state);
+  } finally {
+    writeNow = false;
+  }
+}
+
 export const useFeatureUsageStore = create<UsageState>()(
   persist(
     (set, get) => ({
@@ -79,17 +112,19 @@ export const useFeatureUsageStore = create<UsageState>()(
         const entry = current
           ? { count: current.count + 1, first: current.first, last: now }
           : { count: 1, first: now, last: now };
-        set({
+        const next = {
           usage: { ...usage, [id]: entry },
           extra: current || featureById(id) ? extra : extra + 1,
-        });
+        };
+        if (current) set(next);
+        else setNow(next, set);
         return entry;
       },
-      reset: () => set({ usage: {}, extra: 0 }),
+      reset: () => setNow({ usage: {}, extra: 0 }, set),
     }),
     {
       name: USAGE_STORAGE_KEY,
-      storage: createSafeJsonStorage(),
+      storage: usageStorage,
       version: 1,
       partialize: (state) => ({ usage: state.usage }),
       merge: (persisted, current) => {
@@ -100,7 +135,36 @@ export const useFeatureUsageStore = create<UsageState>()(
   ),
 );
 
-syncAcrossWindows(USAGE_STORAGE_KEY, () => void useFeatureUsageStore.persist.rehydrate());
+function mergeUsage(incoming: FeatureUsage, local: FeatureUsage): FeatureUsage {
+  const merged = { ...incoming };
+  for (const [id, entry] of Object.entries(local)) {
+    const other = merged[id];
+    merged[id] = other
+      ? {
+          count: Math.max(other.count, entry.count),
+          first: Math.min(other.first, entry.first),
+          last: Math.max(other.last, entry.last),
+        }
+      : entry;
+  }
+  return pruneFeatureUsage(merged);
+}
+
+export function applyUsageFromOtherWindow(value: string | null): void {
+  let incoming: FeatureUsage = {};
+  try {
+    incoming = pruneFeatureUsage(
+      (JSON.parse(value ?? "null") as { state?: { usage?: unknown } } | null)?.state?.usage,
+    );
+  } catch {
+    return;
+  }
+  const local = useFeatureUsageStore.getState().usage;
+  const usage = Object.keys(incoming).length === 0 ? {} : mergeUsage(incoming, local);
+  useFeatureUsageStore.setState({ usage, extra: countExtra(usage) });
+}
+
+syncAcrossWindows(USAGE_STORAGE_KEY, applyUsageFromOtherWindow);
 
 function trackingEnabled(): boolean {
   return useSettingsStore.getState().discovery?.enabled !== false;
@@ -153,7 +217,12 @@ export function resetDiscoveryProgress(): void {
     const keys: string[] = [];
     for (let index = 0; index < storage.length; index++) {
       const key = storage.key(index);
-      if (key?.startsWith(DISCOVERY_STORAGE_PREFIX) && key !== USAGE_STORAGE_KEY) keys.push(key);
+      if (
+        key?.startsWith(DISCOVERY_STORAGE_PREFIX) &&
+        key !== USAGE_STORAGE_KEY &&
+        !DISCOVERY_PRESERVED_KEYS.includes(key)
+      )
+        keys.push(key);
     }
     for (const key of keys) storage.removeItem(key);
   } catch (error) {

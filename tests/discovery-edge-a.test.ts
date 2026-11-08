@@ -2,6 +2,12 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { el, fakeTarget } from "./discovery-help-dom";
 
 mock.module("@tauri-apps/plugin-opener", () => ({ openUrl: async () => {} }));
+mock.module("@/features/settings/bug-report-dialog", () => ({
+  collectDiagnosticText: async () => "diag",
+}));
+mock.module("@/lib/issue-screenshot", () => ({
+  captureRedactedScreenshot: async () => "frisch",
+}));
 
 const host = window as unknown as Record<string, unknown>;
 if (typeof host.addEventListener !== "function")
@@ -44,6 +50,8 @@ const { featureById } = await import("../src/lib/discovery/catalog");
 const { detectHotkeyPlatform } = await import("../src/lib/hotkeys/display");
 const { buildFeatureItems } = await import("../src/features/shell/app-header-search/command-items");
 const { POSTGRES_CAPABILITIES } = await import("../src/lib/providers");
+const { handleChatIssueRequest, setPendingIssueScreenshot } = await import("../src/lib/ai/issue");
+const { issueDraftFor } = await import("../src/lib/discovery/whats-this/whats-this");
 
 import type { DiscoveryChannel } from "../src/lib/discovery/channels";
 
@@ -246,5 +254,31 @@ describe("Palette-Vorschau", () => {
     expect(items.length).toBeGreaterThan(0);
     for (const item of items)
       expect(item.videoId).toBe(featureById(item.id.slice("feature:".length))?.videoId);
+  });
+});
+
+describe("Was ist das? Screenshot gehört zum Entwurf", () => {
+  test("only the request that carries the draft gets the element screenshot", async () => {
+    const ref = setPendingIssueScreenshot("element");
+    expect(ref).toMatch(/^Screenshot-Ref: [0-9a-f]{8}$/);
+    const draft = issueDraftFor("Element: <button>", ref);
+    expect(draft).toContain(ref as string);
+    expect((await handleChatIssueRequest([draft])).screenshot).toBe("element");
+    expect((await handleChatIssueRequest([draft])).screenshot).toBe("frisch");
+  });
+
+  test("another issue flow neither gets nor keeps a stale screenshot", async () => {
+    const ref = setPendingIssueScreenshot("element");
+    expect((await handleChatIssueRequest(["Bitte ein Issue zum Export"])).screenshot).toBe(
+      "frisch",
+    );
+    expect((await handleChatIssueRequest([issueDraftFor("x", ref)])).screenshot).toBe("frisch");
+  });
+
+  test("a replaced draft invalidates the older screenshot", async () => {
+    const first = setPendingIssueScreenshot("alt");
+    setPendingIssueScreenshot("neu");
+    expect((await handleChatIssueRequest([issueDraftFor("x", first)])).screenshot).toBe("frisch");
+    expect(setPendingIssueScreenshot(null)).toBeNull();
   });
 });

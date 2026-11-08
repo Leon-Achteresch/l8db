@@ -106,6 +106,13 @@ test("catalog search stays fast over 500 entries", async () => {
 
 test("10 000 feature uses stay within the id limit", async () => {
   useFeatureUsageStore.setState({ usage: {}, extra: 0 });
+  const storage = (window as unknown as { localStorage: Storage }).localStorage;
+  const setItem = storage.setItem;
+  let writes = 0;
+  storage.setItem = (key: string, value: string) => {
+    if (key === "l8db.discovery.usage") writes++;
+    setItem.call(storage, key, value);
+  };
   Bun.gc(true);
   const before = heapSize();
   const started = performance.now();
@@ -114,6 +121,12 @@ test("10 000 feature uses stay within the id limit", async () => {
     recordFeatureUse(index % 2 === 0 ? known : `extra.${index}`, index);
   }
   const totalMs = performance.now() - started;
+  const loopWrites = writes;
+  Object.assign(document, { visibilityState: "hidden" });
+  for (const listener of [...(listeners.get("visibilitychange") ?? [])]) listener({});
+  Object.assign(document, { visibilityState: "visible" });
+  const flushWrites = writes - loopWrites;
+  storage.setItem = setItem;
   Bun.gc(true);
   const retained = heapSize() - before;
   const ids = Object.keys(useFeatureUsageStore.getState().usage).length;
@@ -125,8 +138,12 @@ test("10 000 feature uses stay within the id limit", async () => {
     ids,
     limit: FEATURE_CATALOG.length + MAX_EXTRA_FEATURES,
     storedBytes: stored,
+    storageWrites: loopWrites,
+    flushWrites,
     retainedBytes: retained,
   });
+  expect(loopWrites).toBeLessThanOrEqual(ids);
+  expect(flushWrites).toBe(1);
   expect(ids).toBeLessThanOrEqual(FEATURE_CATALOG.length + MAX_EXTRA_FEATURES);
   expect(stored).toBeLessThan(64_000);
   expect(retained).toBeLessThan(2_000_000);
@@ -150,6 +167,7 @@ test("coordinator decisions are cheap", async () => {
 });
 
 test("idle discovery installs no timers and removes every listener", async () => {
+  useFeatureUsageStore.getState().reset();
   const originalSetInterval = globalThis.setInterval;
   const originalSetTimeout = globalThis.setTimeout;
   let intervals = 0;

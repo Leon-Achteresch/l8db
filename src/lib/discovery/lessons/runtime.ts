@@ -6,7 +6,9 @@ import {
   activateDemoConnection,
   closeDemoDatabase,
   type DemoDatabaseDeps,
+  type OpenedDemoDatabase,
   openDemoDatabase,
+  removeDemoConnection,
 } from "./demo-db";
 import { lessonById } from "./lessons";
 import { advanceLesson, type LessonSignal } from "./progress";
@@ -48,7 +50,11 @@ export function showLessonStep(): boolean {
   });
 }
 
-export function handleLessonSignal(signal: LessonSignal, now = Date.now()): boolean {
+export function handleLessonSignal(
+  signal: LessonSignal,
+  now = Date.now(),
+  deps?: Pick<DemoDatabaseDeps, "activate">,
+): boolean {
   const { active, progress, setProgress } = useLessonsStore.getState();
   const lesson = active ? lessonById(active.lessonId) : undefined;
   if (!active || !lesson) return false;
@@ -57,7 +63,7 @@ export function handleLessonSignal(signal: LessonSignal, now = Date.now()): bool
   if (!next) return false;
   setProgress(lesson.id, next);
   if (next.done) {
-    stopGuide();
+    void endLesson(deps);
     toast.success("Lektion geschafft", { description: lesson.title });
   } else if (!useLessonsStore.getState().active?.paused) showLessonStep();
   return true;
@@ -67,17 +73,29 @@ export async function startLesson(id: string, deps?: DemoDatabaseDeps): Promise<
   const lesson = lessonById(id);
   if (!lesson) return false;
   const { active, progress, setActive, setProgress } = useLessonsStore.getState();
-  const previousId = active ? active.previousId : useConnectionsStore.getState().activeId;
-  let connectionId: string | null;
+  if (active) {
+    setActive(null);
+    stopGuide();
+    removeDemoConnection(active.connectionId);
+  }
+  const startId = useConnectionsStore.getState().activeId;
+  const originalId = active ? active.previousId : startId;
+  let opened: OpenedDemoDatabase | null;
   try {
-    connectionId = await openDemoDatabase(deps);
+    opened = await openDemoDatabase(deps);
   } catch (error) {
     toast.error("Demo-Datenbank konnte nicht angelegt werden", {
       description: error instanceof Error ? error.message : String(error),
     });
+    if (active) await closeDemoDatabase(null, originalId, deps);
     return false;
   }
-  if (!connectionId) return false;
+  if (!opened) {
+    if (active) await closeDemoDatabase(null, originalId, deps);
+    return false;
+  }
+  const { connectionId } = opened;
+  const previousId = opened.previousId !== startId ? opened.previousId : originalId;
   if (progress[id]?.done) setProgress(id, { step: 0, done: false, at: Date.now() });
   setActive({ lessonId: id, connectionId, previousId, paused: false });
   showLessonStep();

@@ -3,7 +3,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
-const MAX_TIPS: usize = 20;
+const MAX_TIPS: usize = 100;
 const TIP_FIELDS: [(&str, usize); 5] = [
     ("id", 64),
     ("title", 80),
@@ -206,7 +206,7 @@ mod tests {
         assert!(read_team_file(&file).is_err());
         std::fs::write(&file, r#"{"connections":[]}"#).unwrap();
         assert_eq!(read_team_file(&file).unwrap()["tips"], json!([]));
-        let tips: Vec<Value> = (0..25)
+        let tips: Vec<Value> = (0..125)
             .map(|n| json!({"id": format!("t{n}"), "title": "T", "body": "x".repeat(900), "until": "2026-12-31"}))
             .chain([json!({"id": "leer", "title": "T"}), json!("kein objekt")])
             .collect();
@@ -217,7 +217,8 @@ mod tests {
         .unwrap();
         let parsed = read_team_file(&file).unwrap();
         let list = parsed["tips"].as_array().unwrap();
-        assert_eq!(list.len(), 20);
+        assert_eq!(list.len(), MAX_TIPS);
+        assert_eq!(list[MAX_TIPS - 1]["id"], format!("t{}", MAX_TIPS - 1));
         assert_eq!(list[0]["body"].as_str().unwrap().chars().count(), 600);
         assert_eq!(list[0]["until"], "2026-12-31");
         std::fs::write(&file, r#"{"connections":[],"tips":{"id":"x"}}"#).unwrap();

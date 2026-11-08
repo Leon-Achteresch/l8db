@@ -13,29 +13,45 @@ import { conflictKey } from "../src/lib/hotkeys/conflicts";
 describe("demo database path", () => {
   test.each([
     [
-      "windows with spaces and umlauts",
-      "C:\\Users\\Jürgen Müller\\AppData\\Local\\Temp\\",
-      `C:\\Users\\Jürgen Müller\\AppData\\Local\\Temp\\${DEMO_DB_FILE}`,
+      "windows app cache with spaces and umlauts",
+      "C:\\Users\\Jürgen Müller\\AppData\\Local\\com.leon.l8db\\",
+      `C:\\Users\\Jürgen Müller\\AppData\\Local\\com.leon.l8db\\${DEMO_DB_FILE}`,
     ],
-    ["windows unc", "\\\\server\\share\\temp", `\\\\server\\share\\temp\\${DEMO_DB_FILE}`],
-    ["linux tmp", "/tmp", `/tmp/${DEMO_DB_FILE}`],
-    ["linux runtime dir", "/run/user/1000/", `/run/user/1000/${DEMO_DB_FILE}`],
     [
-      "macos var folders",
-      "/var/folders/x1/abc def/T/",
-      `/var/folders/x1/abc def/T/${DEMO_DB_FILE}`,
+      "windows unc profile",
+      "\\\\server\\profiles\\jürgen\\com.leon.l8db",
+      `\\\\server\\profiles\\jürgen\\com.leon.l8db\\${DEMO_DB_FILE}`,
+    ],
+    [
+      "linux xdg cache",
+      "/home/jürgen müller/.cache/com.leon.l8db",
+      `/home/jürgen müller/.cache/com.leon.l8db/${DEMO_DB_FILE}`,
+    ],
+    [
+      "macos caches",
+      "/Users/abc def/Library/Caches/com.leon.l8db/",
+      `/Users/abc def/Library/Caches/com.leon.l8db/${DEMO_DB_FILE}`,
     ],
   ])("%s", (_name, directory, expected) => {
     expect(demoDatabasePath(directory)).toBe(expected);
   });
 
   test("the connection string is the raw path like file-open connections", () => {
-    const path = `C:\\Users\\Jürgen Müller\\AppData\\Local\\Temp\\${DEMO_DB_FILE}`;
+    const path = `C:\\Users\\Jürgen Müller\\AppData\\Local\\com.leon.l8db\\${DEMO_DB_FILE}`;
     const input = demoConnectionInput(path);
     expect(input.kind).toBe("sqlite");
     expect(input.connectionString).toBe(path);
     const fileOpen = readFileSync(new URL("../src/lib/file-open.ts", import.meta.url), "utf8");
     expect(fileOpen).toContain("connectionString: action.path");
+  });
+
+  test("the demo file lives in the per-user app cache, not the shared temp dir", () => {
+    const source = readFileSync(
+      new URL("../src/lib/discovery/lessons/demo-db.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain("appCacheDir");
+    expect(source).not.toContain("tempDir");
   });
 });
 

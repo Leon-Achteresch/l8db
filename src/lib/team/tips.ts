@@ -1,4 +1,5 @@
 export const MAX_TEAM_TIPS = 20;
+export const MAX_STORED_TEAM_TIPS = 100;
 const TIP_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const FEATURE_ID = /^[a-z0-9][a-z0-9._-]{0,79}$/i;
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -33,8 +34,8 @@ export function parseTeamTips(value: unknown): TeamTip[] {
   if (!Array.isArray(value)) return [];
   const tips: TeamTip[] = [];
   const ids = new Set<string>();
-  for (const raw of value.slice(0, MAX_TEAM_TIPS * 4)) {
-    if (tips.length >= MAX_TEAM_TIPS) break;
+  for (const raw of value.slice(0, MAX_STORED_TEAM_TIPS * 4)) {
+    if (tips.length >= MAX_STORED_TEAM_TIPS) break;
     if (!raw || typeof raw !== "object") continue;
     const item = raw as Record<string, unknown>;
     const id = clip(item.id, 64);
@@ -56,5 +57,7 @@ export function parseTeamTips(value: unknown): TeamTip[] {
 }
 
 export function activeTeamTips(value: unknown, now = Date.now()): TeamTip[] {
-  return parseTeamTips(value).filter((tip) => !tip.until || teamTipEnd(tip.until) > now);
+  return parseTeamTips(value)
+    .filter((tip) => !tip.until || teamTipEnd(tip.until) > now)
+    .slice(0, MAX_TEAM_TIPS);
 }

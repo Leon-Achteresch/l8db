@@ -26,8 +26,11 @@ export const LABS: readonly LabEntry[] = [
       settingKey: "updateChannel",
       read: (state) => state.updateChannel === "canary",
       write: (enabled) => {
-        useSettingsStore.getState().setUpdateChannel(enabled ? "canary" : "stable");
-        void import("@/lib/updater").then(({ setPendingUpdate }) => setPendingUpdate(null));
+        const channel = enabled ? "canary" : "stable";
+        useSettingsStore.getState().setUpdateChannel(channel);
+        void import("@/lib/updater")
+          .then(({ switchUpdateChannel }) => switchUpdateChannel(channel))
+          .catch(() => null);
       },
     },
   },
