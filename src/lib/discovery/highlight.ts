@@ -5,7 +5,7 @@ import { featureAnchorId, featureById } from "./catalog";
 import { releaseSurface, requestSurface } from "./coordinator";
 
 export const ANCHOR_TIMEOUT_MS = 4000;
-const HIDDEN_ANCESTOR = '[hidden], [aria-hidden="true"], [inert], [data-state="closed"]';
+const HIDDEN_ANCESTOR = '[hidden], [aria-hidden="true"], [inert]';
 
 export type HighlightOutcome = "shown" | "hidden" | "missing" | "aborted" | "unknown";
 

@@ -88,14 +88,14 @@ export function GuideLayer() {
     <>
       {box && (
         <div
-          className="pointer-events-none fixed z-[210] rounded-xl ring-2 ring-primary transition-[top,left,width,height] duration-200"
+          className="pointer-events-none fixed z-[210] rounded-xl ring-2 ring-primary transition-[top,left,width,height] duration-200 forced-colors:outline-2 forced-colors:outline-[color:Highlight]"
           style={box}
         />
       )}
       {target && (
         <motion.div
           aria-hidden
-          className="pointer-events-none fixed top-0 left-0 z-[212] text-primary drop-shadow"
+          className="pointer-events-none fixed top-0 left-0 z-[212] text-primary drop-shadow forced-colors:text-[color:Highlight]"
           initial={reduced ? false : { x: from.x, y: from.y }}
           animate={{
             x: target.x,

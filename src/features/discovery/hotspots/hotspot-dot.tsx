@@ -53,8 +53,8 @@ export function HotspotDot({
             height: SIZE,
           }}
         >
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60 motion-reduce:animate-none" />
-          <span className="relative inline-flex size-full rounded-full bg-primary" />
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60 forced-color-adjust-none motion-reduce:animate-none forced-colors:bg-[color:Highlight]" />
+          <span className="relative inline-flex size-full rounded-full bg-primary forced-color-adjust-none forced-colors:bg-[color:Highlight]" />
         </button>
       </PopoverTrigger>
       <PopoverContent ref={ref} side="bottom" align="end" className="w-64 gap-3 p-3">

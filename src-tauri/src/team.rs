@@ -43,8 +43,10 @@ fn read_team_file(path: &Path) -> Result<Value, String> {
     let utf16 = |data: &[u8], decode: fn([u8; 2]) -> u16| {
         String::from_utf16(
             &data
-                .chunks_exact(2)
-                .map(|pair| decode([pair[0], pair[1]]))
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| decode(*pair))
                 .collect::<Vec<_>>(),
         )
         .map_err(|_| format!("{shown}: ungültiges UTF-16"))

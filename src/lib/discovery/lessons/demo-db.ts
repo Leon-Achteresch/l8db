@@ -70,7 +70,8 @@ async function defaultDeps(): Promise<DemoDatabaseDeps> {
   ]);
   return {
     directory: tempDir,
-    execute: (connectionString, sql) => executeQuery("sqlite", connectionString, sql),
+    execute: (connectionString, sql) =>
+      executeQuery("sqlite", connectionString, sql, undefined, { confirmed: true }),
     activate: activateConnectionWithToast,
   };
 }
