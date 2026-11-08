@@ -7,6 +7,7 @@ export function ResultCompareButton({ open, onToggle }: { open: boolean; onToggl
   const feature = useNewFeatureVisibility<HTMLButtonElement>("query.result.compare");
   return (
     <Button
+      data-feature="query.result.compare"
       ref={feature.ref}
       size="sm"
       variant={open ? "secondary" : "ghost"}

@@ -36,6 +36,7 @@ export function ResultSnapshotsButton({
   return (
     <>
       <Button
+        data-feature="query.results.snapshots"
         ref={feature.ref}
         size="sm"
         variant="ghost"

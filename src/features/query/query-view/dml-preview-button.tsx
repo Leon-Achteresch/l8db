@@ -20,6 +20,7 @@ export function DmlPreviewButton({
   const feature = useNewFeatureVisibility<HTMLButtonElement>("query.dml-preview");
   return (
     <Button
+      data-feature="query.dml-preview"
       data-hotkey="query.preview"
       ref={feature.ref}
       size="sm"

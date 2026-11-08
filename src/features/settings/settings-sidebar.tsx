@@ -2,6 +2,7 @@ import {
   Blocks,
   ChartNoAxesCombined,
   CodeXml,
+  Compass,
   Database,
   Info,
   Keyboard,
@@ -61,6 +62,11 @@ export const SETTINGS_TABS: SettingsTabItem[] = [
     icon: Keyboard,
   },
   {
+    id: "discovery",
+    label: "Entdecken",
+    icon: Compass,
+  },
+  {
     id: "statistics",
     label: "Nutzungsstatistik",
     icon: ChartNoAxesCombined,
@@ -91,6 +97,7 @@ export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps
         return (
           <button
             key={tab.id}
+            data-feature={`settings.${tab.id}`}
             type="button"
             onClick={() => onSelectTab(tab.id)}
             aria-current={isActive ? "page" : undefined}

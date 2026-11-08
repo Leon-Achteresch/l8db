@@ -289,6 +289,7 @@ export function TableTabs() {
       <Tooltip content="Neue Abfrage öffnen" side="bottom" wrapperClassName="shrink-0">
         <button
           type="button"
+          data-feature="query.new-tab"
           onClick={handleNewQueryTab}
           data-hotkey="tab.newQuery"
           aria-label="Neue Abfrage öffnen"
@@ -303,6 +304,7 @@ export function TableTabs() {
       {!easyMode && (
         <Tooltip content="Ansicht teilen" side="bottom" wrapperClassName="shrink-0">
           <button
+            data-feature="view.split"
             type="button"
             onClick={handleSplit}
             disabled={!routeKey || paneCount >= MAX_SPLIT_PANES}

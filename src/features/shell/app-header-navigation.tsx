@@ -26,11 +26,13 @@ const COLLAPSIBLE_URLS = new Set([
   "/er-diagram",
   "/saved-plan",
   "/query-builder",
+  "/discover",
 ]);
 
 const connectItem: AppSidebarNavItem = {
   title: "Verbindungen",
   url: "/connections",
+  feature: "connections",
   icon: Plug,
   activeIcon: PlugZap,
 };
@@ -75,6 +77,7 @@ export function AppHeaderNavigation() {
           preload={item.url === "/query" || item.url === "/compare" ? false : "intent"}
           preloadDelay={80}
           aria-label={item.title}
+          data-feature={item.feature}
           aria-current={active ? "page" : undefined}
           className={cn(
             "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",

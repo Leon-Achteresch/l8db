@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 const connectItem: AppSidebarNavItem = {
   title: "Verbindungen",
   url: "/connections",
+  feature: "connections",
   icon: Plug,
   activeIcon: PlugZap,
 };
@@ -66,6 +67,7 @@ export function AppNavRail() {
                 preload={item.url === "/query" || item.url === "/compare" ? false : "intent"}
                 preloadDelay={80}
                 aria-label={item.title}
+                data-feature={item.feature}
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors",

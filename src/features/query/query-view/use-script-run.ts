@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import type { ScriptRunEntry } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
+import { beginQueryEvent } from "@/lib/discovery/events";
 import { invalidateAfterSql } from "@/lib/query-client";
 import { beginQueryCompletion } from "@/lib/query-completion";
 import { runSqlScript } from "@/lib/script-runner";
@@ -127,6 +128,7 @@ export function useScriptRun({
       const startedAt = performance.now();
       let executed = text;
       const finishNotification = beginQueryCompletion();
+      const finishEvent = beginQueryEvent(text, connection.kind);
       try {
         const outcome = await runSqlScript({
           connection,
@@ -147,6 +149,7 @@ export function useScriptRun({
             `EXIT ${outcome.exit.label} (Code ${outcome.exit.code}) mit ${outcome.exit.action}`,
           );
         recordUserQueryOutcome(connection.kind, outcome.error, performance.now() - startedAt);
+        finishEvent(!outcome.error);
         setScriptEntries(entries);
         if (!outcome.error) {
           void recordSuccessfulSql(connection.id, database, tabId, text).catch((error) =>
@@ -185,6 +188,7 @@ export function useScriptRun({
         } else setScriptActiveIndex(entries.length - 1);
       } catch (failure) {
         recordUserQueryOutcome(connection.kind, failure, performance.now() - startedAt);
+        finishEvent(false);
         finishNotification(
           /abgebrochen|cancelled|canceled/i.test(String(failure)) ? "cancelled" : "error",
         );

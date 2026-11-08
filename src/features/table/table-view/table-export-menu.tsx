@@ -92,6 +92,7 @@ export function TableActionsMenu({
     <IconMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
+          data-feature="table.export"
           size="icon"
           variant="ghost"
           className="relative size-7"

@@ -51,6 +51,7 @@ export function RunControls({
     <>
       <div className="flex shrink-0 items-stretch">
         <Button
+          data-feature="query.run"
           size="sm"
           variant="default"
           className="h-7 gap-1.5 rounded-r-none border-r border-primary-foreground/25 px-2.5 text-xs @min-[42rem]/qtb:px-3"

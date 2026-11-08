@@ -29,6 +29,7 @@ import { Route as AppWorkspaceAutomationRouteImport } from './routes/_app._works
 import { Route as AppWorkspaceBackupRouteImport } from './routes/_app._workspace.backup'
 import { Route as AppWorkspaceCompareRouteImport } from './routes/_app._workspace.compare'
 import { Route as AppWorkspaceCreateTableRouteImport } from './routes/_app._workspace.create-table'
+import { Route as AppWorkspaceDiscoverRouteImport } from './routes/_app._workspace.discover'
 import { Route as AppWorkspaceEnumsRouteImport } from './routes/_app._workspace.enums'
 import { Route as AppWorkspaceErDiagramRouteImport } from './routes/_app._workspace.er-diagram'
 import { Route as AppWorkspaceHealthRouteImport } from './routes/_app._workspace.health'
@@ -158,6 +159,11 @@ const AppWorkspaceCompareRoute = AppWorkspaceCompareRouteImport.update({
 const AppWorkspaceCreateTableRoute = AppWorkspaceCreateTableRouteImport.update({
   id: '/create-table',
   path: '/create-table',
+  getParentRoute: () => AppWorkspaceRoute,
+} as any)
+const AppWorkspaceDiscoverRoute = AppWorkspaceDiscoverRouteImport.update({
+  id: '/discover',
+  path: '/discover',
   getParentRoute: () => AppWorkspaceRoute,
 } as any)
 const AppWorkspaceEnumsRoute = AppWorkspaceEnumsRouteImport.update({
@@ -353,6 +359,7 @@ export interface FileRoutesByFullPath {
   '/backup': typeof AppWorkspaceBackupRoute
   '/compare': typeof AppWorkspaceCompareRoute
   '/create-table': typeof AppWorkspaceCreateTableRoute
+  '/discover': typeof AppWorkspaceDiscoverRoute
   '/enums': typeof AppWorkspaceEnumsRoute
   '/er-diagram': typeof AppWorkspaceErDiagramRoute
   '/health': typeof AppWorkspaceHealthRoute
@@ -404,6 +411,7 @@ export interface FileRoutesByTo {
   '/backup': typeof AppWorkspaceBackupRoute
   '/compare': typeof AppWorkspaceCompareRoute
   '/create-table': typeof AppWorkspaceCreateTableRoute
+  '/discover': typeof AppWorkspaceDiscoverRoute
   '/enums': typeof AppWorkspaceEnumsRoute
   '/er-diagram': typeof AppWorkspaceErDiagramRoute
   '/health': typeof AppWorkspaceHealthRoute
@@ -457,6 +465,7 @@ export interface FileRoutesById {
   '/_app/_workspace/backup': typeof AppWorkspaceBackupRoute
   '/_app/_workspace/compare': typeof AppWorkspaceCompareRoute
   '/_app/_workspace/create-table': typeof AppWorkspaceCreateTableRoute
+  '/_app/_workspace/discover': typeof AppWorkspaceDiscoverRoute
   '/_app/_workspace/enums': typeof AppWorkspaceEnumsRoute
   '/_app/_workspace/er-diagram': typeof AppWorkspaceErDiagramRoute
   '/_app/_workspace/health': typeof AppWorkspaceHealthRoute
@@ -511,6 +520,7 @@ export interface FileRouteTypes {
     | '/backup'
     | '/compare'
     | '/create-table'
+    | '/discover'
     | '/enums'
     | '/er-diagram'
     | '/health'
@@ -562,6 +572,7 @@ export interface FileRouteTypes {
     | '/backup'
     | '/compare'
     | '/create-table'
+    | '/discover'
     | '/enums'
     | '/er-diagram'
     | '/health'
@@ -614,6 +625,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/backup'
     | '/_app/_workspace/compare'
     | '/_app/_workspace/create-table'
+    | '/_app/_workspace/discover'
     | '/_app/_workspace/enums'
     | '/_app/_workspace/er-diagram'
     | '/_app/_workspace/health'
@@ -803,6 +815,13 @@ declare module '@tanstack/react-router' {
       path: '/create-table'
       fullPath: '/create-table'
       preLoaderRoute: typeof AppWorkspaceCreateTableRouteImport
+      parentRoute: typeof AppWorkspaceRoute
+    }
+    '/_app/_workspace/discover': {
+      id: '/_app/_workspace/discover'
+      path: '/discover'
+      fullPath: '/discover'
+      preLoaderRoute: typeof AppWorkspaceDiscoverRouteImport
       parentRoute: typeof AppWorkspaceRoute
     }
     '/_app/_workspace/enums': {
@@ -1062,6 +1081,7 @@ interface AppWorkspaceRouteChildren {
   AppWorkspaceBackupRoute: typeof AppWorkspaceBackupRoute
   AppWorkspaceCompareRoute: typeof AppWorkspaceCompareRoute
   AppWorkspaceCreateTableRoute: typeof AppWorkspaceCreateTableRoute
+  AppWorkspaceDiscoverRoute: typeof AppWorkspaceDiscoverRoute
   AppWorkspaceEnumsRoute: typeof AppWorkspaceEnumsRoute
   AppWorkspaceErDiagramRoute: typeof AppWorkspaceErDiagramRoute
   AppWorkspaceHealthRoute: typeof AppWorkspaceHealthRoute
@@ -1100,6 +1120,7 @@ const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
   AppWorkspaceBackupRoute: AppWorkspaceBackupRoute,
   AppWorkspaceCompareRoute: AppWorkspaceCompareRoute,
   AppWorkspaceCreateTableRoute: AppWorkspaceCreateTableRoute,
+  AppWorkspaceDiscoverRoute: AppWorkspaceDiscoverRoute,
   AppWorkspaceEnumsRoute: AppWorkspaceEnumsRoute,
   AppWorkspaceErDiagramRoute: AppWorkspaceErDiagramRoute,
   AppWorkspaceHealthRoute: AppWorkspaceHealthRoute,

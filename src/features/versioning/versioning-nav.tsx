@@ -61,6 +61,7 @@ export function VersioningNav({
       >
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
+            data-feature={`versioning.${id}`}
             key={id}
             type="button"
             role="tab"
