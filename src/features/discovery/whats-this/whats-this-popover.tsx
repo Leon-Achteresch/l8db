@@ -45,6 +45,7 @@ export function WhatsThisPopover({
   const report = async () => {
     const description = describeElementForIssue(element, pathname, match);
     onClose();
+    let screenshotRef: string | null = null;
     try {
       await nextFrame();
       await nextFrame();
@@ -52,13 +53,13 @@ export function WhatsThisPopover({
         import("@/lib/issue-screenshot"),
         import("@/lib/ai/issue"),
       ]);
-      setPendingIssueScreenshot(
+      screenshotRef = setPendingIssueScreenshot(
         element.isConnected ? await captureRedactedScreenshot(element).catch(() => null) : null,
       );
     } catch (error) {
       toast.error("Screenshot fehlgeschlagen", { description: String(error) });
     }
-    useAiStore.getState().draft(issueDraftFor(description));
+    useAiStore.getState().draft(issueDraftFor(description, screenshotRef));
   };
 
   const showMe = () => {

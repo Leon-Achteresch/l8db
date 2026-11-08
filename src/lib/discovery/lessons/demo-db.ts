@@ -2,6 +2,7 @@ import { type ConnectionInput, useConnectionsStore } from "@/lib/connections";
 
 export const DEMO_DB_FILE = "l8db-lernen-shop.sqlite";
 export const DEMO_CONNECTION_NAME = "Demo-Shop";
+export const DEMO_MARKER_TABLE = "l8db_demo_marker";
 export const DEMO_ROWS = { customers: 200, products: 50, orders: 500, order_items: 500 } as const;
 
 const FIRST = ["Anna", "Ben", "Clara", "David", "Emma", "Felix", "Greta", "Hannes"];
@@ -23,6 +24,9 @@ function series(limit: number): string {
 export function demoSeedSql(rows: typeof DEMO_ROWS = DEMO_ROWS): string {
   return [
     "BEGIN",
+    `CREATE TABLE IF NOT EXISTS ${DEMO_MARKER_TABLE} (created_by TEXT NOT NULL)`,
+    `DELETE FROM ${DEMO_MARKER_TABLE}`,
+    `INSERT INTO ${DEMO_MARKER_TABLE} VALUES ('l8db')`,
     "DROP TABLE IF EXISTS order_items",
     "DROP TABLE IF EXISTS orders",
     "DROP TABLE IF EXISTS products",
@@ -62,28 +66,71 @@ export interface DemoDatabaseDeps {
   activate: (id: string | null) => Promise<boolean>;
 }
 
+export class ForeignDemoFileError extends Error {
+  constructor(path: string) {
+    super(`${path} stammt nicht von l8db`);
+    this.name = "ForeignDemoFileError";
+  }
+}
+
+const TABLES_SQL = "SELECT name FROM sqlite_master WHERE type = 'table'";
+
+function tableNames(result: unknown): string[] {
+  const rows = (result as { rows?: Record<string, unknown>[] } | null | undefined)?.rows;
+  return Array.isArray(rows) ? rows.map((row) => String(row.name)) : [];
+}
+
+export function seedAllowed(tables: readonly string[]): boolean {
+  return tables.length === 0 || tables.includes(DEMO_MARKER_TABLE);
+}
+
 async function defaultDeps(): Promise<DemoDatabaseDeps> {
-  const [{ tempDir }, { executeQuery }, { activateConnectionWithToast }] = await Promise.all([
-    import("@tauri-apps/api/path"),
-    import("@/lib/db"),
-    import("@/lib/ssh"),
-  ]);
+  const [{ appCacheDir }, { mkdir }, { executeQuery }, { activateConnectionWithToast }] =
+    await Promise.all([
+      import("@tauri-apps/api/path"),
+      import("@tauri-apps/plugin-fs"),
+      import("@/lib/db"),
+      import("@/lib/ssh"),
+    ]);
   return {
-    directory: tempDir,
+    directory: async () => {
+      const directory = await appCacheDir();
+      await mkdir(directory, { recursive: true });
+      return directory;
+    },
     execute: (connectionString, sql) =>
       executeQuery("sqlite", connectionString, sql, undefined, { confirmed: true }),
     activate: activateConnectionWithToast,
   };
 }
 
-export async function openDemoDatabase(deps?: DemoDatabaseDeps): Promise<string | null> {
+export interface OpenedDemoDatabase {
+  connectionId: string;
+  previousId: string | null;
+}
+
+export async function openDemoDatabase(
+  deps?: DemoDatabaseDeps,
+): Promise<OpenedDemoDatabase | null> {
   const resolved = deps ?? (await defaultDeps());
   const path = demoDatabasePath(await resolved.directory());
-  await resolved.execute(`${path}?mode=rwc`, demoSeedSql());
+  const target = `${path}?mode=rwc`;
+  if (!seedAllowed(tableNames(await resolved.execute(target, TABLES_SQL))))
+    throw new ForeignDemoFileError(path);
+  await resolved.execute(target, demoSeedSql());
   const connection = useConnectionsStore
     .getState()
     .addTemporaryConnection(demoConnectionInput(path));
-  return (await resolved.activate(connection.id)) ? connection.id : null;
+  const previousId = useConnectionsStore.getState().activeId;
+  if (await resolved.activate(connection.id)) return { connectionId: connection.id, previousId };
+  removeDemoConnection(connection.id);
+  return null;
+}
+
+export function removeDemoConnection(connectionId: string | null): void {
+  const store = useConnectionsStore.getState();
+  const demo = store.connections.find((connection) => connection.id === connectionId);
+  if (demo?.temporary) store.removeConnection(demo.id);
 }
 
 export async function closeDemoDatabase(
@@ -91,9 +138,7 @@ export async function closeDemoDatabase(
   previousId: string | null,
   deps?: Pick<DemoDatabaseDeps, "activate">,
 ): Promise<void> {
-  const store = useConnectionsStore.getState();
-  const demo = store.connections.find((connection) => connection.id === connectionId);
-  if (demo?.temporary) store.removeConnection(demo.id);
+  removeDemoConnection(connectionId);
   const previous = previousId
     ? useConnectionsStore.getState().connections.find((connection) => connection.id === previousId)
     : undefined;

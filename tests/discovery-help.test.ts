@@ -352,7 +352,8 @@ describe("Was ist das?", () => {
       "/query/1?x=geheim",
       resolveWhatsThis(run as unknown as Element),
     );
-    expect(described).toContain("„Ausführen");
+    expect(described).toContain("„Abfrage ausführen“");
+    expect(described).not.toContain("xxx");
     expect(described).toContain("Kürzel-Befehl: query.run");
     expect(described).not.toContain("geheim");
     expect(described.length).toBeLessThan(400);
@@ -364,6 +365,17 @@ describe("Was ist das?", () => {
         resolveWhatsThis(unknown as unknown as Element),
       ),
     ).toContain("nicht im Katalog");
+    const tab = el("button", { role: "tab", title: "kunden_geheim: prod" }, [], {
+      text: "kunden_geheim: prod",
+    });
+    el("div", { "data-feature": "tabs.zzz" }, [tab]);
+    const tabText = describeElementForIssue(
+      tab as unknown as Element,
+      "/",
+      resolveWhatsThis(tab as unknown as Element),
+    );
+    expect(tabText).not.toContain("kunden_geheim");
+    expect(tabText).toContain("<button> role=tab");
   });
 });
 

@@ -348,8 +348,21 @@ describe("guide", () => {
     expect(button.clicks).toBe(0);
     expect(useGuideStore.getState().guide?.phase).toBe("waiting");
     expect(guide.isNavigationElement(element("n", { inNav: true }) as unknown as Element)).toBe(
+      false,
+    );
+    expect(guide.isNavigationElement(element("n", { tagName: "A" }) as unknown as Element)).toBe(
       true,
     );
+    expect(guide.isNavigationElement(element("n", { role: "tab" }) as unknown as Element)).toBe(
+      true,
+    );
+  });
+
+  test("toggle anchors never auto-click", () => {
+    const toggles = ["ai.chat", "versioning"];
+    for (const item of FEATURE_CATALOG)
+      for (const step of item.steps ?? [])
+        if (toggles.includes(step.anchor)) expect(step.safeClick).not.toBe(true);
   });
 
   test("features without steps do not start", () => {
@@ -459,6 +472,7 @@ describe("lessons", () => {
       directory: async () => "C:\\Temp\\",
       execute: async (target: string) => {
         executed.push(target);
+        return { rows: [] };
       },
       activate: async (id: string | null) => {
         activated.push(id);
@@ -472,7 +486,10 @@ describe("lessons", () => {
       .connections.find((connection) => connection.name === "Demo-Shop");
     expect(demo?.temporary).toBe(true);
     expect(demo?.connectionString).toBe("C:\\Temp\\l8db-lernen-shop.sqlite");
-    expect(executed).toEqual(["C:\\Temp\\l8db-lernen-shop.sqlite?mode=rwc"]);
+    expect(executed).toEqual([
+      "C:\\Temp\\l8db-lernen-shop.sqlite?mode=rwc",
+      "C:\\Temp\\l8db-lernen-shop.sqlite?mode=rwc",
+    ]);
     await sleep(20);
     const stored = localStorage.getItem("l8db.connections") ?? "";
     expect(stored).toContain("postgres://localhost/app");
@@ -493,7 +510,7 @@ describe("lessons", () => {
     useConnectionsStore.setState({ activeId: demo?.id ?? null });
 
     const again = await openDemoDatabase(deps);
-    expect(again).toBe(demo?.id ?? "");
+    expect(again?.connectionId).toBe(demo?.id ?? "");
     await endLesson(deps);
     expect(
       useConnectionsStore.getState().connections.some((connection) => connection.id === demo?.id),
@@ -561,6 +578,136 @@ describe("lesson resume", () => {
     ).toBe(false);
     expect(activated).toEqual([]);
     expect(useLessonsStore.getState().active).toBeNull();
+  });
+});
+
+function sqliteDeps(db: Database, activated: (string | null)[] = []) {
+  return {
+    directory: async () => "C:\\Users\\Jürgen Müller\\AppData\\Local\\com.leon.l8db\\",
+    execute: async (_target: string, sql: string) => {
+      if (sql.startsWith("SELECT")) return { rows: db.query(sql).all() };
+      db.exec(sql);
+      return { rows: [] };
+    },
+    activate: async (id: string | null) => {
+      activated.push(id);
+      useConnectionsStore.setState({ activeId: id });
+      return true;
+    },
+  };
+}
+
+function ownConnection(name = "Eigene") {
+  return useConnectionsStore.getState().addConnection({
+    name,
+    kind: "postgres",
+    connectionString: `postgres://localhost/${name}`,
+    sslMode: "disable",
+    ssh: null,
+  });
+}
+
+function demoConnections() {
+  return useConnectionsStore
+    .getState()
+    .connections.filter((connection) => connection.name === "Demo-Shop");
+}
+
+describe("lesson lifecycle", () => {
+  beforeEach(() => {
+    useConnectionsStore.setState({ connections: [], activeId: null });
+    useLessonsStore.setState({ active: null, progress: {} });
+  });
+
+  afterEach(() => {
+    guide.stopGuide();
+    useLessonsStore.setState({ active: null });
+  });
+
+  test("a foreign file without marker is never dropped", async () => {
+    const db = new Database(":memory:");
+    db.exec("CREATE TABLE customers (id INTEGER PRIMARY KEY, secret TEXT)");
+    db.exec("INSERT INTO customers VALUES (1, 'bleibt')");
+    const own = ownConnection();
+    useConnectionsStore.setState({ activeId: own.id });
+    expect(await startLesson("first-query", sqliteDeps(db))).toBe(false);
+    expect(db.query("SELECT secret FROM customers").all()).toEqual([{ secret: "bleibt" }]);
+    expect(demoConnections()).toEqual([]);
+    expect(useConnectionsStore.getState().activeId).toBe(own.id);
+    expect(useLessonsStore.getState().active).toBeNull();
+    db.close();
+  });
+
+  test("an own demo file with marker is seeded again", async () => {
+    const db = new Database(":memory:");
+    const deps = sqliteDeps(db);
+    expect(await openDemoDatabase(deps)).not.toBeNull();
+    db.exec("DELETE FROM customers");
+    expect(await openDemoDatabase(deps)).not.toBeNull();
+    expect(db.query("SELECT count(*) AS n FROM customers").get()).toEqual({
+      n: DEMO_ROWS.customers,
+    });
+    db.close();
+  });
+
+  test("finishing the last step ends the lesson and restores the previous connection", async () => {
+    const db = new Database(":memory:");
+    const own = ownConnection();
+    useConnectionsStore.setState({ activeId: own.id });
+    const deps = sqliteDeps(db);
+    expect(await startLesson("first-query", deps)).toBe(true);
+    expect(handleLessonSignal({ feature: "query.workspace" }, 1, deps)).toBe(true);
+    expect(
+      handleLessonSignal({ event: { name: "query.executed", data: { ok: true }, at: 1 } }, 2, deps),
+    ).toBe(true);
+    await sleep(10);
+    expect(useLessonsStore.getState().active).toBeNull();
+    expect(useLessonsStore.getState().progress["first-query"]?.done).toBe(true);
+    expect(demoConnections()).toEqual([]);
+    expect(useConnectionsStore.getState().activeId).toBe(own.id);
+    db.close();
+  });
+
+  test("starting a lesson while one runs keeps one demo and the original connection", async () => {
+    const db = new Database(":memory:");
+    const own = ownConnection();
+    useConnectionsStore.setState({ activeId: own.id });
+    const deps = sqliteDeps(db);
+    expect(await startLesson("first-query", deps)).toBe(true);
+    const firstDemo = useLessonsStore.getState().active?.connectionId;
+    useConnectionsStore.setState((state) => ({
+      connections: state.connections.map((connection) =>
+        connection.id === firstDemo
+          ? { ...connection, connectionString: "/tmp/l8db-lernen-shop.sqlite" }
+          : connection,
+      ),
+    }));
+    expect(await startLesson("filter-bar", deps)).toBe(true);
+    expect(demoConnections().length).toBe(1);
+    expect(demoConnections()[0].id).not.toBe(firstDemo);
+    expect(useLessonsStore.getState().active?.previousId).toBe(own.id);
+    await endLesson(deps);
+    expect(demoConnections()).toEqual([]);
+    expect(useConnectionsStore.getState().activeId).toBe(own.id);
+    db.close();
+  });
+
+  test("a connection switch during seeding becomes the previous connection", async () => {
+    const db = new Database(":memory:");
+    const first = ownConnection("erste");
+    const second = ownConnection("zweite");
+    useConnectionsStore.setState({ activeId: first.id });
+    const base = sqliteDeps(db);
+    const deps = {
+      ...base,
+      execute: async (target: string, sql: string) => {
+        useConnectionsStore.setState({ activeId: second.id });
+        return base.execute(target, sql);
+      },
+    };
+    expect(await startLesson("first-query", deps)).toBe(true);
+    expect(useLessonsStore.getState().active?.previousId).toBe(second.id);
+    db.close();
   });
 });
 

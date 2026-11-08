@@ -65,8 +65,7 @@ export function setGuideNavigator(next: GuideNavigator | null): () => void {
 export function isNavigationElement(element: Element): boolean {
   const role = element.getAttribute("role");
   if (role === "tab" || role === "link" || role === "menuitem") return true;
-  if (element.tagName === "A" && element.hasAttribute("href")) return true;
-  return element.closest('nav, [role="navigation"], [role="tablist"]') !== null;
+  return element.tagName === "A" && element.hasAttribute("href");
 }
 
 export function canAutoClick(

@@ -2,7 +2,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { Update } from "@tauri-apps/plugin-updater";
 import { checkUpdate } from "@/lib/db/updates";
-import { useSettingsStore } from "@/lib/settings";
+import { type UpdateChannel, useSettingsStore } from "@/lib/settings";
 
 export const UPDATE_CHECK_TIMEOUT_MS = 20_000;
 
@@ -77,6 +77,22 @@ export async function checkForUpdates(timeoutMs = UPDATE_CHECK_TIMEOUT_MS): Prom
   const update = metadata ? new Update(metadata) : null;
   if (update) setPendingUpdate(update);
   return update;
+}
+
+export async function checkAndPresentUpdate(): Promise<Update | null> {
+  const update = await checkForUpdates();
+  if (update) {
+    const settings = useSettingsStore.getState();
+    if (settings.skippedUpdateVersion === update.version) settings.setSkippedUpdateVersion(null);
+    presentUpdate(update);
+  }
+  return update;
+}
+
+export function switchUpdateChannel(channel: UpdateChannel): Promise<Update | null> {
+  useSettingsStore.getState().setUpdateChannel(channel);
+  setPendingUpdate(null);
+  return checkAndPresentUpdate();
 }
 
 function flushPendingState(): void {

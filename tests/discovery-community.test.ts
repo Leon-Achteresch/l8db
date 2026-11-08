@@ -9,10 +9,14 @@ mock.module("@tauri-apps/plugin-opener", () => ({
   },
 }));
 
+const invoked: { command: string; args?: Record<string, unknown> }[] = [];
 let teamPayload: unknown = { path: "/x/.l8db/connections.json", exists: true, connections: [] };
 mock.module("@tauri-apps/api/core", () => ({
   transformCallback: () => 1,
-  invoke: async (command: string) => (command === "team_connections" ? teamPayload : null),
+  invoke: async (command: string, args?: Record<string, unknown>) => {
+    invoked.push({ command, args });
+    return command === "team_connections" ? teamPayload : null;
+  },
 }));
 
 const host = window as unknown as Record<string, unknown>;
@@ -34,7 +38,9 @@ const { parseRoadmap, parseRoadmapRelease, ROADMAP_CACHE_MS, ROADMAP_MAX_RAW_ITE
 const { cachedRoadmap, refreshRoadmap, useRoadmapStore } = await import(
   "../src/lib/discovery/roadmap/store"
 );
-const { activeTeamTips, MAX_TEAM_TIPS, parseTeamTips } = await import("../src/lib/team/tips");
+const { activeTeamTips, MAX_STORED_TEAM_TIPS, MAX_TEAM_TIPS, parseTeamTips } = await import(
+  "../src/lib/team/tips"
+);
 const { nextTeamTip, useTeamTipsStore } = await import("../src/lib/discovery/team-tips/store");
 const { syncTeam } = await import("../src/lib/team/sync");
 const { useTeamStore } = await import("../src/lib/team/store");
@@ -134,6 +140,18 @@ describe("labs", () => {
     expect(labEnabled("achievements")).toBe(true);
     expect(useSettingsStore.getState().discovery.labs).toEqual({});
     expect(labEnabled("unbekannt")).toBe(false);
+  });
+
+  test("the canary lab switches the channel and checks for updates like the settings", async () => {
+    invoked.length = 0;
+    setLab("canary-updates", true);
+    expect(useSettingsStore.getState().updateChannel).toBe("canary");
+    const canaryCheck = () =>
+      invoked.find((call) => call.command === "check_update" && call.args?.channel === "canary");
+    for (let tries = 0; tries < 50 && !canaryCheck(); tries++)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(canaryCheck()).toBeDefined();
+    setLab("canary-updates", false);
   });
 
   test("feedback opens a prefilled GitHub issue", () => {
@@ -294,8 +312,9 @@ describe("team tips", () => {
   test("validates, trims and caps tips", () => {
     expect(parseTeamTips(undefined)).toEqual([]);
     expect(parseTeamTips({})).toEqual([]);
-    const many = Array.from({ length: 30 }, (_, i) => tip(`t${i}`));
-    expect(parseTeamTips(many)).toHaveLength(MAX_TEAM_TIPS);
+    const many = Array.from({ length: 130 }, (_, i) => tip(`t${i}`));
+    expect(parseTeamTips(many)).toHaveLength(MAX_STORED_TEAM_TIPS);
+    expect(activeTeamTips(many)).toHaveLength(MAX_TEAM_TIPS);
     const [clipped] = parseTeamTips([tip("a", { title: "T".repeat(200), body: "B".repeat(900) })]);
     expect(clipped?.title).toHaveLength(80);
     expect(clipped?.body).toHaveLength(600);
@@ -311,6 +330,17 @@ describe("team tips", () => {
     ).toEqual([
       ["ok", "explain"],
       ["feature", undefined],
+    ]);
+  });
+
+  test("expired and duplicate tips do not use up the visible limit", () => {
+    const expired = Array.from({ length: 20 }, (_, i) => tip(`alt${i}`, { until: "2020-01-01" }));
+    const dupes = Array.from({ length: 10 }, () => tip("alt0"));
+    const fresh = [tip("neu1"), tip("neu2"), tip("neu3")];
+    expect(activeTeamTips([...expired, ...dupes, ...fresh]).map((t) => t.id)).toEqual([
+      "neu1",
+      "neu2",
+      "neu3",
     ]);
   });
 
