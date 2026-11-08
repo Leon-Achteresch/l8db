@@ -1,6 +1,8 @@
+import { WaitTip } from "@/features/discovery/wait-tips/wait-tip";
+
 export function ResultLoading() {
   return (
-    <div className="flex h-full items-center justify-center bg-card/40">
+    <div className="flex h-full flex-col items-center justify-center gap-3 bg-card/40 px-4">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <svg
           className="size-4 animate-spin"
@@ -26,6 +28,7 @@ export function ResultLoading() {
         </svg>
         Ausführen…
       </div>
+      <WaitTip />
     </div>
   );
 }

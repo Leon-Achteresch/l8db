@@ -24,6 +24,7 @@ import { setAiDropHandler } from "@/lib/ai/drop-target";
 import { type ChatEditorTarget, handleChatEditorRequest } from "@/lib/ai/editor/chat-edit";
 import { editorAiController } from "@/lib/ai/editor/controller";
 import { useEditorAiSettings } from "@/lib/ai/editor/settings";
+import { activeFeatureContext } from "@/lib/ai/feature-search";
 import { AiFigureContext, useAiFigureNumbers } from "@/lib/ai/figures";
 import { handleChatIssueRequest } from "@/lib/ai/issue";
 import { handleChatNotebookRequest } from "@/lib/ai/notebook";
@@ -701,8 +702,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       }
     },
   });
-  const withContext = async (items: ChatContextItem[]) => {
-    if (!items.length) return {};
+  const withContext = async (items: ChatContextItem[], text = "") => {
+    const features = activeFeatureContext(text);
+    if (!items.length) return features ? { context: features } : {};
     const current = useConnectionsStore.getState();
     const connection = current.connections.find((entry) => entry.id === current.activeId) ?? null;
     const selection = useDbSelectionStore.getState();
@@ -724,7 +726,11 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       history: useQueryHistoryStore.getState().entries,
       shareValues: useEditorAiSettings.getState().shareValues,
     }).catch(() => "");
-    return context ? { context, contextLabels: items.map((item) => `@${item.label}`) } : {};
+    const combined = [context, features].filter(Boolean).join("\n\n");
+    if (!combined) return {};
+    return context
+      ? { context: combined, contextLabels: items.map((item) => `@${item.label}`) }
+      : { context: combined };
   };
   const send = (text = prompt, files = attachments, items = contextItems) => {
     if (!text.trim()) return;
@@ -740,7 +746,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     }
     const trimmed = text.trim();
     if (editorTab && !items.some((item) => item.kind === "tab")) items = [...items, editorTab];
-    void withContext(items).then((extra) =>
+    void withContext(items, trimmed).then((extra) =>
       runTurn(
         thread,
         {

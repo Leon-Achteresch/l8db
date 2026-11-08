@@ -1,6 +1,7 @@
 import type { useNavigate } from "@tanstack/react-router";
 import {
   Braces,
+  Compass,
   Download,
   Eye,
   GitCompare,
@@ -14,6 +15,13 @@ import type { CommandItem } from "@/components/motion/command-palette";
 import { SEARCH_ITEMS } from "@/features/settings/settings-search-results/search-items";
 import type { PackageMemberInfo } from "@/lib/db";
 import {
+  FEATURE_CATALOG,
+  type FeatureEntry,
+  type FeatureSearchOptions,
+  searchFeatures,
+} from "@/lib/discovery/catalog";
+import { featureUsed } from "@/lib/discovery/usage";
+import {
   emitHotkeyAction,
   formatHotkeyDisplay,
   HOTKEY_COMMANDS,
@@ -21,6 +29,7 @@ import {
   isHotkeyAvailable,
   resolveHotkey,
 } from "@/lib/hotkeys";
+import { NEW_FEATURES, type NewFeatureId } from "@/lib/new-features";
 import type { RecentNotebook } from "@/lib/notebook/store";
 import {
   buildObjectEntries,
@@ -30,6 +39,51 @@ import {
   objectEntryKeywords,
 } from "@/lib/object-search";
 import { useTableTabs } from "@/lib/table-tabs";
+
+const UNUSED_LIMIT = 40;
+let hotkeyFeatures: Map<string, FeatureEntry> | null = null;
+
+function hotkeyFeature(id: string): FeatureEntry | undefined {
+  if (!hotkeyFeatures) {
+    hotkeyFeatures = new Map();
+    for (const entry of FEATURE_CATALOG)
+      if (entry.hotkey && !hotkeyFeatures.has(entry.hotkey))
+        hotkeyFeatures.set(entry.hotkey, entry);
+  }
+  return hotkeyFeatures.get(id);
+}
+
+function newFeatureId(id: string | undefined): NewFeatureId | undefined {
+  return id && id in NEW_FEATURES ? (id as NewFeatureId) : undefined;
+}
+
+export function buildFeatureItems(
+  query: string,
+  unusedOnly: boolean,
+  options: FeatureSearchOptions,
+  setOpen: (open: boolean) => void,
+  entries: readonly FeatureEntry[] = FEATURE_CATALOG,
+): CommandItem[] {
+  if (!unusedOnly && !query.trim()) return [];
+  const pool = unusedOnly ? entries.filter((entry) => !featureUsed(entry.id)) : entries;
+  const limit = unusedOnly ? UNUSED_LIMIT : options.limit;
+  return searchFeatures(query, { ...options, limit }, pool).map((entry, index) => ({
+    id: `feature:${entry.id}`,
+    label: entry.title,
+    kind: "command",
+    group: "Funktionen",
+    context: entry.area,
+    icon: Compass,
+    summary: entry.summary,
+    featureId: newFeatureId(entry.id) ?? (index === 0 ? "discover.palette-features" : undefined),
+    onSelect: () => {
+      setOpen(false);
+      void import("@/lib/discovery/highlight").then(({ highlightFeature }) =>
+        highlightFeature(entry.id),
+      );
+    },
+  }));
+}
 
 export function buildObjectItems(
   objects: Parameters<typeof buildObjectEntries>[0] | undefined,
@@ -154,6 +208,8 @@ export function buildHotkeyItems(
         : command.area,
     icon: command.id === "grid.export" ? Download : Keyboard,
     hint: formatHotkeyDisplay(resolveHotkey(command.id)),
+    summary: hotkeyFeature(command.id)?.summary,
+    featureId: newFeatureId(hotkeyFeature(command.id)?.id),
     keywords: [command.id, command.area, command.description, command.reference ?? ""],
     onSelect: () => {
       setOpen(false);

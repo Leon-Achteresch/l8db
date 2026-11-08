@@ -142,4 +142,22 @@ export const GENERAL_COMMANDS: HotkeyCommand[] = [
     origin: "VS Code",
     reference: "VS Code: Strg+Y / Strg+Shift+Z",
   },
+  {
+    id: "help.cheatsheet",
+    label: "Spickzettel öffnen",
+    description: "Kürzel und Funktionen der aktuellen Ansicht",
+    area: "Allgemein",
+    defaultHotkey: "?",
+    ignoreInputs: true,
+    origin: "l8db",
+    reference: "GitHub, Gmail: ?",
+  },
+  {
+    id: "help.whatsThis",
+    label: "Was ist das?",
+    description: "Element anklicken und erklären lassen",
+    area: "Allgemein",
+    defaultHotkey: "Mod+Shift+H",
+    origin: "l8db",
+  },
 ];

@@ -1,9 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Check, Search, Settings, Unplug, X } from "lucide-react";
+import { Check, Plus, Search, Settings, Unplug, X } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
+import { FeatureEmptyState } from "@/components/feature-empty-state/feature-empty-state";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Spinner } from "@/components/ui/spinner";
 import { BAAS_AS_DATABASE } from "@/features/baas/baas-providers";
@@ -317,9 +318,19 @@ export function SidebarConnectionPicker({
                 className="max-h-[min(40rem,calc(100dvh-12.5rem))] min-h-12 overflow-y-auto overscroll-contain py-1"
               >
                 {connections.length === 0 && baasRows.length === 0 ? (
-                  <p className="px-3 py-5 text-center text-xs text-muted-foreground">
-                    Keine Verbindungen gespeichert
-                  </p>
+                  <FeatureEmptyState
+                    icon={Unplug}
+                    title="Keine Verbindungen gespeichert"
+                    className="py-5"
+                    action={{
+                      label: "Verbindung hinzufügen",
+                      icon: Plus,
+                      onClick: () => {
+                        closeAndFocus();
+                        void navigate({ to: "/connections" });
+                      },
+                    }}
+                  />
                 ) : visible.length === 0 ? (
                   <p className="px-3 py-5 text-center text-xs text-muted-foreground">
                     Keine Treffer

@@ -9,16 +9,17 @@ export function DiscoverView() {
   const requested = useRouterSelect(
     (state) => (state.location.search as { tab?: string }).tab ?? DISCOVER_TABS[0]?.id,
   );
-  const active = DISCOVER_TABS.find((tab) => tab.id === requested) ?? DISCOVER_TABS[0];
+  const tabs = DISCOVER_TABS.filter((tab) => !tab.visible || tab.visible());
+  const active = tabs.find((tab) => tab.id === requested) ?? tabs[0];
 
   return (
     <main className="workspace-canvas h-full w-full min-w-0 overflow-y-auto">
       <div className="mx-auto w-full max-w-5xl px-6 py-8">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Entdecken</h1>
-          {DISCOVER_TABS.length > 1 && (
+          {tabs.length > 1 && (
             <div role="tablist" aria-label="Entdecken" className="flex flex-wrap gap-1">
-              {DISCOVER_TABS.map((tab) => {
+              {tabs.map((tab) => {
                 const selected = tab.id === active?.id;
                 return (
                   <button

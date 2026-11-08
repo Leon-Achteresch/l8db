@@ -1,6 +1,6 @@
 import { SirenIcon } from "lucide-react";
 import { useMemo } from "react";
-import { Button } from "@/components/ui/button";
+import { FeatureEmptyState } from "@/components/feature-empty-state/feature-empty-state";
 import { useAutomationStore } from "@/lib/automation/store";
 import { TASK_TEMPLATES } from "@/lib/automation/templates";
 import { useNow } from "@/lib/automation/use-now";
@@ -55,21 +55,20 @@ export function AlertsView() {
       className="h-full min-h-0 overflow-y-auto"
     >
       {cards.length === 0 ? (
-        <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center gap-3 px-6 text-center">
-          <span className="grid size-9 place-items-center rounded-xl bg-muted text-muted-foreground">
-            <SirenIcon aria-hidden className="size-4" />
-          </span>
-          <h2 className="text-sm font-medium">Noch keine Alarme</h2>
-          <p className="text-xs text-pretty text-muted-foreground">
-            Ein Abfrage-Alarm prüft regelmäßig eine Abfrage und meldet sich nur, wenn sich der
-            Zustand ändert. Füge einem Task den Schritt „Abfrage-Alarm“ hinzu.
-          </p>
-          {template && (
-            <Button size="sm" variant="outline" onClick={() => openDraft(template.build())}>
-              Vorlage „{template.name}“ öffnen
-            </Button>
-          )}
-        </div>
+        <FeatureEmptyState
+          icon={SirenIcon}
+          title="Noch keine Alarme"
+          featureId="automation.alerts"
+          className="mx-auto h-full max-w-md justify-center"
+          action={
+            template
+              ? {
+                  label: `Vorlage „${template.name}“ öffnen`,
+                  onClick: () => openDraft(template.build()),
+                }
+              : undefined
+          }
+        />
       ) : (
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-5">
           <div className="flex flex-col gap-1">

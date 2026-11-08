@@ -15,6 +15,7 @@ import {
   parsePaletteQuery,
   withHistory,
   withoutChildren,
+  withQueryItems,
 } from "@/lib/command-palette-search";
 import { EASE_OUT } from "@/lib/ease";
 import { createFreshElementScroll } from "@/lib/fresh-element-scroll";
@@ -38,6 +39,7 @@ import type { CommandItem, CommandPaletteProps } from "./command-palette/types";
 export type { CommandItem, CommandPaletteProps } from "./command-palette/types";
 
 const NO_HISTORY: PaletteHistory = {};
+const NO_ITEMS: CommandItem[] = [];
 type PaletteRow = { key: string; group?: string; item?: CommandItem; itemIndex: number };
 
 export function CommandPalette({
@@ -51,6 +53,7 @@ export function CommandPalette({
   lockDocumentScroll = true,
   featureId,
   queryItem,
+  queryItems,
   initialQuery = "",
   commandFeatureId,
   history = NO_HISTORY,
@@ -155,15 +158,21 @@ export function CommandPalette({
     };
   }, [open, lockDocumentScroll]);
 
-  const { commandsOnly, search } = parsePaletteQuery(query, Boolean(commandFeatureId));
+  const { commandsOnly, unusedOnly, search } = parsePaletteQuery(
+    query,
+    Boolean(commandFeatureId),
+    Boolean(queryItems),
+  );
   const searchItems = useMemo(
     () =>
-      withHistory(
-        withoutChildren(paletteSearchItems(items, commandsOnly), search),
-        history,
-        search,
-      ),
-    [items, commandsOnly, history, search],
+      unusedOnly
+        ? NO_ITEMS
+        : withHistory(
+            withoutChildren(paletteSearchItems(items, commandsOnly), search),
+            history,
+            search,
+          ),
+    [items, commandsOnly, unusedOnly, history, search],
   );
   const { query: rankedQuery, list: ranked } = useRankedCommands(searchItems, search, maxVisible);
   const searchFeature = useNewFeatureVisibility<HTMLDivElement>(featureId);
@@ -178,11 +187,14 @@ export function CommandPalette({
     [items],
   );
   const filtered = useMemo(() => {
-    const nested = nestUnderParents(ranked, itemsById);
-    return queryItem && !commandsOnly && rankedQuery.trim()
+    const nested = withQueryItems(
+      nestUnderParents(ranked, itemsById),
+      queryItems && !commandsOnly ? queryItems(rankedQuery.trim(), unusedOnly) : NO_ITEMS,
+    );
+    return queryItem && !commandsOnly && !unusedOnly && rankedQuery.trim()
       ? [...nested, queryItem(rankedQuery.trim())]
       : paletteSearchItems(nested, commandsOnly);
-  }, [queryItem, commandsOnly, rankedQuery, ranked, itemsById]);
+  }, [queryItem, queryItems, commandsOnly, unusedOnly, rankedQuery, ranked, itemsById]);
 
   // Reserve the icon column only when at least one item brings an icon, so
   // icon-less lists don't render a dead gap before every label.
@@ -209,7 +221,7 @@ export function CommandPalette({
     activeIndex: active,
     moveTo,
     moveActive,
-  } = useRowCursor(rows, `${commandsOnly}:${rankedQuery}`);
+  } = useRowCursor(rows, `${commandsOnly}:${unusedOnly}:${rankedQuery}`);
   const paletteRows = useMemo<PaletteRow[]>(() => {
     let itemIndex = 0;
     return grouped.flatMap(([group, list]) => [
@@ -429,7 +441,13 @@ export function CommandPalette({
                     ref={inputRef}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder={commandsOnly ? "Befehl suchen…" : placeholder}
+                    placeholder={
+                      commandsOnly
+                        ? "Befehl suchen…"
+                        : unusedOnly
+                          ? "Ungenutzte Funktionen…"
+                          : placeholder
+                    }
                     role="combobox"
                     // The field only exists while the palette is open.
                     aria-expanded="true"
@@ -526,6 +544,22 @@ export function CommandPalette({
                       {commandsOnly ? "Alle durchsuchen" : "> Befehle"}
                       {!commandsOnly && commandFeature.isNew ? <NewBadge /> : null}
                     </button>
+                    {queryItems ? (
+                      <button
+                        type="button"
+                        aria-pressed={unusedOnly}
+                        onClick={() => {
+                          setQuery(unusedOnly ? search : `neu: ${search}`);
+                          inputRef.current?.focus();
+                        }}
+                        className={cn(
+                          "rounded px-1 py-0.5 hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring",
+                          unusedOnly && "bg-accent text-foreground",
+                        )}
+                      >
+                        neu: Noch nie genutzt
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </motion.div>

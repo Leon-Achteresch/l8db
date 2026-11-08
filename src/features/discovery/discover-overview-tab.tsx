@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { DiscoverFeatureCard } from "@/features/discovery/discover-feature-card";
+import { SpotlightOpenButton } from "@/features/discovery/spotlight/spotlight-open-button";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { FEATURE_CATALOG, featureAvailable, newestFeatures } from "@/lib/discovery/catalog";
 import { useFeatureUsage } from "@/lib/discovery/usage";
@@ -25,6 +26,7 @@ export function DiscoverOverviewTab() {
         <h2 className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
           Neu
           {isNew && <NewBadge />}
+          <SpotlightOpenButton className="ml-auto" />
         </h2>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {newest.map((feature) => (

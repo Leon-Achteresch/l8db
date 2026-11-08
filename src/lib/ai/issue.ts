@@ -10,13 +10,26 @@ export function withoutValues(message: string): string {
     .replace(/=\([^)]*\)/g, "=(…)");
 }
 
+const PENDING_SCREENSHOT_MS = 10 * 60_000;
+let pendingScreenshot: { png: string; at: number } | null = null;
+
+export function setPendingIssueScreenshot(png: string | null): void {
+  pendingScreenshot = png ? { png, at: Date.now() } : null;
+}
+
+function takePendingScreenshot(): string | null {
+  const pending = pendingScreenshot;
+  pendingScreenshot = null;
+  return pending && Date.now() - pending.at < PENDING_SCREENSHOT_MS ? pending.png : null;
+}
+
 export async function handleChatIssueRequest(): Promise<{
   diagnostics: string;
   screenshot: string | null;
 }> {
   const [diagnostics, screenshot] = await Promise.all([
     collectDiagnosticText().catch(() => ""),
-    captureRedactedScreenshot().catch(() => null),
+    takePendingScreenshot() ?? captureRedactedScreenshot().catch(() => null),
   ]);
   const failed = useQueryHistoryStore
     .getState()

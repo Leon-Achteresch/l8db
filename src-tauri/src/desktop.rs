@@ -213,6 +213,8 @@ pub fn app_menu<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tauri::m
         .text("shortcuts.open", "Tastenkürzel")
         .text("menu.releaseNotes", "Neuigkeiten")
         .text("menu.discover", "Entdecken")
+        .text("help.whatsThis", "Was ist das?")
+        .text("help.cheatsheet", "Spickzettel")
         .separator()
         .text("menu.bugReport", "Fehler melden …")
         .build()?;

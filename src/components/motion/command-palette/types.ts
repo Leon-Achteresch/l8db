@@ -10,6 +10,7 @@ export type CommandItem = {
   kind?: "command" | "setting" | "object" | "connection";
   context?: string;
   hint?: string;
+  summary?: string;
   keywords?: string[];
   icon?: LucideIcon;
   badge?: ReactNode;
@@ -30,6 +31,7 @@ export interface CommandPaletteProps {
   lockDocumentScroll?: boolean;
   featureId?: NewFeatureId;
   queryItem?: (query: string) => CommandItem;
+  queryItems?: (query: string, unusedOnly: boolean) => CommandItem[];
   initialQuery?: string;
   commandFeatureId?: NewFeatureId;
   history?: PaletteHistory;
