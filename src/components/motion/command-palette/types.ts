@@ -16,6 +16,7 @@ export type CommandItem = {
   badge?: ReactNode;
   featureId?: NewFeatureId;
   parentId?: string;
+  videoId?: string;
   onSelect: () => void;
 };
 
@@ -36,4 +37,5 @@ export interface CommandPaletteProps {
   commandFeatureId?: NewFeatureId;
   history?: PaletteHistory;
   onSelectItem?: (item: CommandItem) => void;
+  renderPreview?: (item: CommandItem) => ReactNode;
 }

@@ -3,17 +3,13 @@ import { VideoTooltipCard } from "@/features/discovery/video-tooltips/video-tool
 import { featureById } from "@/lib/discovery/catalog";
 import type { FeatureEntry } from "@/lib/discovery/types";
 import {
-  BLOCKING_OVERLAYS,
+  blockingOverlayOpen,
   createVideoTooltipController,
   installVideoTooltips,
 } from "@/lib/discovery/video-tooltips/controller";
+import { resolveClip } from "@/lib/discovery/video-tooltips/media";
+import { useFeatureVideoStore } from "@/lib/feature-videos/store";
 import { useSettingsStore } from "@/lib/settings";
-
-function overlayOpen(): boolean {
-  for (const node of document.querySelectorAll(BLOCKING_OVERLAYS))
-    if (node.getClientRects().length > 0) return true;
-  return false;
-}
 
 export function VideoTooltipHost() {
   const enabled = useSettingsStore(
@@ -25,8 +21,9 @@ export function VideoTooltipHost() {
   useEffect(() => {
     if (!enabled) return;
     const controller = createVideoTooltipController({
-      hasClip: (id) => Boolean(featureById(id)?.videoId),
-      blocked: overlayOpen,
+      hasClip: (id) =>
+        resolveClip(featureById(id)?.videoId, useFeatureVideoStore.getState().feed, false) !== null,
+      blocked: () => blockingOverlayOpen(),
       onChange: (target) => {
         const entry = target ? featureById(target.id) : undefined;
         setShown(target && entry ? { entry, rect: target.element.getBoundingClientRect() } : null);

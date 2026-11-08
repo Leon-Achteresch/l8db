@@ -3,7 +3,11 @@ import { CHECK_INTERVAL } from "@/lib/blog-suggestions/quiet";
 import { FEATURE_CATALOG, featureAvailable } from "@/lib/discovery/catalog";
 import { requestSurface } from "@/lib/discovery/coordinator";
 import { decideSpotlight } from "@/lib/discovery/spotlight/model";
-import { SPOTLIGHT_SURFACE_ID, useSpotlightStore } from "@/lib/discovery/spotlight/store";
+import {
+  refreshSeenVersion,
+  SPOTLIGHT_SURFACE_ID,
+  useSpotlightStore,
+} from "@/lib/discovery/spotlight/store";
 import { useSettingsStore } from "@/lib/settings";
 import { getAppVersion } from "@/lib/updater";
 
@@ -20,8 +24,8 @@ export function SpotlightHost() {
     let alive = true;
     let timer: ReturnType<typeof setInterval> | undefined;
     const store = useSpotlightStore;
-    const lastActive = store.getState().lastActive;
     store.getState().touch();
+    const lastActive = store.getState().previousActive ?? null;
     const touch = () => store.getState().touch();
     window.addEventListener("focus", touch);
 
@@ -44,6 +48,7 @@ export function SpotlightHost() {
         });
       };
       const attempt = () => {
+        refreshSeenVersion();
         const decision = decide();
         if (decision.action === "remember") store.getState().markSeen(decision.version);
         if (decision.action !== "show") {

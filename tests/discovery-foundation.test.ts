@@ -190,7 +190,7 @@ afterEach(() => {
 describe("catalog integrity", () => {
   test("ids, areas and relations are consistent", () => {
     expect(FEATURE_CATALOG.length).toBeGreaterThanOrEqual(60);
-    expect(FEATURE_CATALOG.length).toBeLessThanOrEqual(100);
+    expect(FEATURE_CATALOG.length).toBeLessThanOrEqual(120);
     const ids = FEATURE_CATALOG.map((entry) => entry.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const entry of FEATURE_CATALOG) {
@@ -244,7 +244,7 @@ describe("catalog integrity", () => {
     expect(anchorsInSource.size).toBeGreaterThanOrEqual(30);
     const majors = FEATURE_CATALOG.filter((entry) => entry.size === "major");
     expect(majors.length).toBeGreaterThanOrEqual(6);
-    expect(majors.length).toBeLessThanOrEqual(10);
+    expect(majors.length).toBeLessThanOrEqual(14);
     for (const entry of majors)
       expect(anchorsInSource.has(entry.anchor ?? entry.id), `${entry.id} anchor`).toBe(true);
     const guided = FEATURE_CATALOG.filter((entry) => entry.steps?.length);
@@ -254,6 +254,59 @@ describe("catalog integrity", () => {
         expect(anchorsInSource.has(step.anchor), `${entry.id} step ${step.anchor}`).toBe(true);
     for (const entry of FEATURE_CATALOG)
       if (entry.anchor) expect(anchorsInSource.has(entry.anchor), `${entry.id} anchor`).toBe(true);
+  });
+
+  test("lesson steps point to real anchors, routes and catalog features", async () => {
+    const { LESSONS } = await import("../src/lib/discovery/lessons/lessons");
+    const anchorsInSource = sourceAnchors();
+    const tree = read("src/routeTree.gen.ts");
+    const fullPaths = tree.slice(tree.indexOf("fullPaths:"), tree.indexOf("fileRoutesByTo:"));
+    const events = new Set(["query.executed", "table.opened", "table.filtered", "export.done"]);
+    for (const lesson of LESSONS)
+      for (const step of lesson.steps) {
+        const label = `${lesson.id}/${step.id}`;
+        if (step.anchor) expect(anchorsInSource.has(step.anchor), `${label} anchor`).toBe(true);
+        if (step.route)
+          expect(fullPaths.includes(`'${step.route.split("?")[0]}'`), `${label} route`).toBe(true);
+        if ("feature" in step.check) {
+          const feature = featureById(step.check.feature);
+          expect(
+            anchorsInSource.has(step.check.feature) || feature?.route !== undefined,
+            `${label} check ${step.check.feature}`,
+          ).toBe(true);
+        } else expect(events.has(step.check.event), `${label} event`).toBe(true);
+      }
+  });
+
+  test("the 0.18 release has major features for spotlight and hotspots", async () => {
+    const { decideSpotlight } = await import("../src/lib/discovery/spotlight/model");
+    const { hotspotCandidates } = await import("../src/lib/discovery/hotspots/model");
+    const anchorsInSource = sourceAnchors();
+    const majors = FEATURE_CATALOG.filter(
+      (entry) => entry.size === "major" && entry.since === "0.18.0",
+    );
+    expect(majors.length).toBeGreaterThanOrEqual(3);
+    for (const entry of majors) {
+      expect(anchorsInSource.has(entry.anchor ?? entry.id), `${entry.id} anchor`).toBe(true);
+      expect(entry.route, `${entry.id} route`).toBeDefined();
+    }
+    const decision = decideSpotlight({
+      current: "0.18.0",
+      seen: "0.17.3",
+      lastActive: Date.now(),
+      now: Date.now(),
+      onboardingDone: true,
+      entries: FEATURE_CATALOG,
+    });
+    expect(decision.action).toBe("show");
+    if (decision.action === "show") expect(decision.content.major.length).toBe(3);
+    const hotspots = hotspotCandidates(FEATURE_CATALOG, {
+      usage: {},
+      dismissed: [],
+      version: "0.18.0",
+      easyMode: false,
+    });
+    expect(hotspots.length).toBeGreaterThanOrEqual(3);
   });
 });
 

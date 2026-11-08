@@ -58,6 +58,11 @@ const ObjectSearchDialog = lazy(() =>
     default: ObjectSearchDialog,
   })),
 );
+const PaletteClipPreview = lazy(() =>
+  import("@/features/shell/app-header-search/palette-clip-preview").then(
+    ({ PaletteClipPreview }) => ({ default: PaletteClipPreview }),
+  ),
+);
 const ShortcutsDialog = lazy(() =>
   import("@/features/shell/shortcuts-dialog").then(({ ShortcutsDialog }) => ({
     default: ShortcutsDialog,
@@ -202,6 +207,19 @@ export function AppHeaderSearch() {
       builders?.buildFeatureItems(query, unusedOnly, { capabilities, easyMode }, setOpen) ??
       NO_ITEMS,
     [builders, capabilities, easyMode],
+  );
+  const renderPreview = useCallback(
+    (item: CommandItem) =>
+      item.videoId ? (
+        <Suspense fallback={null}>
+          <PaletteClipPreview
+            videoId={item.videoId}
+            title={item.label}
+            onOpen={() => setOpen(false)}
+          />
+        </Suspense>
+      ) : null,
+    [],
   );
   const askAiItem = useCallback(
     (query: string): CommandItem => ({
@@ -439,6 +457,7 @@ export function AppHeaderSearch() {
             commandFeatureId="search.commands"
             history={paletteHistory}
             onSelectItem={(item) => recordPaletteUse(item.id)}
+            renderPreview={renderPreview}
           />
         </Suspense>
       )}

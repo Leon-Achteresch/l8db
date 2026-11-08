@@ -1,6 +1,10 @@
-import { releaseSurface } from "../coordinator";
 import type { DiscoveryContext } from "../promoter/controller";
-import { type RetryOptions, retrySurface } from "../promoter/retry-surface";
+import {
+  attemptSurface,
+  type RetryOptions,
+  releaseChannel,
+  retrySurface,
+} from "../promoter/retry-surface";
 import { onFeatureUsed, useFeatureUsageStore } from "../usage";
 import { relatedSuggestion, useRelatedStore } from "./store";
 
@@ -23,20 +27,24 @@ export function installRelated(
     );
     if (!suggestion) return;
     cancelPending?.();
+    const attempt = retry.attempt ?? attemptSurface;
     cancelPending = retrySurface(
       { channel: "related", id: suggestion.pair, priority: RELATED_PRIORITY },
       () => {
         cancelPending = null;
-        if (useFeatureUsageStore.getState().usage[suggestion.to])
-          return releaseSurface("related", suggestion.pair);
         useRelatedStore.getState().markShown(suggestion);
       },
-      retry,
+      {
+        ...retry,
+        attempt: (request) =>
+          useFeatureUsageStore.getState().usage[suggestion.to] ? "stop" : attempt(request),
+      },
     );
   });
   return () => {
     stop();
     cancelPending?.();
     cancelPending = null;
+    releaseChannel("related");
   };
 }

@@ -40,15 +40,21 @@ fn read_team_file(path: &Path) -> Result<Value, String> {
     if bytes.len() as u64 > MAX_BYTES {
         return Err(format!("{shown}: Datei ist größer als 4 MB"));
     }
-    let raw = match bytes.strip_prefix(&[0xff, 0xfe]) {
-        Some(utf16) => String::from_utf16(
-            &utf16
+    let utf16 = |data: &[u8], decode: fn([u8; 2]) -> u16| {
+        String::from_utf16(
+            &data
                 .chunks_exact(2)
-                .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+                .map(|pair| decode([pair[0], pair[1]]))
                 .collect::<Vec<_>>(),
         )
-        .map_err(|_| format!("{shown}: ungültiges UTF-16"))?,
-        None => String::from_utf8(bytes).map_err(|_| format!("{shown}: kein gültiges UTF-8"))?,
+        .map_err(|_| format!("{shown}: ungültiges UTF-16"))
+    };
+    let raw = if let Some(data) = bytes.strip_prefix(&[0xff, 0xfe]) {
+        utf16(data, u16::from_le_bytes)?
+    } else if let Some(data) = bytes.strip_prefix(&[0xfe, 0xff]) {
+        utf16(data, u16::from_be_bytes)?
+    } else {
+        String::from_utf8(bytes).map_err(|_| format!("{shown}: kein gültiges UTF-8"))?
     };
     let mut tips = Vec::new();
     let connections = match serde_json::from_str::<Value>(raw.trim_start_matches('\u{feff}'))
@@ -218,5 +224,37 @@ mod tests {
         if let Some(path) = team_file() {
             assert!(path.ends_with(".l8db/connections.json"));
         }
+    }
+
+    #[test]
+    fn windows_team_files_with_bom_crlf_and_utf16_keep_their_tips() {
+        let dir = std::env::temp_dir().join(format!("l8db-team-tips-{}", rand::random::<u64>()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("connections.json");
+        let text = "{\r\n  \"connections\": [ { \"id\": \"a\" } ],\r\n  \"tips\": [\r\n    { \"id\": \"t1\", \"title\": \"  Tipp  \", \"body\": \"Zeile 1\\r\\nZeile 2\", \"until\": \"2026-12-31\" },\r\n    { \"id\": \"t2\", \"title\": \"Ohne Text\", \"body\": \"   \" }\r\n  ]\r\n}\r\n";
+        let check = |parsed: Value| {
+            assert_eq!(parsed["exists"], true);
+            assert_eq!(parsed["connections"][0]["id"], "a");
+            let tips = parsed["tips"].as_array().unwrap();
+            assert_eq!(tips.len(), 1);
+            assert_eq!(tips[0]["title"], "Tipp");
+            assert_eq!(tips[0]["body"], "Zeile 1\r\nZeile 2");
+            assert_eq!(tips[0]["until"], "2026-12-31");
+        };
+        std::fs::write(&file, format!("\u{feff}{text}")).unwrap();
+        check(read_team_file(&file).unwrap());
+        let le: Vec<u8> = [0xff, 0xfe]
+            .into_iter()
+            .chain(text.encode_utf16().flat_map(u16::to_le_bytes))
+            .collect();
+        std::fs::write(&file, le).unwrap();
+        check(read_team_file(&file).unwrap());
+        let be: Vec<u8> = [0xfe, 0xff]
+            .into_iter()
+            .chain(text.encode_utf16().flat_map(u16::to_be_bytes))
+            .collect();
+        std::fs::write(&file, be).unwrap();
+        check(read_team_file(&file).unwrap());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

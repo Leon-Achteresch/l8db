@@ -100,3 +100,14 @@ export async function closeDemoDatabase(
   const resolved = deps ?? (await defaultDeps());
   await resolved.activate(previous.id);
 }
+
+export async function activateDemoConnection(
+  connectionId: string,
+  deps?: Pick<DemoDatabaseDeps, "activate">,
+): Promise<boolean> {
+  const { connections, activeId } = useConnectionsStore.getState();
+  if (activeId === connectionId) return true;
+  if (!connections.some((connection) => connection.id === connectionId)) return false;
+  const resolved = deps ?? (await defaultDeps());
+  return resolved.activate(connectionId);
+}

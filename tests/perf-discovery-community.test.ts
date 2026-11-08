@@ -30,9 +30,8 @@ const { MAX_RECAP_DAYS, recordRecapActivity, useRecapStore } = await import(
 );
 const { parseRoadmap, ROADMAP_MAX_ITEMS } = await import("../src/lib/discovery/roadmap/model");
 const { refreshRoadmap } = await import("../src/lib/discovery/roadmap/store");
-const { primeAchievements, recordAchievementEvent, useAchievementsStore } = await import(
-  "../src/lib/discovery/achievements/store"
-);
+const { evaluateAchievements, primeAchievements, recordAchievementEvent, useAchievementsStore } =
+  await import("../src/lib/discovery/achievements/store");
 const { useFeatureUsageStore } = await import("../src/lib/discovery/usage");
 const { createUsageStatisticsStore } = await import("../src/lib/usage-statistics");
 const { DISCOVERY_HOSTS } = await import("../src/features/discovery/registry");
@@ -218,4 +217,44 @@ test("achievement evaluation per event stays cheap", async () => {
   expect(useAchievementsStore.getState().families.length).toBeLessThanOrEqual(32);
   expect(p95).toBeLessThan(0.2);
   expect(primeMs).toBeLessThan(50);
+});
+
+test("the expensive case with every rule locked stays cheap over 10 000 events", async () => {
+  const extras = Object.fromEntries(
+    Array.from({ length: 256 }, (_, index) => [
+      `extra.${index}`,
+      { count: 50, first: now - DAY, last: now },
+    ]),
+  );
+  useFeatureUsageStore.setState({ usage: extras, extra: 256 });
+  useAchievementsStore.setState({
+    unlocked: {},
+    counters: {},
+    families: [],
+    primed: true,
+    pending: null,
+    summaryCount: 0,
+  });
+  const before = heap();
+  const times: number[] = [];
+  for (let i = 0; i < 10_000; i++) {
+    if (i % 5 === 0) useAchievementsStore.setState({ counters: {}, families: [] });
+    const start = performance.now();
+    recordAchievementEvent({ name: "table.filtered", data: { family: null }, at: now });
+    evaluateAchievements(now);
+    times.push(performance.now() - start);
+  }
+  times.sort((a, b) => a - b);
+  const p95 = times[Math.ceil(times.length * 0.95) - 1];
+  const median = times[Math.floor(times.length / 2)];
+  const retainedBytes = heap() - before;
+  await reportScenario("discovery-achievements-locked", {
+    events: 10_000,
+    median,
+    p95,
+    retainedBytes,
+  });
+  expect(useAchievementsStore.getState().unlocked).toEqual({});
+  expect(p95).toBeLessThan(0.2);
+  expect(retainedBytes).toBeLessThan(8 * 1024 * 1024);
 });

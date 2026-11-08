@@ -2,7 +2,9 @@ import { anchorFeatureOf } from "../usage";
 
 export const HOVER_DELAY_MS = 600;
 export const BLOCKING_OVERLAYS =
-  '[role="tooltip"], [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]';
+  '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper]';
+export const TOOLTIP_CONTENT = '[role="tooltip"]';
+export const SUPPRESS_TOOLTIPS_CSS = '[data-slot="tooltip-content"]{visibility:hidden}';
 
 export interface TooltipTarget {
   id: string;
@@ -23,6 +25,14 @@ export interface VideoTooltipController {
   release: () => void;
   pending: () => TooltipTarget | null;
   shown: () => TooltipTarget | null;
+}
+
+export function blockingOverlayOpen(root: ParentNode = document): boolean {
+  for (const node of root.querySelectorAll(BLOCKING_OVERLAYS)) {
+    if (node.querySelector(TOOLTIP_CONTENT)) continue;
+    if (node.getClientRects().length > 0) return true;
+  }
+  return false;
 }
 
 export function createVideoTooltipController({
@@ -101,6 +111,10 @@ export function installVideoTooltips(
   const press = () => controller.press();
   const release = () => controller.release();
   const hide = () => controller.hide();
+  const reset = () => {
+    controller.release();
+    controller.hide();
+  };
   const options = { capture: true, passive: true };
   const listeners: [string, (event: Event) => void][] = [
     ["pointerover", over],
@@ -114,10 +128,10 @@ export function installVideoTooltips(
     ["wheel", hide],
   ];
   for (const [type, listener] of listeners) root.addEventListener(type, listener, options);
-  win.addEventListener("blur", hide);
+  win.addEventListener("blur", reset);
   return () => {
     controller.hide();
     for (const [type, listener] of listeners) root.removeEventListener(type, listener, options);
-    win.removeEventListener("blur", hide);
+    win.removeEventListener("blur", reset);
   };
 }

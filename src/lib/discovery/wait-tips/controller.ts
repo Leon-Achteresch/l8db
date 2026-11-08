@@ -61,11 +61,13 @@ function defaultFilter(family: string | null): WaitTipFilter {
 }
 
 export function showNextWaitTip(family: string | null, resolve = defaultFilter): boolean {
-  const { seen, setSeen } = useWaitTipsSeenStore.getState();
+  const { seen } = useWaitTipsSeenStore.getState();
   const { tip, seen: next } = pickWaitTip(waitTipsFor(resolve(family)), seen);
   if (!tip) return false;
-  setSeen(next);
-  useWaitTipStore.setState({ tip: { id: tip.id, text: tip.text, hotkey: tip.hotkey } });
+  useWaitTipStore.setState({
+    tip: { id: tip.id, text: tip.text, hotkey: tip.hotkey },
+    commit: () => useWaitTipsSeenStore.getState().setSeen(next),
+  });
   return true;
 }
 
@@ -80,7 +82,8 @@ export function installWaitTips({
 } = {}): () => void {
   const running = new Map<string, ReturnType<typeof setTimeout> | null>();
   const hide = () => {
-    if (useWaitTipStore.getState().tip) useWaitTipStore.setState({ tip: null });
+    const current = useWaitTipStore.getState();
+    if (current.tip || current.commit) useWaitTipStore.setState({ tip: null, commit: null });
   };
   const onEvent = (event: FeatureEvent) => {
     const id = typeof event.data.id === "string" ? event.data.id : null;

@@ -24,6 +24,7 @@ export function DiscoverFeatureCard({ feature, used }: { feature: FeatureEntry; 
       {feature.steps?.length ? (
         <button
           type="button"
+          data-feature="discover.guide"
           onClick={() => startGuide(feature.id)}
           className="absolute right-3 bottom-3 cursor-pointer rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground active:scale-[0.97]"
         >

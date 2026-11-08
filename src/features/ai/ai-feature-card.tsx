@@ -40,7 +40,12 @@ export function AiFeatureCard({ id }: { id: string }) {
           Zeigen
         </Button>
         {entry.steps?.length ? (
-          <Button size="sm" className="cursor-pointer" onClick={() => startGuide(entry.id)}>
+          <Button
+            size="sm"
+            className="cursor-pointer"
+            data-feature="discover.guide"
+            onClick={() => startGuide(entry.id)}
+          >
             <MousePointer2 />
             Zeig's mir
           </Button>

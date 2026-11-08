@@ -65,7 +65,7 @@ export function LessonsTab() {
             {current ? (
               <div className="flex gap-1">
                 {active.paused && !state?.done && (
-                  <Button size="sm" className="cursor-pointer" onClick={() => resumeLesson()}>
+                  <Button size="sm" className="cursor-pointer" onClick={() => void resumeLesson()}>
                     Weiter
                   </Button>
                 )}
