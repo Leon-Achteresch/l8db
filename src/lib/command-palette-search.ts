@@ -3,12 +3,28 @@ import type { PaletteHistory } from "@/lib/palette-history";
 
 const HISTORY_SIZE = 5;
 
-export function parsePaletteQuery(query: string, commandsEnabled = true) {
-  const commandsOnly = commandsEnabled && query.trimStart().startsWith(">");
+export const UNUSED_PREFIX = "neu:";
+
+export function parsePaletteQuery(query: string, commandsEnabled = true, unusedEnabled = false) {
+  const trimmed = query.trimStart();
+  const commandsOnly = commandsEnabled && trimmed.startsWith(">");
+  const unusedOnly =
+    !commandsOnly && unusedEnabled && trimmed.toLowerCase().startsWith(UNUSED_PREFIX);
   return {
     commandsOnly,
-    search: commandsOnly ? query.trimStart().slice(1).trimStart() : query,
+    unusedOnly,
+    search: commandsOnly
+      ? trimmed.slice(1).trimStart()
+      : unusedOnly
+        ? trimmed.slice(UNUSED_PREFIX.length).trimStart()
+        : query,
   };
+}
+
+export function withQueryItems(items: CommandItem[], extra: CommandItem[]): CommandItem[] {
+  if (extra.length === 0) return items;
+  const ids = new Set(items.map((item) => item.id));
+  return [...items, ...extra.filter((item) => !ids.has(item.id))];
 }
 
 export function paletteSearchItems(items: CommandItem[], commandsOnly: boolean) {

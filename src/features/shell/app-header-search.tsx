@@ -27,6 +27,7 @@ import { NewBadge } from "@/components/new-badge";
 import { DynamicIsland } from "@/features/shell/dynamic-island";
 import { useAiStore } from "@/lib/ai/store";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { useExtensionHost } from "@/lib/extensions/react-context";
 import {
   commandById,
@@ -195,6 +196,13 @@ export function AppHeaderSearch() {
 
   const askNew = useHasNewFeatures("ai.ask");
   const searchNew = useHasNewFeatures("search");
+  const capabilities = useActiveCapabilities();
+  const featureItems = useCallback(
+    (query: string, unusedOnly: boolean) =>
+      builders?.buildFeatureItems(query, unusedOnly, { capabilities, easyMode }, setOpen) ??
+      NO_ITEMS,
+    [builders, capabilities, easyMode],
+  );
   const askAiItem = useCallback(
     (query: string): CommandItem => ({
       id: "ai:ask",
@@ -426,6 +434,7 @@ export function AppHeaderSearch() {
             maxVisible={MAX_VISIBLE_RESULTS}
             featureId="search.fuzzy"
             queryItem={askAiItem}
+            queryItems={featureItems}
             initialQuery={initialQuery}
             commandFeatureId="search.commands"
             history={paletteHistory}

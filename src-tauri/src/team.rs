@@ -3,6 +3,14 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_TIPS: usize = 20;
+const TIP_FIELDS: [(&str, usize); 5] = [
+    ("id", 64),
+    ("title", 80),
+    ("body", 600),
+    ("featureId", 80),
+    ("until", 40),
+];
 
 pub fn team_file() -> Option<PathBuf> {
     let base = if cfg!(windows) {
@@ -16,7 +24,7 @@ pub fn team_file() -> Option<PathBuf> {
 
 fn read_team_file(path: &Path) -> Result<Value, String> {
     let shown = path.display().to_string();
-    let missing = || json!({ "path": shown, "exists": false, "connections": [] });
+    let missing = || json!({ "path": shown, "exists": false, "connections": [], "tips": [] });
     let size = match std::fs::metadata(path) {
         Ok(meta) => meta.len(),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(missing()),
@@ -42,21 +50,50 @@ fn read_team_file(path: &Path) -> Result<Value, String> {
         .map_err(|_| format!("{shown}: ungültiges UTF-16"))?,
         None => String::from_utf8(bytes).map_err(|_| format!("{shown}: kein gültiges UTF-8"))?,
     };
+    let mut tips = Vec::new();
     let connections = match serde_json::from_str::<Value>(raw.trim_start_matches('\u{feff}'))
         .map_err(|e| format!("{shown}: kein gültiges JSON ({e})"))?
     {
         Value::Array(list) => list,
-        Value::Object(mut map) => match map.remove("connections") {
-            Some(Value::Array(list)) => list,
-            _ => return Err(format!("{shown}: \"connections\" muss eine Liste sein")),
-        },
+        Value::Object(mut map) => {
+            tips = team_tips(map.remove("tips"));
+            match map.remove("connections") {
+                Some(Value::Array(list)) => list,
+                _ => return Err(format!("{shown}: \"connections\" muss eine Liste sein")),
+            }
+        }
         _ => {
             return Err(format!(
                 "{shown}: erwartet eine Liste oder {{ \"connections\": [...] }}"
             ))
         }
     };
-    Ok(json!({ "path": shown, "exists": true, "connections": connections }))
+    Ok(json!({ "path": shown, "exists": true, "connections": connections, "tips": tips }))
+}
+
+fn team_tips(value: Option<Value>) -> Vec<Value> {
+    let Some(Value::Array(list)) = value else {
+        return Vec::new();
+    };
+    list.into_iter()
+        .filter_map(|tip| {
+            let tip = tip.as_object()?;
+            let mut clean = serde_json::Map::new();
+            for (key, max) in TIP_FIELDS {
+                if let Some(text) = tip.get(key).and_then(Value::as_str) {
+                    let text: String = text.trim().chars().take(max).collect();
+                    if !text.is_empty() {
+                        clean.insert(key.into(), Value::String(text));
+                    }
+                }
+            }
+            ["id", "title", "body"]
+                .iter()
+                .all(|key| clean.contains_key(*key))
+                .then_some(Value::Object(clean))
+        })
+        .take(MAX_TIPS)
+        .collect()
 }
 
 #[tauri::command(async)]
@@ -159,6 +196,24 @@ mod tests {
         assert!(read_team_file(&file).unwrap_err().contains("JSON"));
         std::fs::write(&file, r#"{"connections":{}}"#).unwrap();
         assert!(read_team_file(&file).is_err());
+        std::fs::write(&file, r#"{"connections":[]}"#).unwrap();
+        assert_eq!(read_team_file(&file).unwrap()["tips"], json!([]));
+        let tips: Vec<Value> = (0..25)
+            .map(|n| json!({"id": format!("t{n}"), "title": "T", "body": "x".repeat(900), "until": "2026-12-31"}))
+            .chain([json!({"id": "leer", "title": "T"}), json!("kein objekt")])
+            .collect();
+        std::fs::write(
+            &file,
+            serde_json::to_string(&json!({"connections": [], "tips": tips})).unwrap(),
+        )
+        .unwrap();
+        let parsed = read_team_file(&file).unwrap();
+        let list = parsed["tips"].as_array().unwrap();
+        assert_eq!(list.len(), 20);
+        assert_eq!(list[0]["body"].as_str().unwrap().chars().count(), 600);
+        assert_eq!(list[0]["until"], "2026-12-31");
+        std::fs::write(&file, r#"{"connections":[],"tips":{"id":"x"}}"#).unwrap();
+        assert_eq!(read_team_file(&file).unwrap()["tips"], json!([]));
         std::fs::remove_dir_all(&dir).unwrap();
         if let Some(path) = team_file() {
             assert!(path.ends_with(".l8db/connections.json"));

@@ -1,5 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { LayoutDashboardIcon } from "lucide-react";
 import { toast } from "sonner";
+import { FeatureEmptyState } from "@/components/feature-empty-state/feature-empty-state";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -117,9 +119,12 @@ export function DashboardSharedSection({
           </Button>
           {list.isError && <p className="text-xs text-destructive">{String(list.error)}</p>}
           {list.data?.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              Noch keine Dashboards in dieser Datenbank.
-            </p>
+            <FeatureEmptyState
+              icon={LayoutDashboardIcon}
+              title="Noch keine Dashboards in dieser Datenbank."
+              featureId="dashboard"
+              className="py-4"
+            />
           )}
           <div className="space-y-2">
             {list.data?.map((entry) => (

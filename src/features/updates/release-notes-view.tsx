@@ -1,5 +1,6 @@
 import { motion } from "motion/react";
 import { Markdown } from "@/components/markdown";
+import { SpotlightOpenButton } from "@/features/discovery/spotlight/spotlight-open-button";
 import { FeatureVideoGallery } from "@/features/updates/feature-video-gallery";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import changelog from "../../../CHANGELOG.md?raw";
@@ -8,7 +9,10 @@ export function ReleaseNotesView() {
   return (
     <main className="workspace-canvas h-full w-full min-w-0 overflow-y-auto">
       <div className="w-full px-6 py-8">
-        <h1 className="text-2xl font-semibold tracking-tight">Release Notes</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight">Release Notes</h1>
+          <SpotlightOpenButton className="ml-auto" />
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Alle veröffentlichten Änderungen dieser App.
         </p>

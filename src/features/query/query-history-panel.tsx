@@ -1,8 +1,16 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { DownloadIcon, SearchIcon, Trash2Icon, UploadIcon } from "lucide-react";
+import {
+  BookmarkIcon,
+  DownloadIcon,
+  HistoryIcon,
+  SearchIcon,
+  Trash2Icon,
+  UploadIcon,
+} from "lucide-react";
 import { type RefObject, useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { FeatureEmptyState } from "@/components/feature-empty-state/feature-empty-state";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -191,13 +199,28 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
         style={{ contain: "strict" }}
       >
         {visibleEntries.length === 0 ? (
-          <p className="px-4 py-8 text-center text-xs text-muted-foreground">
-            {tab === "saved"
-              ? "Keine gespeicherten Queries. Über „Speichern“ legst du eine an."
-              : search
-                ? "Keine Treffer. Suche ändern oder leeren."
-                : "Noch keine Queries ausgeführt."}
-          </p>
+          tab === "saved" ? (
+            <FeatureEmptyState
+              icon={BookmarkIcon}
+              title="Keine gespeicherten Queries"
+              featureId="query.snippets"
+              action={{
+                label: "Importieren",
+                icon: UploadIcon,
+                onClick: () => setImportOpen(true),
+              }}
+            />
+          ) : search ? (
+            <p className="px-4 py-8 text-center text-xs text-muted-foreground">
+              Keine Treffer. Suche ändern oder leeren.
+            </p>
+          ) : (
+            <FeatureEmptyState
+              icon={HistoryIcon}
+              title="Noch keine Queries ausgeführt."
+              featureId="query.run"
+            />
+          )
         ) : (
           <div className="relative" style={{ height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map((virtualRow) => (

@@ -1,5 +1,6 @@
 import { PlusIcon, StarIcon, Trash2Icon, VariableIcon } from "lucide-react";
 import { useId, useRef } from "react";
+import { FeatureEmptyState } from "@/components/feature-empty-state/feature-empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -157,23 +158,12 @@ export function VariablesTab({ task, issues, onChange }: Props) {
         </header>
 
         {variables.length === 0 ? (
-          <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed p-6">
-            <span className="grid size-9 place-items-center rounded-xl bg-muted text-muted-foreground">
-              <VariableIcon className="size-4" />
-            </span>
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium">Noch keine Variablen</p>
-              <p className="max-w-prose text-xs text-pretty text-muted-foreground">
-                Variablen machen einen Task wiederverwendbar: Schema, Zielordner oder Stichtag
-                einmal festlegen und überall einsetzen. Eingebaute wie{" "}
-                <code className="font-mono text-[11px]">{"${date}"}</code> gibt es immer.
-              </p>
-            </div>
-            <Button type="button" size="sm" onClick={addVariable}>
-              <PlusIcon />
-              Variable anlegen
-            </Button>
-          </div>
+          <FeatureEmptyState
+            icon={VariableIcon}
+            title="Noch keine Variablen"
+            className="rounded-xl bg-muted/40"
+            action={{ label: "Variable anlegen", icon: PlusIcon, onClick: addVariable }}
+          />
         ) : (
           <ul className="flex flex-col divide-y rounded-xl border bg-card">
             {variables.map((variable, index) => {
