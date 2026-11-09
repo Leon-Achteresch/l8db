@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
-import { stableMarkerKey } from "@/lib/row-markers";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { markRowRange, stableMarkerKey } from "@/lib/row-markers";
 
 export function useRowMarkers<T>(
   rows: T[],
@@ -29,13 +29,21 @@ export function useRowMarkers<T>(
     [rows, keys, keyOf],
   );
 
+  const anchorRef = useRef<T | null>(null);
   const toggleRowMarker = useCallback(
-    (row: T) => {
+    (row: T, extend = false) => {
+      const anchor = extend ? anchorRef.current : null;
+      anchorRef.current = row;
       setState((previous) => {
         const next = new Set(previous.keys);
-        const key = keyOf(row);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
+        const from = anchor === null ? -1 : previous.rows.indexOf(anchor);
+        const to = from === -1 ? -1 : previous.rows.indexOf(row);
+        if (to !== -1) markRowRange(next, previous.rows, from, to, keyOf);
+        else {
+          const key = keyOf(row);
+          if (next.has(key)) next.delete(key);
+          else next.add(key);
+        }
         return { ...previous, keys: next };
       });
     },

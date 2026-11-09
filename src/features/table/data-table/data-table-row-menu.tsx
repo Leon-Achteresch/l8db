@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { NewBadge } from "@/components/new-badge";
 import {
   ContextMenuContent,
   ContextMenuItem,
@@ -9,8 +10,11 @@ import {
   ContextMenuSubTrigger,
 } from "@/components/ui/context-menu";
 import { copyWithToast } from "@/lib/clipboard";
+import type { InsertExportInput } from "@/lib/export";
 import { serializeSelectionCell } from "@/lib/grid-selection";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import type { TableRow } from "../data-table-types";
+import { copyRowsAsInsert, saveRowsAsInsert } from "./rows-insert-script";
 
 export type MenuRow = {
   ctid: string;
@@ -20,6 +24,8 @@ export type MenuRow = {
 
 type Props = {
   menuRow: MenuRow;
+  selectedRows: TableRow[];
+  insertTarget?: Omit<InsertExportInput, "rows">;
   rowOffset: number;
   columns: string[];
   canDuplicate: boolean;
@@ -32,6 +38,8 @@ type Props = {
 
 export function DataTableRowMenu({
   menuRow,
+  selectedRows,
+  insertTarget,
   rowOffset,
   columns,
   canDuplicate,
@@ -41,42 +49,64 @@ export function DataTableRowMenu({
   onWatch,
   extraItems,
 }: Props) {
+  const insertFeature = useNewFeatureVisibility<HTMLDivElement>("table.rows.insert-script");
+  const multiple = selectedRows.length > 1;
+  const label = multiple ? `${selectedRows.length} Zeilen` : "Zeile";
+  const insertInput = insertTarget && { ...insertTarget, rows: selectedRows };
   return (
     <ContextMenuContent>
       <ContextMenuLabel className="font-mono">
-        Zeile {menuRow.rowIndex + 1 + rowOffset}
+        {multiple ? label : `Zeile ${menuRow.rowIndex + 1 + rowOffset}`}
       </ContextMenuLabel>
       <ContextMenuSeparator />
       {extraItems}
       <ContextMenuSub>
-        <ContextMenuSubTrigger>Kopieren als</ContextMenuSubTrigger>
+        <ContextMenuSubTrigger>
+          {multiple ? `${label} kopieren als` : "Kopieren als"}
+        </ContextMenuSubTrigger>
         <ContextMenuSubContent>
           <ContextMenuItem
             onSelect={() =>
               void copyWithToast(
-                columns.map((id) => serializeSelectionCell(menuRow.original[id])).join("\t"),
-                "Zeile",
+                selectedRows
+                  .map((row) => columns.map((id) => serializeSelectionCell(row[id])).join("\t"))
+                  .join("\n"),
+                label,
               )
             }
           >
             Tabulatorgetrennt
           </ContextMenuItem>
           <ContextMenuItem
-            onSelect={() =>
+            onSelect={() => {
+              const objects = selectedRows.map((row) =>
+                Object.fromEntries(columns.map((id) => [id, row[id] ?? null])),
+              );
               void copyWithToast(
                 JSON.stringify(
-                  Object.fromEntries(columns.map((id) => [id, menuRow.original[id] ?? null])),
+                  multiple ? objects : objects[0],
                   (_, value) => (typeof value === "bigint" ? value.toString() : value),
                   2,
                 ),
-                "Zeile",
-              )
-            }
+                label,
+              );
+            }}
           >
             JSON
           </ContextMenuItem>
+          {insertInput && (
+            <ContextMenuItem ref={insertFeature.ref} onSelect={() => copyRowsAsInsert(insertInput)}>
+              INSERT-SQL
+              {insertFeature.isNew && <NewBadge className="ml-auto" />}
+            </ContextMenuItem>
+          )}
         </ContextMenuSubContent>
       </ContextMenuSub>
+      {insertInput && (
+        <ContextMenuItem onSelect={() => void saveRowsAsInsert(insertInput)}>
+          {multiple ? `${label} als INSERT-SQL exportieren…` : "Als INSERT-SQL exportieren…"}
+        </ContextMenuItem>
+      )}
       {onWatch && <ContextMenuItem onSelect={onWatch}>Datensatz beobachten</ContextMenuItem>}
       {canDuplicate && (
         <ContextMenuItem disabled={duplicateDisabled} onSelect={onDuplicate}>
