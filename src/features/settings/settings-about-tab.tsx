@@ -38,12 +38,7 @@ export function SettingsAboutTab() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Über & Updates</h2>
-        <p className="text-xs text-muted-foreground">
-          Versionsstatus, automatische Aktualisierungen und Systeminformationen.
-        </p>
-      </div>
+      <h2 className="text-base font-semibold tracking-tight">Über & Updates</h2>
 
       <SettingsRow settingId="about">
         <Button variant="outline" size="sm" asChild>

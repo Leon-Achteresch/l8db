@@ -33,12 +33,7 @@ export function SettingsDataTab() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Daten & Abfragen</h2>
-        <p className="text-xs text-muted-foreground">
-          Abfrageausführung, Sicherheitsnetz und Tabellendarstellung konfigurieren.
-        </p>
-      </div>
+      <h2 className="text-base font-semibold tracking-tight">Daten & Abfragen</h2>
 
       <div className="space-y-3">
         <SettingsRow settingId="history-limit">
