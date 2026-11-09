@@ -1120,3 +1120,295 @@ fn plan_text(plan: &serde_json::Value) -> String {
         .unwrap_or_default()
         .to_string()
 }
+
+fn principal_change(value: serde_json::Value) -> super::principals::PrincipalChange {
+    serde_json::from_value(value).unwrap()
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_principals_are_managed_end_to_end() {
+    let (Some(db), Some(limited)) = (admin("live-principals"), adapter("live-principals-limited"))
+    else {
+        return;
+    };
+    let (user, role, profile, table) = (
+        "L8DB_SEC_USER",
+        "L8DB_SEC_ROLE",
+        "L8DB_SEC_PROFILE",
+        "L8DB_SEC_T",
+    );
+    let drop_all = || async {
+        for (kind, name) in [("user", user), ("role", role), ("profile", profile)] {
+            let _ = db
+                .apply_principal_change(
+                    &principal_change(serde_json::json!({
+                        "kind": kind, "name": name, "action": "drop", "cascade": true
+                    })),
+                    false,
+                )
+                .await;
+        }
+        let _ = db
+            .execute_query(&format!("DROP TABLE system.{table} PURGE"))
+            .await;
+    };
+    drop_all().await;
+    db.execute_query(&format!(
+        "CREATE TABLE system.{table} (id NUMBER, name VARCHAR2(10))"
+    ))
+    .await
+    .unwrap();
+
+    let options = db.principal_options().await.unwrap();
+    assert!(options.tablespaces.iter().any(|t| t == "USERS"));
+    assert!(options.temporary_tablespaces.iter().any(|t| t == "TEMP"));
+    assert!(options
+        .system_privileges
+        .iter()
+        .any(|p| p == "CREATE SESSION"));
+
+    let apply = |value: serde_json::Value| {
+        let db = &db;
+        async move {
+            db.apply_principal_change(&principal_change(value), false)
+                .await
+        }
+    };
+    apply(serde_json::json!({
+        "kind": "profile", "name": profile, "action": "create",
+        "limits": [{ "resource": "FAILED_LOGIN_ATTEMPTS", "value": "7" }]
+    }))
+    .await
+    .unwrap();
+    apply(serde_json::json!({
+        "kind": "role", "name": role, "action": "create",
+        "grant_system_privileges": [{ "name": "CREATE SESSION", "admin": false }]
+    }))
+    .await
+    .unwrap();
+
+    let create = serde_json::json!({
+        "kind": "user", "name": user, "action": "create", "password": "L8db#Sec\u{00e4}1",
+        "default_tablespace": "USERS", "temporary_tablespace": "TEMP", "profile": profile,
+        "quotas": [{ "tablespace": "USERS", "max_bytes": 10 * 1024 * 1024 }],
+        "grant_roles": [{ "name": role, "admin": false }],
+        "grant_system_privileges": [{ "name": "CREATE TABLE", "admin": true }],
+        "grant_object_privileges": [
+            { "owner": "SYSTEM", "object": table, "object_type": "TABLE", "privilege": "SELECT", "grantable": true },
+            { "owner": "SYSTEM", "object": table, "object_type": "TABLE", "privilege": "UPDATE", "column": "NAME" }
+        ]
+    });
+    let preview = db
+        .apply_principal_change(&principal_change(create.clone()), true)
+        .await
+        .unwrap();
+    assert!(preview[0].contains("IDENTIFIED BY ***"), "{preview:?}");
+    assert!(!preview.join("\n").contains("L8db#Sec"));
+    assert!(db
+        .principal_detail("user", user)
+        .await
+        .unwrap_err()
+        .contains("nicht gefunden"));
+    assert_eq!(apply(create).await.unwrap().len(), preview.len());
+
+    let list = db.list_principals().await.unwrap();
+    assert!(!list.limited);
+    let listed = |kind: &str, name: &str| {
+        list.items
+            .iter()
+            .find(|p| p.kind == kind && p.name == name)
+            .cloned()
+    };
+    assert_eq!(
+        listed("user", user).unwrap().status.as_deref(),
+        Some("OPEN")
+    );
+    assert!(listed("role", role).is_some());
+    assert!(listed("profile", profile).is_some());
+    assert!(listed("user", "SYS").unwrap().system);
+
+    let detail = db.principal_detail("user", user).await.unwrap();
+    assert_eq!(detail.profile.as_deref(), Some(profile));
+    assert_eq!(detail.default_tablespace.as_deref(), Some("USERS"));
+    assert_eq!(detail.temporary_tablespace.as_deref(), Some("TEMP"));
+    assert!(!detail.locked && !detail.expired && !detail.system && !detail.limited);
+    assert_eq!(detail.quotas.len(), 1);
+    assert_eq!(detail.quotas[0].max_bytes, 10 * 1024 * 1024);
+    assert_eq!(detail.roles.len(), 1);
+    assert!(detail.roles[0].name == role && detail.roles[0].default && !detail.roles[0].admin);
+    assert_eq!(detail.system_privileges.len(), 1);
+    assert!(detail.system_privileges[0].admin);
+    let select = detail
+        .object_privileges
+        .iter()
+        .find(|g| g.privilege == "SELECT")
+        .unwrap();
+    assert!(select.grantable && select.object == table && select.object_type == "TABLE");
+    assert!(detail
+        .object_privileges
+        .iter()
+        .any(|g| g.privilege == "UPDATE" && g.column.as_deref() == Some("NAME")));
+    assert!(
+        detail
+            .script
+            .starts_with(&format!("CREATE USER \"{user}\"")),
+        "{}",
+        detail.script
+    );
+
+    apply(serde_json::json!({
+        "kind": "user", "name": user, "action": "alter", "locked": true, "expire_password": true,
+        "default_roles": [],
+        "revoke_system_privileges": ["CREATE TABLE"],
+        "revoke_object_privileges": [
+            { "owner": "SYSTEM", "object": table, "object_type": "TABLE", "privilege": "UPDATE", "column": "NAME" }
+        ],
+        "quotas": [{ "tablespace": "USERS", "max_bytes": -1 }]
+    }))
+    .await
+    .unwrap();
+    let altered = db.principal_detail("user", user).await.unwrap();
+    assert!(altered.locked && altered.expired, "{:?}", altered.status);
+    assert!(!altered.roles[0].default);
+    assert!(altered.system_privileges.is_empty());
+    assert!(altered
+        .object_privileges
+        .iter()
+        .all(|g| g.privilege == "SELECT"));
+    assert_eq!(altered.quotas[0].max_bytes, -1);
+
+    apply(serde_json::json!({
+        "kind": "role", "name": role, "action": "alter", "revoke_members": [user]
+    }))
+    .await
+    .unwrap();
+    assert!(db
+        .principal_detail("role", role)
+        .await
+        .unwrap()
+        .members
+        .iter()
+        .all(|m| m.name != user));
+    apply(serde_json::json!({
+        "kind": "role", "name": role, "action": "alter",
+        "grant_members": [{ "name": user, "admin": true }]
+    }))
+    .await
+    .unwrap();
+    let role_detail = db.principal_detail("role", role).await.unwrap();
+    assert!(role_detail
+        .members
+        .iter()
+        .any(|m| m.name == user && m.admin));
+    assert_eq!(role_detail.system_privileges[0].name, "CREATE SESSION");
+
+    let profile_detail = db.principal_detail("profile", profile).await.unwrap();
+    assert!(profile_detail
+        .limits
+        .iter()
+        .any(|l| l.resource == "FAILED_LOGIN_ATTEMPTS" && l.value == "7"));
+    assert_eq!(profile_detail.members[0].name, user);
+
+    let found = db
+        .list_grantable_objects("SYSTEM", "l8db_sec")
+        .await
+        .unwrap();
+    assert!(found
+        .iter()
+        .any(|o| o.name == table && o.object_type == "TABLE"));
+
+    let failed = apply(serde_json::json!({
+        "kind": "user", "name": user, "action": "alter", "locked": false,
+        "grant_roles": [{ "name": "L8DB_SEC_MISSING" }]
+    }))
+    .await
+    .unwrap_err();
+    assert!(
+        failed.contains("1 von 2 Anweisungen wurden bereits ausgeführt"),
+        "{failed}"
+    );
+
+    let own = limited.list_principals().await.unwrap();
+    assert!(own.limited);
+    assert!(own
+        .items
+        .iter()
+        .any(|p| p.kind == "user" && p.name == own.current_user));
+    let me = limited
+        .principal_detail("user", &own.current_user)
+        .await
+        .unwrap();
+    assert!(me.limited && !me.roles.is_empty() && me.default_tablespace.is_some());
+    let other = limited.principal_detail("user", "SYSTEM").await.unwrap();
+    assert!(other.limited && other.system && other.roles.is_empty());
+    let session_role = &me.roles[0].name;
+    limited
+        .principal_detail("role", session_role)
+        .await
+        .unwrap();
+    assert!(limited
+        .principal_detail("profile", "DEFAULT")
+        .await
+        .is_err());
+    assert!(limited
+        .apply_principal_change(
+            &principal_change(serde_json::json!({
+                "kind": "user", "name": user, "action": "alter", "locked": true
+            })),
+            false
+        )
+        .await
+        .unwrap_err()
+        .contains("ORA-01031"));
+
+    super::sql_log::sql_log_configure(true);
+    let logged = || {
+        super::sql_log::sql_log_entries(0)
+            .entries
+            .last()
+            .map_or(0, |entry| entry.id)
+    };
+    let before = logged();
+    db.list_principals().await.unwrap();
+    let after_list = logged();
+    db.principal_detail("user", user).await.unwrap();
+    let after_detail = logged();
+    super::sql_log::sql_log_configure(false);
+    assert_eq!(after_list - before, 1);
+    assert_eq!(after_detail - after_list, 5);
+
+    let mut list_ms = Vec::new();
+    let mut detail_ms = Vec::new();
+    for _ in 0..15 {
+        let started = Instant::now();
+        let count = db.list_principals().await.unwrap().items.len();
+        list_ms.push(started.elapsed().as_secs_f64() * 1000.0);
+        assert!(count > 50);
+        let started = Instant::now();
+        db.principal_detail("user", user).await.unwrap();
+        detail_ms.push(started.elapsed().as_secs_f64() * 1000.0);
+    }
+    let started = Instant::now();
+    let public = db.principal_detail("role", "SELECT_CATALOG_ROLE").await;
+    let public_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let public_grants = public
+        .as_ref()
+        .map(|d| (d.object_privileges.len(), d.object_privileges_truncated));
+    println!(
+        "principals: list median {:.1} ms p95 {:.1} ms; detail median {:.1} ms p95 {:.1} ms; SELECT_CATALOG_ROLE {:?} in {:.1} ms",
+        percentile(&mut list_ms, 0.5),
+        percentile(&mut list_ms, 0.95),
+        percentile(&mut detail_ms, 0.5),
+        percentile(&mut detail_ms, 0.95),
+        public_grants,
+        public_ms
+    );
+    assert!(percentile(&mut list_ms, 0.95) < 1500.0);
+    assert!(percentile(&mut detail_ms, 0.95) < 1500.0);
+    assert!(public.unwrap().object_privileges.len() <= 5000);
+    assert!(public_ms < 3000.0);
+
+    drop_all().await;
+    assert!(db.principal_detail("user", user).await.is_err());
+}

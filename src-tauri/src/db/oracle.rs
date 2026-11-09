@@ -861,6 +861,8 @@ mod copy;
 pub(crate) mod info;
 #[path = "oracle_plan.rs"]
 mod plan;
+#[path = "oracle_security.rs"]
+mod security;
 #[path = "oracle_sql.rs"]
 mod sql;
 use sql::prepare;
@@ -2006,6 +2008,38 @@ impl DatabaseAdapter for OracleAdapter {
                 bypasses_rls: false,
             })
             .collect())
+    }
+
+    async fn list_principals(&self) -> Result<super::principals::PrincipalList, String> {
+        self.principals().await
+    }
+
+    async fn principal_detail(
+        &self,
+        kind: &str,
+        name: &str,
+    ) -> Result<super::principals::PrincipalDetail, String> {
+        self.principal(kind, name).await
+    }
+
+    async fn principal_options(&self) -> Result<super::principals::PrincipalOptions, String> {
+        self.security_options().await
+    }
+
+    async fn list_grantable_objects(
+        &self,
+        owner: &str,
+        search: &str,
+    ) -> Result<Vec<super::principals::GrantableObject>, String> {
+        self.grantable_objects(owner, search).await
+    }
+
+    async fn apply_principal_change(
+        &self,
+        change: &super::principals::PrincipalChange,
+        dry_run: bool,
+    ) -> Result<Vec<String>, String> {
+        self.change_principal(change, dry_run).await
     }
 
     async fn list_schemas(&self) -> Result<Vec<String>, String> {

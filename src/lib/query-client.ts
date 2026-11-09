@@ -18,6 +18,8 @@ export const METADATA_QUERY_ROOTS = [
   "extensions",
   "available-extensions",
   "roles",
+  "principals",
+  "principal-options",
   "role-privileges",
   "foreign-keys",
   "triggers",
@@ -51,6 +53,8 @@ const connectionQueryRoots = new Set<string>([
   "column-search",
   "source-search",
   "s3",
+  "principal-detail",
+  "grantable-objects",
 ]);
 
 export function isConnectionQuery(queryKey: readonly unknown[], connectionId: string) {

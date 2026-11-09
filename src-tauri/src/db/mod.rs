@@ -47,6 +47,7 @@ pub use odbc::configure_system_ini as configure_odbc;
 pub(crate) mod oracle;
 pub mod pool;
 mod postgres;
+pub mod principals;
 pub(crate) use postgres::run_simple_query as run_postgres_simple_query;
 pub mod postgres_health;
 pub mod provider;
@@ -722,6 +723,36 @@ pub trait DatabaseAdapter: Send + Sync {
     }
     async fn list_proxy_users(&self) -> Result<Vec<ProxyUserInfo>, String> {
         Err(unsupported("Proxy-User"))
+    }
+    async fn list_principals(&self) -> Result<principals::PrincipalList, String> {
+        Err(unsupported("Benutzerverwaltung"))
+    }
+    async fn principal_detail(
+        &self,
+        kind: &str,
+        name: &str,
+    ) -> Result<principals::PrincipalDetail, String> {
+        let _ = (kind, name);
+        Err(unsupported("Benutzerverwaltung"))
+    }
+    async fn principal_options(&self) -> Result<principals::PrincipalOptions, String> {
+        Err(unsupported("Benutzerverwaltung"))
+    }
+    async fn list_grantable_objects(
+        &self,
+        owner: &str,
+        search: &str,
+    ) -> Result<Vec<principals::GrantableObject>, String> {
+        let _ = (owner, search);
+        Err(unsupported("Benutzerverwaltung"))
+    }
+    async fn apply_principal_change(
+        &self,
+        change: &principals::PrincipalChange,
+        dry_run: bool,
+    ) -> Result<Vec<String>, String> {
+        let _ = (change, dry_run);
+        Err(unsupported("Benutzerverwaltung"))
     }
     async fn create_role(&self, options: &CreateRoleOptions) -> Result<(), String> {
         let _ = options;
