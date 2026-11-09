@@ -2,7 +2,6 @@ import {
   Archive,
   Copy,
   CopyPlus,
-  Database,
   MoreHorizontal,
   Pencil,
   Play,
@@ -10,7 +9,6 @@ import {
   Star,
   Trash2,
   Unplug,
-  User,
 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import type { ComponentProps, ReactNode } from "react";
@@ -86,8 +84,10 @@ export function ConnectionPickCard({
                   onToggleFavorite();
                 }}
                 className={cn(
-                  "grid size-7 place-items-center rounded-md transition-colors hover:bg-muted",
-                  favorite ? "text-amber-500" : "text-muted-foreground/60 hover:text-foreground",
+                  "grid size-7 cursor-pointer place-items-center rounded-md transition-[color,background-color,opacity] hover:bg-muted",
+                  favorite
+                    ? "text-amber-500"
+                    : "text-muted-foreground/60 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-foreground",
                 )}
               >
                 <Star className={cn("size-3.5", favorite && "fill-current")} />
@@ -141,13 +141,13 @@ export function ConnectionPickCard({
             </div>
           }
           footer={
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
               {connection.temporary ? (
                 <Button
                   variant="ghost"
                   size="xs"
                   onClick={() => saveTemporary(connection.id)}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="-ml-2 text-muted-foreground hover:text-foreground"
                 >
                   <Save className="size-3" />
                   Verbindung speichern
@@ -157,7 +157,7 @@ export function ConnectionPickCard({
                   variant="ghost"
                   size="xs"
                   onClick={onEdit}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="-ml-2 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-foreground"
                 >
                   <Pencil className="size-3" />
                   Bearbeiten
@@ -165,12 +165,17 @@ export function ConnectionPickCard({
               )}
               <div className="flex items-center gap-1">
                 {active ? (
-                  <Button variant="outline" size="xs" onClick={onOpen}>
+                  <Button variant="secondary" size="xs" onClick={onOpen}>
                     <Unplug className="size-3" />
                     Trennen
                   </Button>
                 ) : (
-                  <Button variant="default" size="xs" onClick={onOpen} className="gap-1 shadow-2xs">
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    onClick={onOpen}
+                    className="gap-1 group-hover:bg-primary group-hover:text-primary-foreground"
+                  >
                     <Play className="size-3" />
                     Verbinden
                   </Button>
@@ -280,8 +285,10 @@ function ConnectionCardShell({
       animate={{ opacity: 1, scale: 1 }}
       {...rest}
       className={cn(
-        "group relative flex flex-col justify-between overflow-hidden rounded-xl border bg-card p-4 transition-colors duration-150 hover:border-foreground/20",
-        active ? "border-primary/40 ring-1 ring-primary/15" : "border-border/80",
+        "group relative flex flex-col justify-between overflow-hidden rounded-xl p-4 transition-colors duration-150",
+        active
+          ? "bg-primary/10 ring-1 ring-primary/25 ring-inset"
+          : "bg-muted/40 hover:bg-muted/70",
         className,
       )}
     >
@@ -296,12 +303,7 @@ function ConnectionCardShell({
       <div>
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2.5">
-            <div
-              className={cn(
-                "relative grid size-9 shrink-0 place-items-center rounded-lg border bg-background",
-                active && "border-primary/40",
-              )}
-            >
+            <div className="relative grid size-9 shrink-0 place-items-center rounded-lg bg-background/70">
               <ProviderLogo providerId={provider.id} kind={connection.kind} className="size-5" />
               <span className="absolute -bottom-1 -right-1">
                 <ConnectionStatusIndicator connectionId={connection.id} />
@@ -324,23 +326,22 @@ function ConnectionCardShell({
         </div>
 
         <TeamConnectionHelp connection={connection} />
-        <div className="mt-3 text-xs">
-          <div className="flex items-center gap-1.5 text-muted-foreground">
-            <Database className="size-3 shrink-0 text-muted-foreground/70" />
-            <span className="truncate font-mono font-medium text-foreground/90">
-              {target || "Standard"}
-            </span>
+        <div className="mt-3 space-y-0.5 font-mono text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate font-medium text-foreground/90">{target || "Standard"}</span>
             {schema && <span className="truncate text-muted-foreground/80">/ {schema}</span>}
           </div>
-          <div className="mt-1.5 flex items-center gap-1.5 text-muted-foreground">
-            <User className="size-3 shrink-0 text-muted-foreground/70" />
-            <span className="truncate font-mono">
-              {endpoint.user ||
-                (connection.team ? "Benutzer beim ersten Verbinden" : "Kein Benutzer")}
-            </span>
+          <div className="flex items-center gap-1 text-muted-foreground">
+            {(endpoint.user || connection.team || !endpoint.host) && (
+              <span className="truncate">
+                {endpoint.user ||
+                  (connection.team ? "Benutzer beim ersten Verbinden" : "Kein Benutzer")}
+              </span>
+            )}
             {endpoint.host && (
               <span className="truncate text-muted-foreground/60">
-                @{endpoint.host}
+                {endpoint.user || connection.team ? "@" : ""}
+                {endpoint.host}
                 {endpoint.port ? `:${endpoint.port}` : ""}
               </span>
             )}
