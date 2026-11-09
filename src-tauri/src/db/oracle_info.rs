@@ -28,7 +28,7 @@ BEGIN
   BEGIN EXECUTE IMMEDIATE 'BEGIN :n := ORA_MAX_NAME_LEN_SUPPORTED; END;' USING OUT n; put('max_name', n); EXCEPTION WHEN OTHERS THEN put('max_name', 30); END;
   FOR p IN (SELECT privilege FROM session_privs WHERE privilege IN ('SELECT ANY DICTIONARY', 'DEBUG CONNECT SESSION', 'ALTER SYSTEM', 'ALTER SESSION')) LOOP put('privilege', p.privilege); END LOOP;
   FOR p IN (SELECT role FROM session_roles WHERE role IN ('SELECT_CATALOG_ROLE', 'DBA')) LOOP put('privilege', p.role); END LOOP;
-  readable('v$session'); readable('v$sql'); readable('v$sql_plan'); readable('v$lock'); readable('v$session_longops'); readable('dba_objects'); readable('dba_ddl_locks');
+  readable('v$session'); readable('v$sql'); readable('v$sql_plan'); readable('v$lock'); readable('v$session_longops'); readable('dba_objects'); readable('dba_ddl_locks'); readable('dba_users');
   BEGIN EXECUTE IMMEDIATE 'BEGIN :v := DBMS_TRANSACTION.LOCAL_TRANSACTION_ID; END;' USING OUT v; put('package', 'DBMS_TRANSACTION'); EXCEPTION WHEN OTHERS THEN NULL; END;
   :info := r;
 END;";

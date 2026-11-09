@@ -40,7 +40,13 @@ export function useSidebarTabs(hasPackages: boolean) {
     },
     { value: "synonyms", label: "Synonyme", icon: LinkIcon, enabled: caps.synonyms },
     { value: "extensions", label: "Packages", icon: PackageIcon, enabled: caps.extensions },
-    { value: "roles", label: "Benutzer", icon: UsersIcon, enabled: caps.roles },
+    {
+      value: "roles",
+      label: "Benutzer",
+      icon: UsersIcon,
+      enabled: caps.roles || caps.principals,
+      featureScope: caps.principals ? "sidebar.roles" : undefined,
+    },
     { value: "queries", label: "Queries", icon: FileCodeIcon, enabled: true },
     {
       value: "sequences",

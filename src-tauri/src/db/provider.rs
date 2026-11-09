@@ -37,6 +37,7 @@ pub struct Capabilities {
     pub functions: bool,
     pub extensions: bool,
     pub roles: bool,
+    pub principals: bool,
     pub privileges: bool,
     pub sequences: bool,
     pub enums: bool,
@@ -107,6 +108,7 @@ const NONE: Capabilities = Capabilities {
     functions: false,
     extensions: false,
     roles: false,
+    principals: false,
     privileges: false,
     sequences: false,
     enums: false,
@@ -359,6 +361,7 @@ impl DatabaseKind {
             },
             DatabaseKind::Oracle => Capabilities {
                 query_cancel: true,
+                principals: true,
                 server_info: true,
                 locks: true,
                 data_compare: true,

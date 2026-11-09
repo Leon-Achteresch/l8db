@@ -27,6 +27,7 @@ export * from "./index-advisor";
 export * from "./jdbc";
 export * from "./payments";
 export * from "./pocketbase";
+export * from "./principals";
 export * from "./providers";
 export * from "./replication";
 export * from "./roles";

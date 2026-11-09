@@ -1225,6 +1225,114 @@ pub async fn list_proxy_users(
 }
 
 #[tauri::command]
+pub async fn list_principals(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::principals::PrincipalList, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_principals()
+    .await
+}
+
+#[tauri::command]
+pub async fn principal_detail(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    principal_kind: String,
+    name: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::principals::PrincipalDetail, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .principal_detail(&principal_kind, &name)
+    .await
+}
+
+#[tauri::command]
+pub async fn principal_options(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::principals::PrincipalOptions, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .principal_options()
+    .await
+}
+
+#[tauri::command]
+pub async fn list_grantable_objects(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    owner: String,
+    search: String,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<super::principals::GrantableObject>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .list_grantable_objects(&owner, &search)
+    .await
+}
+
+#[tauri::command]
+pub async fn preview_principal_change(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    change: super::principals::PrincipalChange,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<String>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .apply_principal_change(&change, true)
+    .await
+}
+
+#[tauri::command]
+pub async fn apply_principal_change(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    change: super::principals::PrincipalChange,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<Vec<String>, String> {
+    create_adapter_from_string(
+        kind,
+        &connection_string,
+        database.as_deref(),
+        pool_state.inner().clone(),
+    )?
+    .apply_principal_change(&change, false)
+    .await
+}
+
+#[tauri::command]
 pub async fn list_roles(
     kind: DatabaseKind,
     connection_string: String,

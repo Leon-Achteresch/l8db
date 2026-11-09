@@ -15,7 +15,7 @@ export function tabKey(tab: Tab): string {
   if (tab.kind === "query") return `query:${tab.id}`;
   if (tab.kind === "function") return `function:${tab.oid}`;
   if (tab.kind === "procedure") return `procedure:${tab.oid}`;
-  if (tab.kind === "role") return `role:${tab.name}`;
+  if (tab.kind === "role") return `${tab.profile ? "profile" : "role"}:${tab.name}`;
   if (tab.kind === "trigger") return `trigger:${tab.schema}.${tab.table}.${tab.trigger}`;
   if (tab.kind === "view-editor") return `view-editor:${tab.schema}.${tab.view}`;
   if (tab.kind === "alter-table") return `alter-table:${tab.schema}.${tab.table}`;

@@ -22,7 +22,7 @@ static SECRET: LazyLock<Regex> = LazyLock::new(|| {
     .expect("secret pattern")
 });
 
-fn mask_secrets(sql: &str) -> std::borrow::Cow<'_, str> {
+pub(crate) fn mask_secrets(sql: &str) -> std::borrow::Cow<'_, str> {
     SECRET.replace_all(sql, |c: &Captures| {
         let Some(head) = c.get(1) else {
             return format!("{}***", &c[3]);

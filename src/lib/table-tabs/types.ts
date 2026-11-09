@@ -35,7 +35,7 @@ export type ExtensionPanelTab = {
   panelId: string;
   title: string;
 };
-export type RoleTab = { kind: "role"; name: string };
+export type RoleTab = { kind: "role"; name: string; profile?: boolean };
 export type TriggerTab = { kind: "trigger"; schema: string; table: string; trigger: string };
 export type ViewEditorTab = { kind: "view-editor"; schema: string; view: string };
 export type AlterTableTab = { kind: "alter-table"; schema: string; table: string };

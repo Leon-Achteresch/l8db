@@ -17,6 +17,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   functions: true,
   extensions: true,
   roles: true,
+  principals: false,
   privileges: true,
   sequences: true,
   enums: true,

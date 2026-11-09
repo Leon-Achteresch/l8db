@@ -33,6 +33,7 @@ export interface Capabilities {
   functions: boolean;
   extensions: boolean;
   roles: boolean;
+  principals: boolean;
   privileges: boolean;
   sequences: boolean;
   enums: boolean;

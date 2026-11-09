@@ -4,6 +4,7 @@ import { version as appVersion } from "../../package.json";
 export const NEXT_FEATURE_VERSION = "0.18.0";
 
 export const NEW_FEATURES = {
+  "sidebar.roles.principals": NEXT_FEATURE_VERSION,
   "workspace.motion": NEXT_FEATURE_VERSION,
   "settings.storage.overview": NEXT_FEATURE_VERSION,
   "table.rows.insert-script": NEXT_FEATURE_VERSION,
