@@ -4,14 +4,7 @@ import { useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
+import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { CLOUD_QUERY_OPTIONS, type CloudAccount, cloudAccounts } from "@/lib/db/cloud-accounts";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { CloudAccountAddDialog } from "./cloud-account-add-dialog";
@@ -47,20 +40,17 @@ export function CloudAccountsView() {
   const selected = list.find((account) => account.id === selectedId) ?? list[0] ?? null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-auto p-6">
-      <header ref={feature.ref} className="flex flex-wrap items-center gap-3">
-        <Cloud className="size-5" />
-        <div className="flex-1">
-          <h1 className="text-lg font-semibold">Cloud-Konten {feature.isNew && <NewBadge />}</h1>
-          <p className="text-sm text-muted-foreground">
-            Neon, PlanetScale und SpacetimeDB verbinden, Datenbanken auswählen und als Verbindungen
-            anlegen.
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setAdding(true)}>
-          <Plus className="size-3.5" />
-          Konto hinzufügen
-        </Button>
+    <div className="flex h-full min-h-0 w-full flex-col gap-4 overflow-auto p-4 md:p-6">
+      <header ref={feature.ref} className="flex min-h-9 items-center justify-between gap-3">
+        <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
+          Cloud-Konten {feature.isNew && <NewBadge />}
+        </h1>
+        {list.length > 0 && (
+          <Button size="sm" onClick={() => setAdding(true)}>
+            <Plus className="size-3.5" />
+            Konto hinzufügen
+          </Button>
+        )}
       </header>
       {accounts.isError && (
         <CloudSectionError error={accounts.error} onRetry={() => void accounts.refetch()} />
@@ -72,35 +62,38 @@ export function CloudAccountsView() {
               <Cloud />
             </EmptyMedia>
             <EmptyTitle>Noch kein Cloud-Konto</EmptyTitle>
-            <EmptyDescription>
-              Füge einen Neon-API-Schlüssel, ein PlanetScale-Service-Token oder ein
-              SpacetimeDB-Token hinzu.
-            </EmptyDescription>
+            <p className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+              {Object.values(PROVIDER_LABEL).join(" · ")}
+            </p>
           </EmptyHeader>
           <EmptyContent>
             <Button size="sm" onClick={() => setAdding(true)}>
+              <Plus className="size-3.5" />
               Konto hinzufügen
             </Button>
           </EmptyContent>
         </Empty>
       )}
       {list.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {list.map((account) => (
             <Button
               key={account.id}
               size="sm"
-              variant={selected?.id === account.id ? "secondary" : "outline"}
+              variant={selected?.id === account.id ? "secondary" : "ghost"}
+              aria-pressed={selected?.id === account.id}
               onClick={() => setSelectedId(account.id)}
             >
               {account.label}
-              <Badge variant="outline">{PROVIDER_LABEL[account.provider]}</Badge>
+              <span className="text-xs font-normal text-muted-foreground">
+                {PROVIDER_LABEL[account.provider]}
+              </span>
             </Button>
           ))}
         </div>
       )}
       {selected && (
-        <section className="flex flex-col gap-4 rounded-lg border p-4" key={selected.id}>
+        <section className="flex flex-col gap-4 rounded-xl bg-muted/40 p-4" key={selected.id}>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="font-medium">{selected.label}</h2>
             <Badge variant="secondary">{PROVIDER_LABEL[selected.provider]}</Badge>
