@@ -16,7 +16,9 @@ test("publisher handles delayed draft listings, avoids republishing and limits d
       statePath,
       JSON.stringify({ commit, media: null, assets: [], nextId: 1, events: [] }),
     );
-    const base = JSON.parse(readFileSync("scripts/feature-videos/catalog.json", "utf8"))[0];
+    const base = JSON.parse(readFileSync("scripts/feature-videos/catalog.json", "utf8")).find(
+      (entry: { id: string }) => entry.id === "easy-mode",
+    );
     const name = `fv-${base.id}-${base.revision}`;
     const tag = `feature-video-${base.id}-${base.revision}`;
     const item = {
@@ -52,6 +54,7 @@ test("publisher handles delayed draft listings, avoids republishing and limits d
     expect(JSON.parse(state.media.body).items[0].minAppVersion).toBe("0.6.999");
     expect(run("publish", "v0.6.999", dir).status).toBe(0);
     expect(JSON.parse(run("plan").stdout)).toEqual([
+      "workspace-motion",
       "extension-market",
       "dashboard-workspace",
       "mcp-open",
@@ -81,6 +84,7 @@ test("publisher handles delayed draft listings, avoids republishing and limits d
     state = JSON.parse(readFileSync(statePath, "utf8"));
     expect(state.assets.map((asset: { name: string }) => asset.name)).toEqual(["latest.json"]);
     expect(JSON.parse(run("plan").stdout)).toEqual([
+      "workspace-motion",
       "extension-market",
       "dashboard-workspace",
       "mcp-open",
