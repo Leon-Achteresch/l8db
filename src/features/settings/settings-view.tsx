@@ -1,8 +1,8 @@
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { useNavigate } from "@tanstack/react-router";
 import { ListFilter } from "lucide-react";
-import { motion } from "motion/react";
 import { useEffect, useRef } from "react";
+import { ChangeSurface } from "@/components/motion/change-surface";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SettingsAboutTab } from "@/features/settings/settings-about-tab";
@@ -19,7 +19,6 @@ import { SettingsSearchResults } from "@/features/settings/settings-search-resul
 import { SettingsSecurityTab } from "@/features/settings/settings-security-tab";
 import { SETTINGS_TABS, SettingsSidebar } from "@/features/settings/settings-sidebar";
 import { SettingsUsageTab } from "@/features/settings/settings-usage-tab";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { useModifiedSettings } from "@/lib/hooks/use-modified-settings";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
@@ -131,17 +130,13 @@ export function SettingsView() {
             </div>
           </aside>
           <section
+            ref={contentRef}
             className="@container min-w-0 flex-1 overflow-x-clip"
             aria-label="Einstellungsoptionen"
           >
-            <motion.div
-              ref={contentRef}
-              key={query.trim() || modifiedOnly ? "search" : category}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.15, ease: "easeOut" }}
-              layout
-              transition-layout={{ layout: SPRING_LAYOUT }}
+            <ChangeSurface
+              changeKey={query.trim() || modifiedOnly ? "search" : category}
+              kind="section"
             >
               {query.trim() || modifiedOnly ? (
                 <SettingsSearchResults
@@ -169,7 +164,7 @@ export function SettingsView() {
                   {category === "about" ? <SettingsAboutTab /> : null}
                 </>
               )}
-            </motion.div>
+            </ChangeSurface>
           </section>
         </div>
       </div>

@@ -1,15 +1,17 @@
 import { CheckIcon, XIcon } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, useIsPresent, useReducedMotion } from "motion/react";
 import { type KeyboardEvent, useEffect, useRef } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useActiveConnection } from "@/lib/connections";
-import { SPRING_LAYOUT } from "@/lib/ease";
+import { EASE_OUT } from "@/lib/ease";
 import { useCapabilities } from "@/lib/providers";
 import { useSettingsStore } from "@/lib/settings";
 import { useTransactionStore } from "@/lib/transactions";
 import { TransactionCard } from "./transaction-card";
 
 export function TransactionPanel() {
+  const present = useIsPresent();
+  const reduced = useReducedMotion();
   const connection = useActiveConnection();
   const capabilities = useCapabilities(connection?.kind);
   const perTable = useSettingsStore((state) => state.transactionsPerTable);
@@ -37,18 +39,20 @@ export function TransactionPanel() {
   };
 
   return (
-    <section
+    <motion.section
+      initial={reduced ? { opacity: 0.8 } : { opacity: 0, x: 32 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={reduced ? { opacity: 0 } : { opacity: 0, x: 20 }}
+      transition={{ duration: reduced ? 0.1 : present ? 0.26 : 0.14, ease: EASE_OUT }}
+      inert={!present}
+      aria-hidden={!present}
       data-tour="tx-panel"
       aria-label="Transaktionen"
       tabIndex={-1}
       onKeyDown={handleKeyDown}
       className="flex h-full min-h-0 outline-none"
     >
-      <motion.div
-        layout
-        transition={{ layout: SPRING_LAYOUT }}
-        className="flex h-full w-[380px] shrink-0 flex-col border-l border-border bg-card/50"
-      >
+      <div className="flex h-full w-[380px] shrink-0 flex-col border-l border-border bg-card/50">
         <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
           <span className="text-xs font-semibold text-foreground">Transaktionen</span>
           {transactions.length > 0 && (
@@ -94,7 +98,7 @@ export function TransactionPanel() {
             ))}
           </div>
         </ScrollArea>
-      </motion.div>
-    </section>
+      </div>
+    </motion.section>
   );
 }

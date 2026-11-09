@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/ibm-plex-sans";
+@import "./styles/motion.css";
 
 @custom-variant dark (&:is(.dark *));
 @custom-variant group-hover {
