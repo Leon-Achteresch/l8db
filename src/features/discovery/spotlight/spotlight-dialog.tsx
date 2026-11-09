@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { ArrowRightIcon } from "lucide-react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -23,49 +24,72 @@ export function SpotlightDialog({ content }: { content: SpotlightContent }) {
     void highlightFeature(id);
   };
 
+  const total = content.major.length + content.others.reduce((sum, g) => sum + g.entries.length, 0);
+
   return (
     <Dialog open onOpenChange={(open) => !open && close()}>
       <DialogContent
         ref={ref}
         data-discovery-spotlight={content.kind}
-        className="max-h-[calc(100dvh-4rem)] gap-6 overflow-y-auto sm:max-w-4xl"
+        className="max-h-[calc(100dvh-4rem)] gap-0 overflow-y-auto p-0 sm:max-w-4xl [&>[data-slot=dialog-close]]:text-white/80 [&>[data-slot=dialog-close]]:hover:text-white"
       >
-        <DialogTitle className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-          {welcome ? `Willkommen zurück – seit ${content.label} neu` : `Neu in ${content.label}`}
-          {isNew && <NewBadge />}
-        </DialogTitle>
-        {content.major.length > 0 && (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {content.major.map((entry) => (
-              <SpotlightCard key={entry.id} entry={entry} onTry={tryFeature} />
-            ))}
+        <header className="relative isolate overflow-hidden px-8 pt-10 pb-8 text-white">
+          <div className="absolute inset-0 -z-10 bg-linear-to-br from-[#1b1530] via-[#3a2a78] to-[#0e1a3a]" />
+          <div className="absolute -top-24 -left-16 -z-10 size-80 rounded-full bg-violet-500/50 blur-3xl" />
+          <div className="absolute -right-10 -bottom-32 -z-10 size-96 rounded-full bg-fuchsia-500/35 blur-3xl" />
+          <div className="absolute top-6 right-1/3 -z-10 size-48 rounded-full bg-sky-400/30 blur-3xl" />
+          <div className="discovery-grain absolute inset-0 -z-10 opacity-50 mix-blend-overlay" />
+          <p className="font-mono text-[10px] tracking-widest text-white/60 uppercase">
+            {welcome ? "Willkommen zurück" : `Release ${content.label}`}
+          </p>
+          <DialogTitle className="mt-2 flex items-center gap-2 text-4xl font-semibold tracking-[-0.03em]">
+            {welcome ? `Seit ${content.label} neu` : `Neu in ${content.label}`}
+            {isNew && <NewBadge />}
+          </DialogTitle>
+          <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-white/80 tabular-nums backdrop-blur">
+            <span className="size-1.5 rounded-full bg-[#B8F03C]" />
+            {total} Neuerungen
+          </p>
+        </header>
+        <div className="flex flex-col gap-8 p-6">
+          {content.major.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {content.major.map((entry, index) => (
+                <SpotlightCard key={entry.id} entry={entry} index={index} onTry={tryFeature} />
+              ))}
+            </div>
+          )}
+          {content.others.length > 0 && (
+            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
+              {content.others.map((group) => (
+                <section key={group.area} className="flex flex-col gap-2">
+                  <h3 className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+                    {group.area}
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {group.entries.map((entry) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        className="h-7 cursor-pointer rounded-full bg-muted/50 px-3 text-xs transition-colors hover:bg-muted active:scale-[0.98]"
+                        onClick={() => tryFeature(entry.id)}
+                      >
+                        {entry.title}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+          <div className="flex justify-end">
+            <Button variant="ghost" size="sm" className="rounded-full" asChild>
+              <Link to="/release-notes" onClick={close}>
+                Alle Neuerungen
+                <ArrowRightIcon />
+              </Link>
+            </Button>
           </div>
-        )}
-        {content.others.length > 0 && (
-          <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-            {content.others.map((group) => (
-              <section key={group.area} className="flex flex-col gap-1">
-                <h3 className="text-xs font-medium text-muted-foreground">{group.area}</h3>
-                {group.entries.map((entry) => (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    className="-mx-2 cursor-pointer rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-muted/60 active:bg-muted"
-                    onClick={() => tryFeature(entry.id)}
-                  >
-                    {entry.title}
-                  </button>
-                ))}
-              </section>
-            ))}
-          </div>
-        )}
-        <div className="flex justify-end">
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/release-notes" onClick={close}>
-              Alle Neuerungen
-            </Link>
-          </Button>
         </div>
       </DialogContent>
     </Dialog>
