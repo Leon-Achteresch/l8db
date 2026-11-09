@@ -426,6 +426,86 @@ async fn dispatch(
         )
         .await
         .map(|v| json!(v)),
+        "test_connection_string" => crate::db::commands::test_connection_string(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            st(&pool),
+            a(x, "options")?,
+        )
+        .await
+        .map(|v| json!(v)),
+        "preview_schema_object_copy" => crate::db::commands::preview_schema_object_copy(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            a(x, "database")?,
+            a(x, "sourceSchema")?,
+            a(x, "targetSchema")?,
+            a(x, "objectType")?,
+            a(x, "name")?,
+            a(x, "targetConnectionString")?,
+            a(x, "targetDatabase")?,
+            st(&pool),
+        )
+        .await
+        .map(|v| json!(v)),
+        "get_view_definition" => crate::db::commands::get_view_definition(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            a(x, "database")?,
+            a(x, "schema")?,
+            a(x, "view")?,
+            st(&pool),
+        )
+        .await
+        .map(|v| json!(v)),
+        "list_constraints" => crate::db::commands::list_constraints(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            a(x, "database")?,
+            a(x, "schema")?,
+            a(x, "table")?,
+            st(&pool),
+        )
+        .await
+        .map(|v| json!(v)),
+        "list_indexes" => crate::db::commands::list_indexes(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            a(x, "database")?,
+            a(x, "schema")?,
+            a(x, "table")?,
+            st(&pool),
+        )
+        .await
+        .map(|v| json!(v)),
+        "list_triggers" => crate::db::commands::list_triggers(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            a(x, "database")?,
+            a(x, "schema")?,
+            a(x, "table")?,
+            st(&pool),
+        )
+        .await
+        .map(|v| json!(v)),
+        "list_materialized_views" => crate::db::commands::list_materialized_views(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            a(x, "database")?,
+            a(x, "schema")?,
+            st(&pool),
+        )
+        .await
+        .map(|v| json!(v)),
+        "validate_sql" => crate::db::commands::validate_sql(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            a(x, "database")?,
+            a(x, "sql")?,
+            st(&pool),
+        )
+        .await
+        .map(|v| json!(v)),
         _ => Err(format!("Unsupported browser lab command: {command}")),
     }
 }

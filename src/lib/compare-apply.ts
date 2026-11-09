@@ -1,4 +1,4 @@
-import { loadCompareDefinition } from "@/lib/compare-definition";
+import { loadPortableDefinition } from "@/lib/compare-definition";
 import type { CompareSideSelection } from "@/lib/compare-types";
 import type { SavedConnection } from "@/lib/connections";
 import {
@@ -17,7 +17,7 @@ export async function checkCompareTarget(
   baseline: string,
 ): Promise<void> {
   if (connection.readOnly) throw new Error("Die Zielverbindung ist schreibgeschützt.");
-  const current = await loadCompareDefinition(connection, side);
+  const current = await loadPortableDefinition(connection, side);
   if (current !== baseline)
     throw new Error(
       "Die Zieldefinition wurde inzwischen verändert. Bitte den Zielstand neu laden und den Entwurf erneut abgleichen.",
