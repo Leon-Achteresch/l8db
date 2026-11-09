@@ -1,5 +1,22 @@
 # Performance tests, workloads and headless benchmarks
 
+## Workspace motion
+
+Start the local Vite dev server, then run the scoped checks:
+
+```sh
+bun test tests/change-animation.test.ts
+L8DB_MOTION_BROWSER_URL=http://127.0.0.1:1420 bun test tests/perf-workspace-motion.test.ts
+```
+
+`ChangeSurface` animates an existing content container without remounting its children. A new view replaces the previous animation, ordinary rerenders do not restart it, and finishing, unmounting, hiding the document or changing the motion preference releases the effect and its listeners. Full view changes take 240 ms, settings sections 180 ms, and reduced motion uses a 100 ms opacity transition without translation. Transitions never defer input or issue database requests. Shared controls use finite CSS transitions; tab changes fade the content container rather than animating individual data cells. The transaction panel enters in 260 ms and exits in 140 ms, becoming inert as soon as it starts closing.
+
+The browser scenario uses 400 rows × 24 columns (9,600 data cells, 10,035 total DOM nodes), 180 measured view changes followed by 1,000 immediate replacements. It requires setup median below 4 ms / p95 below 12 ms and next-frame latency p95 below 80 ms, at most one content animation, zero retained DOM growth, zero effects after cancellation or idle, and zero database calls. It also checks preserved cell identity, input focus and unsaved text, keyboard selection, panel exit, reduced motion, dark/light rendering, a 960 px viewport and unmount cancellation. Unit tests cover hidden documents, live motion-preference changes and listener cleanup.
+
+Measured on 2026-11-09 with macOS 27.0.1, arm64, Apple M3, 16 GiB RAM, Bun 1.3.10 and Playwright Chromium 156.0.8078.4: setup median **1.80 ms**, p95 **2.40 ms**; next-frame latency median **16.70 ms**, p95 **17.60 ms**. There was one content animation at peak, no DOM growth, no idle effects and no database calls. This is the initial baseline for the new motion, not a before/after optimization comparison. DOM/effect counts establish bounded retained work; they are not a process-memory measurement.
+
+No CPU throttling or heap simulation was used. WebKit could not start because the required local `webkit-2370` Playwright executable was missing. Packaged Tauri WebViews, Windows, Linux, other physical hardware and real database families were not exercised by this fixture. The fixture isolates the actual shared controls, content animation and transaction panel; it does not establish end-to-end routing or database performance.
+
 ## Saved password restoration
 
 `bun test tests/perf-secret-save.test.ts` covers saving secrets and restoring missing database passwords before opening a password prompt. The restoration scenario keeps 1,000 connections in the store and restores the last 60, using a mocked Tauri transport with 1 ms read latency. The previous prompt predicate classified all 60 as requiring manual entry despite saved passwords; restoration now needs zero prompts.

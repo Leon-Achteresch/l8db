@@ -1,0 +1,116 @@
+:root {
+  --motion-feedback: 130ms;
+  --motion-change: 200ms;
+  --motion-settle: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-snap: cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+
+[data-slot="button"] {
+  transition-property: background-color, color, border-color, box-shadow, opacity, scale;
+  transition-duration: var(--motion-feedback);
+  transition-timing-function: var(--motion-settle);
+}
+
+[data-slot="switch"] {
+  transition-property: background-color, border-color, box-shadow, opacity;
+  transition-duration: var(--motion-change);
+}
+
+[data-slot="switch-thumb"] {
+  transition-property: transform, translate, scale, background-color;
+  transition-duration: 260ms;
+  transition-timing-function: var(--motion-snap);
+}
+
+[data-slot="checkbox"] {
+  transition-property: background-color, border-color, box-shadow, scale;
+  transition-duration: var(--motion-feedback);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-slot="button"]:not(:disabled):not([aria-disabled="true"]):not([aria-haspopup]):active {
+    scale: 0.96;
+  }
+
+  [data-slot="switch"]:not([data-disabled]):active [data-slot="switch-thumb"] {
+    scale: 1.14 0.88;
+  }
+
+  [data-slot="checkbox"]:not(:disabled):active {
+    scale: 0.9;
+  }
+
+  [data-slot="checkbox-indicator"][data-state="checked"] {
+    animation: selection-confirm 220ms var(--motion-snap);
+  }
+
+  [data-slot="checkbox-indicator"][data-state="checked"] svg :is(path, polyline) {
+    stroke-dasharray: 24;
+    animation: selection-draw 220ms var(--motion-settle);
+  }
+
+  [data-slot="tabs-content"][data-state="active"]:not([hidden]) {
+    animation: tab-content-arrive 180ms var(--motion-settle);
+  }
+
+  [data-setting-id][data-modified="true"]::before {
+    transform-origin: top;
+    animation: setting-changed 260ms var(--motion-settle);
+  }
+}
+
+@keyframes selection-confirm {
+  from {
+    scale: 0.55;
+    opacity: 0.3;
+  }
+  to {
+    scale: 1;
+    opacity: 1;
+  }
+}
+
+@keyframes selection-draw {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes tab-content-arrive {
+  from {
+    opacity: 0.6;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes setting-changed {
+  from {
+    scale: 1 0.3;
+    opacity: 0.4;
+  }
+  to {
+    scale: 1;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="button"],
+  [data-slot="switch"],
+  [data-slot="switch-thumb"],
+  [data-slot="checkbox"] {
+    transition-duration: 100ms;
+    transition-timing-function: ease-out;
+  }
+
+  [data-slot="button"]:active,
+  [data-slot="switch-thumb"],
+  [data-slot="checkbox"]:active {
+    scale: 1;
+  }
+}

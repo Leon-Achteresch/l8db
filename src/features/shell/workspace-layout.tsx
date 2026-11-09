@@ -9,6 +9,7 @@ import { DragDropProvider, PointerSensor } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import { useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useRef, useSyncExternalStore } from "react";
+import { ChangeSurface } from "@/components/motion/change-surface";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { DeferredOutlet } from "@/features/shell/deferred-outlet";
 import { EnvironmentBanner } from "@/features/shell/environment-banner";
@@ -21,6 +22,7 @@ import { useActiveConnection } from "@/lib/connections";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
 import { useConnectionEnvironment } from "@/lib/environments";
 import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { usePaneSourceKey } from "@/lib/master-detail";
 import { useSettingsStore } from "@/lib/settings";
@@ -107,6 +109,8 @@ const plugins = defaultPreset.plugins
   .map((plugin) => (plugin === Feedback ? Feedback.configure({ dropAnimation: null }) : plugin));
 
 export function WorkspaceLayout() {
+  const { ref: motionRef } = useNewFeatureVisibility<HTMLDivElement>("workspace.motion");
+  const pathname = useRouterSelect((state) => state.location.pathname);
   const easyMode = useSettingsStore((state) => state.easyMode);
   const environment = useConnectionEnvironment(useActiveConnection());
   const productionColor = environment?.value === "production" ? environment.color : null;
@@ -232,7 +236,10 @@ export function WorkspaceLayout() {
           <SidebarTrigger className="size-7 rounded-full" />
           <TableTabs />
         </header>
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div
+          ref={motionRef}
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        >
           <div
             inert={Boolean(switchingTab)}
             className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
@@ -243,9 +250,14 @@ export function WorkspaceLayout() {
               <>
                 <DeferredOutlet>
                   {(outlet) => (
-                    <MasterSelectionScope selectionKey={selectionKey}>
-                      {outlet}
-                    </MasterSelectionScope>
+                    <ChangeSurface
+                      changeKey={routeKey || pathname}
+                      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+                    >
+                      <MasterSelectionScope selectionKey={selectionKey}>
+                        {outlet}
+                      </MasterSelectionScope>
+                    </ChangeSurface>
                   )}
                 </DeferredOutlet>
                 {!easyMode && activeTab && !split && <NewPaneDropZone />}
