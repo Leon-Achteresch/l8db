@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { SidebarObjectTabs } from "../src/features/sidebar/sidebar-object-tabs";
 
 test("rendert für jeden Objekt-Tab einen zugänglichen Tooltip-Trigger", () => {
+  Object.assign(window, { addEventListener() {}, removeEventListener() {} });
   const tabs = [
     { value: "tables", label: "Tabellen", icon: TableIcon },
     { value: "views", label: "Views", icon: EyeIcon },
