@@ -137,6 +137,7 @@ export function SettingsView() {
             <ChangeSurface
               changeKey={query.trim() || modifiedOnly ? "search" : category}
               kind="section"
+              order={SETTINGS_TABS.findIndex((tab) => tab.id === category)}
             >
               {query.trim() || modifiedOnly ? (
                 <SettingsSearchResults

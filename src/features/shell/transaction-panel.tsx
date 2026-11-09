@@ -40,19 +40,25 @@ export function TransactionPanel() {
 
   return (
     <motion.section
-      initial={reduced ? { opacity: 0.8 } : { opacity: 0, x: 32 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={reduced ? { opacity: 0 } : { opacity: 0, x: 20 }}
-      transition={{ duration: reduced ? 0.1 : present ? 0.26 : 0.14, ease: EASE_OUT }}
+      initial={reduced ? { opacity: 0.8 } : { opacity: 0.5, x: "100%", scale: 0.985 }}
+      animate={{ opacity: 1, x: "0%", scale: 1 }}
+      exit={
+        reduced
+          ? { opacity: 0 }
+          : { opacity: 0, x: "100%", scale: 0.985, transition: { duration: 0.2, ease: EASE_OUT } }
+      }
+      transition={
+        reduced ? { duration: 0.1 } : { type: "spring", stiffness: 360, damping: 34, mass: 0.9 }
+      }
       inert={!present}
       aria-hidden={!present}
       data-tour="tx-panel"
       aria-label="Transaktionen"
       tabIndex={-1}
       onKeyDown={handleKeyDown}
-      className="flex h-full min-h-0 outline-none"
+      className="absolute inset-y-0 right-0 z-30 flex w-[380px] max-w-full min-h-0 origin-right bg-card shadow-2xl shadow-black/20 outline-none"
     >
-      <div className="flex h-full w-[380px] shrink-0 flex-col border-l border-border bg-card/50">
+      <div className="flex h-full w-full min-w-0 flex-col border-l border-border bg-card">
         <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
           <span className="text-xs font-semibold text-foreground">Transaktionen</span>
           {transactions.length > 0 && (

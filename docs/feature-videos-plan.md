@@ -150,3 +150,13 @@ L8DB_PRODUCTION_BROWSER=webkit L8DB_EXTENSION_BROWSER=webkit bun test tests/prod
 Die Browsertests verwenden ein zur Laufzeit erzeugtes Testvideo und die gebaute App unter Produktions-CSP. Sie prüfen unter anderem stummes Autoplay, keine Vorabdownloads, Dialogpriorität, manuelles Pausieren, Schließen über Neustarts hinweg, manuelles Wiederansehen, kleine Fenster und reduzierte Bewegung. Die GitHub-CI führt beide Engines aus. Native Windows-/Linux-WebViews können andere Decoder haben; dafür steht zusätzlich WebM bereit. Native Plattformtests sind durch Browserprüfungen nicht vollständig ersetzt.
 
 Die Veröffentlichung wird mit dem nächsten App-Release nach Integration dieser Änderungen auf `main` aktiv. Ein lokaler Commit allein startet keine GitHub Workflows und veröffentlicht keine Dateien.
+
+## Bewegung im Arbeitsbereich
+
+`workspace-motion` zeigt die tatsächliche App mit Beispieldaten: die wandernde Auswahl, gestaffelte Einstellungszeilen, das gleitende Transaktionspanel und schnelle, unterbrechbare Wechsel. Der Recorder startet unter Einstellungen und bedient die echte Oberfläche. Die Vorschauen für die gestalterische Abnahme liegen unter `test-artifacts/feature-videos/workspace-motion-v2/`; Videos werden nicht in Git eingecheckt. Der Katalog verweist auf den ursprünglichen Feature-Commit `ff8dfaab` und Version 0.18.0. Die erweiterte Fassung wird mit dem nächsten passenden Release aufgenommen.
+
+```sh
+FEATURE_VIDEO_IDS='["workspace-motion"]' bun run feature-videos:record
+```
+
+Für lokale Aufnahmen ohne Produktionsbuild startet `tests/fixtures/motion-app.html` dieselbe App mit dem vorhandenen Demo-Transport. Die Vorschauen zeigen echte Komponenten und Zustandswechsel in Echtzeit, ohne verlangsamte Wiedergabe. Sie veröffentlichen keine Medien und führen keine echten Datenbankoperationen aus.

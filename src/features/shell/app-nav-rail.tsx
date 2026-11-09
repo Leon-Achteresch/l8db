@@ -1,7 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { Plug, PlugZap } from "lucide";
 import { MorphIcon } from "morphicons/react";
-import { Fragment } from "react";
+import { Fragment, useId } from "react";
+import { SelectionHighlight } from "@/components/motion/selection-highlight";
 import { Tooltip } from "@/components/motion/tooltip";
 import { type AppSidebarNavItem, appSidebarData } from "@/features/sidebar/app-sidebar-data";
 import { useActiveConnection } from "@/lib/connections";
@@ -25,6 +26,7 @@ function isNavActive(url: string, pathname: string) {
 }
 
 export function AppNavRail() {
+  const highlightId = useId();
   const caps = useActiveCapabilities();
   const easyMode = useSettingsStore((state) => state.easyMode);
   const seenFeatures = useSeenNewFeatures();
@@ -70,11 +72,17 @@ export function AppNavRail() {
                 data-feature={item.feature}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors",
+                  "motion-nav-item relative isolate inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors",
                   "hover:bg-sidebar-accent hover:text-foreground",
-                  active && "bg-sidebar-accent text-foreground",
+                  active && "text-foreground",
                 )}
               >
+                {active && (
+                  <SelectionHighlight
+                    id={`nav-${highlightId}`}
+                    className="pointer-events-none absolute inset-0 -z-10 rounded-[inherit] bg-sidebar-accent ring-1 ring-foreground/5"
+                  />
+                )}
                 <MorphIcon
                   icon={active ? item.activeIcon : item.icon}
                   reducedMotion="user"

@@ -28,6 +28,11 @@ export function tabsTriggerId(baseId: string, value: string) {
   return `${baseId}-trigger-${value}`;
 }
 
+export const TabsListMotionContext = createContext<{
+  id: string;
+  variant: "default" | "line";
+} | null>(null);
+
 export function tabsContentId(baseId: string, value: string) {
   return `${baseId}-content-${value}`;
 }
