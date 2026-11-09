@@ -44,6 +44,10 @@ export function CompareSetupForm(
 ) {
   const [left, setLeft] = useState(initial.left);
   const [right, setRight] = useState(initial.right);
+  const changeRight = (value: typeof right) => {
+    setRight(value);
+    (initial.onRightChange as (side: typeof right) => void)(value);
+  };
   const props = {
     ...initial,
     left,
@@ -51,11 +55,15 @@ export function CompareSetupForm(
     onLeftChange: (value: typeof left) => {
       setLeft(value);
       (initial.onLeftChange as (side: typeof left) => void)(value);
+      if (
+        "objectType" in value &&
+        "objectType" in left &&
+        "objectType" in right &&
+        (value.objectType !== right.objectType || value.objectName !== left.objectName)
+      )
+        changeRight({ ...right, objectType: value.objectType, objectName: null, objectOid: null });
     },
-    onRightChange: (value: typeof right) => {
-      setRight(value);
-      (initial.onRightChange as (side: typeof right) => void)(value);
-    },
+    onRightChange: changeRight,
   } as CompareSetupProps;
   const types = supportedCompareObjectTypes(props.sourceConnection);
   const sourceProvider = props.sourceConnection ? providerFor(props.sourceConnection) : null;

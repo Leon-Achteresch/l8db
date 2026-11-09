@@ -32,6 +32,16 @@ const TARGET = [
   "CREATE TABLE uic_only_tgt (id NUMBER)",
 ];
 
+const COPY_CLEANUP = `BEGIN
+  FOR o IN (SELECT object_name FROM user_objects
+            WHERE object_name LIKE 'UICC\\_%' ESCAPE '\\' AND object_type = 'FUNCTION') LOOP
+    EXECUTE IMMEDIATE 'DROP FUNCTION "' || o.object_name || '"';
+  END LOOP;
+END;`;
+
+const copyFunction = (name: string) =>
+  `CREATE OR REPLACE FUNCTION ${name}(p_id IN NUMBER) RETURN NUMBER IS\nBEGIN\n  RETURN p_id + 1;\nEND ${name};`;
+
 async function sql(connectionString: string, statement: string) {
   const response = await fetch(oracleBridge, {
     method: "POST",
@@ -263,6 +273,90 @@ test.skipIf(!process.env.L8DB_ORACLE_BROWSER)(
       await browser.close();
       await sql(debug, CLEANUP);
       await sql(lab, CLEANUP);
+    }
+  },
+  180_000,
+);
+
+test.skipIf(!process.env.L8DB_ORACLE_BROWSER)(
+  "Oracle copy into another schema compares without phantom differences and the target follows the source",
+  async () => {
+    for (const statement of [COPY_CLEANUP, copyFunction("uicc_fn"), copyFunction("uicc_fn2")])
+      await sql(debug, statement);
+    for (const statement of [COPY_CLEANUP, copyFunction("uicc_fn2")]) await sql(lab, statement);
+    const browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+    page.setDefaultTimeout(20000);
+    const tools = async (object: string, item: string) => {
+      await page.getByRole("tab", { name: "Funktionen", exact: true }).click();
+      await page.getByText(object, { exact: true }).click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Werkzeuge" }).hover();
+      await page.getByRole("menuitem", { name: item }).click();
+    };
+    const form = page.getByRole("region", { name: "Vergleich einrichten" });
+    const choose = async (index: number, option: string) => {
+      await form.getByRole("combobox").nth(index).click();
+      await page.getByRole("option", { name: option, exact: true }).click();
+    };
+    const target = form.getByRole("combobox").nth(4);
+    try {
+      const errors = await openOracleApp(page, "/", "oracle-debug");
+      await tools("UICC_FN()", "In anderem Schema erstellen…");
+      const openEditor = page.getByRole("button", { name: "Im Editor öffnen" });
+      await openEditor.waitFor();
+      await page.getByRole("button", { name: "Oracle Debug" }).last().click();
+      await page.getByRole("menuitem").filter({ hasText: "Oracle Lab" }).click();
+      await page.getByRole("combobox", { name: "Zielschema" }).click();
+      await page.getByRole("option", { name: "L8DB", exact: true }).click();
+      const preview = page.locator("textarea[readonly]");
+      await preview.waitFor();
+      expect(await preview.inputValue()).toStartWith(
+        'CREATE OR REPLACE FUNCTION "L8DB"."UICC_FN"(p_id IN NUMBER) RETURN NUMBER IS',
+      );
+      await openEditor.click();
+      await page.waitForURL(/\/query\//);
+      await page.getByRole("button", { name: /Statement ausführen/ }).click();
+      await page.getByText("UICC_FN()", { exact: true }).waitFor();
+      expect(
+        (
+          await sql(
+            lab,
+            "SELECT status FROM user_objects WHERE object_name = 'UICC_FN' AND object_type = 'FUNCTION'",
+          )
+        ).rows,
+      ).toEqual([{ STATUS: "VALID" }]);
+
+      await tools("UICC_FN()", "Vergleichen…");
+      await form.waitFor();
+      await choose(2, "Oracle Debug");
+      await choose(3, "L8DB_DEBUG");
+      await form.getByRole("combobox").filter({ hasText: "UICC_FN()" }).nth(1).waitFor();
+      expect(await target.innerText()).toBe("UICC_FN()");
+      await form.getByRole("button", { name: "Vergleich öffnen" }).click();
+      await page.getByText("Keine Unterschiede", { exact: true }).waitFor();
+
+      await page.getByTitle("Vergleich einrichten").first().click();
+      await form.waitFor();
+      await choose(1, "UICC_FN2()");
+      await form.getByRole("combobox").filter({ hasText: "UICC_FN2()" }).nth(1).waitFor();
+      expect(await target.innerText()).toBe("UICC_FN2()");
+      await form.getByRole("button", { name: "Vergleich öffnen" }).click();
+      await page.getByText("L8DB_DEBUG.UICC_FN2()", { exact: true }).waitFor();
+      await page.getByText("Keine Unterschiede", { exact: true }).waitFor();
+
+      expect(
+        (await oracleFailures(page)).filter(
+          (failure) => !failure.error.startsWith("Unsupported browser lab command"),
+        ),
+      ).toEqual([]);
+      expect(errors).toEqual([]);
+    } catch (error) {
+      await page.screenshot({ path: "test-artifacts/oracle-ui/copy-compare-failure.png" });
+      throw error;
+    } finally {
+      await browser.close();
+      await sql(debug, COPY_CLEANUP);
+      await sql(lab, COPY_CLEANUP);
     }
   },
   180_000,
