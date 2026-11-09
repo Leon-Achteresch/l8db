@@ -1,12 +1,12 @@
 import { Loader2, SquareTerminal, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CliCommandList } from "@/features/settings/cli-command-list";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { CLI_CHEATSHEET, CLI_COMPLETIONS } from "@/lib/cli-cheatsheet";
 import { type CliStatus, cliStatus, installCli, uninstallCli } from "@/lib/db/cli";
+import { cn } from "@/lib/utils";
 
 export function SettingsCliTab() {
   const [status, setStatus] = useState<CliStatus | null>(null);
@@ -44,13 +44,7 @@ export function SettingsCliTab() {
 
   return (
     <div className="@container space-y-4">
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Kommandozeile</h2>
-        <p className="text-xs text-muted-foreground">
-          Deine gespeicherten Verbindungen auch im Terminal nutzen: SQL ausführen, Tabellen ansehen,
-          Ergebnisse als CSV oder JSON weitergeben.
-        </p>
-      </div>
+      <h2 className="text-base font-semibold tracking-tight">Kommandozeile</h2>
 
       <div className="space-y-3">
         <SettingsRow
@@ -59,31 +53,39 @@ export function SettingsCliTab() {
           featureId="settings.cli.doctor"
           stacked
         >
-          <CliCommandList
-            examples={[
-              {
-                command: "l8db doctor -o json",
-                description: "Konfiguration prüfen; Schlüsselbund bleibt ungeprüft",
-              },
-              {
-                command: "l8db doctor --test-keychain --strict",
-                description:
-                  "Schlüsselbund zusätzlich prüfen und bei offenen Schritten mit Fehlercode enden",
-              },
-            ]}
-          />
+          <div className="w-full">
+            <CliCommandList
+              examples={[
+                {
+                  command: "l8db doctor -o json",
+                  description: "Konfiguration prüfen; Schlüsselbund bleibt ungeprüft",
+                },
+                {
+                  command: "l8db doctor --test-keychain --strict",
+                  description:
+                    "Schlüsselbund zusätzlich prüfen und bei offenen Schritten mit Fehlercode enden",
+                },
+              ]}
+            />
+          </div>
         </SettingsRow>
         <SettingsRow settingId="cli-install" featureId="settings.cli.install">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             {status ? (
-              <Badge variant={status.installed ? "secondary" : "outline"}>
+              <span className="flex items-center gap-1.5 text-xs whitespace-nowrap text-muted-foreground">
+                <span
+                  className={cn(
+                    "size-1.5 rounded-full",
+                    status.installed ? "bg-emerald-500" : "bg-muted-foreground/40",
+                  )}
+                />
                 {status.installed ? "Installiert" : "Nicht installiert"}
-              </Badge>
+              </span>
             ) : null}
             <Button
               type="button"
               size="sm"
-              variant={status?.installed ? "outline" : "default"}
+              variant={status?.installed ? "ghost" : "default"}
               disabled={!status || busy}
               onClick={() => void toggle()}
             >
