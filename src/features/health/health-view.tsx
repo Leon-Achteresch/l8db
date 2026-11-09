@@ -1,15 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { CircleCheckIcon, HeartPulseIcon, RefreshCwIcon } from "lucide-react";
+import { CircleCheckIcon, RefreshCwIcon } from "lucide-react";
 import { useMemo } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import { useActiveConnection } from "@/lib/connections";
@@ -22,9 +16,10 @@ import { cn } from "@/lib/utils";
 import { HealthCheckItem } from "./health-check-item";
 import {
   CATEGORY_LABEL,
-  SEVERITY_CLASS,
-  SEVERITY_LABEL,
-  SEVERITY_ORDER,
+  GROUP_DOT,
+  GROUP_LABEL,
+  GROUP_ORDER,
+  groupOf,
   sortChecks,
 } from "./health-meta";
 
@@ -54,7 +49,10 @@ export function HealthView() {
   });
   const checks = useMemo(() => sortChecks(report.data?.checks ?? []), [report.data]);
   const visible = category ? checks.filter((check) => check.category === category) : checks;
-  const issues = visible.filter((check) => check.status === "issue");
+  const groups = GROUP_ORDER.map((group) => ({
+    group,
+    items: visible.filter((check) => groupOf(check) === group),
+  }));
 
   if (!connection) {
     return (
@@ -75,80 +73,96 @@ export function HealthView() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div ref={ref} className="flex shrink-0 items-center gap-2 border-b px-4 py-2.5">
-        <HeartPulseIcon className="size-4 text-rose-500" />
-        <span className="text-sm font-semibold">Health & Advisor</span>
+      <div
+        ref={ref}
+        className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-5 pt-4 pb-3"
+      >
+        <h1 className="text-sm font-semibold">Health & Advisor</h1>
         {isNew && <NewBadge />}
         {report.data && (
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {checks.length} Prüfungen in {report.data.durationMs} ms
+          <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase tabular-nums">
+            {checks.length} Prüfungen · {report.data.durationMs} ms
           </span>
         )}
         <span className="flex-1" />
+        <div className="flex items-center rounded-full bg-muted/60 p-0.5">
+          {[null, ...CATEGORIES].map((value) => (
+            <button
+              key={value ?? "all"}
+              type="button"
+              aria-pressed={category === value}
+              onClick={() => setCategory(value)}
+              className={cn(
+                "h-6 cursor-pointer rounded-full px-2.5 text-xs transition-colors",
+                category === value
+                  ? "bg-background font-medium text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {value ? CATEGORY_LABEL[value] : "Alle"}
+            </button>
+          ))}
+        </div>
         <Button
           variant="ghost"
-          size="xs"
+          size="icon-sm"
+          aria-label="Erneut prüfen"
+          title="Erneut prüfen"
           onClick={() => void report.refetch()}
           disabled={report.isFetching}
         >
-          {report.isFetching ? (
-            <Spinner data-icon="inline-start" />
-          ) : (
-            <RefreshCwIcon data-icon="inline-start" />
-          )}
-          Erneut prüfen
+          {report.isFetching ? <Spinner /> : <RefreshCwIcon />}
         </Button>
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
-        {report.isSuccess && (
-          <>
-            {SEVERITY_ORDER.map((severity) => (
-              <span
-                key={severity}
-                className={cn(
-                  "rounded-md border px-2 py-0.5 text-xs tabular-nums",
-                  SEVERITY_CLASS[severity],
-                )}
-              >
-                {SEVERITY_LABEL[severity]}:{" "}
-                {issues.filter((check) => check.severity === severity).length}
-              </span>
+      {report.isSuccess && visible.length > 0 && (
+        <div className="shrink-0 px-5 pb-4">
+          <div className="flex flex-wrap gap-x-6 gap-y-3">
+            {groups.map(({ group, items }) => (
+              <div key={group} className="min-w-20">
+                <div
+                  className={cn(
+                    "text-2xl font-medium tabular-nums",
+                    items.length === 0 && "text-muted-foreground/40",
+                  )}
+                >
+                  {items.length}
+                </div>
+                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className={cn("size-1.5 rounded-full", GROUP_DOT[group])} />
+                  {GROUP_LABEL[group]}
+                </div>
+              </div>
             ))}
-            <span className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground tabular-nums">
-              Übersprungen: {visible.filter((check) => check.status === "skipped").length}
-            </span>
-          </>
-        )}
-        <span className="flex-1" />
-        <Button
-          variant={category === null ? "secondary" : "ghost"}
-          size="xs"
-          aria-pressed={category === null}
-          onClick={() => setCategory(null)}
-        >
-          Alle
-        </Button>
-        {CATEGORIES.map((value) => (
-          <Button
-            key={value}
-            variant={category === value ? "secondary" : "ghost"}
-            size="xs"
-            aria-pressed={category === value}
-            onClick={() => setCategory(value)}
-          >
-            {CATEGORY_LABEL[value]}
-          </Button>
-        ))}
-      </div>
+          </div>
+          <div className="mt-3 flex h-1.5 gap-0.5">
+            {groups.map(
+              ({ group, items }) =>
+                items.length > 0 && (
+                  <span
+                    key={group}
+                    style={{ flexGrow: items.length }}
+                    className={cn(
+                      "basis-0 rounded-[3px]",
+                      GROUP_DOT[group],
+                      group === "ok" && "opacity-40",
+                    )}
+                  />
+                ),
+            )}
+          </div>
+        </div>
+      )}
       <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col gap-2 p-4">
+        <div className="flex flex-col gap-4 px-3 pb-4">
           {report.isLoading && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 px-2 text-sm text-muted-foreground">
               <Spinner />
               Prüfungen laufen…
             </div>
           )}
-          {report.isError && <p className="text-sm text-destructive">{String(report.error)}</p>}
+          {report.isError && (
+            <p className="px-2 text-sm text-destructive">{String(report.error)}</p>
+          )}
           {report.isSuccess && visible.length === 0 && (
             <Empty>
               <EmptyHeader>
@@ -156,17 +170,23 @@ export function HealthView() {
                   <CircleCheckIcon />
                 </EmptyMedia>
                 <EmptyTitle>Keine Prüfergebnisse</EmptyTitle>
-                <EmptyDescription>
-                  {category
-                    ? `In der Kategorie ${CATEGORY_LABEL[category]} gibt es nichts zu melden.`
-                    : "Für diese Datenbank liegen keine Prüfungen vor."}
-                </EmptyDescription>
               </EmptyHeader>
             </Empty>
           )}
-          {visible.map((check) => (
-            <HealthCheckItem key={check.id} check={check} />
-          ))}
+          {groups.map(
+            ({ group, items }) =>
+              items.length > 0 && (
+                <section key={group}>
+                  <h2 className="flex items-center gap-2 px-2 pb-1 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+                    {GROUP_LABEL[group]}
+                    <span className="tabular-nums opacity-60">{items.length}</span>
+                  </h2>
+                  {items.map((check) => (
+                    <HealthCheckItem key={check.id} check={check} />
+                  ))}
+                </section>
+              ),
+          )}
         </div>
       </ScrollArea>
     </div>

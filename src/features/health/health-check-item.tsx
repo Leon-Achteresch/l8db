@@ -1,20 +1,13 @@
 import { useNavigate } from "@tanstack/react-router";
-import {
-  CheckCircle2Icon,
-  ChevronRightIcon,
-  CircleSlashIcon,
-  CopyIcon,
-  SquareTerminalIcon,
-} from "lucide-react";
+import { ChevronRightIcon, CopyIcon, SquareTerminalIcon } from "lucide-react";
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { copyText } from "@/lib/clipboard";
 import type { HealthCheckResult } from "@/lib/db";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 import { showCopiedMessage } from "@/lib/workspace-status";
-import { CATEGORY_LABEL, SEVERITY_CLASS, SEVERITY_LABEL } from "./health-meta";
+import { CATEGORY_LABEL, GROUP_DOT, groupOf } from "./health-meta";
 
 interface Props {
   check: HealthCheckResult;
@@ -37,56 +30,42 @@ export function HealthCheckItem({ check }: Props) {
   };
 
   return (
-    <div className="rounded-lg border bg-card">
+    <div className={cn("rounded-lg transition-colors", open ? "bg-muted/40" : "hover:bg-muted/40")}>
       <button
         type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+        className="flex h-9 w-full cursor-pointer items-center gap-2.5 px-2 text-left"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
       >
         <ChevronRightIcon
           className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform",
+            "size-3.5 shrink-0 text-muted-foreground transition-transform",
             open && "rotate-90",
           )}
         />
-        {issue && check.severity ? (
-          <Badge variant="outline" className={cn("shrink-0", SEVERITY_CLASS[check.severity])}>
-            {SEVERITY_LABEL[check.severity]}
-          </Badge>
-        ) : check.status === "skipped" ? (
-          <CircleSlashIcon className="size-4 shrink-0 text-muted-foreground" />
-        ) : (
-          <CheckCircle2Icon className="size-4 shrink-0 text-emerald-500" />
-        )}
-        <span className={cn("min-w-0 flex-1 truncate text-sm", !issue && "text-muted-foreground")}>
+        <span className={cn("size-1.5 shrink-0 rounded-full", GROUP_DOT[groupOf(check)])} />
+        <span
+          className={cn("min-w-0 flex-1 truncate text-[13px]", !issue && "text-muted-foreground")}
+        >
           {check.title}
         </span>
         <span className="shrink-0 text-xs text-muted-foreground">
           {CATEGORY_LABEL[check.category]}
         </span>
-        {issue && (
-          <Badge variant="secondary" className="shrink-0 tabular-nums">
-            {check.objects.length}
-          </Badge>
-        )}
+        <span className="w-6 shrink-0 text-right text-xs font-medium tabular-nums">
+          {issue ? check.objects.length : ""}
+        </span>
       </button>
       {open && (
-        <div className="flex flex-col gap-3 border-t px-3 py-3 text-sm">
+        <div className="flex flex-col gap-3 pr-3 pb-3 pl-[2.375rem] text-[13px]">
           <p className="text-muted-foreground">{check.explanation}</p>
           {check.status === "skipped" && (
             <p className="text-xs text-muted-foreground">Übersprungen: {check.skippedReason}</p>
           )}
-          {check.status === "ok" && (
-            <p className="text-xs text-emerald-600">Keine Auffälligkeiten.</p>
-          )}
           {check.objects.length > 0 && (
-            <ul className="flex flex-col divide-y rounded-md border">
+            <ul className="flex flex-col gap-1">
               {check.objects.map((object) => (
-                <li
-                  key={`${object.name}|${object.detail ?? ""}`}
-                  className="flex flex-col gap-0.5 px-2.5 py-1.5"
-                >
+                <li key={`${object.name}|${object.detail ?? ""}`} className="flex flex-col gap-0.5">
                   <span className="break-all font-mono text-xs">{object.name}</span>
                   {object.detail && (
                     <span className="text-xs text-muted-foreground">{object.detail}</span>
@@ -97,25 +76,23 @@ export function HealthCheckItem({ check }: Props) {
           )}
           {check.fixSql && (
             <div className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium">Vorgeschlagene Behebung</span>
-                <span className="flex-1" />
-                <Button variant="ghost" size="xs" onClick={() => void copy(check.fixSql ?? "")}>
-                  <CopyIcon data-icon="inline-start" />
-                  Kopieren
-                </Button>
+              <pre className="max-h-60 overflow-auto rounded-lg bg-background/70 px-3 py-2 font-mono text-xs whitespace-pre">
+                {check.fixSql}
+              </pre>
+              <div className="flex items-center gap-1">
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="xs"
                   onClick={() => openInEditor(check.fixSql ?? "")}
                 >
                   <SquareTerminalIcon data-icon="inline-start" />
                   Im Editor öffnen
                 </Button>
+                <Button variant="ghost" size="xs" onClick={() => void copy(check.fixSql ?? "")}>
+                  <CopyIcon data-icon="inline-start" />
+                  Kopieren
+                </Button>
               </div>
-              <pre className="max-h-60 overflow-auto rounded-md bg-muted px-2.5 py-2 font-mono text-xs whitespace-pre">
-                {check.fixSql}
-              </pre>
             </div>
           )}
         </div>
