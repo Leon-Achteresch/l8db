@@ -18,6 +18,7 @@ import { SettingsSearch } from "@/features/settings/settings-search";
 import { SettingsSearchResults } from "@/features/settings/settings-search-results";
 import { SettingsSecurityTab } from "@/features/settings/settings-security-tab";
 import { SETTINGS_TABS, SettingsSidebar } from "@/features/settings/settings-sidebar";
+import { SettingsStorageTab } from "@/features/settings/settings-storage-tab";
 import { SettingsUsageTab } from "@/features/settings/settings-usage-tab";
 import { useModifiedSettings } from "@/lib/hooks/use-modified-settings";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
@@ -156,6 +157,7 @@ export function SettingsView() {
                   {category === "appearance" ? <SettingsAppearanceTab /> : null}
                   {category === "editor" ? <SettingsEditorTab /> : null}
                   {category === "data" ? <SettingsDataTab /> : null}
+                  {category === "storage" ? <SettingsStorageTab /> : null}
                   {category === "security" ? <SettingsSecurityTab /> : null}
                   {category === "cli" ? <SettingsCliTab /> : null}
                   {category === "extensions" ? <SettingsExtensionsTab /> : null}

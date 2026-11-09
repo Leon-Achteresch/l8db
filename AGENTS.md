@@ -115,6 +115,7 @@ All `invoke()` calls are centralized in `src/lib/db/`. TypeScript type definitio
 ## State / Storage
 
 - Zustand store `useConnectionsStore` persists to localStorage under key `l8db.connections`.
+- `window.localStorage` is an IndexedDB-backed shim (`src/lib/app-storage.ts`): `src/main.tsx` awaits `initAppStorage()` (loads IndexedDB `l8db.storage` into memory, migrates and removes real localStorage keys) before importing `src/bootstrap.tsx`. Code must not read storage before that. Other windows receive changes as synthetic `storage` events. Settings → Speicher shows usage per connection and area (`src/lib/storage-usage.ts`).
 
 ## TypeScript Config
 

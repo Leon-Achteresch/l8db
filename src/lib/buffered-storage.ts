@@ -19,8 +19,15 @@ export function reportStorageFailure(key: string, error: unknown) {
     return;
   storageFullNotified = true;
   toast.error("Lokaler Speicher ist voll", {
-    description:
-      "Einige Änderungen werden nicht dauerhaft gespeichert. Abfrageverlauf oder Aufgabenliste leeren schafft Platz.",
+    description: "Einige Änderungen werden nicht dauerhaft gespeichert.",
+    duration: 15_000,
+    action: {
+      label: "Speicher verwalten",
+      onClick: () =>
+        void import("@/router").then(({ router }) =>
+          router.navigate({ to: "/settings", search: { tab: "storage" } }),
+        ),
+    },
   });
 }
 

@@ -115,6 +115,7 @@ export interface TabsState {
   reopenClosedTab: (id: string) => Tab | null;
   forgetClosedTab: (id: string) => void;
   clearTabsForConnection: (connectionId: string) => void;
+  discardTabs: (connectionId: string, keys: string[]) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   updateQuerySql: (id: string, sql: string) => void;
   markQueryTabExecuted: (id: string, sql: string) => void;
