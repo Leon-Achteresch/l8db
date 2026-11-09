@@ -24,7 +24,7 @@ export function DmlPreviewButton({
       data-hotkey="query.preview"
       ref={feature.ref}
       size="sm"
-      variant="outline"
+      variant="ghost"
       className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
       data-tour="query-dml-preview"
       onClick={onPreview}

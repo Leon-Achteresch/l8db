@@ -117,7 +117,7 @@ export function RunControls({
       </div>
       <Button
         size="sm"
-        variant="outline"
+        variant="ghost"
         className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
         data-tour="query-check"
         data-hotkey="query.check"
@@ -138,7 +138,7 @@ export function RunControls({
       {isRunning && (
         <Button
           size="sm"
-          variant="outline"
+          variant="ghost"
           className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
           disabled={!activeJob?.cancellable || activeJob.status === "cancelling"}
           disabledReason={
