@@ -4,6 +4,7 @@ import {
   CodeXml,
   Compass,
   Database,
+  HardDrive,
   Info,
   Keyboard,
   Monitor,
@@ -40,6 +41,11 @@ export const SETTINGS_TABS: SettingsTabItem[] = [
     id: "data",
     label: "Daten & Abfragen",
     icon: Database,
+  },
+  {
+    id: "storage",
+    label: "Speicher",
+    icon: HardDrive,
   },
   {
     id: "security",

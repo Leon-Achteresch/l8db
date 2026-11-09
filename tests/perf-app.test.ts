@@ -94,6 +94,7 @@ async function open(
   const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => performance.setResourceTimingBufferSize(2000));
   await seedApp(page, TABLES, grid, null, overviewSchemas);
   if (rowLimit)
     await page.addInitScript((rowLimit) => {

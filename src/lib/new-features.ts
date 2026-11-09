@@ -5,6 +5,7 @@ export const NEXT_FEATURE_VERSION = "0.18.0";
 
 export const NEW_FEATURES = {
   "workspace.motion": NEXT_FEATURE_VERSION,
+  "settings.storage.overview": NEXT_FEATURE_VERSION,
   "table.rows.insert-script": NEXT_FEATURE_VERSION,
   "discover.overview": NEXT_FEATURE_VERSION,
   "discover.labs": NEXT_FEATURE_VERSION,

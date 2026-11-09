@@ -9,12 +9,14 @@ test.skipIf(!process.env.L8DB_PERF_BROWSER)(
     const assets = resolve(root, "assets");
     const files = await readdir(assets);
     const html = await readFile(resolve(root, "index.html"), "utf8");
-    const entry = html.match(/src="\/assets\/([^\"]+\.js)"/)?.[1];
+    const entry = html.match(/src="\/assets\/([^"]+\.js)"/)?.[1];
     expect(entry).toBeDefined();
     const layouts = files.filter(
       (name) => /^_app-[^.]+\.js$/.test(name) || /^_app\._workspace-[^.]+\.js$/.test(name),
     );
     expect(layouts).toHaveLength(2);
+    const bootstrap = files.filter((name) => /^bootstrap-[^.]+\.js$/.test(name));
+    expect(bootstrap).toHaveLength(1);
     const visited = new Set<string>();
     let bytes = 0;
     const visit = async (name: string) => {
@@ -26,7 +28,7 @@ test.skipIf(!process.env.L8DB_PERF_BROWSER)(
       for (const match of source.matchAll(/(?:from|import)\s*["']\.\/([^"']+\.js)["']/g))
         await visit(match[1]);
     };
-    for (const name of [entry!, ...layouts]) await visit(name);
+    for (const name of [entry!, ...bootstrap, ...layouts]) await visit(name);
     expect([...visited].some((name) => name.startsWith("monaco-"))).toBe(false);
     expect([...visited].some((name) => name.startsWith("ai-view-"))).toBe(false);
     expect(bytes).toBeLessThan(1_800_000);

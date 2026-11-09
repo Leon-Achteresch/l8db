@@ -18,7 +18,7 @@ export function initAppearance() {
       apply();
   });
   const sync = (event: StorageEvent) => {
-    if (event.storageArea === localStorage && event.key === "l8db.settings") {
+    if (event.key === "l8db.settings") {
       void useSettingsStore.persist.rehydrate();
     }
   };

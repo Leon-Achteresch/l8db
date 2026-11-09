@@ -523,6 +523,23 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "usageMetrics",
   },
   {
+    id: "storage-overview",
+    tabId: "storage",
+    title: "Lokaler Speicher",
+    description:
+      "Belegung pro Verbindung und Datenbereich anzeigen, Tabs verwalten und Daten löschen.",
+    keywords: [
+      "speicher",
+      "voll",
+      "indexeddb",
+      "localstorage",
+      "tabs",
+      "löschen",
+      "aufräumen",
+      "quota",
+    ],
+  },
+  {
     id: "local-usage-statistics",
     tabId: "statistics",
     title: "Lokale Nutzungsstatistik erfassen",

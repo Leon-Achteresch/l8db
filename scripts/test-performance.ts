@@ -80,6 +80,8 @@ const SUITES = {
     "tests/perf-filter-bar.test.ts",
     "tests/perf-blog-suggestions.test.ts",
     "tests/performance-report.test.ts",
+    "tests/perf-app-storage.test.ts",
+    "tests/perf-storage-usage.test.ts",
   ],
   browser: [
     "tests/perf-browser.test.ts",
@@ -100,6 +102,7 @@ const SUITES = {
     "tests/perf-seasonal-browser.test.ts",
     "tests/query-qol-browser.test.ts",
     "tests/perf-ai-stream.test.ts",
+    "tests/storage-browser.test.ts",
   ],
   throttle: ["tests/perf-throttle.test.ts"],
 } as const;

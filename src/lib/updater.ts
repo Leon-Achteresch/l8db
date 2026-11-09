@@ -1,6 +1,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { Update } from "@tauri-apps/plugin-updater";
+import { flushAppStorage } from "@/lib/app-storage";
 import { checkUpdate } from "@/lib/db/updates";
 import { type UpdateChannel, useSettingsStore } from "@/lib/settings";
 
@@ -138,6 +139,7 @@ async function runInstall(
     if (canRelaunch && !(await canRelaunch())) return false;
     setInstallPercent(100);
     flushPendingState();
+    await flushAppStorage();
     await update.install();
     setPendingUpdate(null);
     await relaunch();
