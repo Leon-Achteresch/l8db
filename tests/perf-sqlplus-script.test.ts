@@ -60,7 +60,7 @@ const postgres = {
 };
 const BLOCKS = 2000;
 const ORACLE_SCRIPT = [
-  "set serveroutput on",
+  "set verify off serveroutput on",
   "whenever sqlerror exit failure rollback",
   ...Array.from({ length: BLOCKS }, (_, index) =>
     index % 500 === 499 ? "commit;" : `begin dbms_output.put_line('schritt ${index}'); end;\n/`,
@@ -137,7 +137,7 @@ test("SET SERVEROUTPUT OFF removes the per-statement output read from the manage
   await runSqlScript({
     connection: oracle,
     database: null,
-    sql: ORACLE_SCRIPT.replace("set serveroutput on", "set serveroutput off"),
+    sql: ORACLE_SCRIPT.replace("serveroutput on", "serveroutput off"),
     mode: "new-transaction",
   });
   expect(counts.get("transaction_server_output") ?? 0).toBe(0);

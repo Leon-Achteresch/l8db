@@ -162,6 +162,7 @@ export type SqlPlusCommand =
   | { type: "set-exitcommit"; enabled: boolean }
   | { type: "set-display"; option: string }
   | { type: "set-unsupported"; option: string }
+  | { type: "set-many"; commands: SqlPlusCommand[] }
   | {
       type: "whenever";
       event: "SQLERROR" | "OSERROR";
@@ -284,6 +285,41 @@ function setCommand(words: string[]): SqlPlusCommand {
   return { type: "set-display", option: option || "SET" };
 }
 
+const SET_OPTIONS: [string, number][] = [
+  ["DEFINE", 3],
+  ["SCAN", 4],
+  ["ESCAPE", 3],
+  ["CONCAT", 3],
+  ["SERVEROUTPUT", 9],
+  ["VERIFY", 3],
+  ["AUTOPRINT", 5],
+  ["EXITCOMMIT", 5],
+  ["AUTOCOMMIT", 4],
+  ["SQLTERMINATOR", 4],
+  ["BLOCKTERMINATOR", 3],
+  ["CMDSEP", 4],
+  ["SQLPREFIX", 6],
+];
+
+function setCommands(words: string[]): SqlPlusCommand {
+  const starts = [1];
+  let quote = "";
+  for (let index = 1; index < words.length - 1; index += 1) {
+    const word = words[index];
+    if (quote) {
+      if (word.endsWith(quote)) quote = "";
+    } else if (/^["']/.test(word) && (word.length === 1 || !word.endsWith(word[0])))
+      quote = word[0];
+    else if (index - starts[starts.length - 1] > 1 && named(word.toUpperCase(), ...SET_OPTIONS))
+      starts.push(index);
+  }
+  if (starts.length === 1) return setCommand(words);
+  return {
+    type: "set-many",
+    commands: starts.map((start, at) => setCommand(["SET", ...words.slice(start, starts[at + 1])])),
+  };
+}
+
 const DISPLAY_COMMANDS: [string, number][] = [
   ["TTITLE", 3],
   ["BTITLE", 3],
@@ -394,7 +430,7 @@ function stripSemicolon(text: string): string {
 export function parseSqlPlusCommand(raw: string): SqlPlusCommand {
   const text = raw.replace(/[ \t]+-[ \t]*\r?\n[ \t]*/g, " ");
   const original = words(text);
-  const first = (original[0] ?? "").toUpperCase();
+  const first = stripSemicolon(original[0] ?? "").toUpperCase();
   if (first === "REM" || first === "REMARK") return { type: "remark" };
   if (text.trim() === "/" || named(first, ["RUN", 1])) return { type: "run" };
   if (named(first, ["PROMPT", 3]))
@@ -409,7 +445,7 @@ export function parseSqlPlusCommand(raw: string): SqlPlusCommand {
     return { type: "pause", text: text.trim().slice(original[0].length).trim() };
   if (named(first, ["ACCEPT", 3])) return acceptCommand(stripSemicolon(text));
   if (named(first, ["DEFINE", 3])) {
-    const match = /^\S+\s+([^=\s]+)\s*=\s*([\s\S]*)$/.exec(text.trim());
+    const match = /^\S+\s+([^=\s]+)\s*=\s*([\s\S]*)$/.exec(stripSemicolon(text.trim()));
     if (match) return { type: "define", name: match[1].toUpperCase(), value: unquote(match[2]) };
     const name = stripSemicolon(text.trim()).split(/\s+/)[1];
     return { type: "define-show", name: name ? name.toUpperCase() : null };
@@ -418,7 +454,7 @@ export function parseSqlPlusCommand(raw: string): SqlPlusCommand {
   const second = (plain[1] ?? "").toUpperCase();
   if (named(first, ["UNDEFINE", 5]))
     return { type: "undefine", names: plain.slice(1).map((name) => name.toUpperCase()) };
-  if (first === "SET") return setCommand(plain);
+  if (first === "SET") return setCommands(plain);
   if (first === "WHENEVER") {
     if (second !== "SQLERROR" && second !== "OSERROR")
       return { type: "invalid", message: "WHENEVER erwartet SQLERROR oder OSERROR." };
@@ -612,6 +648,8 @@ export function applySqlPlusSetting(command: SqlPlusCommand, state: Substitution
   else if (command.type === "set-define") state.marker = command.marker;
   else if (command.type === "set-escape") state.escape = command.escape;
   else if (command.type === "set-concat") state.concat = command.concat;
+  else if (command.type === "set-many")
+    return command.commands.map((part) => applySqlPlusSetting(part, state)).some(Boolean);
   else return false;
   return true;
 }

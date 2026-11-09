@@ -159,6 +159,7 @@ export function splitSqlStatements(
   let plsqlHeader = false;
   let plsqlClosed = false;
   let awaitingSlash = false;
+  let slashEnded = false;
   let plsqlBody = false;
   let plsqlHead = 0;
   let batch = false;
@@ -187,6 +188,7 @@ export function splitSqlStatements(
     plsqlHeader = false;
     plsqlClosed = false;
     plsqlBody = false;
+    slashEnded = false;
     batch = false;
     blockDepth = 0;
     leadingWords.length = 0;
@@ -355,6 +357,7 @@ export function splitSqlStatements(
           const object = objectIndex > 0 ? leadingWords[objectIndex] : undefined;
           const inline =
             first === "WITH" && (leadingWords[1] === "FUNCTION" || leadingWords[1] === "PROCEDURE");
+          slashEnded = object === "TYPE" || object === "LIBRARY";
           plsql =
             first === "BEGIN" ||
             first === "DECLARE" ||
@@ -582,7 +585,7 @@ export function splitSqlStatements(
       index += 1;
       plsqlHeader = false;
       if ((!plsql || plsqlClosed) && !batch && blockDepth === 0 && delimiter === ";") {
-        awaitingSlash = plsql;
+        awaitingSlash = plsql || slashEnded;
         flush(index);
       }
       continue;
