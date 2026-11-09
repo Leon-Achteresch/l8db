@@ -153,3 +153,22 @@ export function matchesColumnFilter(
 
   return true;
 }
+
+const COLUMN_FILTERS = [
+  { id: "all", label: "Alle", always: true },
+  { id: "pk", label: "Primary Keys", always: true },
+  { id: "not-null", label: "Not Null", always: true },
+  { id: "has-default", label: "Default", always: true },
+  { id: "numeric", label: "Numerisch", always: false },
+  { id: "text", label: "Text", always: false },
+  { id: "date", label: "Datum/Zeit", always: false },
+  { id: "boolean", label: "Boolean", always: false },
+  { id: "json", label: "JSON", always: false },
+];
+
+export function columnFilterCounts(columns: DetailedColumnInfo[]) {
+  return COLUMN_FILTERS.map((filter) => ({
+    ...filter,
+    count: columns.filter((column) => matchesColumnFilter(column, "", filter.id)).length,
+  })).filter((filter) => filter.always || filter.count > 0);
+}
