@@ -50,7 +50,7 @@ export function SettingsRow({
       transition={{ layout: SPRING_LAYOUT }}
       className={cn(
         "group relative grid scroll-mt-4 items-center gap-x-8 gap-y-3 pb-[calc(1rem+var(--ui-density-step))] outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-        !stacked && "@min-[38rem]:grid-cols-[minmax(0,1fr)_auto]",
+        !stacked && "@min-[38rem]:grid-cols-[minmax(0,1fr)_fit-content(66%)]",
         changed &&
           "pl-3 before:absolute before:left-0 before:top-0 before:bottom-4 before:w-0.5 before:rounded-full before:bg-primary",
       )}
