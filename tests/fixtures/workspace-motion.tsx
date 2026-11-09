@@ -21,6 +21,7 @@ declare global {
       play: () => () => void;
       panel: (open: boolean) => void;
       unmount: () => void;
+      section: (element: HTMLElement) => () => void;
     };
   }
 }
@@ -52,6 +53,7 @@ function WorkspaceMotionFixture() {
       play: () => animateChange(document.querySelector("[data-slot=change-surface]")!),
       panel: (open) => flushSync(() => setPanel(open)),
       unmount: () => root.unmount(),
+      section: (element) => animateChange(element, "section"),
     };
   }, []);
 
@@ -65,7 +67,7 @@ function WorkspaceMotionFixture() {
             Transaktionen
           </Button>
         </header>
-        <div className="flex min-h-0 flex-1">
+        <div className="relative flex min-h-0 flex-1">
           <aside className="flex w-52 shrink-0 flex-col gap-4 bg-sidebar p-5">
             <h2 className="text-xs font-medium">Darstellung</h2>
             <div className="flex items-center justify-between text-xs">

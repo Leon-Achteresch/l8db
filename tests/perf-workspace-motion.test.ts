@@ -5,7 +5,9 @@ import { chromium, webkit } from "playwright";
 
 const base = process.env.L8DB_MOTION_BROWSER_URL;
 
-for (const engine of [chromium, webkit]) {
+for (const engine of process.env.L8DB_MOTION_ENGINE === "chromium"
+  ? [chromium]
+  : [chromium, webkit]) {
   test.skipIf(!base)(
     `${engine.name()}: workspace motion preserves input and bounds work on 9,600 data cells`,
     async () => {
@@ -51,7 +53,9 @@ for (const engine of [chromium, webkit]) {
           const stop = api.play();
           stop();
           const cancelled = surface.getAnimations().length;
-          await new Promise((resolve) => setTimeout(resolve, 300));
+          await Promise.all(
+            document.getAnimations().map((animation) => animation.finished.catch(() => undefined)),
+          );
           api.redraw();
           const idle = document.getAnimations().length;
           setup.sort((a, b) => a - b);
@@ -81,6 +85,43 @@ for (const engine of [chromium, webkit]) {
         expect(result.sameCell).toBe(true);
         expect(result.sameInput).toBe(true);
         expect(result.dbCalls).toBe(0);
+        const section = await page.evaluate(async () => {
+          const element = document.createElement("div");
+          element.style.cssText =
+            "position:fixed;inset:100px 20px auto auto;width:300px;height:400px;overflow:hidden";
+          for (let index = 0; index < 500; index++) {
+            const row = document.createElement("div");
+            row.dataset.settingId = `setting-${index}`;
+            row.textContent = `Einstellung ${index}`;
+            element.append(row);
+          }
+          document.body.append(element);
+          const starts: number[] = [];
+          let peak = 0;
+          let stop = () => undefined;
+          for (let index = 0; index < 100; index++) {
+            const started = performance.now();
+            stop = window.workspaceMotion.section(element);
+            starts.push(performance.now() - started);
+            peak = Math.max(peak, element.getAnimations({ subtree: true }).length);
+          }
+          await Promise.all(
+            element
+              .getAnimations({ subtree: true })
+              .map((animation) => animation.finished.catch(() => undefined)),
+          );
+          const idle = element.getAnimations({ subtree: true }).length;
+          stop = window.workspaceMotion.section(element);
+          stop();
+          const cancelled = element.getAnimations({ subtree: true }).length;
+          element.remove();
+          starts.sort((a, b) => a - b);
+          return { medianMs: starts[50], p95Ms: starts[95], peak, idle, cancelled };
+        });
+        expect(section.p95Ms).toBeLessThan(12);
+        expect(section.peak).toBe(7);
+        expect(section.idle).toBe(0);
+        expect(section.cancelled).toBe(0);
         expect(await page.getByRole("textbox", { name: "Entwurf" }).inputValue()).toBe(
           "SELECT ungespeichert;",
         );
@@ -96,6 +137,15 @@ for (const engine of [chromium, webkit]) {
 
         await page.evaluate(() => window.workspaceMotion.panel(true));
         await page.getByRole("region", { name: "Transaktionen", exact: true }).waitFor();
+        await page.waitForFunction(() => {
+          const panel = document.querySelector('[data-tour="tx-panel"]');
+          return panel && Math.abs(panel.getBoundingClientRect().width - 380) < 0.5;
+        });
+        expect(
+          await page
+            .locator('[data-slot="change-surface"]')
+            .evaluate((node) => node.getBoundingClientRect().width),
+        ).toBeGreaterThan(1000);
         await page.evaluate(() => window.workspaceMotion.panel(false));
         expect(await page.locator('[data-tour="tx-panel"]').getAttribute("inert")).not.toBeNull();
         await page.locator('[data-tour="tx-panel"]').waitFor({ state: "detached" });
@@ -154,6 +204,7 @@ for (const engine of [chromium, webkit]) {
             runtime: `Bun ${Bun.version}`,
             cells: 9600,
             switches: 1180,
+            section,
             ...result,
           }),
         );
@@ -162,5 +213,89 @@ for (const engine of [chromium, webkit]) {
       }
     },
     60_000,
+  );
+
+  test.skipIf(!base)(
+    `${engine.name()}: 50 tab strips share bounded fluid highlights`,
+    async () => {
+      const browser = await engine.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+        await page.goto(`${base}/tests/fixtures/motion-tabs.html`);
+        await page.getByRole("tablist").last().waitFor();
+        const timings = await page.evaluate(async () => {
+          const lists = document.querySelectorAll('[role="tablist"]');
+          const tabs = lists[0].querySelectorAll<HTMLElement>('[role="tab"]');
+          const nodes = document.querySelectorAll("*").length;
+          const durations: number[] = [];
+        let selections = 0;
+          for (let index = 0; index < 100; index++) {
+            const start = performance.now();
+          const target = tabs[(index + 1) % tabs.length];
+          target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+            await new Promise(requestAnimationFrame);
+            await new Promise(requestAnimationFrame);
+            durations.push(performance.now() - start);
+          if (target.getAttribute("aria-selected") === "true") selections++;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 800));
+          let idleWrites = 0;
+          const observer = new MutationObserver((records) => {
+            idleWrites += records.length;
+          });
+          observer.observe(document.body, { subtree: true, attributes: true, childList: true });
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          observer.disconnect();
+          durations.sort((a, b) => a - b);
+          return {
+            medianMs: durations[50],
+            p95Ms: durations[95],
+            nodes,
+            nodeGrowth: document.querySelectorAll("*").length - nodes,
+            highlights: document.querySelectorAll("[data-motion-highlight]").length,
+            idleWrites,
+          selections,
+          };
+        });
+        expect(timings.p95Ms).toBeLessThan(120);
+        expect(timings.nodeGrowth).toBe(0);
+        expect(timings.highlights).toBe(50);
+      expect(timings.selections).toBe(100);
+        expect(timings.idleWrites).toBe(0);
+        const selected = page
+          .getByRole("tablist", { name: "group-0", exact: true })
+          .getByRole("tab", { selected: true });
+        await selected.focus();
+        await page.keyboard.press("ArrowRight");
+        await page.waitForFunction(
+          () =>
+            document.querySelector(
+              '[role="tablist"][aria-label="group-0"] [role="tab"][aria-selected="true"]',
+            )?.textContent === "Tab 1",
+        );
+        expect(
+          await page
+            .getByRole("tablist", { name: "group-0", exact: true })
+            .getByRole("tab", { selected: true })
+            .innerText(),
+        ).toBe("Tab 1");
+        const line = page.getByRole("tablist", { name: "group-1", exact: true });
+        await line.getByRole("tab", { name: "Tab 3", exact: true }).click();
+        expect(await line.locator("[data-motion-highlight]").count()).toBe(1);
+        console.log(
+          JSON.stringify({
+            suite: "motion-tabs",
+            engine: engine.name(),
+            strips: 50,
+            options: 500,
+            switches: 100,
+            ...timings,
+          }),
+        );
+      } finally {
+        await browser.close();
+      }
+    },
+    60000,
   );
 }

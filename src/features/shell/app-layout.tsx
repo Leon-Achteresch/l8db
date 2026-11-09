@@ -52,7 +52,7 @@ export function AppLayout() {
           aiSplit && "!rounded-xl !border !shadow-none",
         )}
       >
-        <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="relative flex min-h-0 flex-1 overflow-hidden">
           <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <DeferredOutlet />
           </div>
@@ -62,7 +62,7 @@ export function AppLayout() {
                 key="transactions"
                 label="Das Transaktions-Panel"
                 source="transaction-panel"
-                className="w-[380px] shrink-0"
+                className="absolute inset-y-0 right-0 z-30 w-[380px] max-w-full"
               >
                 <TransactionPanel />
               </PanelErrorBoundary>

@@ -1,14 +1,14 @@
 :root {
-  --motion-feedback: 130ms;
+  --motion-feedback: 240ms;
   --motion-change: 200ms;
   --motion-settle: cubic-bezier(0.16, 1, 0.3, 1);
-  --motion-snap: cubic-bezier(0.2, 1.5, 0.4, 1);
+  --motion-snap: cubic-bezier(0.2, 1.35, 0.35, 1);
 }
 
 [data-slot="button"] {
   transition-property: background-color, color, border-color, box-shadow, opacity, scale;
   transition-duration: var(--motion-feedback);
-  transition-timing-function: var(--motion-settle);
+  transition-timing-function: var(--motion-snap);
 }
 
 [data-slot="switch"] {
@@ -28,6 +28,18 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  .motion-nav-item > svg {
+    transition: transform 380ms var(--motion-snap);
+  }
+
+  .motion-nav-item:hover > svg {
+    transform: translateY(-1px) rotate(-6deg) scale(1.12);
+  }
+
+  .motion-nav-item:active > svg {
+    transform: scale(0.88);
+  }
+
   [data-slot="button"]:not(:disabled):not([aria-disabled="true"]):not([aria-haspopup]):active {
     scale: 0.96;
   }
@@ -50,7 +62,36 @@
   }
 
   [data-slot="tabs-content"][data-state="active"]:not([hidden]) {
-    animation: tab-content-arrive 180ms var(--motion-settle);
+    animation: tab-content-arrive 340ms var(--motion-settle);
+  }
+
+  [data-slot="dialog-content"]:is([data-state="open"], [data-open]) {
+    animation: dialog-arrive 420ms var(--motion-settle);
+  }
+
+  [data-slot="dialog-content"]:is([data-state="closed"], [data-closed]) {
+    animation: dialog-leave 160ms ease-in;
+  }
+
+  [data-slot="popover-content"]:is([data-state="open"], [data-open]) {
+    animation: popover-arrive 340ms var(--motion-snap);
+  }
+
+  [data-slot="popover-content"]:is([data-state="closed"], [data-closed]) {
+    animation: popover-leave 120ms ease-in;
+  }
+
+  [data-workspace-message] {
+    animation: status-arrive 380ms var(--motion-settle);
+  }
+
+  [data-workspace-message="success"] > svg {
+    animation: success-stamp 560ms var(--motion-snap);
+  }
+
+  [data-workspace-message="success"] > svg path {
+    stroke-dasharray: 24;
+    animation: selection-draw 380ms var(--motion-settle);
   }
 
   [data-setting-id][data-modified="true"]::before {
@@ -81,11 +122,44 @@
 
 @keyframes tab-content-arrive {
   from {
-    opacity: 0.6;
+    opacity: 0.8;
+    transform: translateY(8px) scale(0.998);
   }
   to {
     opacity: 1;
+    transform: none;
   }
+}
+
+@keyframes dialog-arrive {
+  from { opacity: 0; transform: translateY(24px) scale(0.94); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+
+@keyframes dialog-leave {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(8px) scale(0.97); }
+}
+
+@keyframes popover-arrive {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes popover-leave {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: scale(0.97); }
+}
+
+@keyframes status-arrive {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes success-stamp {
+  0% { transform: scale(0.4) rotate(-35deg); }
+  65% { transform: scale(1.3) rotate(6deg); }
+  100% { transform: none; }
 }
 
 @keyframes setting-changed {
@@ -100,6 +174,16 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  [data-slot="dialog-content"],
+  [data-slot="popover-content"] {
+    animation-duration: 100ms;
+    --tw-enter-scale: 1;
+    --tw-exit-scale: 1;
+    --tw-enter-translate-x: 0;
+    --tw-enter-translate-y: 0;
+    --tw-exit-translate-x: 0;
+    --tw-exit-translate-y: 0;
+  }
   [data-slot="button"],
   [data-slot="switch"],
   [data-slot="switch-thumb"],

@@ -1,5 +1,18 @@
 [
   {
+    "id": "workspace-motion",
+    "revision": "1",
+    "title": "Ein Arbeitsbereich, der mit dir mitgeht",
+    "summary": "Fließende Auswahlmarkierungen, gestaffelte Einstellungen, räumliche Dialoge und ein gleitendes Transaktionspanel machen Zustandswechsel sichtbar.",
+    "sourceCommit": "ff8dfaab",
+    "introducedIn": "0.18.0",
+    "priority": 97,
+    "platforms": ["macos", "windows", "linux"],
+    "requiredCapabilities": [],
+    "modes": ["easy", "normal"],
+    "actionId": "settings"
+  },
+  {
     "id": "easy-mode",
     "revision": "3",
     "title": "Mehr Ruhe mit Easy Mode",

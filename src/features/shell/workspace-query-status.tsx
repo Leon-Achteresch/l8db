@@ -68,7 +68,13 @@ export function WorkspaceQueryStatus() {
       data-workspace-activity
     >
       {message && (
-        <span role="status" className="flex min-w-0 items-center gap-1.5" title={message.title}>
+        <span
+          key={message.id}
+          data-workspace-message={message.tone}
+          role="status"
+          className="flex min-w-0 items-center gap-1.5"
+          title={message.title}
+        >
           {message.tone === "error" ? (
             <XIcon className="size-3 shrink-0 text-destructive" />
           ) : message.tone === "success" ? (
