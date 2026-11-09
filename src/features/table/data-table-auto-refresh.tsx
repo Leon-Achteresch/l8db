@@ -33,16 +33,14 @@ export function DataTableAutoRefresh({
         <SelectTrigger
           size="sm"
           title={pauseReason ? `Pausiert: ${pauseReason}` : "Automatisch aktualisieren"}
-          className="h-5 gap-1 border-border bg-background px-1 text-[11px] text-muted-foreground hover:bg-accent"
+          className="h-6 gap-1 border-transparent bg-transparent px-1.5 text-[11px] text-muted-foreground shadow-none hover:bg-accent dark:bg-transparent dark:hover:bg-accent"
         >
           <SelectValue />
         </SelectTrigger>
         <SelectContent position="popper">
           {AUTO_REFRESH_INTERVALS.map((value) => (
             <SelectItem key={value} value={String(value)} className="text-[11px]">
-              {value === 0
-                ? "Auto-Aktualisierung: aus"
-                : `Alle ${describeAutoRefreshInterval(value)}`}
+              {value === 0 ? "Auto aus" : `Alle ${describeAutoRefreshInterval(value)}`}
             </SelectItem>
           ))}
         </SelectContent>
