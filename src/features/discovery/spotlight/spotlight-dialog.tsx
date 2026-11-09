@@ -34,10 +34,10 @@ export function SpotlightDialog({ content }: { content: SpotlightContent }) {
         className="max-h-[calc(100dvh-4rem)] gap-0 overflow-y-auto p-0 sm:max-w-4xl [&>[data-slot=dialog-close]]:text-white/80 [&>[data-slot=dialog-close]]:hover:text-white"
       >
         <header className="relative isolate overflow-hidden px-8 pt-10 pb-8 text-white">
-          <div className="absolute inset-0 -z-10 bg-linear-to-br from-[#1b1530] via-[#3a2a78] to-[#0e1a3a]" />
-          <div className="absolute -top-24 -left-16 -z-10 size-80 rounded-full bg-violet-500/50 blur-3xl" />
-          <div className="absolute -right-10 -bottom-32 -z-10 size-96 rounded-full bg-fuchsia-500/35 blur-3xl" />
-          <div className="absolute top-6 right-1/3 -z-10 size-48 rounded-full bg-sky-400/30 blur-3xl" />
+          <div className="absolute inset-0 -z-10 bg-linear-to-br from-(--discovery-deep) via-(--discovery-2)/70 to-(--discovery-deep)" />
+          <div className="absolute -top-24 -left-16 -z-10 size-80 rounded-full bg-(--discovery-1)/60 blur-3xl" />
+          <div className="absolute -right-10 -bottom-32 -z-10 size-96 rounded-full bg-(--discovery-2)/45 blur-3xl" />
+          <div className="absolute top-6 right-1/3 -z-10 size-48 rounded-full bg-(--discovery-3)/35 blur-3xl" />
           <div className="discovery-grain absolute inset-0 -z-10 opacity-50 mix-blend-overlay" />
           <p className="font-mono text-[10px] tracking-widest text-white/60 uppercase">
             {welcome ? "Willkommen zurück" : `Release ${content.label}`}
@@ -47,7 +47,7 @@ export function SpotlightDialog({ content }: { content: SpotlightContent }) {
             {isNew && <NewBadge />}
           </DialogTitle>
           <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-white/80 tabular-nums backdrop-blur">
-            <span className="size-1.5 rounded-full bg-[#B8F03C]" />
+            <span className="size-1.5 rounded-full bg-white" />
             {total} Neuerungen
           </p>
         </header>

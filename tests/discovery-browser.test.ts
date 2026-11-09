@@ -701,6 +701,28 @@ scenario("C1 Release-Spotlight nach Update", async () => {
   await shoot(session, "12-release-spotlight");
 });
 
+scenario("C1 Release-Spotlight folgt dem App-Theme", async () => {
+  for (const [name, dark, settings] of [
+    ["30-spotlight-grove", true, { darkTheme: "grove", dbThemes: false }],
+    ["31-spotlight-ember", false, { lightTheme: "ember", dbThemes: false }],
+  ] as const) {
+    const session = await boot({
+      path: "/query",
+      dark,
+      settings,
+      seeds: {
+        "l8db.discovery.spotlight": persisted({
+          seenVersion: "0.17.0",
+          lastActive: Date.now() - DAY,
+        }),
+      },
+    });
+    await quietGate(session.page);
+    await session.page.locator('[data-discovery-spotlight="spotlight"]').waitFor();
+    await shoot(session, name);
+  }
+});
+
 scenario("C2 Willkommen zurück nach übersprungenen Versionen", async () => {
   const session = await boot({
     path: "/query",

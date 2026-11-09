@@ -146,6 +146,10 @@
   --db-chroma: 0.12;
   --db-glow: 0.16;
   --db-tint: 1;
+  --discovery-deep: oklch(0.24 0.07 var(--db-hue));
+  --discovery-1: oklch(0.56 0.2 var(--db-hue));
+  --discovery-2: oklch(0.5 0.2 calc(var(--db-hue) + 35));
+  --discovery-3: oklch(0.66 0.16 calc(var(--db-hue) - 40));
   --background: oklch(0.975 calc(0.004 * var(--db-tint)) var(--db-hue));
   --foreground: oklch(0.22 calc(0.012 * var(--db-tint)) var(--db-hue));
   --card: oklch(0.995 calc(0.002 * var(--db-tint)) var(--db-hue));
