@@ -4,6 +4,7 @@ import { ActivityIcon, CalendarClockIcon, LockIcon, ServerIcon } from "lucide-re
 import { MorphIcon } from "morphicons/react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { FeatureEmptyState } from "@/components/feature-empty-state/feature-empty-state";
 import { NewBadge } from "@/components/new-badge";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
@@ -297,11 +298,10 @@ export function SessionsView() {
               </table>
             )}
             {!isLoading && !isError && filtered.length === 0 && (
-              <p className="p-8 text-center text-sm text-muted-foreground">
-                {allSessions.length === 0
-                  ? "Keine Sitzungen."
-                  : "Keine Sitzungen entsprechen den Filtern."}
-              </p>
+              <FeatureEmptyState
+                icon={ActivityIcon}
+                title={allSessions.length === 0 ? "Keine Sitzungen" : "Kein Treffer für die Filter"}
+              />
             )}
           </div>
         </TabsContent>
