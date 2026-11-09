@@ -4,6 +4,7 @@ import { version as appVersion } from "../../package.json";
 export const NEXT_FEATURE_VERSION = "0.18.0";
 
 export const NEW_FEATURES = {
+  "table.rows.insert-script": NEXT_FEATURE_VERSION,
   "discover.overview": NEXT_FEATURE_VERSION,
   "discover.labs": NEXT_FEATURE_VERSION,
   "discover.roadmap": NEXT_FEATURE_VERSION,

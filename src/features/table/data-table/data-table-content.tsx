@@ -286,6 +286,8 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                       onDeleteRow={onDeleteRow}
                       rowMenuItems={props.rowMenuItems}
                       columnDetails={columnDetails}
+                      currentSchema={props.currentSchema}
+                      currentTable={props.currentTable}
                     />
                   </table>
                 </DragDropProvider>

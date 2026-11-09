@@ -352,6 +352,15 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
     related: ["automation.alerts"],
   },
   {
+    id: "table.rows.insert-script",
+    title: "Zeilen als INSERT-Skript",
+    summary: "Mehrere Zeilen markieren und als INSERT-SQL kopieren oder exportieren.",
+    area: "Daten & Tabellen",
+    keywords: ["insert", "sql", "skript", "zeilen", "auswahl", "markieren", "kopieren", "export"],
+    since: "0.18.0",
+    related: ["table.rows.watch"],
+  },
+  {
     id: "table.infinite-scroll",
     title: "Endlos scrollen",
     summary: "Weiterscrollen lädt die nächsten Zeilen nach, ohne zu blättern.",

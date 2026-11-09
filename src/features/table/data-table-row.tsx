@@ -39,7 +39,7 @@ export type DataTableRowProps = {
   isMarked: boolean;
   ruleColor?: string;
   isContextMenuTarget?: boolean;
-  toggleRowMarker: (row: TableRow) => void;
+  toggleRowMarker: (row: TableRow, extend?: boolean) => void;
   columnWindow: ColumnWindowItem[];
   gridLayout: boolean;
   measureElement: (

@@ -155,7 +155,7 @@ export const DataTableCell = memo(function DataTableCell({
       }}
       onClick={(event) => {
         if (cellIndex === 0) {
-          toggleRowMarker(row.original);
+          toggleRowMarker(row.original, event.shiftKey);
           return;
         }
         const extend = event.shiftKey;
@@ -271,7 +271,7 @@ export const DataTableCell = memo(function DataTableCell({
           className="block h-5 w-full cursor-pointer text-center tabular-nums focus-visible:outline-2 focus-visible:outline-ring"
           onClick={(event) => {
             event.stopPropagation();
-            toggleRowMarker(row.original);
+            toggleRowMarker(row.original, event.shiftKey);
           }}
         >
           {rowIndex + 1 + pageOffset}
