@@ -1,4 +1,3 @@
-import { Cloud } from "lucide-react";
 import { NewBadge } from "@/components/new-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import {
@@ -14,9 +13,8 @@ export function BaasOptions({ onSelect }: { onSelect: (provider: BaasProvider) =
     <div className="space-y-1.5">
       <p
         ref={feature.ref}
-        className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground"
+        className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-muted-foreground uppercase"
       >
-        <Cloud className="size-3" />
         Backend-as-a-Service
         {feature.isNew && <NewBadge />}
       </p>
@@ -28,7 +26,7 @@ export function BaasOptions({ onSelect }: { onSelect: (provider: BaasProvider) =
             key={provider.id}
             type="button"
             onClick={() => onSelect(provider.id)}
-            className="flex h-8 items-center gap-1.5 rounded-full border bg-card pr-3 pl-1.5 text-xs font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex h-8 cursor-pointer items-center gap-1.5 rounded-full bg-muted/50 pr-3 pl-1.5 text-xs font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span className="grid size-5 shrink-0 place-items-center rounded-full bg-background ring-1 ring-border/70">
               <ProviderLogo providerId={provider.id} className="size-3.5" />
