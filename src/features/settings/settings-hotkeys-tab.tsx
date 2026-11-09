@@ -57,13 +57,7 @@ export function SettingsHotkeysTab() {
 
   return (
     <div data-setting-id="hotkeys" tabIndex={-1} className="space-y-4">
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Tastenkürzel</h2>
-        <p className="text-xs text-muted-foreground">
-          Alle Befehle frei belegbar, inklusive Kombinationen mit Strg, Umschalt und Alt sowie
-          Funktionstasten. Klick auf ein Kürzel, neue Tasten drücken, fertig.
-        </p>
-      </div>
+      <h2 className="text-base font-semibold tracking-tight">Tastenkürzel</h2>
 
       <SettingsRow settingId="shortcut-hints" featureId="settings.hotkeys.shortcut-hints">
         <Switch
@@ -80,13 +74,13 @@ export function SettingsHotkeysTab() {
             value={term}
             onChange={(event) => setTerm(event.target.value)}
             placeholder="Befehl oder Tastenkürzel suchen…"
-            className="pl-8"
+            className="h-8 border-transparent bg-muted/50 pl-8 shadow-none"
             aria-label="Tastenkürzel durchsuchen"
           />
         </div>
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="sm"
           disabled={customizedCount === 0}
           onClick={() => {
@@ -105,7 +99,7 @@ export function SettingsHotkeysTab() {
       </div>
 
       {conflicts.length > 0 && (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+        <div className="flex items-start gap-2 rounded-xl bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300">
           <AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
           <p>
             {conflicts.length} {conflicts.length === 1 ? "Doppelbelegung" : "Doppelbelegungen"}:{" "}
@@ -124,8 +118,8 @@ export function SettingsHotkeysTab() {
             <p className="py-6 text-center text-sm text-muted-foreground">Keine Treffer</p>
           )}
           {groups.map((group) => (
-            <section key={group.area} className="flex flex-col gap-2">
-              <h3 className="px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            <section key={group.area} className="flex flex-col gap-0.5">
+              <h3 className="px-3 pb-1 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
                 {group.area}
               </h3>
               {group.commands.map((command) => {
@@ -138,23 +132,20 @@ export function SettingsHotkeysTab() {
                 return (
                   <div
                     key={command.id}
+                    title={[command.description, command.reference].filter(Boolean).join(" · ")}
                     className={cn(
-                      "flex min-w-0 items-center justify-between gap-4 overflow-x-clip rounded-xl border border-border/60 bg-card px-3 py-2",
+                      "flex min-h-9 min-w-0 items-center justify-between gap-4 overflow-x-clip rounded-lg px-3 py-1 transition-colors hover:bg-muted/40",
                       !available && "opacity-60",
                     )}
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
+                      <p className="truncate text-sm">
                         {command.label}
                         {!available && (
-                          <span className="ml-2 text-xs font-normal text-muted-foreground">
-                            (Verbindung erforderlich)
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            Verbindung erforderlich
                           </span>
                         )}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {command.description}
-                        {command.reference ? ` · ${command.reference}` : ""}
                       </p>
                       {conflict.length > 0 && (
                         <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
