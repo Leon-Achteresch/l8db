@@ -1,5 +1,4 @@
-import { Kbd } from "@/components/ui/kbd";
-import { formatHotkeyDisplay, useAllResolvedHotkeys } from "@/lib/hotkeys";
+import { HotkeyKbd } from "@/components/hotkey-kbd";
 
 const SHORTCUTS = [
   ["palette.open", "Suchen und Befehle"],
@@ -11,20 +10,17 @@ const SHORTCUTS = [
 ] as const;
 
 export function WelcomeShortcuts() {
-  const hotkeys = useAllResolvedHotkeys();
   return (
     <section aria-labelledby="welcome-shortcuts">
       <h2 id="welcome-shortcuts" className="mb-3 text-sm font-semibold">
         Tastenkürzel
       </h2>
-      <dl className="divide-y divide-border/60">
+      <dl>
         {SHORTCUTS.map(([id, label]) => (
-          <div key={id} className="flex min-h-10 items-center justify-between gap-3 py-2">
-            <dt className="text-xs leading-relaxed text-muted-foreground">{label}</dt>
+          <div key={id} className="flex min-h-8 items-center justify-between gap-3 py-1">
+            <dt className="text-xs text-muted-foreground">{label}</dt>
             <dd className="shrink-0">
-              <Kbd className="rounded-md border border-border/60 bg-muted/40 px-1.5 text-[11px]">
-                {formatHotkeyDisplay(hotkeys[id])}
-              </Kbd>
+              <HotkeyKbd command={id} />
             </dd>
           </div>
         ))}
