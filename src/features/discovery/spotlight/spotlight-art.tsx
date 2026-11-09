@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 const TONES = [
-  "from-violet-600 via-indigo-600 to-sky-500",
-  "from-indigo-600 via-violet-600 to-fuchsia-500",
-  "from-fuchsia-600 via-violet-600 to-indigo-500",
+  "from-(--discovery-1) via-(--discovery-2) to-(--discovery-3)",
+  "from-(--discovery-2) via-(--discovery-1) to-(--discovery-3)",
+  "from-(--discovery-3) via-(--discovery-2) to-(--discovery-1)",
 ];
 
 const ATLAS_LIT = new Set([2, 5, 9, 10, 16, 19, 23, 24, 26]);
