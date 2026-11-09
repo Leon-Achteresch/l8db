@@ -103,12 +103,20 @@ export async function scriptLedger(
 
 const STAGES = { development: "Entwicklung", test: "Test", production: "Produktion" } as const;
 
+const COMMENT_TAIL = /(?:^|\n)((?:[^'\n-]|'[^'\n]*'|-(?!-))*)--[^\n]*$/;
+const LEADING_COMMENTS = /^(?:\s+|--[^\n]*\n?|\/\*[\s\S]*?\*\/)+/;
 const PLSQL =
-  /^\s*(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:EDITIONABLE\s+|NONEDITIONABLE\s+)?(?:PACKAGE|PROCEDURE|FUNCTION|TRIGGER|TYPE)\b|DECLARE\b|BEGIN\b)/i;
+  /^(?:CREATE\s+(?:OR\s+REPLACE\s+)?(?:EDITIONABLE\s+|NONEDITIONABLE\s+)?(?:PACKAGE|PROCEDURE|FUNCTION|TRIGGER|TYPE|LIBRARY)\b|DECLARE\b|BEGIN\b)/i;
 
 export function terminate(kind: DeployKind, statement: string) {
-  const body = statement.replace(/\s+$/, "").replace(/\n\/$/, "");
-  if (kind === "oracle" && PLSQL.test(body)) return `${body.replace(/;?$/, ";")}\n/`;
+  const body = statement
+    .trimEnd()
+    .replace(/\n[ \t]*\/$/, "")
+    .trimEnd();
+  if (kind === "oracle" && PLSQL.test(body.replace(LEADING_COMMENTS, "")))
+    return `${body.replace(/;?$/, ";")}\n/`;
+  const tail = COMMENT_TAIL.exec(body);
+  if (tail) return tail[1].trimEnd().endsWith(";") ? body : `${body}\n;`;
   return body.endsWith(";") ? body : `${body};`;
 }
 
@@ -134,7 +142,13 @@ export function migrationScript(plan: ScriptPlan, project: string, now = new Dat
     "-- Kunden → Stand abgleichen den Release bestätigen.",
     "",
   ];
-  if (kind === "oracle") lines.push("WHENEVER SQLERROR EXIT FAILURE ROLLBACK", "");
+  if (kind === "oracle")
+    lines.push(
+      "SET DEFINE OFF",
+      "SET SQLBLANKLINES ON",
+      "WHENEVER SQLERROR EXIT FAILURE ROLLBACK",
+      "",
+    );
   else lines.push("\\set ON_ERROR_STOP on", "BEGIN;", "");
   if (plan.ledger) lines.push(terminate(kind, plan.ledger.guard), "");
   for (const release of releases)

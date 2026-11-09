@@ -201,6 +201,52 @@ describe("migration scripts", () => {
     );
     expect(terminate("postgres", "ALTER TABLE x ADD y int;")).toBe("ALTER TABLE x ADD y int;");
   });
+  test("keeps Oracle units with leading comments and trailing line comments runnable", () => {
+    expect(
+      terminate(
+        "oracle",
+        "-- Ticket 12\n/* neu */\nCREATE OR REPLACE PROCEDURE P IS BEGIN NULL; END;",
+      ),
+    ).toBe("-- Ticket 12\n/* neu */\nCREATE OR REPLACE PROCEDURE P IS BEGIN NULL; END;\n/");
+    expect(terminate("oracle", "CREATE OR REPLACE LIBRARY L AS '/x.so'")).toBe(
+      "CREATE OR REPLACE LIBRARY L AS '/x.so';\n/",
+    );
+    expect(terminate("oracle", "DROP TABLE X -- aufräumen")).toBe("DROP TABLE X -- aufräumen\n;");
+    expect(terminate("postgres", "DROP TABLE x -- alt;")).toBe("DROP TABLE x -- alt;\n;");
+    expect(terminate("oracle", "DROP TABLE X; -- erledigt")).toBe("DROP TABLE X; -- erledigt");
+    expect(terminate("oracle", "INSERT INTO T VALUES ('a--b')")).toBe(
+      "INSERT INTO T VALUES ('a--b');",
+    );
+    expect(terminate("oracle", "BEGIN NULL; END;\r\n/\r\n")).toBe("BEGIN NULL; END;\n/");
+    expect(terminate("oracle", "-- nur DDL\nALTER TABLE X ADD (Y NUMBER)")).toBe(
+      "-- nur DDL\nALTER TABLE X ADD (Y NUMBER);",
+    );
+  });
+  test("Oracle scripts switch off substitution and blank-line termination first", () => {
+    const script = migrationScript(
+      {
+        target: {
+          id: "t",
+          name: "Ziel",
+          production: true,
+          connectionId: "c",
+          database: null,
+          schema: "APP",
+          history: [],
+        },
+        from: release("v1", "oracle"),
+        to: release("v2", "oracle"),
+        reference: { id: "v2", commit: "a".repeat(40), path: "database/releases/v2.json" },
+        releases: [release("v2", "oracle")],
+        sql: ["UPDATE firma SET name = 'R&D'\n\nWHERE id = 1"],
+      },
+      "Shop",
+    );
+    expect(script).toContain(
+      "SET DEFINE OFF\nSET SQLBLANKLINES ON\nWHENEVER SQLERROR EXIT FAILURE ROLLBACK\n",
+    );
+    expect(script.indexOf("SET DEFINE OFF")).toBeLessThan(script.indexOf("R&D"));
+  });
   test("writes a reviewable script per target", () => {
     const plan = {
       target: {
