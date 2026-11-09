@@ -5,12 +5,7 @@ import { UiPluginsSection } from "@/features/ui-plugins/settings/ui-plugins-sect
 export function SettingsExtensionsTab() {
   return (
     <div data-setting-id="extensions" tabIndex={-1} className="space-y-6">
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Erweiterungen</h2>
-        <p className="text-xs text-muted-foreground">
-          Erweiterungen installieren, freigeben und einrichten.
-        </p>
-      </div>
+      <h2 className="text-base font-semibold tracking-tight">Erweiterungen</h2>
       <CommunityExtensionsSection controlsOnly />
       <UiPluginsSection />
       <ExtensionMarketSection />
