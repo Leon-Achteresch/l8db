@@ -115,7 +115,10 @@ export function DashboardPageNav({
                     variant="ghost"
                     size="icon-xs"
                     aria-label={`Seite ${page.name} bearbeiten`}
-                    className="opacity-0 group-hover/page:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                    className={cn(
+                      !selected &&
+                        "opacity-0 group-hover/page:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100",
+                    )}
                   >
                     <EllipsisVerticalIcon />
                   </IconButton>
