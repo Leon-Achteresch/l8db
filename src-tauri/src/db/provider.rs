@@ -771,7 +771,7 @@ fn odbc_driver_hints(driver: &'static str) -> Vec<InstallHint> {
 
 const ORACLE_MACOS_INTEL_INSTALL: &str = "brew tap InstantClientTap/instantclient && brew trust instantclienttap/instantclient && brew install instantclient-basic";
 
-const ORACLE_MACOS_ARM64_INSTALL: &str = "mkdir -p \"$HOME/lib\" /tmp/l8db-ic && curl -fL -H \"Cookie: oraclelicense=accept-securebackup-cookie\" -o /tmp/l8db-ic/ic.dmg \"https://download.oracle.com/otn_software/mac/instantclient/instantclient-basic-macos-arm64.dmg\" && hdiutil attach /tmp/l8db-ic/ic.dmg && sh /Volumes/instantclient-basic-macos.arm64-*/install_ic.sh && for f in $(ls -td \"$HOME\"/Downloads/instantclient_* | head -1)/*.dylib*; do ln -sf \"$f\" \"$HOME/lib/\"; done && hdiutil detach /Volumes/instantclient-basic-macos.arm64-* && rm -rf /tmp/l8db-ic";
+const ORACLE_MACOS_ARM64_INSTALL: &str = "mkdir -p /tmp/l8db-ic && curl -fL -H \"Cookie: oraclelicense=accept-securebackup-cookie\" -o /tmp/l8db-ic/ic.dmg \"https://download.oracle.com/otn_software/mac/instantclient/instantclient-basic-macos-arm64.dmg\" && hdiutil attach -nobrowse -mountpoint /tmp/l8db-ic/mnt /tmp/l8db-ic/ic.dmg && lib=$(ls /tmp/l8db-ic/mnt/libclntsh.dylib /tmp/l8db-ic/mnt/*/libclntsh.dylib 2>/dev/null | head -1) && [ -n \"$lib\" ] && rm -rf \"$HOME/instantclient_macos_arm64\" && cp -R \"$(dirname \"$lib\")/\" \"$HOME/instantclient_macos_arm64\" && { find \"$HOME/lib\" -maxdepth 1 -type l -lname \"$HOME/Downloads/instantclient_*\" -delete 2>/dev/null || true; } && hdiutil detach /tmp/l8db-ic/mnt && rm -rf /tmp/l8db-ic";
 
 const ORACLE_WINDOWS_INSTALL: &str = r#"powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; $d=Join-Path $env:USERPROFILE 'l8db-ic'; New-Item -ItemType Directory -Force $d | Out-Null; $z=Join-Path $d 'ic.zip'; Invoke-WebRequest -UseBasicParsing -Uri 'https://download.oracle.com/otn_software/nt/instantclient/instantclient-basic-windows.zip' -OutFile $z; Expand-Archive -Force $z $d; Copy-Item -Recurse -Force (Join-Path $d 'instantclient_*') $env:USERPROFILE; Remove-Item -Recurse -Force $d; if (-not (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64' -ErrorAction SilentlyContinue).Installed) { $v=Join-Path $env:TEMP 'vc_redist.x64.exe'; Invoke-WebRequest -UseBasicParsing -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $v; Start-Process -Wait -Verb RunAs $v -ArgumentList '/install','/quiet','/norestart' }; Get-ChildItem $env:USERPROFILE -Directory -Filter 'instantclient_*' | Select-Object -ExpandProperty FullName""#;
 
@@ -1231,8 +1231,15 @@ mod tests {
                 oracle.contains("instantclient-basic-macos-arm64.dmg"),
                 "{oracle}"
             );
-            assert!(oracle.contains("$HOME/lib"), "{oracle}");
-            assert!(oracle.contains("install_ic.sh"), "{oracle}");
+            assert!(
+                oracle.contains("$HOME/instantclient_macos_arm64"),
+                "{oracle}"
+            );
+            assert!(!oracle.contains("install_ic.sh"), "{oracle}");
+            assert!(
+                oracle.contains("-lname \"$HOME/Downloads/instantclient_*\" -delete"),
+                "{oracle}"
+            );
             return;
         }
         let oracle = install_command(DatabaseKind::Oracle).unwrap();
