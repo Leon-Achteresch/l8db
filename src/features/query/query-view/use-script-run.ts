@@ -9,11 +9,13 @@ import { invalidateAfterSql } from "@/lib/query-client";
 import { beginQueryCompletion } from "@/lib/query-completion";
 import { runSqlScript } from "@/lib/script-runner";
 import { DEFAULT_SELECT_ROW_LIMIT } from "@/lib/select-row-limit";
+import { enableOracleOutput } from "@/lib/server-output";
 import { useSettingsStore } from "@/lib/settings";
 import { locateText } from "@/lib/sql-diagnostics";
 import { scriptPolicyIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
 import { type AskVariables, substitutionSession } from "@/lib/sql-statements/sqlplus";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { recordUserQueryOutcome } from "@/lib/telemetry";
 import { getQueryTransaction } from "@/lib/transactions";
 import { recordSuccessfulSql } from "@/lib/workbench/sql-states";
@@ -130,6 +132,12 @@ export function useScriptRun({
       const finishNotification = beginQueryCompletion();
       const finishEvent = beginQueryEvent(text, connection.kind);
       try {
+        await enableOracleOutput(
+          connection.kind,
+          effectiveConnectionString(connection),
+          connection.id,
+          database ?? undefined,
+        );
         const outcome = await runSqlScript({
           connection,
           database,
@@ -195,10 +203,10 @@ export function useScriptRun({
         setError(String(failure));
         setErrorSource(null);
       } finally {
-        if (connection) await invalidateAfterSql(queryClient, connection.id, database, executed);
-        await collectOutput();
         runningRef.current = false;
         setIsRunning(false);
+        await collectOutput();
+        if (connection) await invalidateAfterSql(queryClient, connection.id, database, executed);
       }
     },
     [

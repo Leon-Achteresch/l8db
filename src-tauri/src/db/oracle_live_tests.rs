@@ -227,7 +227,7 @@ async fn live_row_limit_stops_reading_large_results() {
 
 #[tokio::test]
 #[ignore]
-async fn live_server_output_is_read_in_one_roundtrip() {
+async fn live_server_output_is_read_completely() {
     let Some(db) = adapter("live-output") else {
         return;
     };
@@ -240,16 +240,13 @@ async fn live_server_output_is_read_in_one_roundtrip() {
     let started = Instant::now();
     let first = db.take_server_output().await.unwrap();
     let elapsed = started.elapsed();
-    assert_eq!(first.len(), 2000);
+    assert_eq!(first.len(), 2501);
     assert_eq!(first[0].message, "line 1");
-    assert_eq!(first[1999].message, "line 2000");
-    let rest = db.take_server_output().await.unwrap();
-    assert_eq!(rest.len(), 501);
-    assert_eq!(rest[499].message, "line 2500");
-    assert_eq!(rest[500].message, "");
+    assert_eq!(first[2499].message, "line 2500");
+    assert_eq!(first[2500].message, "");
     assert!(db.take_server_output().await.unwrap().is_empty());
     println!(
-        "oracle server output: 2000 lines in {:.1} ms",
+        "oracle server output: 2501 lines in {:.1} ms",
         elapsed.as_secs_f64() * 1000.0
     );
     assert!(elapsed < Duration::from_secs(2), "{elapsed:?}");

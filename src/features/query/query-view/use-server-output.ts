@@ -21,27 +21,30 @@ export function useServerOutput(
   const [outputOpen, setOutputOpen] = useState(false);
   const [outputBusy, setOutputBusy] = useState(false);
   const outputEnabled = useServerOutputStore((state) =>
-    connection ? state.enabled[connection.id] === true : false,
+    connection ? (state.enabled[connection.id] ?? connection.kind === "oracle") : false,
   );
 
-  const collectOutput = useCallback(async () => {
-    if (!connection || !caps.server_output) return;
-    try {
-      const tx = getQueryTransaction(connection.id, database);
-      if (tx) {
-        deliverServerOutput(connection.id, database, await transactionServerOutput(tx.txId));
-        return;
+  const collectOutput = useCallback(
+    async (reveal = false) => {
+      if (!connection || !caps.server_output) return;
+      let added = 0;
+      try {
+        const tx = getQueryTransaction(connection.id, database);
+        added = tx
+          ? deliverServerOutput(connection.id, database, await transactionServerOutput(tx.txId))
+          : await collectServerOutput(
+              connection.kind,
+              effectiveConnectionString(connection),
+              connection.id,
+              database ?? undefined,
+            );
+      } catch {
+        added = 0;
       }
-      await collectServerOutput(
-        connection.kind,
-        effectiveConnectionString(connection),
-        connection.id,
-        database ?? undefined,
-      );
-    } catch {
-      return;
-    }
-  }, [connection, database, caps.server_output]);
+      setOutputOpen(reveal && added > 0);
+    },
+    [connection, database, caps.server_output],
+  );
 
   const handleToggleServerOutput = useCallback(
     async (enabled: boolean) => {

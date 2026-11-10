@@ -10,6 +10,7 @@ mock.module("sonner", () => ({
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string) => {
     invoked.push(command);
+    if (command === "set_server_output") return null;
     if (command === "transaction_server_output")
       return [
         { level: "OUTPUT", message: "in tx", detail: null },
@@ -19,7 +20,8 @@ mock.module("@tauri-apps/api/core", () => ({
   },
 }));
 
-const { deliverServerOutput, useServerOutputStore } = await import("../src/lib/server-output");
+const { deliverServerOutput, enableOracleOutput, MAX_SERVER_OUTPUT_ENTRIES, useServerOutputStore } =
+  await import("../src/lib/server-output");
 const { transactionServerOutput } = await import("../src/lib/db");
 
 const connectionId = "conn-output";
@@ -54,11 +56,33 @@ describe("server output delivery", () => {
     expect(toasts).toEqual([]);
   });
 
-  test("5000 messages stay bounded in the store", () => {
+  test("Oracle output is on by default until the user decides otherwise", async () => {
+    const enabled = (id: string) => useServerOutputStore.getState().enabled[id];
+    await enableOracleOutput("postgres", "postgres://h/db", "pg-default");
+    expect(enabled("pg-default")).toBeUndefined();
+    await Promise.all([
+      enableOracleOutput("oracle", "oracle://u@h/db", "ora-default"),
+      enableOracleOutput("oracle", "oracle://u@h/db", "ora-default"),
+    ]);
+    expect(enabled("ora-default")).toBe(true);
+    expect(invoked).toEqual(["set_server_output"]);
+    expect(deliverServerOutput("ora-default", null, [{ level: "OUTPUT", message: "x" }])).toBe(1);
+    expect(
+      deliverServerOutput("ora-default", null, [{ level: "WARNING", message: "mit Warnungen" }]),
+    ).toBe(1);
+    expect(toasts).toEqual(["mit Warnungen"]);
+    useServerOutputStore.getState().setEnabled("ora-off", false);
+    await enableOracleOutput("oracle", "oracle://u@h/db", "ora-off");
+    expect(enabled("ora-off")).toBe(false);
+    expect(deliverServerOutput("ora-off", null, [{ level: "OUTPUT", message: "x" }])).toBe(0);
+    expect(invoked).toEqual(["set_server_output"]);
+  });
+
+  test("120000 lines keep the newest 100000 in the store", () => {
     useServerOutputStore.getState().setEnabled(connectionId, true);
-    const messages = Array.from({ length: 5000 }, (_, index) => ({
-      level: "NOTICE",
-      message: `n ${index + 1}`,
+    const messages = Array.from({ length: 120_000 }, (_, index) => ({
+      level: "OUTPUT",
+      message: `Zeile ${index + 1}`,
     }));
     const durations: number[] = [];
     for (let run = 0; run < 11; run += 1) {
@@ -66,12 +90,13 @@ describe("server output delivery", () => {
       const started = performance.now();
       deliverServerOutput(connectionId, null, messages);
       durations.push(performance.now() - started);
-      expect(entries()).toHaveLength(1000);
-      expect(entries()[999]?.message).toBe("n 5000");
+      expect(entries()).toHaveLength(MAX_SERVER_OUTPUT_ENTRIES);
+      expect(entries()[0]?.message).toBe("Zeile 20001");
+      expect(entries().at(-1)?.message).toBe("Zeile 120000");
     }
     durations.sort((a, b) => a - b);
     console.log(
-      `performance server-output-delivery: messages=5000 retained=1000 median_ms=${durations[5]?.toFixed(3)} p95_ms=${durations[10]?.toFixed(3)} runs=11`,
+      `performance server-output-delivery: messages=120000 retained=${MAX_SERVER_OUTPUT_ENTRIES} median_ms=${durations[5]?.toFixed(3)} p95_ms=${durations[10]?.toFixed(3)} runs=11`,
     );
     expect(durations[10]).toBeLessThan(100);
   });
