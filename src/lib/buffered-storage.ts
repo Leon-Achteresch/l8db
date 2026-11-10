@@ -5,6 +5,7 @@ import {
   type StateStorage,
   type StorageValue,
 } from "zustand/middleware";
+import { appRouter } from "@/lib/app-router";
 
 type KeyValueStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -23,10 +24,7 @@ export function reportStorageFailure(key: string, error: unknown) {
     duration: 15_000,
     action: {
       label: "Speicher verwalten",
-      onClick: () =>
-        void import("@/router").then(({ router }) =>
-          router.navigate({ to: "/settings", search: { tab: "storage" } }),
-        ),
+      onClick: () => void appRouter()?.navigate({ to: "/settings", search: { tab: "storage" } }),
     },
   });
 }

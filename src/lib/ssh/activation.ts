@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { create } from "zustand";
+import { appRouter } from "@/lib/app-router";
 import { withTimeout } from "@/lib/async";
 import { connectionError, isAuthFailure, isProfileConnection } from "@/lib/connection-url";
 import { useConnectionsStore, usesTunnel } from "@/lib/connections";
@@ -93,8 +94,8 @@ async function performActivation(
         ),
       }));
     }
-    if (id !== store.activeId && typeof document !== "undefined") {
-      const { router } = await import("@/router");
+    const router = id !== store.activeId ? appRouter() : null;
+    if (router) {
       const { pathname } = router.state.location;
       if (pathname !== "/" && !pathname.startsWith("/connections")) {
         await router.navigate({ to: "/", replace: true });
