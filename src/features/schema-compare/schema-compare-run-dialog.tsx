@@ -49,7 +49,7 @@ const STEP_ICON = {
   ok: { Icon: CircleCheckIcon, color: "text-emerald-500" },
   warning: { Icon: TriangleAlertIcon, color: "text-amber-500" },
   error: { Icon: CircleXIcon, color: "text-destructive" },
-  skipped: { Icon: CircleDashedIcon, color: "text-muted-foreground/50" },
+  skipped: { Icon: CircleDashedIcon, color: "text-muted-foreground" },
 };
 
 function statementCount(count: number): string {

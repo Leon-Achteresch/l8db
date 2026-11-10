@@ -89,7 +89,7 @@ function ShortcutsDialogContent({ open, onOpenChange }: ShortcutsDialogProps) {
                       key={command.id}
                       className={cn(
                         "flex min-w-0 items-center justify-between gap-4 overflow-x-clip rounded-md px-2 py-1.5 text-sm",
-                        available ? "text-foreground" : "text-muted-foreground/60",
+                        available ? "text-foreground" : "text-muted-foreground",
                       )}
                     >
                       <span className="min-w-0 truncate">

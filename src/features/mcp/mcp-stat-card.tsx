@@ -35,7 +35,7 @@ export function McpStatCard({
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground">{label}</p>
           <div className="text-2xl font-bold tracking-tight text-foreground">{value}</div>
-          <p className="text-[11px] text-muted-foreground/80">{subtext}</p>
+          <p className="text-[11px] text-muted-foreground">{subtext}</p>
         </div>
         <div
           className={cn(

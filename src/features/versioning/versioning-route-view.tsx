@@ -21,7 +21,7 @@ export function VersioningRouteView() {
       <div ref={host} className="h-full min-h-0" hidden={mode !== "tab" || !open} />
       {(!open || mode !== "tab") && (
         <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
-          <GitPullRequestIcon className="size-7 text-muted-foreground/50" strokeWidth={1.4} />
+          <GitPullRequestIcon className="size-7 text-muted-foreground" strokeWidth={1.4} />
           <h1 className="text-sm font-medium">Versionierung</h1>
           <p className="max-w-64 text-xs leading-relaxed text-muted-foreground">
             Datenbank-Branches, Sicherungen, Migrationen und Releases.

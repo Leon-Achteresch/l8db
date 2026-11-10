@@ -62,7 +62,7 @@ export function CommandPaletteOption({
           <span className="max-w-full shrink-0 truncate">
             <CommandMatchText text={item.label} query={query} />
           </span>
-          <span className="min-w-0 truncate text-xs text-muted-foreground/70">{item.summary}</span>
+          <span className="min-w-0 truncate text-xs text-muted-foreground">{item.summary}</span>
         </span>
       ) : (
         <span className="relative z-10 flex-1 truncate">

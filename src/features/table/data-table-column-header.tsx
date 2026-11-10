@@ -56,7 +56,7 @@ export function DataTableColumnHeader({
       >
         <MorphIcon
           icon={sorted === "asc" ? ArrowUp : sorted === "desc" ? ArrowDown : ArrowUpDown}
-          className={cn("size-3", !sorted && "text-muted-foreground/45")}
+          className={cn("size-3", !sorted && "text-muted-foreground")}
         />
       </span>
     </button>
@@ -67,7 +67,7 @@ export function DataTableColumnHeader({
       <div className="flex items-center gap-2 w-full min-w-0 justify-start" title={fkTitle}>
         {sortButton}
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          <div className="flex items-center gap-1 font-mono text-[10px] leading-none whitespace-nowrap text-muted-foreground/80 select-none">
+          <div className="flex items-center gap-1 font-mono text-[10px] leading-none whitespace-nowrap text-muted-foreground select-none">
             {renderTypeIcon(typeInfo.iconName, "size-2.5")}
             <span>{typeInfo.label}</span>
           </div>
@@ -85,7 +85,7 @@ export function DataTableColumnHeader({
       >
         <span
           title={typeInfo.label}
-          className="flex shrink-0 items-center text-muted-foreground/60 select-none"
+          className="flex shrink-0 items-center text-muted-foreground select-none"
         >
           {renderTypeIcon(typeInfo.iconName, "size-2.5")}
         </span>

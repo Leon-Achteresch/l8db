@@ -38,7 +38,7 @@ export function CliCommandList({ title, examples }: CliCommandListProps) {
             className="group flex items-center gap-3 px-3 py-[calc(0.25rem+var(--ui-density-step)/2)] transition-colors hover:bg-muted/60"
           >
             <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground/90">
-              <span className="mr-2 text-muted-foreground/60 select-none">$</span>
+              <span className="mr-2 text-muted-foreground select-none">$</span>
               {example.command}
             </code>
             <span className="hidden shrink-0 text-xs text-muted-foreground @min-[34rem]:block">

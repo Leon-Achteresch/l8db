@@ -32,7 +32,7 @@ const LEVELS: { value: LevelFilter; label: string }[] = [
 const RANK: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 };
 
 const TAG: Record<LogLevel, { text: string; className: string }> = {
-  debug: { text: "DEBUG", className: "text-muted-foreground/70" },
+  debug: { text: "DEBUG", className: "text-muted-foreground" },
   info: { text: "INFO", className: "text-muted-foreground" },
   warn: { text: "WARN", className: "text-amber-700 dark:text-amber-400" },
   error: { text: "FEHLER", className: "text-destructive" },

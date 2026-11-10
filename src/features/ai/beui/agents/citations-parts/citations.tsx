@@ -47,7 +47,7 @@ export function Citations({
           aria-hidden="true"
           animate={{ rotate: currentOpen ? 180 : 0 }}
           transition={reduce ? { duration: 0 } : SPRING_SWAP}
-          className="text-muted-foreground/60"
+          className="text-muted-foreground"
         >
           <ChevronDown className="size-3.5" />
         </motion.span>

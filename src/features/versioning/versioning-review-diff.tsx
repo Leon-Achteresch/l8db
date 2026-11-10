@@ -102,10 +102,10 @@ export function VersioningReviewDiff({
                       row.kind === "remove" && "bg-red-500/10",
                     )}
                   >
-                    <td className="w-10 select-none px-1.5 text-right align-top text-muted-foreground/70">
+                    <td className="w-10 select-none px-1.5 text-right align-top text-muted-foreground">
                       {row.old ?? ""}
                     </td>
-                    <td className="relative w-10 select-none px-1.5 text-right align-top text-muted-foreground/70">
+                    <td className="relative w-10 select-none px-1.5 text-right align-top text-muted-foreground">
                       {onComment && line !== null && (
                         <button
                           type="button"

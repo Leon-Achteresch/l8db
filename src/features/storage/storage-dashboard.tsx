@@ -64,7 +64,7 @@ export function StorageDashboard({ connection }: { connection: SavedConnection }
           <div>
             <div className="mb-3 flex items-center gap-2">
               <span className="eyebrow">Objektspeicher</span>
-              <span className="text-muted-foreground/40">/</span>
+              <span className="text-muted-foreground">/</span>
               <span className="text-[11px] text-muted-foreground">{provider.name}</span>
             </div>
             <h1 className="text-3xl font-semibold tracking-[-0.045em]">{connection.name}</h1>
@@ -168,7 +168,7 @@ export function StorageDashboard({ connection }: { connection: SavedConnection }
                 </div>
               ) : (
                 <div className="p-8 text-center">
-                  <ArchiveIcon className="mx-auto mb-3 size-6 text-muted-foreground/50" />
+                  <ArchiveIcon className="mx-auto mb-3 size-6 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">
                     {search ? "Kein passender Bucket gefunden." : "Noch keine Buckets vorhanden."}
                   </p>

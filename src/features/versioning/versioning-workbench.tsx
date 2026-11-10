@@ -96,7 +96,7 @@ export function VersioningWorkbench({
             <VersioningDriftDiff workspace={workspace} drift={drift} />
           ) : changesView ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
-              <GitCompareArrowsIcon className="size-7 text-muted-foreground/40" strokeWidth={1.4} />
+              <GitCompareArrowsIcon className="size-7 text-muted-foreground" strokeWidth={1.4} />
               <p className="text-xs font-medium">
                 {pending ? "Änderung auswählen, um den Unterschied zu sehen" : "Alles committet"}
               </p>

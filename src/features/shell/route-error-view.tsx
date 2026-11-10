@@ -102,7 +102,7 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
             </Button>
           </div>
           {detailsOpen && (
-            <pre className="max-h-56 overflow-auto px-5 pt-1 pb-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground/80">
+            <pre className="max-h-56 overflow-auto px-5 pt-1 pb-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
               {stack ?? message}
             </pre>
           )}

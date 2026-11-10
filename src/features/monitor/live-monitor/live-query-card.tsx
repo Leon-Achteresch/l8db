@@ -26,7 +26,7 @@ export function LiveQueryCard({
     <div className="max-h-72 overflow-auto rounded-lg border bg-muted/30 py-2 font-mono text-xs leading-5">
       {lines.map((line, index) => (
         <div key={`${index}-${line}`} className="flex">
-          <span className="w-8 shrink-0 pr-3 text-right text-muted-foreground/70 select-none">
+          <span className="w-8 shrink-0 pr-3 text-right text-muted-foreground select-none">
             {index + 1}
           </span>
           <span className="whitespace-pre pr-3">

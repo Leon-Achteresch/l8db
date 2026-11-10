@@ -80,7 +80,7 @@ export function ResultCompareDetail({
                     {column}
                   </th>
                   <td className="px-2 py-1 font-mono text-[11px] break-all whitespace-pre-wrap">
-                    {before ?? <span className="text-muted-foreground/60">–</span>}
+                    {before ?? <span className="text-muted-foreground">–</span>}
                   </td>
                   <td
                     className={cn(
@@ -88,7 +88,7 @@ export function ResultCompareDetail({
                       changed && "text-foreground",
                     )}
                   >
-                    {after ?? <span className="text-muted-foreground/60">–</span>}
+                    {after ?? <span className="text-muted-foreground">–</span>}
                   </td>
                 </tr>
               );

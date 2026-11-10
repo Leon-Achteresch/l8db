@@ -50,7 +50,7 @@ export function VersioningPipelineStages({
         const state = tone(stage);
         return (
           <Fragment key={stage.stage}>
-            <ChevronRightIcon aria-hidden className="size-3.5 text-muted-foreground/60" />
+            <ChevronRightIcon aria-hidden className="size-3.5 text-muted-foreground" />
             <li
               className={cn(
                 "flex h-8 items-center gap-2 rounded-lg border px-2.5 text-xs",

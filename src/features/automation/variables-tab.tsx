@@ -335,9 +335,7 @@ export function VariablesTab({ task, issues, onChange }: Props) {
                             }
                             title={isDefault ? "Standard-Umgebung" : "Als Standard festlegen"}
                             onClick={() => onChange({ defaultEnvironment: env.name })}
-                            className={cn(
-                              isDefault ? "text-amber-500" : "text-muted-foreground/60",
-                            )}
+                            className={cn(isDefault ? "text-amber-500" : "text-muted-foreground")}
                           >
                             <StarIcon className={cn(isDefault && "fill-current")} />
                           </Button>
@@ -347,7 +345,7 @@ export function VariablesTab({ task, issues, onChange }: Props) {
                             size="icon-xs"
                             aria-label={`Umgebung ${env.name} entfernen`}
                             onClick={() => removeEnvironment(envIndex)}
-                            className="text-muted-foreground/60 hover:text-destructive"
+                            className="text-muted-foreground hover:text-destructive"
                           >
                             <Trash2Icon />
                           </Button>

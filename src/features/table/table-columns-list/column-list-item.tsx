@@ -54,7 +54,7 @@ export function ColumnListItem({
       {editing && kind ? (
         <>
           <div className="flex items-center gap-2">
-            <span className="w-5 text-right text-xs font-semibold text-muted-foreground/60 tabular-nums">
+            <span className="w-5 text-right text-xs font-semibold text-muted-foreground tabular-nums">
               {column.ordinal_position}
             </span>
             <Input
@@ -111,7 +111,7 @@ export function ColumnListItem({
       ) : (
         <>
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="w-5 shrink-0 text-right text-xs font-semibold text-muted-foreground/60 tabular-nums">
+            <span className="w-5 shrink-0 text-right text-xs font-semibold text-muted-foreground tabular-nums">
               {column.ordinal_position}
             </span>
             <IconComponent
@@ -139,7 +139,7 @@ export function ColumnListItem({
             {dataType}
           </span>
           <span
-            className={`text-xs ${column.is_nullable ? "text-muted-foreground/60" : "text-foreground/90"}`}
+            className={`text-xs ${column.is_nullable ? "text-muted-foreground" : "text-foreground/90"}`}
           >
             {column.is_nullable ? "Erlaubt" : "Pflicht"}
           </span>

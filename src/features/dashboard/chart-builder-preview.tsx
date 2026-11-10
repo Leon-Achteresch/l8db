@@ -86,7 +86,7 @@ export function ChartBuilderPreview({
         <div className="min-h-0 flex-1">
           {noSource ? (
             <div className="grid h-full min-h-48 place-content-center justify-items-center gap-3 px-6 text-center">
-              <ChartColumnIcon className="size-8 text-muted-foreground/50" />
+              <ChartColumnIcon className="size-8 text-muted-foreground" />
               <p className="max-w-56 text-xs leading-relaxed text-muted-foreground">
                 Wähle eine Datenquelle. Deine Vorschau entsteht aus den Feldern, die du zuweist.
               </p>
