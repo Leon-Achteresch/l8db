@@ -67,6 +67,7 @@ fn set_memory_target(window: &tauri::Window, low: bool) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    desktop::mark_process_start();
     if std::env::args().nth(1).as_deref() == Some("--mcp-sandbox") {
         std::process::exit(mcp::sandbox());
     }
@@ -125,10 +126,12 @@ pub fn run() {
     }
     builder
         .setup(move |app| {
+            desktop::mark_window_created();
             desktop::install_logger(app.handle())?;
             windows::install_quick_menu(app.handle());
             windows::handle_args(app.handle(), &args, false);
             automation::init(app.handle());
+            desktop::mark_setup_finished();
             Ok(())
         })
         .plugin(
@@ -245,6 +248,7 @@ pub fn run() {
             ai::knowledge::ai_knowledge_get,
             ai::knowledge::ai_knowledge_set,
             desktop::set_crash_reporting,
+            desktop::report_startup,
             automation::automation_sync_connections,
             automation::automation_list_tasks,
             automation::automation_get_task,

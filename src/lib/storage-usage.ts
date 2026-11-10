@@ -23,6 +23,7 @@ const LABELS: Record<string, string> = {
   "l8db.export-templates": "Exportvorlagen",
   "l8db.views": "Ansichten",
   "l8db.ai": "KI",
+  "l8db.boot": "Startansicht",
   "l8db-dashboards": "Dashboards",
 };
 

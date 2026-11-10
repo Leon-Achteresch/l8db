@@ -263,8 +263,6 @@ pub fn install_quick_menu<R: Runtime>(app: &AppHandle<R>) {
         dock::install(Box::new(move || request_quit(&app)));
         dock::rebuild(&[]);
     }
-    #[cfg(windows)]
-    jump_list::rebuild(&[]);
     #[cfg(not(target_os = "macos"))]
     let _ = app;
 }

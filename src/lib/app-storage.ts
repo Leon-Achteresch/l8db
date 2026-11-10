@@ -6,7 +6,7 @@ export const STORAGE_CHANGED_KEY = "l8db.storage.changed";
 export const STORAGE_MIGRATED_KEY = "l8db.storage.migrated";
 export const STORAGE_FALLBACK_KEY = "l8db.storage.fallback";
 export const STORAGE_BACKUP_PREFIX = "l8db.storage.backup:";
-export const MIRRORED_KEYS = new Set(["l8db.connections", "l8db.settings"]);
+export const MIRRORED_KEYS = new Set(["l8db.connections", "l8db.settings", "l8db.boot"]);
 const INTERNAL_KEYS = new Set([STORAGE_CHANGED_KEY, STORAGE_MIGRATED_KEY]);
 
 export type StorageMode = "indexeddb" | "localstorage" | "failed";

@@ -78,6 +78,12 @@ Keep checks fast: run only what the change can break, once at the end, not after
 - `src/features/shell/` — app chrome (`app-layout`, `table-tabs`, `app-header`, `transaction-panel`).
 - `src/components/ui/` — shared shadcn primitives only.
 
+## Startup
+
+- `index.html` paints the boot shell (`.boot-shell`: inline CSS plus a theme script reading the `l8db.boot` cache written by `src/lib/boot-paint.ts`) before any bundle loads; `StartupView` renders the same markup. React replaces it with the first complete commit, so `router.load()` runs before `root.render`.
+- `src/main.tsx` only initializes storage and then imports `src/bootstrap.tsx`. Everything `main.tsx` imports statically runs before storage is ready, so keep it minimal. `vite.config.ts` bundles the static imports of `bootstrap.tsx` into the preloaded `startup*` chunks (the shell routes are not code-split) and `src/lib/background-services.ts` into one deferred chunk; `tests/perf-bundle.test.ts` guards both.
+- `L8DB_STARTUP_PROBE=1` makes the app log `startup: native … ms, shell … ms, app … ms` and exit after the first complete render. See `docs/performance.md`.
+
 ## UI design
 
 - Few borders: structure with spacing, typography, and subtle background tints (`bg-muted/40`) instead of outlines, dividers, and cards.

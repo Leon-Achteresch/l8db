@@ -148,7 +148,7 @@ Messwerte vom 29.10.2026 (Apple M3, 16 GB, macOS 27.0.1 arm64; Bun 1.4.3 und Bun
   - Script je Frame 1,50 ms, vor dem Feature 1,48 ms. Die Basis streut zwischen 1,44 und 1,57 ms.
   - Solange jede Zelle die Plugin-Hooks hatte, lag die Script-Zeit im selben Lauf 4–6 % darüber. Der Cache je Zeile hat das behoben.
 - **Modulgraph:** Vom Datengrid aus sind 436 Module erreichbar, mit dynamischen Imports und ohne Router. Den Plugin-Host, den Erweiterungs-Host und die Einstellungen erreicht es nicht. Der Scan dauert 25 ms. Die statischen Importe beider Shell-Layouts umfassen 524 Module ohne Registry, Validatoren, Guard, Host und Compiler.
-- **Startpaket** (`tests/perf-bundle.test.ts`, Budget 1.800.000 Byte):
+- **Startpaket** (`tests/perf-bundle.test.ts`, damals Budget 1.800.000 Byte für Einstieg und Shell-Layouts; seit 2026-11-10 misst der Test das gesamte vorgeladene Startpaket, siehe `docs/performance.md`):
   - Vor dem Feature: 1.806.831 Byte. Das Budget war damit schon überschritten.
   - Erste Fassung des Features: 1.836.281 Byte. Der Store zog Registry, Validatoren und Guard in die Shell.
   - Nach der Trennung von Store und Host: 1.818.483 Byte.

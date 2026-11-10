@@ -12,9 +12,14 @@ const READY_BUDGET_MS = Number(process.env.L8DB_STARTUP_READY_MS ?? 2000);
 const FRAME_BUDGET_MS = Number(process.env.L8DB_STARTUP_FRAME_MS ?? 50);
 const SCRIPT_BUDGET_BYTES = Number(process.env.L8DB_STARTUP_SCRIPT_BYTES ?? 2_200_000);
 const INVOKE_BUDGET = Number(process.env.L8DB_STARTUP_INVOKES ?? 40);
+const PAINT_BUDGET_MS = Number(process.env.L8DB_STARTUP_PAINT_MS ?? 150);
+const FILE_BUDGET = Number(process.env.L8DB_STARTUP_FILES ?? 16);
 
 type Sample = {
   fcp: number;
+  app: number;
+  blank: number;
+  files: number;
   ready: number;
   firstViewWorst: number;
   afterReadyWorst: number;
@@ -35,6 +40,7 @@ type StartupWindow = {
   __startupTasks: Array<{ at: number; duration: number }>;
   __startupInvokes: Array<{ at: number; command: string }>;
   __startupCommits: number[];
+  __startupView: { blankAt?: number; blank: number; app?: number };
 };
 
 async function measure(browser: Browser, port: number): Promise<Sample> {
@@ -56,6 +62,21 @@ async function measure(browser: Browser, port: number): Promise<Sample> {
       state.__startupTasks = [];
       state.__startupInvokes = [];
       state.__startupCommits = [];
+      state.__startupView = { blank: 0 };
+      new MutationObserver(() => {
+        const root = document.getElementById("root");
+        const view = state.__startupView;
+        if (!root || view.app !== undefined) return;
+        const now = performance.now();
+        if (root.querySelector("[data-slot=sidebar]")) {
+          view.app = now;
+          if (view.blankAt !== undefined) view.blank += now - view.blankAt;
+        } else if (!root.firstElementChild) view.blankAt ??= now;
+        else if (view.blankAt !== undefined) {
+          view.blank += now - view.blankAt;
+          view.blankAt = undefined;
+        }
+      }).observe(document, { childList: true, subtree: true });
       const invoke = state.__TAURI_INTERNALS__.invoke;
       state.__TAURI_INTERNALS__.invoke = (command, ...rest) => {
         state.__startupInvokes.push({ at: performance.now(), command });
@@ -84,8 +105,10 @@ async function measure(browser: Browser, port: number): Promise<Sample> {
           state.__startupTasks.push({ at: entry.startTime, duration: entry.duration });
       }).observe({ type: "longtask", buffered: true });
     });
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(RATE) });
+    if (RATE > 1) {
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(RATE) });
+    }
     await page.goto(`http://localhost:${port}/`);
     await page.waitForSelector('a[data-name="table_0000"]', { timeout: 60000 });
     const readyAt = await page.evaluate(() => performance.now());
@@ -102,6 +125,14 @@ async function measure(browser: Browser, port: number): Promise<Sample> {
         );
       return {
         fcp: performance.getEntriesByName("first-contentful-paint")[0]?.startTime ?? Number.NaN,
+        app: state.__startupView.app ?? Number.NaN,
+        blank: state.__startupView.blank,
+        files: performance
+          .getEntriesByType("resource")
+          .filter(
+            (entry) =>
+              entry.startTime < readyAt && /\.(?:js|css)$/.test(new URL(entry.name).pathname),
+          ).length,
         ready: readyAt,
         firstViewWorst: Math.max(
           0,
@@ -160,10 +191,10 @@ test.skipIf(!ENABLED)(
       const counts = new Map<string, number>();
       for (const command of invokes) counts.set(command, (counts.get(command) ?? 0) + 1);
       console.log(
-        `startup-perf ${RATE}× (Median aus ${RUNS}): FCP ${pick("fcp").toFixed(0)} ms, nutzbar nach ${pick("ready").toFixed(0)} ms, Long-Tasks bis dahin ${pick("bootTaskTotal").toFixed(0)} ms, schlimmster Frame ${pick("firstViewWorst").toFixed(0)} ms, danach ${pick("afterReadyWorst").toFixed(0)} ms und längster Task ${pick("afterReadyTaskWorst").toFixed(0)} ms`,
+        `startup-perf ${RATE}× (Median aus ${RUNS}): FCP ${pick("fcp").toFixed(0)} ms, App sichtbar nach ${pick("app").toFixed(0)} ms (leer ${pick("blank").toFixed(0)} ms), nutzbar nach ${pick("ready").toFixed(0)} ms, Long-Tasks bis dahin ${pick("bootTaskTotal").toFixed(0)} ms, schlimmster Frame ${pick("firstViewWorst").toFixed(0)} ms, danach ${pick("afterReadyWorst").toFixed(0)} ms und längster Task ${pick("afterReadyTaskWorst").toFixed(0)} ms`,
       );
       console.log(
-        `startup-perf bis nutzbar: ${(pick("scriptBytes") / 1_000_000).toFixed(2)} MB JS in ${pick("scripts")} Chunks, ${invokes.length} invoke()-Aufrufe, ${pick("commits")} React-Commits`,
+        `startup-perf bis nutzbar: ${(pick("scriptBytes") / 1_000_000).toFixed(2)} MB JS in ${pick("scripts")} Chunks, ${pick("files")} Dateien, ${invokes.length} invoke()-Aufrufe, ${pick("commits")} React-Commits`,
       );
       console.log(
         `startup-perf invokes: ${[...counts].map(([command, count]) => `${command}×${count}`).join(", ")}`,
@@ -171,6 +202,9 @@ test.skipIf(!ENABLED)(
       console.log(
         `startup-perf größte Chunks: ${samples[0].largest.slice(0, Number(process.env.L8DB_STARTUP_TOP ?? 8)).join(", ")}`,
       );
+      expect(pick("fcp")).toBeLessThanOrEqual(PAINT_BUDGET_MS);
+      expect(pick("blank")).toBe(0);
+      expect(pick("files")).toBeLessThanOrEqual(FILE_BUDGET);
       expect(pick("ready")).toBeLessThanOrEqual(READY_BUDGET_MS);
       expect(pick("afterReadyWorst")).toBeLessThanOrEqual(FRAME_BUDGET_MS);
       expect(pick("afterReadyTaskWorst")).toBeLessThanOrEqual(FRAME_BUDGET_MS);

@@ -3,9 +3,12 @@ import { expect, mock, test } from "bun:test";
 const storage = new Map<string, string>();
 const keychain = new Map([["new", "s3cret"]]);
 
+const desktop = { enabled: false, invokes: [] as string[], pagehide: new Set<() => void>() };
+
 mock.module("@tauri-apps/api/core", () => ({
-  isTauri: () => false,
+  isTauri: () => desktop.enabled,
   invoke: async (command: string, args: Record<string, unknown>) => {
+    desktop.invokes.push(command);
     if (command === "load_secret") return keychain.get(String(args.account)) ?? null;
     return null;
   },
@@ -24,7 +27,12 @@ Object.defineProperty(globalThis, "window", {
       setItem: (key: string, value: string) => storage.set(key, value),
       removeItem: (key: string) => storage.delete(key),
     },
-    addEventListener: () => {},
+    addEventListener: (type: string, listener: () => void) => {
+      if (type === "pagehide") desktop.pagehide.add(listener);
+    },
+    removeEventListener: (type: string, listener: () => void) => {
+      if (type === "pagehide") desktop.pagehide.delete(listener);
+    },
   },
 });
 Object.defineProperty(globalThis, "localStorage", {
@@ -36,7 +44,7 @@ const { useConnectionsStore, syncConnectionsFromStorage } = await import(
   "../src/lib/connections/store"
 );
 const { mergeWindowTabs } = await import("../src/lib/table-tabs");
-const { dockEntries } = await import("../src/lib/window-integration");
+const { dockEntries, initWindowIntegration } = await import("../src/lib/window-integration");
 
 const base = { kind: "postgres" as const, sslMode: "disable" as const, ssh: null };
 
@@ -103,6 +111,43 @@ test("dock lists recent connections first, then the rest by name", () => {
     { id: "a", name: "A" },
     { id: "b", name: "B" },
   ]);
+});
+
+test("dock updates stay off the startup path and collapse 1,000 store changes into one call", async () => {
+  const connections = Array.from({ length: 500 }, (_, index) => ({
+    ...base,
+    id: `dock-${index}`,
+    name: `Dock ${index}`,
+    connectionString: "",
+  }));
+  useConnectionsStore.setState({ connections, recentIds: [], activeId: "dock-0" });
+  desktop.enabled = true;
+  desktop.invokes.length = 0;
+  const dispose = initWindowIntegration(20);
+  const count = (command: string) => desktop.invokes.filter((name) => name === command).length;
+  try {
+    expect(count("set_window_connection")).toBe(1);
+    expect(count("set_dock_recents")).toBe(0);
+    for (let index = 0; index < 1000; index++)
+      useConnectionsStore.setState({ recentIds: [`dock-${index % 500}`] });
+    expect(count("set_dock_recents")).toBe(0);
+    await Bun.sleep(60);
+    expect(count("set_dock_recents")).toBe(1);
+    await Bun.sleep(60);
+    expect(count("set_dock_recents")).toBe(1);
+    useConnectionsStore.setState({ recentIds: ["dock-7"] });
+    expect(count("set_dock_recents")).toBe(1);
+    for (const listener of desktop.pagehide) listener();
+    expect(count("set_dock_recents")).toBe(2);
+    useConnectionsStore.setState({ recentIds: ["dock-8"] });
+    dispose();
+    expect(desktop.pagehide.size).toBe(0);
+    await Bun.sleep(60);
+    expect(count("set_dock_recents")).toBe(2);
+  } finally {
+    dispose();
+    desktop.enabled = false;
+  }
 });
 
 test("tab sync keeps this window's own connection tabs", () => {
