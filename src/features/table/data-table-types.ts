@@ -16,6 +16,7 @@ export type EditingCell = {
   columnId: string;
   value: string;
   originalValues: Record<string, unknown>;
+  typed?: boolean;
 };
 
 export type InspectCell = {

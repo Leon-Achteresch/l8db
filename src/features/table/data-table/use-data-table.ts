@@ -250,6 +250,7 @@ export function useDataTable(props: DataTableProps) {
     infinite ? undefined : onPageChange,
   );
   useGridKeyboard({
+    rootRef,
     activeCell,
     setActiveCell,
     setSelectionAnchor,
@@ -262,7 +263,6 @@ export function useDataTable(props: DataTableProps) {
     onSaveRow,
     handleCellEdit,
     focusCell,
-    copySelection,
     selectedCount,
     rowVirtualizer,
     scrollRef,

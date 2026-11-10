@@ -151,7 +151,11 @@ export const DataTableCell = memo(function DataTableCell({
   return (
     <td
       onMouseDown={(event) => {
-        if (event.shiftKey || event.ctrlKey || event.metaKey) event.preventDefault();
+        if (!(event.shiftKey || event.ctrlKey || event.metaKey)) return;
+        event.preventDefault();
+        event.currentTarget
+          .closest<HTMLElement>("[data-grid-scroll]")
+          ?.focus({ preventScroll: true });
       }}
       onClick={(event) => {
         if (cellIndex === 0) {

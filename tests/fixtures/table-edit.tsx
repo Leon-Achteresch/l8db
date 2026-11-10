@@ -22,20 +22,27 @@ useConnectionsStore.setState({
 
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
+const readonly = new URLSearchParams(location.search).has("readonly");
+
 function App() {
   const [rows, setRows] = useState(() =>
-    Array.from({ length: 12 }, (_, i) => ({
-      __ctid__: `(0,${i + 1})`,
-      id: String(i + 1),
-      email: `user${i + 1}@example.test`,
-      city: ["Berlin", "Hamburg", "Köln"][i % 3],
-    })),
+    Array.from(
+      { length: Number(new URLSearchParams(location.search).get("rows") ?? 12) },
+      (_, i) => ({
+        __ctid__: `(0,${i + 1})`,
+        id: String(i + 1),
+        email: `user${i + 1}@example.test`,
+        city: ["Berlin", "Hamburg", "Köln"][i % 3],
+        ...(readonly ? { created: `2026-01-${String((i % 28) + 1).padStart(2, "0")}` } : {}),
+      }),
+    ),
   );
   return (
     <div style={{ height: "100dvh", padding: 16, display: "flex", flexDirection: "column" }}>
       <DataTable
         className="h-full min-h-0 flex-1"
-        columns={["id", "email", "city"]}
+        columns={readonly ? ["id", "email", "city", "created"] : ["id", "email", "city"]}
+        canEditCell={readonly ? (_row, column) => column !== "created" : undefined}
         data={rows}
         emptyMessage="Keine Daten"
         sorting={[]}

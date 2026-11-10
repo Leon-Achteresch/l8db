@@ -63,7 +63,7 @@ export function useCellEditing({
   );
 
   const handleSaveCell = useCallback(async () => {
-    if (!editingCell || !onSaveRow || isSaving) return;
+    if (!editingCell || !onSaveRow || isSaving) return false;
     const ok = await saveCellValue(
       editingCell.ctid,
       editingCell.columnId,
@@ -71,13 +71,14 @@ export function useCellEditing({
       cellEditCommitValue(editingCell, emptyEditValue),
     );
     if (ok) setEditingCell(null);
+    return ok;
   }, [editingCell, onSaveRow, isSaving, saveCellValue, emptyEditValue]);
   const handleSaveCellRef = useRef(handleSaveCell);
   handleSaveCellRef.current = handleSaveCell;
   const commitEditingCell = useCallback(() => void handleSaveCellRef.current(), []);
 
   const handleCellEdit = useCallback(
-    (row: Row<TableRow>, columnId: string) => {
+    (row: Row<TableRow>, columnId: string, initial?: string) => {
       const ctid = row.original.__ctid__ as string | undefined;
       if (!ctid || (canEditCell && !canEditCell(row.original, columnId))) return;
       const val = row.original[columnId];
@@ -91,7 +92,9 @@ export function useCellEditing({
         return;
       }
       let value: string;
-      if (val === null || val === undefined) {
+      if (initial !== undefined) {
+        value = initial;
+      } else if (val === null || val === undefined) {
         value = "";
       } else if (typeof val === "object") {
         value = JSON.stringify(val);
@@ -104,8 +107,9 @@ export function useCellEditing({
         columnId,
         value,
         originalValues: { ...row.original },
+        typed: initial !== undefined,
       });
-      setActiveCell(null);
+      setActiveCell({ rowIndex: row.index, columnId });
     },
     [canEditCell, setActiveCell, setInspectCell],
   );
