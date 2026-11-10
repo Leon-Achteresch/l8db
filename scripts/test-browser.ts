@@ -4,6 +4,7 @@ import { createServer } from "vite";
 const files = [
   "table-edit",
   "table-state",
+  "grid-keyboard",
   "query-workspace",
   "editor-ai-chat",
   "qol",
