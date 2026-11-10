@@ -10,6 +10,7 @@ import { isEasyModeTabVisible } from "@/lib/easy-mode";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { emitHotkeyAction, HOTKEY_ACTION_EVENT, useHotkeysStore } from "@/lib/hotkeys";
+import { cycleFocusRegion, focusRegionByName, installFocusRescue } from "@/lib/keyboard-nav";
 import { useRefreshConnection } from "@/lib/queries";
 import { UI_SCALE_STEP, useSettingsStore } from "@/lib/settings";
 import { isSplitShown, standaloneTabs, tabAfterClose, useSplitView } from "@/lib/split-view";
@@ -208,6 +209,10 @@ export function AppHotkeys() {
           toast.error(`Fenster konnte nicht geöffnet werden: ${String(error)}`),
         ),
     },
+    { id: "focus.nextRegion", action: () => cycleFocusRegion(1) },
+    { id: "focus.prevRegion", action: () => cycleFocusRegion(-1) },
+    { id: "focus.sidebar", relay: true, action: () => emitHotkeyAction("focus.sidebar") },
+    { id: "focus.content", action: () => focusRegionByName("content") },
     { id: "view.zoomIn", action: () => zoom(UI_SCALE_STEP) },
     { id: "view.zoomOut", action: () => zoom(-UI_SCALE_STEP) },
     { id: "view.zoomReset", action: () => zoom(null) },
@@ -265,6 +270,8 @@ export function AppHotkeys() {
     window.addEventListener(HOTKEY_ACTION_EVENT, listener);
     return () => window.removeEventListener(HOTKEY_ACTION_EVENT, listener);
   }, [run]);
+
+  useEffect(installFocusRescue, []);
 
   useEffect(() => {
     const unlisten = listen<string>("menu-action", (event) =>

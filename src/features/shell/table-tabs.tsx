@@ -27,6 +27,7 @@ import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility"
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
 import { onHotkeyAction } from "@/lib/hotkeys";
+import { tabListKeyDown } from "@/lib/keyboard-nav";
 import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 import { useSettingsStore } from "@/lib/settings";
 import type { SplitEdge } from "@/lib/split-layout";
@@ -251,7 +252,13 @@ export function TableTabs() {
           aria-label="Geöffnete Objekte"
           className="no-scrollbar min-w-0 overflow-x-auto py-1"
         >
-          <div ref={trackRef} className="relative flex w-max items-center gap-1 px-1">
+          <div
+            ref={trackRef}
+            role="tablist"
+            aria-orientation="horizontal"
+            onKeyDown={tabListKeyDown}
+            className="relative flex w-max items-center gap-1 px-1"
+          >
             {tabs.map((tab, index) => {
               const group = tabGroups?.[allTabs.indexOf(tab)];
               const previous =
