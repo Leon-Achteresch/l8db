@@ -227,7 +227,47 @@ test.skipIf(!enabled)(
       await row("print n").dispatchEvent("click");
       await page.getByText("24", { exact: true }).first().waitFor();
       await row("show errors").dispatchEvent("click");
-      await page.getByText(/PLS-00201/).first().waitFor();
+      await page
+        .getByText(/PLS-00201/)
+        .first()
+        .waitFor();
+    });
+  },
+  180_000,
+);
+
+test.skipIf(!enabled)(
+  "a block shows its complete DBMS_OUTPUT in the result tab without switching anything on",
+  async () => {
+    await withPage("dbms-output", async (page) => {
+      const run = async (sql: string) => {
+        await page.locator(".monaco-editor .view-lines").first().click({ timeout: 20_000 });
+        await page.keyboard.press("ControlOrMeta+a");
+        await page.keyboard.insertText(sql);
+        await page.keyboard.press("ControlOrMeta+Enter");
+      };
+      const output = page.getByRole("tab", { name: /DBMS Output/ });
+      expect(await output.count()).toBe(0);
+      await run(
+        "BEGIN FOR i IN 1 .. 4500 LOOP DBMS_OUTPUT.PUT_LINE('Zeile ' || i); END LOOP; END;",
+      );
+      await output.waitFor({ timeout: 60_000 });
+      expect(await output.getAttribute("aria-selected")).toBe("true");
+      expect(await output.innerText()).toContain("4.500");
+      await page.getByText("Zeile 4500", { exact: true }).waitFor();
+      expect(await page.getByRole("log").locator("[data-index]").count()).toBeLessThan(200);
+      await page.screenshot({ path: "test-artifacts/oracle-ui/sqlplus-dbms-output.png" });
+      await page.getByRole("log").evaluate((node) => node.scrollTo({ top: 0 }));
+      await page.getByText("Zeile 1", { exact: true }).waitFor();
+      await run("SELECT 4711 AS probe FROM dual");
+      await page
+        .getByRole("tab", { name: "Ergebnis", selected: true })
+        .waitFor({ timeout: 60_000 });
+      await page.getByText("PROBE", { exact: true }).first().waitFor();
+      expect(await output.innerText()).toContain("4.500");
+      for (const txId of (await bridge("list_transactions", {})) as string[])
+        await bridge("rollback_transaction", { txId });
+      await page.screenshot({ path: "test-artifacts/oracle-ui/sqlplus-dbms-output-result.png" });
     });
   },
   180_000,

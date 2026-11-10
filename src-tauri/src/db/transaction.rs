@@ -1605,6 +1605,16 @@ mod tests {
             .collect();
         assert_eq!(lines, [("OUTPUT", "eins"), ("OUTPUT", "zwei")]);
         assert!(tx.server_output(&id).await.unwrap().is_empty());
+        tx.execute(
+            &id,
+            "BEGIN FOR i IN 1 .. 4500 LOOP DBMS_OUTPUT.PUT_LINE('Zeile ' || i); END LOOP; END;",
+        )
+        .await
+        .unwrap();
+        let output = tx.server_output(&id).await.unwrap();
+        assert_eq!(output.len(), 4500);
+        assert_eq!(output[4499].message, "Zeile 4500");
+        assert!(tx.server_output(&id).await.unwrap().is_empty());
         tx.rollback(&id).await.unwrap();
     }
 

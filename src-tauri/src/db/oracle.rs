@@ -875,26 +875,44 @@ pub(crate) fn script_items(sql: &str) -> Vec<(bool, String)> {
     sql::split_items(sql)
 }
 
-const MAX_OUTPUT_LINES: i64 = 2000;
+const OUTPUT_BATCH: i64 = 2000;
+const MAX_OUTPUT_LINES: usize = 100_000;
 
 const READ_OUTPUT: &str = "DECLARE l_lines DBMS_OUTPUT.CHARARR; l_count INTEGER := :count; l_out CLOB; BEGIN DBMS_OUTPUT.GET_LINES(l_lines, l_count); IF l_count > 0 THEN DBMS_LOB.CREATETEMPORARY(l_out, TRUE); FOR i IN 1 .. l_count LOOP IF l_lines(i) IS NOT NULL THEN DBMS_LOB.WRITEAPPEND(l_out, LENGTH(l_lines(i)), l_lines(i)); END IF; DBMS_LOB.WRITEAPPEND(l_out, 1, CHR(10)); END LOOP; END IF; :text := l_out; :count := l_count; END;";
 
 pub(crate) fn read_output(c: &Connection) -> Result<Vec<String>, String> {
-    let mut stmt = c.statement(READ_OUTPUT).build().map_err(map_err)?;
-    stmt.execute_named(&[("text", &OracleType::CLOB), ("count", &MAX_OUTPUT_LINES)])
-        .map_err(map_err)?;
-    let count: i64 = stmt.bind_value("count").map_err(map_err)?;
-    if count <= 0 {
-        return Ok(Vec::new());
+    let mut lines = Vec::new();
+    loop {
+        let mut stmt = c.statement(READ_OUTPUT).build().map_err(map_err)?;
+        stmt.execute_named(&[("text", &OracleType::CLOB), ("count", &OUTPUT_BATCH)])
+            .map_err(map_err)?;
+        let count: i64 = stmt.bind_value("count").map_err(map_err)?;
+        if count <= 0 {
+            return Ok(lines);
+        }
+        if lines.len() >= MAX_OUTPUT_LINES {
+            c.execute(
+                "BEGIN DBMS_OUTPUT.DISABLE; DBMS_OUTPUT.ENABLE(NULL); END;",
+                &[],
+            )
+            .map_err(map_err)?;
+            lines.push(format!(
+                "… Grenze von {MAX_OUTPUT_LINES} Zeilen erreicht, weitere Ausgabe verworfen."
+            ));
+            return Ok(lines);
+        }
+        let text: Option<String> = stmt.bind_value("text").map_err(map_err)?;
+        let text = text.unwrap_or_default();
+        lines.extend(
+            text.strip_suffix('\n')
+                .unwrap_or(&text)
+                .split('\n')
+                .map(str::to_string),
+        );
+        if count < OUTPUT_BATCH {
+            return Ok(lines);
+        }
     }
-    let text: Option<String> = stmt.bind_value("text").map_err(map_err)?;
-    let text = text.unwrap_or_default();
-    Ok(text
-        .strip_suffix('\n')
-        .unwrap_or(&text)
-        .split('\n')
-        .map(str::to_string)
-        .collect())
 }
 
 fn cell_json(row: &Row, index: usize, kind: &OracleType) -> serde_json::Value {

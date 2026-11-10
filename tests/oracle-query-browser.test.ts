@@ -119,25 +119,24 @@ test.skipIf(!enabled)(
 
       await run(page, "BEGIN ui_out; END;");
       await page.getByRole("button", { name: "SQL-Transaktion committen" }).click();
-      await page.getByRole("button", { name: "Server-Ausgabe umschalten" }).click();
-      await page.locator("li:not([data-sonner-toast])", { hasText: "PLW-07203" }).waitFor();
-      await page.getByRole("switch", { name: "Aktiv" }).click();
-      await page.waitForFunction(
-        () => document.querySelector('[role="switch"][aria-checked="true"]') !== null,
-      );
-      await page.keyboard.press("Escape");
-      await run(page, "BEGIN ui_out; END;");
-      await page.getByRole("button", { name: "SQL-Transaktion committen" }).click();
-      await page.getByRole("button", { name: "Server-Ausgabe umschalten" }).click();
-      await page.getByText("Hallo aus UI_OUT", { exact: true }).waitFor();
-      await page.getByText("Zweite Zeile", { exact: true }).waitFor();
-      const active = page.getByRole("switch", { name: "Aktiv" });
-      await active.click();
+      await page.getByRole("tab", { name: /DBMS Output/, selected: true }).waitFor();
+      const log = page.getByRole("log");
+      await log.getByText("Hallo aus UI_OUT", { exact: true }).waitFor();
+      await log.getByText("Zweite Zeile", { exact: true }).waitFor();
+      await log
+        .getByText(/PLW-07203/)
+        .first()
+        .waitFor();
+      await page.getByRole("switch", { name: "Ausgabe aktiv" }).click();
       await page.waitForFunction(
         () => document.querySelector('[role="switch"][aria-checked="false"]') !== null,
       );
-      await page.keyboard.press("Escape");
-
+      await page.getByRole("tab", { name: "Ergebnis" }).click();
+      const kept = await page.getByRole("tab", { name: /DBMS Output/ }).innerText();
+      await run(page, "BEGIN ui_out; END;");
+      await page.getByRole("button", { name: "SQL-Transaktion committen" }).click();
+      await page.getByRole("tab", { name: "Ergebnis", selected: true }).waitFor();
+      expect(await page.getByRole("tab", { name: /DBMS Output/ }).innerText()).toBe(kept);
       await setSql(
         page,
         "SELECT d.dummy FROM dual d JOIN sys.dual s ON 1 = 1 JOIN all_objects o ON 1 = 0",

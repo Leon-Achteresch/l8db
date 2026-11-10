@@ -15,6 +15,7 @@ import { invalidateAfterSql } from "@/lib/query-client";
 import { beginQueryCompletion } from "@/lib/query-completion";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { viewableSelect } from "@/lib/query-result-view";
+import { enableOracleOutput } from "@/lib/server-output";
 import { locateText } from "@/lib/sql-diagnostics";
 import { runsOneStatementPerCall, splitSqlStatements } from "@/lib/sql-statements";
 import {
@@ -44,7 +45,7 @@ interface UseRunSqlParams {
   cursor: EditorCursorState;
   markQueryTabExecuted: (tabId: string, sql: string) => void;
   setEditorFocus: (focus: boolean) => void;
-  collectOutput: () => Promise<void>;
+  collectOutput: (reveal?: boolean) => Promise<void>;
   runMultiStatement: (text: string) => Promise<void>;
   askVariables: AskVariables;
   confirmPreview: (sql: string, bound?: boolean) => Promise<boolean>;
@@ -173,6 +174,7 @@ export function useRunSql({
       };
       const setResult = (res: QueryResult | null) => setResultState(withCreateNotice(res, sql));
       let executionStarted = false;
+      let revealOutput = false;
       let finishNotification: ReturnType<typeof beginQueryCompletion> | undefined;
       try {
         await confirmSqlExecution(
@@ -182,6 +184,12 @@ export function useRunSql({
           database ?? undefined,
         );
         executionStarted = true;
+        await enableOracleOutput(
+          connection.kind,
+          effectiveConnectionString(connection),
+          connection.id,
+          database ?? undefined,
+        );
         finishEvent = beginQueryEvent(sql, connection.kind);
         finishNotification = beginQueryCompletion();
         const res = await executeSqlWithTransactions({
@@ -202,6 +210,7 @@ export function useRunSql({
           !bound && res.columns.length > 0 ? viewableSelect(sql, connection.kind) : null;
         setViewSource(viewText ? { text: viewText, runId: crypto.randomUUID() } : null);
         setResult(res);
+        revealOutput = res.columns.length === 0;
         if (res.columns.length > 0)
           recordRun({
             result: res,
@@ -224,7 +233,7 @@ export function useRunSql({
         finishHistory({ rowCount: null, error: message });
       } finally {
         if (executionStarted) await invalidateAfterSql(queryClient, connection.id, database, sql);
-        await collectOutput();
+        await collectOutput(revealOutput);
         runningRef.current = false;
         setIsRunning(false);
       }
