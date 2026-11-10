@@ -518,16 +518,17 @@ fn timeout_seconds(value: &str) -> Result<u64, String> {
 
 pub fn wants(args: &[String]) -> bool {
     args.first().is_some_and(|first| {
-        COMMANDS.contains(&first.as_str())
-            || ["-c", "-d", "-o"]
-                .iter()
-                .any(|flag| first.starts_with(flag) && first.len() > 2)
-            || GLOBAL_FLAGS
-                .iter()
-                .any(|flag| first == flag || first.starts_with(&format!("{flag}=")))
-            || (!first.starts_with('-')
-                && !first.contains(['/', '\\', '.'])
-                && !std::path::Path::new(first).exists())
+        !crate::file_open::is_app_url(first)
+            && (COMMANDS.contains(&first.as_str())
+                || ["-c", "-d", "-o"]
+                    .iter()
+                    .any(|flag| first.starts_with(flag) && first.len() > 2)
+                || GLOBAL_FLAGS
+                    .iter()
+                    .any(|flag| first == flag || first.starts_with(&format!("{flag}=")))
+                || (!first.starts_with('-')
+                    && !first.contains(['/', '\\', '.'])
+                    && !std::path::Path::new(first).exists()))
     })
 }
 

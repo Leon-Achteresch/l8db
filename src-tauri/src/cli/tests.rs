@@ -177,6 +177,25 @@ fn routes_cli_words_and_keeps_app_arguments() {
         "notes.sql",
         "./query",
         "-psn_0_12345",
+        "l8db://tab/aWyJ0Il0",
+        "L8DB://tab/aWyJ0Il0/",
+        "l8db:tab",
+    ] {
+        assert!(!wants(app), "{app} sollte die App starten");
+    }
+}
+
+#[test]
+fn shared_tab_links_named_like_cli_commands_stay_app_arguments() {
+    let wants = |line: &str| super::wants(&args(line));
+    for app in [
+        "l8db://tab/abc",
+        "l8db://tab/query",
+        "l8db://tab/conn",
+        "l8db://tab/table",
+        "l8db://tab/help",
+        "L8DB://TAB/query/",
+        "l8db://tab/query?x=1",
     ] {
         assert!(!wants(app), "{app} sollte die App starten");
     }

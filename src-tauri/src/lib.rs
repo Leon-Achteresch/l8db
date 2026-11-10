@@ -787,11 +787,12 @@ pub fn run() {
             }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = _event {
-                let actions = urls
+                let mut actions: Vec<_> = urls
                     .iter()
                     .filter_map(|url| url.to_file_path().ok())
                     .map(|path| file_open::action_for_path(&path))
                     .collect();
+                actions.extend(file_open::link_action(urls.iter().map(|url| url.as_str())));
                 file_open::enqueue(_app, actions);
             }
         });
