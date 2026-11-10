@@ -29,11 +29,7 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .motion-nav-item > svg {
-    transition: transform 380ms var(--motion-snap);
-  }
-
-  .motion-nav-item:hover > svg {
-    transform: translateY(-1px) rotate(-6deg) scale(1.12);
+    transition: transform 160ms var(--motion-settle);
   }
 
   .motion-nav-item:active > svg {
