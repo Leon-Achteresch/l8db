@@ -392,7 +392,24 @@ Real application, `tauri build --debug --no-bundle` on the same MacBook, empty i
 
 - New budgets in `tests/startup-perf-browser.test.ts`: first paint at most 150 ms, no empty root, at most 16 JS/CSS files until usable. The existing 2.2 MB script budget stays exceeded at 2.30 MB (2.51 MB before); it was not changed.
 - `tests/boot-paint.test.ts` covers the cache and the boot script, including 10,000 theme mutations collapsing into one style read and no work when idle. `tests/window-integration.test.ts` covers the debounced dock update with 1,000 store changes.
-- Not measured: Windows and WebView2, a release build, real slow hardware and throttled CPU on this machine. The browser numbers use a mocked transport without IPC latency.
+- Not measured: Windows and WebView2, a release build and real slow hardware. The browser numbers use a mocked transport without IPC latency.
+
+### Linux run with CPU throttling (2026-11-10)
+
+Debian 13 VM (x86_64, QEMU virtual CPU, 8 cores, 15 GB RAM, shared host with load 1.0–1.8), Bun 1.3.10, Playwright Chromium 156 headless, `tests/startup-perf-browser.test.ts` with 3,000 tables, median of 5, the same test file against the build before (`b9e66c32`) and after (`4c25d637`). Nominal throttle 4×; the calibration applied only 1.75× (before) and 1.96× (after), so the throttled columns are not a 4× result and the new build ran under the stronger throttle.
+
+| Metric | Before, throttled | After, throttled | Before, unthrottled | After, unthrottled |
+|---|---|---|---|---|
+| First contentful paint | 476 ms | 140 ms | 304 ms | 104 ms |
+| Root without content | 768 ms | 0 ms | 439 ms | 0 ms |
+| Application visible | 1046 ms | 954 ms | 663 ms | 479 ms |
+| Usable | 1665 ms | 1624 ms | 1227 ms | 761 ms |
+| Long tasks until usable | 864 ms | 1089 ms | 431 ms | 459 ms |
+| Worst frame until usable | 417 ms | 567 ms | 200 ms | 250 ms |
+| JS/CSS files until usable | 228 | 12 | 228 | 10 |
+| `invoke()` calls until usable | 42 | 34 | 42 | 34 |
+
+With a slow CPU the first paint and the file count improve clearly, the time until usable barely moves and the long tasks grow, because the same code now runs in fewer, larger tasks. A CPU profile of the new build (MacBook Air M3, 214 ms until usable) attributes about 17 ms to module evaluation, 32 ms to React DOM, about 40 ms to style and layout and about 40 ms to lazy function compilation; no single function dominates. Further gains on slow CPUs need less rendering work at start or a warm process, not more bundling.
 - A cold start cannot reach 50 ms: creating the window and the WebView alone took about 170 ms on this MacBook and takes longer on slow Windows PCs. Only a process that is already running can show the application that quickly.
 
 ### Measuring on another machine
