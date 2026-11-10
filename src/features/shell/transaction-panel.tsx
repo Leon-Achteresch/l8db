@@ -9,6 +9,17 @@ import { useSettingsStore } from "@/lib/settings";
 import { useTransactionStore } from "@/lib/transactions";
 import { TransactionCard } from "./transaction-card";
 
+function commitFrom(target: HTMLElement | null, panel: HTMLElement) {
+  const card =
+    target?.closest("[data-tx-id]") ??
+    (panel.querySelectorAll("[data-tx-id]").length === 1
+      ? panel.querySelector("[data-tx-id]")
+      : null);
+  const commit = card?.querySelector<HTMLButtonElement>("[data-tx-commit]:not(:disabled)");
+  commit?.click();
+  return !!commit;
+}
+
 export function TransactionPanel() {
   const present = useIsPresent();
   const reduced = useReducedMotion();
@@ -18,24 +29,43 @@ export function TransactionPanel() {
   const transactions = useTransactionStore((s) => s.transactions);
   const setPanelOpen = useTransactionStore((s) => s.setPanelOpen);
   const prevCount = useRef(transactions.length);
+  const sectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (prevCount.current > 0 && transactions.length === 0) setPanelOpen(false);
     prevCount.current = transactions.length;
   }, [transactions.length, setPanelOpen]);
 
+  useEffect(() => {
+    if (!present) return;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      const panel = sectionRef.current;
+      if (!panel || event.key !== "Enter" || event.shiftKey || event.altKey || event.repeat) return;
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const inPanel = !!target && panel.contains(target);
+      const fromGrid =
+        !target ||
+        target === document.body ||
+        (!!target.closest("[data-grid-scroll]") &&
+          !target.closest("input, textarea, select, [contenteditable]"));
+      if (!inPanel && !fromGrid) return;
+      if (!commitFrom(inPanel ? target : null, panel)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [present]);
+
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Enter" || event.shiftKey || event.altKey || event.repeat) return;
+    if (event.ctrlKey || event.metaKey) return;
     const target = event.target as HTMLElement;
     if (target.closest("button, a, input, textarea, select, [contenteditable]")) return;
-    const card =
-      target.closest("[data-tx-id]") ??
-      (transactions.length === 1 ? event.currentTarget.querySelector("[data-tx-id]") : null);
-    const commit = card?.querySelector<HTMLButtonElement>("[data-tx-commit]");
-    if (!commit) return;
+    if (!commitFrom(target, event.currentTarget)) return;
     event.preventDefault();
     event.stopPropagation();
-    commit.click();
   };
 
   return (
@@ -54,6 +84,7 @@ export function TransactionPanel() {
       aria-hidden={!present}
       data-tour="tx-panel"
       aria-label="Transaktionen"
+      ref={sectionRef}
       tabIndex={-1}
       onKeyDown={handleKeyDown}
       className="absolute inset-y-0 right-0 z-30 flex w-[380px] max-w-full min-h-0 origin-right bg-card shadow-2xl shadow-black/20 outline-none"
