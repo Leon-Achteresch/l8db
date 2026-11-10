@@ -25,6 +25,17 @@ assert(
   csp["script-src"].split(/\s+/).includes(`'sha256-${sandboxHash}'`),
   "Production CSP must allow the current extension sandbox bootstrap hash",
 );
+const bootScripts = [
+  ...readFileSync(new URL("../index.html", import.meta.url), "utf8")
+    .replace(/\r\n?/g, "\n")
+    .matchAll(/<script>([\s\S]*?)<\/script>/g),
+];
+assert.equal(bootScripts.length, 1, "index.html must contain exactly one inline boot script");
+const bootHash = createHash("sha256").update(bootScripts[0][1]).digest("base64");
+assert(
+  csp["script-src"].split(/\s+/).includes(`'sha256-${bootHash}'`),
+  "Production CSP must allow the current boot script hash",
+);
 for (const policy of [csp, security.devCsp]) {
   assert.equal(
     policy["media-src"],

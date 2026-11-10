@@ -6,10 +6,94 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>l8db · PostgreSQL-Arbeitsplatz</title>
     <style id="react-draggable-style-el"></style>
+    <style>
+      :root {
+        --boot-bg: oklch(0.975 0.004 248);
+        --boot-fg: oklch(0.22 0.012 248);
+        --boot-card: oklch(0.995 0.002 248);
+        --boot-line: oklch(0.89 0.008 248);
+        --boot-accent: oklch(0.4 0.12 248);
+      }
+      :root.dark {
+        color-scheme: dark;
+        --boot-bg: oklch(0.175 0.008 248);
+        --boot-fg: oklch(0.97 0.01 248);
+        --boot-card: oklch(0.21 0.009 248);
+        --boot-line: oklch(1 0 0 / 12%);
+        --boot-accent: oklch(0.78 0.14 248);
+      }
+      html {
+        background: var(--background, var(--boot-bg));
+      }
+      body {
+        margin: 0;
+      }
+      .boot-shell {
+        display: grid;
+        height: 100dvh;
+        place-items: center;
+        background: var(--boot-bg);
+        color: var(--boot-fg);
+        font: 600 18px/1.2 system-ui, sans-serif;
+        letter-spacing: -0.025em;
+        text-align: center;
+      }
+      .boot-shell svg {
+        display: block;
+        box-sizing: border-box;
+        width: 48px;
+        height: 48px;
+        margin: 0 auto 20px;
+        padding: 13px;
+        border: 1px solid var(--boot-line);
+        border-radius: 16px;
+        background: var(--boot-card);
+        color: var(--boot-accent);
+      }
+    </style>
+    <script>
+      (() => {
+        const root = document.documentElement;
+        let boot = null;
+        try {
+          boot = JSON.parse(localStorage.getItem("l8db.boot"));
+        } catch {}
+        const mode =
+          boot && (boot.theme === "dark" || boot.theme === "light")
+            ? boot.theme
+            : matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+        if (mode === "dark") root.classList.add("dark");
+        if (!boot || boot.mode !== mode || !boot.vars) return;
+        for (const name of ["bg", "fg", "card", "line", "accent"])
+          if (typeof boot.vars[name] === "string")
+            root.style.setProperty(`--boot-${name}`, boot.vars[name]);
+      })();
+    </script>
   </head>
 
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main class="boot-shell" role="status" aria-label="l8db wird gestartet">
+        <div>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <ellipse cx="12" cy="5" rx="9" ry="3" />
+            <path d="M3 5V19A9 3 0 0 0 21 19V5" />
+            <path d="M3 12A9 3 0 0 0 21 12" />
+          </svg>
+          l8db
+        </div>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

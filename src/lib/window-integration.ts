@@ -18,22 +18,41 @@ export function dockEntries(connections: SavedConnection[], recentIds: string[])
   return [...recent, ...rest].slice(0, DOCK_CONNECTION_LIMIT).map(({ id, name }) => ({ id, name }));
 }
 
-export function initWindowIntegration(): () => void {
+export const DOCK_PUBLISH_DELAY_MS = 1000;
+
+export function initWindowIntegration(dockDelayMs = DOCK_PUBLISH_DELAY_MS): () => void {
   if (!isTauri()) return () => undefined;
   let dockKey = "";
+  let dockTimer: ReturnType<typeof setTimeout> | undefined;
   let activeId: string | null | undefined;
-  const publish = () => {
+  const publishDock = () => {
+    dockTimer = undefined;
     const state = useConnectionsStore.getState();
-    if (state.activeId !== activeId) {
-      activeId = state.activeId;
-      void setWindowConnection(activeId).catch(() => undefined);
-    }
     const entries = dockEntries(state.connections, state.recentIds);
     const key = JSON.stringify(entries);
     if (key === dockKey) return;
     dockKey = key;
     void setDockRecents(entries).catch(() => undefined);
   };
+  const publish = () => {
+    const state = useConnectionsStore.getState();
+    if (state.activeId !== activeId) {
+      activeId = state.activeId;
+      void setWindowConnection(activeId).catch(() => undefined);
+    }
+    dockTimer ??= setTimeout(publishDock, dockDelayMs);
+  };
+  const flush = () => {
+    if (dockTimer === undefined) return;
+    clearTimeout(dockTimer);
+    publishDock();
+  };
   publish();
-  return useConnectionsStore.subscribe(publish);
+  const unsubscribe = useConnectionsStore.subscribe(publish);
+  window.addEventListener("pagehide", flush);
+  return () => {
+    unsubscribe();
+    window.removeEventListener("pagehide", flush);
+    clearTimeout(dockTimer);
+  };
 }

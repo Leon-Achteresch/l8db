@@ -21,6 +21,7 @@ function showStorageFailure() {
 }
 
 void initAppStorage().then((mode) => {
+  performance.mark("l8db.storage");
   if (mode === "failed") showStorageFailure();
   else void import("./bootstrap");
 });

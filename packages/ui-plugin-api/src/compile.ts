@@ -1,5 +1,6 @@
 import { type Transform, transform } from "sucrase";
-import { GUARD_NAME, instrumentPlugin } from "./instrument";
+import { GUARD_NAME } from "./execution-guard";
+import { instrumentPlugin } from "./instrument";
 import { ScanError, type Token, tokenize } from "./scan";
 
 export const ALLOWED_IMPORTS = ["react", "react/jsx-runtime", "@l8db/ui"] as const;

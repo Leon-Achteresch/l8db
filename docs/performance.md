@@ -355,3 +355,46 @@ The unchanged core watch scenario (`tests/perf-workbench-qol.test.ts`) exceeded 
 The broader workbench browser scenario stopped on an existing Monaco undo expectation before reaching the table controls (`tests/workbench-qol-browser.test.ts:102`). The scoped table helper scenario above passed independently; the editor undo path was not changed or repaired.
 
 The screenshot fixture now mounts the production `TableToolbarActions` instead of rebuilding a reduced two-item menu. The regression asserts exactly one action trigger and the presence of “Neue Zeile”, “Beobachtete Zeilen” and “Zeitdarstellung” in that same menu; opening and discarding the row draft is covered. A repeat on the same machine with the full toolbar measured median 589.54 ms / p95 594.04 ms, 2,230 panel descendants, 33 mounted table rows, zero closed-panel nodes and zero additional transport/database requests (22 assertions passed). Provider discovery uses the actual fallback registry in the transport fixture. TypeScript checking explicitly included the fixture. Screenshots now include the original row-add, paste, test-data, masking and export actions alongside the new entries.
+
+## Startup path (2026-11-10)
+
+The goal was the shortest possible time until the first paint and until the complete application is visible, with slow Windows PCs as the main target.
+
+### What changed
+
+- `index.html` paints a boot shell from inline CSS and a small inline theme script. The script reads the `l8db.boot` cache (resolved theme and five colours, written by `src/lib/boot-paint.ts` and mirrored to the native `localStorage`), so the shell has the right colours before the application bundle runs. Its hash is listed in `script-src`; `scripts/production-check.mjs` fails when the script changes without the hash. The stylesheets stay in `<head>` in their original order: moving them behind the shell painted a few milliseconds earlier but would have changed the cascade order of lazily loaded styles.
+- React used to replace the splash with an empty root until the router had loaded. `router.load()` now runs before the first render, so the shell stays until the complete application commits.
+- The static imports of `src/bootstrap.tsx` are bundled into three chunks (`startup-react`, `startup-vendor`, `startup`) that `index.html` preloads while IndexedDB opens. The three shell routes are not code-split any more. Three chunks instead of one let the browser parse them on separate threads; an automatic `maxSize` split broke the execution order and was discarded.
+- The five background initializers are one deferred `background` chunk that loads when the page is idle after the first frames.
+- The acorn parser left the start package (`packages/ui-plugin-api/src/execution-guard.ts`).
+- Windows no longer rebuilds the jump list during setup, and the dock/jump list update from the frontend is debounced by one second, so it leaves the start path and collapses bursts of store changes into one call.
+
+### Measurements
+
+Same test (`tests/startup-perf-browser.test.ts`, `L8DB_PERF_CPU_RATE=1`, median of 5) on the production build of `28146dd9` and of this change. MacBook Air, Apple M3, 8 cores, 16 GiB, macOS 27.0.1, Bun 1.4.3, Playwright Chromium headless, no CPU throttling, mocked Tauri transport, 3,000 tables.
+
+| Metric | Before | After |
+|---|---|---|
+| First contentful paint | 92 ms | 20 ms |
+| Root without content | 127 ms | 0 ms |
+| Application visible | 185 ms | 137 ms |
+| Usable (table list rendered) | 304 ms | 218 ms |
+| JavaScript until usable | 2.51 MB in 226 chunks | 2.30 MB in 8 chunks |
+| JS/CSS files until usable | 228 | 10 |
+| `invoke()` calls until usable | 41 | 33 |
+| React commits until usable | 16 | 13 |
+
+The start package that `tests/perf-bundle.test.ts` checks is now everything the first render needs: 2.21 MB in 5 files, budget 2.25 MB and at most 6 files. The same set was 2.28 MB in about 218 files before. The earlier 1.8 MB budget covered the entry and both shell layouts without the home view and was already exceeded at 2.02 MB.
+
+Real application, `tauri build --debug --no-bundle` on the same MacBook, empty isolated profile, `L8DB_STARTUP_PROBE=1`, five warm starts: `native` 228–254 ms (of which window and WebView 158–184 ms and the setup hook 1–3 ms), shell 10–12 ms after navigation start, application 174–185 ms after navigation start, 410–439 ms in total. The first start of a freshly built binary took 5.4 s because macOS scans the new executable.
+
+### Limits and missing coverage
+
+- New budgets in `tests/startup-perf-browser.test.ts`: first paint at most 150 ms, no empty root, at most 16 JS/CSS files until usable. The existing 2.2 MB script budget stays exceeded at 2.30 MB (2.51 MB before); it was not changed.
+- `tests/boot-paint.test.ts` covers the cache and the boot script, including 10,000 theme mutations collapsing into one style read and no work when idle. `tests/window-integration.test.ts` covers the debounced dock update with 1,000 store changes.
+- Not measured: Windows and WebView2, a release build, real slow hardware and throttled CPU on this machine. The browser numbers use a mocked transport without IPC latency.
+- A cold start cannot reach 50 ms: creating the window and the WebView alone took about 170 ms on this MacBook and takes longer on slow Windows PCs. Only a process that is already running can show the application that quickly.
+
+### Measuring on another machine
+
+Start the application with `L8DB_STARTUP_PROBE=1`. It logs one line such as `startup: native 228 ms (window 158 ms, setup 1 ms), shell 12 ms, app 182 ms, total 410 ms` and exits after the first complete render. `native` is the time from `run()` to the start of the navigation, `shell` and `app` count from there. Without the variable the same line is written to the log file on every start.

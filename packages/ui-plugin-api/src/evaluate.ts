@@ -1,5 +1,5 @@
+import { createExecutionGuard, GUARD_NAME } from "./execution-guard";
 import { PLUGIN_GLOBALS } from "./globals";
-import { createExecutionGuard, GUARD_NAME } from "./instrument";
 import { lockdownRealm } from "./lockdown";
 import { tokenize } from "./scan";
 

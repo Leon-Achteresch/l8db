@@ -108,8 +108,8 @@ const storageInitMs = (page: Page) =>
   page.evaluate(() => {
     const resources = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
     const entry = resources.find((item) => /\/assets\/index-[^/]+\.js$/.test(item.name));
-    const bootstrap = resources.find((item) => /\/assets\/bootstrap-[^/]+\.js$/.test(item.name));
-    return entry && bootstrap ? bootstrap.startTime - entry.responseEnd : -1;
+    const ready = performance.getEntriesByName("l8db.storage")[0];
+    return entry && ready ? ready.startTime - entry.responseEnd : -1;
   });
 
 const launch = (): Promise<Browser> => (engine === "webkit" ? webkit : chromium).launch();
