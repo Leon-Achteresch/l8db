@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { AttentionDot } from "@/components/attention-dot";
 import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
 import { HolidayAccessory } from "@/components/seasonal/holiday-accessory";
@@ -23,6 +24,7 @@ import { ReadOnlyBadge } from "@/features/shell/read-only-badge";
 import { TemporaryConnectionBadge } from "@/features/shell/temporary-connection-badge";
 import { WindowControls } from "@/features/shell/window-controls";
 import { useAiStore } from "@/lib/ai/store";
+import { useCliNeedsAction } from "@/lib/cli-path";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
@@ -73,6 +75,7 @@ export function AppHeader() {
   const { refresh, isRefreshing, canRefresh } = useRefreshConnection();
   const update = useVisibleUpdate();
   const hasNewSettingsFeatures = useHasNewFeatures("settings");
+  const cliNeedsAction = useCliNeedsAction();
   const hasNewVersioningFeatures = useHasNewFeatures("versioning");
   const hasNewAiFeatures = useHasNewFeatures("ai");
   const hasAnyNewFeatures = useHasAnyNewFeatures();
@@ -382,7 +385,13 @@ export function AppHeader() {
         <Tooltip content="Einstellungen" side="bottom">
           <Link
             to="/settings"
-            aria-label={hasNewSettingsFeatures ? "Einstellungen, neue Funktionen" : "Einstellungen"}
+            aria-label={
+              cliNeedsAction
+                ? "Einstellungen, Handlungsbedarf"
+                : hasNewSettingsFeatures
+                  ? "Einstellungen, neue Funktionen"
+                  : "Einstellungen"
+            }
             className={cn(
               "relative inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
               "hover:bg-muted hover:text-foreground",
@@ -398,6 +407,9 @@ export function AppHeader() {
                 aria-hidden
                 className="absolute -bottom-0.5 -left-0.5 size-2 rounded-full bg-red-500 ring-2 ring-card"
               />
+            ) : null}
+            {cliNeedsAction ? (
+              <AttentionDot className="absolute -left-0.5 -top-0.5 ring-2 ring-card" />
             ) : null}
           </Link>
         </Tooltip>
