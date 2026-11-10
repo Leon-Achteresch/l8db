@@ -123,7 +123,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     [schema.registry.columns, schema.registry.tables],
   );
   const sessionViews = useSessionViews(connection?.id, database);
-  const output = useServerOutput(connection, database, caps);
+  const output = useServerOutput(connection, database, caps, exec.isRunning);
   const substitution = useSubstitutionPrompt();
 
   const script = useScriptRun({

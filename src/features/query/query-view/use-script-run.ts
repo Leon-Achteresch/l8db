@@ -36,7 +36,7 @@ interface UseScriptRunParams {
   exec: QueryExecutionState;
   editorApiRef: RefObject<QueryEditorApi | null>;
   setEditorFocus: (focus: boolean) => void;
-  collectOutput: () => Promise<void>;
+  collectOutput: (reveal?: boolean) => Promise<void>;
   cursorOffsetRef: RefObject<number>;
 }
 
@@ -131,6 +131,7 @@ export function useScriptRun({
       let executed = text;
       const finishNotification = beginQueryCompletion();
       const finishEvent = beginQueryEvent(text, connection.kind);
+      let showOutput = true;
       try {
         await enableOracleOutput(
           connection.kind,
@@ -152,6 +153,7 @@ export function useScriptRun({
           onProgress: (items) => setScriptEntries(shift(items)),
         });
         const entries = shift(outcome.entries);
+        showOutput = Boolean(outcome.error) || !outcome.lastResult?.columns.length;
         if (outcome.exit)
           setScriptNote(
             `EXIT ${outcome.exit.label} (Code ${outcome.exit.code}) mit ${outcome.exit.action}`,
@@ -205,7 +207,7 @@ export function useScriptRun({
       } finally {
         runningRef.current = false;
         setIsRunning(false);
-        await collectOutput();
+        await collectOutput(showOutput);
         if (connection) await invalidateAfterSql(queryClient, connection.id, database, executed);
       }
     },
