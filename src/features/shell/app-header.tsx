@@ -2,6 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import {
   Bot,
   CheckCheck,
+  FolderOpen,
   GitBranchIcon,
   GitPullRequestIcon,
   PlugZap,
@@ -23,6 +24,7 @@ import { TemporaryConnectionBadge } from "@/features/shell/temporary-connection-
 import { WindowControls } from "@/features/shell/window-controls";
 import { useAiStore } from "@/lib/ai/store";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { useVisibleUpdate } from "@/lib/hooks/use-visible-update";
 import { useWindowTitle } from "@/lib/hooks/use-window-title";
@@ -173,6 +175,20 @@ export function AppHeader() {
           <TemporaryConnectionBadge />
           <ReadOnlyBadge />
           <ProxyUserSwitch />
+          <Tooltip content="SQL-Datei öffnen" side="bottom">
+            <button
+              type="button"
+              aria-label="SQL-Datei öffnen"
+              onClick={() =>
+                void openSqlFileAsTab().then((id) => {
+                  if (id) void navigate({ to: "/query/$id", params: { id } });
+                })
+              }
+              className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <FolderOpen className="size-4" strokeWidth={1.75} />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
