@@ -56,6 +56,17 @@ export const useServerOutputStore = create<ServerOutputState>()((set) => ({
   clear: (connectionId) => set((state) => ({ entries: { ...state.entries, [connectionId]: [] } })),
 }));
 
+export function onNextServerOutput(connectionId: string, onOutput: () => void): () => void {
+  const last = () => useServerOutputStore.getState().entries[connectionId]?.at(-1)?.id;
+  const before = last();
+  const stop = useServerOutputStore.subscribe(() => {
+    if (last() === before) return;
+    stop();
+    onOutput();
+  });
+  return stop;
+}
+
 export function isServerOutputEnabled(connectionId: string): boolean {
   return useServerOutputStore.getState().enabled[connectionId] === true;
 }

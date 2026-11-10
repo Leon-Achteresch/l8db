@@ -232,8 +232,8 @@ export function useRunSql({
         );
         finishHistory({ rowCount: null, error: message });
       } finally {
-        if (executionStarted) await invalidateAfterSql(queryClient, connection.id, database, sql);
         await collectOutput(revealOutput);
+        if (executionStarted) await invalidateAfterSql(queryClient, connection.id, database, sql);
         runningRef.current = false;
         setIsRunning(false);
       }
