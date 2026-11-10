@@ -14,6 +14,7 @@ const files = [
   "data-compare",
   "schema-compare-tabs",
   "split-transaction",
+  "transaction-commit",
   "command-palette-pointer",
 ];
 const log = "test-artifacts/browser/tests.log";
