@@ -611,6 +611,13 @@ pub(super) fn statements(kind: DatabaseKind, sql: &str) -> Result<Vec<String>, S
                     parts.push(text);
                 } else if db::sql_script::is_connect_command(&text) {
                     return Err(db::sql_script::CONNECT_UNSUPPORTED.into());
+                } else if text.split_whitespace().next().is_some_and(|word| {
+                    db::sql_script::abbreviates(
+                        &word.trim_end_matches(';').to_ascii_uppercase(),
+                        &[("EXIT", 4), ("QUIT", 4)],
+                    )
+                }) {
+                    break;
                 } else {
                     eprintln!("Hinweis: SQL*Plus-Befehl übersprungen: {}", text.trim());
                 }

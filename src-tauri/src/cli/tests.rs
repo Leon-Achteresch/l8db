@@ -279,6 +279,15 @@ fn scripts_are_split_per_family() {
     let batch = "CREATE PROCEDURE dbo.p AS\nBEGIN\n  SELECT 1;\nEND\nGO\nSELECT 2";
     assert_eq!(statements(DatabaseKind::Mssql, batch).unwrap().len(), 2);
     assert!(statements(DatabaseKind::Oracle, "CONN hr/hr\nDROP TABLE t;").is_err());
+    assert!(statements(DatabaseKind::Oracle, "disco\nDROP TABLE t;").is_err());
+    assert_eq!(
+        statements(
+            DatabaseKind::Oracle,
+            "SELECT 1 FROM dual;\nEXIT;\nDROP TABLE t;"
+        )
+        .unwrap(),
+        vec!["SELECT 1 FROM dual;"]
+    );
 }
 
 #[test]

@@ -250,19 +250,61 @@ impl PlsqlUnit {
     }
 }
 
-const SQLPLUS_COMMANDS: &str =
-    "SET PROMPT SPOOL WHENEVER DEFINE UNDEFINE REM REMARK SHOW EXIT QUIT PAUSE ACCEPT \
-    COLUMN TTITLE BTITLE BREAK CLEAR TIMING START STA @ PRO DEF UNDEF COL SPO SHO ACC \
-    PAU VAR VARIABLE PRINT HOST CONNECT CONN DISCONNECT DISC PASSWORD STORE COMPUTE \
-    REPHEADER REPFOOTER STARTUP SHUTDOWN RECOVER ARCHIVE COPY XQUERY ATTRIBUTE SAVE GET \
-    EDIT INPUT LIST APPEND CHANGE DEL RUN HELP DESC DESCRIBE";
+const SQLPLUS_COMMANDS: &[(&str, usize)] = &[
+    ("ACCEPT", 3),
+    ("APPEND", 6),
+    ("ARCHIVE", 7),
+    ("ATTRIBUTE", 4),
+    ("BREAK", 3),
+    ("BTITLE", 3),
+    ("CHANGE", 6),
+    ("CLEAR", 2),
+    ("COLUMN", 3),
+    ("COMPUTE", 4),
+    ("CONNECT", 4),
+    ("COPY", 4),
+    ("DEFINE", 3),
+    ("DEL", 3),
+    ("DESCRIBE", 4),
+    ("DISCONNECT", 4),
+    ("EDIT", 2),
+    ("EXIT", 4),
+    ("GET", 3),
+    ("HELP", 4),
+    ("HISTORY", 4),
+    ("HOST", 2),
+    ("INPUT", 5),
+    ("LIST", 4),
+    ("PASSWORD", 5),
+    ("PAUSE", 3),
+    ("PRINT", 3),
+    ("PROMPT", 3),
+    ("QUIT", 4),
+    ("RECOVER", 7),
+    ("REMARK", 3),
+    ("REPFOOTER", 4),
+    ("REPHEADER", 4),
+    ("RUN", 1),
+    ("SAVE", 3),
+    ("SET", 3),
+    ("SHOW", 3),
+    ("SHUTDOWN", 8),
+    ("SPOOL", 3),
+    ("START", 3),
+    ("STARTUP", 7),
+    ("STORE", 5),
+    ("TIMING", 4),
+    ("TTITLE", 3),
+    ("UNDEFINE", 5),
+    ("VARIABLE", 3),
+    ("WHENEVER", 8),
+    ("XQUERY", 6),
+];
 
 fn sqlplus_line_end(sql: &str, token: &Range<usize>, next: Option<&str>) -> Option<usize> {
     let word = sql[token.clone()].to_ascii_uppercase();
     let line_start = sql[..token.start].rfind('\n').map_or(0, |n| n + 1);
-    if !SQLPLUS_COMMANDS
-        .split_whitespace()
-        .any(|command| command == word)
+    if !(word == "@" || crate::db::sql_script::abbreviates(&word, SQLPLUS_COMMANDS))
         || !sql[line_start..token.start].trim().is_empty()
     {
         return None;

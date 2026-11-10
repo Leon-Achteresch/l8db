@@ -196,6 +196,63 @@ fn define(rest: &str, defines: &mut HashMap<String, String>) {
     defines.insert(name.trim().to_ascii_uppercase(), value.to_string());
 }
 
+const COMMANDS: &[(&str, usize)] = &[
+    ("DEFINE", 3),
+    ("UNDEFINE", 5),
+    ("PROMPT", 3),
+    ("SET", 3),
+    ("WHENEVER", 8),
+    ("EXIT", 4),
+    ("QUIT", 4),
+    ("START", 3),
+];
+
+const SET_OPTIONS: &[(&str, usize)] = &[
+    ("DEFINE", 3),
+    ("SCAN", 4),
+    ("ESCAPE", 3),
+    ("CONCAT", 3),
+    ("SERVEROUTPUT", 9),
+    ("VERIFY", 3),
+    ("AUTOPRINT", 5),
+    ("EXITCOMMIT", 5),
+    ("AUTOCOMMIT", 4),
+    ("SQLTERMINATOR", 4),
+    ("BLOCKTERMINATOR", 3),
+    ("CMDSEP", 4),
+    ("SQLPREFIX", 6),
+];
+
+fn set_options(words: &[&str]) -> Vec<(usize, usize)> {
+    let mut starts = vec![1];
+    let mut quote = None;
+    for (index, word) in words.iter().enumerate().skip(1) {
+        if index + 1 >= words.len() {
+            break;
+        }
+        if let Some(open) = quote {
+            if word.ends_with(open) {
+                quote = None;
+            }
+            continue;
+        }
+        let first = word.chars().next().filter(|c| matches!(c, '\'' | '"'));
+        if let Some(open) = first.filter(|open| word.len() == 1 || !word.ends_with(*open)) {
+            quote = Some(open);
+        } else if index - starts[starts.len() - 1] > 1
+            && db::sql_script::abbreviates(&word.to_ascii_uppercase(), SET_OPTIONS)
+        {
+            starts.push(index);
+        }
+    }
+    starts
+        .iter()
+        .enumerate()
+        .map(|(at, start)| (*start, starts.get(at + 1).copied().unwrap_or(words.len())))
+        .filter(|(start, end)| start < end)
+        .collect()
+}
+
 fn sqlplus(
     line: &str,
     plan: &mut Plan,
@@ -209,27 +266,54 @@ fn sqlplus(
             .collect::<Vec<_>>()
             .join(" ")
     };
-    let raw = |n: usize| line.split_whitespace().nth(n).unwrap_or("");
     let arg = |n: usize| words.get(n).map(String::as_str).unwrap_or("");
-    if line.starts_with('@') || matches!(arg(0), "START" | "STA") {
+    let command = COMMANDS
+        .iter()
+        .find(|form| db::sql_script::abbreviates(arg(0), &[**form]))
+        .map_or("", |form| form.0);
+    if line.starts_with('@') || command == "START" {
         return Err("Skriptdateien (@, @@, START) werden über den MCP nicht ausgeführt.".into());
     }
     if db::sql_script::is_connect_command(line) {
         return Err(db::sql_script::CONNECT_UNSUPPORTED.into());
     }
-    match arg(0) {
-        "DEFINE" | "DEF" => define(&rest(1), defines),
-        "UNDEFINE" | "UNDEF" => {
+    match command {
+        "DEFINE" => define(&rest(1), defines),
+        "UNDEFINE" => {
             for name in &words[1..] {
                 defines.remove(name);
             }
         }
-        "PROMPT" | "PRO" => plan
+        "PROMPT" => plan
             .steps
             .push(Step::Prompt(substitute(&rest(1), defines, *markers)?)),
-        "SET" if arg(1).starts_with("DEF") => markers.define = switch(raw(2), '&'),
-        "SET" if arg(1).starts_with("ESC") => markers.escape = switch(raw(2), '\\'),
-        "SET" if arg(1).starts_with("SERVEROUT") => plan.steps.push(Step::Output(arg(2) == "ON")),
+        "SET" => {
+            let raw: Vec<&str> = line.split_whitespace().collect();
+            let mut handled = false;
+            for (start, end) in set_options(&raw) {
+                let value = if start + 1 < end { raw[start + 1] } else { "" };
+                let value = value.trim_end_matches(';');
+                match SET_OPTIONS
+                    .iter()
+                    .find(|form| db::sql_script::abbreviates(&words[start], &[**form]))
+                    .map(|form| form.0)
+                {
+                    Some("DEFINE") => markers.define = switch(value, '&'),
+                    Some("SCAN") => {
+                        markers.define = (!value.eq_ignore_ascii_case("OFF")).then_some('&')
+                    }
+                    Some("ESCAPE") => markers.escape = switch(value, '\\'),
+                    Some("SERVEROUTPUT") => plan
+                        .steps
+                        .push(Step::Output(value.eq_ignore_ascii_case("ON"))),
+                    _ => continue,
+                }
+                handled = true;
+            }
+            if !handled {
+                plan.skipped += 1;
+            }
+        }
         "WHENEVER" if arg(1) == "SQLERROR" => plan.steps.push(Step::Continue(arg(2) == "CONTINUE")),
         "EXIT" | "QUIT" => {
             plan.steps.push(Step::Exit {
@@ -582,6 +666,29 @@ mod tests {
         assert!(plan.steps.contains(&Step::Continue(true)));
         assert_eq!(plan.steps.last(), Some(&Step::Exit { rollback: true }));
         assert_eq!(plan.skipped, 2);
+    }
+
+    #[test]
+    fn combined_set_lines_and_abbreviations_apply_every_option() {
+        let script = "set verify off define off serverout on;\nSELECT 'a&b' FROM dual;\nSET SQLPROMPT \"my def \" SCAN ON\ndefi n = 5;\nprom value &n\nSELECT &n FROM dual;\nexit;\nDROP TABLE t;";
+        let planned = plan(DatabaseKind::Oracle, script).unwrap();
+        assert_eq!(
+            sqls(&planned),
+            vec!["SELECT 'a&b' FROM dual;", "SELECT 5 FROM dual;"]
+        );
+        assert_eq!(
+            planned.steps,
+            vec![
+                Step::Output(true),
+                Step::Sql("SELECT 'a&b' FROM dual;".into()),
+                Step::Prompt("value 5".into()),
+                Step::Sql("SELECT 5 FROM dual;".into()),
+                Step::Exit { rollback: false },
+            ]
+        );
+        assert_eq!(planned.skipped, 0);
+        assert!(plan(DatabaseKind::Oracle, "star x.sql\nSELECT 1 FROM dual;").is_err());
+        assert!(plan(DatabaseKind::Oracle, "disco\nSELECT 1 FROM dual;").is_err());
     }
 
     #[test]

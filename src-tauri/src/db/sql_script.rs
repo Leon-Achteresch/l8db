@@ -38,11 +38,18 @@ pub fn split_for(kind: DatabaseKind, sql: &str) -> Vec<String> {
 
 pub const CONNECT_UNSUPPORTED: &str = "CONNECT/DISCONNECT wird nicht unterstützt. Das Skript wurde angehalten, damit die folgenden Statements nicht im falschen Schema laufen.";
 
+pub fn abbreviates(word: &str, forms: &[(&str, usize)]) -> bool {
+    forms
+        .iter()
+        .any(|(full, min)| word.len() >= *min && full.starts_with(word))
+}
+
 pub fn is_connect_command(line: &str) -> bool {
     line.split_whitespace().next().is_some_and(|word| {
-        ["CONNECT", "CONN", "DISCONNECT", "DISC"]
-            .iter()
-            .any(|command| word.eq_ignore_ascii_case(command))
+        abbreviates(
+            &word.trim_end_matches(';').to_ascii_uppercase(),
+            &[("CONNECT", 4), ("DISCONNECT", 4)],
+        )
     })
 }
 
