@@ -7,6 +7,7 @@ import { HotkeyRecorderInput } from "@/components/ui/hotkey-recorder-input";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
+import { HotkeyNewBadge } from "@/features/settings/settings-hotkeys-tab/hotkey-new-badge";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { useActiveConnection } from "@/lib/connections";
 import {
@@ -141,6 +142,9 @@ export function SettingsHotkeysTab() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm">
                         {command.label}
+                        {command.id.startsWith("focus.") && (
+                          <HotkeyNewBadge featureId="settings.hotkeys.focus-regions" />
+                        )}
                         {!available && (
                           <span className="ml-2 text-xs text-muted-foreground">
                             Verbindung erforderlich

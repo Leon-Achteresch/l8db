@@ -232,7 +232,10 @@ export function WorkspaceLayout() {
         style={productionColor ? { boxShadow: `inset 0 0 0 2px ${productionColor}` } : undefined}
       >
         <EnvironmentBanner />
-        <header className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border/70 bg-primary/[0.035] px-1.5">
+        <header
+          data-focus-region="tabs"
+          className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border/70 bg-primary/[0.035] px-1.5"
+        >
           <SidebarTrigger className="size-7 rounded-full" />
           <TableTabs />
         </header>
@@ -241,6 +244,7 @@ export function WorkspaceLayout() {
           className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         >
           <div
+            data-focus-region="content"
             inert={Boolean(switchingTab)}
             className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
           >

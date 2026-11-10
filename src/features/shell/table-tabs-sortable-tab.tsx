@@ -28,6 +28,7 @@ import {
 import { AiFlash } from "@/features/automation/ai-flash";
 import { PluginTabItem } from "@/features/shell/table-tabs/plugin-tab-item";
 import { SPRING, SPRING_PRESS } from "@/lib/ease";
+import { focusNeighborTab } from "@/lib/keyboard-nav";
 import { useSavedTabsStore } from "@/lib/saved-tabs";
 import { useSettingsStore } from "@/lib/settings";
 import { captureSharedTab, copySharedTabLink } from "@/lib/shared-tab-open";
@@ -212,6 +213,15 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
             onPointerEnter={onPreload}
             onFocus={onPreload}
             onClick={() => actions.current.navigate(tab)}
+            onKeyDown={(event) => {
+              if (event.key !== "Delete" || event.altKey || event.ctrlKey || event.metaKey) return;
+              event.preventDefault();
+              focusNeighborTab(event.currentTarget);
+              onClose();
+            }}
+            role="tab"
+            aria-selected={isActive}
+            tabIndex={isActive ? 0 : -1}
             aria-busy={isPending || undefined}
             title={label}
             aria-current={isActive ? (dimmed ? "true" : "page") : undefined}
@@ -239,6 +249,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
             <button
               type="button"
               onClick={onClose}
+              tabIndex={-1}
               aria-label={`${label} schließen`}
               data-hotkey={isActive ? "tab.close" : undefined}
               className={cn(
