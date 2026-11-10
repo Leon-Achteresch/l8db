@@ -87,7 +87,7 @@ export function ConnectionPickCard({
                   "grid size-7 cursor-pointer place-items-center rounded-md transition-[color,background-color,opacity] hover:bg-muted",
                   favorite
                     ? "text-amber-500"
-                    : "text-muted-foreground/60 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-foreground",
+                    : "text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-foreground",
                 )}
               >
                 <Star className={cn("size-3.5", favorite && "fill-current")} />
@@ -165,7 +165,12 @@ export function ConnectionPickCard({
               )}
               <div className="flex items-center gap-1">
                 {active ? (
-                  <Button variant="secondary" size="xs" onClick={onOpen}>
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    onClick={onOpen}
+                    className="bg-background shadow-xs"
+                  >
                     <Unplug className="size-3" />
                     Trennen
                   </Button>
@@ -174,7 +179,7 @@ export function ConnectionPickCard({
                     variant="secondary"
                     size="xs"
                     onClick={onOpen}
-                    className="gap-1 group-hover:bg-primary group-hover:text-primary-foreground"
+                    className="gap-1 bg-background shadow-xs group-hover:bg-primary group-hover:text-primary-foreground"
                   >
                     <Play className="size-3" />
                     Verbinden
@@ -288,7 +293,7 @@ function ConnectionCardShell({
         "group relative flex flex-col justify-between overflow-hidden rounded-xl p-4 transition-colors duration-150",
         active
           ? "bg-primary/10 ring-1 ring-primary/25 ring-inset"
-          : "bg-muted/40 hover:bg-muted/70",
+          : "bg-muted/80 ring-1 ring-foreground/5 ring-inset hover:bg-muted",
         className,
       )}
     >
@@ -303,7 +308,7 @@ function ConnectionCardShell({
       <div>
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2.5">
-            <div className="relative grid size-9 shrink-0 place-items-center rounded-lg bg-background/70">
+            <div className="relative grid size-9 shrink-0 place-items-center rounded-lg bg-background shadow-xs">
               <ProviderLogo providerId={provider.id} kind={connection.kind} className="size-5" />
               <span className="absolute -bottom-1 -right-1">
                 <ConnectionStatusIndicator connectionId={connection.id} />
@@ -328,10 +333,10 @@ function ConnectionCardShell({
         <TeamConnectionHelp connection={connection} />
         <div className="mt-3 space-y-0.5 font-mono text-xs">
           <div className="flex items-center gap-1.5">
-            <span className="truncate font-medium text-foreground/90">{target || "Standard"}</span>
-            {schema && <span className="truncate text-muted-foreground/80">/ {schema}</span>}
+            <span className="truncate font-medium text-foreground">{target || "Standard"}</span>
+            {schema && <span className="truncate text-muted-foreground">/ {schema}</span>}
           </div>
-          <div className="flex items-center gap-1 text-muted-foreground">
+          <div className="flex items-center gap-1 text-foreground/75">
             {(endpoint.user || connection.team || !endpoint.host) && (
               <span className="truncate">
                 {endpoint.user ||
@@ -339,7 +344,7 @@ function ConnectionCardShell({
               </span>
             )}
             {endpoint.host && (
-              <span className="truncate text-muted-foreground/60">
+              <span className="truncate text-muted-foreground">
                 {endpoint.user || connection.team ? "@" : ""}
                 {endpoint.host}
                 {endpoint.port ? `:${endpoint.port}` : ""}
