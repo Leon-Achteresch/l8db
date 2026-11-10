@@ -110,7 +110,7 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     tabId: "cli",
     title: "Befehl „l8db“ im Terminal",
     description:
-      "Macht „l8db“ in jedem Terminal verfügbar. Die CLI nutzt deine gespeicherten Verbindungen samt SSH-Tunnel und Schlüsselbund.",
+      "Trägt „l8db“ in den PATH ein und prüft, ob der Befehl erreichbar ist. Die CLI nutzt deine gespeicherten Verbindungen samt SSH-Tunnel und Schlüsselbund.",
     keywords: [
       "cli",
       "terminal",

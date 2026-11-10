@@ -45,7 +45,7 @@ Auswahl: `-c` → `--url`/`$L8DB_URL` → `$L8DB_CONNECTION` → Standard aus `c
 
 ## In der App
 
-Einstellungen → Kommandozeile: „Installieren“ legt `/usr/local/bin/l8db` an (macOS, bei Bedarf mit Administratorabfrage), `~/.local/bin/l8db` unter Linux (AppImage: Pfad aus `$APPIMAGE`) oder trägt den Programmordner in den Benutzer-`PATH` ein (Windows). Darunter ein kopierbarer Spickzettel und die Einrichtung der Tab-Vervollständigung.
+Einstellungen → Kommandozeile: „Zum PATH hinzufügen“ legt `/usr/local/bin/l8db` an (macOS, bei Bedarf mit Administratorabfrage), `~/.local/bin/l8db` unter Linux (AppImage: Pfad aus `$APPIMAGE`; fehlt der Ordner im `PATH`, kommt eine mit `# added by l8db` markierte Zeile in die Startdatei der Shell) oder trägt den Programmordner in den Benutzer-`PATH` ein (Windows, Registry-Typ und `%VARIABLEN%` bleiben erhalten). Die App prüft danach und einmal je Start, welches `l8db` ein neues Terminal findet: `ready`, `missing`, `not_on_path` oder `other` (ein fremdes `l8db` liegt weiter vorn). Bei `missing` und `not_on_path` zeigen das Zahnrad und die Kategorie „Kommandozeile“ einen blauen Punkt, bis der Befehl erreichbar ist. Darunter ein kopierbarer Spickzettel und die Einrichtung der Tab-Vervollständigung.
 
 ## Tests
 
