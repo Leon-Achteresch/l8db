@@ -538,7 +538,7 @@ export function VersioningReleases({
         <>
           {!releases.length && (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <TagIcon className="size-7 text-muted-foreground/40" strokeWidth={1.4} />
+              <TagIcon className="size-7 text-muted-foreground" strokeWidth={1.4} />
               <p className="text-xs font-medium">Der erste Stand beginnt hier</p>
               <p className="max-w-64 text-[11px] leading-relaxed text-muted-foreground">
                 Nimm deine Definitionen auf und erstelle daraus eine Baseline.
@@ -559,7 +559,7 @@ export function VersioningReleases({
                   chosen?.id === release.id && "bg-muted/50",
                 )}
               >
-                <TagIcon className="size-4 shrink-0 text-muted-foreground/70" />
+                <TagIcon className="size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-mono text-xs font-medium">{release.id}</span>
                   <span className="mt-1 block text-[11px] text-muted-foreground">

@@ -132,7 +132,7 @@ export function BaasConnectionCard({
         </div>
 
         <div className="mt-3 flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 p-2.5 text-[11px]">
-          <PrimaryIcon className="size-3.5 shrink-0 text-muted-foreground/80" />
+          <PrimaryIcon className="size-3.5 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium text-foreground/90">
               {DATABASE_LABEL[connection.provider]}

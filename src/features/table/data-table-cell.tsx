@@ -208,7 +208,7 @@ export const DataTableCell = memo(function DataTableCell({
         cellIndex > 0 &&
           tableStyle !== "semantic" &&
           (tableStyle !== "classic" && preview.kind === "null"
-            ? "text-muted-foreground/60 italic"
+            ? "text-muted-foreground italic"
             : monochromeCells
               ? cn("text-foreground", preview.kind === "number" && "tabular-nums")
               : VALUE_CLASSES[preview.kind]),
@@ -232,7 +232,7 @@ export const DataTableCell = memo(function DataTableCell({
         plugin?.align === "end" && "text-right",
         plugin?.align === "center" && "text-center",
         cellIndex === 0 &&
-          "w-12 border-r border-border sticky left-0 z-10 text-center text-muted-foreground/50 select-none",
+          "w-12 border-r border-border sticky left-0 z-10 text-center text-muted-foreground select-none",
         cellIndex === 0 && tableStyle !== "classic" && "px-1",
         cellIndex === 0 && isMarked && "text-primary",
         pinnedOffset !== null &&

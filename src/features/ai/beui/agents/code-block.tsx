@@ -93,11 +93,11 @@ export function CodeBlock({
       className={cn("w-full overflow-hidden rounded-2xl bg-muted/80 text-sm", className)}
     >
       <div className="flex h-10 items-center gap-2.5 px-3">
-        <FileCode2 aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground/70" />
+        <FileCode2 aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
         {filename ? (
           <span className="min-w-0 truncate font-mono text-xs text-foreground/80">{filename}</span>
         ) : null}
-        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/55">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
           {language}
         </span>
         {copyable || onCopy ? (

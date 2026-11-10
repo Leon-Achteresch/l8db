@@ -68,7 +68,7 @@ export function CheatsheetDialog({
             )}
             {groups.map((group) => (
               <div key={group.area} className="flex flex-col gap-0.5">
-                <span className="px-1 text-[11px] text-muted-foreground/80">{group.area}</span>
+                <span className="px-1 text-[11px] text-muted-foreground">{group.area}</span>
                 {group.commands.map((command) => (
                   <div
                     key={command.id}

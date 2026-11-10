@@ -60,7 +60,7 @@ export function StatusIcon({ status, className, label }: Props) {
       aria-hidden={label ? true : undefined}
       className={cn(
         "size-3.5 shrink-0",
-        status ? COLORS[status] : "text-muted-foreground/60",
+        status ? COLORS[status] : "text-muted-foreground",
         className,
       )}
     />

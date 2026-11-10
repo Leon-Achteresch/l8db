@@ -139,7 +139,7 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
                           ))}
                         </div>
                       )}
-                      <p className="font-mono text-[11px] text-muted-foreground/70 break-all">
+                      <p className="font-mono text-[11px] text-muted-foreground break-all">
                         {idx.definition}
                       </p>
                     </div>

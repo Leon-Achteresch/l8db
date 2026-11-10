@@ -100,7 +100,7 @@ export function FilterToken({
         onClick={onRemove}
         onKeyDown={removeOnKey}
         className={cn(
-          "flex items-center px-1.5 text-muted-foreground/80 outline-none transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/10 focus-visible:text-foreground",
+          "flex items-center px-1.5 text-muted-foreground outline-none transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:bg-foreground/10 focus-visible:text-foreground",
           variant === "pill" && divider,
         )}
       >

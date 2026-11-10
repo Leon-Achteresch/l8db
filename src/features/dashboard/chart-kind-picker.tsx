@@ -178,7 +178,7 @@ export function ChartKindPicker({
                     )}
                     <ChartKindPreview
                       kind={kind}
-                      className={cn("mb-2", problem && "text-muted-foreground/50")}
+                      className={cn("mb-2", problem && "text-muted-foreground")}
                     />
                     <span className="flex items-center gap-1.5 text-xs font-semibold">
                       {LABELS[kind] ?? CHARTS[kind].label}

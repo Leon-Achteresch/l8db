@@ -49,7 +49,7 @@ export function SearchRow({ item }: { item: AgentActivitySearch }) {
             animate={visible}
             exit={exit}
             transition={transition}
-            className="px-1.5 py-1 pl-8 text-muted-foreground/55"
+            className="px-1.5 py-1 pl-8 text-muted-foreground"
           >
             +{item.moreCount} more
           </motion.div>

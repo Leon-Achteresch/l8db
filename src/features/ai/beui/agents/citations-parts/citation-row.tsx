@@ -19,9 +19,7 @@ export function CitationRow({
           {citation.title}
         </span>
         {citation.domain ? (
-          <span className="min-w-0 truncate text-xs text-muted-foreground/60">
-            {citation.domain}
-          </span>
+          <span className="min-w-0 truncate text-xs text-muted-foreground">{citation.domain}</span>
         ) : null}
       </span>
       <span className="flex shrink-0 items-center gap-1.5">
@@ -29,7 +27,7 @@ export function CitationRow({
           {index}
         </span>
         {citation.url ? (
-          <ExternalLink className="size-3.5 text-muted-foreground/40 transition-colors group-hover/citation:text-muted-foreground" />
+          <ExternalLink className="size-3.5 text-muted-foreground transition-colors group-hover/citation:text-foreground" />
         ) : null}
       </span>
     </>

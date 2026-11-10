@@ -122,7 +122,7 @@ export function HealthView() {
                 <div
                   className={cn(
                     "text-2xl font-medium tabular-nums",
-                    items.length === 0 && "text-muted-foreground/40",
+                    items.length === 0 && "text-muted-foreground",
                   )}
                 >
                   {items.length}

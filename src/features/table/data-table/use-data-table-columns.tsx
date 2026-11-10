@@ -68,7 +68,7 @@ export function useDataTableColumns({
         enableSorting: false,
         enableResizing: false,
         cell: (info) => (
-          <span className="font-mono text-xs tabular-nums text-muted-foreground/60 select-none">
+          <span className="font-mono text-xs tabular-nums text-muted-foreground select-none">
             {info.row.index + 1 + headerStateRef.current.rowOffset}
           </span>
         ),

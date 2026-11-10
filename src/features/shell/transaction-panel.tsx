@@ -88,12 +88,12 @@ export function TransactionPanel() {
             {transactions.length === 0 && (
               <div className="flex flex-col items-center gap-2 py-12 text-center">
                 <div className="rounded-full border border-border/60 bg-muted/30 p-3">
-                  <CheckIcon className="size-5 text-muted-foreground/50" />
+                  <CheckIcon className="size-5 text-muted-foreground" />
                 </div>
                 <p className="text-xs font-medium text-muted-foreground">
                   Keine offenen Transaktionen
                 </p>
-                <p className="max-w-[220px] text-[10px] leading-relaxed text-muted-foreground/70">
+                <p className="max-w-[220px] text-[10px] leading-relaxed text-muted-foreground">
                   Schreiboperationen (UPDATE, INSERT, DELETE) werden automatisch in einer
                   Transaktion ausgeführt.
                 </p>

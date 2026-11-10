@@ -174,7 +174,7 @@ export function EntityFilterPanel({
         <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
           <FilterIcon className="size-8 text-muted-foreground/30" />
           <p className="text-xs text-muted-foreground">Tabelle auswahlen um Filter zu setzen</p>
-          <p className="text-[10px] text-muted-foreground/60">Doppelklick offnet direkt</p>
+          <p className="text-[10px] text-muted-foreground">Doppelklick offnet direkt</p>
         </div>
       )}
     </div>

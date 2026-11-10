@@ -70,7 +70,7 @@ export function NotebookToolbar({
     <div className="flex h-11 shrink-0 items-center gap-2 border-b bg-card px-3">
       <nav aria-label="Notebook" className="flex min-w-0 items-center gap-1.5 text-sm">
         <span className="text-muted-foreground">Notebooks</span>
-        <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+        <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate font-medium">{doc.name || "Unbenannt"}</span>
         <span
           className="ml-1.5 shrink-0 truncate text-xs text-muted-foreground"

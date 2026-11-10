@@ -120,7 +120,7 @@ export function StepGraphCard({ data, className }: Props) {
         <span
           className={cn(
             "truncate text-[11px] leading-4",
-            summary ? "text-muted-foreground" : "text-muted-foreground/70 italic",
+            summary ? "text-muted-foreground" : "text-muted-foreground italic",
           )}
         >
           {step.enabled ? summary || "Noch nicht eingerichtet" : "Übersprungen"}

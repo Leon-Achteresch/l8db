@@ -24,7 +24,7 @@ export function DashboardView() {
     return (
       <div className="grid flex-1 place-items-center p-8 text-center">
         <div>
-          <DatabaseIcon className="mx-auto mb-3 size-8 text-muted-foreground/60" />
+          <DatabaseIcon className="mx-auto mb-3 size-8 text-muted-foreground" />
           <p className="text-sm font-medium">Keine Verbindung aktiv</p>
           <Button asChild variant="outline" size="sm" className="mt-3">
             <Link to="/">Verbindung wählen</Link>

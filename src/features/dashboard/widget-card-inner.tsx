@@ -123,7 +123,7 @@ export function WidgetCardInner({
               {!locked && (
                 <GripVerticalIcon
                   data-l8-handle
-                  className="widget-drag-handle size-3.5 shrink-0 cursor-grab text-muted-foreground/60 active:cursor-grabbing"
+                  className="widget-drag-handle size-3.5 shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing"
                 />
               )}
               <span className="dashboard-widget-title truncate" title={title}>

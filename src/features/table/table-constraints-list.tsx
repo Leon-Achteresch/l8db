@@ -77,7 +77,7 @@ export function TableConstraintsList({ schema, table }: TableConstraintsListProp
                     ))}
                   </div>
                 )}
-                <p className="font-mono text-[11px] text-muted-foreground/70 break-all">
+                <p className="font-mono text-[11px] text-muted-foreground break-all">
                   {con.definition}
                 </p>
               </div>

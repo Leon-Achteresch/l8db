@@ -105,7 +105,7 @@ export function TableStylePreview({ style }: { style: TableStyle }) {
                 )}
               >
                 {classic ? null : (
-                  <span className="shrink-0 text-muted-foreground/60">
+                  <span className="shrink-0 text-muted-foreground">
                     {renderTypeIcon(column.icon, "size-[6px]")}
                   </span>
                 )}
@@ -159,7 +159,7 @@ export function TableStylePreview({ style }: { style: TableStyle }) {
             <div
               key={`${row[0]}-index`}
               className={cn(
-                "flex items-center justify-center border-r border-b border-border/40 text-[6.5px] text-muted-foreground/60",
+                "flex items-center justify-center border-r border-b border-border/40 text-[6.5px] text-muted-foreground",
                 rowHeight,
               )}
             >
@@ -186,7 +186,7 @@ export function TableStylePreview({ style }: { style: TableStyle }) {
                   content = raw ? (
                     <CheckIcon className="size-2 text-emerald-500" />
                   ) : (
-                    <span className="text-muted-foreground/50">—</span>
+                    <span className="text-muted-foreground">—</span>
                   );
                 if (column.name === "created_at")
                   content = <span className="font-sans">{row[6]}</span>;

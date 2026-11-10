@@ -22,7 +22,7 @@ type Props = {
 export function SemanticCellValue({ value, preview, column, now }: Props) {
   if (value === null || value === undefined)
     return (
-      <span className="rounded bg-muted px-1 font-mono text-[10.5px] leading-none text-muted-foreground/70">
+      <span className="rounded bg-muted px-1 font-mono text-[10.5px] leading-none text-muted-foreground">
         null
       </span>
     );
@@ -34,7 +34,7 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
         className="inline size-3.5 align-top text-emerald-600 dark:text-emerald-400"
       />
     ) : (
-      <span title="false" className="text-muted-foreground/50">
+      <span title="false" className="text-muted-foreground">
         —
       </span>
     );
@@ -60,7 +60,7 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
     const parts = (
       <>
         {short.slice(0, 8)}
-        <span className="text-muted-foreground/60">{short.slice(8)}</span>
+        <span className="text-muted-foreground">{short.slice(8)}</span>
       </>
     );
     return column?.kind === "uuid" ? (
@@ -76,7 +76,7 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
         <span title={value}>
           {display.primary}
           {display.secondary ? (
-            <span className="ml-1.5 font-mono text-[11px] leading-none text-muted-foreground/70">
+            <span className="ml-1.5 font-mono text-[11px] leading-none text-muted-foreground">
               {display.secondary}
             </span>
           ) : null}
@@ -89,7 +89,7 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
       return <span className="text-violet-600 dark:text-violet-400">{preview.text}</span>;
     return entries.map(([key, entry], index) => (
       <Fragment key={key}>
-        {index > 0 ? <span className="text-muted-foreground/50"> · </span> : null}
+        {index > 0 ? <span className="text-muted-foreground"> · </span> : null}
         <span className="text-violet-600 dark:text-violet-400">{key}</span> {entry}
       </Fragment>
     ));
@@ -99,7 +99,7 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
     return (
       <>
         {email[0]}
-        <span className="text-muted-foreground/70">{email[1]}</span>
+        <span className="text-muted-foreground">{email[1]}</span>
       </>
     );
   return preview.text;

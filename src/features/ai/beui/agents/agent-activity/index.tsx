@@ -198,7 +198,7 @@ export function AgentActivity({
             aria-hidden="true"
             animate={{ rotate: expanded ? 180 : 0 }}
             transition={reduce ? { duration: 0 } : SPRING_SWAP}
-            className="inline-flex shrink-0 text-muted-foreground/70 group-hover:text-foreground"
+            className="inline-flex shrink-0 text-muted-foreground group-hover:text-foreground"
           >
             <ChevronDown className="size-3.5" />
           </motion.span>

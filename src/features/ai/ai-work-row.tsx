@@ -70,7 +70,7 @@ export function AiWorkRow({
         {interactive && (
           <ChevronRight
             className={cn(
-              "size-3 shrink-0 text-muted-foreground/60 opacity-0 transition-[transform,opacity] duration-200 group-hover/work:opacity-100 group-focus-visible/work:opacity-100",
+              "size-3 shrink-0 text-muted-foreground opacity-0 transition-[transform,opacity] duration-200 group-hover/work:opacity-100 group-focus-visible/work:opacity-100",
               open && "rotate-90 opacity-100",
             )}
           />

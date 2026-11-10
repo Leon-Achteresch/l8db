@@ -99,7 +99,7 @@ export function FileDiff({
           <ChangeCount value={additions} type="added" />
           <ChangeCount value={deletions} type="removed" />
         </span>
-        <span className="grid size-4 shrink-0 place-items-center text-muted-foreground/60">
+        <span className="grid size-4 shrink-0 place-items-center text-muted-foreground">
           {streaming ? (
             <LoaderCircle
               aria-label="Änderungen werden angewendet"
@@ -113,7 +113,7 @@ export function FileDiff({
           aria-hidden="true"
           animate={{ rotate: currentOpen ? 180 : 0 }}
           transition={reduce ? { duration: 0 } : SPRING_SWAP}
-          className="shrink-0 text-muted-foreground/45 transition-colors group-hover:text-muted-foreground"
+          className="shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
         >
           <ChevronDown className="size-3.5" />
         </motion.span>
@@ -142,15 +142,15 @@ export function FileDiff({
                         type === "removed" && "bg-rose-500/[0.07]",
                       )}
                     >
-                      <span className="select-none pr-2 text-right tabular-nums text-muted-foreground/40">
+                      <span className="select-none pr-2 text-right tabular-nums text-muted-foreground">
                         {line.oldLine}
                       </span>
-                      <span className="select-none pr-2 text-right tabular-nums text-muted-foreground/40">
+                      <span className="select-none pr-2 text-right tabular-nums text-muted-foreground">
                         {line.newLine}
                       </span>
                       <span
                         className={cn(
-                          "select-none text-center text-muted-foreground/45",
+                          "select-none text-center text-muted-foreground",
                           type === "added" && "text-emerald-600 dark:text-emerald-400",
                           type === "removed" && "text-rose-600 dark:text-rose-400",
                         )}

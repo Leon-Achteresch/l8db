@@ -78,7 +78,7 @@ export function AgentProgress({
         ))}
       </span>
       <span className="font-sans font-medium">{label}</span>
-      <span aria-hidden="true" className="tabular-nums text-muted-foreground/70">
+      <span aria-hidden="true" className="tabular-nums text-muted-foreground">
         {formatElapsed(elapsed)}
       </span>
     </span>
