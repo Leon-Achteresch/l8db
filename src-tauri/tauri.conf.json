@@ -66,6 +66,11 @@
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["l8db"]
+      }
+    },
     "updater": {
       "endpoints": [
         "https://github.com/Leon-Achteresch/l8db/releases/latest/download/latest.json"

@@ -1,13 +1,16 @@
 import { toast } from "sonner";
 import { create } from "zustand";
-import { copyWithToast, pasteText } from "@/lib/clipboard";
+import { copyText, pasteText } from "@/lib/clipboard";
 import type { SavedConnection } from "@/lib/connections";
 import { useConnectionsStore } from "@/lib/connections/store";
 import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
+import { IS_MAC } from "@/lib/platform";
 import { capabilitiesFor } from "@/lib/providers";
 import {
   connectionRef,
+  containsSharedTabLink,
   effectiveSharedView,
+  MAX_OS_SHARED_TAB_LINK,
   parseSharedTabLink,
   resolveSharedConnection,
   type SharedTab,
@@ -105,9 +108,16 @@ export function openSharedTabWithToast(tab: SharedTab, connectionId: string): vo
   openSharedTab(tab, connectionId).catch((error) => toast.error(errorText(error)));
 }
 
+const PASTE_KEY = IS_MAC ? "⌘V" : "Strg+V";
+
 export async function copySharedTabLink(tab: SharedTab): Promise<void> {
   try {
-    await copyWithToast(await sharedTabLink(tab), "Link");
+    const link = await sharedTabLink(tab);
+    await copyText(link, `Link kopiert · öffnen mit ${PASTE_KEY} in l8db`);
+    if (link.length > MAX_OS_SHARED_TAB_LINK)
+      toast.warning("Link ist zu lang zum Anklicken", {
+        description: `Nur in l8db mit ${PASTE_KEY} öffnen`,
+      });
   } catch (error) {
     toast.error(errorText(error));
   }
@@ -137,8 +147,15 @@ export function requestSharedTab(tab: SharedTab, source: PendingSharedTab["sourc
   useSharedTabRequest.setState({ pending: { tab, source } });
 }
 
-export async function openLinkFromClipboard(): Promise<void> {
-  const shared = await parseSharedTabLink(await pasteText().catch(() => ""));
+export async function openSharedTabLinkText(text: string): Promise<boolean> {
+  const shared = await parseSharedTabLink(text);
   if (shared) requestSharedTab(shared, "link");
+  else toast.error("Ungültiger l8db-Link");
+  return shared !== null;
+}
+
+export async function openLinkFromClipboard(): Promise<void> {
+  const text = await pasteText().catch(() => "");
+  if (containsSharedTabLink(text)) await openSharedTabLinkText(text);
   else toast.error("Kein l8db-Link in der Zwischenablage");
 }

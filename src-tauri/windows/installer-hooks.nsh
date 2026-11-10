@@ -13,4 +13,10 @@ Var L8dbExitCode
   nsExec::Exec 'schtasks /Change /TN "l8db\Automatisierung" /ENABLE'
   Pop $L8dbExitCode
   l8db_task_enabled:
+  WriteRegStr SHCTX "Software\Microsoft\Windows\CurrentVersion\App Paths\l8db.exe" "" "$INSTDIR\l8db.exe"
+  WriteRegStr SHCTX "Software\Microsoft\Windows\CurrentVersion\App Paths\l8db.exe" "Path" "$INSTDIR"
+!macroend
+
+!macro NSIS_HOOK_POSTUNINSTALL
+  DeleteRegKey SHCTX "Software\Microsoft\Windows\CurrentVersion\App Paths\l8db.exe"
 !macroend
