@@ -6,6 +6,7 @@ import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
+import { UpdateVersionPicker } from "@/features/settings/update-version-picker";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useUpdatePrompt } from "@/lib/hooks/use-update-prompt";
 import { type UpdateChannel, useSettingsStore } from "@/lib/settings";
@@ -108,6 +109,7 @@ export function UpdateSection() {
           ]}
         />
       </SettingsRow>
+      <UpdateVersionPicker key={updateChannel} channel={updateChannel} currentVersion={version} />
       <SettingsRow settingId="updates">
         <Switch
           checked={autoUpdateCheck}

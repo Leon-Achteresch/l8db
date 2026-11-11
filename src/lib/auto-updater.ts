@@ -9,7 +9,9 @@ import {
 } from "@/lib/update-blockers";
 import {
   checkForUpdates,
+  getInstallPercent,
   getPendingUpdate,
+  getUpdatePromptState,
   installUpdateAndRelaunch,
   presentUpdate,
   shouldRunCheck,
@@ -54,13 +56,14 @@ export async function runCheck(): Promise<void> {
   try {
     const { autoUpdateCheck, autoUpdateInstall, skippedUpdateVersion } =
       useSettingsStore.getState();
-    if (!autoUpdateCheck) return;
+    const prompt = getUpdatePromptState();
+    if (!autoUpdateCheck || (prompt.manual && prompt.open) || getInstallPercent() !== null) return;
     const previousVersion = getPendingUpdate()?.version;
     const update = await checkForUpdates();
-    if (!update) return;
+    if (!update || getUpdatePromptState().manual) return;
     if (update.version === skippedUpdateVersion) return;
     if (autoUpdateInstall) {
-      await installSilently();
+      await installSilently(update);
       return;
     }
     if (update.version !== previousVersion) presentUpdate(update);
@@ -76,10 +79,10 @@ function postpone(update: Update, reason: string): void {
   presentUpdate(update);
 }
 
-async function installSilently(): Promise<void> {
-  const update = getPendingUpdate();
-  if (!update) return;
+async function installSilently(update: Update): Promise<void> {
+  if (getUpdatePromptState().manual || getPendingUpdate() !== update) return;
   const blocked = describeUpdateBlockers(await collectUpdateBlockers());
+  if (getUpdatePromptState().manual || getPendingUpdate() !== update) return;
   if (blocked) {
     postpone(update, blocked);
     return;

@@ -533,6 +533,8 @@ pub fn run() {
             connection_import::resolve_connection_endpoints,
             file_open::resolve_open_files,
             updates::check_update,
+            updates::list_update_releases,
+            updates::cancel_update_release_request,
             windows::open_app_window,
             windows::set_dock_recents,
             windows::set_window_connection,
