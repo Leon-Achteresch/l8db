@@ -257,7 +257,23 @@ async fn off_main_thread<T: Send + 'static>(work: fn() -> Result<T, String>) -> 
 
 #[tauri::command]
 pub async fn cli_status() -> Result<CliStatus, String> {
-    off_main_thread(status).await
+    off_main_thread(repaired).await
+}
+
+#[cfg(not(windows))]
+fn repaired() -> Result<CliStatus, String> {
+    status()
+}
+
+#[cfg(windows)]
+fn repaired() -> Result<CliStatus, String> {
+    let found = status()?;
+    let [_, dir] = path_dirs()?;
+    let listed = user_path()?.split(';').any(|entry| same_entry(entry, &dir));
+    if found.installed || !listed {
+        return Ok(found);
+    }
+    install().or(Ok(found))
 }
 
 #[tauri::command]
