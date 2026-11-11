@@ -17,6 +17,7 @@ Aufbau nach dem Muster von `gh`/`kubectl`: `l8db <nomen> <verb>`, kurze Aliase f
 | `doctor [--test-keychain] [--strict]` | Arbeitsplatz, IT-Richtlinie und Team-Datei ohne Zugangsdaten prüfen |
 | `policy templates <pfad>` | Gruppenrichtlinienvorlagen für Windows (`l8db.admx`, `de-DE`/`en-US`) schreiben |
 | `completions <shell>` | bash, zsh, fish, PowerShell |
+| `version` (`--version`, `-V`, `-v`) | Version ausgeben |
 
 Globale Optionen: `-c/--connection`, `--url`, `-d/--database`, `-o/--output table|json|ndjson|csv|tsv`. Ohne `-o` gibt die CLI im Terminal eine Tabelle aus, in Pipes TSV. NULL ist in TSV `\N`, in CSV ein leeres Feld; ein Leerstring steht in CSV als `""`. `--url http(s)://…` ist mehrdeutig, dafür `clickhouse://`, `elasticsearch://` oder `influxdb://` nutzen; `--timeout` braucht mindestens 5 Sekunden (0 = ohne Grenze). Ergebnisse gehen nach stdout, Status und Hinweise nach stderr. Exit-Codes: 0 ok, 1 Fehler, 2 falscher Aufruf, 130 mit Strg+C abgebrochen (der Treiber bricht die Abfrage auf dem Server ab, wo er das kann: Postgres, SQLite).
 
@@ -41,11 +42,11 @@ Auswahl: `-c` → `--url`/`$L8DB_URL` → `$L8DB_CONNECTION` → Standard aus `c
 
 - Standardmäßig höchstens 1000 Zeilen pro Ergebnis (`-n`, `--all`); Postgres, MySQL, SQLite und DuckDB holen dann auch nur so viele Zeilen. Mit `--all` liegt das ganze Ergebnis im Speicher.
 - Ausgabe ohne Datenmaskierung und ohne Pager.
-- Windows: Das GUI-Binary hängt sich per `AttachConsole` an das aufrufende Terminal; die Eingabeaufforderung kann vor der Ausgabe zurückkehren. Auf echtem Windows ungetestet.
+- Windows: `l8db.exe` ist ein GUI-Binary, auf das cmd und PowerShell nicht warten; direkt aufgerufen kehrt die Eingabeaufforderung vor der Ausgabe zurück und der Befehl wirkt, als ende er nie. Im `PATH` steht deshalb zuerst `<Programmordner>\bin` mit dem Starter `l8db.cmd` (`src-tauri/windows/l8db.cmd`, als Ressource im Bundle), der auf das Ende wartet und den Exit-Code durchreicht; das Binary hängt sich per `AttachConsole` an dessen Konsole. Strg+C fragt danach „Batchvorgang abbrechen (J/N)?“. Auf echtem Windows ungetestet.
 
 ## In der App
 
-Einstellungen → Kommandozeile: „Zum PATH hinzufügen“ legt `/usr/local/bin/l8db` an (macOS, bei Bedarf mit Administratorabfrage), `~/.local/bin/l8db` unter Linux (AppImage: Pfad aus `$APPIMAGE`; fehlt der Ordner im `PATH`, kommt eine mit `# added by l8db` markierte Zeile in die Startdatei der Shell) oder trägt den Programmordner in den Benutzer-`PATH` ein (Windows, Registry-Typ und `%VARIABLEN%` bleiben erhalten). Die App prüft danach und einmal je Start, welches `l8db` ein neues Terminal findet: `ready`, `missing`, `not_on_path` oder `other` (ein fremdes `l8db` liegt weiter vorn). Bei `missing` und `not_on_path` zeigen das Zahnrad und die Kategorie „Kommandozeile“ einen blauen Punkt, bis der Befehl erreichbar ist. Darunter ein kopierbarer Spickzettel und die Einrichtung der Tab-Vervollständigung.
+Einstellungen → Kommandozeile: „Zum PATH hinzufügen“ legt `/usr/local/bin/l8db` an (macOS, bei Bedarf mit Administratorabfrage), `~/.local/bin/l8db` unter Linux (AppImage: Pfad aus `$APPIMAGE`; fehlt der Ordner im `PATH`, kommt eine mit `# added by l8db` markierte Zeile in die Startdatei der Shell) oder trägt `<Programmordner>\bin` und dahinter den Programmordner in den Benutzer-`PATH` ein (Windows, Registry-Typ und `%VARIABLEN%` bleiben erhalten; Shells finden so `l8db.cmd`, Programme wie MCP-Clients weiter `l8db.exe`; fehlt der Starter, legt die App ihn an). Die App prüft danach und einmal je Start, welches `l8db` ein neues Terminal findet: `ready`, `missing`, `not_on_path` oder `other` (ein fremdes `l8db` liegt weiter vorn). Unter Windows gilt ein `PATH`, in dem `l8db.exe` vor dem Starter gefunden wird (Eintrag aus 0.18.0-canary.5), als `missing`; ein Klick auf „Zum PATH hinzufügen“ ordnet ihn um. Bei `missing` und `not_on_path` zeigen das Zahnrad und die Kategorie „Kommandozeile“ einen blauen Punkt, bis der Befehl erreichbar ist. Darunter ein kopierbarer Spickzettel und die Einrichtung der Tab-Vervollständigung.
 
 ## Tests
 

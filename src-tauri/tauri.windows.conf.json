@@ -18,6 +18,9 @@
       "nsis": {
         "installerHooks": "./windows/installer-hooks.nsh"
       }
+    },
+    "resources": {
+      "windows/l8db.cmd": "bin/l8db.cmd"
     }
   }
 }

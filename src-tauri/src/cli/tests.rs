@@ -157,6 +157,8 @@ fn routes_cli_words_and_keeps_app_arguments() {
         "--help",
         "-h",
         "-V",
+        "-v",
+        "version",
         "-c prod q x",
         "--connection=prod q x",
         "--url postgres://x/y q x",
@@ -183,6 +185,18 @@ fn routes_cli_words_and_keeps_app_arguments() {
     ] {
         assert!(!wants(app), "{app} sollte die App starten");
     }
+}
+
+#[test]
+fn every_spelling_of_version_prints_it_and_ends() {
+    for flag in ["l8db --version", "l8db -V", "l8db -v"] {
+        let kind = parse(flag).unwrap_err().kind();
+        assert_eq!(kind, clap::error::ErrorKind::DisplayVersion, "{flag}");
+    }
+    assert!(matches!(
+        parse("l8db version").unwrap().command,
+        Command::Version
+    ));
 }
 
 #[test]
