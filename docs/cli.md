@@ -42,7 +42,7 @@ Auswahl: `-c` → `--url`/`$L8DB_URL` → `$L8DB_CONNECTION` → Standard aus `c
 
 - Standardmäßig höchstens 1000 Zeilen pro Ergebnis (`-n`, `--all`); Postgres, MySQL, SQLite und DuckDB holen dann auch nur so viele Zeilen. Mit `--all` liegt das ganze Ergebnis im Speicher.
 - Ausgabe ohne Datenmaskierung und ohne Pager.
-- Windows: `l8db.exe` ist ein GUI-Binary, auf das cmd und PowerShell nicht warten; direkt aufgerufen kehrt die Eingabeaufforderung vor der Ausgabe zurück und der Befehl wirkt, als ende er nie. Im `PATH` steht deshalb zuerst `<Programmordner>\bin` mit dem Starter `l8db.cmd` (`src-tauri/windows/l8db.cmd`, als Ressource im Bundle), der auf das Ende wartet und den Exit-Code durchreicht; das Binary hängt sich per `AttachConsole` an dessen Konsole. Strg+C fragt danach „Batchvorgang abbrechen (J/N)?“. Auf echtem Windows ungetestet.
+- Windows: `l8db.exe` ist ein GUI-Binary, auf das cmd und PowerShell nicht warten; direkt aufgerufen kehrt die Eingabeaufforderung vor der Ausgabe zurück und der Befehl wirkt, als ende er nie. Im `PATH` steht deshalb zuerst `<Programmordner>\bin` mit dem Starter `l8db.cmd` (`src-tauri/windows/l8db.cmd`, als Ressource im Bundle), der auf das Ende wartet und den Exit-Code durchreicht. `AttachConsole` ersetzt die Standardkanäle eines von cmd gestarteten GUI-Programms durch die Konsole, auch wenn sie umgeleitet sind; `attach_console` merkt sich deshalb vorher Dateien, Pipes und `NUL` und setzt genau diese danach wieder ein. Ohne das gingen `> datei`, Pipes und `$x = l8db …` leer aus und SQL über die Standardeingabe blieb hängen. Strg+C fragt über den Starter danach „Batchvorgang abbrechen (J/N)?“. Belegt auf `windows-2025` durch den Workflow „Windows CLI“; die Verbindungsauswahl per Tastatur und der Installer selbst sind dort nicht abgedeckt.
 
 ## In der App
 
@@ -50,6 +50,7 @@ Einstellungen → Kommandozeile: „Zum PATH hinzufügen“ legt `/usr/local/bin
 
 ## Tests
 
+- `.github/workflows/windows-cli.yml` (Push auf `development`, wenn sich `src-tauri/src/cli/**`, `src-tauri/windows/**` oder der Lauf selbst ändern): baut das Binary auf `windows-2025` und prüft mit `scripts/test-windows-cli.ps1` Starter, Exit-Codes, Umleitung in Datei und Pipe, SQL über die Standardeingabe, die Reihenfolge von Ausgabe und Prompt (in cmd getippt und in einer echten Konsole) und die `PATH`-Auflösung; dazu die CLI-Tests und der ignorierte Test `the_user_path_survives_install_repair_and_uninstall` gegen die echte Registry (nur dort ausführen, er ändert den Benutzer-`PATH`).
 - `cargo test cli::` und `cargo test automation::connection` (Parser, Routing, Fehlermeldungen, Beispiele, Schreib-Erkennung, Befehls-Tunnel).
 - `L8DB_CLI_E2E=1 bun test tests/cli-e2e.test.ts` mit gebautem Debug-Binary: SQLite-Datei, gespeicherte Verbindungen in einer temporären `automation.db`, TTY über `script`. Mit `L8DB_CLI_E2E_PG=postgres://…` zusätzlich Postgres (Rollback, Ctrl+C), mit `L8DB_CLI_E2E_PG_PERF=postgres://…/l8db_perf` die Performance-Messung auf der 2-Mio.-Zeilen-Tabelle `big`.
 
