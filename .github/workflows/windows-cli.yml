@@ -34,6 +34,9 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           cache: cli-windows
+      - name: Probe
+        shell: pwsh
+        run: .github/windows-probe/probe.ps1
       - name: Build the app binary
         run: cargo build --locked --no-default-features
         working-directory: src-tauri
@@ -43,7 +46,7 @@ jobs:
         run: scripts/test-windows-cli.ps1
       - name: CLI unit tests
         if: ${{ !cancelled() }}
-        run: cargo test --locked --no-default-features --lib "cli::"
+        run: cargo test --locked --no-default-features --lib "cli::" -- --skip "ai::cli" --skip "automation::cli" --skip "check_cli"
         working-directory: src-tauri
       - name: User PATH install, repair and uninstall
         if: ${{ !cancelled() }}

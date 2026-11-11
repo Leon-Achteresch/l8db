@@ -18,7 +18,7 @@ function Check([string]$name, [bool]$ok, $detail = '') {
     Write-Host "ok   $name"
   } else {
     Write-Host "FAIL $name"
-    Write-Host ($detail | Out-String)
+    Write-Host ($detail | Format-List | Out-String).Trim()
     $script:failed++
   }
 }
@@ -73,8 +73,8 @@ $empty = Cmd "`"$shim`" conn list"
 Check 'cmd: an empty store lists nothing and ends with 0' ($empty.code -eq 0 -and $empty.out -match 'name') $empty
 
 $doctor = Cmd "`"$shim`" doctor -o json"
-$doctorRows = try { @($doctor.out | ConvertFrom-Json).Count } catch { 0 }
-Check 'cmd: doctor writes JSON and ends' ($doctor.code -in 0, 1 -and $doctorRows -gt 0) $doctor
+$doctorRows = try { @($doctor.out | ConvertFrom-Json | Where-Object { $_.check }).Count } catch { 0 }
+Check 'cmd: doctor writes JSON and ends' (($doctor.code -eq 0 -or $doctor.code -eq 1) -and $doctorRows -gt 0) $doctor
 
 $query = Cmd "`"$shim`" --url `"$db`" q `"select 'a b' as x, 2 > 1 as y, 10 % 3 as z`" -o csv"
 Check 'cmd: quoted SQL with spaces, > and % reaches SQLite' ($query.code -eq 0 -and (Lines $query.out) -join '|' -eq 'x,y,z|a b,1,1') $query
