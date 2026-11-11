@@ -294,7 +294,7 @@ export const DataTableCell = memo(function DataTableCell({
           <DataTableCellBadge badge={badge} />
           {preview.text}
         </>
-      ) : timestamp !== null ? (
+      ) : timestamp !== null && !(tableStyle === "semantic" && timestamps.mode === "raw") ? (
         <span title={String(value)}>{truncateCellPreview(timestamp, previewLimit)}</span>
       ) : tableStyle === "semantic" ? (
         <SemanticCellValue

@@ -5,13 +5,13 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TIMESTAMP =
   /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(\.\d+)?)?)?\s*(Z|[+-]\d{2}(?::?\d{2})?)?$/i;
 const DAY = 86_400_000;
-const CATEGORY_LIMIT = 8;
 const CATEGORY_MAX_LENGTH = 24;
 const CATEGORY_TOKEN = /^(?:[a-z0-9]+(?:[ _.-][a-z0-9]+)*|[A-Z0-9]+(?:[ _.-][A-Z0-9]+)*)$/;
 const PLAIN_TYPES =
   /char|text|string|clob|name|citext|xml|json|bytea|blob|binary|inet|cidr|macaddr|tsvector|tsquery|point|line|polygon|geometry|geography|interval|bit|money|ltree|hstore|vector/i;
 
-export const CATEGORY_COLORS = 6;
+export const CATEGORY_COLORS = 8;
+const CATEGORY_LIMIT = CATEGORY_COLORS;
 
 export function shortUuid(value: string): string {
   return UUID.test(value) ? `${value.slice(0, 8)}…${value.slice(-4)}` : value;
@@ -79,6 +79,20 @@ export function categoryColorIndex(value: string): number {
   hash ^= hash >>> 17;
   hash += hash << 5;
   return (hash >>> 0) % CATEGORY_COLORS;
+}
+
+export function categoryColorMap(values: Iterable<unknown>): Map<string, number> {
+  const distinct = new Set<string>();
+  for (const value of values) if (typeof value === "string") distinct.add(value);
+  const colors = new Map<string, number>();
+  const used = new Set<number>();
+  for (const value of [...distinct].sort()) {
+    let index = categoryColorIndex(value);
+    if (used.size < CATEGORY_COLORS) while (used.has(index)) index = (index + 1) % CATEGORY_COLORS;
+    used.add(index);
+    colors.set(value, index);
+  }
+  return colors;
 }
 
 export function isEnumDataType(dataType: string | undefined): boolean {

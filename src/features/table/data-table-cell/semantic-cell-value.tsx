@@ -44,7 +44,7 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
       <span
         className={cn(
           "my-[0.0625rem] inline-block max-w-full truncate rounded-full px-2 align-top font-sans text-[11px] leading-[1.125rem] font-medium before:mr-1.5 before:inline-block before:size-1.5 before:rounded-full before:bg-current before:align-middle before:opacity-80",
-          CATEGORY_PILL_CLASSES[categoryColorIndex(value)],
+          CATEGORY_PILL_CLASSES[column.categoryColors?.get(value) ?? categoryColorIndex(value)],
         )}
       >
         {preview.text}
