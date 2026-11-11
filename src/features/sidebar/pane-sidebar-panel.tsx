@@ -1,4 +1,4 @@
-import { startTransition, useState } from "react";
+import { startTransition, useRef, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import {
@@ -41,8 +41,11 @@ export function PaneSidebarPanel({ index }: { index: number }) {
   const tabs = useSidebarTabs(Boolean(packages?.length)).filter((tab) => tab.value !== "queries");
   const sidebarTab = tabs.some((tab) => tab.value === selectedTab) ? selectedTab : "tables";
   const objectNav = useSettingsStore((state) => state.sidebarObjectNav);
-  const changeTab = (value: string) =>
+  const contentRef = useRef<HTMLDivElement>(null);
+  const changeTab = (value: string) => {
+    if (contentRef.current) contentRef.current.scrollTop = 0;
     startTransition(() => setSelectedTab(value as SidebarTabValue));
+  };
   const current = remoteTab(useSplitView((state) => state.panes[index]));
   const setPaneTab = useSplitView((state) => state.setPaneTab);
   const feature = useNewFeatureVisibility<HTMLDivElement>("split.pane-tables");
@@ -94,7 +97,7 @@ export function PaneSidebarPanel({ index }: { index: number }) {
           {objectsFeature.isNew && <NewBadge />}
         </div>
       ) : null}
-      <SidebarContent>
+      <SidebarContent ref={contentRef}>
         <SidebarGroup>
           {tabs.length > 1 && objectNav === "select" ? (
             <div ref={objectsFeature.ref} className="flex min-w-0 items-center gap-1">

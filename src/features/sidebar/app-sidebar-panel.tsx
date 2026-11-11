@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { FilterIcon } from "lucide-react";
-import { lazy, Suspense, startTransition, useState } from "react";
+import { lazy, Suspense, startTransition, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import {
   Sidebar,
@@ -64,8 +64,11 @@ export function AppSidebarPanel() {
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [searchModalMounted, setSearchModalMounted] = useState(false);
   const objectNav = useSettingsStore((state) => state.sidebarObjectNav);
-  const changeTab = (value: string) =>
+  const contentRef = useRef<HTMLDivElement>(null);
+  const changeTab = (value: string) => {
+    if (contentRef.current) contentRef.current.scrollTop = 0;
     startTransition(() => setSidebarTab(value as typeof sidebarTab));
+  };
 
   return (
     <Sidebar
@@ -102,7 +105,7 @@ export function AppSidebarPanel() {
           <SidebarObjectTabs tabs={sidebarTabs} value={sidebarTab} onValueChange={changeTab} />
         </div>
       ) : null}
-      <SidebarContent>
+      <SidebarContent ref={contentRef}>
         <SidebarFavorites />
         <SidebarGroup>
           <div
