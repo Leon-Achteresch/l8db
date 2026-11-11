@@ -29,6 +29,7 @@ export const NEW_FEATURES = {
   "discover.feedback": NEXT_FEATURE_VERSION,
   "discover.related": NEXT_FEATURE_VERSION,
   "discover.modifier-overlay": NEXT_FEATURE_VERSION,
+  "settings.general.tour": NEXT_FEATURE_VERSION,
   "discover.cheatsheet": NEXT_FEATURE_VERSION,
   "discover.whats-this": NEXT_FEATURE_VERSION,
   "discover.palette-features": NEXT_FEATURE_VERSION,

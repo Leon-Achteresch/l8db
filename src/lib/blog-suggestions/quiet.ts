@@ -12,7 +12,7 @@ export const CHECK_INTERVAL = 5_000;
 export const INPUT_EVENTS = ["keydown", "pointerdown", "wheel"] as const;
 
 const OVERLAYS =
-  '[role="dialog"], [role="alertdialog"], [role="menu"], [data-radix-popper-content-wrapper], .driver-popover';
+  '[role="dialog"], [role="alertdialog"], [role="menu"], [data-radix-popper-content-wrapper], [data-tour-ui]';
 const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]';
 
 export interface QuietSignals {

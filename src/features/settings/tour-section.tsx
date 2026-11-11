@@ -5,7 +5,7 @@ import { useTourStore } from "@/lib/tour/store";
 export function TourSection() {
   return (
     <div data-tour="tour-settings">
-      <SettingsRow settingId="tour">
+      <SettingsRow settingId="tour" featureId="settings.general.tour">
         <Button
           type="button"
           size="sm"

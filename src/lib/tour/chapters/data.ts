@@ -9,8 +9,8 @@ export const TOUR_CHAPTERS: TourChapter[] = [
       {
         id: "hello",
         title: "Willkommen bei l8db",
-        body: "Mit l8db schaust du in Datenbanken hinein: Du siehst Tabellen wie in einer Excel-Liste, kannst Werte ändern und Fragen an die Datenbank stellen. Du brauchst kein Vorwissen. So geht die Tour: Ein Bereich wird hell hervorgehoben, der Kasten mit 👉 sagt dir genau, was du tun sollst. „Zurück“ geht einen Schritt zurück, „−“ versteckt die Tour kurz, „×“ beendet sie. Du kannst nichts kaputt machen.",
-        action: "Klicke unten rechts auf „Weiter“ (oder drücke die Pfeiltaste →).",
+        body: "Ich bin Lumi und laufe dir durch l8db voraus. Mit l8db schaust du in Datenbanken hinein: Tabellen wie in einer Excel-Liste, Werte ändern, Fragen an die Datenbank stellen. Du brauchst kein Vorwissen. Ich zeige auf den Bereich, um den es geht, und sage dir, was du tun kannst. „−“ versteckt mich kurz, „×“ beendet die Tour. Du kannst nichts kaputt machen.",
+        action: "Klicke auf „Weiter“ (oder drücke die Pfeiltaste →).",
         route: "/",
         side: "over",
       },
@@ -399,7 +399,7 @@ export const TOUR_CHAPTERS: TourChapter[] = [
       {
         id: "finish",
         title: "Geschafft! 🎉",
-        body: "Du kennst jetzt alles Wichtige: Verbindung anlegen, Tabelle öffnen, Werte ändern, SQL ausführen und Hilfe finden. Du willst etwas nochmal sehen? Starte die Tour jederzeit unter Einstellungen → Produkttour neu, oder springe über „alle Kapitel“ direkt zu einem Thema.",
+        body: "Du kennst jetzt alles Wichtige: Verbindung anlegen, Tabelle öffnen, Werte ändern, SQL ausführen und Hilfe finden. Du willst etwas nochmal sehen? Starte die Tour jederzeit unter Einstellungen → Produkttour neu, oder springe über „Alle Kapitel“ direkt zu einem Thema. Ist die KI eingerichtet, kannst du mir unterwegs jederzeit Fragen stellen.",
         action: "Klicke auf „Weiter“, um die Tour zu beenden.",
         route: "/",
         side: "over",
