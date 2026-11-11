@@ -1,12 +1,18 @@
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, ResourceId, Runtime, Webview};
 use tauri_plugin_updater::UpdaterExt;
 use time::format_description::well_known::Rfc3339;
+use tokio_util::sync::CancellationToken;
 
 const RELEASES_URL: &str =
     "https://api.github.com/repos/Leon-Achteresch/l8db/releases?per_page=100";
+const RELEASE_PAGE_SIZE: usize = 100;
+static RELEASE_REQUESTS: LazyLock<Mutex<HashMap<String, CancellationToken>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,6 +23,13 @@ pub struct UpdateMetadata {
     date: Option<String>,
     body: Option<String>,
     raw_json: serde_json::Value,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateReleasePage {
+    versions: Vec<String>,
+    next_page: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -57,13 +70,72 @@ fn newest_manifest(releases: Vec<Release>) -> Option<String> {
         .map(|(_, url)| url)
 }
 
-async fn canary_endpoint(timeout: Duration) -> Result<url::Url, String> {
-    let releases = reqwest::Client::builder()
+fn allowed_version(tag: &str, channel: &str) -> Option<semver::Version> {
+    release_version(tag).filter(|version| channel == "canary" || version.pre.is_empty())
+}
+
+fn is_selected_update(
+    current: &semver::Version,
+    release: &semver::Version,
+    expected: &semver::Version,
+) -> bool {
+    release == expected && current != expected
+}
+
+fn selected_endpoint(version: &str, channel: &str) -> Result<url::Url, String> {
+    let tag = format!("v{version}");
+    allowed_version(&tag, channel).ok_or("Version ist für diesen Updatekanal nicht verfügbar")?;
+    url::Url::parse(&format!(
+        "https://github.com/Leon-Achteresch/l8db/releases/download/{tag}/latest.json"
+    ))
+    .map_err(|error| error.to_string())
+}
+
+fn release_page(releases: Vec<Release>, channel: &str, page: u32) -> UpdateReleasePage {
+    let next_page = (releases.len() == RELEASE_PAGE_SIZE).then_some(page + 1);
+    let mut versions: Vec<_> = releases
+        .into_iter()
+        .filter(|release| !release.draft)
+        .filter(|release| {
+            release
+                .assets
+                .iter()
+                .any(|asset| asset.name == "latest.json")
+        })
+        .filter_map(|release| allowed_version(&release.tag_name, channel))
+        .collect();
+    versions.sort_unstable_by(|left, right| right.cmp(left));
+    versions.dedup();
+    UpdateReleasePage {
+        versions: versions
+            .into_iter()
+            .map(|version| version.to_string())
+            .collect(),
+        next_page,
+    }
+}
+
+fn effective_channel(channel: &str) -> Result<String, String> {
+    let policy = crate::organization::current(false)?;
+    let channel = policy
+        .policy
+        .settings
+        .update_channel
+        .as_deref()
+        .unwrap_or(channel);
+    if !["stable", "canary"].contains(&channel) {
+        return Err("Ungültiger Updatekanal".into());
+    }
+    Ok(channel.to_owned())
+}
+
+async fn fetch_releases(timeout: Duration, page: u32) -> Result<Vec<Release>, String> {
+    reqwest::Client::builder()
         .timeout(timeout)
         .user_agent("l8db")
         .build()
         .map_err(|error| error.to_string())?
-        .get(RELEASES_URL)
+        .get(format!("{RELEASES_URL}&page={page}"))
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
@@ -71,9 +143,49 @@ async fn canary_endpoint(timeout: Duration) -> Result<url::Url, String> {
         .map_err(|error| error.to_string())?
         .json::<Vec<Release>>()
         .await
-        .map_err(|error| error.to_string())?;
-    let manifest = newest_manifest(releases).ok_or("Keine Version mit Update-Manifest gefunden")?;
+        .map_err(|error| error.to_string())
+}
+
+async fn canary_endpoint(timeout: Duration) -> Result<url::Url, String> {
+    let manifest = newest_manifest(fetch_releases(timeout, 1).await?)
+        .ok_or("Keine Version mit Update-Manifest gefunden")?;
     url::Url::parse(&manifest).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn list_update_releases(
+    channel: String,
+    page: u32,
+    request_id: String,
+) -> Result<UpdateReleasePage, String> {
+    let channel = effective_channel(&channel)?;
+    if page == 0 || page == u32::MAX {
+        return Err("Ungültige Versionsseite".into());
+    }
+    let token = CancellationToken::new();
+    RELEASE_REQUESTS
+        .lock()
+        .map_err(|error| error.to_string())?
+        .insert(request_id.clone(), token.clone());
+    let result = tokio::select! {
+        biased;
+        _ = token.cancelled() => Err("Versionsabfrage abgebrochen".to_owned()),
+        result = fetch_releases(Duration::from_secs(20), page) => result,
+    };
+    RELEASE_REQUESTS
+        .lock()
+        .map_err(|error| error.to_string())?
+        .remove(&request_id);
+    Ok(release_page(result?, &channel, page))
+}
+
+#[tauri::command]
+pub fn cancel_update_release_request(request_id: String) {
+    if let Ok(requests) = RELEASE_REQUESTS.lock() {
+        if let Some(token) = requests.get(&request_id) {
+            token.cancel();
+        }
+    }
 }
 
 #[tauri::command]
@@ -81,20 +193,21 @@ pub async fn check_update<R: Runtime>(
     webview: Webview<R>,
     channel: String,
     timeout: u64,
+    version: Option<String>,
 ) -> Result<Option<UpdateMetadata>, String> {
-    let policy = crate::organization::current(false)?;
-    let channel = policy
-        .policy
-        .settings
-        .update_channel
-        .as_deref()
-        .unwrap_or(&channel);
-    if !["stable", "canary"].contains(&channel) {
-        return Err("Ungültiger Updatekanal".into());
-    }
+    let channel = effective_channel(&channel)?;
     let timeout = Duration::from_millis(timeout);
     let mut builder = webview.updater_builder().timeout(timeout);
-    if channel == "canary" {
+    if let Some(version) = version.as_deref() {
+        let endpoint = selected_endpoint(version, &channel)?;
+        let expected = semver::Version::parse(version).map_err(|error| error.to_string())?;
+        builder = builder
+            .endpoints(vec![endpoint])
+            .map_err(|error| error.to_string())?
+            .version_comparator(move |current, release| {
+                is_selected_update(&current, &release.version, &expected)
+            });
+    } else if channel == "canary" {
         builder = builder
             .endpoints(vec![canary_endpoint(timeout).await?])
             .map_err(|error| error.to_string())?;
@@ -111,6 +224,12 @@ pub async fn check_update<R: Runtime>(
     let Some(update) = updater.check().await.map_err(|error| error.to_string())? else {
         return Ok(None);
     };
+    if version
+        .as_deref()
+        .is_some_and(|version| version != update.version)
+    {
+        return Err("Update-Manifest gehört nicht zur gewählten Version".into());
+    }
     Ok(Some(UpdateMetadata {
         current_version: update.current_version.clone(),
         version: update.version.clone(),
@@ -137,6 +256,108 @@ mod tests {
                 .into_iter()
                 .collect(),
         }
+    }
+
+    #[test]
+    fn history_filters_channels_and_skips_uninstallable_releases() {
+        let fixtures = || {
+            let mut draft = release("v2.0.0", true);
+            draft.draft = true;
+            vec![
+                release("v0.17.0-canary.9", true),
+                release("v0.17.0-canary.10", true),
+                release("v0.17.0", true),
+                release("v0.16.0", true),
+                release("v0.16.0", true),
+                release("v0.15.0", false),
+                release("v0.18.0-beta.1", true),
+                release("feature-video-x", true),
+                draft,
+            ]
+        };
+        assert_eq!(
+            release_page(fixtures(), "stable", 1).versions,
+            ["0.17.0", "0.16.0"]
+        );
+        assert_eq!(
+            release_page(fixtures(), "canary", 1).versions,
+            ["0.17.0", "0.17.0-canary.10", "0.17.0-canary.9", "0.16.0"]
+        );
+        assert_eq!(release_page(fixtures(), "canary", 1).next_page, None);
+    }
+
+    #[test]
+    fn history_can_reach_beyond_the_first_hundred_releases() {
+        let releases = (1..=100)
+            .map(|counter| release(&format!("v0.18.0-canary.{counter}"), true))
+            .collect();
+        let page = release_page(releases, "stable", 7);
+        assert!(page.versions.is_empty());
+        assert_eq!(page.next_page, Some(8));
+        let last = release_page(vec![release("v0.1.0", true)], "stable", 8);
+        assert_eq!(last.versions, ["0.1.0"]);
+        assert_eq!(last.next_page, None);
+    }
+
+    #[test]
+    fn explicit_versions_allow_downgrades_but_only_to_the_selected_release() {
+        let parse = |value| semver::Version::parse(value).unwrap();
+        for (current, expected) in [
+            ("0.18.0", "0.9.1"),
+            ("0.18.0-canary.9", "0.17.0"),
+            ("0.18.0-canary.9", "0.18.0-canary.2"),
+            ("0.17.0", "0.18.0-canary.2"),
+        ] {
+            assert!(is_selected_update(
+                &parse(current),
+                &parse(expected),
+                &parse(expected)
+            ));
+            assert!(!is_selected_update(
+                &parse(current),
+                &parse("99.0.0"),
+                &parse(expected)
+            ));
+            assert!(!is_selected_update(
+                &parse(expected),
+                &parse(expected),
+                &parse(expected)
+            ));
+        }
+        assert_eq!(
+            selected_endpoint("0.9.1", "stable").unwrap().as_str(),
+            "https://github.com/Leon-Achteresch/l8db/releases/download/v0.9.1/latest.json"
+        );
+        assert!(selected_endpoint("0.18.0-canary.2", "canary").is_ok());
+        assert!(selected_endpoint("0.17.0", "canary").is_ok());
+        assert!(selected_endpoint("0.18.0-canary.2", "stable").is_err());
+        for invalid in [
+            "../latest",
+            "0.18.0-beta.1",
+            "0.18.0+build.1",
+            "0.18.0/other",
+            "v0.18.0",
+        ] {
+            assert!(selected_endpoint(invalid, "canary").is_err());
+        }
+    }
+
+    #[test]
+    fn history_page_performance_stays_bounded_for_ten_thousand_releases() {
+        let mut timings = Vec::new();
+        for page in 1..=100 {
+            let releases = (1..=100)
+                .map(|counter| release(&format!("v0.18.0-canary.{}", page * 100 + counter), true))
+                .collect();
+            let start = std::time::Instant::now();
+            let result = release_page(releases, "canary", page);
+            timings.push(start.elapsed().as_secs_f64() * 1000.0);
+            assert_eq!(result.versions.len(), 100);
+            assert!(serde_json::to_vec(&result).unwrap().len() < 4096);
+        }
+        timings.sort_by(f64::total_cmp);
+        eprintln!("update history: 10,000 releases, 100 per page, median {:.3} ms, p95 {:.3} ms, payload <4096 bytes", timings[50], timings[94]);
+        assert!(timings[94] < 20.0);
     }
 
     #[test]

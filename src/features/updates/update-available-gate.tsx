@@ -18,7 +18,7 @@ export function UpdateAvailableGate() {
   return (
     <PanelErrorBoundary label="Der Update-Dialog" source="update-dialog" compact>
       <Suspense fallback={null}>
-        <UpdateAvailableDialog />
+        <UpdateAvailableDialog key={update?.version} />
       </Suspense>
     </PanelErrorBoundary>
   );
