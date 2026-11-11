@@ -26,8 +26,10 @@ fn publish_in(dir: &Path, held: &mut Option<File>, id: Option<&str>) -> std::io:
     std::fs::create_dir_all(dir)?;
     if held.is_none() {
         let lock = File::options()
+            .read(true)
+            .write(true)
             .create(true)
-            .append(true)
+            .truncate(false)
             .open(dir.join(APP_LOCK))?;
         if lock.try_lock().is_ok() {
             *held = Some(lock);
