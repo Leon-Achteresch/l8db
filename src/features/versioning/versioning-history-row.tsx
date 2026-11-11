@@ -1,4 +1,12 @@
-import { CopyIcon, EllipsisIcon, RocketIcon, TagIcon, TicketIcon, Undo2Icon } from "lucide-react";
+import {
+  CopyIcon,
+  EllipsisIcon,
+  FileDiffIcon,
+  RocketIcon,
+  TagIcon,
+  TicketIcon,
+  Undo2Icon,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   ContextMenu,
@@ -31,6 +39,8 @@ export function VersioningHistoryRow({
   row: { commit, lane, edges },
   width,
   head,
+  selected = false,
+  onSelect,
   marks,
   canRollback,
   onOpen,
@@ -41,6 +51,8 @@ export function VersioningHistoryRow({
   tickets?: TicketReference[];
   width: number;
   head: string | null;
+  selected?: boolean;
+  onSelect: () => void;
   marks?: CommitMarks;
   canRollback: (release: DatabaseRelease) => boolean;
   onOpen?: (release: DatabaseRelease) => void;
@@ -62,19 +74,18 @@ export function VersioningHistoryRow({
       .writeText(commit.id)
       .then(() => toast.success("Commit-Hash kopiert"))
       .catch((cause) => toast.error(String(cause)));
-  const releaseActions = releases.filter(
-    (release) => onRollout || (onOpen && canRollback(release)),
-  );
+  const releaseActions = onOpen || onRollout ? releases : [];
   return (
-    <li className="flex items-center">
+    <li className="flex items-center px-1">
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <button
             type="button"
-            onClick={releases[0] && onOpen ? () => onOpen(releases[0]) : undefined}
+            onClick={onSelect}
+            aria-pressed={selected}
             className={cn(
-              "flex min-w-0 flex-1 items-center gap-3 pr-4 pl-2 text-left hover:bg-muted/40 focus-visible:bg-muted/60 focus-visible:outline-none data-[state=open]:bg-muted/60",
-              !releases.length && "cursor-default",
+              "flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg pr-4 pl-2 text-left transition-colors hover:bg-muted/50 focus-visible:bg-muted/60 focus-visible:outline-none data-[state=open]:bg-muted/60",
+              selected && "bg-muted hover:bg-muted",
             )}
             style={{ height: ROW }}
           >
@@ -217,6 +228,10 @@ export function VersioningHistoryRow({
               <ContextMenuSeparator />
             </div>
           ))}
+          <ContextMenuItem onSelect={onSelect}>
+            <FileDiffIcon />
+            Änderungen anzeigen
+          </ContextMenuItem>
           <ContextMenuItem onSelect={() => copy(commit)}>
             <CopyIcon />
             Commit-Hash kopieren
@@ -245,6 +260,12 @@ export function VersioningHistoryRow({
           <DropdownMenuContent align="end">
             {releaseActions.map((release) => (
               <div key={release.id}>
+                {onOpen && (
+                  <DropdownMenuItem onSelect={() => onOpen(release)}>
+                    <TagIcon />
+                    Release {release.id} anzeigen
+                  </DropdownMenuItem>
+                )}
                 {onRollout && (
                   <DropdownMenuItem onSelect={() => onRollout(release)}>
                     <RocketIcon />

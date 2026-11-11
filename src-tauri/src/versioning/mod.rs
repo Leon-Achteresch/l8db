@@ -557,6 +557,31 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                 .await?
             ))
         }
+        "show" => {
+            let commit =
+                revision(&root, request.revision.as_deref().ok_or("Revision fehlt")?).await?;
+            let meta = git(&root, &["show", "-s", "--format=%an%x00%aI%x00%B", &commit]).await?;
+            let mut parts = meta.splitn(3, '\0');
+            let author = parts.next().unwrap_or_default();
+            let date = parts.next().unwrap_or_default();
+            let message = parts.next().unwrap_or_default().trim_end();
+            let patch = git(
+                &root,
+                &[
+                    "show",
+                    "--format=",
+                    "--patch",
+                    "--no-color",
+                    "--no-ext-diff",
+                    "-m",
+                    "--first-parent",
+                    "-M",
+                    &commit,
+                ],
+            )
+            .await?;
+            Ok(json!({"id":commit,"author":author,"date":date,"message":message,"patch":patch}))
+        }
         "release-commits" => {
             if revision(&root, "HEAD").await.is_err() {
                 return Ok(json!(""));
