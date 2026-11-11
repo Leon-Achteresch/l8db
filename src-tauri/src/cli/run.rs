@@ -69,6 +69,10 @@ pub fn dispatch(cli: Cli) -> i32 {
             0
         }
         Command::Help { command } => super::help_for(&command),
+        Command::Version => {
+            println!("l8db {}", env!("CARGO_PKG_VERSION"));
+            0
+        }
         Command::Completions { shell } => super::completions(shell),
         Command::Mcp => {
             crate::mcp::serve();

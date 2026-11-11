@@ -42,6 +42,7 @@ Automatisierung
 Shell
   completions <shell>      Tab-Vervollständigung (bash, zsh, fish, powershell)
   help [befehl]            Hilfe zu einem Befehl
+  version                  Version anzeigen (auch: -V, -v)
 
 Globale Optionen
 {options}
@@ -82,7 +83,7 @@ Aufruf:
 pub struct Cli {
     #[command(flatten)]
     global: Global,
-    #[arg(short = 'V', long, action = ArgAction::Version, help = "Version anzeigen")]
+    #[arg(short = 'V', short_alias = 'v', long, action = ArgAction::Version, help = "Version anzeigen")]
     version: Option<bool>,
     #[command(subcommand)]
     command: Command,
@@ -260,6 +261,12 @@ enum Command {
         #[arg(value_name = "BEFEHL")]
         command: Vec<String>,
     },
+    #[command(
+        about = "Version anzeigen",
+        help_template = SUB_HELP,
+        override_usage = "l8db version"
+    )]
+    Version,
 }
 
 #[derive(Subcommand, Debug)]
@@ -498,9 +505,11 @@ const COMMANDS: &[&str] = &[
     "mcp",
     "completions",
     "help",
+    "version",
     "-h",
     "--help",
     "-V",
+    "-v",
     "--version",
     "-c",
     "-d",

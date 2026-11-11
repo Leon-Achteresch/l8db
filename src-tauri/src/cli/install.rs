@@ -20,7 +20,24 @@ pub struct CliStatus {
     pub target: String,
 }
 
-const NAME: &str = if cfg!(windows) { "l8db.exe" } else { "l8db" };
+const NAMES: &[&str] = if cfg!(windows) {
+    &["l8db.com", "l8db.exe", "l8db.bat", "l8db.cmd"]
+} else {
+    &["l8db"]
+};
+
+#[cfg(windows)]
+const SHIM: &str = include_str!("../../windows/l8db.cmd");
+
+#[cfg(windows)]
+fn entry(target: &Path) -> PathBuf {
+    target.with_file_name("bin").join("l8db.cmd")
+}
+
+#[cfg(not(windows))]
+fn entry(target: &Path) -> PathBuf {
+    target.to_path_buf()
+}
 
 fn target() -> Result<PathBuf, String> {
     if let Some(appimage) = std::env::var_os("APPIMAGE") {
@@ -47,7 +64,7 @@ fn same(a: &Path, b: &Path) -> bool {
 
 fn resolve(dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
     dirs.into_iter()
-        .map(|dir| dir.join(NAME))
+        .flat_map(|dir| NAMES.iter().map(move |name| dir.join(name)))
         .find(|candidate| candidate.is_file())
 }
 
@@ -111,8 +128,9 @@ fn linked(_: &Path) -> bool {
 
 fn status() -> Result<CliStatus, String> {
     let target = target()?;
-    let found = resolve(search_dirs()?);
-    let state = classify(found.as_deref(), &target, linked(&target));
+    let entry = entry(&target);
+    let found = resolve(search_dirs()?).filter(|path| same(path, &entry) || !same(path, &target));
+    let state = classify(found.as_deref(), &entry, linked(&target));
     Ok(CliStatus {
         installed: state == CliState::Ready,
         state,
@@ -214,24 +232,21 @@ fn same_entry(a: &str, b: &str) -> bool {
 }
 
 #[cfg(any(windows, test))]
-fn with_entry(path: &str, dir: &str) -> Option<String> {
-    let mut entries: Vec<&str> = path.split(';').filter(|e| !e.trim().is_empty()).collect();
-    if entries.iter().any(|entry| same_entry(entry, dir)) {
-        return None;
-    }
-    entries.push(dir);
-    Some(entries.join(";"))
+fn with_entries(path: &str, dirs: &[&str]) -> String {
+    let mut entries: Vec<&str> = path
+        .split(';')
+        .filter(|e| !e.trim().is_empty() && !dirs.iter().any(|dir| same_entry(e, dir)))
+        .collect();
+    entries.extend(dirs);
+    entries.join(";")
 }
 
 #[cfg(any(windows, test))]
-fn without_entry(path: &str, dir: &str) -> Option<String> {
-    let entries: Vec<&str> = path.split(';').filter(|e| !e.trim().is_empty()).collect();
-    let kept: Vec<&str> = entries
-        .iter()
-        .copied()
-        .filter(|entry| !same_entry(entry, dir))
-        .collect();
-    (kept.len() != entries.len()).then(|| kept.join(";"))
+fn without_entries(path: &str, dirs: &[&str]) -> String {
+    path.split(';')
+        .filter(|e| !e.trim().is_empty() && !dirs.iter().any(|dir| same_entry(e, dir)))
+        .collect::<Vec<_>>()
+        .join(";")
 }
 
 async fn off_main_thread<T: Send + 'static>(work: fn() -> Result<T, String>) -> Result<T, String> {
@@ -446,19 +461,37 @@ fn install_dir() -> Result<String, String> {
 }
 
 #[cfg(windows)]
-fn install() -> Result<CliStatus, String> {
-    if let Some(next) = with_entry(&user_path()?, &install_dir()?) {
+fn path_dirs() -> Result<[String; 2], String> {
+    let dir = install_dir()?;
+    Ok([format!("{dir}\\bin"), dir])
+}
+
+#[cfg(windows)]
+fn change_user_path(change: fn(&str, &[&str]) -> String) -> Result<CliStatus, String> {
+    let [bin, dir] = path_dirs()?;
+    let current = user_path()?;
+    let next = change(&current, &[&bin, &dir]);
+    if next != current {
         set_user_path(&next)?;
     }
     status()
 }
 
 #[cfg(windows)]
-fn uninstall() -> Result<CliStatus, String> {
-    if let Some(next) = without_entry(&user_path()?, &install_dir()?) {
-        set_user_path(&next)?;
+fn install() -> Result<CliStatus, String> {
+    let shim = entry(&target()?);
+    if !shim.is_file() {
+        shim.parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::write(&shim, SHIM))
+            .map_err(|error| format!("{}: {error}", shim.display()))?;
     }
-    status()
+    change_user_path(with_entries)
+}
+
+#[cfg(windows)]
+fn uninstall() -> Result<CliStatus, String> {
+    change_user_path(without_entries)
 }
 
 #[cfg(all(test, unix))]
@@ -542,16 +575,22 @@ mod tests {
 
     #[test]
     fn windows_path_entries_are_added_once_and_removed_exactly() {
-        let path = r"%USERPROFILE%\bin;C:\Tools\;";
-        let added = with_entry(path, r"C:\Program Files\l8db").unwrap();
-        assert_eq!(added, r"%USERPROFILE%\bin;C:\Tools\;C:\Program Files\l8db");
-        assert_eq!(with_entry(&added, r"c:\program files\L8DB\"), None);
-        assert_eq!(with_entry("", r"C:\l8db").as_deref(), Some(r"C:\l8db"));
+        let path = r"%USERPROFILE%\bin;C:\Program Files\l8db;C:\Tools\;";
+        let dirs = [r"C:\Program Files\l8db\bin", r"C:\Program Files\l8db"];
+        let added = with_entries(path, &dirs);
         assert_eq!(
-            without_entry(&added, r"C:\PROGRAM FILES\l8db\").as_deref(),
-            Some(r"%USERPROFILE%\bin;C:\Tools\")
+            added,
+            r"%USERPROFILE%\bin;C:\Tools\;C:\Program Files\l8db\bin;C:\Program Files\l8db"
         );
-        assert_eq!(without_entry(path, r"C:\Program Files\l8db"), None);
+        let shouted = [r"c:\program files\L8DB\BIN\", r"C:\PROGRAM FILES\l8db\"];
+        assert_eq!(with_entries(&added, &shouted).split(';').count(), 4);
+        assert_eq!(with_entries(&added, &dirs), added);
+        assert_eq!(with_entries("", &dirs), dirs.join(";"));
+        assert_eq!(
+            without_entries(&added, &shouted),
+            r"%USERPROFILE%\bin;C:\Tools\"
+        );
+        assert_eq!(without_entries(r"C:\Tools", &dirs), r"C:\Tools");
     }
 
     #[test]
