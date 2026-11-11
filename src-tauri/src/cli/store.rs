@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::fs::{File, TryLockError};
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use crate::automation::model::AutomationConnection;
 use crate::mcp::config::restrict;
@@ -15,6 +17,58 @@ fn settings_path() -> PathBuf {
     std::env::var_os("L8DB_CLI_CONFIG")
         .map(PathBuf::from)
         .unwrap_or_else(|| crate::mcp::config::config_dir().join("cli.json"))
+}
+
+const ACTIVE: &str = "cli-active";
+const APP_LOCK: &str = "cli-active.lock";
+
+fn publish_in(dir: &Path, held: &mut Option<File>, id: Option<&str>) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    if held.is_none() {
+        let lock = File::options()
+            .create(true)
+            .append(true)
+            .open(dir.join(APP_LOCK))?;
+        if lock.try_lock().is_ok() {
+            *held = Some(lock);
+        }
+    }
+    match id {
+        Some(id) => std::fs::write(dir.join(ACTIVE), id),
+        None => match std::fs::remove_file(dir.join(ACTIVE)) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
+            _ => Ok(()),
+        },
+    }
+}
+
+fn active_in(dir: &Path) -> Option<String> {
+    let lock = File::open(dir.join(APP_LOCK)).ok()?;
+    if !matches!(lock.try_lock_shared(), Err(TryLockError::WouldBlock)) {
+        return None;
+    }
+    std::fs::read_to_string(dir.join(ACTIVE))
+        .ok()
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+}
+
+fn settings_dir() -> PathBuf {
+    settings_path()
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_default()
+}
+
+pub fn publish_active(id: Option<&str>) {
+    static HELD: Mutex<Option<File>> = Mutex::new(None);
+    if let Ok(mut held) = HELD.lock() {
+        let _ = publish_in(&settings_dir(), &mut held, id);
+    }
+}
+
+pub fn active_connection() -> Option<String> {
+    active_in(&settings_dir())
 }
 
 pub fn load_settings() -> Result<Settings, String> {
@@ -146,6 +200,23 @@ mod tests {
         let twins = vec![connection("a", "Test"), connection("b", "test")];
         assert!(find(&twins, "TEST").unwrap_err().contains("mehrere"));
         assert_eq!(find(&twins, "test").unwrap().id, "b");
+    }
+
+    #[test]
+    fn the_open_connection_counts_only_while_the_app_runs() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(active_in(dir.path()), None);
+        let mut app = None;
+        publish_in(dir.path(), &mut app, Some("c-shop")).unwrap();
+        assert_eq!(active_in(dir.path()).as_deref(), Some("c-shop"));
+        publish_in(dir.path(), &mut app, Some("c-prod")).unwrap();
+        assert_eq!(active_in(dir.path()).as_deref(), Some("c-prod"));
+        publish_in(dir.path(), &mut app, None).unwrap();
+        assert_eq!(active_in(dir.path()), None);
+        publish_in(dir.path(), &mut app, Some("c-shop")).unwrap();
+        drop(app);
+        assert_eq!(active_in(dir.path()), None);
+        assert!(dir.path().join(ACTIVE).is_file());
     }
 
     #[test]

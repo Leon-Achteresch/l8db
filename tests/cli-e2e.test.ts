@@ -269,6 +269,37 @@ describe.skipIf(!E2E || !existsSync(BIN))("l8db CLI end-to-end", () => {
     expect(cli(["q", "select 1"]).code).toBe(1);
   });
 
+  test("without a default the open app connection wins, else a terminal picker asks", () => {
+    saveConnections([
+      connection("c-shop", "Shop", { tags: ["kunde"] }),
+      connection("c-prod", "Produktion", { environment: "production" }),
+      connection("c-ro", "Archiv", { readOnly: true }),
+    ]);
+    const picked = tty(["q", "select count(*) as n from kunde"], "sho\r");
+    expect(picked.code).toBe(0);
+    expect(picked.out).toContain("Verbindung");
+    expect(picked.out).toContain("250");
+    const escaped = tty(["q", "select 1"], "\x1b");
+    expect(escaped.code).toBe(1);
+    expect(escaped.out).toContain("Keine Verbindung gewählt.");
+
+    writeFileSync(join(dir, "cli-active"), "c-shop");
+    const stale = cli(["q", "select 1"]);
+    expect(stale.code).toBe(1);
+    expect(stale.err).toContain("Welche Verbindung?");
+    const holder =
+      "import fcntl,subprocess,sys\nf=open(sys.argv[1],'a')\nfcntl.flock(f,fcntl.LOCK_EX)\nsys.exit(subprocess.run(sys.argv[2:]).returncode)";
+    const open = spawnSync(
+      "python3",
+      ["-c", holder, join(dir, "cli-active.lock"), BIN, "q", "select count(*) as n from kunde"],
+      { env: env(), encoding: "utf8", timeout: 60_000 },
+    );
+    expect(open.status).toBe(0);
+    expect(open.stdout).toBe("n\n250\n");
+    expect(open.stderr).toContain("Verbindung: Shop (in der App geöffnet)");
+    rmSync(join(dir, "cli-active"));
+  });
+
   test("read-only connections refuse writes before connecting", () => {
     const result = cli(["-c", "Archiv", "q", "delete from kunde"]);
     expect(result.code).toBe(1);
