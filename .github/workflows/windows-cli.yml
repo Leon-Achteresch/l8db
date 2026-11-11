@@ -1,0 +1,51 @@
+name: Windows CLI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [development]
+    paths:
+      - src-tauri/src/cli/**
+      - src-tauri/src/main.rs
+      - src-tauri/windows/**
+      - src-tauri/tauri.windows.conf.json
+      - scripts/test-windows-cli.ps1
+      - .github/workflows/windows-cli.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-cli-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cli:
+    name: CLI on Windows
+    runs-on: windows-2025
+    timeout-minutes: 110
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+      - uses: ./.github/actions/setup-rust
+        with:
+          cache: cli-windows
+      - name: Build the app binary
+        run: cargo build --locked --no-default-features
+        working-directory: src-tauri
+      - name: Starter, exit codes, output order and PATH lookup
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: scripts/test-windows-cli.ps1
+      - name: CLI unit tests
+        if: ${{ !cancelled() }}
+        run: cargo test --locked --no-default-features --lib "cli::"
+        working-directory: src-tauri
+      - name: User PATH install, repair and uninstall
+        if: ${{ !cancelled() }}
+        run: cargo test --locked --no-default-features --lib -- --ignored "cli::install::windows_tests"
+        working-directory: src-tauri

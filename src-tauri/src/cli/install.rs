@@ -630,3 +630,57 @@ mod tests {
         assert!(foreign(&other_link).contains("/bin/sh"));
     }
 }
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    #[test]
+    fn shells_find_the_starter_before_the_binary() {
+        let root = tempfile::tempdir().unwrap();
+        let exe = root.path().join("l8db.exe");
+        let shim = entry(&exe);
+        let bin = root.path().join("bin");
+        assert_eq!(shim, bin.join("l8db.cmd"));
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(&exe, "").unwrap();
+        std::fs::write(&shim, SHIM).unwrap();
+        let first = resolve([bin.clone(), root.path().to_path_buf()]);
+        assert_eq!(first.as_deref(), Some(shim.as_path()));
+        assert_eq!(classify(first.as_deref(), &shim, false), CliState::Ready);
+        let old = resolve([root.path().to_path_buf(), bin]);
+        assert_eq!(old.as_deref(), Some(exe.as_path()));
+        assert!(SHIM.contains("%~dp0..\\l8db.exe\" %*"));
+    }
+
+    #[test]
+    #[ignore]
+    fn the_user_path_survives_install_repair_and_uninstall() {
+        let original = user_path().unwrap();
+        let [bin, dir] = path_dirs().unwrap();
+        let at = |path: &str, wanted: &str| path.split(';').position(|e| same_entry(e, wanted));
+
+        let ready = install().unwrap();
+        assert_eq!(ready.state, CliState::Ready, "{ready:?}");
+        let path = user_path().unwrap();
+        assert!(
+            at(&path, &bin).unwrap() < at(&path, &dir).unwrap(),
+            "{path}"
+        );
+        assert!(entry(&target().unwrap()).is_file());
+
+        let old = with_entries(&without_entries(&path, &[&bin, &dir]), &[&dir]);
+        set_user_path(&old).unwrap();
+        assert!(!status().unwrap().installed);
+        let fixed = repaired().unwrap();
+        assert_eq!(fixed.state, CliState::Ready, "{fixed:?}");
+
+        let gone = uninstall().unwrap();
+        assert!(!gone.installed, "{gone:?}");
+        assert_eq!(user_path().unwrap(), without_entries(&original, &[]));
+        assert!(!repaired().unwrap().installed);
+
+        set_user_path(&original).unwrap();
+        assert_eq!(user_path().unwrap(), original);
+    }
+}
