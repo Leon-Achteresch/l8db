@@ -48,12 +48,17 @@ impl WindowConnections {
             };
         }
     }
+
+    fn publish(&self, latest: Option<String>) {
+        let id = latest.or_else(|| self.0.lock().ok()?.values().next().cloned());
+        crate::cli::store::publish_active(id.as_deref());
+    }
 }
 
 pub fn forget<R: Runtime>(window: &tauri::Window<R>) {
-    window
-        .state::<WindowConnections>()
-        .set(window.label(), None);
+    let state = window.state::<WindowConnections>();
+    state.set(window.label(), None);
+    state.publish(None);
 }
 
 pub fn connection_label(id: &str) -> String {
@@ -224,7 +229,8 @@ pub fn set_window_connection(
     state: State<'_, WindowConnections>,
     id: Option<String>,
 ) {
-    state.set(window.label(), id);
+    state.set(window.label(), id.clone());
+    state.publish(id);
 }
 
 #[tauri::command]

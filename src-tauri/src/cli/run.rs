@@ -14,6 +14,7 @@ use crate::db::{self, DatabaseKind, QueryResult, TxSession};
 use crate::mcp::{nosql, redact};
 
 const CANCELLED: i32 = 130;
+static PICKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn dispatch(cli: Cli) -> i32 {
     let Cli {
@@ -161,6 +162,9 @@ fn block_on(global: &Global, command: Command) -> i32 {
                 if matches!(execution::cancel(&job), Ok(true)) {
                     let _ = tokio::time::timeout(std::time::Duration::from_secs(3), &mut work).await;
                 }
+                if PICKING.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ = dialoguer::console::Term::stderr().show_cursor();
+                }
                 eprintln!("\nAbgebrochen.");
                 CANCELLED
             }
@@ -211,7 +215,31 @@ async fn resolve(global: &Global, explicit: Option<&str>) -> Result<Source, Stri
     if let [only] = list.as_slice() {
         return Ok(Source::Saved(Target::saved(only)));
     }
-    let names: Vec<&str> = list.iter().map(|c| c.name.as_str()).collect();
+    let open = store::active_connection();
+    if let Some(found) = list.iter().find(|c| Some(&c.id) == open.as_ref()) {
+        eprintln!("Verbindung: {} (in der App geöffnet)", found.name);
+        return Ok(Source::Saved(Target::saved(found)));
+    }
+    let names: Vec<String> = list.iter().map(|c| c.name.clone()).collect();
+    if std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
+        let options = names.clone();
+        PICKING.store(true, std::sync::atomic::Ordering::Relaxed);
+        let picked = blocking(move || {
+            dialoguer::FuzzySelect::new()
+                .with_prompt("Verbindung")
+                .items(&options)
+                .default(0)
+                .max_length(12)
+                .interact_opt()
+                .map_err(|error| format!("Auswahl: {error}"))
+        })
+        .await;
+        PICKING.store(false, std::sync::atomic::Ordering::Relaxed);
+        return match picked?.and_then(|index| list.get(index)) {
+            Some(found) => Ok(Source::Saved(Target::saved(found))),
+            None => Err("Keine Verbindung gewählt.".into()),
+        };
+    }
     Err(format!(
         "Welche Verbindung? Mit -c <name> angeben oder einmal festlegen: l8db conn use <name>\n  Verfügbar: {}",
         names.join(", ")

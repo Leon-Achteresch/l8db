@@ -27,7 +27,7 @@ Hilfe, Fehlermeldungen und Vorschläge („Meintest du …?“) sind deutsch; `l
 
 Die CLI legt keine Verbindungen an. Sie nutzt die Spiegelung der Automatisierung (`automation.db`, `src/lib/automation/sync.ts`), die die App bei jeder Änderung schreibt: ohne Passwörter, mit SSH-, Proxy- und Befehls-Tunnel sowie Umgebung und Schreibschutz. `automation::connection::resolve` holt Passwörter aus dem Schlüsselbund, öffnet Tunnel und fällt nie auf eine direkte Verbindung zurück. Verbindungen aus dem Passwortmanager (`vault`) und S3 lehnt sie mit Begründung ab.
 
-Auswahl: `-c` → `--url`/`$L8DB_URL` → `$L8DB_CONNECTION` → Standard aus `conn use` → einzige Verbindung → Fehler mit Liste.
+Auswahl: `-c` → `--url`/`$L8DB_URL` → `$L8DB_CONNECTION` → Standard aus `conn use` → einzige Verbindung → in der App geöffnete Verbindung → Auswahl im Terminal → Fehler mit Liste. Die App schreibt die zuletzt aktivierte Verbindung nach `cli-active` (neben `cli.json`, `WindowConnections::publish`) und hält dabei eine Dateisperre auf `cli-active.lock`; die CLI wertet die Datei nur aus, solange die Sperre gehalten wird, ein Rest nach einem Absturz zählt also nicht. Sie meldet die Wahl auf stderr („Verbindung: … (in der App geöffnet)“). Sind stdin und stderr ein Terminal, fragt sonst eine filterbare Liste (`dialoguer::FuzzySelect`: tippen filtert, Enter wählt, Esc bricht ab); in Pipes und CI bleibt es beim Fehler.
 
 ## Sicherheit
 
