@@ -19,6 +19,7 @@ export const NEW_FEATURES = {
   "discover.lessons": NEXT_FEATURE_VERSION,
   "discover.guide": NEXT_FEATURE_VERSION,
   "ai.chat.feature-search": NEXT_FEATURE_VERSION,
+  "ai.chat.companion": NEXT_FEATURE_VERSION,
   "discover.spotlight": NEXT_FEATURE_VERSION,
   "discover.welcome-back": NEXT_FEATURE_VERSION,
   "discover.hotspots": NEXT_FEATURE_VERSION,

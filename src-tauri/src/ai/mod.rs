@@ -1,3 +1,5 @@
+mod app;
+mod app_docs;
 mod bridge;
 mod byok;
 #[cfg(test)]

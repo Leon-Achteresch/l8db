@@ -47,11 +47,13 @@ const TOOL_NAMES: Record<string, string> = {
   drilldown: "Ursachenanalyse",
   rules: "Datenregeln",
   notebook: "Notebook",
+  app_search: "l8db-Hilfe suchen",
+  app_execute: "l8db-Begleiter",
 };
 
 function toolIcon(name: string) {
   if (name === "visualize") return ChartColumn;
-  if (name === "knowledge") return BookOpen;
+  if (name === "knowledge" || name === "app_execute") return BookOpen;
   if (name === "import_file") return FileUp;
   if (name === "workflow") return Workflow;
   if (name === "editor") return SquarePen;

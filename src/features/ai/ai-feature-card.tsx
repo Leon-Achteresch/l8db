@@ -10,6 +10,7 @@ import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility"
 export function AiFeatureCard({ id }: { id: string }) {
   const entry = featureById(id);
   const { ref, isNew } = useNewFeatureVisibility<HTMLDivElement>("ai.chat.feature-search");
+  const companion = useNewFeatureVisibility<HTMLParagraphElement>("ai.chat.companion");
   if (!entry) return null;
   const shortcut = featureShortcut(entry);
   return (
@@ -18,14 +19,17 @@ export function AiFeatureCard({ id }: { id: string }) {
       className="my-2 flex flex-wrap items-center gap-3 rounded-xl bg-muted/50 px-4 py-3"
     >
       <div className="min-w-0 flex-1 basis-56">
-        <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+        <p
+          ref={companion.ref}
+          className="flex items-center gap-2 text-sm font-medium text-foreground"
+        >
           {entry.title}
           {shortcut && (
             <kbd className="rounded bg-background/70 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
               {shortcut}
             </kbd>
           )}
-          {isNew && <NewBadge />}
+          {(isNew || companion.isNew) && <NewBadge />}
         </p>
         <p className="text-xs text-muted-foreground">{entry.summary}</p>
       </div>

@@ -12,6 +12,7 @@ import { IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { SidebarNav } from "@/components/primitives/sidebar-nav";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { handleAppRequest } from "@/lib/ai/app-companion";
 import { aiAttachable, aiAttachment } from "@/lib/ai/attachments";
 import {
   type ChatContextItem,
@@ -24,7 +25,6 @@ import { setAiDropHandler } from "@/lib/ai/drop-target";
 import { type ChatEditorTarget, handleChatEditorRequest } from "@/lib/ai/editor/chat-edit";
 import { editorAiController } from "@/lib/ai/editor/controller";
 import { useEditorAiSettings } from "@/lib/ai/editor/settings";
-import { activeFeatureContext } from "@/lib/ai/feature-search";
 import { AiFigureContext, useAiFigureNumbers } from "@/lib/ai/figures";
 import { handleChatIssueRequest } from "@/lib/ai/issue";
 import { handleChatNotebookRequest } from "@/lib/ai/notebook";
@@ -191,6 +191,8 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   );
   const input = useRef<HTMLTextAreaElement>(null);
   const run = useRef<string | null>(null);
+  const appController = useRef<AbortController | null>(null);
+  useEffect(() => () => appController.current?.abort(), []);
   const afterTool = useRef(false);
   const stopping = useRef(false);
   const approvalTitles = useRef(new Map<string, string>());
@@ -426,6 +428,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         : null;
     let synced = Boolean(resume);
     run.current = id;
+    appController.current?.abort();
+    const appSignal = new AbortController();
+    appController.current = appSignal;
     stopping.current = false;
     afterTool.current = false;
     try {
@@ -530,6 +535,15 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           } else if (event.kind === "editor") {
             const requestId = String(event.data.id);
             void handleChatEditorRequest(event.data.details, editorTarget())
+              .catch((reason) => ({ ok: false, text: String(reason) }))
+              .then((answer) => aiRespond(id, requestId, answer))
+              .catch(() => undefined);
+          } else if (event.kind === "app") {
+            const requestId = String(event.data.id);
+            void handleAppRequest(event.data.details, {
+              signal: appSignal.signal,
+              openDocs: (path) => navigate({ to: "/docs", search: { path } }),
+            })
               .catch((reason) => ({ ok: false, text: String(reason) }))
               .then((answer) => aiRespond(id, requestId, answer))
               .catch(() => undefined);
@@ -704,9 +718,8 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       }
     },
   });
-  const withContext = async (items: ChatContextItem[], text = "") => {
-    const features = activeFeatureContext(text);
-    if (!items.length) return features ? { context: features } : {};
+  const withContext = async (items: ChatContextItem[]) => {
+    if (!items.length) return {};
     const current = useConnectionsStore.getState();
     const connection = current.connections.find((entry) => entry.id === current.activeId) ?? null;
     const selection = useDbSelectionStore.getState();
@@ -728,11 +741,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       history: useQueryHistoryStore.getState().entries,
       shareValues: useEditorAiSettings.getState().shareValues,
     }).catch(() => "");
-    const combined = [context, features].filter(Boolean).join("\n\n");
-    if (!combined) return {};
-    return context
-      ? { context: combined, contextLabels: items.map((item) => `@${item.label}`) }
-      : { context: combined };
+    return context ? { context, contextLabels: items.map((item) => `@${item.label}`) } : {};
   };
   const send = (text = prompt, files = attachments, items = contextItems) => {
     if (!text.trim()) return;
@@ -748,7 +757,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
     }
     const trimmed = text.trim();
     if (editorTab && !items.some((item) => item.kind === "tab")) items = [...items, editorTab];
-    void withContext(items, trimmed).then((extra) =>
+    void withContext(items).then((extra) =>
       runTurn(
         thread,
         {
@@ -863,6 +872,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const cancel = () => {
     if (!runId) return;
     stopping.current = true;
+    appController.current?.abort();
     void aiCancel(runId).catch((error) => setError(String(error)));
   };
   const active = connections.find((entry) => entry.id === activeId);
