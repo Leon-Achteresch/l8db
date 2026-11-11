@@ -1,20 +1,20 @@
 $ErrorActionPreference = 'Stop'
 $p = Join-Path ([IO.Path]::GetTempPath()) "probe-$PID"
 New-Item -ItemType Directory -Force (Join-Path $p 'bin') | Out-Null
-rustc --edition 2021 -o (Join-Path $p 'probe.exe') (Join-Path $PSScriptRoot 'probe.rs')
 $exe = Join-Path $p 'probe.exe'
+rustc --edition 2021 -o $exe (Join-Path $PSScriptRoot 'probe.rs')
 $env:PROBE_LOG = Join-Path $p 'log.txt'
-$shims = [ordered]@{
-  plain    = '"%~dp0..\probe.exe" %*'
-  call     = 'call "%~dp0..\probe.exe" %*'
-  startbw  = 'start "" /b /wait "%~dp0..\probe.exe" %*'
-  redirect = '"%~dp0..\probe.exe" %* 1>&1 2>&2'
-  nested   = 'cmd /d /s /c ""%~dp0..\probe.exe" %*"'
-  piped    = '"%~dp0..\probe.exe" %* | findstr /r "^"'
-}
-foreach ($name in $shims.Keys) {
-  Set-Content -Encoding ascii (Join-Path $p "bin\$name.cmd") "@echo off`r`n$($shims[$name])`r`n"
-}
+$shim = Join-Path $p 'bin\probe.cmd'
+Set-Content -Encoding ascii $shim "@echo off`r`n`"%~dp0..\probe.exe`" %*`r`n"
+$dump = Join-Path $p 'dump.ps1'
+@'
+$raw = $Host.UI.RawUI
+$last = $raw.CursorPosition.Y
+$width = $raw.BufferSize.Width
+$cells = $raw.GetBufferContents([Management.Automation.Host.Rectangle]::new(0, 0, $width - 1, $last))
+$lines = for ($y = 0; $y -le $last; $y++) { (-join (0..($width - 1) | ForEach-Object { $cells[$y, $_].Character })).TrimEnd() }
+$lines | Where-Object { $_ } | Set-Content -Encoding utf8 $args[0]
+'@ | Set-Content -Encoding utf8 $dump
 
 function Run([string]$file, [string]$arguments, $stdin = $null) {
   $info = [Diagnostics.ProcessStartInfo]::new($file, $arguments)
@@ -28,24 +28,43 @@ function Run([string]$file, [string]$arguments, $stdin = $null) {
   if ($null -ne $stdin) { $process.StandardInput.Write($stdin) }
   $process.StandardInput.Close()
   if (-not $process.WaitForExit(60000)) { $process.Kill(); return 'TIMEOUT' }
-  "code=$($process.ExitCode) out=[$($out.Result.Trim() -replace "`r?`n", ' | ')] err=[$($err.Result.Trim())]"
+  $flat = { param($text) ($text.Trim() -replace "`r?`n", ' | ') }
+  'code={0} out=[{1}] err=[{2}]' -f $process.ExitCode, (& $flat $out.Result), (& $flat $err.Result)
 }
 
-Write-Host "direct:        $(Run $exe 'direct')"
-Write-Host "direct-noatt:  $(Run $exe 'direct-noattach')"
-Write-Host "cmdc:          $(Run 'cmd.exe' "/d /s /c `"`"$exe`" cmdc`"")"
-Write-Host "cmdc-noatt:    $(Run 'cmd.exe' "/d /s /c `"`"$exe`" cmdc-noattach`"")"
-foreach ($name in $shims.Keys) {
-  $shim = Join-Path $p "bin\$name.cmd"
-  Write-Host "batch-${name}:        $(Run 'cmd.exe' "/d /s /c `"`"$shim`" batch-$name`"")"
-  Write-Host "batch-${name}-noatt:  $(Run 'cmd.exe' "/d /s /c `"`"$shim`" batch-$name-noattach`"")"
+function Batch([string]$tail, $stdin = $null) {
+  $line = '/d /s /c ""' + $shim + '" ' + $tail + '"'
+  Run 'cmd.exe' $line $stdin
 }
-$plain = Join-Path $p 'bin\plain.cmd'
-Write-Host "typed-direct:  $(Run 'cmd.exe' '/d /q' "`"$exe`" typed-direct`r`nexit`r`n")"
-Write-Host "typed-batch:   $(Run 'cmd.exe' '/d /q' "`"$plain`" typed-batch`r`necho AFTER`r`nexit`r`n")"
-$ps = & $plain ps-batch
-Write-Host "ps-batch:      out=[$ps] code=$LASTEXITCODE"
-$ps = & $plain ps-batch-noattach
-Write-Host "ps-batch-noatt: out=[$ps] code=$LASTEXITCODE"
+
+function Screen([string]$tail) {
+  $screen = Join-Path $p 'screen.txt'
+  Remove-Item $screen -ErrorAction SilentlyContinue
+  $line = '/d /s /c ""' + $shim + '" ' + $tail + ' & echo DONE & powershell -NoProfile -ExecutionPolicy Bypass -File "' + $dump + '" "' + $screen + '""'
+  Start-Process cmd.exe -Wait -ArgumentList $line
+  if (Test-Path $screen) { (Get-Content $screen) -join ' | ' } else { 'no screen' }
+}
+
+foreach ($strategy in 'attach', 'pipefile', 'smart', 'all', 'none') {
+  Write-Host "=== $strategy"
+  $result = Batch "$strategy-pipes"
+  Write-Host "pipes:        $result"
+  $file = Join-Path $p "$strategy.txt"
+  $result = Batch ($strategy + '-file > "' + $file + '"')
+  $content = if (Test-Path $file) { (Get-Content $file) -join ' | ' } else { 'missing' }
+  Write-Host "file:         $result file=[$content]"
+  $result = Batch "$strategy-nul > NUL"
+  Write-Host "nul:          $result"
+  $result = Batch "$strategy-stdin" 'hello'
+  Write-Host "stdin:        $result"
+  $result = Screen "$strategy-console"
+  Write-Host "console:      [$result]"
+  $file = Join-Path $p "$strategy-console.txt"
+  $result = Screen ($strategy + '-consolefile > "' + $file + '"')
+  $content = if (Test-Path $file) { (Get-Content $file) -join ' | ' } else { 'missing' }
+  Write-Host "console+file: [$result] file=[$content]"
+  $result = Screen "$strategy-consolenul > NUL"
+  Write-Host "console+nul:  [$result]"
+}
 Write-Host '--- log'
 Get-Content $env:PROBE_LOG | Write-Host

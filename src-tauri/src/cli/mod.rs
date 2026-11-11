@@ -730,9 +730,37 @@ pub fn completions(shell: clap_complete::Shell) -> i32 {
 
 #[cfg(windows)]
 fn attach_console() {
-    use windows::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Console::{
+        AttachConsole, GetConsoleMode, GetStdHandle, SetStdHandle, ATTACH_PARENT_PROCESS,
+        CONSOLE_MODE, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+    };
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetFileType(handle: HANDLE) -> u32;
+    }
+    let slots = [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE];
+    let given = slots.map(|slot| {
+        unsafe { GetStdHandle(slot) }
+            .ok()
+            .map(|handle| (handle, unsafe { GetFileType(handle) }))
+    });
     unsafe {
         let _ = AttachConsole(ATTACH_PARENT_PROCESS);
+        for (slot, given) in slots.into_iter().zip(given) {
+            let Some((handle, kind)) = given else {
+                continue;
+            };
+            let mut mode = CONSOLE_MODE::default();
+            let redirected = match kind {
+                1 | 3 => true,
+                2 => GetConsoleMode(handle, &mut mode).is_err(),
+                _ => false,
+            };
+            if redirected {
+                let _ = SetStdHandle(slot, handle);
+            }
+        }
     }
 }
 
