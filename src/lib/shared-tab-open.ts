@@ -1,9 +1,14 @@
 import { toast } from "sonner";
 import { create } from "zustand";
 import { copyText, pasteText } from "@/lib/clipboard";
-import type { SavedConnection } from "@/lib/connections";
+import { type SavedConnection, visibleSchemas } from "@/lib/connections";
 import { useConnectionsStore } from "@/lib/connections/store";
-import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
+import { listSchemas, listTables, listViews } from "@/lib/db";
+import {
+  databaseFromConnectionString,
+  defaultSchema,
+  useDbSelectionStore,
+} from "@/lib/db-selection";
 import { IS_MAC } from "@/lib/platform";
 import { capabilitiesFor } from "@/lib/providers";
 import {
@@ -14,9 +19,11 @@ import {
   parseSharedTabLink,
   resolveSharedConnection,
   type SharedTab,
+  type SharedTableTab,
   sharedTabLink,
   sharedViewOf,
 } from "@/lib/shared-tabs";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { activateConnectionWithToast } from "@/lib/ssh/activation";
 import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
 import type { Tab } from "@/lib/table-tabs";
@@ -53,6 +60,33 @@ export function captureSharedTab(tab: Tab): SharedTab | null {
   };
 }
 
+async function targetSchema(
+  shared: SharedTableTab,
+  connection: SavedConnection,
+  database: string | null,
+): Promise<string> {
+  const url = effectiveConnectionString(connection);
+  const list = shared.entityType === "view" ? listViews : listTables;
+  const has = (schema: string) =>
+    list(connection.kind, url, database ?? undefined, schema).then(
+      (entries) => entries.some((entry) => entry.name === shared.table),
+      () => false,
+    );
+  if (await has(shared.schema)) return shared.schema;
+  const schemas = await listSchemas(connection.kind, url, database ?? undefined).then(
+    (entries) => visibleSchemas(connection, entries),
+    () => undefined,
+  );
+  const own = defaultSchema(
+    connection,
+    capabilitiesFor(connection.kind),
+    database,
+    schemas,
+    useDbSelectionStore.getState().schemaByConnection[connection.id] ?? null,
+  );
+  return own !== shared.schema && (await has(own)) ? own : shared.schema;
+}
+
 export async function openSharedTab(shared: SharedTab, connectionId: string): Promise<boolean> {
   const connections = useConnectionsStore.getState();
   if (!connections.connections.some((entry) => entry.id === connectionId)) return false;
@@ -64,7 +98,9 @@ export async function openSharedTab(shared: SharedTab, connectionId: string): Pr
   if (!connection) return false;
   if (
     shared.database &&
+    shared.connection.host &&
     connection.kind === shared.connection.kind &&
+    connectionRef(connection).host === shared.connection.host &&
     shared.database !== connectionDatabase(connection)
   )
     useDbSelectionStore.getState().setDatabase(connection.id, shared.database);
@@ -79,10 +115,12 @@ export async function openSharedTab(shared: SharedTab, connectionId: string): Pr
     });
     return true;
   }
-  const { schema, table, entityType } = shared;
+  const { table, entityType } = shared;
+  const database = connectionDatabase(connection);
+  const schema = await targetSchema(shared, connection, database);
   const view = effectiveSharedView(shared.view);
   tabs.openTab({ schema, table, entityType });
-  const key = tableViewStateKey(connection.id, connectionDatabase(connection), schema, table);
+  const key = tableViewStateKey(connection.id, database, schema, table);
   if (key)
     useTableViewStateStore.getState().patch(key, {
       filter: "",

@@ -6,7 +6,10 @@ Object.defineProperty(globalThis, "localStorage", {
 });
 
 let clipboard = "";
-mock.module("@tauri-apps/api/core", () => ({ invoke: async () => [] }));
+let invokeHandler: (command: string, args?: Record<string, unknown>) => unknown = () => [];
+mock.module("@tauri-apps/api/core", () => ({
+  invoke: async (command: string, args?: Record<string, unknown>) => invokeHandler(command, args),
+}));
 mock.module("@tauri-apps/plugin-clipboard-manager", () => ({
   readText: async () => clipboard,
   writeText: async (text: string) => {
@@ -49,6 +52,7 @@ function addConnection(name: string, connectionString: string, extra: object = {
 }
 
 beforeEach(() => {
+  invokeHandler = () => [];
   clipboard = "";
   navigated.length = 0;
   useConnectionsStore.setState({ connections: [], activeId: null });
@@ -401,6 +405,63 @@ test("opening a shared table applies the filter on the colleague's own connectio
   ]);
   expect(navigated.at(-1)).toMatchObject({ params: { schema: "sales", table: "orders" } });
   expect(await open.openSharedTab(link, "missing")).toBe(false);
+});
+
+test("a pasted table link opens the same table in the chosen connection's own schema", async () => {
+  const production = addConnection(
+    "ELMAG_PROD@SLPROD",
+    "oracle://ELMAG_PROD@slprod.rzhit.win:1521/SLPROD",
+    { kind: "oracle" },
+  );
+  const testing = addConnection(
+    "ELMAG_TEST@SLTEST",
+    "oracle://ELMAG_TEST@sltest.rzhit.win:1521/SLTEST",
+    { kind: "oracle" },
+  );
+  useConnectionsStore.getState().setActiveId(production.id);
+  useTableTabs.getState().openTab({ schema: "ELMAG_PROD", table: "IFC_PARTNER" });
+  const tab = useTableTabs.getState().tabs[0];
+  const filter = `"RECEIVER" = 'GREIM_WAWI' AND "REF_SUB_MAND" = '143'`;
+  useTableViewStateStore
+    .getState()
+    .patch(String(tableViewStateKey(production.id, "SLPROD", "ELMAG_PROD", "IFC_PARTNER")), {
+      filter,
+      filterMode: "simple",
+      filterConditions: [
+        { id: "a", column: "RECEIVER", operator: "=", value: "GREIM_WAWI" },
+        { id: "b", column: "REF_SUB_MAND", operator: "=", value: "143" },
+      ],
+    });
+  const captured = tab && open.captureSharedTab(tab);
+  if (captured?.kind !== "table") throw new Error("nicht erfasst");
+  const decoded = await shared.parseSharedTabLink(await shared.sharedTabLink(captured));
+  if (!decoded) throw new Error("nicht dekodiert");
+  const requests: string[] = [];
+  invokeHandler = (command, args) => {
+    requests.push(command);
+    const target = String(args?.connectionString ?? "");
+    if (command === "list_schemas") return target.includes("SLTEST") ? ["ELMAG_TEST", "SYS"] : [];
+    if (command === "list_tables")
+      return target.includes("SLTEST") && args?.schema === "ELMAG_TEST"
+        ? [{ schema: "ELMAG_TEST", name: "IFC_PARTNER" }]
+        : [];
+    return [];
+  };
+  useTableTabs.setState({ tabs: [], tabsByConnection: {}, queryCounter: 0 });
+  expect(await open.openSharedTab(decoded, testing.id)).toBe(true);
+  expect(useDbSelectionStore.getState().databaseByConnection[testing.id]).toBeUndefined();
+  expect(useTableTabs.getState().tabs).toEqual([
+    { kind: "table", schema: "ELMAG_TEST", table: "IFC_PARTNER", entityType: "table" },
+  ]);
+  expect(navigated.at(-1)).toMatchObject({
+    params: { schema: "ELMAG_TEST", table: "IFC_PARTNER" },
+  });
+  expect(
+    useTableViewStateStore.getState().views[
+      String(tableViewStateKey(testing.id, "SLTEST", "ELMAG_TEST", "IFC_PARTNER"))
+    ],
+  ).toMatchObject({ filter, filterOpen: true });
+  expect(requests.filter((command) => command.startsWith("list_")).length).toBeLessThanOrEqual(3);
 });
 
 test("a shared query opens as a new tab without running it", async () => {
