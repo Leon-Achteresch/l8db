@@ -13,6 +13,10 @@ runs:
         INSTALL_SMOKE: ${{ inputs.smoke }}
       run: |
         set -euo pipefail
+        if [ -f /etc/apt/apt-mirrors.txt ]; then
+          echo "http://archive.ubuntu.com/ubuntu/" | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+        fi
+        echo 'Acquire::Retries "5";' | sudo tee /etc/apt/apt.conf.d/80-retries > /dev/null
         sudo apt-get update
         packages=(libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf)
         if [ "$INSTALL_SMOKE" = true ]; then
