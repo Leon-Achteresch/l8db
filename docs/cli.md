@@ -8,7 +8,8 @@ Aufbau nach dem Muster von `gh`/`kubectl`: `l8db <nomen> <verb>`, kurze Aliase f
 
 | Befehl | Zweck |
 |---|---|
-| `conn list` / `use` / `test` / `show` | Gespeicherte Verbindungen; `use` setzt den Standard (`cli.json`) |
+| `conn list` / `use` / `test` / `show` | Gespeicherte Verbindungen; `use` setzt den Standard (`cli.json`), ohne Namen über die Auswahl im Terminal |
+| `tui` | Interaktiver Modus im Terminal: Verbindung wählen, Tabellen blättern, SQL ausführen (siehe unten) |
 | `query [SQL]` (`q`) | SQL als Argument, `-f datei`, `-` oder Standardeingabe |
 | `db list`, `schema list` | Datenbanken, Schemas |
 | `table list` / `describe` / `rows` / `count` | Tabellen und Views; Name oder `schema.name`, Groß-/Kleinschreibung egal, Namen mit Punkt in Anführungszeichen (`'"a.b"'`) |
@@ -27,7 +28,24 @@ Hilfe, Fehlermeldungen und Vorschläge („Meintest du …?“) sind deutsch; `l
 
 Die CLI legt keine Verbindungen an. Sie nutzt die Spiegelung der Automatisierung (`automation.db`, `src/lib/automation/sync.ts`), die die App bei jeder Änderung schreibt: ohne Passwörter, mit SSH-, Proxy- und Befehls-Tunnel sowie Umgebung und Schreibschutz. `automation::connection::resolve` holt Passwörter aus dem Schlüsselbund, öffnet Tunnel und fällt nie auf eine direkte Verbindung zurück. Verbindungen aus dem Passwortmanager (`vault`) und S3 lehnt sie mit Begründung ab.
 
-Auswahl: `-c` → `--url`/`$L8DB_URL` → `$L8DB_CONNECTION` → Standard aus `conn use` → einzige Verbindung → in der App geöffnete Verbindung → Auswahl im Terminal → Fehler mit Liste. Die App schreibt die zuletzt aktivierte Verbindung nach `cli-active` (neben `cli.json`, `WindowConnections::publish`) und hält dabei eine Dateisperre auf `cli-active.lock`; die CLI wertet die Datei nur aus, solange die Sperre gehalten wird, ein Rest nach einem Absturz zählt also nicht. Sie meldet die Wahl auf stderr („Verbindung: … (in der App geöffnet)“). Sind stdin und stderr ein Terminal, fragt sonst eine filterbare Liste (`dialoguer::FuzzySelect`: tippen filtert, Enter wählt, Esc bricht ab); in Pipes und CI bleibt es beim Fehler.
+Auswahl: `-c` → `--url`/`$L8DB_URL` → `$L8DB_CONNECTION` → Standard aus `conn use` → einzige Verbindung → in der App geöffnete Verbindung → Auswahl im Terminal → Fehler mit Liste. Die App schreibt die zuletzt aktivierte Verbindung nach `cli-active` (neben `cli.json`, `WindowConnections::publish`) und hält dabei eine Dateisperre auf `cli-active.lock`; die CLI wertet die Datei nur aus, solange die Sperre gehalten wird, ein Rest nach einem Absturz zählt also nicht. Sie meldet die Wahl auf stderr („Verbindung: … (in der App geöffnet)“). Sind stdin und stderr ein Terminal, fragt sonst eine filterbare Liste auf stderr (`tui::pick`, dieselbe iocraft-Komponente `ConnectionPicker` wie im interaktiven Modus: tippen filtert, Enter wählt, Esc bricht ab, Strg+C endet mit 130); in Pipes und CI bleibt es beim Fehler.
+
+## Interaktiver Modus (`l8db tui`)
+
+`src-tauri/src/cli/tui/`, gebaut mit `iocraft` (React-artige Komponenten und Hooks, Terminalzugriff über `crossterm`). Startet nur, wenn stdin und stdout ein Terminal sind; sonst Fehler mit Exit-Code 1. `-c`, `--url`, `$L8DB_URL` und `$L8DB_CONNECTION` öffnen die Verbindung direkt, sonst beginnt die Verbindungsauswahl mit dem Standard aus `conn use` bzw. der in der App geöffneten Verbindung als Vorauswahl.
+
+| Bildschirm | Tasten |
+|---|---|
+| Verbindungen | Tippen filtert, ↑↓, Enter öffnet, Esc beendet |
+| Tabellen | ↑↓ Bild↑↓, Enter Zeilen, `d` Spalten, `s` SQL, `/` Filter, Esc zurück, `q` beendet |
+| Zeilen / Spalten | ↑↓ ←→ Bild↑↓ Pos1 Ende blättern, `m` lädt die nächsten 100 Zeilen (höchstens 1000), `d` Spalten, `s` SQL, Esc zurück, `q` beendet |
+| SQL | mehrzeiliger Editor, Strg+R (auch F5, F9) führt aus, Tab wechselt zwischen Editor und Ergebnis, Esc zurück |
+
+Strg+C bricht eine laufende Anfrage ab und beendet sonst das Programm. Postgres und SQLite bestätigen den Abbruch (`execution::cancel`); bei allen anderen Treibern, oder nach einem zweiten Strg+C, verwirft die TUI die Anfrage lokal, sagt, dass die Datenbank die Anweisung möglicherweise noch zu Ende führt, und baut die Verbindung für die nächste Anfrage neu auf. Strg+C wird im Raw-Modus als Taste gelesen, der Starter `l8db.cmd` fragt deshalb nicht nach dem Batchabbruch. Enter fügt im Editor eine Zeile ein, damit eingefügtes mehrzeiliges SQL nie vorzeitig läuft.
+
+Aufbau: `model.rs` ist ein reiner Zustandsautomat (`Model::key` liefert höchstens einen `Effect`, `Model::apply` verarbeitet die Antwort), `grid.rs` schneidet das sichtbare Fenster aus den Zellen, `backend.rs` führt Anfragen als Tokio-Task aus, `app.rs`/`picker.rs`/`prompt.rs` sind die iocraft-Komponenten. Während eine Anfrage läuft, nimmt das Modell nur Strg+C an; Blättern liest ausschließlich bereits geladene Zellen und löst nie eine Datenbankabfrage aus. Es gibt keine Timer: ohne Tastendruck rendert und fragt die TUI nichts.
+
+Schutz: SQL läuft über dieselbe Strecke wie `query` (`run::prepare` → `run::run_prepared`), also mit Schreibschutz, Produktionsbestätigung (Verbindungsname eintippen, geprüft in `allow_write`), 1000-Zeilen-Limit, 300 s Timeout und Transaktion mit Rollback bei mehreren schreibenden Anweisungen. Zeilen kommen wie bei `table rows` über `fetch_rows` in Seiten zu 100. Zellen werden auf 80 Zeichen gekürzt und von Steuerzeichen befreit, damit Daten keine Terminal-Sequenzen auslösen. Der Terminalzustand (Raw-Modus, alternativer Bildschirm, Cursor) wird beim Beenden, bei Fehlern und bei Panics zurückgesetzt (`terminal::guard`, `Drop` des iocraft-Backends). Lässt sich das Terminal nicht in den Raw-Modus schalten (kein `CONIN$` unter Windows), endet der Befehl mit einer Fehlermeldung statt zu hängen.
 
 ## Sicherheit
 
@@ -42,6 +60,7 @@ Auswahl: `-c` → `--url`/`$L8DB_URL` → `$L8DB_CONNECTION` → Standard aus `c
 
 - Standardmäßig höchstens 1000 Zeilen pro Ergebnis (`-n`, `--all`); Postgres, MySQL, SQLite und DuckDB holen dann auch nur so viele Zeilen. Mit `--all` liegt das ganze Ergebnis im Speicher.
 - Ausgabe ohne Datenmaskierung und ohne Pager.
+- `l8db tui`: Maus wird nicht ausgewertet (Textauswahl des Terminals bleibt nutzbar), keine Sortierung, kein Filter auf Zeilen, keine Bearbeitung von Zellen. Unter Windows nur typgeprüft, nicht ausgeführt: `crossterm` liest Tasten über `CONIN$`, geschrieben wird auf die Standard-Handles; ohne den Starter `l8db.cmd` lesen Shell und TUI gleichzeitig die Tastatur.
 - Windows: `l8db.exe` ist ein GUI-Binary, auf das cmd und PowerShell nicht warten; direkt aufgerufen kehrt die Eingabeaufforderung vor der Ausgabe zurück und der Befehl wirkt, als ende er nie. Im `PATH` steht deshalb zuerst `<Programmordner>\bin` mit dem Starter `l8db.cmd` (`src-tauri/windows/l8db.cmd`, als Ressource im Bundle), der auf das Ende wartet und den Exit-Code durchreicht; das Binary hängt sich per `AttachConsole` an dessen Konsole. Strg+C fragt danach „Batchvorgang abbrechen (J/N)?“. Auf echtem Windows ungetestet.
 
 ## In der App
@@ -51,6 +70,7 @@ Einstellungen → Kommandozeile: „Zum PATH hinzufügen“ legt `/usr/local/bin
 ## Tests
 
 - `cargo test cli::` und `cargo test automation::connection` (Parser, Routing, Fehlermeldungen, Beispiele, Schreib-Erkennung, Befehls-Tunnel).
-- `L8DB_CLI_E2E=1 bun test tests/cli-e2e.test.ts` mit gebautem Debug-Binary: SQLite-Datei, gespeicherte Verbindungen in einer temporären `automation.db`, TTY über `script`. Mit `L8DB_CLI_E2E_PG=postgres://…` zusätzlich Postgres (Rollback, Ctrl+C), mit `L8DB_CLI_E2E_PG_PERF=postgres://…/l8db_perf` die Performance-Messung auf der 2-Mio.-Zeilen-Tabelle `big`.
+- `cargo test --lib cli::tui -- --nocapture`: Zustandsautomat, Raster und die Performance-Fälle `perf_*` (Scrollen eines 1000×60-Ergebnisses, Kontrollraster mit 100 000 Zeilen, Objektliste mit 20 000 Tabellen, gerenderte iocraft-Bilder über das Mock-Terminal); die gemessenen Werte stehen in `docs/performance.md` unter „Terminal mode“.
+- `L8DB_CLI_E2E=1 bun test tests/cli-e2e.test.ts` mit gebautem Debug-Binary: SQLite-Datei, gespeicherte Verbindungen in einer temporären `automation.db`, TTY über Python-`pty` (`tty` für einmalige Eingaben, `screen` wartet je Schritt auf einen Text und tippt dann; so laufen die TUI-Fälle für Auswahl, Blättern, SQL, Schutzregeln und Abbruch). Mit `L8DB_CLI_E2E_PG=postgres://…` zusätzlich Postgres (Rollback, Ctrl+C), mit `L8DB_CLI_E2E_PG_PERF=postgres://…/l8db_perf` die Performance-Messung auf der 2-Mio.-Zeilen-Tabelle `big`.
 
 Unternehmensrichtlinien und vollständige CLI-Abnahme: [enterprise-rollout.md](enterprise-rollout.md).

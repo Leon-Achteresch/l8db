@@ -14,7 +14,8 @@ use crate::db::{self, DatabaseKind, QueryResult, TxSession};
 use crate::mcp::{nosql, redact};
 
 const CANCELLED: i32 = 130;
-static PICKING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub(super) const ABORTED: &str = "Abgebrochen.";
+pub(super) const CONFIRM_REQUIRED: &str = "Bestätigung für Produktion erforderlich.";
 
 pub fn dispatch(cli: Cli) -> i32 {
     let Cli {
@@ -97,6 +98,7 @@ pub fn dispatch(cli: Cli) -> i32 {
             crate::check_cli::cli(&args)
         }
         Command::Task { command } => crate::automation::cli::cli(&task_args(command, &global)),
+        Command::Tui => super::tui::run(&global),
         command => block_on(&global, command),
     }
 }
@@ -134,17 +136,18 @@ pub(super) fn task_args(command: TaskCommand, global: &Global) -> Vec<String> {
     args
 }
 
-fn block_on(global: &Global, command: Command) -> i32 {
-    let runtime = match tokio::runtime::Builder::new_multi_thread()
+pub(super) fn runtime() -> Option<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
         .build()
-    {
-        Ok(runtime) => runtime,
-        Err(error) => {
-            eprintln!("Fehler: Laufzeit konnte nicht gestartet werden: {error}");
-            return 1;
-        }
+        .map_err(|error| eprintln!("Fehler: Laufzeit konnte nicht gestartet werden: {error}"))
+        .ok()
+}
+
+fn block_on(global: &Global, command: Command) -> i32 {
+    let Some(runtime) = runtime() else {
+        return 1;
     };
     let job = format!("cli-{}", std::process::id());
     let code = runtime.block_on(async {
@@ -153,6 +156,10 @@ fn block_on(global: &Global, command: Command) -> i32 {
         tokio::select! {
             result = &mut work => match result {
                 Ok(()) => 0,
+                Err(error) if error == ABORTED => {
+                    eprintln!("{ABORTED}");
+                    CANCELLED
+                }
                 Err(error) => {
                     eprintln!("Fehler: {error}");
                     1
@@ -162,10 +169,7 @@ fn block_on(global: &Global, command: Command) -> i32 {
                 if matches!(execution::cancel(&job), Ok(true)) {
                     let _ = tokio::time::timeout(std::time::Duration::from_secs(3), &mut work).await;
                 }
-                if PICKING.load(std::sync::atomic::Ordering::Relaxed) {
-                    let _ = dialoguer::console::Term::stderr().show_cursor();
-                }
-                eprintln!("\nAbgebrochen.");
+                eprintln!("\n{ABORTED}");
                 CANCELLED
             }
         }
@@ -178,7 +182,7 @@ fn block_on(global: &Global, command: Command) -> i32 {
     code
 }
 
-async fn saved_connections() -> Result<Vec<AutomationConnection>, String> {
+pub(super) async fn saved_connections() -> Result<Vec<AutomationConnection>, String> {
     let services = connect::services()?;
     let mut list = services.store.connections().await?;
     list.sort_by_key(|c| c.name.to_lowercase());
@@ -187,11 +191,14 @@ async fn saved_connections() -> Result<Vec<AutomationConnection>, String> {
 
 const NO_CONNECTIONS: &str = "Noch keine Verbindungen gefunden.\n  Öffne l8db einmal, dann übernimmt die CLI deine gespeicherten Verbindungen automatisch.\n  Ohne App: --url postgres://user@host/db";
 
-async fn resolve(global: &Global, explicit: Option<&str>) -> Result<Source, String> {
+pub(super) async fn named(
+    global: &Global,
+    explicit: Option<&str>,
+) -> Result<(Vec<AutomationConnection>, Option<Source>), String> {
     let env = |name: &str| std::env::var(name).ok().filter(|v| !v.trim().is_empty());
     if explicit.is_none() && global.connection.is_none() {
         if let Some(url) = global.url.clone().or_else(|| env("L8DB_URL")) {
-            return connect::ad_hoc(&url);
+            return Ok((Vec::new(), Some(connect::ad_hoc(&url)?)));
         }
     }
     let list = saved_connections().await?;
@@ -202,8 +209,21 @@ async fn resolve(global: &Global, explicit: Option<&str>) -> Result<Source, Stri
         .map(str::to_string)
         .or_else(|| global.connection.clone())
         .or_else(|| env("L8DB_CONNECTION"));
-    if let Some(wanted) = wanted {
-        return Ok(Source::Saved(Target::saved(store::find(&list, &wanted)?)));
+    let source = match wanted {
+        Some(wanted) => Some(Source::Saved(Target::saved(store::find(&list, &wanted)?))),
+        None => None,
+    };
+    Ok((list, source))
+}
+
+pub(super) fn interactive() -> bool {
+    std::io::stdin().is_terminal() && std::io::stderr().is_terminal()
+}
+
+async fn resolve(global: &Global, explicit: Option<&str>) -> Result<Source, String> {
+    let (list, source) = named(global, explicit).await?;
+    if let Some(source) = source {
+        return Ok(source);
     }
     if let Some(default) = store::load_settings()?.default_connection {
         let found = store::find(&list, &default).map_err(|_| {
@@ -220,30 +240,26 @@ async fn resolve(global: &Global, explicit: Option<&str>) -> Result<Source, Stri
         eprintln!("Verbindung: {} (in der App geöffnet)", found.name);
         return Ok(Source::Saved(Target::saved(found)));
     }
-    let names: Vec<String> = list.iter().map(|c| c.name.clone()).collect();
-    if std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
-        let options = names.clone();
-        PICKING.store(true, std::sync::atomic::Ordering::Relaxed);
-        let picked = blocking(move || {
-            dialoguer::FuzzySelect::new()
-                .with_prompt("Verbindung")
-                .items(&options)
-                .default(0)
-                .max_length(12)
-                .interact_opt()
-                .map_err(|error| format!("Auswahl: {error}"))
-        })
-        .await;
-        PICKING.store(false, std::sync::atomic::Ordering::Relaxed);
-        return match picked?.and_then(|index| list.get(index)) {
+    if interactive() {
+        return match super::tui::pick(&list, 0)
+            .await?
+            .and_then(|index| list.get(index))
+        {
             Some(found) => Ok(Source::Saved(Target::saved(found))),
             None => Err("Keine Verbindung gewählt.".into()),
         };
     }
     Err(format!(
         "Welche Verbindung? Mit -c <name> angeben oder einmal festlegen: l8db conn use <name>\n  Verfügbar: {}",
-        names.join(", ")
+        names(&list)
     ))
+}
+
+fn names(list: &[AutomationConnection]) -> String {
+    list.iter()
+        .map(|c| c.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 async fn session(global: &Global, explicit: Option<&str>) -> Result<Session, String> {
@@ -264,7 +280,12 @@ fn options(job: &str, timeout: u64) -> ExecutionOptions {
     }
 }
 
-async fn guarded<T, F>(job: &str, kind: DatabaseKind, timeout: u64, future: F) -> Result<T, String>
+pub(super) async fn guarded<T, F>(
+    job: &str,
+    kind: DatabaseKind,
+    timeout: u64,
+    future: F,
+) -> Result<T, String>
 where
     F: std::future::Future<Output = Result<T, String>>,
 {
@@ -374,13 +395,13 @@ pub(super) fn split_table(name: &str) -> (Option<String>, String) {
     }
 }
 
-struct Relation {
-    schema: String,
-    name: String,
-    view: bool,
+pub(super) struct Relation {
+    pub(super) schema: String,
+    pub(super) name: String,
+    pub(super) view: bool,
 }
 
-async fn relations(
+pub(super) async fn relations(
     session: &Session,
     schema: Option<&str>,
     job: &str,
@@ -492,7 +513,7 @@ async fn table(
             )
         })?;
         if writes(kind, &filter) {
-            allow_write(&session.target, false).await?;
+            allow_write(&session.target, &Approval::Flag(false)).await?;
         }
     }
     match command {
@@ -634,7 +655,16 @@ fn is_sql(kind: DatabaseKind) -> bool {
     )
 }
 
+#[cfg(test)]
 pub(super) fn statements(kind: DatabaseKind, sql: &str) -> Result<Vec<String>, String> {
+    split_statements(kind, sql, &mut |note| eprintln!("{note}"))
+}
+
+fn split_statements(
+    kind: DatabaseKind,
+    sql: &str,
+    note: &mut dyn FnMut(String),
+) -> Result<Vec<String>, String> {
     let parts: Vec<String> = match kind {
         DatabaseKind::Oracle => {
             let mut parts = Vec::new();
@@ -651,7 +681,10 @@ pub(super) fn statements(kind: DatabaseKind, sql: &str) -> Result<Vec<String>, S
                 }) {
                     break;
                 } else {
-                    eprintln!("Hinweis: SQL*Plus-Befehl übersprungen: {}", text.trim());
+                    note(format!(
+                        "Hinweis: SQL*Plus-Befehl übersprungen: {}",
+                        text.trim()
+                    ));
                 }
             }
             parts
@@ -687,12 +720,17 @@ pub(super) fn writes(kind: DatabaseKind, statement: &str) -> bool {
     }
 }
 
-async fn confirm_production(target: &Target, yes: bool) -> Result<(), String> {
-    if yes {
-        return Ok(());
+pub(super) enum Approval {
+    Flag(bool),
+    Typed(Option<String>),
+}
+
+fn confirmed(name: &str, answer: &str) -> Result<(), String> {
+    if answer.trim() == name {
+        Ok(())
+    } else {
+        Err("Nicht bestätigt, nichts ausgeführt.".into())
     }
-    let name = target.name.clone();
-    blocking(move || ask_production(&name)).await
 }
 
 fn ask_production(name: &str) -> Result<(), String> {
@@ -711,11 +749,50 @@ fn ask_production(name: &str) -> Result<(), String> {
         .lock()
         .read_line(&mut answer)
         .map_err(|e| e.to_string())?;
-    if answer.trim() == name {
-        Ok(())
-    } else {
-        Err("Nicht bestätigt, nichts ausgeführt.".into())
+    confirmed(name, &answer)
+}
+
+pub(super) struct Prepared {
+    parts: Vec<String>,
+    writing: bool,
+    approval: Approval,
+}
+
+pub(super) async fn prepare(
+    target: &Target,
+    sql: &str,
+    approval: Approval,
+    note: &mut (dyn FnMut(String) + Send),
+) -> Result<Prepared, String> {
+    let parts = split_statements(target.kind, sql, note)?;
+    if parts.is_empty() {
+        return Err("Das SQL enthält keine Anweisung.".into());
     }
+    let writing = parts.iter().any(|statement| writes(target.kind, statement));
+    if writing {
+        allow_write(target, &approval).await?;
+    }
+    Ok(Prepared {
+        parts,
+        writing,
+        approval,
+    })
+}
+
+pub(super) struct RunOptions {
+    pub(super) limit: Limit,
+    pub(super) timeout: u64,
+    pub(super) no_transaction: bool,
+    pub(super) typed: bool,
+}
+
+pub(super) enum Step {
+    Result {
+        result: QueryResult,
+        started: Instant,
+        script: bool,
+    },
+    Note(String),
 }
 
 async fn query(
@@ -728,27 +805,60 @@ async fn query(
     let (sql, file) = (args.sql.clone(), args.file.clone());
     let sql = blocking(move || read_sql(sql, file)).await?;
     let source = resolve(global, None).await?;
-    let target = source.target();
-    let parts = statements(target.kind, &sql)?;
-    if parts.is_empty() {
-        return Err("Das SQL enthält keine Anweisung.".into());
-    }
-    let writing = parts.iter().any(|statement| writes(target.kind, statement));
-    if writing {
-        allow_write(target, args.yes).await?;
-    }
+    let prepared = prepare(
+        source.target(),
+        &sql,
+        Approval::Flag(args.yes),
+        &mut |note| eprintln!("{note}"),
+    )
+    .await?;
     let session = connect::open(source, global.database.as_deref()).await?;
+    let options = RunOptions {
+        limit: args.limit,
+        timeout: args.timeout,
+        no_transaction: args.no_transaction,
+        typed: matches!(format, Format::Json | Format::Ndjson),
+    };
+    run_prepared(
+        &session,
+        global.database.as_deref(),
+        &prepared,
+        &options,
+        job,
+        &mut |step| match step {
+            Step::Result {
+                result,
+                started,
+                script,
+            } => print_result(out, format, &result, args.limit, started, script),
+            Step::Note(note) => {
+                eprintln!("{note}");
+                Ok(())
+            }
+        },
+    )
+    .await
+}
+
+pub(super) async fn run_prepared(
+    session: &Session,
+    database: Option<&str>,
+    prepared: &Prepared,
+    options: &RunOptions,
+    job: &str,
+    emit: &mut impl FnMut(Step) -> Result<(), String>,
+) -> Result<(), String> {
+    let Prepared {
+        parts,
+        writing,
+        approval,
+    } = prepared;
+    let (writing, limit, timeout) = (*writing, options.limit, options.timeout);
     let kind = session.target.kind;
-    let limit = args.limit;
     let mut transaction: Option<Box<dyn TxSession>> = None;
-    if parts.len() > 1 && writing && !args.no_transaction {
-        match db::import::open_session(
-            kind,
-            &session.url,
-            global.database.as_deref(),
-            session.services.pool.clone(),
-        )
-        .await
+    if parts.len() > 1 && writing && !options.no_transaction {
+        match db::import::open_session(kind, &session.url, database, session.services.pool.clone())
+            .await
         {
             Ok(tx) => transaction = Some(tx),
             Err(e) if e.contains("nicht unterstützt") => {}
@@ -759,12 +869,18 @@ async fn query(
         (kind, parts.as_slice(), writing, limit.rows())
     {
         let started = Instant::now();
-        match postgres_cursor(&session, statement, rows, global, job, args.timeout).await? {
+        match postgres_cursor(session, statement, rows, database, job, timeout).await? {
             Cursor::Done(mut result) => {
-                typed_postgres(&session, statement, format, &mut result).await;
-                return print_result(out, format, &result, limit, started, false);
+                if options.typed {
+                    typed_postgres(session, statement, &mut result).await;
+                }
+                return emit(Step::Result {
+                    result,
+                    started,
+                    script: false,
+                });
             }
-            Cursor::Writes => allow_write(&session.target, args.yes).await?,
+            Cursor::Writes => allow_write(&session.target, approval).await?,
             Cursor::Skip => {}
         }
     }
@@ -772,20 +888,12 @@ async fn query(
     for (index, statement) in parts.iter().enumerate() {
         let started = Instant::now();
         let result = match transaction.as_mut() {
-            Some(tx) => {
-                guarded(
-                    job,
-                    kind,
-                    args.timeout,
-                    limited(limit, tx.execute(statement)),
-                )
-                .await
-            }
+            Some(tx) => guarded(job, kind, timeout, limited(limit, tx.execute(statement))).await,
             None => {
                 guarded(
                     job,
                     kind,
-                    args.timeout,
+                    timeout,
                     limited(limit, session.adapter.execute_query(statement)),
                 )
                 .await
@@ -810,25 +918,26 @@ async fn query(
                 return Err(message);
             }
         };
-        if kind == DatabaseKind::Postgres {
-            typed_postgres(&session, statement, format, &mut result).await;
+        if kind == DatabaseKind::Postgres && options.typed {
+            typed_postgres(session, statement, &mut result).await;
         }
-        print_result(out, format, &result, limit, started, total > 1)?;
+        emit(Step::Result {
+            result,
+            started,
+            script: total > 1,
+        })?;
     }
     if let Some(mut tx) = transaction {
         tx.commit().await?;
-        eprintln!("✓ {total} Anweisungen in einer Transaktion übernommen.");
+        emit(Step::Note(format!(
+            "✓ {total} Anweisungen in einer Transaktion übernommen."
+        )))?;
     }
     Ok(())
 }
 
-async fn typed_postgres(
-    session: &Session,
-    statement: &str,
-    format: Format,
-    result: &mut QueryResult,
-) {
-    if !matches!(format, Format::Json | Format::Ndjson) || result.rows.is_empty() {
+async fn typed_postgres(session: &Session, statement: &str, result: &mut QueryResult) {
+    if result.rows.is_empty() {
         return;
     }
     let Ok(columns) = session.adapter.describe_query_columns(statement).await else {
@@ -873,17 +982,25 @@ pub(super) fn postgres_json(data_type: &str, value: Value) -> Value {
     }
 }
 
-async fn allow_write(target: &Target, yes: bool) -> Result<(), String> {
+async fn allow_write(target: &Target, approval: &Approval) -> Result<(), String> {
     if target.read_only {
         return Err(format!(
             "„{}“ ist schreibgeschützt, das SQL würde schreiben.\n  Schreibschutz oder Produktionssperre lassen sich nur in der App ändern.",
             target.name
         ));
     }
-    if target.production {
-        confirm_production(target, yes).await?;
+    if !target.production {
+        return Ok(());
     }
-    Ok(())
+    match approval {
+        Approval::Flag(true) => Ok(()),
+        Approval::Flag(false) => {
+            let name = target.name.clone();
+            blocking(move || ask_production(&name)).await
+        }
+        Approval::Typed(None) => Err(CONFIRM_REQUIRED.into()),
+        Approval::Typed(Some(answer)) => confirmed(&target.name, answer),
+    }
 }
 
 pub(super) fn rollback_note(kind: DatabaseKind, ran: &[String]) -> &'static str {
@@ -924,7 +1041,7 @@ async fn postgres_cursor(
     session: &Session,
     statement: &str,
     rows: usize,
-    global: &Global,
+    database: Option<&str>,
     job: &str,
     timeout: u64,
 ) -> Result<Cursor, String> {
@@ -934,7 +1051,7 @@ async fn postgres_cursor(
     let Ok(mut tx) = db::import::open_session(
         DatabaseKind::Postgres,
         &session.url,
-        global.database.as_deref(),
+        database,
         session.services.pool.clone(),
     )
     .await
@@ -1000,6 +1117,14 @@ where
     }
 }
 
+pub(super) fn changed(result: &QueryResult) -> String {
+    match result.rows_affected {
+        Some(1) => "1 Zeile geändert".to_string(),
+        Some(rows) => format!("{rows} Zeilen geändert"),
+        None => "OK".to_string(),
+    }
+}
+
 fn print_result(
     out: &mut impl Write,
     format: Format,
@@ -1010,12 +1135,7 @@ fn print_result(
 ) -> Result<(), String> {
     let elapsed = started.elapsed().as_millis();
     if result.columns.is_empty() {
-        let message = match result.rows_affected {
-            Some(1) => "1 Zeile geändert".to_string(),
-            Some(rows) => format!("{rows} Zeilen geändert"),
-            None => "OK".to_string(),
-        };
-        eprintln!("✓ {message} ({elapsed} ms)");
+        eprintln!("✓ {} ({elapsed} ms)", changed(result));
         return Ok(());
     }
     write(output::write_rows(
@@ -1052,7 +1172,25 @@ async fn use_connection(name: Option<&str>, clear: bool) -> Result<(), String> {
     if list.is_empty() {
         return Err(NO_CONNECTIONS.into());
     }
-    let found = store::find(&list, name.unwrap_or_default())?;
+    let found = match name {
+        Some(name) => store::find(&list, name)?,
+        None if interactive() => {
+            let current = list
+                .iter()
+                .position(|c| Some(&c.id) == settings.default_connection.as_ref())
+                .unwrap_or(0);
+            super::tui::pick(&list, current)
+                .await?
+                .and_then(|index| list.get(index))
+                .ok_or("Keine Verbindung gewählt.")?
+        }
+        None => {
+            return Err(format!(
+                "Welche Verbindung? l8db conn use <name>\n  Verfügbar: {}",
+                names(&list)
+            ))
+        }
+    };
     settings.default_connection = Some(found.id.clone());
     store::save_settings(&settings)?;
     eprintln!("✓ Standardverbindung ist jetzt „{}“.", found.name);
@@ -1126,7 +1264,7 @@ fn tunnel(connection: &AutomationConnection) -> String {
     String::new()
 }
 
-fn kind_name(kind: DatabaseKind) -> String {
+pub(super) fn kind_name(kind: DatabaseKind) -> String {
     serde_json::to_value(kind)
         .ok()
         .and_then(|v| v.as_str().map(str::to_string))

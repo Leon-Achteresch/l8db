@@ -63,6 +63,7 @@ export const NEW_FEATURES = {
   "settings.cli.doctor": "0.17.0",
   "settings.statistics.overview": "0.14.0",
   "settings.cli.install": NEXT_FEATURE_VERSION,
+  "settings.cli.tui": NEXT_FEATURE_VERSION,
   "workspace.inline-tabs": "0.9.1",
   "workspace.status.branch": "0.9.1",
   "workspace.status.query": "0.9.1",

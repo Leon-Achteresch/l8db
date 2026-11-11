@@ -39,7 +39,7 @@ fn plain(value: &Value) -> Option<String> {
     }
 }
 
-fn table_text(value: &Value) -> String {
+pub fn table_text(value: &Value) -> String {
     let Some(text) = plain(value) else {
         return "NULL".into();
     };

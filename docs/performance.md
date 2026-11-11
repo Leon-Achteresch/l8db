@@ -415,3 +415,31 @@ With a slow CPU the first paint and the file count improve clearly, the time unt
 ### Measuring on another machine
 
 Start the application with `L8DB_STARTUP_PROBE=1`. It logs one line such as `startup: native 228 ms (window 158 ms, setup 1 ms), shell 12 ms, app 182 ms, total 410 ms` and exits after the first complete render. `native` is the time from `run()` to the start of the navigation, `shell` and `app` count from there. Without the variable the same line is written to the log file on every start.
+
+## Terminal mode `l8db tui` (2026-11-11)
+
+The interactive terminal mode (`src-tauri/src/cli/tui/`, iocraft) keeps every loaded cell as a pre-shortened string and cuts the visible window out of it per frame. Scrolling reads only that in-memory grid; a database request starts only from Enter, `d`, `m`, Ctrl+R or opening a connection, and while one runs the state machine accepts nothing except Ctrl+C. There are no timers, so an idle TUI neither renders nor queries.
+
+### Limits
+
+- Table rows load in pages of 100 up to 1,000 rows per table view; SQL results are capped at 1,000 rows by the same limit as `query`. Cells are shortened to 80 characters before they are stored.
+- Budgets in `cargo test --lib cli::tui` (debug build): scrolling window p95 below 4 ms, object-list filter p95 below 20 ms, rendered iocraft frame mean below 50 ms.
+
+### Measured workload
+
+MacBook Air, Apple M3 (8 cores), 16 GiB RAM, macOS 27.0.1, rustc 1.99.0, unoptimized test profile, no throttling, one run:
+
+| Scenario | Result |
+|---|---|
+| 5,000 scroll steps over a 1,000 x 60 grid, 200 x 50 viewport | median 0.35 ms, p95 0.43 ms per window, at most 11,900 bytes of text per frame, 0 database requests |
+| Control: 2,000 scroll steps over 100,000 x 20 rows | median 0.31 ms, p95 0.36 ms, so frame cost does not grow with row count |
+| Loading a table to the cap with `m` | exactly 10 requests for 1,000 rows, then `m` is ignored |
+| Object list with 20,000 tables, typing a 12-character filter and 200 page steps | median 3.4 ms, p95 4.0 ms, 0 database requests |
+| iocraft frames through the mock terminal, 300 keys over a 1,000 x 60 result at 200 x 50 | 250 frames, mean 15.8 ms per frame |
+| Busy state | every key except Ctrl+C returns no effect; Ctrl+C returns exactly one cancel |
+
+The end-to-end run (`L8DB_CLI_E2E=1 bun test tests/cli-e2e.test.ts`, SQLite, pseudo-terminal) cancels an endless recursive query with Ctrl+C and returns to the editor; the table still holds its 250 rows afterwards.
+
+### Missing coverage
+
+Windows and Linux were type-checked only (`cargo check --target x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu` on a scratch crate with the TUI modules); the TUI has not run on either. Drivers other than SQLite were not exercised through the TUI. Retained memory was bounded by construction and by the row cap, not measured as process RSS. No throttled-CPU run.
