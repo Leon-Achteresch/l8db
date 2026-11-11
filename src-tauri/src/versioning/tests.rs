@@ -939,3 +939,36 @@ async fn release_commits_name_the_commit_that_added_each_manifest() {
     assert_eq!(text.matches("v1.json").count(), 1);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test]
+async fn show_returns_commit_metadata_and_first_parent_patch() {
+    let root = temp();
+    handle(request(&root, "init")).await.unwrap();
+    git(&root, &["config", "user.email", "test@example.invalid"])
+        .await
+        .unwrap();
+    git(&root, &["config", "user.name", "Versioning Test"])
+        .await
+        .unwrap();
+    fs::create_dir_all(root.join("database/objects")).unwrap();
+    fs::write(root.join("database/objects/a.sql"), "SELECT 1\n").unwrap();
+    git(&root, &["add", "."]).await.unwrap();
+    git(&root, &["commit", "-m", "Erster"]).await.unwrap();
+    fs::write(root.join("database/objects/a.sql"), "SELECT 2\n").unwrap();
+    git(&root, &["add", "."]).await.unwrap();
+    git(&root, &["commit", "-m", "Zweiter\n\nDetails"])
+        .await
+        .unwrap();
+    let mut show = request(&root, "show");
+    show.revision = Some("HEAD".into());
+    let value = handle(show).await.unwrap();
+    assert_eq!(value["author"], "Versioning Test");
+    assert_eq!(value["message"], "Zweiter\n\nDetails");
+    let patch = value["patch"].as_str().unwrap();
+    assert!(patch.contains("-SELECT 1\n+SELECT 2"));
+    let mut root_commit = request(&root, "show");
+    root_commit.revision = Some("HEAD~1".into());
+    let first = handle(root_commit).await.unwrap();
+    assert!(first["patch"].as_str().unwrap().contains("new file mode"));
+    fs::remove_dir_all(root).unwrap();
+}
