@@ -4,6 +4,7 @@ pub mod install;
 mod output;
 mod run;
 pub mod store;
+mod tui;
 
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use output::Format;
@@ -17,12 +18,13 @@ Aufruf:
 
 Verbindungen
   conn list                Gespeicherte Verbindungen anzeigen
-  conn use <name>          Standardverbindung festlegen
+  conn use [name]          Standardverbindung festlegen
   conn test [name]         Verbindung prüfen
   conn show <name>         Details einer Verbindung
   open [name]              Verbindung in der App öffnen
 
 Daten
+  tui                      Interaktiver Modus: Tabellen blättern, SQL ausführen
   query [sql]              SQL ausführen (kurz: q)
   db list                  Datenbanken auflisten
   schema list              Schemas auflisten
@@ -51,6 +53,7 @@ Beispiele
   l8db conn list
   l8db doctor -o json
   l8db conn use prod
+  l8db tui
   l8db q \"select count(*) from users\"
   l8db table rows users --where \"active\" --limit 20
   l8db query -c staging -f bericht.sql -o csv > bericht.csv
@@ -158,12 +161,19 @@ enum Command {
         alias = "connection",
         help_template = SUB_HELP,
         override_usage = "l8db conn <befehl>",
-        after_help = "Beispiele:\n  l8db conn list\n  l8db conn use prod\n  l8db conn test\n\nVerbindungen legst du in der App an; die CLI übernimmt sie automatisch."
+        after_help = "Beispiele:\n  l8db conn list\n  l8db conn use prod\n  l8db conn use\n  l8db conn test\n\n„conn use“ ohne Namen öffnet im Terminal eine Auswahl.\nVerbindungen legst du in der App an; die CLI übernimmt sie automatisch."
     )]
     Conn {
         #[command(subcommand)]
         command: Option<ConnCommand>,
     },
+    #[command(
+        about = "Interaktiver Modus im Terminal: Verbindung wählen, Tabellen blättern, SQL ausführen",
+        help_template = SUB_HELP,
+        override_usage = "l8db tui [-c NAME] [-d DATENBANK]",
+        after_help = "Braucht ein Terminal; in Pipes und Skripten die anderen Befehle nutzen.\nSchreibschutz, Produktionsbestätigung, Zeilenlimit und Timeout gelten wie bei „query“.\n\nBeispiele:\n  l8db tui\n  l8db tui -c staging\n  l8db tui --url postgres://localhost/app"
+    )]
+    Tui,
     #[command(
         about = "SQL ausführen (kurz: q)",
         alias = "q",
@@ -291,10 +301,13 @@ enum ConnCommand {
     List,
     #[command(
         about = "Standardverbindung festlegen",
-        override_usage = "l8db conn use <NAME>\n  l8db conn use --clear"
+        override_usage = "l8db conn use [NAME]\n  l8db conn use --clear"
     )]
     Use {
-        #[arg(value_name = "NAME", required_unless_present = "clear")]
+        #[arg(
+            value_name = "NAME",
+            help = "Verbindung; ohne Namen öffnet sich im Terminal eine Auswahl"
+        )]
         name: Option<String>,
         #[arg(long, help = "Standard wieder entfernen")]
         clear: bool,
@@ -493,6 +506,7 @@ const COMMANDS: &[&str] = &[
     "policy",
     "conn",
     "connection",
+    "tui",
     "query",
     "q",
     "db",

@@ -100,7 +100,9 @@ clap = { version = "4.6.7", features = ["derive", "env", "wrap_help"] }
 clap_complete = "4.6.11"
 comfy-table = { version = "7.1", default-features = false }
 terminal_size = "0.4.4"
-dialoguer = { version = "0.12.0", default-features = false, features = ["fuzzy-select"] }
+iocraft = { version = "0.9.5", features = ["unstable-output-streams"] }
+crossterm = "0.29"
+unicode-width = "0.2"
 
 
 [features]

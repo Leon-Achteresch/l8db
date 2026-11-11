@@ -102,6 +102,7 @@ fn cheatsheet_examples_in_the_app_parse() {
     for line in [
         "l8db conn list",
         "l8db conn use prod",
+        "l8db tui",
         "l8db conn test",
         "l8db open prod",
         "l8db q \"select * from users limit 5\"",

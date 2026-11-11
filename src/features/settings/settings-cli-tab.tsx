@@ -136,7 +136,7 @@ export function SettingsCliTab() {
           </p>
         ) : null}
 
-        <SettingsRow settingId="cli-cheatsheet" stacked>
+        <SettingsRow settingId="cli-cheatsheet" featureId="settings.cli.tui" stacked>
           <div className="w-full space-y-3">
             {CLI_CHEATSHEET.map((group) => (
               <CliCommandList key={group.title} title={group.title} examples={group.examples} />
