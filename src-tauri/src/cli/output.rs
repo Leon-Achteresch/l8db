@@ -75,6 +75,62 @@ fn terminal_width() -> Option<u16> {
     terminal_size::terminal_size().map(|(width, _)| width.0)
 }
 
+fn write_table(
+    out: &mut impl Write,
+    columns: &[String],
+    rows: &[Value],
+    width: Option<u16>,
+) -> std::io::Result<()> {
+    let cells: Vec<Vec<String>> = rows
+        .iter()
+        .map(|row| {
+            columns
+                .iter()
+                .enumerate()
+                .map(|(index, column)| table_text(&cell(row, column, index)))
+                .collect()
+        })
+        .collect();
+    let chars = |text: &String| text.chars().count();
+    let needed: usize = columns
+        .iter()
+        .enumerate()
+        .map(|(index, column)| {
+            let widest = cells.iter().filter_map(|row| row.get(index)).map(chars);
+            widest.max().unwrap_or(0).max(chars(column)) + 3
+        })
+        .sum::<usize>()
+        + 1;
+    if columns.len() > 1 && width.is_some_and(|width| needed > usize::from(width)) {
+        if cells.is_empty() {
+            return writeln!(out, "{}", columns.join(", "));
+        }
+        let key = columns.iter().map(chars).max().unwrap_or(0);
+        for (number, row) in cells.iter().enumerate() {
+            if number > 0 {
+                writeln!(out)?;
+            }
+            writeln!(out, "Zeile {}", number + 1)?;
+            for (column, value) in columns.iter().zip(row) {
+                writeln!(out, "  {column:<key$}  {value}")?;
+            }
+        }
+        return Ok(());
+    }
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL_CONDENSED)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(columns.iter().map(String::as_str));
+    if let Some(width) = width {
+        table.set_width(width);
+    }
+    for row in cells {
+        table.add_row(row);
+    }
+    writeln!(out, "{table}")
+}
+
 pub fn write_rows(
     out: &mut impl Write,
     format: Format,
@@ -82,25 +138,12 @@ pub fn write_rows(
     rows: &[Value],
 ) -> std::io::Result<()> {
     match format {
-        Format::Table => {
-            let mut table = Table::new();
-            table
-                .load_preset(UTF8_FULL_CONDENSED)
-                .set_content_arrangement(ContentArrangement::Dynamic)
-                .set_header(columns.iter().map(String::as_str));
-            if let Some(width) = terminal_width().filter(|width| *width >= 40) {
-                table.set_width(width);
-            }
-            for row in rows {
-                table.add_row(
-                    columns
-                        .iter()
-                        .enumerate()
-                        .map(|(index, column)| table_text(&cell(row, column, index))),
-                );
-            }
-            writeln!(out, "{table}")
-        }
+        Format::Table => write_table(
+            out,
+            columns,
+            rows,
+            terminal_width().filter(|width| *width >= 40),
+        ),
         Format::Json => {
             let objects: Vec<Value> = rows.iter().map(|row| object(columns, row)).collect();
             serde_json::to_writer_pretty(&mut *out, &objects)?;
@@ -214,5 +257,24 @@ mod tests {
         assert!(text.contains("NULL"));
         assert!(text.contains('…'));
         assert!(!text.contains(&"x".repeat(100)));
+    }
+
+    #[test]
+    fn tables_wider_than_the_terminal_become_one_record_per_row() {
+        let names: Vec<String> = (1..=22).map(|n| format!("SPALTE_{n:02}")).collect();
+        let row = |start: i64| Value::Array((0..22).map(|n| json!(start + n)).collect());
+        let show = |rows: &[Value], width| {
+            let mut out = Vec::new();
+            write_table(&mut out, &names, rows, width).unwrap();
+            String::from_utf8(out).unwrap()
+        };
+        let narrow = show(&[row(100), json!([null])], Some(120));
+        assert!(narrow.starts_with("Zeile 1\n  SPALTE_01  100\n  SPALTE_02  101\n"));
+        assert!(narrow.contains("\n\nZeile 2\n  SPALTE_01  NULL\n"));
+        assert!(narrow.lines().all(|line| line.chars().count() <= 120));
+        assert_eq!(show(&[], Some(120)), format!("{}\n", names.join(", ")));
+        for fits in [show(&[row(100)], Some(400)), show(&[row(100)], None)] {
+            assert!(fits.contains("SPALTE_22") && fits.contains('┆') && !fits.contains("Zeile"));
+        }
     }
 }
