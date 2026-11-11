@@ -93,6 +93,10 @@ impl Run {
         self.wait("editor", "Editor", details, false).await
     }
 
+    pub async fn app(&self, details: Value) -> Result<Value, String> {
+        self.wait("app", "l8db", details, false).await
+    }
+
     pub async fn notebook(&self, details: Value) -> Result<Value, String> {
         self.wait("notebook", "Notebook", details, false).await
     }

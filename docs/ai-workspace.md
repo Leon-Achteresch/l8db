@@ -177,6 +177,25 @@ Sonst ließen sich mit Mischformen wie `SELECT 1 --1, email AS x FROM t` (MySQL)
 
 Der Systemprompt verlangt, Migrationen, Backfills und Massenänderungen vor dem Vorschlag in der Sandbox zu testen, Was-wäre-wenn-Fragen dort zu messen statt zu schätzen und Warum-Fragen zu Kennzahlen zuerst mit `drilldown` zu zerlegen. Die Beispielfragen im leeren Chat zeigen Ursachenanalyse, Sandbox und Datenregeln.
 
+## Begleiter für l8db
+
+Bei Fragen zu Funktionen, Bedienung oder Dokumentation entdeckt die KI `app_search` und `app_execute`. Beide gehören bei BYOK nicht zu den anfänglichen Werkzeugdefinitionen; CLI-Agenten erhalten die beiden kompakten Definitionen über ihre MCP-Bridge. Es werden keine Feature-Texte mehr automatisch an Nutzernachrichten angehängt. Die Auswahl erfolgt durch das Modell anhand der Frage, auch bei Formulierungen wie „das Feature in l8db“ ohne feste Schlüsselwort-Syntax.
+
+`app_search` durchsucht den lokalen Feature-Katalog und den veröffentlichten Doku-Index (`https://l8db.leon-achteresch.de/llms.txt`). Es liefert höchstens fünf verfügbare Features (2.000 Zeichen) und drei Doku-Treffer mit ID, Titel und Kurzbeschreibung. Easy Mode und Fähigkeiten der aktiven Verbindung begrenzen die UI-Treffer. Ohne Verbindung bleiben allgemeine App-Funktionen verfügbar. Bei nicht erreichbarer Doku bleiben lokale Treffer erhalten.
+
+`app_execute` verwendet diese IDs:
+
+- `read_doc`: Einzelseite als Markdown lesen, höchstens 4.000 Zeichen plus Quelle und nächstem `offset`.
+- `open_doc`: Die geprüfte Doku-Seite in der bestehenden Doku-Ansicht öffnen.
+- `show_feature`: Die vorhandene UI-Hervorhebung verwenden; nicht sichtbare Elemente werden als solche gemeldet.
+- `guide_feature`: Eine vorhandene, kuratierte Anleitung starten. Sie verwendet die bestehenden Regeln für sichere Navigationsklicks; Datenbankaktionen und Einstellungsänderungen werden dadurch nicht ausgelöst.
+
+Öffnen, Hervorheben und Anleitungen erfolgen auf Wunsch oder bei klar implizierter Aufforderung. Die KI kann weiterhin bis zu zwei klickbare Feature-Karten in ihrer Antwort zeigen. Datenfragen benötigen keinen Doku-Abruf. Suchbegriffe werden lokal ausgewertet und nicht an die Website geschickt; ausgehende Anfragen enthalten nur den Index- oder Seitenpfad. Doku-Inhalt gilt als Daten, nicht als Anweisung.
+
+Der Abruf folgt dem Search/Execute-Prinzip: erst kleine Trefferlisten, dann gezielt lesen oder anzeigen. Es ist kein allgemeiner JavaScript-Executor. Index und maximal 16 Seiten werden eine Stunde im Prozess zwischengespeichert, ohne Polling und ohne Hintergrundmodell. Index: höchstens 256 KiB, Seite: höchstens 128 KiB, Seitencache: höchstens 2 MiB Text. Gleichzeitige Abrufe werden serialisiert und teilen den Cache; HTTP-Zeitlimit 10 s, keine Weiterleitungen oder beliebigen URLs. Abbruch beendet wartende UI-Hervorhebungen und aktive Anleitungen; ein abgebrochener HTTP-Abruf legt keinen unvollständigen Cache-Eintrag an.
+
+Prüfstand: macOS/arm64, Apple M3, 16 GiB RAM. Der Feature-Test mit Bun 1.3.10 misst 1.000 Features über 40 Durchläufe: Median 1,58 ms, p95 9,82 ms (Limit 120 ms), 140.481 Byte zusätzlich gehaltener Heap (Limit 8 MiB), Ergebnis 720 Zeichen (Limit 2.000). Die erste Umsetzung über die bestehende unscharfe Palettensuche verfehlte das Budget mit p95 319 ms unter Bun 1.4.3 und paralleler Build-Last; wegen unterschiedlicher Runtime/Last ist das kein direkter Geschwindigkeitsvergleich. Die jetzige Suche verwendet einen vorverarbeiteten Textindex und Synonyme. Der Rust-Test misst zusätzlich 1.000 Doku-Themen plus eine gecachte 128-KiB-Seite über 40 Durchläufe: Median 1,73 ms, p95 4,18 ms (Limit 50 ms), genau zwei HTTP-Anfragen für zwölf gleichzeitige Leser, maximal 16 Seiten/2 MiB Text; Abbruch und Leerlauf sind geprüft. Die fünf gezielten Rust-Tests wurden mit dem bereits aktuell kompilierten Test-Binary direkt ausgeführt, um die erneute Cargo-Build-Sperre zu umgehen; `cargo check` war zuvor erfolgreich. Reale Windows-/Linux-UI, andere Hardware und Provider-Modellantworten wurden damit nicht getestet; CPU-/Heap-Simulation ist keine Grundlage dieser Werte.
+
 ## Entwicklung
 
 Start im Feature-Worktree: `bun run dev:ai`. Diese Konfiguration nutzt Port 1422 und eine eigene App-Kennung, um den laufenden Haupt-Dev-Server auf 1420 nicht zu ersetzen. Der gemeinsame bestehende MCP-Konfigurationsordner bleibt erhalten; KI-Anfragen ändern dessen Verbindungsfreigaben nicht.
