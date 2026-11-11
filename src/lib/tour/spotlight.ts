@@ -1,73 +1,31 @@
-import { type Driver, driver } from "driver.js";
+import { create } from "zustand";
+import { visibleElement } from "@/lib/tour/conditions";
 import type { TourStep } from "@/lib/tour/types";
 
-let instance: Driver | null = null;
+interface SpotlightState {
+  selector: string | null;
+  waiting: boolean;
+}
 
-function dockPopoverAtTop(selector: string) {
-  const dock = () => {
-    const target = document.querySelector<HTMLElement>(selector);
-    if (!target?.classList.contains("driver-active-element")) return;
-    const popover = document.querySelector<HTMLElement>(".driver-popover.l8db-driver");
-    if (!popover) return;
-    popover.dataset.tourDock = "top";
-    popover.style.top = "1rem";
-    popover.style.right = "1rem";
-    popover.style.bottom = "auto";
-    popover.style.left = "auto";
-  };
-  window.requestAnimationFrame(dock);
-  window.setTimeout(dock, 250);
+export const useSpotlightStore = create<SpotlightState>()(() => ({
+  selector: null,
+  waiting: false,
+}));
+
+function clearWaitMarks() {
+  document.querySelectorAll("[data-tour-wait]").forEach((el) => {
+    el.removeAttribute("data-tour-wait");
+  });
 }
 
 export function destroySpotlight() {
-  instance?.destroy();
-  instance = null;
-  document.querySelectorAll("[data-tour-wait]").forEach((el) => {
-    el.removeAttribute("data-tour-wait");
-  });
+  clearWaitMarks();
+  useSpotlightStore.setState({ selector: null, waiting: false });
 }
 
-export function showSpotlight(step: TourStep, waiting: boolean) {
-  if (!step.target || step.side === "over") {
-    destroySpotlight();
-    return;
-  }
-  if (!instance) {
-    instance = driver({
-      animate: true,
-      allowClose: false,
-      overlayColor: "rgba(8, 10, 16, 0.62)",
-      overlayOpacity: 0.62,
-      stagePadding: 10,
-      stageRadius: 14,
-      popoverOffset: 14,
-      showButtons: [],
-      disableActiveInteraction: false,
-      popoverClass: "l8db-driver",
-    });
-  }
-  document.querySelectorAll("[data-tour-wait]").forEach((el) => {
-    el.removeAttribute("data-tour-wait");
-  });
-  const target = step.target ? document.querySelector<HTMLElement>(step.target) : null;
-  if (!target) {
-    destroySpotlight();
-    return;
-  }
-  if (waiting) target.setAttribute("data-tour-wait", "true");
-  const action = `<p class="l8db-driver-action">👉 ${step.action}</p>`;
-  const description =
-    waiting && step.waitHint
-      ? `${step.body}${action}<p class="l8db-driver-wait">${step.waitHint}</p>`
-      : `${step.body}${action}`;
-  instance.highlight({
-    element: target,
-    popover: {
-      title: step.title,
-      description,
-      side: step.side,
-      align: "start" as const,
-    },
-  });
-  if (waiting && step.target) dockPopoverAtTop(step.target);
+export function showSpotlight(step: Pick<TourStep, "target" | "side">, waiting: boolean) {
+  clearWaitMarks();
+  const selector = step.target && step.side !== "over" ? step.target : null;
+  if (selector && waiting) visibleElement(selector)?.setAttribute("data-tour-wait", "true");
+  useSpotlightStore.setState({ selector, waiting: Boolean(selector) && waiting });
 }
