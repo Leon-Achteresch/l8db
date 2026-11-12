@@ -290,9 +290,9 @@ pub fn for_url(kind: DatabaseKind, url: &str, database: Option<String>) -> McpCo
 }
 
 pub fn only(mut config: McpConfig, wanted: &str) -> Result<McpConfig, String> {
-    config
-        .connections
-        .retain(|connection| connection.exposed && (connection.id == wanted || connection.name == wanted));
+    config.connections.retain(|connection| {
+        connection.exposed && (connection.id == wanted || connection.name == wanted)
+    });
     if !config.enabled || config.connections.is_empty() {
         return Err(format!(
             "Verbindung „{wanted}“ ist für MCP nicht freigegeben. In l8db unter MCP freigeben oder --url nutzen."

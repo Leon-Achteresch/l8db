@@ -2526,7 +2526,11 @@ mod tests {
             format!("BEGIN EXECUTE IMMEDIATE 'DROP USER {hidden} CASCADE'; EXCEPTION WHEN OTHERS THEN NULL; END;"),
         ];
         setup(&outer, system.as_ref(), &drop_users);
-        struct Cleanup<'a>(&'a tokio::runtime::Runtime, &'a dyn DatabaseAdapter, &'a [String]);
+        struct Cleanup<'a>(
+            &'a tokio::runtime::Runtime,
+            &'a dyn DatabaseAdapter,
+            &'a [String],
+        );
         impl Drop for Cleanup<'_> {
             fn drop(&mut self) {
                 for sql in self.2 {
@@ -2551,8 +2555,7 @@ mod tests {
         let mut url = url::Url::parse(&admin_url).unwrap();
         url.set_username(&app.to_lowercase()).unwrap();
         url.set_password(Some("Pw_l8db1")).unwrap();
-        let (runtime, admin, config, mut server) =
-            live(DatabaseKind::Oracle, url.as_str(), &app);
+        let (runtime, admin, config, mut server) = live(DatabaseKind::Oracle, url.as_str(), &app);
         setup(&runtime, admin.as_ref(), &[
             "CREATE TABLE customers(id NUMBER PRIMARY KEY, name VARCHAR2(50), email VARCHAR2(100) NOT NULL)".into(),
             "COMMENT ON TABLE customers IS 'Kundenstamm'".into(),

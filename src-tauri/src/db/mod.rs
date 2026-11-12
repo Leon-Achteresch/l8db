@@ -2494,7 +2494,12 @@ mod tests {
                 .unwrap_or_else(|e| panic!("{var} schemas: {e}"));
             let mut schema = schemas.first().cloned();
             let mut tables = Vec::new();
-            for candidate in schemas.iter().map(|s| Some(s.clone())).chain([None]).take(50) {
+            for candidate in schemas
+                .iter()
+                .map(|s| Some(s.clone()))
+                .chain([None])
+                .take(50)
+            {
                 tables = adapter
                     .list_tables(candidate.as_deref())
                     .await

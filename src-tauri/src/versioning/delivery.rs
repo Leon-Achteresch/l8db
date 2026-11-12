@@ -869,7 +869,10 @@ mod tests {
         )
         .await;
         let invalid = invalid.unwrap_err();
-        assert!(invalid.contains("Ungültige Auslieferungsregeln"), "{invalid}");
+        assert!(
+            invalid.contains("Ungültige Auslieferungsregeln"),
+            "{invalid}"
+        );
         rules.delivery.as_mut().unwrap().review = false;
         control::handle(
             save(rules, record.revision),

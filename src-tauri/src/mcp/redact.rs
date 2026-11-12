@@ -1579,7 +1579,10 @@ mod tests {
             write_word("UNLOAD (SELECT * FROM t) TO 's3://b/x'"),
             Some("unload".into())
         );
-        assert_eq!(write_word("PUT file:///tmp/a.csv @stage"), Some("put".into()));
+        assert_eq!(
+            write_word("PUT file:///tmp/a.csv @stage"),
+            Some("put".into())
+        );
         assert_eq!(write_word("REMOVE @stage/a.csv"), Some("remove".into()));
         assert_eq!(write_word("MSCK REPAIR TABLE t"), Some("msck".into()));
         assert_eq!(write_word("SELECT remove FROM t"), None);

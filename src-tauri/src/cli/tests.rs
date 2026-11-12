@@ -409,7 +409,10 @@ fn postgres_text_values_become_json_types() {
     );
     assert_eq!(postgres_json("numeric", json!("1.5000")), json!("1.5000"));
     assert_eq!(postgres_json("numeric", json!("2.5")), json!(2.5));
-    assert_eq!(postgres_json("jsonb", json!(r#"{"a":[1]}"#)), json!({"a": [1]}));
+    assert_eq!(
+        postgres_json("jsonb", json!(r#"{"a":[1]}"#)),
+        json!({"a": [1]})
+    );
     assert_eq!(
         postgres_json("json", json!(r#"{"big":9007199254740993}"#)),
         json!(r#"{"big":9007199254740993}"#)
@@ -484,12 +487,22 @@ fn rollback_message_only_promises_what_the_database_keeps() {
 #[test]
 fn open_transactions_and_rollback_notes_follow_each_family() {
     let ran = |sql: &[&str]| sql.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    let open = ran(&["BEGIN", "insert into t values (99)", "select count(*) from t"]);
+    let open = ran(&[
+        "BEGIN",
+        "insert into t values (99)",
+        "select count(*) from t",
+    ]);
     assert!(super::run::open_at_end(DatabaseKind::Postgres, &open));
     assert!(rollback_note(DatabaseKind::Postgres, &open).contains("Nichts geändert"));
     let closed = ran(&["begin", "insert into t values (1)", "commit"]);
     assert!(!super::run::open_at_end(DatabaseKind::Postgres, &closed));
-    let reopened = ran(&["begin", "insert into t values (1)", "end", "start transaction", "select 1"]);
+    let reopened = ran(&[
+        "begin",
+        "insert into t values (1)",
+        "end",
+        "start transaction",
+        "select 1",
+    ]);
     assert!(super::run::open_at_end(DatabaseKind::Postgres, &reopened));
     assert!(rollback_note(DatabaseKind::Postgres, &reopened).contains("BEGIN/COMMIT"));
     let savepoint = ran(&["begin", "savepoint a", "rollback to savepoint a"]);
@@ -499,8 +512,15 @@ fn open_transactions_and_rollback_notes_follow_each_family() {
     assert!(rollback_note(DatabaseKind::Oracle, &plsql).contains("Nichts geändert"));
     let block = ran(&["begin print 1 end", "insert into t values (1)"]);
     assert!(!super::run::open_at_end(DatabaseKind::Mssql, &block));
-    assert!(super::run::open_at_end(DatabaseKind::Mssql, &ran(&["begin tran", "select 1"])));
-    let mysql = ran(&["insert into t values (1)", "begin", "insert into t values (2)"]);
+    assert!(super::run::open_at_end(
+        DatabaseKind::Mssql,
+        &ran(&["begin tran", "select 1"])
+    ));
+    let mysql = ran(&[
+        "insert into t values (1)",
+        "begin",
+        "insert into t values (2)",
+    ]);
     assert!(rollback_note(DatabaseKind::Mysql, &mysql).contains("BEGIN/COMMIT"));
 }
 
