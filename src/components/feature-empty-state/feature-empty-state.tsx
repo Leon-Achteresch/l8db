@@ -62,7 +62,7 @@ export function FeatureEmptyState({
                 )
               }
             >
-              Zeigen
+              Wo finde ich das?
             </Button>
           )}
         </div>

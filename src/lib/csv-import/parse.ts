@@ -30,6 +30,8 @@ function parseRecords(
   let inQuotes = false;
   let started = false;
   let truncated = false;
+  let blanks = 0;
+  let trailing = false;
   let quoteStart = 0;
   const errors: CsvParseError[] = [];
 
@@ -42,18 +44,22 @@ function parseRecords(
     else record.push(field);
     field = "";
     quoted = false;
+    trailing = false;
   };
 
   const pushRecord = () => {
     const isBlank = record.length === 0 && !started && !quoted && field === "";
     pushField();
-    if (!isBlank) records.push(record);
+    if (isBlank) {
+      blanks += 1;
+      records.push([]);
+    } else records.push(record);
     record = [];
     started = false;
   };
 
   for (let i = 0; i < text.length; i += 1) {
-    if (records.length >= maxRecords) {
+    if (records.length - blanks >= maxRecords) {
       truncated = true;
       break;
     }
@@ -92,6 +98,19 @@ function parseRecords(
       pushRecord();
       continue;
     }
+    if (quoted && !trailing && char.trim() !== "") {
+      trailing = true;
+      if (errors.length < 10) {
+        const preceding = text.slice(0, i).split(/\r\n|\r|\n/);
+        const line = preceding.length;
+        const column = (preceding.at(-1)?.length ?? 0) + 1;
+        errors.push({
+          line,
+          column,
+          message: `Zeichen nach schließendem Anführungszeichen in Zeile ${line}, Spalte ${column}.`,
+        });
+      }
+    }
     field += char;
     started = true;
   }
@@ -127,7 +146,7 @@ export function parseCsv(text: string, options: CsvParseOptions = {}): CsvParseR
   const maxRows = options.maxRows ?? Number.MAX_SAFE_INTEGER;
   const limit = maxRows === Number.MAX_SAFE_INTEGER ? maxRows : maxRows + 1;
 
-  const { records, truncated, errors } = parseRecords(
+  const parsed = parseRecords(
     content,
     delimiter,
     quote,
@@ -136,6 +155,13 @@ export function parseCsv(text: string, options: CsvParseOptions = {}): CsvParseR
     options.partial,
     options.nullText,
   );
+  const { truncated, errors } = parsed;
+  const filled = parsed.records.filter((record) => record.length > 0);
+  const records = filled.every((record) => record.length === 1)
+    ? parsed.records.map((record) =>
+        record.length > 0 ? record : [emptyField === "null" ? null : ""],
+      )
+    : filled;
   const hasHeader = options.hasHeader ?? detectHeader(records);
 
   const headerRecord = hasHeader ? (records[0] ?? []) : [];

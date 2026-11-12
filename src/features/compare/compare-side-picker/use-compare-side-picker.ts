@@ -23,7 +23,10 @@ export function useCompareSidePicker(
   const [loadingSchemas, setLoadingSchemas] = useState(false);
   const [loadingObjects, setLoadingObjects] = useState(false);
 
-  const usable = connections;
+  const usable = connections.filter((item) => {
+    const caps = capabilitiesFor(item.kind);
+    return !caps.object_storage && caps.query_language !== "redis";
+  });
   const connection: SavedConnection | null =
     lockConnection ?? usable.find((item) => item.id === value.connectionId) ?? null;
   const capabilities = capabilitiesFor(connection?.kind);

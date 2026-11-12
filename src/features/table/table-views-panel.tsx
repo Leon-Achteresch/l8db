@@ -67,7 +67,7 @@ export function TableViewsPanel({
         <TableViewChip
           schema={schema}
           table={table}
-          label="Alle"
+          label="Alle Zeilen"
           filter=""
           color="#6b7280"
           active={activeFilter === ""}

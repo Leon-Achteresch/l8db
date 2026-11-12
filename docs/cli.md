@@ -10,17 +10,17 @@ Aufbau nach dem Muster von `gh`/`kubectl`: `l8db <nomen> <verb>`, kurze Aliase f
 |---|---|
 | `conn list` / `use` / `test` / `show` | Gespeicherte Verbindungen; `use` setzt den Standard (`cli.json`), ohne Namen über die Auswahl im Terminal |
 | `tui` | Interaktiver Modus im Terminal: Verbindung wählen, Tabellen blättern, SQL ausführen (siehe unten) |
-| `query [SQL]` (`q`) | SQL als Argument, `-f datei`, `-` oder Standardeingabe |
+| `query [ABFRAGE]` (`q`) | SQL, MongoDB-Shell oder Redis-Befehl als Argument, `-f datei`, `-` oder Standardeingabe |
 | `db list`, `schema list` | Datenbanken, Schemas |
 | `table list` / `describe` / `rows` / `count` | Tabellen und Views; Name oder `schema.name`, Groß-/Kleinschreibung egal, Namen mit Punkt in Anführungszeichen (`'"a.b"'`) |
 | `open [name]` | Verbindung in der App öffnen (`--menu=dock.connection:<id>`) |
-| `task list` / `run`, `check`, `mcp` | Bestehende Modi `--run-task`, `--check`, `--mcp` unter neuen Namen; die alten Flags bleiben |
+| `task list` / `run`, `check`, `mcp` | Bestehende Modi `--run-task`, `--check`, `--mcp` unter neuen Namen; die alten Flags bleiben. `mcp --url <url>` stellt nur diese Verbindung bereit (schreibgeschützt), `mcp -c <name>` nur diese freigegebene Verbindung |
 | `doctor [--test-keychain] [--strict]` | Arbeitsplatz, IT-Richtlinie und Team-Datei ohne Zugangsdaten prüfen |
 | `policy templates <pfad>` | Gruppenrichtlinienvorlagen für Windows (`l8db.admx`, `de-DE`/`en-US`) schreiben |
 | `completions <shell>` | bash, zsh, fish, PowerShell |
 | `version` (`--version`, `-V`, `-v`) | Version ausgeben |
 
-Globale Optionen: `-c/--connection`, `--url`, `-d/--database`, `-o/--output table|json|ndjson|csv|tsv`. Ohne `-o` gibt die CLI im Terminal eine Tabelle aus, in Pipes TSV. Passt die Tabelle nicht in die Terminalbreite, erscheint jede Zeile als Datensatz („Zeile 1“, darunter je Spalte `NAME  wert`), statt Spalten auf wenige Zeichen umzubrechen. NULL ist in TSV `\N`, in CSV ein leeres Feld; ein Leerstring steht in CSV als `""`. `--url http(s)://…` ist mehrdeutig, dafür `clickhouse://`, `elasticsearch://` oder `influxdb://` nutzen; `--timeout` braucht mindestens 5 Sekunden (0 = ohne Grenze). Ergebnisse gehen nach stdout, Status und Hinweise nach stderr. Exit-Codes: 0 ok, 1 Fehler, 2 falscher Aufruf, 130 mit Strg+C abgebrochen (der Treiber bricht die Abfrage auf dem Server ab, wo er das kann: Postgres, SQLite).
+Globale Optionen: `-c/--connection`, `--url`, `-d/--database`, `-o/--output table|json|ndjson|csv|tsv`. Ohne `-o` gibt die CLI im Terminal eine Tabelle aus, in Pipes TSV. Passt die Tabelle nicht in die Terminalbreite, erscheint jede Zeile als Datensatz („Zeile 1“, darunter je Spalte `NAME  wert`), statt Spalten auf wenige Zeichen umzubrechen. NULL ist in TSV `\N`, in CSV ein leeres Feld; ein Leerstring steht in CSV als `""`. In JSON gelten für `query` und `table rows` dieselben Regeln: Zahlen bleiben Zahlen, solange JavaScript sie exakt darstellen kann, sonst Text (`bigint` über 2^53, `numeric` mit Endnull wie `12.50` oder mehr Stellen); `json`/`jsonb` erscheint als verschachteltes JSON, enthält es solche Zahlen, als Text wie gespeichert. `--url http(s)://…` ist mehrdeutig, dafür `clickhouse://`, `elasticsearch://` oder `influxdb://` nutzen; `--timeout` braucht mindestens 5 Sekunden (0 = ohne Grenze). Ergebnisse gehen nach stdout, Status und Hinweise nach stderr. Exit-Codes: 0 ok, 1 Fehler, 2 falscher Aufruf, 130 mit Strg+C abgebrochen (der Treiber bricht die Abfrage auf dem Server ab, wo er das kann: Postgres, SQLite).
 
 Hilfe, Fehlermeldungen und Vorschläge („Meintest du …?“) sind deutsch; `localize` setzt Überschriften und Standardwerte für alle Befehle, `german` übersetzt clap-Fehler. `every_documented_example_parses` prüft jedes Beispiel aus den Hilfetexten.
 

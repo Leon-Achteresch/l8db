@@ -244,9 +244,10 @@ async fn copy_table_between_families() {
     let directory = tempfile::tempdir().unwrap();
     let sqlite = directory.path().join("copy.db");
     let all = targets(sqlite.to_str().unwrap());
-    if all.len() < 3 {
-        return;
-    }
+    assert!(
+        all.len() >= 3,
+        "L8DB_IE_PG_URL und L8DB_IE_MYSQL_URL setzen, um diesen ignorierten Test auszuführen"
+    );
     let (sqlite, pg, mysql) = (&all[0], &all[1], &all[2]);
     exec(pg, "DROP TABLE IF EXISTS ie_source").await;
     exec(pg, "CREATE TABLE ie_source (id bigint PRIMARY KEY, title varchar(80) NOT NULL, price numeric(12,3), active boolean, born date, at timestamptz, payload jsonb, raw bytea, note text)").await;

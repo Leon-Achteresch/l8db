@@ -28,7 +28,7 @@ export function normalizeAutoRefreshInterval(value: unknown): AutoRefreshInterva
 
 export function describeAutoRefreshInterval(value: number): string {
   if (value <= 0) return "Aus";
-  return `${Math.round(value / 1000)}s`;
+  return `${Math.round(value / 1000)} s`;
 }
 
 export function autoRefreshPauseReason(conditions: AutoRefreshConditions): string | null {

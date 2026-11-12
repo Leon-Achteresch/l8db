@@ -48,7 +48,7 @@ export function supportedCompareObjectTypes(
   if (capabilities.materialized_views) types.push("materialized_view");
   if (capabilities.functions) types.push("routine");
   if (capabilities.procedures) types.push("procedure");
-  if (capabilities.compile_objects) types.push("package");
+  if (capabilities.packages) types.push("package");
   if (capabilities.sequences) types.push("sequence");
   return types;
 }

@@ -67,14 +67,14 @@ export const CATEGORIES: Category[] = [
     id: "other",
     title: "Sonstige",
     question: "Etwas anderes",
-    description: "Alles mit ODBC-Treiber, etwa Access, DB2 oder Firebird.",
+    description: "ODBC wie Access, DB2 oder Firebird, JDBC und Team-Workspaces.",
     icon: Plug,
   },
 ];
 
 const CATEGORY_BY_KIND: Record<DatabaseKind, CategoryId> = {
   jdbc: "other",
-  workspace: "sql",
+  workspace: "other",
   spacetimedb: "sql",
   postgres: "sql",
   mysql: "sql",

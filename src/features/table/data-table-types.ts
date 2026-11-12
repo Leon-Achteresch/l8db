@@ -50,7 +50,7 @@ export type DataTableProps = {
     ctid: string,
     updates: Record<string, string | null>,
     oldValues: Record<string, unknown>,
-  ) => Promise<void>;
+  ) => Promise<void | "staged">;
   canEditCell?: (row: TableRow, column: string) => boolean;
   filterableColumns?: string[];
   compileColumnFilter?: (column: string, operator: string, value: string) => string | null;

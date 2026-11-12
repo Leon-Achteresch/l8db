@@ -80,7 +80,7 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
               onClick={() => setDetailsOpen((open) => !open)}
               aria-expanded={detailsOpen}
               aria-label="Fehlerdetails"
-              className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-left font-mono text-xs leading-relaxed text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-left text-xs leading-relaxed text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <ChevronRight
                 className={cn(
@@ -88,7 +88,7 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
                   detailsOpen && "rotate-90",
                 )}
               />
-              <span className="min-w-0 break-words">{message || "Unbekannter Fehler"}</span>
+              <span className="min-w-0 break-words">Technische Details</span>
             </button>
             <Button
               size="icon-sm"
@@ -103,7 +103,9 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
           </div>
           {detailsOpen && (
             <pre className="max-h-56 overflow-auto px-5 pt-1 pb-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
-              {stack ?? message}
+              {stack?.includes(message)
+                ? stack
+                : [message || "Unbekannter Fehler", stack].filter(Boolean).join("\n\n")}
             </pre>
           )}
         </div>

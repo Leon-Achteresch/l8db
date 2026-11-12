@@ -35,6 +35,7 @@ const DROP_PHASE: Partial<Record<CatalogObjectType, number>> = {
   trigger: 0,
   comment: 0.5,
   grant: 0.5,
+  policy: 0.5,
   view: 2,
   materialized_view: 2,
   package_body: 3,
@@ -67,6 +68,7 @@ const CREATE_PHASE: Partial<Record<CatalogObjectType, number>> = {
   package_body: 21,
   type_body: 21,
   trigger: 22,
+  policy: 23,
   comment: 24,
   grant: 25,
 };
@@ -555,6 +557,15 @@ export function buildSyncScript(
       case "comment":
         emit(phase, object.ddl.replace(/\sIS\s'[\s\S]*'$/, oracle ? " IS ''" : " IS NULL"));
         return;
+      case "policy":
+        if (object.attributes.kind)
+          emit(
+            phase,
+            `ALTER TABLE ${parent} ${object.attributes.kind === "force" ? "NO FORCE" : "DISABLE"} ROW LEVEL SECURITY`,
+            { dangerous: true },
+          );
+        else emit(phase, `DROP POLICY ${q(object.name)} ON ${parent}`, { dangerous: true });
+        return;
       case "grant":
         emit(
           phase,
@@ -804,6 +815,7 @@ export function buildSyncScript(
         create(source);
         return;
       case "grant":
+      case "policy":
         drop(target);
         create(source);
         return;

@@ -130,4 +130,14 @@ describe("admin polling", () => {
     expect(interval({ state: { status: "error", data: [1] } })).toBe(15_000);
     expect(interval({ state: { status: "success", data: [] } })).toBe(15_000);
   });
+
+  test("does not retry missing privileges", async () => {
+    const { retryUnlessDenied } = await import("../src/lib/queries/admin-queries");
+    expect(retryUnlessDenied(0, "ORA-01031: Sitzungen brauchen Leserechte auf V$SESSION")).toBe(
+      false,
+    );
+    expect(retryUnlessDenied(0, "permission denied for view pg_stat_activity")).toBe(false);
+    expect(retryUnlessDenied(0, "connection reset")).toBe(true);
+    expect(retryUnlessDenied(3, "connection reset")).toBe(false);
+  });
 });

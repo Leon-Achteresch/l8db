@@ -49,8 +49,9 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
   const count = changedFiles(status?.changes ?? "").size;
   const workbench = area === "git" && Boolean(status && project);
   const create = async () => {
-    if (!name.trim() || !connection || !isVersioningKind(connection.kind))
-      throw new Error("Projektname und eine SQL-Verbindung auswählen.");
+    if (!name.trim()) throw new Error("Projektnamen eingeben.");
+    if (!connection || !isVersioningKind(connection.kind))
+      throw new Error("Verbindung mit Git-Versionierung auswählen.");
     await saveFile(
       repo,
       PROJECT_PATH,
@@ -119,7 +120,11 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
                   DuckDB und ClickHouse.
                 </p>
               )}
-              <Button size="sm" onClick={() => void run(create)}>
+              <Button
+                size="sm"
+                disabled={!connection || !isVersioningKind(connection.kind)}
+                onClick={() => void run(create)}
+              >
                 Versionierungsprojekt anlegen
               </Button>
             </fieldset>

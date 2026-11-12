@@ -92,8 +92,8 @@ export function useDataTableColumns({
                 ? fkLinksFor(columnFks, currentSchema, currentTable, column)
                     .map((link) =>
                       link.isOutgoing
-                        ? `FK -> ${link.schema}.${link.table}.${link.column}`
-                        : `<- ${link.schema}.${link.table}.${link.column}`,
+                        ? `Fremdschlüssel auf ${link.schema}.${link.table}.${link.column}`
+                        : `Referenziert von ${link.schema}.${link.table}.${link.column}`,
                     )
                     .join("\n")
                 : undefined;

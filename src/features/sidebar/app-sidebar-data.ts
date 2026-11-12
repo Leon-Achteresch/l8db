@@ -78,16 +78,16 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       group: 1,
       icon: NotebookPen,
       activeIcon: NotebookText,
-      available: (caps) => caps.query_language === "sql",
+      available: (caps) => caps.query_language === "sql" && !caps.object_storage,
     },
     {
-      title: "Invalid Objects",
+      title: "Ungültige Objekte",
       url: "/invalid-objects",
       feature: "invalid-objects",
       group: 2,
       icon: TriangleAlert,
       activeIcon: OctagonAlert,
-      available: (caps) => caps.compile_objects,
+      available: (caps) => caps.invalid_objects,
     },
     {
       title: "Monitor",
@@ -114,7 +114,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       group: 1,
       icon: Blocks,
       activeIcon: Grid2x2Plus,
-      available: (caps) => caps.query_language === "sql",
+      available: (caps) => caps.query_language === "sql" && !caps.object_storage,
     },
     {
       title: "ER-Diagramm",

@@ -62,7 +62,7 @@ export function QueryResultView({
           title={text}
         >
           <EyeIcon className="size-3.5 text-primary" />
-          Temporäre View
+          Ergebnis
           {isNew ? <NewBadge /> : null}
         </span>
         <TableDetailTabBar tabs={RESULT_TABS} activeTab={activeTab} />

@@ -105,11 +105,7 @@ export function PaneSidebarPanel({ index }: { index: number }) {
               {objectsFeature.isNew && <NewBadge />}
             </div>
           ) : (
-            <SidebarGroupLabel>
-              {caps.object_storage && sidebarTab === "tables"
-                ? "Buckets"
-                : sidebarTabLabel(sidebarTab)}
-            </SidebarGroupLabel>
+            <SidebarGroupLabel>{sidebarTabLabel(sidebarTab, caps.terms)}</SidebarGroupLabel>
           )}
           <SidebarGroupContent>
             <PaneTabTargetContext.Provider

@@ -71,7 +71,7 @@ export const SETTINGS_TABS: SettingsTabItem[] = [
   },
   {
     id: "discovery",
-    label: "Entdecken",
+    label: "Tipps & Hinweise",
     icon: Compass,
   },
   {

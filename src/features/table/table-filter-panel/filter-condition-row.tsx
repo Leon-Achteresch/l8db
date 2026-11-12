@@ -10,6 +10,7 @@ import {
 import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
 import { FilterValueInput } from "@/features/filters/filter-value-input";
 import type { DetailedColumnInfo } from "@/lib/db";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { filterSupportsOr, isDateFilterType, operatorNeedsValue } from "@/lib/sql-filter";
 import type { FilterCondition as Condition } from "@/lib/table-view-state";
 import type { Combinator } from "./filter-types";
@@ -37,6 +38,7 @@ export function FilterConditionRow({
   removeCondition: (id: string) => void;
   apply: () => void;
 }) {
+  const { terms } = useActiveCapabilities();
   const date = isDateFilterType(
     columnDetails?.find((column) => column.name === condition.column)?.data_type ??
       condition.dataType,
@@ -69,7 +71,7 @@ export function FilterConditionRow({
         }
       >
         <SelectTrigger size="sm" className="w-full min-w-0 sm:min-w-40 sm:flex-1">
-          <SelectValue placeholder="Spalte wählen…" />
+          <SelectValue placeholder={`${terms.column} wählen…`} />
         </SelectTrigger>
         <SelectContent position="popper" searchable>
           {columns.map((column) => (

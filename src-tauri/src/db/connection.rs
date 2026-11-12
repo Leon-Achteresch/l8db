@@ -117,7 +117,9 @@ pub fn parse_pg_url(value: &str) -> Result<PgUrl, String> {
                     "require" => SslMode::Require,
                     "verify-ca" => SslMode::VerifyCa,
                     "verify-full" => SslMode::VerifyFull,
-                    _ => return Err("Ungültiger SSL-Modus".to_string()),
+                    other => return Err(format!(
+                        "Ungültiger SSL-Modus „{other}“. Erlaubt: disable, allow, prefer, require, verify-ca, verify-full"
+                    )),
                 }
             }
             "sslrootcert" => tls.root_cert = text(),

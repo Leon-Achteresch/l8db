@@ -123,7 +123,8 @@ export function useConnectionEditor({
       seed?.color ||
       seed?.environment ||
       seed?.maskRules?.length ||
-      seed?.tags?.length,
+      seed?.tags?.length ||
+      seed?.cloudAuth?.mode,
   );
 
   function applySshConfig(draft: SshConfigDraft) {

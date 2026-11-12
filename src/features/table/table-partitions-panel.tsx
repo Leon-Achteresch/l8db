@@ -72,9 +72,7 @@ export function TablePartitionsPanel({ schema, table }: TablePartitionsPanelProp
   if (!data.is_partitioned) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
-        <p className="text-sm text-muted-foreground">
-          Keine partitionierte Tabelle (gewöhnliche {data.strategy ?? "Heap"}-Tabelle).
-        </p>
+        <p className="text-sm text-muted-foreground">Diese Tabelle ist nicht partitioniert.</p>
       </div>
     );
   }

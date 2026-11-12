@@ -201,7 +201,7 @@ describe.skipIf(!E2E || !existsSync(BIN))("l8db CLI end-to-end", () => {
     expect(sub.out).toContain("Argumente:");
     expect(sub.out).toContain("(Standard: 100)");
     expect(sub.out).not.toContain("Options:");
-    expect(cli(["help", "query"]).out).toContain("l8db query [SQL]");
+    expect(cli(["help", "query"]).out).toContain("l8db query [ABFRAGE]");
   });
 
   test("typos get a suggestion and usage errors exit with 2", () => {

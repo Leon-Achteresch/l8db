@@ -232,11 +232,16 @@ fn decimal_comma(value: &str) -> Option<String> {
     let trimmed = value.trim();
     let (whole, fraction) = trimmed.split_once(',')?;
     let digits = whole.strip_prefix(['+', '-']).unwrap_or(whole);
+    let mut groups = digits.split('.');
+    let lead = groups.next().unwrap_or_default();
+    let grouped = groups.all(|group| group.len() == 3 && group.bytes().all(|b| b.is_ascii_digit()))
+        && (1..=3).contains(&lead.len());
     (!digits.is_empty()
         && !fraction.is_empty()
-        && digits.bytes().all(|byte| byte.is_ascii_digit())
+        && lead.bytes().all(|byte| byte.is_ascii_digit())
+        && (grouped || !digits.contains('.'))
         && fraction.bytes().all(|byte| byte.is_ascii_digit()))
-    .then(|| format!("{whole}.{fraction}"))
+    .then(|| format!("{}.{fraction}", whole.replace('.', "")))
 }
 
 pub fn parse_bool(value: &str) -> Option<bool> {
@@ -1487,6 +1492,18 @@ mod tests {
             "'1,234,5'"
         );
         assert_eq!(literal(Dialect::Postgres, "text", Some("1,5")), "'1,5'");
+        assert_eq!(
+            literal(Dialect::Postgres, "numeric(10,2)", Some("1.234,56")),
+            "'1234.56'"
+        );
+        assert_eq!(
+            literal(Dialect::Mysql, "decimal(12,2)", Some("-1.234.567,5")),
+            "-1234567.5"
+        );
+        assert_eq!(
+            literal(Dialect::Mysql, "decimal(10,2)", Some("12.34,5")),
+            "'12.34,5'"
+        );
         assert_eq!(literal(Dialect::Postgres, "bool", Some("Nein")), "'false'");
         assert_eq!(
             literal(Dialect::Postgres, "boolean", Some("vielleicht")),

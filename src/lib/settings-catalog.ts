@@ -506,7 +506,7 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
   {
     id: "usage-metrics",
     tabId: "about",
-    title: "Nutzungs- und Leistungsdaten senden",
+    title: "Nutzungs- und Leistungsdaten an Sentry senden",
     description:
       "Bereiche, Bedienwege, aktive Vordergrundzeit, Sitzungen, Startzeit sowie Erfolg, Fehler, Abbrüche und Dauer von Datenbankbefehlen je DB-Typ (auch als Traces mit Ladezeiten) an Sentry (EU) senden. Nie SQL, Ergebnisdaten, Namen oder Verbindungsdaten.",
     keywords: [

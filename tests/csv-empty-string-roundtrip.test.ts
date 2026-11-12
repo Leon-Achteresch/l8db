@@ -37,4 +37,42 @@ describe("CSV export keeps empty strings apart from NULL", () => {
       ]);
     }
   });
+
+  test("single-column export keeps NULL rows, including the last one", () => {
+    for (const rows of [
+      [{ v: null }, { v: "" }, { v: "x" }],
+      [{ v: "x" }, { v: null }],
+      [{ v: null }],
+    ]) {
+      for (const header of [true, false]) {
+        const text = serializeCsv(["v"], rows, { ...DEFAULT_CSV_OPTIONS, header });
+        const parsed = parseCsv(text, { delimiter: ",", emptyField: "null", hasHeader: header });
+        expect(parsed.rows).toEqual(rows.map((row) => [row.v]));
+        expect(parsed.totalRows).toBe(rows.length);
+      }
+    }
+    expect(parseCsv('v\n\n""\nx\n', { delimiter: ",", emptyField: "null" }).rows).toEqual([
+      [null],
+      [""],
+      ["x"],
+    ]);
+  });
+
+  test("blank lines still separate nothing in multi-column files", () => {
+    expect(parseCsv("a,b\n1,2\n\n3,4\n", { delimiter: "," }).rows).toEqual([
+      ["1", "2"],
+      ["3", "4"],
+    ]);
+  });
+
+  test("characters after a closing quote are reported", () => {
+    const parsed = parseCsv('id;name\n1;"ab"c\n2;"ok" \n', { delimiter: ";" });
+    expect(parsed.errors).toEqual([
+      {
+        line: 2,
+        column: 7,
+        message: "Zeichen nach schließendem Anführungszeichen in Zeile 2, Spalte 7.",
+      },
+    ]);
+  });
 });

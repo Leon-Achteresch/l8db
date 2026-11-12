@@ -71,6 +71,38 @@ fn limit_value(value: &str) -> Result<String, String> {
     }
 }
 
+const WHOLE_NUMBER_LIMITS: &[&str] = &[
+    "SESSIONS_PER_USER",
+    "CPU_PER_SESSION",
+    "CPU_PER_CALL",
+    "CONNECT_TIME",
+    "IDLE_TIME",
+    "LOGICAL_READS_PER_SESSION",
+    "LOGICAL_READS_PER_CALL",
+    "COMPOSITE_LIMIT",
+    "FAILED_LOGIN_ATTEMPTS",
+    "PASSWORD_REUSE_MAX",
+];
+
+fn check_limit(resource: &str, value: &str) -> Result<(), String> {
+    if matches!(value, "UNLIMITED" | "DEFAULT") {
+        return Ok(());
+    }
+    let digits = |text: &str| !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit());
+    let ok = match resource {
+        "PRIVATE_SGA" => digits(value.trim_end_matches(['K', 'M'])),
+        _ if WHOLE_NUMBER_LIMITS.contains(&resource) => digits(value),
+        _ => true,
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "{resource} erwartet eine ganze Zahl, UNLIMITED oder DEFAULT, nicht {value}."
+        ))
+    }
+}
+
 fn password_clause(password: &str) -> Result<String, String> {
     if password.is_empty() || password.contains('"') || password.contains('\0') {
         return Err(
@@ -168,11 +200,10 @@ fn profile_statements(
         .limits
         .iter()
         .map(|limit| {
-            Ok(format!(
-                "{} {}",
-                keyword(&limit.resource)?.replace(' ', "_"),
-                limit_value(&limit.value)?
-            ))
+            let resource = keyword(&limit.resource)?.replace(' ', "_");
+            let value = limit_value(&limit.value)?;
+            check_limit(&resource, &value)?;
+            Ok(format!("{resource} {value}"))
         })
         .collect::<Result<Vec<_>, String>>()?;
     Ok(match (create, limits.is_empty()) {
@@ -240,13 +271,21 @@ pub fn statements(change: &PrincipalChange) -> Result<Vec<String>, String> {
         ));
     }
     for grant in &change.grant_object_privileges {
+        let privilege = keyword(&grant.privilege)?;
         let column = match filled(&grant.column) {
+            Some(_) if !matches!(privilege.as_str(), "INSERT" | "UPDATE" | "REFERENCES") => {
+                return Err(format!(
+                    "{privilege} lässt sich nicht auf einzelne Spalten vergeben, nur INSERT, UPDATE und REFERENCES."
+                ))
+            }
             Some(column) => format!(" ({})", ident(column)?),
             None => String::new(),
         };
+        if grant.grantable && change.kind == "role" {
+            return Err("Rollen können Objektrechte nicht mit Grant-Option erhalten.".to_string());
+        }
         out.push(format!(
-            "GRANT {}{column} ON {} TO {target}{}",
-            keyword(&grant.privilege)?,
+            "GRANT {privilege}{column} ON {} TO {target}{}",
             object_ref(grant)?,
             option(grant.grantable, " WITH GRANT OPTION")
         ));
@@ -695,18 +734,27 @@ impl OracleAdapter {
             return Ok(shown);
         }
         let total = statements.len();
+        let ran = shown.clone();
         self.run_meta(move |c| {
             for (done, statement) in statements.iter().enumerate() {
-                execute(c, statement).map_err(|e| match done {
-                    0 => e,
-                    _ => format!("{e}\n{done} von {total} Anweisungen wurden bereits ausgeführt."),
-                })?;
+                execute(c, statement).map_err(|e| partial_failure(e, &ran[..done], total))?;
             }
             Ok(())
         })
         .await?;
         Ok(shown)
     }
+}
+
+fn partial_failure(error: String, ran: &[String], total: usize) -> String {
+    if ran.is_empty() {
+        return error;
+    }
+    format!(
+        "{error}\nBereits ausgeführt ({} von {total}):\n{}",
+        ran.len(),
+        ran.join(";\n")
+    )
 }
 
 #[cfg(test)]
@@ -992,6 +1040,58 @@ mod tests {
         assert_eq!(
             scoped(true, |_| Err::<i32, _>("ORA-01031".to_string())),
             Err("ORA-01031".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_grants_and_limits_oracle_refuses() {
+        let column_select = statements(&PrincipalChange {
+            grant_object_privileges: vec![ObjectGrant {
+                column: Some("NAME".to_string()),
+                ..object("SELECT", "TABLE", true)
+            }],
+            ..change("user", "alter")
+        });
+        assert!(column_select
+            .unwrap_err()
+            .contains("nur INSERT, UPDATE und REFERENCES"));
+        let column_update = statements(&PrincipalChange {
+            grant_object_privileges: vec![ObjectGrant {
+                column: Some("NAME".to_string()),
+                ..object("UPDATE", "TABLE", true)
+            }],
+            ..change("user", "alter")
+        })
+        .unwrap();
+        assert_eq!(
+            column_update,
+            vec!["GRANT UPDATE (\"NAME\") ON \"HR\".\"EMP\" TO \"APP\" WITH GRANT OPTION"]
+        );
+        let role = statements(&PrincipalChange {
+            grant_object_privileges: vec![object("SELECT", "TABLE", true)],
+            ..change("role", "alter")
+        });
+        assert!(role.unwrap_err().contains("Grant-Option"));
+        let limit = |resource: &str, value: &str| {
+            statements(&PrincipalChange {
+                limits: vec![ProfileLimit {
+                    resource: resource.to_string(),
+                    value: value.to_string(),
+                    ..Default::default()
+                }],
+                ..change("profile", "alter")
+            })
+        };
+        assert!(limit("IDLE_TIME", "1/24")
+            .unwrap_err()
+            .contains("ganze Zahl"));
+        assert!(limit("IDLE_TIME", "60").is_ok());
+        assert!(limit("PASSWORD_LIFE_TIME", "1/24").is_ok());
+        assert!(limit("PRIVATE_SGA", "10M").is_ok());
+        assert!(limit("SESSIONS_PER_USER", "unlimited").is_ok());
+        assert_eq!(
+            partial_failure("ORA-01917".into(), &["CREATE USER \"A\"".into()], 3),
+            "ORA-01917\nBereits ausgeführt (1 von 3):\nCREATE USER \"A\""
         );
     }
 

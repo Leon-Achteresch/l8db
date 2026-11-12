@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useAlterTable } from "@/features/alter-table/alter-table-view/use-alter-table";
-import { supports } from "@/lib/providers";
+import { capabilitiesFor, supports } from "@/lib/providers";
 import { cn } from "@/lib/utils";
 import { ColumnListItem } from "./table-columns-list/column-list-item";
 import { columnFilterCounts, matchesColumnFilter } from "./table-columns-list/column-type-config";
@@ -38,14 +38,19 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
   const [copiedColumn, setCopiedColumn] = useState<string | null>(null);
 
   const count = columns?.length ?? 0;
-  const filters = useMemo(() => columnFilterCounts(columns ?? []), [columns]);
+  const constraints = supports(connection, "constraints");
+  const terms = capabilitiesFor(connection?.kind).terms;
+  const filters = useMemo(
+    () => columnFilterCounts(columns ?? [], constraints),
+    [columns, constraints],
+  );
   const canEdit = editable && !!connection && supports(connection, "alter_columns");
 
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground h-full min-h-[300px]">
         <Spinner />
-        Lade Spalten…
+        Lade {terms.columns}…
       </div>
     );
   }
@@ -64,7 +69,7 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
     return (
       <div className="flex flex-1 items-center justify-center p-6 h-full min-h-[300px]">
         <div className="text-center">
-          <p className="text-sm text-muted-foreground">Keine Spalten vorhanden.</p>
+          <p className="text-sm text-muted-foreground">Keine {terms.columns} vorhanden.</p>
         </div>
       </div>
     );
@@ -82,7 +87,7 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Spalten filtern…"
+            placeholder={`${terms.columns} filtern…`}
             className="h-8 border-transparent bg-muted/50 pr-8 pl-8 text-xs shadow-none dark:bg-muted/50"
           />
           {search && (
@@ -134,7 +139,7 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
         ) : (
           <div className="min-w-[720px]">
             <div className="grid grid-cols-[minmax(190px,1.5fr)_minmax(145px,1fr)_90px_minmax(180px,1.3fr)_4rem] gap-3 px-3 py-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-              <span>Spalte</span>
+              <span>{terms.column}</span>
               <span>Datentyp</span>
               <span>NULL</span>
               <span>Standardwert</span>

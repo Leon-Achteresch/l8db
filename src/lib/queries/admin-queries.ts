@@ -107,6 +107,12 @@ export function pollUntilFailure<T>(refetchInterval: number | false) {
     query.state.status === "error" && query.state.data === undefined ? false : refetchInterval;
 }
 
+export function retryUnlessDenied(failureCount: number, error: unknown) {
+  return (
+    failureCount < 3 && !/ORA-01031|permission denied|insufficient privilege/i.test(String(error))
+  );
+}
+
 export function useSessionsQuery(refetchInterval: number | false = 5000) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
@@ -116,6 +122,7 @@ export function useSessionsQuery(refetchInterval: number | false = 5000) {
       listSessions(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
     enabled: supports(connection, "sessions"),
     refetchInterval: pollUntilFailure(refetchInterval),
+    retry: retryUnlessDenied,
   });
 }
 
@@ -144,6 +151,7 @@ export function useLocksQuery(refetchInterval: number | false = 5000) {
       listLocks(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
     enabled: supports(connection, "locks"),
     refetchInterval: pollUntilFailure(refetchInterval),
+    retry: retryUnlessDenied,
   });
 }
 

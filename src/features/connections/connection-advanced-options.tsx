@@ -1,5 +1,5 @@
 import { ChevronDown, Eye, LockKeyhole, Network } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
@@ -75,6 +75,7 @@ interface Props {
   scanError: string | null;
   onScan: () => void;
   connection?: SavedConnection;
+  cloudAuth?: ReactNode;
 }
 
 export function ConnectionAdvancedOptions({
@@ -118,6 +119,7 @@ export function ConnectionAdvancedOptions({
   scanError,
   onScan,
   connection,
+  cloudAuth,
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const hasNew = useHasNewFeatures(caps.ssh ? "connections.editor" : undefined);
@@ -137,10 +139,11 @@ export function ConnectionAdvancedOptions({
           {hasNew && <NewBadge />}
         </span>
         <span className="text-[11px] font-normal text-muted-foreground">
-          SSL, SSH, Proxy, Umgebung, Farbe
+          {cloudAuth ? "Cloud-Anmeldung, " : ""}SSL, SSH, Proxy, Umgebung, Farbe
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-4 border-t px-3 py-3">
+        {cloudAuth}
         {showSecurity && (
           <div className="grid gap-3 sm:grid-cols-2">
             {caps.ssl && (
@@ -200,7 +203,9 @@ export function ConnectionAdvancedOptions({
                     <Eye className="size-4 text-muted-foreground" /> Lesemodus
                   </span>
                   <span className="font-normal text-muted-foreground">
-                    l8db blockiert Schreibzugriffe. Datenbankrechte vergibt deine Administration.
+                    {caps.read_only_mode
+                      ? "Die Sitzung läuft serverseitig schreibgeschützt."
+                      : "l8db prüft Anweisungen vor dem Ausführen, ohne Serverrechte."}
                   </span>
                 </span>
                 <Switch checked={readOnly} onCheckedChange={onReadOnly} aria-label="Lesemodus" />

@@ -20,8 +20,9 @@ export function StorageAreaRow({ area, value, maxBytes }: Props) {
     <li className="group flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/50">
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="truncate text-sm">{area.label}</span>
-          <span className="truncate font-mono text-[10px] text-muted-foreground">{area.key}</span>
+          <span className="truncate text-sm" title={area.key}>
+            {area.label}
+          </span>
         </div>
         <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
           <div

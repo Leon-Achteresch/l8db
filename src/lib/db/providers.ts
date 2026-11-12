@@ -69,6 +69,7 @@ export interface Capabilities {
   data_compare: boolean;
   procedures: boolean;
   compile_objects: boolean;
+  invalid_objects: boolean;
   debugger: boolean;
   bind_parameters: boolean;
   used_by: boolean;
@@ -91,8 +92,34 @@ export interface Capabilities {
   dml_preview: boolean;
   multi_target_query: boolean;
   multi_target_schemas: boolean;
+  explain_analyze: boolean;
+  packages: boolean;
+  insert_sql: boolean;
+  database_is_schema: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
+  query_label: string;
   filter_hint: string;
+  table_template: TableTemplate;
+  terms: Terms;
+}
+
+export interface TableTemplate {
+  schema: string;
+  id_type: string;
+  timestamp_type: string;
+  now: string;
+  types: string[];
+}
+
+export interface Terms {
+  database: string;
+  schema: string;
+  table: string;
+  tables: string;
+  row: string;
+  rows: string;
+  column: string;
+  columns: string;
 }
 
 export type Driver =

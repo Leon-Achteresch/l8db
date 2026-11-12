@@ -71,8 +71,10 @@ export function AtlasLens({
         </span>
         {hidden > 0 && (
           <span>
-            Zeigt die {matching - hidden} größten von {matching.toLocaleString("de-DE")} Tabellen,
-            die Suche grenzt ein
+            {metric === "bytes" || metric === "rows"
+              ? `Zeigt die ${matching - hidden} größten`
+              : `Zeigt ${matching - hidden}`}{" "}
+            von {matching.toLocaleString("de-DE")} Tabellen, die Suche grenzt ein
           </span>
         )}
         {showRelations && <span>Fahre über eine Tabelle, um ihre Beziehungen zu sehen</span>}

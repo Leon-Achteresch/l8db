@@ -7,6 +7,7 @@ import { BAAS_PROVIDERS, type BaasProvider } from "@/features/baas/baas-provider
 import { serverLabel } from "@/lib/connection-groups";
 import { ConnectionDetailsStep } from "./connection-editor/details-step";
 import { ConnectionProviderStep } from "./connection-editor/provider-step";
+import { ConnectionTestResultStatus } from "./connection-editor/test-result-status";
 import type { ConnectionEditorProps } from "./connection-editor/types";
 import { useConnectionEditor } from "./connection-editor/use-connection-editor";
 import { SetupStepper } from "./setup-stepper";
@@ -123,6 +124,11 @@ export function ConnectionEditor({
               </motion.div>
             </AnimatePresence>
           </fieldset>
+          {step === 2 && result.status !== "idle" && (
+            <div className="shrink-0 px-4 pt-2">
+              <ConnectionTestResultStatus result={result} elapsed={editor.elapsed} />
+            </div>
+          )}
           <footer
             data-tour="connection-save"
             className="flex shrink-0 items-center justify-between gap-2 px-4 py-3"

@@ -36,7 +36,7 @@ import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility"
 const PRIMARY_TABS: { value: MonitorTab; label: string; icon: LucideIcon }[] = [
   { value: "live", label: "Live-Monitor", icon: MonitorIcon },
   { value: "sessions", label: "Sessions", icon: UsersIcon },
-  { value: "connections", label: "Verbindungen", icon: NetworkIcon },
+  { value: "connections", label: "Clients", icon: NetworkIcon },
   { value: "resources", label: "Ressourcen", icon: CpuIcon },
   { value: "locks", label: "Locks", icon: LockIcon },
   { value: "io", label: "I/O", icon: HardDriveIcon },

@@ -206,12 +206,19 @@ describe("CSV structure regressions", () => {
     ]);
     expect(result.rows).toEqual([]);
   });
-  test("keeps explicit empty records and ignores physical blank lines", () => {
+  test("keeps explicit empty records, reads single-column blank lines as NULL", () => {
     for (const ending of ["\n", "\r\n"]) {
       for (const suffix of ["", ending]) {
         const result = parseCsv(`v${ending}${ending}""${ending}""${suffix}`, { hasHeader: true });
-        expect(result.rows).toEqual([[""], [""]]);
+        expect(result.rows).toEqual([[null], [""], [""]]);
         expect(result.errors).toEqual([]);
+        const wide = parseCsv(`v,w${ending}${ending}"",1${ending}"",2${suffix}`, {
+          hasHeader: true,
+        });
+        expect(wide.rows).toEqual([
+          ["", "1"],
+          ["", "2"],
+        ]);
       }
     }
     expect(parseCsv(",\n", { hasHeader: false }).rows).toEqual([[null, null]]);

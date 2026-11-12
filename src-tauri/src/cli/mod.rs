@@ -25,7 +25,7 @@ Verbindungen
 
 Daten
   tui                      Interaktiver Modus: Tabellen blättern, SQL ausführen
-  query [sql]              SQL ausführen (kurz: q)
+  query [abfrage]          Abfrage ausführen (kurz: q)
   db list                  Datenbanken auflisten
   schema list              Schemas auflisten
   table list               Tabellen auflisten
@@ -175,11 +175,11 @@ enum Command {
     )]
     Tui,
     #[command(
-        about = "SQL ausführen (kurz: q)",
+        about = "Abfrage ausführen: SQL, MongoDB-Shell oder Redis-Befehl (kurz: q)",
         alias = "q",
         help_template = SUB_HELP,
-        override_usage = "l8db query [SQL] [-f DATEI] [-c NAME] [-o FORMAT]",
-        after_help = "SQL kommt als Argument, mit -f aus einer Datei oder über die Standardeingabe.\nMehrere Anweisungen werden nacheinander ausgeführt; beim ersten Fehler stoppt l8db.\n\nBeispiele:\n  l8db q \"select * from users limit 5\"\n  l8db query -f migration.sql --yes\n  cat bericht.sql | l8db query -o csv > bericht.csv\n  l8db query --all -o ndjson \"select * from events\" | jq .id"
+        override_usage = "l8db query [ABFRAGE] [-f DATEI] [-c NAME] [-o FORMAT]",
+        after_help = "Die Abfrage kommt als Argument, mit -f aus einer Datei oder über die Standardeingabe.\nMehrere Anweisungen werden nacheinander ausgeführt; beim ersten Fehler stoppt l8db.\n\nBeispiele:\n  l8db q \"select * from users limit 5\"\n  l8db query -f migration.sql --yes\n  cat bericht.sql | l8db query -o csv > bericht.csv\n  l8db query --all -o ndjson \"select * from events\" | jq .id"
     )]
     Query(QueryArgs),
     #[command(
@@ -336,8 +336,8 @@ enum ListOnly {
 #[derive(Args, Debug)]
 struct QueryArgs {
     #[arg(
-        value_name = "SQL",
-        help = "SQL-Text; „-“ liest von der Standardeingabe"
+        value_name = "ABFRAGE",
+        help = "Abfragetext; „-“ liest von der Standardeingabe"
     )]
     sql: Option<String>,
     #[arg(
@@ -345,7 +345,7 @@ struct QueryArgs {
         long,
         value_name = "DATEI",
         conflicts_with = "sql",
-        help = "SQL aus Datei lesen"
+        help = "Abfrage aus Datei lesen"
     )]
     file: Option<std::path::PathBuf>,
     #[arg(

@@ -94,13 +94,14 @@ export function useActiveSchema(): string {
 
 export function defaultSchema(
   connection: Pick<SavedConnection, "kind" | "connectionString"> | null | undefined,
-  capabilities: Pick<Capabilities, "query_language">,
+  capabilities: Pick<Capabilities, "query_language" | "database_is_schema">,
   database: string | null,
   schemas: string[] | undefined,
   selected: string | null,
 ): string {
   if (capabilities.query_language === "redis") return "keys";
-  if (capabilities.query_language === "json" && database) return database;
+  if ((capabilities.query_language === "json" || capabilities.database_is_schema) && database)
+    return database;
   if (selected && (!schemas || schemas.includes(selected))) return selected;
   if (connection?.kind === "oracle" && schemas) {
     const login = oracleLoginSchema(connection.connectionString, schemas);

@@ -647,7 +647,7 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
     area: "Analyse & Betrieb",
     keywords: ["invalid", "ungültig", "kompilieren", "packages", "fehler", "oracle"],
     route: "/invalid-objects",
-    capability: "compile_objects",
+    capability: "invalid_objects",
     hiddenInEasyMode: true,
     related: ["health"],
   },

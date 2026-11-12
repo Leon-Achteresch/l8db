@@ -653,7 +653,7 @@ function onlyGap(sql: string, from: number, to: number): boolean {
 }
 
 export function runsOneStatementPerCall(dialect?: string): boolean {
-  return dialect === "oracle";
+  return dialect === "oracle" || dialect === "postgres";
 }
 
 export function sqlToRun(sql: string, selectedSql: string): string {

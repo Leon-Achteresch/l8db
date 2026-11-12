@@ -586,8 +586,8 @@ scenario("A5 Lehrender leerer Zustand mit Aktion", async () => {
   const session = await boot({ path: "/query" });
   const { page } = session;
   await page
-    .getByRole("tab", { name: "Queries" })
-    .or(page.getByRole("button", { name: "Queries" }))
+    .getByRole("tab", { name: "Abfragen" })
+    .or(page.getByRole("button", { name: "Abfragen" }))
     .first()
     .click();
   const empty = page.locator("[data-empty-state]").first();

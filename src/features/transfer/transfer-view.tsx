@@ -221,7 +221,7 @@ export function TransferView() {
             foldNames={transfer.foldNames}
             onFoldNames={transfer.setFoldNames}
             replace={transfer.replace}
-            mirror={transfer.mirror}
+            whole={transfer.whole}
             content={transfer.content}
             onReplace={transfer.setReplace}
             onShowPlan={setPlanTab}

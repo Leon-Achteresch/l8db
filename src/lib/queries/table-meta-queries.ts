@@ -103,6 +103,7 @@ export function useSequencesQuery(enabled = true) {
         schema,
       ),
     enabled: enabled && supports(connection, "sequences"),
+    select: (sequences) => sequences.filter((sequence) => !sequence.name.startsWith("ISEQ$$_")),
   });
 }
 

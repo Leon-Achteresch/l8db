@@ -1,3 +1,5 @@
+import type { Terms } from "@/lib/db";
+
 export type SidebarTabValue =
   | "tables"
   | "views"
@@ -10,9 +12,9 @@ export type SidebarTabValue =
   | "roles"
   | "sequences";
 
-export function sidebarTabLabel(sidebarTab: SidebarTabValue): string {
+export function sidebarTabLabel(sidebarTab: SidebarTabValue, terms: Terms): string {
   return sidebarTab === "tables"
-    ? "Tabellen"
+    ? terms.tables
     : sidebarTab === "views"
       ? "Views"
       : sidebarTab === "functions"
@@ -24,10 +26,10 @@ export function sidebarTabLabel(sidebarTab: SidebarTabValue): string {
             : sidebarTab === "synonyms"
               ? "Synonyme"
               : sidebarTab === "extensions"
-                ? "Packages"
+                ? "Erweiterungen"
                 : sidebarTab === "roles"
                   ? "Benutzer & Rollen"
                   : sidebarTab === "sequences"
                     ? "Sequenzen"
-                    : "Gespeicherte Queries";
+                    : "Gespeicherte Abfragen";
 }

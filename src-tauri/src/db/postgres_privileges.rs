@@ -5,14 +5,14 @@ pub(super) const SCHEMA_PRIVILEGES_SQL: &str = "SELECT n.nspname, \
      LEFT JOIN LATERAL (SELECT array_agg(a.privilege_type) AS privs \
          FROM aclexplode(COALESCE(n.nspacl, acldefault('n'::\"char\", n.nspowner))) a \
          WHERE a.grantee = (SELECT r.oid FROM pg_roles r WHERE r.rolname = $1)) p ON true \
-     WHERE n.nspname NOT LIKE 'pg_%' \
+     WHERE n.nspname NOT LIKE 'pg\\_%' \
        AND n.nspname <> 'information_schema' \
      ORDER BY n.nspname";
 
 pub(super) const TABLE_PRIVILEGES_SQL: &str =
     "SELECT c.relnamespace::regnamespace::text AS schema_name, \
         c.relname, \
-        CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' \
+        CASE c.relkind WHEN 'r' THEN 'table' WHEN 'p' THEN 'table' WHEN 'f' THEN 'table' WHEN 'v' THEN 'view' \
                        WHEN 'm' THEN 'materialized_view' WHEN 'S' THEN 'sequence' \
                        ELSE 'other' END AS object_type, \
         COALESCE('SELECT' = ANY(p.privs), false) AS sel, \
@@ -28,8 +28,8 @@ pub(super) const TABLE_PRIVILEGES_SQL: &str =
          FROM aclexplode(COALESCE(c.relacl, acldefault( \
              CASE WHEN c.relkind = 'S' THEN 's'::\"char\" ELSE 'r'::\"char\" END, c.relowner))) a \
          WHERE a.grantee = (SELECT r.oid FROM pg_roles r WHERE r.rolname = $1)) p ON true \
-     WHERE c.relkind IN ('r', 'v', 'm', 'S') \
-       AND n.nspname NOT LIKE 'pg_%' \
+     WHERE c.relkind IN ('r', 'p', 'f', 'v', 'm', 'S') \
+       AND n.nspname NOT LIKE 'pg\\_%' \
        AND n.nspname <> 'information_schema' \
      ORDER BY n.nspname, c.relname";
 
@@ -89,7 +89,9 @@ mod tests {
                  GRANT SELECT ON l8db_privgrid.t1 TO PUBLIC; \
                  GRANT INSERT ON l8db_privgrid.t1 TO l8db_priv_grp; \
                  GRANT UPDATE ON l8db_privgrid.t1 TO l8db_priv_alice; \
-                 GRANT SELECT ON l8db_privgrid.s1 TO l8db_priv_alice",
+                 GRANT SELECT ON l8db_privgrid.s1 TO l8db_priv_alice; \
+                 CREATE TABLE l8db_privgrid.p1(id int) PARTITION BY RANGE (id); \
+                 GRANT SELECT ON l8db_privgrid.p1 TO l8db_priv_alice",
             )
             .await
             .unwrap();
@@ -106,6 +108,10 @@ mod tests {
         );
         assert_eq!(
             table(&alice, "s1"),
+            [true, false, false, false, false, false, false]
+        );
+        assert_eq!(
+            table(&alice, "p1"),
             [true, false, false, false, false, false, false]
         );
         assert_eq!(schema(&su), (false, false));
