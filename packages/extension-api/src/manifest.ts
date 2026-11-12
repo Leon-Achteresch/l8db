@@ -1,3 +1,4 @@
+import coerce from "semver/functions/coerce";
 import satisfies from "semver/functions/satisfies";
 import valid from "semver/functions/valid";
 import validRange from "semver/ranges/valid";
@@ -93,7 +94,7 @@ function splitHostPort(value: string): [string, string | undefined] {
   return [value.slice(0, index), value.slice(index + 1)];
 }
 export function assertCompatible(manifest: ExtensionManifest, hostVersion: string) {
-  if (!satisfies(hostVersion, manifest.engines.l8db)) throw new ExtensionError("IncompatibleExtensionError", `${manifest.id} requires l8db ${manifest.engines.l8db}; host is ${hostVersion}`);
+  if (!satisfies(coerce(hostVersion) ?? hostVersion, manifest.engines.l8db)) throw new ExtensionError("IncompatibleExtensionError", `${manifest.id} requires l8db ${manifest.engines.l8db}; host is ${hostVersion}`);
 }
 export function validateArchive(value: unknown): ExtensionArchive {
   if (!object(value) || value.format !== 1 || !object(value.files)) fail("Invalid archive format");
