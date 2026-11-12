@@ -40,7 +40,7 @@ export function useFilterBarModel({
   const [sql, setSql] = useTableViewState(stateKey, "filterSql", "");
   const [error, setError] = useState("");
   const orSupported = filterSupportsOr(kind);
-  const sqlLabel = json ? "JSON" : kind === "cassandra" ? "CQL" : "SQL";
+  const sqlLabel = json ? "JSON" : caps.query_label;
   const parseKind = json ? undefined : kind;
   const active = activeFilter.trim();
 

@@ -107,6 +107,7 @@ export const OBJECT_TYPE_META: Record<CatalogObjectType, { label: string; plural
   synonym: { label: "Synonym", plural: "Synonyme" },
   comment: { label: "Kommentar", plural: "Kommentare" },
   grant: { label: "Grant", plural: "Grants" },
+  policy: { label: "Policy", plural: "Policies" },
 };
 
 export const TYPE_ORDER: CatalogObjectType[] = [
@@ -125,6 +126,7 @@ export const TYPE_ORDER: CatalogObjectType[] = [
   "package",
   "package_body",
   "synonym",
+  "policy",
   "comment",
   "grant",
 ];
@@ -166,6 +168,7 @@ const POSTGRES_TYPES: SelectableType[] = [
   "type",
   "function",
   "procedure",
+  "policy",
   "comment",
   "grant",
 ];

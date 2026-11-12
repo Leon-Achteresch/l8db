@@ -28,8 +28,7 @@ interface TablePerfPanelProps {
 }
 
 function planPrefix(kind: string | undefined, timed: boolean): string {
-  if (timed || kind === "clickhouse") return "";
-  return "EXPLAIN (ANALYZE, BUFFERS) ";
+  return !timed && kind === "postgres" ? "EXPLAIN (ANALYZE, BUFFERS) " : "";
 }
 
 export function TablePerfPanel({ schema, table, filter, isView }: TablePerfPanelProps) {

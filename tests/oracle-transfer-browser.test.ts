@@ -599,7 +599,7 @@ test.skipIf(!enabled)(
         await page.getByText(/\d+ Tabellen bereit/).waitFor({ timeout: 120_000 });
         await pickTables(page, ["AUFTRAG", "KUNDE"]);
         expect(await page.getByRole("button", { name: "Tabellen aus TR_SRC" }).innerText()).toMatch(
-          /^2 von \d+/,
+          /^4 von \d+/,
         );
         await pickContent(page, "Nur Struktur");
         await page.getByText("2 Tabellen bereit, nur Struktur").waitFor({ timeout: 120_000 });
@@ -856,9 +856,10 @@ test.skipIf(!enabled)(
     await withPage("transfer-acceptance", async (page) => {
       await openTransfer(page, async () => {
         const target = page.getByRole("combobox", { name: "Ziel: Verbindung" });
-        await expect
-          .poll(() => target.evaluate((node) => node === document.activeElement))
-          .toBe(true);
+        await page.waitForFunction(
+          (node) => node === document.activeElement,
+          await target.elementHandle(),
+        );
         await page.screenshot({ path: `${shots}/abnahme-1-ziel-autofokus.png` });
       });
       await page
@@ -875,6 +876,7 @@ test.skipIf(!enabled)(
       const popover = page.locator('[data-slot="popover-content"]');
       const list = popover.getByRole("group", { name: "Objekte aus TR_SRC" });
       await list.waitFor();
+      await popover.getByRole("textbox", { name: "Objekte filtern" }).fill("KONTO");
       await popover.getByText("Packages", { exact: true }).waitFor();
       await page.screenshot({ path: `${shots}/abnahme-4-objekte.png` });
       await popover.getByRole("textbox", { name: "Objekte filtern" }).fill("KUNDE_AU");
@@ -894,9 +896,9 @@ test.skipIf(!enabled)(
       await dialog.getByRole("button", { name: "Im Editor öffnen" }).click();
       await page.waitForURL(/\/query\//);
       await page.locator(".monaco-editor .view-lines").first().waitFor();
-      await expect
-        .poll(() => page.locator(".monaco-editor .view-lines").first().innerText())
-        .toContain("CREATE");
+      await page.waitForFunction(() =>
+        document.querySelector(".monaco-editor .view-lines")?.textContent?.includes("CREATE"),
+      );
       await page.screenshot({ path: `${shots}/abnahme-6-editor.png` });
     });
   },

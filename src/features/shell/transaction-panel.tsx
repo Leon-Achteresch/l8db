@@ -111,10 +111,10 @@ export function TransactionPanel() {
           <div className="space-y-3 p-3">
             <p className="text-[11px] leading-relaxed text-muted-foreground">
               {perTable && capabilities.table_transactions
-                ? "Tabellen werden getrennt committed. Abhängige Änderungen brauchen den gemeinsamen Modus unter Einstellungen → Daten & Abfragen. SQL im Editor läuft separat."
+                ? "Vorgemerkt, noch nicht in der Datenbank. Commit übernimmt je Tabelle."
                 : perTable
-                  ? "Diese Datenbank verwendet eine gemeinsame Transaktion. Getrennte Tabellen-Transaktionen werden nicht unterstützt."
-                  : "Gemeinsamer Modus: Tabellenänderungen und SQL werden pro Datenbank zusammen committed."}
+                  ? "Vorgemerkt, noch nicht in der Datenbank. Commit übernimmt alle Tabellen gemeinsam."
+                  : "Vorgemerkt, noch nicht in der Datenbank. Commit übernimmt Tabellen und SQL gemeinsam."}
             </p>
             {transactions.length === 0 && (
               <div className="flex flex-col items-center gap-2 py-12 text-center">

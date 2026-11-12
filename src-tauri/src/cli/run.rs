@@ -77,6 +77,10 @@ pub fn dispatch(cli: Cli) -> i32 {
         }
         Command::Completions { shell } => super::completions(shell),
         Command::Mcp => {
+            if let Err(error) = mcp_scope(&global) {
+                eprintln!("Fehler: {error}");
+                return 2;
+            }
             crate::mcp::serve();
             0
         }
@@ -216,6 +220,23 @@ pub(super) async fn named(
     Ok((list, source))
 }
 
+fn mcp_scope(global: &Global) -> Result<(), String> {
+    use crate::mcp::config;
+    let env_url = std::env::var("L8DB_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty());
+    if let Some(wanted) = &global.connection {
+        config::pin(config::only(config::load(), wanted)?);
+    } else if let Some(url) = global.url.clone().or(env_url) {
+        let target = connect::ad_hoc(&url)?;
+        let Source::Url { url, target } = target else {
+            unreachable!()
+        };
+        config::pin(config::for_url(target.kind, &url, global.database.clone()));
+    }
+    Ok(())
+}
+
 pub(super) fn interactive() -> bool {
     std::io::stdin().is_terminal() && std::io::stderr().is_terminal()
 }
@@ -332,6 +353,7 @@ async fn execute(global: &Global, command: Command, job: &str) -> Result<(), Str
         Command::Open { name } => open_in_app(global, name.as_deref()).await,
         Command::Db { .. } => {
             let session = session(global, None).await?;
+            scope_level(session.target.kind.capabilities().databases, "Datenbanken")?;
             let names = guarded(
                 job,
                 session.target.kind,
@@ -343,6 +365,7 @@ async fn execute(global: &Global, command: Command, job: &str) -> Result<(), Str
         }
         Command::Schema { .. } => {
             let session = session(global, None).await?;
+            scope_level(session.target.kind.capabilities().schemas, "Schemas")?;
             let names =
                 guarded(job, session.target.kind, 60, session.adapter.list_schemas()).await?;
             write(output::write_list(&mut out, format, "schema", &names))
@@ -430,7 +453,60 @@ pub(super) async fn relations(
             }
         }
     }
+    if kind == DatabaseKind::Postgres {
+        if let Ok(views) =
+            guarded(job, kind, 60, session.adapter.list_materialized_views(schema)).await
+        {
+            for v in views {
+                if !found.iter().any(|t| t.schema == v.schema && t.name == v.name) {
+                    found.push(Relation {
+                        schema: v.schema,
+                        name: v.name,
+                        view: true,
+                    });
+                }
+            }
+        }
+    }
     Ok(found)
+}
+
+fn first_dot(name: &str) -> Option<(String, String)> {
+    let name = name.trim();
+    if name.contains(['"', '`', '[']) {
+        return None;
+    }
+    name.split_once('.')
+        .map(|(schema, table)| (schema.to_string(), table.to_string()))
+}
+
+async fn search_path_first<'a>(
+    session: &Session,
+    found: &[&'a Relation],
+    job: &str,
+) -> Option<&'a Relation> {
+    let result = guarded(
+        job,
+        DatabaseKind::Postgres,
+        60,
+        session.adapter.execute_query(
+            "SELECT s::text AS s FROM unnest(current_schemas(false)) WITH ORDINALITY AS u(s, i) ORDER BY i",
+        ),
+    )
+    .await
+    .ok()?;
+    result
+        .rows
+        .iter()
+        .filter_map(|row| row["s"].as_str())
+        .find_map(|schema| found.iter().find(|t| t.schema == schema).copied())
+}
+
+pub(super) fn unquoted_column(name: String) -> String {
+    match name.trim().strip_prefix('"').and_then(|n| n.strip_suffix('"')) {
+        Some(inner) if !inner.is_empty() => inner.replace("\"\"", "\""),
+        _ => name,
+    }
 }
 
 fn pick<'a>(all: &'a [Relation], schema: Option<&str>, table: &str) -> Vec<&'a Relation> {
@@ -449,8 +525,43 @@ fn pick<'a>(all: &'a [Relation], schema: Option<&str>, table: &str) -> Vec<&'a R
         .collect()
 }
 
+fn oracle_case(
+    kind: DatabaseKind,
+    raw: &str,
+    (schema, table): (Option<String>, String),
+) -> (Option<String>, String) {
+    if kind != DatabaseKind::Oracle {
+        return (schema, table);
+    }
+    let raw = raw.trim();
+    let schema = schema.map(|s| if raw.starts_with('"') { s } else { s.to_uppercase() });
+    let table = if raw.ends_with('"') { table } else { table.to_uppercase() };
+    (schema, table)
+}
+
+async fn synonym_target(
+    session: &Session,
+    schema: Option<&str>,
+    table: &str,
+    job: &str,
+) -> Option<Relation> {
+    let synonyms = guarded(job, session.target.kind, 60, session.adapter.list_synonyms(schema))
+        .await
+        .ok()?;
+    let found = synonyms
+        .iter()
+        .filter(|s| s.db_link.is_none())
+        .find(|s| s.name == table)
+        .or_else(|| synonyms.iter().find(|s| s.db_link.is_none() && s.name.eq_ignore_ascii_case(table)))?;
+    Some(Relation {
+        schema: found.target_owner.clone(),
+        name: found.target_name.clone(),
+        view: found.target_type.contains("view"),
+    })
+}
+
 async fn locate(session: &Session, name: &str, job: &str) -> Result<Relation, String> {
-    let (schema, table) = split_table(name);
+    let (schema, table) = oracle_case(session.target.kind, name, split_table(name));
     let mut all = relations(session, schema.as_deref(), job).await?;
     let mut candidates = pick(&all, schema.as_deref(), &table).len();
     if candidates == 0 && schema.is_some() {
@@ -458,11 +569,27 @@ async fn locate(session: &Session, name: &str, job: &str) -> Result<Relation, St
         candidates = pick(&all, schema.as_deref(), &table).len();
     }
     let (schema, table) = if candidates == 0 && schema.is_some() {
-        (None, name.trim().to_string())
+        match first_dot(name).filter(|(s, t)| !pick(&all, Some(s), t).is_empty()) {
+            Some((schema, table)) => (Some(schema), table),
+            None => (None, name.trim().to_string()),
+        }
     } else {
         (schema, table)
     };
     let mut found = pick(&all, schema.as_deref(), &table);
+    if schema.is_none()
+        && session.target.kind == DatabaseKind::Postgres
+        && found.iter().any(|t| t.schema != found[0].schema)
+    {
+        if let Some(first) = search_path_first(session, &found, job).await {
+            found = vec![first];
+        }
+    }
+    if found.is_empty() && session.target.kind == DatabaseKind::Oracle {
+        if let Some(target) = synonym_target(session, schema.as_deref(), &table, job).await {
+            return Ok(target);
+        }
+    }
     match found.len() {
         1 => {
             let one = found.remove(0);
@@ -519,10 +646,23 @@ async fn table(
     match command {
         TableCommand::List { schema } => {
             let tables = relations(session, schema.as_deref(), job).await?;
-            let rows: Vec<Value> = tables
+            let mut rows: Vec<Value> = tables
                 .iter()
                 .map(|t| json!([t.schema, t.name, if t.view { "view" } else { "table" }]))
                 .collect();
+            if kind == DatabaseKind::Oracle {
+                if let Ok(synonyms) =
+                    guarded(job, kind, 60, adapter.list_synonyms(schema.as_deref())).await
+                {
+                    rows.extend(synonyms.iter().map(|s| {
+                        let link = s.db_link.as_deref().map(|l| format!("@{l}")).unwrap_or_default();
+                        json!([s.owner, s.name, format!("synonym → {}.{}{link}", s.target_owner, s.target_name)])
+                    }));
+                }
+            }
+            if rows.is_empty() {
+                eprintln!("Keine Tabellen gefunden, auf die diese Verbindung zugreifen darf.");
+            }
             write(output::write_rows(
                 out,
                 format,
@@ -532,17 +672,53 @@ async fn table(
         }
         TableCommand::Describe { table } => {
             let Relation { schema, name, .. } = locate(session, &table, job).await?;
-            let columns = guarded(
-                job,
-                kind,
-                60,
-                adapter.list_columns(Some(&schema), Some(&name), None),
-            )
-            .await?;
-            let rows: Vec<Value> = columns
+            if kind == DatabaseKind::Postgres {
+                let rows: Vec<Value> =
+                    guarded(job, kind, 60, adapter.list_table_columns_detailed(&schema, &name))
+                        .await?
+                        .iter()
+                        .map(|c| {
+                            let data_type = match c.character_maximum_length {
+                                Some(length) => format!("{}({length})", c.data_type),
+                                None => c.data_type.clone(),
+                            };
+                            json!([c.name, data_type, c.is_nullable, c.column_default, c.is_primary_key])
+                        })
+                        .collect();
+                return write(output::write_rows(
+                    out,
+                    format,
+                    &[
+                        "column".into(),
+                        "type".into(),
+                        "nullable".into(),
+                        "default".into(),
+                        "primary_key".into(),
+                    ],
+                    &rows,
+                ));
+            }
+            let rows: Vec<Value> = if kind == DatabaseKind::Oracle {
+                guarded(job, kind, 60, adapter.list_table_columns_detailed(&schema, &name))
+                    .await?
+                    .iter()
+                    .map(|c| match c.ordinal_position {
+                        0 => json!([c.name, format!("{} unsichtbar", c.data_type)]),
+                        _ => json!([c.name, c.data_type]),
+                    })
+                    .collect()
+            } else {
+                guarded(
+                    job,
+                    kind,
+                    60,
+                    adapter.list_columns(Some(&schema), Some(&name), None),
+                )
+                .await?
                 .iter()
                 .map(|c| json!([c.name, c.data_type]))
-                .collect();
+                .collect()
+            };
             write(output::write_rows(
                 out,
                 format,
@@ -558,6 +734,7 @@ async fn table(
             limit,
             offset,
         } => {
+            let order_by = order_by.map(unquoted_column);
             let Relation { schema, name, view } = locate(session, &table, job).await?;
             let data = guarded(
                 job,
@@ -576,7 +753,11 @@ async fn table(
                 ),
             )
             .await?;
-            if let Some(column) = order_by.filter(|c| !data.columns.contains(c)) {
+            if let Some(column) = order_by.filter(|c| {
+                !data.columns.iter().any(|d| {
+                    d == c || (kind == DatabaseKind::Oracle && d.eq_ignore_ascii_case(c))
+                })
+            }) {
                 eprintln!("Hinweis: Spalte „{column}“ gibt es nicht, Sortierung ignoriert.");
             }
             write(output::write_rows(out, format, &data.columns, &data.rows))?;
@@ -680,7 +861,7 @@ fn split_statements(
                     )
                 }) {
                     break;
-                } else {
+                } else if !text.trim().to_ascii_uppercase().starts_with("SET SERVEROUT") {
                     note(format!(
                         "Hinweis: SQL*Plus-Befehl übersprungen: {}",
                         text.trim()
@@ -695,22 +876,22 @@ fn split_statements(
     Ok(parts.into_iter().filter(|s| !s.trim().is_empty()).collect())
 }
 
-const MONGO_READ: &[&str] = &[
-    "find",
-    "aggregate",
-    "count",
-    "distinct",
-    "listCollections",
-    "listIndexes",
-];
+fn scope_level(present: bool, label: &str) -> Result<(), String> {
+    if present {
+        Ok(())
+    } else {
+        Err(format!(
+            "Dieser Datenbanktyp kennt keine {label}.\n  Objekte: l8db table list"
+        ))
+    }
+}
 
 pub(super) fn writes(kind: DatabaseKind, statement: &str) -> bool {
     match kind {
         DatabaseKind::Redis => nosql::redis_check(statement, false).is_err(),
         DatabaseKind::Mongodb => nosql::mongo_command(statement)
-            .ok()
-            .and_then(|doc| doc.keys().next().cloned())
-            .is_none_or(|op| !MONGO_READ.contains(&op.as_str())),
+            .map(|doc| nosql::mongo_writes(&doc))
+            .unwrap_or(true),
         DatabaseKind::Elasticsearch => {
             db::elasticsearch::read_only_request(statement) != Some(true)
         }
@@ -848,6 +1029,13 @@ pub(super) async fn run_prepared(
     job: &str,
     emit: &mut impl FnMut(Step) -> Result<(), String>,
 ) -> Result<(), String> {
+    if session.target.kind == DatabaseKind::Postgres && db::server_output::sink().is_none() {
+        return db::server_output::capture(
+            db::server_output::Messages::default(),
+            Box::pin(run_prepared(session, database, prepared, options, job, emit)),
+        )
+        .await;
+    }
     let Prepared {
         parts,
         writing,
@@ -874,6 +1062,7 @@ pub(super) async fn run_prepared(
                 if options.typed {
                     typed_postgres(session, statement, &mut result).await;
                 }
+                notices(emit)?;
                 return emit(Step::Result {
                     result,
                     started,
@@ -885,6 +1074,10 @@ pub(super) async fn run_prepared(
         }
     }
     let total = parts.len();
+    let output = kind == DatabaseKind::Oracle && parts.iter().any(|p| plsql_call(p));
+    if output && transaction.is_none() {
+        let _ = session.adapter.set_server_output(true).await;
+    }
     for (index, statement) in parts.iter().enumerate() {
         let started = Instant::now();
         let result = match transaction.as_mut() {
@@ -902,6 +1095,7 @@ pub(super) async fn run_prepared(
         let mut result = match result {
             Ok(result) => result,
             Err(error) => {
+                let _ = notices(emit);
                 let mut message = if total > 1 {
                     format!("Anweisung {} von {total}: {error}", index + 1)
                 } else {
@@ -921,6 +1115,21 @@ pub(super) async fn run_prepared(
         if kind == DatabaseKind::Postgres && options.typed {
             typed_postgres(session, statement, &mut result).await;
         }
+        notices(emit)?;
+        if output {
+            let lines = match transaction.as_mut() {
+                Some(tx) => tx.server_output().await.unwrap_or_default(),
+                None => session
+                    .adapter
+                    .take_server_output()
+                    .await
+                    .map(|m| m.into_iter().map(|m| m.message).collect())
+                    .unwrap_or_default(),
+            };
+            for line in lines {
+                emit(Step::Note(line))?;
+            }
+        }
         emit(Step::Result {
             result,
             started,
@@ -928,12 +1137,38 @@ pub(super) async fn run_prepared(
         })?;
     }
     if let Some(mut tx) = transaction {
+        if open_at_end(kind, parts) {
+            let _ = tx.rollback().await;
+            return Err(format!(
+                "Das Skript endet mit BEGIN ohne COMMIT.{}",
+                rollback_note(kind, parts)
+            ));
+        }
         tx.commit().await?;
         emit(Step::Note(format!(
             "✓ {total} Anweisungen in einer Transaktion übernommen."
         )))?;
     }
     Ok(())
+}
+
+fn notices(emit: &mut impl FnMut(Step) -> Result<(), String>) -> Result<(), String> {
+    let messages = db::server_output::sink()
+        .map(|sink| sink.take())
+        .unwrap_or_default();
+    for message in messages {
+        emit(Step::Note(format!("{}: {}", message.level, message.message)))?;
+    }
+    Ok(())
+}
+
+fn plsql_call(statement: &str) -> bool {
+    let word = statement
+        .split(|c: char| c.is_whitespace() || c == '(')
+        .find(|w| !w.is_empty())
+        .unwrap_or("")
+        .to_ascii_uppercase();
+    matches!(word.as_str(), "BEGIN" | "DECLARE" | "CALL")
 }
 
 async fn typed_postgres(session: &Session, statement: &str, result: &mut QueryResult) {
@@ -966,7 +1201,8 @@ pub(super) fn postgres_json(data_type: &str, value: Value) -> Value {
             .parse::<i64>()
             .map(db::exact_number::int)
             .unwrap_or(Value::String(text)),
-        "numeric" => db::exact_number::decimal(&text),
+        "numeric" => db::exact_number::json_number(&text),
+        "json" | "jsonb" => db::exact_number::json_text(&text),
         "float4" | "float8" => text
             .parse::<f64>()
             .ok()
@@ -1003,15 +1239,49 @@ async fn allow_write(target: &Target, approval: &Approval) -> Result<(), String>
     }
 }
 
+#[derive(PartialEq)]
+enum Control {
+    Open,
+    Commit,
+    Close,
+}
+
+fn control(kind: DatabaseKind, statement: &str) -> Option<Control> {
+    let words = redact::sql_words(statement);
+    let first = words.first().map(String::as_str).unwrap_or("");
+    let second = words.get(1).map(String::as_str).unwrap_or("");
+    match (kind, first) {
+        (DatabaseKind::Oracle, "begin" | "declare" | "start" | "end") => None,
+        (DatabaseKind::Mssql, "begin")
+            if !matches!(second, "tran" | "transaction" | "distributed") =>
+        {
+            None
+        }
+        (DatabaseKind::Mssql | DatabaseKind::Mysql, "end") => None,
+        (_, "begin" | "start") => Some(Control::Open),
+        (_, "commit" | "end") => Some(Control::Commit),
+        (_, "rollback") if second == "to" => None,
+        (_, "rollback" | "abort") => Some(Control::Close),
+        _ => None,
+    }
+}
+
+pub(super) fn open_at_end(kind: DatabaseKind, ran: &[String]) -> bool {
+    ran.iter()
+        .filter_map(|statement| control(kind, statement))
+        .last()
+        == Some(Control::Open)
+}
+
 pub(super) fn rollback_note(kind: DatabaseKind, ran: &[String]) -> &'static str {
-    let controls = ran.iter().any(|statement| {
-        redact::sql_words(statement).first().is_some_and(|word| {
-            matches!(
-                word.as_str(),
-                "begin" | "start" | "commit" | "end" | "rollback" | "savepoint" | "release"
-            )
-        })
-    });
+    let controls = ran
+        .iter()
+        .enumerate()
+        .any(|(index, statement)| match control(kind, statement) {
+            Some(Control::Commit) => true,
+            Some(Control::Open) => kind == DatabaseKind::Mysql && index > 0,
+            _ => false,
+        });
     let implicit = matches!(kind, DatabaseKind::Mysql | DatabaseKind::Oracle)
         && ran.iter().any(|statement| redact::is_ddl(statement));
     if controls {
@@ -1067,12 +1337,13 @@ async fn postgres_cursor(
         job,
         DatabaseKind::Postgres,
         timeout,
-        tx.execute(&format!("DECLARE l8db_cli NO SCROLL CURSOR FOR {body}")),
+        tx.execute(&format!("{CURSOR_PREFIX}{body}")),
     )
     .await;
     if let Err(error) = declared {
         let _ = tx.rollback().await;
-        return read_only_violation(error);
+        let leading = statement.chars().take_while(|c| c.is_whitespace()).count();
+        return read_only_violation(shift_position(error, CURSOR_PREFIX.chars().count(), leading));
     }
     let fetched = guarded(
         job,
@@ -1092,6 +1363,27 @@ async fn postgres_cursor(
     result.truncated |= result.rows.len() > rows;
     result.rows.truncate(rows);
     Ok(Cursor::Done(result))
+}
+
+const CURSOR_PREFIX: &str = "DECLARE l8db_cli NO SCROLL CURSOR FOR ";
+
+pub(super) fn shift_position(error: String, prefix: usize, leading: usize) -> String {
+    const LABEL: &str = "\nPosition: ";
+    let Some(start) = error.rfind(LABEL).map(|at| at + LABEL.len()) else {
+        return error;
+    };
+    let end = error[start..]
+        .find('\n')
+        .map_or(error.len(), |offset| start + offset);
+    match error[start..end].parse::<usize>() {
+        Ok(position) if position > prefix => format!(
+            "{}{}{}",
+            &error[..start],
+            position - prefix + leading,
+            &error[end..]
+        ),
+        _ => error,
+    }
 }
 
 fn read_only_violation(error: String) -> Result<Cursor, String> {

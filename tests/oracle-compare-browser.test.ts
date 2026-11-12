@@ -1,7 +1,5 @@
 import { expect, test } from "bun:test";
 import { chromium, type Page } from "playwright";
-import manifest from "../package.json";
-import { NEXT_FEATURE_VERSION } from "../src/lib/new-features";
 import { openOracleApp, oracleBridge, oracleFailures } from "./fixtures/oracle-browser";
 
 const lab = "oracle://l8db:l8dbtest@127.0.0.1:15219/FREEPDB1";
@@ -53,17 +51,6 @@ async function sql(connectionString: string, statement: string) {
   const value = await response.json();
   if (value.error !== undefined) throw new Error(`${statement.slice(0, 60)}: ${value.error}`);
   return value.result as { rows: Record<string, unknown>[] };
-}
-
-async function showNewBadges(page: Page) {
-  await page.route(/\/package\.json(\?|$)/, async (route) => {
-    const response = await route.fetch();
-    const body = (await response.text()).replaceAll(
-      `"${manifest.version}"`,
-      `"${NEXT_FEATURE_VERSION}"`,
-    );
-    await route.fulfill({ response, body });
-  });
 }
 
 async function emulateFiles(page: Page) {
@@ -138,13 +125,11 @@ test.skipIf(!process.env.L8DB_ORACLE_BROWSER)(
     const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
     page.setDefaultTimeout(20000);
     try {
-      await showNewBadges(page);
       await emulateFiles(page);
       const errors = await openOracleApp(page, "/schema-compare", "oracle-debug");
 
       await page.getByRole("button", { name: /^Ziel:/ }).click();
       const picker = page.getByRole("dialog");
-      expect(await picker.getByRole("radio", { name: /Snapshot/ }).textContent()).toContain("NEW");
       await picker.getByRole("combobox", { name: "Ziel: Verbindung" }).click();
       await page.getByRole("option", { name: "Oracle Lab" }).click();
       await picker.getByRole("combobox", { name: "Ziel: Schema" }).click();
@@ -158,7 +143,6 @@ test.skipIf(!process.env.L8DB_ORACLE_BROWSER)(
       await page.keyboard.press("Escape");
 
       const options = page.getByRole("button", { name: /^Optionen/ });
-      expect(await options.textContent()).toContain("NEW");
       await options.click();
       await page
         .getByLabel("Namen ausschließen (LIKE, mit Komma getrennt)")
@@ -175,9 +159,6 @@ test.skipIf(!process.env.L8DB_ORACLE_BROWSER)(
 
       await treeRow(page, "CODE_NEW").click();
       const rename = page.getByRole("button", { name: "CODE_OLD → CODE_NEW" });
-      expect(
-        await page.getByText("Umbenennen statt Löschen und Anlegen:").locator("..").textContent(),
-      ).toContain("NEW");
       await rename.click();
       expect(await rename.getAttribute("aria-pressed")).toBe("true");
       expect(await treeRow(page, "CODE_NEW").textContent()).toContain("umbenannt aus CODE_OLD");

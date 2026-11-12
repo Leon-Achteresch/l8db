@@ -81,7 +81,7 @@ export function SettingsRow({
         </div>
         <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</p>
         {settingId ? (
-          <code className="pointer-events-none absolute bottom-0 text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
+          <code className="pointer-events-none absolute bottom-0 text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [[data-onboarding]_&]:hidden">
             {setting?.key ? `settings.${setting.key}` : `settings.${settingId}`}
           </code>
         ) : null}

@@ -15,6 +15,7 @@ const LIMIT_DIALECTS = new Set([
   "bigquery",
   "snowflake",
   "s3",
+  "spacetimedb",
 ]);
 
 export function applySelectRowLimit(
@@ -22,7 +23,18 @@ export function applySelectRowLimit(
   dialect: string,
   limit = DEFAULT_SELECT_ROW_LIMIT,
 ): string {
-  if (["redis", "mongodb", "elasticsearch", "influxdb", "dynamodb", "odbc"].includes(dialect))
+  if (
+    [
+      "redis",
+      "mongodb",
+      "elasticsearch",
+      "influxdb",
+      "dynamodb",
+      "odbc",
+      "jdbc",
+      "workspace",
+    ].includes(dialect)
+  )
     return sql;
   if (!Number.isSafeInteger(limit) || limit <= 0 || limit > 100000) return sql;
   const split = splitSqlStatements(sql, dialect);

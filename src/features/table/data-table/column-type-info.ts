@@ -27,6 +27,14 @@ function kindFromDataType(dataType: string): ColumnTypeKind | null {
   return null;
 }
 
+function temporalLabel(dataType: string | undefined): string {
+  const lower = dataType ? unwrapDataType(dataType) : "";
+  if (lower.includes("timestamp") || lower.includes("datetime")) return "timestamp";
+  if (lower.includes("interval")) return "interval";
+  if (/^time\b/.test(lower)) return "time";
+  return "date";
+}
+
 export function getColumnTypeInfo(col: string, rows: TableRow[], detail?: DetailedColumnInfo) {
   let first: unknown;
   for (const row of rows) {
@@ -105,7 +113,7 @@ export function getColumnTypeInfo(col: string, rows: TableRow[], detail?: Detail
     case "date":
       return {
         kind: "date" as const,
-        label: "date",
+        label: temporalLabel(detail?.data_type),
         align: "text-left" as const,
         iconName: "Calendar",
       };

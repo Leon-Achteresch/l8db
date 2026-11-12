@@ -93,6 +93,7 @@ async fn postgres_row_edits_stay_inside_one_partition_or_child() {
         .await
         .unwrap();
     assert_eq!(dup["id"], 2);
+    assert_eq!(dup["__ctid__"].as_str().unwrap().matches('@').count(), 2);
     assert_eq!(
         snapshot(&manager, &tx, &part).await,
         vec!["1:one", "2:two", "2:two"]
@@ -244,4 +245,97 @@ async fn postgres_transaction_batches_return_the_first_result_set() {
     assert_eq!(empty.columns, vec!["a"]);
     assert!(empty.rows.is_empty());
     manager.rollback(&tx).await.unwrap();
+}
+
+#[tokio::test]
+#[ignore]
+async fn postgres_row_edits_never_hit_a_reused_slot() {
+    let url = std::env::var("L8DB_SMOKE_POSTGRES_URL")
+        .expect("Set L8DB_SMOKE_POSTGRES_URL to run this ignored test");
+    let pool = create_pool_state();
+    let adapter =
+        create_adapter_from_string(DatabaseKind::Postgres, &url, None, pool.clone()).unwrap();
+    for keyed in [true, false] {
+        let table = format!("l8_ctid_reuse_{}_{keyed}", std::process::id());
+        let key = if keyed { " PRIMARY KEY" } else { "" };
+        adapter
+            .execute_query(&format!(
+                "DROP TABLE IF EXISTS {table}; CREATE TABLE {table} (id int{key}, name text) WITH (autovacuum_enabled = false); \
+                 INSERT INTO {table} VALUES (1, 'Ada'), (2, 'Bob'), (3, 'Cy')"
+            ))
+            .await
+            .unwrap();
+        let rows = grid_rows(adapter.as_ref(), &table).await;
+        let stale = identity(&rows, 3);
+        let changed = identity(&rows, 2);
+        adapter
+            .execute_query(&format!("DELETE FROM {table} WHERE id = 3"))
+            .await
+            .unwrap();
+        adapter
+            .execute_query(&format!("VACUUM {table}"))
+            .await
+            .unwrap();
+        adapter
+            .execute_query(&format!(
+                "INSERT INTO {table} VALUES (4, 'Dora'); UPDATE {table} SET name = 'Bob2' WHERE id = 2"
+            ))
+            .await
+            .unwrap();
+        let reused = identity(&grid_rows(adapter.as_ref(), &table).await, 4);
+        assert_eq!(
+            reused.split('@').next(),
+            stale.split('@').next(),
+            "slot reused"
+        );
+
+        let gone = super::PG_ROW_GONE.to_string();
+        assert_eq!(
+            adapter
+                .update_row("public", &table, &stale, &update("name", "VON-L8DB"))
+                .await,
+            Err(gone.clone())
+        );
+        let manager = create_transaction_state();
+        let tx = manager
+            .begin(DatabaseKind::Postgres, &url, None, &pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            manager
+                .update_row(&tx, "public", &table, &stale, &update("name", "VON-L8DB"))
+                .await,
+            Err(gone.clone())
+        );
+        assert_eq!(
+            manager.delete_row(&tx, "public", &table, &stale).await,
+            Err(gone.clone())
+        );
+        assert_eq!(
+            manager
+                .update_row(&tx, "public", &table, &changed, &update("name", "VON-L8DB"))
+                .await,
+            Err(gone.clone())
+        );
+        let fresh = manager
+            .update_row(&tx, "public", &table, &reused, &update("name", "Dora2"))
+            .await
+            .unwrap();
+        manager
+            .update_row(&tx, "public", &table, &fresh, &update("name", "Dora3"))
+            .await
+            .unwrap();
+        manager.commit(&tx).await.unwrap();
+        let after = adapter
+            .execute_query(&format!(
+                "SELECT string_agg(id || ':' || name, ',' ORDER BY id) AS v FROM {table}"
+            ))
+            .await
+            .unwrap();
+        assert_eq!(after.rows[0]["v"], "1:Ada,2:Bob2,4:Dora3");
+        adapter
+            .execute_query(&format!("DROP TABLE {table}"))
+            .await
+            .unwrap();
+    }
 }

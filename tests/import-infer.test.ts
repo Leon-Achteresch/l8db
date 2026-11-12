@@ -42,6 +42,8 @@ test("decimal comma values infer as decimals", () => {
       ["1,5", "1,234,5"],
       ["-2,25", "x"],
       ["3", "y"],
+      ["1.234.567,5", "z"],
     ]),
   ).toEqual(["decimal", "text"]);
+  expect(inferColumnTypes(1, [["12.34,5"]])).toEqual(["text"]);
 });

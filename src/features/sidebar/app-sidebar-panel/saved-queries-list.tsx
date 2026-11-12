@@ -16,7 +16,7 @@ export function SavedQueriesList() {
     return (
       <FeatureEmptyState
         icon={FileCodeIcon}
-        title="Keine gespeicherten Queries."
+        title="Keine gespeicherten Abfragen."
         featureId="query.snippets"
         action={{ label: "Editor öffnen", onClick: () => void navigate({ to: "/query" }) }}
         className="py-4"

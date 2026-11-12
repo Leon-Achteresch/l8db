@@ -4,13 +4,17 @@ use super::execution::{self, ExecutionOptions};
 use super::oracle::OracleAdapter;
 use super::DatabaseAdapter;
 
+fn lab(var: &str) -> String {
+    std::env::var(var).unwrap_or_else(|_| panic!("Lab fehlt: {var} ist nicht gesetzt"))
+}
+
 fn adapter(key: &str) -> Option<OracleAdapter> {
-    let url = std::env::var("L8DB_SMOKE_ORACLE_URL").ok()?;
+    let url = lab("L8DB_SMOKE_ORACLE_URL");
     Some(OracleAdapter::new(&url, super::pool::create_pool_state(), key.into()).unwrap())
 }
 
 fn admin(key: &str) -> Option<OracleAdapter> {
-    let url = std::env::var("L8DB_SMOKE_ORACLE_ADMIN_URL").ok()?;
+    let url = lab("L8DB_SMOKE_ORACLE_ADMIN_URL");
     Some(OracleAdapter::new(&url, super::pool::create_pool_state(), key.into()).unwrap())
 }
 
@@ -1408,4 +1412,122 @@ async fn live_principals_are_managed_end_to_end() {
 
     drop_all().await;
     assert!(db.principal_detail("user", user).await.is_err());
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_scripts_json_and_row_writes_follow_oracle() {
+    let Some(db) = adapter("live-scripts-writes") else {
+        return;
+    };
+    let p = std::env::var("L8DB_LIVE_PREFIX").unwrap_or_else(|_| "L8_LIVE".into());
+    let (t, mv, part) = (
+        format!("{p}_DDL"),
+        format!("{p}_DDL_MV"),
+        format!("{p}_PART"),
+    );
+    let drop = format!(
+        "BEGIN FOR o IN (SELECT object_name, object_type FROM user_objects WHERE (object_name = '{mv}' AND object_type = 'MATERIALIZED VIEW') OR (object_name IN ('{t}', '{part}') AND object_type = 'TABLE') ORDER BY DECODE(object_type, 'MATERIALIZED VIEW', 0, 1)) LOOP EXECUTE IMMEDIATE 'DROP ' || o.object_type || ' \"' || o.object_name || '\"' || CASE o.object_type WHEN 'TABLE' THEN ' PURGE' END; END LOOP; END;"
+    );
+    db.execute_query(&drop).await.unwrap();
+    for sql in [
+        format!("CREATE TABLE {t} (id NUMBER PRIMARY KEY, js JSON, notes CLOB, payload BLOB)"),
+        format!("COMMENT ON TABLE {t} IS 'kommentiert'"),
+        format!("CREATE OR REPLACE TRIGGER {t}_TRG BEFORE INSERT ON {t} FOR EACH ROW BEGIN NULL; END;"),
+        format!("INSERT INTO {t} (id, js) VALUES (1, JSON('{{\"a\":1}}'))"),
+        format!("CREATE MATERIALIZED VIEW {mv} BUILD IMMEDIATE REFRESH COMPLETE ON DEMAND AS SELECT id FROM {t}"),
+        format!("CREATE TABLE {part} (id NUMBER PRIMARY KEY, d DATE, v NUMBER) PARTITION BY RANGE (d) (PARTITION p1 VALUES LESS THAN (DATE '2024-03-01'), PARTITION p2 VALUES LESS THAN (MAXVALUE)) ENABLE ROW MOVEMENT"),
+        format!("INSERT INTO {part} VALUES (1, DATE '2024-01-15', 10)"),
+    ] {
+        db.execute_query(&sql).await.unwrap_or_else(|e| panic!("{sql}: {e}"));
+    }
+    let schema = db.execute_query("SELECT USER u FROM dual").await.unwrap();
+    let schema = text(&schema, "U");
+
+    let json = db
+        .execute_query(&format!("SELECT * FROM {t}"))
+        .await
+        .unwrap();
+    assert_eq!(json.rows[0]["JS"], serde_json::json!("{\"a\":1}"));
+
+    let ddl = db.get_table_ddl(&schema, &t).await.unwrap();
+    assert!(ddl.contains("CREATE TABLE"), "{ddl}");
+    assert!(ddl.contains("COMMENT ON TABLE"), "{ddl}");
+    assert!(ddl.contains("TRIGGER"), "{ddl}");
+    let mv_ddl = db.get_table_ddl(&schema, &mv).await.unwrap();
+    assert!(mv_ddl.contains("CREATE MATERIALIZED VIEW"), "{mv_ddl}");
+    let mv_view = db.get_view_definition(&schema, &mv).await.unwrap();
+    assert!(mv_view.contains("CREATE MATERIALIZED VIEW"), "{mv_view}");
+    let tables = db.list_tables(Some(&schema)).await.unwrap();
+    assert!(!tables.iter().any(|x| x.name == mv));
+    let views = db.list_views(Some(&schema)).await.unwrap();
+    assert!(views.iter().any(|x| x.name == mv));
+    let again = db.get_table_ddl(&schema, &t).await.unwrap();
+    assert_eq!(again, ddl);
+    let mut lists = Vec::new();
+    for _ in 0..5 {
+        let started = Instant::now();
+        db.list_tables(Some(&schema)).await.unwrap();
+        db.list_views(Some(&schema)).await.unwrap();
+        lists.push(started.elapsed().as_secs_f64());
+    }
+    let (median, p95) = (percentile(&mut lists, 0.5), percentile(&mut lists, 0.95));
+    eprintln!("list_tables + list_views: median {median:.3}s p95 {p95:.3}s");
+    assert!(p95 < 2.0, "list_tables + list_views p95 {p95:.3}s");
+
+    let conn = db.open_connection().await.unwrap();
+    let mut conn = conn.into_inner().unwrap();
+    super::oracle::tx_begin(&mut conn);
+    let rowid = |c: &oracle::Connection| -> String {
+        c.query_row_as::<String>(
+            &format!("SELECT ROWIDTOCHAR(ROWID) FROM {part} WHERE id = 1"),
+            &[],
+        )
+        .unwrap()
+    };
+    let before = rowid(&conn);
+    let set = |col: &str, v: &str| {
+        std::collections::HashMap::from([(col.to_string(), Some(v.to_string()))])
+    };
+    let moved = super::oracle::tx_update_row(
+        &conn,
+        &schema,
+        &part,
+        &before,
+        &set("D", "2024-06-01 00:00:00"),
+    )
+    .unwrap();
+    assert_ne!(moved, before);
+    assert_eq!(moved, rowid(&conn));
+    super::oracle::tx_update_row(&conn, &schema, &part, &moved, &set("V", "11")).unwrap();
+
+    let long_text = "a".repeat(9000);
+    let long_blob = format!("\\x{}", "ab".repeat(5000));
+    let row = super::oracle::tx_insert_row(
+        &conn,
+        &schema,
+        &t,
+        &std::collections::HashMap::from([
+            ("ID".to_string(), Some("2".to_string())),
+            ("NOTES".to_string(), Some(long_text.clone())),
+            ("PAYLOAD".to_string(), Some(long_blob.clone())),
+        ]),
+    )
+    .unwrap();
+    let inserted = row["__ctid__"].as_str().unwrap().to_string();
+    super::oracle::tx_update_row(
+        &conn,
+        &schema,
+        &t,
+        &inserted,
+        &set("NOTES", &"b".repeat(8000)),
+    )
+    .unwrap();
+    let (len, bytes): (i64, i64) = conn
+        .query_row_as(&format!("SELECT DBMS_LOB.GETLENGTH(notes), DBMS_LOB.GETLENGTH(payload) FROM {t} WHERE id = 2"), &[])
+        .unwrap();
+    assert_eq!((len, bytes), (8000, 5000));
+    super::oracle::tx_finish(&mut conn, false).unwrap();
+    let _ = conn.close();
+    db.execute_query(&drop).await.unwrap();
 }

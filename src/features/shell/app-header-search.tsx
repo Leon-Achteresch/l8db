@@ -343,9 +343,10 @@ export function AppHeaderSearch() {
         setShortcutsOpen(true);
       },
     };
-    const notebookItems = activeConnection
-      ? builders.buildNotebookItems(recentNotebooks, activeConnection.id, setOpen, navigate)
-      : [];
+    const notebookItems =
+      activeConnection && capabilities.query_language === "sql" && !capabilities.object_storage
+        ? builders.buildNotebookItems(recentNotebooks, activeConnection.id, setOpen, navigate)
+        : [];
     const hotkeyItems = builders.buildHotkeyItems(
       pathname,
       activeConnection !== null,
@@ -377,6 +378,8 @@ export function AppHeaderSearch() {
   }, [
     activeConnection?.id,
     activeConnection,
+    capabilities.query_language,
+    capabilities.object_storage,
     canSearchColumns,
     canSearchSource,
     connections,

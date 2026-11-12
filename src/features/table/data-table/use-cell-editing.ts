@@ -49,8 +49,8 @@ export function useCellEditing({
       setIsSaving(true);
       try {
         const updates = buildRowUpdates(columnNames, originalValues, columnId, next);
-        await onSaveRow(ctid, updates, originalValues);
-        toast.success("Zeile gespeichert.");
+        const outcome = await onSaveRow(ctid, updates, originalValues);
+        toast.success(outcome === "staged" ? "In Transaktion vorgemerkt." : "Zeile gespeichert.");
         return true;
       } catch (err) {
         toast.error(typeof err === "string" ? err : String(err));

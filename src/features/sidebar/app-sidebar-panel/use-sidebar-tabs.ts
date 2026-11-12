@@ -19,7 +19,7 @@ export function useSidebarTabs(hasPackages: boolean) {
   return [
     {
       value: "tables",
-      label: caps.object_storage ? "Buckets" : "Tabellen",
+      label: caps.terms.tables,
       icon: caps.object_storage ? ArchiveIcon : TableIcon,
       enabled: true,
     },
@@ -39,7 +39,7 @@ export function useSidebarTabs(hasPackages: boolean) {
       featureScope: "sidebar.packages",
     },
     { value: "synonyms", label: "Synonyme", icon: LinkIcon, enabled: caps.synonyms },
-    { value: "extensions", label: "Packages", icon: PackageIcon, enabled: caps.extensions },
+    { value: "extensions", label: "Erweiterungen", icon: PackageIcon, enabled: caps.extensions },
     {
       value: "roles",
       label: "Benutzer",
@@ -47,7 +47,7 @@ export function useSidebarTabs(hasPackages: boolean) {
       enabled: caps.roles || caps.principals,
       featureScope: caps.principals ? "sidebar.roles" : undefined,
     },
-    { value: "queries", label: "Queries", icon: FileCodeIcon, enabled: true },
+    { value: "queries", label: "Abfragen", icon: FileCodeIcon, enabled: true },
     {
       value: "sequences",
       label: "Sequenzen",

@@ -255,7 +255,56 @@ pub fn audit_path() -> PathBuf {
     config_path().with_file_name("mcp-audit.jsonl")
 }
 
+static PINNED: std::sync::OnceLock<McpConfig> = std::sync::OnceLock::new();
+
+pub fn pin(config: McpConfig) {
+    let _ = PINNED.set(config);
+}
+
+pub fn pinned() -> bool {
+    PINNED.get().is_some()
+}
+
+pub fn for_url(kind: DatabaseKind, url: &str, database: Option<String>) -> McpConfig {
+    McpConfig {
+        enabled: true,
+        connections: vec![McpConnection {
+            id: "url".into(),
+            name: "url".into(),
+            kind,
+            connection_string: url.into(),
+            schemas: Vec::new(),
+            ssh: false,
+            exposed: true,
+            read_only: true,
+            allow_ddl: false,
+            allow_scripts: false,
+            redact_columns: Vec::new(),
+            mask_rules: Vec::new(),
+            environment: None,
+            allow_production_writes: false,
+            database,
+        }],
+        ..McpConfig::default()
+    }
+}
+
+pub fn only(mut config: McpConfig, wanted: &str) -> Result<McpConfig, String> {
+    config
+        .connections
+        .retain(|connection| connection.exposed && (connection.id == wanted || connection.name == wanted));
+    if !config.enabled || config.connections.is_empty() {
+        return Err(format!(
+            "Verbindung „{wanted}“ ist für MCP nicht freigegeben. In l8db unter MCP freigeben oder --url nutzen."
+        ));
+    }
+    Ok(config)
+}
+
 pub fn load() -> McpConfig {
+    if let Some(config) = PINNED.get() {
+        return config.clone();
+    }
     std::fs::read(config_path())
         .ok()
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())

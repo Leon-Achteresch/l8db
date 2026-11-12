@@ -74,7 +74,11 @@ export async function openOracleApp(page: Page, path = "/", activeId = "oracle-l
         unregisterCallback: (id: number) => callbacks.delete(id),
         metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
         invoke: async (command: string, args: Record<string, unknown> = {}) => {
-          if (/^(mcp_|automation_|team_)/.test(command)) return Promise.reject("not available");
+          if (
+            /^(mcp_|automation_|team_|ui_plugin_)/.test(command) ||
+            ["organization_policy", "report_startup"].includes(command)
+          )
+            return Promise.reject("not available");
           if (command.endsWith("secret"))
             return command === "load_secret" &&
               ["oracle-lab", "oracle-debug"].includes(String(args.account))

@@ -215,8 +215,8 @@ export function useTransfer() {
     ...(tables[schema] ? { tables: tables[schema] } : {}),
   }));
   const replace = replaceTarget;
-  const mirror =
-    replace && content !== "data" && pairs.every((pair) => !pair.tables && !objects[pair.source]);
+  const whole = content !== "data" && pairs.every((pair) => !pair.tables && !objects[pair.source]);
+  const mirror = replace && whole;
   const native =
     Boolean(sourceConnection && targetConnection) &&
     sourceConnection?.kind === targetConnection?.kind &&
@@ -405,6 +405,7 @@ export function useTransfer() {
     setFoldNames,
     replace,
     mirror,
+    whole,
     setReplace,
     crossFamily: Boolean(
       sourceConnection && targetConnection && sourceConnection.kind !== targetConnection.kind,

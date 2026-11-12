@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { endpointFromPlaceholder, isAwsKind } from "@/lib/aws";
 import { isProfileConnection } from "@/lib/connection-url";
-import type { SavedConnection } from "@/lib/connections";
+import { cloudAuthModes, type SavedConnection } from "@/lib/connections";
 import { ConnectionAdvancedOptions } from "../connection-advanced-options";
 import { ConnectionField } from "../connection-field";
 import { ConnectionAwsFields } from "./aws-fields";
@@ -17,7 +17,6 @@ import { ConnectionFileInput } from "./file-input";
 import { ConnectionHostFields } from "./host-fields";
 import { ConnectionOracleLoginFields } from "./oracle-login-fields";
 import { ConnectionSnowflakeFields } from "./snowflake-fields";
-import { ConnectionTestResultStatus } from "./test-result-status";
 import { ConnectionTnsInputs } from "./tns-inputs";
 import { ConnectionUrlInput } from "./url-input";
 import type { useConnectionEditor } from "./use-connection-editor";
@@ -39,7 +38,6 @@ export function ConnectionDetailsStep({
     color,
     database,
     databaseLabel,
-    elapsed,
     environment,
     maskRules,
     setEnvironment,
@@ -62,7 +60,6 @@ export function ConnectionDetailsStep({
     quickKind,
     quickProviderId,
     readOnly,
-    result,
     scanError,
     scanSchemas,
     scannedSchemas,
@@ -260,9 +257,6 @@ export function ConnectionDetailsStep({
       {mode === "fields" && kind === "oracle" && (
         <ConnectionOracleLoginFields extraParams={extraParams} setExtraParams={setExtraParams} />
       )}
-      {mode !== "tns" && !info.file_based && (
-        <ConnectionCloudAuthFields kind={mode === "string" ? quickKind : kind} draft={cloudAuth} />
-      )}
       {mode === "string" && value.trim() ? (
         <p className="truncate text-[11px] text-muted-foreground">Erkannt: {quickInfo.name}</p>
       ) : null}
@@ -328,8 +322,17 @@ export function ConnectionDetailsStep({
         scanError={scanError}
         onScan={() => void scanSchemas()}
         connection={connection}
+        cloudAuth={
+          mode !== "tns" &&
+          !info.file_based &&
+          cloudAuthModes(mode === "string" ? quickKind : kind).length > 0 ? (
+            <ConnectionCloudAuthFields
+              kind={mode === "string" ? quickKind : kind}
+              draft={cloudAuth}
+            />
+          ) : undefined
+        }
       />
-      <ConnectionTestResultStatus result={result} elapsed={elapsed} />
       {vault && !isProfileConnection(mode === "string" ? quickKind : kind) ? (
         <div className="space-y-1">
           <div className="flex items-center gap-2">

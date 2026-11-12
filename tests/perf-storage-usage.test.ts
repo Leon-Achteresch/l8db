@@ -119,6 +119,11 @@ test("formats sizes for the storage overview", () => {
   expect(formatBytes(1536)).toBe("1,5 KB");
   expect(formatBytes(5 * 1024 * 1024)).toBe("5 MB");
   expect(storageLabel("l8db.storage.backup:l8db.table-tabs")).toBe("Sicherung: Tabs");
+  expect(storageLabel("l8db.new-feature-seen:0.9.1:settings.general.workspace-tab")).toBe(
+    "Neu-Markierungen",
+  );
+  expect(storageLabel("l8db.discovery.usage")).toBe("Entdecken");
+  expect(storageLabel("l8db.secret-edits")).toBe("Passwort-Änderungen");
 });
 
 test("storage overview of ~11 MB (5.5M chars) across 7 connections stays interactive", async () => {

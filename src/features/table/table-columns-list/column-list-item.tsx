@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { DataTypeCombobox } from "@/features/alter-table/alter-table-view/data-type-combobox";
 import { copyText } from "@/lib/clipboard";
+import { columnTypeLabel } from "@/lib/column-type";
 import type { AlterColumnRequest, DatabaseKind, DetailedColumnInfo } from "@/lib/db";
 import { getTypeConfig } from "./column-type-config";
 
@@ -37,10 +38,10 @@ export function ColumnListItem({
   onCancelEdit: () => void;
   onSaveEdit: () => void;
 }) {
-  const dataType =
-    column.character_maximum_length != null
-      ? `${column.data_type}(${column.character_maximum_length})`
-      : column.data_type;
+  const dataType = columnTypeLabel(column.data_type, column.character_maximum_length);
+  const columnDefault = /^"[^"]+"\."ISEQ\$\$_\d+"\.nextval$/i.test(column.column_default ?? "")
+    ? "Identity"
+    : column.column_default;
   const IconComponent = getTypeConfig(column.data_type, column.is_primary_key).icon;
 
   return (
@@ -147,7 +148,7 @@ export function ColumnListItem({
             className="truncate font-mono text-xs text-muted-foreground"
             title={column.column_default ?? "Kein Standardwert"}
           >
-            {column.column_default ?? "—"}
+            {columnDefault ?? "—"}
           </span>
           <div className="flex items-center justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
             {editable && (

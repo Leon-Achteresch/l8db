@@ -245,7 +245,7 @@ export function TableFilterPanel({
                 </TabsTrigger>
                 <TabsTrigger value="sql">
                   <Code2Icon />
-                  {json ? "JSON" : kind === "cassandra" ? "CQL" : "SQL"}
+                  {json ? "JSON" : caps.query_label}
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -324,7 +324,7 @@ export function TableFilterPanel({
                   }}
                   onSubmit={apply}
                   columns={columns}
-                  placeholder="z. B.  status = 'active' AND created_at > '2024-01-01'"
+                  placeholder={caps.filter_hint}
                   className="h-36"
                 />
               </Suspense>

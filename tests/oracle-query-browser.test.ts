@@ -21,7 +21,7 @@ async function oracle(sql: string) {
 
 async function cleanup() {
   await oracle(
-    "BEGIN FOR o IN (SELECT object_name, object_type FROM user_objects WHERE object_name LIKE 'UIA\\_%' ESCAPE '\\' AND object_type IN ('TABLE', 'PROCEDURE')) LOOP EXECUTE IMMEDIATE 'DROP ' || o.object_type || ' \"' || o.object_name || '\"' || CASE o.object_type WHEN 'TABLE' THEN ' PURGE' END; END LOOP; END;",
+    "BEGIN FOR o IN (SELECT object_name, object_type FROM user_objects WHERE (object_name LIKE 'UIA\\_%' ESCAPE '\\' OR object_name IN ('UI_BIG', 'UI_DOCS', 'UI_OUT')) AND object_type IN ('TABLE', 'PROCEDURE')) LOOP EXECUTE IMMEDIATE 'DROP ' || o.object_type || ' \"' || o.object_name || '\"' || CASE o.object_type WHEN 'TABLE' THEN ' PURGE' END; END LOOP; END;",
   );
 }
 
@@ -40,7 +40,11 @@ async function withPage(name: string, body: (page: Page) => Promise<void>) {
 }
 
 async function setSql(page: Page, sql: string) {
-  await page.locator(".monaco-editor .view-lines").first().click({ timeout: 20_000 });
+  await page
+    .locator(".monaco-editor .view-lines")
+    .first()
+    .click({ position: { x: 2, y: 2 }, timeout: 20_000 });
+  if (await page.locator(".suggest-widget.visible").count()) await page.keyboard.press("Escape");
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.insertText(sql);
 }
@@ -55,6 +59,18 @@ beforeAll(async () => {
   browser = await chromium.launch();
   await cleanup();
   await oracle("CREATE TABLE uia_t (id NUMBER PRIMARY KEY, name VARCHAR2(20))");
+  await oracle("CREATE TABLE ui_big (id NUMBER PRIMARY KEY, txt VARCHAR2(40))");
+  await oracle(
+    "INSERT INTO ui_big SELECT level, 'Zeile ' || level FROM dual CONNECT BY level <= 120000",
+  );
+  await oracle("CREATE TABLE ui_docs (id NUMBER PRIMARY KEY, title VARCHAR2(40))");
+  await oracle(
+    "INSERT INTO ui_docs SELECT level, 'Dok ' || level FROM dual CONNECT BY level <= 100",
+  );
+  await oracle("COMMIT");
+  await oracle(
+    "CREATE OR REPLACE PROCEDURE ui_out AS BEGIN DBMS_OUTPUT.PUT_LINE('Hallo aus UI_OUT'); DBMS_OUTPUT.PUT_LINE('Zweite Zeile'); END;",
+  );
 });
 
 afterAll(async () => {
@@ -227,7 +243,7 @@ test.skipIf(!enabled)(
       await page.getByText("Dok 9", { exact: true }).waitFor();
       await page.getByRole("button", { name: "Analyse", exact: true }).click();
       const sheet = page.getByRole("dialog");
-      await sheet.getByRole("button", { name: "Explain", exact: true }).click();
+      await sheet.getByRole("button", { name: "Plan", exact: true }).click();
       await sheet.getByText("7 Knoten · Gewichtung Kosten").waitFor();
       await sheet.getByRole("radio", { name: /Text/ }).click();
       await sheet.getByText(/Plan hash value: \d+/).waitFor();
@@ -235,7 +251,7 @@ test.skipIf(!enabled)(
       expect(text).toContain("UI_BIG");
       expect(text).toContain('access("D"."ID"="B"."ID")');
       expect(text).not.toContain("Zuletzt tatsächlich verwendeter Plan");
-      await sheet.getByRole("button", { name: "Explain Analyze", exact: true }).click();
+      await sheet.getByRole("button", { name: "Plan + Messung", exact: true }).click();
       await sheet.getByText(/EXPLAIN ANALYZE benötigt Leserechte auf V\$SESSION/).waitFor();
     });
   },

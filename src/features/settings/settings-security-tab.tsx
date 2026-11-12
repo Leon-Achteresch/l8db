@@ -35,7 +35,7 @@ export function SettingsSecurityTab() {
   return (
     <div className="space-y-4">
       <SecretStorageNotice />
-      <h2 className="text-base font-semibold tracking-tight">Sicherheit & Netzwerk</h2>
+      <h2 className="text-base font-semibold tracking-tight">Sicherheit & SSH</h2>
 
       <div className="space-y-3">
         <SettingsRow settingId="ssh-tofu">

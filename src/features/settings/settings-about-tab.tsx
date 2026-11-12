@@ -89,7 +89,7 @@ export function SettingsAboutTab() {
           <Switch
             checked={usageMetrics}
             onCheckedChange={setUsageMetrics}
-            aria-label="Nutzungs- und Leistungsdaten senden"
+            aria-label="Nutzungs- und Leistungsdaten an Sentry senden"
           />
         </SettingsRow>
         <SettingsRow settingId="bug-report">

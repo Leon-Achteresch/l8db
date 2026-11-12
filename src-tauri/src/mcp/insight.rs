@@ -965,8 +965,9 @@ impl Server {
         if sql.is_empty() {
             return Err("sql fehlt".into());
         }
-        if !super::server::SQL_KINDS.contains(&connection.kind) {
-            return Err("explain unterstützt nur SQL-Datenbanken.".into());
+        let caps = connection.kind.capabilities();
+        if !caps.explain {
+            return Err("explain ist für diesen Datenbanktyp nicht verfügbar.".into());
         }
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
         let index = self.schema_index(config, connection, &redactor).await?;
@@ -974,6 +975,9 @@ impl Server {
             .get("analyze")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        if analyze && !caps.explain_analyze {
+            return Err("explain mit analyze ist für diesen Datenbanktyp nicht verfügbar.".into());
+        }
         if let Err(read) = check_read_sql(sql, connection, &index) {
             if analyze || connection.writes_blocked() || redact::write_word(sql).is_none() {
                 return Err(read);

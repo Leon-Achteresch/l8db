@@ -46,7 +46,11 @@ export function WorkspaceStatus() {
         </Link>
         {connection && !caps.object_storage && (
           <span className="truncate font-mono @max-[600px]/footer:hidden">
-            {database} / {schema}
+            {caps.database_is_schema || !caps.schemas
+              ? database
+              : !caps.databases
+                ? schema
+                : `${database} / ${schema}`}
           </span>
         )}
         <WorkspaceBranchStatus />
@@ -72,23 +76,27 @@ export function WorkspaceStatus() {
           {tasksNew && <NewBadge className="ml-1" />}
         </button>
         {Boolean(fetching) && <span role="status">Daten werden geladen…</span>}
-        {connection && (
-          <span className="hidden items-center gap-1 sm:flex @max-[700px]/footer:hidden">
-            <LockKeyhole className="size-3" />
-            {connection.ssh?.host ? "SSH · " : ""}
-            {caps.object_storage
-              ? /[?&]endpoint=http(%3A|:)/i.test(connection.connectionString)
-                ? "TLS aus"
-                : "TLS"
-              : caps.query_language === "redis"
-                ? connection.connectionString.startsWith("rediss:")
-                  ? "TLS"
-                  : "TLS aus"
-                : connection.sslMode === "disable"
+        {connection &&
+          (caps.ssl ||
+            caps.object_storage ||
+            caps.query_language === "redis" ||
+            connection.ssh?.host) && (
+            <span className="hidden items-center gap-1 sm:flex @max-[700px]/footer:hidden">
+              <LockKeyhole className="size-3" />
+              {connection.ssh?.host ? "SSH · " : ""}
+              {caps.object_storage
+                ? /[?&]endpoint=http(%3A|:)/i.test(connection.connectionString)
                   ? "TLS aus"
-                  : `TLS ${connection.sslMode}`}
-          </span>
-        )}
+                  : "TLS"
+                : caps.query_language === "redis"
+                  ? connection.connectionString.startsWith("rediss:")
+                    ? "TLS"
+                    : "TLS aus"
+                  : connection.sslMode === "disable"
+                    ? "TLS aus"
+                    : `TLS ${connection.sslMode}`}
+            </span>
+          )}
         <span className="tabular-nums">v{version}</span>
       </div>
     </footer>

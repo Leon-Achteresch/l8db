@@ -100,9 +100,11 @@ test.skipIf(!process.env.L8DB_VERSIONING_BROWSER)(
       await page.getByRole("button", { name: "Aus Branch zusammenführen" }).click();
       await page.getByRole("button", { name: "Datei zusammenführen" }).click();
       await page.getByText("Konflikt 1", { exact: true }).waitFor();
-      expect(await page.getByRole("button", { name: "Entwurf speichern" }).isDisabled()).toBe(true);
+      expect(await page.getByRole("button", { name: "Speichern", exact: true }).isDisabled()).toBe(
+        true,
+      );
       await page.getByRole("button", { name: "Quelle übernehmen" }).click();
-      const save = page.getByRole("button", { name: "Entwurf speichern" });
+      const save = page.getByRole("button", { name: "Speichern", exact: true });
       expect(await save.isEnabled()).toBe(true);
       await save.click();
       await page.getByRole("checkbox", { name: `Commit: database/objects/orders.sql` }).check();

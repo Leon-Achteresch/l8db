@@ -40,7 +40,7 @@ export function DataTableAutoRefresh({
         <SelectContent position="popper">
           {AUTO_REFRESH_INTERVALS.map((value) => (
             <SelectItem key={value} value={String(value)} className="text-[11px]">
-              {value === 0 ? "Auto aus" : `Alle ${describeAutoRefreshInterval(value)}`}
+              {value === 0 ? "Auto aus" : `Auto alle ${describeAutoRefreshInterval(value)}`}
             </SelectItem>
           ))}
         </SelectContent>

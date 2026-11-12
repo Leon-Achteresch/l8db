@@ -18,7 +18,8 @@ export type CatalogObjectType =
   | "type_body"
   | "synonym"
   | "comment"
-  | "grant";
+  | "grant"
+  | "policy";
 
 export interface CatalogObject {
   object_type: CatalogObjectType;

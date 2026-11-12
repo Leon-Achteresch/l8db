@@ -97,6 +97,7 @@ export function TableActionsMenu({
           variant="ghost"
           className="relative size-7"
           aria-label="Weitere Aktionen"
+          title="Weitere Aktionen"
           data-tour="table-add"
         >
           <EllipsisIcon className="size-3.5" />

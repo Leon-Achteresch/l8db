@@ -18,7 +18,10 @@ export function DiscoverOverviewTab() {
     [capabilities, easyMode],
   );
   const newest = useMemo(() => newestFeatures(6, available), [available]);
-  const major = useMemo(() => available.filter((entry) => entry.size === "major"), [available]);
+  const major = useMemo(() => {
+    const shown = new Set(newest.map((entry) => entry.id));
+    return available.filter((entry) => entry.size === "major" && !shown.has(entry.id));
+  }, [available, newest]);
 
   return (
     <div ref={ref} className="space-y-8" data-feature="discover.overview">

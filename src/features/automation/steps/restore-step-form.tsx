@@ -16,7 +16,7 @@ export function RestoreStepForm({ action, onChange }: StepFormProps<"restore">) 
       <ConnectionFields
         connection={action.connection}
         database={action.database}
-        capability="backup"
+        capability="restore"
         label="Ziel"
         onChange={(next) => onChange({ ...action, ...next })}
       />

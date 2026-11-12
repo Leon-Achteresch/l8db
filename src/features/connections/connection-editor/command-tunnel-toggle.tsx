@@ -10,6 +10,7 @@ export function CommandTunnelToggle({ network }: { network: NetworkDraft }) {
     <label
       ref={feature.ref}
       htmlFor="connection-command-tunnel"
+      title="Ein eigener Befehl öffnet den Tunnel, z. B. kubectl port-forward"
       className="flex h-9 items-end justify-between gap-3 pb-0.5 text-xs font-medium sm:h-auto sm:items-center sm:self-end sm:pb-2"
     >
       <span className="flex items-center gap-2">

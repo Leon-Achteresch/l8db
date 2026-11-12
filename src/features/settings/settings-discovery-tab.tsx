@@ -37,7 +37,7 @@ export function SettingsDiscoveryTab() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-base font-semibold tracking-tight">Entdecken</h2>
+      <h2 className="text-base font-semibold tracking-tight">Tipps & Hinweise</h2>
 
       <SettingsRow settingId="discovery" featureId="settings.discovery">
         <Switch

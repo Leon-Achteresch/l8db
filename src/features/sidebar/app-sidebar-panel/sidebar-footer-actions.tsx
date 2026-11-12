@@ -29,7 +29,7 @@ export function SidebarFooterActions({ caps }: SidebarFooterActionsProps) {
   const easyMode = useSettingsStore((state) => state.easyMode);
   const navigate = useNavigate();
   const actions: FooterAction[] = [
-    ...(caps.query_language === "sql" && !caps.object_storage
+    ...(caps.insert_sql
       ? [{ to: "/import", label: "SQL importieren", icon: UploadIcon } as const]
       : []),
     ...(caps.backup
@@ -39,7 +39,7 @@ export function SidebarFooterActions({ caps }: SidebarFooterActionsProps) {
       ? [
           {
             to: "/create-table",
-            label: caps.query_language === "json" ? "Collection erstellen" : "Tabelle erstellen",
+            label: `${caps.terms.table} erstellen`,
             icon: PlusIcon,
           } as const,
         ]

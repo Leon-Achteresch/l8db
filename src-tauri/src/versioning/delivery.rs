@@ -733,10 +733,10 @@ mod tests {
                 pinned_release: None,
                 paused: false,
                 production: c.schema.ends_with("prod"),
-                require_approval: false,
-                operators: vec![],
+                require_approval: c.schema.ends_with("prod"),
+                operators: vec!["postgres".into()],
                 administrators: vec![],
-                reviewers: vec![],
+                reviewers: vec!["postgres".into()],
                 delivery: None,
             };
             control::initialize(adapter.as_ref(), c, &policy)
@@ -832,6 +832,7 @@ mod tests {
         let head = git(&work, &["rev-parse", "HEAD"]).await.trim().to_string();
         let artifact = json!({
             "teamHash": control::hash(team.trim_end()),
+            "schema": production.schema,
             "execution": {"context": context, "reference": {"commit": head}, "releases": [{"id": "r1", "hash": "h1"}]}
         })
         .to_string();
@@ -867,9 +868,8 @@ mod tests {
             transactions.clone(),
         )
         .await;
-        assert!(invalid
-            .unwrap_err()
-            .contains("Ungültige Auslieferungsregeln"));
+        let invalid = invalid.unwrap_err();
+        assert!(invalid.contains("Ungültige Auslieferungsregeln"), "{invalid}");
         rules.delivery.as_mut().unwrap().review = false;
         control::handle(
             save(rules, record.revision),

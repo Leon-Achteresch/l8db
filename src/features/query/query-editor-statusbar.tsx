@@ -25,10 +25,10 @@ export function QueryEditorStatusbar({
   editorId,
 }: QueryEditorStatusbarProps) {
   const deferredSql = useDeferredValue(sql);
-  const statementCount = useMemo(
-    () => splitSqlStatements(deferredSql, dialect).statements.length,
-    [deferredSql, dialect],
-  );
+  const statementCount = useMemo(() => {
+    const split = splitSqlStatements(deferredSql, dialect, { slashRuns: dialect === "oracle" });
+    return split.statements.length + split.commands.length;
+  }, [deferredSql, dialect]);
   const position = useSyncExternalStore(positionStore.subscribe, positionStore.get);
   const insertSpaces = useQueryWorkspace((s) => s.insertSpaces);
   const editorTabSize = useSettingsStore((s) => s.editorTabSize);

@@ -9,6 +9,10 @@ fn env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|value| !value.is_empty())
 }
 
+fn required(name: &str) -> String {
+    env(name).unwrap_or_else(|| panic!("{name} setzen, um diesen ignorierten Test auszuführen"))
+}
+
 fn tool_paths() -> HashMap<String, String> {
     let Some(dir) = env("L8DB_BACKUP_TOOL_DIR") else {
         return HashMap::new();
@@ -78,9 +82,7 @@ fn count(result: &QueryResult) -> i64 {
 #[tokio::test]
 #[ignore]
 async fn postgres_backup_restore_round_trips() {
-    let Some(url) = env("L8DB_BACKUP_PG_URL") else {
-        return;
-    };
+    let url = required("L8DB_BACKUP_PG_URL");
     let pool = create_pool_state();
     let adapter =
         create_adapter_from_string(DatabaseKind::Postgres, &url, None, pool.clone()).unwrap();
@@ -258,9 +260,7 @@ async fn postgres_backup_restore_round_trips() {
 #[tokio::test]
 #[ignore]
 async fn postgres_old_pg_dump_is_flagged() {
-    let (Some(url), Some(old)) = (env("L8DB_BACKUP_PG_URL"), env("L8DB_BACKUP_OLD_PG_DUMP")) else {
-        return;
-    };
+    let (url, old) = (required("L8DB_BACKUP_PG_URL"), required("L8DB_BACKUP_OLD_PG_DUMP"));
     let pool = create_pool_state();
     let paths: HashMap<String, String> = [("pg_dump".to_string(), old)].into();
     let probed = probe(DatabaseKind::Postgres, &url, None, &paths, pool.clone()).await;
@@ -292,9 +292,7 @@ async fn postgres_old_pg_dump_is_flagged() {
 #[tokio::test]
 #[ignore]
 async fn mysql_backup_restore_round_trips() {
-    let Some(url) = env("L8DB_BACKUP_MYSQL_URL") else {
-        return;
-    };
+    let url = required("L8DB_BACKUP_MYSQL_URL");
     let pool = create_pool_state();
     let adapter =
         create_adapter_from_string(DatabaseKind::Mysql, &url, None, pool.clone()).unwrap();
@@ -386,9 +384,7 @@ async fn mysql_backup_restore_round_trips() {
 #[tokio::test]
 #[ignore]
 async fn mongodb_backup_restore_round_trips() {
-    let Some(url) = env("L8DB_BACKUP_MONGO_URL") else {
-        return;
-    };
+    let url = required("L8DB_BACKUP_MONGO_URL");
     let pool = create_pool_state();
     let adapter =
         create_adapter_from_string(DatabaseKind::Mongodb, &url, Some("bkdb"), pool.clone())

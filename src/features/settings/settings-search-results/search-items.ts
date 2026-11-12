@@ -11,6 +11,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   hotkeys: "Tastenkürzel",
   statistics: "Nutzungsstatistik",
   about: "Über & Updates",
+  storage: "Speicher",
+  discovery: "Tipps & Hinweise",
 };
 
 export const SEARCH_ITEMS = SETTINGS_CATALOG.map((setting) => ({

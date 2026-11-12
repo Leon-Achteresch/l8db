@@ -25,7 +25,27 @@ const LABELS: Record<string, string> = {
   "l8db.ai": "KI",
   "l8db.boot": "Startansicht",
   "l8db-dashboards": "Dashboards",
+  "l8db.team": "Team-Verbindungen",
+  "l8db.tour": "Rundgang",
+  "l8db.blog-suggestions": "Blog-Hinweise",
+  "l8db.feature-videos": "Funktionsvideos",
+  "l8db.secret-edits": "Passwort-Änderungen",
+  "l8db.schema-compare": "Schema-Vergleich",
+  "l8db.home-layout": "Startseite",
+  "l8db.split-view": "Geteilte Ansicht",
+  "l8db.workbench": "Arbeitsbereich",
+  "l8db.query-workspace": "Abfrage-Arbeitsbereich",
+  "l8db.ui-plugins": "UI-Plugins",
+  "l8db.sync": "Synchronisierung",
 };
+
+const PREFIX_LABELS: [string, string][] = [
+  ["l8db.new-feature-seen", "Neu-Markierungen"],
+  ["l8db.discovery.", "Entdecken"],
+  ["l8db.island.", "Statusinsel"],
+  ["l8db.usage-statistics.", "Nutzungsstatistik"],
+  ["l8db.sync-", "Synchronisierung"],
+];
 
 export const PROTECTED_STORAGE_KEYS = new Set(["l8db.connections"]);
 export const CONNECTION_REMOVABLE_KEYS = new Set([
@@ -57,7 +77,11 @@ export function entryBytes(key: string, value: string) {
 export function storageLabel(key: string): string {
   if (key.startsWith(STORAGE_BACKUP_PREFIX))
     return `Sicherung: ${storageLabel(key.slice(STORAGE_BACKUP_PREFIX.length))}`;
-  return LABELS[key] ?? key.replace(/^l8db[.-]/, "");
+  return (
+    LABELS[key] ??
+    PREFIX_LABELS.find(([prefix]) => key.startsWith(prefix))?.[1] ??
+    key.replace(/^l8db[.-]/, "")
+  );
 }
 
 export function storageAreas(entries: Iterable<[string, string]>): StorageArea[] {

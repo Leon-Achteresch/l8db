@@ -1656,9 +1656,37 @@ pub(crate) fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
+fn pg_error_label(code: &str, severity: &str) -> &'static str {
+    match code {
+        "3D000" => "Datenbank nicht gefunden",
+        "42601" => "Syntaxfehler",
+        "42501" => "Keine Berechtigung",
+        "42P01" => "Tabelle nicht gefunden",
+        "42703" => "Spalte nicht gefunden",
+        "42883" => "Funktion nicht gefunden",
+        "22012" => "Division durch null",
+        "23505" => "Eindeutiger Schlüssel verletzt",
+        "23503" => "Fremdschlüssel verletzt",
+        "23502" => "NOT NULL verletzt",
+        "23514" => "CHECK-Bedingung verletzt",
+        "40P01" => "Deadlock",
+        "53300" => "Zu viele Verbindungen",
+        "57014" => "Abgebrochen",
+        "57P01" => "Sitzung vom Server beendet",
+        _ if code.starts_with("28") => "Anmeldung fehlgeschlagen",
+        _ if code.starts_with("22") => "Ungültiger Wert",
+        _ if severity == "FATAL" || severity == "PANIC" => "Verbindungsfehler",
+        _ => "Datenbankfehler",
+    }
+}
+
 pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {
     if let Some(db_err) = e.as_db_error() {
-        let mut msg = format!("{}: {}", db_err.severity(), db_err.message());
+        let mut msg = format!(
+            "{}: {}",
+            pg_error_label(db_err.code().code(), db_err.severity()),
+            db_err.message()
+        );
         if let Some(detail) = db_err.detail() {
             msg.push_str(&format!("\nDetail: {detail}"));
         }
@@ -1680,7 +1708,17 @@ pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {
         }
         msg
     } else {
-        let mut msg = format!("Datenbankfehler: {e}");
+        let text = e.to_string();
+        let label = if text.contains("error connecting to server") {
+            "Server nicht erreichbar"
+        } else if text.contains("TLS") {
+            "TLS-Verbindung fehlgeschlagen"
+        } else if text.contains("invalid configuration") {
+            "Ungültige Verbindungsangaben"
+        } else {
+            "Datenbankfehler"
+        };
+        let mut msg = format!("{label}: {e}");
         let mut source = std::error::Error::source(&e);
         while let Some(cause) = source {
             let text = cause.to_string();
@@ -2454,12 +2492,22 @@ mod tests {
                 .list_schemas()
                 .await
                 .unwrap_or_else(|e| panic!("{var} schemas: {e}"));
-            let schema = schemas.first().cloned();
-            let tables = adapter
-                .list_tables(schema.as_deref())
-                .await
-                .unwrap_or_else(|e| panic!("{var} tables: {e}"));
-            if let Some(table) = tables.first() {
+            let mut schema = schemas.first().cloned();
+            let mut tables = Vec::new();
+            for candidate in schemas.iter().map(|s| Some(s.clone())).chain([None]).take(50) {
+                tables = adapter
+                    .list_tables(candidate.as_deref())
+                    .await
+                    .unwrap_or_else(|e| panic!("{var} tables: {e}"));
+                if !tables.is_empty() {
+                    schema = candidate;
+                    break;
+                }
+            }
+            let table = tables.first().unwrap_or_else(|| {
+                panic!("{var}: kein Schema mit Tabelle gefunden, Zeilen und Zählung ungeprüft")
+            });
+            {
                 let columns = adapter
                     .list_columns(schema.as_deref(), Some(&table.name), None)
                     .await
