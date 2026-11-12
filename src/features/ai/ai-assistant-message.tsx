@@ -119,7 +119,7 @@ export function AiAssistantMessage({
         <p className="text-sm text-muted-foreground">(Keine Antwort)</p>
       )}
       {!streaming && (
-        <div className="-ml-1.5 flex items-center gap-0.5 pt-0.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/message:opacity-100 pointer-coarse:opacity-100">
+        <div className="-ml-1.5 flex items-center gap-0.5 pt-0.5">
           {message.text && (
             <AiCopyAction text={stripAiFollowups(message.text)} label="Antwort kopieren" />
           )}
