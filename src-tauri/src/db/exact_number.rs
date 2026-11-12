@@ -324,8 +324,14 @@ mod tests {
         assert_eq!(json_number("12.50"), json!("12.50"));
         assert_eq!(json_number("42"), json!(42));
         assert_eq!(json_number("9007199254740993"), json!("9007199254740993"));
-        assert_eq!(json_number("0.1000000000000000055511"), json!("0.1000000000000000055511"));
-        assert_eq!(json_text(r#"{"a":[1,{"b":null}]}"#), json!({"a": [1, {"b": null}]}));
+        assert_eq!(
+            json_number("0.1000000000000000055511"),
+            json!("0.1000000000000000055511")
+        );
+        assert_eq!(
+            json_text(r#"{"a":[1,{"b":null}]}"#),
+            json!({"a": [1, {"b": null}]})
+        );
         assert_eq!(
             json_text(r#"{"big":9007199254740993}"#),
             json!(r#"{"big":9007199254740993}"#)
@@ -337,7 +343,9 @@ mod tests {
         assert!(!exact_exponent("1.00000000000000001e+30"));
         assert!(!exact_exponent("1e+400"));
         assert_eq!(
-            quote_unsafe_top_level_numbers(r#"{"d":-1.7976931348623157e+308,"x":1.00000000000000001e+30}"#),
+            quote_unsafe_top_level_numbers(
+                r#"{"d":-1.7976931348623157e+308,"x":1.00000000000000001e+30}"#
+            ),
             r#"{"d":-1.7976931348623157e+308,"x":"1.00000000000000001e+30"}"#
         );
     }

@@ -260,7 +260,10 @@ async fn postgres_backup_restore_round_trips() {
 #[tokio::test]
 #[ignore]
 async fn postgres_old_pg_dump_is_flagged() {
-    let (url, old) = (required("L8DB_BACKUP_PG_URL"), required("L8DB_BACKUP_OLD_PG_DUMP"));
+    let (url, old) = (
+        required("L8DB_BACKUP_PG_URL"),
+        required("L8DB_BACKUP_OLD_PG_DUMP"),
+    );
     let pool = create_pool_state();
     let paths: HashMap<String, String> = [("pg_dump".to_string(), old)].into();
     let probed = probe(DatabaseKind::Postgres, &url, None, &paths, pool.clone()).await;

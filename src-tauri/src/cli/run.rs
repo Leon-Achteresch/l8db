@@ -454,11 +454,19 @@ pub(super) async fn relations(
         }
     }
     if kind == DatabaseKind::Postgres {
-        if let Ok(views) =
-            guarded(job, kind, 60, session.adapter.list_materialized_views(schema)).await
+        if let Ok(views) = guarded(
+            job,
+            kind,
+            60,
+            session.adapter.list_materialized_views(schema),
+        )
+        .await
         {
             for v in views {
-                if !found.iter().any(|t| t.schema == v.schema && t.name == v.name) {
+                if !found
+                    .iter()
+                    .any(|t| t.schema == v.schema && t.name == v.name)
+                {
                     found.push(Relation {
                         schema: v.schema,
                         name: v.name,
@@ -503,7 +511,11 @@ async fn search_path_first<'a>(
 }
 
 pub(super) fn unquoted_column(name: String) -> String {
-    match name.trim().strip_prefix('"').and_then(|n| n.strip_suffix('"')) {
+    match name
+        .trim()
+        .strip_prefix('"')
+        .and_then(|n| n.strip_suffix('"'))
+    {
         Some(inner) if !inner.is_empty() => inner.replace("\"\"", "\""),
         _ => name,
     }
@@ -534,8 +546,18 @@ fn oracle_case(
         return (schema, table);
     }
     let raw = raw.trim();
-    let schema = schema.map(|s| if raw.starts_with('"') { s } else { s.to_uppercase() });
-    let table = if raw.ends_with('"') { table } else { table.to_uppercase() };
+    let schema = schema.map(|s| {
+        if raw.starts_with('"') {
+            s
+        } else {
+            s.to_uppercase()
+        }
+    });
+    let table = if raw.ends_with('"') {
+        table
+    } else {
+        table.to_uppercase()
+    };
     (schema, table)
 }
 
@@ -545,14 +567,23 @@ async fn synonym_target(
     table: &str,
     job: &str,
 ) -> Option<Relation> {
-    let synonyms = guarded(job, session.target.kind, 60, session.adapter.list_synonyms(schema))
-        .await
-        .ok()?;
+    let synonyms = guarded(
+        job,
+        session.target.kind,
+        60,
+        session.adapter.list_synonyms(schema),
+    )
+    .await
+    .ok()?;
     let found = synonyms
         .iter()
         .filter(|s| s.db_link.is_none())
         .find(|s| s.name == table)
-        .or_else(|| synonyms.iter().find(|s| s.db_link.is_none() && s.name.eq_ignore_ascii_case(table)))?;
+        .or_else(|| {
+            synonyms
+                .iter()
+                .find(|s| s.db_link.is_none() && s.name.eq_ignore_ascii_case(table))
+        })?;
     Some(Relation {
         schema: found.target_owner.clone(),
         name: found.target_name.clone(),
@@ -655,8 +686,16 @@ async fn table(
                     guarded(job, kind, 60, adapter.list_synonyms(schema.as_deref())).await
                 {
                     rows.extend(synonyms.iter().map(|s| {
-                        let link = s.db_link.as_deref().map(|l| format!("@{l}")).unwrap_or_default();
-                        json!([s.owner, s.name, format!("synonym → {}.{}{link}", s.target_owner, s.target_name)])
+                        let link = s
+                            .db_link
+                            .as_deref()
+                            .map(|l| format!("@{l}"))
+                            .unwrap_or_default();
+                        json!([
+                            s.owner,
+                            s.name,
+                            format!("synonym → {}.{}{link}", s.target_owner, s.target_name)
+                        ])
                     }));
                 }
             }
@@ -673,18 +712,28 @@ async fn table(
         TableCommand::Describe { table } => {
             let Relation { schema, name, .. } = locate(session, &table, job).await?;
             if kind == DatabaseKind::Postgres {
-                let rows: Vec<Value> =
-                    guarded(job, kind, 60, adapter.list_table_columns_detailed(&schema, &name))
-                        .await?
-                        .iter()
-                        .map(|c| {
-                            let data_type = match c.character_maximum_length {
-                                Some(length) => format!("{}({length})", c.data_type),
-                                None => c.data_type.clone(),
-                            };
-                            json!([c.name, data_type, c.is_nullable, c.column_default, c.is_primary_key])
-                        })
-                        .collect();
+                let rows: Vec<Value> = guarded(
+                    job,
+                    kind,
+                    60,
+                    adapter.list_table_columns_detailed(&schema, &name),
+                )
+                .await?
+                .iter()
+                .map(|c| {
+                    let data_type = match c.character_maximum_length {
+                        Some(length) => format!("{}({length})", c.data_type),
+                        None => c.data_type.clone(),
+                    };
+                    json!([
+                        c.name,
+                        data_type,
+                        c.is_nullable,
+                        c.column_default,
+                        c.is_primary_key
+                    ])
+                })
+                .collect();
                 return write(output::write_rows(
                     out,
                     format,
@@ -699,14 +748,19 @@ async fn table(
                 ));
             }
             let rows: Vec<Value> = if kind == DatabaseKind::Oracle {
-                guarded(job, kind, 60, adapter.list_table_columns_detailed(&schema, &name))
-                    .await?
-                    .iter()
-                    .map(|c| match c.ordinal_position {
-                        0 => json!([c.name, format!("{} unsichtbar", c.data_type)]),
-                        _ => json!([c.name, c.data_type]),
-                    })
-                    .collect()
+                guarded(
+                    job,
+                    kind,
+                    60,
+                    adapter.list_table_columns_detailed(&schema, &name),
+                )
+                .await?
+                .iter()
+                .map(|c| match c.ordinal_position {
+                    0 => json!([c.name, format!("{} unsichtbar", c.data_type)]),
+                    _ => json!([c.name, c.data_type]),
+                })
+                .collect()
             } else {
                 guarded(
                     job,
@@ -754,9 +808,10 @@ async fn table(
             )
             .await?;
             if let Some(column) = order_by.filter(|c| {
-                !data.columns.iter().any(|d| {
-                    d == c || (kind == DatabaseKind::Oracle && d.eq_ignore_ascii_case(c))
-                })
+                !data
+                    .columns
+                    .iter()
+                    .any(|d| d == c || (kind == DatabaseKind::Oracle && d.eq_ignore_ascii_case(c)))
             }) {
                 eprintln!("Hinweis: Spalte „{column}“ gibt es nicht, Sortierung ignoriert.");
             }
@@ -861,7 +916,11 @@ fn split_statements(
                     )
                 }) {
                     break;
-                } else if !text.trim().to_ascii_uppercase().starts_with("SET SERVEROUT") {
+                } else if !text
+                    .trim()
+                    .to_ascii_uppercase()
+                    .starts_with("SET SERVEROUT")
+                {
                     note(format!(
                         "Hinweis: SQL*Plus-Befehl übersprungen: {}",
                         text.trim()
@@ -1032,7 +1091,9 @@ pub(super) async fn run_prepared(
     if session.target.kind == DatabaseKind::Postgres && db::server_output::sink().is_none() {
         return db::server_output::capture(
             db::server_output::Messages::default(),
-            Box::pin(run_prepared(session, database, prepared, options, job, emit)),
+            Box::pin(run_prepared(
+                session, database, prepared, options, job, emit,
+            )),
         )
         .await;
     }
@@ -1157,7 +1218,10 @@ fn notices(emit: &mut impl FnMut(Step) -> Result<(), String>) -> Result<(), Stri
         .map(|sink| sink.take())
         .unwrap_or_default();
     for message in messages {
-        emit(Step::Note(format!("{}: {}", message.level, message.message)))?;
+        emit(Step::Note(format!(
+            "{}: {}",
+            message.level, message.message
+        )))?;
     }
     Ok(())
 }
@@ -1274,14 +1338,14 @@ pub(super) fn open_at_end(kind: DatabaseKind, ran: &[String]) -> bool {
 }
 
 pub(super) fn rollback_note(kind: DatabaseKind, ran: &[String]) -> &'static str {
-    let controls = ran
-        .iter()
-        .enumerate()
-        .any(|(index, statement)| match control(kind, statement) {
-            Some(Control::Commit) => true,
-            Some(Control::Open) => kind == DatabaseKind::Mysql && index > 0,
-            _ => false,
-        });
+    let controls =
+        ran.iter()
+            .enumerate()
+            .any(|(index, statement)| match control(kind, statement) {
+                Some(Control::Commit) => true,
+                Some(Control::Open) => kind == DatabaseKind::Mysql && index > 0,
+                _ => false,
+            });
     let implicit = matches!(kind, DatabaseKind::Mysql | DatabaseKind::Oracle)
         && ran.iter().any(|statement| redact::is_ddl(statement));
     if controls {
@@ -1343,7 +1407,11 @@ async fn postgres_cursor(
     if let Err(error) = declared {
         let _ = tx.rollback().await;
         let leading = statement.chars().take_while(|c| c.is_whitespace()).count();
-        return read_only_violation(shift_position(error, CURSOR_PREFIX.chars().count(), leading));
+        return read_only_violation(shift_position(
+            error,
+            CURSOR_PREFIX.chars().count(),
+            leading,
+        ));
     }
     let fetched = guarded(
         job,

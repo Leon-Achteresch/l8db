@@ -163,10 +163,13 @@ pub fn mongo_writes(command: &Document) -> bool {
         return true;
     };
     let map_reduce_out = name.eq_ignore_ascii_case("mapReduce")
-        && command
-            .get("out")
-            .is_some_and(|out| out.as_document().is_none_or(|doc| !doc.contains_key("inline")));
-    !MONGO_READ.contains(&name.as_str()) || map_reduce_out || stages(&Bson::Document(command.clone()))
+        && command.get("out").is_some_and(|out| {
+            out.as_document()
+                .is_none_or(|doc| !doc.contains_key("inline"))
+        });
+    !MONGO_READ.contains(&name.as_str())
+        || map_reduce_out
+        || stages(&Bson::Document(command.clone()))
 }
 
 pub fn mongo_check(
