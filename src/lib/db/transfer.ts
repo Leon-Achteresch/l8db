@@ -126,6 +126,7 @@ export interface TransferOutcome {
   atomic: boolean;
   committed: boolean;
   rolledBack: boolean;
+  kept: boolean;
   leftovers: string[];
   warnings: string[];
   error: string | null;
