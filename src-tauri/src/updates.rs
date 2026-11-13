@@ -188,6 +188,23 @@ pub fn cancel_update_release_request(request_id: String) {
     }
 }
 
+#[cfg(windows)]
+fn stop_background_instances() {
+    let _ = crate::process::std_command("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'l8db.exe' -and $_.ProcessId -ne $PID -and $_.CommandLine -match '--(mcp|automation-tick|run-task|list-tasks|ai-mcp-relay)' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; Wait-Process -Id $_.ProcessId -Timeout 5 -ErrorAction SilentlyContinue }",
+        ])
+        .status();
+}
+
+#[cfg(not(windows))]
+fn stop_background_instances() {}
+
 #[tauri::command]
 pub async fn check_update<R: Runtime>(
     webview: Webview<R>,
@@ -197,7 +214,14 @@ pub async fn check_update<R: Runtime>(
 ) -> Result<Option<UpdateMetadata>, String> {
     let channel = effective_channel(&channel)?;
     let timeout = Duration::from_millis(timeout);
-    let mut builder = webview.updater_builder().timeout(timeout);
+    let app = webview.app_handle().clone();
+    let mut builder = webview
+        .updater_builder()
+        .timeout(timeout)
+        .on_before_exit(move || {
+            app.cleanup_before_exit();
+            stop_background_instances();
+        });
     if let Some(version) = version.as_deref() {
         let endpoint = selected_endpoint(version, &channel)?;
         let expected = semver::Version::parse(version).map_err(|error| error.to_string())?;
