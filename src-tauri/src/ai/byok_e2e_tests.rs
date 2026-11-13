@@ -251,11 +251,11 @@ async fn sqlite_http_scenario(allowed: bool) {
     let rounds = captured
         .iter()
         .filter(|event| event["kind"] == "usage")
-        .map(|event| {
-            (
-                event["data"]["round"].as_u64().unwrap(),
+        .filter_map(|event| {
+            Some((
+                event["data"]["round"].as_u64()?,
                 event["data"]["usage"].clone(),
-            )
+            ))
         })
         .collect::<std::collections::BTreeMap<_, _>>();
     assert_eq!(rounds.len(), 2);
