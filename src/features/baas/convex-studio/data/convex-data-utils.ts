@@ -15,6 +15,9 @@ import type { ConvexStudioDeployment } from "../convex-studio-sections";
 export const PAGE_SIZE = 50;
 export const MAX_IMPORT_BYTES = 8 * 1024 * 1024;
 
+export const tableScope = (deployment: ConvexStudioDeployment) =>
+  `${deployment.profileId}:${deployment.projectId}:${deployment.deploymentName}`;
+
 export const dataKey = (deployment: ConvexStudioDeployment) => [
   "convex",
   deployment.profileId,

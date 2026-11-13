@@ -1578,7 +1578,7 @@ export async function seedSupabaseStudio(page: Page): Promise<void> {
         case "supabase_studio_tables_list": {
           const schema = String(a.schema ?? "public");
           const list = allTables()
-            .filter((t) => t.schema === schema && matches(t.name, a.search))
+            .filter((t) => (schema === "" || t.schema === schema) && matches(t.name, a.search))
             .map((t) => ({
               schema: t.schema,
               name: t.name,

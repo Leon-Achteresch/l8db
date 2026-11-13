@@ -98,6 +98,7 @@ const SUITES = {
     "tests/perf-monitor-logs.test.ts",
     "tests/perf-segmented-control.test.ts",
     "tests/perf-palette-loading.test.ts",
+    "tests/perf-studio-palette.test.ts",
     "tests/perf-onboarding.test.ts",
     "tests/perf-seasonal-browser.test.ts",
     "tests/query-qol-browser.test.ts",

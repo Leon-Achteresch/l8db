@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { Database } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -18,17 +19,30 @@ import { ConvexDataDocumentDialog } from "./convex-data-document-dialog";
 import { ConvexDataDocumentSheet } from "./convex-data-document-sheet";
 import { ConvexDataTableList } from "./convex-data-table-list";
 import { ConvexDataTableView } from "./convex-data-table-view";
-import { dataKey, withoutSystemFields } from "./convex-data-utils";
+import { dataKey, tableScope, withoutSystemFields } from "./convex-data-utils";
+
+const route = getRouteApi("/baas");
 
 export function ConvexDataSection({ deployment }: ConvexStudioSectionProps) {
   const feature = useNewFeatureVisibility<HTMLSpanElement>("baas.convex.studio.data");
   const queryClient = useQueryClient();
-  const [table, setTable] = useState<string | null>(null);
+  const search = route.useSearch();
+  const navigate = useNavigate();
+  const scope = tableScope(deployment);
+  const table = search.table && search.tableProject === scope ? search.table : null;
   const [detail, setDetail] = useState<{ table: string; document: ConvexDocument } | null>(null);
   const [resolving, setResolving] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const refresh = () => queryClient.invalidateQueries({ queryKey: dataKey(deployment) });
+
+  function setTable(next: string | null) {
+    void navigate({
+      to: "/baas",
+      search: { ...search, table: next ?? undefined, tableProject: next ? scope : undefined },
+      replace: true,
+    });
+  }
 
   async function openReference(id: string) {
     setResolving(id);

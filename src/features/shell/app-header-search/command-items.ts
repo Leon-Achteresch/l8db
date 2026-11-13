@@ -38,6 +38,7 @@ import {
   objectEntryHint,
   objectEntryKeywords,
 } from "@/lib/object-search";
+import type { StudioPaletteEntry, StudioPaletteTable } from "@/lib/studio-palette";
 import { useTableTabs } from "@/lib/table-tabs";
 
 const UNUSED_LIMIT = 40;
@@ -146,6 +147,46 @@ export function buildObjectItems(
       });
     },
   }));
+}
+
+export function buildStudioItems(
+  entry: StudioPaletteEntry,
+  tables: StudioPaletteTable[] | undefined,
+  setOpen: (open: boolean) => void,
+): CommandItem[] {
+  const scope = entry.read();
+  return [
+    ...scope.sections
+      .filter((section) => !section.disabled)
+      .map(
+        (section): CommandItem => ({
+          id: `studio:${entry.key}:section:${section.id}`,
+          label: section.label,
+          kind: "command",
+          group: scope.label,
+          icon: section.icon,
+          onSelect: () => {
+            setOpen(false);
+            void entry.read().openSection(section.id);
+          },
+        }),
+      ),
+    ...(tables ?? []).map(
+      (table): CommandItem => ({
+        id: `studio:${entry.key}:table:${table.schema ?? ""}.${table.name}`,
+        label: table.name,
+        kind: "object",
+        group: OBJECT_TYPE_PLURAL.table,
+        icon: Table,
+        hint: table.schema,
+        keywords: table.schema ? [`${table.schema}.${table.name}`] : undefined,
+        onSelect: () => {
+          setOpen(false);
+          void entry.read().tables?.open(table);
+        },
+      }),
+    ),
+  ];
 }
 
 export function buildPackageMemberItems(

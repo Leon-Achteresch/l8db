@@ -1,4 +1,5 @@
 import { useHotkey, useHotkeys } from "@tanstack/react-hotkeys";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Compass,
@@ -43,6 +44,7 @@ import { supports } from "@/lib/providers";
 import { useAllPackageMembersQuery, useAllSchemaObjectsQuery } from "@/lib/queries";
 import { useSettingsStore } from "@/lib/settings";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
+import { useStudioPalette } from "@/lib/studio-palette";
 import { useTourStore } from "@/lib/tour/store";
 import { cn } from "@/lib/utils";
 
@@ -96,14 +98,22 @@ export function AppHeaderSearch() {
   const shortcutsMounted = useRef(false);
   if (objectSearchOpen) objectSearchMounted.current = true;
   if (shortcutsOpen) shortcutsMounted.current = true;
-  const { data: objects } = useAllSchemaObjectsQuery(open && Boolean(builders));
+  const studio = useStudioPalette((state) => state.entry);
+  const { data: studioTables } = useQuery({
+    queryKey: ["studio-palette", studio?.key],
+    queryFn: () => studio?.read().tables?.load() ?? [],
+    enabled: open && Boolean(builders) && Boolean(studio?.hasTables),
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const { data: objects } = useAllSchemaObjectsQuery(open && Boolean(builders) && !studio);
   const hasPackages = useMemo(
     () => Boolean(objects?.functions?.some((fn) => fn.return_type === "PACKAGE")),
     [objects],
   );
-  const { data: packageMembers } = useAllPackageMembersQuery(open && hasPackages);
-  const canSearchColumns = supports(activeConnection, "column_search");
-  const canSearchSource = supports(activeConnection, "source_search");
+  const { data: packageMembers } = useAllPackageMembersQuery(open && hasPackages && !studio);
+  const canSearchColumns = !studio && supports(activeConnection, "column_search");
+  const canSearchSource = !studio && supports(activeConnection, "source_search");
   const extensionHost = useExtensionHost();
   const [extensionVersion, setExtensionVersion] = useState(0);
   const hotkeyOverrideVersion = useHotkeysStore((state) => state.overrides);
@@ -240,6 +250,13 @@ export function AppHeaderSearch() {
     () => builders?.buildObjectItems(objects, setOpen, navigate) ?? NO_ITEMS,
     [builders, objects, navigate],
   );
+  const studioItems = useMemo(
+    () =>
+      open && builders && studio
+        ? builders.buildStudioItems(studio, studioTables, setOpen)
+        : NO_ITEMS,
+    [open, builders, studio, studioTables],
+  );
   const packageMemberItems = useMemo(
     () => builders?.buildPackageMemberItems(packageMembers, setOpen, navigate) ?? NO_ITEMS,
     [builders, packageMembers, navigate],
@@ -363,8 +380,8 @@ export function AppHeaderSearch() {
       ...connectionItems,
       connectionManagerItem,
       ...deepSearchItem,
-      ...objectItems,
-      ...packageMemberItems,
+      ...(studio ? studioItems : objectItems),
+      ...(studio ? NO_ITEMS : packageMemberItems),
       ...notebookItems,
       ...compareItems,
       ...extensionItems,
@@ -388,6 +405,8 @@ export function AppHeaderSearch() {
     recentNotebooks,
     objectItems,
     packageMemberItems,
+    studio,
+    studioItems,
     settingsItems,
     onSelectConnection,
     isSwitching,
