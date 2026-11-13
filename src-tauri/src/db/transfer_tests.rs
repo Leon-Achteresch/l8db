@@ -2431,3 +2431,18 @@ async fn postgres_replace_mirrors_and_overwrites_selection() {
         .await
         .unwrap();
 }
+
+#[test]
+fn overwrite_failures_are_collected_instead_of_aborting() {
+    let mut failed = Vec::new();
+    assert!(skip(true, &mut failed, Err("ORA-00942".into())).is_ok());
+    assert!(skip(true, &mut failed, Ok(())).is_ok());
+    assert_eq!(failed, vec!["ORA-00942".to_string()]);
+    assert!(skip(false, &mut failed, Err("x".into())).is_err());
+    assert_eq!(failed.len(), 1);
+    let many: Vec<String> = (0..25).map(|n| format!("Fehler {n}")).collect();
+    let summary = failure_summary(&many);
+    assert!(summary.starts_with("Fehlgeschlagene Schritte: 25."));
+    assert!(summary.contains("Fehler 19") && !summary.contains("Fehler 20"));
+    assert!(summary.ends_with("… und 5 weitere"));
+}
