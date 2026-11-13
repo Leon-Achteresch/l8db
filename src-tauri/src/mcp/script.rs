@@ -21,7 +21,7 @@ pub fn tool_definition() -> Value {
             "commit": {"type": "boolean"},
             "onError": {"type": "string", "enum": ["stop", "continue"]},
             "limit": {"type": "integer", "minimum": 1, "description": "Rows per result, default 20"}
-        }, "required": ["connection", "sql"]}
+        }, "required": ["sql"]}
     })
 }
 

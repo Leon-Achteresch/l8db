@@ -12,7 +12,7 @@ pub fn tool_definition() -> Value {
             "connection": {"type": "string"},
             "database": server::database_arg(),
             "category": {"type": "string", "enum": ["security", "performance", "schema"]}
-        }, "required": ["connection"]}
+        }}
     })
 }
 

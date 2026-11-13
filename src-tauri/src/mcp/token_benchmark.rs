@@ -34,6 +34,7 @@ pub(super) const BUDGET: &[(&str, usize)] = &[
     ("byok start catalog", 10_622),
     ("shop.revenue_per_customer", 1_450),
     ("shop.overview", 1_000),
+    ("shop.map", 1_200),
     ("huge.overview", 900),
     ("huge.tenant_id_tables", 2_200),
     ("huge.wide_table_column", 160),
@@ -551,6 +552,19 @@ pub(super) fn tasks() -> Vec<Task> {
                     &["customer_id", "orders_customer"],
                 ),
             ],
+        },
+        Task {
+            id: "shop.map",
+            steps: vec![step(
+                "overview",
+                json!({"connection": "Shop"}),
+                &[
+                    "14 tables",
+                    "main.order_items: id, order_id→orders.id, product_id→products.id, quantity, unit_price",
+                    "main.audit_log: id, table_name, action, at",
+                    "next: query with these names",
+                ],
+            )],
         },
         Task {
             id: "huge.overview",

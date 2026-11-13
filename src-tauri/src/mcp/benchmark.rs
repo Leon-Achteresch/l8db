@@ -26,7 +26,7 @@ pub fn tool_definition() -> Value {
             "file": {"type": "string", "description": "Absolute path"},
             "repeats": {"type": "integer", "minimum": 1, "maximum": MAX_REPEATS},
             "concurrency": {"type": "integer", "minimum": 1, "maximum": MAX_CONCURRENCY}
-        }, "required": ["connection"]}
+        }}
     })
 }
 

@@ -158,7 +158,7 @@ pub fn explain_definition() -> Value {
             "database": super::server::database_arg(),
             "sql": {"type": "string"},
             "analyze": {"type": "boolean"}
-        }, "required": ["connection", "sql"]}
+        }, "required": ["sql"]}
     })
 }
 
@@ -171,7 +171,7 @@ pub fn relations_definition() -> Value {
             "database": super::server::database_arg(),
             "from": {"type": "string"},
             "to": {"type": "string"}
-        }, "required": ["connection", "from"]}
+        }, "required": ["from"]}
     })
 }
 
@@ -837,7 +837,7 @@ fn dry_run_supported(kind: DatabaseKind) -> bool {
 }
 
 impl Server {
-    async fn graph(
+    pub(super) async fn graph(
         &mut self,
         config: &McpConfig,
         connection: &McpConnection,

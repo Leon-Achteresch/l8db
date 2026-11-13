@@ -48,7 +48,7 @@ pub fn tool_definition() -> Value {
                 "sql": {"type": "string"}
             }, "required": ["name", "sql"]}},
             "rules": {"type": "boolean", "description": "Re-check saved data rules; default true"}
-        }, "required": ["connection", "statements"]}
+        }, "required": ["statements"]}
     })
 }
 

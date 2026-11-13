@@ -144,12 +144,12 @@ pub fn tool_definitions() -> Value {
         },
         {
             "name": "overview",
-            "description": "Fixed-size map: schemas with tables, rows, size; largest tables, name prefixes, FK hubs, object counts. schema zooms in.",
+            "description": "Start here. Map: schemas with tables, rows, size; largest tables, FK hubs; small databases list every table with columns. schema zooms in.",
             "inputSchema": {"type": "object", "properties": {
                 "connection": {"type": "string"},
                 "database": database_arg(),
                 "schema": {"type": "string"}
-            }, "required": ["connection"]}
+            }}
         },
         {
             "name": "search",
@@ -159,11 +159,11 @@ pub fn tool_definitions() -> Value {
                 "database": database_arg(),
                 "term": {"type": "string"},
                 "kind": {"type": "string"},
-                "in": {"type": "string"},
+                "in": {"type": "string", "enum": ["names", "source"]},
                 "limit": {"type": "integer"},
                 "offset": {"type": "integer"},
                 "refresh": {"type": "boolean"}
-            }, "required": ["connection"]}
+            }}
         },
         {
             "name": "describe",
@@ -176,7 +176,7 @@ pub fn tool_definitions() -> Value {
                 "columns": {"type": "string"},
                 "lines": {"type": "string"},
                 "details": {"type": "boolean"}
-            }, "required": ["connection"]}
+            }}
         },
         super::insight::relations_definition(),
         super::insight::explain_definition(),
@@ -190,7 +190,7 @@ pub fn tool_definitions() -> Value {
                 "sql": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1},
                 "cellChars": {"type": "integer", "minimum": 1}
-            }, "required": ["connection", "sql"]}
+            }, "required": ["sql"]}
         },
         super::dashboard::tool_definition(),
         super::benchmark::tool_definition(),
@@ -210,7 +210,7 @@ pub fn tool_definitions() -> Value {
                 "database": database_arg(),
                 "sql": {"type": "string"},
                 "confirm": {"type": "boolean"}
-            }, "required": ["connection", "sql", "confirm"]}
+            }, "required": ["sql", "confirm"]}
         }
     ])
 }

@@ -11,6 +11,8 @@ const TOP_TABLES: usize = 10;
 const TOP_PREFIXES: usize = 10;
 const TOP_HUBS: usize = 8;
 const SAMPLE_NAMES: usize = 8;
+const SMALL_TABLES: usize = 30;
+const SMALL_COLUMNS: usize = 300;
 
 #[derive(Default, Clone)]
 pub(super) struct Stat {
@@ -430,6 +432,45 @@ fn object_counts(view: &View) -> String {
         .join(", ")
 }
 
+fn table_map(view: &View, edges: &[Edge]) -> Vec<String> {
+    let tables = view.catalog.tables();
+    tables
+        .list
+        .iter()
+        .filter(|table| tables.visible(table, view.allowed))
+        .map(|table| {
+            let (schema, name) = (tables.schema(table), tables.name(table));
+            let columns: Vec<String> = table
+                .columns
+                .iter()
+                .map(|&column| {
+                    let column = tables.column_names[tables.column_name[column as usize] as usize]
+                        .original
+                        .as_str();
+                    edges
+                        .iter()
+                        .filter(|edge| edge.from.0 == schema && edge.from.1 == name)
+                        .find_map(|edge| {
+                            let (_, to) = edge.pairs.iter().find(|(from, _)| from == column)?;
+                            Some(if edge.to.0 == schema {
+                                format!("{column}→{}.{to}", edge.to.1)
+                            } else {
+                                format!("{column}→{}.{to}", qualified(&edge.to.0, &edge.to.1))
+                            })
+                        })
+                        .unwrap_or_else(|| column.to_string())
+                })
+                .collect();
+            let rows = view
+                .relation(schema, name)
+                .and_then(|entry| entry.rows)
+                .map(|count| format!(" ≈{}", count_text(count)))
+                .unwrap_or_default();
+            format!("{}{rows}: {}", tables.qualified(table), columns.join(", "))
+        })
+        .collect()
+}
+
 pub(super) fn render(
     view: &View,
     edges: Option<&[Edge]>,
@@ -478,6 +519,15 @@ pub(super) fn render(
         summary.push_str(&format!("; {objects}"));
     }
     lines.push(summary);
+    if total.tables <= SMALL_TABLES && columns <= SMALL_COLUMNS {
+        lines.push(match edges {
+            Some(_) => "tables with columns (→ foreign key):".into(),
+            None => "tables with columns:".into(),
+        });
+        lines.extend(table_map(view, edges.unwrap_or_default()));
+        lines.push("next: query with these names; describe table=<name> adds types, keys, indexes; search kind=V,F,P lists views and routines".into());
+        return Ok(cap(lines.join("\n"), max_chars));
+    }
     let mut ranked: Vec<&Vec<u32>> = groups.iter().collect();
     ranked.sort_by_key(|members| {
         let mut sum = Stat::default();
@@ -670,8 +720,19 @@ impl Server {
         }
         let (catalog, objects, notes) = self.discover(config, connection).await?;
         let keys = self.keys(config, connection, &catalog).await;
+        let small = arg_str(args, "schema").trim().is_empty() && {
+            let tables = catalog.tables();
+            tables
+                .list
+                .iter()
+                .filter(|table| tables.visible(table, connection.allowed_schemas()))
+                .take(SMALL_TABLES + 1)
+                .count()
+                <= SMALL_TABLES
+        };
         let graph = match &keys {
             Some(_) => None,
+            None if small => self.graph(config, connection).await.ok(),
             None => super::insight::cached(connection),
         };
         let edges: Option<&[Edge]> = match (&keys, &graph) {
@@ -681,5 +742,73 @@ impl Server {
         };
         let view = View::with(&catalog, connection.allowed_schemas(), objects, notes);
         render(&view, edges, args, config.max_chars)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::catalog::Catalog;
+    use super::super::discovery::Notes;
+    use super::*;
+    use crate::db::ColumnInfo;
+    use serde_json::json;
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    fn catalog(tables: usize, columns: usize) -> Catalog {
+        Catalog::new(Arc::new(
+            (0..tables)
+                .flat_map(|table| {
+                    (0..columns).map(move |column| ColumnInfo {
+                        schema: "app".into(),
+                        table: format!("t{table:02}"),
+                        name: format!("c{column}"),
+                        data_type: "int".into(),
+                    })
+                })
+                .collect(),
+        ))
+    }
+
+    fn overview(tables: usize, columns: usize, edges: Option<&[Edge]>) -> String {
+        let catalog = catalog(tables, columns);
+        let view = View::with(&catalog, &[], None, Notes::default());
+        render(&view, edges, &json!({}), 20_000).unwrap()
+    }
+
+    #[test]
+    fn small_databases_list_every_table_with_columns_within_a_fixed_bound() {
+        let edges = [Edge {
+            from: ("app".into(), "t01".into()),
+            to: ("app".into(), "t00".into()),
+            pairs: vec![("c1".into(), "c0".into())],
+        }];
+        let per_table = SMALL_COLUMNS / SMALL_TABLES;
+        let started = Instant::now();
+        let small = overview(SMALL_TABLES, per_table, Some(&edges));
+        let elapsed = started.elapsed();
+        assert!(
+            small.contains("tables with columns (→ foreign key):")
+                && small.contains("\napp.t01: c0, c1→t00.c0, c2")
+                && small.contains("\napp.t29: c0, ")
+                && small.contains("\nnext: query with these names"),
+            "{small}"
+        );
+        assert!(small.len() < 2_500, "{}", small.len());
+        assert!(elapsed < Duration::from_millis(50), "{elapsed:?}");
+        let unknown = overview(2, 2, None);
+        assert!(
+            unknown.contains("tables with columns:\napp.t00: c0, c1\n"),
+            "{unknown}"
+        );
+        for large in [
+            overview(SMALL_TABLES + 1, 2, Some(&edges)),
+            overview(SMALL_TABLES, per_table + 1, Some(&edges)),
+        ] {
+            assert!(
+                !large.contains("tables with columns") && large.contains("next: overview schema="),
+                "{large}"
+            );
+        }
     }
 }

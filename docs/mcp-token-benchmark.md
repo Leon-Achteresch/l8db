@@ -608,3 +608,42 @@ Review mit einer Fix-Runde (Resources-Sichtbarkeit, Protokoll, Live-Fixes). Alle
 - **Oracle-Routinen:** Hat eine Routine Argumente mit zusammen mehr als 4.000 Byte, scheitert `LISTAGG`. Dann gilt der Rückfall auf den Adapter, der nur das eigene Schema kennt. Die Sammelabfrage mit korrelierten Unterabfragen auf `ALL_ARGUMENTS` ist nicht an großen Wörterbüchern gemessen.
 - **Informationsabfluss:** `SHOW PROCESSLIST`, `SHOW GRANTS` und ähnliche Anweisungen bleiben erlaubt (nur Lesen, zeigen aber Anweisungen anderer Sitzungen).
 - **Read-only:** Bei MySQL, ClickHouse und SQL Server erzwingt nur die lexikalische Prüfung Read-only. Ein Datenbankbenutzer ohne Schreibrechte bleibt die empfohlene zweite Schicht.
+
+## Phase 5: opencode und schwache Modelle
+
+Gemessen mit opencode 2.2.6 gegen `target/debug/l8db --mcp`, eine schreibgeschützte SQLite-Verbindung (9 Tabellen, 40 Spalten, 1 View, synthetische Daten), alle anderen opencode-Tools gesperrt. Maschine wie oben.
+
+Was opencode dem Modell zeigt (aus einer mitgeschnittenen Anfrage):
+
+- MCP-Tools sind nicht direkt aufrufbar. Das Modell schreibt JavaScript für ein `execute`-Tool („Code Mode“) und ruft darin `tools.l8db.<tool>({…})` auf. Das Ergebnis ist der Text des Tools als String.
+- Der Katalog zeigt pro Tool die Signatur aus dem Schema, Parameterbeschreibungen ganz, die Tool-Beschreibung aber nur bis etwa 117 Zeichen. Ohne `outputSchema` steht dort `Promise<unknown>`.
+- opencode prüft die Argumente selbst gegen das Schema. `connection` stand in `required`, obwohl der Server sie bei genau einer Verbindung ergänzt und die Instructions „Omit connection“ sagen. Der erste Aufruf ohne `connection` scheiterte deshalb mit `connection: Missing key`.
+
+Änderungen:
+
+- `connection` steht in keinem Tool mehr in `required`. Fehlt sie bei mehreren Verbindungen, nennt der Fehler wie bisher die Namen.
+- `overview` listet bei kleinen Datenbanken (höchstens 30 Tabellen und 300 Spalten) jede Tabelle mit Spalten und Fremdschlüsseln (`kunde_id→kunden.id`) und ersetzt damit `search` und `describe` vor der ersten Abfrage. Datenbanktypen ohne Sammelabfrage lesen die Fremdschlüssel dafür einmal je Tabelle (höchstens 30 Aufrufe, 8 parallel, danach aus dem Graph-Cache). Größere Datenbanken bekommen die unveränderte Karte.
+- Die Beschreibung von `overview` beginnt mit „Start here“, `search.in` ist ein Enum (`names`, `source`).
+
+Ergebnis, je ein Lauf pro Frage (vier Fragen mit bekannter Antwort, Haiku ohne Frage 2):
+
+| Modell | richtig vorher → nachher | Tool-Aufrufe | fehlgeschlagene Aufrufe | Eingabe-Tokens |
+|---|---|---:|---:|---:|
+| github-copilot/gemini-3.8-flash (4 Fragen) | 4/4 → 4/4 | 45 → 24 | 1 → 0 | 235.206 → 133.843 |
+| github-copilot/claude-haiku-4.5 (3 Fragen) | 2/3 → 3/3 | 17 → 9 | 0 → 0 | 78.262 → 40.306 |
+| Summe | 6/7 → 7/7 | 62 → 33 | 1 → 0 | 313.468 → 174.149 |
+
+Bytes und Grenzen:
+
+| Messung | Bytes | Budget B |
+|---|---:|---:|
+| `tools/list` (alle Tools) | 12.978 | 13.182 |
+| `shop.map`: ein `overview`-Aufruf auf dem Shop-Lab, 14 Tabellen mit allen Spalten und Fremdschlüsseln | 1.106 | 1.200 |
+| zum Vergleich `shop.overview`: `search` und `describe` für 3 Tabellen | 957 | 1.000 |
+
+`small_databases_list_every_table_with_columns_within_a_fixed_bound` in `overview.rs` hält die Grenze fest: 30 Tabellen mit 300 Spalten bleiben unter 2.500 Byte und 50 ms, eine Tabelle oder Spalte mehr liefert die alte Karte.
+
+Nicht gemessen und nicht behoben:
+
+- Nur zwei Modelle, je ein Lauf, eine kleine SQLite-Datenbank. Die Gratis-Modelle von opencode waren nach einem Probelauf am Tageslimit. Kein Lauf mit mehreren Verbindungen, mit einer großen Datenbank oder mit anderen Clients.
+- In jenem Probelauf schrieb `opencode/nemotron-3.5-lightning-free` den Code als `async () => { … }`, ohne die Funktion aufzurufen. opencode gibt dann `null` ohne Fehlermeldung zurück, der MCP wird nie erreicht. Das liegt im Code Mode von opencode und lässt sich im Server nicht beheben.

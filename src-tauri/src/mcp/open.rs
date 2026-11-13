@@ -37,7 +37,7 @@ pub fn tool_definition() -> Value {
                 "link": {"type": "string", "description": "Detail SELECT using :master.COLUMN; omit for table panes (foreign key) or sql using :master.COLUMN"}
             }}},
             "orientation": {"type": "string", "enum": ["horizontal", "vertical"]}
-        }, "required": ["connection"]}
+        }}
     })
 }
 

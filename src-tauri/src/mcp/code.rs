@@ -52,7 +52,7 @@ pub fn tool_definition() -> Value {
             "connection": {"type": "string"},
             "database": database_arg(),
             "code": {"type": "string"}
-        }, "required": ["connection", "code"]}
+        }, "required": ["code"]}
     })
 }
 

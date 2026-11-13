@@ -24,7 +24,7 @@ pub fn tool_definition() -> Value {
             "dimensions": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": MAX_DIMENSIONS},
             "filter": {"type": "string"},
             "depth": {"type": "integer", "minimum": 1, "maximum": 2}
-        }, "required": ["connection", "from", "current", "baseline", "dimensions"]}
+        }, "required": ["from", "current", "baseline", "dimensions"]}
     })
 }
 
