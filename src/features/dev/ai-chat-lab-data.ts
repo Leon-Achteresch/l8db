@@ -33,6 +33,8 @@ export const LAB_DONE: AiMessage = {
       name: "search",
       status: "success",
       output: "orders, order_items",
+      start: now - 64_000,
+      end: now - 63_200,
       at: 0,
     },
     {
@@ -42,6 +44,8 @@ export const LAB_DONE: AiMessage = {
       status: "success",
       sql: "SELECT date_trunc('month', created_at) AS monat, sum(total) AS umsatz\nFROM orders\nWHERE created_at >= now() - interval '6 months'\nGROUP BY 1 ORDER BY 1;",
       output: revenue,
+      start: now - 63_000,
+      end: now - 58_800,
       at: 0,
     },
     {
@@ -107,8 +111,25 @@ export const LAB_RUNNING: AiMessage = {
       ],
       at: 0,
     },
-    { type: "tool", id: "t5", name: "query", status: "success", output: "42", at: 0 },
-    { type: "tool", id: "t6", name: "drilldown", status: "running", output: "", at: 999 },
+    {
+      type: "tool",
+      id: "t5",
+      name: "query",
+      status: "success",
+      output: "42",
+      start: now - 5_000,
+      end: now - 3_400,
+      at: 0,
+    },
+    {
+      type: "tool",
+      id: "t6",
+      name: "drilldown",
+      status: "running",
+      output: "",
+      start: now - 3_000,
+      at: 999,
+    },
   ],
 };
 
@@ -141,6 +162,8 @@ export const LAB_DECISIONS: AiMessage = {
       name: "execute",
       status: "success",
       output: "42 rows affected",
+      start: now - 88_000,
+      end: now - 77_000,
       at: 0,
     },
     {

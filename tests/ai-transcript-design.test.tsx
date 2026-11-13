@@ -74,3 +74,36 @@ test("120 finished turns with 8 steps each keep the transcript DOM bounded", asy
     p95Ms,
   });
 });
+
+test("live steps render as a timeline with per-step durations and bounded DOM", async () => {
+  const message: AiMessage = {
+    ...turn(0, 60),
+    durationMs: undefined,
+    rich: turn(0, 60).rich?.map((block, step) =>
+      block.type === "tool" ? { ...block, start: 1_000, end: 1_000 + 4_200 + step * 1_000 } : block,
+    ),
+  };
+  const times: number[] = [];
+  let html = "";
+  for (let run = 0; run < 12; run++) {
+    const start = performance.now();
+    html = render(message, true);
+    times.push(performance.now() - start);
+  }
+  times.sort((a, b) => a - b);
+  const medianMs = times[Math.floor(times.length / 2)];
+  const p95Ms = times[Math.ceil(times.length * 0.95) - 1];
+  const elements = html.match(/<[a-z][^>]*>/g)?.length ?? 0;
+  expect(html).toContain("4,2 s");
+  expect(html).toContain("1 min 3 s");
+  expect(html.match(/ data-step[ =>]/g)?.length).toBe(61);
+  expect(elements / 60).toBeLessThan(16);
+  expect(p95Ms).toBeLessThan(100);
+  await reportScenario("ai-transcript-live-timeline", {
+    steps: 60,
+    elements,
+    elementsPerStep: Math.round(elements / 60),
+    medianMs,
+    p95Ms,
+  });
+});
