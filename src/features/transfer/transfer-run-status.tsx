@@ -80,15 +80,19 @@ export function TransferRunStatus({
           : outcome.rolledBack
             ? outcome.atomic
               ? "Die Zieltransaktion wurde zurückgerollt; das Ziel ist unverändert."
-              : "Alle angelegten Objekte wurden wieder entfernt."
-            : "Das Ziel ist nicht vollständig bereinigt."}
+              : outcome.secured
+                ? "Der alte Zielstand wurde wiederhergestellt."
+                : "Alle angelegten Objekte wurden wieder entfernt."
+            : outcome.secured
+              ? "Der alte Zielstand wurde nicht vollständig wiederhergestellt."
+              : "Das Ziel ist nicht vollständig bereinigt."}
       </span>
       {outcome.error && (
         <pre className="font-mono text-xs whitespace-pre-wrap text-destructive">
           {outcome.error}
         </pre>
       )}
-      {outcome.kept &&
+      {(outcome.kept || outcome.secured) &&
         outcome.warnings.map((warning) => (
           <span key={warning} className="text-xs text-amber-700 dark:text-amber-400">
             {warning}
@@ -97,7 +101,11 @@ export function TransferRunStatus({
       {outcome.leftovers.length > 0 && (
         <div className="text-xs">
           <p className="font-medium">
-            {outcome.kept ? "Manuell zu prüfen:" : "Manuell zu entfernen:"}
+            {outcome.kept
+              ? "Manuell zu prüfen:"
+              : outcome.secured
+                ? "Manuell wiederherzustellen:"
+                : "Manuell zu entfernen:"}
           </p>
           <ul className="list-disc pl-4 font-mono">
             {outcome.leftovers.map((entry) => (

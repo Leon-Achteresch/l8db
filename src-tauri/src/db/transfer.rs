@@ -153,6 +153,8 @@ pub struct TransferPlan {
     #[serde(default)]
     pub replaced: Vec<String>,
     #[serde(default)]
+    pub secured: bool,
+    #[serde(default)]
     pub content: Content,
 }
 
@@ -180,6 +182,7 @@ pub struct TransferOutcome {
     pub committed: bool,
     pub rolled_back: bool,
     pub kept: bool,
+    pub secured: bool,
     pub leftovers: Vec<String>,
     pub warnings: Vec<String>,
     pub error: Option<String>,
@@ -1592,6 +1595,25 @@ async fn oracle_mviews(
         return Ok(());
     }
     let planned = planned_tables(plan, pair);
+    for (master, sql, fast) in oracle_mview_logs(source, &pair.source, &pair.target).await? {
+        if !planned.contains(&master) {
+            continue;
+        }
+        if fast {
+            plan.before_load.push(Statement::plain(sql));
+        } else {
+            plan.finalize.push(Statement::plain(sql));
+        }
+    }
+    Ok(())
+}
+
+async fn oracle_mview_logs(
+    source: &dyn DatabaseAdapter,
+    owner: &str,
+    target: &str,
+) -> Result<Vec<(String, String, bool)>, String> {
+    let owner = super::quote_literal(owner);
     let result = source
         .execute_query(&format!(
             "SELECT l.master AS m, l.rowids AS r, l.primary_key AS p, l.object_id AS o, l.sequence AS s, \
@@ -1605,6 +1627,7 @@ async fn oracle_mviews(
              FROM all_mview_logs l WHERE l.log_owner = {owner}"
         ))
         .await?;
+    let mut logs = Vec::new();
     for row in &result.rows {
         let get = |key: &str| {
             row.get(key)
@@ -1612,9 +1635,6 @@ async fn oracle_mviews(
                 .unwrap_or_default()
         };
         let master = get("M");
-        if !planned.contains(&master) {
-            continue;
-        }
         let with: Vec<&str> = [
             ("P", "PRIMARY KEY"),
             ("R", "ROWID"),
@@ -1633,7 +1653,7 @@ async fn oracle_mviews(
         }
         let mut sql = format!(
             "CREATE MATERIALIZED VIEW LOG ON {}",
-            Dialect::Oracle.target(&pair.target, &master)
+            Dialect::Oracle.target(target, &master)
         );
         if !options.is_empty() {
             sql.push_str(&format!(" WITH {}", options.trim_start()));
@@ -1642,13 +1662,9 @@ async fn oracle_mviews(
             sql.push_str(" INCLUDING NEW VALUES");
         }
         let fast = get("FAST");
-        if fast.is_empty() || fast == "0" {
-            plan.finalize.push(Statement::plain(sql));
-        } else {
-            plan.before_load.push(Statement::plain(sql));
-        }
+        logs.push((master, sql, !(fast.is_empty() || fast == "0")));
     }
-    Ok(())
+    Ok(logs)
 }
 
 async fn plan_sequences(
@@ -2098,8 +2114,20 @@ pub async fn plan(
                 .map(|t| format!("ZEILEN {}.{}", t.target_schema, t.target_name))
                 .collect()
         } else {
-            replace_targets(target_adapter.as_ref(), target_dialect, &plan)
-                .await?
+            let targets = replace_targets(target_adapter.as_ref(), target_dialect, &plan).await?;
+            if backup::applies(target_dialect, &plan) {
+                let blockers =
+                    backup::blockers(target_adapter.as_ref(), target_dialect, &targets).await?;
+                plan.secured = blockers.is_empty();
+                if !blockers.is_empty() {
+                    let names: Vec<&str> = blockers.iter().map(String::as_str).collect();
+                    plan.warnings.push(format!(
+                        "Der alte Zielstand lässt sich nicht sichern ({}). Schlägt der Transfer fehl, bleibt das Ziel unvollständig.",
+                        preview(&names)
+                    ));
+                }
+            }
+            targets
                 .iter()
                 .map(|(kind, schema, name)| format!("{kind} {schema}.{name}"))
                 .collect()
@@ -2217,6 +2245,9 @@ async fn replace_targets(
             continue;
         }
         for (kind, name) in target_objects(adapter, target, &pair.target).await? {
+            if name.starts_with(backup::PREFIX) {
+                continue;
+            }
             if plan.mirror || planned.contains(&(pair.target.clone(), object_key(target, &name))) {
                 out.push((kind, pair.target.clone(), name));
             }
@@ -2766,6 +2797,18 @@ fn drop_sql(target: Dialect, statement: &Statement) -> Option<String> {
     })
 }
 
+async fn execute(adapter: &dyn DatabaseAdapter, dialect: Dialect, sql: &str) -> Result<(), String> {
+    if dialect != Dialect::Oracle {
+        return adapter.execute_query(sql).await.map(|_| ());
+    }
+    let results = adapter.execute_script(sql).await?;
+    match results.iter().find(|r| !r.success) {
+        Some(failed) => Err(failed.error.clone().unwrap_or_default()),
+        None if results.is_empty() => Err("Die Anweisung wurde nicht ausgeführt.".into()),
+        None => Ok(()),
+    }
+}
+
 struct Runner<'a> {
     target: &'a Endpoint,
     dialect: Dialect,
@@ -2781,18 +2824,7 @@ impl Runner<'_> {
         let sql = statement.sql.as_str();
         let result = match &mut self.session {
             Some(session) => session.execute(sql).await.map(|_| ()),
-            None if self.dialect == Dialect::Oracle => match self.adapter.execute_script(sql).await
-            {
-                Ok(results) => match results.iter().find(|r| !r.success) {
-                    Some(failed) => Err(failed.error.clone().unwrap_or_default()),
-                    None if results.is_empty() => {
-                        Err("Die Anweisung wurde nicht ausgeführt.".into())
-                    }
-                    None => Ok(()),
-                },
-                Err(error) => Err(error),
-            },
-            None => self.adapter.execute_query(sql).await.map(|_| ()),
+            None => execute(self.adapter.as_ref(), self.dialect, sql).await,
         };
         let deferred = self.dialect == Dialect::Oracle
             && self.session.is_none()
@@ -3285,6 +3317,7 @@ pub async fn run(
     let target_adapter = adapter(target, &pool)?;
     let source = adapter(&request.source, &pool)?;
     let mut drops = Vec::new();
+    let mut replaced: Vec<(String, String, String)> = Vec::new();
     if oracle_clear {
         replace_guard(source.as_ref(), target_adapter.as_ref(), &plan.schemas).await?;
         let mut unconfirmed = Vec::new();
@@ -3294,6 +3327,7 @@ pub async fn run(
                 if !plan.replaced.contains(&label) {
                     unconfirmed.push(label);
                 }
+                replaced.push((kind, pair.target.clone(), name));
             }
         }
         if !unconfirmed.is_empty() {
@@ -3321,6 +3355,7 @@ pub async fn run(
             drop_order(target_adapter.as_ref(), &mut targets).await;
         }
         drops = replace_sql(d, plan.mirror, &targets);
+        replaced = targets;
     } else if plan.content == Content::Data {
         if !plan.replace {
             refuse_filled(target_adapter.as_ref(), d, plan).await?;
@@ -3334,6 +3369,23 @@ pub async fn run(
         )
         .await?;
     }
+    let blockers = if backup::applies(d, plan) {
+        backup::blockers(target_adapter.as_ref(), d, &replaced).await?
+    } else {
+        Vec::new()
+    };
+    if plan.secured && !blockers.is_empty() {
+        let names: Vec<&str> = blockers.iter().map(String::as_str).collect();
+        return Err(format!(
+            "Der alte Zielstand lässt sich nicht mehr sichern ({}); es wurde nichts verändert. Plan neu erstellen.",
+            preview(&names)
+        ));
+    }
+    let mut backup = if backup::applies(d, plan) && blockers.is_empty() {
+        Some(backup::Backup::prepare(target_adapter.as_ref(), d, &replaced, target, &pool).await?)
+    } else {
+        None
+    };
     let (mut reader, warnings) = if plan.content == Content::Structure {
         (None, Vec::new())
     } else if oracle_native {
@@ -3349,10 +3401,30 @@ pub async fn run(
     };
     let mut outcome = TransferOutcome {
         atomic: plan.atomic,
+        secured: backup.is_some(),
         warnings,
         ..Default::default()
     };
-    if oracle_clear {
+    if !blockers.is_empty() {
+        let names: Vec<&str> = blockers.iter().map(String::as_str).collect();
+        outcome.warnings.push(format!(
+            "Der alte Zielstand ließ sich nicht sichern ({}).",
+            preview(&names)
+        ));
+    }
+    if let Some(backup) = &mut backup {
+        let aside = super::execution::shielded(backup.set_aside(target_adapter.as_ref())).await;
+        match aside {
+            Ok(warnings) => outcome.warnings.extend(warnings),
+            Err(error) => {
+                if let Some(reader) = reader {
+                    reader.close().await;
+                }
+                return Err(error);
+            }
+        }
+        drops.clear();
+    } else if oracle_clear {
         let cleared = async {
             for pair in &plan.schemas {
                 let leftovers = oracle_copy::clear(target_adapter.as_ref(), &pair.target).await?;
@@ -3398,9 +3470,9 @@ pub async fn run(
             total_rows: total,
         })
     };
-    let keep = plan.replace && !plan.atomic;
+    let keep = plan.replace && !plan.atomic && backup.is_none();
     let mut failed: Vec<String> = Vec::new();
-    let early = d == Dialect::Duckdb && plan.replace;
+    let early = d == Dialect::Duckdb && plan.replace && plan.content == Content::Data;
     if early {
         let cleared = async {
             runner.drop_objects(&drops).await?;
@@ -3533,6 +3605,11 @@ pub async fn run(
                     return Ok(outcome);
                 }
             }
+            if let Some(backup) = &mut backup {
+                outcome.warnings.extend(
+                    super::execution::shielded(backup.discard(runner.adapter.as_ref())).await,
+                );
+            }
             if failed.is_empty() {
                 outcome.committed = true;
             } else {
@@ -3551,6 +3628,40 @@ pub async fn run(
             outcome.error = Some(text);
             outcome.kept = true;
             outcome.leftovers = super::execution::shielded(runner.unload(plan)).await;
+        }
+        Err(error) if backup.is_some() => {
+            outcome.error = Some(error);
+            outcome.tables.clear();
+            outcome.rows = 0;
+            let adapter = runner.adapter.as_ref();
+            outcome.leftovers = super::execution::shielded(async {
+                let Some(backup) = &mut backup else {
+                    return Vec::new();
+                };
+                let created = if oracle_clear {
+                    let mut created = Vec::new();
+                    let mut listed = Ok(());
+                    for pair in &plan.schemas {
+                        match oracle_copy::objects(adapter, &pair.target).await {
+                            Ok(objects) => created.extend(
+                                objects
+                                    .into_iter()
+                                    .map(|(kind, name)| (kind, pair.target.clone(), name)),
+                            ),
+                            Err(error) => listed = Err(error),
+                        }
+                    }
+                    listed.map(|()| created)
+                } else {
+                    replace_targets(adapter, d, plan).await
+                };
+                match created {
+                    Ok(created) => backup.restore(adapter, &created).await,
+                    Err(error) => backup.abandon(&error),
+                }
+            })
+            .await;
+            outcome.rolled_back = outcome.leftovers.is_empty();
         }
         Err(error) => {
             outcome.error = Some(error);
@@ -3635,6 +3746,9 @@ pub async fn run_transfer(
 
 #[path = "transfer_oracle.rs"]
 mod oracle_copy;
+
+#[path = "transfer_backup.rs"]
+mod backup;
 
 #[cfg(test)]
 #[path = "transfer_tests.rs"]
