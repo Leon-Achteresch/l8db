@@ -1,6 +1,7 @@
 import { type ReactNode, type Ref, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { useSidebarPanel } from "@/lib/sidebar-panel";
+import { type StudioPaletteTables, useStudioPaletteScope } from "@/lib/studio-palette";
 import { BaasSidebarSlot } from "./baas-sidebar-portal";
 import { BaasStudioNav, type BaasStudioTab } from "./baas-studio-nav";
 
@@ -16,6 +17,8 @@ export function BaasStudioFrame({
   value,
   onValueChange,
   fullBleed,
+  paletteKey,
+  paletteTables,
   children,
 }: {
   label: string;
@@ -29,11 +32,25 @@ export function BaasStudioFrame({
   value: string;
   onValueChange: (value: string) => unknown;
   fullBleed?: boolean;
+  paletteKey: string;
+  paletteTables?: StudioPaletteTables;
   children: ReactNode;
 }) {
   const width = useSidebarPanel((state) => state.width);
   const active = tabs.find((tab) => tab.value === value);
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  useStudioPaletteScope({
+    key: paletteKey,
+    label,
+    sections: tabs.map((tab) => ({
+      id: tab.value,
+      label: tab.label,
+      icon: tab.icon,
+      disabled: Boolean(tab.disabledReason),
+    })),
+    openSection: onValueChange,
+    tables: paletteTables,
+  });
 
   return (
     <div data-baas-studio className="flex h-full min-h-0">

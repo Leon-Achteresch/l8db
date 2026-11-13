@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
+import { Table } from "lucide-react";
 import type { buildSettingsItems as SettingsBuilder } from "../src/features/shell/app-header-search/command-items";
 import {
   buildCompareItems,
   buildDiagramExportItems,
   buildHotkeyItems,
   buildSettingsItems,
+  buildStudioItems,
 } from "../src/features/shell/app-header-search/command-items";
 import { paletteSearchItems, parsePaletteQuery } from "../src/lib/command-palette-search";
 import { rankCommands } from "../src/lib/command-score";
@@ -106,4 +108,49 @@ test("Diagrammexporte sind nur im verbundenen ER-Diagramm verfügbar", () => {
     "er.export.mermaid",
     "er.export.dbml",
   ]);
+});
+
+test("Studio-Einträge enthalten nur freigegebene Bereiche und öffnen Tabellen über den aktuellen Kontext", () => {
+  const opened: unknown[] = [];
+  const closed: boolean[] = [];
+  let generation = "alt";
+  const entry: Parameters<typeof buildStudioItems>[0] = {
+    key: "convex:self:0:",
+    hasTables: true,
+    read: () => ({
+      key: "convex:self:0:",
+      label: "Convex Studio",
+      sections: [
+        { id: "data", label: "Daten", icon: Table },
+        { id: "logs", label: "Logs", icon: Table, disabled: true },
+      ],
+      openSection: (id) => opened.push([generation, "section", id]),
+      tables: {
+        load: async () => [],
+        open: (table) => opened.push([generation, "table", table.schema, table.name]),
+      },
+    }),
+  };
+  const tables = Array.from({ length: 5000 }, (_, index) => ({
+    schema: index % 2 ? "public" : undefined,
+    name: `t_${index}`,
+  }));
+  const started = performance.now();
+  const items = buildStudioItems(entry, tables, (open) => closed.push(open));
+  expect(performance.now() - started).toBeLessThan(50);
+  expect(items).toHaveLength(5001);
+  expect(new Set(items.map((item) => item.id)).size).toBe(5001);
+  expect(items[0]).toMatchObject({ label: "Daten", kind: "command", group: "Convex Studio" });
+  expect(items[2]).toMatchObject({ label: "t_1", kind: "object", hint: "public" });
+  expect(paletteSearchItems(items, true).map((item) => item.label)).toEqual(["Daten"]);
+  expect(rankCommands(items, "public.t_4999")[0].label).toBe("t_4999");
+  generation = "neu";
+  items[0].onSelect();
+  items[2].onSelect();
+  expect(opened).toEqual([
+    ["neu", "section", "data"],
+    ["neu", "table", "public", "t_1"],
+  ]);
+  expect(closed).toEqual([false, false]);
+  expect(buildStudioItems(entry, undefined, () => {})).toHaveLength(1);
 });
