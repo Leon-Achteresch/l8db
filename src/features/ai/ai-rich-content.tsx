@@ -23,6 +23,7 @@ import { parseAiTable } from "@/lib/ai/result";
 import type { AiRichBlock } from "@/lib/ai/rich";
 import { AiIssueResult } from "./ai-issue-result";
 import { AiResultCard } from "./ai-result-card";
+import { AiStepTime } from "./ai-step-time";
 import { AiToolDetail } from "./ai-tool-detail";
 import { AiWorkRow } from "./ai-work-row";
 import { FileDiff } from "./beui/agents/file-diff";
@@ -102,7 +103,10 @@ export function AiRichContent({
               key={block.id}
               icon={toolIcon(block.name)}
               active={status === "running"}
-              failed={status === "error"}
+              tone={status === "success" ? "done" : status === "error" ? "failed" : "idle"}
+              meta={
+                <AiStepTime start={block.start} end={block.end} running={status === "running"} />
+              }
               label={
                 status === "running"
                   ? `${name} läuft`

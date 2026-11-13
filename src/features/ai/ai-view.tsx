@@ -512,7 +512,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           if (blocks.length)
             updateLast((last) => ({
               ...last,
-              rich: mergeAiRich(last.rich, blocks, last.text.length),
+              rich: mergeAiRich(last.rich, blocks, last.text.length, Date.now()),
             }));
           if (event.kind === "text") {
             updateLast((last) => ({

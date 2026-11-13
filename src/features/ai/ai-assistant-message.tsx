@@ -72,6 +72,7 @@ export function AiAssistantMessage({
         <AiWorkRow
           icon={Brain}
           active={thinking}
+          tone="lead"
           label={thinking ? "Denkt nach" : thought || "Gedacht"}
           detail={message.reasoning}
         />
