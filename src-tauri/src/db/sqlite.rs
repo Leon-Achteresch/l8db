@@ -89,8 +89,7 @@ fn map_err(e: rusqlite::Error) -> String {
 type Rows = (Vec<String>, Vec<Vec<serde_json::Value>>);
 
 fn collect(stmt: &mut rusqlite::Statement<'_>, limit: usize) -> Result<Rows, String> {
-    let columns =
-        super::unique_column_names(stmt.column_names().iter().map(|c| c.to_string()).collect());
+    let columns = super::unique_column_names(stmt.column_names().map(|c| c.to_string()).collect());
     let count = columns.len();
     let mut rows = Vec::new();
     let mut result = stmt.query([]).map_err(map_err)?;
@@ -877,7 +876,7 @@ impl DatabaseAdapter for SqliteAdapter {
         let mut collector = super::snapshot::Collector::new(request.max_rows);
         self.run(move |c| {
             let mut stmt = c.prepare(&sql).map_err(map_err)?;
-            let columns: Vec<String> = stmt.column_names().iter().map(|c| c.to_string()).collect();
+            let columns: Vec<String> = stmt.column_names().map(|c| c.to_string()).collect();
             let mut rows = stmt.query([]).map_err(map_err)?;
             while let Some(row) = rows.next().map_err(map_err)? {
                 let mut object = serde_json::Map::new();
