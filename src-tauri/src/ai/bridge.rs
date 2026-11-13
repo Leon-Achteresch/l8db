@@ -32,6 +32,10 @@ async fn dispatch(
         "tools/list" => {
             let mut tools = super::context::published_tools();
             tools.extend(external.lock().await.tools.clone());
+            let chars = serde_json::to_string(&tools)
+                .map(|text| text.len())
+                .unwrap_or(0);
+            run.emit("usage", json!({"layout": {"tools": chars}}));
             json!({"tools": tools})
         }
         "tools/call" => {

@@ -86,6 +86,7 @@ export const NEW_FEATURES = {
   "ai.context.mcp": "0.8.0",
   "ai.history": "0.8.0",
   "ai.usage": "0.8.0",
+  "ai.usage.context-map": NEXT_FEATURE_VERSION,
   "ai.onboarding": "0.10.0",
   "ai.ask": "0.10.0",
   "ai.chat.charts": "0.10.0",

@@ -106,7 +106,12 @@ pub fn instructions(request: &RunRequest) -> String {
     instructions_with_skills(request, "")
 }
 
+#[cfg(test)]
 pub fn instructions_with_skills(request: &RunRequest, skills: &str) -> String {
+    instructions_with_layout(request, skills).0
+}
+
+pub fn instructions_with_layout(request: &RunRequest, skills: &str) -> (String, Value) {
     let connections: Vec<Value> = request
         .connections
         .iter()
@@ -119,17 +124,24 @@ pub fn instructions_with_skills(request: &RunRequest, skills: &str) -> String {
             })
         })
         .collect();
-    format!(
-        "{INSTRUCTIONS}{}{skills}\nCurrent connections: {}{}{}",
+    let knowledge = request
+        .connections
+        .iter()
+        .map(|connection| super::knowledge::prompt(&connection.id, &connection.name))
+        .collect::<String>();
+    let files = super::files::prompt(&request.attachments);
+    let text = format!(
+        "{INSTRUCTIONS}{}{skills}\nCurrent connections: {}{knowledge}{files}",
         crate::issues::prompt(),
         serde_json::to_string(&connections).unwrap_or_default(),
-        request
-            .connections
-            .iter()
-            .map(|connection| super::knowledge::prompt(&connection.id, &connection.name))
-            .collect::<String>(),
-        super::files::prompt(&request.attachments)
-    )
+    );
+    let layout = json!({
+        "system": text.len() - skills.len() - knowledge.len() - files.len(),
+        "skills": skills.len(),
+        "knowledge": knowledge.len(),
+        "files": files.len(),
+    });
+    (text, layout)
 }
 
 pub async fn call(

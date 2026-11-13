@@ -36,6 +36,7 @@ const SUITES = {
     "tests/supabase-studio-redesign.test.ts",
     "tests/perf-history-modal-boundary.test.ts",
     "tests/perf-ai-persist.test.ts",
+    "tests/perf-ai-context-map.test.ts",
     "tests/perf-shortcut-hints.test.ts",
     "tests/perf-row-insert-script.test.ts",
     "tests/perf-virtual-item-measurement.test.ts",

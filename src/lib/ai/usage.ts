@@ -106,6 +106,12 @@ export function mergeAiUsage(previous: AiUsageData, patch: AiUsageData): AiUsage
     next.rounds = { ...rounds, [id]: { ...object(rounds[id]), ...safeCounts(patch.usage) } };
   } else if (patch.usage) next.usage = { ...object(previous.usage), ...safeCounts(patch.usage) };
   for (const key of ["tokenUsage", "context"]) if (patch[key]) next[key] = safeCounts(patch[key]);
+  if (patch.layout) {
+    const layout = { ...object(previous.layout) };
+    for (const key of ["system", "skills", "knowledge", "files", "tools"])
+      if (number(object(patch.layout)[key]) !== null) layout[key] = object(patch.layout)[key];
+    next.layout = layout;
+  }
   if (patch.modelUsage)
     next.modelUsage = Object.fromEntries(
       Object.entries(object(patch.modelUsage))
@@ -315,8 +321,15 @@ export function summarizeAiUsage(
   };
   const latest = rounds.length ? entries.at(-1) : counts(token.last ?? data.usage ?? primary?.[1]);
   const contextMeasured = Boolean(token.last || rounds.length || (data.usage && !data.modelUsage));
+  const layoutTokens = Math.ceil(
+    Object.values(object(data.layout)).reduce<number>(
+      (sum, value) => sum + (number(value) ?? 0),
+      0,
+    ) / 4,
+  );
   const context =
-    number(native.used) ?? (contextMeasured && latest?.reported ? latest.total : textTokens);
+    number(native.used) ??
+    (contextMeasured && latest?.reported ? latest.total : textTokens + layoutTokens);
   const custom: AiPricing | undefined =
     profile.pricing?.model ===
     (typeof metadata.requestedModel === "string" ? metadata.requestedModel : profile.model)

@@ -1096,6 +1096,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           }}
           messages={thread}
           prompt={prompt}
+          summary={session?.summary}
           onSettings={() => setView("settings")}
         />
       }
