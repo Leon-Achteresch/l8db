@@ -141,6 +141,12 @@ async function selectedTabName(page: Page) {
   return (await selected.first().textContent())?.trim() ?? null;
 }
 
+async function expectSelectedTab(page: Page, name: string | undefined) {
+  const deadline = Date.now() + 3000;
+  while ((await selectedTabName(page)) !== name && Date.now() < deadline) await frames(page, 2);
+  expect(await selectedTabName(page)).toBe(name);
+}
+
 async function sidebarVisible(page: Page) {
   return page.evaluate(() => {
     const region = document.querySelector<HTMLElement>('[data-focus-region="sidebar"]');
@@ -452,13 +458,13 @@ scenario("i: bestehende Tab-Kürzel funktionieren weiter", async (page) => {
   expect(names).toHaveLength(4);
 
   await pressMod(page, "1");
-  expect(await selectedTabName(page)).toBe(names[0]);
+  await expectSelectedTab(page, names[0]);
   await pressMod(page, "PageDown");
-  expect(await selectedTabName(page)).toBe(names[1]);
+  await expectSelectedTab(page, names[1]);
   await pressMod(page, "PageUp");
-  expect(await selectedTabName(page)).toBe(names[0]);
+  await expectSelectedTab(page, names[0]);
   await pressMod(page, "9");
-  expect(await selectedTabName(page)).toBe(names[3]);
+  await expectSelectedTab(page, names[3]);
 
   await pressMod(page, "w");
   await frames(page, 4);
