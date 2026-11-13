@@ -405,13 +405,17 @@ export function loadProviders(): Promise<void> {
   return loading;
 }
 
-export async function refreshDriverStatus(kind: DatabaseKind): Promise<DriverStatus> {
-  const status = await driverStatus(kind);
+export function setDriverStatus(kind: DatabaseKind, status: DriverStatus): void {
   useProvidersStore.setState((state) => ({
     providers: state.providers.map((provider) =>
       provider.kind === kind ? { ...provider, driver_status: status } : provider,
     ),
   }));
+}
+
+export async function refreshDriverStatus(kind: DatabaseKind): Promise<DriverStatus> {
+  const status = await driverStatus(kind);
+  setDriverStatus(kind, status);
   return status;
 }
 

@@ -589,6 +589,8 @@ pub fn run() {
             db::commands::run_backup,
             db::commands::run_restore,
             db::commands::install_driver,
+            db::commands::diagnose_driver,
+            db::commands::repair_driver,
             db::commands::oracle_tns_names,
             db::commands::oracle_open_tnsnames,
             db::commands::test_connection_string,

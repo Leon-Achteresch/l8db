@@ -91,18 +91,45 @@ const PROVIDERS = [
   ),
 ];
 
+const DIAGNOSIS = {
+  status: {
+    available: false,
+    detail: "Verweis zeigt auf fehlenden Ordner",
+    install: ORACLE_HINTS,
+    install_command: ORACLE_HINTS[0]?.command ?? null,
+  },
+  findings: [
+    {
+      level: "error",
+      title: "Verweis zeigt auf fehlenden Ordner",
+      detail: "~/lib/libclntsh.dylib → ~/Downloads/instantclient_23_3",
+    },
+  ],
+  steps: ["Tote Verweise entfernen (3)", "Instant Client installieren"],
+  manual: null,
+};
+
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: unknown) => {
     calls.push({ command, args });
     if (command === "list_providers") return PROVIDERS;
     if (command === "install_driver") return "Installation abgeschlossen.";
+    if (command === "diagnose_driver") return DIAGNOSIS;
+    if (command === "repair_driver")
+      return { log: "3 von 3 toten Verweisen entfernt.", diagnosis: DIAGNOSIS };
     throw new Error(`unexpected command ${command}`);
   },
 }));
 
-const { summarizeDrivers, missingDrivers, hintForPlatform, driverTypeLabel, platformOs } =
-  await import("../src/lib/drivers");
-const { installDriver } = await import("../src/lib/db");
+const {
+  summarizeDrivers,
+  missingDrivers,
+  hintForPlatform,
+  driverTypeLabel,
+  platformOs,
+  diagnosableKinds,
+} = await import("../src/lib/drivers");
+const { installDriver, diagnoseDriver, repairDriver } = await import("../src/lib/db");
 
 describe("drivers", () => {
   test("shows missing ODBC manufacturer drivers even when the manager is ready", () => {
@@ -176,6 +203,45 @@ describe("drivers", () => {
     expect(platformOs("Win32")).toBe("windows");
     expect(platformOs("Linux x86_64")).toBe("linux");
     expect(platformOs("SomethingElse")).toBe("all");
+  });
+
+  test("only runtime libraries are analysed, once per family, within budget", () => {
+    const jdbc = provider(
+      "jdbc",
+      "jdbc",
+      { type: "runtime_library", library: "JDK" },
+      { available: true, detail: "", install: [], install_command: null },
+    );
+    expect(diagnosableKinds([...PROVIDERS, jdbc] as never)).toEqual(["oracle"]);
+    const many = Array.from({ length: 5000 }, (_, index) =>
+      provider(
+        `p${index}`,
+        index % 2 ? "oracle" : "postgres",
+        { type: "builtin" },
+        { available: true, detail: "", install: [], install_command: null },
+      ),
+    );
+    const samples: number[] = [];
+    for (let run = 0; run < 15; run += 1) {
+      const started = performance.now();
+      expect(diagnosableKinds(many as never)).toEqual(["oracle"]);
+      samples.push(performance.now() - started);
+    }
+    samples.sort((a, b) => a - b);
+    expect(samples[7]).toBeLessThan(5);
+    expect(samples[14]).toBeLessThan(20);
+  });
+
+  test("analysis and repair each cost exactly one backend request", async () => {
+    calls.length = 0;
+    const diagnosis = await diagnoseDriver("oracle");
+    expect(diagnosis.steps).toHaveLength(2);
+    const repair = await repairDriver("oracle");
+    expect(repair.diagnosis.findings[0]?.title).toBe("Verweis zeigt auf fehlenden Ordner");
+    expect(calls).toEqual([
+      { command: "diagnose_driver", args: { kind: "oracle" } },
+      { command: "repair_driver", args: { kind: "oracle" } },
+    ]);
   });
 
   test("installDriver invokes the backend command", async () => {

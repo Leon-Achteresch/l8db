@@ -1,4 +1,4 @@
-import { Download } from "lucide-react";
+import { Download, Wrench } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
@@ -7,7 +7,9 @@ export function InstallButton({
   disabled,
   onClick,
   className,
+  repair = false,
 }: {
+  repair?: boolean;
   installing: boolean;
   disabled: boolean;
   onClick: () => void;
@@ -23,8 +25,20 @@ export function InstallButton({
         className,
       )}
     >
-      {installing ? <Spinner className="size-3.5" /> : <Download className="size-3.5" />}
-      {installing ? "Installiert …" : "Installieren"}
+      {installing ? (
+        <Spinner className="size-3.5" />
+      ) : repair ? (
+        <Wrench className="size-3.5" />
+      ) : (
+        <Download className="size-3.5" />
+      )}
+      {repair
+        ? installing
+          ? "Repariert …"
+          : "Reparieren"
+        : installing
+          ? "Installiert …"
+          : "Installieren"}
     </button>
   );
 }

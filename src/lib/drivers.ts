@@ -98,6 +98,14 @@ export function summarizeDrivers(
   return summaries;
 }
 
+const DIAGNOSABLE: ReadonlySet<DatabaseKind> = new Set(["oracle"]);
+
+export function diagnosableKinds(providers: ProviderInfo[]): DatabaseKind[] {
+  return [
+    ...new Set(providers.map((provider) => provider.kind).filter((kind) => DIAGNOSABLE.has(kind))),
+  ];
+}
+
 export function missingDrivers(providers: ProviderInfo[]): ProviderInfo[] {
   return providers.filter((provider) => !provider.driver_status.available);
 }

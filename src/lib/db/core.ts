@@ -306,6 +306,7 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
   const taskTitles: Record<string, string> = {
     export_table_csv: "CSV-Export",
     install_driver: "Treiberinstallation",
+    repair_driver: "Treiberreparatur",
     execute_schema_object_copy: "Schema-Struktur kopieren",
     copy_schema_table_data: "Tabellendaten kopieren",
   };

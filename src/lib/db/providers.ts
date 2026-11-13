@@ -182,6 +182,32 @@ export async function installDriver(kind: DatabaseKind): Promise<string> {
   return invoke("install_driver", { kind });
 }
 
+export interface DriverFinding {
+  level: "ok" | "warn" | "error";
+  title: string;
+  detail: string;
+}
+
+export interface DriverDiagnosis {
+  status: DriverStatus;
+  findings: DriverFinding[];
+  steps: string[];
+  manual: string | null;
+}
+
+export interface DriverRepair {
+  log: string;
+  diagnosis: DriverDiagnosis;
+}
+
+export function diagnoseDriver(kind: DatabaseKind): Promise<DriverDiagnosis> {
+  return invoke("diagnose_driver", { kind });
+}
+
+export function repairDriver(kind: DatabaseKind): Promise<DriverRepair> {
+  return invoke("repair_driver", { kind });
+}
+
 export type SslMode = "disable" | "prefer" | "require" | "verify-ca" | "verify-full";
 
 export async function testConnectionString(
