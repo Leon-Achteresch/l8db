@@ -88,13 +88,17 @@ export function mergeAiModels(
     ? source.flatMap((model) => {
         if (!model || typeof model !== "object") return [];
         const id = model.id ?? model.modelId ?? model.value ?? model.model;
+        const known = previous.models.find((entry) => entry.id === id);
         return typeof id === "string"
           ? [
               {
                 id,
                 name: String(model.name ?? model.displayName ?? id),
-                efforts: Array.isArray(model.efforts) ? model.efforts : undefined,
-                fast: model.fast === true || model.supportsFastMode === true,
+                efforts: Array.isArray(model.efforts) ? model.efforts : known?.efforts,
+                fast:
+                  "fast" in model || "supportsFastMode" in model
+                    ? model.fast === true || model.supportsFastMode === true
+                    : Boolean(known?.fast),
                 default: model.default === true || model.isDefault === true,
               },
             ]
