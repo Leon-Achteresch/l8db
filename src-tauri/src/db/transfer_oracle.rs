@@ -428,7 +428,7 @@ pub async fn objects(
 ) -> Result<Vec<(String, String)>, String> {
     let sql = format!(
         "SELECT object_type AS t, object_name AS n FROM all_objects o WHERE owner = {} AND object_type IN ({}) \
-         AND secondary = 'N' AND object_name NOT LIKE 'BIN$%' AND object_name NOT LIKE 'ISEQ$$\\_%' ESCAPE '\\' \
+         AND secondary = 'N' AND object_name NOT LIKE 'BIN$%' AND object_name NOT LIKE 'L8B$%' AND object_name NOT LIKE 'ISEQ$$\\_%' ESCAPE '\\' \
          AND NOT (object_type = 'TABLE' AND EXISTS (SELECT 1 FROM all_nested_tables x WHERE x.owner = o.owner AND x.table_name = o.object_name)) \
          AND NOT (object_type = 'TABLE' AND EXISTS (SELECT 1 FROM all_mviews m WHERE m.owner = o.owner AND m.container_name = o.object_name)) \
          AND NOT (object_type = 'TABLE' AND EXISTS (SELECT 1 FROM all_mview_logs l WHERE l.log_owner = o.owner AND l.log_table = o.object_name)) \

@@ -117,6 +117,7 @@ export interface TransferPlan {
   replace: boolean;
   mirror: boolean;
   replaced: string[];
+  secured?: boolean;
   content: TransferContent;
 }
 
@@ -127,6 +128,7 @@ export interface TransferOutcome {
   committed: boolean;
   rolledBack: boolean;
   kept: boolean;
+  secured: boolean;
   leftovers: string[];
   warnings: string[];
   error: string | null;

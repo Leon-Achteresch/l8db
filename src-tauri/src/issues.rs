@@ -38,6 +38,10 @@ pub fn set_log_dir(dir: PathBuf) {
     let _ = LOG_DIR.set(dir);
 }
 
+pub fn log_dir() -> Option<PathBuf> {
+    LOG_DIR.get().cloned()
+}
+
 fn recent_log(dir: &Path) -> String {
     let newest = std::fs::read_dir(dir)
         .into_iter()
