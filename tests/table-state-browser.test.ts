@@ -90,7 +90,7 @@ for (const engine of [chromium, webkit]) {
         const nameHeader = page.locator('th[data-column-id="name"]');
         await nameHeader.click({ button: "right" });
         await page.getByRole("menuitem", { name: "Absteigend sortieren", exact: true }).click();
-        await page.getByText("(absteigend)", { exact: false }).waitFor();
+        await page.getByLabel("Absteigend sortiert nach", { exact: true }).waitFor();
         const resize = nameHeader.locator("div.cursor-col-resize");
         const box = await resize.boundingBox();
         if (!box) throw new Error("Missing resize handle");
@@ -136,7 +136,7 @@ for (const engine of [chromium, webkit]) {
           element.scrollLeft = 0;
         });
         expect(await nameHeader.evaluate((element) => element.style.width)).toBe(savedWidth);
-        await page.getByText("(absteigend)", { exact: false }).waitFor();
+        await page.getByLabel("Absteigend sortiert nach", { exact: true }).waitFor();
         await scroller.evaluate((element) => {
           element.scrollLeft = 850;
         });

@@ -14,7 +14,7 @@ async function pickTarget(page: Page, schema: string) {
   await picker.waitFor({ state: "hidden" });
 }
 
-const tab = (page: Page, name: string) => page.getByRole("button", { name, exact: true });
+const tab = (page: Page, name: string) => page.getByRole("tab", { name, exact: true });
 
 test.skipIf(!process.env.L8DB_SCHEMA_COMPARE_BROWSER)(
   "mehrere Schema-Vergleiche als Tabs überstehen Neuladen und Verbindungswechsel",
