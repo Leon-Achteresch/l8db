@@ -138,7 +138,7 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       });
       await page.getByText("items", { exact: true }).first().click();
       await page.getByRole("tab", { name: "Spalten", exact: true }).click();
-      await page.getByText("Primary Keys", { exact: true }).first().waitFor();
+      await page.getByText("Primärschlüssel", { exact: true }).first().waitFor();
       await page.getByRole("tab", { name: "Indizes", exact: true }).click();
       await page.getByText("_id_", { exact: true }).waitFor();
       await page.getByRole("button", { name: "Neuer Index", exact: true }).click();

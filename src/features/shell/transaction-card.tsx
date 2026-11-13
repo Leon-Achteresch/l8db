@@ -7,6 +7,7 @@ import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { formatMenuShortcut } from "@/lib/hotkeys";
 import { finishManagedTransaction } from "@/lib/managed-transactions";
 import { type ActiveTransaction, useTransactionStore } from "@/lib/transactions";
 import { DiffQueryEntry } from "./transaction-query-entry";
@@ -145,12 +146,12 @@ export function TransactionCard({ tx }: { tx: ActiveTransaction }) {
           disabled={busy}
           data-tx-commit
           aria-label={`${title} committen`}
-          aria-keyshortcuts="Enter"
+          aria-keyshortcuts="Enter Control+Enter Meta+Enter"
           onClick={() => void handleCommit()}
         >
           <CheckIcon className="size-3" />
           {tx.scope?.type === "table" ? "Tabelle committen" : "Alles committen"}
-          <kbd className="font-sans text-[10px] opacity-60">↵</kbd>
+          <kbd className="font-sans text-[10px] opacity-60">{formatMenuShortcut("Mod+Enter")}</kbd>
         </Button>
         <Button
           size="sm"

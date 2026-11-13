@@ -43,7 +43,7 @@ import { type MergeDraftApi, MergeDraftEditor } from "@/features/compare/merge-d
 import {
   type CompareSideSelection,
   compareLoadErrorMessage,
-  loadCompareDefinition,
+  loadPortableDefinition,
 } from "@/lib/compare-definition";
 import { useConnectionsStore } from "@/lib/connections";
 import { definitionHunks, draftLineOrigins } from "@/lib/definition-merge";
@@ -155,7 +155,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
       const connection = connections.find((item) => item.id === side.connectionId) ?? null;
       if (!connection || !side.schema) return IDLE_SIDE;
       try {
-        const definition = await loadCompareDefinition(connection, side);
+        const definition = await loadPortableDefinition(connection, side);
         return { definition, error: null, loading: false };
       } catch (error) {
         return { definition: "", error: compareLoadErrorMessage(error), loading: false };

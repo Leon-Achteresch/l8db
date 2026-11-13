@@ -51,6 +51,9 @@ export async function runOpenFileActions(actions: OpenFileAction[]): Promise<Ope
     } else if (action.action === "notebook") {
       const { openNotebook } = await import("@/lib/notebook/actions");
       if (await openNotebook(action.path)) target = { to: "/notebook" };
+    } else if (action.action === "link") {
+      const { openSharedTabLinkText } = await import("@/lib/shared-tab-open");
+      await openSharedTabLinkText(action.link);
     } else if (action.action === "connection") {
       if (await openConnection(action)) target = { to: "/" };
     }

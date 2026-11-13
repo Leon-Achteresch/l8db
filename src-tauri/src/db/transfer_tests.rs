@@ -908,6 +908,10 @@ fn live_url(name: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+fn required_url(name: &str) -> String {
+    live_url(name).unwrap_or_else(|| panic!("Lab fehlt: L8DB_TR_{name}_URL ist nicht gesetzt"))
+}
+
 async fn exec_all(adapter: &dyn DatabaseAdapter, script: &[&str]) {
     for sql in script {
         if let Err(error) = adapter.execute_query(sql).await {
@@ -945,6 +949,7 @@ async fn seed_postgres(url: &str) {
     }
     exec_all(pg.as_ref(), &[
         "CREATE SCHEMA tr_src",
+        "CREATE SCHEMA tr_native",
         "CREATE TABLE tr_src.customer (id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, name varchar(40) NOT NULL, email varchar(80) UNIQUE, vip boolean DEFAULT false, balance numeric(20,6) DEFAULT 0, created timestamptz DEFAULT now(), meta jsonb, tags text[])",
         "CREATE TABLE tr_src.orders (id bigserial PRIMARY KEY, customer_id integer NOT NULL REFERENCES tr_src.customer(id) ON DELETE CASCADE, total numeric(18,4) CHECK (total >= 0), note text, payload bytea, placed date)",
         "CREATE INDEX orders_customer_ix ON tr_src.orders(customer_id)",
@@ -1033,7 +1038,7 @@ async fn assert_round_trip(pg: &dyn DatabaseAdapter, schema: &str, customers: u6
 #[tokio::test]
 #[ignore]
 async fn transfer_live_matrix() {
-    let Some(pg_url) = live_url("PG") else { return };
+    let pg_url = required_url("PG");
     seed_postgres(&pg_url).await;
     let live = Live {
         pool: create_pool_state(),
@@ -1115,7 +1120,10 @@ async fn transfer_live_matrix() {
         ("MSSQL", DatabaseKind::Mssql, "tr_copy", "tr_back_mssql"),
     ];
     for (name, kind, schema, back) in targets {
-        let Some(url) = live_url(name) else { continue };
+        let Some(url) = live_url(name) else {
+            eprintln!("transfer matrix: {name} übersprungen, L8DB_TR_{name}_URL fehlt");
+            continue;
+        };
         let target = endpoint(kind, &url);
         let adapter = create_adapter_from_string(kind, &url, None, live.pool.clone()).unwrap();
         match kind {
@@ -1253,9 +1261,7 @@ fn oracle_integer_numbers_map_to_integer_types() {
 #[tokio::test]
 #[ignore]
 async fn transfer_live_oracle_native_packages() {
-    let (Some(url), Some(system)) = (live_url("ORACLE"), live_url("ORACLE_SYSTEM")) else {
-        return;
-    };
+    let (url, system) = (required_url("ORACLE"), required_url("ORACLE_SYSTEM"));
     let pool = create_pool_state();
     let admin =
         create_adapter_from_string(DatabaseKind::Oracle, &system, None, pool.clone()).unwrap();
@@ -1615,9 +1621,7 @@ async fn transfer_live_oracle_bulk_budget() {
     use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
 
-    let (Some(url), Some(system)) = (live_url("ORACLE"), live_url("ORACLE_SYSTEM")) else {
-        return;
-    };
+    let (url, system) = (required_url("ORACLE"), required_url("ORACLE_SYSTEM"));
     let rows: u64 = std::env::var("L8DB_TR_ORACLE_PERF_ROWS")
         .ok()
         .and_then(|value| value.parse().ok())
@@ -1906,13 +1910,15 @@ async fn per_table(
 async fn transfer_live_oracle_plan_budget() {
     use std::time::{Duration, Instant};
 
-    let (Some(url), Some(system)) = (live_url("ORACLE"), live_url("ORACLE_SYSTEM")) else {
-        return;
-    };
+    let (url, system) = (required_url("ORACLE"), required_url("ORACLE_SYSTEM"));
     let count: usize = std::env::var("L8DB_TR_ORACLE_PLAN_TABLES")
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(1500);
+    assert!(
+        count >= 1500,
+        "L8DB_TR_ORACLE_PLAN_TABLES={count}: der Abbruch-Teil braucht mindestens 1500 Tabellen"
+    );
     let pool = create_pool_state();
     let admin =
         create_adapter_from_string(DatabaseKind::Oracle, &system, None, pool.clone()).unwrap();
@@ -2424,4 +2430,19 @@ async fn postgres_replace_mirrors_and_overwrites_selection() {
     pg.execute_query("DROP SCHEMA tr_rep CASCADE")
         .await
         .unwrap();
+}
+
+#[test]
+fn overwrite_failures_are_collected_instead_of_aborting() {
+    let mut failed = Vec::new();
+    assert!(skip(true, &mut failed, Err("ORA-00942".into())).is_ok());
+    assert!(skip(true, &mut failed, Ok(())).is_ok());
+    assert_eq!(failed, vec!["ORA-00942".to_string()]);
+    assert!(skip(false, &mut failed, Err("x".into())).is_err());
+    assert_eq!(failed.len(), 1);
+    let many: Vec<String> = (0..25).map(|n| format!("Fehler {n}")).collect();
+    let summary = failure_summary(&many);
+    assert!(summary.starts_with("Fehlgeschlagene Schritte: 25."));
+    assert!(summary.contains("Fehler 19") && !summary.contains("Fehler 20"));
+    assert!(summary.ends_with("… und 5 weitere"));
 }

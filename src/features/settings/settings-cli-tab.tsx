@@ -1,40 +1,57 @@
-import { Loader2, SquareTerminal, Trash2 } from "lucide-react";
+import { Loader2, RefreshCw, SquareTerminal, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
+import { Tooltip } from "@/components/motion/tooltip";
 import { Button } from "@/components/ui/button";
 import { CliCommandList } from "@/features/settings/cli-command-list";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { CLI_CHEATSHEET, CLI_COMPLETIONS } from "@/lib/cli-cheatsheet";
-import { type CliStatus, cliStatus, installCli, uninstallCli } from "@/lib/db/cli";
+import { useCliPath } from "@/lib/cli-path";
+import { type CliState, installCli, uninstallCli } from "@/lib/db/cli";
+import { cn } from "@/lib/utils";
+
+const STATE: Record<CliState, { label: string; dot: string }> = {
+  ready: { label: "Im PATH", dot: "bg-emerald-500" },
+  missing: { label: "Nicht im PATH", dot: "bg-blue-500" },
+  not_on_path: { label: "Ordner fehlt im PATH", dot: "bg-blue-500" },
+  other: { label: "Anderes l8db im PATH", dot: "bg-amber-500" },
+};
 
 export function SettingsCliTab() {
-  const [status, setStatus] = useState<CliStatus | null>(null);
+  const status = useCliPath((state) => state.status);
+  const error = useCliPath((state) => state.error);
+  const refresh = useCliPath((state) => state.refresh);
+  const apply = useCliPath((state) => state.apply);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    let active = true;
-    cliStatus()
-      .then((next) => {
-        if (active) setStatus(next);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, []);
+    void refresh();
+  }, [refresh]);
+
+  const check = async () => {
+    setBusy(true);
+    await refresh();
+    setBusy(false);
+  };
 
   const toggle = async () => {
     if (!status) return;
     setBusy(true);
     try {
       const next = status.installed ? await uninstallCli() : await installCli();
-      setStatus(next);
-      if (next.installed && !status.installed)
-        toast.success("„l8db“ ist jetzt im Terminal verfügbar.", {
-          description: "Neues Terminalfenster öffnen und „l8db --help“ eingeben.",
+      apply(next);
+      const where = next.location ? `${STATE[next.state].label}: ${next.location}` : undefined;
+      if (status.installed) {
+        if (next.installed) toast.error("„l8db“ ist weiterhin im PATH.", { description: where });
+        else toast.success("„l8db“ wurde aus dem PATH entfernt.");
+      } else if (next.installed)
+        toast.success("„l8db“ ist im PATH.", {
+          description: "Neues Terminal öffnen und „l8db --help“ eingeben.",
         });
-      else if (!next.installed && status.installed) toast.success("„l8db“ wurde entfernt.");
+      else
+        toast.error("„l8db“ ist noch nicht erreichbar.", {
+          description: where ?? STATE[next.state].label,
+        });
     } catch (error) {
       toast.error("Das hat nicht geklappt.", { description: String(error) });
     } finally {
@@ -44,13 +61,7 @@ export function SettingsCliTab() {
 
   return (
     <div className="@container space-y-4">
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Kommandozeile</h2>
-        <p className="text-xs text-muted-foreground">
-          Deine gespeicherten Verbindungen auch im Terminal nutzen: SQL ausführen, Tabellen ansehen,
-          Ergebnisse als CSV oder JSON weitergeben.
-        </p>
-      </div>
+      <h2 className="text-base font-semibold tracking-tight">Kommandozeile</h2>
 
       <div className="space-y-3">
         <SettingsRow
@@ -59,31 +70,46 @@ export function SettingsCliTab() {
           featureId="settings.cli.doctor"
           stacked
         >
-          <CliCommandList
-            examples={[
-              {
-                command: "l8db doctor -o json",
-                description: "Konfiguration prüfen; Schlüsselbund bleibt ungeprüft",
-              },
-              {
-                command: "l8db doctor --test-keychain --strict",
-                description:
-                  "Schlüsselbund zusätzlich prüfen und bei offenen Schritten mit Fehlercode enden",
-              },
-            ]}
-          />
+          <div className="w-full">
+            <CliCommandList
+              examples={[
+                {
+                  command: "l8db doctor -o json",
+                  description: "Konfiguration prüfen; Schlüsselbund bleibt ungeprüft",
+                },
+                {
+                  command: "l8db doctor --test-keychain --strict",
+                  description:
+                    "Schlüsselbund zusätzlich prüfen und bei offenen Schritten mit Fehlercode enden",
+                },
+              ]}
+            />
+          </div>
         </SettingsRow>
         <SettingsRow settingId="cli-install" featureId="settings.cli.install">
           <div className="flex items-center gap-2">
             {status ? (
-              <Badge variant={status.installed ? "secondary" : "outline"}>
-                {status.installed ? "Installiert" : "Nicht installiert"}
-              </Badge>
+              <span className="flex items-center gap-1.5 text-xs whitespace-nowrap text-muted-foreground">
+                <span className={cn("size-1.5 rounded-full", STATE[status.state].dot)} />
+                {STATE[status.state].label}
+              </span>
             ) : null}
+            <Tooltip content="Erneut prüfen" side="bottom">
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Erneut prüfen"
+                disabled={busy}
+                onClick={() => void check()}
+              >
+                <RefreshCw className={cn("size-3.5", busy && "animate-spin")} />
+              </Button>
+            </Tooltip>
             <Button
               type="button"
               size="sm"
-              variant={status?.installed ? "outline" : "default"}
+              variant={status?.installed ? "ghost" : "default"}
               disabled={!status || busy}
               onClick={() => void toggle()}
             >
@@ -94,25 +120,23 @@ export function SettingsCliTab() {
               ) : (
                 <SquareTerminal className="size-3.5" />
               )}
-              {status?.installed ? "Entfernen" : "Installieren"}
+              {status?.installed ? "Entfernen" : "Zum PATH hinzufügen"}
             </Button>
           </div>
         </SettingsRow>
         {status ? (
           <p className="-mt-1 truncate font-mono text-[11px] text-muted-foreground">
-            {status.installed
-              ? `l8db → ${status.location ?? status.target}`
-              : `Ohne Installation: „${status.target}“ direkt aufrufen.`}
+            {status.location
+              ? `l8db → ${status.location}`
+              : `Ohne PATH: „${status.target}“ direkt aufrufen.`}
+          </p>
+        ) : error ? (
+          <p className="-mt-1 truncate text-xs text-destructive" title={error}>
+            Prüfung fehlgeschlagen: {error}
           </p>
         ) : null}
-        {status?.installed && status.pathHint ? (
-          <CliCommandList
-            title="Der Ordner fehlt noch im PATH. In ~/.profile eintragen, dann neu anmelden:"
-            examples={[{ command: status.pathHint, description: "PATH ergänzen" }]}
-          />
-        ) : null}
 
-        <SettingsRow settingId="cli-cheatsheet" stacked>
+        <SettingsRow settingId="cli-cheatsheet" featureId="settings.cli.tui" stacked>
           <div className="w-full space-y-3">
             {CLI_CHEATSHEET.map((group) => (
               <CliCommandList key={group.title} title={group.title} examples={group.examples} />

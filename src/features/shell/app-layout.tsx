@@ -1,3 +1,4 @@
+import { AnimatePresence } from "motion/react";
 import { lazy, Suspense } from "react";
 import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -51,19 +52,25 @@ export function AppLayout() {
           aiSplit && "!rounded-xl !border !shadow-none",
         )}
       >
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="relative flex min-h-0 flex-1 overflow-hidden">
+          <div
+            data-focus-region="content"
+            className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          >
             <DeferredOutlet />
           </div>
-          {panelOpen && (
-            <PanelErrorBoundary
-              label="Das Transaktions-Panel"
-              source="transaction-panel"
-              className="w-80 shrink-0 border-l"
-            >
-              <TransactionPanel />
-            </PanelErrorBoundary>
-          )}
+          <AnimatePresence initial={false}>
+            {panelOpen && (
+              <PanelErrorBoundary
+                key="transactions"
+                label="Das Transaktions-Panel"
+                source="transaction-panel"
+                className="absolute inset-y-0 right-0 z-30 w-[380px] max-w-full"
+              >
+                <TransactionPanel />
+              </PanelErrorBoundary>
+            )}
+          </AnimatePresence>
           {!easyMode && (
             <PanelErrorBoundary
               label="Das Versionierungs-Panel"

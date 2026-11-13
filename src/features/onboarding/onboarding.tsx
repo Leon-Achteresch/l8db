@@ -239,6 +239,16 @@ export function Onboarding() {
                         Schritt {step} von {steps.length}
                       </p>
                     </div>
+                    {!last && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="ml-auto text-muted-foreground"
+                        onClick={() => setDone(true)}
+                      >
+                        Alle überspringen
+                      </Button>
+                    )}
                   </div>
 
                   <AnimatePresence mode="wait" initial={false}>

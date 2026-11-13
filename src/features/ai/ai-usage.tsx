@@ -1,7 +1,10 @@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import type { ContextLayout } from "@/lib/ai/context-map";
+import type { AiSession } from "@/lib/ai/store";
 import { type AiUsageData, summarizeAiUsage } from "@/lib/ai/usage";
 import type { AiMessage, AiProfile } from "@/lib/db/ai";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { AiContextMap } from "./ai-context-map";
 
 interface Props {
   data: AiUsageData;
@@ -9,10 +12,12 @@ interface Props {
   metadata: AiUsageData;
   messages: AiMessage[];
   prompt: string;
+  summary?: AiSession["summary"];
   onSettings: () => void;
 }
-export function AiUsage({ data, profile, metadata, messages, prompt, onSettings }: Props) {
+export function AiUsage({ data, profile, metadata, messages, prompt, summary, onSettings }: Props) {
   const feature = useNewFeatureVisibility<HTMLElement>("ai.usage");
+  const map = useNewFeatureVisibility<HTMLDivElement>("ai.usage.context-map");
   const usage = summarizeAiUsage(data, profile, metadata, messages, prompt);
   const count = (value: number) => value.toLocaleString("de-DE");
   const price = (value: number) =>
@@ -69,12 +74,22 @@ export function AiUsage({ data, profile, metadata, messages, prompt, onSettings 
         <PopoverContent
           side="top"
           align="end"
-          className="max-h-[min(70vh,calc(var(--radix-popover-content-available-height,100vh)-16px))] w-80 overflow-y-auto overscroll-contain rounded-xl text-xs"
+          className="max-h-[min(70vh,calc(var(--radix-popover-content-available-height,100vh)-16px))] w-96 max-w-[calc(100vw-16px)] overflow-y-auto overscroll-contain rounded-xl text-xs"
           aria-label="Nutzungsdetails"
         >
           <div className="flex items-center justify-between font-medium">
             <span>Kontext &amp; Kosten</span>
             <span>{usage.scope}</span>
+          </div>
+          <div ref={map.ref}>
+            <AiContextMap
+              layout={(data.layout ?? {}) as ContextLayout}
+              messages={messages}
+              summary={summary}
+              prompt={prompt}
+              measured={usage.contextEstimated ? null : usage.context}
+              limit={usage.contextLimit}
+            />
           </div>
           <div className="grid grid-cols-2 gap-y-2 tabular-nums">
             <span className="text-muted-foreground">Kontext</span>

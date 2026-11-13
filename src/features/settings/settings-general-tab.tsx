@@ -37,17 +37,17 @@ export function SettingsGeneralTab() {
 
   return (
     <div className="@container space-y-4">
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Allgemein</h2>
-        <p className="text-xs text-muted-foreground">
-          Grundlegende Darstellung und Verhalten der Benutzeroberfläche anpassen.
-        </p>
-      </div>
+      <h2 className="text-base font-semibold tracking-tight">Allgemein</h2>
 
       <div className="space-y-3">
         <OrganizationPanel />
         <SettingsRow settingId="easy-mode">
-          <Switch checked={easyMode} onCheckedChange={setEasyMode} aria-label="Easy Mode" />
+          <Switch
+            checked={easyMode}
+            onCheckedChange={setEasyMode}
+            aria-label="Easy Mode"
+            data-feature="settings.easy-mode"
+          />
         </SettingsRow>
         {!easyMode && <SettingsTableTabs />}
 

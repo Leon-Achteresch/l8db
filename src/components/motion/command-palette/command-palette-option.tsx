@@ -57,9 +57,18 @@ export function CommandPaletteOption({
       ) : hasIcons ? (
         <span className="relative z-10 h-4 w-4" />
       ) : null}
-      <span className="relative z-10 flex-1 truncate">
-        <CommandMatchText text={item.label} query={query} />
-      </span>
+      {item.summary ? (
+        <span className="relative z-10 flex min-w-0 flex-1 items-baseline gap-2">
+          <span className="max-w-full shrink-0 truncate">
+            <CommandMatchText text={item.label} query={query} />
+          </span>
+          <span className="min-w-0 truncate text-xs text-muted-foreground">{item.summary}</span>
+        </span>
+      ) : (
+        <span className="relative z-10 flex-1 truncate">
+          <CommandMatchText text={item.label} query={query} />
+        </span>
+      )}
       {item.badge ? <span className="relative z-10 shrink-0">{item.badge}</span> : null}
       {feature.isNew ? <NewBadge className="relative z-10" /> : null}
       {item.context ? (

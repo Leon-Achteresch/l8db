@@ -110,7 +110,7 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     tabId: "cli",
     title: "Befehl „l8db“ im Terminal",
     description:
-      "Macht „l8db“ in jedem Terminal verfügbar. Die CLI nutzt deine gespeicherten Verbindungen samt SSH-Tunnel und Schlüsselbund.",
+      "Trägt „l8db“ in den PATH ein und prüft, ob der Befehl erreichbar ist. Die CLI nutzt deine gespeicherten Verbindungen samt SSH-Tunnel und Schlüsselbund.",
     keywords: [
       "cli",
       "terminal",
@@ -506,7 +506,7 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
   {
     id: "usage-metrics",
     tabId: "about",
-    title: "Nutzungs- und Leistungsdaten senden",
+    title: "Nutzungs- und Leistungsdaten an Sentry senden",
     description:
       "Bereiche, Bedienwege, aktive Vordergrundzeit, Sitzungen, Startzeit sowie Erfolg, Fehler, Abbrüche und Dauer von Datenbankbefehlen je DB-Typ (auch als Traces mit Ladezeiten) an Sentry (EU) senden. Nie SQL, Ergebnisdaten, Namen oder Verbindungsdaten.",
     keywords: [
@@ -521,6 +521,23 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
       "tracing",
     ],
     key: "usageMetrics",
+  },
+  {
+    id: "storage-overview",
+    tabId: "storage",
+    title: "Lokaler Speicher",
+    description:
+      "Belegung pro Verbindung und Datenbereich anzeigen, Tabs verwalten und Daten löschen.",
+    keywords: [
+      "speicher",
+      "voll",
+      "indexeddb",
+      "localstorage",
+      "tabs",
+      "löschen",
+      "aufräumen",
+      "quota",
+    ],
   },
   {
     id: "local-usage-statistics",
@@ -580,6 +597,21 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
       "Ab und zu unten rechts einen Artikel aus dem l8db-Blog vorschlagen, wenn gerade nichts los ist.",
     keywords: ["blog", "artikel", "tipps", "vorschläge", "lesen"],
     key: "blogSuggestions",
+  },
+  {
+    id: "discovery",
+    tabId: "discovery",
+    title: "Funktionen entdecken",
+    description: "Passende Funktionen von l8db vorschlagen, wenn gerade nichts los ist.",
+    keywords: ["entdecken", "tipps", "hinweise", "lernen", "funktionen", "discovery", "vorschläge"],
+    key: "discovery",
+  },
+  {
+    id: "discovery-reset",
+    tabId: "discovery",
+    title: "Fortschritt zurücksetzen",
+    description: "Genutzte Funktionen und gezeigte Hinweise vergessen.",
+    keywords: ["entdecken", "zurücksetzen", "fortschritt", "reset"],
   },
   {
     id: "release-notes",

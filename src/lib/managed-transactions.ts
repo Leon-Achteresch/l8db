@@ -163,6 +163,24 @@ export async function finishManagedTransaction(txId: string, commit: boolean): P
   }
 }
 
+export function stagesTableChanges(
+  connection: SavedConnection,
+  database: string | null,
+  schema: string,
+  table: string,
+): boolean {
+  return (
+    supports(connection, "transactions") &&
+    Boolean(
+      findTransaction(useTransactionStore.getState().transactions, connection.id, database, {
+        type: "table",
+        schema,
+        table,
+      }) || useSettingsStore.getState().transactionsEnabled,
+    )
+  );
+}
+
 export async function runTableTransaction<T>(
   connection: SavedConnection,
   database: string | null,
@@ -173,11 +191,7 @@ export async function runTableTransaction<T>(
 ): Promise<T> {
   const scope = { type: "table", schema, table } as const;
   const store = useTransactionStore.getState();
-  if (
-    supports(connection, "transactions") &&
-    (findTransaction(store.transactions, connection.id, database, scope) ||
-      useSettingsStore.getState().transactionsEnabled)
-  ) {
+  if (stagesTableChanges(connection, database, schema, table)) {
     const tx = await ensureManagedTransaction(connection, database, scope);
     return runManagedOperation(tx.txId, async () => {
       const result = await op(tx.txId);

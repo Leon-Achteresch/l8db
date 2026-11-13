@@ -119,7 +119,7 @@ export function SnapshotRow({
           {meta.filter(Boolean).join(" · ")}
         </p>
         {snapshot.note && (
-          <p className="mt-1 line-clamp-2 whitespace-pre-line text-[11px] text-muted-foreground/80">
+          <p className="mt-1 line-clamp-2 whitespace-pre-line text-[11px] text-muted-foreground">
             {snapshot.note}
           </p>
         )}

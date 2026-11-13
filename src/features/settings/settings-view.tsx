@@ -1,14 +1,15 @@
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { useNavigate } from "@tanstack/react-router";
 import { ListFilter } from "lucide-react";
-import { motion } from "motion/react";
 import { useEffect, useRef } from "react";
+import { ChangeSurface } from "@/components/motion/change-surface";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SettingsAboutTab } from "@/features/settings/settings-about-tab";
 import { SettingsAppearanceTab } from "@/features/settings/settings-appearance-tab";
 import { SettingsCliTab } from "@/features/settings/settings-cli-tab";
 import { SettingsDataTab } from "@/features/settings/settings-data-tab";
+import { SettingsDiscoveryTab } from "@/features/settings/settings-discovery-tab";
 import { SettingsEditorTab } from "@/features/settings/settings-editor-tab";
 import { SettingsExtensionsTab } from "@/features/settings/settings-extensions-tab";
 import { SettingsGeneralTab } from "@/features/settings/settings-general-tab";
@@ -17,8 +18,8 @@ import { SettingsSearch } from "@/features/settings/settings-search";
 import { SettingsSearchResults } from "@/features/settings/settings-search-results";
 import { SettingsSecurityTab } from "@/features/settings/settings-security-tab";
 import { SETTINGS_TABS, SettingsSidebar } from "@/features/settings/settings-sidebar";
+import { SettingsStorageTab } from "@/features/settings/settings-storage-tab";
 import { SettingsUsageTab } from "@/features/settings/settings-usage-tab";
-import { SPRING_LAYOUT } from "@/lib/ease";
 import { useModifiedSettings } from "@/lib/hooks/use-modified-settings";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
@@ -98,12 +99,7 @@ export function SettingsView() {
     >
       <div ref={featureRef} className="mx-auto w-full max-w-6xl px-6 py-8">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Einstellungen</h1>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Konfiguriere Editor, Abfragegrenzen, Sicherheit und App-Verhalten.
-            </p>
-          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Einstellungen</h1>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <div className="min-w-48 flex-1 sm:w-72">
               <SettingsSearch value={query} onChange={setQuery} />
@@ -130,17 +126,14 @@ export function SettingsView() {
             </div>
           </aside>
           <section
+            ref={contentRef}
             className="@container min-w-0 flex-1 overflow-x-clip"
             aria-label="Einstellungsoptionen"
           >
-            <motion.div
-              ref={contentRef}
-              key={query.trim() || modifiedOnly ? "search" : category}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.15, ease: "easeOut" }}
-              layout
-              transition-layout={{ layout: SPRING_LAYOUT }}
+            <ChangeSurface
+              changeKey={query.trim() || modifiedOnly ? "search" : category}
+              kind="section"
+              order={SETTINGS_TABS.findIndex((tab) => tab.id === category)}
             >
               {query.trim() || modifiedOnly ? (
                 <SettingsSearchResults
@@ -159,15 +152,17 @@ export function SettingsView() {
                   {category === "appearance" ? <SettingsAppearanceTab /> : null}
                   {category === "editor" ? <SettingsEditorTab /> : null}
                   {category === "data" ? <SettingsDataTab /> : null}
+                  {category === "storage" ? <SettingsStorageTab /> : null}
                   {category === "security" ? <SettingsSecurityTab /> : null}
                   {category === "cli" ? <SettingsCliTab /> : null}
                   {category === "extensions" ? <SettingsExtensionsTab /> : null}
                   {category === "hotkeys" ? <SettingsHotkeysTab /> : null}
+                  {category === "discovery" ? <SettingsDiscoveryTab /> : null}
                   {category === "statistics" ? <SettingsUsageTab /> : null}
                   {category === "about" ? <SettingsAboutTab /> : null}
                 </>
               )}
-            </motion.div>
+            </ChangeSurface>
           </section>
         </div>
       </div>

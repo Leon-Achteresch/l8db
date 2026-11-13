@@ -12,15 +12,11 @@ import { QueryHistorySheet } from "@/features/query/query-history-sheet";
 import { ScriptResultList, type ScriptRunEntry } from "@/features/query/script-result-list";
 import { useTableTabs } from "@/lib/table-tabs";
 
-import { ServerOutputPanel } from "../server-output-panel";
-import type { QueryViewCapabilities, QueryViewConnection } from "./types";
+import type { QueryViewConnection } from "./types";
 import type { QueryExecutionState } from "./use-query-execution-state";
-import type { ServerOutputState } from "./use-server-output";
 
 interface QueryViewDrawersProps {
   connection: QueryViewConnection;
-  caps: QueryViewCapabilities;
-  output: ServerOutputState;
   exec: QueryExecutionState;
   onSelectScriptEntry: (entry: ScriptRunEntry) => void;
   historyRef: Ref<QueryHistoryHandle>;
@@ -35,8 +31,6 @@ export interface QueryHistoryHandle {
 
 export function QueryViewDrawers({
   connection,
-  caps,
-  output,
   exec,
   onSelectScriptEntry,
   historyRef,
@@ -57,25 +51,6 @@ export function QueryViewDrawers({
     exec;
   return (
     <>
-      {connection && caps.server_output && (
-        <Drawer open={output.outputOpen} onOpenChange={output.setOutputOpen}>
-          <DrawerContent className="gap-0 p-0">
-            <DrawerHeader className="sr-only">
-              <DrawerTitle>Server-Ausgabe</DrawerTitle>
-              <DrawerDescription>Hinweise und Meldungen der aktiven Verbindung.</DrawerDescription>
-            </DrawerHeader>
-            <ServerOutputPanel
-              connectionId={connection.id}
-              connectionName={connection.name}
-              enabled={output.outputEnabled}
-              busy={output.outputBusy}
-              onToggle={(next) => void output.handleToggleServerOutput(next)}
-              onClose={() => output.setOutputOpen(false)}
-            />
-          </DrawerContent>
-        </Drawer>
-      )}
-
       <Drawer
         open={Boolean(scriptEntries?.length)}
         onOpenChange={(open) => {

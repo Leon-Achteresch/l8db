@@ -77,7 +77,7 @@ export function InvalidObjectsView() {
       </div>
     );
   }
-  if (!caps.compile_objects) {
+  if (!caps.invalid_objects) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
         <p className="text-sm text-muted-foreground">

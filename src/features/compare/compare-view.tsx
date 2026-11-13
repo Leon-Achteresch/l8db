@@ -126,25 +126,7 @@ export function CompareView({ tabId }: { tabId?: string } = {}) {
         sourceConnection={connection}
         left={workspace.left}
         right={workspace.right}
-        onLeftChange={(left) =>
-          update({
-            left,
-            draft: null,
-            draftBase: null,
-            sourceBase: null,
-            ...(left.objectType !== workspace.right.objectType ||
-            left.objectName !== workspace.left.objectName
-              ? {
-                  right: {
-                    ...workspace.right,
-                    objectType: left.objectType,
-                    objectName: null,
-                    objectOid: null,
-                  },
-                }
-              : {}),
-          })
-        }
+        onLeftChange={(left) => update({ left, draft: null, draftBase: null, sourceBase: null })}
         onRightChange={(right) => update({ right, draft: null, draftBase: null, sourceBase: null })}
         draft={workspace.draft}
         draftBase={workspace.draftBase ?? null}

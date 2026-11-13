@@ -106,7 +106,7 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
         };
       });
       await page.goto(`http://localhost:${server.port}/compare`);
-      await page.getByRole("button", { name: "Vergleich v_table_0000", exact: true }).click();
+      await page.getByRole("tab", { name: "Vergleich v_table_0000", exact: true }).click();
       await page.getByText("Definitionen werden geladen…").waitFor({ state: "hidden" });
       expect(await page.getByRole("button", { name: /in Entwurf übernehmen/ }).count()).toBe(1);
       await page.getByRole("button", { name: "Quelle in Entwurf übernehmen" }).click();

@@ -50,6 +50,7 @@ export function ToolbarViewControls({
         </Button>
       )}
       <Button
+        data-feature="explain"
         size="sm"
         variant={analysisOpen ? "secondary" : "ghost"}
         className="h-7 gap-1.5 px-2 text-xs @min-[62rem]/qtb:px-3"

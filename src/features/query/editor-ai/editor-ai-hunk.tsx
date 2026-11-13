@@ -28,7 +28,7 @@ export function EditorAiHunk({ hunk, font, onAccept, onReject }: Props) {
           <X className="size-3" aria-hidden />
           Ablehnen
         </button>
-        <span className="ml-1 text-muted-foreground/80 tabular-nums">
+        <span className="ml-1 text-muted-foreground tabular-nums">
           {hunk.removed.length ? `−${hunk.removed.length}` : ""}
           {hunk.removed.length && hunk.added ? " " : ""}
           {hunk.added ? `+${hunk.added}` : ""}

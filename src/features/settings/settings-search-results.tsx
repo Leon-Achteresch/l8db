@@ -35,7 +35,7 @@ export function SettingsSearchResults({
   if (results.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 p-8 text-center">
-        <SearchX className="size-8 text-muted-foreground/60" />
+        <SearchX className="size-8 text-muted-foreground" />
         <p className="mt-3 text-sm font-medium">
           {modifiedOnly && !normalized
             ? "Keine geänderten Einstellungen"

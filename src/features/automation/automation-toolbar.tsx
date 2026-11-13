@@ -105,6 +105,7 @@ export function AutomationToolbar() {
             const isNew = entry.scopes.some((scope) => hasNewFeatures(scope, seen));
             return (
               <button
+                data-feature={`automation.${entry.id}`}
                 key={entry.id}
                 type="button"
                 role="tab"
@@ -156,7 +157,12 @@ export function AutomationToolbar() {
           </IconButton>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button ref={newTaskBadge.ref} size="sm" data-testid="automation-new-task">
+              <Button
+                ref={newTaskBadge.ref}
+                size="sm"
+                data-testid="automation-new-task"
+                data-feature="automation.new-task"
+              >
                 <PlusIcon />
                 Neuer Task
                 {newTaskBadge.isNew && <NewBadge className="bg-primary-foreground text-primary" />}

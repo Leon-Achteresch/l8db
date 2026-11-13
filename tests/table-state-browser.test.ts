@@ -55,25 +55,25 @@ for (const engine of [chromium, webkit]) {
         await page.locator("tbody tr[data-index]").first().waitFor();
         const paginationFocus = page.getByRole("button", { name: "Nächste Seite", exact: true });
         await paginationFocus.focus();
-        await page.keyboard.press("End");
+        await page.keyboard.press("Alt+Shift+ArrowDown");
         await page.getByText("Seite 5 / 5", { exact: true }).waitFor();
         await page.waitForTimeout(150);
         await page.getByRole("button", { name: "Erste Seite", exact: true }).focus();
         await page.keyboard.press("Alt+ArrowUp");
         await page.getByText("Seite 4 / 5", { exact: true }).waitFor();
         await page.waitForTimeout(150);
-        await page.keyboard.press("Home");
+        await page.keyboard.press("Alt+Shift+ArrowUp");
         await page.getByText("Seite 1 / 5", { exact: true }).waitFor();
         await page.waitForTimeout(150);
         await paginationFocus.focus();
         await page.keyboard.press("Alt+ArrowDown");
         await page.getByText("Seite 2 / 5", { exact: true }).waitFor();
         await page.waitForTimeout(150);
-        await page.keyboard.press("Home");
+        await page.keyboard.press("Alt+Shift+ArrowUp");
         await page.getByText("Seite 1 / 5", { exact: true }).waitFor();
         await page.waitForTimeout(150);
         await page.getByRole("link", { name: "Customers", exact: true }).focus();
-        await page.keyboard.press("End");
+        await page.keyboard.press("Alt+Shift+ArrowDown");
         expect(await page.getByText("Seite 1 / 5", { exact: true }).count()).toBe(1);
         await page.getByRole("button", { name: "Filter", exact: true }).click();
         await page.waitForTimeout(350);
@@ -90,7 +90,7 @@ for (const engine of [chromium, webkit]) {
         const nameHeader = page.locator('th[data-column-id="name"]');
         await nameHeader.click({ button: "right" });
         await page.getByRole("menuitem", { name: "Absteigend sortieren", exact: true }).click();
-        await page.getByText("(absteigend)", { exact: false }).waitFor();
+        await page.getByLabel("Absteigend sortiert nach", { exact: true }).waitFor();
         const resize = nameHeader.locator("div.cursor-col-resize");
         const box = await resize.boundingBox();
         if (!box) throw new Error("Missing resize handle");
@@ -136,7 +136,7 @@ for (const engine of [chromium, webkit]) {
           element.scrollLeft = 0;
         });
         expect(await nameHeader.evaluate((element) => element.style.width)).toBe(savedWidth);
-        await page.getByText("(absteigend)", { exact: false }).waitFor();
+        await page.getByLabel("Absteigend sortiert nach", { exact: true }).waitFor();
         await scroller.evaluate((element) => {
           element.scrollLeft = 850;
         });

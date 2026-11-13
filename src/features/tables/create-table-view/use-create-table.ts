@@ -2,7 +2,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { emptyColumn } from "@/features/tables/create-table-view/columns";
-import { CLICKHOUSE_TYPES, COMMON_TYPES } from "@/features/tables/create-table-view/constants";
 import { loadTemplateColumns } from "@/features/tables/create-table-view/load-template-columns";
 import { copyText } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
@@ -28,30 +27,29 @@ export function useCreateTable() {
   const database = useActiveDatabase();
   const activeSchema = useActiveSchema();
   const navigate = useNavigate();
+  const capabilities = useActiveCapabilities();
+  const template = capabilities.table_template;
 
   const [tableName, setTableName] = useState("");
-  const [schema, setSchema] = useState(
-    activeSchema ?? (connection?.kind === "clickhouse" ? "default" : "public"),
-  );
+  const [schema, setSchema] = useState(activeSchema || template.schema);
   const [ifNotExists, setIfNotExists] = useState(false);
   const [columns, setColumns] = useState<(ColumnDefinition & { id: number })[]>(() => [
     {
       ...emptyColumn(),
       name: "id",
-      data_type: connection?.kind === "clickhouse" ? "UInt64" : "bigserial",
+      data_type: template.id_type,
       is_nullable: false,
       is_primary_key: true,
     },
     {
       ...emptyColumn(),
       name: "created_at",
-      data_type: connection?.kind === "clickhouse" ? "DateTime" : "timestamptz",
+      data_type: template.timestamp_type,
       is_nullable: false,
-      default_value: "now()",
+      default_value: template.now,
     },
   ]);
   const [saving, setSaving] = useState(false);
-  const capabilities = useActiveCapabilities();
   const [ddl, setDdl] = useState("");
   const [ddlError, setDdlError] = useState<string | null>(null);
   const [templateTables, setTemplateTables] = useState<string[]>([]);
@@ -70,19 +68,19 @@ export function useCreateTable() {
 
   const request = useMemo<CreateTableRequest>(
     () => ({
-      schema: schema.trim() || "public",
+      schema: schema.trim() || template.schema,
       name: tableName.trim(),
       columns: columns.map(({ id: _id, ...rest }) => rest),
       if_not_exists: ifNotExists,
       primary_key_name: primaryKeyName.trim() || null,
       constraints,
     }),
-    [schema, tableName, columns, ifNotExists, primaryKeyName, constraints],
+    [schema, template.schema, tableName, columns, ifNotExists, primaryKeyName, constraints],
   );
 
   const connectionString = connection ? effectiveConnectionString(connection) : null;
   const kind = connection?.kind;
-  const typeOptions = kind === "clickhouse" ? CLICKHOUSE_TYPES : COMMON_TYPES;
+  const typeOptions = template.types;
   const constraintsSupported = constraintDialectInfo(kind) !== null;
 
   useEffect(() => {

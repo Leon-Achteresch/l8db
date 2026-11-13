@@ -1,134 +1,156 @@
-import { CopyIcon, EraserIcon, TerminalIcon, XIcon } from "lucide-react";
-import { useMemo } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { CopyIcon, EraserIcon } from "lucide-react";
+import { type ReactNode, useLayoutEffect, useRef } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { copyText } from "@/lib/clipboard";
-import { type ServerOutputEntry, useServerOutputStore } from "@/lib/server-output";
+import {
+  MAX_SERVER_OUTPUT_ENTRIES,
+  type ServerOutputEntry,
+  useServerOutputStore,
+} from "@/lib/server-output";
+import { cn } from "@/lib/utils";
 import { showCopiedMessage } from "@/lib/workspace-status";
 
 interface ServerOutputPanelProps {
   connectionId: string;
-  connectionName: string;
   enabled: boolean;
   busy: boolean;
   onToggle: (enabled: boolean) => void;
-  onClose: () => void;
+  tabs: ReactNode;
 }
 
-function levelVariant(level: string): "destructive" | "secondary" | "outline" {
+const ROW_HEIGHT = 20;
+const NO_ENTRIES: ServerOutputEntry[] = [];
+
+function levelClass(level: string): string {
   const upper = level.toUpperCase();
-  if (upper.includes("ERROR") || upper.includes("FEHLER")) return "destructive";
-  if (upper.includes("WARN")) return "secondary";
-  return "outline";
-}
-
-function formatTime(at: number): string {
-  return new Date(at).toLocaleTimeString();
+  if (upper.includes("ERROR") || upper.includes("FEHLER")) return "text-destructive";
+  if (upper.includes("WARN")) return "text-amber-600 dark:text-amber-400";
+  return "text-muted-foreground";
 }
 
 function asText(entries: ServerOutputEntry[]): string {
   return entries
-    .map((entry) => {
-      const detail = entry.detail ? ` — ${entry.detail}` : "";
-      return `[${formatTime(entry.at)}] ${entry.level}: ${entry.message}${detail}`;
-    })
+    .map((entry) =>
+      entry.level === "OUTPUT"
+        ? entry.message
+        : `${entry.level}: ${entry.message}${entry.detail ? ` — ${entry.detail}` : ""}`,
+    )
     .join("\n");
 }
 
 export function ServerOutputPanel({
   connectionId,
-  connectionName,
   enabled,
   busy,
   onToggle,
-  onClose,
+  tabs,
 }: ServerOutputPanelProps) {
-  const entries = useServerOutputStore((state) => state.entries[connectionId]);
+  const rows = useServerOutputStore((state) => state.entries[connectionId]) ?? NO_ENTRIES;
   const clear = useServerOutputStore((state) => state.clear);
-  const rows = useMemo(() => entries ?? [], [entries]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 20,
+    useFlushSync: false,
+  });
+  const last = rows.at(-1)?.id;
+  useLayoutEffect(() => {
+    if (last) virtualizer.scrollToIndex(rows.length - 1, { align: "end" });
+  }, [last, rows.length, virtualizer]);
+  const items = virtualizer.getVirtualItems();
 
   const handleCopy = async () => {
-    if (rows.length === 0) return;
     try {
       await copyText(asText(rows));
-      showCopiedMessage("Server-Ausgabe kopiert");
+      showCopiedMessage("Ausgabe kopiert");
     } catch {
       toast.error("Kopieren fehlgeschlagen");
     }
   };
 
   return (
-    <div className="flex max-h-64 shrink-0 flex-col border-t bg-card/40">
-      <div className="flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-xs">
-        <TerminalIcon className="size-3.5 text-muted-foreground" />
-        <span className="font-medium">Server-Ausgabe</span>
-        <span className="tabular-nums text-muted-foreground">({rows.length})</span>
-        <span className="truncate text-muted-foreground">{connectionName}</span>
-        <label className="ml-auto flex items-center gap-2 text-muted-foreground">
-          <Switch checked={enabled} disabled={busy} onCheckedChange={onToggle} />
-          Aktiv
-        </label>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-1 bg-muted/20 px-2 text-xs">
+        {tabs}
+        {rows.length >= MAX_SERVER_OUTPUT_ENTRIES && (
+          <span className="text-muted-foreground">ältere Zeilen entfernt</span>
+        )}
+        <Switch
+          aria-label="Ausgabe aktiv"
+          title="Ausgabe aktiv"
+          className="mr-1 ml-auto"
+          checked={enabled}
+          disabled={busy}
+          onCheckedChange={onToggle}
+        />
         <Button
-          size="sm"
+          size="icon-sm"
           variant="ghost"
-          className="h-6 gap-1.5 px-2 text-xs"
+          aria-label="Ausgabe kopieren"
+          title="Kopieren"
           disabled={rows.length === 0}
           onClick={() => void handleCopy()}
         >
-          <CopyIcon className="size-3" />
-          Kopieren
+          <CopyIcon className="size-3.5" />
         </Button>
         <Button
-          size="sm"
+          size="icon-sm"
           variant="ghost"
-          className="h-6 gap-1.5 px-2 text-xs"
+          aria-label="Ausgabe leeren"
+          title="Leeren"
           disabled={rows.length === 0}
           onClick={() => clear(connectionId)}
         >
-          <EraserIcon className="size-3" />
-          Leeren
-        </Button>
-        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={onClose}>
-          <XIcon className="size-3" />
+          <EraserIcon className="size-3.5" />
         </Button>
       </div>
-      <ScrollArea className="min-h-0 flex-1">
+      <div
+        ref={scrollRef}
+        role="log"
+        aria-label="Ausgabe"
+        className="min-h-0 flex-1 overflow-auto py-1"
+      >
         {rows.length === 0 ? (
-          <p className="px-3 py-3 text-xs text-muted-foreground">
-            {enabled
-              ? "Noch keine Ausgabe für diese Sitzung."
-              : "Server-Ausgabe ist für diese Sitzung nicht aktiv."}
+          <p className="px-3 py-2 text-xs text-muted-foreground">
+            {enabled ? "Keine Ausgabe" : "Ausgabe ist aus"}
           </p>
         ) : (
-          <ul className="divide-y">
-            {rows.map((entry) => (
-              <li key={entry.id} className="flex items-start gap-2 px-3 py-1.5 text-xs">
-                <span className="shrink-0 tabular-nums text-muted-foreground">
-                  {formatTime(entry.at)}
-                </span>
-                <Badge
-                  variant={levelVariant(entry.level)}
-                  className="shrink-0 px-1.5 py-0 text-[10px]"
+          <div
+            style={{
+              paddingTop: items[0]?.start ?? 0,
+              paddingBottom: virtualizer.getTotalSize() - (items.at(-1)?.end ?? 0),
+            }}
+          >
+            {items.map((item) => {
+              const entry = rows[item.index];
+              return (
+                <div
+                  key={entry.id}
+                  ref={virtualizer.measureElement}
+                  data-index={item.index}
+                  title={new Date(entry.at).toLocaleTimeString()}
+                  className="flex gap-2 px-3 font-mono text-xs leading-5"
                 >
-                  {entry.level}
-                </Badge>
-                <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
-                  {entry.message}
-                  {entry.detail && (
-                    <span className="block text-muted-foreground">{entry.detail}</span>
+                  {entry.level !== "OUTPUT" && (
+                    <span className={cn("shrink-0", levelClass(entry.level))}>{entry.level}</span>
                   )}
-                </span>
-                {entry.database && (
-                  <span className="shrink-0 text-muted-foreground">{entry.database}</span>
-                )}
-              </li>
-            ))}
-          </ul>
+                  <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+                    {entry.message}
+                    {entry.detail && (
+                      <span className="block text-muted-foreground">{entry.detail}</span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   );
 }

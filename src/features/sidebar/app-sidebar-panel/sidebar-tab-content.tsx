@@ -2,11 +2,13 @@ import { SidebarPackageList } from "@/features/sidebar/sidebar-package-list";
 import { SidebarProcedureList } from "@/features/sidebar/sidebar-procedure-list";
 import { SidebarSynonymList } from "@/features/sidebar/sidebar-synonym-list";
 import { SidebarBucketList } from "@/features/storage/sidebar-bucket-list";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { SavedQueriesList } from "./saved-queries-list";
 import { SidebarEntityList } from "./sidebar-entity-list";
 import { SidebarExtensionList } from "./sidebar-extension-list";
 import { SidebarFunctionList } from "./sidebar-function-list";
 import { SidebarMatviewList } from "./sidebar-matview-list";
+import { SidebarPrincipalList } from "./sidebar-principal-list";
 import { SidebarRoleList } from "./sidebar-role-list";
 import { SidebarSequenceList } from "./sidebar-sequence-list";
 import type { SidebarTabValue } from "./sidebar-tab";
@@ -29,6 +31,7 @@ export function SidebarTabContent({
   packages,
   plainFunctions,
 }: SidebarTabContentProps) {
+  const { principals } = useActiveCapabilities();
   return (
     <>
       {!hasConnection ? (
@@ -91,6 +94,8 @@ export function SidebarTabContent({
           isError={q.extensionsError}
           error={q.extensionsErrorValue}
         />
+      ) : sidebarTab === "roles" && principals ? (
+        <SidebarPrincipalList />
       ) : sidebarTab === "roles" ? (
         <SidebarRoleList
           items={q.roles}

@@ -1,18 +1,29 @@
 import type { HealthCategory, HealthCheckResult, HealthSeverity } from "@/lib/db";
 
-export const SEVERITY_ORDER: HealthSeverity[] = ["critical", "warning", "info"];
+export type HealthGroup = HealthSeverity | "skipped" | "ok";
 
-export const SEVERITY_LABEL: Record<HealthSeverity, string> = {
+export const GROUP_ORDER: HealthGroup[] = ["critical", "warning", "info", "skipped", "ok"];
+
+export const GROUP_LABEL: Record<HealthGroup, string> = {
   critical: "Kritisch",
   warning: "Warnung",
   info: "Hinweis",
+  skipped: "Übersprungen",
+  ok: "In Ordnung",
 };
 
-export const SEVERITY_CLASS: Record<HealthSeverity, string> = {
-  critical: "bg-destructive/10 text-destructive border-destructive/30",
-  warning: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
-  info: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30",
+export const GROUP_DOT: Record<HealthGroup, string> = {
+  critical: "bg-destructive",
+  warning: "bg-amber-500",
+  info: "bg-sky-500",
+  skipped: "bg-muted-foreground/40",
+  ok: "bg-emerald-500",
 };
+
+export function groupOf(check: HealthCheckResult): HealthGroup {
+  if (check.status === "issue") return check.severity ?? "info";
+  return check.status === "skipped" ? "skipped" : "ok";
+}
 
 export const CATEGORY_LABEL: Record<HealthCategory, string> = {
   security: "Sicherheit",
@@ -21,11 +32,6 @@ export const CATEGORY_LABEL: Record<HealthCategory, string> = {
 };
 
 export function sortChecks(checks: HealthCheckResult[]): HealthCheckResult[] {
-  const rank = (check: HealthCheckResult) =>
-    check.status === "issue" && check.severity
-      ? SEVERITY_ORDER.indexOf(check.severity)
-      : check.status === "skipped"
-        ? SEVERITY_ORDER.length
-        : SEVERITY_ORDER.length + 1;
+  const rank = (check: HealthCheckResult) => GROUP_ORDER.indexOf(groupOf(check));
   return [...checks].sort((a, b) => rank(a) - rank(b));
 }

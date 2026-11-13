@@ -79,7 +79,7 @@ export function TabPaneContent({ tab }: { tab: Tab }) {
     case "package":
       return <PackageView schema={tab.schema} name={tab.name} />;
     case "role":
-      return <UsersView name={tab.name} />;
+      return <UsersView name={tab.name} profile={tab.profile} />;
     case "trigger":
       return <TriggerView schema={tab.schema} table={tab.table} trigger={tab.trigger} />;
     case "view-editor":

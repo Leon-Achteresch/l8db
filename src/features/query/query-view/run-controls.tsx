@@ -51,6 +51,7 @@ export function RunControls({
     <>
       <div className="flex shrink-0 items-stretch">
         <Button
+          data-feature="query.run"
           size="sm"
           variant="default"
           className="h-7 gap-1.5 rounded-r-none border-r border-primary-foreground/25 px-2.5 text-xs @min-[42rem]/qtb:px-3"
@@ -116,7 +117,7 @@ export function RunControls({
       </div>
       <Button
         size="sm"
-        variant="outline"
+        variant="ghost"
         className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
         data-tour="query-check"
         data-hotkey="query.check"
@@ -137,7 +138,7 @@ export function RunControls({
       {isRunning && (
         <Button
           size="sm"
-          variant="outline"
+          variant="ghost"
           className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
           disabled={!activeJob?.cancellable || activeJob.status === "cancelling"}
           disabledReason={

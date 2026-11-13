@@ -3,9 +3,11 @@ import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConnectionScopeContext, useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
+import { recordFeatureEvent } from "@/lib/discovery/events";
 import { openScopedTable, useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { useRedisRowEdit } from "@/lib/hooks/use-redis-row-edit";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
+import { stagesTableChanges } from "@/lib/managed-transactions";
 import { applyMasks } from "@/lib/masking";
 import { useActiveMasks } from "@/lib/masking-display";
 import {
@@ -82,6 +84,10 @@ export function useTableViewModel({
   useEffect(() => {
     if (stateKey && !inDrawer) useTableViewStateStore.getState().keepDetailTab(stateKey);
   }, [stateKey, inDrawer]);
+  const family = connection?.kind ?? null;
+  useEffect(() => {
+    if (baseStateKey) recordFeatureEvent("table.opened", { family, drawer: Boolean(inDrawer) });
+  }, [baseStateKey, family, inDrawer]);
   const setDetailTab = useCallback(
     (tab: TableDetailTab) => {
       const store = useTableViewStateStore.getState();
@@ -223,6 +229,7 @@ export function useTableViewModel({
 
   const handleFilterChange = useCallback(
     (newFilter: string, raw = true) => {
+      if (newFilter.trim()) recordFeatureEvent("table.filtered", { mode: raw ? "sql" : "simple" });
       setFilter(newFilter);
       setFilterRaw(raw);
       setPage(0);
@@ -236,9 +243,13 @@ export function useTableViewModel({
       updates: Record<string, string | null>,
       oldValues: Record<string, unknown>,
     ) => {
+      const staged = connection
+        ? stagesTableChanges(connection, database ?? null, schema, table)
+        : false;
       await updateRow({ ctid, updates, oldValues });
+      return staged ? ("staged" as const) : undefined;
     },
-    [updateRow],
+    [updateRow, connection, database, schema, table],
   );
   const insertRow = insertRowMutation.mutateAsync;
   const addRow = useCallback(
@@ -254,13 +265,16 @@ export function useTableViewModel({
   const handleDeleteRow = useCallback(
     async (ctid: string, oldValues: Record<string, unknown>) => {
       try {
+        const staged = connection
+          ? stagesTableChanges(connection, database ?? null, schema, table)
+          : false;
         await deleteRow({ ctid, oldValues });
-        toast.success("Zeile gelöscht.");
+        toast.success(staged ? "Löschen in Transaktion vorgemerkt." : "Zeile gelöscht.");
       } catch (err) {
         toast.error(typeof err === "string" ? err : String(err));
       }
     },
-    [deleteRow],
+    [deleteRow, connection, database, schema, table],
   );
 
   const handleRefresh = refresh;

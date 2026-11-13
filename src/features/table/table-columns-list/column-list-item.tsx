@@ -1,11 +1,11 @@
 import { CheckCheckIcon, CopyIcon, PencilIcon, SaveIcon, XIcon } from "lucide-react";
 import { motion } from "motion/react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { DataTypeCombobox } from "@/features/alter-table/alter-table-view/data-type-combobox";
 import { copyText } from "@/lib/clipboard";
+import { columnTypeLabel } from "@/lib/column-type";
 import type { AlterColumnRequest, DatabaseKind, DetailedColumnInfo } from "@/lib/db";
 import { getTypeConfig } from "./column-type-config";
 
@@ -38,27 +38,24 @@ export function ColumnListItem({
   onCancelEdit: () => void;
   onSaveEdit: () => void;
 }) {
-  const dataType =
-    column.character_maximum_length != null
-      ? `${column.data_type}(${column.character_maximum_length})`
-      : column.data_type;
-  const typeConfig = getTypeConfig(column.data_type, column.is_primary_key);
-  const IconComponent = typeConfig.icon;
+  const dataType = columnTypeLabel(column.data_type, column.character_maximum_length);
+  const columnDefault = /^"[^"]+"\."ISEQ\$\$_\d+"\.nextval$/i.test(column.column_default ?? "")
+    ? "Identity"
+    : column.column_default;
+  const IconComponent = getTypeConfig(column.data_type, column.is_primary_key).icon;
 
   return (
     <motion.div
       layout
       variants={{ hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0 } }}
-      className={`group grid min-w-[720px] grid-cols-[minmax(190px,1.5fr)_minmax(145px,1fr)_90px_minmax(180px,1.3fr)_auto] items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
-        editing
-          ? "border-primary/50 bg-primary/[0.035] shadow-sm"
-          : "border-border bg-card hover:border-muted-foreground/30 hover:bg-muted/25"
+      className={`group grid min-h-9 min-w-[720px] grid-cols-[minmax(190px,1.5fr)_minmax(145px,1fr)_90px_minmax(180px,1.3fr)_4rem] items-center gap-3 rounded-lg px-3 py-1 transition-colors ${
+        editing ? "bg-primary/10 py-1.5" : "hover:bg-muted/40"
       }`}
     >
       {editing && kind ? (
         <>
           <div className="flex items-center gap-2">
-            <span className="w-5 text-right text-xs font-semibold text-muted-foreground/60 tabular-nums">
+            <span className="w-5 text-right text-xs font-semibold text-muted-foreground tabular-nums">
               {column.ordinal_position}
             </span>
             <Input
@@ -115,51 +112,47 @@ export function ColumnListItem({
       ) : (
         <>
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="w-5 shrink-0 text-right text-xs font-semibold text-muted-foreground/60 tabular-nums">
+            <span className="w-5 shrink-0 text-right text-xs font-semibold text-muted-foreground tabular-nums">
               {column.ordinal_position}
             </span>
-            <div className={`shrink-0 rounded-md border p-1.5 ${typeConfig.color}`}>
-              <IconComponent className="size-3.5" />
-            </div>
+            <IconComponent
+              className={`size-3.5 shrink-0 ${
+                column.is_primary_key ? "text-amber-500" : "text-muted-foreground"
+              }`}
+            />
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold tracking-tight">{column.name}</p>
+              <p className="flex items-center gap-2 text-[13px] font-medium">
+                <span className="truncate">{column.name}</span>
+                {column.is_primary_key && (
+                  <span className="shrink-0 rounded-full bg-amber-500/10 px-1.5 text-[10px] font-medium text-amber-500">
+                    PK
+                  </span>
+                )}
+              </p>
               {column.comment && (
                 <p className="truncate text-xs text-muted-foreground" title={column.comment}>
                   {column.comment}
                 </p>
               )}
-              <div className="mt-1 flex gap-1.5">
-                {column.is_primary_key && (
-                  <Badge
-                    variant="outline"
-                    className="border-amber-500/20 bg-amber-500/10 px-1.5 py-0 text-[10px] text-amber-500"
-                  >
-                    PK
-                  </Badge>
-                )}
-                {!column.is_nullable && (
-                  <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
-                    NOT NULL
-                  </Badge>
-                )}
-              </div>
             </div>
           </div>
           <span className="truncate font-mono text-xs text-muted-foreground" title={dataType}>
             {dataType}
           </span>
-          <span className="text-xs text-muted-foreground">
+          <span
+            className={`text-xs ${column.is_nullable ? "text-muted-foreground" : "text-foreground/90"}`}
+          >
             {column.is_nullable ? "Erlaubt" : "Pflicht"}
           </span>
           <span
             className="truncate font-mono text-xs text-muted-foreground"
             title={column.column_default ?? "Kein Standardwert"}
           >
-            {column.column_default ?? "—"}
+            {columnDefault ?? "—"}
           </span>
-          <div className="flex items-center justify-end gap-1 opacity-70 transition-opacity group-hover:opacity-100">
+          <div className="flex items-center justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
             {editable && (
-              <Button size="icon" variant="ghost" className="size-8" onClick={onStartEdit}>
+              <Button size="icon" variant="ghost" className="size-7" onClick={onStartEdit}>
                 <PencilIcon className="size-3.5" />
                 <span className="sr-only">{column.name} bearbeiten</span>
               </Button>
@@ -167,7 +160,7 @@ export function ColumnListItem({
             <Button
               size="icon"
               variant="ghost"
-              className="size-8"
+              className="size-7"
               onClick={() => {
                 copyText(column.name);
                 setCopiedColumn(column.name);

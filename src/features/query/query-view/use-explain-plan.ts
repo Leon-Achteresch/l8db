@@ -65,8 +65,8 @@ export function useExplainPlan({
               sql: target,
               reason:
                 connection.kind === "postgres" || connection.kind === "oracle"
-                  ? "EXPLAIN ANALYZE führt die Änderung aus und rollt sie danach zurück."
-                  : "EXPLAIN ANALYZE führt die Änderung wirklich aus.",
+                  ? "Plan + Messung führt die Änderung aus und rollt sie danach zurück."
+                  : "Plan + Messung führt die Änderung wirklich aus.",
             },
           ],
         }))

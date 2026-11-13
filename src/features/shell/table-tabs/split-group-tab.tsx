@@ -88,7 +88,7 @@ export function SplitGroupTab({
             onClick={onClose}
             aria-label={`Geteilte Ansicht ${name} auflösen`}
             title="Geteilte Ansicht auflösen – alle Tabs bleiben geöffnet"
-            className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground/70 opacity-0 transition-[background-color,color,opacity] duration-200 hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100"
+            className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground opacity-0 transition-[background-color,color,opacity] duration-200 hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100"
           >
             <XIcon className="size-3" />
           </button>

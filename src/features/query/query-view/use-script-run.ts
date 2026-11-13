@@ -4,15 +4,18 @@ import { toast } from "sonner";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import type { ScriptRunEntry } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
+import { beginQueryEvent } from "@/lib/discovery/events";
 import { invalidateAfterSql } from "@/lib/query-client";
 import { beginQueryCompletion } from "@/lib/query-completion";
 import { runSqlScript } from "@/lib/script-runner";
 import { DEFAULT_SELECT_ROW_LIMIT } from "@/lib/select-row-limit";
+import { enableOracleOutput } from "@/lib/server-output";
 import { useSettingsStore } from "@/lib/settings";
 import { locateText } from "@/lib/sql-diagnostics";
 import { scriptPolicyIssue } from "@/lib/sql-safety";
 import { isTransactionalStatement, splitSqlStatements } from "@/lib/sql-statements";
 import { type AskVariables, substitutionSession } from "@/lib/sql-statements/sqlplus";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { recordUserQueryOutcome } from "@/lib/telemetry";
 import { getQueryTransaction } from "@/lib/transactions";
 import { recordSuccessfulSql } from "@/lib/workbench/sql-states";
@@ -33,7 +36,7 @@ interface UseScriptRunParams {
   exec: QueryExecutionState;
   editorApiRef: RefObject<QueryEditorApi | null>;
   setEditorFocus: (focus: boolean) => void;
-  collectOutput: () => Promise<void>;
+  collectOutput: (reveal?: boolean) => Promise<void>;
   cursorOffsetRef: RefObject<number>;
 }
 
@@ -127,7 +130,15 @@ export function useScriptRun({
       const startedAt = performance.now();
       let executed = text;
       const finishNotification = beginQueryCompletion();
+      const finishEvent = beginQueryEvent(text, connection.kind);
+      let showOutput = true;
       try {
+        await enableOracleOutput(
+          connection.kind,
+          effectiveConnectionString(connection),
+          connection.id,
+          database ?? undefined,
+        );
         const outcome = await runSqlScript({
           connection,
           database,
@@ -142,11 +153,13 @@ export function useScriptRun({
           onProgress: (items) => setScriptEntries(shift(items)),
         });
         const entries = shift(outcome.entries);
+        showOutput = Boolean(outcome.error) || !outcome.lastResult?.columns.length;
         if (outcome.exit)
           setScriptNote(
             `EXIT ${outcome.exit.label} (Code ${outcome.exit.code}) mit ${outcome.exit.action}`,
           );
         recordUserQueryOutcome(connection.kind, outcome.error, performance.now() - startedAt);
+        finishEvent(!outcome.error);
         setScriptEntries(entries);
         if (!outcome.error) {
           void recordSuccessfulSql(connection.id, database, tabId, text).catch((error) =>
@@ -185,16 +198,17 @@ export function useScriptRun({
         } else setScriptActiveIndex(entries.length - 1);
       } catch (failure) {
         recordUserQueryOutcome(connection.kind, failure, performance.now() - startedAt);
+        finishEvent(false);
         finishNotification(
           /abgebrochen|cancelled|canceled/i.test(String(failure)) ? "cancelled" : "error",
         );
         setError(String(failure));
         setErrorSource(null);
       } finally {
-        if (connection) await invalidateAfterSql(queryClient, connection.id, database, executed);
-        await collectOutput();
         runningRef.current = false;
         setIsRunning(false);
+        await collectOutput(showOutput);
+        if (connection) await invalidateAfterSql(queryClient, connection.id, database, executed);
       }
     },
     [

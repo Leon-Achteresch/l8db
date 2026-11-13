@@ -39,7 +39,7 @@ export type DataTableRowProps = {
   isMarked: boolean;
   ruleColor?: string;
   isContextMenuTarget?: boolean;
-  toggleRowMarker: (row: TableRow) => void;
+  toggleRowMarker: (row: TableRow, extend?: boolean) => void;
   columnWindow: ColumnWindowItem[];
   gridLayout: boolean;
   measureElement: (
@@ -57,7 +57,7 @@ export type DataTableRowProps = {
   canEditCell: DataTableProps["canEditCell"];
   canSave: boolean;
   focusCell: (cell: GridCellRef | null, extend?: boolean, additive?: boolean) => void;
-  handleCellEdit: (row: Row<TableRow>, columnId: string) => void;
+  handleCellEdit: (row: Row<TableRow>, columnId: string, initial?: string) => void;
   handleCellCopy: (value: unknown) => void;
   setEditingCell: Dispatch<SetStateAction<EditingCell | null>>;
   commitEditingCell: () => void;

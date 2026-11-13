@@ -150,6 +150,12 @@ test("native ACP session model metadata is normalized while preserving discovery
     }).models,
   ).toEqual([{ id: "native", name: "Native", efforts: undefined, fast: false, default: false }]);
   expect(mergeAiModels(previous, { tools: ["read"] }).models).toEqual(previous.models);
+  const discovered = {
+    models: [{ id: "opus", name: "Opus", efforts: ["low", "high"], fast: true }],
+  };
+  expect(
+    mergeAiModels(discovered, { models: [{ value: "opus", displayName: "Opus" }] }).models,
+  ).toEqual([{ id: "opus", name: "Opus", efforts: ["low", "high"], fast: true, default: false }]);
   expect(modeOptions({ availableModes: [{ id: "ask", name: "Ask" }] })).toEqual([
     { id: "ask", name: "Ask" },
   ]);

@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { supportsRestore } from "@/lib/backup";
 import { providerFor } from "@/lib/connection-url";
 import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { type ConnectionCheck, testAutomationConnection } from "@/lib/db/automation";
@@ -21,6 +22,7 @@ import { useStepForm } from "./step-form-context";
 
 export type ConnectionCapability =
   | "backup"
+  | "restore"
   | "csv_import"
   | "table_copy"
   | "data_compare"
@@ -28,6 +30,7 @@ export type ConnectionCapability =
 
 const CAPABILITY_MESSAGE: Record<ConnectionCapability, string> = {
   backup: "Backup wird für diesen Datenbanktyp nicht unterstützt.",
+  restore: "Wiederherstellung wird für diesen Datenbanktyp nicht unterstützt.",
   csv_import: "Import wird für diesen Datenbanktyp nicht unterstützt.",
   table_copy: "Tabellenkopie wird für diesen Datenbanktyp nicht unterstützt.",
   data_compare: "Datenvergleich wird für diesen Datenbanktyp nicht unterstützt.",
@@ -43,7 +46,12 @@ export function unsupportedReason(
     return "Verbindungen aus dem Passwortmanager können nicht unbeaufsichtigt laufen, weil ihr Passwort nur während der Sitzung vorliegt.";
   if (connection.kind === "s3")
     return "Objektspeicher-Verbindungen unterstützen keine Automatisierungsschritte.";
-  if (capability && !capabilitiesFor(connection.kind)[capability])
+  if (
+    capability &&
+    !(capability === "restore"
+      ? supportsRestore(connection.kind)
+      : capabilitiesFor(connection.kind)[capability])
+  )
     return CAPABILITY_MESSAGE[capability];
   return null;
 }

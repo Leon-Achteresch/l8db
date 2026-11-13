@@ -2,7 +2,7 @@ import { useContext } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createSafeJsonStorage } from "@/lib/buffered-storage";
-import { useActiveConnection } from "@/lib/connections";
+import { type SavedConnection, useActiveConnection } from "@/lib/connections";
 import type { Capabilities } from "@/lib/db";
 import { useCapabilities } from "@/lib/providers";
 import { useSchemasQuery } from "@/lib/queries";
@@ -89,8 +89,19 @@ export function useActiveSchema(): string {
   const selected = useDbSelectionStore((state) =>
     connection ? (state.schemaByConnection[connection.id] ?? null) : null,
   );
+  return defaultSchema(connection, capabilities, database, schemas, selected);
+}
+
+export function defaultSchema(
+  connection: Pick<SavedConnection, "kind" | "connectionString"> | null | undefined,
+  capabilities: Pick<Capabilities, "query_language" | "database_is_schema">,
+  database: string | null,
+  schemas: string[] | undefined,
+  selected: string | null,
+): string {
   if (capabilities.query_language === "redis") return "keys";
-  if (capabilities.query_language === "json" && database) return database;
+  if ((capabilities.query_language === "json" || capabilities.database_is_schema) && database)
+    return database;
   if (selected && (!schemas || schemas.includes(selected))) return selected;
   if (connection?.kind === "oracle" && schemas) {
     const login = oracleLoginSchema(connection.connectionString, schemas);

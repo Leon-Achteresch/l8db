@@ -199,3 +199,12 @@ test("MySQL locking reads keep LIMIT before LOCK IN SHARE MODE and TABLE stateme
   expect(applySelectRowLimit("TABLE big_table LIMIT 5", "mysql")).toBe("TABLE big_table LIMIT 5");
   expect(applySelectRowLimit("TABLE big_table", "sqlite")).toBe("TABLE big_table");
 });
+
+test("families without a known LIMIT dialect run unchanged instead of failing", () => {
+  for (const dialect of ["jdbc", "workspace", "odbc"]) {
+    expect(applySelectRowLimit("SELECT * FROM t", dialect)).toBe("SELECT * FROM t");
+  }
+  expect(applySelectRowLimit("SELECT * FROM t", "spacetimedb")).toBe(
+    "SELECT * FROM t\nLIMIT 1000\n",
+  );
+});

@@ -629,9 +629,8 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_copies_every_object_kind_into_another_schema() {
-        let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
-            return;
-        };
+        let url = std::env::var("L8DB_SMOKE_ORACLE_URL")
+            .expect("Lab fehlt: L8DB_SMOKE_ORACLE_URL ist nicht gesetzt");
         let a = OracleAdapter::new(
             &url,
             crate::db::pool::create_pool_state(),

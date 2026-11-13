@@ -173,6 +173,7 @@ export function selectTables(
   };
   while (queue.length > 0) {
     const object = queue.pop() as CatalogObject;
+    if (object.object_type === "comment") continue;
     visit(object.ddl);
     visit(object.attributes.type);
     for (const dependency of object.depends_on ?? []) visit(dependency);

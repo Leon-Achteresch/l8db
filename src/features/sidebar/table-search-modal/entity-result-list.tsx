@@ -154,7 +154,7 @@ export function EntityResultList({
                         </div>
                       ))}
                       {entity.matchingColumns.length > 3 && (
-                        <span className="px-1 text-[10px] text-muted-foreground/60">
+                        <span className="px-1 text-[10px] text-muted-foreground">
                           +{entity.matchingColumns.length - 3} weitere
                         </span>
                       )}

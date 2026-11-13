@@ -49,8 +49,8 @@ export function SettingsRow({
       layout
       transition={{ layout: SPRING_LAYOUT }}
       className={cn(
-        "group relative grid scroll-mt-4 items-center gap-x-8 gap-y-3 border-b border-border/60 pb-[calc(1rem+var(--ui-density-step))] outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-        !stacked && "@min-[38rem]:grid-cols-[minmax(0,1fr)_auto]",
+        "group relative grid scroll-mt-4 items-center gap-x-8 gap-y-3 pb-[calc(1rem+var(--ui-density-step))] outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        !stacked && "@min-[38rem]:grid-cols-[minmax(0,1fr)_fit-content(66%)]",
         changed &&
           "pl-3 before:absolute before:left-0 before:top-0 before:bottom-4 before:w-0.5 before:rounded-full before:bg-primary",
       )}
@@ -81,7 +81,7 @@ export function SettingsRow({
         </div>
         <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{description}</p>
         {settingId ? (
-          <code className="pointer-events-none absolute bottom-0 text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
+          <code className="pointer-events-none absolute bottom-0 text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [[data-onboarding]_&]:hidden">
             {setting?.key ? `settings.${setting.key}` : `settings.${settingId}`}
           </code>
         ) : null}

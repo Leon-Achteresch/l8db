@@ -42,7 +42,7 @@ export function RecentQueries({
       {recent.length ? (
         <ul
           aria-label="Letzte Abfragen"
-          className="min-h-0 flex-1 divide-y overflow-auto rounded-xl border bg-card"
+          className="min-h-0 flex-1 overflow-auto rounded-xl bg-muted/40 p-1"
           onPointerLeave={() => setHighlight(null)}
         >
           {recent.map((entry) => (
@@ -61,7 +61,7 @@ export function RecentQueries({
                 onPointerEnter={() => setHighlight(entry.id)}
                 onFocus={() => setHighlight(entry.id)}
                 onBlur={() => setHighlight(null)}
-                className="group flex w-full items-center gap-3 px-4 py-3 text-left enabled:hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none disabled:cursor-default"
+                className="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left enabled:cursor-pointer enabled:hover:bg-muted focus-visible:bg-muted focus-visible:outline-none disabled:cursor-default"
               >
                 <SquareTerminal
                   className={cn(
@@ -88,9 +88,10 @@ export function RecentQueries({
           ))}
         </ul>
       ) : (
-        <p className="rounded-xl border border-dashed px-5 py-6 text-xs text-muted-foreground">
-          Deine ausgeführten Abfragen erscheinen hier mit Laufzeit und Ergebnis.
-        </p>
+        <div className="flex items-center gap-2.5 rounded-xl bg-muted/40 px-4 py-3.5 text-xs text-muted-foreground">
+          <SquareTerminal className="size-4 shrink-0" />
+          Noch keine Abfragen
+        </div>
       )}
     </section>
   );

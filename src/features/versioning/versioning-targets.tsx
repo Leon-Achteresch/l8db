@@ -633,7 +633,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                           setPreflight([]);
                         }}
                       />
-                      <ServerIcon className="size-4 shrink-0 text-muted-foreground/60" />
+                      <ServerIcon className="size-4 shrink-0 text-muted-foreground" />
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center gap-1.5 text-xs font-medium">
                           <span className="truncate">{target.environment || target.name}</span>
@@ -816,7 +816,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
       </div>
       {!targets.targets.length && (
         <div className="flex flex-col items-center gap-3 py-12 text-center">
-          <DatabaseIcon className="size-7 text-muted-foreground/40" strokeWidth={1.4} />
+          <DatabaseIcon className="size-7 text-muted-foreground" strokeWidth={1.4} />
           <p className="text-xs font-medium">Ein Produkt, mehrere Kundenstände</p>
           <p className="max-w-64 text-[11px] leading-relaxed text-muted-foreground">
             Ordne jedem Kunden seine Umgebungen mit Serververbindung, Datenbank und Schema zu. Ein

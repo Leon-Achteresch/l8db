@@ -1,4 +1,5 @@
 export * from "./admin-queries";
+export * from "./principal-queries";
 export * from "./routine-queries";
 export * from "./row-mutations";
 export * from "./row-queries";

@@ -20,7 +20,9 @@ function publishedLabel(date: string | undefined): string | null {
 }
 
 export function UpdateAvailableDialog() {
-  const { update, open } = useUpdatePrompt();
+  const { update, open, manual } = useUpdatePrompt();
+  const autoUpdateInstall = useSettingsStore((s) => s.autoUpdateInstall);
+  const setAutoUpdateInstall = useSettingsStore((s) => s.setAutoUpdateInstall);
   const skippedUpdateVersion = useSettingsStore((s) => s.skippedUpdateVersion);
   const setSkippedUpdateVersion = useSettingsStore((s) => s.setSkippedUpdateVersion);
   const visibleUpdate = update && update.version !== skippedUpdateVersion ? update : null;
@@ -64,7 +66,10 @@ export function UpdateAvailableDialog() {
     }
     setPercent(0);
     try {
-      await installUpdateAndRelaunch(next, setPercent);
+      await installUpdateAndRelaunch(next, setPercent, async () => {
+        if (manual) setAutoUpdateInstall(false);
+        return true;
+      });
     } catch {
       setPercent(null);
       setFailed(true);
@@ -125,11 +130,13 @@ export function UpdateAvailableDialog() {
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold tracking-tight">l8db v{visibleUpdate.version}</h2>
                 <span className="rounded-full border border-primary/25 bg-primary/15 px-2 py-0.5 text-[0.625rem] font-bold uppercase tracking-wider text-primary">
-                  Neu
+                  {manual ? "Versionswechsel" : "Neu"}
                 </span>
               </div>
               <p className="text-xs leading-relaxed text-muted-foreground">
-                Eine neue Version steht bereit.
+                {manual
+                  ? "Gewählte Version installieren und neu starten."
+                  : "Eine neue Version steht bereit."}
               </p>
             </div>
 
@@ -158,6 +165,12 @@ export function UpdateAvailableDialog() {
                 {published ? `• ${published}` : "• Bereit zur Installation"}
               </span>
             </div>
+
+            {manual && autoUpdateInstall ? (
+              <p className="text-xs text-muted-foreground">
+                Die automatische Installation wird beim Versionswechsel deaktiviert.
+              </p>
+            ) : null}
 
             {busy ? (
               <div className="space-y-2 rounded-2xl border border-border/70 bg-muted/40 p-3">
@@ -218,13 +231,15 @@ export function UpdateAvailableDialog() {
                 >
                   Später
                 </button>
-                <button
-                  type="button"
-                  onClick={onSkip}
-                  className="py-0.5 text-center text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  Diese Version überspringen
-                </button>
+                {!manual ? (
+                  <button
+                    type="button"
+                    onClick={onSkip}
+                    className="py-0.5 text-center text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Diese Version überspringen
+                  </button>
+                ) : null}
               </div>
             )}
           </div>

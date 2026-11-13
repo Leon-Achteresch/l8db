@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { flushAppStorage } from "@/lib/app-storage";
 import { useConnectionsStore } from "@/lib/connections";
 import { saveQueryTabFile } from "@/lib/hooks/use-query-file";
 import { type Tab, useTableTabs } from "@/lib/table-tabs";
@@ -55,8 +56,11 @@ export function WindowCloseGuard() {
     let disposed = false;
     let unlisten: (() => void) | undefined;
     void getCurrentWindow()
-      .onCloseRequested((event) => {
-        if (allowClose.current || !hasCloseBlockers()) return;
+      .onCloseRequested(async (event) => {
+        if (allowClose.current || !hasCloseBlockers()) {
+          await flushAppStorage();
+          return;
+        }
         event.preventDefault();
         setOpen(true);
       })

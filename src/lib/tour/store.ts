@@ -18,6 +18,8 @@ interface TourState {
   minimized: boolean;
   offerOpen: boolean;
   offerDismissed: boolean;
+  detour: string | null;
+  detourFrom: string | null;
   startFromBeginning: () => void;
   resumeOrStart: () => void;
   stop: () => void;
@@ -29,6 +31,8 @@ interface TourState {
   setMinimized: (value: boolean) => void;
   openOffer: () => void;
   dismissOffer: () => void;
+  showFeature: (id: string) => void;
+  endDetour: () => void;
 }
 
 export const useTourStore = create<TourState>()(
@@ -47,6 +51,8 @@ export const useTourStore = create<TourState>()(
       minimized: false,
       offerOpen: false,
       offerDismissed: false,
+      detour: null,
+      detourFrom: null,
       startFromBeginning: () => {
         useSettingsStore.getState().setTourFinished(false);
         set((state) => ({
@@ -60,6 +66,8 @@ export const useTourStore = create<TourState>()(
           clickDone: false,
           minimized: false,
           offerOpen: false,
+          detour: null,
+          detourFrom: null,
           runId: state.runId + 1,
         }));
       },
@@ -72,6 +80,8 @@ export const useTourStore = create<TourState>()(
           clickDone: false,
           minimized: false,
           offerOpen: false,
+          detour: null,
+          detourFrom: null,
           runId: state.runId + 1,
         }));
       },
@@ -84,6 +94,8 @@ export const useTourStore = create<TourState>()(
           clickDone: false,
           minimized: false,
           offerOpen: false,
+          detour: null,
+          detourFrom: null,
         });
       },
       setAutoPilot: (autoPilot) => set({ autoPilot }),
@@ -94,6 +106,7 @@ export const useTourStore = create<TourState>()(
           waiting: false,
           waitHint: null,
           clickDone: false,
+          detour: null,
           runId: state.runId + 1,
         })),
       markChapterDone: (id) =>
@@ -116,6 +129,16 @@ export const useTourStore = create<TourState>()(
         })),
       openOffer: () => set({ offerOpen: true }),
       dismissOffer: () => set({ offerOpen: false, offerDismissed: true }),
+      showFeature: (detour) =>
+        set((state) => ({
+          detour,
+          detourFrom: state.detourFrom ?? `${window.location.pathname}${window.location.search}`,
+          minimized: false,
+          waiting: false,
+          waitHint: null,
+          runId: state.runId + 1,
+        })),
+      endDetour: () => set((state) => ({ detour: null, runId: state.runId + 1 })),
     }),
     {
       name: "l8db.tour",

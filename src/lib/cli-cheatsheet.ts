@@ -21,6 +21,7 @@ export const CLI_CHEATSHEET: CliExampleGroup[] = [
   {
     title: "Daten",
     examples: [
+      { command: "l8db tui", description: "Interaktiv: Tabellen blättern, SQL ausführen" },
       { command: 'l8db q "select * from users limit 5"', description: "SQL ausführen" },
       { command: "l8db query -f skript.sql", description: "SQL-Datei ausführen" },
       { command: "l8db table list", description: "Tabellen auflisten" },

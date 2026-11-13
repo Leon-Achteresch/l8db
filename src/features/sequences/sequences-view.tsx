@@ -1,7 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { SearchIcon, TriangleAlertIcon } from "lucide-react";
+import { ListOrderedIcon, SearchIcon, TriangleAlertIcon } from "lucide-react";
 import { useRef, useState } from "react";
+import { FeatureEmptyState } from "@/components/feature-empty-state/feature-empty-state";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useActiveConnection } from "@/lib/connections";
@@ -79,9 +80,11 @@ export function SequencesView() {
       </div>
 
       {!sequences || sequences.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center p-6">
-          <p className="text-sm text-muted-foreground">Keine Sequenzen gefunden.</p>
-        </div>
+        <FeatureEmptyState
+          icon={ListOrderedIcon}
+          title="Keine Sequenzen"
+          className="flex-1 justify-center"
+        />
       ) : (
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="border-b px-4 py-2">

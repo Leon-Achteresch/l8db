@@ -35,7 +35,11 @@ export function navigateToTab(navigate: TabNavigate, tab: Tab): unknown {
     });
   }
   if (tab.kind === "role") {
-    return navigate({ to: "/users/$name", params: { name: tab.name } });
+    return navigate({
+      to: "/users/$name",
+      params: { name: tab.name },
+      search: { profile: tab.profile || undefined },
+    });
   }
   if (tab.kind === "trigger") {
     return navigate({

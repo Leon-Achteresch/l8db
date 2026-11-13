@@ -78,6 +78,12 @@ Keep checks fast: run only what the change can break, once at the end, not after
 - `src/features/shell/` — app chrome (`app-layout`, `table-tabs`, `app-header`, `transaction-panel`).
 - `src/components/ui/` — shared shadcn primitives only.
 
+## Startup
+
+- `index.html` paints the boot shell (`.boot-shell`: inline CSS plus a theme script reading the `l8db.boot` cache written by `src/lib/boot-paint.ts`) before any bundle loads; `StartupView` renders the same markup. React replaces it with the first complete commit, so `router.load()` runs before `root.render`.
+- `src/main.tsx` only initializes storage and then imports `src/bootstrap.tsx`. Everything `main.tsx` imports statically runs before storage is ready, so keep it minimal. `vite.config.ts` bundles the static imports of `bootstrap.tsx` into the preloaded `startup*` chunks (the shell routes are not code-split) and `src/lib/background-services.ts` into one deferred chunk; `tests/perf-bundle.test.ts` guards both.
+- `L8DB_STARTUP_PROBE=1` makes the app log `startup: native … ms, shell … ms, app … ms` and exit after the first complete render. See `docs/performance.md`.
+
 ## UI design
 
 - Few borders: structure with spacing, typography, and subtle background tints (`bg-muted/40`) instead of outlines, dividers, and cards.
@@ -108,6 +114,7 @@ All `invoke()` calls are centralized in `src/lib/db/`. TypeScript type definitio
 - `fetch_table_rows` defaults to 100 rows. Simple (builder-generated) filters are validated server-side (`validate_table_filter`: string literals are stripped, then `; -- /* */ UNION RETURNING INTO` are rejected); explicit raw SQL sets `allow_raw=true` (`fetch_table_rows`/`count_table_rows`, threaded from the SQL filter modes via `filterRaw`/`fkRaw`).
 - Team connections: admins place `connections.json` (no passwords) at `%APPDATA%\.l8db\` (Windows) or `~/.l8db/` (macOS/Linux); no login, server or Microsoft integration. `src-tauri/src/team.rs` reads the file (`team_connections`), `src/lib/team/` three-way merges it into `useConnectionsStore` (`team` link on `SavedConnection`, excluded from personal sync) on startup and window focus. Access is governed by database users. See `docs/team-hub.md`.
 - Object storage: the `s3` family (`src-tauri/src/db/s3/`) sets the `object_storage` capability. Its UI lives in `src/features/storage/` and talks to dedicated `s3_*` commands (`src/lib/db/storage.ts`); the generic adapter only maps buckets to tables for SQL/MCP. MinIO lab: `scripts/minio-lab.sh` (see `docs/providers.md`).
+- Oracle user management: the `principals` capability switches the "Benutzer" sidebar tab and `/users/$name` to the Toad-style view (`src/features/users/principal-view/`, backend `src-tauri/src/db/oracle_security.rs`, types `db/principals.rs`). The frontend only sends a structured `PrincipalChange`; SQL is generated and validated in Rust (`statements`), previewed with `preview_principal_change` and run with `apply_principal_change`. PostgreSQL keeps the `roles` capability and `role-view.tsx`. See `docs/providers.md`.
 - CLI (`src-tauri/src/cli/`, clap): the app binary doubles as `l8db <befehl>` (`conn`, `query`, `table`, `db`, `schema`, `open`, `task`, `check`, `mcp`, `completions`); `cli::wants` decides CLI vs. app before Tauri starts. Connections come from the automation mirror (`automation::connection::resolve`), never a second store. Help/errors are German; add every new example to a help text so `every_documented_example_parses` covers it. See `docs/cli.md`.
 - `smoke_adapters_from_env` (ignored) exercises every adapter whose `L8DB_SMOKE_<KIND>_URL` env var is set (see `docs/providers.md`).
 - Ignored Rust tests under `#[ignore]` need a local lab: Postgres 18 on `127.0.0.1:5433` (`postgres`/`testpw`, db `testdb`, `wal_level=logical`; override via `L8DB_E2E_PG_URL`) plus OpenSSH on `127.0.0.1:2222` (root login, provider hostname `l8db-pg`; overrides `L8DB_E2E_SSH_HOST`/`_PORT`, client key via `L8DB_E2E_KEY_FILE`, isolated known_hosts via `L8DB_KNOWN_HOSTS`). Subscription tests create a `testsub` database and clean up after themselves; `connect=false` keeps CREATE SUBSCRIPTION deterministic (no worker timing).
@@ -115,6 +122,7 @@ All `invoke()` calls are centralized in `src/lib/db/`. TypeScript type definitio
 ## State / Storage
 
 - Zustand store `useConnectionsStore` persists to localStorage under key `l8db.connections`.
+- `window.localStorage` is an IndexedDB-backed shim (`src/lib/app-storage.ts`): `src/main.tsx` awaits `initAppStorage()` (loads IndexedDB `l8db.storage` into memory, migrates and removes real localStorage keys) before importing `src/bootstrap.tsx`. Code must not read storage before that. Other windows receive changes as synthetic `storage` events. Settings → Speicher shows usage per connection and area (`src/lib/storage-usage.ts`).
 
 ## TypeScript Config
 

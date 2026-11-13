@@ -1,4 +1,4 @@
-import { EXECUTION_ERROR } from "../../../packages/ui-plugin-api/src/instrument";
+import { EXECUTION_ERROR } from "../../../packages/ui-plugin-api/src/execution-guard";
 import { withoutHooks } from "../../../packages/ui-plugin-api/src/modules";
 import { errorMessage } from "./store";
 

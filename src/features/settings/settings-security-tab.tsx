@@ -1,4 +1,3 @@
-import { KeyRound, Lock, ShieldCheck } from "lucide-react";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Switch } from "@/components/ui/switch";
 import { SecretStorageNotice } from "@/features/connections/secret-storage-notice";
@@ -36,12 +35,7 @@ export function SettingsSecurityTab() {
   return (
     <div className="space-y-4">
       <SecretStorageNotice />
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Sicherheit & Netzwerk</h2>
-        <p className="text-xs text-muted-foreground">
-          Verschlüsselung, Host-Validierung und Speicherung vertraulicher Daten.
-        </p>
-      </div>
+      <h2 className="text-base font-semibold tracking-tight">Sicherheit & SSH</h2>
 
       <div className="space-y-3">
         <SettingsRow settingId="ssh-tofu">
@@ -171,29 +165,16 @@ export function SettingsSecurityTab() {
         <div
           data-setting-id="keychain"
           tabIndex={-1}
-          className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4"
+          className="rounded-xl bg-muted/40 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
-          <div className="flex items-start gap-3">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <ShieldCheck className="size-4" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-foreground">OS-Schlüsselbund aktiv</p>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                Passwörter, private SSH-Schlüssel und Tokens werden über die native
-                Betriebssystem-Keychain verschlüsselt hinterlegt und verbleiben geschützt auf deinem
-                Rechner.
-              </p>
-              <div className="mt-2 flex items-center gap-3 pt-1 text-[11px] text-muted-foreground">
-                <span className="inline-flex items-center gap-1">
-                  <Lock className="size-3 text-emerald-500" /> AES-256 isoliert
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <KeyRound className="size-3 text-emerald-500" /> Keine Klartextspeicherung
-                </span>
-              </div>
-            </div>
-          </div>
+          <p className="flex items-center gap-2 text-sm font-medium">
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            OS-Schlüsselbund aktiv
+          </p>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            Passwörter, private SSH-Schlüssel und Tokens liegen verschlüsselt im Schlüsselbund des
+            Betriebssystems, nie im Klartext.
+          </p>
         </div>
       </div>
     </div>

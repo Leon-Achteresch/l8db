@@ -17,9 +17,9 @@ const MONGO_READ_METHODS = new Set([
 
 const MONGO_READ_COMMANDS = new Set(["find", "aggregate", "count", "distinct"]);
 
-const MONGO_WRITING_STAGE = /["']?\$(out|merge)["']?\s*:/;
+export const MONGO_WRITING_STAGE = /["']?\$(out|merge)["']?\s*:/;
 
-const REDIS_READ = new Set([
+export const REDIS_READ = new Set([
   "GET",
   "MGET",
   "GETRANGE",
@@ -75,6 +75,10 @@ const REDIS_READ = new Set([
   "BITCOUNT",
   "GETBIT",
   "LCS",
+  "KEYS",
+  "INFO",
+  "MEMORY",
+  "OBJECT",
 ]);
 
 export function stripSqlNoise(sql: string): string {

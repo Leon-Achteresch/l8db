@@ -31,6 +31,27 @@ type Options = {
   rowOffset: number;
 };
 
+function revealCell(scroller: HTMLDivElement | null, rowIndex: number, columnId: string) {
+  const td = scroller?.querySelector<HTMLElement>(
+    `tbody td[data-row-index="${rowIndex}"][data-col="${CSS.escape(columnId)}"]`,
+  );
+  if (!scroller || !td) return;
+  const box = scroller.getBoundingClientRect();
+  const cell = td.getBoundingClientRect();
+  const head = scroller.querySelector("thead")?.getBoundingClientRect().height ?? 0;
+  const top = box.top + scroller.clientTop + head;
+  const bottom = box.top + scroller.clientTop + scroller.clientHeight;
+  if (cell.top < top) scroller.scrollTop -= top - cell.top;
+  else if (cell.bottom > bottom) scroller.scrollTop += cell.bottom - bottom;
+  if (td.classList.contains("sticky")) return;
+  let left = box.left + scroller.clientLeft;
+  for (const pinned of td.parentElement?.querySelectorAll<HTMLElement>("td.sticky") ?? [])
+    left = Math.max(left, pinned.getBoundingClientRect().right);
+  const right = box.left + scroller.clientLeft + scroller.clientWidth;
+  if (cell.left < left) scroller.scrollLeft -= left - cell.left;
+  else if (cell.right > right) scroller.scrollLeft += cell.right - right;
+}
+
 export function useGridScrolling({
   activeCell,
   setActiveCell,
@@ -61,7 +82,13 @@ export function useGridScrolling({
     if (columnWindow.enabled && columnIndex >= 0 && !pinnedIndices.includes(columnIndex)) {
       columnWindow.virtualizer.scrollToIndex(columnIndex, { align: "auto" });
     }
+    const { rowIndex, columnId } = activeCell;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => revealCell(scrollRef.current, rowIndex, columnId));
+    });
+    return () => cancelAnimationFrame(frame);
   }, [
+    scrollRef,
     activeCell,
     activeCellKey,
     rowVirtualizer,

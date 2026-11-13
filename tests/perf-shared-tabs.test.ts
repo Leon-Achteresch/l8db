@@ -62,7 +62,27 @@ test("shared tab links stay fast for large scripts and filters", async () => {
   const reject = await measureScenario(async () => {
     for (let index = 0; index < 100; index++) await shared.parseSharedTabLink(plainText);
   });
+  const simpleTab = { ...tableTab, view: {} };
+  const simpleLink = await shared.sharedTabLink(simpleTab);
+  const simple = await measureScenario(async () => {
+    for (let index = 0; index < 100; index++)
+      if (!(await shared.parseSharedTabLink(await shared.sharedTabLink(simpleTab))))
+        throw new Error("simple roundtrip failed");
+  });
+  const hugePaste = `${"x".repeat(shared.MAX_SHARED_TAB_LINK - 20)} kein Link`;
+  const detect = await measureScenario(() => {
+    for (let index = 0; index < 10; index++)
+      if (shared.containsSharedTabLink(hugePaste)) throw new Error("false positive");
+  });
+  const heapBefore = process.memoryUsage().heapUsed;
+  for (let index = 0; index < 1_000; index++) await shared.parseSharedTabLink(simpleLink);
+  Bun.gc(true);
+  const retainedBytes = process.memoryUsage().heapUsed - heapBefore;
   await reportScenario("shared-tab-link", {
+    simpleLinkBytes: simpleLink.length,
+    simple,
+    detect,
+    retainedBytes,
     sqlBytes: sql.length,
     linkBytes: link.length,
     tableLinkBytes: tableLink.length,
@@ -72,6 +92,10 @@ test("shared tab links stay fast for large scripts and filters", async () => {
     reject,
   });
   expect(link.length).toBeLessThan(sql.length / 5);
+  expect(simpleLink.length).toBeLessThan(150);
+  expect(simple.p95Ms / 100).toBeLessThan(0.5);
+  expect(detect.p95Ms / 10).toBeLessThan(5);
+  expect(retainedBytes).toBeLessThan(2_000_000);
   expect(encode.p95Ms).toBeLessThan(40);
   expect(decode.p95Ms).toBeLessThan(40);
   expect(decodeTable.p95Ms).toBeLessThan(10);

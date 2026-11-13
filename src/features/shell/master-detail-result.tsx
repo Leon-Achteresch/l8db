@@ -3,8 +3,11 @@ import { RefreshCwIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/features/table/data-table";
+import { useActiveConnection } from "@/lib/connections";
 import type { TableData } from "@/lib/db";
+import { useActiveDatabase } from "@/lib/db-selection";
 import { useMasterDetailQuery } from "@/lib/hooks/use-master-detail-query";
+import { stagesTableChanges } from "@/lib/managed-transactions";
 import { useActiveMasks } from "@/lib/masking-display";
 import { useDeleteRowMutation, useDetailedColumnsQuery, useUpdateRowMutation } from "@/lib/queries";
 
@@ -26,6 +29,14 @@ export function MasterDetailResult({
     !preview,
   );
   const queryClient = useQueryClient();
+  const connection = useActiveConnection();
+  const database = useActiveDatabase();
+  const staged = () =>
+    Boolean(
+      connection &&
+        table &&
+        stagesTableChanges(connection, database ?? null, table.schema, table.table),
+    );
   const { active: masks } = useActiveMasks(query.data?.columns ?? []);
   const editable = table && masks.length === 0;
   const updateRow = useUpdateRowMutation(table?.schema ?? "", table?.table ?? "");
@@ -40,16 +51,19 @@ export function MasterDetailResult({
     updates: Record<string, string | null>,
     oldValues: Record<string, unknown>,
   ) => {
+    const pending = staged();
     const { newCtid } = await updateRow.mutateAsync({ ctid, updates, oldValues });
     patchRows((rows) =>
       rows.map((row) => (row.__ctid__ === ctid ? { ...row, ...updates, __ctid__: newCtid } : row)),
     );
+    return pending ? ("staged" as const) : undefined;
   };
   const removeRow = async (ctid: string, oldValues: Record<string, unknown>) => {
     try {
+      const pending = staged();
       await deleteRow.mutateAsync({ ctid, oldValues });
       patchRows((rows) => rows.filter((row) => row.__ctid__ !== ctid));
-      toast.success("Zeile gelöscht.");
+      toast.success(pending ? "Löschen in Transaktion vorgemerkt." : "Zeile gelöscht.");
     } catch (err) {
       toast.error(typeof err === "string" ? err : String(err));
     }

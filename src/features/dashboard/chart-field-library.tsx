@@ -75,7 +75,7 @@ export function ChartFieldLibrary({
                   {fieldTypeLabel(field.type)} · {field.type}
                 </span>
               </span>
-              <GripVerticalIcon className="size-3 shrink-0 text-muted-foreground/50" />
+              <GripVerticalIcon className="size-3 shrink-0 text-muted-foreground" />
             </button>
           );
         })}

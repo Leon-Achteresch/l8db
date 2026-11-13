@@ -33,6 +33,8 @@ interface QueryResultsContentProps {
   compareOpen: boolean;
   connectionId: string | null;
   database: string | null;
+  outputTabs?: ReactNode;
+  outputPanel?: ReactNode;
 }
 
 export function QueryResultsContent({
@@ -52,6 +54,8 @@ export function QueryResultsContent({
   compareOpen,
   connectionId,
   database,
+  outputTabs,
+  outputPanel,
 }: QueryResultsContentProps) {
   const { result, isRunning, error, statementError, viewSource, scriptEntries } = exec;
   const [classic, setClassic] = useTabState(tabStateKey(exec.scope, "classic"), false);
@@ -93,8 +97,10 @@ export function QueryResultsContent({
   );
   const previousResult = Boolean(error && result?.columns.length);
   const showResultHeader = !result || isRunning || result.columns.length === 0;
+  if (outputPanel) return outputPanel;
   return (
     <>
+      <div className="shrink-0 bg-muted/20 px-2 empty:hidden">{outputTabs}</div>
       {showResultHeader && (
         <ResultHeader
           isRunning={isRunning}

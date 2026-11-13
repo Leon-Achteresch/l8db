@@ -110,12 +110,12 @@ export function ToolResult({
             <ActionSwapRollText value={titleKey}>{title}</ActionSwapRollText>
           </span>
           {meta ? (
-            <span className="shrink-0 text-xs text-muted-foreground/60">
+            <span className="shrink-0 text-xs text-muted-foreground">
               <ActionSwapRollText value={metaKey}>{meta}</ActionSwapRollText>
             </span>
           ) : null}
           {tool != null && tool !== title && (
-            <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/55">
+            <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
               <ActionSwapRollText value={toolKey}>{tool}</ActionSwapRollText>
             </span>
           )}
@@ -133,7 +133,7 @@ export function ToolResult({
           aria-hidden="true"
           animate={{ rotate: currentOpen ? 180 : 0 }}
           transition={reduce ? { duration: 0 } : SPRING_SWAP}
-          className="shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground"
+          className="shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
         >
           <ChevronDown className="size-3.5" />
         </motion.span>
@@ -167,7 +167,7 @@ export function ToolResult({
                     <RotateCcw className="size-3.5" />
                   </ToolResultAction>
                 ) : null}
-                <span className="ml-auto text-[11px] text-muted-foreground/55">
+                <span className="ml-auto text-[11px] text-muted-foreground">
                   <ActionSwapRollText value={status}>{statusLabel}</ActionSwapRollText>
                 </span>
               </div>

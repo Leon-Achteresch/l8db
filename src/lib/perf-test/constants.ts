@@ -19,7 +19,7 @@ export const PERF_DEFAULT_LIMIT = 1000;
 export const PERF_MAX_LIMIT = 100000;
 
 export const PERF_ANALYZE_HINT =
-  "EXPLAIN ANALYZE führt die Abfrage tatsächlich aus. Der Test ist rein lesend, kann bei großen Tabellen aber Last erzeugen und dauern.";
+  "Die Messung führt die Abfrage tatsächlich aus. Der Test ist rein lesend, kann bei großen Tabellen aber Last erzeugen und dauern.";
 
 export const PERF_TIMED_HINT =
   "Die Abfrage wird tatsächlich ausgeführt und ihre Laufzeit gemessen. Der Test ist rein lesend; mehrere parallele Läufe erzeugen echte Last auf dem Server.";

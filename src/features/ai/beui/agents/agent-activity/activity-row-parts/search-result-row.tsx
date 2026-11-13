@@ -13,7 +13,7 @@ export function SearchResultRow({ result }: { result: AgentSearchResult }) {
       </span>
       <span className="min-w-0 truncate font-medium text-foreground/90">{result.title}</span>
       {result.domain ? (
-        <span className="min-w-0 truncate text-muted-foreground/55">{result.domain}</span>
+        <span className="min-w-0 truncate text-muted-foreground">{result.domain}</span>
       ) : null}
     </>
   );

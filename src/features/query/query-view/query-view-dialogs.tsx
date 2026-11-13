@@ -165,6 +165,7 @@ export function QueryViewDialogs({
         open={analysis.open}
         onOpenChange={analysis.onOpenChange}
         explainSupported={caps.explain}
+        analyzeSupported={caps.explain_analyze}
         section={analysis.section}
         onSectionChange={analysis.onSectionChange}
         explainEnabled={Boolean(connection) && !isRunning && sql.trim().length > 0}

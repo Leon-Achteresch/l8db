@@ -1320,6 +1320,7 @@ pub fn with_password(connection: &McpConnection, password: Option<&str>) -> Stri
 pub(crate) fn connection_url(connection: &McpConnection) -> Result<String, String> {
     let password = match connection.kind {
         DatabaseKind::Sqlite | DatabaseKind::Duckdb => None,
+        _ if config::pinned() && connection.id == "url" => None,
         _ => crate::db::secrets::read_secret(&connection.id)?,
     };
     Ok(with_password(connection, password.as_deref()))

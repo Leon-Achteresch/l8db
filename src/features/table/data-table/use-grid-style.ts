@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { columnProfile } from "@/lib/column-profile";
 import type { DetailedColumnInfo } from "@/lib/db";
-import { isCategorical, isEnumDataType } from "@/lib/grid-cell-format";
+import { categoryColorMap, isCategorical, isEnumDataType } from "@/lib/grid-cell-format";
 import { useSettingsStore } from "@/lib/settings";
 import type { TableRow } from "../data-table-types";
 import type { getColumnTypeInfo } from "./column-type-info";
@@ -42,6 +42,7 @@ export function useGridStyle(
           (kind === "key" && present.length > 0 && present.every(isNumericValue)),
         primaryKey: primaryKeys.has(name),
         categorical,
+        categoryColors: categorical ? categoryColorMap(present) : null,
         profile: style === "profile" ? columnProfile(values, kind, categorical) : null,
       });
     }

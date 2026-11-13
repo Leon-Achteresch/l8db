@@ -24,7 +24,7 @@ export const INFERRED_TYPE_LABELS: Record<InferredType, string> = {
 const BOOLEAN_WORDS = new Set(["true", "false", "t", "f", "yes", "no", "ja", "nein"]);
 const INTEGER = /^[+-]?\d+$/;
 const DECIMAL = /^[+-]?(\d+\.\d*|\.\d+|\d+)([eE][+-]?\d+)?$/;
-const DECIMAL_COMMA = /^[+-]?\d+,\d+$/;
+const DECIMAL_COMMA = /^[+-]?(\d{1,3}(\.\d{3})+|\d+),\d+$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/;
 

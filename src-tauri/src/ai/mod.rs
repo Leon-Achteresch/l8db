@@ -1,3 +1,5 @@
+mod app;
+mod app_docs;
 mod bridge;
 mod byok;
 #[cfg(test)]
@@ -366,7 +368,8 @@ pub async fn ai_run(
         return Err("Arbeitsordner ist kein Verzeichnis".into());
     }
     let config = context::scoped_config(&request, crate::mcp::config::load())?;
-    let instructions = context::instructions_with_skills(&request, &skill_context(&request)?);
+    let (instructions, layout) =
+        context::instructions_with_layout(&request, &skill_context(&request)?);
     let key = format!("{}:{}", window.label(), request.run_id);
     let (cancel, mut cancelled) = tokio::sync::watch::channel(false);
     {
@@ -396,6 +399,7 @@ pub async fn ai_run(
         columns: HashMap::new(),
     }));
     run.emit("status", json!({"status": "running"}));
+    run.emit("usage", json!({"layout": layout}));
     let work = async {
         let external = integrations::connect(&request.servers, &cwd, &run).await?;
         if is_cli(&request.profile.provider) {

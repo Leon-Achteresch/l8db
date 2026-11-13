@@ -2,7 +2,9 @@ import {
   Blocks,
   ChartNoAxesCombined,
   CodeXml,
+  Compass,
   Database,
+  HardDrive,
   Info,
   Keyboard,
   Monitor,
@@ -11,7 +13,9 @@ import {
   SquareTerminal,
 } from "lucide-react";
 import { motion } from "motion/react";
+import { AttentionDot } from "@/components/attention-dot";
 import { NewBadge } from "@/components/new-badge";
+import { useCliNeedsAction } from "@/lib/cli-path";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useVisibleUpdate } from "@/lib/hooks/use-visible-update";
 import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
@@ -41,6 +45,11 @@ export const SETTINGS_TABS: SettingsTabItem[] = [
     icon: Database,
   },
   {
+    id: "storage",
+    label: "Speicher",
+    icon: HardDrive,
+  },
+  {
     id: "security",
     label: "Sicherheit & SSH",
     icon: ShieldCheck,
@@ -59,6 +68,11 @@ export const SETTINGS_TABS: SettingsTabItem[] = [
     id: "hotkeys",
     label: "Tastenkürzel",
     icon: Keyboard,
+  },
+  {
+    id: "discovery",
+    label: "Tipps & Hinweise",
+    icon: Compass,
   },
   {
     id: "statistics",
@@ -80,6 +94,7 @@ interface SettingsSidebarProps {
 export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps) {
   const update = useVisibleUpdate();
   const seenFeatures = useSeenNewFeatures();
+  const cliNeedsAction = useCliNeedsAction();
 
   return (
     <nav className="flex flex-col gap-0.5" aria-label="Einstellungskategorien">
@@ -91,6 +106,7 @@ export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps
         return (
           <button
             key={tab.id}
+            data-feature={`settings.${tab.id}`}
             type="button"
             onClick={() => onSelectTab(tab.id)}
             aria-current={isActive ? "page" : undefined}
@@ -126,6 +142,7 @@ export function SettingsSidebar({ activeTab, onSelectTab }: SettingsSidebarProps
               <div className="flex items-center gap-2">
                 <span className="truncate">{tab.label}</span>
                 {hasNewFeatures(`settings.${tab.id}`, seenFeatures) ? <NewBadge /> : null}
+                {tab.id === "cli" && cliNeedsAction ? <AttentionDot /> : null}
               </div>
             </div>
           </button>

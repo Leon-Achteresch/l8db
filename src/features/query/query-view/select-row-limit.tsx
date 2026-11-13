@@ -13,7 +13,7 @@ export function SelectRowLimit() {
     >
       <ListEndIcon className="size-3.5 @min-[74rem]/qtb:hidden" aria-hidden />
       <span className="hidden @min-[74rem]/qtb:inline">SELECT-Standard:</span>
-      <span className="sr-only @min-[62rem]/qtb:not-sr-only">1.000 Zeilen</span>
+      <span className="sr-only @min-[62rem]/qtb:not-sr-only">Limit 1.000 Zeilen</span>
       {isNew && <NewBadge />}
     </span>
   );

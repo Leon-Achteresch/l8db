@@ -103,7 +103,7 @@ export function SplitGroupsMenu({
                 title={group.shared ? "Allgemein verfügbar" : "Nur diese Verbindung"}
                 className={cn(
                   "relative shrink-0",
-                  group.shared ? "text-primary" : "text-muted-foreground/60",
+                  group.shared ? "text-primary" : "text-muted-foreground",
                 )}
               >
                 <GlobeIcon className="size-3.5" />

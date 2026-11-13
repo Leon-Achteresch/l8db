@@ -1,19 +1,29 @@
 import { toast } from "sonner";
 import { create } from "zustand";
-import { copyWithToast, pasteText } from "@/lib/clipboard";
-import type { SavedConnection } from "@/lib/connections";
+import { copyText, pasteText } from "@/lib/clipboard";
+import { type SavedConnection, visibleSchemas } from "@/lib/connections";
 import { useConnectionsStore } from "@/lib/connections/store";
-import { databaseFromConnectionString, useDbSelectionStore } from "@/lib/db-selection";
+import { listSchemas, listTables, listViews } from "@/lib/db";
+import {
+  databaseFromConnectionString,
+  defaultSchema,
+  useDbSelectionStore,
+} from "@/lib/db-selection";
+import { IS_MAC } from "@/lib/platform";
 import { capabilitiesFor } from "@/lib/providers";
 import {
   connectionRef,
+  containsSharedTabLink,
   effectiveSharedView,
+  MAX_OS_SHARED_TAB_LINK,
   parseSharedTabLink,
   resolveSharedConnection,
   type SharedTab,
+  type SharedTableTab,
   sharedTabLink,
   sharedViewOf,
 } from "@/lib/shared-tabs";
+import { effectiveConnectionString } from "@/lib/ssh";
 import { activateConnectionWithToast } from "@/lib/ssh/activation";
 import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
 import type { Tab } from "@/lib/table-tabs";
@@ -50,6 +60,33 @@ export function captureSharedTab(tab: Tab): SharedTab | null {
   };
 }
 
+async function targetSchema(
+  shared: SharedTableTab,
+  connection: SavedConnection,
+  database: string | null,
+): Promise<string> {
+  const url = effectiveConnectionString(connection);
+  const list = shared.entityType === "view" ? listViews : listTables;
+  const has = (schema: string) =>
+    list(connection.kind, url, database ?? undefined, schema).then(
+      (entries) => entries.some((entry) => entry.name === shared.table),
+      () => false,
+    );
+  if (await has(shared.schema)) return shared.schema;
+  const schemas = await listSchemas(connection.kind, url, database ?? undefined).then(
+    (entries) => visibleSchemas(connection, entries),
+    () => undefined,
+  );
+  const own = defaultSchema(
+    connection,
+    capabilitiesFor(connection.kind),
+    database,
+    schemas,
+    useDbSelectionStore.getState().schemaByConnection[connection.id] ?? null,
+  );
+  return own !== shared.schema && (await has(own)) ? own : shared.schema;
+}
+
 export async function openSharedTab(shared: SharedTab, connectionId: string): Promise<boolean> {
   const connections = useConnectionsStore.getState();
   if (!connections.connections.some((entry) => entry.id === connectionId)) return false;
@@ -61,7 +98,9 @@ export async function openSharedTab(shared: SharedTab, connectionId: string): Pr
   if (!connection) return false;
   if (
     shared.database &&
+    shared.connection.host &&
     connection.kind === shared.connection.kind &&
+    connectionRef(connection).host === shared.connection.host &&
     shared.database !== connectionDatabase(connection)
   )
     useDbSelectionStore.getState().setDatabase(connection.id, shared.database);
@@ -76,10 +115,12 @@ export async function openSharedTab(shared: SharedTab, connectionId: string): Pr
     });
     return true;
   }
-  const { schema, table, entityType } = shared;
+  const { table, entityType } = shared;
+  const database = connectionDatabase(connection);
+  const schema = await targetSchema(shared, connection, database);
   const view = effectiveSharedView(shared.view);
   tabs.openTab({ schema, table, entityType });
-  const key = tableViewStateKey(connection.id, connectionDatabase(connection), schema, table);
+  const key = tableViewStateKey(connection.id, database, schema, table);
   if (key)
     useTableViewStateStore.getState().patch(key, {
       filter: "",
@@ -105,9 +146,16 @@ export function openSharedTabWithToast(tab: SharedTab, connectionId: string): vo
   openSharedTab(tab, connectionId).catch((error) => toast.error(errorText(error)));
 }
 
+const PASTE_KEY = IS_MAC ? "⌘V" : "Strg+V";
+
 export async function copySharedTabLink(tab: SharedTab): Promise<void> {
   try {
-    await copyWithToast(await sharedTabLink(tab), "Link");
+    const link = await sharedTabLink(tab);
+    await copyText(link, `Link kopiert · öffnen mit ${PASTE_KEY} in l8db`);
+    if (link.length > MAX_OS_SHARED_TAB_LINK)
+      toast.warning("Link ist zu lang zum Anklicken", {
+        description: `Nur in l8db mit ${PASTE_KEY} öffnen`,
+      });
   } catch (error) {
     toast.error(errorText(error));
   }
@@ -137,8 +185,15 @@ export function requestSharedTab(tab: SharedTab, source: PendingSharedTab["sourc
   useSharedTabRequest.setState({ pending: { tab, source } });
 }
 
-export async function openLinkFromClipboard(): Promise<void> {
-  const shared = await parseSharedTabLink(await pasteText().catch(() => ""));
+export async function openSharedTabLinkText(text: string): Promise<boolean> {
+  const shared = await parseSharedTabLink(text);
   if (shared) requestSharedTab(shared, "link");
+  else toast.error("Ungültiger l8db-Link");
+  return shared !== null;
+}
+
+export async function openLinkFromClipboard(): Promise<void> {
+  const text = await pasteText().catch(() => "");
+  if (containsSharedTabLink(text)) await openSharedTabLinkText(text);
   else toast.error("Kein l8db-Link in der Zwischenablage");
 }

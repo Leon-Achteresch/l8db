@@ -70,7 +70,7 @@ export const QueryResultCell = memo(function QueryResultCell({
       className={cn(
         active && "ring-1 ring-inset ring-primary bg-primary/10",
         "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-[calc(var(--ui-cell-padding)-0.125rem)] font-mono",
-        isNull && "text-muted-foreground/50 italic",
+        isNull && "text-muted-foreground italic",
       )}
     >
       {onInspect ? (

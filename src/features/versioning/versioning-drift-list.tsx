@@ -77,7 +77,7 @@ export function VersioningDriftList({
               <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
                 {COMPARE_OBJECT_LABELS[selection.objectType]}
               </span>
-              <DatabaseIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/60" />
+              <DatabaseIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
               <span
                 role="img"
                 title={status.label}

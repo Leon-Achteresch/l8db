@@ -74,6 +74,63 @@ function tty(args: string[], input: string) {
   return { code: result.status, out: result.stdout };
 }
 
+const SCREEN = `
+import fcntl, json, os, pty, re, select, struct, sys, termios, time
+ansi = re.compile(rb"\\x1b\\[[0-9;?<>=]*[A-Za-z]")
+steps, argv = json.loads(sys.argv[1]), sys.argv[2:]
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp(argv[0], argv)
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
+out = b""
+mark = 0
+def pump(wanted, limit):
+    global out
+    end = time.time() + limit
+    while wanted is None or wanted.encode() not in ansi.sub(b"", out[mark:]):
+        ready, _, _ = select.select([fd], [], [], max(0.0, end - time.time()))
+        if not ready:
+            return False
+        try:
+            chunk = os.read(fd, 65536)
+        except OSError:
+            return False
+        if not chunk:
+            return False
+        if b"\x1b[c" in chunk:
+            os.write(fd, b"\x1b[?62c")
+        out += chunk
+    return True
+missed = ""
+for wanted, keys in steps:
+    if not pump(wanted, 20):
+        missed = wanted
+        break
+    mark = len(out)
+    time.sleep(0.2)
+    os.write(fd, keys.encode())
+pump(None, 5 if missed else 30)
+time.sleep(0.3)
+done, status = os.waitpid(pid, os.WNOHANG)
+if not done:
+    os.kill(pid, 9)
+    _, status = os.waitpid(pid, 0)
+sys.stdout.write(ansi.sub(b"", out).decode("utf-8", "replace"))
+if missed:
+    sys.stdout.write("\\nMISSED: " + missed)
+    sys.exit(99)
+sys.exit(os.waitstatus_to_exitcode(status))
+`;
+
+function screen(args: string[], steps: [string, string][]) {
+  const result = spawnSync("python3", ["-c", SCREEN, JSON.stringify(steps), BIN, ...args], {
+    env: env(),
+    encoding: "utf8",
+    timeout: 120_000,
+  });
+  return { code: result.status, out: result.stdout };
+}
+
 function saveConnections(connections: Record<string, unknown>[]) {
   const db = new Database(join(dir, "automation.db"));
   db.run("DELETE FROM connections");
@@ -138,13 +195,13 @@ describe.skipIf(!E2E || !existsSync(BIN))("l8db CLI end-to-end", () => {
   test("help is German, grouped and lists examples", () => {
     const help = cli(["--help"]);
     expect(help.code).toBe(0);
-    for (const word of ["Verbindungen", "Daten", "Beispiele", "conn use <name>", "--output"])
+    for (const word of ["Verbindungen", "Daten", "Beispiele", "conn use [name]", "tui", "--output"])
       expect(help.out).toContain(word);
     const sub = cli(["table", "rows", "--help"]);
     expect(sub.out).toContain("Argumente:");
     expect(sub.out).toContain("(Standard: 100)");
     expect(sub.out).not.toContain("Options:");
-    expect(cli(["help", "query"]).out).toContain("l8db query [SQL]");
+    expect(cli(["help", "query"]).out).toContain("l8db query [ABFRAGE]");
   });
 
   test("typos get a suggestion and usage errors exit with 2", () => {
@@ -269,6 +326,51 @@ describe.skipIf(!E2E || !existsSync(BIN))("l8db CLI end-to-end", () => {
     expect(cli(["q", "select 1"]).code).toBe(1);
   });
 
+  test("without a default the open app connection wins, else a terminal picker asks", () => {
+    saveConnections([
+      connection("c-shop", "Shop", { tags: ["kunde"] }),
+      connection("c-prod", "Produktion", { environment: "production" }),
+      connection("c-ro", "Archiv", { readOnly: true }),
+    ]);
+    const picked = tty(["q", "select count(*) as n from kunde"], "sho\r");
+    expect(picked.code).toBe(0);
+    expect(picked.out).toContain("Verbindung");
+    expect(picked.out).toContain("250");
+    const escaped = tty(["q", "select 1"], "\x1b");
+    expect(escaped.code).toBe(1);
+    expect(escaped.out).toContain("Keine Verbindung gewählt.");
+    const interrupted = tty(["q", "select 1"], "\x03");
+    expect(interrupted.code).toBe(130);
+    expect(interrupted.out).toContain("Abgebrochen.");
+    const used = tty(["conn", "use"], "prod\r");
+    expect(used.code).toBe(0);
+    expect(used.out).toContain("Standardverbindung ist jetzt „Produktion“");
+    expect(cli(["conn", "use", "--clear"]).code).toBe(0);
+    const arrowed = tty(["conn", "use"], "\x1b[B\x1b[B\r");
+    expect(arrowed.code).toBe(0);
+    expect(arrowed.out).toContain("Standardverbindung ist jetzt „Shop“");
+    expect(cli(["conn", "use", "--clear"]).code).toBe(0);
+    const unnamed = cli(["conn", "use"]);
+    expect(unnamed.code).toBe(1);
+    expect(unnamed.err).toContain("Welche Verbindung?");
+
+    writeFileSync(join(dir, "cli-active"), "c-shop");
+    const stale = cli(["q", "select 1"]);
+    expect(stale.code).toBe(1);
+    expect(stale.err).toContain("Welche Verbindung?");
+    const holder =
+      "import fcntl,subprocess,sys\nf=open(sys.argv[1],'a')\nfcntl.flock(f,fcntl.LOCK_EX)\nsys.exit(subprocess.run(sys.argv[2:]).returncode)";
+    const open = spawnSync(
+      "python3",
+      ["-c", holder, join(dir, "cli-active.lock"), BIN, "q", "select count(*) as n from kunde"],
+      { env: env(), encoding: "utf8", timeout: 60_000 },
+    );
+    expect(open.status).toBe(0);
+    expect(open.stdout).toBe("n\n250\n");
+    expect(open.stderr).toContain("Verbindung: Shop (in der App geöffnet)");
+    rmSync(join(dir, "cli-active"));
+  });
+
   test("read-only connections refuse writes before connecting", () => {
     const result = cli(["-c", "Archiv", "q", "delete from kunde"]);
     expect(result.code).toBe(1);
@@ -332,6 +434,100 @@ describe.skipIf(!E2E || !existsSync(BIN))("l8db CLI end-to-end", () => {
     expect(interrupted.code).toBe(130);
     expect(interrupted.out).toContain("Abgebrochen");
     expect(performance.now() - started).toBeLessThan(4000);
+    expect(cli(["-c", "Shop", "table", "count", "kunde"]).out).toBe("250\n");
+  });
+
+  test("tui: needs a terminal, picks a connection, browses a table and runs SQL", () => {
+    const piped = cli(["tui"]);
+    expect(piped.code).toBe(1);
+    expect(piped.err).toContain("braucht ein Terminal");
+    expect(piped.out).toBe("");
+    saveConnections([
+      connection("c-shop", "Shop"),
+      connection("c-prod", "Produktion", { environment: "production" }),
+      connection("c-lock", "Gesperrt", { environment: "production", productionLocked: true }),
+    ]);
+
+    const session = screen(
+      ["tui"],
+      [
+        ["Tippen filtert", "sho"],
+        ["Verbindung › sho", "\r"],
+        ["Enter Zeilen", "\r"],
+        ["von 100", "m"],
+        ["von 200", "\x1b[F"],
+        ["–200 von 200", "d"],
+        ["Spalten", "s"],
+        ["Strg+R ausführen", "select count(*) as anzahl from kunde\x12"],
+        ["1 Zeile", "q"],
+      ],
+    );
+    expect(session.out).not.toContain("MISSED");
+    expect(session.code).toBe(0);
+    for (const text of ["Kunde 1", "Kunde 200", "INTEGER", "anzahl", "250"])
+      expect(session.out).toContain(text);
+  });
+
+  test("tui: read-only and production guards hold and Ctrl+C cancels a running query", () => {
+    const locked = screen(
+      ["tui", "-c", "Gesperrt"],
+      [
+        ["Enter Zeilen", "s"],
+        ["Strg+R ausführen", "delete from kunde\x12"],
+        ["schreibgeschützt", "\x03"],
+      ],
+    );
+    expect(locked.out).not.toContain("MISSED");
+    expect(locked.code).toBe(0);
+    expect(locked.out).toContain("nur lesen");
+
+    const production = screen(
+      ["tui", "-c", "Produktion"],
+      [
+        ["Enter Zeilen", "s"],
+        ["Strg+R ausführen", "update kunde set ort = 'Z' where id = 2\x12"],
+        ["Verbindungsname", "falsch\r"],
+        ["Nicht bestätigt", "\x12"],
+        ["Verbindungsname", "\x1b"],
+        ["Nicht ausgeführt", "\x03"],
+      ],
+    );
+    expect(production.out).not.toContain("MISSED");
+    expect(production.code).toBe(0);
+    expect(production.out).toContain("PRODUKTION");
+    expect(cli(["-c", "Shop", "q", "select ort from kunde where id = 2"]).out).toBe("ort\nKöln\n");
+
+    const confirmed = screen(
+      ["tui", "-c", "Produktion"],
+      [
+        ["Enter Zeilen", "s"],
+        ["Strg+R ausführen", "update kunde set ort = 'Z' where id = 2\x12"],
+        ["Verbindungsname", "Produktion\r"],
+        ["1 Zeile geändert", "\x1b"],
+        ["Enter Zeilen", "q"],
+      ],
+    );
+    expect(confirmed.out).not.toContain("MISSED");
+    expect(confirmed.code).toBe(0);
+    expect(cli(["-c", "Shop", "q", "select ort from kunde where id = 2"]).out).toBe("ort\nZ\n");
+    expect(cli(["-c", "Shop", "q", "update kunde set ort = 'Köln' where id = 2"]).code).toBe(0);
+
+    const started = performance.now();
+    const cancelled = screen(
+      ["tui", "-c", "Shop"],
+      [
+        ["Enter Zeilen", "s"],
+        [
+          "Strg+R ausführen",
+          "with recursive c(x) as (select 1 union all select x + 1 from c) select count(*) from c\x12",
+        ],
+        ["Abfrage läuft", "\x03"],
+        ["Esc zurück", "\x03"],
+      ],
+    );
+    expect(cancelled.out).not.toContain("MISSED");
+    expect(cancelled.code).toBe(0);
+    expect(performance.now() - started).toBeLessThan(15_000);
     expect(cli(["-c", "Shop", "table", "count", "kunde"]).out).toBe("250\n");
   });
 

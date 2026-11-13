@@ -7,6 +7,7 @@ import { MultiTargetSheet } from "@/features/query/multi-target/multi-target-she
 import { useMultiTargetRun } from "@/features/query/multi-target/use-multi-target-run";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import { QuerySchemaBrowser } from "@/features/query/query-schema-browser";
+import { ServerOutputPanel } from "@/features/query/server-output-panel";
 import { SqlStatesButton } from "@/features/query/sql-states-button";
 import { afterPaint } from "@/lib/after-paint";
 import { useActiveConnection } from "@/lib/connections";
@@ -28,6 +29,7 @@ import { QueryViewDialogs } from "./query-view/query-view-dialogs";
 import { type QueryHistoryHandle, QueryViewDrawers } from "./query-view/query-view-drawers";
 import { QueryWorkspacePanels } from "./query-view/query-workspace-panels";
 import { ResultActions } from "./query-view/result-actions";
+import { ResultTabs } from "./query-view/result-tabs";
 import { buildStatusText, runLabelFor } from "./query-view/result-text";
 import { RunControls } from "./query-view/run-controls";
 import { SelectRowLimit } from "./query-view/select-row-limit";
@@ -121,7 +123,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     [schema.registry.columns, schema.registry.tables],
   );
   const sessionViews = useSessionViews(connection?.id, database);
-  const output = useServerOutput(connection, database, caps);
+  const output = useServerOutput(connection, database, caps, exec.isRunning);
   const substitution = useSubstitutionPrompt();
 
   const script = useScriptRun({
@@ -227,6 +229,16 @@ export function QueryView({ tabId }: QueryViewProps) {
     </>
   );
 
+  const outputTabs =
+    connection && caps.server_output ? (
+      <ResultTabs
+        connectionId={connection.id}
+        label={connection.kind === "oracle" ? "DBMS Output" : "Server-Ausgabe"}
+        outputOpen={output.outputOpen}
+        onOutputOpenChange={output.setOutputOpen}
+      />
+    ) : null;
+
   return (
     <div className="flex h-full w-full min-h-0">
       <motion.div
@@ -312,7 +324,10 @@ export function QueryView({ tabId }: QueryViewProps) {
                 filePath={filePath}
                 isRunning={exec.isRunning}
                 onOpenHistory={() => afterPaint(() => historyRef.current?.open())}
-                onOpenOutput={() => output.setOutputOpen(true)}
+                onOpenOutput={() => {
+                  setEditorFocus(false);
+                  output.setOutputOpen(true);
+                }}
                 onOpenSave={() => setSaveDialogOpen(true)}
                 onOpenSnippets={() => setSnippetDialogOpen(true)}
                 onOpenTabSearch={() => setTabSearchOpen(true)}
@@ -396,6 +411,18 @@ export function QueryView({ tabId }: QueryViewProps) {
               compareOpen={compareOpen}
               connectionId={connection?.id ?? null}
               database={database}
+              outputTabs={outputTabs}
+              outputPanel={
+                connection && caps.server_output && output.outputOpen ? (
+                  <ServerOutputPanel
+                    connectionId={connection.id}
+                    enabled={output.outputEnabled}
+                    busy={output.outputBusy}
+                    onToggle={(next) => void output.handleToggleServerOutput(next)}
+                    tabs={outputTabs}
+                  />
+                ) : null
+              }
               sql={sql}
               names={errorNames}
               onFixWithAi={() => editorApiRef.current?.action("l8db.ai.fix")}
@@ -474,8 +501,6 @@ export function QueryView({ tabId }: QueryViewProps) {
 
         <QueryViewDrawers
           connection={connection}
-          caps={caps}
-          output={output}
           exec={exec}
           onSelectScriptEntry={script.handleSelectScriptEntry}
           historyRef={historyRef}

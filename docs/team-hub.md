@@ -28,6 +28,21 @@ Eine Liste oder ein Objekt mit `connections`:
 - Abgelehnt werden Einträge mit Passwort, Steuerzeichen oder Parametern für lokale Anmeldedaten, Sockets oder Schlüsseldateien (z. B. `sslkey`, `tlsCAFile`). Integrierte Windows-Anmeldung ist mit gültigen booleschen Werten erlaubt; die tatsächliche Unterstützung hängt vom Betriebssystem und Treiber ab. ODBC erlaubt installierte Treibernamen, keine lokalen Treiberdateien oder File-DSNs. Abgelehnte Einträge erscheinen als *Hinweise für die IT*, der Rest bleibt nutzbar.
 - Höchstens 4 MB. Eine UTF-8-BOM ist erlaubt.
 
+### Team-Tipps
+
+Die Objektform darf zusätzlich `tips` enthalten. l8db zeigt jeden Tipp einmal als kleine Karte (Kanal „Team-Tipps“ unter Einstellungen → Entdecken) und listet alle aktiven Tipps unter Entdecken → Team.
+
+```json
+{ "connections": [],
+  "tips": [
+    { "id": "lesemodus", "title": "Produktion nur lesen", "body": "ERP Produktion ist schreibgeschützt. Änderungen über Staging.", "featureId": "connections.team", "until": "2026-12-31" }
+  ] }
+```
+
+- Pflicht: `id` (`A-Z a-z 0-9 _ -`, höchstens 64 Zeichen; eine neue `id` erscheint erneut), `title` (gekürzt auf 80 Zeichen), `body` (gekürzt auf 600 Zeichen).
+- Optional: `featureId` (ID aus dem Feature-Katalog, ergibt „Zeigen“), `until` als ISO-Datum (`2026-12-31` gilt bis Ende dieses Tages) oder ISO-Zeitpunkt. Abgelaufene Tipps werden ignoriert.
+- Höchstens 20 Tipps; weitere und unvollständige Einträge werden verworfen. Die Listenform ohne Objekt hat keine Tipps.
+
 ## Verhalten
 
 - Neue Einträge werden ergänzt, entfernte gelöscht. Lokale Änderungen an Name, Farbe und Benutzer bleiben, solange die IT dasselbe Feld nicht ändert. Sicherheitsrelevante Felder einschließlich Adresse, Typ, TLS, Umgebung, Schema-Auswahl und Lesemodus bleiben durch die IT vorgegeben.
@@ -43,7 +58,8 @@ Eine Liste oder ein Objekt mit `connections`:
 Verbindliche Maschinenrichtlinien und der vollständige Ablauf für IT, DBA und Anwender: [enterprise-rollout.md](enterprise-rollout.md).
 
 - `bun test tests/team-sync.test.ts`: Merge, Abgleich, Altbestand, Performance.
-- `cargo test team` (in `src-tauri/`): Lesen der Datei.
+- `cargo test team` (in `src-tauri/`): Lesen der Datei, inklusive Tipps.
+- `bun test tests/discovery-community.test.ts`: Validierung und Anzeige der Team-Tipps.
 
 
 ## Zentraler Team-Workspace

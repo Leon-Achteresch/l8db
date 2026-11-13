@@ -120,7 +120,7 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
             Kompilieren
           </Button>
         ) : null}
-        {!edit.editing && oid ? (
+        {!edit.editing && oid && capabilities.debugger ? (
           <DebugButton oid={oid} schema={schema} name={name} objectType="function" />
         ) : null}
         <OpenInQueryEditorButton sql={data ?? ""} title={`${schema}.${name}`} />

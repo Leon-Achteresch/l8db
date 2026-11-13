@@ -160,6 +160,7 @@ test.skipIf(!ENABLED)(
             ...POSTGRES_CAPABILITIES,
             extensions: false,
             synonyms: true,
+            invalid_objects: true,
             materialized_views: false,
           },
           packages: PACKAGES,

@@ -86,7 +86,8 @@ export function serializeCsv(
   for (const row of rows) {
     lines.push(columns.map((c) => csvField(row[c], options)).join(options.delimiter));
   }
-  const body = lines.join(options.lineEnding);
+  const lastNull = columns.length === 1 && lines.length > 0 && lines[lines.length - 1] === "";
+  const body = lines.join(options.lineEnding) + (lastNull ? options.lineEnding : "");
   return options.bom ? `\uFEFF${body}` : body;
 }
 

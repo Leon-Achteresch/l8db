@@ -40,6 +40,23 @@ pub(crate) fn is_exact_in_js(text: &str) -> bool {
         .is_some_and(|shortest| shortest == decimal)
 }
 
+fn exact_exponent(text: &str) -> bool {
+    let Some((mantissa, exponent)) = text.split_once(['e', 'E']) else {
+        return false;
+    };
+    text.parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
+        .is_some_and(|value| {
+            let shortest = format!("{value:e}");
+            shortest.split_once('e').is_some_and(|(m, e)| {
+                normalized(m).is_some()
+                    && normalized(m) == normalized(mantissa)
+                    && e.parse::<i32>().ok() == exponent.parse::<i32>().ok()
+            })
+        })
+}
+
 fn keeps_scale(text: &str) -> bool {
     text.split_once('.')
         .is_some_and(|(_, fraction)| fraction.ends_with('0'))
@@ -161,7 +178,7 @@ fn has_unsafe_number(json: &str) -> bool {
             in_string = true;
         } else if matches!(byte, b'-' | b'0'..=b'9') {
             let end = number_end(bytes, index);
-            if !is_exact_in_js(&json[index..end]) {
+            if !is_exact_in_js(&json[index..end]) && !exact_exponent(&json[index..end]) {
                 return true;
             }
             index = end;
@@ -227,7 +244,7 @@ pub(crate) fn quote_unsafe_top_level_numbers(json: &str) -> Cow<'_, str> {
             b'-' | b'0'..=b'9' if depth == 1 => {
                 let end = number_end(bytes, index);
                 let token = &json[index..end];
-                if !is_exact_in_js(token) || keeps_scale(token) {
+                if !(is_exact_in_js(token) || exact_exponent(token)) || keeps_scale(token) {
                     let buffer = out.get_or_insert_with(|| String::with_capacity(json.len() + 16));
                     buffer.push_str(&json[copied..index]);
                     buffer.push('"');
@@ -249,6 +266,26 @@ pub(crate) fn quote_unsafe_top_level_numbers(json: &str) -> Cow<'_, str> {
         }
         None => Cow::Borrowed(json),
     }
+}
+
+pub(crate) fn json_number(text: &str) -> Value {
+    if text.contains('.') && is_exact_in_js(text) && !keeps_scale(text) {
+        if let Some(number) = text
+            .parse::<f64>()
+            .ok()
+            .and_then(serde_json::Number::from_f64)
+        {
+            return Value::Number(number);
+        }
+    }
+    decimal(text)
+}
+
+pub(crate) fn json_text(text: &str) -> Value {
+    if has_unsafe_number(text) {
+        return Value::String(text.to_string());
+    }
+    serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.to_string()))
 }
 
 #[derive(Debug, Clone)]
@@ -280,6 +317,38 @@ impl<'a> tokio_postgres::types::FromSql<'a> for ExactJson {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn query_values_follow_the_table_rows_rules() {
+        assert_eq!(json_number("0.1"), json!(0.1));
+        assert_eq!(json_number("12.50"), json!("12.50"));
+        assert_eq!(json_number("42"), json!(42));
+        assert_eq!(json_number("9007199254740993"), json!("9007199254740993"));
+        assert_eq!(
+            json_number("0.1000000000000000055511"),
+            json!("0.1000000000000000055511")
+        );
+        assert_eq!(
+            json_text(r#"{"a":[1,{"b":null}]}"#),
+            json!({"a": [1, {"b": null}]})
+        );
+        assert_eq!(
+            json_text(r#"{"big":9007199254740993}"#),
+            json!(r#"{"big":9007199254740993}"#)
+        );
+        assert_eq!(json_text("not json"), json!("not json"));
+        assert!(exact_exponent("1.7976931348623157e+308"));
+        assert!(exact_exponent("3.4028234663852886e+38"));
+        assert!(exact_exponent("1e-07"));
+        assert!(!exact_exponent("1.00000000000000001e+30"));
+        assert!(!exact_exponent("1e+400"));
+        assert_eq!(
+            quote_unsafe_top_level_numbers(
+                r#"{"d":-1.7976931348623157e+308,"x":1.00000000000000001e+30}"#
+            ),
+            r#"{"d":-1.7976931348623157e+308,"x":"1.00000000000000001e+30"}"#
+        );
+    }
 
     #[test]
     fn keeps_numbers_that_survive_javascript() {
@@ -427,11 +496,8 @@ mod tests {
             doc.contains("0.1000000000000000055511151231257827"),
             "{doc}"
         );
-        assert_eq!(
-            row["raw"],
-            json!(format!(r#"{{"e": 1{}}}"#, "0".repeat(400)))
-        );
-        assert_eq!(row["ids"], json!("[9007199254740993, 1]"));
+        assert_eq!(row["raw"], json!(r#"{"e": 1e400}"#));
+        assert_eq!(row["ids"], json!("[9007199254740993,1]"));
         assert_eq!(row["amounts"], json!("[12345678901234567890.123456789]"));
         assert_eq!(row["plain"], json!({"n": [1, 2.5]}));
         let browser: Value = serde_json::from_str(&serde_json::to_string(row).unwrap()).unwrap();

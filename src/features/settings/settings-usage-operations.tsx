@@ -16,7 +16,7 @@ interface Props {
 
 export function SettingsUsageOperations({ summary, startup }: Props) {
   return (
-    <section className="rounded-xl border p-4" aria-labelledby="usage-operations-heading">
+    <section className="rounded-xl bg-muted/40 p-4" aria-labelledby="usage-operations-heading">
       <h3 id="usage-operations-heading" className="text-sm font-medium">
         Vorgänge & Wartezeiten
       </h3>
@@ -37,7 +37,7 @@ export function SettingsUsageOperations({ summary, startup }: Props) {
             <caption className="sr-only">
               Häufigste Datenbankvorgänge mit Ergebnissen und Dauer
             </caption>
-            <thead className="border-b text-muted-foreground">
+            <thead className="text-muted-foreground">
               <tr>
                 <th scope="col" className="pb-2 font-medium">
                   Vorgang
@@ -64,10 +64,7 @@ export function SettingsUsageOperations({ summary, startup }: Props) {
             </thead>
             <tbody>
               {summary.operations.map((operation) => (
-                <tr
-                  key={`${operation.operation}:${operation.kind}`}
-                  className="border-b last:border-0"
-                >
+                <tr key={`${operation.operation}:${operation.kind}`}>
                   <th scope="row" className="py-2 pr-3 font-normal">
                     {usageOperationLabel(operation.operation)}
                   </th>
@@ -93,7 +90,7 @@ export function SettingsUsageOperations({ summary, startup }: Props) {
           </table>
         </div>
       )}
-      <div className="mt-4 border-t pt-3 text-xs">
+      <div className="mt-4 text-xs">
         <p className="font-medium">App-Start</p>
         <p className="mt-1 tabular-nums text-muted-foreground">
           {formatUsageCount(startup.count)} Messungen · ~ p50{" "}

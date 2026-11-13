@@ -95,6 +95,76 @@ test("SQL*Plus commands accept abbreviations, trailing semicolons and every clau
   expect(parseSqlPlusCommand("DEFINE")).toEqual({ type: "define-show", name: null });
 });
 
+test("a trailing semicolon ends EXIT, QUIT, DISCONNECT and DEFINE like SQL*Plus", () => {
+  expect(parseSqlPlusCommand("EXIT;")).toEqual({
+    type: "exit",
+    status: { kind: "code", value: 0, label: "SUCCESS" },
+    action: null,
+  });
+  expect(parseSqlPlusCommand("quit;").type).toBe("exit");
+  expect(parseSqlPlusCommand("exit 3 rollback;")).toMatchObject({
+    status: { kind: "code", value: 3 },
+    action: "ROLLBACK",
+  });
+  expect(parseSqlPlusCommand("DISCONNECT;").type).toBe("connect");
+  expect(parseSqlPlusCommand("DEFINE x = 5;")).toEqual({ type: "define", name: "X", value: "5" });
+  expect(parseSqlPlusCommand("define y = 'abc';")).toEqual({
+    type: "define",
+    name: "Y",
+    value: "abc",
+  });
+  expect(parseSqlPlusCommand("DEFINE z = 'a;'")).toEqual({
+    type: "define",
+    name: "Z",
+    value: "a;",
+  });
+});
+
+test("SET applies every option of a combined line", () => {
+  expect(parseSqlPlusCommand("SET VERIFY OFF DEFINE OFF")).toEqual({
+    type: "set-many",
+    commands: [
+      { type: "set-verify", enabled: false },
+      { type: "set-define", marker: null },
+    ],
+  });
+  expect(parseSqlPlusCommand("set feed off ver off def off serverout on;")).toEqual({
+    type: "set-many",
+    commands: [
+      { type: "set-display", option: "FEED" },
+      { type: "set-verify", enabled: false },
+      { type: "set-define", marker: null },
+      { type: "serveroutput", enabled: true },
+    ],
+  });
+  expect(parseSqlPlusCommand("SET SERVEROUTPUT ON SIZE UNLIMITED FORMAT WRAPPED").type).toBe(
+    "serveroutput",
+  );
+  expect(parseSqlPlusCommand("SET LINESIZE 200 PAGESIZE 0 TRIMSPOOL ON").type).toBe("set-display");
+  expect(parseSqlPlusCommand("SET PAUSE 'Weiter mit ESC oder Enter'").type).toBe("set-display");
+  expect(parseSqlPlusCommand('SET SQLPROMPT "my def " VERIFY OFF')).toMatchObject({
+    commands: [{ type: "set-display" }, { type: "set-verify", enabled: false }],
+  });
+  expect(parseSqlPlusCommand("SET VERIFY OFF SQLTERMINATOR !")).toMatchObject({
+    commands: [{ type: "set-verify" }, { type: "set-unsupported" }],
+  });
+});
+
+test("a slash after a type or library ends it once, after other DDL it runs again", () => {
+  const split = (sql: string) => {
+    const result = splitSqlStatements(sql, "oracle", { slashRuns: true });
+    return [result.statements.length, result.commands.map((item) => item.text)];
+  };
+  expect(split("CREATE TYPE t AS OBJECT (a NUMBER);\n/\nSELECT 1 FROM dual;\n")).toEqual([2, []]);
+  expect(split("create or replace type t as table of number;\n/\n")).toEqual([1, []]);
+  expect(split("CREATE OR REPLACE LIBRARY l AS '/x.so';\n/\n")).toEqual([1, []]);
+  expect(split("CREATE TYPE t AS OBJECT (a NUMBER);\nSELECT 1 FROM dual;\n/\n")).toEqual([
+    2,
+    ["/"],
+  ]);
+  expect(split("CREATE TABLE t (a NUMBER);\n/\n")).toEqual([1, ["/"]]);
+});
+
 test("the splitter recognizes abbreviated commands, continuation lines and keeps SQL intact", () => {
   const split = splitSqlStatements(
     "sho user\nTIMI START x\nPROMPT a -\n  b\nSAVEPOINT s1;\nDELETE FROM t;\nCOMMENT ON TABLE t IS 'x';\nSET TRANSACTION READ ONLY;\nREPLACE_ME;\n",

@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { ZapIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo } from "react";
+import { FeatureEmptyState } from "@/components/feature-empty-state/feature-empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { InvalidMarker } from "@/features/sidebar/invalid-marker";
@@ -45,9 +46,7 @@ export function TableTriggersList({ schema, table }: TableTriggersListProps) {
 
   if (count === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center p-6">
-        <p className="text-sm text-muted-foreground">Keine Trigger vorhanden.</p>
-      </div>
+      <FeatureEmptyState icon={ZapIcon} title="Keine Trigger" className="flex-1 justify-center" />
     );
   }
 

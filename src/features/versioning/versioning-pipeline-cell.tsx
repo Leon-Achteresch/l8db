@@ -23,7 +23,7 @@ export function VersioningPipelineCell({
 }) {
   if (!entries.length)
     return (
-      <div className="flex min-h-12 items-center rounded-lg border border-dashed border-border/50 px-2.5 text-[11px] text-muted-foreground/70">
+      <div className="flex min-h-12 items-center rounded-lg border border-dashed border-border/50 px-2.5 text-[11px] text-muted-foreground">
         –
       </div>
     );

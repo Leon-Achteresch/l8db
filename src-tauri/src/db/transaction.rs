@@ -26,28 +26,65 @@ mod pg_row_tests;
 
 static TX_COUNTER: AtomicU64 = AtomicU64::new(1);
 
-pub(crate) const PG_ROW_ID: &str = "ctid::text || '@' || tableoid::text";
+pub(crate) const PG_ROW_ID: &str = "ctid::text || '@' || tableoid::text || '@' || xmin::text";
+const PG_INSERTED_ID: &str = "ctid::text || '@' || tableoid::text";
+
+async fn pin_inserted(
+    conn: &tokio_postgres::Client,
+    target: &str,
+    mut row: serde_json::Value,
+) -> Result<serde_json::Value, tokio_postgres::Error> {
+    let Some(id) = row
+        .get("__ctid__")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+    else {
+        return Ok(row);
+    };
+    let Some((ctid, tableoid)) = id.split_once('@') else {
+        return Ok(row);
+    };
+    let found = conn
+        .query_opt(
+            &format!("SELECT xmin::text FROM {target} WHERE ctid = $1::text::tid AND tableoid = $2::text::oid"),
+            &[&ctid, &tableoid],
+        )
+        .await?;
+    if let Some(found) = found {
+        row["__ctid__"] = serde_json::Value::String(format!("{id}@{}", found.get::<_, String>(0)));
+    }
+    Ok(row)
+}
+
+pub(crate) const PG_ROW_GONE: &str =
+    "Zeile wurde inzwischen geändert oder gelöscht. Bitte neu laden.";
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct PgRowId {
     ctid: String,
     tableoid: Option<u32>,
+    xmin: Option<u32>,
 }
 
 impl PgRowId {
     pub(crate) fn parse(raw: &str) -> Result<Self, String> {
         let raw = raw.trim();
-        let (ctid, tableoid) = match raw.split_once('@') {
-            Some((ctid, oid)) => (
-                ctid.trim(),
-                Some(
-                    oid.trim()
-                        .parse::<u32>()
-                        .map_err(|_| "Ungültige ctid".to_string())?,
-                ),
-            ),
-            None => (raw, None),
+        let mut parts = raw.split('@');
+        let ctid = parts.next().unwrap_or_default().trim();
+        let number = |part: Option<&str>| {
+            part.map(|value| {
+                value
+                    .trim()
+                    .parse::<u32>()
+                    .map_err(|_| "Ungültige ctid".to_string())
+            })
+            .transpose()
         };
+        let tableoid = number(parts.next())?;
+        let xmin = number(parts.next())?;
+        if parts.next().is_some() {
+            return Err("Ungültige ctid".to_string());
+        }
         let parts = ctid
             .strip_prefix('(')
             .and_then(|rest| rest.strip_suffix(')'))
@@ -64,6 +101,7 @@ impl PgRowId {
         Ok(Self {
             ctid: format!("({block},{offset})"),
             tableoid,
+            xmin,
         })
     }
 
@@ -75,7 +113,14 @@ impl PgRowId {
                 super::quote_literal(&format!("{}.{}", quote_ident(schema), quote_ident(table)))
             ),
         };
-        format!("ctid = '{}'::tid AND tableoid = {relation}", self.ctid)
+        let version = self
+            .xmin
+            .map(|xmin| format!(" AND xmin = '{xmin}'::xid"))
+            .unwrap_or_default();
+        format!(
+            "ctid = '{}'::tid AND tableoid = {relation}{version}",
+            self.ctid
+        )
     }
 }
 
@@ -632,11 +677,7 @@ impl TransactionManager {
         let mut messages = output.take();
         if let TransactionEntry::Oracle(c) = &*entry {
             let lines = ora(c.clone(), |c| oracle::read_output(c)).await?;
-            messages.extend(lines.into_iter().map(|message| ServerMessage {
-                level: "OUTPUT".to_string(),
-                message,
-                detail: None,
-            }));
+            messages.extend(oracle::output_messages(lines));
         }
         Ok(messages)
     }
@@ -749,7 +790,7 @@ impl TransactionManager {
                     .map_err(map_pg_err)?;
                 match rows.first() {
                     Some(row) => Ok(row.get::<_, String>(0)),
-                    None => Err("Zeile nicht gefunden".to_string()),
+                    None => Err(PG_ROW_GONE.to_string()),
                 }
             }
             Err(e) => {
@@ -798,7 +839,7 @@ impl TransactionManager {
 
         let sql = if values.is_empty() {
             format!(
-                "WITH ins AS (INSERT INTO {target} DEFAULT VALUES RETURNING *, {PG_ROW_ID} AS __l8_ctid) \
+                "WITH ins AS (INSERT INTO {target} DEFAULT VALUES RETURNING *, {PG_INSERTED_ID} AS __l8_ctid) \
                  SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
             )
         } else {
@@ -815,7 +856,7 @@ impl TransactionManager {
                 });
             }
             format!(
-                "WITH ins AS (INSERT INTO {target} ({}) VALUES ({}) RETURNING *, {PG_ROW_ID} AS __l8_ctid) \
+                "WITH ins AS (INSERT INTO {target} ({}) VALUES ({}) RETURNING *, {PG_INSERTED_ID} AS __l8_ctid) \
                  SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
                 cols.join(", "),
                 vals.join(", "),
@@ -825,15 +866,25 @@ impl TransactionManager {
         conn.batch_execute("SAVEPOINT l8_op")
             .await
             .map_err(map_pg_err)?;
-        match conn.query(sql.as_str(), &[]).await {
-            Ok(rows) => {
+        let result = match conn.query(sql.as_str(), &[]).await {
+            Ok(rows) => match rows.first() {
+                Some(row) => pin_inserted(
+                    &conn,
+                    &target,
+                    row.get::<_, super::exact_number::ExactJson>(0).0,
+                )
+                .await
+                .map(Some),
+                None => Ok(None),
+            },
+            Err(e) => Err(e),
+        };
+        match result {
+            Ok(row) => {
                 conn.batch_execute("RELEASE SAVEPOINT l8_op")
                     .await
                     .map_err(map_pg_err)?;
-                match rows.first() {
-                    Some(row) => Ok(row.get::<_, super::exact_number::ExactJson>(0).0),
-                    None => Err("Zeile konnte nicht eingefügt werden".to_string()),
-                }
+                row.ok_or_else(|| "Zeile konnte nicht eingefügt werden".to_string())
             }
             Err(e) => {
                 let _ = conn.batch_execute("ROLLBACK TO SAVEPOINT l8_op").await;
@@ -890,7 +941,7 @@ impl TransactionManager {
 
         let sql = if cols.is_empty() {
             format!(
-                "WITH ins AS (INSERT INTO {target} DEFAULT VALUES RETURNING *, {PG_ROW_ID} AS __l8_ctid) \
+                "WITH ins AS (INSERT INTO {target} DEFAULT VALUES RETURNING *, {PG_INSERTED_ID} AS __l8_ctid) \
                  SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
             )
         } else {
@@ -899,7 +950,7 @@ impl TransactionManager {
             format!(
                 "WITH ins AS (INSERT INTO {target} ({col_list}) \
                  SELECT {col_list} FROM {target} WHERE {row_filter} \
-                 RETURNING *, {PG_ROW_ID} AS __l8_ctid) \
+                 RETURNING *, {PG_INSERTED_ID} AS __l8_ctid) \
                  SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
             )
         };
@@ -907,15 +958,25 @@ impl TransactionManager {
         conn.batch_execute("SAVEPOINT l8_op")
             .await
             .map_err(map_pg_err)?;
-        match conn.query(sql.as_str(), &[]).await {
-            Ok(rows) => {
+        let result = match conn.query(sql.as_str(), &[]).await {
+            Ok(rows) => match rows.first() {
+                Some(row) => pin_inserted(
+                    &conn,
+                    &target,
+                    row.get::<_, super::exact_number::ExactJson>(0).0,
+                )
+                .await
+                .map(Some),
+                None => Ok(None),
+            },
+            Err(e) => Err(e),
+        };
+        match result {
+            Ok(row) => {
                 conn.batch_execute("RELEASE SAVEPOINT l8_op")
                     .await
                     .map_err(map_pg_err)?;
-                match rows.first() {
-                    Some(row) => Ok(row.get::<_, super::exact_number::ExactJson>(0).0),
-                    None => Err("Zeile konnte nicht dupliziert werden".to_string()),
-                }
+                row.ok_or_else(|| "Zeile konnte nicht dupliziert werden".to_string())
             }
             Err(e) => {
                 let _ = conn.batch_execute("ROLLBACK TO SAVEPOINT l8_op").await;
@@ -965,7 +1026,7 @@ impl TransactionManager {
                     .await
                     .map_err(map_pg_err)?;
                 if affected == 0 {
-                    return Err("Zeile nicht gefunden".to_string());
+                    return Err(PG_ROW_GONE.to_string());
                 }
                 Ok(())
             }
@@ -1122,6 +1183,12 @@ mod tests {
             partition.filter("public", "orders"),
             "ctid = '(0,1)'::tid AND tableoid = 16384::oid"
         );
+        assert_eq!(
+            PgRowId::parse("(0,3)@26490@812")
+                .unwrap()
+                .filter("public", "t"),
+            "ctid = '(0,3)'::tid AND tableoid = 26490::oid AND xmin = '812'::xid"
+        );
         let legacy = PgRowId::parse("(12,7)").unwrap();
         assert_eq!(
             legacy.filter("my'schema", "Or\"ders"),
@@ -1137,7 +1204,8 @@ mod tests {
             "(0,1)@1 OR true",
             "(0,1)'; DROP TABLE x; --",
             "(0,70000)",
-            "(0,1)@16384@1",
+            "(0,1)@16384@1@2",
+            "(0,1)@16384@x",
         ] {
             assert!(PgRowId::parse(invalid).is_err(), "{invalid}");
         }
@@ -1147,7 +1215,7 @@ mod tests {
         );
         assert!(
             crate::db::postgres::table_page_sql("s", "t", "", None, true, &[])
-                .contains("t.ctid::text || '@' || t.tableoid::text")
+                .contains("t.ctid::text || '@' || t.tableoid::text || '@' || t.xmin::text")
         );
         let keyed =
             |order| crate::db::postgres::table_page_sql("s", "t", "", order, true, &["id".into()]);
@@ -1605,6 +1673,16 @@ mod tests {
             .collect();
         assert_eq!(lines, [("OUTPUT", "eins"), ("OUTPUT", "zwei")]);
         assert!(tx.server_output(&id).await.unwrap().is_empty());
+        tx.execute(
+            &id,
+            "BEGIN FOR i IN 1 .. 4500 LOOP DBMS_OUTPUT.PUT_LINE('Zeile ' || i); END LOOP; END;",
+        )
+        .await
+        .unwrap();
+        let output = tx.server_output(&id).await.unwrap();
+        assert_eq!(output.len(), 4500);
+        assert_eq!(output[4499].message, "Zeile 4500");
+        assert!(tx.server_output(&id).await.unwrap().is_empty());
         tx.rollback(&id).await.unwrap();
     }
 
@@ -1627,12 +1705,14 @@ mod tests {
             .execute_query("CREATE TABLE L8_TX_TEST (ID NUMBER GENERATED BY DEFAULT AS IDENTITY, NAME VARCHAR2(50), AT_TS DATE)")
             .await
             .unwrap();
-        let schema = adapter.list_schemas().await.unwrap();
-        let schema = schema
-            .iter()
-            .find(|s| s.eq_ignore_ascii_case("testuser"))
-            .cloned()
-            .unwrap_or_else(|| schema[0].clone());
+        let schema = adapter
+            .execute_query("SELECT USER u FROM dual")
+            .await
+            .unwrap()
+            .rows[0]["U"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         let tx = TransactionManager {
             transactions: Mutex::new(HashMap::new()),

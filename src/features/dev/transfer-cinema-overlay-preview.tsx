@@ -52,6 +52,7 @@ export function TransferCinemaOverlayPreview({
         atomic: true,
         committed: !fail,
         rolledBack: fail,
+        kept: false,
         leftovers: [],
         warnings: [],
         error: fail ? 'duplicate key value violates unique constraint "orders_pkey"' : null,

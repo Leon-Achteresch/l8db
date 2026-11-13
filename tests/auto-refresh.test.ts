@@ -36,7 +36,7 @@ describe("Intervalle", () => {
 
   test("beschreibt Intervalle", () => {
     expect(describeAutoRefreshInterval(0)).toBe("Aus");
-    expect(describeAutoRefreshInterval(15000)).toBe("15s");
+    expect(describeAutoRefreshInterval(15000)).toBe("15 s");
   });
 });
 

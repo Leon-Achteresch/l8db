@@ -11,6 +11,8 @@ export type AiRichBlock = (
       title?: string;
       body?: string;
       chart?: { chart: string; x?: string; y?: string[] };
+      start?: number;
+      end?: number;
     }
   | {
       type: "plan";
@@ -120,10 +122,20 @@ export function aiRaster(value: unknown, mime = "image/png") {
     return undefined;
   }
 }
+const stamp = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+function timing(start: number | undefined, end: number | undefined, status: string, now?: number) {
+  const done = end ?? (status && status !== "running" && start !== undefined ? now : undefined);
+  return {
+    ...(start !== undefined ? { start } : {}),
+    ...(done !== undefined ? { end: done } : {}),
+  };
+}
 export function mergeAiRich(
   previous: AiRichBlock[] = [],
   next: AiRichBlock[],
   at?: number,
+  now?: number,
 ): AiRichBlock[] {
   const merged = new Map(previous.map((block) => [block.id, block]));
   for (const block of next) {
@@ -142,8 +154,16 @@ export function mergeAiRich(
             title: block.title ?? old.title,
             body: block.body ?? old.body,
             chart: block.chart ?? old.chart,
+            ...timing(
+              old.start ?? block.start ?? now,
+              old.end ?? block.end,
+              block.status || old.status,
+              now,
+            ),
           }
-        : { ...block, ...position },
+        : block.type === "tool"
+          ? { ...block, ...position, ...timing(block.start ?? now, block.end, block.status, now) }
+          : { ...block, ...position },
     );
   }
   let imageBytes = 0;
@@ -173,6 +193,8 @@ export function sanitizeAiRich(value: unknown): AiRichBlock[] {
           { sql: block.sql, title: block.title, body: block.body, ...record(block.chart) },
           record(block.chart).chart ? "visualize" : text(block.name, 300),
         ),
+        ...(stamp(block.start) ? { start: stamp(block.start) } : {}),
+        ...(stamp(block.end) ? { end: stamp(block.end) } : {}),
       });
     if (block.type === "diff")
       blocks.push({

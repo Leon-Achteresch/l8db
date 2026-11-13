@@ -43,7 +43,7 @@ export function ActivityTimeline({
         aria-hidden="true"
         className="relative h-16 rounded-xl border bg-[repeating-linear-gradient(to_top,transparent_0,transparent_19px,color-mix(in_oklch,var(--border)_55%,transparent)_19px,color-mix(in_oklch,var(--border)_55%,transparent)_20px)]"
       >
-        <span className="absolute left-2 top-1.5 text-[9px] uppercase tracking-[0.12em] text-muted-foreground/70">
+        <span className="absolute left-2 top-1.5 text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
           langsam
         </span>
         <div className="absolute inset-x-3 bottom-5 top-4">

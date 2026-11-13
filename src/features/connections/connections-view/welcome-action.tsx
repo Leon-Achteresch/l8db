@@ -51,7 +51,7 @@ export function WelcomeAction({
       </span>
       <ArrowUpRight
         aria-hidden="true"
-        className="size-3.5 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground"
+        className="size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground"
       />
     </button>
   );

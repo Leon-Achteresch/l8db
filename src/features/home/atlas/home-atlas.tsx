@@ -120,7 +120,7 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
       </div>
     ) : !atlasTables.length ? (
       <div className="grid h-full place-content-center gap-3 p-6 text-center">
-        <Table2 className="mx-auto size-6 text-muted-foreground/50" />
+        <Table2 className="mx-auto size-6 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">Dieses Schema enthält noch keine Tabellen.</p>
         <Button variant="outline" size="sm" className="mx-auto" asChild>
           <Link to="/create-table">

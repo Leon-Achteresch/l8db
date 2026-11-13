@@ -1,4 +1,6 @@
+import { ShieldCheckIcon } from "lucide-react";
 import { motion } from "motion/react";
+import { FeatureEmptyState } from "@/components/feature-empty-state/feature-empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -27,9 +29,11 @@ export function TableConstraintsList({ schema, table }: TableConstraintsListProp
 
   if (!constraints || constraints.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center p-6">
-        <p className="text-sm text-muted-foreground">Keine Constraints gefunden.</p>
-      </div>
+      <FeatureEmptyState
+        icon={ShieldCheckIcon}
+        title="Keine Constraints"
+        className="flex-1 justify-center"
+      />
     );
   }
 
@@ -73,7 +77,7 @@ export function TableConstraintsList({ schema, table }: TableConstraintsListProp
                     ))}
                   </div>
                 )}
-                <p className="font-mono text-[11px] text-muted-foreground/70 break-all">
+                <p className="font-mono text-[11px] text-muted-foreground break-all">
                   {con.definition}
                 </p>
               </div>

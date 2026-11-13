@@ -1,5 +1,7 @@
 import type { SortingState } from "@tanstack/react-table";
 import {
+  ArrowDownIcon,
+  ArrowUpIcon,
   ChevronFirstIcon,
   ChevronLastIcon,
   ChevronLeftIcon,
@@ -8,6 +10,7 @@ import {
 } from "lucide-react";
 import { memo } from "react";
 import { NewBadge } from "@/components/new-badge";
+import { Kbd } from "@/components/ui/kbd";
 import { DataTableAutoRefresh } from "@/features/table/data-table-auto-refresh";
 import type { autoRefreshPauseReason } from "@/lib/auto-refresh";
 import { describeSelectionStats, type summarizeCells } from "@/lib/grid-selection";
@@ -69,7 +72,7 @@ export const DataTableFooter = memo(function DataTableFooter({
   const rangeEnd = first + rowCount;
   const total = totalCount ?? countLabel;
   return (
-    <div className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-t border-border bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground select-none">
+    <div className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-t border-border bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground tabular-nums select-none">
       <span ref={infinite ? infiniteFeature.ref : undefined} className="whitespace-nowrap">
         {infinite && infiniteFeature.isNew && <NewBadge />}
         {total != null
@@ -91,22 +94,33 @@ export const DataTableFooter = memo(function DataTableFooter({
         ) : isFetching ? (
           <span>Lade…</span>
         ) : activeSort ? (
-          <span className="truncate">
-            Sortiert nach{" "}
-            <span className="font-mono font-semibold text-foreground bg-muted border border-border rounded px-1 py-[1px]">
-              {activeSort.id}
-            </span>{" "}
-            ({activeSort.desc ? "absteigend" : "aufsteigend"})
+          <span className="inline-flex max-w-full items-center gap-1 align-middle">
+            {activeSort.desc ? (
+              <ArrowDownIcon aria-label="Absteigend sortiert nach" className="size-3 shrink-0" />
+            ) : (
+              <ArrowUpIcon aria-label="Aufsteigend sortiert nach" className="size-3 shrink-0" />
+            )}
+            <span className="truncate font-mono font-medium text-foreground">{activeSort.id}</span>
           </span>
         ) : (
-          <span>
-            {canEdit
-              ? "Pfeiltasten navigieren · Enter oder Klick auf die fokussierte Zelle zum Bearbeiten"
-              : "Navigiere mit Pfeiltasten · Doppelklick zum Kopieren"}
+          <span className="inline-flex items-center gap-1.5 align-middle">
+            <Kbd className="h-4 min-w-4 text-[10px]">↑↓←→</Kbd>
+            Navigieren
+            {canEdit ? (
+              <>
+                <Kbd className="ml-2 h-4 min-w-4 text-[10px]">↵</Kbd>
+                Bearbeiten
+              </>
+            ) : (
+              <>
+                <Kbd className="ml-2 h-4 min-w-4 text-[10px]">Doppelklick</Kbd>
+                Kopieren
+              </>
+            )}
           </span>
         )}
       </div>
-      <div className="flex items-center justify-end gap-4">
+      <div className="flex items-center justify-end gap-1.5">
         {onRefresh && (
           <button
             type="button"
@@ -127,10 +141,7 @@ export const DataTableFooter = memo(function DataTableFooter({
           />
         )}
         {onPageChange && (openEnded || (totalPages != null && totalPages > 1)) && (
-          <div
-            ref={paginationFeature.ref}
-            className="flex items-center gap-1 border-l border-border/70 pl-3"
-          >
+          <div ref={paginationFeature.ref} className="ml-2 flex items-center gap-1">
             {paginationFeature.isNew && <NewBadge />}
             <span className="mr-1 whitespace-nowrap">
               Seite {page + 1}

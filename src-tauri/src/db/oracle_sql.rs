@@ -250,19 +250,61 @@ impl PlsqlUnit {
     }
 }
 
-const SQLPLUS_COMMANDS: &str =
-    "SET PROMPT SPOOL WHENEVER DEFINE UNDEFINE REM REMARK SHOW EXIT QUIT PAUSE ACCEPT \
-    COLUMN TTITLE BTITLE BREAK CLEAR TIMING START STA @ PRO DEF UNDEF COL SPO SHO ACC \
-    PAU VAR VARIABLE PRINT HOST CONNECT CONN DISCONNECT DISC PASSWORD STORE COMPUTE \
-    REPHEADER REPFOOTER STARTUP SHUTDOWN RECOVER ARCHIVE COPY XQUERY ATTRIBUTE SAVE GET \
-    EDIT INPUT LIST APPEND CHANGE DEL RUN HELP DESC DESCRIBE";
+const SQLPLUS_COMMANDS: &[(&str, usize)] = &[
+    ("ACCEPT", 3),
+    ("APPEND", 6),
+    ("ARCHIVE", 7),
+    ("ATTRIBUTE", 4),
+    ("BREAK", 3),
+    ("BTITLE", 3),
+    ("CHANGE", 6),
+    ("CLEAR", 2),
+    ("COLUMN", 3),
+    ("COMPUTE", 4),
+    ("CONNECT", 4),
+    ("COPY", 4),
+    ("DEFINE", 3),
+    ("DEL", 3),
+    ("DESCRIBE", 4),
+    ("DISCONNECT", 4),
+    ("EDIT", 2),
+    ("EXIT", 4),
+    ("GET", 3),
+    ("HELP", 4),
+    ("HISTORY", 4),
+    ("HOST", 2),
+    ("INPUT", 5),
+    ("LIST", 4),
+    ("PASSWORD", 5),
+    ("PAUSE", 3),
+    ("PRINT", 3),
+    ("PROMPT", 3),
+    ("QUIT", 4),
+    ("RECOVER", 7),
+    ("REMARK", 3),
+    ("REPFOOTER", 4),
+    ("REPHEADER", 4),
+    ("RUN", 1),
+    ("SAVE", 3),
+    ("SET", 3),
+    ("SHOW", 3),
+    ("SHUTDOWN", 8),
+    ("SPOOL", 3),
+    ("START", 3),
+    ("STARTUP", 7),
+    ("STORE", 5),
+    ("TIMING", 4),
+    ("TTITLE", 3),
+    ("UNDEFINE", 5),
+    ("VARIABLE", 3),
+    ("WHENEVER", 8),
+    ("XQUERY", 6),
+];
 
 fn sqlplus_line_end(sql: &str, token: &Range<usize>, next: Option<&str>) -> Option<usize> {
     let word = sql[token.clone()].to_ascii_uppercase();
     let line_start = sql[..token.start].rfind('\n').map_or(0, |n| n + 1);
-    if !SQLPLUS_COMMANDS
-        .split_whitespace()
-        .any(|command| command == word)
+    if !(word == "@" || crate::db::sql_script::abbreviates(&word, SQLPLUS_COMMANDS))
         || !sql[line_start..token.start].trim().is_empty()
     {
         return None;
@@ -276,11 +318,40 @@ fn sqlplus_line_end(sql: &str, token: &Range<usize>, next: Option<&str>) -> Opti
     {
         return None;
     }
-    Some(
-        sql[token.end..]
-            .find('\n')
-            .map_or(sql.len(), |n| token.end + n),
-    )
+    let end = sql[token.end..]
+        .find('\n')
+        .map_or(sql.len(), |n| token.end + n);
+    let free_text = word == "@"
+        || crate::db::sql_script::abbreviates(
+            &word,
+            &[
+                ("PROMPT", 3),
+                ("REMARK", 3),
+                ("HOST", 3),
+                ("TTITLE", 3),
+                ("BTITLE", 3),
+            ],
+        );
+    if free_text {
+        return Some(end);
+    }
+    Some(command_end(sql, token.end, end))
+}
+
+fn command_end(sql: &str, from: usize, end: usize) -> usize {
+    let mut quote: Option<char> = None;
+    for (offset, ch) in sql[from..end].char_indices() {
+        match (quote, ch) {
+            (Some(open), _) if ch == open => quote = None,
+            (Some(_), _) => {}
+            (None, '\'' | '"') => quote = Some(ch),
+            (None, ';') if !sql[from + offset + 1..end].trim().is_empty() => {
+                return from + offset + 1;
+            }
+            _ => {}
+        }
+    }
+    end
 }
 
 fn exec_line_end(sql: &str, token: &Range<usize>) -> Option<usize> {
@@ -989,6 +1060,31 @@ mod tests {
                 (false, "BEGIN q(1, \n  2); END;".to_string()),
                 (false, "BEGIN pkg.run('a;b'); END;".to_string()),
                 (false, "SELECT 1 FROM dual;".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn sqlplus_command_ends_at_a_semicolon_followed_by_sql() {
+        assert_eq!(
+            split_items("SET SERVEROUTPUT ON; select 'erste' v from dual"),
+            vec![
+                (true, "SET SERVEROUTPUT ON;".to_string()),
+                (false, "select 'erste' v from dual".to_string()),
+            ]
+        );
+        assert_eq!(
+            split_items("PROMPT a; b\nSET SQLPROMPT \"x; y\""),
+            vec![
+                (true, "PROMPT a; b".to_string()),
+                (true, "SET SQLPROMPT \"x; y\"".to_string()),
+            ]
+        );
+        assert_eq!(
+            split_items("SET PAGESIZE 100;\nselect 1 from dual"),
+            vec![
+                (true, "SET PAGESIZE 100;".to_string()),
+                (false, "select 1 from dual".to_string()),
             ]
         );
     }

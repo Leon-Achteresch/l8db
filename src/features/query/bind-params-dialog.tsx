@@ -141,7 +141,7 @@ export function BindParamsDialog({
                 title="Doppelpunkte und $-Platzhalter unverändert an die Datenbank senden"
                 onClick={onSkip}
               >
-                Ohne Parameter ausführen
+                SQL unverändert senden
               </Button>
             )}
             <Button type="submit" size="sm" disabled={errors.length > 0}>

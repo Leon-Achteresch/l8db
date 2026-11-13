@@ -9,12 +9,9 @@ export function FeatureVideoGallery() {
   return (
     <section className="mt-6" aria-label="Neue Features als Video">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold">Kurz gezeigt</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Entdecke die wichtigsten neuen Funktionen in wenigen Sekunden.
-          </p>
-        </div>
+        <h2 className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+          Kurz gezeigt
+        </h2>
         <Button
           size="icon-sm"
           variant="ghost"
@@ -32,7 +29,7 @@ export function FeatureVideoGallery() {
               key={item.id}
               type="button"
               onClick={() => open(item.id, true)}
-              className="group rounded-xl border border-border bg-card p-4 text-left transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+              className="group cursor-pointer rounded-xl bg-muted/40 p-4 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
             >
               <div className="mb-3 flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">
@@ -46,10 +43,7 @@ export function FeatureVideoGallery() {
           ))}
         </div>
       ) : (
-        <p
-          role="status"
-          className="rounded-xl border border-dashed border-border px-4 py-5 text-sm text-muted-foreground"
-        >
+        <p role="status" className="rounded-xl bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
           {loading
             ? "Feature-Videos werden geladen …"
             : error

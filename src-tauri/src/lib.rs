@@ -67,6 +67,7 @@ fn set_memory_target(window: &tauri::Window, low: bool) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    desktop::mark_process_start();
     if std::env::args().nth(1).as_deref() == Some("--mcp-sandbox") {
         std::process::exit(mcp::sandbox());
     }
@@ -125,10 +126,12 @@ pub fn run() {
     }
     builder
         .setup(move |app| {
+            desktop::mark_window_created();
             desktop::install_logger(app.handle())?;
             windows::install_quick_menu(app.handle());
             windows::handle_args(app.handle(), &args, false);
             automation::init(app.handle());
+            desktop::mark_setup_finished();
             Ok(())
         })
         .plugin(
@@ -245,6 +248,7 @@ pub fn run() {
             ai::knowledge::ai_knowledge_get,
             ai::knowledge::ai_knowledge_set,
             desktop::set_crash_reporting,
+            desktop::report_startup,
             automation::automation_sync_connections,
             automation::automation_list_tasks,
             automation::automation_get_task,
@@ -529,6 +533,8 @@ pub fn run() {
             connection_import::resolve_connection_endpoints,
             file_open::resolve_open_files,
             updates::check_update,
+            updates::list_update_releases,
+            updates::cancel_update_release_request,
             windows::open_app_window,
             windows::set_dock_recents,
             windows::set_window_connection,
@@ -646,6 +652,12 @@ pub fn run() {
             db::commands::validate_sql,
             db::commands::list_roles,
             db::commands::list_proxy_users,
+            db::commands::list_principals,
+            db::commands::principal_detail,
+            db::commands::principal_options,
+            db::commands::list_grantable_objects,
+            db::commands::preview_principal_change,
+            db::commands::apply_principal_change,
             db::commands::create_role,
             db::commands::alter_role,
             db::commands::drop_role,
@@ -777,11 +789,12 @@ pub fn run() {
             }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = _event {
-                let actions = urls
+                let mut actions: Vec<_> = urls
                     .iter()
                     .filter_map(|url| url.to_file_path().ok())
                     .map(|path| file_open::action_for_path(&path))
                     .collect();
+                actions.extend(file_open::link_action(urls.iter().map(|url| url.as_str())));
                 file_open::enqueue(_app, actions);
             }
         });

@@ -1,5 +1,7 @@
 use std::borrow::Cow;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
 use sentry::integrations::log::LogFilter;
@@ -68,6 +70,89 @@ impl<L: log::Log> log::Log for ServerOutputLogger<L> {
 
     fn flush(&self) {
         self.0.flush();
+    }
+}
+
+static PROCESS_STARTED: OnceLock<(Instant, f64)> = OnceLock::new();
+static WINDOW_CREATED: OnceLock<f64> = OnceLock::new();
+static SETUP_FINISHED: OnceLock<f64> = OnceLock::new();
+static STARTUP_REPORTED: AtomicBool = AtomicBool::new(false);
+
+pub fn mark_process_start() {
+    if let Ok(elapsed) = SystemTime::now().duration_since(UNIX_EPOCH) {
+        let _ = PROCESS_STARTED.set((Instant::now(), elapsed.as_secs_f64() * 1000.0));
+    }
+}
+
+fn since_process_start() -> Option<f64> {
+    PROCESS_STARTED
+        .get()
+        .map(|(started, _)| started.elapsed().as_secs_f64() * 1000.0)
+}
+
+pub fn mark_window_created() {
+    if let Some(elapsed) = since_process_start() {
+        let _ = WINDOW_CREATED.set(elapsed);
+    }
+}
+
+pub fn mark_setup_finished() {
+    if let Some(elapsed) = since_process_start() {
+        let _ = SETUP_FINISHED.set(elapsed);
+    }
+}
+
+fn startup_line(
+    started: f64,
+    navigation: f64,
+    shell: f64,
+    ready: f64,
+    window: Option<f64>,
+    setup: Option<f64>,
+) -> Option<String> {
+    let native = navigation - started;
+    let plausible = |value: f64| value.is_finite() && (0.0..=600_000.0).contains(&value);
+    if !plausible(native) || !plausible(shell) || !plausible(ready) {
+        return None;
+    }
+    let phases = match (window, setup) {
+        (Some(window), Some(setup)) if setup >= window => {
+            format!(" (window {window:.0} ms, setup {:.0} ms)", setup - window)
+        }
+        _ => String::new(),
+    };
+    Some(format!(
+        "startup: native {native:.0} ms{phases}, shell {shell:.0} ms, app {ready:.0} ms, total {:.0} ms",
+        native + ready
+    ))
+}
+
+#[tauri::command]
+pub fn report_startup<R: Runtime>(
+    handle: tauri::AppHandle<R>,
+    navigation: f64,
+    shell: f64,
+    ready: f64,
+) {
+    if STARTUP_REPORTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let Some(line) = PROCESS_STARTED.get().and_then(|(_, started)| {
+        startup_line(
+            *started,
+            navigation,
+            shell,
+            ready,
+            WINDOW_CREATED.get().copied(),
+            SETUP_FINISHED.get().copied(),
+        )
+    }) else {
+        return;
+    };
+    log::info!("{line}");
+    if std::env::var_os("L8DB_STARTUP_PROBE").is_some() {
+        log::logger().flush();
+        handle.exit(0);
     }
 }
 
@@ -212,6 +297,9 @@ pub fn app_menu<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tauri::m
         .text("menu.docs", "l8db-Dokumentation")
         .text("shortcuts.open", "Tastenkürzel")
         .text("menu.releaseNotes", "Neuigkeiten")
+        .text("menu.discover", "Entdecken")
+        .text("help.whatsThis", "Was ist das?")
+        .text("help.cheatsheet", "Spickzettel")
         .separator()
         .text("menu.bugReport", "Fehler melden …")
         .build()?;
@@ -229,7 +317,31 @@ pub fn app_menu<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<tauri::m
 
 #[cfg(test)]
 mod tests {
-    use super::redact;
+    use super::{redact, startup_line};
+
+    #[test]
+    fn startup_line_reports_native_and_total_time_and_rejects_implausible_values() {
+        assert_eq!(
+            startup_line(1_000.0, 1_412.4, 18.2, 143.3, Some(300.2), Some(341.0)).as_deref(),
+            Some(
+                "startup: native 412 ms (window 300 ms, setup 41 ms), shell 18 ms, app 143 ms, total 556 ms"
+            )
+        );
+        assert_eq!(
+            startup_line(1_000.0, 1_412.4, 18.2, 143.3, None, Some(341.0)).as_deref(),
+            Some("startup: native 412 ms, shell 18 ms, app 143 ms, total 556 ms")
+        );
+        assert_eq!(startup_line(1_000.0, 900.0, 18.0, 143.0, None, None), None);
+        assert_eq!(
+            startup_line(1_000.0, 1_000_000.0, 18.0, 143.0, None, None),
+            None
+        );
+        assert_eq!(
+            startup_line(1_000.0, 1_400.0, f64::NAN, 143.0, None, None),
+            None
+        );
+        assert_eq!(startup_line(1_000.0, 1_400.0, 18.0, -1.0, None, None), None);
+    }
 
     #[test]
     fn redact_strips_urls_and_secrets() {

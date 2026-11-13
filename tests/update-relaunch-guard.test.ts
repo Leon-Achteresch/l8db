@@ -13,6 +13,8 @@ Object.defineProperty(globalThis, "window", { value: windowMock, configurable: t
 const events: string[] = [];
 let backendTransactions: string[] = [];
 let backendFails = false;
+let transactionGate: Promise<void> | null = null;
+let onTransactionRead = () => {};
 let onDownloaded: () => void = () => {};
 
 const realCore = await import("@tauri-apps/api/core");
@@ -21,6 +23,8 @@ mock.module("@tauri-apps/api/core", () => ({
   ...realCore,
   invoke: async (command: string) => {
     if (command === "list_transactions") {
+      onTransactionRead();
+      await transactionGate;
       if (backendFails) throw new Error("backend unavailable");
       return backendTransactions;
     }
@@ -76,9 +80,8 @@ mock.module("sonner", () => ({
 const { createBufferedJsonStorage } = await import("../src/lib/buffered-storage");
 const { useSettingsStore } = await import("../src/lib/settings");
 const { runCheck } = await import("../src/lib/auto-updater");
-const { getUpdatePromptState, installUpdateAndRelaunch, setPendingUpdate } = await import(
-  "../src/lib/updater"
-);
+const { getUpdatePromptState, installUpdateAndRelaunch, presentUpdate, setPendingUpdate } =
+  await import("../src/lib/updater");
 const { useTransactionStore } = await import("../src/lib/transactions");
 const { useTasksStore } = await import("../src/lib/tasks");
 const { useTableTabs } = await import("../src/lib/table-tabs");
@@ -102,6 +105,8 @@ beforeEach(() => {
   storage.clear();
   backendTransactions = [];
   backendFails = false;
+  transactionGate = null;
+  onTransactionRead = () => {};
   onDownloaded = () => {};
   setPendingUpdate(null);
   useTransactionStore.setState({ transactions: [] });
@@ -230,4 +235,22 @@ describe("update blockers", () => {
     );
     expect(describeUpdateBlockers({ transactions: 0, tasks: 0, files: 0 })).toBeNull();
   });
+});
+
+test("an automatic install cannot replace a manual rollback while blockers are being read", async () => {
+  let resume = () => {};
+  transactionGate = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  const reading = new Promise<void>((resolve) => {
+    onTransactionRead = resolve;
+  });
+  const pending = runCheck();
+  await reading;
+  const manual = { ...fakeUpdate(), version: "0.9.1" };
+  presentUpdate(manual as never, true);
+  resume();
+  await pending;
+  expect(events).not.toContain("download");
+  expect(getUpdatePromptState()).toMatchObject({ open: true, manual: true, update: manual });
 });

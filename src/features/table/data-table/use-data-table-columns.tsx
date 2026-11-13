@@ -68,7 +68,7 @@ export function useDataTableColumns({
         enableSorting: false,
         enableResizing: false,
         cell: (info) => (
-          <span className="font-mono text-xs tabular-nums text-muted-foreground/60 select-none">
+          <span className="font-mono text-xs tabular-nums text-muted-foreground select-none">
             {info.row.index + 1 + headerStateRef.current.rowOffset}
           </span>
         ),
@@ -92,8 +92,8 @@ export function useDataTableColumns({
                 ? fkLinksFor(columnFks, currentSchema, currentTable, column)
                     .map((link) =>
                       link.isOutgoing
-                        ? `FK -> ${link.schema}.${link.table}.${link.column}`
-                        : `<- ${link.schema}.${link.table}.${link.column}`,
+                        ? `Fremdschlüssel auf ${link.schema}.${link.table}.${link.column}`
+                        : `Referenziert von ${link.schema}.${link.table}.${link.column}`,
                     )
                     .join("\n")
                 : undefined;

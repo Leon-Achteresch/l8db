@@ -98,7 +98,8 @@ describe("extension manifest", () => {
     assertCompatible(manifest, "0.1.0");
     assertCompatible(manifest, "0.9.9");
     assertCompatible(manifest, "1.0.0");
-    for (const version of ["2.0.0", "0.0.9", "0.2.0-beta.1"]) expect(() => assertCompatible(manifest, version)).toThrow(ExtensionError);
+    for (const version of ["0.2.0-beta.1", "0.18.0-canary.7"]) assertCompatible(manifest, version);
+    for (const version of ["2.0.0", "0.0.9", "2.0.0-canary.1"]) expect(() => assertCompatible(manifest, version)).toThrow(ExtensionError);
   });
   test("official extensions accept l8db 1.x", async () => {
     for (const path of ["../extention/l8db-extension.json", "../extention/password-manager/l8db-extension.json", "../examples/hello-extension/l8db-extension.json"]) {

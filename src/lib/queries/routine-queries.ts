@@ -114,7 +114,7 @@ export function useInvalidObjectsQuery(includeDebug = false) {
         schema,
         includeDebug,
       ),
-    enabled: supports(connection, "compile_objects"),
+    enabled: supports(connection, "invalid_objects"),
     staleTime: 15_000,
   });
 }
@@ -132,7 +132,7 @@ export function useCompileErrorsQuery() {
         database ?? undefined,
         schema,
       ),
-    enabled: supports(connection, "compile_objects"),
+    enabled: supports(connection, "invalid_objects"),
     staleTime: 15_000,
   });
 }

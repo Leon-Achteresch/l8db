@@ -102,6 +102,7 @@ fn cheatsheet_examples_in_the_app_parse() {
     for line in [
         "l8db conn list",
         "l8db conn use prod",
+        "l8db tui",
         "l8db conn test",
         "l8db open prod",
         "l8db q \"select * from users limit 5\"",
@@ -157,6 +158,8 @@ fn routes_cli_words_and_keeps_app_arguments() {
         "--help",
         "-h",
         "-V",
+        "-v",
+        "version",
         "-c prod q x",
         "--connection=prod q x",
         "--url postgres://x/y q x",
@@ -177,6 +180,37 @@ fn routes_cli_words_and_keeps_app_arguments() {
         "notes.sql",
         "./query",
         "-psn_0_12345",
+        "l8db://tab/aWyJ0Il0",
+        "L8DB://tab/aWyJ0Il0/",
+        "l8db:tab",
+    ] {
+        assert!(!wants(app), "{app} sollte die App starten");
+    }
+}
+
+#[test]
+fn every_spelling_of_version_prints_it_and_ends() {
+    for flag in ["l8db --version", "l8db -V", "l8db -v"] {
+        let kind = parse(flag).unwrap_err().kind();
+        assert_eq!(kind, clap::error::ErrorKind::DisplayVersion, "{flag}");
+    }
+    assert!(matches!(
+        parse("l8db version").unwrap().command,
+        Command::Version
+    ));
+}
+
+#[test]
+fn shared_tab_links_named_like_cli_commands_stay_app_arguments() {
+    let wants = |line: &str| super::wants(&args(line));
+    for app in [
+        "l8db://tab/abc",
+        "l8db://tab/query",
+        "l8db://tab/conn",
+        "l8db://tab/table",
+        "l8db://tab/help",
+        "L8DB://TAB/query/",
+        "l8db://tab/query?x=1",
     ] {
         assert!(!wants(app), "{app} sollte die App starten");
     }
@@ -279,6 +313,15 @@ fn scripts_are_split_per_family() {
     let batch = "CREATE PROCEDURE dbo.p AS\nBEGIN\n  SELECT 1;\nEND\nGO\nSELECT 2";
     assert_eq!(statements(DatabaseKind::Mssql, batch).unwrap().len(), 2);
     assert!(statements(DatabaseKind::Oracle, "CONN hr/hr\nDROP TABLE t;").is_err());
+    assert!(statements(DatabaseKind::Oracle, "disco\nDROP TABLE t;").is_err());
+    assert_eq!(
+        statements(
+            DatabaseKind::Oracle,
+            "SELECT 1 FROM dual;\nEXIT;\nDROP TABLE t;"
+        )
+        .unwrap(),
+        vec!["SELECT 1 FROM dual;"]
+    );
 }
 
 #[test]
@@ -294,6 +337,22 @@ fn write_detection_is_conservative() {
         (DatabaseKind::Redis, "SET a 1"),
         (DatabaseKind::Mongodb, "db.users.deleteMany({})"),
         (DatabaseKind::Mongodb, "nicht parsebar"),
+        (
+            DatabaseKind::Mongodb,
+            r#"db.src.aggregate([{$match:{}},{$out:"copy"}])"#,
+        ),
+        (
+            DatabaseKind::Mongodb,
+            r#"db.src.aggregate([{$merge:{into:"copy"}}])"#,
+        ),
+        (
+            DatabaseKind::Mongodb,
+            r#"{"aggregate":"src","pipeline":[{"$out":"copy"}],"cursor":{}}"#,
+        ),
+        (
+            DatabaseKind::Mongodb,
+            r#"{"mapReduce":"src","map":"function(){}","reduce":"function(){}","out":"copy"}"#,
+        ),
     ] {
         assert!(writes(kind, sql), "{sql} schreibt");
     }
@@ -305,6 +364,10 @@ fn write_detection_is_conservative() {
         (DatabaseKind::Postgres, "explain select 1"),
         (DatabaseKind::Redis, "GET a"),
         (DatabaseKind::Mongodb, "db.users.find({})"),
+        (
+            DatabaseKind::Mongodb,
+            r#"db.src.aggregate([{$match:{status:"$out"}},{$count:"n"}])"#,
+        ),
     ] {
         assert!(!writes(kind, sql), "{sql} liest nur");
     }
@@ -345,7 +408,15 @@ fn postgres_text_values_become_json_types() {
         json!("9007199254740993")
     );
     assert_eq!(postgres_json("numeric", json!("1.5000")), json!("1.5000"));
-    assert_eq!(postgres_json("numeric", json!("2.5")), json!("2.5"));
+    assert_eq!(postgres_json("numeric", json!("2.5")), json!(2.5));
+    assert_eq!(
+        postgres_json("jsonb", json!(r#"{"a":[1]}"#)),
+        json!({"a": [1]})
+    );
+    assert_eq!(
+        postgres_json("json", json!(r#"{"big":9007199254740993}"#)),
+        json!(r#"{"big":9007199254740993}"#)
+    );
     assert_eq!(postgres_json("float8", json!("1.1")), json!(1.1));
     assert_eq!(postgres_json("float8", json!("NaN")), json!("NaN"));
     assert_eq!(postgres_json("bool", json!("t")), json!(true));
@@ -411,4 +482,61 @@ fn rollback_message_only_promises_what_the_database_keeps() {
         "insert into t values (2)",
     ]);
     assert!(rollback_note(DatabaseKind::Postgres, &own).contains("BEGIN/COMMIT"));
+}
+
+#[test]
+fn open_transactions_and_rollback_notes_follow_each_family() {
+    let ran = |sql: &[&str]| sql.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let open = ran(&[
+        "BEGIN",
+        "insert into t values (99)",
+        "select count(*) from t",
+    ]);
+    assert!(super::run::open_at_end(DatabaseKind::Postgres, &open));
+    assert!(rollback_note(DatabaseKind::Postgres, &open).contains("Nichts geändert"));
+    let closed = ran(&["begin", "insert into t values (1)", "commit"]);
+    assert!(!super::run::open_at_end(DatabaseKind::Postgres, &closed));
+    let reopened = ran(&[
+        "begin",
+        "insert into t values (1)",
+        "end",
+        "start transaction",
+        "select 1",
+    ]);
+    assert!(super::run::open_at_end(DatabaseKind::Postgres, &reopened));
+    assert!(rollback_note(DatabaseKind::Postgres, &reopened).contains("BEGIN/COMMIT"));
+    let savepoint = ran(&["begin", "savepoint a", "rollback to savepoint a"]);
+    assert!(super::run::open_at_end(DatabaseKind::Postgres, &savepoint));
+    let plsql = ran(&["begin null; end;", "insert into t values (1)"]);
+    assert!(!super::run::open_at_end(DatabaseKind::Oracle, &plsql));
+    assert!(rollback_note(DatabaseKind::Oracle, &plsql).contains("Nichts geändert"));
+    let block = ran(&["begin print 1 end", "insert into t values (1)"]);
+    assert!(!super::run::open_at_end(DatabaseKind::Mssql, &block));
+    assert!(super::run::open_at_end(
+        DatabaseKind::Mssql,
+        &ran(&["begin tran", "select 1"])
+    ));
+    let mysql = ran(&[
+        "insert into t values (1)",
+        "begin",
+        "insert into t values (2)",
+    ]);
+    assert!(rollback_note(DatabaseKind::Mysql, &mysql).contains("BEGIN/COMMIT"));
+}
+
+#[test]
+fn cursor_errors_point_into_the_typed_statement() {
+    let shift = super::run::shift_position;
+    assert_eq!(
+        shift("Datenbankfehler: x\nPosition: 53".into(), 38, 0),
+        "Datenbankfehler: x\nPosition: 15"
+    );
+    assert_eq!(
+        shift("a\nPosition: 49\nSQLSTATE 1".into(), 38, 2),
+        "a\nPosition: 13\nSQLSTATE 1"
+    );
+    assert_eq!(shift("ohne".into(), 38, 0), "ohne");
+    assert_eq!(super::run::unquoted_column("\"into\"".into()), "into");
+    assert_eq!(super::run::unquoted_column("\"a\"\"b\"".into()), "a\"b");
+    assert_eq!(super::run::unquoted_column("plain".into()), "plain");
 }

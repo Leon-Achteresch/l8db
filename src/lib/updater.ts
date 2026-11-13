@@ -1,24 +1,31 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { Update } from "@tauri-apps/plugin-updater";
+import { flushAppStorage } from "@/lib/app-storage";
 import { checkUpdate } from "@/lib/db/updates";
-import { useSettingsStore } from "@/lib/settings";
+import { type UpdateChannel, useSettingsStore } from "@/lib/settings";
 
 export const UPDATE_CHECK_TIMEOUT_MS = 20_000;
 
 export type UpdatePromptState = {
   update: Update | null;
   open: boolean;
+  manual?: true;
 };
 
 let pendingUpdate: Update | null = null;
 let promptOpen = false;
+let manualSelection = false;
 let installPercent: number | null = null;
 let snapshot: UpdatePromptState = { update: null, open: false };
 const listeners = new Set<() => void>();
 
 function emit(): void {
-  snapshot = { update: pendingUpdate, open: promptOpen };
+  snapshot = {
+    update: pendingUpdate,
+    open: promptOpen,
+    ...(manualSelection ? { manual: true } : {}),
+  };
   for (const listener of listeners) listener();
 }
 
@@ -48,13 +55,22 @@ export function subscribeUpdatePrompt(listener: () => void): () => void {
 }
 
 export function setPendingUpdate(update: Update | null): void {
+  if (pendingUpdate && pendingUpdate !== update && !installing)
+    void pendingUpdate.close?.().catch(() => {});
   pendingUpdate = update;
+  manualSelection = false;
   if (!update) promptOpen = false;
   emit();
 }
 
-export function presentUpdate(update: Update): void {
+export function presentUpdate(
+  update: Update,
+  manual = pendingUpdate === update && manualSelection,
+): void {
+  if (pendingUpdate && pendingUpdate !== update && !installing)
+    void pendingUpdate.close?.().catch(() => {});
   pendingUpdate = update;
+  manualSelection = manual;
   promptOpen = true;
   emit();
 }
@@ -73,10 +89,36 @@ export async function getAppVersion(): Promise<string | null> {
 }
 
 export async function checkForUpdates(timeoutMs = UPDATE_CHECK_TIMEOUT_MS): Promise<Update | null> {
-  const metadata = await checkUpdate(useSettingsStore.getState().updateChannel, timeoutMs);
+  if ((manualSelection && promptOpen) || installing) return null;
+  const channel = useSettingsStore.getState().updateChannel;
+  const metadata = await checkUpdate(channel, timeoutMs);
+  if (
+    (manualSelection && promptOpen) ||
+    installing ||
+    channel !== useSettingsStore.getState().updateChannel
+  ) {
+    if (metadata) await new Update(metadata).close().catch(() => {});
+    return null;
+  }
   const update = metadata ? new Update(metadata) : null;
   if (update) setPendingUpdate(update);
   return update;
+}
+
+export async function checkAndPresentUpdate(): Promise<Update | null> {
+  const update = await checkForUpdates();
+  if (update && pendingUpdate === update && !manualSelection) {
+    const settings = useSettingsStore.getState();
+    if (settings.skippedUpdateVersion === update.version) settings.setSkippedUpdateVersion(null);
+    presentUpdate(update);
+  }
+  return update;
+}
+
+export function switchUpdateChannel(channel: UpdateChannel): Promise<Update | null> {
+  useSettingsStore.getState().setUpdateChannel(channel);
+  setPendingUpdate(null);
+  return checkAndPresentUpdate();
 }
 
 function flushPendingState(): void {
@@ -122,6 +164,7 @@ async function runInstall(
     if (canRelaunch && !(await canRelaunch())) return false;
     setInstallPercent(100);
     flushPendingState();
+    await flushAppStorage();
     await update.install();
     setPendingUpdate(null);
     await relaunch();

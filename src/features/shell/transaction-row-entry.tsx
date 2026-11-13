@@ -20,7 +20,10 @@ export function DiffRowEntry({ change }: { change: TransactionChange }) {
 
   return (
     <div ref={ref} className="rounded border border-border/60 bg-background overflow-hidden">
-      <div className="flex items-center gap-1.5 border-b border-border/40 bg-muted/40 px-2.5 py-1.5">
+      <div
+        className="flex items-center gap-1.5 border-b border-border/40 bg-muted/40 px-2.5 py-1.5"
+        title={change.ctid ? `ctid ${change.ctid}` : undefined}
+      >
         {isInsert ? (
           <PlusIcon className="size-3 text-emerald-500" />
         ) : (
@@ -33,7 +36,6 @@ export function DiffRowEntry({ change }: { change: TransactionChange }) {
         <span className="ml-auto font-mono text-[10px] text-muted-foreground">
           {isInsert ? "INSERT" : "DELETE"}
           {change.planned ? " · geplant" : ""}
-          {change.ctid ? ` · ctid ${change.ctid}` : ""}
         </span>
       </div>
       <div className="font-mono text-[11px] leading-[1.7]">

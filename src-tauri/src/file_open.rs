@@ -7,6 +7,8 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use crate::db::provider::DatabaseKind;
 
 pub const OPEN_FILES_EVENT: &str = "open-files";
+pub const SHARED_TAB_PREFIX: &str = "l8db://tab/";
+pub const MAX_SHARED_TAB_LINK: usize = 1_000_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
@@ -21,6 +23,9 @@ pub enum OpenFileAction {
     },
     Notebook {
         path: String,
+    },
+    Link {
+        link: String,
     },
     Unsupported {
         path: String,
@@ -62,6 +67,28 @@ pub fn action_for_path(path: &Path) -> OpenFileAction {
     }
 }
 
+pub fn is_app_url(arg: &str) -> bool {
+    arg.get(..5)
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("l8db:"))
+}
+
+pub fn shared_tab_link(arg: &str) -> Option<String> {
+    if arg.len() > MAX_SHARED_TAB_LINK + 1 {
+        return None;
+    }
+    let prefix = arg.get(..SHARED_TAB_PREFIX.len())?;
+    if !prefix.eq_ignore_ascii_case(SHARED_TAB_PREFIX) {
+        return None;
+    }
+    let body = arg[SHARED_TAB_PREFIX.len()..].trim_end_matches('/');
+    let valid = !body.is_empty()
+        && body.len() + SHARED_TAB_PREFIX.len() <= MAX_SHARED_TAB_LINK
+        && body
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_');
+    valid.then(|| format!("{SHARED_TAB_PREFIX}{body}"))
+}
+
 fn file_url_path(arg: &str) -> Option<PathBuf> {
     if !arg.starts_with("file://") {
         return None;
@@ -85,7 +112,7 @@ pub fn paths_from_args(args: &[String], cwd: &Path) -> Vec<PathBuf> {
         } else {
             arg.as_str()
         };
-        if value.is_empty() {
+        if value.is_empty() || is_app_url(value) {
             continue;
         }
         let path = file_url_path(value).unwrap_or_else(|| PathBuf::from(value));
@@ -99,10 +126,18 @@ pub fn paths_from_args(args: &[String], cwd: &Path) -> Vec<PathBuf> {
 }
 
 pub fn actions_from_args(args: &[String], cwd: &Path) -> Vec<OpenFileAction> {
-    paths_from_args(args, cwd)
+    let mut actions: Vec<OpenFileAction> = paths_from_args(args, cwd)
         .iter()
         .map(|path| action_for_path(path))
-        .collect()
+        .collect();
+    actions.extend(link_action(args.iter().map(String::as_str)));
+    actions
+}
+
+pub fn link_action<'a>(args: impl IntoIterator<Item = &'a str>) -> Option<OpenFileAction> {
+    args.into_iter()
+        .find_map(shared_tab_link)
+        .map(|link| OpenFileAction::Link { link })
 }
 
 pub fn enqueue<R: Runtime>(app: &AppHandle<R>, actions: Vec<OpenFileAction>) {
@@ -255,5 +290,119 @@ mod tests {
                 "x.parquet"
             )]
         );
+    }
+
+    #[test]
+    fn accepts_only_shared_tab_links() {
+        assert_eq!(
+            shared_tab_link("l8db://tab/aWyJ0Il0").as_deref(),
+            Some("l8db://tab/aWyJ0Il0")
+        );
+        assert_eq!(
+            shared_tab_link("L8DB://TAB/aWyJ0Il0/").as_deref(),
+            Some("l8db://tab/aWyJ0Il0")
+        );
+        for rejected in [
+            "l8db://tab/",
+            "l8db://tab//",
+            "l8db://conn/abc",
+            "l8db://tab/abc?x=1",
+            "l8db://tab/a%20b",
+            "l8db://tab/../x",
+            "http://tab/abc",
+            "l8dbx://tab/abc",
+            "javascript:alert(1)",
+            "l8db://täb/abc",
+        ] {
+            assert_eq!(shared_tab_link(rejected), None, "{rejected}");
+        }
+    }
+
+    #[test]
+    fn limits_link_size_before_frontend() {
+        let fits = format!(
+            "{SHARED_TAB_PREFIX}a{}",
+            "A".repeat(MAX_SHARED_TAB_LINK - SHARED_TAB_PREFIX.len() - 1)
+        );
+        assert_eq!(fits.len(), MAX_SHARED_TAB_LINK);
+        assert!(shared_tab_link(&fits).is_some());
+        assert!(shared_tab_link(&format!("{fits}A")).is_none());
+        assert!(shared_tab_link(&format!("{fits}/")).is_some());
+        assert!(shared_tab_link(&"A".repeat(MAX_SHARED_TAB_LINK * 2)).is_none());
+    }
+
+    #[test]
+    fn links_in_args_become_one_link_action_and_no_path() {
+        let actions = actions_from_args(
+            &args(&["l8db://tab/aFirst", "l8db://tab/aSecond", "l8db://evil/x"]),
+            Path::new("/w"),
+        );
+        assert_eq!(
+            actions,
+            vec![OpenFileAction::Link {
+                link: "l8db://tab/aFirst".into()
+            }]
+        );
+        assert_eq!(
+            serde_json::to_value(&actions[0]).unwrap(),
+            serde_json::json!({ "action": "link", "link": "l8db://tab/aFirst" })
+        );
+    }
+
+    #[test]
+    fn rejects_link_look_alikes_with_spaces_escapes_and_fragments() {
+        for rejected in [
+            "l8db://tab/a b",
+            " l8db://tab/abc",
+            "l8db://tab/abc\n",
+            "l8db://tab/a/../b",
+            "l8db://tab/a%2Fb",
+            "l8db://tab/a\\b",
+            "l8db://tab/abc#x",
+            "xl8db://tab/abc",
+        ] {
+            assert_eq!(shared_tab_link(rejected), None, "{rejected:?}");
+        }
+    }
+
+    #[test]
+    fn drops_trailing_slashes_and_folds_scheme_case() {
+        assert_eq!(
+            shared_tab_link("l8db://tab/abc/").as_deref(),
+            Some("l8db://tab/abc")
+        );
+        assert_eq!(
+            shared_tab_link("l8db://tab/abc//").as_deref(),
+            Some("l8db://tab/abc")
+        );
+        assert_eq!(
+            shared_tab_link("L8db://Tab/abc").as_deref(),
+            Some("l8db://tab/abc")
+        );
+    }
+
+    #[test]
+    fn link_next_to_a_file_path_keeps_both_actions() {
+        let actions = actions_from_args(
+            &args(&["/w/data.sqlite", "l8db://tab/aFirst"]),
+            Path::new("/w"),
+        );
+        assert_eq!(actions.len(), 2, "{actions:?}");
+        assert!(matches!(
+            actions.last(),
+            Some(OpenFileAction::Link { link }) if link == "l8db://tab/aFirst"
+        ));
+        assert!(matches!(
+            actions.first(),
+            Some(OpenFileAction::Connection { .. })
+        ));
+    }
+
+    #[test]
+    fn app_urls_without_double_slash_never_become_paths_or_links() {
+        assert_eq!(shared_tab_link("l8db:tab/abc"), None);
+        assert_eq!(link_action(["l8db:tab/abc"]), None);
+        assert!(actions_from_args(&args(&["l8db:tab/abc"]), Path::new("/w")).is_empty());
+        assert!(paths_from_args(&args(&["l8db:tab/abc"]), Path::new("/w")).is_empty());
     }
 }

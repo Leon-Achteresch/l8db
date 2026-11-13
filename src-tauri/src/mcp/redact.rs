@@ -704,14 +704,18 @@ const WRITE_STATEMENTS: &[&str] = &[
     "flashback",
     "force",
     "handler",
+    "msck",
     "noaudit",
     "repair",
+    "put",
+    "remove",
     "restart",
     "setuser",
     "start",
     "stop",
     "undrop",
     "uninstall",
+    "unload",
     "unlock",
     "updatetext",
     "writetext",
@@ -1571,6 +1575,17 @@ mod tests {
         );
         assert_eq!(write_word("select * into t2 from t"), Some("into".into()));
         assert_eq!(write_word("exec sp_who"), Some("exec".into()));
+        assert_eq!(
+            write_word("UNLOAD (SELECT * FROM t) TO 's3://b/x'"),
+            Some("unload".into())
+        );
+        assert_eq!(
+            write_word("PUT file:///tmp/a.csv @stage"),
+            Some("put".into())
+        );
+        assert_eq!(write_word("REMOVE @stage/a.csv"), Some("remove".into()));
+        assert_eq!(write_word("MSCK REPAIR TABLE t"), Some("msck".into()));
+        assert_eq!(write_word("SELECT remove FROM t"), None);
         assert_eq!(
             write_word("select 1 /*! delete from t */"),
             Some("delete".into())

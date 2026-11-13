@@ -100,6 +100,7 @@ export function OnboardingDrivers() {
                       size="sm"
                       variant={choice === true ? "default" : "outline"}
                       aria-pressed={choice === true}
+                      aria-label={`${provider.name}: brauche ich`}
                       onClick={() => setNeeded((state) => ({ ...state, [provider.id]: true }))}
                     >
                       {choice === true && <Check className="size-3" />}
@@ -109,6 +110,7 @@ export function OnboardingDrivers() {
                       size="sm"
                       variant={choice === false ? "secondary" : "ghost"}
                       aria-pressed={choice === false}
+                      aria-label={`${provider.name}: nicht nötig`}
                       onClick={() => setNeeded((state) => ({ ...state, [provider.id]: false }))}
                     >
                       Nicht nötig

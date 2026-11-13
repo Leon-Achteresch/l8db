@@ -816,7 +816,21 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         if (command.type === "prompt" || command.type === "pause")
           command = parseSqlPlusCommand(shown);
       }
+      return applyCommand(command, raw, entry);
+    };
+    const applyCommand = async (
+      command: SqlPlusCommand,
+      raw: string,
+      entry: ScriptRunEntry,
+    ): Promise<ScriptRunStatus> => {
       switch (command.type) {
+        case "set-many": {
+          let status: ScriptRunStatus = "ignored";
+          for (const part of command.commands)
+            if ((await applyCommand(part, raw, entry)) === "success") status = "success";
+          if (status === "success") entry.note = undefined;
+          return status;
+        }
         case "connect":
           halted = true;
           throw new Error(CONNECT_UNSUPPORTED);
@@ -1094,6 +1108,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         }
         entry.rowsAffected = result.rows_affected == null ? null : Number(result.rows_affected);
         entry.status = "success";
+        plus.sqlcode = 0;
         if (oracle) {
           entry.feedback ??= sqlplusFeedback(sql, result);
           if (result.columns.length && result.rows.length)
@@ -1125,6 +1140,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
           const created = createdObject(sql);
           if (created) plus.lastObject = created;
           entry.status = "warning";
+          plus.sqlcode = 0;
           entry.feedback = compileWarning(sql);
           for (const line of details) if (line.trim()) say(entry, "WARNING", line.trim());
           if (txId) useTransactionStore.getState().clearChanges(txId);
@@ -1142,7 +1158,8 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       }
       await collect(entry);
       if (failure !== null && /^SP2-\d{4}/.test(failure)) commandFailure(entry, failure);
-      else if (failure !== null) await onRule(entry, oracle ? plus.sqlError : null, failure);
+      else if (failure !== null)
+        await onRule(entry, oracle && !stopped ? plus.sqlError : null, failure);
     };
     if (
       oracle &&

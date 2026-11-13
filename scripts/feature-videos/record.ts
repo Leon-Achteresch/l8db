@@ -112,7 +112,8 @@ try {
           ),
       );
     }
-    const tab = item.id === "easy-mode" ? "general" : "extensions";
+    const tab =
+      item.id === "easy-mode" || item.id === "workspace-motion" ? "general" : "extensions";
     const start =
       item.id === "dashboard-workspace"
         ? "/dashboard"
@@ -194,7 +195,34 @@ try {
         );
       await page.mouse.click(x, y);
     };
-    if (item.id === "ai-issue-report") {
+    if (item.id === "workspace-motion") {
+      const categories = page.getByRole("navigation", { name: "Einstellungskategorien" });
+      await caption(page, "Die Auswahl gleitet weiter. Inhalte folgen gestaffelt.", 28);
+      for (const name of ["Darstellung", "SQL-Editor", "Sicherheit & SSH", "Allgemein"]) {
+        await categories.getByRole("button", { name, exact: true }).click();
+        await page.waitForTimeout(1500);
+      }
+      await caption(
+        page,
+        "Panels gleiten über den Arbeitsbereich, ohne das Raster zu stauchen.",
+        28,
+      );
+      await page.getByRole("button", { name: "Transaktionen", exact: true }).click();
+      await page.getByRole("region", { name: "Transaktionen", exact: true }).waitFor();
+      await page.waitForTimeout(2000);
+      await page.getByRole("button", { name: "Transaktionen schließen", exact: true }).click();
+      await page.waitForTimeout(1500);
+      await caption(page, "Schnelle Wechsel lösen die laufende Bewegung sofort ab.", 28);
+      for (const name of ["Darstellung", "SQL-Editor", "Allgemein"]) {
+        await categories.getByRole("button", { name, exact: true }).click();
+        await page.waitForTimeout(180);
+      }
+      await page.waitForTimeout(1800);
+      await caption(page, "Reduzierte Bewegung respektiert deine Systemeinstellung.", 28);
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await categories.getByRole("button", { name: "Darstellung", exact: true }).click();
+      await page.waitForTimeout(2200);
+    } else if (item.id === "ai-issue-report") {
       const panel = page.getByRole("complementary", { name: "AI-Arbeitsbereich", exact: true });
       await caption(page, "Ein Problem? Sag der KI: Erstelle dafür ein Issue.", 28);
       await panel.getByLabel("Nachricht an AI").fill("Erstelle dafür ein Issue.");

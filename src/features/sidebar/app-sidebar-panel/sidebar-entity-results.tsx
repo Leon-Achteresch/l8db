@@ -60,6 +60,7 @@ export const SidebarEntityResults = memo(function SidebarEntityResults({
         confirmAction={confirmAction}
         actionLoading={actionLoading}
         isRedis={caps.query_language === "redis"}
+        terms={caps.terms}
         activeDatabase={activeDatabase}
         onClose={() => setConfirmAction(null)}
         onConfirm={actions.handleConfirmAction}

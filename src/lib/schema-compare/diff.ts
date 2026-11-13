@@ -10,6 +10,7 @@ const CHILD_TYPES = new Set<CatalogObjectType>([
   "trigger",
   "comment",
   "grant",
+  "policy",
   "sequence",
 ]);
 const ATTRIBUTE_TYPES = new Set<CatalogObjectType>(["table", "column", "sequence"]);
@@ -37,6 +38,7 @@ export const ATTRIBUTE_LABELS: Record<string, string> = {
   partition_of: "Partition von",
   organization: "Organisation",
   unlogged: "Unlogged",
+  options: "Speicherparameter",
   status: "Status",
   owned_column: "Besitzer-Spalte",
   on_update: "ON UPDATE",

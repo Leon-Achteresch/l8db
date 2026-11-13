@@ -64,9 +64,9 @@ const provider: monaco.languages.CodeLensProvider = {
       const range = new monaco.Range(position.lineNumber, 1, position.lineNumber, 1);
       return (
         [
-          ["explain", "Erklären"],
-          ["optimize", "Optimieren"],
-          ["edit", "Bearbeiten"],
+          ["explain", "KI: Erklären"],
+          ["optimize", "KI: Optimieren"],
+          ["edit", "KI: Bearbeiten"],
         ] as const
       ).map(([action, title]) => ({
         range,

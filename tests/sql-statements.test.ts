@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   isTransactionalStatement,
   opensManagedTransaction,
+  runsOneStatementPerCall,
   splitSqlStatements,
   sqlToRun,
   statementAtOffset,
@@ -403,5 +404,22 @@ describe("Dialekt-Besonderheiten beim Splitten", () => {
   test("MSSQL GO <n> wiederholt den Batch", () => {
     const { statements } = splitSqlStatements("SELECT 1\nGO 3\nSELECT 2", "mssql");
     expect(statements.map((s) => s.text)).toEqual(["SELECT 1", "SELECT 1", "SELECT 1", "SELECT 2"]);
+  });
+});
+
+describe("runsOneStatementPerCall", () => {
+  test("PostgreSQL führt mehrere Statements einzeln aus, damit jedes Ergebnis erscheint", () => {
+    expect(runsOneStatementPerCall("postgres")).toBe(true);
+    expect(runsOneStatementPerCall("oracle")).toBe(true);
+    expect(runsOneStatementPerCall("mssql")).toBe(false);
+    const { statements } = splitSqlStatements(
+      "select 1 as eins; select 2 as zwei; do $$ begin perform 1; end $$;",
+      "postgres",
+    );
+    expect(statements.map((s) => s.text)).toEqual([
+      "select 1 as eins;",
+      "select 2 as zwei;",
+      "do $$ begin perform 1; end $$;",
+    ]);
   });
 });

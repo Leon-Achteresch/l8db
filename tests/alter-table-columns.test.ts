@@ -5,7 +5,9 @@ import {
   dropColumnDescription,
   getDataTypeGroups,
   isListedDataType,
+  isValidLength,
   nullableLocked,
+  typeLength,
 } from "../src/features/alter-table/alter-table-view/data-types";
 import { columnTypeLabel } from "../src/lib/column-type";
 
@@ -64,5 +66,30 @@ describe("column edit support", () => {
     expect(nullableLocked("clickhouse", "LowCardinality(String)")).toBe(false);
     expect(nullableLocked("clickhouse", "String")).toBe(false);
     expect(nullableLocked("postgres", "Array(String)")).toBe(false);
+  });
+});
+
+describe("data type length", () => {
+  test("exposes the length of sized text and binary types", () => {
+    expect(typeLength("nvarchar(255)")).toEqual({ base: "nvarchar", length: "255" });
+    expect(typeLength("nvarchar(MAX)")).toEqual({ base: "nvarchar", length: "MAX" });
+    expect(typeLength("character varying(40)")).toEqual({
+      base: "character varying",
+      length: "40",
+    });
+    expect(typeLength("VARCHAR2(255)")).toEqual({ base: "VARCHAR2", length: "255" });
+    expect(typeLength("varbinary(max)")).toEqual({ base: "varbinary", length: "max" });
+  });
+
+  test("ignores types without a single length", () => {
+    for (const type of ["int", "decimal(18, 2)", "datetime2(7)", "nvarchar", "VARCHAR2(255 CHAR)"])
+      expect(typeLength(type)).toBeNull();
+  });
+
+  test("accepts positive lengths and max only", () => {
+    expect(isValidLength("10")).toBe(true);
+    expect(isValidLength("max")).toBe(true);
+    for (const length of ["", "0", "-1", "1.5", "abc", "10)"])
+      expect(isValidLength(length)).toBe(false);
   });
 });

@@ -149,7 +149,7 @@ test.skipIf(!enabled)(
         "Transaktion mit COMMIT abgeschlossen.",
         "12 Zeilen ausgewählt.",
       ])
-        await page.getByText(line, { exact: true }).waitFor();
+        await page.getByRole("dialog").getByText(line, { exact: true }).waitFor();
       const rows = await oracle(
         "SELECT COUNT(*) AS n FROM uia_auftrag_art_planung WHERE komm_lb_planen = '1' UNION ALL SELECT COUNT(*) FROM uia_auftrag_art_planung WHERE ref_buffer_relation = 83 UNION ALL SELECT COUNT(*) FROM uia_ta_group WHERE ref_parent = 300",
       );
@@ -170,7 +170,10 @@ test.skipIf(!enabled)(
       await page
         .getByText("2/5 erfolgreich · 1 fehlgeschlagen", { exact: true })
         .waitFor({ timeout: 60_000 });
-      await page.getByText("EXP/SOL/FIX/BKW: 5 von 6", { exact: true }).waitFor();
+      await page
+        .getByRole("dialog")
+        .getByText("EXP/SOL/FIX/BKW: 5 von 6", { exact: true })
+        .waitFor();
       await page.getByText("EXIT FAILURE (Code 1) mit ROLLBACK", { exact: true }).waitFor();
       await page
         .getByText(/ORA-20001: EXP\/SOL\/FIX\/BKW: erwartet 6 Zeilen, 5 gefunden/)
@@ -215,7 +218,7 @@ test.skipIf(!enabled)(
       );
       await page.getByRole("button", { name: "Skript ausführen", exact: true }).click();
       await page.getByText(/^11\/12 erfolgreich · 1 mit Warnung$/).waitFor({ timeout: 60_000 });
-      await page.getByText("n=24", { exact: true }).waitFor();
+      await page.getByRole("dialog").getByText("n=24", { exact: true }).waitFor();
       await page
         .getByText("Warnung: Prozedur wurde mit Kompilierungsfehlern erstellt.", { exact: true })
         .waitFor();
@@ -227,7 +230,105 @@ test.skipIf(!enabled)(
       await row("print n").dispatchEvent("click");
       await page.getByText("24", { exact: true }).first().waitFor();
       await row("show errors").dispatchEvent("click");
-      await page.getByText(/PLS-00201/).first().waitFor();
+      await page
+        .getByText(/PLS-00201/)
+        .first()
+        .waitFor();
+    });
+  },
+  180_000,
+);
+
+test.skipIf(!enabled)(
+  "a block shows its complete DBMS_OUTPUT in the result tab without switching anything on",
+  async () => {
+    await withPage("dbms-output", async (page) => {
+      const run = async (sql: string) => {
+        await page.locator(".monaco-editor .view-lines").first().click({ timeout: 20_000 });
+        await page.keyboard.press("ControlOrMeta+a");
+        await page.keyboard.insertText(sql);
+        await page.keyboard.press("ControlOrMeta+Enter");
+      };
+      const output = page.getByRole("tab", { name: /DBMS Output/ });
+      expect(await output.count()).toBe(0);
+      await run(
+        "BEGIN FOR i IN 1 .. 4500 LOOP DBMS_OUTPUT.PUT_LINE('Zeile ' || i); END LOOP; END;",
+      );
+      await output.waitFor({ timeout: 60_000 });
+      expect(await output.getAttribute("aria-selected")).toBe("true");
+      expect(await output.innerText()).toContain("4.500");
+      await page.getByText("Zeile 4500", { exact: true }).waitFor();
+      expect(await page.getByRole("log").locator("[data-index]").count()).toBeLessThan(200);
+      await page.screenshot({ path: "test-artifacts/oracle-ui/sqlplus-dbms-output.png" });
+      await page.getByRole("log").evaluate((node) => node.scrollTo({ top: 0 }));
+      await page.getByText("Zeile 1", { exact: true }).waitFor();
+      await run("SELECT 4711 AS probe FROM dual");
+      await page
+        .getByRole("tab", { name: "Ergebnis", selected: true })
+        .waitFor({ timeout: 60_000 });
+      await page.getByText("PROBE", { exact: true }).first().waitFor();
+      expect(await output.innerText()).toContain("4.500");
+      for (const txId of (await bridge("list_transactions", {})) as string[])
+        await bridge("rollback_transaction", { txId });
+      await page.screenshot({ path: "test-artifacts/oracle-ui/sqlplus-dbms-output-result.png" });
+    });
+  },
+  180_000,
+);
+
+test.skipIf(!enabled)(
+  "script output arrives statement by statement and stays in the DBMS Output tab",
+  async () => {
+    await withPage("dbms-output-stream", async (page) => {
+      const drawer = page.getByRole("dialog");
+      const output = page.getByRole("tab", { name: /DBMS Output/ });
+      const close = page.getByRole("button", { name: "Skriptergebnisse schließen" });
+      const start = page.getByRole("button", { name: "Skript ausführen", exact: true });
+      await runScript(
+        page,
+        [
+          "begin dbms_output.put_line('Schritt 1'); end;",
+          "/",
+          "begin dbms_output.put_line('Schritt 2a'); dbms_session.sleep(4); dbms_output.put_line('Schritt 2b'); end;",
+          "/",
+          "begin dbms_output.put_line('Schritt 3'); end;",
+          "/",
+        ].join("\n"),
+        3,
+      );
+      expect(await output.count()).toBe(0);
+      await start.click();
+      await drawer.getByText("Schritt 1", { exact: true }).waitFor({ timeout: 60_000 });
+      const first = Date.now();
+      expect(await drawer.getByText("Schritt 2a", { exact: true }).count()).toBe(0);
+      await page.screenshot({ path: "test-artifacts/oracle-ui/sqlplus-dbms-output-stream.png" });
+      await drawer.getByText("Schritt 2a", { exact: true }).waitFor({ timeout: 60_000 });
+      expect(Date.now() - first).toBeGreaterThan(3000);
+      expect(await drawer.getByText("Schritt 2b", { exact: true }).count()).toBe(1);
+      await page.getByText("3/3 erfolgreich", { exact: true }).waitFor({ timeout: 60_000 });
+      await close.click();
+      await page.getByRole("tab", { name: /DBMS Output/, selected: true }).waitFor();
+      const log = page.getByRole("log");
+      for (const line of ["Schritt 1", "Schritt 2a", "Schritt 2b", "Schritt 3"])
+        await log.getByText(line, { exact: true }).waitFor();
+      expect(await output.innerText()).toContain("4");
+      await page.screenshot({
+        path: "test-artifacts/oracle-ui/sqlplus-dbms-output-stream-done.png",
+      });
+
+      await runScript(
+        page,
+        "begin dbms_output.put_line('Schritt 5'); end;\n/\nselect 4711 as probe from dual;",
+        2,
+      );
+      await start.click();
+      await page.getByText("2/2 erfolgreich", { exact: true }).waitFor({ timeout: 60_000 });
+      await close.click();
+      await page.getByRole("tab", { name: "Ergebnis", selected: true }).waitFor();
+      await page.getByText("PROBE", { exact: true }).first().waitFor();
+      expect(await output.innerText()).toContain("5");
+      for (const txId of (await bridge("list_transactions", {})) as string[])
+        await bridge("rollback_transaction", { txId });
     });
   },
   180_000,

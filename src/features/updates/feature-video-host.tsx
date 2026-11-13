@@ -34,7 +34,7 @@ export function FeatureVideoHost() {
     };
     const inspect = () => {
       const dialogs = [
-        ...document.querySelectorAll('[role="dialog"], [role="alertdialog"], .driver-popover'),
+        ...document.querySelectorAll('[role="dialog"], [role="alertdialog"], [data-tour-ui]'),
       ];
       const blocked =
         document.hidden ||

@@ -9,7 +9,7 @@ export function StepRow({ item }: { item: AgentActivityStep }) {
     <div className="flex min-h-7 items-start gap-2.5 rounded-md px-1.5 py-1">
       <span
         aria-hidden="true"
-        className="mt-0.5 grid size-4 shrink-0 place-items-center text-muted-foreground/70"
+        className="mt-0.5 grid size-4 shrink-0 place-items-center text-muted-foreground"
       >
         {state === "complete" ? (
           <Check className="size-4" strokeWidth={1.8} />
@@ -29,13 +29,13 @@ export function StepRow({ item }: { item: AgentActivityStep }) {
       <span
         className={cn(
           "min-w-0 flex-1 leading-5",
-          state === "pending" ? "text-muted-foreground/55" : "text-foreground/90",
+          state === "pending" ? "text-muted-foreground" : "text-foreground/90",
         )}
       >
         {item.label}
       </span>
       {item.meta ? (
-        <span className="shrink-0 leading-5 text-muted-foreground/55">{item.meta}</span>
+        <span className="shrink-0 leading-5 text-muted-foreground">{item.meta}</span>
       ) : null}
     </div>
   );

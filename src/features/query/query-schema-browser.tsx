@@ -1,5 +1,12 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { DatabaseIcon, PlusIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import {
+  BracesIcon,
+  DatabaseIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  SquareFunctionIcon,
+  XIcon,
+} from "lucide-react";
 import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -243,8 +250,15 @@ export function QuerySchemaBrowser({
                           : "flex w-full min-w-0 items-center gap-1.5 overflow-hidden rounded-md px-2 py-1 text-left text-foreground/80 hover:bg-accent/60 hover:text-foreground"
                       }
                     >
-                      <span className="w-6 shrink-0 font-mono text-[10px] text-muted-foreground">
-                        {member.kind === "FUNCTION" ? "fn" : "pr"}
+                      <span
+                        title={member.kind === "FUNCTION" ? "Funktion" : "Prozedur"}
+                        className="flex w-4 shrink-0 text-muted-foreground"
+                      >
+                        {member.kind === "FUNCTION" ? (
+                          <BracesIcon aria-label="Funktion" className="size-3" />
+                        ) : (
+                          <SquareFunctionIcon aria-label="Prozedur" className="size-3" />
+                        )}
                       </span>
                       <span className="min-w-0 truncate font-mono text-xs">{member.name}</span>
                     </button>

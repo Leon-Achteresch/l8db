@@ -20,7 +20,7 @@ export function CompileInvalidButton({ types }: { types: string[] }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  if (!caps.compile_objects || !connection) return null;
+  if (!caps.invalid_objects || !connection) return null;
   const items = filterInvalidByTypes(invalidQuery.data, types);
   if (items.length === 0) return null;
   const handleCompile = async () => {

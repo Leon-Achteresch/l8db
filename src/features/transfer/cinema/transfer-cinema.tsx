@@ -220,9 +220,11 @@ export function TransferCinema({
               {state === "success" && outcome && `${outcome.tables.length} Tabellen`}
               {state === "failure" &&
                 outcome &&
-                (outcome.rolledBack
-                  ? "Das Ziel wurde in den Ausgangszustand zurückgesetzt."
-                  : "Das Ziel ist nicht vollständig bereinigt.")}
+                (outcome.kept
+                  ? `${outcome.tables.length} Tabellen übertragen, sie bleiben im Ziel.`
+                  : outcome.rolledBack
+                    ? "Das Ziel wurde in den Ausgangszustand zurückgesetzt."
+                    : "Das Ziel ist nicht vollständig bereinigt.")}
             </span>
             {state === "failure" && outcome?.error && (
               <pre className="mt-1 max-h-24 max-w-[40rem] overflow-auto rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 font-mono text-xs whitespace-pre-wrap text-red-200">

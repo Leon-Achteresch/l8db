@@ -12,6 +12,7 @@ import { IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { SidebarNav } from "@/components/primitives/sidebar-nav";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { handleAppRequest } from "@/lib/ai/app-companion";
 import { aiAttachable, aiAttachment } from "@/lib/ai/attachments";
 import {
   type ChatContextItem,
@@ -190,6 +191,8 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   );
   const input = useRef<HTMLTextAreaElement>(null);
   const run = useRef<string | null>(null);
+  const appController = useRef<AbortController | null>(null);
+  useEffect(() => () => appController.current?.abort(), []);
   const afterTool = useRef(false);
   const stopping = useRef(false);
   const approvalTitles = useRef(new Map<string, string>());
@@ -425,6 +428,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         : null;
     let synced = Boolean(resume);
     run.current = id;
+    appController.current?.abort();
+    const appSignal = new AbortController();
+    appController.current = appSignal;
     stopping.current = false;
     afterTool.current = false;
     try {
@@ -506,7 +512,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           if (blocks.length)
             updateLast((last) => ({
               ...last,
-              rich: mergeAiRich(last.rich, blocks, last.text.length),
+              rich: mergeAiRich(last.rich, blocks, last.text.length, Date.now()),
             }));
           if (event.kind === "text") {
             updateLast((last) => ({
@@ -532,6 +538,15 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               .catch((reason) => ({ ok: false, text: String(reason) }))
               .then((answer) => aiRespond(id, requestId, answer))
               .catch(() => undefined);
+          } else if (event.kind === "app") {
+            const requestId = String(event.data.id);
+            void handleAppRequest(event.data.details, {
+              signal: appSignal.signal,
+              openDocs: (path) => navigate({ to: "/docs", search: { path } }),
+            })
+              .catch((reason) => ({ ok: false, text: String(reason) }))
+              .then((answer) => aiRespond(id, requestId, answer))
+              .catch(() => undefined);
           } else if (event.kind === "notebook") {
             const requestId = String(event.data.id);
             void handleChatNotebookRequest(event.data.details, () => navigate({ to: "/notebook" }))
@@ -540,7 +555,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               .catch(() => undefined);
           } else if (event.kind === "issue") {
             const requestId = String(event.data.id);
-            void handleChatIssueRequest()
+            void handleChatIssueRequest(
+              turn.filter((message) => message.role === "user").map((message) => message.text),
+            )
               .catch(() => ({ diagnostics: "", screenshot: null }))
               .then((answer) => aiRespond(id, requestId, answer))
               .catch(() => undefined);
@@ -855,6 +872,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const cancel = () => {
     if (!runId) return;
     stopping.current = true;
+    appController.current?.abort();
     void aiCancel(runId).catch((error) => setError(String(error)));
   };
   const active = connections.find((entry) => entry.id === activeId);
@@ -1078,6 +1096,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           }}
           messages={thread}
           prompt={prompt}
+          summary={session?.summary}
           onSettings={() => setView("settings")}
         />
       }

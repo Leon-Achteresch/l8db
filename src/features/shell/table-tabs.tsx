@@ -1,6 +1,6 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Columns2, RotateCwSquare, Rows2 } from "lucide";
-import { FolderOpenIcon, PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from "lucide-react";
+import { PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import type * as React from "react";
@@ -24,9 +24,9 @@ import {
 import { InvestigationsButton } from "@/features/workbench/investigations-button";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { openSqlFileAsTab } from "@/lib/hooks/use-query-file";
 import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
 import { onHotkeyAction } from "@/lib/hotkeys";
+import { tabListKeyDown } from "@/lib/keyboard-nav";
 import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 import { useSettingsStore } from "@/lib/settings";
 import type { SplitEdge } from "@/lib/split-layout";
@@ -193,11 +193,6 @@ export function TableTabs() {
     void navigate({ to: "/query/$id", params: { id } });
   };
 
-  const handleOpenSqlFile = async () => {
-    const id = await openSqlFileAsTab();
-    if (id) void navigate({ to: "/query/$id", params: { id } });
-  };
-
   const members = paneKeys.map((key) => {
     const tab = key ? (allTabs.find((entry) => tabKey(entry) === key) ?? remoteTab(key)) : null;
     return tab ? tabLabel(tab) : "Leer";
@@ -251,7 +246,13 @@ export function TableTabs() {
           aria-label="Geöffnete Objekte"
           className="no-scrollbar min-w-0 overflow-x-auto py-1"
         >
-          <div ref={trackRef} className="relative flex w-max items-center gap-1 px-1">
+          <div
+            ref={trackRef}
+            role="tablist"
+            aria-orientation="horizontal"
+            onKeyDown={tabListKeyDown}
+            className="relative flex w-max items-center gap-1 px-1"
+          >
             {tabs.map((tab, index) => {
               const group = tabGroups?.[allTabs.indexOf(tab)];
               const previous =
@@ -289,6 +290,7 @@ export function TableTabs() {
       <Tooltip content="Neue Abfrage öffnen" side="bottom" wrapperClassName="shrink-0">
         <button
           type="button"
+          data-feature="query.new-tab"
           onClick={handleNewQueryTab}
           data-hotkey="tab.newQuery"
           aria-label="Neue Abfrage öffnen"
@@ -303,6 +305,7 @@ export function TableTabs() {
       {!easyMode && (
         <Tooltip content="Ansicht teilen" side="bottom" wrapperClassName="shrink-0">
           <button
+            data-feature="view.split"
             type="button"
             onClick={handleSplit}
             disabled={!routeKey || paneCount >= MAX_SPLIT_PANES}
@@ -363,16 +366,6 @@ export function TableTabs() {
         </Tooltip>
       )}
       <SavedTabsMenu />
-      <Tooltip content="SQL-Datei öffnen" side="bottom" wrapperClassName="shrink-0">
-        <button
-          type="button"
-          onClick={() => void handleOpenSqlFile()}
-          aria-label="SQL-Datei öffnen"
-          className={iconButton}
-        >
-          <FolderOpenIcon className="size-3.5" />
-        </button>
-      </Tooltip>
       {caret !== null && (
         <span
           aria-hidden="true"
