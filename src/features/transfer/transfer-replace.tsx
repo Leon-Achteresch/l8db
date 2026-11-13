@@ -42,7 +42,11 @@ export function TransferReplace({
         {feature.isNew && <NewBadge />}
       </div>
       {plan && !plan.atomic && replace && (
-        <p className="mt-2 text-muted-foreground">Lässt sich nicht zurückrollen.</p>
+        <p className="mt-2 text-muted-foreground">
+          {plan.secured
+            ? "Alter Stand wird bis zum Erfolg gesichert."
+            : "Lässt sich nicht zurückrollen."}
+        </p>
       )}
       {replace && plan?.replace && (
         <div className="mt-2">
