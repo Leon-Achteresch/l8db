@@ -238,6 +238,7 @@ export const NEW_FEATURES = {
   "baas.convex.self-hosted": "0.16.0",
   "baas.convex.studio": "0.16.0",
   "baas.convex.studio.overview": "0.16.0",
+  "baas.convex.studio.overview.insights": "0.18.0",
   "baas.convex.studio.data": "0.16.0",
   "baas.convex.studio.data.grid": "0.17.0",
   "baas.convex.studio.functions": "0.16.0",

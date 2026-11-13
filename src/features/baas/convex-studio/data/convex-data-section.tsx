@@ -1,14 +1,14 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { Database } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { NewBadge } from "@/components/new-badge";
 import {
   type ConvexDocument,
   convexDataDelete,
   convexDataReplace,
   convexDataResolve,
+  convexDataTables,
 } from "@/lib/db/convex-studio-data";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { BaasEmptyState } from "../../baas-empty-state";
@@ -24,12 +24,21 @@ import { dataKey, tableScope, withoutSystemFields } from "./convex-data-utils";
 const route = getRouteApi("/baas");
 
 export function ConvexDataSection({ deployment }: ConvexStudioSectionProps) {
-  const feature = useNewFeatureVisibility<HTMLSpanElement>("baas.convex.studio.data");
+  const feature = useNewFeatureVisibility<HTMLDivElement>("baas.convex.studio.data");
   const queryClient = useQueryClient();
   const search = route.useSearch();
   const navigate = useNavigate();
   const scope = tableScope(deployment);
-  const table = search.table && search.tableProject === scope ? search.table : null;
+  const [removed, setRemoved] = useState<string | null>(null);
+  const tables = useQuery({
+    queryKey: [...dataKey(deployment), "tables"],
+    queryFn: () => convexDataTables(deployment),
+    staleTime: 30_000,
+  });
+  const table =
+    search.table && search.tableProject === scope
+      ? search.table
+      : (tables.data?.tables.find((item) => item.name !== removed)?.name ?? null);
   const [detail, setDetail] = useState<{ table: string; document: ConvexDocument } | null>(null);
   const [resolving, setResolving] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -58,7 +67,7 @@ export function ConvexDataSection({ deployment }: ConvexStudioSectionProps) {
   }
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div ref={feature.ref} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <BaasSidebarPortal>
         <ConvexDataTableList deployment={deployment} selected={table} onSelect={setTable} />
       </BaasSidebarPortal>
@@ -69,18 +78,13 @@ export function ConvexDataSection({ deployment }: ConvexStudioSectionProps) {
           table={table}
           onOpenDocument={(document) => setDetail({ table, document })}
           onOpenReference={(id) => void openReference(id)}
-          onDeleted={() => setTable(null)}
+          onDeleted={() => {
+            setRemoved(table);
+            setTable(null);
+          }}
         />
       ) : (
-        <BaasEmptyState
-          icon={Database}
-          title={
-            <span ref={feature.ref} className="flex items-center justify-center gap-2">
-              Wähle eine Tabelle {feature.isNew && <NewBadge />}
-            </span>
-          }
-          description="Links findest du alle Tabellen des Deployments. Öffne eine, um Dokumente wie in einer Datenbank zu durchsuchen, zu filtern und direkt in den Zellen zu bearbeiten."
-        />
+        tables.isSuccess && <BaasEmptyState icon={Database} title="Noch keine Tabellen" />
       )}
       <ConvexDataDocumentSheet
         entry={detail}
