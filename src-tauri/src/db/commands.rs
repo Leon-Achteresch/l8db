@@ -57,6 +57,9 @@ pub async fn list_providers() -> Vec<super::provider::ProviderInfo> {
 
 #[tauri::command]
 pub async fn driver_status(kind: DatabaseKind) -> super::provider::DriverStatus {
+    if let Ok(diagnosis) = super::driver_repair::diagnose(kind).await {
+        return diagnosis.status;
+    }
     let mut status = super::provider::kind_driver_status(kind);
     if kind == DatabaseKind::Jdbc {
         status.available = super::jdbc::refresh_available().await;
@@ -86,6 +89,20 @@ pub fn oracle_open_tnsnames(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
     super::provider::install_driver(kind).await
+}
+
+#[tauri::command]
+pub async fn diagnose_driver(
+    kind: DatabaseKind,
+) -> Result<super::driver_repair::DriverDiagnosis, String> {
+    super::driver_repair::diagnose(kind).await
+}
+
+#[tauri::command]
+pub async fn repair_driver(
+    kind: DatabaseKind,
+) -> Result<super::driver_repair::DriverRepair, String> {
+    super::driver_repair::repair(kind).await
 }
 
 #[tauri::command]

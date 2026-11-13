@@ -1161,7 +1161,7 @@ fn oracle_macos_command() -> &'static str {
     }
 }
 
-fn oracle_hints() -> Vec<InstallHint> {
+pub(super) fn oracle_hints() -> Vec<InstallHint> {
     vec![
         InstallHint { os: "macos", command: oracle_macos_command(), url: "https://www.oracle.com/database/technologies/instant-client/macos-arm64-downloads.html" },
         InstallHint { os: "linux", command: ORACLE_LINUX_INSTALL, url: "https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html" },

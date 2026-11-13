@@ -250,7 +250,7 @@ const HINTS: &[(&str, &str)] = &[
     ("ORA-00001", "Der Wert verletzt einen Primär- oder Eindeutigkeitsschlüssel."),
     ("ORA-01008", "Für eine Bindvariable (:name) fehlt der Wert. In der CLI den Wert direkt ins SQL schreiben."),
     ("ORA-22913", "Für die Nested-Table-Spalte fehlt NESTED TABLE … STORE AS."),
-    ("DPI-1047", "Der Oracle Instant Client fehlt oder passt nicht zur Architektur (64 Bit). Siehe Treiberseite."),
+    ("DPI-1047", "Der Oracle Instant Client fehlt oder passt nicht zur Architektur. Unter Treiber analysiert und repariert l8db das."),
 ];
 
 fn with_hint(message: String) -> String {
@@ -1479,7 +1479,7 @@ impl OracleAdapter {
         tokio::task::spawn_blocking(move || {
             ensure_client_lib();
             oracle::Version::client()
-                .map_err(|e| format!("Oracle Instant Client nicht gefunden: {e}"))?;
+                .map_err(|e| with_hint(format!("Oracle Instant Client nicht gefunden: {e}")))?;
             connect_sync(&user, &password, &connect_string)
         })
         .await
@@ -4173,7 +4173,7 @@ pub fn ensure_client_lib() {
     }
 }
 
-fn is_client_lib(file: &str) -> bool {
+pub(super) fn is_client_lib(file: &str) -> bool {
     if cfg!(target_os = "windows") {
         file.eq_ignore_ascii_case("oci.dll")
     } else if cfg!(target_os = "macos") {
@@ -4211,7 +4211,7 @@ fn instant_client_dirs(parent: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-fn client_lib_candidates() -> impl Iterator<Item = PathBuf> {
+pub(super) fn client_lib_candidates() -> impl Iterator<Item = PathBuf> {
     let mut dirs = Vec::new();
     if let Some(home) = std::env::var_os("ORACLE_HOME") {
         dirs.push(PathBuf::from(&home).join("lib"));

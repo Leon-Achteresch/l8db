@@ -1,20 +1,37 @@
 import { Copy, ExternalLink, RefreshCw } from "lucide-react";
 import { ProviderLogo } from "@/components/provider-logo";
+import { Spinner } from "@/components/ui/spinner";
+import { DriverFindings } from "@/features/drivers/driver-findings";
 import { InstallButton } from "@/features/drivers/install-button";
 import { InstallCommand } from "@/features/drivers/install-command";
 import { copyText } from "@/lib/clipboard";
+import type { DriverDiagnosis } from "@/lib/db";
 import type { DriverSummary } from "@/lib/drivers";
 
 interface Props {
   summary: DriverSummary;
   installing: boolean;
   busy: boolean;
+  analyzing: boolean;
+  diagnosis?: DriverDiagnosis;
   log?: string;
   onInstall: () => void;
+  onRepair: () => void;
   onRecheck: () => void;
 }
 
-export function DriverMissingCard({ summary, installing, busy, log, onInstall, onRecheck }: Props) {
+export function DriverMissingCard({
+  summary,
+  installing,
+  busy,
+  analyzing,
+  diagnosis,
+  log,
+  onInstall,
+  onRepair,
+  onRecheck,
+}: Props) {
+  const repairable = Boolean(diagnosis?.steps.length);
   return (
     <article className="flex min-w-0 flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-amber-500/30">
       <div className="flex items-center gap-3">
@@ -36,7 +53,7 @@ export function DriverMissingCard({ summary, installing, busy, log, onInstall, o
           onClick={onRecheck}
           className="grid size-8 cursor-pointer place-items-center rounded-lg text-muted-foreground transition-[transform,background-color,color] duration-150 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:scale-95 disabled:pointer-events-none disabled:opacity-50"
         >
-          <RefreshCw className="size-3.5" />
+          {analyzing ? <Spinner className="size-3.5" /> : <RefreshCw className="size-3.5" />}
         </button>
         {summary.hint && (
           <a
@@ -51,12 +68,16 @@ export function DriverMissingCard({ summary, installing, busy, log, onInstall, o
           </a>
         )}
       </div>
-      <p
-        className="line-clamp-3 text-xs leading-5 text-muted-foreground"
-        title={summary.status.detail}
-      >
-        {summary.status.detail}
-      </p>
+      {diagnosis?.findings.length ? (
+        <DriverFindings diagnosis={diagnosis} />
+      ) : (
+        <p
+          className="line-clamp-3 text-xs leading-5 text-muted-foreground"
+          title={summary.status.detail}
+        >
+          {summary.status.detail}
+        </p>
+      )}
       {log && (
         <div>
           <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -78,11 +99,12 @@ export function DriverMissingCard({ summary, installing, busy, log, onInstall, o
       )}
       <div className="mt-auto flex flex-wrap items-center gap-2">
         <InstallCommand summary={summary} className="w-full sm:w-auto sm:flex-1" />
-        {summary.installable && (
+        {(repairable || summary.installable) && (
           <InstallButton
+            repair={repairable}
             installing={installing}
             disabled={busy}
-            onClick={onInstall}
+            onClick={repairable ? onRepair : onInstall}
             className="h-9"
           />
         )}

@@ -268,6 +268,8 @@ Standard builds include DuckDB and ODBC (Cargo default features `duckdb` and `od
 
 `bun run tauri build -- --no-default-features` builds without both; add `--features duckdb` or `--features odbc` to re-enable one. Oracle loads Oracle Instant Client at runtime; install it for the app's architecture. A provider entry can remain visible even when its driver is unavailable.
 
+**Driver analysis and repair (Treiber page):** opening `/drivers` runs `diagnose_driver` once for Oracle (`diagnosableKinds` in `src/lib/drivers.ts`); the `driver_status` command uses the same load-based check, only the startup list stays file-based. `src-tauri/src/db/driver_repair.rs` loads the client for real and, if that fails, scans the client search path and reports the cause: links into a missing folder (links into detachable volumes are left alone), wrong CPU architecture, macOS quarantine, missing `libaio`, or no client at all. "Reparieren" calls `repair_driver`, which runs exactly the listed steps (remove dead links that point into the missing folder, lift quarantine on a folder named `instantclient*`, install) and analyses again; a failed load is retried without restarting the app. Where no automatic installation exists (Linux), the manual command is shown instead. Measured on macOS 27 arm64 (debug test build): 8 folders with 2,301 entries each scan in 83 ms median, 92 ms p95 (budgets 400/800 ms); findings are capped at three per cause.
+
 DuckDB also opens CSV and Parquet files: a DuckDB connection whose path ends in `.csv` or `.parquet` opens an in-memory database with a view named after the file (`read_csv_auto` / `read_parquet`).
 
 ## Adding a product or family

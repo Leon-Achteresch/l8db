@@ -16,6 +16,7 @@ pub mod datagen;
 mod datagen_data;
 pub mod debugger;
 pub mod dml_preview;
+pub mod driver_repair;
 #[cfg(feature = "duckdb")]
 mod duckdb;
 mod dynamodb;
