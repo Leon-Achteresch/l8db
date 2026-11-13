@@ -794,6 +794,45 @@ async fn sqlite_to_duckdb_selected_tables_structure_then_data() {
     };
     let rebuild = plan(&target, &partial, pool.clone()).await.unwrap();
     assert_eq!(rebuild.replaced, vec!["TABLE shop.orders".to_string()]);
+    duck.execute_query("DELETE FROM shop.orders WHERE id > 20")
+        .await
+        .unwrap();
+    for tables in [&["orders"][..], &["orders", "customer"][..]] {
+        let both = PlanRequest {
+            replace: true,
+            ..request(Content::All, tables)
+        };
+        let mut broken = plan(&target, &both, pool.clone()).await.unwrap();
+        assert!(broken.atomic);
+        broken.post_data.push(Statement::plain(
+            "CREATE INDEX kaputt ON shop.gibtsnicht (x)",
+        ));
+        let failed = run(
+            &target,
+            &RunRequest {
+                source: source.clone(),
+                plan: broken,
+            },
+            pool.clone(),
+            &no_progress,
+        )
+        .await
+        .unwrap();
+        assert!(
+            failed
+                .error
+                .as_deref()
+                .is_some_and(|e| e.contains("gibtsnicht")),
+            "{failed:?}"
+        );
+        assert!(
+            failed.rolled_back && failed.leftovers.is_empty(),
+            "{failed:?}"
+        );
+        assert!(failed.warnings.is_empty(), "{:?}", failed.warnings);
+        assert_eq!(rows("orders").await, "20", "{tables:?}");
+        assert_eq!(rows("customer").await, "50", "{tables:?}");
+    }
     let rebuilt = run(
         &target,
         &RunRequest {
@@ -1459,6 +1498,681 @@ async fn transfer_live_oracle_native_packages() {
             .execute_query(&format!("DROP USER {user} CASCADE"))
             .await;
     }
+}
+
+async fn oracle_state(admin: &dyn DatabaseAdapter, owner: &str) -> Vec<String> {
+    let mut state = Vec::new();
+    for sql in [
+        "SELECT 'O ' || object_type || ' ' || object_name || ' ' || status AS x FROM all_objects WHERE owner = '{o}' AND object_name NOT LIKE 'SYS\\_%' ESCAPE '\\' ORDER BY 1",
+        "SELECT 'C ' || table_name || ' ' || constraint_name || ' ' || constraint_type || ' ' || status || ' ' || validated AS x FROM all_constraints WHERE owner = '{o}' AND constraint_name NOT LIKE 'SYS\\_%' ESCAPE '\\' ORDER BY 1",
+        "SELECT 'I ' || table_name || ' ' || index_name || ' ' || uniqueness || ' ' || status || ' ' || funcidx_status AS x FROM all_indexes WHERE owner = '{o}' AND index_name NOT LIKE 'SYS\\_%' ESCAPE '\\' ORDER BY 1",
+        "SELECT 'T ' || trigger_name || ' ' || table_name || ' ' || status AS x FROM all_triggers WHERE owner = '{o}' ORDER BY 1",
+        "SELECT 'G ' || grantee || ' ' || privilege || ' ' || table_name || ' ' || grantable AS x FROM dba_tab_privs WHERE owner = '{o}' ORDER BY 1",
+        "SELECT 'S ' || table_name || ' ' || column_name || ' ' || data_type || ' ' || nullable AS x FROM all_tab_columns WHERE owner = '{o}' ORDER BY 1",
+        "SELECT 'L ' || master || ' ' || primary_key AS x FROM all_mview_logs WHERE log_owner = '{o}' ORDER BY 1",
+    ] {
+        let result = admin
+            .execute_query(&sql.replace("{o}", owner))
+            .await
+            .unwrap_or_else(|e| panic!("{sql}: {e}"));
+        state.extend(
+            result
+                .rows
+                .iter()
+                .filter_map(|row| row.get("X").and_then(super::super::export::value_text)),
+        );
+    }
+    state
+}
+
+#[tokio::test]
+#[ignore]
+async fn transfer_live_oracle_overwrite_restores_previous_state() {
+    let (url, system) = (required_url("ORACLE"), required_url("ORACLE_SYSTEM"));
+    let bulk: usize = std::env::var("L8DB_TR_ORACLE_BACKUP_TABLES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(150);
+    let pool = create_pool_state();
+    let admin =
+        create_adapter_from_string(DatabaseKind::Oracle, &system, None, pool.clone()).unwrap();
+    for user in ["TR_BK_SRC", "TR_BK_DST"] {
+        let _ = admin
+            .execute_query(&format!("DROP USER {user} CASCADE"))
+            .await;
+        exec_all(admin.as_ref(), &[
+            &format!("CREATE USER {user} IDENTIFIED BY l8dbtest QUOTA UNLIMITED ON USERS"),
+            &format!("GRANT CREATE SESSION, CREATE TABLE, CREATE SEQUENCE, CREATE PROCEDURE, CREATE VIEW, CREATE TRIGGER, CREATE MATERIALIZED VIEW, CREATE SYNONYM, CREATE TYPE TO {user}"),
+        ]).await;
+    }
+    exec_all(admin.as_ref(), &[
+        "CREATE TABLE TR_BK_SRC.KUNDE (ID NUMBER CONSTRAINT KUNDE_PK PRIMARY KEY, NAME VARCHAR2(40) CONSTRAINT KUNDE_NAME_NN NOT NULL, SALDO NUMBER(14,4))",
+        "CREATE TABLE TR_BK_SRC.AUFTRAG (ID NUMBER(10) CONSTRAINT AUFTRAG_PK PRIMARY KEY, KUNDE_ID NUMBER NOT NULL CONSTRAINT AUFTRAG_KUNDE_FK REFERENCES TR_BK_SRC.KUNDE(ID), BETRAG NUMBER(12,2) CONSTRAINT AUFTRAG_BETRAG_CK CHECK (BETRAG >= 0))",
+        "INSERT INTO TR_BK_SRC.KUNDE SELECT LEVEL, 'Neu ' || LEVEL, LEVEL FROM DUAL CONNECT BY LEVEL <= 300",
+        "INSERT INTO TR_BK_SRC.AUFTRAG SELECT LEVEL, MOD(LEVEL, 300) + 1, LEVEL / 7 FROM DUAL CONNECT BY LEVEL <= 2500",
+        "CREATE SEQUENCE TR_BK_SRC.BELEG_SEQ START WITH 9000",
+        "CREATE OR REPLACE VIEW TR_BK_SRC.GROSSE_AUFTRAEGE AS SELECT * FROM TR_BK_SRC.AUFTRAG WHERE BETRAG > 100",
+        "CREATE TABLE TR_BK_DST.KUNDE (ID NUMBER CONSTRAINT KUNDE_PK PRIMARY KEY, NAME VARCHAR2(40) CONSTRAINT KUNDE_NAME_NN NOT NULL, ALT VARCHAR2(10), NOTIZ CLOB)",
+        "CREATE TABLE TR_BK_DST.AUFTRAG (ID NUMBER(10) CONSTRAINT AUFTRAG_PK PRIMARY KEY, KUNDE_ID NUMBER NOT NULL CONSTRAINT AUFTRAG_KUNDE_FK REFERENCES TR_BK_DST.KUNDE(ID), BETRAG NUMBER(12,2) CONSTRAINT AUFTRAG_BETRAG_CK CHECK (BETRAG >= 0))",
+        "CREATE INDEX TR_BK_DST.AUFTRAG_KUNDE_IX ON TR_BK_DST.AUFTRAG (KUNDE_ID)",
+        "CREATE TABLE TR_BK_DST.ARCHIV (ID NUMBER GENERATED ALWAYS AS IDENTITY PRIMARY KEY, INHALT CLOB, NR NUMBER, CONSTRAINT ARCHIV_NR_UQ UNIQUE (NR) DISABLE)",
+        "CREATE TABLE TR_BK_DST.SORTIERT (ID NUMBER, CONSTRAINT SORTIERT_PK PRIMARY KEY (ID)) ORGANIZATION INDEX",
+        "INSERT INTO TR_BK_DST.KUNDE SELECT LEVEL, 'Alt ' || LEVEL, 'x', RPAD('n', 5000, 'n') FROM DUAL CONNECT BY LEVEL <= 40",
+        "INSERT INTO TR_BK_DST.AUFTRAG SELECT LEVEL, MOD(LEVEL, 40) + 1, LEVEL FROM DUAL CONNECT BY LEVEL <= 500",
+        "INSERT INTO TR_BK_DST.ARCHIV (INHALT) SELECT 'Archiv ' || LEVEL FROM DUAL CONNECT BY LEVEL <= 25",
+        "CREATE SEQUENCE TR_BK_DST.BELEG_SEQ START WITH 700 INCREMENT BY 5 CACHE 20",
+        "CREATE MATERIALIZED VIEW LOG ON TR_BK_DST.KUNDE WITH PRIMARY KEY, ROWID (ALT) INCLUDING NEW VALUES",
+        "CREATE MATERIALIZED VIEW TR_BK_DST.KUNDE_MV REFRESH FAST ON DEMAND AS SELECT ID, ALT FROM TR_BK_DST.KUNDE",
+        "CREATE OR REPLACE VIEW TR_BK_DST.GROSSE_AUFTRAEGE AS SELECT ID, BETRAG FROM TR_BK_DST.AUFTRAG WHERE BETRAG > 400",
+        "CREATE OR REPLACE SYNONYM TR_BK_DST.KD FOR TR_BK_DST.KUNDE",
+        "CREATE OR REPLACE TYPE TR_BK_DST.PAAR AS OBJECT (A NUMBER, B NUMBER)",
+        "GRANT SELECT, UPDATE ON TR_BK_DST.KUNDE TO TR_BK_SRC",
+        "GRANT SELECT ON TR_BK_DST.GROSSE_AUFTRAEGE TO TR_BK_SRC WITH GRANT OPTION",
+    ]).await;
+    let _ = admin
+        .execute_query("CREATE OR REPLACE FORCE VIEW TR_BK_DST.NUR_ALT AS SELECT K.ID, TR_BK_DST.DOPPELT(K.ID) AS D FROM TR_BK_DST.KUNDE K")
+        .await;
+    let script = |sql: String| {
+        let admin = admin.as_ref();
+        async move {
+            let results = admin.execute_script(&sql).await.unwrap();
+            assert!(results.iter().all(|r| r.success), "{sql}: {results:?}");
+        }
+    };
+    for sql in [
+        "CREATE OR REPLACE FUNCTION TR_BK_DST.DOPPELT(P NUMBER) RETURN NUMBER DETERMINISTIC IS\nBEGIN\n  RETURN P * 2;\nEND;",
+        "CREATE OR REPLACE PACKAGE TR_BK_DST.KONTO AS\n  FUNCTION ALT_VON(P_ID NUMBER) RETURN VARCHAR2;\nEND KONTO;",
+        "CREATE OR REPLACE PACKAGE BODY TR_BK_DST.KONTO AS\n  FUNCTION ALT_VON(P_ID NUMBER) RETURN VARCHAR2 IS\n    V VARCHAR2(40);\n  BEGIN\n    SELECT NAME INTO V FROM TR_BK_DST.KUNDE WHERE ID = P_ID;\n    RETURN V;\n  END;\nEND KONTO;",
+        "CREATE OR REPLACE TRIGGER TR_BK_DST.KUNDE_BI BEFORE INSERT ON TR_BK_DST.KUNDE FOR EACH ROW\nBEGIN\n  :NEW.ALT := NVL(:NEW.ALT, 'trg');\nEND;",
+        "CREATE OR REPLACE TRIGGER TR_BK_DST.AUFTRAG_AUS BEFORE DELETE ON TR_BK_DST.AUFTRAG\nBEGIN\n  NULL;\nEND;",
+        "CREATE OR REPLACE PACKAGE TR_BK_SRC.KONTO AS\n  FUNCTION SALDO_VON(P_ID NUMBER) RETURN NUMBER;\nEND KONTO;",
+        "CREATE OR REPLACE PACKAGE BODY TR_BK_SRC.KONTO AS\n  FUNCTION SALDO_VON(P_ID NUMBER) RETURN NUMBER IS\n    V NUMBER;\n  BEGIN\n    SELECT SALDO INTO V FROM TR_BK_SRC.KUNDE WHERE ID = P_ID;\n    RETURN V;\n  END;\nEND KONTO;",
+    ] {
+        script(sql.to_string()).await;
+    }
+    exec_all(
+        admin.as_ref(),
+        &[
+            "ALTER TRIGGER TR_BK_DST.AUFTRAG_AUS DISABLE",
+            "CREATE INDEX TR_BK_DST.KUNDE_DOPPELT_IX ON TR_BK_DST.KUNDE (TR_BK_DST.DOPPELT(ID))",
+            "GRANT EXECUTE ON TR_BK_DST.KONTO TO TR_BK_SRC",
+        ],
+    )
+    .await;
+    script(format!(
+        "BEGIN\n  FOR I IN 1..{bulk} LOOP\n    EXECUTE IMMEDIATE 'CREATE TABLE TR_BK_DST.MASSE_' || I || ' (ID NUMBER CONSTRAINT MASSE_' || I || '_PK PRIMARY KEY, V VARCHAR2(20) CONSTRAINT MASSE_' || I || '_CK CHECK (V IS NOT NULL), W NUMBER)';\n    EXECUTE IMMEDIATE 'CREATE INDEX TR_BK_DST.MASSE_' || I || '_IX ON TR_BK_DST.MASSE_' || I || ' (W)';\n    EXECUTE IMMEDIATE 'INSERT INTO TR_BK_DST.MASSE_' || I || ' VALUES (1, ''a'', ' || I || ')';\n  END LOOP;\n  COMMIT;\n  DBMS_UTILITY.COMPILE_SCHEMA('TR_BK_DST', FALSE);\nEND;"
+    ))
+    .await;
+    let rows = |table: &'static str| {
+        let admin = admin.as_ref();
+        async move {
+            scalar(admin, &format!("SELECT COUNT(*) FROM TR_BK_DST.{table}"))
+                .await
+                .unwrap()
+        }
+    };
+    let before = oracle_state(admin.as_ref(), "TR_BK_DST").await;
+    assert!(
+        before.contains(&"T AUFTRAG_AUS AUFTRAG DISABLED".to_string()),
+        "{before:?}"
+    );
+    assert!(before.contains(&"L KUNDE YES".to_string()), "{before:?}");
+    assert!(
+        !before.iter().any(|line| line.contains("INVALID")),
+        "{before:?}"
+    );
+
+    let src = create_adapter_from_string(
+        DatabaseKind::Oracle,
+        &url.replace("l8db:l8dbtest", "TR_BK_SRC:l8dbtest"),
+        None,
+        pool.clone(),
+    )
+    .unwrap();
+    let source = endpoint(
+        DatabaseKind::Oracle,
+        &url.replace("l8db:l8dbtest", "TR_BK_SRC:l8dbtest"),
+    );
+    let catalog = src
+        .schema_catalog(
+            "TR_BK_SRC",
+            &[
+                "table",
+                "constraint",
+                "sequence",
+                "view",
+                "package",
+                "package_body",
+            ]
+            .map(String::from),
+        )
+        .await
+        .unwrap();
+    let requalify = |ddl: &str| {
+        ddl.replace("\"TR_BK_SRC\"", "\"TR_BK_DST\"")
+            .replace("TR_BK_SRC.", "TR_BK_DST.")
+    };
+    let pick = |kinds: &[&str], only: Option<&str>| -> Vec<Statement> {
+        let mut objects: Vec<_> = catalog
+            .iter()
+            .filter(|o| kinds.contains(&o.object_type.as_str()))
+            .filter(|o| only.is_none_or(|t| o.name == t || o.parent.as_deref() == Some(t)))
+            .collect();
+        objects.sort_by_key(|o| {
+            (
+                kinds.iter().position(|k| *k == o.object_type),
+                o.ddl.contains("FOREIGN KEY"),
+            )
+        });
+        objects
+            .into_iter()
+            .map(|o| match o.object_type.as_str() {
+                "constraint" | "package_body" => Statement::plain(requalify(&o.ddl)),
+                kind => Statement::object(requalify(&o.ddl), kind, "TR_BK_DST", &o.name),
+            })
+            .collect()
+    };
+    let kaputt = Statement::plain("CREATE INDEX TR_BK_DST.KAPUTT ON TR_BK_DST.GIBTSNICHT (X)");
+
+    for (login, tables) in [
+        ("TR_BK_DST:l8dbtest", None),
+        ("system:l8dbtest", None),
+        ("TR_BK_DST:l8dbtest", Some(vec!["AUFTRAG".to_string()])),
+    ] {
+        let case = format!("{login} {tables:?}");
+        let target = endpoint(DatabaseKind::Oracle, &url.replace("l8db:l8dbtest", login));
+        let subset = tables.is_some();
+        let request = PlanRequest {
+            source: source.clone(),
+            schemas: vec![SchemaPair {
+                source: "TR_BK_SRC".into(),
+                target: "TR_BK_DST".into(),
+                tables,
+            }],
+            fold_names: true,
+            replace: true,
+            mirror: !subset,
+            content: Content::All,
+        };
+        let mut broken = plan(&target, &request, pool.clone()).await.unwrap();
+        assert!(broken.native && !broken.atomic && broken.secured, "{case}");
+        assert!(
+            !broken.warnings.iter().any(|w| w.contains("nicht sichern")),
+            "{case}: {:?}",
+            broken.warnings
+        );
+        if subset {
+            broken.pre_data = pick(&["table"], Some("AUFTRAG"));
+            broken.post_data = pick(&["constraint"], Some("AUFTRAG"));
+        } else {
+            broken.pre_data = pick(&["sequence", "table"], None);
+            broken.post_data = pick(&["constraint", "view", "package", "package_body"], None);
+        }
+        broken.post_data.push(kaputt.clone());
+        let started = std::time::Instant::now();
+        let failed = run(
+            &target,
+            &RunRequest {
+                source: source.clone(),
+                plan: broken,
+            },
+            pool.clone(),
+            &no_progress,
+        )
+        .await
+        .unwrap();
+        eprintln!(
+            "oracle backup: {case}, {bulk} Massentabellen, Fehlschlag samt Wiederherstellung {:?}",
+            started.elapsed()
+        );
+        assert!(
+            failed
+                .error
+                .as_deref()
+                .is_some_and(|e| e.contains(if subset {
+                    "AUFTRAG_KUNDE_FK"
+                } else {
+                    "GIBTSNICHT"
+                })),
+            "{case}: {failed:?}"
+        );
+        assert!(
+            failed.leftovers.is_empty(),
+            "{case}: {:?}",
+            failed.leftovers
+        );
+        assert!(
+            failed.secured && failed.rolled_back && !failed.kept,
+            "{case}: {failed:?}"
+        );
+        let after = oracle_state(admin.as_ref(), "TR_BK_DST").await;
+        assert_eq!(before, after, "{case}");
+        assert_eq!(rows("KUNDE").await, "40", "{case}");
+        assert_eq!(rows("AUFTRAG").await, "500", "{case}");
+        assert_eq!(rows("ARCHIV").await, "25", "{case}");
+        assert_eq!(rows("KUNDE_MV").await, "40", "{case}");
+        assert_eq!(rows("MASSE_1").await, "1", "{case}");
+        assert_eq!(
+            scalar(
+                admin.as_ref(),
+                "SELECT TR_BK_DST.KONTO.ALT_VON(7) || '/' || D FROM TR_BK_DST.NUR_ALT WHERE ID = 7"
+            )
+            .await
+            .unwrap(),
+            "Alt 7/14",
+            "{case}"
+        );
+        let next: i64 = scalar(
+            admin.as_ref(),
+            "SELECT TR_BK_DST.BELEG_SEQ.NEXTVAL FROM DUAL",
+        )
+        .await
+        .unwrap()
+        .parse()
+        .unwrap();
+        assert!(
+            (700..9000).contains(&next) && next % 5 == 0,
+            "{case}: {next}"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(120),
+            "{case}"
+        );
+    }
+
+    let target = endpoint(
+        DatabaseKind::Oracle,
+        &url.replace("l8db:l8dbtest", "TR_BK_DST:l8dbtest"),
+    );
+    let request = PlanRequest {
+        source: source.clone(),
+        schemas: vec![SchemaPair {
+            source: "TR_BK_SRC".into(),
+            target: "TR_BK_DST".into(),
+            tables: None,
+        }],
+        fold_names: true,
+        replace: true,
+        mirror: true,
+        content: Content::All,
+    };
+    let mut good = plan(&target, &request, pool.clone()).await.unwrap();
+    good.pre_data = pick(&["sequence", "table"], None);
+    good.post_data = pick(&["constraint", "view", "package", "package_body"], None);
+    let started = std::time::Instant::now();
+    let done = run(
+        &target,
+        &RunRequest {
+            source: source.clone(),
+            plan: good,
+        },
+        pool.clone(),
+        &no_progress,
+    )
+    .await
+    .unwrap();
+    eprintln!(
+        "oracle backup: Erfolg samt Entfernen der Sicherung {:?}",
+        started.elapsed()
+    );
+    assert_eq!(done.error, None, "{done:?}");
+    assert!(done.committed && done.secured, "{done:?}");
+    assert!(
+        !done.warnings.iter().any(|w| w.contains("Sicherung")),
+        "{:?}",
+        done.warnings
+    );
+    assert_eq!(done.rows, 2800);
+    let state = oracle_state(admin.as_ref(), "TR_BK_DST").await;
+    assert!(!state.iter().any(|line| line.contains("L8B$")), "{state:?}");
+    assert!(
+        !state
+            .iter()
+            .any(|line| line.contains("MASSE_") || line.contains("ARCHIV")),
+        "{state:?}"
+    );
+    assert_eq!(rows("KUNDE").await, "300");
+    assert_eq!(
+        scalar(
+            admin.as_ref(),
+            "SELECT TO_CHAR(TR_BK_DST.KONTO.SALDO_VON(7)) FROM DUAL"
+        )
+        .await
+        .unwrap(),
+        "7"
+    );
+
+    exec_all(
+        admin.as_ref(),
+        &[
+            "CREATE OR REPLACE TYPE TR_BK_DST.PAAR AS OBJECT (A NUMBER, B NUMBER)",
+            "CREATE TABLE TR_BK_DST.MIT_TYP (ID NUMBER, P TR_BK_DST.PAAR)",
+        ],
+    )
+    .await;
+    let blocked = plan(&target, &request, pool.clone()).await.unwrap();
+    assert!(!blocked.secured);
+    assert!(
+        blocked
+            .warnings
+            .iter()
+            .any(|w| w.contains("nicht sichern") && w.contains("MIT_TYP.P")),
+        "{:?}",
+        blocked.warnings
+    );
+    for user in ["TR_BK_SRC", "TR_BK_DST"] {
+        let _ = admin
+            .execute_query(&format!("DROP USER {user} CASCADE"))
+            .await;
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn transfer_live_clickhouse_overwrite_restores_previous_state() {
+    let url = required_url("CLICKHOUSE");
+    let lab = Lab::new("ch-backup");
+    let source_url = lab.url("sqlite", "source.sqlite");
+    seed_source(&source_url).await;
+    let pool = create_pool_state();
+    let ch =
+        create_adapter_from_string(DatabaseKind::Clickhouse, &url, None, pool.clone()).unwrap();
+    exec_all(
+        ch.as_ref(),
+        &[
+            "DROP DATABASE IF EXISTS tr_bk",
+            "CREATE DATABASE tr_bk",
+            "CREATE TABLE tr_bk.customer (alt Int32) ENGINE = MergeTree ORDER BY alt",
+            "CREATE TABLE tr_bk.orders (legacy String) ENGINE = MergeTree ORDER BY legacy",
+            "CREATE TABLE tr_bk.extra (x Int32) ENGINE = MergeTree ORDER BY x",
+            "CREATE VIEW tr_bk.alt AS SELECT alt * 2 AS doppelt FROM tr_bk.customer",
+            "INSERT INTO tr_bk.customer VALUES (1), (2), (3)",
+            "INSERT INTO tr_bk.orders VALUES ('a'), ('b')",
+            "INSERT INTO tr_bk.extra VALUES (7)",
+        ],
+    )
+    .await;
+    let state = || {
+        let ch = ch.as_ref();
+        async move {
+            scalar(ch, "SELECT arrayStringConcat(arraySort(groupArray(concat(name, ':', engine, ':', ifNull(toString(total_rows), '-')))), ',') FROM system.tables WHERE database = 'tr_bk'")
+                .await
+                .unwrap_or_default()
+        }
+    };
+    let before = state().await;
+    assert_eq!(
+        before,
+        "alt:View:-,customer:MergeTree:3,extra:MergeTree:1,orders:MergeTree:2"
+    );
+    let target = endpoint(DatabaseKind::Clickhouse, &url);
+    let source = endpoint(DatabaseKind::Sqlite, &source_url);
+    let request = |mirror: bool| PlanRequest {
+        source: source.clone(),
+        schemas: vec![SchemaPair {
+            source: "main".into(),
+            target: "tr_bk".into(),
+            tables: None,
+        }],
+        fold_names: true,
+        replace: true,
+        mirror,
+        content: Content::All,
+    };
+    for mirror in [false, true] {
+        let mut broken = plan(&target, &request(mirror), pool.clone()).await.unwrap();
+        assert!(!broken.atomic && broken.secured, "{:?}", broken.warnings);
+        broken.post_data.push(Statement::plain(
+            "ALTER TABLE tr_bk.gibtsnicht ADD COLUMN x Int8",
+        ));
+        let started = std::time::Instant::now();
+        let failed = run(
+            &target,
+            &RunRequest {
+                source: source.clone(),
+                plan: broken,
+            },
+            pool.clone(),
+            &no_progress,
+        )
+        .await
+        .unwrap();
+        eprintln!(
+            "clickhouse backup: mirror={mirror}, Fehlschlag samt Wiederherstellung {:?}",
+            started.elapsed()
+        );
+        assert!(
+            failed
+                .error
+                .as_deref()
+                .is_some_and(|e| e.contains("gibtsnicht")),
+            "{failed:?}"
+        );
+        assert!(failed.leftovers.is_empty(), "{:?}", failed.leftovers);
+        assert!(
+            failed.secured && failed.rolled_back && !failed.kept,
+            "{failed:?}"
+        );
+        assert_eq!(state().await, before, "mirror={mirror}");
+        assert_eq!(
+            scalar(ch.as_ref(), "SELECT sum(doppelt) FROM tr_bk.alt")
+                .await
+                .unwrap(),
+            "12"
+        );
+    }
+    let good = plan(&target, &request(true), pool.clone()).await.unwrap();
+    let done = run(
+        &target,
+        &RunRequest {
+            source: source.clone(),
+            plan: good,
+        },
+        pool.clone(),
+        &no_progress,
+    )
+    .await
+    .unwrap();
+    assert_eq!(done.error, None, "{done:?}");
+    assert!(done.committed && done.secured, "{done:?}");
+    assert!(
+        !done.warnings.iter().any(|w| w.contains("Sicherung")),
+        "{:?}",
+        done.warnings
+    );
+    let after = state().await;
+    assert!(
+        !after.contains("L8B$") && !after.contains("extra") && !after.contains("alt:"),
+        "{after}"
+    );
+    assert!(after.contains("customer:MergeTree:50"), "{after}");
+
+    exec_all(
+        ch.as_ref(),
+        &[
+            "CREATE TABLE tr_bk.ziel (id Int64) ENGINE = MergeTree ORDER BY id",
+            "CREATE MATERIALIZED VIEW tr_bk.mv TO tr_bk.ziel AS SELECT id FROM tr_bk.customer",
+        ],
+    )
+    .await;
+    let blocked = plan(&target, &request(true), pool.clone()).await.unwrap();
+    assert!(!blocked.secured);
+    assert!(
+        blocked
+            .warnings
+            .iter()
+            .any(|w| w.contains("nicht sichern") && w.contains("tr_bk.mv")),
+        "{:?}",
+        blocked.warnings
+    );
+    exec_all(ch.as_ref(), &["DROP DATABASE IF EXISTS tr_bk"]).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn transfer_live_mysql_overwrite_restores_previous_state() {
+    let url = required_url("MYSQL");
+    let lab = Lab::new("mysql-backup");
+    let source_url = lab.url("sqlite", "source.sqlite");
+    seed_source(&source_url).await;
+    let pool = create_pool_state();
+    let my = create_adapter_from_string(DatabaseKind::Mysql, &url, None, pool.clone()).unwrap();
+    exec_all(
+        my.as_ref(),
+        &["DROP DATABASE IF EXISTS tr_bk", "CREATE DATABASE tr_bk"],
+    )
+    .await;
+    let target = endpoint(DatabaseKind::Mysql, &url);
+    let source = endpoint(DatabaseKind::Sqlite, &source_url);
+    let request = |replace: bool, mirror: bool| PlanRequest {
+        source: source.clone(),
+        schemas: vec![SchemaPair {
+            source: "main".into(),
+            target: "tr_bk".into(),
+            tables: None,
+        }],
+        fold_names: true,
+        replace,
+        mirror,
+        content: Content::All,
+    };
+    let first = plan(&target, &request(false, false), pool.clone())
+        .await
+        .unwrap();
+    let seeded = run(
+        &target,
+        &RunRequest {
+            source: source.clone(),
+            plan: first,
+        },
+        pool.clone(),
+        &no_progress,
+    )
+    .await
+    .unwrap();
+    assert_eq!(seeded.error, None, "{seeded:?}");
+    exec_all(
+        my.as_ref(),
+        &[
+            "DELETE FROM tr_bk.orders WHERE id > 30",
+            "ALTER TABLE tr_bk.customer ADD COLUMN alt INT DEFAULT 7, ADD CONSTRAINT customer_alt_ck CHECK (alt > 0)",
+            "CREATE TABLE tr_bk.extra (id INT PRIMARY KEY, customer_id INT, CONSTRAINT extra_customer_fk FOREIGN KEY (customer_id) REFERENCES tr_bk.customer (id))",
+            "INSERT INTO tr_bk.extra VALUES (1, 1)",
+            "CREATE TRIGGER tr_bk.orders_bi BEFORE INSERT ON tr_bk.orders FOR EACH ROW SET NEW.note = COALESCE(NEW.note, 'trg')",
+            "CREATE FUNCTION tr_bk.doppelt(p INT) RETURNS INT DETERMINISTIC RETURN p * 2",
+            "CREATE VIEW tr_bk.alt_v AS SELECT id, tr_bk.doppelt(alt) AS d FROM tr_bk.customer",
+        ],
+    )
+    .await
+    ;
+    let state = || {
+        let my = my.as_ref();
+        async move {
+            let mut lines = Vec::new();
+            for sql in [
+                "SELECT CONCAT('T ', TABLE_NAME, ' ', TABLE_TYPE) AS x FROM information_schema.TABLES WHERE TABLE_SCHEMA = 'tr_bk' ORDER BY 1",
+                "SELECT CONCAT('C ', TABLE_NAME, ' ', CONSTRAINT_NAME, ' ', CONSTRAINT_TYPE) AS x FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = 'tr_bk' ORDER BY 1",
+                "SELECT CONCAT('R ', TABLE_NAME, ' ', CONSTRAINT_NAME, ' ', REFERENCED_TABLE_NAME, ' ', DELETE_RULE) AS x FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = 'tr_bk' ORDER BY 1",
+                "SELECT CONCAT('G ', TRIGGER_NAME, ' ', EVENT_OBJECT_TABLE) AS x FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = 'tr_bk' ORDER BY 1",
+                "SELECT CONCAT('P ', ROUTINE_TYPE, ' ', ROUTINE_NAME) AS x FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = 'tr_bk' ORDER BY 1",
+                "SELECT CONCAT('I ', TABLE_NAME, ' ', INDEX_NAME, ' ', COLUMN_NAME) AS x FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = 'tr_bk' ORDER BY 1",
+                "SELECT CONCAT('N ', (SELECT COUNT(*) FROM tr_bk.customer), ' ', (SELECT COUNT(*) FROM tr_bk.orders), ' ', (SELECT COUNT(*) FROM tr_bk.extra), ' ', (SELECT SUM(d) FROM tr_bk.alt_v)) AS x",
+            ] {
+                let result = my
+                    .execute_query(sql)
+                    .await
+                    .unwrap_or_else(|e| panic!("{sql}: {e}"));
+                lines.extend(
+                    result
+                        .rows
+                        .iter()
+                        .filter_map(|row| row.get("x").and_then(super::super::export::value_text)),
+                );
+            }
+            lines
+        }
+    };
+    let before = state().await;
+    assert!(before.contains(&"N 50 30 1 700".to_string()), "{before:?}");
+    assert!(
+        before.iter().any(|l| l.starts_with("R orders ")),
+        "{before:?}"
+    );
+    assert!(
+        before.contains(&"G orders_bi orders".to_string()),
+        "{before:?}"
+    );
+
+    for mirror in [false, true] {
+        let mut broken = plan(&target, &request(true, mirror), pool.clone())
+            .await
+            .unwrap();
+        assert!(!broken.atomic && broken.secured, "{:?}", broken.warnings);
+        broken.post_data.push(Statement::plain(
+            "CREATE INDEX kaputt ON tr_bk.gibtsnicht (x)",
+        ));
+        let started = std::time::Instant::now();
+        let failed = run(
+            &target,
+            &RunRequest {
+                source: source.clone(),
+                plan: broken,
+            },
+            pool.clone(),
+            &no_progress,
+        )
+        .await
+        .unwrap();
+        eprintln!(
+            "mysql backup: mirror={mirror}, Fehlschlag samt Wiederherstellung {:?}",
+            started.elapsed()
+        );
+        assert!(
+            failed
+                .error
+                .as_deref()
+                .is_some_and(|e| e.contains("gibtsnicht")),
+            "{failed:?}"
+        );
+        assert!(failed.leftovers.is_empty(), "{:?}", failed.leftovers);
+        assert!(
+            failed.secured && failed.rolled_back && !failed.kept,
+            "{failed:?}"
+        );
+        assert_eq!(state().await, before, "mirror={mirror}");
+    }
+    let good = plan(&target, &request(true, true), pool.clone())
+        .await
+        .unwrap();
+    let done = run(
+        &target,
+        &RunRequest {
+            source: source.clone(),
+            plan: good,
+        },
+        pool.clone(),
+        &no_progress,
+    )
+    .await
+    .unwrap();
+    assert_eq!(done.error, None, "{done:?}");
+    assert!(done.committed && done.secured, "{done:?}");
+    assert!(
+        !done.warnings.iter().any(|w| w.contains("Sicherung")),
+        "{:?}",
+        done.warnings
+    );
+    let tables = scalar(my.as_ref(), "SELECT GROUP_CONCAT(TABLE_NAME ORDER BY TABLE_NAME) FROM information_schema.TABLES WHERE TABLE_SCHEMA = 'tr_bk'")
+        .await
+        .unwrap();
+    assert_eq!(tables, "customer,orders,tag");
+    assert_eq!(
+        scalar(my.as_ref(), "SELECT COUNT(*) FROM tr_bk.orders")
+            .await
+            .unwrap(),
+        "12345"
+    );
+    exec_all(my.as_ref(), &["DROP DATABASE IF EXISTS tr_bk"]).await;
 }
 
 #[tokio::test]
