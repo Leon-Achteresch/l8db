@@ -10,6 +10,11 @@ let base = "";
 
 beforeAll(async () => {
   if (!ENABLED) return;
+  browser = await chromium.launch({ headless: true });
+  if (process.env.L8DB_TABLE_BROWSER_URL) {
+    base = process.env.L8DB_TABLE_BROWSER_URL;
+    return;
+  }
   server = await createServer({
     cacheDir: "node_modules/.vite-shared-tab-paste",
     server: { host: "127.0.0.1", port: 0, strictPort: false, watch: null, hmr: false },
@@ -18,7 +23,6 @@ beforeAll(async () => {
   const address = server.httpServer?.address();
   if (!address || typeof address === "string") throw new Error("Fixture-Server startet nicht");
   base = `http://127.0.0.1:${address.port}`;
-  browser = await chromium.launch({ headless: true });
 }, 120_000);
 
 afterAll(async () => {

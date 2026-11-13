@@ -32,6 +32,7 @@ const server = await createServer({
       "tests/fixtures/table-state.html",
       "tests/fixtures/query-workspace.html",
       "tests/fixtures/editor-ai-chat.html",
+      "tests/fixtures/shared-tab-paste.html",
     ],
   },
   server: { host: "127.0.0.1", port: 0, strictPort: false, watch: null, hmr: false },
