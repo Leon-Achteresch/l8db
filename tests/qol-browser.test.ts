@@ -139,6 +139,7 @@ test.skipIf(!process.env.L8DB_QOL_BROWSER)(
           ),
         ),
       ).toBe(false);
+      await page.getByRole("button", { name: "Transaktionen schließen", exact: true }).click();
       await page.getByRole("button", { name: "Weitere Aktionen", exact: true }).click();
       await page.getByRole("menuitem", { name: "Export", exact: true }).click();
       await page.getByRole("menuitem", { name: "Als XLSX exportieren…", exact: true }).click();
