@@ -123,7 +123,7 @@ test.skipIf(!enabled)(
   "die Sidebar führt wie bei einer Datenbank durch Tabellen und Unterbereiche",
   async () => {
     const { page, errors } = await openStudio("overview");
-    const sidebar = page.locator("[data-baas-studio] > aside");
+    const sidebar = page.locator("[data-baas-studio] [data-baas-context]");
     await sidebar.getByRole("button", { name: "orders", exact: true }).click();
     await page.waitForURL(/studio=tables.*table=orders|table=orders.*studio=tables/);
     await page.getByRole("tab", { name: "Spalten" }).waitFor();

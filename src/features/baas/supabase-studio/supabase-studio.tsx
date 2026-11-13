@@ -5,11 +5,18 @@ import { type SupabaseProject, supabaseStudioCapabilities } from "@/lib/db";
 import { type StudioTable, studioTablesList } from "@/lib/db/supabase-studio-tables";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { BaasStudioFrame } from "../baas-studio-frame";
-import { SupabaseProjectPulse } from "./supabase-project-pulse";
+import { serviceLabel, statusLabel } from "./supabase-services";
 import { SUPABASE_STUDIO_SECTIONS } from "./supabase-studio-sections";
+import { useSupabaseHealth } from "./use-supabase-health";
 
 const route = getRouteApi("/baas");
 const PALETTE_TABLE_PAGES = 5;
+const SECTION_SERVICE: Record<string, string> = {
+  db: "database",
+  auth: "auth",
+  realtime: "realtime",
+  storage: "storage",
+};
 
 async function paletteTables(reference: string) {
   const tables: StudioTable[] = [];
@@ -46,6 +53,16 @@ export function SupabaseStudio({
         !section.unavailable(capabilities.data),
     ) ?? SUPABASE_STUDIO_SECTIONS[0];
   const Section = active.component;
+  const health = useSupabaseHealth(project.reference);
+  const status = (id: string) => {
+    const service = health.data?.find((item) => SECTION_SERVICE[item.name] === id);
+    return (
+      service && {
+        healthy: service.healthy,
+        label: `${serviceLabel(service.name)}: ${statusLabel(service.status)}`,
+      }
+    );
+  };
 
   return (
     <BaasStudioFrame
@@ -54,12 +71,11 @@ export function SupabaseStudio({
       isNew={feature.isNew}
       header={header}
       footer={footer}
-      aside={<SupabaseProjectPulse reference={project.reference} />}
       details={`${project.self_hosted ? (project.api_url ?? "Selbst gehostet") : (project.region ?? "Cloud")} · ${!project.self_hosted ? "Zugangstoken" : project.secret_key ? "Secret Key" : "Publishable Key"}`}
       tabs={SUPABASE_STUDIO_SECTIONS.map((section) => ({
         value: section.id,
         label: section.label,
-        group: section.group,
+        status: status(section.id),
         icon: section.icon,
         featureScope: `baas.supabase.studio.${section.id}`,
         disabledReason: capabilities.data
@@ -70,6 +86,7 @@ export function SupabaseStudio({
       }))}
       value={active.id}
       fullBleed={active.fullBleed}
+      sidebarLabel={active.id === "overview" ? "Tabellen" : undefined}
       paletteKey={`supabase:${project.reference}`}
       paletteTables={
         capabilities.data?.sql

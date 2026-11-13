@@ -1,7 +1,9 @@
+import { useQuery } from "@tanstack/react-query";
 import { Code2, KeyRound, Plus } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { supabaseFunctions } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { BaasSectionHeader } from "../../baas-section-header";
 import { SupabaseSidebarTabs } from "../supabase-sidebar-tabs";
@@ -20,7 +22,13 @@ const SELF_HOSTED_HINT =
 export function SupabaseFunctionsSection({ project, capabilities }: SupabaseStudioSectionProps) {
   const feature = useNewFeatureVisibility<HTMLHeadingElement>("baas.supabase.studio.functions");
   const cloud = capabilities.management;
-  const [selected, setSelected] = useState<string | null>(null);
+  const [picked, setSelected] = useState<string | null>(null);
+  const functions = useQuery({
+    queryKey: ["supabase", project.reference, "functions"],
+    queryFn: () => supabaseFunctions(project.reference),
+    enabled: cloud,
+  });
+  const selected = picked ?? functions.data?.[0]?.slug ?? "";
   const [tab, setTab] = useState("functions");
   const [deploy, setDeploy] = useState<SupabaseFunctionDeployTarget | null>(null);
 
@@ -81,7 +89,7 @@ export function SupabaseFunctionsSection({ project, capabilities }: SupabaseStud
                 cloud={cloud}
                 hasProjectKey={capabilities.data_api}
                 onDeploy={setDeploy}
-                onDeleted={() => setSelected(null)}
+                onDeleted={() => setSelected("")}
               />
             ) : (
               <p className="rounded-xl p-6 text-center text-xs text-muted-foreground bg-muted/30">

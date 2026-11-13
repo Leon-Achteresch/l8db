@@ -205,7 +205,7 @@ async function openStudio(page: Page, section: string, label: string) {
 }
 
 function studioSidebar(page: Page) {
-  return page.locator("[data-baas-studio] > aside");
+  return page.locator("[data-baas-studio] [data-baas-context]");
 }
 
 async function confirmAlert(page: Page, action: string) {
@@ -1006,9 +1006,9 @@ test.skipIf(!enabled || !convexUrl)(
       ])
         expect(await nav.getByRole("tab", { name: label }).isEnabled()).toBe(true);
       const main = page.locator("section[aria-label='Übersicht']");
-      await main.getByText("Selbst gehostet").first().waitFor();
+      await page.locator("[data-baas-studio] > aside").getByText("Selbst gehostet").waitFor();
       await main.getByText("Läuft", { exact: true }).waitFor();
-      await main.getByText("Kennzahlen").waitFor();
+      await main.getByRole("region", { name: "Kennzahlen" }).waitFor();
       const stat = (label: string) =>
         main.getByText(label, { exact: true }).first().locator("xpath=..").innerText();
       await poll(
@@ -1018,7 +1018,7 @@ test.skipIf(!enabled || !convexUrl)(
       expect(await stat("Tabellen")).toMatch(/[1-9]/);
       expect(await stat("Funktionen")).toMatch(/[1-9]/);
       expect(await stat("Cronjobs")).toMatch(/2/);
-      await main.getByText("Letzte Fehler").waitFor();
+      await main.getByRole("region", { name: "Auffälligkeiten" }).waitFor();
       await shot(page, "convex-01-overview");
     });
   },

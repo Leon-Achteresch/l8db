@@ -35,7 +35,10 @@ export function ConvexFunctionsSection({ deployment }: ConvexStudioSectionProps)
   const modules = catalog.data?.modules ?? [];
   const current = modules
     .flatMap((module) => module.functions.map((fn) => ({ module, fn })))
-    .find(({ module, fn }) => `${module.componentPath}|${fn.identifier}` === selected);
+    .find(({ module, fn }, index) =>
+      selected ? `${module.componentPath}|${fn.identifier}` === selected : index === 0,
+    );
+  const active = current ? `${current.module.componentPath}|${current.fn.identifier}` : null;
   const components = catalog.data?.components ?? [];
   const hasComponents = components.some((component) => component.path !== "");
 
@@ -72,7 +75,7 @@ export function ConvexFunctionsSection({ deployment }: ConvexStudioSectionProps)
         <ConvexFunctionTree
           modules={modules}
           loading={catalog.isLoading}
-          selected={selected}
+          selected={active}
           onSelect={(id) => {
             setSelected(id);
             setTab("functions");
@@ -92,16 +95,18 @@ export function ConvexFunctionsSection({ deployment }: ConvexStudioSectionProps)
           <div>
             {current ? (
               <ConvexFunctionDetail
-                key={selected}
+                key={active}
                 target={target}
                 deploymentKey={deploymentKey}
                 module={current.module}
                 fn={current.fn}
               />
             ) : (
-              <p className="rounded-xl p-6 text-center text-xs text-muted-foreground bg-muted/30">
-                Funktion links auswählen.
-              </p>
+              !catalog.isLoading && (
+                <p className="rounded-xl bg-muted/30 p-6 text-center text-xs text-muted-foreground">
+                  Noch keine Funktionen deployt.
+                </p>
+              )
             )}
           </div>
         </TabsContent>

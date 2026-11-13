@@ -16,6 +16,7 @@ export const Route = createFileRoute("/baas")({
     table?: string;
     tableSchema?: string;
     tableProject?: string;
+    logFunction?: string;
   } => ({
     provider: BAAS_PROVIDERS.some((item) => item.id === search.provider)
       ? (search.provider as BaasProvider)
@@ -34,6 +35,7 @@ export const Route = createFileRoute("/baas")({
     table: typeof search.table === "string" ? search.table : undefined,
     tableSchema: typeof search.tableSchema === "string" ? search.tableSchema : undefined,
     tableProject: typeof search.tableProject === "string" ? search.tableProject : undefined,
+    logFunction: typeof search.logFunction === "string" ? search.logFunction : undefined,
   }),
   component: BaasView,
 });

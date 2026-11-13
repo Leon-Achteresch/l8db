@@ -1,3 +1,4 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { Copy, Download, Eraser, RefreshCw, ScrollText, SearchX } from "lucide-react";
@@ -27,11 +28,18 @@ import { ConvexLogsList } from "./convex-logs-list";
 import { ConvexLogsToolbar } from "./convex-logs-toolbar";
 import { useConvexLogStream } from "./use-convex-log-stream";
 
+const route = getRouteApi("/baas");
+
 export function ConvexLogsSection({ deployment }: ConvexStudioSectionProps) {
+  const { logFunction } = route.useSearch();
   const feature = useNewFeatureVisibility<HTMLHeadingElement>("baas.convex.studio.logs");
   const [live, setLive] = useState(false);
   const [grouped, setGrouped] = useState(false);
-  const [filters, setFilters] = useState<LogFilters>(DEFAULT_LOG_FILTERS);
+  const [filters, setFilters] = useState<LogFilters>(
+    logFunction
+      ? { ...DEFAULT_LOG_FILTERS, identifier: logFunction, status: "failure" }
+      : DEFAULT_LOG_FILTERS,
+  );
   const [selected, setSelected] = useState<ConvexExecution | null>(null);
   const stream = useConvexLogStream(deployment, live);
   const deferredFilters = useDeferredValue(filters);
