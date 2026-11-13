@@ -35,7 +35,7 @@ export type ExtensionPanelTab = {
   panelId: string;
   title: string;
 };
-export type RoleTab = { kind: "role"; name: string };
+export type RoleTab = { kind: "role"; name: string; profile?: boolean };
 export type TriggerTab = { kind: "trigger"; schema: string; table: string; trigger: string };
 export type ViewEditorTab = { kind: "view-editor"; schema: string; view: string };
 export type AlterTableTab = { kind: "alter-table"; schema: string; table: string };
@@ -115,6 +115,7 @@ export interface TabsState {
   reopenClosedTab: (id: string) => Tab | null;
   forgetClosedTab: (id: string) => void;
   clearTabsForConnection: (connectionId: string) => void;
+  discardTabs: (connectionId: string, keys: string[]) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   updateQuerySql: (id: string, sql: string) => void;
   markQueryTabExecuted: (id: string, sql: string) => void;

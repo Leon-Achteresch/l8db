@@ -27,13 +27,16 @@ export function ProviderOption({
       className={cn(
         "group flex min-w-0 items-center text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45",
         size === "row" && "h-10 gap-2.5 rounded-lg px-2.5 hover:bg-muted",
-        size === "chip" && "h-8 gap-1.5 rounded-full border bg-card pl-1.5 pr-3 hover:bg-muted",
+        size === "chip" &&
+          "h-8 cursor-pointer gap-1.5 rounded-full bg-muted/50 pl-1.5 pr-3 hover:bg-muted",
         size === "card" &&
           "gap-3 rounded-xl border bg-card p-3 hover:border-foreground/20 hover:bg-muted/50",
         selected &&
           (size === "row"
             ? "bg-primary/10 text-foreground hover:bg-primary/10"
-            : "border-primary/50 bg-primary/5 ring-1 ring-primary/30"),
+            : size === "chip"
+              ? "bg-primary/15 ring-1 ring-primary/30 hover:bg-primary/15"
+              : "border-primary/50 bg-primary/5 ring-1 ring-primary/30"),
       )}
     >
       <span

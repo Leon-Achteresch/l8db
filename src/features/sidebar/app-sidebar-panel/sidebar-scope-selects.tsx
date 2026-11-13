@@ -58,7 +58,7 @@ export function SidebarScopeSelects({
     <div className="grid min-w-0 gap-2" data-tour="sidebar-scope">
       {caps.databases && (
         <div className="grid min-w-0 flex-1 gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground">Datenbank</span>
+          <span className="text-xs font-medium text-muted-foreground">{caps.terms.database}</span>
           <Select
             value={activeDatabase ?? undefined}
             onValueChange={(value) => setDatabase(activeConnection.id, value)}
@@ -67,7 +67,7 @@ export function SidebarScopeSelects({
             <SelectTrigger
               size="sm"
               className="w-full min-w-0"
-              aria-label="Datenbank"
+              aria-label={caps.terms.database}
               title={activeDatabase ?? undefined}
             >
               {activeDatabase && databases?.includes(activeDatabase) ? null : (
@@ -88,10 +88,10 @@ export function SidebarScopeSelects({
           </Select>
         </div>
       )}
-      {caps.schemas && caps.query_language !== "json" && (
+      {caps.schemas && !caps.database_is_schema && (
         <div className="grid min-w-0 flex-1 gap-1.5">
           <span className="flex items-center justify-between text-xs font-medium text-muted-foreground">
-            {showSchemaSwitcher ? "Schema" : `Schema: ${activeSchema}`}
+            {showSchemaSwitcher ? caps.terms.schema : `${caps.terms.schema}: ${activeSchema}`}
             {onManageSchemas && (
               <button
                 type="button"
@@ -121,7 +121,7 @@ export function SidebarScopeSelects({
               <SelectTrigger
                 size="sm"
                 className="w-full min-w-0"
-                aria-label="Schema"
+                aria-label={caps.terms.schema}
                 title={activeSchema}
               >
                 {schemas?.includes(activeSchema) ? null : (

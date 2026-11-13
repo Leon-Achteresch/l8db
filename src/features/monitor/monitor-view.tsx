@@ -36,7 +36,7 @@ import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility"
 const PRIMARY_TABS: { value: MonitorTab; label: string; icon: LucideIcon }[] = [
   { value: "live", label: "Live-Monitor", icon: MonitorIcon },
   { value: "sessions", label: "Sessions", icon: UsersIcon },
-  { value: "connections", label: "Verbindungen", icon: NetworkIcon },
+  { value: "connections", label: "Clients", icon: NetworkIcon },
   { value: "resources", label: "Ressourcen", icon: CpuIcon },
   { value: "locks", label: "Locks", icon: LockIcon },
   { value: "io", label: "I/O", icon: HardDriveIcon },
@@ -61,7 +61,7 @@ export function MonitorView() {
     return (
       <main className="flex flex-1 items-center justify-center p-8">
         <div className="text-center">
-          <ActivityIcon className="mx-auto size-8 text-muted-foreground/50" />
+          <ActivityIcon className="mx-auto size-8 text-muted-foreground" />
           <h1 className="mt-3 text-lg font-semibold">Monitor</h1>
           <p className="mt-1 text-sm text-muted-foreground">Keine Verbindung aktiv.</p>
         </div>

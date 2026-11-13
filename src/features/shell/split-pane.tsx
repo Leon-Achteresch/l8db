@@ -196,7 +196,7 @@ export function SplitPane({ index, focused }: { index: number; focused: boolean 
             }}
             aria-label="Bereich schließen"
             title="Bereich schließen – die Tabs bleiben oben in der Tab-Leiste geöffnet"
-            className="grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/10 hover:text-foreground"
+            className="grid size-5 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
           >
             <XIcon className="size-3.5" />
           </button>

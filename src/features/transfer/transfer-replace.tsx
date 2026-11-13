@@ -7,20 +7,20 @@ import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility"
 export function TransferReplace({
   plan,
   replace,
-  mirror,
+  whole,
   content,
   onReplace,
 }: {
   plan: TransferPlan | null;
   replace: boolean;
-  mirror: boolean;
+  whole: boolean;
   content: TransferContent;
   onReplace: (value: boolean) => void;
 }) {
   const label =
     content === "data"
       ? "Zieltabellen vorher leeren"
-      : mirror
+      : whole
         ? "Ziel vollständig überschreiben"
         : "Vorhandene Objekte überschreiben";
   const feature = useNewFeatureVisibility<HTMLElement>("transfer.replace");

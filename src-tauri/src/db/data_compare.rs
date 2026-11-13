@@ -68,7 +68,7 @@ pub struct CompareResult {
 fn canonical(value: &Value) -> String {
     match value {
         Value::Null => "\0null".into(),
-        Value::Bool(value) => format!("b:{value}"),
+        Value::Bool(value) => format!("s:{}", u8::from(*value)),
         Value::String(value) => format!("s:{value}"),
         Value::Number(value) => {
             if value.as_f64() == Some(0.0) {
@@ -217,6 +217,9 @@ mod tests {
     #[test]
     fn codec_is_framed_and_keys_are_unique() {
         assert_ne!(canonical(&json!(["a,s:b"])), canonical(&json!(["a", "b"])));
+        assert_eq!(canonical(&json!(true)), canonical(&json!(1)));
+        assert_eq!(canonical(&json!(false)), canonical(&json!(0)));
+        assert_ne!(canonical(&json!(true)), canonical(&json!(0)));
         assert_ne!(
             canonical(&json!({"a":"x,b=s:y"})),
             canonical(&json!({"a":"x", "b":"y"}))

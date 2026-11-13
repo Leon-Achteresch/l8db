@@ -59,64 +59,70 @@ export function VersioningCustomerCreate({
       }
       onDone();
     }, "Kunde angelegt");
+  const ready =
+    Boolean(customer.trim()) &&
+    sourceSchemas.size === 1 &&
+    (complete(test) || complete(production));
   return (
     <form
-      className="space-y-4 rounded-xl bg-muted/35 p-4"
+      aria-label="Neuer Kunde"
+      className="space-y-3 rounded-2xl bg-muted/40 p-4"
       onSubmit={(event) => {
         event.preventDefault();
         create();
       }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && event.target === event.currentTarget) onDone();
+      }}
     >
-      <div>
-        <h3 className="text-xs font-semibold">Kunde mit Test- und Produktivsystem</h3>
-        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-          Beide Systeme nutzen dasselbe Produkt aus diesem Repository, aber getrennte Verbindungen.
-          Eine Baseline wird danach je System im Kundenbereich geprüft.
-        </p>
-      </div>
-      <label htmlFor="vcs-customer-name" className="block space-y-1.5 text-xs font-medium">
-        Kunde
+      <div className="flex items-center gap-3">
+        <h3 className="shrink-0 text-[13px] font-semibold tracking-tight">Neuer Kunde</h3>
         <Input
           id="vcs-customer-name"
           aria-label="Kundenname"
-          placeholder="z. B. Stadtwerke Nord"
+          placeholder="Kundenname"
+          autoFocus
           value={customer}
           onChange={(event) => setCustomer(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") onDone();
+          }}
+          className="h-9 rounded-lg bg-background/70 text-[13px] font-medium"
         />
-      </label>
-      <div className="grid gap-4 sm:grid-cols-2">
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
         <VersioningEnvironmentFields
           label="Testsystem"
+          tone="test"
           project={project}
           value={test}
           onChange={setTest}
         />
         <VersioningEnvironmentFields
           label="Produktivsystem"
+          tone="production"
           project={project}
           value={production}
           onChange={setProduction}
         />
       </div>
-      {sourceSchemas.size !== 1 && (
-        <p className="text-[11px] text-amber-700 dark:text-amber-300">
-          Vor der Zuordnung genau ein Quellschema unter Änderungen aufnehmen.
-        </p>
-      )}
-      <div className="flex gap-2">
+      <div className="flex items-center gap-2">
+        {sourceSchemas.size !== 1 && (
+          <p className="mr-auto text-[11px] text-amber-700 dark:text-amber-300">
+            Zuerst genau ein Quellschema unter Änderungen aufnehmen
+          </p>
+        )}
         <Button
-          type="submit"
+          type="button"
           size="sm"
-          disabled={
-            !customer.trim() ||
-            sourceSchemas.size !== 1 ||
-            (!complete(test) && !complete(production))
-          }
+          variant="ghost"
+          className="ml-auto h-8 rounded-full px-4 text-xs"
+          onClick={onDone}
         >
-          Kunde anlegen
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onDone}>
           Abbrechen
+        </Button>
+        <Button type="submit" size="sm" className="h-8 rounded-full px-4 text-xs" disabled={!ready}>
+          Kunde anlegen
         </Button>
       </div>
     </form>

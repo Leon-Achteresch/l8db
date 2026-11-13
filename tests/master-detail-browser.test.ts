@@ -323,7 +323,7 @@ test.skipIf(!process.env.L8DB_MASTER_DETAIL_BROWSER_URL)(
 
       await cell("item 1-2").click({ button: "right" });
       await page.getByRole("menuitem", { name: "Zeile löschen" }).click();
-      await page.getByText("Zeile gelöscht.", { exact: true }).waitFor();
+      await page.getByText("Löschen in Transaktion vorgemerkt.", { exact: true }).waitFor();
       await detail.getByText("item 1-2", { exact: true }).waitFor({ state: "detached" });
       expect((await md()).deletes).toEqual(["(0,12)"]);
       expect((await md()).fetches.length).toBe(readsBeforeEdits);

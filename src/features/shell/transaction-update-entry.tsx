@@ -15,7 +15,10 @@ export function DiffUpdateEntry({ change }: { change: TransactionChange }) {
 
   return (
     <div ref={ref} className="rounded border border-border/60 bg-background overflow-hidden">
-      <div className="flex items-center gap-1.5 border-b border-border/40 bg-muted/40 px-2.5 py-1.5">
+      <div
+        className="flex items-center gap-1.5 border-b border-border/40 bg-muted/40 px-2.5 py-1.5"
+        title={change.ctid ? `ctid ${change.ctid}` : undefined}
+      >
         <ChevronRightIcon className="size-3 text-muted-foreground" />
         <span className="font-mono text-[11px] font-semibold text-foreground/80">
           {[change.schema, change.table].filter(Boolean).join(".")}
@@ -26,9 +29,9 @@ export function DiffUpdateEntry({ change }: { change: TransactionChange }) {
             Geplant · Ausführung beim Commit
           </span>
         )}
-        {(change.ctid || change.rowKey) && (
+        {change.rowKey && (
           <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-            {change.rowKey ?? `ctid ${change.ctid}`}
+            {change.rowKey}
           </span>
         )}
       </div>

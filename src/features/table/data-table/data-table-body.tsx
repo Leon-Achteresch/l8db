@@ -1,6 +1,8 @@
 import { useContext, useMemo } from "react";
 import { toast } from "sonner";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { useActiveConnection } from "@/lib/connections";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { buildDuplicatePrefill } from "@/lib/row-duplicate";
 import { rowRuleColor } from "@/lib/row-rules";
@@ -69,6 +71,8 @@ type Props = Pick<
     | "onDeleteRow"
     | "rowMenuItems"
     | "columnDetails"
+    | "currentSchema"
+    | "currentTable"
   > & {
     columnNames: string[];
     stateKey?: string;
@@ -129,7 +133,11 @@ export function DataTableBody({
   columnDetails,
   stateKey,
   watchScope,
+  currentSchema,
+  currentTable,
 }: Props) {
+  const connection = useActiveConnection();
+  const caps = useActiveCapabilities();
   const monochromeCells = useSettingsStore((state) => state.monochromeCells);
   const [rules] = useTableViewState(stateKey, "rowRules", []);
   const { changedRows } = useContext(RowWatchContext);
@@ -150,7 +158,7 @@ export function DataTableBody({
             const tr = (event.target as HTMLElement).closest<HTMLTableRowElement>("tr[data-ctid]");
             const ctid = tr?.dataset.ctid;
             const row = ctid ? rows[Number(tr?.dataset.rowIndex)] : undefined;
-            if (!ctid || !row || (!hasRowActions && !watchScope)) {
+            if (!ctid || !row || (!hasRowActions && !watchScope && !currentTable)) {
               event.stopPropagation();
               return;
             }
@@ -236,6 +244,21 @@ export function DataTableBody({
       {menuRow && (
         <DataTableRowMenu
           menuRow={menuRow}
+          selectedRows={
+            markedRows.has(menuRow.original)
+              ? rows.map((row) => row.original).filter((row) => markedRows.has(row))
+              : [menuRow.original]
+          }
+          insertTarget={
+            currentTable && caps.query_language !== "redis" && caps.query_language !== "json"
+              ? {
+                  schema: currentSchema,
+                  table: currentTable,
+                  columns: columnNames,
+                  kind: connection?.kind,
+                }
+              : undefined
+          }
           rowOffset={rowOffset}
           columns={visibleColumns.map((column) => column.id).filter((id) => id !== "__row_index__")}
           canDuplicate={!!onInsertRow}

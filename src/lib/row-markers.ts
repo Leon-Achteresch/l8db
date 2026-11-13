@@ -8,3 +8,15 @@ export function stableMarkerKey(row: unknown, primaryKeys: string[] = []): strin
   if (value._id != null) return `document:${JSON.stringify(value._id)}`;
   return undefined;
 }
+
+export function markRowRange<T, K>(
+  keys: Set<K | T>,
+  rows: T[],
+  from: number,
+  to: number,
+  keyOf: (row: T) => K | T,
+): Set<K | T> {
+  const end = Math.max(from, to);
+  for (let index = Math.min(from, to); index <= end; index++) keys.add(keyOf(rows[index]));
+  return keys;
+}

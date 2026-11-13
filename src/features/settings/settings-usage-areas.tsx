@@ -13,7 +13,7 @@ interface Props {
 export function SettingsUsageAreas({ summary }: Props) {
   return (
     <div className="grid gap-4 @min-[38rem]:grid-cols-2">
-      <section className="rounded-xl border p-4" aria-labelledby="usage-areas-heading">
+      <section className="rounded-xl bg-muted/40 p-4" aria-labelledby="usage-areas-heading">
         <h3 id="usage-areas-heading" className="text-sm font-medium">
           Häufig genutzte Bereiche
         </h3>
@@ -35,7 +35,7 @@ export function SettingsUsageAreas({ summary }: Props) {
           </ul>
         )}
       </section>
-      <section className="rounded-xl border p-4" aria-labelledby="usage-paths-heading">
+      <section className="rounded-xl bg-muted/40 p-4" aria-labelledby="usage-paths-heading">
         <h3 id="usage-paths-heading" className="text-sm font-medium">
           Häufige Bedienwege
         </h3>

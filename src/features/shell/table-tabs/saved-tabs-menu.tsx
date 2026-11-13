@@ -1,3 +1,4 @@
+import { useHotkey } from "@tanstack/react-hotkeys";
 import {
   BookmarkIcon,
   ClipboardPasteIcon,
@@ -6,6 +7,7 @@ import {
   TableIcon,
   Trash2Icon,
 } from "lucide-react";
+import { useEffect } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
 import {
@@ -14,11 +16,15 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { formatHotkeyDisplay, useResolvedHotkey } from "@/lib/hotkeys";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { useSavedTabsStore } from "@/lib/saved-tabs";
 import { copySharedTabLink, openLinkFromClipboard, requestSharedTab } from "@/lib/shared-tab-open";
+import { listenForSharedTabLinks } from "@/lib/shared-tab-paste";
 import { sharedTabSource } from "@/lib/shared-tabs";
 import { iconButton } from "./constants";
 
@@ -26,12 +32,18 @@ export function SavedTabsMenu() {
   const saved = useSavedTabsStore((state) => state.saved);
   const removeTab = useSavedTabsStore((state) => state.removeTab);
   const feature = useNewFeatureVisibility<HTMLButtonElement>("workspace.saved-tabs");
+  const linkFeature = useNewFeatureVisibility<HTMLDivElement>("workspace.saved-tabs.paste-link");
+  const linkNew = useHasNewFeatures("workspace.saved-tabs.paste-link");
+  const openLinkHotkey = useResolvedHotkey("tab.openLink");
+  useHotkey(openLinkHotkey, () => void openLinkFromClipboard(), { ignoreInputs: true });
+  useEffect(listenForSharedTabLinks, []);
   const label = saved.length ? `Gespeicherte Tabs (${saved.length})` : "Gespeicherte Tabs";
   return (
     <DropdownMenu>
       <Tooltip content={label} side="bottom" wrapperClassName="shrink-0">
         <DropdownMenuTrigger asChild>
           <button
+            data-feature="workspace.saved-tabs"
             ref={feature.ref}
             type="button"
             aria-label={label}
@@ -39,7 +51,7 @@ export function SavedTabsMenu() {
           >
             <BookmarkIcon className="size-3.5" />
             {saved.length > 0 && <span className="text-[10px] tabular-nums">{saved.length}</span>}
-            {feature.isNew && <NewBadge className="absolute -top-1.5 left-4" />}
+            {(feature.isNew || linkNew) && <NewBadge className="absolute -top-1.5 left-4" />}
           </button>
         </DropdownMenuTrigger>
       </Tooltip>
@@ -47,9 +59,11 @@ export function SavedTabsMenu() {
         align="end"
         className="max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] w-80 max-w-[calc(100vw-2rem)]"
       >
-        <DropdownMenuItem onSelect={() => void openLinkFromClipboard()}>
+        <DropdownMenuItem ref={linkFeature.ref} onSelect={() => void openLinkFromClipboard()}>
           <ClipboardPasteIcon className="size-3.5 text-muted-foreground" />
-          Link einfügen
+          <span className="flex-1">Link öffnen</span>
+          {linkFeature.isNew && <NewBadge />}
+          <DropdownMenuShortcut>{formatHotkeyDisplay(openLinkHotkey)}</DropdownMenuShortcut>
         </DropdownMenuItem>
         {saved.length > 0 && (
           <>

@@ -59,7 +59,7 @@ export function McpLimitField({
         ) : null}
       </div>
 
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground/70 font-mono">
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground font-mono">
         <span>Min: {min}</span>
         <span>Max: {max}</span>
       </div>

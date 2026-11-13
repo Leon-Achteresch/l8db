@@ -69,6 +69,7 @@ export function McpHeader({ enabled, exposedCount, onToggleEnabled }: McpHeaderP
               {enabled ? "Server aktiv" : "Server pausiert"}
             </span>
             <Switch
+              data-feature="mcp.server"
               checked={enabled}
               onCheckedChange={onToggleEnabled}
               aria-label="MCP-Server aktivieren oder pausieren"

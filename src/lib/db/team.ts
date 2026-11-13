@@ -6,6 +6,7 @@ export interface TeamFile {
   path: string;
   exists: boolean;
   connections: unknown[];
+  tips?: unknown[];
   organization?: OrganizationPolicy;
 }
 

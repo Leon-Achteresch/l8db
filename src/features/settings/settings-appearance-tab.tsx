@@ -10,12 +10,7 @@ export function SettingsAppearanceTab() {
   const setDbThemes = useSettingsStore((state) => state.setDbThemes);
   return (
     <div className="@container space-y-4">
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Darstellung</h2>
-        <p className="text-xs text-muted-foreground">
-          Erscheinungsbild, Oberflächengröße und Abstände anpassen.
-        </p>
-      </div>
+      <h2 className="text-base font-semibold tracking-tight">Darstellung</h2>
       <div className="space-y-3">
         <SettingsRow settingId="theme" stacked>
           <SettingsColorScheme />

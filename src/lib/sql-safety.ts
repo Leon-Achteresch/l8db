@@ -1,3 +1,4 @@
+import { MONGO_WRITING_STAGE, REDIS_READ } from "@/lib/read-only-statement";
 import { splitSqlStatements } from "@/lib/sql-statements";
 
 interface Token {
@@ -129,6 +130,125 @@ const MONGO_REASONS: Record<string, string> = {
   dropDatabase: "Datenbank löschen",
 };
 
+const REDIS_DESTRUCTIVE: Record<string, string> = {
+  FLUSHALL: "Alle Schlüssel löschen",
+  FLUSHDB: "Alle Schlüssel löschen",
+  SHUTDOWN: "Server beenden",
+  SWAPDB: "Datenbanken tauschen",
+  RENAME: "Schlüssel umbenennen, Ziel wird überschrieben",
+  MIGRATE: "Schlüssel auf anderen Server verschieben",
+  DEBUG: "Debug-Befehl",
+  REPLICAOF: "Replikation umstellen",
+  SLAVEOF: "Replikation umstellen",
+  "CONFIG SET": "Serverkonfiguration ändern",
+  "CONFIG RESETSTAT": "Serverstatistik zurücksetzen",
+  "CONFIG REWRITE": "Konfigurationsdatei überschreiben",
+  "SCRIPT FLUSH": "Skripte löschen",
+  "FUNCTION FLUSH": "Funktionen löschen",
+  "FUNCTION DELETE": "Funktion löschen",
+  "CLUSTER RESET": "Cluster zurücksetzen",
+  "MODULE UNLOAD": "Modul entladen",
+  "ACL DELUSER": "Benutzer löschen",
+  "CLIENT KILL": "Verbindungen trennen",
+};
+
+function redisDestructive(line: string, strict: boolean): string | null {
+  const words = line
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.toUpperCase());
+  const reason = REDIS_DESTRUCTIVE[`${words[0]} ${words[1]}`] ?? REDIS_DESTRUCTIVE[words[0]];
+  if (reason) return reason;
+  if (words[0] === "RESTORE" && words.includes("REPLACE")) return "Schlüssel überschreiben";
+  if (strict && (words[0] === "DEL" || words[0] === "UNLINK")) return "Schlüssel löschen";
+  return null;
+}
+
+const ES_METHODS = new Set(["GET", "POST", "PUT", "DELETE", "HEAD", "PATCH"]);
+const ES_READ_ENDPOINTS = new Set([
+  "_search",
+  "_count",
+  "_msearch",
+  "_sql",
+  "_mget",
+  "_field_caps",
+  "_validate",
+  "_explain",
+  "_termvectors",
+  "_mtermvectors",
+  "_pit",
+]);
+
+interface EsRequest {
+  method: string;
+  path: string;
+}
+
+export function elasticRequests(sql: string): EsRequest[] | null {
+  const requests: EsRequest[] = [];
+  for (const line of sql.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("#") || trimmed.startsWith("//")) continue;
+    const [head = "", ...rest] = trimmed.split(/\s+/);
+    const path = rest.join(" ").trim();
+    if (ES_METHODS.has(head.toUpperCase()) && path && !path.startsWith("{"))
+      requests.push({ method: head.toUpperCase(), path: path.replace(/^\/+/, "") });
+    else if (!requests.length && trimmed) return null;
+  }
+  return requests.length ? requests : null;
+}
+
+function elasticSegments(path: string): string[] | null {
+  const segments = path.split(/[?#]/)[0].split(/[/\\]/);
+  try {
+    const decoded = segments.map((segment) => decodeURIComponent(segment));
+    return decoded.some((part) => part === "." || part === ".." || /[/\\]/.test(part))
+      ? null
+      : decoded;
+  } catch {
+    return null;
+  }
+}
+
+function elasticReads(request: EsRequest): boolean {
+  if (request.method === "GET" || request.method === "HEAD") return true;
+  if (request.method !== "POST") return false;
+  const endpoint = elasticSegments(request.path)?.find((segment) => segment.startsWith("_"));
+  return endpoint !== undefined && ES_READ_ENDPOINTS.has(endpoint);
+}
+
+function elasticDestructive(request: EsRequest, strict: boolean): string | null {
+  const segments = elasticSegments(request.path) ?? [];
+  if (segments.includes("_delete_by_query")) return "Dokumente per Query löschen";
+  if (request.method !== "DELETE") return null;
+  const target = segments.filter(Boolean);
+  if (target.length === 1 && !target[0].startsWith("_")) return "Index löschen";
+  if (target[0] === "_data_stream") return "Data Stream löschen";
+  if (target.length === 1 || target[0].startsWith("_")) return "Objekt löschen";
+  return strict ? "Dokument löschen" : null;
+}
+
+const FLUX_WRITE = /\|>\s*(?:to|wideTo)\s*\(|\.to\s*\(/;
+const FLUX_START = /^\s*(?:from|import|buckets|option)\b|\|>/;
+const LINE_PROTOCOL = /^[^\s,#"(=]+(,\S+)?\s+[^\s=]+=\S.*$/;
+const SQL_START = /^(select|show|explain|with|delete|drop|create|insert|alter|update)\b/i;
+
+function influxWrites(text: string): boolean | null {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"));
+  if (
+    lines.length &&
+    lines.every((line) => LINE_PROTOCOL.test(line) && !SQL_START.test(line) && !line.includes("|>"))
+  )
+    return true;
+  if (FLUX_START.test(text)) return FLUX_WRITE.test(text);
+  return null;
+}
+
+const MONGO_MAP_REDUCE = /\.mapReduce\s*\(|["']?mapReduce["']?\s*:/;
+
 export function destructiveStatements(
   sql: string,
   dialect?: string,
@@ -136,16 +256,20 @@ export function destructiveStatements(
 ): DestructiveStatement[] {
   if (dialect === "redis")
     return sql.split(/\r?\n/).flatMap((line) => {
-      const word = line.trim().split(/\s+/)[0]?.toUpperCase() ?? "";
-      if (word === "FLUSHALL" || word === "FLUSHDB")
-        return [{ sql: line.trim(), reason: "Alle Schlüssel löschen" }];
-      if (options.strict && (word === "DEL" || word === "UNLINK"))
-        return [{ sql: line.trim(), reason: "Schlüssel löschen" }];
-      return [];
+      const reason = redisDestructive(line, options.strict === true);
+      return reason ? [{ sql: line.trim(), reason }] : [];
     });
   if (dialect === "mongodb") {
     const match = MONGO_DESTRUCTIVE.exec(sql);
     return match ? [{ sql: sql.trim(), reason: MONGO_REASONS[match[1] ?? match[2]] }] : [];
+  }
+  if (dialect === "elasticsearch") {
+    const requests = elasticRequests(sql);
+    if (requests)
+      return requests.flatMap((request) => {
+        const reason = elasticDestructive(request, options.strict === true);
+        return reason ? [{ sql: `${request.method} ${request.path}`, reason }] : [];
+      });
   }
   return splitSqlStatements(sql, dialect).statements.flatMap((statement) => {
     const words = sqlTokens(statement.text, dialect);
@@ -167,6 +291,10 @@ export function destructiveStatements(
       if (options.strict && token.word === "UPDATE" && withoutWhere(words, i))
         reason = "UPDATE ohne WHERE";
       if (options.strict && token.word === "ALTER" && i === 0) reason = "Struktur ändern";
+      if (dialect === "clickhouse" && words[0]?.word === "ALTER" && token.depth === 0) {
+        if (token.word === "DELETE") reason = "Mutation: Zeilen löschen";
+        else if (options.strict && token.word === "UPDATE") reason = "Mutation: Zeilen ändern";
+      }
     }
     return reason ? [{ sql: statement.text, reason }] : [];
   });
@@ -186,52 +314,24 @@ const READ_WORDS = new Set([
 const MODIFYING_WORDS = new Set(["INSERT", "UPDATE", "DELETE", "MERGE", "INTO"]);
 const MONGO_WRITE =
   /\.(insert|insertOne|insertMany|update|updateOne|updateMany|replaceOne|delete|deleteOne|deleteMany|remove|drop|dropDatabase|findOneAndUpdate|findOneAndReplace|findOneAndDelete|findAndModify|bulkWrite|createCollection|createIndex|createIndexes|dropIndex|dropIndexes|renameCollection)\s*\(|"(insert|update|delete|drop|create|createIndexes|findAndModify|renameCollection|dropDatabase)"\s*:/;
-const REDIS_READ = new Set([
-  "GET",
-  "MGET",
-  "HGET",
-  "HMGET",
-  "HGETALL",
-  "HKEYS",
-  "HVALS",
-  "HLEN",
-  "HEXISTS",
-  "SCAN",
-  "HSCAN",
-  "SSCAN",
-  "ZSCAN",
-  "KEYS",
-  "TYPE",
-  "TTL",
-  "PTTL",
-  "EXISTS",
-  "STRLEN",
-  "LRANGE",
-  "LLEN",
-  "LINDEX",
-  "SMEMBERS",
-  "SCARD",
-  "SISMEMBER",
-  "ZRANGE",
-  "ZRANGEBYSCORE",
-  "ZREVRANGE",
-  "ZCARD",
-  "ZSCORE",
-  "XRANGE",
-  "XREVRANGE",
-  "XLEN",
-  "INFO",
-  "PING",
-  "DBSIZE",
-  "MEMORY",
-  "OBJECT",
-  "GETRANGE",
-]);
 
 export function writesData(sql: string, dialect?: string): boolean {
   const text = sql.trim();
   if (!text) return false;
-  if (dialect === "mongodb") return MONGO_WRITE.test(text);
+  if (dialect === "mongodb")
+    return (
+      MONGO_WRITE.test(text) ||
+      MONGO_WRITING_STAGE.test(text) ||
+      (MONGO_MAP_REDUCE.test(text) && !/\binline\b/.test(text))
+    );
+  if (dialect === "elasticsearch") {
+    const requests = elasticRequests(text);
+    if (requests) return !requests.every(elasticReads);
+  }
+  if (dialect === "influxdb") {
+    const writes = influxWrites(text);
+    if (writes !== null) return writes;
+  }
   if (dialect === "redis")
     return text
       .split(/\r?\n/)

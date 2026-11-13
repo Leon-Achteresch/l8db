@@ -10,13 +10,30 @@ export function withoutValues(message: string): string {
     .replace(/=\([^)]*\)/g, "=(…)");
 }
 
-export async function handleChatIssueRequest(): Promise<{
+const PENDING_SCREENSHOT_MS = 10 * 60_000;
+let pendingScreenshot: { png: string; at: number; ref: string } | null = null;
+
+export function setPendingIssueScreenshot(png: string | null): string | null {
+  pendingScreenshot = png
+    ? { png, at: Date.now(), ref: `Screenshot-Ref: ${crypto.randomUUID().slice(0, 8)}` }
+    : null;
+  return pendingScreenshot?.ref ?? null;
+}
+
+function takePendingScreenshot(texts: readonly string[]): string | null {
+  const pending = pendingScreenshot;
+  pendingScreenshot = null;
+  if (!pending || Date.now() - pending.at >= PENDING_SCREENSHOT_MS) return null;
+  return texts.some((text) => text.includes(pending.ref)) ? pending.png : null;
+}
+
+export async function handleChatIssueRequest(texts: readonly string[] = []): Promise<{
   diagnostics: string;
   screenshot: string | null;
 }> {
   const [diagnostics, screenshot] = await Promise.all([
     collectDiagnosticText().catch(() => ""),
-    captureRedactedScreenshot().catch(() => null),
+    takePendingScreenshot(texts) ?? captureRedactedScreenshot().catch(() => null),
   ]);
   const failed = useQueryHistoryStore
     .getState()

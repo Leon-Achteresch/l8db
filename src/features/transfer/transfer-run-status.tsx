@@ -74,21 +74,31 @@ export function TransferRunStatus({
     <div className="flex flex-col gap-1 text-sm">
       <span className="flex items-center gap-2 font-medium text-destructive">
         <CircleXIcon className="size-4" />
-        Transfer fehlgeschlagen.{" "}
-        {outcome.rolledBack
-          ? outcome.atomic
-            ? "Die Zieltransaktion wurde zurückgerollt; das Ziel ist unverändert."
-            : "Alle angelegten Objekte wurden wieder entfernt."
-          : "Das Ziel ist nicht vollständig bereinigt."}
+        {outcome.kept ? "Transfer unvollständig." : "Transfer fehlgeschlagen."}{" "}
+        {outcome.kept
+          ? `${outcome.rows} Zeilen in ${outcome.tables.length} Tabellen übertragen; sie bleiben im Ziel.`
+          : outcome.rolledBack
+            ? outcome.atomic
+              ? "Die Zieltransaktion wurde zurückgerollt; das Ziel ist unverändert."
+              : "Alle angelegten Objekte wurden wieder entfernt."
+            : "Das Ziel ist nicht vollständig bereinigt."}
       </span>
       {outcome.error && (
         <pre className="font-mono text-xs whitespace-pre-wrap text-destructive">
           {outcome.error}
         </pre>
       )}
+      {outcome.kept &&
+        outcome.warnings.map((warning) => (
+          <span key={warning} className="text-xs text-amber-700 dark:text-amber-400">
+            {warning}
+          </span>
+        ))}
       {outcome.leftovers.length > 0 && (
         <div className="text-xs">
-          <p className="font-medium">Manuell zu entfernen:</p>
+          <p className="font-medium">
+            {outcome.kept ? "Manuell zu prüfen:" : "Manuell zu entfernen:"}
+          </p>
           <ul className="list-disc pl-4 font-mono">
             {outcome.leftovers.map((entry) => (
               <li key={entry}>{entry}</li>

@@ -3,7 +3,8 @@ import { Plug, PlugZap } from "lucide";
 import { ChevronRight, Menu } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useId, useState } from "react";
+import { SelectionHighlight } from "@/components/motion/selection-highlight";
 import { Tooltip } from "@/components/motion/tooltip";
 import {
   DropdownMenu,
@@ -26,11 +27,13 @@ const COLLAPSIBLE_URLS = new Set([
   "/er-diagram",
   "/saved-plan",
   "/query-builder",
+  "/discover",
 ]);
 
 const connectItem: AppSidebarNavItem = {
   title: "Verbindungen",
   url: "/connections",
+  feature: "connections",
   icon: Plug,
   activeIcon: PlugZap,
 };
@@ -40,6 +43,7 @@ function isNavActive(url: string, pathname: string) {
 }
 
 export function AppHeaderNavigation() {
+  const highlightId = useId();
   const caps = useActiveCapabilities();
   const easyMode = useSettingsStore((state) => state.easyMode);
   const seenFeatures = useSeenNewFeatures();
@@ -75,13 +79,20 @@ export function AppHeaderNavigation() {
           preload={item.url === "/query" || item.url === "/compare" ? false : "intent"}
           preloadDelay={80}
           aria-label={item.title}
+          data-feature={item.feature}
           aria-current={active ? "page" : undefined}
           className={cn(
-            "relative inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
+            "motion-nav-item relative isolate inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors",
             "hover:bg-muted hover:text-foreground",
-            active && "bg-primary/12 text-foreground hover:bg-primary/12",
+            active && "text-foreground",
           )}
         >
+          {active && (
+            <SelectionHighlight
+              id={`header-nav-${highlightId}`}
+              className="pointer-events-none absolute inset-0 -z-10 rounded-[inherit] bg-primary/12 ring-1 ring-primary/10"
+            />
+          )}
           <MorphIcon
             icon={active ? item.activeIcon : item.icon}
             reducedMotion="user"

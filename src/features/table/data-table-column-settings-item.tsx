@@ -36,7 +36,7 @@ export function DataTableColumnSettingsItem({
         type="button"
         ref={handleRef}
         aria-label={`${id} verschieben`}
-        className="shrink-0 cursor-grab touch-none rounded p-0.5 text-muted-foreground/50 hover:text-muted-foreground active:cursor-grabbing"
+        className="shrink-0 cursor-grab touch-none rounded p-0.5 text-muted-foreground hover:text-foreground active:cursor-grabbing"
       >
         <GripVerticalIcon className="size-3.5" />
       </button>

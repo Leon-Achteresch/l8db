@@ -2,7 +2,7 @@ import { CheckIcon } from "lucide-react";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { renderTypeIcon } from "@/features/table/data-table/render-type-icon";
 import { CATEGORY_BAR_CLASSES, CATEGORY_PILL_CLASSES } from "@/lib/category-colors";
-import { categoryColorIndex } from "@/lib/grid-cell-format";
+import { categoryColorMap } from "@/lib/grid-cell-format";
 import type { TableStyle } from "@/lib/table-style";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +30,9 @@ const ROWS = [
   ["1052", "Luca Wagner", "pending", "289,00", false, "2026-09-10 17:05", "vor 28 Tagen", "17:05"],
   ["1053", "Mia Becker", "paid", "72,30", true, "2026-09-09 08:49", "vor 29 Tagen", "08:49"],
 ] as const;
+
+const STATUSES = ["paid", "shipped", "pending", "refunded"];
+const STATUS_COLORS = categoryColorMap(STATUSES);
 
 const WIDTHS: Record<TableStyle, string> = {
   classic: "40px 110px 84px 80px 70px 120px",
@@ -105,7 +108,7 @@ export function TableStylePreview({ style }: { style: TableStyle }) {
                 )}
               >
                 {classic ? null : (
-                  <span className="shrink-0 text-muted-foreground/60">
+                  <span className="shrink-0 text-muted-foreground">
                     {renderTypeIcon(column.icon, "size-[6px]")}
                   </span>
                 )}
@@ -119,12 +122,12 @@ export function TableStylePreview({ style }: { style: TableStyle }) {
               {style === "profile" ? (
                 column.name === "status" ? (
                   <div className="flex h-[3px] w-full gap-px overflow-hidden rounded-full">
-                    {["paid", "shipped", "pending", "refunded"].map((value, part) => (
+                    {STATUSES.map((value, part) => (
                       <span
                         key={value}
                         className={cn(
                           "h-full opacity-80",
-                          CATEGORY_BAR_CLASSES[categoryColorIndex(value)],
+                          CATEGORY_BAR_CLASSES[STATUS_COLORS.get(value) ?? 0],
                         )}
                         style={{ width: `${[42, 29, 15, 14][part]}%` }}
                       />
@@ -159,7 +162,7 @@ export function TableStylePreview({ style }: { style: TableStyle }) {
             <div
               key={`${row[0]}-index`}
               className={cn(
-                "flex items-center justify-center border-r border-b border-border/40 text-[6.5px] text-muted-foreground/60",
+                "flex items-center justify-center border-r border-b border-border/40 text-[6.5px] text-muted-foreground",
                 rowHeight,
               )}
             >
@@ -175,7 +178,7 @@ export function TableStylePreview({ style }: { style: TableStyle }) {
                     <span
                       className={cn(
                         "inline-flex items-center gap-[2px] rounded-full px-[3px] py-[1.5px] font-sans text-[6.5px] font-medium",
-                        CATEGORY_PILL_CLASSES[categoryColorIndex(String(raw))],
+                        CATEGORY_PILL_CLASSES[STATUS_COLORS.get(String(raw)) ?? 0],
                       )}
                     >
                       <span className="size-[3px] rounded-full bg-current" />
@@ -186,7 +189,7 @@ export function TableStylePreview({ style }: { style: TableStyle }) {
                   content = raw ? (
                     <CheckIcon className="size-2 text-emerald-500" />
                   ) : (
-                    <span className="text-muted-foreground/50">—</span>
+                    <span className="text-muted-foreground">—</span>
                   );
                 if (column.name === "created_at")
                   content = <span className="font-sans">{row[6]}</span>;

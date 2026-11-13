@@ -8,6 +8,7 @@ export type GridColumnStyle = {
   numeric: boolean;
   primaryKey: boolean;
   categorical: boolean;
+  categoryColors: ReadonlyMap<string, number> | null;
   profile: ColumnProfile | null;
 };
 

@@ -18,6 +18,7 @@ export function createCloseActions(
   | "reopenClosedTab"
   | "forgetClosedTab"
   | "clearTabsForConnection"
+  | "discardTabs"
   | "reorderTabs"
 > {
   return {
@@ -136,6 +137,19 @@ export function createCloseActions(
           return { tabs: [], tabsByConnection };
         }
         return { tabsByConnection };
+      }),
+
+    discardTabs: (connectionId, keys) =>
+      set((state) => {
+        const drop = new Set(keys);
+        const tabs = (state.tabsByConnection[connectionId] ?? []).filter(
+          (tab) => !drop.has(tabKey(tab)),
+        );
+        const active = keyForConnection(useConnectionsStore.getState().activeId) === connectionId;
+        return {
+          tabsByConnection: { ...state.tabsByConnection, [connectionId]: tabs },
+          ...(active ? { tabs: state.tabs.filter((tab) => !drop.has(tabKey(tab))) } : {}),
+        };
       }),
 
     reorderTabs: (fromIndex, toIndex) =>

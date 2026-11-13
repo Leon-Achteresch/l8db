@@ -267,3 +267,15 @@ export function dropColumnDescription(kind: DatabaseKind | undefined): string {
 
 export const DEFAULT_EXPRESSION_HINT =
   "Standardwert als SQL-Ausdruck: Text in einfachen Anführungszeichen ('abc'), Zahlen und Funktionen direkt (0, now()).";
+
+const SIZED_TYPE = /^([a-z_][a-z0-9_ ]*?)\s*\(\s*(\d+|max)\s*\)$/i;
+
+export function typeLength(value: string): { base: string; length: string } | null {
+  const match = SIZED_TYPE.exec(value.trim());
+  if (!match || !/char|binary|raw/i.test(match[1])) return null;
+  return { base: match[1], length: match[2] };
+}
+
+export function isValidLength(length: string): boolean {
+  return /^max$/i.test(length) || /^[1-9]\d{0,9}$/.test(length);
+}

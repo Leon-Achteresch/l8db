@@ -83,7 +83,7 @@ export function LiveKpiTiles({ m }: { m: LiveMonitorState }) {
         }
       />
       <LiveStatTile
-        label="Verbindungen"
+        label="Offene Verbindungen"
         icon={NetworkIcon}
         value={formatCount(connections)}
         suffix={maxConnections ? `von ${formatCount(maxConnections)}` : null}

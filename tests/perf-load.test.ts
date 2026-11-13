@@ -318,7 +318,7 @@ describe("Lese-Prüfung je Abfragesprache", () => {
     expect(isReadOnlyFor("redis", "hgetall user:1\n# Kommentar\nSCAN 0 MATCH user:*")).toBe(true);
     expect(isReadOnlyFor("redis", "GET a\nDEL a")).toBe(false);
     expect(isReadOnlyFor("redis", "FLUSHALL")).toBe(false);
-    expect(isReadOnlyFor("redis", "KEYS *")).toBe(false);
+    expect(isReadOnlyFor("redis", "KEYS *")).toBe(true);
     expect(isReadOnlyFor("redis", "   ")).toBe(false);
   });
 

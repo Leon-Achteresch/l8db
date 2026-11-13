@@ -10,6 +10,7 @@ import {
   TableIcon,
 } from "lucide-react";
 import {
+  Fragment,
   lazy,
   type ReactNode,
   Suspense,
@@ -19,6 +20,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { HotkeyKbd } from "@/components/hotkey-kbd";
 import {
   IconMenu,
   IconMenuContent,
@@ -64,6 +66,12 @@ const COPY_FORMAT_ICONS: Record<CopyFormat, typeof CopyIcon> = {
   tsv: SheetIcon,
   markdown: HashIcon,
 };
+
+const RUN_HINTS = [
+  ["query.run", "Ausführen"],
+  ["query.runSelection", "Markierung ausführen"],
+  ["query.runStatement", "Statement am Cursor"],
+] as const;
 
 const ResultChartView = lazy(() =>
   import("./result-chart/result-chart-view").then((m) => ({ default: m.ResultChartView })),
@@ -147,16 +155,16 @@ export function QueryResultWorkbench({
     return (
       <div className="relative flex h-full items-center justify-center bg-muted/10 p-8">
         <SeasonalCorner className="size-24 text-foreground/20" />
-        <div className="max-w-sm space-y-3 text-center">
-          <div className="mx-auto flex size-10 items-center justify-center rounded-lg border bg-background font-mono text-lg text-muted-foreground">
-            ↳
-          </div>
-          <p className="text-sm font-medium">Bereit für deine nächste Abfrage</p>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            SQL schreiben, einen Bereich markieren oder ein einzelnes Statement ausführen.
-            Ergebnisse und Meldungen erscheinen hier.
-          </p>
-        </div>
+        <dl className="grid grid-cols-[auto_auto] items-center gap-x-4 gap-y-2.5 text-xs text-muted-foreground">
+          {RUN_HINTS.map(([command, label]) => (
+            <Fragment key={command}>
+              <dt className="justify-self-end">
+                <HotkeyKbd command={command} />
+              </dt>
+              <dd>{label}</dd>
+            </Fragment>
+          ))}
+        </dl>
       </div>
     );
   if (!result.columns.length)

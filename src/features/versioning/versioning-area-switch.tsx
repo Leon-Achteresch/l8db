@@ -26,7 +26,12 @@ export function VersioningAreaSwitch({
       className={cn("shrink-0 px-4 pb-3", className)}
     >
       <TabsList aria-label="Art der Versionierung" className="w-full">
-        <TabsTrigger ref={databaseFeature.ref} value="database" className="gap-1.5 text-xs">
+        <TabsTrigger
+          ref={databaseFeature.ref}
+          value="database"
+          className="gap-1.5 text-xs"
+          data-feature="versioning.database"
+        >
           <DatabaseIcon className="size-3.5" />
           Datenbank
           {databaseFeature.isNew && <NewBadge />}

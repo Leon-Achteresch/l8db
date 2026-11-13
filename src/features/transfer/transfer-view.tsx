@@ -115,6 +115,7 @@ export function TransferView() {
             Skript anzeigen
           </Button>
           <Button
+            data-feature="transfer.start"
             size="sm"
             onClick={() =>
               plan?.replace && plan.replaced.length > 0
@@ -220,7 +221,7 @@ export function TransferView() {
             foldNames={transfer.foldNames}
             onFoldNames={transfer.setFoldNames}
             replace={transfer.replace}
-            mirror={transfer.mirror}
+            whole={transfer.whole}
             content={transfer.content}
             onReplace={transfer.setReplace}
             onShowPlan={setPlanTab}

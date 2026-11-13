@@ -156,6 +156,12 @@ async function optional<T>(run: Promise<T>, fallback: T): Promise<T> {
   }
 }
 
+const IDENTIFIER = '(?:"(?:[^"]|"")+"|[A-Za-z_][A-Za-z0-9_$#]*)';
+const OWNER = new RegExp(
+  `^(CREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:(?:NO\\s+)?FORCE\\s+)?(?:(?:NON)?EDITION(?:ING|ABLE)\\s+(?:EDITIONING\\s+)?)?(?:FUNCTION|PROCEDURE|PACKAGE(?:\\s+BODY)?|VIEW)\\s+)${IDENTIFIER}\\s*\\.\\s*(?=${IDENTIFIER})`,
+  "i",
+);
+
 export function normalizeDefinition(text: string): string {
   return text
     .replace(/\r\n?/g, "\n")
@@ -167,21 +173,31 @@ export async function loadCompareDefinition(
   connection: SavedConnection,
   side: CompareSideSelection,
 ): Promise<string> {
-  return normalizeDefinition(await loadRawDefinition(connection, side));
+  return normalizeDefinition(await loadRawDefinition(connection, side, false));
+}
+
+export async function loadPortableDefinition(
+  connection: SavedConnection,
+  side: CompareSideSelection,
+): Promise<string> {
+  return normalizeDefinition(await loadRawDefinition(connection, side, true));
 }
 
 async function loadRawDefinition(
   connection: SavedConnection,
   side: CompareSideSelection,
+  portable: boolean,
 ): Promise<string> {
   if (!side.schema) return "";
   const url = effectiveConnectionString(connection);
   const database = side.database ?? undefined;
   const schema = side.schema;
+  const unowned = portable && connection.kind === "oracle";
+  const source = (text: string) => (unowned ? text.replace(OWNER, "$1") : text);
 
   if (side.objectType === "view") {
     if (!side.objectName) return "";
-    return getViewDefinition(connection.kind, url, schema, side.objectName, database);
+    return source(await getViewDefinition(connection.kind, url, schema, side.objectName, database));
   }
 
   if (side.objectType === "materialized_view") {
@@ -194,7 +210,7 @@ async function loadRawDefinition(
 
   if (side.objectType === "routine" || side.objectType === "procedure") {
     if (!side.objectOid) return "";
-    return getFunctionDefinition(connection.kind, url, side.objectOid, database);
+    return source(await getFunctionDefinition(connection.kind, url, side.objectOid, database));
   }
 
   if (side.objectType === "package") {
@@ -214,12 +230,8 @@ async function loadRawDefinition(
       ),
       "",
     );
-    return [
-      `PACKAGE SPEC ${schema}.${side.objectName}`,
-      spec,
-      `PACKAGE BODY ${schema}.${side.objectName}`,
-      body,
-    ]
+    const label = unowned ? side.objectName : `${schema}.${side.objectName}`;
+    return [`PACKAGE SPEC ${label}`, source(spec), `PACKAGE BODY ${label}`, source(body)]
       .filter((part) => part.length > 0)
       .join("\n\n");
   }
@@ -229,7 +241,8 @@ async function loadRawDefinition(
     const sequences = await listSequences(connection.kind, url, database, schema);
     const match = sequences.find((item) => item.name === side.objectName);
     if (!match) throw new Error(`Sequenz ${schema}.${side.objectName} nicht gefunden.`);
-    return formatSequenceDefinition(match);
+    const text = formatSequenceDefinition(match);
+    return unowned ? text.replace(/^SEQUENCE [^\n]+/, `SEQUENCE ${match.name}`) : text;
   }
 
   if (side.objectType === "table") {

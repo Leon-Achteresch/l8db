@@ -45,7 +45,7 @@ export function AiResultTable({ table }: { table: AiTable }) {
                   )}
                   title={row[column] ?? ""}
                 >
-                  {row[column] ?? <span className="text-muted-foreground/70">NULL</span>}
+                  {row[column] ?? <span className="text-muted-foreground">NULL</span>}
                 </td>
               ))}
             </tr>

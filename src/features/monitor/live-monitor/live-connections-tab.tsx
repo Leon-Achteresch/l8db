@@ -41,7 +41,7 @@ export function LiveConnectionsTab({ m }: { m: LiveMonitorState }) {
     <TabsContent value="connections" className="mt-4 space-y-4">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <LiveStatTile
-          label="Verbindungen"
+          label="Offene Verbindungen"
           icon={NetworkIcon}
           value={formatCount(m.connections)}
           suffix={max ? `von ${formatCount(max)}` : null}

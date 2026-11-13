@@ -80,7 +80,7 @@ export function CreateTableView() {
         {database && (
           <>
             <span className="text-xs text-muted-foreground">{database}</span>
-            <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/60" />
+            <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
           </>
         )}
         <Input
@@ -90,7 +90,7 @@ export function CreateTableView() {
           aria-label="Schema"
           className="h-7 w-auto min-w-10 border-transparent bg-transparent px-1.5 text-xs text-muted-foreground shadow-none [field-sizing:content] hover:border-input focus-visible:text-foreground dark:bg-transparent"
         />
-        <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/60" />
+        <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <Input
           autoFocus
           value={tableName}

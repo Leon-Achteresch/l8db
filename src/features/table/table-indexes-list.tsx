@@ -42,7 +42,7 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
         <Spinner />
-        Lade Indexes…
+        Lade Indizes…
       </div>
     );
   }
@@ -50,7 +50,7 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex shrink-0 items-center border-b bg-muted/30 px-4 py-2">
-        <span className="text-xs font-medium text-muted-foreground">Indexes</span>
+        <span className="text-xs font-medium text-muted-foreground">Indizes</span>
         <span className="ml-2 text-xs text-muted-foreground">{indexes?.length ?? 0}</span>
         <Button
           size="sm"
@@ -69,7 +69,7 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
             <EmptyMedia variant="icon">
               <LayersIcon />
             </EmptyMedia>
-            <EmptyTitle>Keine Indexes</EmptyTitle>
+            <EmptyTitle>Keine Indizes</EmptyTitle>
             <EmptyDescription>
               Ein Index beschleunigt Abfragen, die nach bestimmten Spalten filtern oder sortieren.
             </EmptyDescription>
@@ -139,7 +139,7 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
                           ))}
                         </div>
                       )}
-                      <p className="font-mono text-[11px] text-muted-foreground/70 break-all">
+                      <p className="font-mono text-[11px] text-muted-foreground break-all">
                         {idx.definition}
                       </p>
                     </div>

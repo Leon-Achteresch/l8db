@@ -120,7 +120,7 @@ export function TableToolbarActions({
           {canTestData && (
             <IconMenuItem
               icon={<SparklesIcon />}
-              label="Testdaten / Maskierte Kopie"
+              label="Testdaten oder maskierte Kopie erzeugen"
               onSelect={() => setTestDataOpen(true)}
             />
           )}
@@ -133,7 +133,7 @@ export function TableToolbarActions({
               <IconMenuSeparator />
               <TableExportMenu
                 exporting={exporting}
-                showSql={caps.query_language !== "redis" && caps.query_language !== "json"}
+                showSql={caps.insert_sql}
                 onCsv={() => setCsvExportOpen(true)}
                 onXlsx={() => setXlsxExportOpen(true)}
                 onFormat={setDataExportFormat}

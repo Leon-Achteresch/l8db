@@ -60,6 +60,7 @@ chat/
 !/docs/integration-tests.md
 !/docs/data-transfer.md
 !/docs/performance.md
+!/docs/update-history.md
 !/docs/workbench-qol.md
 !/docs/feature-videos-plan.md
 !/docs/ssh-network.md

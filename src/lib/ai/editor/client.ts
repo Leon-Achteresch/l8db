@@ -12,6 +12,7 @@ const FAST_ACTIONS = new Set<EditorAiAction>([
   "testdata",
   "summary",
   "filter",
+  "tour",
 ]);
 
 export class EditorAiUnavailable extends Error {}

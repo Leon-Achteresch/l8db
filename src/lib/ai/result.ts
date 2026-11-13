@@ -91,7 +91,7 @@ export function aiFollowups(code: string): string[] {
 }
 
 export function stripAiFollowups(text: string): string {
-  return text.replace(/```followups\n[\s\S]*?(?:```|$)/g, "").trimEnd();
+  return text.replace(/```(?:followups|feature)\n[\s\S]*?(?:```|$)/g, "").trimEnd();
 }
 
 export function aiThreadMarkdown(title: string, messages: AiMessage[]): string {

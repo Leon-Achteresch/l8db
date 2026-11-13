@@ -1,11 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 
+export type CliState = "ready" | "missing" | "not_on_path" | "other";
+
 export interface CliStatus {
   installed: boolean;
+  state: CliState;
   command: string;
   location: string | null;
   target: string;
-  pathHint: string | null;
 }
 
 export function cliStatus(): Promise<CliStatus> {

@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { aiRaster, interleaveAiRich, mergeAiRich, normalizeAiRich } from "../src/lib/ai/rich";
+import {
+  aiRaster,
+  interleaveAiRich,
+  mergeAiRich,
+  normalizeAiRich,
+  sanitizeAiRich,
+} from "../src/lib/ai/rich";
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5XcAAAAASUVORK5CYII=";
@@ -147,4 +153,29 @@ test("tool blocks stay at the text position where they happened", () => {
     { text: "Alt", blocks: [tool("x")] },
     { text: "", blocks: [] },
   ]);
+});
+
+test("tool steps record start and end once while streaming, history keeps them", () => {
+  const tool = (status: string) => ({
+    type: "tool" as const,
+    id: "a",
+    name: "query",
+    status,
+    output: "",
+  });
+  let rich = mergeAiRich([], [tool("running")], 0, 1_000);
+  rich = mergeAiRich(rich, [tool("")], 0, 2_000);
+  expect(rich[0]).toMatchObject({ start: 1_000 });
+  expect(rich[0]).not.toHaveProperty("end");
+  rich = mergeAiRich(rich, [tool("success")], 0, 5_200);
+  rich = mergeAiRich(rich, [tool("success")], 0, 9_000);
+  expect(rich[0]).toMatchObject({ start: 1_000, end: 5_200 });
+  expect(sanitizeAiRich(JSON.parse(JSON.stringify(rich)))[0]).toMatchObject({
+    start: 1_000,
+    end: 5_200,
+  });
+  expect(sanitizeAiRich([{ ...tool("success"), start: "x", end: -1 }])[0]).not.toHaveProperty(
+    "start",
+  );
+  expect(mergeAiRich([], [tool("success")])[0]).not.toHaveProperty("start");
 });

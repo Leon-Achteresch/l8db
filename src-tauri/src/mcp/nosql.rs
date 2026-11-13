@@ -149,6 +149,29 @@ pub fn mongo_command(input: &str) -> Result<Document, String> {
     Ok(command)
 }
 
+pub fn mongo_writes(command: &Document) -> bool {
+    fn stages(value: &Bson) -> bool {
+        match value {
+            Bson::Document(document) => document
+                .iter()
+                .any(|(key, inner)| key == "$out" || key == "$merge" || stages(inner)),
+            Bson::Array(items) => items.iter().any(stages),
+            _ => false,
+        }
+    }
+    let Some((name, _)) = command.iter().next() else {
+        return true;
+    };
+    let map_reduce_out = name.eq_ignore_ascii_case("mapReduce")
+        && command.get("out").is_some_and(|out| {
+            out.as_document()
+                .is_none_or(|doc| !doc.contains_key("inline"))
+        });
+    !MONGO_READ.contains(&name.as_str())
+        || map_reduce_out
+        || stages(&Bson::Document(command.clone()))
+}
+
 pub fn mongo_check(
     command: &Document,
     write: bool,

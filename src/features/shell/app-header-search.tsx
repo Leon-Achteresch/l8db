@@ -1,6 +1,16 @@
 import { useHotkey, useHotkeys } from "@tanstack/react-hotkeys";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Database, Keyboard, Plug, Puzzle, Search, Sparkles, TextSearch } from "lucide-react";
+import {
+  Compass,
+  Database,
+  Keyboard,
+  Plug,
+  Puzzle,
+  Search,
+  Sparkles,
+  TextSearch,
+} from "lucide-react";
 import {
   type CSSProperties,
   lazy,
@@ -18,6 +28,7 @@ import { NewBadge } from "@/components/new-badge";
 import { DynamicIsland } from "@/features/shell/dynamic-island";
 import { useAiStore } from "@/lib/ai/store";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { useExtensionHost } from "@/lib/extensions/react-context";
 import {
   commandById,
@@ -33,6 +44,7 @@ import { supports } from "@/lib/providers";
 import { useAllPackageMembersQuery, useAllSchemaObjectsQuery } from "@/lib/queries";
 import { useSettingsStore } from "@/lib/settings";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
+import { useStudioPalette } from "@/lib/studio-palette";
 import { useTourStore } from "@/lib/tour/store";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +59,11 @@ const ObjectSearchDialog = lazy(() =>
   import("@/features/objects/object-search-dialog").then(({ ObjectSearchDialog }) => ({
     default: ObjectSearchDialog,
   })),
+);
+const PaletteClipPreview = lazy(() =>
+  import("@/features/shell/app-header-search/palette-clip-preview").then(
+    ({ PaletteClipPreview }) => ({ default: PaletteClipPreview }),
+  ),
 );
 const ShortcutsDialog = lazy(() =>
   import("@/features/shell/shortcuts-dialog").then(({ ShortcutsDialog }) => ({
@@ -81,14 +98,22 @@ export function AppHeaderSearch() {
   const shortcutsMounted = useRef(false);
   if (objectSearchOpen) objectSearchMounted.current = true;
   if (shortcutsOpen) shortcutsMounted.current = true;
-  const { data: objects } = useAllSchemaObjectsQuery(open && Boolean(builders));
+  const studio = useStudioPalette((state) => state.entry);
+  const { data: studioTables } = useQuery({
+    queryKey: ["studio-palette", studio?.key],
+    queryFn: () => studio?.read().tables?.load() ?? [],
+    enabled: open && Boolean(builders) && Boolean(studio?.hasTables),
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const { data: objects } = useAllSchemaObjectsQuery(open && Boolean(builders) && !studio);
   const hasPackages = useMemo(
     () => Boolean(objects?.functions?.some((fn) => fn.return_type === "PACKAGE")),
     [objects],
   );
-  const { data: packageMembers } = useAllPackageMembersQuery(open && hasPackages);
-  const canSearchColumns = supports(activeConnection, "column_search");
-  const canSearchSource = supports(activeConnection, "source_search");
+  const { data: packageMembers } = useAllPackageMembersQuery(open && hasPackages && !studio);
+  const canSearchColumns = !studio && supports(activeConnection, "column_search");
+  const canSearchSource = !studio && supports(activeConnection, "source_search");
   const extensionHost = useExtensionHost();
   const [extensionVersion, setExtensionVersion] = useState(0);
   const hotkeyOverrideVersion = useHotkeysStore((state) => state.overrides);
@@ -186,6 +211,26 @@ export function AppHeaderSearch() {
 
   const askNew = useHasNewFeatures("ai.ask");
   const searchNew = useHasNewFeatures("search");
+  const capabilities = useActiveCapabilities();
+  const featureItems = useCallback(
+    (query: string, unusedOnly: boolean) =>
+      builders?.buildFeatureItems(query, unusedOnly, { capabilities, easyMode }, setOpen) ??
+      NO_ITEMS,
+    [builders, capabilities, easyMode],
+  );
+  const renderPreview = useCallback(
+    (item: CommandItem) =>
+      item.videoId ? (
+        <Suspense fallback={null}>
+          <PaletteClipPreview
+            videoId={item.videoId}
+            title={item.label}
+            onOpen={() => setOpen(false)}
+          />
+        </Suspense>
+      ) : null,
+    [],
+  );
   const askAiItem = useCallback(
     (query: string): CommandItem => ({
       id: "ai:ask",
@@ -204,6 +249,13 @@ export function AppHeaderSearch() {
   const objectItems = useMemo(
     () => builders?.buildObjectItems(objects, setOpen, navigate) ?? NO_ITEMS,
     [builders, objects, navigate],
+  );
+  const studioItems = useMemo(
+    () =>
+      open && builders && studio
+        ? builders.buildStudioItems(studio, studioTables, setOpen)
+        : NO_ITEMS,
+    [open, builders, studio, studioTables],
   );
   const packageMemberItems = useMemo(
     () => builders?.buildPackageMemberItems(packageMembers, setOpen, navigate) ?? NO_ITEMS,
@@ -274,6 +326,27 @@ export function AppHeaderSearch() {
         useTourStore.getState().startFromBeginning();
       },
     };
+    const discoverItem: CommandItem = {
+      id: "help:discover",
+      label: "Entdecken",
+      kind: "command",
+      group: "Hilfe",
+      icon: Compass,
+      keywords: [
+        "entdecken",
+        "funktionen",
+        "features",
+        "neu",
+        "lernen",
+        "tipps",
+        "hilfe",
+        "discover",
+      ],
+      onSelect: () => {
+        setOpen(false);
+        void navigate({ to: "/discover" });
+      },
+    };
     const shortcutsItem: CommandItem = {
       id: "help:shortcuts",
       label: "Tastenkürzel anzeigen",
@@ -287,9 +360,10 @@ export function AppHeaderSearch() {
         setShortcutsOpen(true);
       },
     };
-    const notebookItems = activeConnection
-      ? builders.buildNotebookItems(recentNotebooks, activeConnection.id, setOpen, navigate)
-      : [];
+    const notebookItems =
+      activeConnection && capabilities.query_language === "sql" && !capabilities.object_storage
+        ? builders.buildNotebookItems(recentNotebooks, activeConnection.id, setOpen, navigate)
+        : [];
     const hotkeyItems = builders.buildHotkeyItems(
       pathname,
       activeConnection !== null,
@@ -306,20 +380,23 @@ export function AppHeaderSearch() {
       ...connectionItems,
       connectionManagerItem,
       ...deepSearchItem,
-      ...objectItems,
-      ...packageMemberItems,
+      ...(studio ? studioItems : objectItems),
+      ...(studio ? NO_ITEMS : packageMemberItems),
       ...notebookItems,
       ...compareItems,
       ...extensionItems,
       ...hotkeyItems,
       ...diagramExportItems,
       tourItem,
+      discoverItem,
       shortcutsItem,
       ...settingsItems,
     ];
   }, [
     activeConnection?.id,
     activeConnection,
+    capabilities.query_language,
+    capabilities.object_storage,
     canSearchColumns,
     canSearchSource,
     connections,
@@ -328,6 +405,8 @@ export function AppHeaderSearch() {
     recentNotebooks,
     objectItems,
     packageMemberItems,
+    studio,
+    studioItems,
     settingsItems,
     onSelectConnection,
     isSwitching,
@@ -351,6 +430,7 @@ export function AppHeaderSearch() {
         />
       ) : (
         <button
+          data-feature="search.commands"
           type="button"
           ref={searchButtonRef}
           data-tour="header-search"
@@ -394,10 +474,12 @@ export function AppHeaderSearch() {
             maxVisible={MAX_VISIBLE_RESULTS}
             featureId="search.fuzzy"
             queryItem={askAiItem}
+            queryItems={featureItems}
             initialQuery={initialQuery}
             commandFeatureId="search.commands"
             history={paletteHistory}
             onSelectItem={(item) => recordPaletteUse(item.id)}
+            renderPreview={renderPreview}
           />
         </Suspense>
       )}

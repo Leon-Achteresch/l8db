@@ -1,8 +1,9 @@
+import { Check, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { useSettingsStore } from "@/lib/settings";
 import { TABLE_DETAIL_TABS } from "@/lib/table-detail-tabs";
+import { cn } from "@/lib/utils";
 
 export function SettingsTableTabs() {
   const hidden = useSettingsStore((s) => s.hiddenTableDetailTabs);
@@ -13,41 +14,45 @@ export function SettingsTableTabs() {
     <section
       data-setting-id="table-tabs"
       tabIndex={-1}
-      className="space-y-3 rounded-2xl border border-border/80 bg-card px-4 py-3.5 shadow-sm"
+      className="space-y-2.5 pb-[calc(1rem+var(--ui-density-step))] outline-none"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="flex items-center gap-2 text-sm font-semibold">
-            Tabbar für Tabellen & Views
-            {hidden.length > 0 ? (
-              <Badge variant="secondary" className="text-[10px]">
-                Geändert
-              </Badge>
-            ) : null}
-          </h3>
-          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            Sichtbare Tabs für alle Verbindungen festlegen. Auch per Rechtsklick auf die Tabbar. Je
-            nach Datenbank und Objekttyp sind nicht alle Tabs verfügbar.
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={reset} disabled={hidden.length === 0}>
-          Alle einblenden
-        </Button>
+      <div className="flex min-h-6 flex-wrap items-center gap-2">
+        <h3 className="text-sm font-medium">Tabbar für Tabellen & Views</h3>
+        {hidden.length > 0 && (
+          <>
+            <Badge variant="secondary" className="text-[10px]">
+              Geändert
+            </Badge>
+            <Button variant="ghost" size="xs" onClick={reset} className="text-muted-foreground">
+              Alle einblenden
+            </Button>
+          </>
+        )}
       </div>
-      <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-        {TABLE_DETAIL_TABS.map((tab) => (
-          <label key={tab.id} className="flex items-center justify-between gap-4 text-sm">
-            <span>
+      <div className="flex flex-wrap gap-1.5">
+        {TABLE_DETAIL_TABS.map((tab) => {
+          const visible = !hidden.includes(tab.id);
+          const Icon = visible ? Check : Plus;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              aria-pressed={visible}
+              aria-label={`${tab.label} anzeigen`}
+              onClick={() => setVisible(tab.id, !visible)}
+              className={cn(
+                "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full pr-3 pl-2 text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.98]",
+                visible
+                  ? "bg-secondary font-medium text-foreground hover:bg-secondary/80"
+                  : "text-muted-foreground ring-1 ring-border ring-inset hover:bg-muted/60 hover:text-foreground",
+              )}
+            >
+              <Icon aria-hidden className="size-3" />
               {tab.label}
               {tab.entity === "view" ? " (Views)" : ""}
-            </span>
-            <Switch
-              checked={!hidden.includes(tab.id)}
-              onCheckedChange={(checked) => setVisible(tab.id, checked)}
-              aria-label={`${tab.label} anzeigen`}
-            />
-          </label>
-        ))}
+            </button>
+          );
+        })}
       </div>
     </section>
   );

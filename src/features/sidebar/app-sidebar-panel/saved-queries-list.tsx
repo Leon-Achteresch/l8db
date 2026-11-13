@@ -1,5 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { FileCodeIcon, TrashIcon } from "lucide-react";
+import { FeatureEmptyState } from "@/components/feature-empty-state/feature-empty-state";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
 import { useTableTabs } from "@/lib/table-tabs";
@@ -12,7 +13,15 @@ export function SavedQueriesList() {
   const openSavedQueryTab = useTableTabs((state) => state.openSavedQueryTab);
 
   if (queries.length === 0) {
-    return <p className="py-1 text-sm text-muted-foreground">Keine gespeicherten Queries.</p>;
+    return (
+      <FeatureEmptyState
+        icon={FileCodeIcon}
+        title="Keine gespeicherten Abfragen."
+        featureId="query.snippets"
+        action={{ label: "Editor öffnen", onClick: () => void navigate({ to: "/query" }) }}
+        className="py-4"
+      />
+    );
   }
 
   return (

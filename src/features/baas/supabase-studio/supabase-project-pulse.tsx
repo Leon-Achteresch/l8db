@@ -8,7 +8,7 @@ export function SupabaseProjectPulse({ reference }: { reference: string }) {
 
   return (
     <section aria-label="Dienststatus" className="px-1">
-      <p className="mb-1.5 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80">
+      <p className="mb-1.5 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         Dienste
         <span className="font-normal normal-case tracking-normal">
           {health.isPending

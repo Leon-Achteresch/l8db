@@ -16,6 +16,7 @@ export type EditingCell = {
   columnId: string;
   value: string;
   originalValues: Record<string, unknown>;
+  typed?: boolean;
 };
 
 export type InspectCell = {
@@ -49,7 +50,7 @@ export type DataTableProps = {
     ctid: string,
     updates: Record<string, string | null>,
     oldValues: Record<string, unknown>,
-  ) => Promise<void>;
+  ) => Promise<void | "staged">;
   canEditCell?: (row: TableRow, column: string) => boolean;
   filterableColumns?: string[];
   compileColumnFilter?: (column: string, operator: string, value: string) => string | null;

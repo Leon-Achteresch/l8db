@@ -63,7 +63,7 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
         );
       });
       await page.goto(`http://localhost:${server.port}/compare`);
-      await page.getByRole("button", { name: "Vergleich table_0000", exact: true }).click();
+      await page.getByRole("tab", { name: "Vergleich table_0000", exact: true }).click();
       const modified = page.locator(".merge-draft-editor textarea");
       await modified.waitFor();
       await page.getByText("Definitionen werden geladen…").waitFor({ state: "hidden" });
@@ -118,7 +118,7 @@ test.skipIf(!process.env.L8DB_COMPARE_BROWSER)(
       await page.keyboard.type("SELECT 'Entwurf bleibt';");
       expect(await page.getByRole("button", { name: "Quelle prüfen" }).isEnabled()).toBe(true);
       await page.getByRole("button", { name: "Neuer Vergleich", exact: true }).last().click();
-      await page.getByRole("button", { name: "Vergleich table_0000", exact: true }).click();
+      await page.getByRole("tab", { name: "Vergleich table_0000", exact: true }).click();
       await page.waitForFunction(() =>
         document
           .querySelector(".merge-draft-editor .view-lines")

@@ -19,13 +19,13 @@ export function DashboardEmptyCanvas({
         aria-hidden="true"
       >
         <div className="rounded-xl border border-border/70 bg-card p-3">
-          <ChartKindPreview kind="column" className="h-16 w-full text-muted-foreground/60" />
+          <ChartKindPreview kind="column" className="h-16 w-full text-muted-foreground" />
         </div>
         <div className="rounded-xl border border-primary/20 bg-card px-4 py-5">
           <ChartKindPreview kind="line" className="h-24 w-full text-primary" />
         </div>
         <div className="rounded-xl border border-border/70 bg-card p-3">
-          <ChartKindPreview kind="donut" className="h-16 w-full text-muted-foreground/60" />
+          <ChartKindPreview kind="donut" className="h-16 w-full text-muted-foreground" />
         </div>
       </div>
       <p className="text-[11px] text-muted-foreground">

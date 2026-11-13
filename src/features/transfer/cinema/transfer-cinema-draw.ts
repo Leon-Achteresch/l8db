@@ -872,13 +872,6 @@ function drawLabels(ctx: Ctx, scene: Scene) {
     ctx.font = `500 10px ${MONO}`;
     ctx.fillStyle = "rgba(43,38,51,0.6)";
     ctx.fillText(scene.sourceName, sourceX, sourceY - 22);
-    const strike = ctx.measureText(scene.sourceName).width / 2 + 3;
-    ctx.strokeStyle = "rgba(200,60,60,0.8)";
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(sourceX - strike, sourceY - 22);
-    ctx.lineTo(sourceX + strike, sourceY - 22);
-    ctx.stroke();
   }
   if (scene.destroyed) return;
   const hidden = scene.episode?.kind === "rain" ? umbrellaOpen(episodeLocal(scene)) : 0;

@@ -112,7 +112,7 @@ export function SchemaCompareOptionsMenu() {
           Optionen
           {supported.length > 0 && (
             <span className="text-muted-foreground tabular-nums">
-              {selected.length} von {supported.length}
+              {selected.length} von {supported.length} Typen
             </span>
           )}
           {optionsNew && <NewBadge />}

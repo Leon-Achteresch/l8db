@@ -42,6 +42,9 @@ fn hash(parts: &[&str]) -> String {
 fn dir() -> Option<PathBuf> {
     #[cfg(test)]
     std::env::var_os("L8DB_MCP_CONFIG")?;
+    if config::pinned() {
+        return None;
+    }
     Some(config::config_path().with_file_name("mcp-catalogs"))
 }
 

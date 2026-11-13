@@ -158,11 +158,17 @@ export async function runOperationalScenario(repo, kind) {
   );
   const shared = await import("/src/lib/versioning/control.ts");
   const basePolicy = await shared.control(connection, project, stored[0], "policy");
+  const labUser = pg ? "lab" : "LAB";
   const changePolicy = async (change) => {
     const current = await shared.control(connection, project, stored[0], "policy");
     await shared.control(connection, project, stored[0], "save-policy", {
       revision: current.revision,
-      policy: { ...basePolicy.policy, ...change },
+      policy: {
+        ...basePolicy.policy,
+        operators: basePolicy.policy.operators.length ? basePolicy.policy.operators : [labUser],
+        reviewers: basePolicy.policy.reviewers.length ? basePolicy.policy.reviewers : [labUser],
+        ...change,
+      },
     });
   };
   await changePolicy({ paused: true });

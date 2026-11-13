@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { open } from "@tauri-apps/plugin-dialog";
-import { BookOpen, FolderOpen, History, Keyboard, Link2, Plus, Route, Upload } from "lucide-react";
+import { BookOpen, FolderOpen, Keyboard, Link2, Plus, Route, Upload } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AppLogo } from "@/components/app-logo";
@@ -116,11 +116,11 @@ export function ConnectionsEmptyState({
                 />
               </div>
             </section>
-            <section aria-labelledby="welcome-recent">
-              <h2 id="welcome-recent" className="mb-3 text-sm font-semibold">
-                Zuletzt geöffnet
-              </h2>
-              {recent.length > 0 ? (
+            {recent.length > 0 && (
+              <section aria-labelledby="welcome-recent">
+                <h2 id="welcome-recent" className="mb-3 text-sm font-semibold">
+                  Zuletzt geöffnet
+                </h2>
                 <div className="space-y-1">
                   {recent.slice(0, 5).map((entry) => (
                     <WelcomeAction
@@ -132,19 +132,8 @@ export function ConnectionsEmptyState({
                     />
                   ))}
                 </div>
-              ) : (
-                <div className="flex items-start gap-3 rounded-xl bg-muted/35 p-4">
-                  <History
-                    aria-hidden="true"
-                    className="mt-0.5 size-4 shrink-0 text-muted-foreground/70"
-                  />
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    Dein Arbeitsplatz beginnt hier. Öffne eine Datenbank oder eine Datei, um
-                    loszulegen.
-                  </p>
-                </div>
-              )}
-            </section>
+              </section>
+            )}
           </div>
           <aside aria-label="Tastenkürzel und Hilfe" className="min-w-0 space-y-10">
             <WelcomeShortcuts />

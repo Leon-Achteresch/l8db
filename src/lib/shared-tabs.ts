@@ -4,7 +4,8 @@ import type { FilterCondition, TableViewState } from "@/lib/table-view-state";
 
 export const SHARED_TAB_PREFIX = "l8db://tab/";
 export const MAX_SHARED_TAB_LINK = 1_000_000;
-const LINK_PATTERN = /l8db:\/\/tab\/([A-Za-z0-9_-]+)/;
+export const MAX_OS_SHARED_TAB_LINK = 2_000;
+const LINK_PATTERN = /l8db:\/\/tab\/([A-Za-z0-9_-]+)/i;
 
 export interface SharedConnectionRef {
   name: string;
@@ -70,7 +71,7 @@ export function sharedViewOf(view: Partial<TableViewState> | undefined): Partial
   return shared;
 }
 
-const COMPRESS_FROM = 4_000;
+const COMPRESS_FROM = 120;
 const MAX_JSON_BYTES = 4_000_000;
 
 function toBase64Url(bytes: Uint8Array): string {
@@ -114,16 +115,63 @@ function streamOf(bytes: Uint8Array) {
   return new Blob([bytes as Uint8Array<ArrayBuffer>]).stream();
 }
 
+type Compact = unknown[];
+
+function trimTrailing(values: unknown[]): unknown[] {
+  let end = values.length;
+  while (end > 0 && (values[end - 1] === undefined || values[end - 1] === null)) end--;
+  return values.slice(0, end);
+}
+
+function compactTab(tab: SharedTab): Compact {
+  const { name, kind, host, port, team } = tab.connection;
+  const connection = trimTrailing([name, kind, host, port, team]);
+  if (tab.kind === "query") return ["q", connection, tab.database, tab.title, tab.sql];
+  const view = Object.keys(tab.view).length ? tab.view : undefined;
+  return trimTrailing([
+    "t",
+    connection,
+    tab.database,
+    tab.schema,
+    tab.table,
+    tab.entityType === "view" ? 1 : 0,
+    view,
+  ]);
+}
+
+function expandTab(value: unknown): unknown {
+  if (!Array.isArray(value) || !Array.isArray(value[1])) return null;
+  const [name, kind, host, port, team] = value[1];
+  const connection: Value = { name, kind };
+  if (host !== undefined && host !== null) connection.host = host;
+  if (port !== undefined && port !== null) connection.port = port;
+  if (team !== undefined && team !== null) connection.team = team;
+  const base = { v: 1, connection, database: value[2] ?? null };
+  if (value[0] === "q") return { ...base, kind: "query", title: value[3], sql: value[4] };
+  if (value[0] !== "t" || (value[5] !== undefined && value[5] !== 0 && value[5] !== 1)) return null;
+  return {
+    ...base,
+    kind: "table",
+    schema: value[3],
+    table: value[4],
+    entityType: value[5] === 1 ? "view" : "table",
+    view: value[6] ?? {},
+  };
+}
+
+async function deflate(bytes: Uint8Array): Promise<Uint8Array | null> {
+  if (typeof CompressionStream === "undefined") return null;
+  return readLimited(streamOf(bytes).pipeThrough(new CompressionStream("deflate-raw")));
+}
+
 async function encodeLink(tab: SharedTab): Promise<string> {
-  const json = new TextEncoder().encode(JSON.stringify(tab));
-  if (json.length < COMPRESS_FROM || typeof CompressionStream === "undefined")
-    return `${SHARED_TAB_PREFIX}j${toBase64Url(json)}`;
-  const packed = await readLimited(
-    streamOf(json).pipeThrough(new CompressionStream("deflate-raw")),
-  );
-  return packed
-    ? `${SHARED_TAB_PREFIX}z${toBase64Url(packed)}`
-    : `${SHARED_TAB_PREFIX}j${toBase64Url(json)}`;
+  const json = new TextEncoder().encode(JSON.stringify(compactTab(tab)));
+  const plain = `${SHARED_TAB_PREFIX}a${toBase64Url(json)}`;
+  if (json.length < COMPRESS_FROM) return plain;
+  const packed = await deflate(json);
+  return packed && packed.length < json.length
+    ? `${SHARED_TAB_PREFIX}b${toBase64Url(packed)}`
+    : plain;
 }
 
 type Value = Record<string, unknown>;
@@ -179,7 +227,7 @@ function validView(value: unknown): value is Partial<SharedView> {
   ]);
   return (
     Object.keys(value).every((key) => allowed.has(key)) &&
-    isOptionalText(value.filter, 200_000) &&
+    isOptionalText(value.filter, 20_000) &&
     (value.filterRaw === undefined || typeof value.filterRaw === "boolean") &&
     (value.filterMode === undefined ||
       value.filterMode === "simple" ||
@@ -191,7 +239,7 @@ function validView(value: unknown): value is Partial<SharedView> {
     (value.filterCombinator === undefined ||
       value.filterCombinator === "AND" ||
       value.filterCombinator === "OR") &&
-    isOptionalText(value.filterSql, 200_000) &&
+    isOptionalText(value.filterSql, 20_000) &&
     (value.sorting === undefined || validSorting(value.sorting))
   );
 }
@@ -214,21 +262,24 @@ export function validSharedTab(value: unknown): value is SharedTab {
 export async function parseSharedTabLink(
   text: string | null | undefined,
 ): Promise<SharedTab | null> {
-  if (!text || text.length > MAX_SHARED_TAB_LINK || !text.includes(SHARED_TAB_PREFIX)) return null;
+  if (!text || text.length > MAX_SHARED_TAB_LINK) return null;
   const match = LINK_PATTERN.exec(text);
   if (!match) return null;
   try {
     const [format, body] = [match[1][0], match[1].slice(1)];
     let bytes: Uint8Array | null = fromBase64Url(body);
-    if (format === "z") {
+    if (format === "z" || format === "b") {
       if (typeof DecompressionStream === "undefined") return null;
       bytes = await readLimited(
         streamOf(bytes).pipeThrough(new DecompressionStream("deflate-raw")),
       );
-    } else if (format !== "j") return null;
+    } else if (format !== "j" && format !== "a") return null;
     if (!bytes) return null;
-    const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-    return validSharedTab(value) ? value : null;
+    const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    const value = format === "a" || format === "b" ? expandTab(parsed) : parsed;
+    if (!validSharedTab(value)) return null;
+    const clean = expandTab(compactTab(value));
+    return validSharedTab(clean) ? clean : null;
   } catch {
     return null;
   }
@@ -285,4 +336,8 @@ export function sharedTabSource(tab: SharedTab): string {
     ? tab.connection.host + (tab.connection.port ? `:${tab.connection.port}` : "")
     : null;
   return [tab.connection.name, host, tab.database].filter(Boolean).join(" · ");
+}
+
+export function containsSharedTabLink(text: string): boolean {
+  return text.length <= MAX_SHARED_TAB_LINK && LINK_PATTERN.test(text);
 }

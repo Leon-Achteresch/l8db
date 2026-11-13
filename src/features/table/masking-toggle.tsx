@@ -13,7 +13,7 @@ export function MaskingToggle() {
   return (
     <IconMenuCheckboxItem
       icon={<EyeOffIcon />}
-      label={enabled ? "Maskierung aktiv – Bearbeiten gesperrt" : "Maskierung anzeigen"}
+      label={enabled ? "Maskierung aktiv – Bearbeiten gesperrt" : "Werte in der Ansicht maskieren"}
       checked={enabled}
       onCheckedChange={() => toggle(connection.id)}
     />

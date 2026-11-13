@@ -1,5 +1,26 @@
 # Performance tests, workloads and headless benchmarks
 
+## Workspace motion
+
+Start the local Vite dev server, then run the scoped checks:
+
+```sh
+bun test tests/change-animation.test.ts
+L8DB_MOTION_ENGINE=chromium L8DB_MOTION_BROWSER_URL=http://127.0.0.1:1420 bun test tests/perf-workspace-motion.test.ts
+```
+
+`ChangeSurface` animates an existing content container without remounting its children. A new view replaces the previous animation, ordinary rerenders do not restart it, and finishing, unmounting, hiding the document or changing the motion preference releases the effect and its listeners. Views travel horizontally and settle over 420 ms. Settings sections animate at most six rows with 28 ms offsets; discovery stops after 256 visited elements. Delayed rows use backwards fill so they do not flash at their final position before starting. Reduced motion uses one 100 ms opacity transition without translation or stagger.
+
+Shared tab strips and app navigation use scoped spring highlights. The transaction inspector slides over the canvas instead of resizing the data grid on every open/close, and becomes inert immediately on exit. Dialogs arrive over 420 ms with bounded blur and scale, popovers settle over 340 ms, and successful workspace messages draw and stamp their check icon once. None of these transitions starts database work or polling.
+
+The content scenario uses 400 rows × 24 columns (9,600 cells, 10,036 DOM nodes), 180 measured view changes and 1,000 immediate replacements. Limits remain setup median below 4 ms / p95 below 12 ms and next-frame latency p95 below 80 ms, at most one content animation, zero retained DOM growth, zero effects after cancellation or idle, and zero database calls. It also verifies input/cell identity, keyboard selection, reduced motion, light/dark rendering, a 960 px viewport and unmount cancellation. A panel geometry assertion requires a 380 px inspector while the content canvas keeps its width. A separate 500-row settings workload performs 100 replacements with at most seven effects (one container and six rows), p95 setup below 12 ms, and no retained effects after completion or cancellation.
+
+A second browser workload mounts 50 independent tab strips with 500 options. It performs 100 confirmed selections using mouse-down events, checks keyboard navigation and the line-style indicator, and requires p95 input-to-two-frame latency below 120 ms, exactly 50 retained highlights, zero DOM growth and zero mutation writes over 150 ms after settling. Checking the actual selected state prevents a synthetic click with no Radix mouse-down behavior from becoming a false performance measurement.
+
+Measured on 2026-11-09 with macOS 27.0.1, arm64, Apple M3, 16 GiB RAM, Bun 1.3.10 and Playwright Chromium 156.0.8078.4: content setup median **2.40 ms**, p95 **3.70 ms**; next-frame latency median **16.70 ms**, p95 **17.40 ms**. The previous, simpler motion baseline was 1.80 / 2.40 ms setup and 16.70 / 17.60 ms next-frame latency. The settings scenario measured 0.00 / 0.20 ms setup at the browser timer's precision, with seven effects at peak. Tab selections measured **33.30 / 34.20 ms** including two animation frames, retaining 662 nodes and 50 highlights. Every scenario had zero retained DOM growth, idle effects/writes and additional database calls. These are resource and latency observations, not a claim that more animation is an optimization. DOM/effect counts establish bounded retained work; they are not a process-memory measurement.
+
+No CPU throttling or heap simulation was used. WebKit remains untested because the required local `webkit-2370` Playwright executable is missing; omit `L8DB_MOTION_ENGINE` to request both engines when installed. Packaged Tauri WebViews, Windows, Linux, other physical hardware and real database families were not exercised. The full-app recording fixture uses the real app with prepared demo transport responses; recordings demonstrate navigation, tabs, settings, panels and dialogs, but do not establish real database performance.
+
 ## Saved password restoration
 
 `bun test tests/perf-secret-save.test.ts` covers saving secrets and restoring missing database passwords before opening a password prompt. The restoration scenario keeps 1,000 connections in the store and restores the last 60, using a mocked Tauri transport with 1 ms read latency. The previous prompt predicate classified all 60 as requiring manual entry despite saved passwords; restoration now needs zero prompts.
@@ -334,3 +355,91 @@ The unchanged core watch scenario (`tests/perf-workbench-qol.test.ts`) exceeded 
 The broader workbench browser scenario stopped on an existing Monaco undo expectation before reaching the table controls (`tests/workbench-qol-browser.test.ts:102`). The scoped table helper scenario above passed independently; the editor undo path was not changed or repaired.
 
 The screenshot fixture now mounts the production `TableToolbarActions` instead of rebuilding a reduced two-item menu. The regression asserts exactly one action trigger and the presence of “Neue Zeile”, “Beobachtete Zeilen” and “Zeitdarstellung” in that same menu; opening and discarding the row draft is covered. A repeat on the same machine with the full toolbar measured median 589.54 ms / p95 594.04 ms, 2,230 panel descendants, 33 mounted table rows, zero closed-panel nodes and zero additional transport/database requests (22 assertions passed). Provider discovery uses the actual fallback registry in the transport fixture. TypeScript checking explicitly included the fixture. Screenshots now include the original row-add, paste, test-data, masking and export actions alongside the new entries.
+
+## Startup path (2026-11-10)
+
+The goal was the shortest possible time until the first paint and until the complete application is visible, with slow Windows PCs as the main target.
+
+### What changed
+
+- `index.html` paints a boot shell from inline CSS and a small inline theme script. The script reads the `l8db.boot` cache (resolved theme and five colours, written by `src/lib/boot-paint.ts` and mirrored to the native `localStorage`), so the shell has the right colours before the application bundle runs. Its hash is listed in `script-src`; `scripts/production-check.mjs` fails when the script changes without the hash. The stylesheets stay in `<head>` in their original order: moving them behind the shell painted a few milliseconds earlier but would have changed the cascade order of lazily loaded styles.
+- React used to replace the splash with an empty root until the router had loaded. `router.load()` now runs before the first render, so the shell stays until the complete application commits.
+- The static imports of `src/bootstrap.tsx` are bundled into three chunks (`startup-react`, `startup-vendor`, `startup`) that `index.html` preloads while IndexedDB opens. The three shell routes are not code-split any more. Three chunks instead of one let the browser parse them on separate threads; an automatic `maxSize` split broke the execution order and was discarded.
+- The five background initializers are one deferred `background` chunk that loads when the page is idle after the first frames.
+- The acorn parser left the start package (`packages/ui-plugin-api/src/execution-guard.ts`).
+- Windows no longer rebuilds the jump list during setup, and the dock/jump list update from the frontend is debounced by one second, so it leaves the start path and collapses bursts of store changes into one call.
+
+### Measurements
+
+Same test (`tests/startup-perf-browser.test.ts`, `L8DB_PERF_CPU_RATE=1`, median of 5) on the production build of `28146dd9` and of this change. MacBook Air, Apple M3, 8 cores, 16 GiB, macOS 27.0.1, Bun 1.4.3, Playwright Chromium headless, no CPU throttling, mocked Tauri transport, 3,000 tables.
+
+| Metric | Before | After |
+|---|---|---|
+| First contentful paint | 92 ms | 20 ms |
+| Root without content | 127 ms | 0 ms |
+| Application visible | 185 ms | 137 ms |
+| Usable (table list rendered) | 304 ms | 218 ms |
+| JavaScript until usable | 2.51 MB in 226 chunks | 2.30 MB in 8 chunks |
+| JS/CSS files until usable | 228 | 10 |
+| `invoke()` calls until usable | 41 | 33 |
+| React commits until usable | 16 | 13 |
+
+The start package that `tests/perf-bundle.test.ts` checks is now everything the first render needs: 2.21 MB in 5 files, budget 2.25 MB and at most 6 files. The same set was 2.28 MB in about 218 files before. The earlier 1.8 MB budget covered the entry and both shell layouts without the home view and was already exceeded at 2.02 MB.
+
+Real application, `tauri build --debug --no-bundle` on the same MacBook, empty isolated profile, `L8DB_STARTUP_PROBE=1`, five warm starts: `native` 228–254 ms (of which window and WebView 158–184 ms and the setup hook 1–3 ms), shell 10–12 ms after navigation start, application 174–185 ms after navigation start, 410–439 ms in total. The first start of a freshly built binary took 5.4 s because macOS scans the new executable.
+
+### Limits and missing coverage
+
+- New budgets in `tests/startup-perf-browser.test.ts`: first paint at most 150 ms, no empty root, at most 16 JS/CSS files until usable. The existing 2.2 MB script budget stays exceeded at 2.30 MB (2.51 MB before); it was not changed.
+- `tests/boot-paint.test.ts` covers the cache and the boot script, including 10,000 theme mutations collapsing into one style read and no work when idle. `tests/window-integration.test.ts` covers the debounced dock update with 1,000 store changes.
+- Not measured: Windows and WebView2, a release build and real slow hardware. The browser numbers use a mocked transport without IPC latency.
+
+### Linux run with CPU throttling (2026-11-10)
+
+Debian 13 VM (x86_64, QEMU virtual CPU, 8 cores, 15 GB RAM, shared host with load 1.0–1.8), Bun 1.3.10, Playwright Chromium 156 headless, `tests/startup-perf-browser.test.ts` with 3,000 tables, median of 5, the same test file against the build before (`b9e66c32`) and after (`4c25d637`). Nominal throttle 4×; the calibration applied only 1.75× (before) and 1.96× (after), so the throttled columns are not a 4× result and the new build ran under the stronger throttle.
+
+| Metric | Before, throttled | After, throttled | Before, unthrottled | After, unthrottled |
+|---|---|---|---|---|
+| First contentful paint | 476 ms | 140 ms | 304 ms | 104 ms |
+| Root without content | 768 ms | 0 ms | 439 ms | 0 ms |
+| Application visible | 1046 ms | 954 ms | 663 ms | 479 ms |
+| Usable | 1665 ms | 1624 ms | 1227 ms | 761 ms |
+| Long tasks until usable | 864 ms | 1089 ms | 431 ms | 459 ms |
+| Worst frame until usable | 417 ms | 567 ms | 200 ms | 250 ms |
+| JS/CSS files until usable | 228 | 12 | 228 | 10 |
+| `invoke()` calls until usable | 42 | 34 | 42 | 34 |
+
+With a slow CPU the first paint and the file count improve clearly, the time until usable barely moves and the long tasks grow, because the same code now runs in fewer, larger tasks. A CPU profile of the new build (MacBook Air M3, 214 ms until usable) attributes about 17 ms to module evaluation, 32 ms to React DOM, about 40 ms to style and layout and about 40 ms to lazy function compilation; no single function dominates. Further gains on slow CPUs need less rendering work at start or a warm process, not more bundling.
+- A cold start cannot reach 50 ms: creating the window and the WebView alone took about 170 ms on this MacBook and takes longer on slow Windows PCs. Only a process that is already running can show the application that quickly.
+
+### Measuring on another machine
+
+Start the application with `L8DB_STARTUP_PROBE=1`. It logs one line such as `startup: native 228 ms (window 158 ms, setup 1 ms), shell 12 ms, app 182 ms, total 410 ms` and exits after the first complete render. `native` is the time from `run()` to the start of the navigation, `shell` and `app` count from there. Without the variable the same line is written to the log file on every start.
+
+## Terminal mode `l8db tui` (2026-11-11)
+
+The interactive terminal mode (`src-tauri/src/cli/tui/`, iocraft) keeps every loaded cell as a pre-shortened string and cuts the visible window out of it per frame. Scrolling reads only that in-memory grid; a database request starts only from Enter, `d`, `m`, Ctrl+R or opening a connection, and while one runs the state machine accepts nothing except Ctrl+C. There are no timers, so an idle TUI neither renders nor queries.
+
+### Limits
+
+- Table rows load in pages of 100 up to 1,000 rows per table view; SQL results are capped at 1,000 rows by the same limit as `query`. Cells are shortened to 80 characters before they are stored.
+- Budgets in `cargo test --lib cli::tui` (debug build): scrolling window p95 below 4 ms, object-list filter p95 below 20 ms, rendered iocraft frame mean below 50 ms.
+
+### Measured workload
+
+MacBook Air, Apple M3 (8 cores), 16 GiB RAM, macOS 27.0.1, rustc 1.99.0, unoptimized test profile, no throttling, one run:
+
+| Scenario | Result |
+|---|---|
+| 5,000 scroll steps over a 1,000 x 60 grid, 200 x 50 viewport | median 0.35 ms, p95 0.43 ms per window, at most 11,900 bytes of text per frame, 0 database requests |
+| Control: 2,000 scroll steps over 100,000 x 20 rows | median 0.31 ms, p95 0.36 ms, so frame cost does not grow with row count |
+| Loading a table to the cap with `m` | exactly 10 requests for 1,000 rows, then `m` is ignored |
+| Object list with 20,000 tables, typing a 12-character filter and 200 page steps | median 3.4 ms, p95 4.0 ms, 0 database requests |
+| iocraft frames through the mock terminal, 300 keys over a 1,000 x 60 result at 200 x 50 | 250 frames, mean 15.8 ms per frame |
+| Busy state | every key except Ctrl+C returns no effect; Ctrl+C returns exactly one cancel |
+
+The end-to-end run (`L8DB_CLI_E2E=1 bun test tests/cli-e2e.test.ts`, SQLite, pseudo-terminal) cancels an endless recursive query with Ctrl+C and returns to the editor; the table still holds its 250 rows afterwards.
+
+### Missing coverage
+
+Windows and Linux were type-checked only (`cargo check --target x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu` on a scratch crate with the TUI modules); the TUI has not run on either. Drivers other than SQLite were not exercised through the TUI. Retained memory was bounded by construction and by the row cap, not measured as process RSS. No throttled-CPU run.

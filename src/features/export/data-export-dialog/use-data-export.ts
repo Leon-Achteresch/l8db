@@ -11,6 +11,7 @@ import {
   type TableExportProgress,
 } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
+import { hashFeatureValue, recordFeatureEvent } from "@/lib/discovery/events";
 import {
   type ColumnMask,
   DEFAULT_CSV_OPTIONS,
@@ -146,6 +147,12 @@ export function useDataExport({
         });
         toast.success(`${written} Zeilen als ${info.label} exportiert.`);
       }
+      recordFeatureEvent("export.done", {
+        target: hashFeatureValue(
+          fullExport ? `${fullExport.schema}.${fullExport.table}` : baseFileName,
+        ),
+        format,
+      });
       onClose();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));

@@ -1,10 +1,15 @@
 import { useReducedMotion } from "motion/react";
 import type * as React from "react";
-import { memo, useLayoutEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { type Sidebar, useSidebar } from "@/components/ui/sidebar";
 import { SidebarContext, type SidebarContextProps } from "@/components/ui/sidebar/shared";
 import { AppSidebarBody } from "@/features/sidebar/app-sidebar-body";
+import { onHotkeyAction } from "@/lib/hotkeys";
+import { focusRegionByName, sidebarListKeyDown } from "@/lib/keyboard-nav";
 import { useSidebarPanel } from "@/lib/sidebar-panel";
+
+const SIDEBAR_FOCUS_INITIAL =
+  '[data-sidebar="menu-button"][data-active="true"]|[data-sidebar="menu-button"]|[data-sidebar="menu-sub-button"]';
 
 const SLIDE = { duration: 300, easing: "cubic-bezier(0.32, 0.72, 0, 1)", fill: "both" } as const;
 
@@ -28,10 +33,11 @@ export const AppSidebar = memo(function AppSidebar({
     [isMobile, openMobile, setOpenMobile],
   );
   const reduceMotion = useReducedMotion();
-  const wrapperRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const animations = useRef<Animation[]>([]);
   const mounted = useRef(false);
+  const pendingFocus = useRef(false);
 
   useLayoutEffect(() => {
     const wrapper = wrapperRef.current;
@@ -83,13 +89,39 @@ export const AppSidebar = memo(function AppSidebar({
     animations.current[0].onfinish = settle;
   }, [open, reduceMotion]);
 
+  useLayoutEffect(() => {
+    if (!open || !pendingFocus.current) return;
+    pendingFocus.current = false;
+    focusRegionByName("sidebar");
+  }, [open]);
+
+  useEffect(
+    () =>
+      onHotkeyAction("focus.sidebar", () => {
+        if (contextRef.current.open) {
+          focusRegionByName("sidebar");
+          return;
+        }
+        pendingFocus.current = true;
+        contextRef.current.setOpen(true);
+      }),
+    [],
+  );
+
   return (
-    <div ref={wrapperRef} className="relative z-10 flex h-full min-w-0 shrink-0">
+    <section
+      ref={wrapperRef}
+      data-focus-region="sidebar"
+      data-focus-initial={SIDEBAR_FOCUS_INITIAL}
+      aria-label="Seitenleiste"
+      onKeyDown={sidebarListKeyDown}
+      className="relative z-10 flex h-full min-w-0 shrink-0"
+    >
       <div ref={panelRef} className="flex h-full w-(--sidebar-width) shrink-0">
         <SidebarContext.Provider value={expandedContext}>
           <AppSidebarBody {...props} />
         </SidebarContext.Provider>
       </div>
-    </div>
+    </section>
   );
 });

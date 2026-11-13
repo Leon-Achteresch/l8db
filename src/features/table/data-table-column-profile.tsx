@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { CATEGORY_BAR_CLASSES } from "@/lib/category-colors";
 import type { ColumnProfile } from "@/lib/column-profile";
-import { categoryColorIndex } from "@/lib/grid-cell-format";
+import { categoryColorIndex, categoryColorMap } from "@/lib/grid-cell-format";
 import { cn } from "@/lib/utils";
 
 const percent = (ratio: number) => `${Math.round(ratio * 100)}%`;
@@ -46,6 +46,7 @@ export function DataTableColumnProfile({
     );
   } else if (profile.type === "categories") {
     const top = profile.parts[0];
+    const colors = categoryColorMap(profile.parts.map((part) => part.value));
     stat = `${top.value} ${percent(top.count / profile.total)}`;
     title = profile.parts.map((part) => `${part.value}: ${part.count}`).join("\n");
     visual = (
@@ -55,7 +56,7 @@ export function DataTableColumnProfile({
             key={part.value}
             className={cn(
               "h-full opacity-80",
-              CATEGORY_BAR_CLASSES[categoryColorIndex(part.value)],
+              CATEGORY_BAR_CLASSES[colors.get(part.value) ?? categoryColorIndex(part.value)],
             )}
             style={{ width: percent(part.count / profile.total) }}
           />

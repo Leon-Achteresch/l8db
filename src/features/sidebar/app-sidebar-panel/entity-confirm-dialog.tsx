@@ -12,6 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import type { Terms } from "@/lib/db";
 
 export interface EntityConfirmAction {
   kind: "drop" | "truncate";
@@ -23,6 +24,7 @@ interface EntityConfirmDialogProps {
   confirmAction: EntityConfirmAction | null;
   actionLoading: boolean;
   isRedis: boolean;
+  terms: Terms;
   activeDatabase: string | null | undefined;
   onClose: () => void;
   onConfirm: () => void;
@@ -32,6 +34,7 @@ export function EntityConfirmDialog({
   confirmAction,
   actionLoading,
   isRedis,
+  terms,
   activeDatabase,
   onClose,
   onConfirm,
@@ -55,15 +58,15 @@ export function EntityConfirmDialog({
             {isRedis
               ? `Alle Keys in Datenbank ${activeDatabase ?? "0"} löschen?`
               : confirmAction?.kind === "drop"
-                ? `Tabelle "${confirmAction.name}" löschen?`
-                : `Alle Daten in "${confirmAction?.name}" löschen?`}
+                ? `${terms.table} "${confirmAction.name}" löschen?`
+                : `Alle ${terms.rows} in "${confirmAction?.name}" löschen?`}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {isRedis
               ? "Alle Keys der ausgewählten Redis-Datenbank werden unwiderruflich gelöscht (FLUSHDB)."
               : confirmAction?.kind === "drop"
-                ? "Die Tabelle und alle enthaltenen Daten werden unwiderruflich gelöscht (DROP TABLE CASCADE)."
-                : "Alle Zeilen in dieser Tabelle werden unwiderruflich gelöscht (TRUNCATE TABLE). Die Tabellenstruktur bleibt erhalten."}
+                ? `${terms.table} und alle ${terms.rows} werden unwiderruflich gelöscht.`
+                : `Alle ${terms.rows} werden unwiderruflich gelöscht. Die Struktur bleibt erhalten.`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="space-y-2">
@@ -86,7 +89,9 @@ export function EntityConfirmDialog({
             disabled={actionLoading || confirmation !== expected}
           >
             {actionLoading ? <Spinner className="size-4" /> : null}
-            {confirmAction?.kind === "drop" ? "Tabelle löschen" : "Alle Daten löschen"}
+            {confirmAction?.kind === "drop"
+              ? `${terms.table} löschen`
+              : `Alle ${terms.rows} löschen`}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

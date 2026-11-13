@@ -20,20 +20,17 @@ export type ScriptRunMode = "existing-transaction" | "new-transaction" | "autoco
 
 export const SCRIPT_RUN_MODE_TEXT: Record<ScriptRunMode, string> = {
   "existing-transaction":
-    "Es läuft bereits eine offene Transaktion für diese Verbindung. Alle Statements laufen darin mit; ein zweiter unabhängiger Ablauf ist nicht möglich. Commit oder Rollback erfolgt weiterhin über das Transaktionspanel.",
+    "Läuft in der offenen Transaktion. Commit oder Rollback im Transaktionspanel.",
   "new-transaction":
-    "Das Skript startet eine verwaltete Transaktion. Nichts wird automatisch committet; Commit oder Rollback erfolgt danach über das Transaktionspanel.",
-  autocommit:
-    "Jedes Statement wird sofort und endgültig ausgeführt (Autocommit). Ein Rollback ist nicht möglich.",
+    "Nichts wird automatisch committet. Commit oder Rollback im Transaktionspanel.",
+  autocommit: "Jedes Statement wird sofort festgeschrieben, kein Rollback.",
 };
 
 export const SQLPLUS_MODE_TEXT: Record<ScriptRunMode, string> = {
-  "existing-transaction":
-    "Wie SQL*Plus in der offenen Transaktion: COMMIT, ROLLBACK, WHENEVER SQLERROR … und EXIT im Skript schließen sie ab; DDL committet implizit.",
+  "existing-transaction": "Wie SQL*Plus in der offenen Transaktion. DDL committet implizit.",
   "new-transaction":
-    "Wie SQL*Plus: Autocommit ist aus. COMMIT, ROLLBACK, WHENEVER SQLERROR … und EXIT wirken im Skript, DDL committet implizit. Was am Ende offen ist, bleibt im Transaktionspanel.",
-  autocommit:
-    "Wie SET AUTOCOMMIT ON: Jedes Statement wird sofort festgeschrieben. ROLLBACK und WHENEVER … ROLLBACK können nichts zurücknehmen.",
+    "Wie SQL*Plus: Autocommit ist aus. DDL committet implizit, Offenes bleibt im Transaktionspanel.",
+  autocommit: "Wie SET AUTOCOMMIT ON: Jedes Statement wird sofort festgeschrieben.",
 };
 
 interface ScriptRunDialogProps {
@@ -111,7 +108,14 @@ export function ScriptRunDialog({
             </Select>
           </div>
           <p>{(sqlplus ? SQLPLUS_MODE_TEXT : SCRIPT_RUN_MODE_TEXT)[selectedMode]}</p>
-          <label className="flex items-center gap-2">
+          <label
+            className="flex items-center gap-2"
+            title={
+              sqlplus
+                ? "Bis das Skript WHENEVER SQLERROR oder WHENEVER OSERROR setzt"
+                : "In einer Transaktion immer"
+            }
+          >
             <input
               type="checkbox"
               checked={forcedStop || stopOnError}
@@ -120,15 +124,9 @@ export function ScriptRunDialog({
             />
             Bei Fehler stoppen
           </label>
-          <p>
-            {sqlplus
-              ? "Gilt, bis das Skript WHENEVER SQLERROR oder WHENEVER OSERROR setzt; danach entscheidet das Skript wie in SQL*Plus. Statements laufen wie in SQL*Plus ohne Zeitlimit, Abbrechen über Stopp."
-              : "In einer Transaktion stoppt der Ablauf beim ersten Fehler. Bei Autocommit können Sie das Fortsetzen ausdrücklich wählen."}
-          </p>
           {unterminated && (
             <p className="text-amber-600 dark:text-amber-400">
-              Das Skript enthält ein nicht abgeschlossenes Literal oder einen offenen Kommentar.
-              Bitte schließen Sie es vor der Ausführung.
+              Literal oder Kommentar nicht abgeschlossen.
             </p>
           )}
         </div>

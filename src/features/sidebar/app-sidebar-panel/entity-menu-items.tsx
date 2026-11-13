@@ -137,12 +137,12 @@ export function EntityMenuItems({
           variant="destructive"
           onSelect={() => actions.setConfirmAction({ kind: "truncate", schema, name })}
         >
-          {caps.query_language === "redis" ? "Alle Keys löschen…" : "Alle Zeilen löschen…"}
+          {`Alle ${caps.terms.rows} löschen…`}
         </ContextMenuItem>
       )}
       {onDrop && (
         <ContextMenuItem variant="destructive" onSelect={onDrop}>
-          {table ? "Tabelle löschen…" : "View löschen…"}
+          {table ? `${caps.terms.table} löschen…` : "View löschen…"}
           <ContextMenuShortcut>{formatMenuShortcut(MENU_KEYS.drop)}</ContextMenuShortcut>
         </ContextMenuItem>
       )}

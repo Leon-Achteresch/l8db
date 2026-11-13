@@ -4,6 +4,9 @@ import { createServer } from "vite";
 const files = [
   "table-edit",
   "table-state",
+  "grid-keyboard",
+  "keyboard-shell",
+  "shared-tab-paste",
   "query-workspace",
   "editor-ai-chat",
   "qol",
@@ -14,6 +17,7 @@ const files = [
   "data-compare",
   "schema-compare-tabs",
   "split-transaction",
+  "transaction-commit",
   "command-palette-pointer",
 ];
 const log = "test-artifacts/browser/tests.log";
@@ -28,6 +32,7 @@ const server = await createServer({
       "tests/fixtures/table-state.html",
       "tests/fixtures/query-workspace.html",
       "tests/fixtures/editor-ai-chat.html",
+      "tests/fixtures/shared-tab-paste.html",
     ],
   },
   server: { host: "127.0.0.1", port: 0, strictPort: false, watch: null, hmr: false },
@@ -51,6 +56,8 @@ try {
         L8DB_SCHEMA_COMPARE_BROWSER: "1",
         L8DB_SPLIT_TRANSACTION_BROWSER_URL: url,
         L8DB_PALETTE_BROWSER_URL: url,
+        L8DB_KEYBOARD_BROWSER: "1",
+        L8DB_SHARED_TAB_BROWSER: "1",
         L8DB_BROWSER_ENGINES: "chromium",
       },
       stdout: "pipe",

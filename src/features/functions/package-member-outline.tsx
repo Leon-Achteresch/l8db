@@ -1,3 +1,4 @@
+import { BracesIcon, SquareFunctionIcon } from "lucide-react";
 import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useState } from "react";
 
 import { Input } from "@/components/ui/input";
@@ -121,8 +122,15 @@ export function PackageMemberOutline({
                       : "text-foreground/80 hover:bg-accent/60 hover:text-foreground",
                   )}
                 >
-                  <span className="w-6 shrink-0 font-mono text-[10px] text-muted-foreground">
-                    {member.kind === "FUNCTION" ? "fn" : "pr"}
+                  <span
+                    title={member.kind === "FUNCTION" ? "Funktion" : "Prozedur"}
+                    className="flex w-4 shrink-0 text-muted-foreground"
+                  >
+                    {member.kind === "FUNCTION" ? (
+                      <BracesIcon aria-label="Funktion" className="size-3" />
+                    ) : (
+                      <SquareFunctionIcon aria-label="Prozedur" className="size-3" />
+                    )}
                   </span>
                   <span className="min-w-0 truncate font-mono text-xs">{member.name}</span>
                   {overloaded.has(`${member.kind}:${member.name}`) ? (

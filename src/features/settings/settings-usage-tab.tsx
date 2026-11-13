@@ -1,6 +1,7 @@
 import { ChartNoAxesCombined, Download, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
+import { FeatureEmptyState } from "@/components/feature-empty-state/feature-empty-state";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,7 +13,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
@@ -27,6 +27,7 @@ import {
 import { useUsageStatistics } from "@/lib/hooks/use-usage-statistics";
 import { useSettingsStore } from "@/lib/settings";
 import { clearUsageStatistics, exportUsageStatistics } from "@/lib/usage-statistics";
+import { cn } from "@/lib/utils";
 
 export function SettingsUsageTab() {
   const statistics = useUsageStatistics();
@@ -56,14 +57,7 @@ export function SettingsUsageTab() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Nutzungsstatistik</h2>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Deine Nutzung dieser Installation: Bereiche, Bedienwege, Vordergrundaktivität und
-          Datenbankvorgänge der letzten 32 Fenstersitzungen. Jedes geöffnete App-Fenster zählt als
-          eigene Sitzung. Die Übersicht wird bei Ereignissen aktualisiert.
-        </p>
-      </div>
+      <h2 className="text-base font-semibold tracking-tight">Nutzungsstatistik</h2>
 
       <SettingsRow settingId="local-usage-statistics" featureId="settings.statistics.overview">
         <Switch
@@ -73,34 +67,36 @@ export function SettingsUsageTab() {
         />
       </SettingsRow>
 
-      <div className="rounded-xl border bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground">
-        Die lokale Statistik bleibt auf diesem Gerät. SQL, Ergebnisdaten, Namen, Verbindungsdaten
-        und Fehlermeldungen werden nicht erfasst. Die Entwickleranalyse ist eine separate,
-        freiwillige Einstellung und sendet bei Aktivierung aggregierte Nutzungs- und Leistungsdaten
-        an Sentry (EU).
-      </div>
+      <p className="-mt-4 pb-2 text-xs text-muted-foreground">
+        Bleibt auf diesem Gerät. SQL, Ergebnisdaten, Namen, Verbindungsdaten und Fehlermeldungen
+        werden nicht erfasst.
+      </p>
 
       <SettingsRow settingId="usage-metrics">
         <Switch
           checked={usageMetrics}
           onCheckedChange={setUsageMetrics}
-          aria-label="Nutzungs- und Leistungsdaten senden"
+          aria-label="Nutzungs- und Leistungsdaten an Sentry senden"
         />
       </SettingsRow>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Badge variant={localUsageStats ? "secondary" : "outline"}>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5 text-foreground">
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                localUsageStats ? "bg-emerald-500" : "bg-muted-foreground/40",
+              )}
+            />
             {localUsageStats ? "Erfassung aktiv" : "Erfassung pausiert"}
-          </Badge>
-          <span className="text-xs text-muted-foreground">
-            Stand: {formatUsageDate(statistics.updatedAt)}
           </span>
+          <span className="tabular-nums">Stand {formatUsageDate(statistics.updatedAt)}</span>
         </div>
         <div className="flex items-center gap-2">
           <Button
             size="sm"
-            variant="outline"
+            variant="ghost"
             onClick={downloadStatistics}
             disabled={!summary.hasActivity}
           >
@@ -109,7 +105,7 @@ export function SettingsUsageTab() {
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button size="sm" variant="outline" disabled={!summary.hasActivity}>
+              <Button size="sm" variant="ghost" disabled={!summary.hasActivity}>
                 <Trash2 className="size-3.5" />
                 Zurücksetzen
               </Button>
@@ -146,26 +142,25 @@ export function SettingsUsageTab() {
           { label: "Aktive Vordergrundzeit", value: formatUsageActivity(summary.activeMs) },
           { label: "Erfasste Vorgänge", value: formatUsageCount(summary.operationCount) },
         ].map((metric) => (
-          <div key={metric.label} className="rounded-xl border p-4">
-            <dt className="text-xs text-muted-foreground">{metric.label}</dt>
-            <dd className="mt-2 text-xl font-semibold tabular-nums">{metric.value}</dd>
+          <div key={metric.label} className="rounded-xl bg-muted/40 px-4 py-3">
+            <dt className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+              {metric.label}
+            </dt>
+            <dd className="mt-1.5 text-2xl font-medium tabular-nums">{metric.value}</dd>
           </div>
         ))}
       </dl>
 
       {!summary.hasActivity ? (
-        <div className="rounded-xl border border-dashed px-6 py-8 text-center">
-          <ChartNoAxesCombined
-            aria-hidden="true"
-            className="mx-auto size-6 text-muted-foreground"
-          />
-          <p className="mt-3 text-sm font-medium">Noch keine Nutzungsdaten</p>
-          <p className="mx-auto mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
-            {localUsageStats
-              ? "Nutze die App wie gewohnt: Öffne Bereiche, wechsle zwischen ihnen oder führe eine Datenbankabfrage aus. Neue Werte erscheinen hier bei der nächsten Aktualisierung."
-              : "Aktiviere die lokale Erfassung, um deine Nutzung hier zu sehen. Die Entwickleranalyse kann unabhängig davon ein- oder ausgeschaltet bleiben."}
-          </p>
-        </div>
+        <FeatureEmptyState
+          icon={ChartNoAxesCombined}
+          title="Noch keine Nutzungsdaten"
+          action={
+            localUsageStats
+              ? undefined
+              : { label: "Erfassung aktivieren", onClick: () => setLocalUsageStats(true) }
+          }
+        />
       ) : (
         <>
           <p className="text-xs text-muted-foreground">

@@ -4,6 +4,7 @@ pub mod install;
 mod output;
 mod run;
 pub mod store;
+mod tui;
 
 use clap::{ArgAction, Args, CommandFactory, Parser, Subcommand};
 use output::Format;
@@ -17,13 +18,14 @@ Aufruf:
 
 Verbindungen
   conn list                Gespeicherte Verbindungen anzeigen
-  conn use <name>          Standardverbindung festlegen
+  conn use [name]          Standardverbindung festlegen
   conn test [name]         Verbindung prüfen
   conn show <name>         Details einer Verbindung
   open [name]              Verbindung in der App öffnen
 
 Daten
-  query [sql]              SQL ausführen (kurz: q)
+  tui                      Interaktiver Modus: Tabellen blättern, SQL ausführen
+  query [abfrage]          Abfrage ausführen (kurz: q)
   db list                  Datenbanken auflisten
   schema list              Schemas auflisten
   table list               Tabellen auflisten
@@ -42,6 +44,7 @@ Automatisierung
 Shell
   completions <shell>      Tab-Vervollständigung (bash, zsh, fish, powershell)
   help [befehl]            Hilfe zu einem Befehl
+  version                  Version anzeigen (auch: -V, -v)
 
 Globale Optionen
 {options}
@@ -50,6 +53,7 @@ Beispiele
   l8db conn list
   l8db doctor -o json
   l8db conn use prod
+  l8db tui
   l8db q \"select count(*) from users\"
   l8db table rows users --where \"active\" --limit 20
   l8db query -c staging -f bericht.sql -o csv > bericht.csv
@@ -82,7 +86,7 @@ Aufruf:
 pub struct Cli {
     #[command(flatten)]
     global: Global,
-    #[arg(short = 'V', long, action = ArgAction::Version, help = "Version anzeigen")]
+    #[arg(short = 'V', short_alias = 'v', long, action = ArgAction::Version, help = "Version anzeigen")]
     version: Option<bool>,
     #[command(subcommand)]
     command: Command,
@@ -157,18 +161,25 @@ enum Command {
         alias = "connection",
         help_template = SUB_HELP,
         override_usage = "l8db conn <befehl>",
-        after_help = "Beispiele:\n  l8db conn list\n  l8db conn use prod\n  l8db conn test\n\nVerbindungen legst du in der App an; die CLI übernimmt sie automatisch."
+        after_help = "Beispiele:\n  l8db conn list\n  l8db conn use prod\n  l8db conn use\n  l8db conn test\n\n„conn use“ ohne Namen öffnet im Terminal eine Auswahl.\nVerbindungen legst du in der App an; die CLI übernimmt sie automatisch."
     )]
     Conn {
         #[command(subcommand)]
         command: Option<ConnCommand>,
     },
     #[command(
-        about = "SQL ausführen (kurz: q)",
+        about = "Interaktiver Modus im Terminal: Verbindung wählen, Tabellen blättern, SQL ausführen",
+        help_template = SUB_HELP,
+        override_usage = "l8db tui [-c NAME] [-d DATENBANK]",
+        after_help = "Braucht ein Terminal; in Pipes und Skripten die anderen Befehle nutzen.\nSchreibschutz, Produktionsbestätigung, Zeilenlimit und Timeout gelten wie bei „query“.\n\nBeispiele:\n  l8db tui\n  l8db tui -c staging\n  l8db tui --url postgres://localhost/app"
+    )]
+    Tui,
+    #[command(
+        about = "Abfrage ausführen: SQL, MongoDB-Shell oder Redis-Befehl (kurz: q)",
         alias = "q",
         help_template = SUB_HELP,
-        override_usage = "l8db query [SQL] [-f DATEI] [-c NAME] [-o FORMAT]",
-        after_help = "SQL kommt als Argument, mit -f aus einer Datei oder über die Standardeingabe.\nMehrere Anweisungen werden nacheinander ausgeführt; beim ersten Fehler stoppt l8db.\n\nBeispiele:\n  l8db q \"select * from users limit 5\"\n  l8db query -f migration.sql --yes\n  cat bericht.sql | l8db query -o csv > bericht.csv\n  l8db query --all -o ndjson \"select * from events\" | jq .id"
+        override_usage = "l8db query [ABFRAGE] [-f DATEI] [-c NAME] [-o FORMAT]",
+        after_help = "Die Abfrage kommt als Argument, mit -f aus einer Datei oder über die Standardeingabe.\nMehrere Anweisungen werden nacheinander ausgeführt; beim ersten Fehler stoppt l8db.\n\nBeispiele:\n  l8db q \"select * from users limit 5\"\n  l8db query -f migration.sql --yes\n  cat bericht.sql | l8db query -o csv > bericht.csv\n  l8db query --all -o ndjson \"select * from events\" | jq .id"
     )]
     Query(QueryArgs),
     #[command(
@@ -260,6 +271,12 @@ enum Command {
         #[arg(value_name = "BEFEHL")]
         command: Vec<String>,
     },
+    #[command(
+        about = "Version anzeigen",
+        help_template = SUB_HELP,
+        override_usage = "l8db version"
+    )]
+    Version,
 }
 
 #[derive(Subcommand, Debug)]
@@ -284,10 +301,13 @@ enum ConnCommand {
     List,
     #[command(
         about = "Standardverbindung festlegen",
-        override_usage = "l8db conn use <NAME>\n  l8db conn use --clear"
+        override_usage = "l8db conn use [NAME]\n  l8db conn use --clear"
     )]
     Use {
-        #[arg(value_name = "NAME", required_unless_present = "clear")]
+        #[arg(
+            value_name = "NAME",
+            help = "Verbindung; ohne Namen öffnet sich im Terminal eine Auswahl"
+        )]
         name: Option<String>,
         #[arg(long, help = "Standard wieder entfernen")]
         clear: bool,
@@ -316,8 +336,8 @@ enum ListOnly {
 #[derive(Args, Debug)]
 struct QueryArgs {
     #[arg(
-        value_name = "SQL",
-        help = "SQL-Text; „-“ liest von der Standardeingabe"
+        value_name = "ABFRAGE",
+        help = "Abfragetext; „-“ liest von der Standardeingabe"
     )]
     sql: Option<String>,
     #[arg(
@@ -325,7 +345,7 @@ struct QueryArgs {
         long,
         value_name = "DATEI",
         conflicts_with = "sql",
-        help = "SQL aus Datei lesen"
+        help = "Abfrage aus Datei lesen"
     )]
     file: Option<std::path::PathBuf>,
     #[arg(
@@ -486,6 +506,7 @@ const COMMANDS: &[&str] = &[
     "policy",
     "conn",
     "connection",
+    "tui",
     "query",
     "q",
     "db",
@@ -498,9 +519,11 @@ const COMMANDS: &[&str] = &[
     "mcp",
     "completions",
     "help",
+    "version",
     "-h",
     "--help",
     "-V",
+    "-v",
     "--version",
     "-c",
     "-d",
@@ -518,16 +541,17 @@ fn timeout_seconds(value: &str) -> Result<u64, String> {
 
 pub fn wants(args: &[String]) -> bool {
     args.first().is_some_and(|first| {
-        COMMANDS.contains(&first.as_str())
-            || ["-c", "-d", "-o"]
-                .iter()
-                .any(|flag| first.starts_with(flag) && first.len() > 2)
-            || GLOBAL_FLAGS
-                .iter()
-                .any(|flag| first == flag || first.starts_with(&format!("{flag}=")))
-            || (!first.starts_with('-')
-                && !first.contains(['/', '\\', '.'])
-                && !std::path::Path::new(first).exists())
+        !crate::file_open::is_app_url(first)
+            && (COMMANDS.contains(&first.as_str())
+                || ["-c", "-d", "-o"]
+                    .iter()
+                    .any(|flag| first.starts_with(flag) && first.len() > 2)
+                || GLOBAL_FLAGS
+                    .iter()
+                    .any(|flag| first == flag || first.starts_with(&format!("{flag}=")))
+                || (!first.starts_with('-')
+                    && !first.contains(['/', '\\', '.'])
+                    && !std::path::Path::new(first).exists()))
     })
 }
 
@@ -720,9 +744,37 @@ pub fn completions(shell: clap_complete::Shell) -> i32 {
 
 #[cfg(windows)]
 fn attach_console() {
-    use windows::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Console::{
+        AttachConsole, GetConsoleMode, GetStdHandle, SetStdHandle, ATTACH_PARENT_PROCESS,
+        CONSOLE_MODE, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+    };
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetFileType(handle: HANDLE) -> u32;
+    }
+    let slots = [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE];
+    let given = slots.map(|slot| {
+        unsafe { GetStdHandle(slot) }
+            .ok()
+            .map(|handle| (handle, unsafe { GetFileType(handle) }))
+    });
     unsafe {
         let _ = AttachConsole(ATTACH_PARENT_PROCESS);
+        for (slot, given) in slots.into_iter().zip(given) {
+            let Some((handle, kind)) = given else {
+                continue;
+            };
+            let mut mode = CONSOLE_MODE::default();
+            let redirected = match kind {
+                1 | 3 => true,
+                2 => GetConsoleMode(handle, &mut mode).is_err(),
+                _ => false,
+            };
+            if redirected {
+                let _ = SetStdHandle(slot, handle);
+            }
+        }
     }
 }
 

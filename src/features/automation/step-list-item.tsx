@@ -106,7 +106,7 @@ export function StepListItem({
           tabIndex={-1}
           aria-hidden
           title="Ziehen zum Verschieben (Tastatur: Alt + Pfeiltasten)"
-          className="flex w-5 shrink-0 cursor-grab touch-none items-center justify-center rounded-l-xl text-muted-foreground/0 transition-colors group-hover/step:text-muted-foreground/60 hover:text-foreground! active:cursor-grabbing"
+          className="flex w-5 shrink-0 cursor-grab touch-none items-center justify-center rounded-l-xl text-muted-foreground/0 transition-colors group-hover/step:text-muted-foreground hover:text-foreground! active:cursor-grabbing"
         >
           <GripVerticalIcon className="size-3.5" />
         </button>
@@ -163,7 +163,7 @@ export function StepListItem({
             <span
               className={cn(
                 "truncate text-xs",
-                summary ? "text-muted-foreground" : "text-muted-foreground/70 italic",
+                summary ? "text-muted-foreground" : "text-muted-foreground italic",
               )}
             >
               {summary || "Noch nicht eingerichtet"}

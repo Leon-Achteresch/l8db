@@ -96,7 +96,7 @@ export function VersioningActivity({ workspace }: { workspace: VersioningWorkspa
           const [hash, ...subject] = line.split("\t");
           return (
             <div key={hash} className="flex items-start gap-3 py-2.5">
-              <GitCommitHorizontalIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground/60" />
+              <GitCommitHorizontalIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
               <p className="min-w-0 flex-1 text-xs">
                 {subject.join("\t")}
                 <span className="mt-1 block font-mono text-[10px] text-muted-foreground">

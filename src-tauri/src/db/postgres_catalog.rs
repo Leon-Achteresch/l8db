@@ -141,6 +141,9 @@ impl PostgresAdapter {
             if want("trigger") {
                 catalog_triggers(&tx, schema, &mut out).await?;
             }
+            if want("policy") {
+                catalog_policies(&tx, schema, &mut out).await?;
+            }
             if want("comment") {
                 catalog_comments(&tx, schema, &mut out).await?;
             }
@@ -170,7 +173,12 @@ async fn catalog_tables(
                     pg_get_expr(d.adbin, d.adrelid), a.attidentity::text, a.attgenerated::text, \
                     CASE WHEN a.attcollation <> 0 AND a.attcollation <> t.typcollation THEN \
                       (SELECT quote_ident(cn.nspname) || '.' || quote_ident(co.collname) FROM pg_collation co \
-                       JOIN pg_namespace cn ON cn.oid = co.collnamespace WHERE co.oid = a.attcollation) END \
+                       JOIN pg_namespace cn ON cn.oid = co.collnamespace WHERE co.oid = a.attcollation) END, \
+                    CASE WHEN a.attidentity <> '' THEN ( \
+                      SELECT concat_ws(' ', CASE WHEN s.seqstart <> 1 THEN 'START WITH ' || s.seqstart END, \
+                                            CASE WHEN s.seqincrement <> 1 THEN 'INCREMENT BY ' || s.seqincrement END) \
+                      FROM pg_sequence s \
+                      WHERE s.seqrelid = pg_get_serial_sequence(quote_ident(n.nspname) || '.' || quote_ident(c.relname), a.attname)::regclass) END \
              FROM pg_attribute a \
              JOIN pg_class c ON c.oid = a.attrelid \
              JOIN pg_namespace n ON n.oid = c.relnamespace \
@@ -194,6 +202,7 @@ async fn catalog_tables(
         let identity: String = r.get(5);
         let generated: String = r.get(6);
         let collation: Option<String> = r.get(7);
+        let sequence: Option<String> = r.get::<_, Option<String>>(8).filter(|s| !s.is_empty());
         let mut ddl = format!("{} {data_type}", quote_ident(&name));
         let mut object = CatalogObject::new("column", name, Some(table.clone()), "")
             .attr("type", data_type)
@@ -213,6 +222,9 @@ async fn catalog_tables(
                 "BY DEFAULT"
             };
             ddl.push_str(&format!(" GENERATED {mode} AS IDENTITY"));
+            if let Some(sequence) = sequence {
+                ddl.push_str(&format!(" ({sequence})"));
+            }
             object = object.attr("identity", mode);
         } else if let Some(default) = default {
             ddl.push_str(&format!(" DEFAULT {default}"));
@@ -231,7 +243,8 @@ async fn catalog_tables(
             "SELECT c.relname, c.relkind::text, c.relpersistence::text, c.relispartition, \
                     CASE WHEN c.relkind = 'p' THEN pg_get_partkeydef(c.oid) END, \
                     CASE WHEN c.relispartition THEN (SELECT i.inhparent::regclass::text FROM pg_inherits i WHERE i.inhrelid = c.oid LIMIT 1) END, \
-                    CASE WHEN c.relispartition THEN pg_get_expr(c.relpartbound, c.oid) END \
+                    CASE WHEN c.relispartition THEN pg_get_expr(c.relpartbound, c.oid) END, \
+                    array_to_string(c.reloptions, ', ') \
              FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
              WHERE n.nspname = $1 AND c.relkind IN ('r', 'p') AND {} \
              ORDER BY c.relname",
@@ -247,6 +260,7 @@ async fn catalog_tables(
         let partition_key: Option<String> = r.get(4);
         let parent: Option<String> = r.get(5);
         let bound: Option<String> = r.get(6);
+        let options: Option<String> = r.get::<_, Option<String>>(7).filter(|o| !o.is_empty());
         let unlogged = if persistence == "u" { "UNLOGGED " } else { "" };
         let columns = by_table.remove(&name).unwrap_or_default();
         let mut ddl = if is_partition {
@@ -273,6 +287,10 @@ async fn catalog_tables(
         }
         if !unlogged.is_empty() {
             object = object.attr("unlogged", "YES");
+        }
+        if let Some(options) = options {
+            ddl.push_str(&format!(" WITH ({options})"));
+            object = object.attr("options", options);
         }
         object.ddl = ddl;
         out.push(object);
@@ -487,6 +505,111 @@ async fn catalog_triggers(
                 "ENABLED"
             },
         ));
+    }
+    Ok(())
+}
+
+pub(super) fn policy_ddl(
+    name: &str,
+    target: &str,
+    permissive: bool,
+    command: &str,
+    roles: &str,
+    using: Option<&str>,
+    check: Option<&str>,
+) -> String {
+    let command = match command {
+        "r" => "SELECT",
+        "a" => "INSERT",
+        "w" => "UPDATE",
+        "d" => "DELETE",
+        _ => "ALL",
+    };
+    let mode = if permissive {
+        "PERMISSIVE"
+    } else {
+        "RESTRICTIVE"
+    };
+    let mut ddl = format!(
+        "CREATE POLICY {} ON {target} AS {mode} FOR {command} TO {roles}",
+        quote_ident(name)
+    );
+    if let Some(using) = using {
+        ddl.push_str(&format!(" USING ({using})"));
+    }
+    if let Some(check) = check {
+        ddl.push_str(&format!(" WITH CHECK ({check})"));
+    }
+    ddl
+}
+
+async fn catalog_policies(
+    tx: &Transaction<'_>,
+    schema: &str,
+    out: &mut Vec<CatalogObject>,
+) -> Result<(), String> {
+    let tables = rows(
+        tx,
+        &format!(
+            "SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity \
+             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+             WHERE n.nspname = $1 AND c.relkind IN ('r', 'p') \
+               AND (c.relrowsecurity OR c.relforcerowsecurity) AND {} \
+             ORDER BY c.relname",
+            not_extension("pg_class", "c.oid")
+        ),
+        schema,
+    )
+    .await?;
+    for r in &tables {
+        let table: String = r.get(0);
+        let target = qualified(schema, &table);
+        for (on, kind, name) in [
+            (r.get::<_, bool>(1), "enable", "ROW LEVEL SECURITY"),
+            (r.get::<_, bool>(2), "force", "FORCE ROW LEVEL SECURITY"),
+        ] {
+            if on {
+                let verb = if kind == "enable" { "ENABLE" } else { "FORCE" };
+                out.push(
+                    CatalogObject::new(
+                        "policy",
+                        name,
+                        Some(table.clone()),
+                        format!("ALTER TABLE {target} {verb} ROW LEVEL SECURITY"),
+                    )
+                    .attr("kind", kind),
+                );
+            }
+        }
+    }
+    let policies = rows(
+        tx,
+        "SELECT c.relname, p.polname, p.polpermissive, p.polcmd::text, \
+                (SELECT string_agg(role, ', ' ORDER BY role) FROM ( \
+                   SELECT CASE WHEN u.r = 0 THEN 'PUBLIC' ELSE quote_ident(pg_get_userbyid(u.r)) END AS role \
+                   FROM unnest(p.polroles) AS u(r)) roles), \
+                pg_get_expr(p.polqual, p.polrelid), pg_get_expr(p.polwithcheck, p.polrelid) \
+         FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid JOIN pg_namespace n ON n.oid = c.relnamespace \
+         WHERE n.nspname = $1 ORDER BY c.relname, p.polname",
+        schema,
+    )
+    .await?;
+    for r in &policies {
+        let table: String = r.get(0);
+        let name: String = r.get(1);
+        let roles: Option<String> = r.get(4);
+        let using: Option<String> = r.get(5);
+        let check: Option<String> = r.get(6);
+        let ddl = policy_ddl(
+            &name,
+            &qualified(schema, &table),
+            r.get(2),
+            &r.get::<_, String>(3),
+            roles.as_deref().unwrap_or("PUBLIC"),
+            using.as_deref(),
+            check.as_deref(),
+        );
+        out.push(CatalogObject::new("policy", name, Some(table), ddl));
     }
     Ok(())
 }
@@ -731,4 +854,19 @@ async fn catalog_grants(
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn policy_ddl_keeps_mode_command_roles_and_expressions() {
+        assert_eq!(
+            super::policy_ddl("p_pos", "\"s\".\"item\"", true, "r", "PUBLIC", Some("price > 0"), None),
+            "CREATE POLICY \"p_pos\" ON \"s\".\"item\" AS PERMISSIVE FOR SELECT TO PUBLIC USING (price > 0)"
+        );
+        assert_eq!(
+            super::policy_ddl("Own", "t", false, "*", "a, \"B c\"", None, Some("true")),
+            "CREATE POLICY \"Own\" ON t AS RESTRICTIVE FOR ALL TO a, \"B c\" WITH CHECK (true)"
+        );
+    }
 }

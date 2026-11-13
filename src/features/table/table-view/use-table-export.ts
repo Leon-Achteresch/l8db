@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { useActiveConnection } from "@/lib/connections";
 import type { TableData } from "@/lib/db";
+import { hashFeatureValue, recordFeatureEvent } from "@/lib/discovery/events";
 import { buildInsertStatements, UnsupportedValueError } from "@/lib/export";
 import type { DataExportFormat } from "@/lib/export-formats";
 import { onHotkeyAction, useResolvedHotkey } from "@/lib/hotkeys";
@@ -117,6 +118,10 @@ export function useTableExport({
       });
       if (!filePath) return;
       await writeTextFile(filePath, content);
+      recordFeatureEvent("export.done", {
+        target: hashFeatureValue(`${schema}.${table}`),
+        format,
+      });
       toast.success(`Exportiert nach ${filePath.split("/").pop()}`);
     } catch (err) {
       if (err instanceof UnsupportedValueError) {

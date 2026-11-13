@@ -92,10 +92,12 @@ export function TableActionsMenu({
     <IconMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
+          data-feature="table.export"
           size="icon"
           variant="ghost"
           className="relative size-7"
           aria-label="Weitere Aktionen"
+          title="Weitere Aktionen"
           data-tour="table-add"
         >
           <EllipsisIcon className="size-3.5" />

@@ -1,6 +1,8 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { useConnectionsStore } from "@/lib/connections";
+import { featureSelector } from "@/lib/discovery/anchors";
+import { featureAnchorId, featureById } from "@/lib/discovery/catalog";
 import { TOUR_CHAPTERS } from "@/lib/tour/chapters";
 import {
   clickSelector,
@@ -9,6 +11,7 @@ import {
   nextTourPosition,
   prevTourPosition,
   shouldSkipStep,
+  visibleElement,
   waitForSelector,
 } from "@/lib/tour/conditions";
 import { destroySpotlight, showSpotlight } from "@/lib/tour/spotlight";
@@ -31,6 +34,24 @@ async function goToStepRoute(step: TourStep, navigate: ReturnType<typeof useNavi
   }
 }
 
+async function presentDetour(
+  id: string,
+  navigate: ReturnType<typeof useNavigate>,
+  live: () => boolean,
+) {
+  const entry = featureById(id);
+  if (!entry) return;
+  if (entry.route && `${window.location.pathname}${window.location.search}` !== entry.route)
+    await navigate({ href: entry.route });
+  if (!live()) return;
+  const selector = featureSelector(featureAnchorId(entry));
+  const found = await waitForSelector(selector, 2500);
+  if (!live()) return;
+  const element = found ? visibleElement(selector) : null;
+  element?.scrollIntoView?.({ block: "center", inline: "nearest" });
+  showSpotlight({ target: element ? selector : undefined }, false);
+}
+
 function currentTour() {
   const { chapterIndex, stepIndex } = useTourStore.getState();
   const chapter = TOUR_CHAPTERS[chapterIndex];
@@ -48,16 +69,22 @@ export function useAppTour() {
   const waiting = useTourStore((s) => s.waiting);
   const minimized = useTourStore((s) => s.minimized);
   const runId = useTourStore((s) => s.runId);
+  const detour = useTourStore((s) => s.detour);
   const generation = useRef(0);
-
-  useEffect(() => {
-    if (active) void import("driver.js/dist/driver.css");
-  }, [active]);
 
   useEffect(() => {
     if (!active || minimized) {
       destroySpotlight();
       return;
+    }
+    if (detour) {
+      const token = ++generation.current;
+      let cancelled = false;
+      destroySpotlight();
+      void presentDetour(detour, navigate, () => !cancelled && generation.current === token);
+      return () => {
+        cancelled = true;
+      };
     }
     const step = TOUR_CHAPTERS[chapterIndex]?.steps[stepIndex];
     if (!step) return;
@@ -84,6 +111,12 @@ export function useAppTour() {
         return;
       }
       if (step.openTx) useTransactionStore.getState().setPanelOpen(true);
+      const back = useTourStore.getState().detourFrom;
+      if (back) {
+        useTourStore.setState({ detourFrom: null });
+        await navigate({ href: back });
+        if (cancelled || generation.current !== token) return;
+      }
       await goToStepRoute(step, navigate);
       if (cancelled || generation.current !== token) return;
       const baseline = useConnectionsStore.getState().connections.length;
@@ -117,10 +150,10 @@ export function useAppTour() {
     return () => {
       cancelled = true;
     };
-  }, [active, minimized, chapterIndex, stepIndex, autoPilot, navigate, runId]);
+  }, [active, minimized, chapterIndex, stepIndex, autoPilot, navigate, runId, detour]);
 
   useEffect(() => {
-    if (!active || !waiting || minimized) return;
+    if (!active || !waiting || minimized || detour) return;
     const { step } = currentTour();
     if (!step?.wait) return;
     const baseline = useTourStore.getState().waitBaseline;
@@ -141,7 +174,7 @@ export function useAppTour() {
       unsub();
       window.clearInterval(timer);
     };
-  }, [active, minimized, waiting, chapterIndex, stepIndex, pathname]);
+  }, [active, minimized, waiting, chapterIndex, stepIndex, pathname, detour]);
 
   useEffect(() => {
     if (!active) return;
@@ -157,6 +190,11 @@ export function useAppTour() {
         return;
       }
       if (useTourStore.getState().minimized) return;
+      if (useTourStore.getState().detour && ["ArrowRight", "ArrowLeft"].includes(event.key)) {
+        event.preventDefault();
+        useTourStore.getState().endDetour();
+        return;
+      }
       if (event.key === "ArrowRight") {
         event.preventDefault();
         advanceTour();

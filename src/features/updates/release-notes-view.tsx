@@ -1,28 +1,25 @@
-import { motion } from "motion/react";
-import { Markdown } from "@/components/markdown";
+import { SpotlightOpenButton } from "@/features/discovery/spotlight/spotlight-open-button";
 import { FeatureVideoGallery } from "@/features/updates/feature-video-gallery";
-import { SPRING_LAYOUT } from "@/lib/ease";
+import { ReleaseEntry } from "@/features/updates/release-entry";
+import { parseChangelog } from "@/lib/changelog";
 import changelog from "../../../CHANGELOG.md?raw";
+
+const RELEASES = parseChangelog(changelog);
 
 export function ReleaseNotesView() {
   return (
     <main className="workspace-canvas h-full w-full min-w-0 overflow-y-auto">
-      <div className="w-full px-6 py-8">
-        <h1 className="text-2xl font-semibold tracking-tight">Release Notes</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Alle veröffentlichten Änderungen dieser App.
-        </p>
+      <div className="mx-auto w-full max-w-4xl px-6 py-8">
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight">Release Notes</h1>
+          <SpotlightOpenButton className="ml-auto" />
+        </div>
         <FeatureVideoGallery />
-        <motion.div
-          layout
-          transition={{ layout: SPRING_LAYOUT }}
-          className="mt-6 rounded-2xl border border-border/80 bg-card px-5 py-5 shadow-sm"
-        >
-          <Markdown
-            source={changelog}
-            className="[&>*]:[content-visibility:auto] [&>*]:[contain-intrinsic-size:auto_3rem]"
-          />
-        </motion.div>
+        <ol className="mt-10">
+          {RELEASES.map((release, index) => (
+            <ReleaseEntry key={release.version} release={release} latest={index === 0} />
+          ))}
+        </ol>
       </div>
     </main>
   );

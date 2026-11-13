@@ -796,15 +796,20 @@ pub async fn run(
     let mut plan = harness::Plan::default();
     let mut repeats = harness::Repeats::default();
     let start = messages.len();
+    let mut reported_tools = 0;
     if harness::guided(profile) {
         harness::note(&mut messages, harness::GUIDED_REMINDER);
     }
     for round in 1..=harness::MAX_ROUNDS {
         let published = super::tools::published(catalog.tools());
-        let overhead = instructions.len()
-            + serde_json::to_string(catalog.tools())
-                .map(|tools| tools.len())
-                .unwrap_or(0);
+        let tool_chars = serde_json::to_string(catalog.tools())
+            .map(|tools| tools.len())
+            .unwrap_or(0);
+        if tool_chars != reported_tools {
+            reported_tools = tool_chars;
+            run.emit("usage", json!({"layout": {"tools": tool_chars}}));
+        }
+        let overhead = instructions.len() + tool_chars;
         let budget = harness::Budget::for_profile(profile, overhead);
         thin_tool_results(&mut messages, 2, budget.soft);
         harness::collapse(&mut messages, start, budget.hard, &plan);

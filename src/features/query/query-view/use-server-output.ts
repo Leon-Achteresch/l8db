@@ -1,10 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { transactionServerOutput } from "@/lib/db";
 import {
   collectServerOutput,
   deliverServerOutput,
+  onNextServerOutput,
   toggleServerOutput,
   useServerOutputStore,
 } from "@/lib/server-output";
@@ -17,31 +18,49 @@ export function useServerOutput(
   connection: QueryViewConnection,
   database: string | null,
   caps: QueryViewCapabilities,
+  running: boolean,
 ) {
   const [outputOpen, setOutputOpen] = useState(false);
+  const streamed = useRef(false);
+  const stopWatching = useRef<() => void>(undefined);
+  const connectionId = connection?.id;
+  useEffect(() => {
+    if (!running || !connectionId || !caps.server_output) return;
+    streamed.current = false;
+    const stop = onNextServerOutput(connectionId, () => {
+      streamed.current = true;
+      setOutputOpen(true);
+    });
+    stopWatching.current = stop;
+    return stop;
+  }, [running, connectionId, caps.server_output]);
   const [outputBusy, setOutputBusy] = useState(false);
   const outputEnabled = useServerOutputStore((state) =>
-    connection ? state.enabled[connection.id] === true : false,
+    connection ? (state.enabled[connection.id] ?? connection.kind === "oracle") : false,
   );
 
-  const collectOutput = useCallback(async () => {
-    if (!connection || !caps.server_output) return;
-    try {
-      const tx = getQueryTransaction(connection.id, database);
-      if (tx) {
-        deliverServerOutput(connection.id, database, await transactionServerOutput(tx.txId));
-        return;
+  const collectOutput = useCallback(
+    async (reveal = false) => {
+      if (!connection || !caps.server_output) return;
+      stopWatching.current?.();
+      let added = 0;
+      try {
+        const tx = getQueryTransaction(connection.id, database);
+        added = tx
+          ? deliverServerOutput(connection.id, database, await transactionServerOutput(tx.txId))
+          : await collectServerOutput(
+              connection.kind,
+              effectiveConnectionString(connection),
+              connection.id,
+              database ?? undefined,
+            );
+      } catch {
+        added = 0;
       }
-      await collectServerOutput(
-        connection.kind,
-        effectiveConnectionString(connection),
-        connection.id,
-        database ?? undefined,
-      );
-    } catch {
-      return;
-    }
-  }, [connection, database, caps.server_output]);
+      if (!(reveal && streamed.current)) setOutputOpen(reveal && added > 0);
+    },
+    [connection, database, caps.server_output],
+  );
 
   const handleToggleServerOutput = useCallback(
     async (enabled: boolean) => {

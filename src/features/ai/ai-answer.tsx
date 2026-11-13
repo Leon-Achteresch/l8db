@@ -1,4 +1,6 @@
+import { aiFeatureIds } from "@/lib/ai/feature-search";
 import { aiFollowups } from "@/lib/ai/result";
+import { AiFeatureCard } from "./ai-feature-card";
 import { AiFollowups } from "./ai-followups";
 import { AiMarkdown } from "./ai-markdown";
 import type { AgentCodeLanguage } from "./beui/agents/agent-code";
@@ -32,6 +34,14 @@ export function AiAnswer({
           .slice(newline + 1)
           .replace(/```$/, "")
           .replace(/\n$/, "");
+        if (language === "feature")
+          return part.endsWith("```") ? (
+            <div key={String(index)}>
+              {aiFeatureIds(code).map((id) => (
+                <AiFeatureCard key={id} id={id} />
+              ))}
+            </div>
+          ) : null;
         if (language === "followups")
           return onFollowup && part.endsWith("```") ? (
             <AiFollowups key={String(index)} questions={aiFollowups(code)} onAsk={onFollowup} />

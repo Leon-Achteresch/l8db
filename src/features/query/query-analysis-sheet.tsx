@@ -15,6 +15,7 @@ export interface QueryAnalysisProps {
   section: "plan" | "perf";
   onSectionChange: (section: "plan" | "perf") => void;
   explainSupported: boolean;
+  analyzeSupported: boolean;
   explainEnabled: boolean;
   onExplain: (analyze: boolean) => void;
   planLoading: boolean;
@@ -30,6 +31,7 @@ export function QueryAnalysisSheet({
   section,
   onSectionChange,
   explainSupported,
+  analyzeSupported,
   explainEnabled,
   onExplain,
   planLoading,
@@ -56,25 +58,27 @@ export function QueryAnalysisSheet({
             variant="outline"
             disabled={!explainSupported || !explainEnabled || planLoading}
             onClick={() => onExplain(false)}
-            title="Ausführungsplan anzeigen (führt nichts aus)"
+            title="Ausführungsplan anzeigen, führt nichts aus"
           >
             {planLoading ? (
               <LoaderIcon className="size-3.5 animate-spin" />
             ) : (
               <GaugeIcon className="size-3.5" />
             )}
-            Explain
+            Plan
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!explainSupported || !explainEnabled || planLoading}
-            onClick={() => onExplain(true)}
-            title="Achtung: führt die Query wirklich aus und misst sie; PostgreSQL rollt Änderungen danach zurück"
-          >
-            <GaugeIcon className="size-3.5" />
-            Explain Analyze
-          </Button>
+          {analyzeSupported && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!explainSupported || !explainEnabled || planLoading}
+              onClick={() => onExplain(true)}
+              title="Achtung: führt die Query wirklich aus und misst sie; PostgreSQL rollt Änderungen danach zurück"
+            >
+              <GaugeIcon className="size-3.5" />
+              Plan + Messung
+            </Button>
+          )}
           <Button
             size="sm"
             variant="outline"
@@ -130,7 +134,9 @@ export function QueryAnalysisSheet({
           </Accordion>
           {!plan && section === "plan" && (
             <p className="px-1 py-3 text-xs text-muted-foreground">
-              Noch kein Plan geladen. „Explain“ erzeugt einen Plan, ohne die Abfrage auszuführen.
+              {analyzeSupported
+                ? "„Plan“ führt nichts aus. „Plan + Messung“ führt die Abfrage aus."
+                : "„Plan“ führt nichts aus."}
             </p>
           )}
         </div>

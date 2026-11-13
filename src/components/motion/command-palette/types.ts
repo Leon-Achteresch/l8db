@@ -10,11 +10,13 @@ export type CommandItem = {
   kind?: "command" | "setting" | "object" | "connection";
   context?: string;
   hint?: string;
+  summary?: string;
   keywords?: string[];
   icon?: LucideIcon;
   badge?: ReactNode;
   featureId?: NewFeatureId;
   parentId?: string;
+  videoId?: string;
   onSelect: () => void;
 };
 
@@ -30,8 +32,10 @@ export interface CommandPaletteProps {
   lockDocumentScroll?: boolean;
   featureId?: NewFeatureId;
   queryItem?: (query: string) => CommandItem;
+  queryItems?: (query: string, unusedOnly: boolean) => CommandItem[];
   initialQuery?: string;
   commandFeatureId?: NewFeatureId;
   history?: PaletteHistory;
   onSelectItem?: (item: CommandItem) => void;
+  renderPreview?: (item: CommandItem) => ReactNode;
 }

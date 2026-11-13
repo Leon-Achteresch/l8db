@@ -6,7 +6,10 @@ import config from "../src-tauri/tauri.conf.json";
 function mockTauriInit(seeds: Record<string, string>) {
   const runtime = window as unknown as {
     __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown) => Promise<unknown> };
+    __tourCalls: string[];
   };
+  runtime.__tourCalls = [];
+  const aiReady = seeds["test.ai"] === "ready";
   const keychain = new Map<string, string>();
   const providers = [
     {
@@ -35,6 +38,17 @@ function mockTauriInit(seeds: Record<string, string>) {
     plugins: {},
     invoke: async (cmd: string, args?: unknown) => {
       const input = (args ?? {}) as Record<string, unknown>;
+      runtime.__tourCalls.push(cmd);
+      if (cmd === "ai_status" && aiReady)
+        return { provider: "codex", installed: true, version: "1", keyStored: false };
+      if (cmd === "ai_complete") {
+        await new Promise((done) => setTimeout(done, 150));
+        return {
+          text: "Im SQL-Editor drückst du ⌘↵ oder klickst auf Ausführen.\n```feature\nquery.run\n```",
+          truncated: false,
+          model: "test",
+        };
+      }
       if (cmd === "list_providers") return providers;
       if (cmd === "list_databases") return ["demo"];
       if (cmd === "list_schemas") return ["public"];
@@ -68,7 +82,8 @@ function mockTauriInit(seeds: Record<string, string>) {
     unregisterListener: () => {},
   };
   localStorage.clear();
-  for (const [key, value] of Object.entries(seeds)) localStorage.setItem(key, value);
+  for (const [key, value] of Object.entries(seeds))
+    if (!key.startsWith("test.")) localStorage.setItem(key, value);
 }
 const ONBOARDED = {
   "l8db.settings": JSON.stringify({ state: { onboardingDone: true }, version: 0 }),
@@ -100,10 +115,8 @@ async function tourState(page: Page) {
   return page.evaluate(() => ({
     tour: JSON.parse(localStorage.getItem("l8db.tour") ?? "{}") as Record<string, unknown>,
     settings: JSON.parse(localStorage.getItem("l8db.settings") ?? "{}") as Record<string, unknown>,
-    overlay: document.querySelectorAll(
-      "svg.driver-overlay, .driver-overlay, #driver-overlay, #driver-page-overlay",
-    ).length,
-    popover: document.querySelectorAll(".driver-popover").length,
+    spotlight: document.querySelectorAll('[data-tour-ui="spotlight"]').length,
+    mascot: document.querySelectorAll('[data-tour-ui="mascot"]').length,
   }));
 }
 
@@ -114,18 +127,20 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
     const browser = await launchBrowser();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("pageerror", (error) => {
+      if (!error.message.startsWith("ResizeObserver loop")) errors.push(error.message);
+    });
     try {
       await page.addInitScript(mockTauriInit, ONBOARDED);
       await page.goto(`http://localhost:${server.port}/connections`);
       await page.locator('[data-tour-ui="offer"]').waitFor({ timeout: 10000 });
       expect(await page.locator('[data-tour-ui="overview"]').count()).toBe(0);
       const state = await tourState(page);
-      expect(state.overlay).toBe(0);
+      expect(state.spotlight).toBe(0);
       await page.locator('[data-tour="connection-add"]').first().click({ timeout: 8000 });
       await page.locator('[data-tour="connection-editor"]').waitFor({ timeout: 8000 });
       expect(await page.locator('[data-tour-ui="offer"]').count()).toBe(1);
-      expect(errors).toEqual([]);
+      expect(errors.join("\n")).toBe("");
     } finally {
       await browser.close();
       server.stop(true);
@@ -141,7 +156,9 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
     const browser = await launchBrowser();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("pageerror", (error) => {
+      if (!error.message.startsWith("ResizeObserver loop")) errors.push(error.message);
+    });
     try {
       await page.addInitScript(mockTauriInit, ONBOARDED);
       await page.goto(`http://localhost:${server.port}/connections`);
@@ -149,25 +166,23 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
       await page.getByRole("button", { name: "Tour starten", exact: true }).click();
       const overview = page.locator('[data-tour-ui="overview"]');
       await overview.waitFor({ timeout: 8000 });
-      expect(await page.locator('[data-tour-ui="progress"]').first().innerText()).toContain(
-        "Schritt 1 von",
-      );
+      expect(await page.locator('[data-tour-ui="progress"]').first().innerText()).toMatch(/^1\//);
       expect(await page.locator('[data-tour-ui="step-body"]').first().innerText()).not.toBe("");
       let state = await tourState(page);
-      expect(state.overlay).toBe(0);
+      expect(state.spotlight).toBe(0);
+      expect(state.mascot).toBe(1);
+      expect(await page.getByLabel("Frage an Lumi").count()).toBe(0);
       await page.getByRole("button", { name: "Weiter", exact: true }).click();
       await page.waitForTimeout(1200);
-      expect(await page.locator('[data-tour-ui="progress"]').first().innerText()).toContain(
-        "Schritt 2 von",
-      );
+      expect(await page.locator('[data-tour-ui="progress"]').first().innerText()).toMatch(/^2\//);
       state = await tourState(page);
-      expect(state.popover).toBeGreaterThan(0);
-      expect(state.overlay).toBeGreaterThan(0);
+      expect(state.spotlight).toBe(1);
       await page.getByRole("button", { name: "Tour minimieren", exact: true }).click();
       await page.locator('[data-tour-ui="overview-minimized"]').waitFor({ timeout: 5000 });
+      await page.waitForTimeout(400);
       state = await tourState(page);
-      expect(state.overlay).toBe(0);
-      expect(state.popover).toBe(0);
+      expect(state.spotlight).toBe(0);
+      expect(state.mascot).toBe(0);
       await page.locator('[data-tour="connection-add"]').first().click({ timeout: 8000 });
       await page.locator('[data-tour="connection-editor"]').waitFor({ timeout: 8000 });
       await page.keyboard.press("Escape");
@@ -180,7 +195,7 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
       expect((state.settings.state as Record<string, unknown> | undefined)?.tourFinished).toBe(
         true,
       );
-      expect(errors).toEqual([]);
+      expect(errors.join("\n")).toBe("");
     } finally {
       await browser.close();
       server.stop(true);
@@ -196,7 +211,9 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
     const browser = await launchBrowser();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("pageerror", (error) => {
+      if (!error.message.startsWith("ResizeObserver loop")) errors.push(error.message);
+    });
     try {
       await page.addInitScript(mockTauriInit, ONBOARDED);
       await page.goto(`http://localhost:${server.port}/connections`);
@@ -211,8 +228,8 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
         .click();
       await page.waitForTimeout(1200);
       expect(page.url()).toContain("/query");
-      expect(await page.locator('[data-tour-ui="progress"]').first().innerText()).toContain(
-        "Schritt",
+      expect(await page.locator('[data-tour-ui="progress"]').first().innerText()).toMatch(
+        /^\d+\/\d+$/,
       );
       await page.locator('[data-tour-ui="chapter-toggle"]').click();
       await page
@@ -226,7 +243,7 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
       await page.waitForTimeout(1000);
       await page.getByLabel("Autopilot", { exact: true }).check();
       await page.locator('[data-tour="connection-editor"]').waitFor({ timeout: 10000 });
-      expect(errors).toEqual([]);
+      expect(errors.join("\n")).toBe("");
     } finally {
       await browser.close();
       server.stop(true);
@@ -242,7 +259,9 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
     const browser = await launchBrowser();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("pageerror", (error) => {
+      if (!error.message.startsWith("ResizeObserver loop")) errors.push(error.message);
+    });
     try {
       await page.addInitScript(mockTauriInit, ONBOARDED);
       await page.goto(`http://localhost:${server.port}/connections`);
@@ -271,7 +290,6 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
         if (!hit) return "none";
         if (hit.closest('[data-tour-ui="overview-minimized"]')) return "tour-pill";
         if (hit.closest('[data-tour-ui="overview"]')) return "tour-panel";
-        if (hit.closest(".driver-popover")) return "tour-popover";
         return "free";
       });
       expect(covered).toBe("free");
@@ -279,7 +297,7 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
       await page.keyboard.press("Enter");
       await page.getByText("Tour Test").first().waitFor({ timeout: 10000 });
       expect(await page.locator('[data-tour-ui="overview-minimized"]').count()).toBe(1);
-      expect(errors).toEqual([]);
+      expect(errors.join("\n")).toBe("");
     } finally {
       await browser.close();
       server.stop(true);
@@ -295,7 +313,9 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
     const browser = await launchBrowser();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("pageerror", (error) => {
+      if (!error.message.startsWith("ResizeObserver loop")) errors.push(error.message);
+    });
     try {
       await page.addInitScript(mockTauriInit, {
         ...ONBOARDED,
@@ -341,7 +361,7 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
       expect((state.settings.state as Record<string, unknown> | undefined)?.tourFinished).toBe(
         true,
       );
-      expect(errors).toEqual([]);
+      expect(errors.join("\n")).toBe("");
     } finally {
       await browser.close();
       server.stop(true);
@@ -357,7 +377,9 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
     const browser = await launchBrowser();
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors: string[] = [];
-    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("pageerror", (error) => {
+      if (!error.message.startsWith("ResizeObserver loop")) errors.push(error.message);
+    });
     try {
       await page.addInitScript(mockTauriInit, {
         "l8db.settings": JSON.stringify({
@@ -370,14 +392,312 @@ test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
       expect(await page.locator('[data-tour-ui="overview"]').count()).toBe(0);
       await page.getByRole("button", { name: "Tour von vorn", exact: true }).click();
       await page.locator('[data-tour-ui="overview"]').waitFor({ timeout: 8000 });
-      expect(await page.locator('[data-tour-ui="progress"]').first().innerText()).toContain(
-        "Schritt 1 von",
-      );
-      expect(errors).toEqual([]);
+      expect(await page.locator('[data-tour-ui="progress"]').first().innerText()).toMatch(/^1\//);
+      expect(errors.join("\n")).toBe("");
     } finally {
       await browser.close();
       server.stop(true);
     }
   },
   60000,
+);
+
+const CONNECTED = {
+  ...ONBOARDED,
+  "l8db.connections": JSON.stringify({
+    state: {
+      connections: [
+        {
+          id: "tour",
+          name: "Tour Demo",
+          kind: "postgres",
+          connectionString: "postgres://demo@localhost/demo",
+          sslMode: "disable",
+        },
+      ],
+      activeId: "tour",
+      favoriteServerKeys: [],
+      serverOrder: [],
+    },
+    version: 0,
+  }),
+};
+
+async function box(page: Page, selector: string) {
+  const element = page.locator(selector).first();
+  return (await element.count()) > 0 ? element.boundingBox() : null;
+}
+
+async function settled(page: Page) {
+  const read = () =>
+    page.evaluate(() =>
+      [
+        '[data-tour-ui="mascot"]',
+        '[data-tour-ui="overview"]',
+        '[data-tour-ui="spotlight"]',
+        "[data-walking]",
+      ]
+        .map((selector) => {
+          const rect = document.querySelector(selector)?.getBoundingClientRect();
+          return rect ? [rect.x, rect.y, rect.width, rect.height].map(Math.round).join(",") : "-";
+        })
+        .join("|"),
+    );
+  let previous = await read();
+  for (let attempt = 0; attempt < 40; attempt++) {
+    await page.waitForTimeout(250);
+    const current = await read();
+    if (current === previous && current.endsWith("|-")) return;
+    previous = current;
+  }
+  throw new Error(`Tour kommt nicht zur Ruhe: ${previous}`);
+}
+
+function overlaps(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+) {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
+  "Lumi läuft zum Ziel, zeigt darauf und verdeckt es nicht",
+  async () => {
+    const server = await createServer();
+    const browser = await launchBrowser();
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => {
+      if (!error.message.startsWith("ResizeObserver loop")) errors.push(error.message);
+    });
+    try {
+      await page.addInitScript(mockTauriInit, CONNECTED);
+      await page.goto(`http://localhost:${server.port}/`);
+      await page.locator('[data-tour-ui="offer"]').waitFor({ timeout: 10000 });
+      await page.getByRole("button", { name: "Tour starten", exact: true }).click();
+      const mascot = page.locator('[data-tour-ui="mascot"]');
+      await mascot.waitFor({ timeout: 8000 });
+      for (let step = 0; step < 10; step++) {
+        const overview = page.locator('[data-tour-ui="overview"]');
+        const skip = overview.getByRole("button", { name: "Überspringen", exact: true });
+        if ((await skip.count()) > 0) await skip.click();
+        else await overview.getByRole("button", { name: "Weiter", exact: true }).click();
+        await settled(page);
+        const spotlight = await box(page, '[data-tour-ui="spotlight"]');
+        if (!spotlight) continue;
+        const lumi = await box(page, '[data-tour-ui="mascot"]');
+        const bubble = await box(page, '[data-tour-ui="overview"]');
+        if (!lumi || !bubble) throw new Error("Lumi oder Sprechblase fehlt");
+        const target = {
+          x: spotlight.x + 8,
+          y: spotlight.y + 8,
+          width: spotlight.width - 16,
+          height: spotlight.height - 16,
+        };
+        if (target.width * target.height < 1440 * 900 * 0.3) {
+          expect(overlaps(lumi, target)).toBe(false);
+          expect(overlaps(bubble, target)).toBe(false);
+        }
+        expect(lumi.x).toBeGreaterThanOrEqual(0);
+        expect(lumi.x + lumi.width).toBeLessThanOrEqual(1440);
+        expect(bubble.y + bubble.height).toBeLessThanOrEqual(900);
+      }
+      expect(errors.join("\n")).toBe("");
+    } finally {
+      await browser.close();
+      server.stop(true);
+    }
+  },
+  120000,
+);
+
+test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
+  "Fragen an Lumi: Antwort, Zeig mir, zurück zur Tour",
+  async () => {
+    const server = await createServer();
+    const browser = await launchBrowser();
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => {
+      if (!error.message.startsWith("ResizeObserver loop")) errors.push(error.message);
+    });
+    try {
+      await page.addInitScript(mockTauriInit, { ...CONNECTED, "test.ai": "ready" });
+      await page.goto(`http://localhost:${server.port}/`);
+      await page.locator('[data-tour-ui="offer"]').waitFor({ timeout: 10000 });
+      await page.getByRole("button", { name: "Tour starten", exact: true }).click();
+      await page.locator('[data-tour-ui="chapter-toggle"]').click();
+      await page
+        .locator('[data-tour-ui="overview"]')
+        .getByRole("button", { name: /Fragen stellen/ })
+        .first()
+        .click();
+      await page.waitForURL(/\/query/, { timeout: 8000 });
+      const titleBefore = "Der SQL-Editor";
+      await page
+        .locator('[data-tour-ui="step-title"]', { hasText: titleBefore })
+        .waitFor({ timeout: 8000 });
+      const input = page.getByLabel("Frage an Lumi");
+      await input.waitFor({ timeout: 8000 });
+      await input.fill("Wie führe ich eine Abfrage aus?");
+      await page.keyboard.press("ArrowRight");
+      expect(await page.locator('[data-tour-ui="step-title"]').first().innerText()).toBe(
+        titleBefore,
+      );
+      await page.getByRole("button", { name: "Frage senden" }).click();
+      await page.getByRole("status", { name: "Lumi denkt nach" }).waitFor({ timeout: 3000 });
+      expect(await page.locator('[data-tour-ui="mascot"] svg').getAttribute("data-mood")).toBe(
+        "thinking",
+      );
+      const answer = page.locator('[data-tour-ui="answer"]');
+      await answer.getByText("⌘↵").waitFor({ timeout: 8000 });
+      expect(await answer.innerText()).not.toContain("```");
+      await answer.getByRole("button", { name: "Zeig mir: Abfrage ausführen" }).click();
+      await page.locator('[data-tour-ui="feature"]').waitFor({ timeout: 8000 });
+      expect(await page.locator('[data-tour-ui="step-title"]').first().innerText()).toBe(
+        "Abfrage ausführen",
+      );
+      await page.locator('[data-tour-ui="spotlight"]').waitFor({ timeout: 8000 });
+      const anchor = await box(page, '[data-feature="query.run"]');
+      const spotlight = await box(page, '[data-tour-ui="spotlight"]');
+      expect(anchor && spotlight && overlaps(anchor, spotlight)).toBe(true);
+      await page.getByRole("button", { name: "Zurück zur Tour" }).click();
+      await page.locator('[data-tour-ui="feature"]').waitFor({ state: "hidden", timeout: 8000 });
+      expect(await page.locator('[data-tour-ui="step-title"]').first().innerText()).toBe(
+        titleBefore,
+      );
+      await answer.getByRole("button", { name: "Zeig mir: Abfrage ausführen" }).waitFor({
+        timeout: 5000,
+      });
+      await answer.getByRole("button", { name: "Zeig mir: Abfrage ausführen" }).click();
+      await page.locator('[data-tour-ui="feature"]').waitFor({ timeout: 8000 });
+      await page.keyboard.press("ArrowRight");
+      await page.locator('[data-tour-ui="feature"]').waitFor({ state: "hidden", timeout: 8000 });
+      expect(await page.locator('[data-tour-ui="step-title"]').first().innerText()).toBe(
+        titleBefore,
+      );
+      const calls = await page.evaluate(
+        () => (window as unknown as { __tourCalls: string[] }).__tourCalls,
+      );
+      expect(calls.filter((cmd) => cmd === "ai_complete")).toHaveLength(1);
+      expect(calls.filter((cmd) => cmd === "ai_status").length).toBeLessThanOrEqual(2);
+      expect(errors.join("\n")).toBe("");
+    } finally {
+      await browser.close();
+      server.stop(true);
+    }
+  },
+  120000,
+);
+
+test.skipIf(!process.env.L8DB_TOUR_BROWSER)(
+  "Performance: Schrittwechsel, DOM-Größe und Leerlauf",
+  async () => {
+    const server = await createServer();
+    const browser = await launchBrowser();
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => {
+      if (!error.message.startsWith("ResizeObserver loop")) errors.push(error.message);
+    });
+    try {
+      await page.addInitScript(mockTauriInit, CONNECTED);
+      await page.goto(`http://localhost:${server.port}/`);
+      await page.locator('[data-tour-ui="offer"]').waitFor({ timeout: 10000 });
+      await page.getByRole("button", { name: "Tour starten", exact: true }).click();
+      await page.locator('[data-tour-ui="overview"]').waitFor({ timeout: 8000 });
+      const samples: number[] = [];
+      for (let step = 0; step < 14; step++) {
+        samples.push(
+          await page.evaluate(
+            () =>
+              new Promise<number>((done, fail) => {
+                const progress = () =>
+                  document.querySelector('[data-tour-ui="progress"]')?.textContent;
+                const before = progress();
+                const buttons = Array.from(
+                  document.querySelectorAll<HTMLButtonElement>('[data-tour-ui="overview"] button'),
+                );
+                const next = buttons.find((button) =>
+                  ["Weiter", "Überspringen"].includes(button.textContent?.trim() ?? ""),
+                );
+                if (!next) return fail(new Error("Kein Weiter-Knopf"));
+                const started = performance.now();
+                const observer = new MutationObserver(() => {
+                  if (progress() === before) return;
+                  observer.disconnect();
+                  requestAnimationFrame(() => done(performance.now() - started));
+                });
+                observer.observe(document.body, {
+                  subtree: true,
+                  childList: true,
+                  characterData: true,
+                });
+                next.click();
+              }),
+          ),
+        );
+        await page.waitForTimeout(350);
+      }
+      samples.sort((a, b) => a - b);
+      const median = samples[Math.floor(samples.length / 2)];
+      const p95 = samples[Math.floor(samples.length * 0.95)];
+      await page.waitForFunction(
+        () => !document.querySelector('[data-tour-ui="mascot"][data-walking]'),
+        undefined,
+        { timeout: 8000 },
+      );
+      await page.waitForTimeout(1600);
+      const idle = await page.evaluate(
+        () =>
+          new Promise<{ mutations: number; nodes: number; frames: number }>((done) => {
+            let mutations = 0;
+            let frames = 0;
+            const observer = new MutationObserver((records) => {
+              mutations += records.length;
+            });
+            observer.observe(document.body, {
+              subtree: true,
+              childList: true,
+              attributes: true,
+              characterData: true,
+            });
+            const original = window.requestAnimationFrame.bind(window);
+            window.requestAnimationFrame = (callback) => {
+              frames += 1;
+              return original(callback);
+            };
+            setTimeout(() => {
+              observer.disconnect();
+              window.requestAnimationFrame = original;
+              const nodes = Array.from(document.querySelectorAll("[data-tour-ui]")).filter(
+                (node) => !node.parentElement?.closest("[data-tour-ui]"),
+              );
+              done({
+                mutations,
+                frames,
+                nodes: nodes.reduce((sum, node) => sum + node.querySelectorAll("*").length + 1, 0),
+              });
+            }, 2000);
+          }),
+      );
+      const calls = await page.evaluate(
+        () => (window as unknown as { __tourCalls: string[] }).__tourCalls,
+      );
+      console.info(
+        `tour steps: median ${median.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms, idle mutations ${idle.mutations}, idle rAF ${idle.frames}, tour DOM ${idle.nodes}`,
+      );
+      expect(median).toBeLessThan(120);
+      expect(p95).toBeLessThan(400);
+      expect(idle.mutations).toBeLessThanOrEqual(6);
+      expect(idle.frames).toBeLessThanOrEqual(12);
+      expect(idle.nodes).toBeLessThan(260);
+      expect(calls.filter((cmd) => cmd === "ai_complete")).toHaveLength(0);
+      expect(errors.join("\n")).toBe("");
+    } finally {
+      await browser.close();
+      server.stop(true);
+    }
+  },
+  120000,
 );

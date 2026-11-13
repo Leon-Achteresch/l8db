@@ -522,7 +522,7 @@ export function ConnectionSelectPreview({ variant, many }: { variant: Variant; m
                               variant === "cards" ? "top-5" : "",
                               favorite
                                 ? "text-amber-500"
-                                : "text-muted-foreground/60 opacity-60 group-hover:opacity-100 group-focus-within:opacity-100",
+                                : "text-muted-foreground opacity-60 group-hover:opacity-100 group-focus-within:opacity-100",
                               active && "right-7",
                             )}
                           >

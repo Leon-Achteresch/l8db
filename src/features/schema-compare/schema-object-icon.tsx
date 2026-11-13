@@ -8,6 +8,7 @@ import {
   LayersIcon,
   Link2Icon,
   ListTreeIcon,
+  LockIcon,
   MessageSquareIcon,
   PackageIcon,
   PackageOpenIcon,
@@ -38,6 +39,7 @@ const VISUAL: Record<CatalogObjectType, { Icon: typeof Table2Icon; color: string
   synonym: { Icon: Link2Icon, color: "text-muted-foreground" },
   comment: { Icon: MessageSquareIcon, color: "text-muted-foreground" },
   grant: { Icon: ShieldCheckIcon, color: "text-muted-foreground" },
+  policy: { Icon: LockIcon, color: "text-muted-foreground" },
 };
 
 export function SchemaObjectIcon({

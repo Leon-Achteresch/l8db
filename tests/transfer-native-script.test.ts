@@ -245,6 +245,17 @@ describe("nativeScript", () => {
       "trigger:KUNDE.KUNDE_TRG",
       "type:T_ID",
     ]);
+    const commented = selectTables(
+      [
+        ...catalog,
+        object("comment", "KUNDE", "COMMENT ON TABLE KUNDE IS 'Kunden''s Tabelle'", "KUNDE"),
+        object("synonym", "KUNDEN", "CREATE SYNONYM KUNDEN FOR KUNDE"),
+      ],
+      ["KUNDE"],
+      [],
+    ).objects.map(objectKey);
+    expect(commented).toContain("comment:KUNDE");
+    expect(commented).not.toContain("synonym:KUNDEN");
     const allTables = selectTables(catalog, undefined, ["view:V_KUNDE"]).objects.map(objectKey);
     expect(allTables.sort()).toEqual([
       "index:KUNDE_IX",

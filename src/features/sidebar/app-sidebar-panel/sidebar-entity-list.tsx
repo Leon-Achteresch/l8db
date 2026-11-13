@@ -4,6 +4,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Toggle } from "@/components/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SidebarQueryError } from "@/features/sidebar/sidebar-query-error";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { usePaneTabTarget } from "@/lib/pane-tab-target";
 import { SidebarEntityResults } from "./sidebar-entity-results";
 import { SidebarPickResults } from "./sidebar-pick-results";
@@ -27,6 +28,7 @@ export function SidebarEntityList({
   type,
 }: SidebarEntityListProps) {
   const target = usePaneTabTarget();
+  const { terms } = useActiveCapabilities();
   const current = target?.current;
   const {
     search,
@@ -61,10 +63,10 @@ export function SidebarEntityList({
           placeholder={
             searchIncludeColumns
               ? type === "table"
-                ? "Tabellen & Spalten…"
-                : "Views & Spalten…"
+                ? `${terms.tables} & ${terms.columns}…`
+                : `Views & ${terms.columns}…`
               : type === "table"
-                ? "Tabellen…"
+                ? `${terms.tables}…`
                 : "Views…"
           }
           value={search}

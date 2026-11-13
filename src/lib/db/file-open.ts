@@ -5,6 +5,7 @@ export type OpenFileAction =
   | { action: "connection"; kind: DatabaseKind; path: string; name: string }
   | { action: "sql"; path: string }
   | { action: "notebook"; path: string }
+  | { action: "link"; link: string }
   | { action: "unsupported"; path: string };
 
 export const OPEN_FILES_EVENT = "open-files";

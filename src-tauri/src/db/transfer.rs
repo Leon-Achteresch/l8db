@@ -179,6 +179,7 @@ pub struct TransferOutcome {
     pub atomic: bool,
     pub committed: bool,
     pub rolled_back: bool,
+    pub kept: bool,
     pub leftovers: Vec<String>,
     pub warnings: Vec<String>,
     pub error: Option<String>,
@@ -2592,6 +2593,9 @@ impl Reader {
 
     pub async fn start(&mut self, table: &TransferTable) -> Result<(), String> {
         let d = self.dialect;
+        if d == Dialect::Postgres && self.page == Page::Cursor && !self.done {
+            let _ = self.session.execute(&format!("CLOSE {CURSOR}")).await;
+        }
         self.done = false;
         if d == Dialect::Postgres {
             self.session
@@ -3152,6 +3156,34 @@ impl Source {
     }
 }
 
+fn skip(keep: bool, failed: &mut Vec<String>, result: Result<(), String>) -> Result<(), String> {
+    match result {
+        Err(error) if keep && !super::execution::cancellation_token().is_cancelled() => {
+            failed.push(error);
+            Ok(())
+        }
+        other => other,
+    }
+}
+
+fn failure_summary(failed: &[String]) -> String {
+    const SHOWN: usize = 20;
+    let mut text = format!(
+        "Fehlgeschlagene Schritte: {}. Alles andere wurde übertragen und bleibt im Ziel.\n\n{}",
+        failed.len(),
+        failed
+            .iter()
+            .take(SHOWN)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    );
+    if failed.len() > SHOWN {
+        text.push_str(&format!("\n\n… und {} weitere", failed.len() - SHOWN));
+    }
+    text
+}
+
 async fn refuse_conflicts(
     adapter: &dyn DatabaseAdapter,
     target: Dialect,
@@ -3366,6 +3398,8 @@ pub async fn run(
             total_rows: total,
         })
     };
+    let keep = plan.replace && !plan.atomic;
+    let mut failed: Vec<String> = Vec::new();
     let early = d == Dialect::Duckdb && plan.replace;
     if early {
         let cleared = async {
@@ -3404,7 +3438,8 @@ pub async fn run(
             runner.drop_objects(&drops).await?;
         }
         for statement in plan.pre_data.iter().chain(&plan.before_load) {
-            runner.exec(statement).await?;
+            let result = runner.exec(statement).await;
+            skip(keep, &mut failed, result)?;
         }
         if !early {
             runner.empty_tables(plan).await?;
@@ -3416,19 +3451,27 @@ pub async fn run(
             let base = total;
             let mut report =
                 |rows: u64| emit("data", Some(label.clone()), index, rows, base + rows);
-            if plan.content == Content::Data && !plan.atomic {
+            if plan.content == Content::Data && !plan.atomic && !keep {
                 runner
                     .loaded
                     .push(d.target(&table.target_schema, &table.target_name));
             }
-            let rows = match &mut reader {
-                None => 0,
+            let loaded = match &mut reader {
+                None => Ok(0),
                 Some(Source::Generic(reader)) => {
-                    runner.load_table(reader, table, &mut report).await?
+                    runner.load_table(reader, table, &mut report).await
                 }
-                Some(Source::Oracle(copier)) => copier.copy(table, &mut report).await?,
+                Some(Source::Oracle(copier)) => copier.copy(table, &mut report).await,
+            };
+            let rows = match loaded {
+                Ok(rows) => rows,
+                Err(error) => {
+                    skip(keep, &mut failed, Err(error))?;
+                    continue;
+                }
             };
             total += rows;
+            outcome.rows = total;
             outcome.tables.push(TableResult {
                 schema: table.target_schema.clone(),
                 name: table.target_name.clone(),
@@ -3445,28 +3488,34 @@ pub async fn run(
                 Err(error) if statement.optional => {
                     outcome.warnings.push(format!("Nicht übernommen: {error}"))
                 }
-                result => result?,
+                result => skip(keep, &mut failed, result)?,
             }
         }
         emit("finalize", None, tables, total, total);
         for statement in &plan.finalize {
-            runner.exec(statement).await?;
+            let result = runner.exec(statement).await;
+            skip(keep, &mut failed, result)?;
         }
-        runner
+        let synced = runner
             .sync_sequences(source.as_ref(), plan, &mut outcome.warnings)
-            .await?;
+            .await;
+        skip(keep, &mut failed, synced)?;
         if oracle_native {
-            let (broken, inherited) =
-                oracle_copy::recompile(runner.adapter.as_ref(), source.as_ref(), &plan.schemas)
-                    .await?;
-            outcome.warnings.extend(broken.into_iter().map(|object| {
-                format!("Nach dem Transfer ungültig, in der Quelle gültig: {object}")
-            }));
-            outcome.warnings.extend(
-                inherited
-                    .into_iter()
-                    .map(|object| format!("Wie in der Quelle ungültig: {object}")),
-            );
+            match oracle_copy::recompile(runner.adapter.as_ref(), source.as_ref(), &plan.schemas)
+                .await
+            {
+                Ok((broken, inherited)) => {
+                    outcome.warnings.extend(broken.into_iter().map(|object| {
+                        format!("Nach dem Transfer ungültig, in der Quelle gültig: {object}")
+                    }));
+                    outcome.warnings.extend(
+                        inherited
+                            .into_iter()
+                            .map(|object| format!("Wie in der Quelle ungültig: {object}")),
+                    );
+                }
+                Err(error) => skip(keep, &mut failed, Err(error))?,
+            }
         }
         Ok(())
     }
@@ -3484,7 +3533,24 @@ pub async fn run(
                     return Ok(outcome);
                 }
             }
-            outcome.committed = true;
+            if failed.is_empty() {
+                outcome.committed = true;
+            } else {
+                outcome.error = Some(failure_summary(&failed));
+                outcome.kept = true;
+            }
+        }
+        Err(error) if keep => {
+            let mut text = format!(
+                "{error}\n\nDer Transfer wurde vorzeitig beendet; bis dahin Übertragenes bleibt im Ziel."
+            );
+            if !failed.is_empty() {
+                text.push_str("\n\n");
+                text.push_str(&failure_summary(&failed));
+            }
+            outcome.error = Some(text);
+            outcome.kept = true;
+            outcome.leftovers = super::execution::shielded(runner.unload(plan)).await;
         }
         Err(error) => {
             outcome.error = Some(error);

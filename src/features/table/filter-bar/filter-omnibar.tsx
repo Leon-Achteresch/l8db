@@ -228,6 +228,7 @@ export function FilterOmnibar(props: FilterBarProps) {
                     afterRemove={() => inputRef.current?.focus()}
                   />
                   <input
+                    data-feature="table.filter-bar"
                     ref={inputRef}
                     value={text}
                     role="combobox"

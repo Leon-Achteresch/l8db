@@ -74,7 +74,7 @@ export function ResultActions({
               <span className="hidden sm:inline">Export</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="min-w-52">
             <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
               Als CSV exportieren…
             </DropdownMenuItem>

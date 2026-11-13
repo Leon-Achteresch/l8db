@@ -228,6 +228,20 @@
       "dialect": "generic",
       "sql": "SELECT 'a;b', -- x;y\n\"c;d\", [e;f] FROM t;/* y; */SELECT 2",
       "statements": ["SELECT 'a;b', -- x;y\n\"c;d\", [e;f] FROM t", "SELECT 2"]
+    },
+    {
+      "name": "oracle abbreviated SQL*Plus commands end at the line like their long forms",
+      "dialect": "oracle",
+      "sql": "timi start load\nHO ls\ncl scr\nBRE ON deptno\ncolu x format a10\nUPDATE t SET x = 1;\nexit;\n",
+      "statements": ["UPDATE t SET x = 1"],
+      "commands": [
+        "timi start load",
+        "HO ls",
+        "cl scr",
+        "BRE ON deptno",
+        "colu x format a10",
+        "exit;"
+      ]
     }
   ]
 }

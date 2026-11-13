@@ -6,10 +6,16 @@ import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SettingsRow } from "@/features/settings/settings-row";
+import { UpdateVersionPicker } from "@/features/settings/update-version-picker";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useUpdatePrompt } from "@/lib/hooks/use-update-prompt";
 import { type UpdateChannel, useSettingsStore } from "@/lib/settings";
-import { checkForUpdates, getAppVersion, presentUpdate, setPendingUpdate } from "@/lib/updater";
+import {
+  checkAndPresentUpdate,
+  getAppVersion,
+  presentUpdate,
+  switchUpdateChannel,
+} from "@/lib/updater";
 
 type Status =
   | { kind: "idle" }
@@ -30,7 +36,6 @@ export function UpdateSection() {
   const skippedUpdateVersion = useSettingsStore((s) => s.skippedUpdateVersion);
   const setSkippedUpdateVersion = useSettingsStore((s) => s.setSkippedUpdateVersion);
   const updateChannel = useSettingsStore((s) => s.updateChannel);
-  const setUpdateChannel = useSettingsStore((s) => s.setUpdateChannel);
   const autoFeatureVideos = useSettingsStore((s) => s.autoFeatureVideos);
   const setAutoFeatureVideos = useSettingsStore((s) => s.setAutoFeatureVideos);
   const blogSuggestions = useSettingsStore((s) => s.blogSuggestions);
@@ -54,16 +59,11 @@ export function UpdateSection() {
     };
   }, []);
 
-  async function onCheck() {
+  async function onCheck(check: () => Promise<unknown> = checkAndPresentUpdate) {
     setStatus({ kind: "checking" });
     try {
-      const update = await checkForUpdates();
-      if (update) {
-        if (useSettingsStore.getState().skippedUpdateVersion === update.version) {
-          setSkippedUpdateVersion(null);
-        }
+      if (await check()) {
         setStatus({ kind: "available" });
-        presentUpdate(update);
       } else {
         setStatus({ kind: "current" });
       }
@@ -73,9 +73,7 @@ export function UpdateSection() {
   }
 
   function onChannelChange(channel: UpdateChannel) {
-    setUpdateChannel(channel);
-    setPendingUpdate(null);
-    void onCheck();
+    void onCheck(() => switchUpdateChannel(channel));
   }
 
   function onShowSkipped() {
@@ -111,6 +109,7 @@ export function UpdateSection() {
           ]}
         />
       </SettingsRow>
+      <UpdateVersionPicker key={updateChannel} channel={updateChannel} currentVersion={version} />
       <SettingsRow settingId="updates">
         <Switch
           checked={autoUpdateCheck}

@@ -63,7 +63,7 @@ export function SchemaCompareSummary({
                         {count}
                       </button>
                     ) : (
-                      <span className="text-muted-foreground/50">0</span>
+                      <span className="text-muted-foreground">0</span>
                     )}
                   </td>
                 );

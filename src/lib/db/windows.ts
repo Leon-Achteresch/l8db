@@ -13,6 +13,10 @@ export function setDockRecents(recents: DockEntry[]): Promise<void> {
   return invoke<void>("set_dock_recents", { recents });
 }
 
+export function reportStartup(navigation: number, shell: number, ready: number): Promise<void> {
+  return invoke<void>("report_startup", { navigation, shell, ready });
+}
+
 export function setWindowConnection(id: string | null): Promise<void> {
   return invoke<void>("set_window_connection", { id });
 }

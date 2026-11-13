@@ -876,16 +876,45 @@ pub(crate) async fn run_simple_query(
     sql: &str,
 ) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
-    let messages = client.simple_query_raw(sql).await.map_err(map_pg_err)?;
+    let failed = |error| copy_hint(sql, map_pg_err(error));
+    let messages = client.simple_query_raw(sql).await.map_err(failed)?;
     futures_util::pin_mut!(messages);
     let mut result = SimpleResult {
         limit: Some(super::execution::row_limit()),
         ..SimpleResult::default()
     };
-    while let Some(message) = messages.try_next().await.map_err(map_pg_err)? {
+    while let Some(message) = messages.try_next().await.map_err(failed)? {
         result.push(message);
     }
     Ok(result.finish(start))
+}
+
+fn privilege_fits(object_type: &str, privilege: &str) -> bool {
+    let allowed: &[&str] = match object_type {
+        "schema" => &["USAGE", "CREATE"],
+        "sequence" => &["USAGE", "SELECT", "UPDATE"],
+        _ => &[
+            "SELECT",
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "TRUNCATE",
+            "REFERENCES",
+            "TRIGGER",
+        ],
+    };
+    privilege == "ALL PRIVILEGES" || allowed.contains(&privilege)
+}
+
+fn copy_hint(sql: &str, error: String) -> String {
+    let lower = sql.to_ascii_lowercase();
+    if error.contains("unexpected message from server")
+        && lower.contains("copy")
+        && (lower.contains("stdin") || lower.contains("stdout"))
+    {
+        return "COPY … FROM STDIN/TO STDOUT wird hier nicht unterstützt. Export: SELECT mit -o csv, Import: in der App über Import.".to_string();
+    }
+    error
 }
 
 pub(crate) fn table_page_sql(
@@ -918,19 +947,77 @@ pub(crate) fn table_page_sql(
             format!(" ORDER BY {}", list("p")),
         )
     };
-    let (projection, ctid) = if with_ctid {
-        (
-            "to_jsonb(p) - '__l8db_ctid__' || jsonb_build_object('__ctid__', p.\"__l8db_ctid__\"::text)",
-            ", t.ctid::text || '@' || t.tableoid::text AS \"__l8db_ctid__\"",
-        )
+    let ctid = if with_ctid {
+        ", t.ctid::text || '@' || t.tableoid::text || '@' || t.xmin::text AS \"__ctid__\""
     } else {
-        ("to_jsonb(p)", "")
+        ""
     };
     format!(
-        "SELECT {projection} FROM (SELECT t.*{ctid} FROM {}.{} AS t{where_clause}{inner_order} LIMIT $1 OFFSET $2) AS p{outer_order}",
+        "SELECT row_to_json(p) FROM (SELECT t.*{ctid} FROM {}.{} AS t{where_clause}{inner_order} LIMIT $1 OFFSET $2) AS p{outer_order}",
         quote_ident(schema),
         quote_ident(table),
     )
+}
+
+struct TablePage<'a> {
+    schema: &'a str,
+    table: &'a str,
+    where_sql: &'a str,
+    order_by: Option<&'a str>,
+    order_desc: bool,
+    is_view: bool,
+    limit: i64,
+    offset: i64,
+}
+
+impl TablePage<'_> {
+    async fn read<C: tokio_postgres::GenericClient + Sync>(
+        &self,
+        conn: &C,
+        savepoint: bool,
+    ) -> Result<TableData, String> {
+        let (schema, table, where_sql) = (self.schema, self.table, self.where_sql);
+        let (limit, offset, is_view) = (self.limit, self.offset, self.is_view);
+        let column_rows = conn
+            .query(RELATION_COLUMNS_SQL, &[&schema, &table])
+            .await
+            .map_err(map_pg_err)?;
+        let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
+        let primary_key = primary_key_columns(&column_rows);
+        let order = self
+            .order_by
+            .filter(|column| columns.iter().any(|name| name == column))
+            .map(|column| (column, self.order_desc));
+        let sql = table_page_sql(schema, table, where_sql, order, !is_view, &primary_key);
+        if savepoint {
+            conn.batch_execute("SAVEPOINT l8_page")
+                .await
+                .map_err(map_pg_err)?;
+        }
+        let data_rows = match conn.query(&sql, &[&limit, &offset]).await {
+            Ok(rows) => rows,
+            Err(e)
+                if !is_view
+                    && e.code() == Some(&tokio_postgres::error::SqlState::UNDEFINED_COLUMN) =>
+            {
+                if savepoint {
+                    conn.batch_execute("ROLLBACK TO SAVEPOINT l8_page")
+                        .await
+                        .map_err(map_pg_err)?;
+                }
+                let sql = table_page_sql(schema, table, where_sql, order, false, &primary_key);
+                conn.query(&sql, &[&limit, &offset])
+                    .await
+                    .map_err(map_pg_err)?
+            }
+            Err(e) => return Err(map_pg_err(e)),
+        };
+        let rows: Vec<serde_json::Value> = data_rows
+            .iter()
+            .map(|row| row.get::<_, super::exact_number::ExactJson>(0).0)
+            .collect();
+        Ok(TableData { columns, rows })
+    }
 }
 
 pub(crate) const RELATION_COLUMNS_SQL: &str = "SELECT a.attname::text, \
@@ -1051,7 +1138,7 @@ impl DatabaseAdapter for PostgresAdapter {
             conn.query(
                 "SELECT schema_name FROM information_schema.schemata \
                  WHERE schema_name <> 'information_schema' \
-                   AND schema_name NOT LIKE 'pg_%' \
+                   AND schema_name NOT LIKE 'pg\\_%' \
                  ORDER BY schema_name",
                 &[],
             )
@@ -1070,7 +1157,7 @@ impl DatabaseAdapter for PostgresAdapter {
                     conn.query(
                         "SELECT table_schema, table_name \
                          FROM information_schema.tables \
-                         WHERE table_type = 'BASE TABLE' AND table_schema = $1 \
+                         WHERE table_type IN ('BASE TABLE', 'FOREIGN') AND table_schema = $1 \
                          ORDER BY table_name",
                         &[&schema],
                     )
@@ -1080,7 +1167,7 @@ impl DatabaseAdapter for PostgresAdapter {
                     conn.query(
                         "SELECT table_schema, table_name \
                          FROM information_schema.tables \
-                         WHERE table_type = 'BASE TABLE' \
+                         WHERE table_type IN ('BASE TABLE', 'FOREIGN') \
                            AND table_schema NOT IN ('pg_catalog', 'information_schema') \
                          ORDER BY table_schema, table_name",
                         &[],
@@ -1536,38 +1623,30 @@ impl DatabaseAdapter for PostgresAdapter {
         allow_raw_filter: bool,
     ) -> Result<TableData, String> {
         let where_sql = super::where_clause_in(filter, allow_raw_filter, false)?;
-        let conn = self.get_conn().await?;
-        self.timed(conn.cancel_token(), async {
-            let column_rows = conn
-                .query(RELATION_COLUMNS_SQL, &[&schema, &table])
-                .await
-                .map_err(map_pg_err)?;
-            let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
-            let primary_key = primary_key_columns(&column_rows);
-
-            let order = order_by
-                .filter(|column| columns.iter().any(|name| name == column))
-                .map(|column| (column, order_desc));
-            let sql = table_page_sql(schema, table, &where_sql, order, !is_view, &primary_key);
-            let data_rows = match conn.query(&sql, &[&limit, &offset]).await {
-                Ok(rows) => rows,
-                Err(e)
-                    if !is_view
-                        && e.code() == Some(&tokio_postgres::error::SqlState::UNDEFINED_COLUMN) =>
-                {
-                    let sql = table_page_sql(schema, table, &where_sql, order, false, &primary_key);
-                    conn.query(&sql, &[&limit, &offset])
-                        .await
-                        .map_err(map_pg_err)?
-                }
-                Err(e) => return Err(map_pg_err(e)),
+        let mut conn = self.get_conn().await?;
+        let token = conn.cancel_token();
+        let guarded = !where_sql.is_empty() && matches!(conn, AdapterConnection::Pooled(_));
+        self.timed(token, async {
+            let page = TablePage {
+                schema,
+                table,
+                where_sql: &where_sql,
+                order_by,
+                order_desc,
+                is_view,
+                limit,
+                offset,
             };
-            let rows: Vec<serde_json::Value> = data_rows
-                .iter()
-                .map(|row| row.get::<_, super::exact_number::ExactJson>(0).0)
-                .collect();
-
-            Ok(TableData { columns, rows })
+            if guarded {
+                let tx = conn
+                    .build_transaction()
+                    .read_only(true)
+                    .start()
+                    .await
+                    .map_err(map_pg_err)?;
+                return page.read(&tx, true).await;
+            }
+            page.read(&*conn, false).await
         })
         .await
     }
@@ -1743,18 +1822,28 @@ impl DatabaseAdapter for PostgresAdapter {
         allow_raw_filter: bool,
     ) -> Result<i64, String> {
         let where_sql = super::where_clause_in(filter, allow_raw_filter, false)?;
-        let conn = self.get_meta().await?;
-        self.timed(conn.cancel_token(), async {
+        let mut conn = self.get_meta().await?;
+        let token = conn.cancel_token();
+        let guarded = !where_sql.is_empty() && matches!(conn, AdapterConnection::Pooled(_));
+        self.timed(token, async {
             let sql = format!(
                 "SELECT COUNT(*) FROM {}.{}{}",
                 quote_ident(schema),
                 quote_ident(table),
                 where_sql,
             );
-            conn.query_one(&sql, &[])
-                .await
-                .map_err(map_pg_err)
-                .map(|row| row.get::<_, i64>(0))
+            let row = if guarded {
+                let tx = conn
+                    .build_transaction()
+                    .read_only(true)
+                    .start()
+                    .await
+                    .map_err(map_pg_err)?;
+                tx.query_one(&sql, &[]).await
+            } else {
+                conn.query_one(&sql, &[]).await
+            };
+            row.map_err(map_pg_err).map(|row| row.get::<_, i64>(0))
         })
         .await
     }
@@ -1770,9 +1859,22 @@ impl DatabaseAdapter for PostgresAdapter {
         let where_sql = super::where_clause_in(filter, allow_raw_filter, false)?;
         let sql = capped_count_sql(schema, table, &where_sql, cap);
         let name = relation_name(schema, table);
-        let conn = self.get_meta().await?;
-        self.timed(conn.cancel_token(), async {
-            let row = conn.query_one(&sql, &[&name]).await.map_err(map_pg_err)?;
+        let mut conn = self.get_meta().await?;
+        let token = conn.cancel_token();
+        let guarded = !where_sql.is_empty() && matches!(conn, AdapterConnection::Pooled(_));
+        self.timed(token, async {
+            let row = if guarded {
+                let tx = conn
+                    .build_transaction()
+                    .read_only(true)
+                    .start()
+                    .await
+                    .map_err(map_pg_err)?;
+                tx.query_one(&sql, &[&name]).await
+            } else {
+                conn.query_one(&sql, &[&name]).await
+            }
+            .map_err(map_pg_err)?;
             Ok(capped_count(
                 row.get(0),
                 row.get(1),
@@ -1831,10 +1933,10 @@ impl DatabaseAdapter for PostgresAdapter {
                 row_id.filter(schema, table),
             );
 
-            conn.execute(sql.as_str(), &[])
-                .await
-                .map(|_| ())
-                .map_err(map_pg_err)
+            match conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)? {
+                0 => Err(super::transaction::PG_ROW_GONE.to_string()),
+                _ => Ok(()),
+            }
         })
         .await
     }
@@ -2437,29 +2539,27 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
             let rows = conn.query(
-                "SELECT c.column_name, \
-                        CASE WHEN c.character_maximum_length IS NOT NULL OR c.domain_name IS NOT NULL THEN c.data_type \
-                             ELSE COALESCE(( \
-                                 SELECT format_type(a.atttypid, a.atttypmod) FROM pg_catalog.pg_attribute a \
-                                 WHERE a.attrelid = format('%I.%I', c.table_schema, c.table_name)::regclass \
-                                   AND a.attnum = c.ordinal_position::int2), c.data_type) \
-                        END AS data_type, \
-                        c.is_nullable, c.column_default, c.ordinal_position, \
-                        c.character_maximum_length, \
-                        COALESCE(c.ordinal_position::int2 = ANY (pk.conkey), false) AS is_primary_key, \
-                        col_description(format('%I.%I', c.table_schema, c.table_name)::regclass, c.ordinal_position::int) AS comment \
-                 FROM information_schema.columns c \
-                 LEFT JOIN LATERAL ( \
-                     SELECT con.conkey FROM pg_catalog.pg_constraint con \
-                     JOIN pg_catalog.pg_class cl ON cl.oid = con.conrelid \
-                     JOIN pg_catalog.pg_namespace n ON n.oid = cl.relnamespace \
-                     WHERE con.contype = 'p' AND n.nspname = c.table_schema AND cl.relname = c.table_name \
-                       AND (pg_has_role(cl.relowner, 'USAGE') \
-                            OR has_table_privilege(cl.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') \
-                            OR has_any_column_privilege(cl.oid, 'INSERT, UPDATE, REFERENCES')) \
-                 ) pk ON true \
-                 WHERE c.table_schema = $1 AND c.table_name = $2 \
-                 ORDER BY c.ordinal_position",
+                "SELECT a.attname AS column_name, \
+                        CASE WHEN ty.typtype = 'd' OR (a.atttypid IN ('varchar'::regtype, 'bpchar'::regtype, 'bit'::regtype, 'varbit'::regtype) AND a.atttypmod > 0) \
+                             THEN format_type(a.atttypid, NULL) \
+                             ELSE format_type(a.atttypid, a.atttypmod) END AS data_type, \
+                        CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable, \
+                        CASE WHEN a.attgenerated = '' THEN pg_get_expr(d.adbin, d.adrelid) END AS column_default, \
+                        a.attnum::int AS ordinal_position, \
+                        CASE WHEN ty.typtype = 'd' OR a.atttypmod <= 0 THEN NULL \
+                             WHEN a.atttypid IN ('varchar'::regtype, 'bpchar'::regtype) THEN a.atttypmod - 4 \
+                             WHEN a.atttypid IN ('bit'::regtype, 'varbit'::regtype) THEN a.atttypmod END AS character_maximum_length, \
+                        COALESCE(a.attnum = ANY (pk.conkey), false) AS is_primary_key, \
+                        col_description(a.attrelid, a.attnum) AS comment \
+                 FROM pg_catalog.pg_attribute a \
+                 JOIN pg_catalog.pg_class cl ON cl.oid = a.attrelid \
+                 JOIN pg_catalog.pg_namespace n ON n.oid = cl.relnamespace \
+                 JOIN pg_catalog.pg_type ty ON ty.oid = a.atttypid \
+                 LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum \
+                 LEFT JOIN pg_catalog.pg_constraint pk ON pk.conrelid = cl.oid AND pk.contype = 'p' \
+                 WHERE n.nspname = $1 AND cl.relname = $2 AND cl.relkind IN ('r', 'p', 'v', 'm', 'f') \
+                   AND a.attnum > 0 AND NOT a.attisdropped \
+                 ORDER BY a.attnum",
                 &[&schema, &table],
             ).await.map_err(map_pg_err)?;
             Ok(rows.iter().map(|r| {
@@ -2673,6 +2773,16 @@ impl DatabaseAdapter for PostgresAdapter {
         let valid_object_types = ["schema", "table", "view", "materialized_view", "sequence"];
         if !valid_object_types.contains(&change.object_type.as_str()) {
             return Err(format!("Ungültiger Objekttyp: {}", change.object_type));
+        }
+        if !privilege_fits(&change.object_type, &priv_upper) {
+            return Err(format!(
+                "{priv_upper} gibt es für {} nicht.",
+                match change.object_type.as_str() {
+                    "schema" => "Schemas (nur USAGE, CREATE)",
+                    "sequence" => "Sequenzen (nur USAGE, SELECT, UPDATE)",
+                    _ => "Tabellen und Views",
+                }
+            ));
         }
 
         let conn = self.get_conn().await?;
@@ -4810,6 +4920,13 @@ struct TableDdl {
     columns: Vec<String>,
     constraints: Vec<TableConstraint>,
     indexes: Vec<String>,
+    unlogged: bool,
+    options: Option<String>,
+    partition_key: Option<String>,
+    partition_of: Option<String>,
+    security: Vec<String>,
+    comments: Vec<String>,
+    triggers: Vec<String>,
 }
 
 impl TableDdl {
@@ -4831,14 +4948,35 @@ impl TableDdl {
                     }),
             )
             .collect();
-        let mut ddl = format!(
-            "CREATE TABLE {}.{} (\n  {}\n);\n",
-            quote_ident(schema),
-            quote_ident(table),
-            parts.join(",\n  ")
-        );
-        for index in &self.indexes {
-            ddl.push_str(&format!("\n{index};\n"));
+        let unlogged = if self.unlogged { "UNLOGGED " } else { "" };
+        let target = format!("{}.{}", quote_ident(schema), quote_ident(table));
+        let mut ddl = match self.partition_of.as_ref().filter(|_| foreign_keys) {
+            Some(partition) => format!("CREATE {unlogged}TABLE {target} {partition}"),
+            None => format!(
+                "CREATE {unlogged}TABLE {target} (\n  {}\n)",
+                parts.join(",\n  ")
+            ),
+        };
+        if let Some(key) = self.partition_key.as_ref().filter(|_| foreign_keys) {
+            ddl.push_str(&format!(" PARTITION BY {key}"));
+        }
+        if let Some(options) = &self.options {
+            ddl.push_str(&format!(" WITH ({options})"));
+        }
+        ddl.push_str(";\n");
+        let triggers = if foreign_keys {
+            &self.triggers[..]
+        } else {
+            &[]
+        };
+        for statement in self
+            .indexes
+            .iter()
+            .chain(&self.security)
+            .chain(triggers)
+            .chain(&self.comments)
+        {
+            ddl.push_str(&format!("\n{statement};\n"));
         }
         ddl
     }
@@ -4853,10 +4991,19 @@ async fn load_table_ddl<C: tokio_postgres::GenericClient + Sync>(
         .query(
             "SELECT a.attname, format_type(a.atttypid, a.atttypmod), a.attnotnull, \
                     pg_get_expr(d.adbin, d.adrelid), a.attidentity::text, a.attgenerated::text, \
-                    a.attidentity = '' AND pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname) IS NOT NULL \
+                    a.attidentity = '' AND pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname) IS NOT NULL, \
+                    CASE WHEN a.attcollation <> 0 AND a.attcollation <> t.typcollation THEN \
+                      (SELECT quote_ident(cn.nspname) || '.' || quote_ident(co.collname) FROM pg_catalog.pg_collation co \
+                       JOIN pg_catalog.pg_namespace cn ON cn.oid = co.collnamespace WHERE co.oid = a.attcollation) END, \
+                    CASE WHEN a.attidentity <> '' THEN ( \
+                      SELECT concat_ws(' ', CASE WHEN s.seqstart <> 1 THEN 'START WITH ' || s.seqstart END, \
+                                            CASE WHEN s.seqincrement <> 1 THEN 'INCREMENT BY ' || s.seqincrement END) \
+                      FROM pg_catalog.pg_sequence s \
+                      WHERE s.seqrelid = pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname)::regclass) END \
              FROM pg_attribute a \
              JOIN pg_class c ON c.oid = a.attrelid \
              JOIN pg_namespace n ON n.oid = c.relnamespace \
+             JOIN pg_type t ON t.oid = a.atttypid \
              LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum \
              WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped \
              ORDER BY a.attnum",
@@ -4879,12 +5026,22 @@ async fn load_table_ddl<C: tokio_postgres::GenericClient + Sync>(
                 _ => data_type,
             };
             let mut def = format!("{} {data_type}", quote_ident(&r.get::<_, String>(0)));
+            if let Some(collation) = r.get::<_, Option<String>>(7) {
+                def.push_str(&format!(" COLLATE {collation}"));
+            }
             let default: Option<String> = r.get::<_, Option<String>>(3).filter(|_| !serial);
             let identity: String = r.get(4);
             let generated: String = r.get(5);
+            let sequence = r
+                .get::<_, Option<String>>(8)
+                .filter(|s| !s.is_empty())
+                .map(|s| format!(" ({s})"))
+                .unwrap_or_default();
             match (identity.as_str(), generated.as_str(), default) {
-                ("a", _, _) => def.push_str(" GENERATED ALWAYS AS IDENTITY"),
-                ("d", _, _) => def.push_str(" GENERATED BY DEFAULT AS IDENTITY"),
+                ("a", _, _) => def.push_str(&format!(" GENERATED ALWAYS AS IDENTITY{sequence}")),
+                ("d", _, _) => {
+                    def.push_str(&format!(" GENERATED BY DEFAULT AS IDENTITY{sequence}"))
+                }
                 (_, "s", Some(expr)) => {
                     def.push_str(&format!(" GENERATED ALWAYS AS ({expr}) STORED"))
                 }
@@ -4941,10 +5098,105 @@ async fn load_table_ddl<C: tokio_postgres::GenericClient + Sync>(
         .iter()
         .map(|r| r.get(0))
         .collect();
+    let target = format!("{}.{}", quote_ident(schema), quote_ident(table));
+    let relation = conn
+        .query_one(
+            "SELECT c.relpersistence = 'u', array_to_string(c.reloptions, ', '), \
+                    CASE WHEN c.relkind = 'p' THEN pg_get_partkeydef(c.oid) END, \
+                    CASE WHEN c.relispartition THEN 'PARTITION OF ' || \
+                      (SELECT format('%I.%I', pn.nspname, pc.relname) FROM pg_inherits i \
+                       JOIN pg_class pc ON pc.oid = i.inhparent JOIN pg_namespace pn ON pn.oid = pc.relnamespace \
+                       WHERE i.inhrelid = c.oid LIMIT 1) || ' ' || pg_get_expr(c.relpartbound, c.oid) END, \
+                    c.relrowsecurity, c.relforcerowsecurity, obj_description(c.oid, 'pg_class') \
+             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+             WHERE n.nspname = $1 AND c.relname = $2",
+            &[&schema, &table],
+        )
+        .await
+        .map_err(map_pg_err)?;
+    let mut security = Vec::new();
+    if relation.get::<_, bool>(4) {
+        security.push(format!("ALTER TABLE {target} ENABLE ROW LEVEL SECURITY"));
+    }
+    if relation.get::<_, bool>(5) {
+        security.push(format!("ALTER TABLE {target} FORCE ROW LEVEL SECURITY"));
+    }
+    let policies = conn
+        .query(
+            "SELECT p.polname::text, p.polpermissive, p.polcmd::text, \
+                    (SELECT string_agg(role, ', ' ORDER BY role) FROM ( \
+                       SELECT CASE WHEN u.r = 0 THEN 'PUBLIC' ELSE quote_ident(pg_get_userbyid(u.r)) END AS role \
+                       FROM unnest(p.polroles) AS u(r)) roles), \
+                    pg_get_expr(p.polqual, p.polrelid), pg_get_expr(p.polwithcheck, p.polrelid) \
+             FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid JOIN pg_namespace n ON n.oid = c.relnamespace \
+             WHERE n.nspname = $1 AND c.relname = $2 ORDER BY p.polname",
+            &[&schema, &table],
+        )
+        .await
+        .map_err(map_pg_err)?;
+    for r in &policies {
+        let roles: Option<String> = r.get(3);
+        security.push(catalog::policy_ddl(
+            &r.get::<_, String>(0),
+            &target,
+            r.get(1),
+            &r.get::<_, String>(2),
+            roles.as_deref().unwrap_or("PUBLIC"),
+            r.get::<_, Option<String>>(4).as_deref(),
+            r.get::<_, Option<String>>(5).as_deref(),
+        ));
+    }
+    let triggers = conn
+        .query(
+            "SELECT pg_get_triggerdef(t.oid, true) FROM pg_trigger t \
+             JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace \
+             WHERE n.nspname = $1 AND c.relname = $2 AND NOT t.tgisinternal AND t.tgparentid = 0 \
+             ORDER BY t.tgname",
+            &[&schema, &table],
+        )
+        .await
+        .map_err(map_pg_err)?
+        .iter()
+        .map(|r| r.get(0))
+        .collect();
+    let mut comments: Vec<String> = relation
+        .get::<_, Option<String>>(6)
+        .map(|text| format!("COMMENT ON TABLE {target} IS {}", quote_literal(&text)))
+        .into_iter()
+        .collect();
+    comments.extend(
+        conn.query(
+            "SELECT a.attname::text, d.description FROM pg_description d \
+             JOIN pg_class c ON c.oid = d.objoid AND d.classoid = 'pg_class'::regclass \
+             JOIN pg_namespace n ON n.oid = c.relnamespace \
+             JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = d.objsubid \
+             WHERE n.nspname = $1 AND c.relname = $2 AND d.objsubid > 0 ORDER BY a.attnum",
+            &[&schema, &table],
+        )
+        .await
+        .map_err(map_pg_err)?
+        .iter()
+        .map(|r| {
+            format!(
+                "COMMENT ON COLUMN {target}.{} IS {}",
+                quote_ident(&r.get::<_, String>(0)),
+                quote_literal(&r.get::<_, String>(1))
+            )
+        }),
+    );
     Ok(TableDdl {
         columns,
         constraints,
         indexes,
+        unlogged: relation.get(0),
+        options: relation
+            .get::<_, Option<String>>(1)
+            .filter(|o| !o.is_empty()),
+        partition_key: relation.get(2),
+        partition_of: relation.get(3),
+        security,
+        comments,
+        triggers,
     })
 }
 
@@ -5088,7 +5340,7 @@ impl PostgresAdapter {
                             FROM pg_attribute a \
                             WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped), '') AS definition \
                  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
-                 WHERE n.nspname = $1 AND c.relkind = 'r' ORDER BY c.relname"
+                 WHERE n.nspname = $1 AND c.relkind IN ('r', 'p') AND NOT c.relispartition ORDER BY c.relname"
             }
             "view" => {
                 "SELECT c.relname AS name, pg_get_viewdef(c.oid, true) AS definition \
@@ -6266,7 +6518,7 @@ mod tests {
     async fn lab_table_rows_keep_exact_numbers() {
         let adapter = lab_adapter();
         adapter
-            .execute_query("DROP TABLE IF EXISTS l8db_exact; CREATE TABLE l8db_exact (id bigint PRIMARY KEY, amount numeric, ratio numeric, doc jsonb); INSERT INTO l8db_exact VALUES (9007199254740993, 12345678901234567890.123456789, 12.50, '{\"n\": 1}')")
+            .execute_query("DROP TABLE IF EXISTS l8db_exact; DROP SEQUENCE IF EXISTS l8db_exact_seq; CREATE SEQUENCE l8db_exact_seq; CREATE TABLE l8db_exact (id bigint PRIMARY KEY, amount numeric, ratio numeric, doc jsonb, f float8, raw json); INSERT INTO l8db_exact VALUES (9007199254740993, 12345678901234567890.123456789, 12.50, '{\"n\": 1}', 1.7976931348623157e308, '{\"big\":9007199254740993,\"dup\":1,\"dup\":2}')")
             .await
             .unwrap();
         let data = adapter
@@ -6289,12 +6541,80 @@ mod tests {
             row["amount"],
             serde_json::json!("12345678901234567890.123456789")
         );
-        assert_eq!(row["ratio"], serde_json::json!(12.5));
+        assert_eq!(row["ratio"], serde_json::json!("12.50"));
         assert_eq!(row["doc"], serde_json::json!({"n": 1}));
-        adapter
-            .execute_query("DROP TABLE l8db_exact")
+        assert_eq!(row["f"], serde_json::json!(1.7976931348623157e308));
+        assert_eq!(
+            row["raw"],
+            serde_json::json!("{\"big\":9007199254740993,\"dup\":1,\"dup\":2}")
+        );
+        let side_effect = Some("nextval('l8db_exact_seq') > 0");
+        assert!(adapter
+            .fetch_rows(
+                "public",
+                "l8db_exact",
+                side_effect,
+                10,
+                0,
+                None,
+                false,
+                false,
+                false
+            )
+            .await
+            .unwrap_err()
+            .contains("read-only"));
+        assert!(adapter
+            .count_rows("public", "l8db_exact", side_effect, false)
+            .await
+            .is_err());
+        assert!(adapter
+            .count_rows_capped("public", "l8db_exact", side_effect, false, 1000)
+            .await
+            .is_err());
+        let filtered = adapter
+            .fetch_rows(
+                "public",
+                "l8db_exact",
+                Some("ratio > 1"),
+                10,
+                0,
+                None,
+                false,
+                false,
+                false,
+            )
             .await
             .unwrap();
+        assert_eq!(filtered.rows.len(), 1);
+        assert!(
+            filtered.rows[0]["__ctid__"]
+                .as_str()
+                .unwrap()
+                .matches('@')
+                .count()
+                == 2
+        );
+        let last = adapter
+            .execute_query("SELECT last_value::text AS v, is_called FROM l8db_exact_seq")
+            .await
+            .unwrap();
+        assert_eq!(last.rows[0]["is_called"], "f");
+        adapter
+            .execute_query("DROP TABLE l8db_exact; DROP SEQUENCE l8db_exact_seq")
+            .await
+            .unwrap();
+    }
+
+    #[test]
+    fn privileges_match_the_object_type() {
+        assert!(!super::privilege_fits("schema", "SELECT"));
+        assert!(super::privilege_fits("schema", "USAGE"));
+        assert!(super::privilege_fits("schema", "ALL PRIVILEGES"));
+        assert!(!super::privilege_fits("table", "USAGE"));
+        assert!(super::privilege_fits("table", "TRIGGER"));
+        assert!(!super::privilege_fits("sequence", "INSERT"));
+        assert!(super::privilege_fits("sequence", "USAGE"));
     }
 
     fn lab_connection_string() -> String {
@@ -7726,7 +8046,7 @@ mod tests {
             ("flag", "character", Some(2)),
             ("bits", "bit", Some(3)),
             ("at", "timestamp(3) with time zone", None),
-            ("n", "integer", None),
+            ("n", "l8db_posint", None),
             ("plain", "numeric", None),
             ("t", "text", None),
         ];

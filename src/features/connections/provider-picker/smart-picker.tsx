@@ -49,44 +49,38 @@ export function SmartPicker({
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1.5">
-        <div className="flex h-11 items-center gap-2 rounded-lg border bg-background pl-3 pr-1 focus-within:ring-2 focus-within:ring-ring">
-          <Sparkles className="size-4 shrink-0 text-primary" />
-          <input
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter") return;
-              event.preventDefault();
-              const available = filtered.filter((provider) => provider.driver_status.available);
-              const exact = available.find(
-                (provider) => provider.id === needle || provider.name.toLowerCase() === needle,
-              );
-              const extra = filteredExtras.find(
-                (item) => item.id === needle || item.name.toLowerCase() === needle,
-              );
-              const single = available.length === 1 && !filteredExtras.length;
-              if (detected) continueWithDetected();
-              else if (needle && exact) onSelect(exact.id);
-              else if (needle && extra) extra.onSelect();
-              else if (needle && single) onSelect(available[0].id);
-            }}
-            placeholder="Verbindungs-URL einfügen oder Namen tippen"
-            aria-label="Verbindungs-URL oder Datenbankname"
-            className="h-full min-w-0 flex-1 bg-transparent font-mono text-xs outline-none placeholder:font-sans placeholder:text-sm placeholder:text-muted-foreground"
-          />
-          <Button type="button" variant="ghost" size="sm" onClick={paste} className="text-xs">
-            <ClipboardPaste className="size-3.5" />
-            Einfügen
-          </Button>
-        </div>
-        <p className="px-1 text-[11px] text-muted-foreground">
-          Die URL findest du meist im Dashboard deines Anbieters unter „Connect“ oder „Connection
-          string“.
-        </p>
+      <div className="flex h-10 items-center gap-2 rounded-xl bg-muted/50 pr-1 pl-3 focus-within:ring-2 focus-within:ring-ring">
+        <Sparkles className="size-4 shrink-0 text-primary" />
+        <input
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            const available = filtered.filter((provider) => provider.driver_status.available);
+            const exact = available.find(
+              (provider) => provider.id === needle || provider.name.toLowerCase() === needle,
+            );
+            const extra = filteredExtras.find(
+              (item) => item.id === needle || item.name.toLowerCase() === needle,
+            );
+            const single = available.length === 1 && !filteredExtras.length;
+            if (detected) continueWithDetected();
+            else if (needle && exact) onSelect(exact.id);
+            else if (needle && extra) extra.onSelect();
+            else if (needle && single) onSelect(available[0].id);
+          }}
+          placeholder="Verbindungs-URL einfügen oder Namen tippen"
+          aria-label="Verbindungs-URL oder Datenbankname"
+          className="h-full min-w-0 flex-1 bg-transparent font-mono text-xs outline-none placeholder:font-sans placeholder:text-sm placeholder:text-muted-foreground"
+        />
+        <Button type="button" variant="ghost" size="sm" onClick={paste} className="text-xs">
+          <ClipboardPaste className="size-3.5" />
+          Einfügen
+        </Button>
       </div>
       {detected ? (
-        <div className="flex items-center gap-3 rounded-xl border border-primary/40 bg-primary/5 p-3 animate-in fade-in-0 zoom-in-95 duration-200">
+        <div className="flex items-center gap-3 rounded-xl bg-primary/10 p-3 animate-in fade-in-0 zoom-in-95 duration-200">
           <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-background ring-1 ring-border/70">
             <ProviderLogo providerId={detected.id} kind={detected.kind} className="size-6" />
           </span>
@@ -109,8 +103,7 @@ export function SmartPicker({
             if (!members.length && !extraMembers.length) return null;
             return (
               <div key={category.id} className="space-y-1.5">
-                <p className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-                  <category.icon className="size-3" />
+                <p className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
                   {category.title}
                 </p>
                 <div className="flex flex-wrap gap-1.5">
@@ -129,7 +122,7 @@ export function SmartPicker({
                       type="button"
                       onClick={extra.onSelect}
                       title={extra.name}
-                      className="flex h-8 min-w-0 items-center gap-1.5 rounded-full border bg-card pr-3 pl-1.5 text-left text-xs font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex h-8 min-w-0 cursor-pointer items-center gap-1.5 rounded-full bg-muted/50 pr-3 pl-1.5 text-left text-xs font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <span className="grid size-5 shrink-0 place-items-center rounded-full bg-background ring-1 ring-border/70">
                         <ProviderLogo providerId={extra.id} className="size-3.5" />

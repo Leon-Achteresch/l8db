@@ -86,6 +86,7 @@ export function QueryToolsMenu({
     <IconMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
+          data-feature="query.tools"
           size="icon-sm"
           variant="ghost"
           className="relative"

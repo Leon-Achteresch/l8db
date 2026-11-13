@@ -41,7 +41,7 @@ export function JsonValue({ row, query, readOnly, onToggleBoolean, onOpenUrl, on
           {row.kind === "object" ? "Schlüssel" : row.childCount === 1 ? "Element" : "Elemente"}
         </span>
         {row.childCount > 0 && (
-          <span className="truncate text-muted-foreground/70">{previewValue(row.value)}</span>
+          <span className="truncate text-muted-foreground">{previewValue(row.value)}</span>
         )}
       </span>
     );

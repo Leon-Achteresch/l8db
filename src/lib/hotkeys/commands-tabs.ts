@@ -2,6 +2,14 @@ import type { HotkeyCommand } from "./types";
 
 export const TAB_COMMANDS: HotkeyCommand[] = [
   {
+    id: "tab.openLink",
+    label: "Link aus Zwischenablage öffnen",
+    description: "Öffnet einen kopierten l8db-Tab-Link",
+    area: "Tabs",
+    defaultHotkey: "Mod+Shift+V",
+    origin: "l8db",
+  },
+  {
     id: "tab.newQuery",
     label: "Neuen Abfrage-Tab öffnen",
     description: "Neuer Tab wie im Browser",

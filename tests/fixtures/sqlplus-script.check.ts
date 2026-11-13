@@ -900,6 +900,83 @@ test("a slash after a terminated statement runs it again like SQL*Plus, a block 
   expect(outcome.entries).toHaveLength(4);
 });
 
+test("EXIT with a semicolon ends the script and a combined SET switches substitution off", async () => {
+  const outcome = await runSqlScript({
+    connection,
+    database: null,
+    sql: "SET VERIFY OFF DEFINE OFF\nINSERT INTO firma VALUES ('R&D');\nEXIT;\nDELETE FROM firma;",
+    mode: "autocommit",
+  });
+  expect(executed()).toEqual(["INSERT INTO firma VALUES ('R&D');"]);
+  expect(outcome.entries.map((entry) => entry.status)).toEqual([
+    "success",
+    "success",
+    "success",
+    "skipped",
+  ]);
+  expect(outcome.entries[0].note).toBeUndefined();
+  expect(outcome.exit).toMatchObject({ code: 0, label: "SUCCESS" });
+});
+
+test("a slash after CREATE TYPE does not run the type a second time", async () => {
+  await runSqlScript({
+    connection,
+    database: null,
+    sql: "CREATE TYPE t_pos AS OBJECT (a NUMBER);\n/\nCREATE TABLE pos (a NUMBER);",
+    mode: "autocommit",
+  });
+  expect(executed()).toEqual([
+    "CREATE TYPE t_pos AS OBJECT (a NUMBER);",
+    "CREATE TABLE pos (a NUMBER);",
+  ]);
+});
+
+test("SQL.SQLCODE returns to 0 after the next successful statement", async () => {
+  failing.add("DELETE FROM fehlt;");
+  const outcome = await runSqlScript({
+    connection,
+    database: null,
+    sql: "DELETE FROM fehlt;\nDELETE FROM da;\nEXIT SQL.SQLCODE",
+    mode: "autocommit",
+    stopOnError: false,
+  });
+  expect(outcome.exit).toMatchObject({ code: 0, label: "SQL.SQLCODE" });
+});
+
+test("stopping under WHENEVER SQLERROR EXIT leaves the transaction open instead of committing", async () => {
+  await withOracleCapabilities(async () => {
+    const { cancelTask } = await import("../../src/lib/tasks");
+    sqlplusSession({ openAtEnd: true });
+    const session = handle;
+    let job = "";
+    handle = (command, args) => {
+      if (command === "execute_in_transaction" && String(args.sql).startsWith("UPDATE lang")) {
+        void cancelTask(job);
+        return new Error("ORA-01013: user requested cancel of current operation");
+      }
+      return session?.(command, args);
+    };
+    const outcome = await runSqlScript({
+      connection,
+      database: null,
+      sql: "WHENEVER SQLERROR EXIT FAILURE\nUPDATE kurz SET n = 1;\nUPDATE lang SET n = 2;\nUPDATE danach SET n = 3;",
+      mode: "new-transaction",
+      onJob: (id) => {
+        job = id;
+      },
+    });
+    expect(outcome.entries.map((entry) => entry.status)).toEqual([
+      "success",
+      "success",
+      "error",
+      "skipped",
+    ]);
+    expect(outcome.exit).toBeNull();
+    expect(calls.some((call) => call.command === "commit_transaction")).toBe(false);
+    expect(useTransactionStore.getState().transactions).toHaveLength(1);
+  });
+});
+
 test("a master script that only calls @ files still starts in the SQL*Plus session", async () => {
   const { useSettingsStore: settings } = await import("../../src/lib/settings");
   expect(settings.getState().transactionsEnabled).toBe(true);

@@ -6,6 +6,7 @@ import { deleteSecret } from "@/lib/secrets";
 import { useSettingsStore } from "@/lib/settings";
 import { mergeTeamConnections, type TeamMerge } from "./merge";
 import { useTeamStore } from "./store";
+import { parseTeamTips } from "./tips";
 
 export const TEAM_HUB = "file";
 export const FOCUS_SYNC_MS = 60_000;
@@ -51,6 +52,7 @@ async function pull(): Promise<TeamMerge> {
     useTeamStore.setState({
       path: file.path,
       exists: file.exists,
+      tips: parseTeamTips(file.tips),
       warnings: [
         ...(file.warnings ?? []),
         ...(legacy.length

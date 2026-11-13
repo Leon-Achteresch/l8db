@@ -1,0 +1,18 @@
+export {
+  canAutoClick,
+  GUIDE_ANCHOR_TIMEOUT_MS,
+  type GuideEndReason,
+  type GuideNavigator,
+  type GuideOptions,
+  type GuidePhase,
+  type GuideView,
+  guideHasSteps,
+  isGuideRunning,
+  isNavigationElement,
+  nextGuideStep,
+  onGuideLocation,
+  setGuideNavigator,
+  startGuide,
+  stopGuide,
+  useGuide,
+} from "./engine";

@@ -18,11 +18,27 @@ const items: CommandItem[] = [
 
 describe("Befehlsmodus der Palette", () => {
   test("erkennt > mit und ohne Leerzeichen und entfernt nur das Präfix", () => {
-    expect(parsePaletteQuery(">expo")).toEqual({ commandsOnly: true, search: "expo" });
-    expect(parsePaletteQuery("  >  expo")).toEqual({ commandsOnly: true, search: "expo" });
-    expect(parsePaletteQuery("> ")).toEqual({ commandsOnly: true, search: "" });
-    expect(parsePaletteQuery("price > 10")).toEqual({ commandsOnly: false, search: "price > 10" });
-    expect(parsePaletteQuery(">expo", false)).toEqual({ commandsOnly: false, search: ">expo" });
+    expect(parsePaletteQuery(">expo")).toEqual({
+      commandsOnly: true,
+      unusedOnly: false,
+      search: "expo",
+    });
+    expect(parsePaletteQuery("  >  expo")).toEqual({
+      commandsOnly: true,
+      unusedOnly: false,
+      search: "expo",
+    });
+    expect(parsePaletteQuery("> ")).toEqual({ commandsOnly: true, unusedOnly: false, search: "" });
+    expect(parsePaletteQuery("price > 10")).toEqual({
+      commandsOnly: false,
+      unusedOnly: false,
+      search: "price > 10",
+    });
+    expect(parsePaletteQuery(">expo", false)).toEqual({
+      commandsOnly: false,
+      unusedOnly: false,
+      search: ">expo",
+    });
   });
 
   test("sucht nach Befehlen und Einstellungen ohne Objekte oder Verbindungen", () => {

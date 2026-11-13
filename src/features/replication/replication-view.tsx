@@ -251,7 +251,7 @@ export function ReplicationView() {
                     Publikationen: {sub.publications.join(", ")}
                   </p>
                   <p
-                    className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground/70"
+                    className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground"
                     title={sub.connection_string}
                   >
                     {sub.connection_string}

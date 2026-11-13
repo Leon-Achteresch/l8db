@@ -47,7 +47,7 @@ export function BaasStudioNav({
             {group.name && (
               <span
                 aria-hidden="true"
-                className="mb-0.5 h-3 px-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70"
+                className="mb-0.5 h-3 px-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
               >
                 {group.name}
               </span>

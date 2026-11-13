@@ -21,6 +21,7 @@ import { PromptInput } from "@/features/ai/beui/agents/prompt-input";
 import { useAiStore } from "@/lib/ai/store";
 import type { AiEvent, AiModels } from "@/lib/db/ai";
 import { cn } from "@/lib/utils";
+import { LAB_DONE, LAB_FOLLOWUP, LAB_QUESTION, LAB_TABLE } from "./ai-chat-lab-data";
 
 const noop = () => undefined;
 
@@ -141,10 +142,20 @@ export function AiChatLabComposer({
           approval={<AiApprovalPicker profile={profile} disabled={busy} />}
           trailing={
             <AiUsage
-              data={{ usage: { input_tokens: 61_000, output_tokens: 2_400 } }}
+              data={{
+                usage: { input_tokens: 61_000, output_tokens: 2_400 },
+                layout: {
+                  system: 38_000,
+                  tools: 59_000,
+                  skills: 6_000,
+                  knowledge: 3_000,
+                  files: 0,
+                },
+              }}
               profile={profile}
               metadata={{}}
-              messages={[]}
+              messages={[LAB_QUESTION, LAB_DONE, LAB_FOLLOWUP, LAB_TABLE]}
+              summary={{ upTo: "a1", count: 2, text: "Umsatz der letzten 6 Monate geprüft." }}
               prompt=""
               onSettings={noop}
             />

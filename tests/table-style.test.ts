@@ -11,6 +11,7 @@ import { columnProfile } from "../src/lib/column-profile";
 import {
   CATEGORY_COLORS,
   categoryColorIndex,
+  categoryColorMap,
   isCategorical,
   isEnumDataType,
   jsonEntries,
@@ -109,9 +110,36 @@ test("category colors are stable per value", () => {
 });
 
 test("short status codes use distinct badge and profile colors", () => {
-  const colors = ["ANG", "AKT", "INA"].map(categoryColorIndex);
-  expect(new Set(colors.map((index) => CATEGORY_PILL_CLASSES[index])).size).toBe(3);
-  expect(new Set(colors.map((index) => CATEGORY_BAR_CLASSES[index])).size).toBe(3);
+  const colors = [...categoryColorMap(["ABG", "ANG", "AKT", "INA", "ANG", "ABG"]).values()];
+  expect(new Set(colors.map((index) => CATEGORY_PILL_CLASSES[index])).size).toBe(4);
+  expect(new Set(colors.map((index) => CATEGORY_BAR_CLASSES[index])).size).toBe(4);
+});
+
+test("every value of a categorical column gets its own color", () => {
+  for (let seed = 0; seed < 200; seed++) {
+    const values = Array.from({ length: CATEGORY_COLORS }, (_, index) => `s${seed}_${index}`);
+    expect(isCategorical([...values, ...values], true)).toBe(true);
+    const colors = categoryColorMap([...values].reverse());
+    expect(new Set(colors.values()).size).toBe(CATEGORY_COLORS);
+    expect([...categoryColorMap(values)]).toEqual([...colors]);
+  }
+  expect(
+    isCategorical(
+      Array.from({ length: 40 }, (_, index) => `v${index % 9}`),
+      true,
+    ),
+  ).toBe(false);
+});
+
+test("unique category values keep their own hash color", () => {
+  const values = ["paid", "shipped", "pending", "refunded"];
+  const colors = categoryColorMap(values);
+  const free = values.filter(
+    (value) =>
+      values.filter((other) => categoryColorIndex(other) === categoryColorIndex(value)).length ===
+      1,
+  );
+  for (const value of free) expect(colors.get(value)).toBe(categoryColorIndex(value));
 });
 
 test("category colors stay within both palettes for arbitrary text", () => {

@@ -24,6 +24,7 @@ export function ResultAskAiButton({ result, sql }: { result: QueryResult; sql?: 
   };
   return (
     <Button
+      data-feature="query.result.ask-ai"
       ref={feature.ref}
       size="sm"
       variant="ghost"

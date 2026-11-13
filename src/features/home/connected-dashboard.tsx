@@ -53,13 +53,18 @@ export function ConnectedDashboard({ connection }: { connection: SavedConnection
           <div className="min-w-0">
             <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
               <span className="eyebrow">{provider.name}</span>
-              <span className="text-muted-foreground/40">/</span>
+              <span className="text-muted-foreground">/</span>
               <span className="max-w-72 truncate font-mono">{endpoint.host}</span>
-              <span className="text-muted-foreground/40">·</span>
-              <span>
-                {connection.ssh?.host ? "SSH-Tunnel · " : ""}TLS{" "}
-                {connection.sslMode === "disable" ? "deaktiviert" : connection.sslMode}
-              </span>
+              {(caps.ssl || connection.ssh?.host) && (
+                <span>
+                  <span className="mr-2 text-muted-foreground">·</span>
+                  {connection.ssh?.host ? "SSH-Tunnel" : ""}
+                  {connection.ssh?.host && caps.ssl ? " · " : ""}
+                  {caps.ssl
+                    ? `TLS ${connection.sslMode === "disable" ? "deaktiviert" : connection.sslMode}`
+                    : ""}
+                </span>
+              )}
               <AnimatedBadge
                 size="sm"
                 className="ml-1"

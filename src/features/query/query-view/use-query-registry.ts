@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { listAllColumns, listMaterializedViews, listTables, listViews } from "@/lib/db";
 import { useSchemasQuery } from "@/lib/queries";
 import { useSessionViews } from "@/lib/session-views";
-import { sqlDialectForKind, sqlDialectLabel } from "@/lib/sql-format-options";
+import { DEFAULT_SQL_DIALECT, sqlDialectForKind, sqlDialectLabel } from "@/lib/sql-format-options";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 import type { QueryViewCapabilities, QueryViewConnection } from "./types";
@@ -83,15 +83,10 @@ export function useQueryRegistry(
     [schemas, tables, views, matviews, columns, sessionViews],
   );
 
-  const dialectLabel = useMemo(
-    () =>
-      caps.query_language === "json"
-        ? "MongoDB JSON"
-        : caps.query_language === "redis"
-          ? "Redis"
-          : sqlDialectLabel(sqlDialectForKind(connection?.kind)),
-    [connection?.kind, caps.query_language],
-  );
+  const dialectLabel = useMemo(() => {
+    const dialect = sqlDialectForKind(connection?.kind);
+    return dialect === DEFAULT_SQL_DIALECT ? caps.query_label : sqlDialectLabel(dialect);
+  }, [connection?.kind, caps.query_label]);
 
   return {
     registry,

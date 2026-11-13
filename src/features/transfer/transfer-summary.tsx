@@ -14,7 +14,7 @@ export function TransferSummary({
   foldNames,
   onFoldNames,
   replace,
-  mirror,
+  whole,
   content,
   onReplace,
   onShowPlan,
@@ -26,7 +26,7 @@ export function TransferSummary({
   foldNames: boolean;
   onFoldNames: (value: boolean) => void;
   replace: boolean;
-  mirror: boolean;
+  whole: boolean;
   content: TransferContent;
   onReplace: (value: boolean) => void;
   onShowPlan: (tab: string) => void;
@@ -112,7 +112,7 @@ export function TransferSummary({
       <TransferReplace
         plan={plan}
         replace={replace}
-        mirror={mirror}
+        whole={whole}
         content={content}
         onReplace={onReplace}
       />

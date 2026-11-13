@@ -26,11 +26,11 @@ export const TABLE_DETAIL_TABS: {
   { id: "definition", label: "Definition", entity: "view" },
   { id: "triggers", label: "Trigger", entity: "table", capability: "triggers" },
   { id: "indexes", label: "Indizes", entity: "table", capability: "indexes" },
-  { id: "constraints", label: "Constraints", entity: "table", capability: "constraints" },
+  { id: "constraints", label: "Einschränkungen", entity: "table", capability: "constraints" },
   { id: "rls", label: "RLS", entity: "table", capability: "rls" },
   { id: "partitions", label: "Partitionen", entity: "table", capability: "partitions" },
   { id: "grants", label: "Rechte", capability: "object_grants" },
-  { id: "used-by", label: "Verwendet in", capability: "used_by" },
+  { id: "used-by", label: "Verwendet von", capability: "used_by" },
   { id: "performance", label: "Leistung" },
   { id: "audit", label: "Audit", capability: "object_admin" },
 ];
@@ -42,6 +42,8 @@ export function availableTableDetailTabs(isView: boolean, caps: Capabilities, ea
       (!tab.entity || tab.entity === (isView ? "view" : "table")) &&
       (!tab.capability || caps[tab.capability]) &&
       (tab.id !== "performance" || caps.query_language !== "redis"),
+  ).map((tab) =>
+    tab.id === "columns" && caps.terms ? { ...tab, label: caps.terms.columns } : tab,
   );
 }
 

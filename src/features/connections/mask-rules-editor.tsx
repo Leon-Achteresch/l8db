@@ -23,8 +23,8 @@ export function MaskRulesEditor({ rules, onChange }: Props) {
     <fieldset className="flex flex-col gap-2">
       <legend className="text-sm font-medium">Maskierungsregeln</legend>
       <p className="text-xs text-muted-foreground">
-        Spaltenmuster (regulärer Ausdruck) mit Maskierungsfunktion. Gilt für „Maskierung anzeigen“,
-        Exporte und den MCP-Server.
+        Spaltenmuster (regulärer Ausdruck) mit Maskierungsfunktion. Gilt für „Werte in der Ansicht
+        maskieren“, Exporte und den MCP-Server.
       </p>
       {rules.map((rule, index) => {
         const invalid = rule.pattern.trim() !== "" && ruleRegex(rule.pattern) === null;

@@ -40,7 +40,16 @@ export function tabMatchesRoute(matchRoute: MatchRoute, tab: Tab, pending?: bool
     );
   }
   if (tab.kind === "role") {
-    return Boolean(matchRoute({ pending, to: "/users/$name", params: { name: tab.name } }));
+    const matches = (profile?: true) =>
+      Boolean(
+        matchRoute({
+          pending,
+          to: "/users/$name",
+          params: { name: tab.name },
+          search: { profile },
+        }),
+      );
+    return tab.profile ? matches(true) : matches() && !matches(true);
   }
   if (tab.kind === "trigger") {
     return Boolean(

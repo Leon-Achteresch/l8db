@@ -89,6 +89,7 @@ export function AiPanelHeader({
             <SquarePen className="size-4" />
           </Button>
           <Button
+            data-feature="ai.history"
             size="icon"
             variant="ghost"
             aria-label="Gesprächsverlauf"

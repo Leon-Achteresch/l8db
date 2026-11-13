@@ -22,7 +22,7 @@ export function PolicyAccessCell({
       ) : (
         <span
           title={`${command}: keine Richtlinie, über die Data API gesperrt`}
-          className="inline-grid size-6 place-items-center rounded-md text-muted-foreground/50"
+          className="inline-grid size-6 place-items-center rounded-md text-muted-foreground"
         >
           <Lock className="size-3" />
           <span className="sr-only">{command} gesperrt</span>

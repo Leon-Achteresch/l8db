@@ -240,6 +240,7 @@ export function SchemaCompareView({ tabId }: { tabId?: string } = {}) {
             <ArrowLeftRightIcon className="size-3.5" />
           </Button>
           <Button
+            data-feature="schema-compare.run"
             ref={tabsFeature.ref}
             variant="ghost"
             size={tabsFeature.isNew ? "sm" : "icon-sm"}
@@ -259,7 +260,7 @@ export function SchemaCompareView({ tabId }: { tabId?: string } = {}) {
                 <LoaderIcon className="size-3.5 shrink-0 animate-spin" />
                 <span className="truncate">{loading}</span>
               </span>
-            ) : problem && (!result || stale) ? (
+            ) : problem && result && stale ? (
               <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
                 <InfoIcon className="size-3.5 shrink-0" />
                 <span className="truncate">{problem}</span>

@@ -8,6 +8,11 @@ const focusEditInput = (el: HTMLInputElement | null) => {
   el?.select();
 };
 
+const focusTypedInput = (el: HTMLInputElement | null) => {
+  el?.focus();
+  el?.setSelectionRange(el.value.length, el.value.length);
+};
+
 const focusEditSelect = (el: HTMLSelectElement | null) => {
   el?.focus();
 };
@@ -66,7 +71,7 @@ export function DataTableEditingCell({
         ) : (
           <input
             type="text"
-            ref={focusEditInput}
+            ref={editingCell.typed ? focusTypedInput : focusEditInput}
             value={editingCell.value}
             onChange={(e) => setValue(e.target.value)}
             onBlur={(e) => {
