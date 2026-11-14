@@ -1,6 +1,6 @@
-# Backlog · aktualisiert nach Runde 21
+# Backlog · aktualisiert nach Runde 22
 
-**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn, ClickHouse und NULL bleiben erhalten. Die vorhandene Inhaltssuche löst „bekannter Wert, Tabelle unbekannt“ bereits. S84 belegt zusätzliche Filterbereinigung in einem anderen Client, nicht dieselbe l8db-Lücke; Wiederaufnahme früherer Suchläufe bleibt unbelegt. Keine vierte Idee ergänzt. [README.md](README.md) und [Runde 21](sources.md#runde-21--bekannter-wert-tabelle-unbekannt) haben Vorrang; alte Artefakte bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn, ClickHouse und NULL bleiben erhalten. Kopien, Seeds, Maskierung und Tabellenübertragung existieren. Nur die Auswahl eines konkreten Datensatzes samt benötigten verknüpften Zeilen bleibt als eigene Restaufgabe offen; S87/S88 stützen sie konkreter, aber älter. Als B-Reserve halten, keine vierte Hauptempfehlung erzwingen. [README.md](README.md) und [Runde 22](sources.md#runde-22--kleine-zusammenhängende-testdatensätze) haben Vorrang; alte Artefakte bleiben erhalten.
 
 ## Aktuelle Kandidaten
 
@@ -9,7 +9,13 @@
 | 1 | Herkunft gespeicherter SQL-Abfragen, Filter weiter prüfen | S43 und S59 stützen die Zuordnung unabhängig aktuell; S55 belegt den Mischbestand nur von 2025. l8db hat Namens-/SQL-Suche und Verbindungsverlauf, aber keine Herkunft an benannten Abfragen; S58 belegt Alternativen | B · Herkunft vorn, Zusatznutzen eines freiwilligen Filters für gemischte Bestände offen; allgemeine Abfragen standardmäßig sichtbar lassen |
 | 2 | ClickHouse-Abbruchstatus verlässlich anzeigen | S66 und der bekannte l8db-Codehinweis trennen ASYNC-Erfolg von bestätigtem Ende. S68 beschreibt falschen Erfolg in einem unabhängigen aktuellen Projekt; S69 meldet dagegen ausdrückliche Fehler | B · technisch besser gestützt, direkter aktueller Anwenderfall und l8db-Laufzeitfall fehlen; keine Treibervertiefung ohne neue Anwenderquelle |
 | 3 | SQL-NULL und JSON-null erhalten und unterscheiden | Filter und Anzeige sollen dieselben Wertarten unterscheiden; S47 direkter Einzelbericht, statischer MySQL-Codehinweis. S51 betrifft dagegen erwartete SQL-Konvertierung; S52 beschreibt eine vorhandene Konkurrenzlösung zur Anzeige | B · keine Hochstufung: unabhängiger aktueller Gleichfall und Laufzeitbestätigung fehlen; kein reiner Beschriftungswechsel |
-| 4 | Filter über eingehende Beziehungen in der Tabellenansicht | Elternzeilen über Kinddaten finden; JOIN-Builder bietet den Suchweg, aber nicht denselben Ergebnisumfang; S45 weiter nur vermittelt | B · nachrangig, unabhängige aktuelle Nachfrage nicht bestätigt |
+
+## Reserven · keine Hauptempfehlung
+
+| Ergänzung | Evidenz und vorhandene Wege | Entscheidung |
+|---|---|---|
+| Gezielte zusammenhängende Testdaten | S87 beschreibt zehn Startzeilen mit unbekannten Abhängigkeiten; S88 eine begrenzte Auswahl mit FK-Prüfung. Kopien, synthetische Seeds, maskierte Einzel-Tabellenkopie und Transfer existieren; Jailer/Greenmask lösen relationale Teilmengen bereits | B · von C zur belegteren Reserve; aktuelle konkrete Restaufgabe und heutiger l8db-Zusatznutzen nicht ausreichend bestätigt |
+| Filter über eingehende Beziehungen | Elternzeilen über Kinddaten finden; JOIN-Builder bietet den Suchweg, aber nicht denselben Ergebnisumfang; S45 weiter nur vermittelt | B · nachrangig, unabhängige aktuelle Nachfrage nicht bestätigt |
 
 **Bereits vorhanden: Skriptfehler einer Anweisung zuordnen.** Nummerierte Batch-Ergebnisse zeigen SQL, Status und Fehler; Auswahl springt zur Anweisung, erkannte Fehlerpositionen werden in den Editor übertragen. S76 fordert genau diese Zuordnung, S77 betrifft zusätzlich die genaue Zeile innerhalb einer Anweisung. Für eine verbleibende lokale Orientierungslücke fehlt ein passender neuer Beleg; den breiten Suchpfad abschließen, keinen weiteren Editor oder Debugger ableiten.
 
@@ -38,7 +44,7 @@ Evidenzstärke beschreibt die konkrete Aufgabe, nicht die Marktgröße. Nutzen/D
 | 3 | **CSV-Fehlersammlung, allgemeinen Vollcheck zurückstellen** | Mehrere Dateikorrekturen bündeln | S33 direkter, alter Fall; S34 vorhandene Engine-Funktion | Integration statt neuer Parser | Offen | B · aktuelle Mehrfachfehlerfälle fehlen |
 | 4 | **Lokale explizite Beziehungen** | Mögliche bequemere Nutzung in Zellnavigation und ER-Diagramm | S79 direkter Fall von 2025; S14 bestehendes Angebot, kein neuer Nachfragebeleg | Vorhandenes Master-Detail-SQL löst den Suchweg bereits | Offen | B · Zusatznutzen nachrangig und unbestätigt; breite Suche ohne neuen Ausgangsfall abgeschlossen |
 | 5 | **Auswahl und Orientierung beim vorhandenen Vergleich** | Abgleichsarbeit durch S81/S82 belegt | Niedrig für verbleibende lokale Ergänzung; S83 betrifft vorhandene Schlüssel-/Spaltenwege | Kein Alleinstellungsmerkmal nötig; Vergleich bereits vorhanden | Offen | C · keine neue kleine Lücke bestätigt; keinen Vergleichsmotor ableiten |
-| 6 | **Zusammenhängende Testdaten-Teilmenge** | Hoch: einen Fehlerfall mit Eltern/Kindern lokal nachstellen | Niedrig: S09 belegt Teilmenge, nicht FK-Abschluss; Erweiterung ist Schlussfolgerung | Mittel: an bestehende Maskierung anknüpfen | L | C · fachlichen Bedarf validieren |
+| 6 | **Gezielte zusammenhängende Testdaten** | Einen konkreten Fehlerfall ohne ganze Datenbank nachstellen | Mittel für die Aufgabe durch S87/S88; aktuelle genaue Nachfrage offen | Vorhandene Kopien/Seeds anerkennen; S89 belegt etablierte Alternative | Offen | B · getrennte Reserve, keine neue Hauptempfehlung |
 | 7 | **Vorhandene Datenwertsuche bei Wiederholung nutzen** | Grundaufgabe bereits gelöst; mögliche erneute Eingabe/Suche offen | S84 aktueller anderer Fehler; S07 benachbarter Filterverlauf, S85/S86 Angebot | Inhaltssuche, Spaltenfilter, Trefferöffnung und Stopp vorhanden | Offen | C · breite Lücke geschlossen; keine ausreichende Nachfrage nach Wiederaufnahme |
 | 8 | **Sitzungskontext vergleichen** | Mittel: gleiche SQL, anderes Verhalten erklären | Niedrig–mittel: S10 konkretes Zeitzonenmissverständnis; Verallgemeinerung unbewiesen | Mittel als kleine Diagnose-Erweiterung | S–M | B · mit Verbindungsdiagnose gemeinsam validieren |
 
@@ -75,6 +81,8 @@ Code-Neuheitsprüfung: [fk-links.ts](/Users/leon/Projekte/l8db/src/features/tabl
 Neuheitsprüfung: [result-compare.ts](/Users/leon/Projekte/l8db/src/lib/result-compare.ts) lehnt gekürzte Ergebnisse und Ergebnisse ab Standardlimit ab; Snapshots sind auf 999 Zeilen begrenzt. [data_compare.rs](/Users/leon/Projekte/l8db/src-tauri/src/db/data_compare.rs) vergleicht bereits Tabellen mit anderen Grenzen; beliebige SELECT-Quellen sind der Zusatz. Risiken: Key-Duplikate, RAM/Disk, fehlender gemeinsamer Zeitpunkt, schwerer Quellquery. Hoher Aufwand, schwacher Nachfragebeleg → zurückstellen.
 
 ## 6 · Zusammenhängende Testdaten-Teilmenge
+
+**Aktuelle Eingrenzung nach Runde 22:** Voll-/Schema-/maskierte Kopien, synthetische Seeds, begrenzte maskierte Einzel-Tabellenkopie und Tabellenübertragung existieren. Ein konkreter Startdatensatz mit automatisch ermittelten benötigten Zeilen anderer Tabellen wurde in diesen Pfaden nicht gefunden. S87/S88 bestätigen die Aufgabe direkter als S09; aktuelle konkrete Nachfrage und lokale Häufigkeit fehlen weiterhin, daher B-Reserve. Für eine höhere Priorität fehlt ein aktueller Fehlerfall, dessen Daten trotz dieser Wege manuell zusammengestellt werden müssen; ohne neuen Ausgangsbeleg nicht weiter verengen. Die folgende MVP-Hypothese ist historisch, kein aktueller Umsetzungsauftrag.
 
 **MVP-Hypothese:** eine Startzeile plus ausdrücklich ausgewählte FK-Kanten als Vorschau; harte Zeilen-/Tiefenlimits und deterministische vorhandene Maskierung. Nur SQL-Paket für lokale Testdaten; keine automatischen Produktions-/Zielschreibzugriffe.
 
