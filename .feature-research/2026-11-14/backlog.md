@@ -1,16 +1,17 @@
-# Backlog · aktualisiert nach Runde 12
+# Backlog · aktualisiert nach Runde 13
 
-**Aktuelle Entscheidung, 2026-11-14:** Top 3 unverändert, Herkunft bleibt vorn. Frühere Speicherstände benannter Abfragen vorerst zurückstellen: eine enge Code-Lücke ist sichtbar, passende aktuelle Nutzerfälle fehlen. Verlauf, Tab-Sicherungen, Entwurfswiederherstellung und Sync-Sicherungen bieten bereits andere Rückwege. Der enge Mischbestand-Suchpfad bleibt beendet; NULL und Kindtabellenfilter wurden nicht erneut untersucht. [README.md](README.md) und [Runde 12](sources.md#runde-12--frühere-speicherstände-gegen-verlauf-und-wiederherstellung) haben Vorrang; alte Artefakte bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn. Neu auf Platz 2: verlässlicher ClickHouse-Abbruchstatus, gestützt durch S66 und einen konkreten statischen Codehinweis; reale l8db-Betroffenheit offen. Bestehende Abbruchanzeige, PostgreSQL-Bestätigung und Sitzungsaktionen bleiben anerkannt. NULL steht jetzt auf Platz 3, Kindtabellenfilter auf Platz 4; deren Evidenz ist unverändert. Revisions- und enger Mischbestand-Suchpfad sind ohne neue Fundstelle beendet. [README.md](README.md) und [Runde 13](sources.md#runde-13--bewusster-abbruch-und-clickhouse-status) haben Vorrang; alte Artefakte bleiben erhalten.
 
 ## Aktuelle Kandidaten
 
 | Priorität | Ergänzung | Nutzen und Evidenz | Entscheidung |
 |---|---|---|---|
 | 1 | Herkunft gespeicherter SQL-Abfragen, Filter weiter prüfen | S43 und S59 stützen die Zuordnung unabhängig aktuell; S55 belegt den Mischbestand nur von 2025. l8db hat Namens-/SQL-Suche und Verbindungsverlauf, aber keine Herkunft an benannten Abfragen; S58 belegt Alternativen | B · Herkunft vorn, Zusatznutzen eines freiwilligen Filters für gemischte Bestände offen; allgemeine Abfragen standardmäßig sichtbar lassen |
-| 2 | SQL-NULL und JSON-null erhalten und unterscheiden | Filter und Anzeige sollen dieselben Wertarten unterscheiden; S47 direkter Einzelbericht, statischer MySQL-Codehinweis. S51 betrifft dagegen erwartete SQL-Konvertierung; S52 beschreibt eine vorhandene Konkurrenzlösung zur Anzeige | B · keine Hochstufung: unabhängiger aktueller Gleichfall und Laufzeitbestätigung fehlen; kein reiner Beschriftungswechsel |
-| 3 | Filter über eingehende Beziehungen in der Tabellenansicht | Elternzeilen über Kinddaten finden; JOIN-Builder bietet den Suchweg, aber nicht denselben Ergebnisumfang; S45 weiter nur vermittelt | B · nachrangig, unabhängige aktuelle Nachfrage nicht bestätigt |
+| 2 | ClickHouse-Abbruchstatus verlässlich anzeigen | Nach Stopp zwischen angefordertem und bestätigtem Ende unterscheiden; S66 erklärt ASYNC, l8db setzt dessen HTTP-Erfolg bereits in eine bestätigte Abbruchmeldung um. S64/S65 zeigen Engine-Grenzen, nicht dasselbe Verhalten in l8db | B · enge statisch gestützte Lücke; eigener Laufzeitfall und Häufigkeit offen, keine neue Aufgabenverwaltung |
+| 3 | SQL-NULL und JSON-null erhalten und unterscheiden | Filter und Anzeige sollen dieselben Wertarten unterscheiden; S47 direkter Einzelbericht, statischer MySQL-Codehinweis. S51 betrifft dagegen erwartete SQL-Konvertierung; S52 beschreibt eine vorhandene Konkurrenzlösung zur Anzeige | B · keine Hochstufung: unabhängiger aktueller Gleichfall und Laufzeitbestätigung fehlen; kein reiner Beschriftungswechsel |
+| 4 | Filter über eingehende Beziehungen in der Tabellenansicht | Elternzeilen über Kinddaten finden; JOIN-Builder bietet den Suchweg, aber nicht denselben Ergebnisumfang; S45 weiter nur vermittelt | B · nachrangig, unabhängige aktuelle Nachfrage nicht bestätigt |
 
-**Zurückgestellt: frühere Fassung einer benannten Abfrage wiederherstellen.** S60/S61 belegen vorhandene Konkurrenzlösungen, S62/S63 andere Verlustaufgaben. l8db warnt vor dem Überschreiben und hat mehrere Wiederherstellungswege, aber im geprüften Speicherpfad keine abrufbare Revisionsliste. Ohne passenden aktuellen Nutzerfall keine weitere Priorität und keine allgemeine Versionsverwaltung ableiten.
+**Abgeschlossener Suchpfad: frühere Fassung einer benannten Abfrage wiederherstellen.** S60/S61 belegen vorhandene Konkurrenzlösungen, S62/S63 andere Verlustaufgaben. l8db warnt vor dem Überschreiben und hat mehrere Wiederherstellungswege, aber im geprüften Speicherpfad keine abrufbare Revisionsliste. Auf Nutzerwunsch ohne neue Originalquelle keine weitere Suche; keine allgemeine Versionsverwaltung ableiten.
 
 ## Historischer breiter Backlog mit aktualisierten Entscheidungen
 
