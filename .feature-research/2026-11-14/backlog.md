@@ -1,16 +1,28 @@
-# Backlog · aktualisiert nach Runde 22
+# Backlog · Abschluss nach Runde 23
 
-**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn, ClickHouse und NULL bleiben erhalten. Kopien, Seeds, Maskierung und Tabellenübertragung existieren. Nur die Auswahl eines konkreten Datensatzes samt benötigten verknüpften Zeilen bleibt als eigene Restaufgabe offen; S87/S88 stützen sie konkreter, aber älter. Als B-Reserve halten, keine vierte Hauptempfehlung erzwingen. [README.md](README.md) und [Runde 22](sources.md#runde-22--kleine-zusammenhängende-testdatensätze) haben Vorrang; alte Artefakte bleiben erhalten.
+**Abschließende Entscheidung, 2026-11-14:** Herkunft, ClickHouse-Abbruchstatus und NULL-Unterscheidung bleiben die drei priorisierten Kandidaten. Die Gesamtprüfung von README, Backlog und Evidenzregister ergibt keine neue unbeantwortete Produktfrage, die Umfang oder Rangfolge verändert. Keine weitere Originalrecherche gestartet; vorhandene Belege und ihre Grenzen reichen für diese Eingrenzung. Der folgende Abschluss hat Vorrang vor allen historischen Such-, Fokus-, MVP- und Testaufträgen; alte Artefakte bleiben erhalten.
+
+## Abschließende Recherchegrenze
+
+Die Auswahl bleibt qualitativ und vorläufig: Herkunft ist durch direkte Zuordnungswünsche gestützt; ClickHouse und NULL zusätzlich durch statische Codehinweise. Fehlende Häufigkeits-, lokale Anwender- oder Laufzeitbelege sind bereits dokumentiert. Sie werden hier nicht zu neuen Produktfragen oder weiteren Gleichfallsuchen erklärt.
+
+| Kandidat | Bereits eingegrenzt und anerkannte vorhandene Wege | Neu vorliegender Ausgangsbeleg, der eine Bewertung ändern könnte |
+|---|---|---|
+| SQL-Herkunft | Hinweis in der bestehenden Liste; allgemeine Abfragen bleiben sichtbar. Namens-/SQL-Suche, Verbindungsverlauf sowie Konkurrenzordner und Projektkontext sind berücksichtigt; neue Bibliothek und feste Zielbindung sind nicht begründet | Ein konkreter neuer Auswahlablauf beschreibt die verbleibende Zuordnungsarbeit und die Rolle allgemeiner Abfragen neben den bereits genutzten Alternativen. Eine relevante Änderung der l8db-Speicherung oder Auswahl könnte den bisherigen Lückenbefund ebenfalls verändern |
+| ClickHouse-Abbruch | Angefordert und bestätigt unterscheiden; vorhandene Aufgabenanzeige und präzisere Abbruchwege anderer Treiber anerkennen. ASYNC-Erfolg bestätigt kein Ende; allgemeine Aufgabenverwaltung und weitere Treibervertiefung sind nicht begründet | Ein neuer Originalbericht ordnet die angezeigte Bestätigung und danach weiterlaufende Serverarbeit derselben Abfrage zu, mit benannter Client-/Serverversion. Eine Änderung des lokalen Abbruchpfads oder dokumentierte neue Datenbanksemantik wäre ebenfalls neu zu bewerten |
+| SQL-NULL / JSON-null | Wertart im geprüften MySQL-Pfad erhalten und in Anzeige/Filter unterscheiden. Leertext-/NULL-Anzeige und vorhandene JSON-Viewer sind berücksichtigt; erwartete SQL-Konvertierungen dürfen nicht umgedeutet werden | Ein neu vorliegendes kleines Beispiel zeigt beide Wertarten und die tatsächliche Anzeige-/Filterfolge in einer benannten Version. Eine lokale Änderung, die die Wertart bereits erhält, könnte den statischen Befund widerlegen |
+
+Diese Belege sind **Wiederaufnahmegründe, keine Suchaufträge**. Reserven einschließlich Testdaten und Kindtabellenfilter sowie alle abgeschlossenen Einzelprüfungen bleiben geschlossen. Ihre bisherigen B-/C-Einstufungen dokumentieren die Bewertung, keinen offenen Arbeitsauftrag. Ohne neues entscheidungsrelevantes Material oder eine ausdrücklich geänderte Produktfrage endet die Recherche hier; keine automatische Folgerunde, kein Ersatzthema und keine weitere Suchverengung empfohlen.
 
 ## Aktuelle Kandidaten
 
 | Priorität | Ergänzung | Nutzen und Evidenz | Entscheidung |
 |---|---|---|---|
-| 1 | Herkunft gespeicherter SQL-Abfragen, Filter weiter prüfen | S43 und S59 stützen die Zuordnung unabhängig aktuell; S55 belegt den Mischbestand nur von 2025. l8db hat Namens-/SQL-Suche und Verbindungsverlauf, aber keine Herkunft an benannten Abfragen; S58 belegt Alternativen | B · Herkunft vorn, Zusatznutzen eines freiwilligen Filters für gemischte Bestände offen; allgemeine Abfragen standardmäßig sichtbar lassen |
+| 1 | Herkunft gespeicherter SQL-Abfragen | S43 und S59 stützen die Zuordnung unabhängig aktuell; S55 belegt den Mischbestand nur von 2025. l8db hat Namens-/SQL-Suche und Verbindungsverlauf, aber keine Herkunft an benannten Abfragen; S58 belegt Alternativen | B · Herkunft vorn, Zusatznutzen eines freiwilligen Filters für gemischte Bestände offen; allgemeine Abfragen standardmäßig sichtbar lassen |
 | 2 | ClickHouse-Abbruchstatus verlässlich anzeigen | S66 und der bekannte l8db-Codehinweis trennen ASYNC-Erfolg von bestätigtem Ende. S68 beschreibt falschen Erfolg in einem unabhängigen aktuellen Projekt; S69 meldet dagegen ausdrückliche Fehler | B · technisch besser gestützt, direkter aktueller Anwenderfall und l8db-Laufzeitfall fehlen; keine Treibervertiefung ohne neue Anwenderquelle |
 | 3 | SQL-NULL und JSON-null erhalten und unterscheiden | Filter und Anzeige sollen dieselben Wertarten unterscheiden; S47 direkter Einzelbericht, statischer MySQL-Codehinweis. S51 betrifft dagegen erwartete SQL-Konvertierung; S52 beschreibt eine vorhandene Konkurrenzlösung zur Anzeige | B · keine Hochstufung: unabhängiger aktueller Gleichfall und Laufzeitbestätigung fehlen; kein reiner Beschriftungswechsel |
 
-## Reserven · keine Hauptempfehlung
+## Reserven · Recherche geschlossen, keine Hauptempfehlung
 
 | Ergänzung | Evidenz und vorhandene Wege | Entscheidung |
 |---|---|---|
