@@ -351,3 +351,21 @@ Abruf **2026-11-14**. Öffentliche Originalberichte von Beekeeper und DBeaver so
 - Bei eingebundenen Quelldateien wird die Quelle angezeigt; die Auswahl setzt dafür keine Fehlerposition im Haupteditor. Dieser engere Fall ist durch S76/S77 nicht als zusätzlicher Nutzerbedarf bestätigt. Ohne Ausgangsbeleg keine weitere Include-/Treiberanalyse oder neue Debuggeridee.
 
 **Entscheidung:** Drei bisherige Prioritäten erhalten; keine vierte Idee ergänzen. Anweisungszuordnung ist vorhanden, eine neue genaue Positionslücke in l8db bleibt unbelegt. Den breiten Skript-Orientierungspfad abschließen. Für die nächste Runde die noch offene Backlogfrage nach Navigation ohne deklarierte Fremdschlüssel verwenden; vorhandene lokale Definitionen zuerst anerkennen und aktuelle Originalfälle suchen.
+
+## Runde 19 · Navigation ohne deklarierte Fremdschlüssel
+
+Abruf **2026-11-14**. Vorhandene lokale Definitionen vor der Ableitung geprüft; öffentliche Originalfälle und Herstellerdokumentation von DBeaver, Beekeeper und DataGrip gelesen. **Ein neuer direkter Navigationsfall von 2025, kein passender unabhängiger neuer Fall von 2026 bestätigt.** S19 mit offengelegter Herstellerbeteiligung nicht erneut als Nachfrage gezählt. Keine Datenbankverbindung, SQL-Ausführung oder Tests.
+
+| ID | Neue Quelle / Datum / Status | Entscheidungsrelevanter Befund und Grenze |
+|---|---|---|
+| S79 | [DBeaver #37996](https://github.com/dbeaver/dbeaver/issues/37996), 2025-05-09, geschlossen „not planned“ 2025-07-14 | Nutzer möchte aus Views über einfache oder zusammengesetzte virtuelle Beziehungen zu Tabellen/Views springen; selbst erzeugtes SQL ist sein Workaround. **Direkter älterer Navigationswunsch, mittel für die Aufgabe.** Maintainer verweist auf vorhandene virtuelle FK-Hinweise; nach ausbleibender Antwort geschlossen. Kein bestätigtes heutiges Konkurrenzdefizit. |
+| S80 | [Beekeeper #3474](https://github.com/beekeeper-studio/beekeeper-studio/issues/3474), 2025-08-27, als Duplikat geschlossen 2025-09-10 | Nutzer will vorhandene Tabellenabhängigkeiten als Karte verstehen. **Direkter älterer ER-Diagrammwunsch**, keine Forderung nach lokalen Beziehungen ohne Constraints. l8db hat ein ER-Diagramm bereits; nicht als zweiter Beleg für S79 oder neuer Featurebereich gewertet. |
+
+**Konkurrenz gegenprüfen:** S14 [DataGrip: Virtual foreign keys](https://www.jetbrains.com/help/datagrip/virtual-foreign-keys.html) erneut geöffnet, aktuelle Seite „2026.3 Help“: lokale Beziehungen und deren Speicherung außerhalb des Datenbankcodes sind vorhanden. Das schließt eine nützliche l8db-Ergänzung nicht aus und ist keine neue Nutzerstimme. S79 zeigt zugleich, dass ein vermeintlich fehlender Konkurrenzweg bereits existieren kann.
+
+**Existenzabgleich, Stand `906384c6`, statisch:**
+
+- [Master-Detail](/Users/leon/Projekte/l8db/src/lib/master-detail.ts:76) erlaubt eigenes lesendes SQL mit `:master.SPALTE`; [Speichern](/Users/leon/Projekte/l8db/src/lib/master-detail.ts:174) und [gespeicherte Vorlagen](/Users/leon/Projekte/l8db/src/features/shell/master-detail-link/saved-scripts-picker.tsx:17) sind vorhanden. Damit sind lokale Beziehungen und die Navigation über abhängige Werte bereits ohne deklarierte FKs möglich. Die frühere pauschale Lücke „keine lokale Beziehungsdefinition“ war zu breit.
+- [Zelllinks](/Users/leon/Projekte/l8db/src/features/table/data-table/fk-links.ts:20) und [ER-Kanten](/Users/leon/Projekte/l8db/src/features/er-diagram/er-diagram-view/build-graph.ts:7) verwenden FK-Metadaten. Der [FK-Leseweg](/Users/leon/Projekte/l8db/src/lib/queries/table-meta-queries.ts:21) lädt diese vom Backend; eine Ergänzung aus separaten lokalen Spaltenzuordnungen wurde in diesen Kernpfaden nicht gefunden. Möglicher Zusatz ist deren Wiederverwendung dort, kein neuer SQL- oder Navigationsbereich.
+
+**Entscheidung:** Lokale Beziehungsmetadaten bleiben B/nachrangig, keine vierte Empfehlung. S79 stützt Navigation, belegt aber nicht den heutigen Mehrwert gegenüber l8dbs gespeicherten SQL-Verknüpfungen. Keine automatische Beziehungserkennung oder Datenbank-Constraints daraus ableiten; ohne neuen Ausgangsfall nicht weiter verengen. Herkunft bleibt vorn, die geschlossenen Pfade bleiben geschlossen. Nächste offene Backlogfrage: Nachfrage nach Vergleich großer SELECT-Ergebnisse gegen vorhandenen Ergebnis- und Tabellenvergleich.
