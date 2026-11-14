@@ -1,6 +1,6 @@
-# Backlog · aktualisiert nach Runde 3
+# Backlog · aktualisiert nach Runde 4
 
-**Aktuelle Entscheidung, 2026-11-14:** Nur drei Kandidaten weiterführen: (1) verständlicher Exportumfang, (2) zusammenhängende Verbindungsdiagnose, (3) optionaler CSV-Vollcheck als schwächere Hypothese. Separaten Exportbeleg zurückstellen; Importcheck von A auf B herabstufen. Begründung und kurze Beschreibungen stehen in [README.md](README.md), neue Gegenbelege S22–S31 in [sources.md](sources.md#runde-3--gegenprüfung-der-drei-führenden-ideen). Die frühere Top-3-Spezifikation und alle visuellen Artefakte bleiben historisch erhalten und sind keine aktuelle Umsetzungsempfehlung.
+**Aktuelle Entscheidung, 2026-11-14:** (1) Bewussten Dateiexport mit Spalten aus der Ansicht als engere Hypothese prüfen; allgemeine Full-/Loaded-Beschriftungsinitiative herabstufen. (2) Verbindungsdiagnose unverändert als Kandidat behalten, in Runde 4 nicht erneut untersucht. (3) CSV-Fehlersammlung bleibt B: S33 ist erstmals ein passender Mehrfachfehlerbericht, aber von 2022; S34 zeigt eine schon existierende Engine-Funktion. Exportbeleg bleibt zurückgestellt. [README.md](README.md) und [Runde 4](sources.md#runde-4--umfangsverlust-trotz-vorschau-und-mehrere-späte-csv-fehler) haben Vorrang vor den historischen Spezifikationen; sämtliche alten Artefakte bleiben erhalten.
 
 ## Historischer breiter Backlog mit aktualisierten Entscheidungen
 
@@ -10,9 +10,9 @@ Evidenzstärke beschreibt die konkrete Aufgabe, nicht die Marktgröße. Nutzen/D
 
 | Rang | Idee / neue Fähigkeit | Nutzen | Evidenz | Differenzierung | Aufwand | Entscheidung |
 |---|---|---|---|---|---|---|
-| 1 | **Exportumfang erklären; Beleg zurückstellen** | Hoch bei Auswahl/Neuausführung | Mittel: S25 aktueller Umfangswechsel, S22–24 vorhandene Konkurrenzwege | Niedrig: gezielte Ergänzung vorhandener Abläufe | S | A · Umfangsverständnis prüfen |
+| 1 | **Bewusster Ansichtsexport; Beleg zurückstellen** | Möglich bei vorbereiteter Spaltenauswahl | Mittel für Ansichtsverlust (S32), niedrig für konkrete l8db-Spaltennachfrage | Kleiner Zusatz; lokale Kopier-/Auswahlwege schon vorhanden | S–M | B · konkreten Bedarf prüfen, keine weitere allgemeine Beschriftung |
 | 2 | **Vorhandene Verbindungsinformationen zusammenführen** | Mittel: richtige Fehlerstelle finden | Mittel: S27 aktuelle, inzwischen behobene Fälle; viele l8db-Fehler schon präzise | Niedrig–mittel: zusammenhängender Kontext | S–M | A · konkrete Informationslücke prüfen |
-| 3 | **Optionaler CSV-Vollcheck ohne Schreiben** | Möglich bei späten Dateifehlern | Niedrig–mittel: S30 Angebotslücke; S28/29 keine Belege für diese Lösung | Mittel nur jenseits vorhandener Preview-/Mappingprüfung | M | B · Nachfrage nach Vollscan erst belegen |
+| 3 | **CSV-Fehlersammlung, allgemeinen Vollcheck zurückstellen** | Mehrere Dateikorrekturen bündeln | S33 direkter, alter Fall; S34 vorhandene Engine-Funktion | Integration statt neuer Parser | Offen | B · aktuelle Mehrfachfehlerfälle fehlen |
 | 4 | **Lokale explizite Beziehungen** | Hoch für Legacy-/Analytics-Schemas ohne FKs | Niedrig–mittel: S08 alt, S14 heutiger Wettbewerbsstandard | Niedrig allein; besser mit bestehendem Drawer | M | B · 3 reale Schemas ohne FKs suchen |
 | 5 | **Große SELECT-Ergebnisse vergleichen** | Hoch für Abgleich über dem Ergebnislimit | Niedrig: S15 belegt Angebot, keine belastbare aktuelle Beschwerde gesammelt | Mittel im bestehenden Multi-Target-Ablauf | L | C · Nachfrage vor Backend-Spike |
 | 6 | **Zusammenhängende Testdaten-Teilmenge** | Hoch: einen Fehlerfall mit Eltern/Kindern lokal nachstellen | Niedrig: S09 belegt Teilmenge, nicht FK-Abschluss; Erweiterung ist Schlussfolgerung | Mittel: an bestehende Maskierung anknüpfen | L | C · fachlichen Bedarf validieren |
