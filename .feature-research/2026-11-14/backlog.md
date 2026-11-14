@@ -1,13 +1,13 @@
-# Backlog · aktualisiert nach Runde 13
+# Backlog · aktualisiert nach Runde 14
 
-**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn. Neu auf Platz 2: verlässlicher ClickHouse-Abbruchstatus, gestützt durch S66 und einen konkreten statischen Codehinweis; reale l8db-Betroffenheit offen. Bestehende Abbruchanzeige, PostgreSQL-Bestätigung und Sitzungsaktionen bleiben anerkannt. NULL steht jetzt auf Platz 3, Kindtabellenfilter auf Platz 4; deren Evidenz ist unverändert. Revisions- und enger Mischbestand-Suchpfad sind ohne neue Fundstelle beendet. [README.md](README.md) und [Runde 13](sources.md#runde-13--bewusster-abbruch-und-clickhouse-status) haben Vorrang; alte Artefakte bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn. S68 ergänzt für Platz 2 einen aktuellen technischen Projektbeleg für falschen ClickHouse-Abbrucherfolg, keinen direkten Anwenderbericht. Reale l8db-Betroffenheit und Häufigkeit bleiben offen; angeforderter und bestätigter Abbruch werden in anderen vorhandenen Pfaden bereits getrennt. NULL und Kindtabellenfilter unverändert; Revisions- und enger Mischbestand-Suchpfad bleiben beendet. [README.md](README.md) und [Runde 14](sources.md#runde-14--falscher-erfolg-nach-clickhouse-abbruch) haben Vorrang; alte Artefakte bleiben erhalten.
 
 ## Aktuelle Kandidaten
 
 | Priorität | Ergänzung | Nutzen und Evidenz | Entscheidung |
 |---|---|---|---|
 | 1 | Herkunft gespeicherter SQL-Abfragen, Filter weiter prüfen | S43 und S59 stützen die Zuordnung unabhängig aktuell; S55 belegt den Mischbestand nur von 2025. l8db hat Namens-/SQL-Suche und Verbindungsverlauf, aber keine Herkunft an benannten Abfragen; S58 belegt Alternativen | B · Herkunft vorn, Zusatznutzen eines freiwilligen Filters für gemischte Bestände offen; allgemeine Abfragen standardmäßig sichtbar lassen |
-| 2 | ClickHouse-Abbruchstatus verlässlich anzeigen | Nach Stopp zwischen angefordertem und bestätigtem Ende unterscheiden; S66 erklärt ASYNC, l8db setzt dessen HTTP-Erfolg bereits in eine bestätigte Abbruchmeldung um. S64/S65 zeigen Engine-Grenzen, nicht dasselbe Verhalten in l8db | B · enge statisch gestützte Lücke; eigener Laufzeitfall und Häufigkeit offen, keine neue Aufgabenverwaltung |
+| 2 | ClickHouse-Abbruchstatus verlässlich anzeigen | S66 und der bekannte l8db-Codehinweis trennen ASYNC-Erfolg von bestätigtem Ende. S68 beschreibt falschen Erfolg in einem unabhängigen aktuellen Projekt; S69 meldet dagegen ausdrückliche Fehler | B · technisch besser gestützt, direkter aktueller Anwenderfall und l8db-Laufzeitfall fehlen; keine Treibervertiefung ohne neue Anwenderquelle |
 | 3 | SQL-NULL und JSON-null erhalten und unterscheiden | Filter und Anzeige sollen dieselben Wertarten unterscheiden; S47 direkter Einzelbericht, statischer MySQL-Codehinweis. S51 betrifft dagegen erwartete SQL-Konvertierung; S52 beschreibt eine vorhandene Konkurrenzlösung zur Anzeige | B · keine Hochstufung: unabhängiger aktueller Gleichfall und Laufzeitbestätigung fehlen; kein reiner Beschriftungswechsel |
 | 4 | Filter über eingehende Beziehungen in der Tabellenansicht | Elternzeilen über Kinddaten finden; JOIN-Builder bietet den Suchweg, aber nicht denselben Ergebnisumfang; S45 weiter nur vermittelt | B · nachrangig, unabhängige aktuelle Nachfrage nicht bestätigt |
 
