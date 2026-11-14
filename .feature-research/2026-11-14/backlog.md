@@ -1,17 +1,24 @@
-# Backlog · aktualisiert nach Runde 6
+# Backlog · aktualisiert nach Runde 7
 
-**Aktuelle Entscheidung, 2026-11-14:** (1) Verbindungsübersicht auf B begrenzen: S41 beschreibt einen mutmaßlichen Treiberfehler, keine neue Aufgabe für eine Übersicht neben präzisen Fehlermeldungen. (2) Spalten-Dateiexport bleibt schwach/B: S40 hat einen vorhandenen CSV-Ausweg; S42 verlangt rohe BLOB-Dateien, die l8db schon speichern kann. Kein neuer qualifizierter Fall für Übernahme der Spaltenansicht. (3) CSV-Fehlersammlung unverändert nachrangig; keine neue Nachfrage gesammelt. Exportbeleg bleibt zurückgestellt. [README.md](README.md) und [Runde 6](sources.md#runde-6--dateiaufgabe-und-zusatznutzen-gegenprüfen) haben Vorrang vor den historischen Spezifikationen; sämtliche alten Artefakte bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** Zwei neue Kandidaten statt erneuter Verteidigung der bisherigen drei. (1) Herkunft benannter SQL-Abfragen bewahren: S43 direkter aktueller Wunsch, im l8db-Verlauf schon vorhanden, in gespeicherten Abfragen nicht. (2) Tabellen nach Daten eingehender Beziehungen filtern: S45 konkreter, aber vermittelter Supportfall; bestehende FK-Navigation und JOIN-Builder anerkannt. Spaltenexport vorerst abgeschlossen/C; allgemeine Verbindungsübersicht zurückgestellt/C. Keine neue Priorisierung von CSV-Vollcheck oder Exportbeleg. [README.md](README.md) und [Runde 7](sources.md#runde-7--gespeicherte-abfragen-zuordnen-und-alltagsprobleme-prüfen) haben Vorrang; sämtliche alten Artefakte bleiben erhalten.
+
+## Aktuelle Kandidaten
+
+| Priorität | Ergänzung | Nutzen und Evidenz | Entscheidung |
+|---|---|---|---|
+| 1 | Herkunft gespeicherter SQL-Abfragen | Ähnliche Skripte anhand Verbindung/Datenbank zuordnen; S43 direkter Einzelwunsch, Code bestätigt Metadatenlücke in der gespeicherten Bibliothek; der Verlauf hat den Kontext bereits | B · konkrete Aufgabe belegt, Verbreitung offen |
+| 2 | Filter über eingehende Beziehungen in der Tabellenansicht | Elternzeilen über Kinddaten finden; S45 aktueller vermittelter Einzelwunsch, Query-Builder als vorhandener Alternativweg | B · unabhängigen Bedarf und Zusatznutzen prüfen |
 
 ## Historischer breiter Backlog mit aktualisierten Entscheidungen
 
 Stand 2026-11-14, geprüft gegen `27fe90e9481e0d344bcf179badbcc07fecf7833f`. **A** = Konzept für Validierung ausarbeiten; **B** = Nutzeraufgabe genauer prüfen; **C** = Hypothese zurückstellen. Keine Implementierungszusage. Aufwand: S ≈ 2–5, M ≈ 6–15, L ≈ 16–30 Entwicklungstage, einschließlich gezielter Tests; grobe Einschätzung ohne Spike, keine Terminplanung.
 
-Evidenzstärke beschreibt die konkrete Aufgabe, nicht die Marktgröße. Nutzen/Differenzierung sind unsere Einschätzung. Die Top 3 sind Erweiterungen vorhandener Abläufe; nicht drei neue Produktoberflächen.
+Evidenzstärke beschreibt die konkrete Aufgabe, nicht die Marktgröße. Nutzen/Differenzierung sind unsere Einschätzung. Die folgenden Ränge und ausführlichen Abschnitte dokumentieren den Ausgangsstand; die aktuelle Priorität steht oben.
 
-| Rang | Idee / neue Fähigkeit | Nutzen | Evidenz | Differenzierung | Aufwand | Entscheidung |
+| Alter Rang | Idee / neue Fähigkeit | Nutzen | Evidenz | Differenzierung | Aufwand | Entscheidung |
 |---|---|---|---|---|---|---|
-| 1 | **Vorhandene Verbindungsinformationen zusammenführen** | Möglich: Rückfragen bei Fehlersuche sparen | Mittel für Verbindungsprobleme, niedrig für Zusatzaufgabe der Übersicht; S41 Treiberverhalten statt fehlender Zusammenfassung | Niedrig: präzise Meldungen und Treiberdiagnose schon vorhanden | S–M | B · keine Hochstufung ohne direkte Zusatzaufgabe |
-| 2 | **Spaltenansicht gezielt in eine Datei übernehmen** | Möglich: erneute Spaltenauswahl sparen | Niedrig für Zusatzbedarf in l8db; S40/S42 erfüllen den gesuchten Zusatzbedarf nicht | Niedrig: TSV/JSON-Kopieren, XLSX-Spaltenwahl und BLOB-Dateispeichern schon vorhanden | S–M | B · schwach lassen; keine neue Empfehlung aus einem anderen Dateityp ableiten |
+| 1 | **Vorhandene Verbindungsinformationen zusammenführen** | Möglich: Rückfragen bei Fehlersuche sparen | Mittel für Verbindungsprobleme, niedrig für Zusatzaufgabe der Übersicht | Niedrig: präzise Meldungen, Verbindungstest, Statusanzeige, doctor und Treiberdiagnose schon vorhanden | S–M | C · allgemeine Übersicht zurückstellen; S43 als eigene, engere Aufgabe prüfen |
+| 2 | **Spaltenansicht gezielt in eine Datei übernehmen** | Möglich: erneute Spaltenauswahl sparen | Niedrig für Zusatzbedarf in l8db; mehrfach erfolglos gegengeprüft | Niedrig: TSV/JSON-Kopieren, XLSX-Spaltenwahl und BLOB-Dateispeichern schon vorhanden | S–M | C · Pfad auf Nutzerwunsch vorerst abgeschlossen |
 | 3 | **CSV-Fehlersammlung, allgemeinen Vollcheck zurückstellen** | Mehrere Dateikorrekturen bündeln | S33 direkter, alter Fall; S34 vorhandene Engine-Funktion | Integration statt neuer Parser | Offen | B · aktuelle Mehrfachfehlerfälle fehlen |
 | 4 | **Lokale explizite Beziehungen** | Hoch für Legacy-/Analytics-Schemas ohne FKs | Niedrig–mittel: S08 alt, S14 heutiger Wettbewerbsstandard | Niedrig allein; besser mit bestehendem Drawer | M | B · 3 reale Schemas ohne FKs suchen |
 | 5 | **Große SELECT-Ergebnisse vergleichen** | Hoch für Abgleich über dem Ergebnislimit | Niedrig: S15 belegt Angebot, keine belastbare aktuelle Beschwerde gesammelt | Mittel im bestehenden Multi-Target-Ablauf | L | C · Nachfrage vor Backend-Spike |
