@@ -1,6 +1,6 @@
-# Backlog · aktualisiert nach Runde 20
+# Backlog · aktualisiert nach Runde 21
 
-**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn, ClickHouse und NULL bleiben erhalten. S81/S82 belegen reale Abgleichsarbeit, aber keine zusätzliche Auswahl- oder Orientierungshilfe gegenüber l8dbs vorhandenen Vergleichen. Keine vierte Idee ergänzt; kein neuer Vergleichsmotor abgeleitet. [README.md](README.md) und [Runde 20](sources.md#runde-20--große-select-ergebnisse-auswahl-und-orientierung) haben Vorrang; alte Artefakte bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn, ClickHouse und NULL bleiben erhalten. Die vorhandene Inhaltssuche löst „bekannter Wert, Tabelle unbekannt“ bereits. S84 belegt zusätzliche Filterbereinigung in einem anderen Client, nicht dieselbe l8db-Lücke; Wiederaufnahme früherer Suchläufe bleibt unbelegt. Keine vierte Idee ergänzt. [README.md](README.md) und [Runde 21](sources.md#runde-21--bekannter-wert-tabelle-unbekannt) haben Vorrang; alte Artefakte bleiben erhalten.
 
 ## Aktuelle Kandidaten
 
@@ -23,6 +23,8 @@
 
 **Große SELECT-Ergebnisse: Nachfrage von lokaler Ergänzung trennen.** S81 beschreibt die Prüfung einer langen SQL-Abfrage gegen eine neue Tabelle; S82 einen älteren Migrationsabgleich mit unterschiedlichen Joins und Aggregationen. Das ist mehr als eine Tabellenwahl, belegt aber keine fehlende kleine Auswahlhilfe. Schlüsselwahl, Änderungsfilter und Wertdetails existieren bereits; S83 wird dadurch abgedeckt. Unsichtbare Textunterschiede aus S81 bleiben eine einzelne SQL-/ETL-Erfahrung, kein bestätigter l8db-Fall. C bleibt: ohne neuen Ausgangsfall keine engere Suche oder Motorplanung.
 
+**Datenwertsuche ist vorhanden.** „Erweiterte Suche → Inhalt“ durchsucht Tabellen und Views mit einem bekannten Wert und optionalem Spaltennamen. Trefferzahlen, Stopp und gefiltertes Öffnen existieren. Die alte Annahme, nur geladene Werte seien durchsuchbar, war falsch. Suchstand und Treffer liegen in der Ansicht; eine Wiederaufnahme könnte erneute Eingabe und Suche sparen, ist durch S84 oder den bereits bekannten S07 aber nicht direkt gefordert. C nur für diese Resthypothese; die breite Funktionslücke schließen, ohne neuen Ausgangsfall nicht weiter verengen.
+
 ## Historischer breiter Backlog mit aktualisierten Entscheidungen
 
 Stand 2026-11-14, geprüft gegen `27fe90e9481e0d344bcf179badbcc07fecf7833f`. **A** = Konzept für Validierung ausarbeiten; **B** = Nutzeraufgabe genauer prüfen; **C** = Hypothese zurückstellen. Keine Implementierungszusage. Aufwand: S ≈ 2–5, M ≈ 6–15, L ≈ 16–30 Entwicklungstage, einschließlich gezielter Tests; grobe Einschätzung ohne Spike, keine Terminplanung.
@@ -37,7 +39,7 @@ Evidenzstärke beschreibt die konkrete Aufgabe, nicht die Marktgröße. Nutzen/D
 | 4 | **Lokale explizite Beziehungen** | Mögliche bequemere Nutzung in Zellnavigation und ER-Diagramm | S79 direkter Fall von 2025; S14 bestehendes Angebot, kein neuer Nachfragebeleg | Vorhandenes Master-Detail-SQL löst den Suchweg bereits | Offen | B · Zusatznutzen nachrangig und unbestätigt; breite Suche ohne neuen Ausgangsfall abgeschlossen |
 | 5 | **Auswahl und Orientierung beim vorhandenen Vergleich** | Abgleichsarbeit durch S81/S82 belegt | Niedrig für verbleibende lokale Ergänzung; S83 betrifft vorhandene Schlüssel-/Spaltenwege | Kein Alleinstellungsmerkmal nötig; Vergleich bereits vorhanden | Offen | C · keine neue kleine Lücke bestätigt; keinen Vergleichsmotor ableiten |
 | 6 | **Zusammenhängende Testdaten-Teilmenge** | Hoch: einen Fehlerfall mit Eltern/Kindern lokal nachstellen | Niedrig: S09 belegt Teilmenge, nicht FK-Abschluss; Erweiterung ist Schlussfolgerung | Mittel: an bestehende Maskierung anknüpfen | L | C · fachlichen Bedarf validieren |
-| 7 | **Begrenzte Datenwertsuche über gewählte Tabellen** | Mittel: bekannte ID finden, wenn die Tabelle unbekannt ist | Niedrig: S20/S21 historische Suchaufgabe/Workaround; S16 grenzt geladene Suche ein | Niedrig gegenüber etablierten Clients | M–L | C · Produktionslast ist erhebliche Hürde |
+| 7 | **Vorhandene Datenwertsuche bei Wiederholung nutzen** | Grundaufgabe bereits gelöst; mögliche erneute Eingabe/Suche offen | S84 aktueller anderer Fehler; S07 benachbarter Filterverlauf, S85/S86 Angebot | Inhaltssuche, Spaltenfilter, Trefferöffnung und Stopp vorhanden | Offen | C · breite Lücke geschlossen; keine ausreichende Nachfrage nach Wiederaufnahme |
 | 8 | **Sitzungskontext vergleichen** | Mittel: gleiche SQL, anderes Verhalten erklären | Niedrig–mittel: S10 konkretes Zeitzonenmissverständnis; Verallgemeinerung unbewiesen | Mittel als kleine Diagnose-Erweiterung | S–M | B · mit Verbindungsdiagnose gemeinsam validieren |
 
 ## 1 · Export-Herkunft und Abschlussbeleg
@@ -79,6 +81,8 @@ Neuheitsprüfung: [result-compare.ts](/Users/leon/Projekte/l8db/src/lib/result-c
 Neuheitsprüfung: [branching](/Users/leon/Projekte/l8db/src-tauri/src/branching) bietet Datenbankkopien und relationserhaltende Maskierung, Versioning bietet Seeds, Transfer bietet Tabellen. Ein Startdatensatz-getriebener FK-Abschluss wurde in diesen Pfaden nicht gefunden. Abhängigkeit zu Idee 4 nur für fehlende echte FKs. Risiken: Graph-Explosion, Zyklen, Teilmengen-Vollständigkeit und personenbezogene Werte. S09 ist lediglich angrenzender Beleg. Erst validieren, nicht als „neues Branching“ verkaufen.
 
 ## 7 · Begrenzte Datenwertsuche
+
+**Korrektur nach Runde 21:** Die Datenwertsuche existiert in [table-content-search.tsx](/Users/leon/Projekte/l8db/src/features/sidebar/table-content-search.tsx:35) bereits, einschließlich Tabellen/Views und optionalem Spaltenfilter. Die folgende MVP-Hypothese und ihre Neuheitsbehauptung sind historisch überholt. Zusätzliche Tabellenwahl, exakte Suche oder Wiederaufnahme sind ohne konkreten verbleibenden Nutzerablauf keine neue Priorität.
 
 **MVP-Hypothese:** Nutzer wählt höchstens zehn Tabellen/Spalten; exakte Suche für ID/UUID, explizite langsame Textsuche. Eine Abfrage gleichzeitig, Zeitbudget, Abbruch, Maskierung, keine Scans beim Tippen. Ergebnisse nennen auch übersprungene/fehlgeschlagene Tabellen.
 
