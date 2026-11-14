@@ -1,6 +1,6 @@
-# Backlog · aktualisiert nach Runde 14
+# Backlog · aktualisiert nach Runde 15
 
-**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn. S68 ergänzt für Platz 2 einen aktuellen technischen Projektbeleg für falschen ClickHouse-Abbrucherfolg, keinen direkten Anwenderbericht. Reale l8db-Betroffenheit und Häufigkeit bleiben offen; angeforderter und bestätigter Abbruch werden in anderen vorhandenen Pfaden bereits getrennt. NULL und Kindtabellenfilter unverändert; Revisions- und enger Mischbestand-Suchpfad bleiben beendet. [README.md](README.md) und [Runde 14](sources.md#runde-14--falscher-erfolg-nach-clickhouse-abbruch) haben Vorrang; alte Artefakte bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn. ClickHouse bleibt mit S68 auf Platz 2; der enge Suchpfad ist bis zu einer neuen Anwenderquelle geschlossen. NULL und Kindtabellenfilter unverändert. Tabellenänderungen beim Wechsel werden nach Prüfung vorhandener Entwurfserhaltung und Schutzwege nicht neu priorisiert; S70/S71 betreffen andere Verlustabläufe. [README.md](README.md) und [Runde 15](sources.md#runde-15--ungespeicherte-tabellenänderungen-beim-wechsel) haben Vorrang; alte Artefakte bleiben erhalten.
 
 ## Aktuelle Kandidaten
 
@@ -12,6 +12,8 @@
 | 4 | Filter über eingehende Beziehungen in der Tabellenansicht | Elternzeilen über Kinddaten finden; JOIN-Builder bietet den Suchweg, aber nicht denselben Ergebnisumfang; S45 weiter nur vermittelt | B · nachrangig, unabhängige aktuelle Nachfrage nicht bestätigt |
 
 **Abgeschlossener Suchpfad: frühere Fassung einer benannten Abfrage wiederherstellen.** S60/S61 belegen vorhandene Konkurrenzlösungen, S62/S63 andere Verlustaufgaben. l8db warnt vor dem Überschreiben und hat mehrere Wiederherstellungswege, aber im geprüften Speicherpfad keine abrufbare Revisionsliste. Auf Nutzerwunsch ohne neue Originalquelle keine weitere Suche; keine allgemeine Versionsverwaltung ableiten.
+
+**Nicht neu priorisiert: ungespeicherte Tabellenänderungen beim Wechsel.** Arbeitsstände, Wiederherstellung, ein Speichercache für neue Zeilen und Transaktionsschutz sind bereits vorhanden. Einzelne Zelltexte haben andere Speicherwege; ein konkreter Verlust beim bewussten Verbindungs-/Datenbankwechsel ist durch S70/S71 nicht belegt. Keine allgemeine Entwurfsverwaltung oder zusätzliche Rückfrage ableiten; nur mit passendem Ausgangsfall erneut öffnen.
 
 ## Historischer breiter Backlog mit aktualisierten Entscheidungen
 
