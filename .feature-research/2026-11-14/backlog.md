@@ -1,13 +1,13 @@
-# Backlog · aktualisiert nach Runde 8
+# Backlog · aktualisiert nach Runde 9
 
-**Aktuelle Entscheidung, 2026-11-14:** Stärkste Kandidaten insgesamt: (1) SQL-Herkunft unverändert eng behalten. (2) NULL-Arten erhalten und unterscheiden: S47 aktueller direkter MySQL-Bericht, statischer l8db-Codehinweis auf dieselbe Zusammenführung. (3) Beziehungsfilter nachrangig: kein unabhängiger aktueller Nutzerfall gefunden; vom Kind aus kann der vorhandene JOIN-Builder den Suchweg bereits abbilden. Zusatz wäre die unvervielfachte Elternliste in ihrer Tabellenansicht. Keine Hochstufung aus angrenzenden Vorschau-/Werbefällen. Spaltenexport bleibt abgeschlossen. [README.md](README.md) und [Runde 8](sources.md#runde-8--beziehungsfilter-gegen-join-builder-und-null-arten) haben Vorrang; sämtliche alten Artefakte bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** SQL-Herkunft bleibt vorn. NULL-Arten bleiben ein enger zweiter Prüfkandidat: S47 und der bisherige statische MySQL-Codehinweis tragen ihn; die neue Gegenprüfung bestätigt keine zweite aktuelle Anzeigeverwechslung. SQLly beschreibt bereits eine Lösung; SQL-Konvertierung und JSON-Kopieren sind davon getrennte Aufgaben. Der Beziehungsfilter bleibt schwächer belegt, sein Suchweg im JOIN-Builder vorhanden. [README.md](README.md) und [Runde 9](sources.md#runde-9--null-bedeutung-und-anzeige-trennen) haben Vorrang; alte Artefakte und zurückgestellte Entscheidungen bleiben erhalten.
 
 ## Aktuelle Kandidaten
 
 | Priorität | Ergänzung | Nutzen und Evidenz | Entscheidung |
 |---|---|---|---|
 | 1 | Herkunft gespeicherter SQL-Abfragen | Ähnliche Skripte anhand Verbindung/Datenbank zuordnen; S43 direkter Einzelwunsch, Code bestätigt Metadatenlücke in der gespeicherten Bibliothek; der Verlauf hat den Kontext bereits | B · konkrete Aufgabe belegt, Verbreitung offen |
-| 2 | SQL-NULL und JSON-null erhalten und unterscheiden | Verschiedene Filterresultate bei scheinbar gleichen Werten verstehen; S47 direkter Einzelbericht, S48 Semantik, statischer Codehinweis auf MySQL-Zusammenführung | B · konkrete Lücke statisch gestützt; Nachfragebreite und Laufzeitverhalten offen |
+| 2 | SQL-NULL und JSON-null erhalten und unterscheiden | Filter und Anzeige sollen dieselben Wertarten unterscheiden; S47 direkter Einzelbericht, statischer MySQL-Codehinweis. S51 betrifft dagegen erwartete SQL-Konvertierung; S52 beschreibt eine vorhandene Konkurrenzlösung zur Anzeige | B · keine Hochstufung: unabhängiger aktueller Gleichfall und Laufzeitbestätigung fehlen; kein reiner Beschriftungswechsel |
 | 3 | Filter über eingehende Beziehungen in der Tabellenansicht | Elternzeilen über Kinddaten finden; JOIN-Builder bietet den Suchweg, aber nicht denselben Ergebnisumfang; S45 weiter nur vermittelt | B · nachrangig, unabhängige aktuelle Nachfrage nicht bestätigt |
 
 ## Historischer breiter Backlog mit aktualisierten Entscheidungen
