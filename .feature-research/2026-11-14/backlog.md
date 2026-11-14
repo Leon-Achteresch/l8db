@@ -1,13 +1,14 @@
-# Backlog · aktualisiert nach Runde 7
+# Backlog · aktualisiert nach Runde 8
 
-**Aktuelle Entscheidung, 2026-11-14:** Zwei neue Kandidaten statt erneuter Verteidigung der bisherigen drei. (1) Herkunft benannter SQL-Abfragen bewahren: S43 direkter aktueller Wunsch, im l8db-Verlauf schon vorhanden, in gespeicherten Abfragen nicht. (2) Tabellen nach Daten eingehender Beziehungen filtern: S45 konkreter, aber vermittelter Supportfall; bestehende FK-Navigation und JOIN-Builder anerkannt. Spaltenexport vorerst abgeschlossen/C; allgemeine Verbindungsübersicht zurückgestellt/C. Keine neue Priorisierung von CSV-Vollcheck oder Exportbeleg. [README.md](README.md) und [Runde 7](sources.md#runde-7--gespeicherte-abfragen-zuordnen-und-alltagsprobleme-prüfen) haben Vorrang; sämtliche alten Artefakte bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** Stärkste Kandidaten insgesamt: (1) SQL-Herkunft unverändert eng behalten. (2) NULL-Arten erhalten und unterscheiden: S47 aktueller direkter MySQL-Bericht, statischer l8db-Codehinweis auf dieselbe Zusammenführung. (3) Beziehungsfilter nachrangig: kein unabhängiger aktueller Nutzerfall gefunden; vom Kind aus kann der vorhandene JOIN-Builder den Suchweg bereits abbilden. Zusatz wäre die unvervielfachte Elternliste in ihrer Tabellenansicht. Keine Hochstufung aus angrenzenden Vorschau-/Werbefällen. Spaltenexport bleibt abgeschlossen. [README.md](README.md) und [Runde 8](sources.md#runde-8--beziehungsfilter-gegen-join-builder-und-null-arten) haben Vorrang; sämtliche alten Artefakte bleiben erhalten.
 
 ## Aktuelle Kandidaten
 
 | Priorität | Ergänzung | Nutzen und Evidenz | Entscheidung |
 |---|---|---|---|
 | 1 | Herkunft gespeicherter SQL-Abfragen | Ähnliche Skripte anhand Verbindung/Datenbank zuordnen; S43 direkter Einzelwunsch, Code bestätigt Metadatenlücke in der gespeicherten Bibliothek; der Verlauf hat den Kontext bereits | B · konkrete Aufgabe belegt, Verbreitung offen |
-| 2 | Filter über eingehende Beziehungen in der Tabellenansicht | Elternzeilen über Kinddaten finden; S45 aktueller vermittelter Einzelwunsch, Query-Builder als vorhandener Alternativweg | B · unabhängigen Bedarf und Zusatznutzen prüfen |
+| 2 | SQL-NULL und JSON-null erhalten und unterscheiden | Verschiedene Filterresultate bei scheinbar gleichen Werten verstehen; S47 direkter Einzelbericht, S48 Semantik, statischer Codehinweis auf MySQL-Zusammenführung | B · konkrete Lücke statisch gestützt; Nachfragebreite und Laufzeitverhalten offen |
+| 3 | Filter über eingehende Beziehungen in der Tabellenansicht | Elternzeilen über Kinddaten finden; JOIN-Builder bietet den Suchweg, aber nicht denselben Ergebnisumfang; S45 weiter nur vermittelt | B · nachrangig, unabhängige aktuelle Nachfrage nicht bestätigt |
 
 ## Historischer breiter Backlog mit aktualisierten Entscheidungen
 
