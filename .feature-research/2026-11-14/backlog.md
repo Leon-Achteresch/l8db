@@ -1,6 +1,6 @@
-# Backlog · aktualisiert nach Runde 19
+# Backlog · aktualisiert nach Runde 20
 
-**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn, ClickHouse und NULL bleiben erhalten. Beziehungen ohne deklarierte FKs lassen sich bereits als Master-Detail-SQL speichern. S79 ergänzt einen direkten Navigationswunsch von 2025, bestätigt aber keinen heutigen Zusatzbedarf gegenüber diesem Weg. Keine vierte Idee ergänzt. [README.md](README.md) und [Runde 19](sources.md#runde-19--navigation-ohne-deklarierte-fremdschlüssel) haben Vorrang; alte Artefakte bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn, ClickHouse und NULL bleiben erhalten. S81/S82 belegen reale Abgleichsarbeit, aber keine zusätzliche Auswahl- oder Orientierungshilfe gegenüber l8dbs vorhandenen Vergleichen. Keine vierte Idee ergänzt; kein neuer Vergleichsmotor abgeleitet. [README.md](README.md) und [Runde 20](sources.md#runde-20--große-select-ergebnisse-auswahl-und-orientierung) haben Vorrang; alte Artefakte bleiben erhalten.
 
 ## Aktuelle Kandidaten
 
@@ -21,6 +21,8 @@
 
 **Lokale Beziehungen: vorhandenen SQL-Weg anerkennen.** Eigene lesende Master-Detail-Abfragen mit `:master.SPALTE` können gespeichert und wiederverwendet werden. Eine lokale Zuordnung, die zusätzlich Zellnavigation und ER-Diagramm speist, wurde in den geprüften Kernpfaden nicht gefunden; deren Zusatznutzen bleibt unbestätigt. B bleibt nachrangig; den breiten Suchpfad ohne neuen Ausgangsfall nicht weiter verengen.
 
+**Große SELECT-Ergebnisse: Nachfrage von lokaler Ergänzung trennen.** S81 beschreibt die Prüfung einer langen SQL-Abfrage gegen eine neue Tabelle; S82 einen älteren Migrationsabgleich mit unterschiedlichen Joins und Aggregationen. Das ist mehr als eine Tabellenwahl, belegt aber keine fehlende kleine Auswahlhilfe. Schlüsselwahl, Änderungsfilter und Wertdetails existieren bereits; S83 wird dadurch abgedeckt. Unsichtbare Textunterschiede aus S81 bleiben eine einzelne SQL-/ETL-Erfahrung, kein bestätigter l8db-Fall. C bleibt: ohne neuen Ausgangsfall keine engere Suche oder Motorplanung.
+
 ## Historischer breiter Backlog mit aktualisierten Entscheidungen
 
 Stand 2026-11-14, geprüft gegen `27fe90e9481e0d344bcf179badbcc07fecf7833f`. **A** = Konzept für Validierung ausarbeiten; **B** = Nutzeraufgabe genauer prüfen; **C** = Hypothese zurückstellen. Keine Implementierungszusage. Aufwand: S ≈ 2–5, M ≈ 6–15, L ≈ 16–30 Entwicklungstage, einschließlich gezielter Tests; grobe Einschätzung ohne Spike, keine Terminplanung.
@@ -33,7 +35,7 @@ Evidenzstärke beschreibt die konkrete Aufgabe, nicht die Marktgröße. Nutzen/D
 | 2 | **Spaltenansicht gezielt in eine Datei übernehmen** | Möglich: erneute Spaltenauswahl sparen | Niedrig für Zusatzbedarf in l8db; mehrfach erfolglos gegengeprüft | Niedrig: TSV/JSON-Kopieren, XLSX-Spaltenwahl und BLOB-Dateispeichern schon vorhanden | S–M | C · Pfad auf Nutzerwunsch vorerst abgeschlossen |
 | 3 | **CSV-Fehlersammlung, allgemeinen Vollcheck zurückstellen** | Mehrere Dateikorrekturen bündeln | S33 direkter, alter Fall; S34 vorhandene Engine-Funktion | Integration statt neuer Parser | Offen | B · aktuelle Mehrfachfehlerfälle fehlen |
 | 4 | **Lokale explizite Beziehungen** | Mögliche bequemere Nutzung in Zellnavigation und ER-Diagramm | S79 direkter Fall von 2025; S14 bestehendes Angebot, kein neuer Nachfragebeleg | Vorhandenes Master-Detail-SQL löst den Suchweg bereits | Offen | B · Zusatznutzen nachrangig und unbestätigt; breite Suche ohne neuen Ausgangsfall abgeschlossen |
-| 5 | **Große SELECT-Ergebnisse vergleichen** | Hoch für Abgleich über dem Ergebnislimit | Niedrig: S15 belegt Angebot, keine belastbare aktuelle Beschwerde gesammelt | Mittel im bestehenden Multi-Target-Ablauf | L | C · Nachfrage vor Backend-Spike |
+| 5 | **Auswahl und Orientierung beim vorhandenen Vergleich** | Abgleichsarbeit durch S81/S82 belegt | Niedrig für verbleibende lokale Ergänzung; S83 betrifft vorhandene Schlüssel-/Spaltenwege | Kein Alleinstellungsmerkmal nötig; Vergleich bereits vorhanden | Offen | C · keine neue kleine Lücke bestätigt; keinen Vergleichsmotor ableiten |
 | 6 | **Zusammenhängende Testdaten-Teilmenge** | Hoch: einen Fehlerfall mit Eltern/Kindern lokal nachstellen | Niedrig: S09 belegt Teilmenge, nicht FK-Abschluss; Erweiterung ist Schlussfolgerung | Mittel: an bestehende Maskierung anknüpfen | L | C · fachlichen Bedarf validieren |
 | 7 | **Begrenzte Datenwertsuche über gewählte Tabellen** | Mittel: bekannte ID finden, wenn die Tabelle unbekannt ist | Niedrig: S20/S21 historische Suchaufgabe/Workaround; S16 grenzt geladene Suche ein | Niedrig gegenüber etablierten Clients | M–L | C · Produktionslast ist erhebliche Hürde |
 | 8 | **Sitzungskontext vergleichen** | Mittel: gleiche SQL, anderes Verhalten erklären | Niedrig–mittel: S10 konkretes Zeitzonenmissverständnis; Verallgemeinerung unbewiesen | Mittel als kleine Diagnose-Erweiterung | S–M | B · mit Verbindungsdiagnose gemeinsam validieren |
@@ -63,6 +65,8 @@ Einstieg: [use-csv-import.ts](/Users/leon/Projekte/l8db/src/features/import/csv-
 Code-Neuheitsprüfung: [fk-links.ts](/Users/leon/Projekte/l8db/src/features/table/data-table/fk-links.ts) arbeitet mit kataloggelieferten `ForeignKeyInfo`; [fk-drawer-stack.ts](/Users/leon/Projekte/l8db/src/lib/fk-drawer-stack.ts) liefert Navigation. Keine lokale Beziehungsdefinition in diesen Pfaden oder ER-Diagramm gefunden. Speicherung nach Verbindung/Datenbank/Schema, `syncAcrossWindows`, Rename/Drop-Invalidierung nötig. S08 beweist historische Persistenzprobleme, S14 zeigt bereits etablierte Konkurrenz. Kein Alleinstellungsmerkmal behaupten.
 
 ## 5 · Große SELECT-Ergebnisse vergleichen
+
+**Aktuelle Eingrenzung nach Runde 20:** Ergebnisvergleich und größerer Tabellenvergleich sind vorhanden. Neue Fälle S81/S82 bestätigen Abgleichsarbeit, aber keine belastbare zusätzliche Auswahl- oder Orientierungshilfe; S83 betrifft vorhandene Schlüsselwahl. Die folgende Motor-/MVP-Hypothese ist ausschließlich historisch und kein aktueller Auftrag.
 
 **MVP-Hypothese:** explizit gestarteter, lesender Vergleich zweier SELECTs mit bestätigtem zusammengesetztem Schlüssel, bounded Backend-Snapshot/Spill und sichtbaren Grenzen. Kein Erhöhen des UI-Limits, keine implizite Neuausführung alter Ergebnisse, zunächst kein Sync-SQL.
 
