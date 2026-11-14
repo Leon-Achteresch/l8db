@@ -1,12 +1,12 @@
-# Backlog · aktualisiert nach Runde 10
+# Backlog · aktualisiert nach Runde 11
 
-**Aktuelle Entscheidung, 2026-11-14:** SQL-Herkunft bleibt vorn: S55 bestätigt unabhängig den Verbindungsbezug, stammt aber von 2025. Allgemeine Abfragen brauchen weiter übergreifenden Zugriff; Herkunft und optionale Eingrenzung ergänzen nur die bestehende Liste. Ordner, Projektkontext und DataGrips heutige Datenquellenzuordnung sind Alternativen. NULL bleibt eng begrenzt und wurde nicht erneut recherchiert; Kindtabellenfilter bleibt nachrangig. [README.md](README.md) und [Runde 10](sources.md#runde-10--gespeicherte-abfragen-und-vorhandene-kontextwege) haben Vorrang; alte Artefakte und zurückgestellte Entscheidungen bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** SQL-Herkunft bleibt vorn; S59 ergänzt einen unabhängigen aktuellen Zuordnungsfall. Der aktuelle Mischfall fehlt weiterhin, S55 bleibt der direkte ältere Beleg. Herkunft als Hinweis in der bestehenden Liste ist enger gestützt als ein Filter ohne Zielbindung; ein freiwilliger Filter bleibt Hypothese. Allgemeine Abfragen bleiben standardmäßig sichtbar. Verlauf, Namenssuche, Ordner und Projektkontext sind vorhandene Alternativen. NULL und Kindtabellenfilter unverändert, nicht erneut untersucht. [README.md](README.md) und [Runde 11](sources.md#runde-11--allgemeine-und-spezifische-abfragen) haben Vorrang; alte Artefakte bleiben erhalten.
 
 ## Aktuelle Kandidaten
 
 | Priorität | Ergänzung | Nutzen und Evidenz | Entscheidung |
 |---|---|---|---|
-| 1 | Herkunft und optionale Eingrenzung gespeicherter SQL-Abfragen | Ähnliche Namen anhand Verbindung/Datenbank zuordnen; S43 aktuell, S55 unabhängig von 2025. l8db hat Namens-/SQL-Suche und Verbindungsverlauf, aber keine Herkunft an benannten Abfragen; S58 belegt etablierte Alternativen | B · Aufgabe besser gestützt, aktueller unabhängiger Datenbank-Gleichfall und Zusatznutzen gegenüber Ordnern offen; allgemeine Abfragen übergreifend lassen |
+| 1 | Herkunft gespeicherter SQL-Abfragen, Filter weiter prüfen | S43 und S59 stützen die Zuordnung unabhängig aktuell; S55 belegt den Mischbestand nur von 2025. l8db hat Namens-/SQL-Suche und Verbindungsverlauf, aber keine Herkunft an benannten Abfragen; S58 belegt Alternativen | B · Herkunft vorn, Zusatznutzen eines freiwilligen Filters für gemischte Bestände offen; allgemeine Abfragen standardmäßig sichtbar lassen |
 | 2 | SQL-NULL und JSON-null erhalten und unterscheiden | Filter und Anzeige sollen dieselben Wertarten unterscheiden; S47 direkter Einzelbericht, statischer MySQL-Codehinweis. S51 betrifft dagegen erwartete SQL-Konvertierung; S52 beschreibt eine vorhandene Konkurrenzlösung zur Anzeige | B · keine Hochstufung: unabhängiger aktueller Gleichfall und Laufzeitbestätigung fehlen; kein reiner Beschriftungswechsel |
 | 3 | Filter über eingehende Beziehungen in der Tabellenansicht | Elternzeilen über Kinddaten finden; JOIN-Builder bietet den Suchweg, aber nicht denselben Ergebnisumfang; S45 weiter nur vermittelt | B · nachrangig, unabhängige aktuelle Nachfrage nicht bestätigt |
 
