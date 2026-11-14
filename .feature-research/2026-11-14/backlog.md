@@ -1,6 +1,6 @@
-# Backlog · aktualisiert nach Runde 18
+# Backlog · aktualisiert nach Runde 19
 
-**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn, ClickHouse und NULL bleiben erhalten. S76 belegt aktuelle Nachfrage nach der Zuordnung eines Skriptfehlers zur Anweisung; l8db bietet diesen Ablauf bereits. Keine vierte Idee aus engeren Sonderfällen abgeleitet. [README.md](README.md) und [Runde 18](sources.md#runde-18--fehler-einzelnen-skriptanweisungen-zuordnen) haben Vorrang; alte Artefakte bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn, ClickHouse und NULL bleiben erhalten. Beziehungen ohne deklarierte FKs lassen sich bereits als Master-Detail-SQL speichern. S79 ergänzt einen direkten Navigationswunsch von 2025, bestätigt aber keinen heutigen Zusatzbedarf gegenüber diesem Weg. Keine vierte Idee ergänzt. [README.md](README.md) und [Runde 19](sources.md#runde-19--navigation-ohne-deklarierte-fremdschlüssel) haben Vorrang; alte Artefakte bleiben erhalten.
 
 ## Aktuelle Kandidaten
 
@@ -19,6 +19,8 @@
 
 **Nicht neu priorisiert: ungespeicherte Tabellenänderungen beim Wechsel.** Arbeitsstände, Wiederherstellung, ein Speichercache für neue Zeilen und Transaktionsschutz sind bereits vorhanden. Einzelne Zelltexte haben andere Speicherwege; ein konkreter Verlust beim bewussten Verbindungs-/Datenbankwechsel ist durch S70/S71 nicht belegt. Keine allgemeine Entwurfsverwaltung oder zusätzliche Rückfrage ableiten; nur mit passendem Ausgangsfall erneut öffnen.
 
+**Lokale Beziehungen: vorhandenen SQL-Weg anerkennen.** Eigene lesende Master-Detail-Abfragen mit `:master.SPALTE` können gespeichert und wiederverwendet werden. Eine lokale Zuordnung, die zusätzlich Zellnavigation und ER-Diagramm speist, wurde in den geprüften Kernpfaden nicht gefunden; deren Zusatznutzen bleibt unbestätigt. B bleibt nachrangig; den breiten Suchpfad ohne neuen Ausgangsfall nicht weiter verengen.
+
 ## Historischer breiter Backlog mit aktualisierten Entscheidungen
 
 Stand 2026-11-14, geprüft gegen `27fe90e9481e0d344bcf179badbcc07fecf7833f`. **A** = Konzept für Validierung ausarbeiten; **B** = Nutzeraufgabe genauer prüfen; **C** = Hypothese zurückstellen. Keine Implementierungszusage. Aufwand: S ≈ 2–5, M ≈ 6–15, L ≈ 16–30 Entwicklungstage, einschließlich gezielter Tests; grobe Einschätzung ohne Spike, keine Terminplanung.
@@ -30,7 +32,7 @@ Evidenzstärke beschreibt die konkrete Aufgabe, nicht die Marktgröße. Nutzen/D
 | 1 | **Vorhandene Verbindungsinformationen zusammenführen** | Möglich: Rückfragen bei Fehlersuche sparen | Mittel für Verbindungsprobleme, niedrig für Zusatzaufgabe der Übersicht | Niedrig: präzise Meldungen, Verbindungstest, Statusanzeige, doctor und Treiberdiagnose schon vorhanden | S–M | C · allgemeine Übersicht zurückstellen; S43 als eigene, engere Aufgabe prüfen |
 | 2 | **Spaltenansicht gezielt in eine Datei übernehmen** | Möglich: erneute Spaltenauswahl sparen | Niedrig für Zusatzbedarf in l8db; mehrfach erfolglos gegengeprüft | Niedrig: TSV/JSON-Kopieren, XLSX-Spaltenwahl und BLOB-Dateispeichern schon vorhanden | S–M | C · Pfad auf Nutzerwunsch vorerst abgeschlossen |
 | 3 | **CSV-Fehlersammlung, allgemeinen Vollcheck zurückstellen** | Mehrere Dateikorrekturen bündeln | S33 direkter, alter Fall; S34 vorhandene Engine-Funktion | Integration statt neuer Parser | Offen | B · aktuelle Mehrfachfehlerfälle fehlen |
-| 4 | **Lokale explizite Beziehungen** | Hoch für Legacy-/Analytics-Schemas ohne FKs | Niedrig–mittel: S08 alt, S14 heutiger Wettbewerbsstandard | Niedrig allein; besser mit bestehendem Drawer | M | B · 3 reale Schemas ohne FKs suchen |
+| 4 | **Lokale explizite Beziehungen** | Mögliche bequemere Nutzung in Zellnavigation und ER-Diagramm | S79 direkter Fall von 2025; S14 bestehendes Angebot, kein neuer Nachfragebeleg | Vorhandenes Master-Detail-SQL löst den Suchweg bereits | Offen | B · Zusatznutzen nachrangig und unbestätigt; breite Suche ohne neuen Ausgangsfall abgeschlossen |
 | 5 | **Große SELECT-Ergebnisse vergleichen** | Hoch für Abgleich über dem Ergebnislimit | Niedrig: S15 belegt Angebot, keine belastbare aktuelle Beschwerde gesammelt | Mittel im bestehenden Multi-Target-Ablauf | L | C · Nachfrage vor Backend-Spike |
 | 6 | **Zusammenhängende Testdaten-Teilmenge** | Hoch: einen Fehlerfall mit Eltern/Kindern lokal nachstellen | Niedrig: S09 belegt Teilmenge, nicht FK-Abschluss; Erweiterung ist Schlussfolgerung | Mittel: an bestehende Maskierung anknüpfen | L | C · fachlichen Bedarf validieren |
 | 7 | **Begrenzte Datenwertsuche über gewählte Tabellen** | Mittel: bekannte ID finden, wenn die Tabelle unbekannt ist | Niedrig: S20/S21 historische Suchaufgabe/Workaround; S16 grenzt geladene Suche ein | Niedrig gegenüber etablierten Clients | M–L | C · Produktionslast ist erhebliche Hürde |
