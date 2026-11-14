@@ -225,3 +225,17 @@ Abruf **2026-11-14**. Öffentliche GitHub-Issues von DBeaver, Beekeeper und Tabl
 **Enger Existenzabgleich, Referenz `c22cd6d4`, nur statisch:** [saved-queries.ts](/Users/leon/Projekte/l8db/src/lib/saved-queries.ts) enthält weiterhin Name, SQL und Zeit, keine Verbindung/Datenbank. [query-history-panel.tsx](/Users/leon/Projekte/l8db/src/features/query/query-history-panel.tsx) durchsucht die gespeicherte Liste bereits nach Name/SQL und begrenzt den Verlauf auf die aktive Verbindung. Der Verlauf speichert die Datenbank und zeigt sie an; beim Übernehmen als benannte Abfrage werden nur Name/SQL weitergegeben. Damit bleibt eine kleine Metadatenlücke in der bestehenden Liste. Kein Graphify-Graph oder ausführbares Graphify vorhanden; keine Installation/Generierung, nur die genannten Dateien gelesen.
 
 **Entscheidung:** Platz 1 bleibt B, mit besser belegtem Verbindungsbedarf und weiterhin offenem Zusatznutzen gegenüber Ordnern/Projektkontext. Herkunft und optionale Filter sind eine mögliche Ergänzung; allgemeine Abfragen bleiben übergreifend erreichbar. Ein neuer Bibliotheksbereich oder feste Zielbindung wird durch die Fälle nicht begründet. NULL und Kindtabellenfilter unverändert, keine neue vierte Idee, keine Laufzeittests oder Produktänderungen.
+
+## Runde 11 · Allgemeine und spezifische Abfragen
+
+Abruf **2026-11-14**. Öffentliche Tracker von DbGate, Antares und SQLTools sowie GitHub-/Web-Suchen nach allgemeinen und verbindungsspezifischen Abfragen durchsucht. **Kein neuer aktueller Originalfall zum gemeinsamen Bestand beider Arten bestätigt.** S55 bleibt dafür der direkte Beleg von 2025 und wird nicht als Neufund gezählt.
+
+| ID | Neue Quelle / Datum / Status | Entscheidungsrelevanter Befund und Grenze |
+|---|---|---|
+| S59 | [DbGate #1377](https://github.com/dbgate/dbgate/issues/1377), 2026-03-08, geschlossen 2026-03-18; [Maintainerantwort](https://github.com/dbgate/dbgate/issues/1377#issuecomment-4081427811) 2026-03-18 | Nutzer kann Hunderte Skripte ohne Server-/Datenbankpräfix schwer zuordnen; als Alternative genügt ihm eine Ordnerstruktur. Maintainer kündigt Filter über „Toggle fixed connection“ für die nächste Version an. **Direkter aktueller Zuordnungsfall, Autor unabhängig von S43/S55; kein belegter Mischbestand.** Ausgelieferte Version und Umgang mit ungebundenen Abfragen nicht belegt. |
+
+**Gegenprüfung:** S59 stützt die Datenbankaufgabe zusätzlich zu S43, aber keine rein beschreibende Herkunft ohne Zielbindung. Dass allgemeine Abfragen beim Filtern verfügbar bleiben sollen, folgt aus S55 und der Nutzervorgabe; es ist keine neu bestätigte Nachfrage von 2026. Ordner als vom Reporter akzeptierte Alternative und die heutigen Projekt-/Datenquellenwege aus S58 begrenzen den behaupteten Zusatznutzen.
+
+**Existenzabgleich:** Die in Runde 10 gelesenen l8db-Dateien zu gespeicherten Abfragen und Verlauf sind gegenüber `c22cd6d4` unverändert, geprüft am Stand `829446e9`. Namens-/SQL-Suche und Verbindungsverlauf sind vorhanden; Herkunft in benannten gespeicherten Abfragen fehlt weiterhin. Keine erneute technische Vertiefung oder Laufzeitprüfung.
+
+**Entscheidung:** Herkunft als Hinweis in der bestehenden Liste bleibt Platz 1/B. Alle Abfragen bleiben standardmäßig sichtbar; eine freiwillige Eingrenzung ohne feste Zielbindung bleibt Hypothese für gemischte Bestände. Den engen Mischbestand-Suchpfad vorerst beenden und nur mit neuem Ausgangsbeleg vertiefen. NULL und Kindtabellenfilter unverändert; keine vierte Idee ergänzt.
