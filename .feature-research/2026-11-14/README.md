@@ -1,6 +1,6 @@
 # l8db · Forschungsentscheidung · 14. November 2026
 
-**Nach Runde 14: Herkunft bleibt vorn. Drei enge Kandidaten; keine vierte Idee ausreichend gestützt.**
+**Nach Runde 15: Herkunft bleibt vorn. Der geprüfte Verlustpfad für Tabellenänderungen beim Wechsel begründet bisher keine vierte Priorität.**
 
 1. **Herkunft an gespeicherten SQL-Abfragen.** Verbindung und Datenbank sollen ähnliche Namen in der bestehenden Liste unterscheidbar machen. Der [DbGate-Fall von 2026](https://github.com/dbgate/dbgate/issues/1377) stützt die Aufgabe; allgemeine Abfragen bleiben standardmäßig sichtbar. Der Zusatznutzen gegenüber Verlauf und Ordnern bleibt für gemischte Bestände offen.
 
@@ -8,6 +8,6 @@
 
 3. **SQL-NULL und JSON-null erhalten und unterscheiden.** Getrennte Wertarten sollen Anzeige und Filter verständlich machen. Der [bekannte MySQL-Bericht](https://github.com/beekeeper-studio/beekeeper-studio/issues/4732) und der statische MySQL-Codehinweis tragen den engen Vorschlag; unabhängige aktuelle Bestätigung fehlt.
 
-[Neue Evidenz und Grenzen](sources.md#runde-14--falscher-erfolg-nach-clickhouse-abbruch) · [Backlog](backlog.md). Frühere Artefakte bleiben erhalten; diese Entscheidung hat Vorrang.
+[Neue Gegenprüfung und vorhandene Schutzwege](sources.md#runde-15--ungespeicherte-tabellenänderungen-beim-wechsel) · [Backlog](backlog.md). Frühere Artefakte bleiben erhalten; diese Entscheidung hat Vorrang.
 
-**Nächster Fokus:** Einen Originalfall zu einem anderen konkreten Datenbank-Alltagsproblem prüfen; ClickHouse erst bei neuer Anwenderquelle vertiefen.
+**Nächster Fokus:** Aktuelle Originalfälle zu gleichzeitig bearbeiteten Tabellenwerten und überschriebenen Fremdänderungen gegen l8dbs heutigen Schreibablauf prüfen. ClickHouse bleibt bis zu neuer Anwenderquelle geschlossen.
