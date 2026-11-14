@@ -1,4 +1,8 @@
-# Priorisierter Backlog · Zyklus 1
+# Backlog · aktualisiert nach Runde 3
+
+**Aktuelle Entscheidung, 2026-11-14:** Nur drei Kandidaten weiterführen: (1) verständlicher Exportumfang, (2) zusammenhängende Verbindungsdiagnose, (3) optionaler CSV-Vollcheck als schwächere Hypothese. Separaten Exportbeleg zurückstellen; Importcheck von A auf B herabstufen. Begründung und kurze Beschreibungen stehen in [README.md](README.md), neue Gegenbelege S22–S31 in [sources.md](sources.md#runde-3--gegenprüfung-der-drei-führenden-ideen). Die frühere Top-3-Spezifikation und alle visuellen Artefakte bleiben historisch erhalten und sind keine aktuelle Umsetzungsempfehlung.
+
+## Historischer breiter Backlog mit aktualisierten Entscheidungen
 
 Stand 2026-11-14, geprüft gegen `27fe90e9481e0d344bcf179badbcc07fecf7833f`. **A** = Konzept für Validierung ausarbeiten; **B** = Nutzeraufgabe genauer prüfen; **C** = Hypothese zurückstellen. Keine Implementierungszusage. Aufwand: S ≈ 2–5, M ≈ 6–15, L ≈ 16–30 Entwicklungstage, einschließlich gezielter Tests; grobe Einschätzung ohne Spike, keine Terminplanung.
 
@@ -6,9 +10,9 @@ Evidenzstärke beschreibt die konkrete Aufgabe, nicht die Marktgröße. Nutzen/D
 
 | Rang | Idee / neue Fähigkeit | Nutzen | Evidenz | Differenzierung | Aufwand | Entscheidung |
 |---|---|---|---|---|---|---|
-| 1 | **Export-Herkunft und Abschlussbeleg** | Hoch: tatsächlichen Umfang einer Datenübergabe erkennen | Mittel–stark: S01–03, S09; mehrere Berichte, einige bereits gelöst | Mittel: konsequente Herkunft, dauerhafte Kürzungskennzeichnung; kein neuer Exporter | S–M | A · zuerst Verständnistest |
-| 2 | **Verbindungsdiagnose pro Stufe** | Hoch: Fehler lokalisieren, weniger Terminal-/Logwechsel | Mittel–stark: S04–06; zwei Produkte, unterschiedliche Ursachen | Mittel: routebewusst, redigierter Bericht, keine gefährliche Wiederholung | M | A · mit PostgreSQL/SSH beginnen |
-| 3 | **Import-Prüflauf ohne Schreiben** | Hoch bei fremden Dateien: mehrere lokale Fehler vor dem Import finden | Mittel: S11–13; Symptombelege, Nachfrage nach exakt diesem Prüflauf noch Hypothese | Mittel: vollständiger lokaler Scan + begrenzter Bericht statt nur Preview | M | A · CSV und konservative Typregeln |
+| 1 | **Exportumfang erklären; Beleg zurückstellen** | Hoch bei Auswahl/Neuausführung | Mittel: S25 aktueller Umfangswechsel, S22–24 vorhandene Konkurrenzwege | Niedrig: gezielte Ergänzung vorhandener Abläufe | S | A · Umfangsverständnis prüfen |
+| 2 | **Vorhandene Verbindungsinformationen zusammenführen** | Mittel: richtige Fehlerstelle finden | Mittel: S27 aktuelle, inzwischen behobene Fälle; viele l8db-Fehler schon präzise | Niedrig–mittel: zusammenhängender Kontext | S–M | A · konkrete Informationslücke prüfen |
+| 3 | **Optionaler CSV-Vollcheck ohne Schreiben** | Möglich bei späten Dateifehlern | Niedrig–mittel: S30 Angebotslücke; S28/29 keine Belege für diese Lösung | Mittel nur jenseits vorhandener Preview-/Mappingprüfung | M | B · Nachfrage nach Vollscan erst belegen |
 | 4 | **Lokale explizite Beziehungen** | Hoch für Legacy-/Analytics-Schemas ohne FKs | Niedrig–mittel: S08 alt, S14 heutiger Wettbewerbsstandard | Niedrig allein; besser mit bestehendem Drawer | M | B · 3 reale Schemas ohne FKs suchen |
 | 5 | **Große SELECT-Ergebnisse vergleichen** | Hoch für Abgleich über dem Ergebnislimit | Niedrig: S15 belegt Angebot, keine belastbare aktuelle Beschwerde gesammelt | Mittel im bestehenden Multi-Target-Ablauf | L | C · Nachfrage vor Backend-Spike |
 | 6 | **Zusammenhängende Testdaten-Teilmenge** | Hoch: einen Fehlerfall mit Eltern/Kindern lokal nachstellen | Niedrig: S09 belegt Teilmenge, nicht FK-Abschluss; Erweiterung ist Schlussfolgerung | Mittel: an bestehende Maskierung anknüpfen | L | C · fachlichen Bedarf validieren |
