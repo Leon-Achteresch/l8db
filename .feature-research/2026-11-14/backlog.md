@@ -1,6 +1,6 @@
-# Backlog · aktualisiert nach Runde 4
+# Backlog · aktualisiert nach Runde 5
 
-**Aktuelle Entscheidung, 2026-11-14:** (1) Bewussten Dateiexport mit Spalten aus der Ansicht als engere Hypothese prüfen; allgemeine Full-/Loaded-Beschriftungsinitiative herabstufen. (2) Verbindungsdiagnose unverändert als Kandidat behalten, in Runde 4 nicht erneut untersucht. (3) CSV-Fehlersammlung bleibt B: S33 ist erstmals ein passender Mehrfachfehlerbericht, aber von 2022; S34 zeigt eine schon existierende Engine-Funktion. Exportbeleg bleibt zurückgestellt. [README.md](README.md) und [Runde 4](sources.md#runde-4--umfangsverlust-trotz-vorschau-und-mehrere-späte-csv-fehler) haben Vorrang vor den historischen Spezifikationen; sämtliche alten Artefakte bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** (1) Verbindungsinformationen zusammenführen: unveränderte Evidenz, nach Abwertung des Exports zuerst. (2) Spaltenansicht gezielt in eine Datei übernehmen bleibt B: S35 belegt einen in l8db nicht gefundenen Alphabetisierungsfehler; S36 betrifft HTML-Kopieren, S37 eine bereits umgesetzte Auswahlfunktion. l8db kopiert sichtbare Spalten schon und erlaubt im XLSX-Dialog manuelle Spaltenwahl. (3) CSV-Fehlersammlung unverändert nachrangig, kein neuer Dateifehlerbeleg in dieser Runde. Exportbeleg und weitere allgemeine Full-/Loaded-Erklärungen bleiben zurückgestellt. [README.md](README.md) und [Runde 5](sources.md#runde-5--sichtbare-spalten-reihenfolge-und-vorhandene-kopierwege) haben Vorrang vor den historischen Spezifikationen; sämtliche alten Artefakte bleiben erhalten.
 
 ## Historischer breiter Backlog mit aktualisierten Entscheidungen
 
@@ -10,14 +10,14 @@ Evidenzstärke beschreibt die konkrete Aufgabe, nicht die Marktgröße. Nutzen/D
 
 | Rang | Idee / neue Fähigkeit | Nutzen | Evidenz | Differenzierung | Aufwand | Entscheidung |
 |---|---|---|---|---|---|---|
-| 1 | **Bewusster Ansichtsexport; Beleg zurückstellen** | Möglich bei vorbereiteter Spaltenauswahl | Mittel für Ansichtsverlust (S32), niedrig für konkrete l8db-Spaltennachfrage | Kleiner Zusatz; lokale Kopier-/Auswahlwege schon vorhanden | S–M | B · konkreten Bedarf prüfen, keine weitere allgemeine Beschriftung |
-| 2 | **Vorhandene Verbindungsinformationen zusammenführen** | Mittel: richtige Fehlerstelle finden | Mittel: S27 aktuelle, inzwischen behobene Fälle; viele l8db-Fehler schon präzise | Niedrig–mittel: zusammenhängender Kontext | S–M | A · konkrete Informationslücke prüfen |
+| 1 | **Vorhandene Verbindungsinformationen zusammenführen** | Mittel: richtige Fehlerstelle finden | Mittel: S27 aktuelle, inzwischen behobene Fälle; viele l8db-Fehler schon präzise | Niedrig–mittel: zusammenhängender Kontext | S–M | A · konkrete Informationslücke prüfen; diese Runde keine neue Diagnose-Evidenz |
+| 2 | **Spaltenansicht gezielt in eine Datei übernehmen** | Möglich: erneute Spaltenauswahl sparen | Niedrig für Zusatzbedarf in l8db: S35 anderer Fehler, S36 Kopieren, S37 Maintainerwunsch für Auswahl-Export | Niedrig: TSV/JSON-Kopieren und manuelle XLSX-Spaltenwahl schon vorhanden; S38 Wettbewerbsangebot | S–M | B · schwach lassen; S32 lokaler Zeilenfilter ist kein Spaltenbeleg |
 | 3 | **CSV-Fehlersammlung, allgemeinen Vollcheck zurückstellen** | Mehrere Dateikorrekturen bündeln | S33 direkter, alter Fall; S34 vorhandene Engine-Funktion | Integration statt neuer Parser | Offen | B · aktuelle Mehrfachfehlerfälle fehlen |
 | 4 | **Lokale explizite Beziehungen** | Hoch für Legacy-/Analytics-Schemas ohne FKs | Niedrig–mittel: S08 alt, S14 heutiger Wettbewerbsstandard | Niedrig allein; besser mit bestehendem Drawer | M | B · 3 reale Schemas ohne FKs suchen |
 | 5 | **Große SELECT-Ergebnisse vergleichen** | Hoch für Abgleich über dem Ergebnislimit | Niedrig: S15 belegt Angebot, keine belastbare aktuelle Beschwerde gesammelt | Mittel im bestehenden Multi-Target-Ablauf | L | C · Nachfrage vor Backend-Spike |
 | 6 | **Zusammenhängende Testdaten-Teilmenge** | Hoch: einen Fehlerfall mit Eltern/Kindern lokal nachstellen | Niedrig: S09 belegt Teilmenge, nicht FK-Abschluss; Erweiterung ist Schlussfolgerung | Mittel: an bestehende Maskierung anknüpfen | L | C · fachlichen Bedarf validieren |
 | 7 | **Begrenzte Datenwertsuche über gewählte Tabellen** | Mittel: bekannte ID finden, wenn die Tabelle unbekannt ist | Niedrig: S20/S21 historische Suchaufgabe/Workaround; S16 grenzt geladene Suche ein | Niedrig gegenüber etablierten Clients | M–L | C · Produktionslast ist erhebliche Hürde |
-| 8 | **Sitzungskontext vergleichen** | Mittel: gleiche SQL, anderes Verhalten erklären | Niedrig–mittel: S10 konkretes Zeitzonenmissverständnis; Verallgemeinerung unbewiesen | Mittel als kleine Diagnose-Erweiterung | S–M | B · mit Idee 2 gemeinsam validieren |
+| 8 | **Sitzungskontext vergleichen** | Mittel: gleiche SQL, anderes Verhalten erklären | Niedrig–mittel: S10 konkretes Zeitzonenmissverständnis; Verallgemeinerung unbewiesen | Mittel als kleine Diagnose-Erweiterung | S–M | B · mit Verbindungsdiagnose gemeinsam validieren |
 
 ## 1 · Export-Herkunft und Abschlussbeleg
 
