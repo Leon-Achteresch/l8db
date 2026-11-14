@@ -1,12 +1,12 @@
-# Backlog · aktualisiert nach Runde 9
+# Backlog · aktualisiert nach Runde 10
 
-**Aktuelle Entscheidung, 2026-11-14:** SQL-Herkunft bleibt vorn. NULL-Arten bleiben ein enger zweiter Prüfkandidat: S47 und der bisherige statische MySQL-Codehinweis tragen ihn; die neue Gegenprüfung bestätigt keine zweite aktuelle Anzeigeverwechslung. SQLly beschreibt bereits eine Lösung; SQL-Konvertierung und JSON-Kopieren sind davon getrennte Aufgaben. Der Beziehungsfilter bleibt schwächer belegt, sein Suchweg im JOIN-Builder vorhanden. [README.md](README.md) und [Runde 9](sources.md#runde-9--null-bedeutung-und-anzeige-trennen) haben Vorrang; alte Artefakte und zurückgestellte Entscheidungen bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** SQL-Herkunft bleibt vorn: S55 bestätigt unabhängig den Verbindungsbezug, stammt aber von 2025. Allgemeine Abfragen brauchen weiter übergreifenden Zugriff; Herkunft und optionale Eingrenzung ergänzen nur die bestehende Liste. Ordner, Projektkontext und DataGrips heutige Datenquellenzuordnung sind Alternativen. NULL bleibt eng begrenzt und wurde nicht erneut recherchiert; Kindtabellenfilter bleibt nachrangig. [README.md](README.md) und [Runde 10](sources.md#runde-10--gespeicherte-abfragen-und-vorhandene-kontextwege) haben Vorrang; alte Artefakte und zurückgestellte Entscheidungen bleiben erhalten.
 
 ## Aktuelle Kandidaten
 
 | Priorität | Ergänzung | Nutzen und Evidenz | Entscheidung |
 |---|---|---|---|
-| 1 | Herkunft gespeicherter SQL-Abfragen | Ähnliche Skripte anhand Verbindung/Datenbank zuordnen; S43 direkter Einzelwunsch, Code bestätigt Metadatenlücke in der gespeicherten Bibliothek; der Verlauf hat den Kontext bereits | B · konkrete Aufgabe belegt, Verbreitung offen |
+| 1 | Herkunft und optionale Eingrenzung gespeicherter SQL-Abfragen | Ähnliche Namen anhand Verbindung/Datenbank zuordnen; S43 aktuell, S55 unabhängig von 2025. l8db hat Namens-/SQL-Suche und Verbindungsverlauf, aber keine Herkunft an benannten Abfragen; S58 belegt etablierte Alternativen | B · Aufgabe besser gestützt, aktueller unabhängiger Datenbank-Gleichfall und Zusatznutzen gegenüber Ordnern offen; allgemeine Abfragen übergreifend lassen |
 | 2 | SQL-NULL und JSON-null erhalten und unterscheiden | Filter und Anzeige sollen dieselben Wertarten unterscheiden; S47 direkter Einzelbericht, statischer MySQL-Codehinweis. S51 betrifft dagegen erwartete SQL-Konvertierung; S52 beschreibt eine vorhandene Konkurrenzlösung zur Anzeige | B · keine Hochstufung: unabhängiger aktueller Gleichfall und Laufzeitbestätigung fehlen; kein reiner Beschriftungswechsel |
 | 3 | Filter über eingehende Beziehungen in der Tabellenansicht | Elternzeilen über Kinddaten finden; JOIN-Builder bietet den Suchweg, aber nicht denselben Ergebnisumfang; S45 weiter nur vermittelt | B · nachrangig, unabhängige aktuelle Nachfrage nicht bestätigt |
 
