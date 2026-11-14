@@ -1,5 +1,7 @@
 # Evidenzregister
 
+**Abschluss nach Runde 23:** [Gesamte Recherchegrenze und Wiederaufnahmegründe](backlog.md#abschließende-recherchegrenze). Keine neuen Quellen ergänzt; historische nächste Recherchefokusse sind abgeschlossen und keine Folgeaufträge.
+
 Abrufdatum aller Quellen: **2026-11-14**. Direkte öffentliche Seiten gelesen; keine privaten Produktdaten oder Secrets verwendet. Aussagen sind qualitative Einzelfallbelege, keine repräsentative Marktforschung. Geschlossene Issues belegen historische Aufgaben, keine weiterhin bestehende Konkurrenzlücke.
 
 ## Runde 1
