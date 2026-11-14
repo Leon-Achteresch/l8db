@@ -1,6 +1,6 @@
-# Backlog · aktualisiert nach Runde 17
+# Backlog · aktualisiert nach Runde 18
 
-**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn, ClickHouse und NULL bleiben erhalten. MySQL-Zellkonflikte werden nach der einmaligen Gegenprüfung ohne passenden direkten Clientfall zurückgestellt; der Suchstrang ist geschlossen. Der statische Hinweis bleibt erhalten, trägt allein aber keine weitere Priorisierung. [README.md](README.md) und [Runde 17](sources.md#runde-17--mysql-zellkonfliktsuche-abgeschlossen) haben Vorrang; alte Artefakte bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** Herkunft bleibt vorn, ClickHouse und NULL bleiben erhalten. S76 belegt aktuelle Nachfrage nach der Zuordnung eines Skriptfehlers zur Anweisung; l8db bietet diesen Ablauf bereits. Keine vierte Idee aus engeren Sonderfällen abgeleitet. [README.md](README.md) und [Runde 18](sources.md#runde-18--fehler-einzelnen-skriptanweisungen-zuordnen) haben Vorrang; alte Artefakte bleiben erhalten.
 
 ## Aktuelle Kandidaten
 
@@ -10,6 +10,8 @@
 | 2 | ClickHouse-Abbruchstatus verlässlich anzeigen | S66 und der bekannte l8db-Codehinweis trennen ASYNC-Erfolg von bestätigtem Ende. S68 beschreibt falschen Erfolg in einem unabhängigen aktuellen Projekt; S69 meldet dagegen ausdrückliche Fehler | B · technisch besser gestützt, direkter aktueller Anwenderfall und l8db-Laufzeitfall fehlen; keine Treibervertiefung ohne neue Anwenderquelle |
 | 3 | SQL-NULL und JSON-null erhalten und unterscheiden | Filter und Anzeige sollen dieselben Wertarten unterscheiden; S47 direkter Einzelbericht, statischer MySQL-Codehinweis. S51 betrifft dagegen erwartete SQL-Konvertierung; S52 beschreibt eine vorhandene Konkurrenzlösung zur Anzeige | B · keine Hochstufung: unabhängiger aktueller Gleichfall und Laufzeitbestätigung fehlen; kein reiner Beschriftungswechsel |
 | 4 | Filter über eingehende Beziehungen in der Tabellenansicht | Elternzeilen über Kinddaten finden; JOIN-Builder bietet den Suchweg, aber nicht denselben Ergebnisumfang; S45 weiter nur vermittelt | B · nachrangig, unabhängige aktuelle Nachfrage nicht bestätigt |
+
+**Bereits vorhanden: Skriptfehler einer Anweisung zuordnen.** Nummerierte Batch-Ergebnisse zeigen SQL, Status und Fehler; Auswahl springt zur Anweisung, erkannte Fehlerpositionen werden in den Editor übertragen. S76 fordert genau diese Zuordnung, S77 betrifft zusätzlich die genaue Zeile innerhalb einer Anweisung. Für eine verbleibende lokale Orientierungslücke fehlt ein passender neuer Beleg; den breiten Suchpfad abschließen, keinen weiteren Editor oder Debugger ableiten.
 
 **Zurückgestellt / Suchstrang geschlossen: Fremdänderungen am selben MySQL-Zellwert.** S73 bleibt ein Bericht aus einer Rechnungsapp, kein Datenbankclient-Fall. l8dbs Prüfung geänderter Spalten und PostgreSQL-Versionsprüfung existieren bereits; der engere statische MySQL-Hinweis bleibt ohne Laufzeitbeleg erhalten. Runde 17 brachte keinen passenden neuen Clientfall: C, nur bei neuem Ausgangsbeleg erneut prüfen.
 

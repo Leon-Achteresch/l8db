@@ -1,6 +1,6 @@
 # l8db · Forschungsentscheidung · 14. November 2026
 
-**Nach Runde 17: Herkunft bleibt vorn. Drei Kandidaten bleiben; MySQL-Zellkonflikte sind ohne passenden neuen Clientfall zurückgestellt und der Suchstrang geschlossen.**
+**Nach Runde 18: Herkunft bleibt vorn. Drei Kandidaten bleiben; Skriptfehler sind bereits einzelnen Anweisungen zugeordnet, eine zusätzliche Orientierungslücke ist nicht belegt.**
 
 1. **Herkunft an gespeicherten SQL-Abfragen.** Verbindung und Datenbank sollen ähnliche Namen in der bestehenden Liste unterscheidbar machen. Der [DbGate-Fall von 2026](https://github.com/dbgate/dbgate/issues/1377) stützt die Aufgabe; allgemeine Abfragen bleiben standardmäßig sichtbar. Der Zusatznutzen gegenüber Verlauf und Ordnern bleibt für gemischte Bestände offen.
 
@@ -8,6 +8,6 @@
 
 3. **SQL-NULL und JSON-null erhalten und unterscheiden.** Getrennte Wertarten sollen Anzeige und Filter verständlich machen. Der [bekannte MySQL-Bericht](https://github.com/beekeeper-studio/beekeeper-studio/issues/4732) und der statische MySQL-Codehinweis tragen den engen Vorschlag; unabhängige aktuelle Bestätigung fehlt.
 
-[Abschluss der Gegenprüfung](sources.md#runde-17--mysql-zellkonfliktsuche-abgeschlossen) · [Backlog](backlog.md). Frühere Artefakte bleiben erhalten; diese Entscheidung hat Vorrang.
+[Neue Originalfälle und Existenzabgleich](sources.md#runde-18--fehler-einzelnen-skriptanweisungen-zuordnen) · [Backlog](backlog.md). Frühere Artefakte bleiben erhalten; diese Entscheidung hat Vorrang.
 
-**Nächster Fokus:** Originalfälle zur Zuordnung von Fehlern zu einzelnen Anweisungen in langen SQL-Skripten; vorhandene Fehlermarkierung zuerst prüfen. Geschlossene Suchstränge nur mit neuem Ausgangsbeleg öffnen.
+**Nächster Fokus:** Die offene Frage nach Navigation ohne deklarierte Fremdschlüssel prüfen: aktuelle Originalfälle und vorhandene lokale Beziehungsdefinitionen. Geschlossene Suchstränge nur mit neuem Ausgangsbeleg öffnen.
