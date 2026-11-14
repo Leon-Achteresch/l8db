@@ -1,6 +1,6 @@
-# Backlog · aktualisiert nach Runde 11
+# Backlog · aktualisiert nach Runde 12
 
-**Aktuelle Entscheidung, 2026-11-14:** SQL-Herkunft bleibt vorn; S59 ergänzt einen unabhängigen aktuellen Zuordnungsfall. Der aktuelle Mischfall fehlt weiterhin, S55 bleibt der direkte ältere Beleg. Herkunft als Hinweis in der bestehenden Liste ist enger gestützt als ein Filter ohne Zielbindung; ein freiwilliger Filter bleibt Hypothese. Allgemeine Abfragen bleiben standardmäßig sichtbar. Verlauf, Namenssuche, Ordner und Projektkontext sind vorhandene Alternativen. NULL und Kindtabellenfilter unverändert, nicht erneut untersucht. [README.md](README.md) und [Runde 11](sources.md#runde-11--allgemeine-und-spezifische-abfragen) haben Vorrang; alte Artefakte bleiben erhalten.
+**Aktuelle Entscheidung, 2026-11-14:** Top 3 unverändert, Herkunft bleibt vorn. Frühere Speicherstände benannter Abfragen vorerst zurückstellen: eine enge Code-Lücke ist sichtbar, passende aktuelle Nutzerfälle fehlen. Verlauf, Tab-Sicherungen, Entwurfswiederherstellung und Sync-Sicherungen bieten bereits andere Rückwege. Der enge Mischbestand-Suchpfad bleibt beendet; NULL und Kindtabellenfilter wurden nicht erneut untersucht. [README.md](README.md) und [Runde 12](sources.md#runde-12--frühere-speicherstände-gegen-verlauf-und-wiederherstellung) haben Vorrang; alte Artefakte bleiben erhalten.
 
 ## Aktuelle Kandidaten
 
@@ -9,6 +9,8 @@
 | 1 | Herkunft gespeicherter SQL-Abfragen, Filter weiter prüfen | S43 und S59 stützen die Zuordnung unabhängig aktuell; S55 belegt den Mischbestand nur von 2025. l8db hat Namens-/SQL-Suche und Verbindungsverlauf, aber keine Herkunft an benannten Abfragen; S58 belegt Alternativen | B · Herkunft vorn, Zusatznutzen eines freiwilligen Filters für gemischte Bestände offen; allgemeine Abfragen standardmäßig sichtbar lassen |
 | 2 | SQL-NULL und JSON-null erhalten und unterscheiden | Filter und Anzeige sollen dieselben Wertarten unterscheiden; S47 direkter Einzelbericht, statischer MySQL-Codehinweis. S51 betrifft dagegen erwartete SQL-Konvertierung; S52 beschreibt eine vorhandene Konkurrenzlösung zur Anzeige | B · keine Hochstufung: unabhängiger aktueller Gleichfall und Laufzeitbestätigung fehlen; kein reiner Beschriftungswechsel |
 | 3 | Filter über eingehende Beziehungen in der Tabellenansicht | Elternzeilen über Kinddaten finden; JOIN-Builder bietet den Suchweg, aber nicht denselben Ergebnisumfang; S45 weiter nur vermittelt | B · nachrangig, unabhängige aktuelle Nachfrage nicht bestätigt |
+
+**Zurückgestellt: frühere Fassung einer benannten Abfrage wiederherstellen.** S60/S61 belegen vorhandene Konkurrenzlösungen, S62/S63 andere Verlustaufgaben. l8db warnt vor dem Überschreiben und hat mehrere Wiederherstellungswege, aber im geprüften Speicherpfad keine abrufbare Revisionsliste. Ohne passenden aktuellen Nutzerfall keine weitere Priorität und keine allgemeine Versionsverwaltung ableiten.
 
 ## Historischer breiter Backlog mit aktualisierten Entscheidungen
 
