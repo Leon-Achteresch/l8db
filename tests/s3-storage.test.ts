@@ -53,7 +53,13 @@ describe("s3 xml helpers", () => {
   });
 
   test("round-trips lifecycle rules and keeps unknown parts", () => {
-    const rule = { ...emptyLifecycleRule(0), prefix: "tmp/", noncurrentDays: 3 };
+    expect(emptyLifecycleRule(0).expirationDays).toBeNull();
+    const rule = {
+      ...emptyLifecycleRule(0),
+      prefix: "tmp/",
+      expirationDays: 30,
+      noncurrentDays: 3,
+    };
     const parsed = parseLifecycle(lifecycleXml([rule]));
     expect(parsed[0]).toMatchObject({
       id: "rule-1",

@@ -35,6 +35,7 @@ import { usePluginDetailTabs, usePluginTableInfo } from "@/lib/ui-plugins/table-
 import { useWorkspacePane } from "@/lib/workspace-pane";
 import type { TableViewProps } from "../table-view";
 
+import { applicableSorting, sortableColumnNames } from "./sortable-columns";
 import { useTableExport } from "./use-table-export";
 
 const routeApi = getRouteApi("/_app/_workspace/tables/$schema/$table");
@@ -116,7 +117,16 @@ export function useTableViewModel({
 
   const [filter, setFilter] = useTableViewState(stateKey, "filter", "");
   const [filterRaw, setFilterRaw] = useTableViewState(stateKey, "filterRaw", false);
-  const [sorting, setSorting] = useTableViewState(stateKey, "sorting", []);
+  const [storedSorting, setSorting] = useTableViewState(stateKey, "sorting", []);
+  const { data: columnDetails } = useDetailedColumnsQuery(schema, table);
+  const sortableColumns = useMemo(
+    () => sortableColumnNames(caps.sort, columnDetails),
+    [caps.sort, columnDetails],
+  );
+  const sorting = useMemo(
+    () => applicableSorting(storedSorting, sortableColumns),
+    [storedSorting, sortableColumns],
+  );
   const [revealColumn, setRevealColumn] = useState<{ name: string; nonce: number } | null>(null);
   const [page, setPage] = useTableViewState(stateKey, "page", 0);
   const [addRowSignal, setAddRowSignal] = useState(0);
@@ -199,7 +209,6 @@ export function useTableViewModel({
     const lastPage = Math.max(0, Math.ceil(totalCount / rowLimit) - 1);
     if (page > lastPage) setPage(lastPage);
   }, [totalCount, isFetching, rowLimit, page, setPage]);
-  const { data: columnDetails } = useDetailedColumnsQuery(schema, table);
   const {
     exporting,
     csvExportOpen,
@@ -400,6 +409,7 @@ export function useTableViewModel({
     filterRaw,
     sorting,
     setSorting,
+    sortableColumns,
     revealColumn,
     page,
     setPage,

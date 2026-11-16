@@ -101,6 +101,7 @@ pub struct Capabilities {
     pub insert_sql: bool,
     pub database_is_schema: bool,
     pub query_language: &'static str,
+    pub sort: &'static str,
     pub query_label: &'static str,
     pub filter_hint: &'static str,
     pub table_template: TableTemplate,
@@ -126,6 +127,7 @@ pub struct Terms {
     pub rows: &'static str,
     pub column: &'static str,
     pub columns: &'static str,
+    pub primary_key: &'static str,
 }
 
 const TERMS: Terms = Terms {
@@ -137,6 +139,7 @@ const TERMS: Terms = Terms {
     rows: "Zeilen",
     column: "Spalte",
     columns: "Spalten",
+    primary_key: "Primärschlüssel",
 };
 
 const NO_TEMPLATE: TableTemplate = TableTemplate {
@@ -422,6 +425,7 @@ const NONE: Capabilities = Capabilities {
     insert_sql: false,
     database_is_schema: false,
     query_language: "sql",
+    sort: "columns",
     query_label: "SQL",
     filter_hint: "z. B. status = 'active' AND created_at > '2024-01-01'",
     table_template: NO_TEMPLATE,
@@ -644,6 +648,10 @@ impl DatabaseKind {
                 insert_sql: true,
                 database_is_schema: true,
                 table_template: CLICKHOUSE_TEMPLATE,
+                terms: Terms {
+                    primary_key: "Sortierschlüssel",
+                    ..TERMS
+                },
                 ..NONE
             },
             DatabaseKind::Oracle => Capabilities {
@@ -753,6 +761,7 @@ impl DatabaseKind {
                 server_output: true,
                 databases: false,
                 query_label: "Elasticsearch",
+                sort: "keyword",
                 terms: Terms {
                     database: "Cluster",
                     schema: "Art",
@@ -762,6 +771,7 @@ impl DatabaseKind {
                     rows: "Dokumente",
                     column: "Feld",
                     columns: "Felder",
+                    primary_key: "Primärschlüssel",
                 },
                 filter_hint: "SQL-Bedingung, Lucene-Query (status:active AND age:>21) oder Query-DSL als JSON",
                 ..NONE
@@ -779,6 +789,7 @@ impl DatabaseKind {
                     rows: "Punkte",
                     column: "Feld",
                     columns: "Felder",
+                    primary_key: "Primärschlüssel",
                 },
                 filter_hint: "SQL-Bedingung auf Tags und Felder, z. B. \"host\" = 'a' AND \"usage\" > 50",
                 ..NONE
@@ -828,6 +839,7 @@ impl DatabaseKind {
                 transactions: true,
                 row_edit: true,
                 query_label: "PartiQL",
+                sort: "none",
                 terms: Terms {
                     database: "Region",
                     schema: "Region",
@@ -1034,9 +1046,9 @@ const PROVIDERS: &[Provider] = &[
     pg("postgres", "PostgreSQL", 5432, "postgresql://postgres:password@localhost:5432/postgres", "Lokaler Server oder eigener Host. Alle Funktionen des SQL-Arbeitsplatzes verfügbar.", &["localhost", "127.0.0.1"]),
     pg("supabase", "Supabase", 5432, "postgresql://postgres:password@db.project.supabase.co:5432/postgres", "Direkte URL aus Connect. In IPv4-Netzen eignet sich der Session Pooler auf Port 5432.", &[".supabase.co", ".supabase.com"]),
     pg("neon", "Neon", 5432, "postgresql://user:password@ep-project.eu-central-1.aws.neon.tech/neondb?sslmode=require", "URL aus dem Connect-Dialog des Branches. SSL und URL-Parameter bleiben erhalten.", &[".neon.tech"]),
-    pg("cockroachdb", "CockroachDB", 26257, "postgresql://root@localhost:26257/defaultdb?sslmode=disable", "PostgreSQL-Wire-Protokoll. Rollen, Extensions und Replikation weichen von PostgreSQL ab.", &[".cockroachlabs.cloud"]),
+    pg("cockroachdb", "CockroachDB", 26257, "postgresql://root@localhost:26257/defaultdb?sslmode=disable", "PostgreSQL-Wire-Protokoll. Ohne Publikationen, Proxy-Benutzer, Extensions und Zeilenbearbeitung.", &[".cockroachlabs.cloud"]),
     pg("redshift", "Amazon Redshift", 5439, "postgresql://awsuser:password@cluster.region.redshift.amazonaws.com:5439/dev", "Redshift spricht PostgreSQL 8.x. Einige Katalogabfragen liefern reduzierte Daten.", &[".redshift.amazonaws.com"]),
-    pg("timescale", "TimescaleDB", 5432, "postgresql://tsdbadmin:password@service.tsdb.cloud.timescale.com:5432/tsdb?sslmode=require", "Vollständig PostgreSQL-kompatibel inklusive Hypertables als normale Tabellen.", &[".timescale.com"]),
+    pg("timescale", "TimescaleDB", 5432, "postgresql://tsdbadmin:password@service.tsdb.cloud.timescale.com:5432/tsdb?sslmode=require", "PostgreSQL mit Hypertables als Tabellen. Komprimierte Chunks sind nur lesbar.", &[".timescale.com"]),
     pg("yugabyte", "YugabyteDB", 5433, "postgresql://yugabyte:yugabyte@localhost:5433/yugabyte", "YSQL-API über das PostgreSQL-Protokoll.", &[".yugabyte.cloud"]),
     pg("alloydb", "AlloyDB", 5432, "postgresql://postgres:password@10.0.0.2:5432/postgres", "Google AlloyDB über den Auth Proxy oder eine private IP.", &[]),
     pg("materialize", "Materialize", 6875, "postgresql://materialize@localhost:6875/materialize", "Streaming-SQL über das PostgreSQL-Protokoll.", &[".materialize.cloud"]),
@@ -1298,6 +1310,17 @@ fn odbc_environment_status() -> Result<Vec<String>, String> {
     Err("ODBC ist in diesem Build nicht enthalten (mit --no-default-features gebaut). Build mit: cargo tauri build --features odbc".to_string())
 }
 
+fn product_capabilities(id: &str, mut caps: Capabilities) -> Capabilities {
+    if id == "cockroachdb" {
+        caps.replication = false;
+        caps.proxy_user = false;
+        caps.extensions = false;
+        caps.query_stats = false;
+        caps.row_edit = false;
+    }
+    caps
+}
+
 pub fn list_providers() -> Vec<ProviderInfo> {
     PROVIDERS
         .iter()
@@ -1313,7 +1336,7 @@ pub fn list_providers() -> Vec<ProviderInfo> {
             hint: p.hint,
             hosts: p.hosts,
             driver: p.driver,
-            capabilities: p.kind.capabilities(),
+            capabilities: product_capabilities(p.id, p.kind.capabilities()),
             driver_status: driver_status(p.kind, p.driver),
         })
         .collect()
@@ -1497,6 +1520,18 @@ mod tests {
             }
         }
         assert!(!DatabaseKind::SqliteHttp.capabilities().table_copy);
+    }
+
+    #[test]
+    fn cockroachdb_hides_what_its_server_lacks() {
+        let providers = list_providers();
+        let caps = |id: &str| providers.iter().find(|p| p.id == id).unwrap().capabilities;
+        let (postgres, cockroach) = (caps("postgres"), caps("cockroachdb"));
+        assert!(postgres.replication && postgres.proxy_user && postgres.row_edit);
+        assert!(!cockroach.replication && !cockroach.proxy_user && !cockroach.extensions);
+        assert!(!cockroach.query_stats && !cockroach.row_edit);
+        assert!(cockroach.sessions && cockroach.live_monitor && cockroach.explain);
+        assert_eq!(caps("timescale").row_edit, postgres.row_edit);
     }
 
     #[test]

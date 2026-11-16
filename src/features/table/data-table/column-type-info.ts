@@ -48,7 +48,7 @@ export function getColumnTypeInfo(col: string, rows: TableRow[], detail?: Detail
   let type: ColumnTypeKind = "text";
   const known = detail ? kindFromDataType(detail.data_type) : null;
 
-  if (detail?.is_primary_key) {
+  if (detail?.is_primary_key && known !== "date" && known !== "json" && known !== "boolean") {
     type = "key";
   } else if (known) {
     type = known;

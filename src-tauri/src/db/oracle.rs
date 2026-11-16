@@ -950,7 +950,7 @@ fn caller_label(owner: &str, name: &str, kind: &str) -> String {
     format!("Aufrufer {owner}.{name} ({kind})")
 }
 
-const USER_TABLES: &str = "dropped = 'NO' AND secondary = 'N' AND nested = 'NO' AND (iot_type IS NULL OR iot_type = 'IOT') AND NOT EXISTS (SELECT 1 FROM all_objects m WHERE m.owner = all_tables.owner AND m.object_name = all_tables.table_name AND m.object_type = 'MATERIALIZED VIEW') AND table_name NOT LIKE 'AQ$\\_%' ESCAPE '\\' AND table_name NOT LIKE 'MLOG$\\_%' ESCAPE '\\' AND table_name NOT LIKE 'RUPD$\\_%' ESCAPE '\\'";
+pub(crate) const USER_TABLES: &str = "dropped = 'NO' AND secondary = 'N' AND nested = 'NO' AND (iot_type IS NULL OR iot_type = 'IOT') AND NOT EXISTS (SELECT 1 FROM all_objects m WHERE m.owner = all_tables.owner AND m.object_name = all_tables.table_name AND m.object_type = 'MATERIALIZED VIEW') AND table_name NOT LIKE 'AQ$\\_%' ESCAPE '\\' AND table_name NOT LIKE 'MLOG$\\_%' ESCAPE '\\' AND table_name NOT LIKE 'RUPD$\\_%' ESCAPE '\\'";
 
 const NLS_SESSION: &str = "ALTER SESSION SET NLS_NUMERIC_CHARACTERS = '.,' NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS' NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF' NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'";
 const ROWID_SELECT: &str = "ROWIDTOCHAR(t.ROWID) AS \"__ctid__\", t.*";
@@ -3826,9 +3826,9 @@ impl DatabaseAdapter for OracleAdapter {
             .next()
             .unwrap_or_default();
         let tables = self
-            .rows(
-                "SELECT owner, COUNT(*) FROM all_tables GROUP BY owner ORDER BY owner".to_string(),
-            )
+            .rows(format!(
+                "SELECT owner, COUNT(*) FROM all_tables WHERE {USER_TABLES} GROUP BY owner ORDER BY owner"
+            ))
             .await?;
         let segments = match self
             .rows("SELECT owner, SUM(bytes) FROM dba_segments GROUP BY owner".to_string())
@@ -4538,6 +4538,58 @@ mod tests {
         assert_eq!(native, Ok(Some(std::time::Duration::from_secs(7))));
         let untimed = run(options(), false, async { Ok(query_deadline()) }).await;
         assert_eq!(untimed, Ok(None));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_table_counts_agree_between_list_atlas_and_overview() {
+        let url = std::env::var("L8DB_SMOKE_ORACLE_URL")
+            .expect("Lab fehlt: L8DB_SMOKE_ORACLE_URL ist nicht gesetzt");
+        let adapter =
+            OracleAdapter::new(&url, crate::db::pool::create_pool_state(), "counts".into())
+                .unwrap();
+        for sql in [
+            "BEGIN EXECUTE IMMEDIATE 'DROP MATERIALIZED VIEW FIXR_MV'; EXCEPTION WHEN OTHERS THEN NULL; END;",
+            "BEGIN EXECUTE IMMEDIATE 'DROP TABLE FIXR_A PURGE'; EXCEPTION WHEN OTHERS THEN NULL; END;",
+            "CREATE TABLE FIXR_A (id NUMBER PRIMARY KEY)",
+            "CREATE TABLE FIXR_B (id NUMBER)",
+            "DROP TABLE FIXR_B",
+            "CREATE MATERIALIZED VIEW FIXR_MV AS SELECT id FROM FIXR_A",
+        ] {
+            adapter.execute_query(sql).await.unwrap();
+        }
+        let schema = adapter.list_schemas().await.unwrap();
+        let owner = schema
+            .iter()
+            .find(|s| s.eq_ignore_ascii_case("L8DB"))
+            .unwrap()
+            .clone();
+        let listed = adapter.list_tables(Some(&owner)).await.unwrap();
+        let map = crate::mcp::schema_map(&adapter, crate::db::DatabaseKind::Oracle, &owner)
+            .await
+            .unwrap();
+        let overview = adapter.get_database_overview().await.unwrap();
+        for sql in [
+            "DROP MATERIALIZED VIEW FIXR_MV",
+            "DROP TABLE FIXR_A PURGE",
+            "PURGE TABLE FIXR_B",
+        ] {
+            let _ = adapter.execute_query(sql).await;
+        }
+        let fixr: Vec<&str> = map
+            .tables
+            .iter()
+            .map(|t| t.name.as_str())
+            .filter(|n| n.starts_with("FIXR") || n.starts_with("BIN$"))
+            .collect();
+        assert_eq!(fixr, ["FIXR_A", "FIXR_MV"]);
+        let counted = overview
+            .schemas
+            .iter()
+            .find(|s| s.schema == owner)
+            .unwrap()
+            .table_count;
+        assert_eq!(counted, listed.len() as i64);
     }
 
     #[tokio::test]

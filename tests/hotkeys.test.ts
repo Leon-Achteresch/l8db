@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 import {
-  HOTKEY_COMMANDS,
   canonicalizeHotkey,
   commandById,
   conflictKey,
@@ -9,12 +8,14 @@ import {
   filterHotkeyCommands,
   findHotkeyConflict,
   groupHotkeyCommands,
+  HOTKEY_COMMANDS,
   isCommandVisibleInRoute,
   isHotkeyAvailable,
   resolveHotkey,
   useHotkeysStore,
   validateHotkeyInput,
 } from "../src/lib/hotkeys";
+import { POSTGRES_CAPABILITIES } from "../src/lib/providers";
 
 describe("hotkey commands", () => {
   it("hat eindeutige Ids und Defaults", () => {
@@ -100,6 +101,19 @@ describe("hotkey filter und Verfügbarkeit", () => {
     expect(isHotkeyAvailable("query.run", { hasConnection: false })).toBe(false);
     expect(isHotkeyAvailable("query.run", { hasConnection: true })).toBe(true);
     expect(isHotkeyAvailable("settings.open", { hasConnection: false })).toBe(true);
+    const caps = { ...POSTGRES_CAPABILITIES, dml_preview: false, transactions: false };
+    expect(isHotkeyAvailable("query.preview", { hasConnection: true, capabilities: caps })).toBe(
+      false,
+    );
+    expect(isHotkeyAvailable("query.check", { hasConnection: true, capabilities: caps })).toBe(
+      false,
+    );
+    expect(
+      isHotkeyAvailable("query.preview", {
+        hasConnection: true,
+        capabilities: POSTGRES_CAPABILITIES,
+      }),
+    ).toBe(true);
     const run = commandById("query.run");
     const refresh = commandById("app.refresh");
     if (!run || !refresh) throw new Error("Befehle fehlen");

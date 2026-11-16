@@ -135,6 +135,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       icon: Diff,
       activeIcon: FileDiff,
       featureScope: "compare",
+      available: (caps) => caps.data_compare,
     },
     {
       title: "Schema-Vergleich",

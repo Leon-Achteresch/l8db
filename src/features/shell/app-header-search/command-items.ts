@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import type { CommandItem } from "@/components/motion/command-palette";
 import { SEARCH_ITEMS } from "@/features/settings/settings-search-results/search-items";
-import type { PackageMemberInfo } from "@/lib/db";
+import type { Capabilities, PackageMemberInfo } from "@/lib/db";
 import {
   FEATURE_CATALOG,
   type FeatureEntry,
@@ -219,6 +219,7 @@ export function buildHotkeyItems(
   setOpen: (open: boolean) => void,
   setShortcutsOpen: (open: boolean) => void,
   easyMode = false,
+  capabilities?: Capabilities | null,
 ): CommandItem[] {
   return HOTKEY_COMMANDS.filter(
     (command) =>
@@ -231,7 +232,7 @@ export function buildHotkeyItems(
       command.id !== "go.connections" &&
       command.id !== "objects.search" &&
       isCommandVisibleInRoute(command, pathname) &&
-      isHotkeyAvailable(command.id, { hasConnection }),
+      isHotkeyAvailable(command.id, { hasConnection, capabilities }),
   ).map((command) => ({
     id: `hotkey:${command.id}`,
     label:
@@ -323,8 +324,9 @@ export function buildCompareItems(
   hasConnection: boolean,
   setOpen: (open: boolean) => void,
   navigate: ReturnType<typeof useNavigate>,
+  dataCompare = true,
 ): CommandItem[] {
-  if (!hasConnection) return [];
+  if (!hasConnection || !dataCompare) return [];
   return [
     {
       id: "compare:new",

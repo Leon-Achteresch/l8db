@@ -289,6 +289,7 @@ async fn postgres_old_pg_dump_is_flagged() {
     .await
     .unwrap_err();
     println!("{error}");
+    assert!(error.contains("pg_dump ist zu alt für den Server"));
     assert!(error.contains("version mismatch"));
 }
 

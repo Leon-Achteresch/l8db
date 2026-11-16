@@ -387,6 +387,25 @@ describe("wait tips", () => {
     expect(waitTipsFor(filter(null, null)).map((tip) => tip.id)).not.toContain("explain");
   });
 
+  test("Import und Transfer folgen den Fähigkeiten der Familie", () => {
+    const entry = (id: string) => {
+      const found = featureById(id);
+      if (!found) throw new Error(id);
+      return found;
+    };
+    const keyValue = {
+      ...PG,
+      query_language: "redis" as const,
+      csv_import: false,
+      table_copy: false,
+    };
+    const documents = { ...keyValue, query_language: "json" as const, csv_import: true };
+    expect(featureAvailable(entry("import"), { capabilities: PG })).toBe(true);
+    expect(featureAvailable(entry("import"), { capabilities: keyValue })).toBe(false);
+    expect(featureAvailable(entry("import"), { capabilities: documents })).toBe(true);
+    expect(featureAvailable(entry("transfer"), { capabilities: keyValue })).toBe(false);
+  });
+
   test("easy mode and usage filter catalog tips", () => {
     const hidden = FEATURE_CATALOG.find(
       (entry) => entry.hiddenInEasyMode && featureAvailable(entry, { capabilities: PG }),

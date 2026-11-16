@@ -242,7 +242,7 @@ impl Backend {
                     Step::Result { result, .. } => {
                         count += 1;
                         if result.columns.is_empty() {
-                            last = format!("✓ {}", changed(&result));
+                            last = format!("✓ {}", changed(session.target.kind, &result));
                         } else {
                             let rows = result.rows.len();
                             last = match (result.truncated, rows) {

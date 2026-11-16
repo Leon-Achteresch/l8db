@@ -89,7 +89,7 @@ export function RunControls({
               onClick={actions.handleRunStatement}
               disabled={runDisabled}
             >
-              Statement unter Cursor
+              Statement ausführen
               <span className="ml-auto text-[10px] text-muted-foreground">
                 {shortcutLabel("query.runStatement")}
               </span>
@@ -109,7 +109,7 @@ export function RunControls({
                 onClick={onOpenScript}
                 disabled={isRunning || !connected || !hasSql}
               >
-                Skript mit Einzelergebnissen
+                Alle Statements ausführen
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>

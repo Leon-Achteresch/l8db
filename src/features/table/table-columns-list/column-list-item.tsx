@@ -7,6 +7,7 @@ import { DataTypeCombobox } from "@/features/alter-table/alter-table-view/data-t
 import { copyText } from "@/lib/clipboard";
 import { columnTypeLabel } from "@/lib/column-type";
 import type { AlterColumnRequest, DatabaseKind, DetailedColumnInfo } from "@/lib/db";
+import { capabilitiesFor, DEFAULT_TERMS } from "@/lib/providers";
 import { getTypeConfig } from "./column-type-config";
 
 export function ColumnListItem({
@@ -43,6 +44,8 @@ export function ColumnListItem({
     ? "Identity"
     : column.column_default;
   const IconComponent = getTypeConfig(column.data_type, column.is_primary_key).icon;
+  const caps = capabilitiesFor(kind);
+  const primaryKey = caps.terms.primary_key;
 
   return (
     <motion.div
@@ -124,8 +127,11 @@ export function ColumnListItem({
               <p className="flex items-center gap-2 text-[13px] font-medium">
                 <span className="truncate">{column.name}</span>
                 {column.is_primary_key && (
-                  <span className="shrink-0 rounded-full bg-amber-500/10 px-1.5 text-[10px] font-medium text-amber-500">
-                    PK
+                  <span
+                    className="shrink-0 rounded-full bg-amber-500/10 px-1.5 text-[10px] font-medium text-amber-500"
+                    title={primaryKey}
+                  >
+                    {primaryKey === DEFAULT_TERMS.primary_key ? "PK" : primaryKey}
                   </span>
                 )}
               </p>
@@ -139,17 +145,26 @@ export function ColumnListItem({
           <span className="truncate font-mono text-xs text-muted-foreground" title={dataType}>
             {dataType}
           </span>
-          <span
-            className={`text-xs ${column.is_nullable ? "text-muted-foreground" : "text-foreground/90"}`}
-          >
-            {column.is_nullable ? "Erlaubt" : "Pflicht"}
-          </span>
-          <span
-            className="truncate font-mono text-xs text-muted-foreground"
-            title={column.column_default ?? "Kein Standardwert"}
-          >
-            {columnDefault ?? "—"}
-          </span>
+          {caps.constraints ? (
+            <>
+              <span
+                className={`text-xs ${column.is_nullable ? "text-muted-foreground" : "text-foreground/90"}`}
+              >
+                {column.is_nullable ? "Erlaubt" : "Pflicht"}
+              </span>
+              <span
+                className="truncate font-mono text-xs text-muted-foreground"
+                title={column.column_default ?? "Kein Standardwert"}
+              >
+                {columnDefault ?? "—"}
+              </span>
+            </>
+          ) : (
+            <>
+              <span />
+              <span />
+            </>
+          )}
           <div className="flex items-center justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
             {editable && (
               <Button size="icon" variant="ghost" className="size-7" onClick={onStartEdit}>

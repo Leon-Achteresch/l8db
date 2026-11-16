@@ -827,6 +827,11 @@ fn percent(value: &str) -> String {
 
 fn with_filtering(sql: String, has_filter: bool) -> String {
     if has_filter {
+        super::server_output::emit(super::server_output::ServerMessage {
+            level: "INFO".into(),
+            message: "Filter läuft mit ALLOW FILTERING und kann alle Knoten lesen.".into(),
+            detail: None,
+        });
         format!("{sql} ALLOW FILTERING")
     } else {
         sql

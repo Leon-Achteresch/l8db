@@ -27,6 +27,7 @@ import type { CommandItem } from "@/components/motion/command-palette";
 import { NewBadge } from "@/components/new-badge";
 import { DynamicIsland } from "@/features/shell/dynamic-island";
 import { useAiStore } from "@/lib/ai/store";
+import { OBJECTS_PREFIX } from "@/lib/command-palette-search";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { useExtensionHost } from "@/lib/extensions/react-context";
@@ -82,8 +83,8 @@ export function AppHeaderSearch() {
   const [initialQuery, setInitialQuery] = useState("");
   const paletteHistory = usePaletteHistoryStore((state) => state.history);
   const recordPaletteUse = usePaletteHistoryStore((state) => state.record);
-  const openSearch = useCallback((commandsOnly = false) => {
-    setInitialQuery(commandsOnly ? "> " : "");
+  const openSearch = useCallback((prefix = "") => {
+    setInitialQuery(prefix);
     setOpen(true);
   }, []);
   const pathname = useRouterState({ select: (state) => (open ? state.location.pathname : "") });
@@ -157,7 +158,7 @@ export function AppHeaderSearch() {
       },
       {
         hotkey: quickOpenHotkey,
-        callback: () => openSearch(),
+        callback: () => openSearch(`${OBJECTS_PREFIX} `),
         options: { ignoreInputs: false },
       },
       {
@@ -176,7 +177,7 @@ export function AppHeaderSearch() {
 
   useHotkey(
     (commandById("palette.open")?.aliases?.[0] ?? "Mod+Shift+P") as never,
-    () => openSearch(true),
+    () => openSearch("> "),
     { ignoreInputs: false, preventDefault: true, stopPropagation: true },
   );
 
@@ -370,12 +371,18 @@ export function AppHeaderSearch() {
       setOpen,
       setShortcutsOpen,
       easyMode,
+      capabilities,
     );
     const diagramExportItems = builders.buildDiagramExportItems(
       pathname,
       activeConnection !== null,
     );
-    const compareItems = builders.buildCompareItems(activeConnection !== null, setOpen, navigate);
+    const compareItems = builders.buildCompareItems(
+      activeConnection !== null,
+      setOpen,
+      navigate,
+      capabilities.data_compare,
+    );
     return [
       ...connectionItems,
       connectionManagerItem,
@@ -395,8 +402,7 @@ export function AppHeaderSearch() {
   }, [
     activeConnection?.id,
     activeConnection,
-    capabilities.query_language,
-    capabilities.object_storage,
+    capabilities,
     canSearchColumns,
     canSearchSource,
     connections,

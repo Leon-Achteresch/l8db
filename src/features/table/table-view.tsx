@@ -84,6 +84,7 @@ export function TableView(props: TableViewProps) {
     filterRaw,
     sorting,
     setSorting,
+    sortableColumns,
     revealColumn,
     setPage,
     addRowSignal,
@@ -145,6 +146,7 @@ export function TableView(props: TableViewProps) {
       filterRaw={filterRaw}
       sorting={sorting}
       setSorting={setSorting}
+      sortableColumns={sortableColumns}
       revealColumn={revealColumn}
       setPage={setPage}
       addRowSignal={addRowSignal}

@@ -1,4 +1,5 @@
 import type { Hotkey } from "@tanstack/react-hotkeys";
+import type { FeatureCapability } from "@/lib/discovery/types";
 
 export type { Hotkey };
 
@@ -14,6 +15,7 @@ export interface HotkeyCommand {
   defaultHotkey: Hotkey;
   aliases?: Hotkey[];
   requiresConnection?: boolean;
+  capability?: Exclude<FeatureCapability, "import">;
   ignoreInputs?: boolean;
   origin: HotkeyOrigin;
   reference?: string;

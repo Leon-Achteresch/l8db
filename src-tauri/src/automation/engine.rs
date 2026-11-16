@@ -318,8 +318,10 @@ impl Runner {
             max_rows: None,
             no_time_limit: false,
         };
-        let work: Boxed<'_, Result<StepOutcome, String>> =
-            Box::pin(crate::automation::steps::run(&mut ctx));
+        let work: Boxed<'_, Result<StepOutcome, String>> = Box::pin(execution::with_row_limit(
+            crate::automation::steps::export::QUERY_MAX_ROWS as usize + 1,
+            crate::automation::steps::run(&mut ctx),
+        ));
         let fut = execution::without_query_limit(execution::run(Some(options), true, work));
         tokio::pin!(fut);
         let limit = step.timeout_seconds;

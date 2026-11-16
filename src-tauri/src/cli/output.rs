@@ -31,6 +31,11 @@ pub fn cell(row: &Value, column: &str, index: usize) -> Value {
     }
 }
 
+fn missing(row: &Value, column: &str) -> bool {
+    row.as_object()
+        .is_some_and(|fields| !fields.contains_key(column))
+}
+
 fn plain(value: &Value) -> Option<String> {
     match value {
         Value::Null => None,
@@ -87,7 +92,13 @@ fn write_table(
             columns
                 .iter()
                 .enumerate()
-                .map(|(index, column)| table_text(&cell(row, column, index)))
+                .map(|(index, column)| {
+                    if missing(row, column) {
+                        String::new()
+                    } else {
+                        table_text(&cell(row, column, index))
+                    }
+                })
                 .collect()
         })
         .collect();
@@ -170,9 +181,13 @@ pub fn write_rows(
                     .iter()
                     .enumerate()
                     .map(|(index, column)| {
-                        plain(&cell(row, column, index))
-                            .map(|text| field(&text))
-                            .unwrap_or_else(|| null.to_string())
+                        if missing(row, column) {
+                            String::new()
+                        } else {
+                            plain(&cell(row, column, index))
+                                .map(|text| field(&text))
+                                .unwrap_or_else(|| null.to_string())
+                        }
                     })
                     .collect();
                 writeln!(out, "{}", line.join(separator))?;
@@ -185,10 +200,7 @@ pub fn write_rows(
 fn object(columns: &[String], row: &Value) -> Value {
     let mut map = serde_json::Map::new();
     for (index, column) in columns.iter().enumerate() {
-        if row
-            .as_object()
-            .is_some_and(|fields| !fields.contains_key(column))
-        {
+        if missing(row, column) {
             continue;
         }
         let mut key = column.clone();
@@ -266,6 +278,10 @@ mod tests {
         assert!(!text.contains("email"));
         let text = render(Format::Csv, &columns, &rows);
         assert_eq!(text, "_id,email,name,tags\n2,,,\"[\"\"x\"\"]\"\n");
+        let text = render(Format::Tsv, &columns, &rows);
+        assert_eq!(text, "_id\temail\tname\ttags\n2\t\t\\N\t[\"x\"]\n");
+        let text = render(Format::Table, &["email", "name"], &rows);
+        assert_eq!(text.matches("NULL").count(), 1, "{text}");
     }
 
     #[test]

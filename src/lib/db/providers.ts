@@ -97,6 +97,7 @@ export interface Capabilities {
   insert_sql: boolean;
   database_is_schema: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
+  sort: "columns" | "none" | "keyword";
   query_label: string;
   filter_hint: string;
   table_template: TableTemplate;
@@ -120,6 +121,7 @@ export interface Terms {
   rows: string;
   column: string;
   columns: string;
+  primary_key: string;
 }
 
 export type Driver =

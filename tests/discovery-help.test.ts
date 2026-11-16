@@ -385,6 +385,7 @@ describe("Palette erklärt sich", () => {
   test("neu:-Präfix", () => {
     expect(parsePaletteQuery("neu: export", true, true)).toEqual({
       commandsOnly: false,
+      objectsOnly: false,
       unusedOnly: true,
       search: "export",
     });

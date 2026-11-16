@@ -1191,6 +1191,7 @@ async fn transfer_live_matrix() {
                     .execute_query("DROP SEQUENCE IF EXISTS tr_copy.invoice_seq")
                     .await;
                 let _ = adapter.execute_query("DROP SCHEMA IF EXISTS tr_copy").await;
+                let _ = adapter.execute_query("CREATE SCHEMA tr_copy").await;
             }
         }
 
@@ -1240,6 +1241,27 @@ async fn transfer_live_matrix() {
                 .unwrap()
                 .target(schema, &fold(Dialect::from_kind(kind).unwrap(), t, true))
         };
+        let created = fold(Dialect::from_kind(kind).unwrap(), "created", true);
+        let utc = match kind {
+            DatabaseKind::Mssql => {
+                format!("CONVERT(VARCHAR(19), SWITCHOFFSET({created}, '+00:00'), 120)")
+            }
+            DatabaseKind::Oracle => {
+                format!("TO_CHAR(SYS_EXTRACT_UTC({created}), 'YYYY-MM-DD HH24:MI:SS')")
+            }
+            _ => format!("DATE_FORMAT({created}, '%Y-%m-%d %H:%i:%s')"),
+        };
+        let id = fold(Dialect::from_kind(kind).unwrap(), "id", true);
+        assert_eq!(
+            scalar(
+                adapter.as_ref(),
+                &format!("SELECT {utc} FROM {} WHERE {id} = 1", q("customer"))
+            )
+            .await
+            .unwrap(),
+            "2024-01-01 11:00:00",
+            "{name}: timestamptz"
+        );
         let orphan = adapter
             .execute_query(&format!(
                 "INSERT INTO {} ({}, {}) VALUES (999999, 424242)",
@@ -1258,6 +1280,9 @@ async fn transfer_live_matrix() {
             .await
             .unwrap_or_else(|e| panic!("{name}: identity insert: {e}"));
 
+        let _ = pg_adapter
+            .execute_query(&format!("CREATE SCHEMA IF NOT EXISTS {back}"))
+            .await;
         let (_, returned) = live.transfer(&target, &pg, &[(schema, back)]).await;
         assert_eq!(returned.error, None, "{name} back: {returned:?}");
         assert_round_trip(pg_adapter.as_ref(), back, 201).await;

@@ -52,6 +52,7 @@ export const SQL_EDITOR_COMMANDS: HotkeyCommand[] = [
     area: "SQL-Editor",
     defaultHotkey: "Mod+Shift+K",
     requiresConnection: true,
+    capability: "transactions",
     origin: "l8db",
   },
   {
@@ -63,6 +64,7 @@ export const SQL_EDITOR_COMMANDS: HotkeyCommand[] = [
     area: "SQL-Editor",
     defaultHotkey: "Mod+Alt+P",
     requiresConnection: true,
+    capability: "dml_preview",
     origin: "l8db",
   },
   {

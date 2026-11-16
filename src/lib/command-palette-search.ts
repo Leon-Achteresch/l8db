@@ -5,19 +5,27 @@ const HISTORY_SIZE = 5;
 
 export const UNUSED_PREFIX = "neu:";
 
+export const OBJECTS_PREFIX = "@";
+
 export function parsePaletteQuery(query: string, commandsEnabled = true, unusedEnabled = false) {
   const trimmed = query.trimStart();
   const commandsOnly = commandsEnabled && trimmed.startsWith(">");
+  const objectsOnly = commandsEnabled && trimmed.startsWith(OBJECTS_PREFIX);
   const unusedOnly =
-    !commandsOnly && unusedEnabled && trimmed.toLowerCase().startsWith(UNUSED_PREFIX);
+    !commandsOnly &&
+    !objectsOnly &&
+    unusedEnabled &&
+    trimmed.toLowerCase().startsWith(UNUSED_PREFIX);
   return {
     commandsOnly,
+    objectsOnly,
     unusedOnly,
-    search: commandsOnly
-      ? trimmed.slice(1).trimStart()
-      : unusedOnly
-        ? trimmed.slice(UNUSED_PREFIX.length).trimStart()
-        : query,
+    search:
+      commandsOnly || objectsOnly
+        ? trimmed.slice(1).trimStart()
+        : unusedOnly
+          ? trimmed.slice(UNUSED_PREFIX.length).trimStart()
+          : query,
   };
 }
 
@@ -27,7 +35,12 @@ export function withQueryItems(items: CommandItem[], extra: CommandItem[]): Comm
   return [...items, ...extra.filter((item) => !ids.has(item.id))];
 }
 
-export function paletteSearchItems(items: CommandItem[], commandsOnly: boolean) {
+export function paletteSearchItems(
+  items: CommandItem[],
+  commandsOnly: boolean,
+  objectsOnly = false,
+) {
+  if (objectsOnly) return items.filter((item) => item.kind === "object");
   return commandsOnly
     ? items.filter((item) => item.kind === "command" || item.kind === "setting")
     : items;

@@ -558,11 +558,9 @@ test.skipIf(!ENABLED)(
       page.getByRole("button", { name: "Weitere Ausführungsarten" }).click(),
     );
     expect(runClick).toBeLessThanOrEqual(Math.max(72, RATE * 18));
-    await page.getByRole("menuitem", { name: /Statement unter Cursor/ }).waitFor();
+    await page.getByRole("menuitem", { name: /Statement ausführen/ }).waitFor();
     await page.keyboard.press("Escape");
-    await page
-      .getByRole("menuitem", { name: /Statement unter Cursor/ })
-      .waitFor({ state: "hidden" });
+    await page.getByRole("menuitem", { name: /Statement ausführen/ }).waitFor({ state: "hidden" });
 
     const settingsClick = await measureClick("SQL-Anpassen", () =>
       page.getByRole("button", { name: "Anpassen" }).click(),
