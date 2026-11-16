@@ -18,10 +18,10 @@ use super::{
     CompileResult, ConstraintInfo, CreateMatviewRequest, CreatePolicyRequest,
     CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest, CreateTableRequest,
     DatabaseKind, DependencyInfo, DetailedColumnInfo, ERSchema, ExtensionInfo, ForeignKeyInfo,
-    FunctionInfo, InvalidCompileOutcome, InvalidObjectInfo, ObjectGrantInfo,
-    PackageMemberInfo, PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo, RolePrivileges,
-    SchedulerJobInfo, ScriptStatementResult, SequenceInfo, SourceMatch, SynonymInfo, TableData,
-    TableInfo, TriggerInfo,
+    FunctionInfo, InvalidCompileOutcome, InvalidObjectInfo, ObjectGrantInfo, PackageMemberInfo,
+    PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo,
+    ScriptStatementResult, SequenceInfo, SourceMatch, SynonymInfo, TableData, TableInfo,
+    TriggerInfo,
 };
 use super::{ObjectAuditInfo, ObjectDdlRequest};
 

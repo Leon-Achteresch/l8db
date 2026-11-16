@@ -150,6 +150,11 @@ export function featureAvailable(
   if (!capabilities) return false;
   if (entry.capability === "sql")
     return capabilities.query_language === "sql" && !capabilities.object_storage;
+  if (entry.capability === "import")
+    return (
+      capabilities.csv_import ||
+      (capabilities.query_language === "sql" && !capabilities.object_storage)
+    );
   return (capabilities as Capabilities)[entry.capability] === true;
 }
 

@@ -14,9 +14,9 @@ use super::{
 };
 
 fn visible(alias: &str) -> String {
-    ["sqlite_%", "_cf_%", "libsql_%"]
+    ["sqlite\\_%", "\\_cf\\_%", "libsql\\_%"]
         .iter()
-        .map(|p| format!("{alias}name NOT LIKE '{p}'"))
+        .map(|p| format!("{alias}name NOT LIKE '{p}' ESCAPE '\\'"))
         .collect::<Vec<_>>()
         .join(" AND ")
 }
@@ -462,9 +462,10 @@ impl SqliteHttpAdapter {
 
     async fn table_info(&self, table: &str) -> Result<Vec<DetailedColumnInfo>, String> {
         Ok(self
-            .rows(&format!("PRAGMA table_info({})", quote(table)))
+            .rows(&format!("PRAGMA table_xinfo({})", quote(table)))
             .await?
             .iter()
+            .filter(|r| r.get(6).and_then(|v| v.as_i64()) != Some(1))
             .map(|r| DetailedColumnInfo {
                 name: text(&r[1]),
                 data_type: text(&r[2]),
@@ -473,7 +474,11 @@ impl SqliteHttpAdapter {
                 is_primary_key: truthy(&r[5]),
                 ordinal_position: r[0].as_i64().unwrap_or(0) as i32 + 1,
                 character_maximum_length: None,
-                comment: None,
+                comment: match r.get(6).and_then(|v| v.as_i64()) {
+                    Some(2) => Some("Generiert (VIRTUAL)".to_string()),
+                    Some(3) => Some("Generiert (STORED)".to_string()),
+                    _ => None,
+                },
             })
             .collect())
     }
@@ -699,7 +704,7 @@ impl DatabaseAdapter for SqliteHttpAdapter {
                 .collect());
         }
         let joined = format!(
-            "SELECT m.name, p.name, p.type FROM sqlite_master m JOIN pragma_table_info(m.name) p WHERE m.type = '{kind}' AND {} ORDER BY m.name, p.cid",
+            "SELECT m.name, p.name, p.type FROM sqlite_master m JOIN pragma_table_xinfo(m.name) p WHERE m.type = '{kind}' AND p.hidden <> 1 AND {} ORDER BY m.name, p.cid",
             visible("m.")
         );
         match self.rows(&joined).await {
@@ -1024,6 +1029,34 @@ mod tests {
     use crate::db::http_api::mock;
 
     #[test]
+    fn system_prefixes_hide_only_real_system_tables() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        for name in [
+            "sqliteinfo",
+            "_cf_KV",
+            "xcf_a",
+            "libsqlx",
+            "libsql_wasm",
+            "shop",
+        ] {
+            conn.execute(&format!("CREATE TABLE \"{name}\" (a)"), [])
+                .unwrap();
+        }
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND {} ORDER BY name",
+                visible("")
+            ))
+            .unwrap();
+        let names: Vec<String> = stmt
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(names, ["libsqlx", "shop", "sqliteinfo", "xcf_a"]);
+    }
+
+    #[test]
     fn parses_d1_and_libsql_urls() {
         let d1 =
             SqliteHttpAdapter::new("d1://acc123:tok%2Fen@api.cloudflare.com/shop", None).unwrap();
@@ -1114,12 +1147,12 @@ mod tests {
             if sql.contains("broken") {
                 return (400, json!({"success": false, "errors": [{"code": 7500, "message": "near \"broken\": syntax error"}], "result": []}).to_string());
             }
-            if sql.starts_with("PRAGMA table_info") {
+            if sql.starts_with("PRAGMA table_xinfo") {
                 return (
                     200,
                     json!({"success": true, "errors": [], "result": [{"results": {
-                    "columns": ["cid", "name", "type", "notnull", "dflt_value", "pk"],
-                    "rows": [[0, "id", "INTEGER", 0, null, 1], [1, "name", "TEXT", 1, null, 0]]
+                    "columns": ["cid", "name", "type", "notnull", "dflt_value", "pk", "hidden"],
+                    "rows": [[0, "id", "INTEGER", 0, null, 1, 0], [1, "name", "TEXT", 1, null, 0, 0], [2, "shadow", "TEXT", 0, null, 0, 1]]
                 }, "success": true, "meta": {"changes": 0}}]})
                     .to_string(),
                 );

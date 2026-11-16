@@ -139,7 +139,8 @@ export function SessionRow({
           variant="ghost"
           size="sm"
           className="h-7 gap-1 px-2 text-[11px]"
-          disabled={acting}
+          disabled={acting || /^(idle|sleep)/i.test(session.state ?? "")}
+          disabledReason="Keine laufende Abfrage. Sperren löst nur „Beenden“."
           onClick={() => onCancel(session.pid)}
           title="Laufende Abfrage abbrechen (Verbindung bleibt)"
         >

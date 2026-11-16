@@ -19,6 +19,7 @@ export const DEFAULT_TERMS: Terms = {
   rows: "Zeilen",
   column: "Spalte",
   columns: "Spalten",
+  primary_key: "Primärschlüssel",
 };
 
 const NO_TEMPLATE: TableTemplate = {
@@ -102,6 +103,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   insert_sql: true,
   database_is_schema: false,
   query_language: "sql",
+  sort: "columns",
   query_label: "SQL",
   filter_hint: "z. B. status = 'active' AND created_at > '2024-01-01'",
   table_template: {
@@ -278,6 +280,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
         rows: "Dokumente",
         column: "Feld",
         columns: "Felder",
+        primary_key: "Primärschlüssel",
       },
     },
     driver_status: FALLBACK_DRIVER,

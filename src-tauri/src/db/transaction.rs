@@ -1710,6 +1710,124 @@ mod tests {
         }
     }
 
+    async fn binary_cells_survive_row_edits(
+        kind: DatabaseKind,
+        var: &str,
+        schema: &str,
+        binary_type: &str,
+        hex: &str,
+    ) {
+        let Ok(url) = std::env::var(var) else {
+            eprintln!("übersprungen: {var} fehlt");
+            return;
+        };
+        let pool = super::super::pool::create_pool_state();
+        let adapter =
+            super::super::create_adapter_from_string(kind, &url, None, pool.clone()).unwrap();
+        let _ = adapter.execute_query("DROP TABLE fixr_bin").await;
+        adapter
+            .execute_query(&format!(
+                "CREATE TABLE fixr_bin (id INT PRIMARY KEY, data {binary_type}, note VARCHAR(20))"
+            ))
+            .await
+            .unwrap();
+        let big: Vec<u8> = (0..12000u32).map(|i| (i % 251) as u8).collect();
+        let original = format!("\\x005c7841ff{}", &super::super::hex_blob(&big)[2..]);
+        let insert = binary_lit(kind, &original).unwrap_or_else(|| format!("'{original}'::bytea"));
+        adapter
+            .execute_query(&format!("INSERT INTO fixr_bin VALUES (1, {insert}, 'a')"))
+            .await
+            .unwrap();
+        let stored = |id: i32| {
+            let sql = format!(
+                "SELECT {} AS h FROM fixr_bin WHERE id = {id}",
+                hex.replace("{c}", "data")
+            );
+            let adapter = &adapter;
+            async move {
+                let rows = adapter.execute_query(&sql).await.unwrap().rows;
+                format!("\\x{}", rows[0]["h"].as_str().unwrap().to_ascii_lowercase())
+            }
+        };
+        assert_eq!(stored(1).await, original);
+        let rows = adapter
+            .fetch_rows(
+                schema,
+                "fixr_bin",
+                None,
+                10,
+                0,
+                Some("id"),
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap()
+            .rows;
+        let shown = rows[0]["data"].as_str().unwrap().to_string();
+        assert_eq!(shown, original, "{kind:?} zeigt den Binärwert anders an");
+        let mut ctid = rows[0]["__ctid__"].as_str().unwrap().to_string();
+        let tx = create_transaction_state();
+        for updates in [
+            HashMap::from([("note".to_string(), Some("b".to_string()))]),
+            HashMap::from([("data".to_string(), Some(shown.clone()))]),
+        ] {
+            let id = tx.begin(kind, &url, None, &pool).await.unwrap();
+            ctid = tx
+                .update_row(&id, schema, "fixr_bin", &ctid, &updates)
+                .await
+                .unwrap();
+            tx.commit(&id).await.unwrap();
+            assert_eq!(stored(1).await, original, "{kind:?}");
+        }
+        let id = tx.begin(kind, &url, None, &pool).await.unwrap();
+        let values = HashMap::from([
+            ("id".to_string(), Some("2".to_string())),
+            ("data".to_string(), Some(shown.clone())),
+        ]);
+        tx.insert_row(&id, schema, "fixr_bin", &values)
+            .await
+            .unwrap();
+        let updates = HashMap::from([("data".to_string(), Some("\\x0102ff".to_string()))]);
+        tx.update_row(&id, schema, "fixr_bin", &ctid, &updates)
+            .await
+            .unwrap();
+        tx.commit(&id).await.unwrap();
+        assert_eq!(stored(2).await, original, "{kind:?}");
+        assert_eq!(stored(1).await, "\\x0102ff", "{kind:?}");
+        adapter.execute_query("DROP TABLE fixr_bin").await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn binary_cells_survive_row_edits_on_labs() {
+        binary_cells_survive_row_edits(
+            DatabaseKind::Mysql,
+            "L8DB_SMOKE_MYSQL_URL",
+            &std::env::var("L8DB_SMOKE_MYSQL_SCHEMA").unwrap_or_else(|_| "fixr".into()),
+            "LONGBLOB",
+            "HEX({c})",
+        )
+        .await;
+        binary_cells_survive_row_edits(
+            DatabaseKind::Mssql,
+            "L8DB_SMOKE_MSSQL_URL",
+            "dbo",
+            "VARBINARY(MAX)",
+            "CONVERT(VARCHAR(MAX), {c}, 2)",
+        )
+        .await;
+        binary_cells_survive_row_edits(
+            DatabaseKind::Postgres,
+            "L8DB_E2E_PG_URL",
+            "public",
+            "BYTEA",
+            "encode({c}, 'hex')",
+        )
+        .await;
+    }
+
     #[tokio::test]
     #[ignore]
     async fn mssql_transaction_roundtrip() {

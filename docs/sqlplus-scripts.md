@@ -1,6 +1,6 @@
 # SQL*Plus scripts
 
-"Skript mit Einzelergebnissen" (and running several Oracle statements at once) executes Oracle scripts with SQL*Plus semantics. The runner is `runSqlScript` in `src/lib/script-runner.ts`; commands are parsed in `src/lib/sql-statements/sqlplus.ts`, feedback and the transcript come from `src/lib/sqlplus-output.ts`, bind variables run through the Tauri command `execute_with_binds` (`src-tauri/src/db/oracle.rs`).
+"Alle Statements ausführen" (and running several Oracle statements at once) executes Oracle scripts with SQL*Plus semantics. The runner is `runSqlScript` in `src/lib/script-runner.ts`; commands are parsed in `src/lib/sql-statements/sqlplus.ts`, feedback and the transcript come from `src/lib/sqlplus-output.ts`, bind variables run through the Tauri command `execute_with_binds` (`src-tauri/src/db/oracle.rs`).
 
 ## Session and transactions
 

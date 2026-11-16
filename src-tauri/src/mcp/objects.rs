@@ -114,11 +114,12 @@ fn relations_sql(kind: DatabaseKind, schemas: &[String], allowlist: &[String]) -
             let owners = oracle_owners(schemas)?;
             format!(
                 "SELECT * FROM (SELECT owner AS a, table_name AS b, 'TABLE' AS c, num_rows AS d, blocks * 8192 AS e, \
-                 (SELECT comments FROM all_tab_comments m WHERE m.owner = t.owner AND m.table_name = t.table_name) AS f \
-                 FROM all_tables t WHERE owner IN ({owners}) \
+                 (SELECT comments FROM all_tab_comments m WHERE m.owner = all_tables.owner AND m.table_name = all_tables.table_name) AS f \
+                 FROM all_tables WHERE owner IN ({owners}) AND {} \
                  UNION ALL SELECT owner, view_name, 'VIEW', NULL, NULL, NULL FROM all_views WHERE owner IN ({owners}) \
                  UNION ALL SELECT owner, mview_name, 'MVIEW', NULL, NULL, NULL FROM all_mviews WHERE owner IN ({owners})) \
-                 WHERE ROWNUM <= {MAX_RELATIONS}"
+                 WHERE ROWNUM <= {MAX_RELATIONS}",
+                crate::db::oracle::USER_TABLES
             )
         }
         DatabaseKind::Clickhouse => format!(
@@ -127,7 +128,7 @@ fn relations_sql(kind: DatabaseKind, schemas: &[String], allowlist: &[String]) -
             within("database", allowlist)
         ),
         DatabaseKind::Sqlite => "SELECT 'main' AS a, name AS b, type AS c, NULL AS d, NULL AS e, NULL AS f FROM sqlite_master \
-             WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY 2"
+             WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY 2"
             .to_string(),
         DatabaseKind::Duckdb => "SELECT schema_name AS a, table_name AS b, 'table' AS c, estimated_size AS d, NULL AS e, comment AS f FROM duckdb_tables() WHERE NOT internal \
              UNION ALL SELECT schema_name, view_name, 'view', NULL, NULL, comment FROM duckdb_views() WHERE NOT internal ORDER BY 1, 2"
@@ -1182,6 +1183,22 @@ mod tests {
     use super::*;
     use crate::db::DatabaseKind;
 
+    #[test]
+    fn non_sql_dialects_build_no_catalog_sql() {
+        for kind in [
+            DatabaseKind::Cassandra,
+            DatabaseKind::Elasticsearch,
+            DatabaseKind::Influxdb,
+            DatabaseKind::Dynamodb,
+        ] {
+            assert!(
+                relations_sql(kind, &["s".into()], &[]).is_none(),
+                "{kind:?}"
+            );
+            assert!(own_segments_sql(kind, "s").is_none(), "{kind:?}");
+        }
+    }
+
     fn names() -> Names {
         let entry = |schema: &str, name: &str| (schema.to_string(), name.to_string());
         Names {
@@ -2208,7 +2225,10 @@ mod tests {
         );
         println!("overview ({} queries):\n{text}", calls() - before);
         assert!(
-            !error && text.contains(&db) && text.contains("3 tables in 1 schemas"),
+            !error
+                && text.contains(&db)
+                && text.contains("2 tables in 1 schemas")
+                && text.contains("1 materialized views"),
             "{text}"
         );
         assert!(

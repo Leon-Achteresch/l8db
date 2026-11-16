@@ -1,5 +1,6 @@
 use super::run::{
-    address, read_only, read_timeout, rollback_note, split_table, statements, writes,
+    address, allow_write, changed, read_only, read_timeout, rollback_note, split_table,
+    statement_lines, statements, writes, Approval,
 };
 use super::*;
 use crate::db::DatabaseKind;
@@ -533,6 +534,36 @@ fn open_transactions_and_rollback_notes_follow_each_family() {
 }
 
 #[test]
+fn changed_uses_the_family_terms() {
+    let result = |n| crate::db::QueryResult {
+        columns: Vec::new(),
+        rows: Vec::new(),
+        rows_affected: Some(n),
+        execution_time_ms: 0,
+        truncated: false,
+    };
+    assert_eq!(
+        changed(DatabaseKind::Postgres, &result(1)),
+        "1 Zeile geändert"
+    );
+    assert_eq!(
+        changed(DatabaseKind::Mongodb, &result(3)),
+        "3 Dokumente geändert"
+    );
+    assert_eq!(
+        changed(DatabaseKind::Influxdb, &result(2)),
+        "2 Punkte geschrieben"
+    );
+}
+
+#[test]
+fn repeated_statements_get_their_own_line() {
+    let sql = "select 1;\nselect 1;\n\nselect 1;";
+    let parts = statements(DatabaseKind::Postgres, sql).unwrap();
+    assert_eq!(statement_lines(sql, &parts), vec![0, 1, 3]);
+}
+
+#[test]
 fn rollback_note_names_statements_that_ddl_already_committed() {
     let ran = |sql: &[&str]| sql.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     let mid = ran(&[
@@ -633,6 +664,26 @@ fn sql_starting_with_a_comment_is_not_an_option() {
     assert!(<super::Cli as clap::FromArgMatches>::from_arg_matches(&matches).is_ok());
 }
 
+#[tokio::test]
+async fn read_only_flag_names_itself_on_saved_connections() {
+    let target = |read_only, read_only_flag| connect::Target {
+        id: "c1".into(),
+        name: "Prod".into(),
+        kind: DatabaseKind::Postgres,
+        read_only,
+        read_only_flag,
+        production: false,
+    };
+    let flagged = allow_write(&target(true, true), &Approval::Flag(true))
+        .await
+        .unwrap_err();
+    assert!(flagged.starts_with("--read-only"), "{flagged}");
+    let saved = allow_write(&target(true, false), &Approval::Flag(true))
+        .await
+        .unwrap_err();
+    assert!(saved.contains("nur in der App"), "{saved}");
+}
+
 #[test]
 fn read_only_flag_protects_ad_hoc_urls() {
     let flagged = parse("l8db --url postgres://u@h/db --read-only query \"select 1\"").unwrap();
@@ -641,7 +692,9 @@ fn read_only_flag_protects_ad_hoc_urls() {
     assert!(read_only(&flagged.global, url()).target().read_only);
     assert!(!read_only(&plain.global, url()).target().read_only);
     assert_eq!(
-        read_timeout("Query-Timeout nach 300 Sekunden. Der Serverabschluss ist nicht bestätigt; vor erneutem Schreiben den Zustand prüfen.".into()),
+        read_timeout(
+            "Query-Timeout nach 300 Sekunden. Der Serverabschluss ist nicht bestätigt.".into()
+        ),
         "Query-Timeout nach 300 Sekunden. Es wurde nur gelesen; Filter enger setzen."
     );
     assert_eq!(read_timeout("anderer Fehler".into()), "anderer Fehler");

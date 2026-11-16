@@ -21,7 +21,8 @@ export type FeatureCapability =
   | {
       [K in keyof Capabilities]: Capabilities[K] extends boolean ? K : never;
     }[keyof Capabilities]
-  | "sql";
+  | "sql"
+  | "import";
 
 export interface GuideStep {
   anchor: string;

@@ -11,6 +11,7 @@ pub struct Target {
     pub name: String,
     pub kind: DatabaseKind,
     pub read_only: bool,
+    pub read_only_flag: bool,
     pub production: bool,
 }
 
@@ -21,6 +22,7 @@ impl Target {
             name: connection.name.clone(),
             kind: connection.kind,
             read_only: connection.read_only || connection.production_locked,
+            read_only_flag: false,
             production: connection.environment.as_deref() == Some("production"),
         }
     }
@@ -85,7 +87,9 @@ pub fn detect_kind(url: &str) -> Result<DatabaseKind, String> {
         };
     }
     let lower = db::sqlite::strip_params(url).to_ascii_lowercase();
-    if lower.starts_with("duckdb:") {
+    if lower.starts_with("jdbc:") {
+        Ok(DatabaseKind::Jdbc)
+    } else if lower.starts_with("duckdb:") {
         Ok(DatabaseKind::Duckdb)
     } else if lower.starts_with("sqlite:") {
         Ok(DatabaseKind::Sqlite)
@@ -132,6 +136,7 @@ pub fn ad_hoc(url: &str) -> Result<Source, String> {
             name: "--url".into(),
             kind,
             read_only: false,
+            read_only_flag: false,
             production: false,
         },
     })

@@ -173,7 +173,7 @@ test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
       if ((await page.evaluate(() => window.testRuns.length)) !== 2)
         throw Error("Old run shortcut still active");
       await page.getByRole("button", { name: "Weitere Ausführungsarten", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Skript mit Einzelergebnissen" }).click();
+      await page.getByRole("menuitem", { name: "Alle Statements ausführen" }).click();
       await page.getByLabel("Skript-Transaktion").click();
       await page.getByRole("option", { name: "Autocommit", exact: true }).click();
       await page.getByRole("button", { name: "Skript ausführen", exact: true }).click();

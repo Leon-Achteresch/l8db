@@ -82,9 +82,19 @@ function Button({
       data-variant={variant}
       data-size={size}
       className={cn(buttonVariants({ variant, size, className }))}
+      title={iconTitle(size, props)}
       {...props}
     />
   );
+}
+
+function iconTitle(
+  size: VariantProps<typeof buttonVariants>["size"],
+  props: React.ComponentProps<"button"> & { "data-state"?: string },
+): string | undefined {
+  if (!size?.startsWith("icon")) return undefined;
+  if (props["data-state"] && !props["aria-haspopup"]) return undefined;
+  return props["aria-label"];
 }
 
 export { Button, buttonVariants };

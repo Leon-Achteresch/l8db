@@ -412,6 +412,7 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
     area: "Daten & Tabellen",
     keywords: ["import", "csv", "laden", "hochladen", "einlesen", "skript"],
     route: "/import",
+    capability: "import",
     related: ["transfer", "connections.file-open"],
   },
   {
@@ -421,6 +422,7 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
     area: "Daten & Tabellen",
     keywords: ["transfer", "kopieren", "migrieren", "übertragen", "zwischen datenbanken", "umzug"],
     route: "/transfer",
+    capability: "table_copy",
     anchor: "transfer.start",
     size: "major",
     related: ["table.copy", "backup", "schema-compare"],

@@ -286,10 +286,9 @@ fn rows_for(columns: &[String], items: &[Item]) -> Vec<Value> {
         .map(|item| {
             let mut row = Map::with_capacity(columns.len());
             for column in columns {
-                row.insert(
-                    column.clone(),
-                    item.get(column).map(attr_to_json).unwrap_or(Value::Null),
-                );
+                if let Some(value) = item.get(column) {
+                    row.insert(column.clone(), attr_to_json(value));
+                }
             }
             Value::Object(row)
         })
@@ -967,6 +966,11 @@ impl DatabaseAdapter for DynamoAdapter {
         allow_raw_filter: bool,
     ) -> Result<i64, String> {
         let where_sql = where_clause(filter, allow_raw_filter)?;
+        super::server_output::emit(super::server_output::ServerMessage {
+            level: "INFO".into(),
+            message: "Zählen liest die ganze Tabelle per Scan und verbraucht Lesekapazität.".into(),
+            detail: None,
+        });
         timed(self.count(table, &where_sql, None))
             .await
             .map_err(|e| self.friendly(e, &where_sql))
@@ -1742,7 +1746,7 @@ mod tests {
         let columns = ordered_columns(&["pk".to_string()], &items);
         assert_eq!(columns, vec!["pk", "a", "z"]);
         let rows = rows_for(&columns, &items);
-        assert_eq!(rows[0]["a"], Value::Null);
+        assert!(rows[0].get("a").is_none());
     }
 
     #[tokio::test]

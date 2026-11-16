@@ -156,8 +156,7 @@ fn block_on(global: &Global, command: Command) -> i32 {
     let job = format!("cli-{}", std::process::id());
     db::mongodb::track_clients();
     let code = runtime.block_on(async {
-        let work = execute(global, command, &job);
-        tokio::pin!(work);
+        let mut work = Box::pin(execute(global, command, &job));
         let code = tokio::select! {
             result = &mut work => match result {
                 Ok(()) => 0,
@@ -178,6 +177,7 @@ fn block_on(global: &Global, command: Command) -> i32 {
                 CANCELLED
             }
         };
+        drop(work);
         db::mongodb::close_clients().await;
         code
     });
@@ -295,7 +295,10 @@ pub(super) fn read_only(global: &Global, mut source: Source) -> Source {
     let env = std::env::var("L8DB_READ_ONLY").is_ok_and(|v| matches!(v.trim(), "1" | "true"));
     if global.read_only || env {
         match &mut source {
-            Source::Saved(target) | Source::Url { target, .. } => target.read_only = true,
+            Source::Saved(target) | Source::Url { target, .. } => {
+                target.read_only = true;
+                target.read_only_flag = true;
+            }
         }
     }
     source
@@ -345,12 +348,12 @@ async fn execute(global: &Global, command: Command, job: &str) -> Result<(), Str
             ConnCommand::Test { name } => {
                 let started = Instant::now();
                 let session = session(global, name.as_deref()).await?;
-                guarded(
+                noted(guarded(
                     job,
                     session.target.kind,
                     30,
                     session.adapter.test_connection(),
-                )
+                ))
                 .await?;
                 let via = match session.via.label() {
                     "direkt" => String::new(),
@@ -922,7 +925,7 @@ async fn table(
         } => {
             let order_by = order_by.map(unquoted_column);
             let Relation { schema, name, view } = locate(session, &table, job).await?;
-            let data = guarded(
+            let data = noted(guarded(
                 job,
                 kind,
                 300,
@@ -937,7 +940,7 @@ async fn table(
                     view,
                     false,
                 ),
-            )
+            ))
             .await
             .map_err(read_timeout)?;
             if let Some(column) = order_by.filter(|c| {
@@ -966,12 +969,12 @@ async fn table(
         }
         TableCommand::Count { table, filter } => {
             let Relation { schema, name, .. } = locate(session, &table, job).await?;
-            let count = guarded(
+            let count = noted(guarded(
                 job,
                 kind,
                 300,
                 adapter.count_rows(&schema, &name, filter.as_deref(), false),
-            )
+            ))
             .await
             .map_err(read_timeout)?;
             influx_range_note(session);
@@ -986,6 +989,17 @@ async fn table(
             }
         }
     }
+}
+
+async fn noted<T>(
+    future: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    let sink = db::server_output::Messages::default();
+    let result = db::server_output::capture(sink.clone(), future).await;
+    for message in sink.take() {
+        eprintln!("Hinweis: {}", message.message);
+    }
+    result
 }
 
 async fn blocking<T: Send + 'static>(
@@ -1180,23 +1194,31 @@ pub(super) async fn prepare(
     if writing {
         allow_write(target, &approval).await?;
     }
-    let mut from = 0;
-    let lines = parts
-        .iter()
-        .map(|part| match sql[from..].find(part.trim_end_matches(';')) {
-            Some(at) => {
-                from += at;
-                sql[..from].matches('\n').count()
-            }
-            None => 0,
-        })
-        .collect();
+    let lines = statement_lines(sql, &parts);
     Ok(Prepared {
         parts,
         lines,
         writing,
         approval,
     })
+}
+
+pub(super) fn statement_lines(sql: &str, parts: &[String]) -> Vec<usize> {
+    let mut from = 0;
+    parts
+        .iter()
+        .map(|part| {
+            let needle = part.trim_end_matches(';');
+            match sql[from..].find(needle) {
+                Some(at) => {
+                    let start = from + at;
+                    from = start + needle.len();
+                    sql[..start].matches('\n').count()
+                }
+                None => 0,
+            }
+        })
+        .collect()
 }
 
 pub(super) fn script_line(error: String, offset: usize) -> String {
@@ -1270,7 +1292,15 @@ async fn query(
                 {
                     result.rows = rows;
                 }
-                print_result(out, format, &result, args.limit, started, script)
+                print_result(
+                    out,
+                    session.target.kind,
+                    format,
+                    &result,
+                    args.limit,
+                    started,
+                    script,
+                )
             }
             Step::Note(note) => {
                 eprintln!("{note}");
@@ -1291,7 +1321,11 @@ pub(super) async fn run_prepared(
 ) -> Result<(), String> {
     if matches!(
         session.target.kind,
-        DatabaseKind::Postgres | DatabaseKind::Mysql | DatabaseKind::Mssql
+        DatabaseKind::Postgres
+            | DatabaseKind::Mysql
+            | DatabaseKind::Mssql
+            | DatabaseKind::Athena
+            | DatabaseKind::Bigquery
     ) && db::server_output::sink().is_none()
     {
         return db::server_output::capture(
@@ -1346,6 +1380,16 @@ pub(super) async fn run_prepared(
         let _ = session.adapter.set_server_output(true).await;
     }
     for (index, statement) in parts.iter().enumerate() {
+        if kind == DatabaseKind::Postgres
+            && transaction.is_some()
+            && control(kind, statement) == Some(Control::Open)
+            && parts[..index].iter().all(|p| control(kind, p).is_none())
+        {
+            emit(Step::Note(
+                "BEGIN übersprungen: das Skript läuft schon in einer Transaktion.".into(),
+            ))?;
+            continue;
+        }
         let started = Instant::now();
         let result = match transaction.as_mut() {
             Some(tx) => guarded(job, kind, timeout, limited(limit, tx.execute(statement))).await,
@@ -1427,15 +1471,13 @@ pub(super) async fn run_prepared(
                 rollback_note(kind, parts, false)
             ));
         }
-        let rolled_back = level.is_none()
-            && parts.iter().filter_map(|p| control(kind, p)).last() == Some(Control::Close);
+        let last = parts.iter().filter_map(|p| control(kind, p)).last();
+        let rolled_back = level.is_none() && last == Some(Control::Close);
         if level == Some(0) || rolled_back {
             if rolled_back {
                 let _ = tx.commit().await;
             }
-            return emit(Step::Note(
-                "Achtung: ROLLBACK im Skript hat alles davor verworfen; Anweisungen danach sind einzeln festgeschrieben.".into(),
-            ));
+            return emit(Step::Note(script_end_note(level, last).into()));
         }
         tx.commit().await?;
         emit(Step::Note(format!(
@@ -1514,8 +1556,8 @@ pub(super) fn postgres_json(data_type: &str, value: Value) -> Value {
     }
 }
 
-async fn allow_write(target: &Target, approval: &Approval) -> Result<(), String> {
-    if target.read_only && target.id.is_empty() {
+pub(super) async fn allow_write(target: &Target, approval: &Approval) -> Result<(), String> {
+    if target.read_only && (target.id.is_empty() || target.read_only_flag) {
         return Err("--read-only: die Anweisung würde schreiben.".into());
     }
     if target.read_only {
@@ -1562,6 +1604,14 @@ fn control(kind: DatabaseKind, statement: &str) -> Option<Control> {
         (_, "rollback") if second == "to" => None,
         (_, "rollback" | "abort") => Some(Control::Close),
         _ => None,
+    }
+}
+
+fn script_end_note(level: Option<i64>, last: Option<Control>) -> &'static str {
+    if level == Some(0) && last == Some(Control::Commit) {
+        "Achtung: COMMIT im Skript hat die Transaktion beendet; Anweisungen danach sind einzeln festgeschrieben."
+    } else {
+        "Achtung: ROLLBACK im Skript hat alles davor verworfen; Anweisungen danach sind einzeln festgeschrieben."
     }
 }
 
@@ -1724,16 +1774,23 @@ where
     }
 }
 
-pub(super) fn changed(result: &QueryResult) -> String {
+pub(super) fn changed(kind: DatabaseKind, result: &QueryResult) -> String {
+    let terms = kind.capabilities().terms;
+    let verb = if kind == DatabaseKind::Influxdb {
+        "geschrieben"
+    } else {
+        "geändert"
+    };
     match result.rows_affected {
-        Some(1) => "1 Zeile geändert".to_string(),
-        Some(rows) => format!("{rows} Zeilen geändert"),
+        Some(1) => format!("1 {} {verb}", terms.row),
+        Some(rows) => format!("{rows} {} {verb}", terms.rows),
         None => "OK".to_string(),
     }
 }
 
 fn print_result(
     out: &mut impl Write,
+    kind: DatabaseKind,
     format: Format,
     result: &QueryResult,
     limit: Limit,
@@ -1742,7 +1799,7 @@ fn print_result(
 ) -> Result<(), String> {
     let elapsed = started.elapsed().as_millis();
     if result.columns.is_empty() {
-        eprintln!("✓ {} ({elapsed} ms)", changed(result));
+        eprintln!("✓ {} ({elapsed} ms)", changed(kind, result));
         return Ok(());
     }
     write(output::write_rows(

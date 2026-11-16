@@ -51,6 +51,7 @@ type Props = Pick<
   | "filter"
   | "filterRaw"
   | "sorting"
+  | "sortableColumns"
   | "setSorting"
   | "revealColumn"
   | "setPage"
@@ -96,6 +97,7 @@ export function TableDataContent({
   filterRaw,
   sorting,
   setSorting,
+  sortableColumns,
   revealColumn,
   setPage,
   addRowSignal,
@@ -220,7 +222,7 @@ export function TableDataContent({
             data={tableRows}
             emptyMessage={emptyMessage}
             sorting={sorting}
-            sortableColumns={redis ? REDIS_KEY_COLUMNS : undefined}
+            sortableColumns={redis ? REDIS_KEY_COLUMNS : sortableColumns}
             onSortingChange={handleSortingChange}
             isFetching={isFetching}
             onSaveRow={

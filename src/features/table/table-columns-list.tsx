@@ -41,8 +41,8 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
   const constraints = supports(connection, "constraints");
   const terms = capabilitiesFor(connection?.kind).terms;
   const filters = useMemo(
-    () => columnFilterCounts(columns ?? [], constraints),
-    [columns, constraints],
+    () => columnFilterCounts(columns ?? [], constraints, terms.primary_key),
+    [columns, constraints, terms.primary_key],
   );
   const canEdit = editable && !!connection && supports(connection, "alter_columns");
 
@@ -141,8 +141,8 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
             <div className="grid grid-cols-[minmax(190px,1.5fr)_minmax(145px,1fr)_90px_minmax(180px,1.3fr)_4rem] gap-3 px-3 py-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
               <span>{terms.column}</span>
               <span>Datentyp</span>
-              <span>NULL</span>
-              <span>Standardwert</span>
+              <span>{constraints ? "NULL" : ""}</span>
+              <span>{constraints ? "Standardwert" : ""}</span>
               <span />
             </div>
             <motion.div

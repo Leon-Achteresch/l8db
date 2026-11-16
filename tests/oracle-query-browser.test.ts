@@ -175,7 +175,7 @@ test.skipIf(!enabled)(
         "DEFINE wanted = 42\nPROMPT Suche &wanted\nSELECT id, txt FROM ui_big WHERE id = &wanted;\nDESCRIBE ui_big\nWHENEVER SQLERROR EXIT\nSELECT * FROM uia_missing_table;\nSELECT 'nie' FROM dual;",
       );
       await page.getByRole("button", { name: "Weitere Ausführungsarten" }).click();
-      await page.getByRole("menuitem", { name: "Skript mit Einzelergebnissen" }).click();
+      await page.getByRole("menuitem", { name: "Alle Statements ausführen" }).click();
       await page.getByText("7 Statements werden nacheinander", { exact: false }).waitFor();
       await page.getByRole("button", { name: "Skript ausführen", exact: true }).click();
       await page.getByText("5/7 erfolgreich · 1 fehlgeschlagen", { exact: true }).waitFor();
