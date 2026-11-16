@@ -18,7 +18,69 @@ pub fn split_postgres(sql: &str) -> Vec<String> {
 }
 
 pub fn split_mssql(sql: &str) -> Vec<String> {
-    split_dialect(sql, Dialect::Mssql)
+    mssql_batches(sql)
+}
+
+pub fn mssql_batches(sql: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for batch in split_inner(sql, Dialect::Mssql, true).0 {
+        let (statements, spans) = split_inner(&batch, Dialect::Mssql, false);
+        let mut run: Vec<usize> = Vec::new();
+        let flush = |run: &mut Vec<usize>, out: &mut Vec<String>| {
+            match run.as_slice() {
+                [] => {}
+                [one] => out.push(terminated(&statements[*one])),
+                [first, .., last] if run.iter().any(|i| needs_batch(&statements[*i])) => {
+                    out.push(terminated(&batch[spans[*first].0..spans[*last].1]))
+                }
+                _ => out.extend(run.iter().map(|i| terminated(&statements[*i]))),
+            }
+            run.clear();
+        };
+        for (index, statement) in statements.iter().enumerate() {
+            if super::mssql::starts_batch(statement) {
+                flush(&mut run, &mut out);
+                out.push(statement.clone());
+            } else {
+                run.push(index);
+            }
+        }
+        flush(&mut run, &mut out);
+    }
+    out
+}
+
+fn terminated(statement: &str) -> String {
+    if super::mssql::code_words(statement)
+        .iter()
+        .any(|w| w == "MERGE")
+    {
+        format!("{statement};")
+    } else {
+        statement.to_string()
+    }
+}
+
+fn needs_batch(statement: &str) -> bool {
+    let words = super::mssql::code_words(statement);
+    let first = words.first().map(String::as_str);
+    words
+        .iter()
+        .enumerate()
+        .any(|(i, word)| match word.as_str() {
+            w if w.starts_with('@') => !w.starts_with("@@"),
+            "DECLARE" | "WHILE" | "GOTO" | "RETURN" | "BREAK" | "CONTINUE" | "TRY" | "CATCH" => {
+                true
+            }
+            "IF" => first != Some("DROP"),
+            "BEGIN" => !words.get(i + 1).is_some_and(|next| {
+                matches!(
+                    next.as_str(),
+                    "TRAN" | "TRANSACTION" | "DISTRIBUTED" | "DIALOG" | "CONVERSATION"
+                )
+            }),
+            _ => false,
+        })
 }
 
 pub fn split_for(kind: DatabaseKind, sql: &str) -> Vec<String> {
@@ -27,7 +89,8 @@ pub fn split_for(kind: DatabaseKind, sql: &str) -> Vec<String> {
         match kind {
             DatabaseKind::Postgres => Dialect::Postgres,
             DatabaseKind::Mysql => Dialect::Mysql,
-            DatabaseKind::Mssql => Dialect::Mssql,
+            DatabaseKind::Mssql => return mssql_batches(sql),
+            DatabaseKind::Cassandra => return super::cassandra::split_script(sql),
             DatabaseKind::Sqlite | DatabaseKind::SqliteHttp | DatabaseKind::Duckdb => {
                 Dialect::Standard
             }
@@ -94,6 +157,7 @@ fn read_word(bytes: &[u8], from: usize) -> usize {
 struct Splitter<'a> {
     sql: &'a str,
     out: Vec<String>,
+    spans: Vec<(usize, usize)>,
     start: Option<usize>,
     code: bool,
     batch: bool,
@@ -104,8 +168,11 @@ struct Splitter<'a> {
 impl Splitter<'_> {
     fn flush(&mut self, end: usize) {
         if let Some(start) = self.start.filter(|_| self.code) {
-            let text = self.sql[start..end].trim();
+            let raw = &self.sql[start..end];
+            let text = raw.trim();
             if !text.is_empty() {
+                let from = start + raw.len() - raw.trim_start().len();
+                self.spans.push((from, from + text.len()));
                 self.out.push(text.to_string());
             }
         }
@@ -118,12 +185,17 @@ impl Splitter<'_> {
 }
 
 pub fn split_dialect(sql: &str, dialect: Dialect) -> Vec<String> {
+    split_inner(sql, dialect, false).0
+}
+
+fn split_inner(sql: &str, dialect: Dialect, go_only: bool) -> (Vec<String>, Vec<(usize, usize)>) {
     let bytes = sql.as_bytes();
     let mysql = dialect == Dialect::Mysql;
     let delimiters = mysql || dialect == Dialect::Lenient;
     let mut s = Splitter {
         sql,
         out: Vec::new(),
+        spans: Vec::new(),
         start: None,
         code: false,
         batch: false,
@@ -184,8 +256,10 @@ pub fn split_dialect(sql: &str, dialect: Dialect) -> Vec<String> {
                         .unwrap_or(1)
                         .clamp(1, MAX_GO_REPEAT);
                     let batch = s.out[go_from..].to_vec();
+                    let spans = s.spans[go_from..].to_vec();
                     for _ in 1..repeat {
                         s.out.extend(batch.iter().cloned());
+                        s.spans.extend(spans.iter().copied());
                     }
                     go_from = s.out.len();
                     i = end;
@@ -310,7 +384,7 @@ pub fn split_dialect(sql: &str, dialect: Dialect) -> Vec<String> {
         }
         if c == b';' {
             i += 1;
-            if !s.batch && s.depth == 0 && delimiter == ";" {
+            if !go_only && !s.batch && s.depth == 0 && delimiter == ";" {
                 s.flush(i - 1);
             }
             continue;
@@ -319,7 +393,7 @@ pub fn split_dialect(sql: &str, dialect: Dialect) -> Vec<String> {
         i += 1;
     }
     s.flush(bytes.len());
-    s.out
+    (s.out, s.spans)
 }
 
 #[cfg(test)]
@@ -424,6 +498,57 @@ pub(crate) mod tests {
         assert_eq!(
             split_mssql("SELECT 0\nGO\nSELECT 1;\nSELECT 2\nGO 2 -- zweimal\nSELECT 3"),
             vec!["SELECT 0", "SELECT 1", "SELECT 2", "SELECT 1", "SELECT 2", "SELECT 3"]
+        );
+    }
+
+    #[test]
+    fn mssql_keeps_batch_scope_together_and_splits_plain_statements() {
+        assert_eq!(
+            split_mssql("DECLARE @x INT = 5; SELECT @x AS v;"),
+            vec!["DECLARE @x INT = 5; SELECT @x AS v"]
+        );
+        assert_eq!(
+            split_mssql("SELECT 1 AS a; SELECT @@VERSION;\nGO\nDECLARE @o INT; SELECT @o"),
+            vec![
+                "SELECT 1 AS a",
+                "SELECT @@VERSION",
+                "DECLARE @o INT; SELECT @o"
+            ]
+        );
+        assert_eq!(
+            split_mssql("SELECT 1; CREATE VIEW v AS SELECT 1; DECLARE @x INT; SELECT @x"),
+            vec![
+                "SELECT 1",
+                "CREATE VIEW v AS SELECT 1",
+                "DECLARE @x INT; SELECT @x"
+            ]
+        );
+        assert_eq!(
+            split_mssql("BEGIN TRAN; INSERT INTO t VALUES (1); DROP TABLE IF EXISTS x"),
+            vec![
+                "BEGIN TRAN",
+                "INSERT INTO t VALUES (1)",
+                "DROP TABLE IF EXISTS x"
+            ]
+        );
+        assert_eq!(
+            split_mssql("IF 1 = 1 BEGIN SELECT 1; SELECT 2; END; SELECT 'DECLARE @y'"),
+            vec!["IF 1 = 1 BEGIN SELECT 1; SELECT 2; END; SELECT 'DECLARE @y'"]
+        );
+        assert_eq!(
+            split_mssql("MERGE t USING s ON t.a = s.a WHEN MATCHED THEN DELETE; SELECT 1"),
+            vec![
+                "MERGE t USING s ON t.a = s.a WHEN MATCHED THEN DELETE;",
+                "SELECT 1"
+            ]
+        );
+        assert_eq!(
+            super::split_for(
+                super::DatabaseKind::Mssql,
+                "SELECT CASE WHEN 1 = 1 THEN 1 ELSE 2 END; SELECT TRY_CAST('1' AS INT)"
+            )
+            .len(),
+            2
         );
     }
 

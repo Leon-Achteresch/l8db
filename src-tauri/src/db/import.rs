@@ -1094,7 +1094,11 @@ impl BatchWriter {
 
     async fn locate(&mut self, rows: &[Vec<String>]) -> Option<usize> {
         let (_, rollback) = self.plan.dialect.savepoint()?;
-        self.session.execute(rollback).await.ok()?;
+        if self.session.execute(rollback).await.is_err() {
+            let probe = (self.plan.dialect == Dialect::Mssql)
+                .then_some("IF @@TRANCOUNT = 0 BEGIN TRANSACTION")?;
+            self.session.execute(probe).await.ok()?;
+        }
         for (index, row) in rows.iter().enumerate() {
             if self
                 .session

@@ -311,9 +311,10 @@ impl TypeInfo {
                     | VarLenType::BigVarChar
                     | VarLenType::BigBinary
                     | VarLenType::BigVarBin => src.read_u16_le().await? as usize,
-                    VarLenType::Image | VarLenType::Text | VarLenType::NText => {
-                        src.read_u32_le().await? as usize
-                    }
+                    VarLenType::Image
+                    | VarLenType::Text
+                    | VarLenType::NText
+                    | VarLenType::SSVariant => src.read_u32_le().await? as usize,
                     _ => todo!("not yet implemented for {:?}", ty),
                 };
 

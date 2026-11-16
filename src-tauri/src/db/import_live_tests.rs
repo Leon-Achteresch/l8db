@@ -37,6 +37,14 @@ fn targets(sqlite: &str) -> Vec<Target> {
             ddl: "CREATE TABLE ie_items (id int PRIMARY KEY, name varchar(50) NOT NULL, amount decimal(10,2), flag tinyint(1), created datetime)",
         });
     }
+    if let Ok(url) = std::env::var("L8DB_IE_MSSQL_URL") {
+        targets.push(Target {
+            kind: DatabaseKind::Mssql,
+            url,
+            schema: "dbo",
+            ddl: "CREATE TABLE ie_items (id int PRIMARY KEY, name nvarchar(50) NOT NULL, amount decimal(10,2), flag bit, created datetime2)",
+        });
+    }
     targets
 }
 
@@ -243,7 +251,10 @@ async fn file_import_batches_conflicts_and_failures_across_families() {
 async fn copy_table_between_families() {
     let directory = tempfile::tempdir().unwrap();
     let sqlite = directory.path().join("copy.db");
-    let all = targets(sqlite.to_str().unwrap());
+    let all: Vec<Target> = targets(sqlite.to_str().unwrap())
+        .into_iter()
+        .filter(|target| target.kind != DatabaseKind::Mssql)
+        .collect();
     assert!(
         all.len() >= 3,
         "L8DB_IE_PG_URL und L8DB_IE_MYSQL_URL setzen, um diesen ignorierten Test auszuführen"
