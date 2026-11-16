@@ -244,8 +244,20 @@ fn typed(value: &str, datatype: &str) -> Value {
             .map(Value::Number)
             .unwrap_or_else(|| Value::String(value.into())),
         "boolean" => Value::Bool(value == "true"),
+        t if t.starts_with("dateTime") => Value::String(nanos(value)),
         _ => Value::String(value.into()),
     }
+}
+
+fn nanos(value: &str) -> String {
+    let Some(base) = value.strip_suffix('Z') else {
+        return value.to_string();
+    };
+    let (head, fraction) = base.split_once('.').unwrap_or((base, ""));
+    if fraction.len() > 9 || !fraction.chars().all(|c| c.is_ascii_digit()) {
+        return value.to_string();
+    }
+    format!("{head}.{fraction:0<9}Z")
 }
 
 type Table = (Vec<String>, Vec<Map<String, Value>>);
@@ -362,17 +374,134 @@ fn is_flux(statement: &str) -> bool {
         || trimmed.starts_with("option ")
 }
 
+fn flux_code(statement: &str) -> String {
+    let mut out = String::with_capacity(statement.len());
+    let mut chars = statement.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                out.push_str("\"\"");
+                while let Some(c) = chars.next() {
+                    match c {
+                        '\\' => {
+                            chars.next();
+                        }
+                        '"' => break,
+                        _ => {}
+                    }
+                }
+            }
+            '/' if chars.peek() == Some(&'/') => {
+                for c in chars.by_ref() {
+                    if c == '\n' {
+                        out.push('\n');
+                        break;
+                    }
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+fn flux_writes(statement: &str) -> bool {
+    let code = flux_code(statement);
+    let chars: Vec<char> = code.chars().collect();
+    let ident = |c: char| c.is_alphanumeric() || c == '_';
+    let mut i = 0;
+    while i < chars.len() {
+        if !ident(chars[i]) || (i > 0 && ident(chars[i - 1])) {
+            i += 1;
+            continue;
+        }
+        let end = (i..chars.len())
+            .find(|&j| !ident(chars[j]))
+            .unwrap_or(chars.len());
+        let word: String = chars[i..end].iter().collect();
+        if matches!(word.as_str(), "to" | "wideTo") {
+            let before = chars[..i].iter().rev().find(|c| !c.is_whitespace());
+            let after = chars[end..].iter().find(|c| !c.is_whitespace());
+            if after != Some(&':') && (before != Some(&'.') || after == Some(&'(')) {
+                return true;
+            }
+        }
+        i = end;
+    }
+    false
+}
+
 pub fn read_only_statement(statement: &str) -> Option<bool> {
     if is_line_protocol(statement) {
         return Some(false);
     }
     if is_flux(statement) {
-        let compact: String = statement.chars().filter(|c| !c.is_whitespace()).collect();
-        return Some(
-            !(compact.contains("|>to(") || compact.contains("wideTo(") || compact.contains(".to(")),
-        );
+        return Some(!flux_writes(statement));
     }
     None
+}
+
+pub fn range_note(connection_string: &str) -> Option<String> {
+    let secs = InfluxAdapter::new(connection_string, None).ok()?.range?;
+    let span = match secs {
+        s if s % 86_400 == 0 => format!("{} d", s / 86_400),
+        s if s % 3600 == 0 => format!("{} h", s / 3600),
+        s if s % 60 == 0 => format!("{} min", s / 60),
+        s => format!("{s} s"),
+    };
+    Some(format!(
+        "Hinweis: nur Punkte der letzten {span}. Alle: ?range=all in der URL."
+    ))
+}
+
+fn friendly_error(status: u16, body: &str) -> String {
+    let mut reason = http_api::error_message(body);
+    if let Some(inner) = reason
+        .split_once("ParserError(\"")
+        .and_then(|(_, rest)| rest.rsplit_once("\")"))
+        .map(|(inner, _)| inner.to_string())
+    {
+        reason = inner;
+    }
+    let quoted = |text: &str, marker: &str| {
+        text.split_once(marker)
+            .and_then(|(_, rest)| rest.split('"').nth(1))
+            .unwrap_or_default()
+            .to_string()
+    };
+    let hint = if status == 401 {
+        Some("Token ungültig oder ohne Rechte.".to_string())
+    } else if reason.contains("organization name") && reason.contains("not found") {
+        Some(format!(
+            "Organisation „{}“ nicht gefunden: ?org= prüfen.",
+            quoted(&reason, "organization name")
+        ))
+    } else if reason.contains("could not find bucket") || reason.contains("bucket not found") {
+        Some(format!(
+            "Bucket „{}“ nicht gefunden.",
+            quoted(&reason, "bucket")
+        ))
+    } else if reason.contains("database not found") {
+        Some("Datenbank nicht gefunden.".to_string())
+    } else if reason.contains("field type conflict") {
+        Some("Feldtyp-Konflikt: das Feld hat schon einen anderen Typ.".to_string())
+    } else if reason.contains("unable to parse") {
+        Some("Line-Protokoll ungültig.".to_string())
+    } else if reason.contains("DML not supported") {
+        Some("Ändern und Löschen per SQL kann InfluxDB 3 nicht.".to_string())
+    } else if reason.starts_with("compilation failed") || reason.contains("error @") {
+        Some("Flux-Fehler.".to_string())
+    } else if reason.starts_with("SQL error") || reason.contains("Expected:") {
+        Some("SQL-Fehler.".to_string())
+    } else if status == 429 || status == 503 {
+        Some("Server überlastet. Später erneut versuchen.".to_string())
+    } else {
+        None
+    };
+    match hint {
+        Some(hint) => format!("InfluxDB {status}: {hint}\n  {reason}"),
+        None => format!("InfluxDB {status}: {reason}"),
+    }
 }
 
 fn is_influxql(statement: &str) -> bool {
@@ -477,11 +606,7 @@ impl InfluxAdapter {
     async fn send(&self, request: reqwest::RequestBuilder) -> Result<String, String> {
         let reply = http_api::send("InfluxDB", request).await?;
         if !reply.ok() {
-            return Err(format!(
-                "InfluxDB {}: {}",
-                reply.status,
-                http_api::error_message(&reply.body)
-            ));
+            return Err(friendly_error(reply.status, &reply.body));
         }
         Ok(reply.body)
     }
@@ -694,6 +819,15 @@ impl InfluxAdapter {
                 }
             }
         }
+        let epoch = |row: &Map<String, Value>| {
+            row.get("time").and_then(Value::as_str) == Some("1970-01-01T00:00:00Z")
+        };
+        if columns.len() > 1 && !rows.is_empty() && rows.iter().all(epoch) {
+            columns.retain(|c| c != "time");
+            for row in &mut rows {
+                row.remove("time");
+            }
+        }
         Ok((columns, rows))
     }
 
@@ -829,6 +963,24 @@ impl InfluxAdapter {
         }
     }
 
+    async fn typed_columns(&self, db: &str, table: &str) -> Result<Vec<(String, String)>, String> {
+        let mut columns = self.columns(db, table).await?;
+        if self.version().await? == Version::V2 {
+            let ident = format!("\"{}\"", table.replace('\\', "\\\\").replace('"', "\\\""));
+            if let Ok((_, rows)) = self
+                .influxql_v2(db, &format!("SHOW FIELD KEYS FROM {ident}"))
+                .await
+            {
+                for (name, data_type) in columns.iter_mut().filter(|(_, t)| t == "field") {
+                    if let Some(row) = rows.iter().find(|r| text(&r["fieldKey"]) == *name) {
+                        *data_type = text(&row["fieldType"]);
+                    }
+                }
+            }
+        }
+        Ok(columns)
+    }
+
     fn list_start(&self) -> &'static str {
         "time(v: 0)"
     }
@@ -898,7 +1050,7 @@ impl DatabaseAdapter for InfluxAdapter {
         };
         let mut out = Vec::new();
         for table in tables {
-            for (name, data_type) in self.columns(&db, &table).await? {
+            for (name, data_type) in self.typed_columns(&db, &table).await? {
                 out.push(ColumnInfo {
                     schema: db.clone(),
                     table: table.clone(),
@@ -1020,7 +1172,21 @@ impl DatabaseAdapter for InfluxAdapter {
                 truncated: false,
             });
         }
-        let (columns, rows) = match self.version().await? {
+        let version = self.version().await?;
+        let word = first_word(sql);
+        if version == Version::V3 && is_flux(sql) {
+            return Err("Flux gibt es auf InfluxDB 3 nicht. SQL oder InfluxQL verwenden.".into());
+        }
+        if version == Version::V2
+            && !is_flux(sql)
+            && SQL_WORDS.contains(&word.as_str())
+            && !matches!(word.as_str(), "SELECT" | "SHOW")
+        {
+            return Err(format!(
+                "{word} kann InfluxDB 2 hier nicht. Möglich: Flux, InfluxQL (SELECT, SHOW) und Line-Protokoll."
+            ));
+        }
+        let (columns, rows) = match version {
             Version::V3 => {
                 let db = self.database().await?;
                 let rows = if is_influxql(sql) {
@@ -1063,7 +1229,7 @@ impl DatabaseAdapter for InfluxAdapter {
     ) -> Result<Vec<DetailedColumnInfo>, String> {
         let db = self.database().await?;
         Ok(self
-            .columns(&db, table)
+            .typed_columns(&db, table)
             .await?
             .into_iter()
             .enumerate()
@@ -1137,6 +1303,85 @@ mod tests {
             Some(true)
         );
         assert_eq!(read_only_statement("SELECT 1"), None);
+        for write in [
+            "from(bucket: \"m\") |> range(start: -4h)\n  |> // audit\n  to(bucket: \"c\", org: \"o\")",
+            "from(bucket: \"m\") |> range(start: -1h) |> /* x */ to(bucket: \"c\")",
+            "import \"experimental\"\nfrom(bucket: \"m\") |> range(start: -1h) |> experimental.to(bucket: \"c\")",
+            "from(bucket: \"m\") |> range(start: -1h)\n|>\nto\n(bucket: \"c\")",
+            "t = to\nfrom(bucket: \"m\") |> range(start: -1h) |> t(bucket: \"c\")",
+            "from(bucket: \"m\") |> range(start: -1h) |> wideTo(bucket: \"c\")",
+        ] {
+            assert_eq!(read_only_statement(write), Some(false), "{write}");
+        }
+        for read in [
+            "from(bucket: \"to(\") |> range(start: -1h) // |> to(bucket: \"c\")",
+            "from(bucket: \"m\") |> range(start: -1h) |> filter(fn: (r) => r.to == \"x\")",
+            "import \"date\"\nfrom(bucket: \"m\") |> range(start: date.add(d: -1h, to: now())) |> map(fn: (r) => ({r with to: 1}))",
+            "from(bucket: \"m\") |> range(start: -1h) |> filter(fn: (r) => r[\"to\"] == \"a\\\" |> to(\")",
+        ] {
+            assert_eq!(read_only_statement(read), Some(true), "{read}");
+        }
+    }
+
+    #[test]
+    fn errors_are_short_and_keep_the_reason() {
+        let org = friendly_error(
+            400,
+            r#"{"code":"invalid","message":"failed to decode request body: organization name \"nope\" not found"}"#,
+        );
+        assert!(
+            org.starts_with("InfluxDB 400: Organisation „nope“ nicht gefunden"),
+            "{org}"
+        );
+        assert!(org.contains("failed to decode"), "{org}");
+        let bucket = friendly_error(
+            404,
+            r#"{"code":"not found","message":"failed to initialize execute state: could not find bucket \"nope\""}"#,
+        );
+        assert!(
+            bucket.starts_with("InfluxDB 404: Bucket „nope“ nicht gefunden."),
+            "{bucket}"
+        );
+        assert!(friendly_error(
+            401,
+            r#"{"code":"unauthorized","message":"unauthorized access"}"#
+        )
+        .contains("Token"));
+        let parser = friendly_error(
+            400,
+            r#"{"error":"SQL error: ParserError(\"Expected: an SQL statement, found: SELEC at Line: 1, Column: 1\")"}"#,
+        );
+        assert_eq!(parser, "InfluxDB 400: SQL-Fehler.\n  Expected: an SQL statement, found: SELEC at Line: 1, Column: 1");
+        assert!(friendly_error(
+            400,
+            r#"{"error":"Error during planning: DML not supported: Delete"}"#
+        )
+        .contains("InfluxDB 3 nicht"));
+        assert!(friendly_error(422, r#"{"code":"unprocessable entity","message":"failure writing points to database: partial write: field type conflict: input field \"usage\" on measurement \"cpu\" is type string, already exists as type float dropped=1"}"#).contains("Feldtyp-Konflikt"));
+    }
+
+    #[test]
+    fn notes_the_default_range_and_pads_nanoseconds() {
+        assert_eq!(
+            range_note("influxdb://token:t@h:8086/metrics").as_deref(),
+            Some("Hinweis: nur Punkte der letzten 1 h. Alle: ?range=all in der URL.")
+        );
+        assert!(range_note("influxdb://h/m?range=7d")
+            .unwrap()
+            .contains("7 d"));
+        assert_eq!(range_note("influxdb://h/m?range=all"), None);
+        assert_eq!(
+            nanos("2026-11-11T08:20:52.996Z"),
+            "2026-11-11T08:20:52.996000000Z"
+        );
+        assert_eq!(
+            nanos("2026-11-11T08:20:53Z"),
+            "2026-11-11T08:20:53.000000000Z"
+        );
+        assert_eq!(
+            nanos("2026-11-11T08:20:52.998000128Z"),
+            "2026-11-11T08:20:52.998000128Z"
+        );
     }
 
     #[test]
