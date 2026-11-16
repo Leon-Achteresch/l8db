@@ -846,7 +846,7 @@ pub(super) fn check_write_sql(
         return Err(single_statement(connection));
     }
     if let Some(word) = redact::dangerous_word(sql) {
-        return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
+        return Err(redact::blocked_function(&word));
     }
     let index_ddl =
         connection.kind == DatabaseKind::Elasticsearch && db::elasticsearch::is_index_ddl(sql);
@@ -983,7 +983,7 @@ pub(super) fn check_read_sql(
         ));
     }
     if let Some(word) = redact::dangerous_word(sql) {
-        return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
+        return Err(redact::blocked_function(&word));
     }
     if let Some(word) = (connection.kind == DatabaseKind::Duckdb)
         .then(|| redact::duckdb_file_access(sql))

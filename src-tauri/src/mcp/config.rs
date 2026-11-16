@@ -161,6 +161,8 @@ const COLUMN_RULES: &[(&str, &str)] = &[
     ("Gesundheit", r"diagnos|medical|health|krankheit|gesundheit"),
 ];
 
+pub const PHONE_PATTERN: &str = r"(?:\+|\b0)\d[\d\s/().-]{6,}\d";
+
 const VALUE_RULES: &[(&str, &str)] = &[
     (
         "E-Mail-Adressen",
@@ -171,7 +173,7 @@ const VALUE_RULES: &[(&str, &str)] = &[
         r"\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?[A-Z0-9]{1,4})?\b",
     ),
     ("Kreditkartennummern", r"\b(?:\d[ -]?){12,18}\d\b"),
-    ("Telefonnummern", r"(?:\+|\b0)\d[\d\s/().-]{6,}\d"),
+    ("Telefonnummern", PHONE_PATTERN),
     ("US-SSN", r"\b\d{3}-\d{2}-\d{4}\b"),
     (
         "JWT",
