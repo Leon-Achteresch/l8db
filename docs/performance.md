@@ -797,3 +797,58 @@ Hinweis entspricht das serialisierte JSON exakt der bisherigen Spaltenform.
 Insgesamt 18 native Prüfungen bestanden. Nicht verglichene Indexsettings,
 externe Mappingänderungen nach dem Lesen und tatsächliche Feldabdeckung bleiben
 unbekannt; es gibt keinen automatischen Aktualisierungs- oder Grenzprüfungsnachweis.
+
+
+## Optionale Herkunft gespeicherter Abfragen
+
+Query speichern → Herkunft merken ist standardmäßig ausgeschaltet. Der bestehende
+Speicherfluss kann zusätzlich eine lokale Verbindungs-ID, den Namen beim Speichern
+und die ausgewählte Datenbank merken. Eine unbekannte Datenbank bleibt unbekannt;
+es wird keine URL ausgewertet oder Verbindung getestet. Der Herkunftsschlüssel
+umfasst alle drei Angaben: Bei einem anderen Kontext gilt eine frühere Checkbox-
+Auswahl nicht für das neue Ziel. Öffnen des Dialogs setzt die Auswahl zurück.
+Ein bewusstes Überschreiben ersetzt SQL und Herkunft; ohne Auswahl wird die Query
+allgemein. Reines Umbenennen in der Bibliothek erhält die bisherige Herkunft.
+Der bestehende direkte Verlauf-Speicherweg bleibt allgemein.
+
+`origin` ist ein optionaler rückwärtskompatibler Zusatz im vorhandenen SavedQuery-
+Store und v1-Query-Export. Speicherung, Rehydrierung, Import und Export projizieren
+nur bekannte Felder. Herkunftstexte sind auf 256 Zeichen pro Feld begrenzt;
+Verbindungs-URLs, erkennbare Credential-Zuweisungen und Steuer-/Richtungszeichen
+werden nicht übernommen. IDs werden nicht als sichtbare Verbindungsnamen benutzt.
+SQL und Queryname bleiben unverändert. Der Exportdialog nennt den optionalen
+Herkunftszusatz; ältere Clients können ihn beim erneuten Export verlieren,
+Name und SQL bleiben mit dem bisherigen Format nutzbar.
+
+Bibliotheks- und Sidebarlisten zeigen Herkunft neben dem Namen, ohne neue
+Bibliothek oder zusätzliche Zeile im virtualisierten Query-Verlauf. Suche kann
+Namen/Datenbank der Herkunft berücksichtigen; ohne Suchtext bleiben alle Queries
+sichtbar, unabhängig von der aktiven Verbindung. Lokale Namen werden über eine
+pro Verbindungsänderung erstellte ID-Map aufgelöst. Abweichende Namen heißen
+„gespeichert als …“, ohne einen tatsächlichen Umbenennungsvorgang zu behaupten.
+Fehlende IDs werden nicht über Namensgleichheit neu zugeordnet; fehlende oder
+unzulässige Namen bleiben erkennbar. Herkunft ist kein Ziel- oder Kompatibilitäts-
+nachweis. Laden übergibt weiterhin nur SQL beziehungsweise ID/Titel/SQL an den
+bestehenden Tabweg, ohne Verbindungswechsel oder Auto-Ausführung.
+
+28 gezielte Tests prüfen den echten Named-Save-/Store-/Persistenz-/Tabfluss,
+Altformat/Leerzustand, Übernahme/Ablehnung nach Kontextwechsel, Umbenennen,
+Entfernen, sichere Projektion, v1-Transfer und Dublettenkopien. SSR prüft den
+ungewählten/fehlenden Kontext und die realen Bibliothekszeilen. Typecheck und
+scoped Biome bestanden. Kein Rust-/Bridge-Code geändert; kein Cargo-Neulauf,
+produktiver DB-Zugriff, Browser-/Native-App-Walkthrough oder Opus-Versuch.
+Die bestehende Fenster-Synchronisierung bleibt am gleichen Store aktiv; ihre
+Rehydrierungsgrenze ist synthetisch geprüft, keine reale Mehrfensterabnahme.
+
+`tests/perf-saved-query-origin.test.ts`: 5.000 Queries (hälftig allgemein und mit
+Herkunft), 250 Verbindungen; je zwei Warmläufe und neun Messungen. Auflösung/Suche:
+Median 1,810 ms, p95 2,178 ms. Ein echter Named-Save inklusive Store-Serialisierung:
+Median 1,214 ms, p95 2,176 ms. Bereinigter Export: Median 1,986 ms, p95 2,013 ms.
+Ausgabe 915.978 Zeichen; zusätzlicher JS-Heap nach fünf weiteren Läufen und GC
+2.065.804 Bytes einschließlich eines Exports und rehydrierter Daten. Budgets je
+Szenario: Median < 100 ms, p95 < 200 ms; zusätzlicher Heap < 8 MiB, Ausgabe < 4 MiB.
+Null DB-Requests, unveränderter Speicherinhalt nach Idle; keine neuen Worker oder
+Abbruchpfade. Diese Zahlen beschreiben den neuen Kontextpfad, keine behauptete
+Beschleunigung des bisherigen Stores. Gemessen am 16.11.2026 auf macOS/Darwin
+27.0.0, arm64, Apple M3, 16 GiB, Bun 1.3.10. Keine Windows-/Linux-/Browserlayout-,
+CPU-Simulations- oder native/RSS-Messung. CSV-Opus-Handoff unverändert offen.
