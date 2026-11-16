@@ -23,6 +23,7 @@ import { remapPreset } from "@/lib/csv-mapping-presets";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { cancelTask, isTaskActive } from "@/lib/tasks";
 import { CsvConflictOptions } from "./csv-conflict-options";
+import { CsvFileCheck } from "./csv-file-check";
 import { CsvParseOptions } from "./csv-import-panel/csv-parse-options";
 import { StructuredParseOptions } from "./csv-import-panel/structured-parse-options";
 import type { CsvImportState } from "./csv-import-panel/use-csv-import";
@@ -40,6 +41,7 @@ export function CsvImportPanel({
   onPickFile: () => void;
 }) {
   const {
+    fileCheck,
     format,
     sheet,
     setSheet,
@@ -290,6 +292,7 @@ export function CsvImportPanel({
         )}
 
         {issues && <CsvImportValidation issues={issues} />}
+        <CsvFileCheck check={fileCheck} importing={running} />
 
         {parsed && (
           <section id="import-step-run">

@@ -1,5 +1,7 @@
+import { stat } from "@tauri-apps/plugin-fs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useActiveConnection } from "@/lib/connections";
+import { csvCheckMatchesFile, csvFileCheckRequest } from "@/lib/csv-file-check";
 import {
   buildImportPayload,
   CSV_MAX_IMPORT_ROWS,
@@ -22,6 +24,7 @@ import { useTablesQuery } from "@/lib/queries";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { isTaskActive, useTasksStore } from "@/lib/tasks";
 import { getTransactionForConnection, useTransactionStore } from "@/lib/transactions";
+import { useCsvFileCheck } from "./use-csv-file-check";
 
 export function useCsvImport() {
   const connection = useActiveConnection();
@@ -219,11 +222,34 @@ export function useCsvImport() {
     return validateMappings(mappings, mappingTargets, parsed.rows);
   }, [parsed, mappingTargets, mappings]);
 
+  const fileCheckRequest = useMemo(() => {
+    if (!filePath || !parsed || format !== "csv") return null;
+    return csvFileCheckRequest(
+      {
+        path: filePath,
+        format,
+        delimiter: parsed.delimiter,
+        quote,
+        has_header: parsed.hasHeader,
+        empty_as_null: emptyField === "null",
+        null_text: nullText || null,
+        indices: mappings
+          .filter((mapping) => mapping.target !== null)
+          .map((mapping) => mapping.csvIndex),
+      },
+      parsed.columnCount,
+      mappings,
+      mappingTargets,
+    );
+  }, [filePath, parsed, format, quote, emptyField, nullText, mappings, mappingTargets]);
+  const fileCheck = useCsvFileCheck(fileCheckRequest, `${scopeKey}:${targetTable ?? ""}`);
+
   const handlePickFile = async (given?: Awaited<ReturnType<typeof pickDataFile>>) => {
     setFileError(null);
     try {
       const picked = given ?? (await pickDataFile());
       if (!picked) return;
+      fileCheck.invalidate();
       setOutcome(null);
       if (picked.format !== "csv") {
         previewHeaders.current = null;
@@ -304,6 +330,16 @@ export function useCsvImport() {
     setRunning(true);
     setOutcome(null);
     try {
+      if (filePath && fileCheck.report) {
+        const meta = await stat(filePath);
+        if (!csvCheckMatchesFile(fileCheck.report, meta)) {
+          fileCheck.invalidate();
+          setFileError(
+            "Datei seit der Prüfung geändert oder Prüfstand unbekannt. Datei erneut wählen und prüfen.",
+          );
+          return;
+        }
+      }
       const payload = buildImportPayload(mappings, parsed.rows);
       const result = await runCsvImport(
         connection,
@@ -349,30 +385,36 @@ export function useCsvImport() {
 
   const rowCount = parsed?.rows.length ?? 0;
   const tooManyRows = !filePath && (parsed?.truncated === true || rowCount > CSV_MAX_IMPORT_ROWS);
-  const blockedReason = !parsed
-    ? "Keine Datei geladen"
-    : parsed.errors.length > 0
-      ? "Die Datei enthält Fehler"
-      : columnsLoading
-        ? "Spalten der Zieltabelle werden geladen"
-        : !targetTable
-          ? "Keine Zieltabelle ausgewählt"
-          : format !== "csv" && !filePath
-            ? "Keine Datei ausgewählt"
-            : rowCount === 0
-              ? "Die Datei enthält keine Zeilen"
-              : tooManyRows
-                ? "Zu viele Zeilen für den Import aus der Vorschau"
-                : conflict && !conflict.constraint
-                  ? "Kein Konfliktschlüssel für die Konfliktbehandlung gewählt"
-                  : openTransaction
-                    ? "Offene Transaktion zuerst abschließen"
-                    : (issues?.errors.length ?? 1) > 0
-                      ? "Zuordnung der Spalten enthält Fehler"
-                      : null;
+  const blockedReason = fileCheck.checking
+    ? "Dateiprüfung läuft"
+    : fileCheck.report &&
+        (fileCheck.report.status !== "complete" || fileCheck.report.error_count > 0)
+      ? "Dateiprüfung enthält Befunde oder ist unvollständig"
+      : !parsed
+        ? "Keine Datei geladen"
+        : parsed.errors.length > 0
+          ? "Die Datei enthält Fehler"
+          : columnsLoading
+            ? "Spalten der Zieltabelle werden geladen"
+            : !targetTable
+              ? "Keine Zieltabelle ausgewählt"
+              : format !== "csv" && !filePath
+                ? "Keine Datei ausgewählt"
+                : rowCount === 0
+                  ? "Die Datei enthält keine Zeilen"
+                  : tooManyRows
+                    ? "Zu viele Zeilen für den Import aus der Vorschau"
+                    : conflict && !conflict.constraint
+                      ? "Kein Konfliktschlüssel für die Konfliktbehandlung gewählt"
+                      : openTransaction
+                        ? "Offene Transaktion zuerst abschließen"
+                        : (issues?.errors.length ?? 1) > 0
+                          ? "Zuordnung der Spalten enthält Fehler"
+                          : null;
   const blocked = blockedReason !== null;
 
   return {
+    fileCheck,
     format,
     sheet,
     setSheet,

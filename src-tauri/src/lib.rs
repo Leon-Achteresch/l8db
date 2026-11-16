@@ -684,6 +684,7 @@ pub fn run() {
             db::datagen::datagen_seed_script,
             db::datagen::datagen_run,
             db::commands::read_csv_preview,
+            db::csv_check::check_csv_file,
             db::commands::export_table_csv,
             db::commands::read_table_snapshot,
             db::commands::compare_table_data,
