@@ -580,3 +580,46 @@ unvollständigen Vertrags. 20 gezielte native MSSQL-Tests bestanden, zehn besteh
 Live-DB-Tests blieben ignoriert. Nach dem Filtertext-/Zusammenführungsfix wurden
 nur die sechs betroffenen Katalogtests erneut geprüft und bestanden. Keine neuen
 Indizes angelegt oder produktiven Datenbanken verändert.
+
+
+## Messumfang der Abfragezeit (A38)
+
+Der vorhandene Ergebnisstatus kennzeichnet direkte PostgreSQL-/MySQL-Ergebnisse
+als „inkl. Ergebnisübernahme“. Die UI speichert den geprüften Messumfang am
+zurückgegebenen Ergebnis; der aufrufende Anbietertyp wird vor dem Request
+festgehalten. Ein späterer Verbindungswechsel etikettiert alte Ergebnisse nicht um.
+Es gibt keine neue Uhr, Serverzeit-Schätzung, Phasenaufteilung oder Zusatzabfrage.
+
+Belegt sind `postgres.rs::run_simple_query`/`SimpleResult::finish`,
+`postgres.rs::run_params_query` und `mysql.rs::read_query`: Der native Timer beginnt
+vor Abfrage beziehungsweise Vorbereitung und endet nach Empfang und Aufbau der
+Ergebnisdaten. Das umfasst Serverarbeit und Ergebnistransport, ist keine reine
+Serverzeit. Verbindungsaufbau, nachfolgende Nacharbeiten (etwa MySQL-Warnungen),
+IPC-Übergabe und Darstellung gehören nicht dazu. Read-only-Wrapper und
+PG-Serverausgabe behalten denselben inneren Timer. Die Anzeige erklärt den Umfang
+per Tastatur- und Hover-Tooltip im bestehenden Status, ohne Zahlen zu verändern.
+
+Andere Anbieter, alte unmarkierte Ergebnisse und Skript-/verwaltete
+Transaktionsergebnisse bleiben ausdrücklich „Messumfang unbekannt“; dort fehlt
+im UI-Vertrag ein geprüfter Messumfang beziehungsweise der tatsächliche Treiber.
+Lokale emulierte Sitzungsview-Schritte werden als „Nicht gemessen“ markiert:
+Ihr bestehender Zeitwert 0 ist ein Platzhalter, kein gemessener DB-Zeitwert.
+Eine eventuell nötige Metadatenprobe wird dadurch nicht als zugriffsfrei erklärt.
+Der native `QueryResult`-Bridge-Vertrag bleibt unverändert; `timingScope` ist
+optionale Ergebnis-Metainformation der UI.
+
+`tests/perf-query-result-timing.test.ts` prüft 10.000 Statusaktualisierungen auf
+einem Ergebnis mit 100.000 Zeilen, zwei Warmläufe und neun Messungen. Jede
+Zell-/Zeilenmaterialisierung löst im Fixture einen Fehler aus. Gemessen am
+16.11.2026: Median 1,350 ms, p95 1,642 ms; nach fünf weiteren Läufen und GC
+1.224 Bytes zusätzlicher JS-Heap. Budgets: Median < 50 ms, p95 < 100 ms,
+zusätzlicher JS-Heap < 4 MiB. Null Zellzugriffe und null DB-Requests; nach Idle
+keine nachträgliche Zeilenarbeit. Kein neuer Hintergrundlauf, daher kein eigener
+Abbruchmechanismus nötig. Das ist ein additiver Statusbenchmark, kein Vergleich
+der nativen Abfragedauer vor/nach einer Optimierung.
+
+Plattform: macOS/Darwin 27.0.0, arm64, Apple M3, 16 GiB RAM, Bun 1.3.10.
+Semantik-/Transportmocktests und SSR prüfen die Kennzeichnung, erhaltene Zahlen,
+Unbekannt-/Null-Platzhalter und tastaturzugängliches Status-Markup. Keine
+Live-Datenbanken, Browser-/Native-App-Abnahme, Windows/Linux, CPU-Simulation
+oder native/RSS-Messung; keine Rust-/Adapteränderungen in diesem Paket.

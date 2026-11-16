@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { CreateViewDialog, isViewableSelect } from "@/features/query/create-view-dialog";
+import { QueryResultStatus } from "@/features/query/query-result-status";
 import { ResultTitle } from "@/features/query/query-view/result-title";
 import { TimestampDisplayMenu } from "@/features/table/timestamp-display-menu";
 import { afterPaint } from "@/lib/after-paint";
@@ -84,6 +85,7 @@ export function QueryResultWorkbench({
   error,
   kind,
   statusText,
+  statusDetails,
   actions,
   chart,
   previous = false,
@@ -94,6 +96,7 @@ export function QueryResultWorkbench({
   error: string | null;
   kind?: DatabaseKind;
   statusText?: string | null;
+  statusDetails?: string;
   actions?: ReactNode;
   chart?: ResultChartBinding;
   previous?: boolean;
@@ -208,9 +211,11 @@ export function QueryResultWorkbench({
                 : "Abgeschlossen"}
         </span>
         {statusText && (
-          <span className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground">
-            {statusText}
-          </span>
+          <QueryResultStatus
+            text={statusText}
+            details={statusDetails}
+            className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground"
+          />
         )}
         {searchOpen && (
           <Input

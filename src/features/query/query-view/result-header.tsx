@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { QueryResultStatus } from "@/features/query/query-result-status";
 
 import type { QueryResult } from "@/lib/db";
 import { cn } from "@/lib/utils";
@@ -10,10 +11,18 @@ interface ResultHeaderProps {
   error: string | null;
   result: QueryResult | null;
   statusText: string | null;
+  statusDetails?: string;
   actions: ReactNode;
 }
 
-export function ResultHeader({ isRunning, error, result, statusText, actions }: ResultHeaderProps) {
+export function ResultHeader({
+  isRunning,
+  error,
+  result,
+  statusText,
+  statusDetails,
+  actions,
+}: ResultHeaderProps) {
   return (
     <div className="flex min-h-9 shrink-0 items-center gap-2 border-b bg-muted/20 px-3 py-1 text-xs">
       <ResultTitle />
@@ -38,9 +47,11 @@ export function ResultHeader({ isRunning, error, result, statusText, actions }: 
               : "Bereit"}
       </span>
       {statusText && (
-        <span className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground">
-          {statusText}
-        </span>
+        <QueryResultStatus
+          text={statusText}
+          details={statusDetails}
+          className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground"
+        />
       )}
       <div className="ml-auto flex shrink-0 items-center gap-1">{actions}</div>
     </div>
