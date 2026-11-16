@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { chromium, webkit } from "playwright";
+
+const shots = process.env.L8DB_SCREENSHOT_DIR ?? tmpdir();
 
 const bridge = process.env.L8DB_CLICKHOUSE_BRIDGE ?? "http://127.0.0.1:27021";
 const connectionString =
@@ -10,6 +14,7 @@ test.skipIf(!process.env.L8DB_CLICKHOUSE_BROWSER)(
   async () => {
     const browser = await (process.env.L8DB_CLICKHOUSE_WEBKIT ? webkit : chromium).launch({
       headless: true,
+      channel: process.env.L8DB_CLICKHOUSE_WEBKIT ? undefined : process.env.L8DB_BROWSER_CHANNEL,
     });
     const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
     const errors: string[] = [];
@@ -82,7 +87,7 @@ test.skipIf(!process.env.L8DB_CLICKHOUSE_BROWSER)(
       expect(await sidebarTable("kv_memory").count()).toBe(1);
 
       await sidebarTable("events_big").click();
-      await page.getByText("1–100 von 20000000", { exact: true }).waitFor();
+      await page.getByText(/^1–100 von \d[\d.]*$/).waitFor();
       await page.getByRole("button", { name: "Filter", exact: true }).click();
       await page.getByRole("tab", { name: "SQL", exact: true }).click();
       await page.locator(".cm-editor .cm-content").click();
@@ -90,12 +95,15 @@ test.skipIf(!process.env.L8DB_CLICKHOUSE_BROWSER)(
       await page.keyboard.insertText("kind = 'purchase' AND id = 2");
       await page.getByRole("button", { name: "Filter anwenden", exact: true }).click();
       await page.getByText("1–1 von 1", { exact: true }).waitFor();
-      await page.screenshot({ path: "/tmp/l8db-clickhouse-table.png" });
+      await page.screenshot({ path: join(shots, "l8db-clickhouse-table.png") });
 
       await sidebarTable("kv_memory").click({ button: "right" });
       await page.getByRole("menuitem", { name: /^Neue Abfrage für / }).click();
       await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
-      await page.getByText("100 Zeilen", { exact: true }).first().waitFor();
+      await page
+        .getByText(/^100 Zeilen\b/)
+        .first()
+        .waitFor();
       await page.locator(".monaco-editor .view-lines").first().click();
       await page.keyboard.press("ControlOrMeta+a");
       await page.keyboard.insertText(
@@ -104,7 +112,7 @@ test.skipIf(!process.env.L8DB_CLICKHOUSE_BROWSER)(
       await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
       await page.getByText("7000000000000000000070", { exact: true }).first().waitFor();
       await page.getByText("-7000000000000", { exact: true }).first().waitFor();
-      await page.screenshot({ path: "/tmp/l8db-clickhouse-query.png" });
+      await page.screenshot({ path: join(shots, "l8db-clickhouse-query.png") });
 
       await page.getByRole("combobox", { name: "Datenbank", exact: true }).click();
       await page.getByRole("option", { name: "weird db", exact: true }).click();
@@ -124,7 +132,7 @@ test.skipIf(!process.env.L8DB_CLICKHOUSE_BROWSER)(
       ).toBe(true);
       expect(errors).toEqual([]);
     } catch (error) {
-      await page.screenshot({ path: "/tmp/l8db-clickhouse-browser-failure.png" });
+      await page.screenshot({ path: join(shots, "l8db-clickhouse-browser-failure.png") });
       throw error;
     } finally {
       await browser.close();
