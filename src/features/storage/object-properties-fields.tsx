@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/select";
 import type { ObjectProperties } from "@/lib/db";
 import { KeyValueEditor } from "./key-value-editor";
+import { storageClassLabel } from "./storage-risks";
 
 const STORAGE_CLASSES = [
   "STANDARD",
@@ -31,7 +32,7 @@ const TEXT_FIELDS: { key: keyof ObjectProperties; label: string; placeholder: st
   },
   { key: "content_encoding", label: "Content-Encoding", placeholder: "gzip" },
   { key: "content_language", label: "Content-Language", placeholder: "de-DE" },
-  { key: "expires", label: "Expires", placeholder: "Wed, 21 Oct 2026 07:28:00 GMT" },
+  { key: "expires", label: "Ablauf (Expires)", placeholder: "Wed, 21 Oct 2026 07:28:00 GMT" },
 ];
 
 export function ObjectPropertiesFields({
@@ -78,7 +79,7 @@ export function ObjectPropertiesFields({
               <SelectItem value="default">Standard des Anbieters</SelectItem>
               {STORAGE_CLASSES.map((entry) => (
                 <SelectItem key={entry} value={entry}>
-                  {entry}
+                  {storageClassLabel(entry)}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -23,6 +23,11 @@ export function VersioningSettings({ bucket }: { bucket: string }) {
             size="sm"
             variant="outline"
             disabled={config.busy}
+            title={
+              status === "Enabled"
+                ? "Neue Änderungen überschreiben direkt, vorhandene Versionen bleiben erhalten."
+                : undefined
+            }
             onClick={() =>
               void config.save(
                 versioningXml(status === "Enabled" ? "Suspended" : "Enabled"),

@@ -50,7 +50,7 @@ export function ObjectDetails({
   const versionId = row.versionId && row.versionId !== "null" ? row.versionId : null;
   const editable =
     !readOnly && !row.versionId && ["text", "json", "csv"].includes(previewKind(row.key, null));
-  const canSelect = selectFormat(row.key) !== null;
+  const canSelect = selectFormat(row.key) !== null && (!row.versionId || row.isLatest);
 
   if (row.deleteMarker) {
     return (

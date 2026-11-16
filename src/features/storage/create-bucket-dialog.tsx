@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -46,6 +47,7 @@ export function CreateBucketDialog({
       setName("");
       setObjectLock(false);
       onCreated(bucket);
+      toast.success(`Bucket „${bucket}“ angelegt`);
     } catch (e) {
       setError(errorText(e));
     } finally {

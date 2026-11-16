@@ -72,7 +72,9 @@ export function TagsEditor({ target, readOnly }: { target: ConfigTarget; readOnl
           disabled={busy}
         >
           {busy ? <Spinner className="size-4" /> : null}
-          Tags speichern
+          {draft.some((tag) => tag.key.trim()) || !parseTags(tags.data ?? null).length
+            ? "Tags speichern"
+            : "Alle Tags entfernen"}
         </Button>
       )}
     </div>

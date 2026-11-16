@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { formatBytes } from "@/lib/backup";
 import { cancelExecution, s3BucketStats } from "@/lib/db";
 import { SettingsCard } from "./settings-card";
+import { storageClassLabel } from "./storage-risks";
 import { useStorageConnection } from "./use-storage-connection";
 
 export function BucketStatsCard({ bucket }: { bucket: string }) {
@@ -42,7 +43,7 @@ export function BucketStatsCard({ bucket }: { bucket: string }) {
                 {data.objects.toLocaleString("de-DE")}
               </div>
               <div className="text-xs text-muted-foreground">
-                Objekte{data.truncated ? " (gekappt)" : ""}
+                {data.truncated ? "Objekte (erste 1 Mio.)" : "Objekte"}
               </div>
             </div>
             <div>
@@ -53,7 +54,7 @@ export function BucketStatsCard({ bucket }: { bucket: string }) {
           <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
             {Object.entries(data.storage_classes).map(([name, bytes]) => (
               <span key={name}>
-                {name}: {formatBytes(bytes)}
+                {storageClassLabel(name)}: {formatBytes(bytes)}
               </span>
             ))}
           </div>

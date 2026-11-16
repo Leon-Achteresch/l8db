@@ -193,8 +193,8 @@ export function StorageDashboard({ connection }: { connection: SavedConnection }
               <SquareTerminal className="mb-3 size-5 text-primary" />
               <h2 className="text-sm font-semibold">Abfragen auf Objekten</h2>
               <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                Buckets auflisten, Präfixe durchsuchen und CSV-, JSON- oder Parquet-Dateien per S3
-                Select abfragen.
+                Buckets und Ordner auflisten und CSV-, JSON- oder Parquet-Dateien per S3 Select
+                abfragen.
               </p>
               <div className="mt-3 grid gap-1.5">
                 {EXAMPLES.map((sql) => (

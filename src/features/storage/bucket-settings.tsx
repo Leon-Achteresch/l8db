@@ -80,7 +80,7 @@ export function BucketSettings({ bucket }: { bucket: string }) {
       <RawConfigSettings
         bucket={bucket}
         resource="website"
-        title="Static Website"
+        title="Statische Website"
         description="Bucket als Website ausliefern."
         template={WEBSITE}
       />

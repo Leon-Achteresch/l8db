@@ -13,6 +13,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { s3GetObjectText, s3PutObjectText } from "@/lib/db";
+import { ConfirmActionDialog } from "./confirm-action-dialog";
 import type { BrowserRow } from "./use-object-listing";
 import { errorText, useStorageConnection } from "./use-storage-connection";
 
@@ -30,6 +31,8 @@ export function ObjectTextEditorDialog({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   const content = useQuery({
     queryKey: ["s3", connection?.id, "text", bucket, row?.key],
     queryFn: () => s3GetObjectText(url, bucket, row!.key),
@@ -42,7 +45,10 @@ export function ObjectTextEditorDialog({
   }, [content.data]);
 
   useEffect(() => {
-    if (row) setError(null);
+    if (row) {
+      setError(null);
+      setConflict(false);
+    }
   }, [row]);
 
   const isJson = row?.key.toLowerCase().endsWith(".json") ?? false;
@@ -50,29 +56,31 @@ export function ObjectTextEditorDialog({
 
   function close() {
     if (busy) return;
-    if (dirty && !window.confirm("Ungespeicherte Änderungen verwerfen?")) return;
-    onClose();
+    if (dirty) setDiscarding(true);
+    else onClose();
   }
 
-  async function save() {
+  async function save(force = false) {
     if (!row) return;
     if (isJson) {
       try {
         JSON.parse(text);
-      } catch (e) {
-        setError(`Ungültiges JSON: ${errorText(e)}`);
+      } catch {
+        setError("Kein gültiges JSON.");
         return;
       }
     }
     setBusy(true);
     setError(null);
+    setConflict(false);
     try {
-      await s3PutObjectText(url, bucket, row.key, text, undefined, row.etag);
+      await s3PutObjectText(url, bucket, row.key, text, undefined, force ? null : row.etag);
       await queryClient.invalidateQueries({ queryKey: ["s3", connection?.id] });
       toast.success(`${row.name} gespeichert`);
       onClose();
     } catch (e) {
-      setError(errorText(e));
+      if (/PreconditionFailed/.test(errorText(e))) setConflict(true);
+      else setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -84,8 +92,7 @@ export function ObjectTextEditorDialog({
         <DialogHeader>
           <DialogTitle className="truncate">{row?.name}</DialogTitle>
           <DialogDescription className="truncate">
-            s3://{bucket}/{row?.key} · Speichern überschreibt das Objekt (neue Version bei
-            Versionierung).
+            s3://{bucket}/{row?.key}
           </DialogDescription>
         </DialogHeader>
         {content.isLoading ? (
@@ -104,6 +111,14 @@ export function ObjectTextEditorDialog({
           />
         )}
         {error ? <p className="text-xs break-words text-destructive">{error}</p> : null}
+        {conflict ? (
+          <div className="flex items-center gap-2 text-xs text-destructive">
+            Das Objekt wurde inzwischen geändert.
+            <Button size="xs" variant="outline" onClick={() => void save(true)} disabled={busy}>
+              Trotzdem überschreiben
+            </Button>
+          </div>
+        ) : null}
         <DialogFooter>
           {isJson && (
             <Button
@@ -112,8 +127,8 @@ export function ObjectTextEditorDialog({
               onClick={() => {
                 try {
                   setText(JSON.stringify(JSON.parse(text), null, 2));
-                } catch (e) {
-                  setError(`Ungültiges JSON: ${errorText(e)}`);
+                } catch {
+                  setError("Kein gültiges JSON.");
                 }
               }}
             >
@@ -132,6 +147,14 @@ export function ObjectTextEditorDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+      <ConfirmActionDialog
+        open={discarding}
+        title="Änderungen verwerfen?"
+        description={row?.name ?? ""}
+        confirmLabel="Verwerfen"
+        onOpenChange={setDiscarding}
+        onConfirm={async () => onClose()}
+      />
     </Dialog>
   );
 }

@@ -68,7 +68,7 @@ export function EncryptionSettings({ bucket }: { bucket: string }) {
                 : config.remove("Verschlüsselung entfernt"))
             }
           >
-            Speichern
+            {draft.algorithm || !config.data ? "Speichern" : "Verschlüsselung entfernen"}
           </Button>
         )}
       </div>
