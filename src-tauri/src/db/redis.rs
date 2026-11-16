@@ -70,11 +70,19 @@ fn cursor_state<T>(f: impl FnOnce(&mut CursorCache) -> T) -> T {
         .unwrap_or_else(|poisoned| poisoned.into_inner()))
 }
 
+async fn is_dragonfly(conn: &mut impl redis::aio::ConnectionLike) -> bool {
+    redis::cmd("INFO")
+        .arg("server")
+        .query_async::<String>(conn)
+        .await
+        .is_ok_and(|info| info.contains("dragonfly_version:"))
+}
+
 fn server_detail(code: &str, detail: &str) -> String {
     let lower = detail.to_ascii_lowercase();
     let quoted = || {
         detail
-            .split('\'')
+            .split(['\'', '`'])
             .nth(1)
             .unwrap_or_default()
             .to_ascii_uppercase()
@@ -1138,6 +1146,9 @@ impl DatabaseAdapter for RedisAdapter {
                             "{error}: {name} wartet, bis Daten ankommen. Wartezeit im Befehl begrenzen, z. B. BLPOP key 5."
                         );
                     }
+                    if error.contains("Unbekannter Befehl") && is_dragonfly(&mut conn).await {
+                        error.push_str(", Dragonfly unterstützt ihn nicht");
+                    }
                     if !rows.is_empty() {
                         if !error.ends_with('.') {
                             error.push('.');
@@ -1217,6 +1228,10 @@ mod tests {
                 "unknown command 'foobar', with args beginning with: 'x' "
             ),
             "Unbekannter Befehl FOOBAR"
+        );
+        assert_eq!(
+            server_detail("ERR", "unknown command `OBJECT`"),
+            "Unbekannter Befehl OBJECT"
         );
         assert_eq!(
             server_detail("ERR", "wrong number of arguments for 'get' command"),

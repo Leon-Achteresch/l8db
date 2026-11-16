@@ -26,6 +26,14 @@ const SCHEMA_COPY_PLACEHOLDER: &str = "\u{1}";
 
 pub(crate) const READ_ONLY_BEGIN: &str = "BEGIN TRANSACTION READ ONLY; SELECT 1";
 
+const POOLED_BEGIN: &str = "BEGIN TRANSACTION READ ONLY; SELECT version() LIKE 'CockroachDB%'";
+
+fn pooled_on_cockroach(messages: &[tokio_postgres::SimpleQueryMessage]) -> bool {
+    messages.iter().any(|message| {
+        matches!(message, tokio_postgres::SimpleQueryMessage::Row(row) if row.get(0) == Some("t"))
+    })
+}
+
 type IdleClients = std::sync::Mutex<Vec<(tokio_postgres::Client, std::time::SystemTime)>>;
 
 const IDLE_TTL: std::time::Duration = std::time::Duration::from_secs(60);
@@ -257,7 +265,7 @@ impl PostgresAdapter {
         let row = self
             .timed(conn.cancel_token(), async {
                 conn.query_one(
-                    "SELECT current_setting('password_encryption'), current_setting('server_version_num')::int",
+                    "SELECT current_setting('password_encryption'), current_setting('server_version_num')::int4",
                     &[],
                 )
                 .await
@@ -460,7 +468,9 @@ async fn guarded_transaction(
         tx
     } else {
         tx.rollback().await?;
-        conn.transaction().await?
+        let tx = conn.transaction().await?;
+        tx.batch_execute(COCKROACH_TRANSACTIONAL_DDL).await?;
+        tx
     };
     for statement in statements {
         if simple {
@@ -488,7 +498,8 @@ pub(crate) async fn begin_guarded(
     {
         return Ok(());
     }
-    conn.batch_execute(&format!("ROLLBACK; {begin}")).await
+    conn.batch_execute(&format!("ROLLBACK; {begin}; {COCKROACH_TRANSACTIONAL_DDL}"))
+        .await
 }
 
 fn drop_extension_sql(name: &str, cascade: bool) -> String {
@@ -998,7 +1009,11 @@ impl TablePage<'_> {
             Ok(rows) => rows,
             Err(e)
                 if !is_view
-                    && e.code() == Some(&tokio_postgres::error::SqlState::UNDEFINED_COLUMN) =>
+                    && matches!(
+                        e.code(),
+                        Some(&tokio_postgres::error::SqlState::UNDEFINED_COLUMN)
+                            | Some(&tokio_postgres::error::SqlState::INVALID_COLUMN_REFERENCE)
+                    ) =>
             {
                 if savepoint {
                     conn.batch_execute("ROLLBACK TO SAVEPOINT l8_page")
@@ -1029,6 +1044,7 @@ pub(crate) const RELATION_COLUMNS_SQL: &str = "SELECT a.attname::text, \
      JOIN pg_catalog.pg_type ty ON ty.oid = a.atttypid \
      LEFT JOIN pg_catalog.pg_index pk ON pk.indrelid = c.oid AND pk.indisprimary \
      WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped \
+       AND NOT COALESCE((to_jsonb(a) ->> 'attishidden')::boolean, false) \
      ORDER BY a.attnum";
 
 pub(crate) fn primary_key_columns(rows: &[tokio_postgres::Row]) -> Vec<String> {
@@ -1042,10 +1058,89 @@ pub(crate) const LOCK_GUARD: &str = "lock_timeout = '5s'";
 pub(crate) const STREAM_IDLE_GUARD: &str = "idle_in_transaction_session_timeout = '5min'";
 pub(crate) const TRANSACTION_IDLE_GUARD: &str = "idle_in_transaction_session_timeout = '30min'";
 
+pub(crate) const COCKROACH_TRANSACTIONAL_DDL: &str =
+    "SELECT set_config('autocommit_before_ddl', 'off', true) WHERE version() LIKE 'CockroachDB%'";
+
+async fn is_cockroach(conn: &tokio_postgres::Client) -> bool {
+    conn.query_one("SELECT version() LIKE 'CockroachDB%'", &[])
+        .await
+        .is_ok_and(|row| row.get::<_, bool>(0))
+}
+
+async fn cockroach_hint(conn: &tokio_postgres::Client, error: String, hint: &str) -> String {
+    if is_cockroach(conn).await {
+        format!("CockroachDB: {hint}")
+    } else {
+        error
+    }
+}
+
+const COCKROACH_REPLICATION: &str =
+    "Publikationen und Subskriptionen gibt es nicht; Änderungsfeeds über CREATE CHANGEFEED.";
+
+const COCKROACH_SESSIONS_SQL: &str = "SELECT pg_backend_pid::int4, user_name, current_database(), \
+        COALESCE(application_name, ''), split_part(client_address, ':', 1), lower(status), \
+        COALESCE(left(active_queries, 4000), ''), active_query_start::text, NULL::text, NULL::text, \
+        session_id = current_setting('session_id'), ARRAY[]::int4[], NULL::int4, \
+        session_start::text, NULL::text, kv_txn, NULL::text, 'client backend' \
+     FROM crdb_internal.cluster_sessions WHERE session_end IS NULL \
+     ORDER BY active_query_start NULLS LAST";
+
+const COCKROACH_LOCKS_SQL: &str = "SELECT COALESCE(s.pg_backend_pid, 0)::int4, 'row', \
+        l.database_name || '.' || l.schema_name || '.' || l.table_name, l.lock_strength, l.granted \
+     FROM crdb_internal.cluster_locks l \
+     LEFT JOIN crdb_internal.cluster_sessions s ON s.kv_txn = l.txn_id::text AND s.session_end IS NULL \
+     ORDER BY 1, l.granted DESC";
+
+const COCKROACH_METRICS_SQL: &str = "SELECT \
+        (SELECT count(*) FROM crdb_internal.cluster_sessions WHERE session_end IS NULL)::int8, \
+        NULL::int8, \
+        (SELECT count(*) FROM crdb_internal.cluster_queries \
+            WHERE session_id <> current_setting('session_id'))::int8, \
+        (SELECT count(*) FROM crdb_internal.cluster_locks WHERE NOT granted)::int8, \
+        0::int8, 0::int8, 0::int8, 0::int8, 0::int8, 0::int8, NULL::int8, NULL::int8, \
+        version(), NULL::int8, current_setting('TimeZone'), \
+        current_setting('default_transaction_isolation'), false, NULL::float8";
+
+async fn database_size(conn: &tokio_postgres::Client) -> Option<i64> {
+    let row = conn
+        .query_one(
+            "SELECT current_database(), pg_database_size(current_database())::bigint",
+            &[],
+        )
+        .await
+        .ok()?;
+    let size: i64 = row.get(1);
+    if size > 0 || !is_cockroach(conn).await {
+        return Some(size);
+    }
+    let schemas = cockroach_schema_sizes(conn, &row.get::<_, String>(0)).await?;
+    Some(schemas.values().sum())
+}
+
+async fn cockroach_schema_sizes(
+    conn: &tokio_postgres::Client,
+    database: &str,
+) -> Option<std::collections::HashMap<String, i64>> {
+    let rows = conn
+        .query(
+            &format!(
+                "SELECT schema_name, COALESCE(sum((span_stats ->> 'live_bytes')::int8), 0)::int8 \
+                 FROM [SHOW RANGES FROM DATABASE {} WITH TABLES, DETAILS] GROUP BY schema_name",
+                quote_ident(database)
+            ),
+            &[],
+        )
+        .await
+        .ok()?;
+    Some(rows.iter().map(|row| (row.get(0), row.get(1))).collect())
+}
+
 pub(crate) fn session_guards(settings: &[&str]) -> String {
     settings
         .iter()
         .map(|setting| format!("SET LOCAL {setting}"))
+        .chain(std::iter::once(COCKROACH_TRANSACTIONAL_DDL.to_string()))
         .collect::<Vec<_>>()
         .join("; ")
 }
@@ -1139,6 +1234,8 @@ impl DatabaseAdapter for PostgresAdapter {
                 "SELECT schema_name FROM information_schema.schemata \
                  WHERE schema_name <> 'information_schema' \
                    AND schema_name NOT LIKE 'pg\\_%' \
+                   AND schema_name NOT IN ('crdb_internal', 'timescaledb_information', 'timescaledb_experimental') \
+                   AND schema_name NOT LIKE '\\_timescaledb\\_%' \
                  ORDER BY schema_name",
                 &[],
             )
@@ -1168,7 +1265,9 @@ impl DatabaseAdapter for PostgresAdapter {
                         "SELECT table_schema, table_name \
                          FROM information_schema.tables \
                          WHERE table_type IN ('BASE TABLE', 'FOREIGN') \
-                           AND table_schema NOT IN ('pg_catalog', 'information_schema') \
+                           AND table_schema NOT IN ('pg_catalog', 'information_schema', 'crdb_internal', \
+                               'timescaledb_information', 'timescaledb_experimental') \
+                           AND table_schema NOT LIKE '\\_timescaledb\\_%' \
                          ORDER BY table_schema, table_name",
                         &[],
                     )
@@ -1202,6 +1301,7 @@ impl DatabaseAdapter for PostgresAdapter {
                         "SELECT c.table_schema, c.table_name, c.column_name, c.data_type \
                          FROM information_schema.columns c \
                          WHERE c.table_schema = $1 AND c.table_name = $2 \
+                           AND COALESCE(to_jsonb(c) ->> 'is_hidden', 'NO') <> 'YES' \
                          ORDER BY c.ordinal_position",
                         &[&s, &t],
                     )
@@ -1214,6 +1314,7 @@ impl DatabaseAdapter for PostgresAdapter {
                          JOIN information_schema.tables t \
                            ON c.table_schema = t.table_schema AND c.table_name = t.table_name \
                          WHERE t.table_type = $1 AND c.table_schema = $2 \
+                           AND COALESCE(to_jsonb(c) ->> 'is_hidden', 'NO') <> 'YES' \
                          ORDER BY c.table_schema, c.table_name, c.ordinal_position",
                         &[&type_filter, &s],
                     )
@@ -1227,6 +1328,7 @@ impl DatabaseAdapter for PostgresAdapter {
                            ON c.table_schema = t.table_schema AND c.table_name = t.table_name \
                          WHERE t.table_type = $1 \
                            AND c.table_schema NOT IN ('pg_catalog', 'information_schema') \
+                           AND COALESCE(to_jsonb(c) ->> 'is_hidden', 'NO') <> 'YES' \
                          ORDER BY c.table_schema, c.table_name, c.ordinal_position",
                         &[&type_filter],
                     )
@@ -1264,6 +1366,7 @@ impl DatabaseAdapter for PostgresAdapter {
                  WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema') \
                    AND ($2::text IS NULL OR c.table_schema = $2) \
                    AND c.column_name ILIKE $1 \
+                   AND COALESCE(to_jsonb(c) ->> 'is_hidden', 'NO') <> 'YES' \
                  ORDER BY c.table_schema, c.table_name, c.ordinal_position \
                  LIMIT $3",
                 &[&pattern, &schema, &limit],
@@ -2005,14 +2108,18 @@ impl DatabaseAdapter for PostgresAdapter {
             None => super::execution::connect_postgres(&self.config, &self.ssl).await?,
         };
         let (begin, outcome) = tokio::join!(
-            conn.simple_query(READ_ONLY_BEGIN),
+            conn.simple_query(POOLED_BEGIN),
             self.controlled(&conn, run_simple_query(&conn, sql)),
         );
         if begin.is_err() && conn.is_closed() && !fresh {
             return self.execute_query(sql).await;
         }
         if begin.is_ok() && !conn.is_closed() && !super::execution::interrupted() {
-            let _ = futures_util::FutureExt::now_or_never(conn.simple_query("ROLLBACK"));
+            let reset = match begin.as_deref().map(pooled_on_cockroach) {
+                Ok(true) => "ROLLBACK; RESET ALL",
+                _ => "ROLLBACK",
+            };
+            let _ = futures_util::FutureExt::now_or_never(conn.simple_query(reset));
             let mut clients = idle.lock().unwrap_or_else(|e| e.into_inner());
             if clients.len() < MAX_IDLE {
                 clients.push((conn, std::time::SystemTime::now()));
@@ -2082,7 +2189,9 @@ impl DatabaseAdapter for PostgresAdapter {
                     conn.query(
                         "SELECT table_schema, table_name \
                          FROM information_schema.views \
-                         WHERE table_schema NOT IN ('pg_catalog', 'information_schema') \
+                         WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'crdb_internal', \
+                               'timescaledb_information', 'timescaledb_experimental') \
+                           AND table_schema NOT LIKE '\\_timescaledb\\_%' \
                          ORDER BY table_schema, table_name",
                         &[],
                     )
@@ -2391,8 +2500,18 @@ impl DatabaseAdapter for PostgresAdapter {
                      ORDER BY rolname",
                     &[],
                 )
-                .await
-                .map_err(map_pg_err)?;
+                .await;
+            let rows = match rows {
+                Ok(rows) => rows,
+                Err(e) => {
+                    return Err(cockroach_hint(
+                        &conn,
+                        map_pg_err(e),
+                        "Proxy-Benutzer werden nicht unterstützt (kein Rollenwechsel beim Verbindungsaufbau).",
+                    )
+                    .await)
+                }
+            };
             Ok(rows
                 .iter()
                 .map(|row| ProxyUserInfo {
@@ -2545,10 +2664,10 @@ impl DatabaseAdapter for PostgresAdapter {
                              ELSE format_type(a.atttypid, a.atttypmod) END AS data_type, \
                         CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable, \
                         CASE WHEN a.attgenerated = '' THEN pg_get_expr(d.adbin, d.adrelid) END AS column_default, \
-                        a.attnum::int AS ordinal_position, \
-                        CASE WHEN ty.typtype = 'd' OR a.atttypmod <= 0 THEN NULL \
+                        a.attnum::int4 AS ordinal_position, \
+                        (CASE WHEN ty.typtype = 'd' OR a.atttypmod <= 0 THEN NULL \
                              WHEN a.atttypid IN ('varchar'::regtype, 'bpchar'::regtype) THEN a.atttypmod - 4 \
-                             WHEN a.atttypid IN ('bit'::regtype, 'varbit'::regtype) THEN a.atttypmod END AS character_maximum_length, \
+                             WHEN a.atttypid IN ('bit'::regtype, 'varbit'::regtype) THEN a.atttypmod END)::int4 AS character_maximum_length, \
                         COALESCE(a.attnum = ANY (pk.conkey), false) AS is_primary_key, \
                         col_description(a.attrelid, a.attnum) AS comment \
                  FROM pg_catalog.pg_attribute a \
@@ -2559,6 +2678,7 @@ impl DatabaseAdapter for PostgresAdapter {
                  LEFT JOIN pg_catalog.pg_constraint pk ON pk.conrelid = cl.oid AND pk.contype = 'p' \
                  WHERE n.nspname = $1 AND cl.relname = $2 AND cl.relkind IN ('r', 'p', 'v', 'm', 'f') \
                    AND a.attnum > 0 AND NOT a.attisdropped \
+                   AND NOT COALESCE((to_jsonb(a) ->> 'attishidden')::boolean, false) \
                  ORDER BY a.attnum",
                 &[&schema, &table],
             ).await.map_err(map_pg_err)?;
@@ -2594,12 +2714,13 @@ impl DatabaseAdapter for PostgresAdapter {
                             (a.atthasdef AND a.attgenerated = '') AS has_default, \
                             (a.attidentity <> '') AS is_identity, \
                             (a.attgenerated <> '') AS is_generated, \
-                            a.attnum::int AS ordinal_position \
+                            a.attnum::int4 AS ordinal_position \
                      FROM pg_attribute a \
                      JOIN pg_class c ON c.oid = a.attrelid \
                      JOIN pg_namespace n ON n.oid = c.relnamespace \
                      WHERE n.nspname = $1 AND c.relname = $2 \
                        AND a.attnum > 0 AND NOT a.attisdropped \
+                       AND NOT COALESCE((to_jsonb(a) ->> 'attishidden')::boolean, false) \
                      ORDER BY a.attnum",
                     &[&schema, &table],
                 )
@@ -2630,7 +2751,7 @@ impl DatabaseAdapter for PostgresAdapter {
     ) -> Result<super::CsvImportOutcome, String> {
         self.ensure_writable()?;
         super::import::validate_request(request)?;
-        let plan = super::import::prepare_plan(
+        let mut plan = super::import::prepare_plan(
             super::import::Dialect::Postgres,
             self,
             &request.schema,
@@ -2639,6 +2760,7 @@ impl DatabaseAdapter for PostgresAdapter {
             request.conflict.as_ref(),
         )
         .await?;
+        plan.xmax = !is_cockroach(&*self.get_meta().await?).await;
         let session = super::import::PgTx::open(&self.config, &self.ssl).await?;
         super::import::run_import(plan, Box::new(session), request).await
     }
@@ -3102,6 +3224,7 @@ impl DatabaseAdapter for PostgresAdapter {
                          AND pk.table_name = c.table_name \
                          AND pk.column_name = c.column_name \
                      WHERE t.table_type = 'BASE TABLE' AND c.table_schema = $1 \
+                       AND COALESCE(to_jsonb(c) ->> 'is_hidden', 'NO') <> 'YES' \
                      ORDER BY c.table_schema, c.table_name, c.ordinal_position",
                     &[&schema_filter],
                 )
@@ -3746,6 +3869,9 @@ impl DatabaseAdapter for PostgresAdapter {
         let mut conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async move {
             let tx = conn.transaction().await.map_err(map_pg_err)?;
+            tx.batch_execute(COCKROACH_TRANSACTIONAL_DDL)
+                .await
+                .map_err(map_pg_err)?;
             tx.batch_execute(&ddl).await.map_err(map_pg_err)?;
             tx.commit().await.map_err(map_pg_err)?;
             Ok(())
@@ -3864,22 +3990,47 @@ impl DatabaseAdapter for PostgresAdapter {
             "FORMAT JSON"
         };
         let statement = format!("EXPLAIN ({options}) {trimmed}");
+        let cockroach = format!("EXPLAIN {}{trimmed}", if analyze { "ANALYZE " } else { "" });
+        let text_plan = |rows: Vec<tokio_postgres::Row>| {
+            serde_json::Value::String(
+                rows.iter()
+                    .map(|row| row.get::<_, String>(0))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            )
+        };
         let mut conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
             if !analyze || self.session.is_some() {
-                let row = conn
-                    .query_one(statement.as_str(), &[])
-                    .await
-                    .map_err(map_pg_err)?;
-                return Ok(row.get::<_, serde_json::Value>(0));
+                return match conn.query_one(statement.as_str(), &[]).await {
+                    Ok(row) => Ok(row.get::<_, serde_json::Value>(0)),
+                    Err(_) if !analyze && is_cockroach(&conn).await => conn
+                        .query(cockroach.as_str(), &[])
+                        .await
+                        .map(text_plan)
+                        .map_err(map_pg_err),
+                    Err(e) => Err(map_pg_err(e)),
+                };
             }
             let tx = conn.transaction().await.map_err(map_pg_err)?;
-            let row = tx
-                .query_one(statement.as_str(), &[])
+            let error = match tx.query_one(statement.as_str(), &[]).await {
+                Ok(row) => {
+                    tx.rollback().await.map_err(map_pg_err)?;
+                    return Ok(row.get::<_, serde_json::Value>(0));
+                }
+                Err(e) => e,
+            };
+            let _ = tx.rollback().await;
+            if !is_cockroach(&conn).await {
+                return Err(map_pg_err(error));
+            }
+            let tx = conn.transaction().await.map_err(map_pg_err)?;
+            let rows = tx
+                .query(cockroach.as_str(), &[])
                 .await
                 .map_err(map_pg_err)?;
             tx.rollback().await.map_err(map_pg_err)?;
-            Ok(row.get::<_, serde_json::Value>(0))
+            Ok(text_plan(rows))
         })
         .await
     }
@@ -4372,7 +4523,9 @@ impl DatabaseAdapter for PostgresAdapter {
                 target,
                 ops.join(","),
             );
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            if let Err(e) = conn.execute(sql.as_str(), &[]).await {
+                return Err(cockroach_hint(&conn, map_pg_err(e), COCKROACH_REPLICATION).await);
+            }
             Ok(())
         })
         .await
@@ -4383,7 +4536,9 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async {
             let sql = format!("DROP PUBLICATION {}", quote_ident(name));
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            if let Err(e) = conn.execute(sql.as_str(), &[]).await {
+                return Err(cockroach_hint(&conn, map_pg_err(e), COCKROACH_REPLICATION).await);
+            }
             Ok(())
         })
         .await
@@ -4483,7 +4638,9 @@ impl DatabaseAdapter for PostgresAdapter {
                 publications,
                 options.join(", "),
             );
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            if let Err(e) = conn.execute(sql.as_str(), &[]).await {
+                return Err(cockroach_hint(&conn, map_pg_err(e), COCKROACH_REPLICATION).await);
+            }
             Ok(())
         })
         .await
@@ -4494,7 +4651,9 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async {
             let sql = format!("DROP SUBSCRIPTION {}", quote_ident(name));
-            conn.execute(sql.as_str(), &[]).await.map_err(map_pg_err)?;
+            if let Err(e) = conn.execute(sql.as_str(), &[]).await {
+                return Err(cockroach_hint(&conn, map_pg_err(e), COCKROACH_REPLICATION).await);
+            }
             Ok(())
         })
         .await
@@ -4503,19 +4662,25 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn list_sessions(&self) -> Result<Vec<super::SessionInfo>, String> {
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
-            conn.query(
-                "SELECT pid, usename, datname, COALESCE(application_name, ''), client_addr::text, \
+            let rows = match conn
+                .query(
+                    "SELECT pid, usename, datname, COALESCE(application_name, ''), client_addr::text, \
                         state, COALESCE(left(query, 4000), ''), query_start::text, xact_start::text, \
                         wait_event, pid = pg_backend_pid(), pg_blocking_pids(pid), client_port, \
                         backend_start::text, state_change::text, backend_xid::text, \
                         wait_event_type, backend_type \
                  FROM pg_stat_activity WHERE datname IS NOT NULL \
                  ORDER BY query_start NULLS LAST",
-                &[],
-            )
-            .await
-            .map_err(map_pg_err)
-            .map(|rows| {
+                    &[],
+                )
+                .await
+            {
+                Err(_) if is_cockroach(&conn).await => {
+                    conn.query(COCKROACH_SESSIONS_SQL, &[]).await
+                }
+                rows => rows,
+            };
+            rows.map_err(map_pg_err).map(|rows| {
                 rows.into_iter()
                     .map(|row| super::SessionInfo {
                         pid: row.get(0),
@@ -4550,10 +4715,20 @@ impl DatabaseAdapter for PostgresAdapter {
         }
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
-            conn.query_one("SELECT pg_cancel_backend($1)", &[&pid])
-                .await
-                .map_err(map_pg_err)
-                .map(|row| row.get(0))
+            match conn.query_one("SELECT pg_cancel_backend($1)", &[&pid]).await {
+                Err(_) if is_cockroach(&conn).await => {
+                    conn.execute(
+                        "CANCEL QUERIES IF EXISTS (SELECT q.query_id FROM crdb_internal.cluster_queries q \
+                         JOIN crdb_internal.cluster_sessions s ON s.session_id = q.session_id \
+                         WHERE s.pg_backend_pid = $1::int4 AND s.session_end IS NULL)",
+                        &[&pid],
+                    )
+                    .await
+                    .map(|count| count > 0)
+                    .map_err(map_pg_err)
+                }
+                result => result.map_err(map_pg_err).map(|row| row.get(0)),
+            }
         })
         .await
     }
@@ -4565,7 +4740,7 @@ impl DatabaseAdapter for PostgresAdapter {
         }
         let conn = self.get_meta().await?;
         let own: i32 = conn
-            .query_one("SELECT pg_backend_pid()", &[])
+            .query_one("SELECT pg_backend_pid()::int4", &[])
             .await
             .map_err(map_pg_err)
             .map(|row| row.get(0))?;
@@ -4573,10 +4748,19 @@ impl DatabaseAdapter for PostgresAdapter {
             return Err("Die eigene Sitzung kann nicht beendet werden.".to_string());
         }
         self.timed(conn.cancel_token(), async {
-            conn.query_one("SELECT pg_terminate_backend($1)", &[&pid])
-                .await
-                .map_err(map_pg_err)
-                .map(|row| row.get(0))
+            match conn.query_one("SELECT pg_terminate_backend($1)", &[&pid]).await {
+                Err(_) if is_cockroach(&conn).await => {
+                    conn.execute(
+                        "CANCEL SESSIONS IF EXISTS (SELECT session_id FROM crdb_internal.cluster_sessions \
+                         WHERE pg_backend_pid = $1::int4 AND session_end IS NULL)",
+                        &[&pid],
+                    )
+                    .await
+                    .map(|count| count > 0)
+                    .map_err(map_pg_err)
+                }
+                result => result.map_err(map_pg_err).map(|row| row.get(0)),
+            }
         })
         .await
     }
@@ -4584,7 +4768,7 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn list_locks(&self) -> Result<Vec<super::LockInfo>, String> {
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
-            conn.query(
+            let rows = conn.query(
                 "SELECT l.pid, l.locktype, \
                         CASE WHEN l.relation IS NOT NULL THEN n.nspname || '.' || c.relname ELSE NULL END, \
                         l.mode, l.granted \
@@ -4594,9 +4778,14 @@ impl DatabaseAdapter for PostgresAdapter {
                  ORDER BY l.pid, l.granted DESC",
                 &[],
             )
-            .await
-            .map_err(map_pg_err)
-            .map(|rows| {
+            .await;
+            let rows = match rows {
+                Ok(rows) if rows.is_empty() && is_cockroach(&conn).await => {
+                    conn.query(COCKROACH_LOCKS_SQL, &[]).await
+                }
+                rows => rows,
+            };
+            rows.map_err(map_pg_err).map(|rows| {
                 rows.into_iter()
                     .map(|row| super::LockInfo {
                         pid: row.get(0),
@@ -4691,7 +4880,8 @@ impl DatabaseAdapter for PostgresAdapter {
     async fn live_metrics(&self, include_details: bool) -> Result<super::LiveMetrics, String> {
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
-            let base = conn.query_one(
+            let base = async {
+                match conn.query_one(
                 "SELECT \
                     (SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend')::bigint, \
                     current_setting('max_connections')::bigint, \
@@ -4712,15 +4902,18 @@ impl DatabaseAdapter for PostgresAdapter {
                  FROM (SELECT 1) one \
                  LEFT JOIN pg_stat_database d ON d.datname = current_database()",
                 &[],
-            );
+            ).await {
+                    Err(_) if is_cockroach(&conn).await => {
+                        conn.query_one(COCKROACH_METRICS_SQL, &[]).await
+                    }
+                    row => row,
+                }
+            };
             let size = async {
                 if !include_details {
                     return None;
                 }
-                conn.query_one("SELECT pg_database_size(current_database())::bigint", &[])
-                    .await
-                    .ok()
-                    .map(|row| row.get::<_, i64>(0))
+                database_size(&conn).await
             };
             let cpu = async {
                 conn.query_one(
@@ -4828,7 +5021,7 @@ impl DatabaseAdapter for PostgresAdapter {
             let row = base.map_err(map_pg_err)?;
             Ok(super::LiveMetrics {
                 connections: row.get(0),
-                max_connections: Some(row.get(1)),
+                max_connections: row.get(1),
                 active_sessions: row.get(2),
                 waiting_locks: row.get(3),
                 database_size_bytes: size,
@@ -4869,7 +5062,7 @@ impl DatabaseAdapter for PostgresAdapter {
                 )
                 .await
                 .map_err(map_pg_err)?;
-            let schemas: Vec<super::SchemaSize> = conn
+            let mut schemas: Vec<super::SchemaSize> = conn
                 .query(
                     "SELECT n.nspname, COUNT(c.oid), COALESCE(SUM(pg_relation_size(c.oid)), 0)::bigint \
                      FROM pg_namespace n \
@@ -4888,10 +5081,27 @@ impl DatabaseAdapter for PostgresAdapter {
                     size_bytes: row.get(2),
                 })
                 .collect();
+            let database: String = row.get(0);
+            let mut size_bytes: i64 = row.get(1);
+            let mut size_pretty: String = row.get(2);
+            if size_bytes == 0 && is_cockroach(&conn).await {
+                if let Some(sizes) = cockroach_schema_sizes(&conn, &database).await {
+                    for schema in &mut schemas {
+                        schema.size_bytes = sizes.get(&schema.schema).copied().unwrap_or(0);
+                    }
+                    schemas.sort_by_key(|schema| std::cmp::Reverse(schema.size_bytes));
+                    size_bytes = sizes.values().sum();
+                    size_pretty = conn
+                        .query_one("SELECT pg_size_pretty($1::int8)", &[&size_bytes])
+                        .await
+                        .map_err(map_pg_err)?
+                        .get(0);
+                }
+            }
             Ok(super::DatabaseOverview {
-                database: row.get(0),
-                size_bytes: row.get(1),
-                size_pretty: row.get(2),
+                database,
+                size_bytes,
+                size_pretty,
                 schemas,
             })
         })
@@ -5406,9 +5616,11 @@ impl PostgresAdapter {
         let mut conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async move {
             let tx = conn.transaction().await.map_err(map_pg_err)?;
-            tx.batch_execute(EMPTY_SEARCH_PATH)
-                .await
-                .map_err(map_pg_err)?;
+            tx.batch_execute(&format!(
+                "{EMPTY_SEARCH_PATH}; {COCKROACH_TRANSACTIONAL_DDL}"
+            ))
+            .await
+            .map_err(map_pg_err)?;
             let plan = table_copy_plan(&tx, source_schema, target_schema, name).await?;
             tx.batch_execute(&plan.create).await.map_err(map_pg_err)?;
             let mut executed = plan.create.clone();
@@ -6106,7 +6318,7 @@ mod tests {
                 "lock_timeout = '5s'",
                 "idle_in_transaction_session_timeout = '5min'"
             ]),
-            "SET LOCAL lock_timeout = '5s'; SET LOCAL idle_in_transaction_session_timeout = '5min'"
+            format!("SET LOCAL lock_timeout = '5s'; SET LOCAL idle_in_transaction_session_timeout = '5min'; {}", super::COCKROACH_TRANSACTIONAL_DDL)
         );
     }
 
@@ -7470,6 +7682,177 @@ mod tests {
         let own = sessions.iter().find(|s| s.is_self).expect("own session");
         assert!(own.backend_start.is_some());
         assert_eq!(own.backend_type.as_deref(), Some("client backend"));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires L8DB_E2E_CRDB_URL (CockroachDB)"]
+    async fn cockroach_features_work_or_say_why_not() {
+        use crate::db::{CreatePublicationRequest, CsvConflict, CsvImportRequest};
+        let Ok(url) = std::env::var("L8DB_E2E_CRDB_URL") else {
+            eprintln!("übersprungen: L8DB_E2E_CRDB_URL fehlt");
+            return;
+        };
+        let adapter =
+            PostgresAdapter::from_connection_string(&url, None, create_pool_state()).unwrap();
+        lab_execute(
+            &adapter,
+            "DROP TABLE IF EXISTS l8db_crdb_probe; \
+             CREATE TABLE l8db_crdb_probe (id INT8 PRIMARY KEY, name STRING); \
+             DROP TABLE IF EXISTS l8db_crdb_nopk; CREATE TABLE l8db_crdb_nopk (v INT8); \
+             INSERT INTO l8db_crdb_nopk VALUES (1), (2)",
+        )
+        .await;
+
+        let page = adapter
+            .fetch_rows(
+                "public",
+                "l8db_crdb_nopk",
+                None,
+                10,
+                0,
+                None,
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.columns, ["v"]);
+        assert_eq!(page.rows.len(), 2);
+        let detailed = adapter
+            .list_table_columns_detailed("public", "l8db_crdb_nopk")
+            .await
+            .unwrap();
+        assert_eq!(detailed.len(), 1);
+        assert!(!adapter
+            .list_schemas()
+            .await
+            .unwrap()
+            .contains(&"crdb_internal".to_string()));
+
+        let (config, ssl) = crate::db::connection::parse_connection(&url, None).unwrap();
+        let client = crate::db::execution::connect_postgres(&config, &ssl)
+            .await
+            .unwrap();
+        super::begin_guarded(&client, "BEGIN", &[super::TRANSACTION_IDLE_GUARD])
+            .await
+            .unwrap();
+        client
+            .batch_execute(
+                "CREATE TABLE l8db_crdb_ddl (id INT8); INSERT INTO l8db_crdb_ddl VALUES (1)",
+            )
+            .await
+            .unwrap();
+        client.batch_execute("ROLLBACK").await.unwrap();
+        let kept: bool = client
+            .query_one("SELECT to_regclass('l8db_crdb_ddl') IS NOT NULL", &[])
+            .await
+            .unwrap()
+            .get(0);
+        assert!(!kept, "DDL im Skript muss mit zurückgerollt werden");
+
+        let request = |rows: Vec<(i64, &str)>, updates: Option<Vec<String>>| CsvImportRequest {
+            file: None,
+            schema: "public".into(),
+            table: "l8db_crdb_probe".into(),
+            columns: vec!["id".into(), "name".into()],
+            rows: rows
+                .into_iter()
+                .map(|(id, name)| vec![Some(id.to_string()), Some(name.into())])
+                .collect(),
+            conflict: updates.map(|update_columns| CsvConflict {
+                constraint: "l8db_crdb_probe_pkey".into(),
+                update_columns,
+            }),
+        };
+        let first = adapter
+            .csv_import(&request(vec![(1, "a"), (2, "b")], None))
+            .await
+            .unwrap();
+        assert_eq!((first.inserted_rows, first.error), (2, None));
+        let skip = adapter
+            .csv_import(&request(vec![(2, "x"), (3, "c")], Some(vec![])))
+            .await
+            .unwrap();
+        assert_eq!((skip.inserted_rows, skip.skipped_rows), (1, 1));
+        let upsert = adapter
+            .csv_import(&request(
+                vec![(3, "z"), (4, "d")],
+                Some(vec!["name".into()]),
+            ))
+            .await
+            .unwrap();
+        assert_eq!((upsert.inserted_rows, upsert.updated_rows), (1, 1));
+
+        let sessions = adapter.list_sessions().await.unwrap();
+        assert!(sessions.iter().any(|s| s.is_self), "{sessions:?}");
+        adapter.list_locks().await.unwrap();
+        let sleeper = crate::db::execution::connect_postgres(&config, &ssl)
+            .await
+            .unwrap();
+        let pid: i32 = sleeper
+            .query_one("SELECT pg_backend_pid()::int4", &[])
+            .await
+            .unwrap()
+            .get(0);
+        let sleep = tokio::spawn(async move { sleeper.query("SELECT pg_sleep(30)", &[]).await });
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        assert!(adapter.cancel_session(pid).await.unwrap());
+        assert!(sleep.await.unwrap().is_err());
+        adapter.terminate_session(pid).await.unwrap();
+
+        let metrics = adapter.live_metrics(true).await.unwrap();
+        assert!(metrics.server_version.starts_with("CockroachDB"));
+        assert!(metrics.connections >= 1 && metrics.max_connections.is_none());
+        assert!(metrics.database_size_bytes.is_some_and(|size| size > 0));
+        assert!(adapter.get_database_overview().await.unwrap().size_bytes > 0);
+
+        let plan = adapter
+            .explain_query("SELECT * FROM l8db_crdb_probe WHERE id = 1", false)
+            .await
+            .unwrap();
+        assert!(plan
+            .as_str()
+            .is_some_and(|text| text.contains("l8db_crdb_probe")));
+        let analyzed = adapter
+            .explain_query("SELECT generate_series(1, 10)", true)
+            .await
+            .unwrap();
+        assert!(analyzed
+            .as_str()
+            .is_some_and(|text| text.contains("actual row count: 10")));
+
+        let publication = adapter
+            .create_publication(&CreatePublicationRequest {
+                name: "l8db_crdb_pub".into(),
+                for_all_tables: true,
+                tables: vec![],
+                publish_insert: true,
+                publish_update: true,
+                publish_delete: true,
+                publish_truncate: true,
+            })
+            .await
+            .unwrap_err();
+        assert!(publication.starts_with("CockroachDB:"), "{publication}");
+        let proxy = adapter.list_proxy_users().await.unwrap_err();
+        assert!(proxy.starts_with("CockroachDB:"), "{proxy}");
+
+        adapter
+            .execute_pooled_query("SELECT set_config('search_path', 'pg_catalog', false)")
+            .await
+            .unwrap();
+        let path = adapter
+            .execute_pooled_query("SELECT current_setting('search_path') AS path")
+            .await
+            .unwrap();
+        assert_ne!(path.rows[0]["path"], "pg_catalog");
+
+        lab_execute(
+            &adapter,
+            "DROP TABLE l8db_crdb_probe; DROP TABLE l8db_crdb_nopk",
+        )
+        .await;
     }
 
     #[tokio::test]

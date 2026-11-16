@@ -1,5 +1,6 @@
 import type { DatabaseKind, ProviderInfo } from "@/lib/db";
 import { allProviders, FALLBACK_PROVIDERS, providerById, providerForKind } from "@/lib/providers";
+import { serverProduct } from "@/lib/server-products";
 import {
   endpointFromTnsDescriptor,
   oracleConnectString,
@@ -79,7 +80,10 @@ export function providerFor(connection: {
   connectionString: string;
 }): ProviderInfo {
   return (
-    providerById(detectProvider(connection.connectionString, connection.kind)) ??
+    providerById(
+      serverProduct(connection.connectionString) ??
+        detectProvider(connection.connectionString, connection.kind),
+    ) ??
     providerForKind(connection.kind) ??
     FALLBACK_PROVIDERS[0]
   );

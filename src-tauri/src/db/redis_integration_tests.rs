@@ -176,9 +176,10 @@ fn redis_parser_rejects_partial_input_and_handles_binary() {
 #[ignore = "requires isolated L8DB_E2E_REDIS_URL with ACL administration"]
 async fn redis_auth_and_reconnect() {
     let admin = adapter("12");
+    run(&admin, "ACL DELUSER l8db_test_reader").await;
     run(
         &admin,
-        "ACL SETUSER l8db_test_reader reset on >l8db_reader_only ~* +@read +ping +select",
+        "ACL SETUSER l8db_test_reader on >l8db_reader_only ~* +@read +ping +select",
     )
     .await;
     let base = std::env::var("L8DB_E2E_REDIS_URL").unwrap();

@@ -375,9 +375,18 @@ pub struct ImportPlan {
     pub conflict: Option<ConflictPlan>,
     pub identity_insert: bool,
     pub overriding: bool,
+    pub xmax: bool,
 }
 
 impl ImportPlan {
+    fn returning(&self) -> &'static str {
+        if self.xmax {
+            " RETURNING (xmax = 0)"
+        } else {
+            ""
+        }
+    }
+
     fn column_list(&self) -> String {
         self.columns
             .iter()
@@ -499,14 +508,15 @@ impl ImportPlan {
                     oracle_select()
                 ),
                 Dialect::Postgres => format!(
-                    "INSERT INTO {} ({columns}) {}VALUES {} RETURNING (xmax = 0)",
+                    "INSERT INTO {} ({columns}) {}VALUES {}{}",
                     self.target,
                     if self.overriding {
                         "OVERRIDING SYSTEM VALUE "
                     } else {
                         ""
                     },
-                    values()
+                    values(),
+                    self.returning()
                 ),
                 _ => format!(
                     "INSERT INTO {} ({columns}) VALUES {}",
@@ -530,7 +540,7 @@ impl ImportPlan {
         };
         match d {
             Dialect::Postgres => format!(
-                "INSERT INTO {} ({columns}) VALUES {} ON CONFLICT ON CONSTRAINT {} {} RETURNING (xmax = 0)",
+                "INSERT INTO {} ({columns}) VALUES {} ON CONFLICT ON CONSTRAINT {} {}{}",
                 self.target,
                 values(),
                 d.quote(&conflict.constraint),
@@ -541,7 +551,8 @@ impl ImportPlan {
                         "DO UPDATE SET {}",
                         set(&|c| d.quote(c), &|c| format!("EXCLUDED.{}", d.quote(c)))
                     )
-                }
+                },
+                self.returning()
             ),
             Dialect::Mysql => format!(
                 "INSERT INTO {} ({columns}) VALUES {} ON DUPLICATE KEY UPDATE {}",
@@ -604,7 +615,11 @@ impl ImportPlan {
                 )
             }
             Dialect::Clickhouse => {
-                format!("INSERT INTO {} ({columns}) VALUES {}", self.target, values())
+                format!(
+                    "INSERT INTO {} ({columns}) VALUES {}",
+                    self.target,
+                    values()
+                )
             }
         }
     }
@@ -780,6 +795,7 @@ pub async fn prepare_plan(
         target: dialect.target(schema, table),
         identity_insert: dialect == Dialect::Mssql && mapped.iter().any(|c| c.is_identity),
         overriding: false,
+        xmax: true,
         columns: mapped,
         conflict,
     })
@@ -1048,7 +1064,7 @@ impl BatchWriter {
     async fn run_batch(&mut self, rows: &[Vec<String>]) -> Result<Counts, String> {
         let existing = match self.plan.existing_count_sql(rows) {
             Some(sql) if sql.is_empty() => Some(0),
-            Some(sql) if self.plan.dialect != Dialect::Postgres => {
+            Some(sql) if self.plan.dialect != Dialect::Postgres || !self.plan.xmax => {
                 let result = self.session.execute(&sql).await?;
                 Some(
                     cell_text(&result, 0, 0)
@@ -1060,36 +1076,38 @@ impl BatchWriter {
         };
         let result = self.session.execute(&self.plan.insert_sql(rows)).await?;
         let total = rows.len() as u64;
-        Ok(if self.plan.dialect == Dialect::Postgres {
-            let inserted = (0..result.rows.len())
-                .filter(|row| cell_flag(&result, *row, 0))
-                .count() as u64;
-            let returned = result.rows.len() as u64;
-            Counts {
-                inserted,
-                updated: returned - inserted,
-                skipped: total.saturating_sub(returned),
-            }
-        } else {
-            let existing = existing.unwrap_or(0).min(total);
-            match &self.plan.conflict {
-                Some(conflict) if conflict.updates.is_empty() => Counts {
-                    inserted: total - existing,
-                    updated: 0,
-                    skipped: existing,
-                },
-                Some(_) => Counts {
-                    inserted: total - existing,
-                    updated: existing,
-                    skipped: 0,
-                },
-                None => Counts {
-                    inserted: total,
-                    updated: 0,
-                    skipped: 0,
-                },
-            }
-        })
+        Ok(
+            if self.plan.dialect == Dialect::Postgres && self.plan.xmax {
+                let inserted = (0..result.rows.len())
+                    .filter(|row| cell_flag(&result, *row, 0))
+                    .count() as u64;
+                let returned = result.rows.len() as u64;
+                Counts {
+                    inserted,
+                    updated: returned - inserted,
+                    skipped: total.saturating_sub(returned),
+                }
+            } else {
+                let existing = existing.unwrap_or(0).min(total);
+                match &self.plan.conflict {
+                    Some(conflict) if conflict.updates.is_empty() => Counts {
+                        inserted: total - existing,
+                        updated: 0,
+                        skipped: existing,
+                    },
+                    Some(_) => Counts {
+                        inserted: total - existing,
+                        updated: existing,
+                        skipped: 0,
+                    },
+                    None => Counts {
+                        inserted: total,
+                        updated: 0,
+                        skipped: 0,
+                    },
+                }
+            },
+        )
     }
 
     async fn locate(&mut self, rows: &[Vec<String>]) -> Option<usize> {
@@ -1404,6 +1422,7 @@ mod tests {
             conflict,
             identity_insert: false,
             overriding: false,
+            xmax: true,
         }
     }
 
@@ -1570,6 +1589,14 @@ mod tests {
         assert!(pg.insert_sql(&rows(&pg)).contains(
             "ON CONFLICT ON CONSTRAINT \"t_pkey\" DO UPDATE SET \"name\" = EXCLUDED.\"name\" RETURNING"
         ));
+        let mut cockroach = plan(Dialect::Postgres, upsert());
+        cockroach.xmax = false;
+        let sql = cockroach.insert_sql(&rows(&cockroach));
+        assert!(sql.ends_with("DO UPDATE SET \"name\" = EXCLUDED.\"name\""));
+        assert!(!sql.contains("xmax"));
+        assert!(cockroach
+            .existing_count_sql(&rows(&cockroach))
+            .is_some_and(|sql| sql.contains("\"id\" IN ('1', '2')")));
     }
 
     #[test]

@@ -2911,6 +2911,7 @@ impl Runner<'_> {
         let has_identity = table.columns.iter().any(|c| c.identity);
         let plan = ImportPlan {
             dialect: d,
+            xmax: true,
             target: d.target(&table.target_schema, &table.target_name),
             columns: table
                 .columns

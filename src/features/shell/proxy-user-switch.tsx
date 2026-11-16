@@ -6,8 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { connectionError } from "@/lib/connection-url";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { listProxyUsers, testConnectionString } from "@/lib/db";
-import { useActiveDatabase } from "@/lib/db-selection";
-import { useCapabilities } from "@/lib/providers";
+import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { getTransactionForConnection } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
@@ -27,7 +26,7 @@ const HINTS: Partial<Record<string, string>> = {
 export function ProxyUserSwitch() {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
-  const caps = useCapabilities(connection?.kind);
+  const caps = useActiveCapabilities();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
