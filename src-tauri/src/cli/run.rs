@@ -154,10 +154,11 @@ fn block_on(global: &Global, command: Command) -> i32 {
         return 1;
     };
     let job = format!("cli-{}", std::process::id());
+    db::mongodb::track_clients();
     let code = runtime.block_on(async {
         let work = execute(global, command, &job);
         tokio::pin!(work);
-        tokio::select! {
+        let code = tokio::select! {
             result = &mut work => match result {
                 Ok(()) => 0,
                 Err(error) if error == ABORTED => {
@@ -176,7 +177,9 @@ fn block_on(global: &Global, command: Command) -> i32 {
                 eprintln!("\n{ABORTED}");
                 CANCELLED
             }
-        }
+        };
+        db::mongodb::close_clients().await;
+        code
     });
     if code == CANCELLED {
         runtime.shutdown_background();
@@ -284,7 +287,18 @@ fn names(list: &[AutomationConnection]) -> String {
 }
 
 async fn session(global: &Global, explicit: Option<&str>) -> Result<Session, String> {
-    connect::open(resolve(global, explicit).await?, global.database.as_deref()).await
+    let source = read_only(global, resolve(global, explicit).await?);
+    connect::open(source, global.database.as_deref()).await
+}
+
+pub(super) fn read_only(global: &Global, mut source: Source) -> Source {
+    let env = std::env::var("L8DB_READ_ONLY").is_ok_and(|v| matches!(v.trim(), "1" | "true"));
+    if global.read_only || env {
+        match &mut source {
+            Source::Saved(target) | Source::Url { target, .. } => target.read_only = true,
+        }
+    }
+    source
 }
 
 fn options(job: &str, timeout: u64) -> ExecutionOptions {
@@ -366,6 +380,16 @@ async fn execute(global: &Global, command: Command, job: &str) -> Result<(), Str
         Command::Schema { .. } => {
             let session = session(global, None).await?;
             scope_level(session.target.kind.capabilities().schemas, "Schemas")?;
+            if session.target.kind.capabilities().database_is_schema {
+                let names = guarded(
+                    job,
+                    session.target.kind,
+                    60,
+                    session.adapter.list_databases(),
+                )
+                .await?;
+                return write(output::write_list(&mut out, format, "database", &names));
+            }
             let names =
                 guarded(job, session.target.kind, 60, session.adapter.list_schemas()).await?;
             write(output::write_list(&mut out, format, "schema", &names))
@@ -441,10 +465,12 @@ pub(super) async fn relations(
         .collect();
     if let Ok(views) = guarded(job, kind, 60, session.adapter.list_views(schema)).await {
         for v in views {
-            if !found
-                .iter()
-                .any(|t| t.schema == v.schema && t.name == v.name)
+            if let Some(table) = found
+                .iter_mut()
+                .find(|t| t.schema == v.schema && t.name == v.name)
             {
+                table.view = true;
+            } else {
                 found.push(Relation {
                     schema: v.schema,
                     name: v.name,
@@ -591,8 +617,25 @@ async fn synonym_target(
     })
 }
 
+async fn mysql_folds_case(session: &Session, job: &str) -> bool {
+    guarded(
+        job,
+        session.target.kind,
+        60,
+        session
+            .adapter
+            .execute_query("SELECT @@lower_case_table_names AS l"),
+    )
+    .await
+    .ok()
+    .and_then(|r| r.rows.first().and_then(|row| row.get("l").cloned()))
+    .and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+    .is_some_and(|mode| mode != 0)
+}
+
 async fn locate(session: &Session, name: &str, job: &str) -> Result<Relation, String> {
     let (schema, table) = oracle_case(session.target.kind, name, split_table(name));
+    let typed = (schema.clone(), table.clone());
     let mut all = relations(session, schema.as_deref(), job).await?;
     let mut candidates = pick(&all, schema.as_deref(), &table).len();
     if candidates == 0 && schema.is_some() {
@@ -616,10 +659,25 @@ async fn locate(session: &Session, name: &str, job: &str) -> Result<Relation, St
             found = vec![first];
         }
     }
-    if found.is_empty() && session.target.kind == DatabaseKind::Oracle {
-        if let Some(target) = synonym_target(session, schema.as_deref(), &table, job).await {
+    if found.is_empty()
+        && matches!(
+            session.target.kind,
+            DatabaseKind::Oracle | DatabaseKind::Mssql
+        )
+    {
+        if let Some(target) = synonym_target(session, typed.0.as_deref(), &typed.1, job).await {
             return Ok(target);
         }
+    }
+    if session.target.kind == DatabaseKind::Mysql
+        && found.len() == 1
+        && found[0].name != table
+        && !mysql_folds_case(session, job).await
+    {
+        return Err(format!(
+            "Tabelle „{name}“ nicht gefunden. Gemeint: „{}“?",
+            found[0].name
+        ));
     }
     match found.len() {
         1 => {
@@ -630,9 +688,20 @@ async fn locate(session: &Session, name: &str, job: &str) -> Result<Relation, St
                 view: one.view,
             })
         }
-        0 => Err(format!(
-            "Tabelle „{name}“ nicht gefunden.\n  Alle Tabellen: l8db table list"
-        )),
+        0 => match split_table(name).0.and_then(|s| s.split_once('.').map(|(d, _)| d.to_string())) {
+            Some(database) => Err(format!(
+                "Tabelle „{name}“ nicht gefunden. Die Datenbank wird mit -d gewählt:\n  l8db -d {database} table … schema.tabelle"
+            )),
+            None if session.target.kind == DatabaseKind::S3 => Err(match name.split_once('/') {
+                Some((bucket, prefix)) => format!(
+                    "Bucket „{name}“ nicht gefunden. Ein Präfix steht in --where:\n  l8db table rows {bucket} --where {prefix}"
+                ),
+                None => format!("Bucket „{name}“ nicht gefunden.\n  Alle Buckets: l8db table list"),
+            }),
+            None => Err(format!(
+                "Tabelle „{name}“ nicht gefunden.\n  Alle Tabellen: l8db table list"
+            )),
+        },
         _ if found.iter().all(|t| t.schema == found[0].schema) => Err(format!(
             "„{name}“ ist nicht eindeutig: {} (Schema {}). Bitte die genaue Schreibweise in Anführungszeichen angeben, z. B. '\"{}\"'.",
             found.iter().map(|t| t.name.as_str()).collect::<Vec<_>>().join(", "),
@@ -666,8 +735,9 @@ async fn table(
     if let Some(filter) = filter.filter(|_| is_sql(kind)) {
         db::validate_table_filter_in(&filter, kind != DatabaseKind::Postgres).map_err(|e| {
             format!(
-                "--where darf nur eine Bedingung enthalten. {}\n  Für eigenes SQL: l8db q \"select … where …\"",
+                "--where {}\n  Für eigenes SQL: l8db q \"select … where …\"",
                 e.replace(" Nutze den SQL-Modus für eigene Ausdrücke.", "")
+                    .replace("Filter abgelehnt:", "abgelehnt:")
             )
         })?;
         if writes(kind, &filter) {
@@ -679,9 +749,21 @@ async fn table(
             let tables = relations(session, schema.as_deref(), job).await?;
             let mut rows: Vec<Value> = tables
                 .iter()
-                .map(|t| json!([t.schema, t.name, if t.view { "view" } else { "table" }]))
+                .map(|t| {
+                    let base = match (kind, t.schema.as_str()) {
+                        (DatabaseKind::Mongodb, _) => "collection",
+                        (DatabaseKind::S3, _) => "bucket",
+                        (DatabaseKind::Influxdb, _) => "measurement",
+                        (DatabaseKind::Elasticsearch, "aliases") => "alias",
+                        (DatabaseKind::Elasticsearch, "data_streams") => "data stream",
+                        (DatabaseKind::Elasticsearch, "hidden") => "hidden index",
+                        (DatabaseKind::Elasticsearch, _) => "index",
+                        _ => "table",
+                    };
+                    json!([t.schema, t.name, if t.view { "view" } else { base }])
+                })
                 .collect();
-            if kind == DatabaseKind::Oracle {
+            if matches!(kind, DatabaseKind::Oracle | DatabaseKind::Mssql) {
                 if let Ok(synonyms) =
                     guarded(job, kind, 60, adapter.list_synonyms(schema.as_deref())).await
                 {
@@ -705,13 +787,19 @@ async fn table(
             write(output::write_rows(
                 out,
                 format,
-                &["schema".into(), "table".into(), "type".into()],
+                &match kind {
+                    DatabaseKind::Mongodb => {
+                        ["database".into(), "collection".into(), "type".into()]
+                    }
+                    DatabaseKind::S3 => ["schema".into(), "bucket".into(), "type".into()],
+                    _ => ["schema".into(), "table".into(), "type".into()],
+                },
                 &rows,
             ))
         }
         TableCommand::Describe { table } => {
             let Relation { schema, name, .. } = locate(session, &table, job).await?;
-            if kind == DatabaseKind::Postgres {
+            if matches!(kind, DatabaseKind::Postgres | DatabaseKind::Mssql) {
                 let rows: Vec<Value> = guarded(
                     job,
                     kind,
@@ -722,7 +810,9 @@ async fn table(
                 .iter()
                 .map(|c| {
                     let data_type = match c.character_maximum_length {
-                        Some(length) => format!("{}({length})", c.data_type),
+                        Some(-1) => format!("{}(max)", c.data_type),
+                        Some(length) if length > 0 => format!("{}({length})", c.data_type),
+                        Some(_) => c.data_type.clone(),
                         None => c.data_type.clone(),
                     };
                     json!([
@@ -744,6 +834,27 @@ async fn table(
                         "default".into(),
                         "primary_key".into(),
                     ],
+                    &rows,
+                ));
+            }
+            if matches!(kind, DatabaseKind::Dynamodb | DatabaseKind::Cassandra) {
+                let rows: Vec<Value> = guarded(
+                    job,
+                    kind,
+                    60,
+                    adapter.list_table_columns_detailed(&schema, &name),
+                )
+                .await?
+                .iter()
+                .map(|c| json!([c.name, c.data_type, c.comment]))
+                .collect();
+                if kind == DatabaseKind::Dynamodb {
+                    eprintln!("Attribute außer Schlüsseln aus einer Stichprobe von 100 Items.");
+                }
+                return write(output::write_rows(
+                    out,
+                    format,
+                    &["column".into(), "type".into(), "key".into()],
                     &rows,
                 ));
             }
@@ -773,10 +884,28 @@ async fn table(
                 .map(|c| json!([c.name, c.data_type]))
                 .collect()
             };
+            if kind == DatabaseKind::Mongodb {
+                if let Ok(total) = adapter.count_rows(&schema, &name, None, false).await {
+                    if total > db::mongodb::FIELD_SAMPLE as i64 {
+                        eprintln!(
+                            "Hinweis: Felder aus den ersten {} von {total} Dokumenten ermittelt.",
+                            db::mongodb::FIELD_SAMPLE
+                        );
+                    }
+                }
+            }
             write(output::write_rows(
                 out,
                 format,
-                &["column".into(), "type".into()],
+                &[
+                    if kind == DatabaseKind::Mongodb {
+                        "field"
+                    } else {
+                        "column"
+                    }
+                    .into(),
+                    "type".into(),
+                ],
                 &rows,
             ))
         }
@@ -806,23 +935,30 @@ async fn table(
                     false,
                 ),
             )
-            .await?;
+            .await
+            .map_err(read_timeout)?;
             if let Some(column) = order_by.filter(|c| {
-                !data
-                    .columns
-                    .iter()
-                    .any(|d| d == c || (kind == DatabaseKind::Oracle && d.eq_ignore_ascii_case(c)))
+                kind != DatabaseKind::Mongodb
+                    && !data.columns.iter().any(|d| {
+                        d == c || (kind == DatabaseKind::Oracle && d.eq_ignore_ascii_case(c))
+                    })
             }) {
                 eprintln!("Hinweis: Spalte „{column}“ gibt es nicht, Sortierung ignoriert.");
             }
-            write(output::write_rows(out, format, &data.columns, &data.rows))?;
-            if data.rows.len() as i64 >= limit && format == Format::Table {
+            write(output::write_rows(
+                out,
+                format,
+                &data.columns,
+                &mongo_text(kind, format, &data.rows),
+            ))?;
+            if data.rows.len() as i64 >= limit {
                 eprintln!(
-                    "{} Zeilen angezeigt. Weiter: --offset {} oder mehr mit -n <anzahl>",
+                    "Begrenzt auf {} Zeilen. Weiter: --offset {} oder mehr mit -n <anzahl>",
                     data.rows.len(),
                     offset.max(0) + limit
                 );
             }
+            influx_range_note(session);
             Ok(())
         }
         TableCommand::Count { table, filter } => {
@@ -833,7 +969,9 @@ async fn table(
                 300,
                 adapter.count_rows(&schema, &name, filter.as_deref(), false),
             )
-            .await?;
+            .await
+            .map_err(read_timeout)?;
+            influx_range_note(session);
             match format {
                 Format::Table | Format::Tsv => write(writeln!(out, "{count}")),
                 _ => write(output::write_rows(
@@ -930,9 +1068,27 @@ fn split_statements(
             parts
         }
         kind if is_sql(kind) => db::sql_script::split_for(kind, sql),
+        DatabaseKind::Mongodb => db::mongo_shell::split(sql),
         _ => vec![sql.to_string()],
     };
     Ok(parts.into_iter().filter(|s| !s.trim().is_empty()).collect())
+}
+
+fn influx_range_note(session: &Session) {
+    if session.target.kind == DatabaseKind::Influxdb {
+        if let Some(note) = db::influxdb::range_note(&session.url) {
+            eprintln!("{note}");
+        }
+    }
+}
+
+pub(super) fn read_timeout(error: String) -> String {
+    match error.split_once(". Der Serverabschluss") {
+        Some((head, _)) if head.starts_with("Query-Timeout") => {
+            format!("{head}. Es wurde nur gelesen; Filter enger setzen.")
+        }
+        _ => error,
+    }
 }
 
 fn scope_level(present: bool, label: &str) -> Result<(), String> {
@@ -942,6 +1098,14 @@ fn scope_level(present: bool, label: &str) -> Result<(), String> {
         Err(format!(
             "Dieser Datenbanktyp kennt keine {label}.\n  Objekte: l8db table list"
         ))
+    }
+}
+
+fn mongo_text(kind: DatabaseKind, format: Format, rows: &[Value]) -> std::borrow::Cow<'_, [Value]> {
+    if kind == DatabaseKind::Mongodb && format == Format::Table {
+        std::borrow::Cow::Owned(db::mongodb::shell_rows(rows))
+    } else {
+        std::borrow::Cow::Borrowed(rows)
     }
 }
 
@@ -955,7 +1119,7 @@ pub(super) fn writes(kind: DatabaseKind, statement: &str) -> bool {
             db::elasticsearch::read_only_request(statement) != Some(true)
         }
         DatabaseKind::Influxdb => db::influxdb::read_only_statement(statement) != Some(true),
-        DatabaseKind::S3 => false,
+        DatabaseKind::S3 => db::s3::select::parse(statement, Some("_")).is_err(),
         _ => redact::write_word(statement).is_some() || redact::is_ddl(statement),
     }
 }
@@ -977,11 +1141,11 @@ fn ask_production(name: &str) -> Result<(), String> {
     let stdin = std::io::stdin();
     if !stdin.is_terminal() || !std::io::stderr().is_terminal() {
         return Err(format!(
-            "„{name}“ ist eine Produktionsverbindung und das SQL schreibt.\n  Zum Bestätigen --yes anhängen."
+            "„{name}“ ist eine Produktionsverbindung und die Anweisung schreibt.\n  Zum Bestätigen --yes anhängen."
         ));
     }
     eprint!(
-        "⚠ „{name}“ ist Produktion und das SQL schreibt.\n  Zum Ausführen den Verbindungsnamen eintippen: "
+        "⚠ „{name}“ ist Produktion und die Anweisung schreibt.\n  Zum Ausführen den Verbindungsnamen eintippen: "
     );
     let _ = std::io::stderr().flush();
     let mut answer = String::new();
@@ -994,6 +1158,7 @@ fn ask_production(name: &str) -> Result<(), String> {
 
 pub(super) struct Prepared {
     parts: Vec<String>,
+    lines: Vec<usize>,
     writing: bool,
     approval: Approval,
 }
@@ -1012,11 +1177,37 @@ pub(super) async fn prepare(
     if writing {
         allow_write(target, &approval).await?;
     }
+    let mut from = 0;
+    let lines = parts
+        .iter()
+        .map(|part| match sql[from..].find(part.trim_end_matches(';')) {
+            Some(at) => {
+                from += at;
+                sql[..from].matches('\n').count()
+            }
+            None => 0,
+        })
+        .collect();
     Ok(Prepared {
         parts,
+        lines,
         writing,
         approval,
     })
+}
+
+pub(super) fn script_line(error: String, offset: usize) -> String {
+    let Some(at) = error.rfind("(Zeile ") else {
+        return error;
+    };
+    let digits = at + "(Zeile ".len();
+    let Some(end) = error[digits..].find(')').map(|n| digits + n) else {
+        return error;
+    };
+    match error[digits..end].parse::<usize>() {
+        Ok(line) if offset > 0 => format!("{}{}{}", &error[..digits], line + offset, &error[end..]),
+        _ => error,
+    }
 }
 
 pub(super) struct RunOptions {
@@ -1044,7 +1235,7 @@ async fn query(
 ) -> Result<(), String> {
     let (sql, file) = (args.sql.clone(), args.file.clone());
     let sql = blocking(move || read_sql(sql, file)).await?;
-    let source = resolve(global, None).await?;
+    let source = read_only(global, resolve(global, None).await?);
     let prepared = prepare(
         source.target(),
         &sql,
@@ -1067,10 +1258,17 @@ async fn query(
         job,
         &mut |step| match step {
             Step::Result {
-                result,
+                mut result,
                 started,
                 script,
-            } => print_result(out, format, &result, args.limit, started, script),
+            } => {
+                if let std::borrow::Cow::Owned(rows) =
+                    mongo_text(session.target.kind, format, &result.rows)
+                {
+                    result.rows = rows;
+                }
+                print_result(out, format, &result, args.limit, started, script)
+            }
             Step::Note(note) => {
                 eprintln!("{note}");
                 Ok(())
@@ -1088,7 +1286,11 @@ pub(super) async fn run_prepared(
     job: &str,
     emit: &mut impl FnMut(Step) -> Result<(), String>,
 ) -> Result<(), String> {
-    if session.target.kind == DatabaseKind::Postgres && db::server_output::sink().is_none() {
+    if matches!(
+        session.target.kind,
+        DatabaseKind::Postgres | DatabaseKind::Mysql | DatabaseKind::Mssql
+    ) && db::server_output::sink().is_none()
+    {
         return db::server_output::capture(
             db::server_output::Messages::default(),
             Box::pin(run_prepared(
@@ -1099,6 +1301,7 @@ pub(super) async fn run_prepared(
     }
     let Prepared {
         parts,
+        lines,
         writing,
         approval,
     } = prepared;
@@ -1156,15 +1359,23 @@ pub(super) async fn run_prepared(
         let mut result = match result {
             Ok(result) => result,
             Err(error) => {
+                let error = if writing { error } else { read_timeout(error) };
                 let _ = notices(emit);
                 let mut message = if total > 1 {
+                    let error = match kind {
+                        DatabaseKind::Mssql => script_line(error, lines[index]),
+                        _ => error,
+                    };
                     format!("Anweisung {} von {total}: {error}", index + 1)
                 } else {
                     error
                 };
                 if let Some(mut tx) = transaction.take() {
                     let _ = tx.rollback().await;
-                    message.push_str(rollback_note(kind, &parts[..=index]));
+                    message.push_str(&rollback_note(kind, &parts[..=index], true));
+                    if control(kind, &parts[index]) == Some(Control::Open) {
+                        message.push_str("\n  l8db führt das Skript schon in einer Transaktion aus. Steuert es BEGIN/COMMIT selbst: mit --no-transaction ausführen.");
+                    }
                 } else if index > 0 && writing {
                     message.push_str(&format!(
                         "\n  Die {index} Anweisung(en) davor sind bereits ausgeführt."
@@ -1198,11 +1409,29 @@ pub(super) async fn run_prepared(
         })?;
     }
     if let Some(mut tx) = transaction {
-        if open_at_end(kind, parts) {
+        let level = match kind {
+            DatabaseKind::Mssql => tx
+                .execute("SELECT @@TRANCOUNT AS n")
+                .await
+                .ok()
+                .and_then(|r| r.rows.first().and_then(|row| row["n"].as_i64())),
+            _ => None,
+        };
+        if open_at_end(kind, parts) || level.is_some_and(|n| n > 1) {
             let _ = tx.rollback().await;
             return Err(format!(
                 "Das Skript endet mit BEGIN ohne COMMIT.{}",
-                rollback_note(kind, parts)
+                rollback_note(kind, parts, false)
+            ));
+        }
+        let rolled_back = level.is_none()
+            && parts.iter().filter_map(|p| control(kind, p)).last() == Some(Control::Close);
+        if level == Some(0) || rolled_back {
+            if rolled_back {
+                let _ = tx.commit().await;
+            }
+            return emit(Step::Note(
+                "Achtung: ROLLBACK im Skript hat alles davor verworfen; Anweisungen danach sind einzeln festgeschrieben.".into(),
             ));
         }
         tx.commit().await?;
@@ -1283,9 +1512,12 @@ pub(super) fn postgres_json(data_type: &str, value: Value) -> Value {
 }
 
 async fn allow_write(target: &Target, approval: &Approval) -> Result<(), String> {
+    if target.read_only && target.id.is_empty() {
+        return Err("--read-only: die Anweisung würde schreiben.".into());
+    }
     if target.read_only {
         return Err(format!(
-            "„{}“ ist schreibgeschützt, das SQL würde schreiben.\n  Schreibschutz oder Produktionssperre lassen sich nur in der App ändern.",
+            "„{}“ ist schreibgeschützt, die Anweisung würde schreiben.\n  Schreibschutz oder Produktionssperre lassen sich nur in der App ändern.",
             target.name
         ));
     }
@@ -1337,7 +1569,7 @@ pub(super) fn open_at_end(kind: DatabaseKind, ran: &[String]) -> bool {
         == Some(Control::Open)
 }
 
-pub(super) fn rollback_note(kind: DatabaseKind, ran: &[String]) -> &'static str {
+pub(super) fn rollback_note(kind: DatabaseKind, ran: &[String], failed: bool) -> String {
     let controls =
         ran.iter()
             .enumerate()
@@ -1346,14 +1578,26 @@ pub(super) fn rollback_note(kind: DatabaseKind, ran: &[String]) -> &'static str 
                 Some(Control::Open) => kind == DatabaseKind::Mysql && index > 0,
                 _ => false,
             });
-    let implicit = matches!(kind, DatabaseKind::Mysql | DatabaseKind::Oracle)
-        && ran.iter().any(|statement| redact::is_ddl(statement));
+    let ddl = matches!(kind, DatabaseKind::Mysql | DatabaseKind::Oracle)
+        .then(|| ran.iter().rposition(|statement| redact::is_ddl(statement)))
+        .flatten();
+    let kept = ddl.map_or(0, |index| {
+        if failed && index + 1 == ran.len() {
+            index
+        } else {
+            index + 1
+        }
+    });
     if controls {
-        "\n  Transaktion zurückgerollt. Achtung: Das Skript steuert Transaktionen selbst (BEGIN/COMMIT), bereits festgeschriebene Teile bleiben bestehen."
-    } else if implicit {
-        "\n  Transaktion zurückgerollt. Achtung: CREATE/ALTER/DROP schreibt diese Datenbank sofort fest, solche Anweisungen davor bleiben bestehen."
+        "\n  Transaktion zurückgerollt. Achtung: Das Skript steuert Transaktionen selbst (BEGIN/COMMIT), bereits festgeschriebene Teile bleiben bestehen.".into()
+    } else if kept > 0 {
+        let kept = match kept {
+            1 => "Anweisung 1 bleibt".to_string(),
+            n => format!("Anweisungen 1 bis {n} bleiben"),
+        };
+        format!("\n  Teilweise zurückgerollt: {kept} bestehen, weil CREATE/ALTER/DROP diese Datenbank sofort festschreibt, auch alles davor.")
     } else {
-        "\n  Nichts geändert: das Skript wurde komplett zurückgerollt."
+        "\n  Nichts geändert: das Skript wurde komplett zurückgerollt.".into()
     }
 }
 

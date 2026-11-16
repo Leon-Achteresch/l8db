@@ -235,13 +235,6 @@ export function TableView(props: TableViewProps) {
         </div>
 
         <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {caps.query_language === "redis" && (
-            <p className="border-b px-3 py-1.5 text-xs text-muted-foreground">
-              Key, TTL und vollständige Strings per Doppelklick bearbeiten. Keys per Rechtsklick auf
-              den Spaltenkopf filtern. Sammlungen und gekürzte Werte unter „Key verwalten“ lesen und
-              ändern. Vorschau: bis zu 100 Einträge bzw. 4 KiB; size zeigt die Gesamtgröße.
-            </p>
-          )}
           {dataContent}
         </TabsContent>
 

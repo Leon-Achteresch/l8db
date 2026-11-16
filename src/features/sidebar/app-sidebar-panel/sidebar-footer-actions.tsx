@@ -33,7 +33,14 @@ export function SidebarFooterActions({ caps }: SidebarFooterActionsProps) {
       ? [{ to: "/import", label: "SQL importieren", icon: UploadIcon } as const]
       : []),
     ...(caps.backup
-      ? [{ to: "/backup", label: "Sichern & Wiederherstellen", icon: ArchiveIcon } as const]
+      ? [
+          {
+            to: "/backup",
+            label:
+              caps.query_language === "redis" ? "Snapshot (BGSAVE)" : "Sichern & Wiederherstellen",
+            icon: ArchiveIcon,
+          } as const,
+        ]
       : []),
     ...(caps.ddl
       ? [

@@ -105,13 +105,18 @@ export function invalidateTableReads(
   });
 }
 
+const INVALID_INPUT = /muss gültiges JSON sein|muss ein JSON-Objekt sein|Filter abgelehnt/;
+
 export function createAppQueryClient() {
   const client = new QueryClient({
     defaultOptions: {
       queries: {
         refetchOnWindowFocus: false,
         retry: (failureCount, error) =>
-          !isAuthFailure(error) && !isInterruptedQuery(error) && failureCount < 3,
+          !isAuthFailure(error) &&
+          !isInterruptedQuery(error) &&
+          !INVALID_INPUT.test(String(error)) &&
+          failureCount < 3,
       },
     },
   });

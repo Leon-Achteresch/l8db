@@ -341,6 +341,8 @@ function mssql(rows: Json[]): ExplainNode | null {
         ...mssqlObject(argument),
         "Total Cost": num(row.TotalSubtreeCost),
         "Plan Rows": num(row.EstimateRows),
+        "Actual Rows": num(row.Rows),
+        "Actual Loops": num(row.Executes),
         "Plan Width": num(row.AvgRowSize),
         "Estimated Executions": num(row.EstimateExecutions),
         "Estimated IO": num(row.EstimateIO),

@@ -53,7 +53,7 @@ export function QueryEditorContent({
             caps.query_language === "redis"
               ? "redis"
               : caps.query_language === "json"
-                ? "json"
+                ? "mongodb"
                 : "sql"
           }
           ref={editorApiRef}

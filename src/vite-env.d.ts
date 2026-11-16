@@ -6,6 +6,12 @@ declare module "monaco-editor/languages/definitions/sql/sql" {
   export const language: languages.IMonarchLanguage;
 }
 
+declare module "monaco-editor/languages/definitions/javascript/javascript" {
+  import type { languages } from "monaco-editor";
+  export const conf: languages.LanguageConfiguration;
+  export const language: languages.IMonarchLanguage;
+}
+
 declare module "monaco-editor/esm/vs/editor/editor.api" {
   export * from "monaco-editor";
 }

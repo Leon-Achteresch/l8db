@@ -37,7 +37,7 @@ export interface EditorHighlight {
 
 export interface QueryEditorPaneProps {
   value: string;
-  language?: "sql" | "json" | "redis";
+  language?: "sql" | "json" | "mongodb" | "redis";
   onChange: (value: string) => void;
   onRun: () => void;
   onSave?: () => void;

@@ -1,4 +1,5 @@
 import { useContext } from "react";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { useColumnValueOptions } from "@/lib/queries";
 import { EditTargetContext } from "../data-table/edit-target-context";
 import type { DataTableRowProps } from "../data-table-row";
@@ -30,6 +31,7 @@ export function DataTableEditingCell({
   gridColumn?: number;
 }) {
   const target = useContext(EditTargetContext);
+  const redis = useActiveCapabilities().query_language === "redis";
   const valueOptions = useColumnValueOptions(
     target?.schema ?? "",
     target?.table ?? "",
@@ -78,7 +80,7 @@ export function DataTableEditingCell({
               if (e.currentTarget.isConnected) commitEditingCell();
             }}
             disabled={isSaving}
-            placeholder="NULL"
+            placeholder={redis ? "" : "NULL"}
             className="w-full min-w-0 h-8 px-3 bg-transparent font-mono text-[13px] text-foreground outline-none border-0 focus:ring-0 placeholder:text-muted-foreground/35 disabled:opacity-60"
           />
         )}

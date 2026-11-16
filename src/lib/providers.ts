@@ -258,6 +258,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     capabilities: {
       ...BASE_CAPABILITIES,
       csv_import: true,
+      full_table_export: true,
       import_conflicts: true,
       test_data: true,
       backup: true,

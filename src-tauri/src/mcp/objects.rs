@@ -238,8 +238,16 @@ async fn routines(
                     } else {
                         Kind::Function
                     },
-                    args: row[3].clone(),
-                    returns: row[4].clone(),
+                    args: if kind == DatabaseKind::Mysql {
+                        crate::db::mysql_type_text(&row[3])
+                    } else {
+                        row[3].clone()
+                    },
+                    returns: if kind == DatabaseKind::Mysql {
+                        crate::db::mysql_type_text(&row[4])
+                    } else {
+                        row[4].clone()
+                    },
                     language: row[5].clone(),
                     lines: int(&row[7]).map(|lines| lines as u32),
                 }
@@ -2034,6 +2042,16 @@ mod tests {
             "VALUES ROW(1, 2.5)".to_string(),
             "SELECT @@version".to_string(),
         ];
+        let mariadb = runtime
+            .block_on(admin.execute_query("SELECT VERSION() AS v"))
+            .unwrap()
+            .rows[0]["v"]
+            .as_str()
+            .is_some_and(|v| v.contains("MariaDB"));
+        let legit: Vec<String> = legit
+            .into_iter()
+            .filter(|sql| !(mariadb && (sql.starts_with("TABLE ") || sql.starts_with("VALUES ROW"))))
+            .collect();
         let leaks = [
             format!("SELECT 1 --1, email AS p FROM {db}.customers"),
             format!("SELECT 1 /* /* */ , email AS p FROM {db}.customers -- */"),
@@ -2073,6 +2091,10 @@ mod tests {
             "SELECT GET_LOCK('l8db', 10)".to_string(),
             "SELECT RELEASE_ALL_LOCKS()".to_string(),
         ];
+        let (leaks, mysql_only): (Vec<String>, Vec<String>) = leaks
+            .into_iter()
+            .partition(|sql| !(mariadb && sql.contains("/*!80000")));
+        let blocked: Vec<String> = blocked.into_iter().chain(mysql_only).collect();
         reads(
             &runtime,
             admin.as_ref(),

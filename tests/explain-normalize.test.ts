@@ -152,6 +152,8 @@ describe("normalizeExplainResult", () => {
         Argument:
           "OBJECT:([shop].[dbo].[kunde].[PK_kunde] AS [k]), WHERE:([shop].[dbo].[kunde].[land] as [k].[land]=N'DE')",
         EstimateRows: 20000,
+        Rows: 18000,
+        Executes: 1,
         TotalSubtreeCost: "0.4",
         Type: "PLAN_ROW",
       },
@@ -178,6 +180,9 @@ describe("normalizeExplainResult", () => {
     expect(scan["Index Name"]).toBe("PK_kunde");
     expect(scan.Alias).toBe("k");
     expect(scan["Total Cost"]).toBe(0.4);
+    expect(scan["Actual Rows"]).toBe(18000);
+    expect(scan["Actual Loops"]).toBe(1);
+    expect(seek["Actual Rows"]).toBeUndefined();
     expect(String(scan.Filter)).toContain("N'DE'");
     expect(seek["Index Cond"]).toBe("[a].[kunde_id]=(1)");
   });

@@ -1,8 +1,13 @@
 import * as monaco from "monaco-editor/editor/editor.api";
 import {
+  conf as javascriptConf,
+  language as javascriptLanguage,
+} from "monaco-editor/languages/definitions/javascript/javascript";
+import {
   conf as sqlConf,
   language as sqlLanguage,
 } from "monaco-editor/languages/definitions/sql/sql";
+import { redisCommandMatches } from "@/lib/redis-command-names";
 
 const plsqlKeywords = [
   "BODY",
@@ -67,6 +72,12 @@ monaco.languages.setMonarchTokensProvider("plsql", {
   keywords: [...sqlLanguage.keywords, ...plsqlKeywords],
 });
 
+monaco.languages.register({ id: "mongodb" });
+
+monaco.languages.setLanguageConfiguration("mongodb", javascriptConf);
+
+monaco.languages.setMonarchTokensProvider("mongodb", javascriptLanguage);
+
 monaco.languages.register({ id: "redis" });
 
 monaco.languages.setLanguageConfiguration("redis", {
@@ -86,5 +97,26 @@ monaco.languages.setMonarchTokensProvider("redis", {
       [/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/, "string"],
       [/\b\d+\b/, "number"],
     ],
+  },
+});
+
+monaco.languages.registerCompletionItemProvider("redis", {
+  provideCompletionItems(model, position) {
+    const line = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
+    const word = model.getWordUntilPosition(position);
+    const range = new monaco.Range(
+      position.lineNumber,
+      word.startColumn,
+      position.lineNumber,
+      word.endColumn,
+    );
+    return {
+      suggestions: redisCommandMatches(line).map((name) => ({
+        label: name,
+        kind: monaco.languages.CompletionItemKind.Keyword,
+        insertText: name,
+        range,
+      })),
+    };
   },
 });

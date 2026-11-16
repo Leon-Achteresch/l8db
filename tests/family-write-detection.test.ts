@@ -44,6 +44,9 @@ describe("write detection per family", () => {
       "HEAD logs",
       "GET a/_search\nGET b/_search",
       "SELECT * FROM logs",
+      'POST _plugins/_sql\n{"query":"SELECT 1"}',
+      "POST _plugins/_ppl",
+      'POST logs/_search {"size": 1}',
     ])
       expect(writesData(sql, "elasticsearch")).toBe(false);
     for (const sql of [
@@ -53,6 +56,7 @@ describe("write detection per family", () => {
       "POST logs/_delete_by_query",
       "POST logs/../_doc",
       "GET a/_search\nDELETE b",
+      "POST _plugins/_security/api/internalusers",
     ])
       expect(writesData(sql, "elasticsearch")).toBe(true);
     expect(reasons("DELETE logs", "elasticsearch")).toEqual(["Index löschen"]);
@@ -69,12 +73,18 @@ describe("write detection per family", () => {
       'import "array"\nfrom(bucket: "m") |> range(start: -1h)',
       'SELECT * FROM "cpu"',
       "SHOW MEASUREMENTS",
+      'from(bucket: "to(") |> range(start: -1h) // |> to(bucket: "c")',
+      'from(bucket: "m") |> range(start: -1h) |> filter(fn: (r) => r.to == "x")',
+      'import "date"\nfrom(bucket: "m") |> range(start: date.add(d: -1h, to: now())) |> map(fn: (r) => ({r with to: 1}))',
     ])
       expect(writesData(sql, "influxdb")).toBe(false);
     for (const sql of [
       'from(bucket: "m") |> range(start: -1h) |> to(bucket: "copy")',
       "cpu,host=a usage=1",
       'DELETE FROM "cpu"',
+      'from(bucket: "m") |> range(start: -4h)\n  |> // audit\n  to(bucket: "c", org: "o")',
+      'import "experimental"\nfrom(bucket: "m") |> range(start: -1h) |> experimental.to(bucket: "c")',
+      'from(bucket: "m") |> range(start: -1h)\n|>\nto\n(bucket: "c")',
     ])
       expect(writesData(sql, "influxdb")).toBe(true);
   });

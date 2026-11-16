@@ -14,6 +14,7 @@ import {
   executeWithBinds,
   listTableColumnsDetailed,
   type QueryResult,
+  READ_ONLY_MESSAGE,
   takeServerOutput,
   transactionServerOutput,
 } from "@/lib/db";
@@ -273,7 +274,11 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     : request.sql;
   const policyIssue = scriptPolicyIssue(executable, connection.kind, mode !== "autocommit");
   if (policyIssue) throw new Error(policyIssue);
-  await confirmSqlExecution(connection.kind, url, executable, database ?? undefined);
+  await confirmSqlExecution(connection.kind, url, executable, database ?? undefined).catch(
+    (error) => {
+      if (!(error instanceof Error && error.message === READ_ONLY_MESSAGE)) throw error;
+    },
+  );
   const existing = getQueryTransaction(connection.id, database);
   if (existing && mode !== "existing-transaction")
     throw new Error(

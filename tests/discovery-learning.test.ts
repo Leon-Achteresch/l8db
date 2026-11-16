@@ -147,7 +147,7 @@ function entry(id: string, extra: Partial<FeatureEntry> = {}): FeatureEntry {
 }
 
 const allCapabilities = new Proxy({} as Capabilities, {
-  get: (_, key) => (key === "query_language" ? "sql" : true),
+  get: (_, key) => (key === "query_language" ? "sql" : key !== "object_storage"),
 });
 
 describe("atlas", () => {

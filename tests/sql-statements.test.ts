@@ -411,7 +411,8 @@ describe("runsOneStatementPerCall", () => {
   test("PostgreSQL führt mehrere Statements einzeln aus, damit jedes Ergebnis erscheint", () => {
     expect(runsOneStatementPerCall("postgres")).toBe(true);
     expect(runsOneStatementPerCall("oracle")).toBe(true);
-    expect(runsOneStatementPerCall("mssql")).toBe(false);
+    expect(runsOneStatementPerCall("mysql")).toBe(true);
+    expect(runsOneStatementPerCall("mssql")).toBe(true);
     const { statements } = splitSqlStatements(
       "select 1 as eins; select 2 as zwei; do $$ begin perform 1; end $$;",
       "postgres",
@@ -420,6 +421,15 @@ describe("runsOneStatementPerCall", () => {
       "select 1 as eins;",
       "select 2 as zwei;",
       "do $$ begin perform 1; end $$;",
+    ]);
+    const mysql = splitSqlStatements(
+      "select 1 as eins; DELIMITER $$\nCREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END$$\nDELIMITER ;\nselect 2 as zwei;",
+      "mysql",
+    );
+    expect(mysql.statements.map((s) => s.text.trim())).toEqual([
+      "select 1 as eins;",
+      "CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END",
+      "select 2 as zwei;",
     ]);
   });
 });

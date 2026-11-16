@@ -363,6 +363,14 @@ export async function confirmSqlExecution(
     import("@/lib/environments"),
   ]);
   const context = operationContext({ kind, connectionString, database });
+  const { operationConnections } = await import("@/lib/operation-context");
+  const { isReadOnlyConnection } = await import("@/lib/connections");
+  if (
+    (operationConnections({ kind, connectionString }, "exact").some(isReadOnlyConnection) ||
+      isReadOnlyActive(connectionString)) &&
+    writesData(sql, kind)
+  )
+    throw new Error(READ_ONLY_MESSAGE);
   const connection = useConnectionsStore
     .getState()
     .connections.find((entry) => entry.id === context.connectionId);

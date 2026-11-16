@@ -46,7 +46,12 @@ export function ImportWorkbench({ tab }: { tab?: "csv" }) {
   const summary: [string, string][] = [
     [
       "Ziel",
-      [connection?.name, database, csv.schema, pane === "data" ? csv.targetTable : null]
+      [
+        connection?.name,
+        database,
+        csv.schema === database ? null : csv.schema,
+        pane === "data" ? csv.targetTable : null,
+      ]
         .filter(Boolean)
         .join(" · "),
     ],
