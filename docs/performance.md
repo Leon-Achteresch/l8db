@@ -852,3 +852,39 @@ Abbruchpfade. Diese Zahlen beschreiben den neuen Kontextpfad, keine behauptete
 Beschleunigung des bisherigen Stores. Gemessen am 16.11.2026 auf macOS/Darwin
 27.0.0, arm64, Apple M3, 16 GiB, Bun 1.3.10. Keine Windows-/Linux-/Browserlayout-,
 CPU-Simulations- oder native/RSS-Messung. CSV-Opus-Handoff unverändert offen.
+
+
+## PostgreSQL array editing (A01)
+
+The existing cell dialog uses its text mode for SQL array types (`…[]`), preserving
+numeric lexemes rather than routing edits through the JSON tree's JavaScript numbers.
+The native direct and transactional update paths share one catalog-driven encoder:
+JSON notation supports scalar and enum elements, rectangular arrays up to six
+dimensions, SQL NULL elements, empty text and empty arrays. Existing lower bounds
+are reused per dimension; new dimensions start at one, and empty arrays are canonical.
+JSON/composite/element-domain arrays require explicit PostgreSQL array text. Raw
+array text remains available, including explicit bounds; ordinary JSON columns
+keep their editor and write contract. No extra metadata roundtrip or background
+work is introduced; the existing metadata read is extended. JSON conversion is
+synchronous and bounded to 8 MiB and 100,000 elements, not cancellable mid-codec.
+The surrounding database operation retains its existing cancellation behavior.
+
+Measured once on macOS 27.0.0 arm64, Apple M3, 16 GiB RAM, rustc 1.99.0 debug
+and Bun 1.3.10; two warmups and 21 samples:
+
+| Scoped scenario | Measured result | Gate |
+|---|---|---|
+| Native exact-row decode + update assignment, 12,000 escaped Unicode text elements, 240,891 input bytes | median 23.018 ms / p95 23.226 ms | median <100 ms / p95 <200 ms |
+| Native result capacities | SQL 277,092 bytes; decoded vector/string capacity 1,360,538 bytes | SQL <8× input +1 KiB; decoded <2 MiB |
+| Existing text-editor preparation, 12,000 text elements and 312,001-character exact numeric array | median 0.412 ms / p95 0.647 ms; 0 additional retained heap bytes after 30 repeats and GC | median <100 ms / p95 <200 ms; retained <4 MiB |
+
+Run `cargo test --lib db::postgres::arrays::` for native correctness/performance
+and `bun test tests/perf-postgres-array-editor.test.ts` for the core-registered
+editor budget. Shared fixtures also exercise actual exact-row decoding, cell
+drafts and both mocked update transports, including quotes, backslashes, NULL,
+empty values, numeric scale and unsupported shapes. Codec/editor helpers issue
+no database requests and start no timers/workers; metadata plus the existing
+UPDATE remains the runtime request pattern, established statically here.
+No live PostgreSQL catalog/type-cast/array-bound execution, visual/native-app
+acceptance, Windows/Linux, constrained CPU or native peak-RSS measurement was
+performed. Capacity checks bound retained results, not every temporary allocation.
