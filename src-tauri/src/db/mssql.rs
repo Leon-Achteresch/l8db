@@ -22,6 +22,8 @@ use super::{
     TableInfo, TriggerInfo, TxSession,
 };
 
+mod indexes;
+
 type MsClient = Client<Compat<TcpStream>>;
 type IdleClients = Mutex<Vec<(MsClient, Instant)>>;
 type SessionClients = Mutex<HashMap<String, (MsClient, Instant)>>;
@@ -1480,6 +1482,12 @@ impl DatabaseAdapter for MssqlAdapter {
             if index.is_primary || constraints.iter().any(|c| c.name == index.name) {
                 continue;
             }
+            if index.definition.is_empty() {
+                return Err(format!(
+                    "Indexdefinition für {} ist nicht vollständig verfügbar.",
+                    index.name
+                ));
+            }
             ddl.push_str(&format!("\n{};\n", index.definition));
         }
         Ok(ddl)
@@ -1822,45 +1830,26 @@ impl DatabaseAdapter for MssqlAdapter {
     }
 
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
-        let sql = format!(
-            "SELECT i.name, i.is_unique, i.is_primary_key, i.type_desc, c.name FROM sys.indexes i \
-             JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id \
-             JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id \
-             WHERE i.object_id = OBJECT_ID({}) AND i.name IS NOT NULL ORDER BY i.name, ic.key_ordinal",
-            lit(&Self::object(schema, table))
-        );
-        let mut out: Vec<IndexInfo> = Vec::new();
-        for r in self.rows(&sql).await? {
-            let name = text(&r, 0);
-            let column = text(&r, 4);
-            if let Some(existing) = out.iter_mut().find(|i| i.name == name) {
-                existing.columns.push(column);
-                continue;
-            }
-            out.push(IndexInfo {
-                is_unique: int(&r, 1) == 1,
-                is_primary: int(&r, 2) == 1,
-                index_type: text(&r, 3).to_lowercase(),
-                columns: vec![column],
-                definition: String::new(),
-                name,
-            });
-        }
-        for idx in &mut out {
-            idx.definition = format!(
-                "CREATE {}{} INDEX {} ON {} ({})",
-                if idx.is_unique { "UNIQUE " } else { "" },
-                idx.index_type.to_uppercase(),
-                quote(&idx.name),
-                Self::object(schema, table),
-                idx.columns
-                    .iter()
-                    .map(|c| quote(c))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
-        Ok(out)
+        Ok(self
+            .list_index_metadata(schema, table)
+            .await?
+            .into_iter()
+            .map(|entry| entry.index)
+            .collect())
+    }
+
+    async fn list_index_metadata(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<super::index_metadata::IndexMetadata>, String> {
+        let rows = self.rows(&indexes::query(schema, table)).await?;
+        let catalog = rows
+            .iter()
+            .map(indexes::CatalogRow::read)
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(rows);
+        Ok(indexes::map_catalog(schema, table, catalog))
     }
 
     async fn list_constraints(

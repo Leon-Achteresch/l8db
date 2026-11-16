@@ -3,6 +3,7 @@ import { KeyRoundIcon, LayersIcon, PlusIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 
+import { NewBadge } from "@/components/new-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,8 +18,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useIndexesQuery } from "@/lib/queries";
 import { CreateIndexDialog } from "./table-indexes-list/create-index-dialog";
+import { IndexRoleDetails } from "./table-indexes-list/index-role-details";
 
 interface TableIndexesListProps {
   schema: string;
@@ -31,6 +34,8 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
   const queryClient = useQueryClient();
   const { data: indexes, isLoading } = useIndexesQuery(schema, table);
   const [createOpen, setCreateOpen] = useState(false);
+  const rolesFeature = useNewFeatureVisibility<HTMLElement>("table.structure.indexes.roles");
+  const hasRoles = indexes?.some((index) => index.roles !== undefined) ?? false;
 
   const handleIndexCreated = async () => {
     await queryClient.invalidateQueries({
@@ -52,6 +57,7 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
       <div className="flex shrink-0 items-center border-b bg-muted/30 px-4 py-2">
         <span className="text-xs font-medium text-muted-foreground">Indizes</span>
         <span className="ml-2 text-xs text-muted-foreground">{indexes?.length ?? 0}</span>
+        {hasRoles && rolesFeature.isNew && <NewBadge className="ml-2" />}
         <Button
           size="sm"
           variant="ghost"
@@ -83,7 +89,7 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
         </Empty>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <section>
+          <section ref={hasRoles ? rolesFeature.ref : undefined}>
             <div className="divide-y">
               {indexes.map((idx) => (
                 <motion.div
@@ -127,21 +133,27 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
                           </Badge>
                         )}
                       </div>
-                      {idx.columns.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mb-1">
-                          {idx.columns.map((col) => (
-                            <span
-                              key={col}
-                              className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
-                            >
-                              {col}
-                            </span>
-                          ))}
-                        </div>
+                      {idx.roles ? (
+                        <IndexRoleDetails roles={idx.roles} definition={idx.definition} />
+                      ) : (
+                        <>
+                          {idx.columns.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-1">
+                              {idx.columns.map((col) => (
+                                <span
+                                  key={col}
+                                  className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                                >
+                                  {col}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <p className="font-mono text-[11px] text-muted-foreground break-all">
+                            {idx.definition}
+                          </p>
+                        </>
                       )}
-                      <p className="font-mono text-[11px] text-muted-foreground break-all">
-                        {idx.definition}
-                      </p>
                     </div>
                   </div>
                 </motion.div>

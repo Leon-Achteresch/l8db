@@ -18,6 +18,7 @@ import {
 
 const SUITES = {
   core: [
+    "tests/perf-index-roles.test.tsx",
     "tests/perf-csv-validation.test.ts",
     "tests/perf-budget.test.ts",
     "tests/perf-definition-merge.test.ts",

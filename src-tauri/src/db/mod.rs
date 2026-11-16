@@ -33,6 +33,7 @@ mod http_api;
 pub(crate) mod http_mock;
 pub mod import;
 pub mod import_source;
+pub mod index_metadata;
 pub(crate) mod influxdb;
 pub mod jdbc;
 pub mod masking;
@@ -934,6 +935,18 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = schema;
         let _ = table;
         Err(unsupported("Indizes"))
+    }
+    async fn list_index_metadata(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<index_metadata::IndexMetadata>, String> {
+        Ok(self
+            .list_indexes(schema, table)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
     }
     async fn list_constraints(
         &self,
