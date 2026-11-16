@@ -1,11 +1,14 @@
 import { expect, test } from "bun:test";
 import { resolveQueryRunTarget } from "../src/lib/query-run-target";
+import { redisCommandMatches } from "../src/lib/redis-command-names";
 import {
   canEditRedisCell,
   quoteRedisArgument,
   redisActionCommand,
   redisCellEditCommand,
   redisKeyFilter,
+  redisOverwriteNotice,
+  redisReadableValue,
   redisReadCommand,
 } from "../src/lib/redis-commands";
 import { splitSqlStatements, statementAtOffset } from "../src/lib/sql-statements";
@@ -59,4 +62,38 @@ test("Redis cell edits preserve empty strings and reject unsafe preview replacem
   expect(canEditRedisCell({ ...row, type: "hash" }, "value")).toBe(false);
   expect(canEditRedisCell({ ...row, value: "\\x00" }, "value")).toBe(false);
   expect(canEditRedisCell(row, "size")).toBe(false);
+});
+
+test("Redis string action refuses to replace other types until confirmed", () => {
+  const guarded = redisActionCommand("string", "red:hash", "neu", "");
+  expect(guarded.startsWith("EVAL ")).toBe(true);
+  expect(guarded).toContain("TYPE");
+  expect(guarded.split("\n")).toHaveLength(1);
+  expect(redisActionCommand("string", "red:hash", "neu", "", true)).toBe(
+    'SET "red:hash" "neu" KEEPTTL',
+  );
+  expect(redisOverwriteNotice("red:hash", ["hash", 3])).toBe(
+    "red:hash ist ein Hash mit 3 Feldern. Überschreiben ersetzt ihn durch einen String.",
+  );
+  expect(redisOverwriteNotice("red:hash", "OK")).toBeNull();
+});
+
+test("Redis read results show hashes as objects and sorted sets as member/score pairs", () => {
+  expect(redisReadableValue("hash", ["name", "Ada", "role", "admin"])).toEqual({
+    name: "Ada",
+    role: "admin",
+  });
+  expect(redisReadableValue("zset", ["ada", "10", "bo", "20.5"])).toEqual([
+    { member: "ada", score: 10 },
+    { member: "bo", score: 20.5 },
+  ]);
+  expect(redisReadableValue("zset", [["ada", 10]])).toEqual([{ member: "ada", score: 10 }]);
+  expect(redisReadableValue("list", ["a", "b"])).toEqual(["a", "b"]);
+});
+
+test("Redis editor suggests command names only for the first word", () => {
+  expect(redisCommandMatches("HGE")).toEqual(["HGET", "HGETALL"]);
+  expect(redisCommandMatches("  zad")).toEqual(["ZADD"]);
+  expect(redisCommandMatches("HGET HG")).toEqual([]);
+  expect(redisCommandMatches("FLUSHA")).toEqual([]);
 });

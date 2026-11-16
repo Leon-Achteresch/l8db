@@ -333,3 +333,154 @@ async fn redis_resp3_and_previews() {
     );
     a.truncate_table("keys", "keys").await.unwrap();
 }
+
+async fn scan_calls(adapter: &RedisAdapter) -> u64 {
+    let mut conn = adapter.conn().await.unwrap();
+    let info: String = redis::cmd("INFO")
+        .arg("commandstats")
+        .query_async(&mut conn)
+        .await
+        .unwrap();
+    info.lines()
+        .find_map(|line| line.strip_prefix("cmdstat_scan:calls="))
+        .and_then(|rest| rest.split(',').next())
+        .map_or(0, |calls| calls.parse().unwrap())
+}
+
+fn percentile(samples: &mut [f64], share: f64) -> f64 {
+    samples.sort_by(f64::total_cmp);
+    samples[((samples.len() as f64 - 1.0) * share).round() as usize]
+}
+
+#[tokio::test]
+#[ignore = "requires isolated L8DB_E2E_REDIS_URL; clears database 12 and resets INFO commandstats"]
+async fn redis_key_pages_at_scale() {
+    const KEYS: usize = 260_000;
+    const PAGES: usize = 30;
+    let a = adapter("12");
+    a.truncate_table("keys", "keys").await.unwrap();
+    let mut conn = a.conn().await.unwrap();
+    for chunk in (0..KEYS).collect::<Vec<_>>().chunks(10_000) {
+        let mut pipeline = redis::pipe();
+        for index in chunk {
+            pipeline
+                .cmd("SET")
+                .arg(format!("rpage:{index:06}"))
+                .arg(index)
+                .ignore();
+        }
+        pipeline.query_async::<()>(&mut conn).await.unwrap();
+    }
+    assert_eq!(
+        a.count_rows("keys", "keys", None, true).await.unwrap(),
+        KEYS as i64
+    );
+    for (pattern, budget) in [(None, 2), (Some("rpage:0*"), 8)] {
+        let mut durations = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut rows = 0;
+        redis::cmd("CONFIG")
+            .arg("RESETSTAT")
+            .query_async::<()>(&mut conn)
+            .await
+            .unwrap();
+        for page in 0..PAGES {
+            let started = std::time::Instant::now();
+            let data = a
+                .fetch_rows(
+                    "keys",
+                    "keys",
+                    pattern,
+                    100,
+                    (page * 100) as i64,
+                    None,
+                    false,
+                    false,
+                    true,
+                )
+                .await
+                .unwrap();
+            durations.push(started.elapsed().as_secs_f64() * 1000.0);
+            assert_eq!(data.rows.len(), 100, "{pattern:?} page {page}");
+            rows += data.rows.len();
+            for row in &data.rows {
+                seen.insert(row["key"].as_str().unwrap().to_string());
+            }
+        }
+        let calls = scan_calls(&a).await;
+        let first = durations[0];
+        let median = percentile(&mut durations, 0.5);
+        let p95 = percentile(&mut durations, 0.95);
+        println!(
+            "redis pages {pattern:?}: keys {KEYS}, pages {PAGES}x100, SCAN calls {calls}, first {first:.1} ms, median {median:.1} ms, p95 {p95:.1} ms, unique {} of {rows}",
+            seen.len()
+        );
+        assert!(seen.len() * 100 >= rows * 99, "{} of {rows}", seen.len());
+        assert!(
+            calls <= (PAGES * budget + super::SORTED_SCAN_CALLS) as u64,
+            "{pattern:?}: {calls} SCAN calls"
+        );
+        assert!(p95 < 250.0, "{pattern:?}: p95 {p95:.1} ms");
+    }
+    let points = super::cursor_state(|cache| {
+        cache
+            .values()
+            .map(|state| state.points.len())
+            .max()
+            .unwrap_or(0)
+    });
+    assert!(points <= super::CURSOR_POINTS, "{points}");
+    let started = std::time::Instant::now();
+    let jump = a
+        .fetch_rows(
+            "keys",
+            "keys",
+            Some("rpage:1*"),
+            100,
+            50_000,
+            None,
+            false,
+            false,
+            true,
+        )
+        .await
+        .unwrap();
+    println!(
+        "redis jump to offset 50000: {:.1} ms",
+        started.elapsed().as_secs_f64() * 1000.0
+    );
+    assert_eq!(jump.rows.len(), 100);
+    let sorted = a
+        .fetch_rows("keys", "keys", None, 100, 0, Some("key"), true, false, true)
+        .await
+        .unwrap_err();
+    assert!(sorted.contains("10.000 Keys"), "{sorted}");
+    let capped = a
+        .count_rows_capped("keys", "keys", Some("rpage:*"), true, 100_000)
+        .await
+        .unwrap();
+    assert_eq!((capped.count, capped.exact), (100_001, false));
+    assert_eq!(
+        a.count_rows("keys", "keys", Some("rpage:0*"), true)
+            .await
+            .unwrap(),
+        100_000
+    );
+    let tail = a
+        .fetch_rows(
+            "keys",
+            "keys",
+            Some("rpage:2599*"),
+            100,
+            0,
+            Some("key"),
+            true,
+            false,
+            true,
+        )
+        .await
+        .unwrap();
+    assert_eq!(tail.rows.len(), 100);
+    assert_eq!(tail.rows[0]["key"], "rpage:259999");
+    a.truncate_table("keys", "keys").await.unwrap();
+}
