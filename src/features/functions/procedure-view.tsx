@@ -2,6 +2,7 @@ import { Hammer, Loader } from "lucide";
 import { PlayIcon, TriangleAlertIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,6 +20,7 @@ import {
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { buildInvalidSet, isProcedureInvalid } from "@/lib/invalid-objects";
+import { useHasNewFeatures } from "@/lib/new-features";
 import {
   useFunctionDefinitionQuery,
   useInvalidObjectsQuery,
@@ -58,6 +60,7 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
   );
 
   const [runOpen, setRunOpen] = useState(false);
+  const newRunResults = useHasNewFeatures("procedures.run.results");
 
   useEffect(() => {
     if (oid && !pane) {
@@ -134,6 +137,7 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
           >
             <PlayIcon data-icon="inline-start" />
             Ausführen
+            {newRunResults && <NewBadge />}
           </Button>
         ) : null}
         {!edit.editing && capabilities.compile_objects ? (

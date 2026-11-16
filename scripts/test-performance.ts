@@ -20,6 +20,7 @@ const SUITES = {
   core: [
     "tests/perf-saved-query-origin.test.ts",
     "tests/perf-postgres-array-editor.test.ts",
+    "tests/perf-procedure-run.test.ts",
     "tests/perf-keyword-filter-hint.test.ts",
     "tests/perf-schema-report.test.ts",
     "tests/perf-column-filters.test.ts",

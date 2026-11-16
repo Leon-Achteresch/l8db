@@ -888,3 +888,40 @@ UPDATE remains the runtime request pattern, established statically here.
 No live PostgreSQL catalog/type-cast/array-bound execution, visual/native-app
 acceptance, Windows/Linux, constrained CPU or native peak-RSS measurement was
 performed. Capacity checks bound retained results, not every temporary allocation.
+
+
+## Existing procedure results (A16)
+
+The existing procedure dialog retains the `QueryResult` already returned by
+`executeQuery` and passes that same object to `QueryResultTable`, with the existing
+read-only cell inspector. No additional OUT bindings, cursor fetches or rowset
+requests are added. Empty rowsets, no rowset/affected-row results, errors and the
+backend truncation flag stay distinct. The result grid remains local to the dialog
+without a persisted view key or result history.
+
+One dialog instance accepts one pending call. A repeat clears the previous result
+and gets a fresh result-view identity. Parameter, routine/signature, connection
+or database changes and closing invalidate old responses. Closing does not
+cancel or roll back the server call; reopening waits for the outstanding promise
+before another explicit call is allowed in that mounted dialog. No automatic
+retry or polling is introduced.
+
+Scoped `tests/perf-procedure-run.test.ts` is registered in the core performance
+suite. Measured on macOS 27.0.0 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10, with
+1,000 rows ×100 columns (64-character payloads), two warmups and 21 samples:
+
+| Scenario | Result | Budget |
+|---|---|---|
+| Local reference-based result lifecycle | median 0.002708 ms / p95 0.004667 ms | median <10 ms / p95 <25 ms |
+| Abandoned-context invalidation | median 0.000375 ms / p95 0.000750 ms | p95 <10 ms |
+| Retained heap after 50 result/clear cycles and GC | 23,735 bytes | <2 MiB |
+
+The test starts 74 explicit simulated executions across its measured and retention
+phases, rejects an overlapping call, and starts zero idle requests/notifications
+during a 25 ms observation. Transport fixtures verify one existing SQL execution
+per explicit action; unrelated existing initialization RPCs are not SQL requests.
+These timings measure the local result lifecycle, not database duration or grid
+paint. No new native code: live provider returns, real DOM/focus/virtual scrolling,
+Windows/Linux, constrained CPU and native RSS remain unmeasured. The six SSR
+contracts use actual dialog/result sections with mocked hook/grid dependencies;
+they do not constitute a native-app visual acceptance.
