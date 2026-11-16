@@ -19,8 +19,11 @@ const CLOUD_HOSTS: [&str; 5] = [
     ".es.amazonaws.com",
     ".aoss.amazonaws.com",
 ];
+const GROUPS: [&str; 4] = ["indices", "data_streams", "aliases", "hidden"];
 const METHODS: [&str; 6] = ["GET", "POST", "PUT", "DELETE", "HEAD", "PATCH"];
-const READ_ENDPOINTS: [&str; 11] = [
+const SQL_PAGE: usize = 1000;
+const PLUGIN_PREFIXES: [&str; 2] = ["_plugins", "_opendistro"];
+const READ_ENDPOINTS: [&str; 12] = [
     "_search",
     "_count",
     "_msearch",
@@ -32,6 +35,7 @@ const READ_ENDPOINTS: [&str; 11] = [
     "_termvectors",
     "_mtermvectors",
     "_pit",
+    "_ppl",
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -197,15 +201,158 @@ fn hit_row(hit: &Value, with_index: bool, leaves: &HashSet<String>) -> Map<Strin
     if let Some(source) = hit.get("_source") {
         flatten_value(source, "", leaves, &mut row);
     }
+    row.retain(|key, value| {
+        !value.is_null()
+            || leaves.contains(key)
+            || !leaves.iter().any(|leaf| {
+                leaf.strip_prefix(key.as_str())
+                    .is_some_and(|rest| rest.starts_with('.'))
+            })
+    });
     if let Some(fields) = hit.get("fields").and_then(Value::as_object) {
         for (key, value) in fields {
-            row.entry(key.clone()).or_insert_with(|| match value {
+            let value = match value {
                 Value::Array(items) if items.len() == 1 => items[0].clone(),
                 other => other.clone(),
-            });
+            };
+            if leaves.contains(key) && row.contains_key(key) {
+                row.insert(key.clone(), value);
+            } else {
+                row.entry(key.clone()).or_insert(value);
+            }
         }
     }
     row
+}
+
+fn date_fields(fields: &[Field]) -> Option<Value> {
+    let dates: Vec<Value> = fields
+        .iter()
+        .filter(|f| matches!(f.kind.as_str(), "date" | "date_nanos"))
+        .map(|f| json!({"field": f.name, "format": "strict_date_optional_time_nanos"}))
+        .collect();
+    (!dates.is_empty()).then(|| Value::Array(dates))
+}
+
+fn sql_columns(result: &Value) -> Option<Vec<String>> {
+    if let Some(columns) = result["columns"].as_array() {
+        return Some(columns.iter().map(|c| text(&c["name"])).collect());
+    }
+    result["schema"].as_array().map(|columns| {
+        columns
+            .iter()
+            .map(|c| {
+                c.get("alias")
+                    .filter(|a| !a.is_null())
+                    .map(text)
+                    .unwrap_or_else(|| text(&c["name"]))
+            })
+            .collect()
+    })
+}
+
+fn sql_rows(result: &Value) -> Vec<Vec<Value>> {
+    result
+        .get("rows")
+        .or_else(|| result.get("datarows"))
+        .and_then(Value::as_array)
+        .map(|r| {
+            r.iter()
+                .map(|row| row.as_array().cloned().unwrap_or_default())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn sql_cursor(result: &Value) -> Option<Value> {
+    result
+        .get("cursor")
+        .filter(|c| c.as_str().is_some_and(|c| !c.is_empty()))
+        .cloned()
+}
+
+fn opensearch_unpaged(statement: &str) -> bool {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        regex::Regex::new(
+            r"(?i)\b(group\s+by|having|distinct|join|union)\b|\b(count|sum|avg|min|max|stddev\w*|var\w*|percentiles?)\s*\(",
+        )
+        .expect("regex")
+    })
+    .is_match(statement)
+}
+
+fn looks_like_sql(filter: &str) -> bool {
+    let mut quoted = false;
+    let mut colon = false;
+    let mut operator = false;
+    for c in filter.chars() {
+        match c {
+            '\'' | '"' => quoted = !quoted,
+            ';' => return true,
+            ':' if !quoted => colon = true,
+            '=' | '<' | '>' if !quoted => operator = true,
+            _ => {}
+        }
+    }
+    operator && !colon
+}
+
+fn friendly_error(label: &str, status: u16, body: &str) -> String {
+    let value: Value = serde_json::from_str(body).unwrap_or(Value::Null);
+    let mut reason = http_api::error_message(body);
+    if let Some(details) = value
+        .pointer("/error/details")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|d| !d.is_empty())
+    {
+        reason = if reason.trim().is_empty() || reason == "Invalid SQL query" {
+            details.to_string()
+        } else {
+            format!("{reason}: {details}")
+        };
+    }
+    if let Some(at) = reason
+        .find(" expecting {")
+        .filter(|at| reason.len() - at > 80)
+    {
+        reason.truncate(at);
+    }
+    let kind = value
+        .pointer("/error/root_cause/0/type")
+        .or_else(|| value.pointer("/error/type"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let hint = match status {
+        401 => Some("Anmeldung abgelehnt: Benutzer, Passwort oder API-Key prüfen.".to_string()),
+        403 => Some("Keine Berechtigung für diese Anfrage.".to_string()),
+        404 if kind == "index_not_found_exception" => Some(format!(
+            "Index „{}“ nicht gefunden.",
+            value.pointer("/error/index").map(text).unwrap_or_default()
+        )),
+        405 => Some(
+            "Methode für diesen Pfad nicht erlaubt. Den Body in die nächste Zeile schreiben."
+                .to_string(),
+        ),
+        429 => Some("Server überlastet. Später erneut versuchen.".to_string()),
+        502..=504 => Some("Server nicht verfügbar. Später erneut versuchen.".to_string()),
+        _ if reason.contains("Result window is too large") => {
+            Some("Mehr als 10 000 Treffer: mit „table rows --offset“ blättern.".to_string())
+        }
+        400 if kind.contains("parsing")
+            || kind.contains("verification")
+            || kind.contains("Semantic")
+            || kind.contains("Syntax") =>
+        {
+            Some("Abfrage ungültig.".to_string())
+        }
+        _ => None,
+    };
+    match hint {
+        Some(hint) => format!("{label} {status}: {hint}\n  {reason}"),
+        None => format!("{label} {status}: {reason}"),
+    }
 }
 
 fn objects_result(
@@ -240,6 +387,16 @@ fn flat(value: &Value) -> Map<String, Value> {
 }
 
 fn response_rows(value: &Value) -> (Vec<String>, Vec<Value>) {
+    if let Some(columns) = sql_columns(value).filter(|_| {
+        value
+            .get("rows")
+            .or_else(|| value.get("datarows"))
+            .is_some_and(Value::is_array)
+    }) {
+        let columns = super::unique_column_names(columns);
+        let rows = super::rows_to_objects(&columns, sql_rows(value));
+        return (columns, rows);
+    }
     if let Some(items) = value.as_array() {
         if items.iter().all(Value::is_object) {
             return objects_result(items.iter().map(flat).collect(), vec![]);
@@ -317,9 +474,17 @@ fn console_requests(input: &str) -> Option<Vec<ConsoleRequest>> {
             if let Some(last) = requests.last_mut() {
                 last.body = Some(std::mem::take(&mut body)).filter(|b| !b.trim().is_empty());
             }
+            let (path, inline) = match rest.split_once(char::is_whitespace) {
+                Some((path, tail)) if tail.trim_start().starts_with(['{', '[']) => (path, tail),
+                _ => (rest, ""),
+            };
+            if !inline.is_empty() {
+                body.push_str(inline);
+                body.push('\n');
+            }
             requests.push(ConsoleRequest {
                 method: head,
-                path: rest.trim_start_matches('/').to_string(),
+                path: path.trim_start_matches('/').to_string(),
                 body: None,
             });
             continue;
@@ -372,7 +537,9 @@ fn read_endpoint_path(path: &str) -> bool {
     !dotted
         && segments
             .iter()
-            .find(|segment| segment.starts_with('_'))
+            .find(|segment| {
+                segment.starts_with('_') && !PLUGIN_PREFIXES.contains(&segment.as_str())
+            })
             .is_some_and(|segment| READ_ENDPOINTS.contains(&segment.as_str()))
 }
 
@@ -535,12 +702,7 @@ impl ElasticAdapter {
             .send(method, path, body.map(|b| b.to_string()), false)
             .await?;
         if !reply.ok() {
-            return Err(format!(
-                "{} {}: {}",
-                self.label(),
-                reply.status,
-                http_api::error_message(&reply.body)
-            ));
+            return Err(friendly_error(self.label(), reply.status, &reply.body));
         }
         Ok(reply.json().unwrap_or(Value::Null))
     }
@@ -676,26 +838,34 @@ impl ElasticAdapter {
         }
         Ok(match filter_expr::parse(filter) {
             Ok(expr) => Self::to_dsl(&expr, fields),
+            Err(e) if looks_like_sql(filter) => return Err(format!("Bedingung ungültig: {e}")),
             Err(_) => json!({"query_string": {"query": filter}}),
         })
     }
 
-    fn sort_spec(order_by: Option<&str>, desc: bool, fields: &[Field]) -> Vec<Value> {
+    fn sort_spec(
+        order_by: Option<&str>,
+        desc: bool,
+        fields: &[Field],
+    ) -> Result<Vec<Value>, String> {
         let Some(column) = order_by else {
-            return vec![];
+            return Ok(vec![]);
         };
         let Some(field) = fields.iter().find(|f| f.name == column) else {
-            return vec![];
+            return Ok(vec![]);
         };
         if matches!(field.kind.as_str(), "object" | "nested")
             || (field.kind == "text" && field.keyword.is_none())
         {
-            return vec![];
+            return Err(format!(
+                "Nach „{column}“ kann nicht sortiert werden: Feldtyp {} ohne Keyword-Unterfeld.",
+                field.kind
+            ));
         }
         let target = field.keyword.clone().unwrap_or_else(|| field.name.clone());
-        vec![
+        Ok(vec![
             json!({target: {"order": if desc { "desc" } else { "asc" }, "unmapped_type": "keyword"}}),
-        ]
+        ])
     }
 
     async fn deep_hits(
@@ -703,6 +873,7 @@ impl ElasticAdapter {
         table: &str,
         query: &Value,
         sort: &[Value],
+        dates: Option<&Value>,
         offset: i64,
         limit: i64,
     ) -> Result<Vec<Value>, String> {
@@ -741,6 +912,8 @@ impl ElasticAdapter {
                         });
                         if skipping {
                             body["_source"] = json!(false);
+                        } else if let Some(dates) = dates {
+                            body["fields"] = dates.clone();
                         }
                         if let Some(after) = &after {
                             body["search_after"] = after.clone();
@@ -768,6 +941,9 @@ impl ElasticAdapter {
             }
             Flavor::OpenSearch => {
                 let mut body = json!({"size": WINDOW, "query": query});
+                if let Some(dates) = dates {
+                    body["fields"] = dates.clone();
+                }
                 if !sort.is_empty() {
                     body["sort"] = json!(sort);
                 } else {
@@ -821,148 +997,54 @@ impl ElasticAdapter {
         Ok(hits)
     }
 
-    async fn sql(&self, sql: &str) -> Result<(Vec<String>, Vec<Vec<Value>>), String> {
-        let statement = sql.trim().trim_end_matches(';');
-        match self.flavor().await? {
-            Flavor::Elastic => {
-                let result = self
-                    .call(
-                        "POST",
-                        "_sql?format=json",
-                        Some(json!({"query": statement, "fetch_size": 1000})),
-                    )
-                    .await?;
-                if let Some(cursor) = result.get("cursor").filter(|c| !c.is_null()) {
-                    let _ = self
-                        .call("POST", "_sql/close", Some(json!({"cursor": cursor})))
-                        .await;
-                }
-                let columns = result["columns"]
-                    .as_array()
-                    .map(|c| c.iter().map(|c| text(&c["name"])).collect())
-                    .unwrap_or_default();
-                let rows = result["rows"]
-                    .as_array()
-                    .map(|r| {
-                        r.iter()
-                            .map(|row| row.as_array().cloned().unwrap_or_default())
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                Ok((columns, rows))
-            }
-            Flavor::OpenSearch => {
-                let result = self
-                    .call(
-                        "POST",
-                        "_plugins/_sql?format=jdbc",
-                        Some(json!({"query": statement})),
-                    )
-                    .await?;
-                if let Some(cursor) = result.get("cursor").filter(|c| !c.is_null()) {
-                    let _ = self
-                        .call(
-                            "POST",
-                            "_plugins/_sql/close",
-                            Some(json!({"cursor": cursor})),
-                        )
-                        .await;
-                }
-                let columns = result["schema"]
-                    .as_array()
-                    .map(|c| {
-                        c.iter()
-                            .map(|c| {
-                                c.get("alias")
-                                    .filter(|a| !a.is_null())
-                                    .map(text)
-                                    .unwrap_or_else(|| text(&c["name"]))
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let rows = result["datarows"]
-                    .as_array()
-                    .map(|r| {
-                        r.iter()
-                            .map(|row| row.as_array().cloned().unwrap_or_default())
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                Ok((columns, rows))
-            }
-        }
-    }
-
-    async fn console(
+    async fn sql(
         &self,
-        requests: Vec<ConsoleRequest>,
-    ) -> Result<(Vec<String>, Vec<Value>), String> {
-        let mut last = (vec![], vec![]);
-        for request in requests {
-            let mut path = request.path;
-            if path.starts_with("_cat/") && !path.contains("format=") {
-                path.push_str(if path.contains('?') {
-                    "&format=json"
-                } else {
-                    "?format=json"
-                });
-            }
-            let ndjson = path.contains("_bulk") || path.contains("_msearch");
-            let reply = self
-                .send(&request.method, &path, request.body, ndjson)
-                .await?;
-            if !reply.ok() {
-                return Err(format!(
-                    "{} {}: {}",
-                    self.label(),
-                    reply.status,
-                    http_api::error_message(&reply.body)
-                ));
-            }
-            last = match reply.json() {
-                Some(value) => response_rows(&value),
-                None if reply.body.trim().is_empty() => (
-                    vec!["status".to_string()],
-                    vec![json!({"status": reply.status})],
-                ),
-                None => (
-                    vec!["result".to_string()],
-                    reply.body.lines().map(|l| json!({"result": l})).collect(),
-                ),
-            };
+        sql: &str,
+        limit: usize,
+    ) -> Result<(Vec<String>, Vec<Vec<Value>>, bool), String> {
+        let statement = sql.trim().trim_end_matches(';');
+        let flavor = self.flavor().await?;
+        let (endpoint, close) = match flavor {
+            Flavor::Elastic => ("_sql?format=json", "_sql/close"),
+            Flavor::OpenSearch => ("_plugins/_sql?format=jdbc", "_plugins/_sql/close"),
+        };
+        let paged = flavor == Flavor::Elastic || !opensearch_unpaged(statement);
+        let mut body = json!({"query": statement});
+        if paged {
+            body["fetch_size"] = json!(SQL_PAGE.min(limit.max(1)));
         }
-        Ok(last)
+        let first = self.call("POST", endpoint, Some(body)).await?;
+        let columns = sql_columns(&first).unwrap_or_default();
+        let mut rows = sql_rows(&first);
+        let mut cursor = sql_cursor(&first);
+        let outcome: Result<(), String> = async {
+            while rows.len() < limit {
+                let Some(next) = cursor.take() else {
+                    return Ok(());
+                };
+                let page = self
+                    .call("POST", endpoint, Some(json!({"cursor": next})))
+                    .await?;
+                cursor = sql_cursor(&page);
+                rows.extend(sql_rows(&page));
+            }
+            Ok(())
+        }
+        .await;
+        if let Some(open) = &cursor {
+            let _ = self
+                .call("POST", close, Some(json!({"cursor": open})))
+                .await;
+        }
+        outcome?;
+        let truncated =
+            rows.len() > limit || cursor.is_some() || (!paged && rows.len() >= WINDOW as usize);
+        rows.truncate(limit);
+        Ok((columns, rows, truncated))
     }
-}
 
-#[async_trait]
-impl DatabaseAdapter for ElasticAdapter {
-    async fn test_connection(&self) -> Result<(), String> {
-        self.call("GET", "", None).await.map(|_| ())
-    }
-
-    async fn list_databases(&self) -> Result<Vec<String>, String> {
-        let info = self.call("GET", "", None).await?;
-        Ok(vec![info
-            .get("cluster_name")
-            .map(text)
-            .unwrap_or_else(|| self.label().to_string())])
-    }
-
-    async fn list_schemas(&self) -> Result<Vec<String>, String> {
-        Ok(vec![
-            "indices".to_string(),
-            "data_streams".to_string(),
-            "aliases".to_string(),
-        ])
-    }
-
-    async fn list_tables(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
-        let schema = schema
-            .filter(|s| matches!(*s, "data_streams" | "aliases"))
-            .unwrap_or("indices");
-        let mut names: Vec<String> = match schema {
+    async fn group_names(&self, schema: &str) -> Result<Vec<String>, String> {
+        Ok(match schema {
             "data_streams" => match self.call("GET", "_data_stream", None).await {
                 Ok(value) => value["data_streams"]
                     .as_array()
@@ -987,25 +1069,141 @@ impl DatabaseAdapter for ElasticAdapter {
                 set.dedup();
                 set
             }
-            _ => {
-                let value = self
-                    .call("GET", "_cat/indices?format=json&h=index", None)
-                    .await?;
-                value
-                    .as_array()
-                    .map(|a| a.iter().map(|i| text(&i["index"])).collect())
-                    .unwrap_or_default()
+            _ => self
+                .call(
+                    "GET",
+                    "_cat/indices?format=json&h=index&expand_wildcards=all",
+                    None,
+                )
+                .await?
+                .as_array()
+                .map(|a| a.iter().map(|i| text(&i["index"])).collect())
+                .unwrap_or_default(),
+        })
+    }
+
+    async fn console(
+        &self,
+        requests: Vec<ConsoleRequest>,
+    ) -> Result<(Vec<String>, Vec<Value>), String> {
+        let many = requests.len() > 1;
+        let mut columns = vec![];
+        let mut rows = vec![];
+        for request in requests {
+            let label = format!("{} {}", request.method, request.path);
+            let mut path = request.path;
+            if path.starts_with("_cat/") && !path.contains("format=") {
+                path.push_str(if path.contains('?') {
+                    "&format=json"
+                } else {
+                    "?format=json"
+                });
+            }
+            let ndjson = path.contains("_bulk") || path.contains("_msearch");
+            let reply = self
+                .send(&request.method, &path, request.body, ndjson)
+                .await?;
+            if !reply.ok() {
+                return Err(friendly_error(self.label(), reply.status, &reply.body));
+            }
+            let result = match reply.json() {
+                Some(value) => response_rows(&value),
+                None if reply.body.trim().is_empty() => (
+                    vec!["status".to_string()],
+                    vec![json!({"status": reply.status})],
+                ),
+                None => (
+                    vec!["result".to_string()],
+                    reply.body.lines().map(|l| json!({"result": l})).collect(),
+                ),
+            };
+            if !many {
+                return Ok(result);
+            }
+            if columns.is_empty() {
+                columns.push("request".to_string());
+            }
+            for column in result.0 {
+                if !columns.contains(&column) {
+                    columns.push(column);
+                }
+            }
+            rows.extend(result.1.into_iter().map(|row| {
+                let mut object = Map::from_iter([("request".to_string(), json!(label))]);
+                if let Value::Object(map) = row {
+                    object.extend(map);
+                }
+                object
+            }));
+        }
+        let rows = rows
+            .into_iter()
+            .map(|mut object| {
+                Value::Object(
+                    columns
+                        .iter()
+                        .map(|c| (c.clone(), object.remove(c).unwrap_or(Value::Null)))
+                        .collect(),
+                )
+            })
+            .collect();
+        Ok((columns, rows))
+    }
+}
+
+#[async_trait]
+impl DatabaseAdapter for ElasticAdapter {
+    async fn test_connection(&self) -> Result<(), String> {
+        self.call("GET", "", None).await.map(|_| ())
+    }
+
+    async fn list_databases(&self) -> Result<Vec<String>, String> {
+        let info = self.call("GET", "", None).await?;
+        Ok(vec![info
+            .get("cluster_name")
+            .map(text)
+            .unwrap_or_else(|| self.label().to_string())])
+    }
+
+    async fn list_schemas(&self) -> Result<Vec<String>, String> {
+        Ok(GROUPS.iter().map(|g| g.to_string()).collect())
+    }
+
+    async fn list_tables(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
+        let groups: Vec<(&str, Vec<String>)> = match schema {
+            Some(schema) => {
+                let schema = GROUPS
+                    .into_iter()
+                    .find(|g| *g == schema)
+                    .unwrap_or("indices");
+                vec![(schema, self.group_names(schema).await?)]
+            }
+            None => {
+                let indices = self.group_names("indices").await?;
+                vec![
+                    ("indices", indices.clone()),
+                    (
+                        "data_streams",
+                        self.group_names("data_streams").await.unwrap_or_default(),
+                    ),
+                    (
+                        "aliases",
+                        self.group_names("aliases").await.unwrap_or_default(),
+                    ),
+                    ("hidden", indices),
+                ]
             }
         };
-        names.retain(|n| !n.starts_with('.'));
-        names.sort();
-        Ok(names
-            .into_iter()
-            .map(|name| TableInfo {
+        let mut out = Vec::new();
+        for (schema, mut names) in groups {
+            names.retain(|n| n.starts_with('.') == (schema == "hidden"));
+            names.sort();
+            out.extend(names.into_iter().map(|name| TableInfo {
                 schema: schema.to_string(),
                 name,
-            })
-            .collect())
+            }));
+        }
+        Ok(out)
     }
 
     async fn list_columns(
@@ -1018,7 +1216,7 @@ impl DatabaseAdapter for ElasticAdapter {
         let tables: Vec<String> = match table {
             Some(t) => vec![t.to_string()],
             None => self
-                .list_tables(schema)
+                .list_tables(Some(&schema_name))
                 .await?
                 .into_iter()
                 .map(|t| t.name)
@@ -1057,7 +1255,8 @@ impl DatabaseAdapter for ElasticAdapter {
     ) -> Result<TableData, String> {
         let fields = self.fields(table).await?;
         let query = Self::build_query(filter, &fields)?;
-        let sort = Self::sort_spec(order_by, order_desc, &fields);
+        let sort = Self::sort_spec(order_by, order_desc, &fields)?;
+        let dates = date_fields(&fields);
         let (limit, offset) = (limit.max(0), offset.max(0));
         let hits = if offset + limit <= WINDOW {
             let mut body = json!({
@@ -1068,6 +1267,9 @@ impl DatabaseAdapter for ElasticAdapter {
             });
             if !sort.is_empty() {
                 body["sort"] = json!(sort);
+            }
+            if let Some(dates) = &dates {
+                body["fields"] = dates.clone();
             }
             let result = self
                 .call(
@@ -1082,9 +1284,11 @@ impl DatabaseAdapter for ElasticAdapter {
                 .cloned()
                 .unwrap_or_default()
         } else {
-            self.deep_hits(table, &query, &sort, offset, limit).await?
+            self.deep_hits(table, &query, &sort, dates.as_ref(), offset, limit)
+                .await?
         };
-        let with_index = schema != "indices" || table.contains('*') || table.contains(',');
+        let with_index =
+            !matches!(schema, "indices" | "hidden") || table.contains('*') || table.contains(',');
         let leaves: HashSet<String> = fields.iter().map(|f| f.name.clone()).collect();
         let mut base = Vec::new();
         if with_index {
@@ -1126,13 +1330,17 @@ impl DatabaseAdapter for ElasticAdapter {
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
-        let (columns, rows) = match console_requests(sql) {
-            Some(requests) => self.console(requests).await?,
+        let (columns, rows, truncated) = match console_requests(sql) {
+            Some(requests) => {
+                let (columns, rows) = self.console(requests).await?;
+                (columns, rows, false)
+            }
             None => {
-                let (columns, rows) = self.sql(sql).await?;
+                let (columns, rows, truncated) =
+                    self.sql(sql, super::execution::row_limit()).await?;
                 let columns = super::unique_column_names(columns);
                 let rows = super::rows_to_objects(&columns, rows);
-                (columns, rows)
+                (columns, rows, truncated)
             }
         };
         Ok(QueryResult {
@@ -1140,7 +1348,7 @@ impl DatabaseAdapter for ElasticAdapter {
             rows,
             rows_affected: None,
             execution_time_ms: start.elapsed().as_millis() as u64,
-            truncated: false,
+            truncated,
         })
     }
 
@@ -1350,6 +1558,31 @@ mod tests {
                 "{path}"
             );
         }
+        for path in [
+            "_plugins/_sql?format=jdbc",
+            "_plugins/_ppl",
+            "_opendistro/_sql",
+        ] {
+            assert_eq!(
+                read_only_request(&format!("POST {path}\n{{}}")),
+                Some(true),
+                "{path}"
+            );
+        }
+        assert_eq!(
+            read_only_request("POST _plugins/_security/api/x\n{}"),
+            Some(false)
+        );
+        let inline = console_requests("GET big/_search {\"size\": 3}").unwrap();
+        assert_eq!(inline[0].path, "big/_search");
+        assert_eq!(
+            inline[0].body.as_deref().map(str::trim),
+            Some("{\"size\": 3}")
+        );
+        assert_eq!(
+            read_only_request("POST logs/_search {\"size\": 1}"),
+            Some(true)
+        );
         assert!(is_index_ddl("DELETE logs"));
         assert!(is_index_ddl("PUT logs\n{\"mappings\": {}}"));
         assert!(!is_index_ddl("PUT logs/_doc/1\n{}"));
@@ -1373,5 +1606,259 @@ mod tests {
         assert_eq!(rows[0]["avg.value"], json!(1.5));
         let (columns, _) = response_rows(&json!({"acknowledged": true}));
         assert_eq!(columns, ["acknowledged"]);
+    }
+
+    #[test]
+    fn rejects_broken_sql_filters_but_keeps_lucene() {
+        let f = fields();
+        for bad in ["user.age >", "level = 'warn'; DROP x", "\"age\" >= "] {
+            assert!(
+                ElasticAdapter::build_query(Some(bad), &f)
+                    .unwrap_err()
+                    .starts_with("Bedingung ungültig"),
+                "{bad}"
+            );
+        }
+        for lucene in ["status:active AND age:>21", "error", "message:\"a = b\""] {
+            assert!(
+                ElasticAdapter::build_query(Some(lucene), &f).is_ok(),
+                "{lucene}"
+            );
+        }
+        assert!(ElasticAdapter::sort_spec(Some("message"), true, &f)
+            .unwrap_err()
+            .contains("„message“"));
+        assert_eq!(
+            ElasticAdapter::sort_spec(Some("user.name"), true, &f).unwrap(),
+            vec![json!({"user.name.keyword": {"order": "desc", "unmapped_type": "keyword"}})]
+        );
+    }
+
+    #[test]
+    fn errors_are_short_and_keep_the_reason() {
+        let os = r#"{"error":{"reason":"Invalid SQL query","details":"can't resolve Symbol(namespace=FIELD_NAME, name=nope) in type env","type":"SemanticCheckException"},"status":400}"#;
+        let message = friendly_error("OpenSearch", 400, os);
+        assert!(
+            message.starts_with("OpenSearch 400: Abfrage ungültig."),
+            "{message}"
+        );
+        assert!(message.contains("name=nope"), "{message}");
+        let auth = r#"{"error":{"root_cause":[{"type":"security_exception","reason":"unable to authenticate user [elastic]"}],"type":"security_exception"},"status":401}"#;
+        assert!(friendly_error("Elasticsearch", 401, auth).contains("Passwort"));
+        let missing = r#"{"error":{"root_cause":[{"type":"index_not_found_exception","reason":"no such index [nope]","index":"nope"}],"type":"index_not_found_exception","index":"nope"},"status":404}"#;
+        assert!(friendly_error("Elasticsearch", 404, missing)
+            .starts_with("Elasticsearch 404: Index „nope“ nicht gefunden."));
+        let tokens = format!(
+            r#"{{"error":{{"root_cause":[{{"type":"parsing_exception","reason":"line 1:1: mismatched input 'SELEC' expecting {{{}}}"}}],"type":"parsing_exception"}},"status":400}}"#,
+            "'(', 'DEBUG', 'DESC', 'DESCRIBE', 'EXPLAIN', 'SELECT', 'SHOW', 'SYS', 'WITH', 'X', 'Y', 'Z'"
+        );
+        let message = friendly_error("Elasticsearch", 400, &tokens);
+        assert!(message.ends_with("mismatched input 'SELEC'"), "{message}");
+        assert!(
+            friendly_error("Elasticsearch", 429, "rejected execution").contains("Später erneut")
+        );
+    }
+
+    #[test]
+    fn hides_null_objects_and_reads_sql_responses() {
+        let leaves: HashSet<String> = ["nested_obj.a", "created"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let row = hit_row(
+            &json!({"_id": "2", "_source": {"nested_obj": null, "created": 1709251200000i64}, "fields": {"created": ["2024-03-01T00:00:00.000Z"]}}),
+            false,
+            &leaves,
+        );
+        assert!(!row.contains_key("nested_obj"));
+        assert_eq!(row["created"], json!("2024-03-01T00:00:00.000Z"));
+        let (columns, rows) = response_rows(
+            &json!({"schema": [{"name": "COUNT(*)", "type": "long"}], "datarows": [[3]], "total": 1, "size": 1, "status": 200}),
+        );
+        assert_eq!(columns, ["COUNT(*)"]);
+        assert_eq!(rows[0]["COUNT(*)"], json!(3));
+        let (columns, _) =
+            response_rows(&json!({"columns": [{"name": "n", "type": "long"}], "rows": [[1], [2]]}));
+        assert_eq!(columns, ["n"]);
+    }
+
+    fn sql_server(total: usize, opensearch: bool) -> super::super::http_mock::MockServer {
+        super::super::http_mock::start(move |request| {
+            let route = request.route().to_string();
+            if request.method == "GET" && route == "/" {
+                return (200, br#"{"version":{"number":"8.19.4"}}"#.to_vec());
+            }
+            if route.ends_with("/close") {
+                return (200, br#"{"succeeded":true}"#.to_vec());
+            }
+            if route == "/_cat/indices" {
+                return (200, br#"[{"index":"logs"},{"index":".hidden"}]"#.to_vec());
+            }
+            if route == "/_data_stream" {
+                return (200, br#"{"data_streams":[{"name":"ds"}]}"#.to_vec());
+            }
+            if route == "/_alias" {
+                return (200, br#"{"logs":{"aliases":{"logs_alias":{}}}}"#.to_vec());
+            }
+            let body = request.json();
+            let (start, size) = match body.get("cursor").and_then(Value::as_str) {
+                Some(cursor) => {
+                    let (start, size) = cursor.split_once(':').unwrap();
+                    (
+                        start.parse::<usize>().unwrap(),
+                        size.parse::<usize>().unwrap(),
+                    )
+                }
+                None => (0, body["fetch_size"].as_u64().unwrap() as usize),
+            };
+            let end = (start + size).min(total);
+            let rows: Vec<Value> = (start..end).map(|n| json!([n])).collect();
+            let mut out = if opensearch {
+                json!({"datarows": rows})
+            } else {
+                json!({"rows": rows})
+            };
+            if start == 0 {
+                if opensearch {
+                    out["schema"] = json!([{"name": "n", "type": "long"}]);
+                } else {
+                    out["columns"] = json!([{"name": "n", "type": "long"}]);
+                }
+            }
+            if end < total {
+                out["cursor"] = json!(format!("{end}:{size}"));
+            }
+            (200, out.to_string().into_bytes())
+        })
+    }
+
+    #[tokio::test]
+    async fn sql_follows_the_cursor_up_to_the_row_limit() {
+        for opensearch in [false, true] {
+            let server = sql_server(2500, opensearch);
+            let scheme = if opensearch {
+                "opensearch"
+            } else {
+                "elasticsearch"
+            };
+            let url = format!("{scheme}://{}", server.base.trim_start_matches("http://"));
+            let adapter = ElasticAdapter::new(&url).unwrap();
+            let capped = crate::db::execution::with_row_limit(
+                1201,
+                adapter.execute_query("SELECT n FROM big"),
+            )
+            .await
+            .unwrap();
+            assert_eq!(capped.rows.len(), 1201);
+            assert!(capped.truncated);
+            assert_eq!(capped.rows[1200]["n"], json!(1200));
+            let sql_calls = |server: &super::super::http_mock::MockServer| {
+                server
+                    .requests()
+                    .iter()
+                    .filter(|r| r.route().contains("_sql"))
+                    .map(|r| r.route().ends_with("/close"))
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(sql_calls(&server), [false, false, true]);
+            let server = sql_server(2500, opensearch);
+            let url = format!("{scheme}://{}", server.base.trim_start_matches("http://"));
+            let all = ElasticAdapter::new(&url)
+                .unwrap()
+                .execute_query("SELECT n FROM big")
+                .await
+                .unwrap();
+            assert_eq!(all.rows.len(), 2500);
+            assert!(!all.truncated);
+            assert_eq!(sql_calls(&server), [false, false, false]);
+            let server = sql_server(5, opensearch);
+            let url = format!("{scheme}://{}", server.base.trim_start_matches("http://"));
+            let small = crate::db::execution::with_row_limit(
+                501,
+                ElasticAdapter::new(&url)
+                    .unwrap()
+                    .execute_query("SELECT n FROM big"),
+            )
+            .await
+            .unwrap();
+            assert_eq!(small.rows.len(), 5);
+            assert!(!small.truncated);
+            let first = server
+                .requests()
+                .into_iter()
+                .find(|r| r.route().contains("_sql"))
+                .unwrap();
+            assert_eq!(first.json()["fetch_size"], json!(501));
+        }
+    }
+
+    #[test]
+    fn opensearch_pages_only_plain_selects() {
+        assert!(!opensearch_unpaged(
+            "SELECT n FROM big WHERE n > 3 ORDER BY n"
+        ));
+        assert!(!opensearch_unpaged("SELECT counter FROM big"));
+        for sql in [
+            "SELECT level, COUNT(*) FROM logs GROUP BY level",
+            "SELECT DISTINCT level FROM logs",
+            "SELECT max(n) FROM big",
+            "SELECT a.x FROM a JOIN b ON a.id = b.id",
+        ] {
+            assert!(opensearch_unpaged(sql), "{sql}");
+        }
+    }
+
+    #[tokio::test]
+    async fn opensearch_aggregations_skip_the_cursor_and_report_the_cap() {
+        let server = super::super::http_mock::start(|request| {
+            assert!(request.json().get("fetch_size").is_none());
+            let rows: Vec<Value> = (0..10_000).map(|n| json!([n, 1])).collect();
+            let body = json!({"schema": [{"name": "n"}, {"name": "COUNT(*)", "alias": "c"}], "datarows": rows});
+            (200, body.to_string().into_bytes())
+        });
+        let url = format!("opensearch://{}", server.base.trim_start_matches("http://"));
+        let result = ElasticAdapter::new(&url)
+            .unwrap()
+            .execute_query("SELECT n, COUNT(*) AS c FROM big GROUP BY n")
+            .await
+            .unwrap();
+        assert_eq!(result.columns, ["n", "c"]);
+        assert_eq!(result.rows.len(), 10_000);
+        assert!(result.truncated);
+        assert_eq!(server.requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn lists_every_group_and_shows_every_console_answer() {
+        let server = sql_server(0, false);
+        let url = format!(
+            "elasticsearch://{}",
+            server.base.trim_start_matches("http://")
+        );
+        let adapter = ElasticAdapter::new(&url).unwrap();
+        let tables: Vec<(String, String)> = adapter
+            .list_tables(None)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|t| (t.schema, t.name))
+            .collect();
+        assert_eq!(
+            tables,
+            [
+                ("indices".to_string(), "logs".to_string()),
+                ("data_streams".to_string(), "ds".to_string()),
+                ("aliases".to_string(), "logs_alias".to_string()),
+                ("hidden".to_string(), ".hidden".to_string()),
+            ]
+        );
+        let result = adapter
+            .execute_query("GET _data_stream\n\nGET _alias")
+            .await
+            .unwrap();
+        assert_eq!(result.columns[0], "request");
+        assert_eq!(result.rows.len(), 2);
+        assert_eq!(result.rows[0]["request"], json!("GET _data_stream"));
+        assert_eq!(result.rows[1]["request"], json!("GET _alias"));
     }
 }
