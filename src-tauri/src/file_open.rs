@@ -49,7 +49,9 @@ pub fn action_for_path(path: &Path) -> OpenFileAction {
         .unwrap_or_default();
     let kind = match extension.as_str() {
         "sqlite" | "sqlite3" | "db" | "db3" => Some(DatabaseKind::Sqlite),
-        "duckdb" | "ddb" | "parquet" | "csv" => Some(DatabaseKind::Duckdb),
+        "duckdb" | "ddb" | "parquet" | "csv" | "tsv" | "json" | "jsonl" | "ndjson" => {
+            Some(DatabaseKind::Duckdb)
+        }
         "sql" => return OpenFileAction::Sql { path: text },
         "l8nb" => return OpenFileAction::Notebook { path: text },
         _ => None,
@@ -202,6 +204,10 @@ mod tests {
             ("/d/a.ddb", DatabaseKind::Duckdb),
             ("/d/a.parquet", DatabaseKind::Duckdb),
             ("/d/a.csv", DatabaseKind::Duckdb),
+            ("/d/a.TSV", DatabaseKind::Duckdb),
+            ("/d/a.json", DatabaseKind::Duckdb),
+            ("/d/a.jsonl", DatabaseKind::Duckdb),
+            ("/d/a.ndjson", DatabaseKind::Duckdb),
         ] {
             let name = Path::new(path).file_name().unwrap().to_str().unwrap();
             assert_eq!(

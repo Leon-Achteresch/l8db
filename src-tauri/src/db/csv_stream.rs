@@ -67,6 +67,32 @@ fn read_sample(path: &str) -> Result<(Vec<u8>, bool), String> {
     Ok((bytes, partial))
 }
 
+pub(crate) fn duckdb_encoding(path: &str) -> Result<Option<&'static str>, String> {
+    let file =
+        File::open(path).map_err(|error| format!("Datei kann nicht gelesen werden: {error}"))?;
+    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let mut sample = Vec::new();
+    file.take(SAMPLE_BYTES)
+        .read_to_end(&mut sample)
+        .map_err(|error| format!("Datei kann nicht gelesen werden: {error}"))?;
+    if sample.starts_with(&[0xfe, 0xff]) || (sample.len() > 1 && sample[0] == 0 && sample[1] != 0) {
+        return Err("UTF-16 BE wird nicht unterstützt. Datei als UTF-8 speichern.".into());
+    }
+    if sample.starts_with(&[0xff, 0xfe]) || (sample.len() > 1 && sample[0] != 0 && sample[1] == 0) {
+        return Ok(Some("utf-16"));
+    }
+    if !is_windows_1252(&sample, size > sample.len() as u64) {
+        return Ok(None);
+    }
+    if sample.iter().any(|byte| (0x80..=0x9f).contains(byte)) {
+        return Err(
+            "Datei ist Windows-1252-kodiert (z. B. €). Als UTF-8 speichern und erneut öffnen."
+                .into(),
+        );
+    }
+    Ok(Some("latin-1"))
+}
+
 pub fn preview(path: &str) -> Result<serde_json::Value, String> {
     let (mut bytes, partial) = read_sample(path)?;
     if is_windows_1252(&bytes, partial) {
