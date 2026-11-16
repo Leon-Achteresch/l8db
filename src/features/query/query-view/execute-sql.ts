@@ -8,6 +8,7 @@ import {
   type QueryResult,
 } from "@/lib/db";
 import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-transactions";
+import { withAdapterResultTiming, withoutMeasuredQueryTiming } from "@/lib/query-result-timing";
 import { applySelectRowLimit } from "@/lib/select-row-limit";
 import { expandSessionViews, runSessionViewStatement, sessionViewsFor } from "@/lib/session-views";
 import { useSettingsStore } from "@/lib/settings";
@@ -38,7 +39,7 @@ export async function executeSqlWithTransactions({
   onJob,
 }: ExecuteSqlOptions): Promise<QueryResult> {
   const intercepted = await runSessionViewStatement(connection, database, sql);
-  if (intercepted) return intercepted;
+  if (intercepted) return withoutMeasuredQueryTiming(intercepted);
   const sessionViews = sessionViewsFor(connection.id, database);
   sql = applySelectRowLimit(
     expandSessionViews(sql, sessionViews, connection.kind),
@@ -101,7 +102,7 @@ export async function executeSqlWithTransactions({
       );
       store.setPanelOpen(true);
     }
-    return res;
+    return withAdapterResultTiming(res);
   }
   if (
     opensManagedTransaction(classified, connection.kind) &&
@@ -137,11 +138,12 @@ export async function executeSqlWithTransactions({
     }
     await runManagedOperation(txId, () => refreshDatabaseChanges(connection, txId));
     store.setPanelOpen(true);
-    return res;
+    return withAdapterResultTiming(res);
   }
-  return bound
+  const kind = connection.kind;
+  const result = bound
     ? await executeQueryWithParams(
-        connection.kind,
+        kind,
         effectiveConnectionString(connection),
         bound.sql,
         bound.values,
@@ -149,10 +151,11 @@ export async function executeSqlWithTransactions({
         executionOptions,
       )
     : await executeQuery(
-        connection.kind,
+        kind,
         effectiveConnectionString(connection),
         sql,
         database ?? undefined,
         executionOptions,
       );
+  return withAdapterResultTiming(result, kind);
 }

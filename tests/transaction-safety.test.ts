@@ -550,3 +550,36 @@ describe("transaction snapshots tolerate trailing comments", () => {
     });
   }
 });
+
+describe("query duration provenance", () => {
+  test("direct PostgreSQL calls label the native query/result interval without changing its value", async () => {
+    const native = result([{ id: 1 }], 0);
+    const requestedConnection = { ...connection };
+    handler = () => {
+      requestedConnection.kind = "mssql";
+      return native;
+    };
+    useSettingsStore.setState({ transactionsEnabled: false });
+    const received = await executeSqlWithTransactions({
+      connection: requestedConnection,
+      database: "test",
+      sql: "SELECT 1 AS id",
+      transactionsCapable: false,
+      onJob: () => {},
+    });
+    expect(received.execution_time_ms).toBe(1);
+    expect(received).toHaveProperty("timingScope", "adapter_query_result");
+    expect(native).not.toHaveProperty("timingScope");
+  });
+  test("managed results lack a verified driver marker and remain explicitly unspecified", async () => {
+    const conn = openQueryTransaction();
+    const received = await executeSqlWithTransactions({
+      connection: conn,
+      database: null,
+      sql: "SELECT 1 AS id",
+      transactionsCapable: true,
+      onJob: () => {},
+    });
+    expect(received).not.toHaveProperty("timingScope");
+  });
+});

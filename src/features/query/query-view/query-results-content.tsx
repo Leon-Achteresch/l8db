@@ -10,6 +10,7 @@ import type { ResultChartBinding } from "@/features/query/result-chart/types";
 import { ResultCompareView } from "@/features/query/result-compare/result-compare-view";
 import { ResultSnapshotsButton } from "@/features/query/result-snapshots-button";
 import type { DatabaseKind, TableInfo } from "@/lib/db";
+import { queryTimingDescription } from "@/lib/query-result-timing";
 import type { SqlMarker } from "@/lib/sql-diagnostics";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { PreviousResultNotice } from "./previous-result-notice";
@@ -58,6 +59,7 @@ export function QueryResultsContent({
   outputPanel,
 }: QueryResultsContentProps) {
   const { result, isRunning, error, statementError, viewSource, scriptEntries } = exec;
+  const statusDetails = result ? queryTimingDescription(result) : undefined;
   const [classic, setClassic] = useTabState(tabStateKey(exec.scope, "classic"), false);
   const [snapshotCompare, setSnapshotCompare] = useTabState<string | null>(
     tabStateKey(exec.scope, "snapshotCompare"),
@@ -107,6 +109,7 @@ export function QueryResultsContent({
           error={error}
           result={result}
           statusText={statusText}
+          statusDetails={statusDetails}
           actions={resultActions}
         />
       )}
@@ -181,6 +184,7 @@ export function QueryResultsContent({
             result={result}
             tables={tables}
             statusText={statusText}
+            statusDetails={statusDetails}
             actions={resultActions}
             maximized={maximized}
             onToggleMaximized={onToggleMaximized}
@@ -195,6 +199,7 @@ export function QueryResultsContent({
             error={previousResult ? null : error}
             kind={kind}
             statusText={statusText}
+            statusDetails={statusDetails}
             actions={
               viewable && !isRunning ? (
                 <>
