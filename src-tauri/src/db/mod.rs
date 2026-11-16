@@ -50,6 +50,7 @@ pub mod pool;
 mod postgres;
 pub mod principals;
 pub(crate) use postgres::run_simple_query as run_postgres_simple_query;
+pub(crate) use mysql::strip_int_widths as mysql_type_text;
 pub mod postgres_health;
 pub mod provider;
 pub(crate) mod redis;
@@ -2180,6 +2181,7 @@ pub fn create_adapter_from_string(
         )?),
         DatabaseKind::Cassandra => Box::new(cassandra::CassandraAdapter::new(
             connection_string,
+            database,
             pool_state,
             key,
         )?),
@@ -2210,7 +2212,11 @@ pub fn create_adapter_from_string(
             connection_string,
             database,
         )?),
-        DatabaseKind::Dynamodb => Box::new(dynamodb::DynamoAdapter::new(connection_string, key)?),
+        DatabaseKind::Dynamodb => Box::new(dynamodb::DynamoAdapter::new(
+            connection_string,
+            database,
+            key,
+        )?),
         DatabaseKind::S3 => Box::new(s3::S3Adapter::new(connection_string)?),
         DatabaseKind::Athena => Box::new(athena::AthenaAdapter::new(
             connection_string,
@@ -2734,6 +2740,16 @@ mod tests {
         assert!(super::validate_table_filter_in(filter, false).is_ok());
         assert!(validate_table_filter(filter).is_err());
         assert!(super::validate_table_filter_in("1=1 #> '{a}'; DROP TABLE t", false).is_err());
+        for remote in [
+            "EXISTS (SELECT 1 FROM OPENQUERY(srv, 'SELECT 1') AS r)",
+            "EXISTS (SELECT 1 FROM openrowset('MSDASQL', 'x', 'SELECT 1') r)",
+            "a IN (SELECT a FROM OpenDataSource('SQLNCLI', 'x').db.dbo.t)",
+        ] {
+            assert!(validate_table_filter(remote).is_err(), "{remote}");
+        }
+        assert!(validate_table_filter("[openquery] = 1 AND note = 'openrowset'").is_ok());
+        assert!(validate_table_filter("[returning] = 2 AND [call] = 1").is_ok());
+        assert!(validate_table_filter("returning = 2").is_err());
         assert_eq!(
             super::where_clause_in(Some("\"j\" #>> '{b}' = '1'"), false, false).unwrap(),
             " WHERE (\"j\" #>> '{b}' = '1')"
@@ -2942,9 +2958,10 @@ fn filter_outside_literals(input: &str, mode: FilterLexMode) -> String {
     out
 }
 
-const FILTER_STATEMENT_WORDS: [&str; 18] = [
+const FILTER_STATEMENT_WORDS: [&str; 21] = [
     "insert", "update", "delete", "merge", "drop", "create", "alter", "truncate", "exec",
     "execute", "call", "declare", "grant", "revoke", "waitfor", "shutdown", "dbcc", "bulk",
+    "openquery", "openrowset", "opendatasource",
 ];
 
 fn strip_quoted_identifiers(text: &str) -> String {
@@ -3050,13 +3067,13 @@ pub fn validate_table_filter_in(filter: &str, hash_comments: bool) -> Result<(),
         if !parentheses_balanced(&stripped) {
             return reject("eine nicht geschlossene Klammer");
         }
-        for word in ["union", "returning", "into"] {
+        for word in ["union", "into"] {
             if contains_word(&stripped, word) {
                 return reject(word);
             }
         }
         let unquoted = strip_quoted_identifiers(&stripped);
-        for word in FILTER_STATEMENT_WORDS {
+        for word in FILTER_STATEMENT_WORDS.iter().chain(&["returning"]) {
             if contains_word(&unquoted, word) {
                 return reject(word);
             }

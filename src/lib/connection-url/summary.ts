@@ -11,20 +11,29 @@ import { filePath, kindFromUrl, multiHostUrl } from "./parse";
 import { isProfileConnection, parseProfileConnection } from "./profile-pointer";
 
 function detectObjectStorage(value: string, candidates: ProviderInfo[]): string {
-  let endpoint: URL | null = null;
+  let raw: string | null = null;
   try {
-    const raw = new URL(value.trim()).searchParams.get("endpoint");
-    endpoint = raw ? new URL(raw) : null;
+    raw = new URL(value.trim()).searchParams.get("endpoint");
   } catch {
-    endpoint = null;
+    raw = null;
   }
-  if (!endpoint) return "s3";
+  if (!raw) return "s3";
+  let endpoint: URL;
+  try {
+    endpoint = new URL(raw);
+  } catch {
+    return "s3-compatible";
+  }
   const host = endpoint.hostname.toLowerCase();
+  if (host.endsWith(".amazonaws.com.cn")) return "s3";
   const match = candidates.find((provider) =>
     provider.hosts.some((entry) => (entry.startsWith(".") ? host.endsWith(entry) : host === entry)),
   );
   if (match) return match.id;
-  return host.includes("minio") || endpoint.port === "9000" ? "minio" : "s3-compatible";
+  const localMinio = endpoint.port === "9000" && (host === "localhost" || PRIVATE_IP.test(host));
+  return host.includes("minio") || host.endsWith("min.io") || localMinio
+    ? "minio"
+    : "s3-compatible";
 }
 
 const PRIVATE_SUFFIX = /\.(intern|internal|local|localdomain|lan|corp|home|arpa)$/;

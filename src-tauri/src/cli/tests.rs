@@ -1,4 +1,6 @@
-use super::run::{address, rollback_note, split_table, statements, writes};
+use super::run::{
+    address, read_only, read_timeout, rollback_note, split_table, statements, writes,
+};
 use super::*;
 use crate::db::DatabaseKind;
 
@@ -163,6 +165,7 @@ fn routes_cli_words_and_keeps_app_arguments() {
         "-c prod q x",
         "--connection=prod q x",
         "--url postgres://x/y q x",
+        "--read-only table list",
         "quer",
         "tabel list",
         "-cprod conn list",
@@ -353,6 +356,7 @@ fn write_detection_is_conservative() {
             DatabaseKind::Mongodb,
             r#"{"mapReduce":"src","map":"function(){}","reduce":"function(){}","out":"copy"}"#,
         ),
+        (DatabaseKind::S3, "DELETE FROM demo"),
     ] {
         assert!(writes(kind, sql), "{sql} schreibt");
     }
@@ -368,6 +372,10 @@ fn write_detection_is_conservative() {
             DatabaseKind::Mongodb,
             r#"db.src.aggregate([{$match:{status:"$out"}},{$count:"n"}])"#,
         ),
+        (DatabaseKind::S3, "SELECT * FROM s3://demo/a.csv"),
+        (DatabaseKind::S3, "SELECT * FROM 'data/a.csv'"),
+        (DatabaseKind::S3, "LIST s3://demo/"),
+        (DatabaseKind::S3, "SHOW BUCKETS"),
     ] {
         assert!(!writes(kind, sql), "{sql} liest nur");
     }
@@ -470,18 +478,18 @@ fn task_subcommands_map_to_the_automation_cli() {
 fn rollback_message_only_promises_what_the_database_keeps() {
     let ran = |sql: &[&str]| sql.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     let clean = ran(&["insert into t values (1)", "update t set a = 2"]);
-    assert!(rollback_note(DatabaseKind::Postgres, &clean).contains("Nichts geändert"));
-    assert!(rollback_note(DatabaseKind::Mysql, &clean).contains("Nichts geändert"));
+    assert!(rollback_note(DatabaseKind::Postgres, &clean, true).contains("Nichts geändert"));
+    assert!(rollback_note(DatabaseKind::Mysql, &clean, true).contains("Nichts geändert"));
     let ddl = ran(&["create table t(a int)", "insert into t values ('x')"]);
-    assert!(rollback_note(DatabaseKind::Postgres, &ddl).contains("Nichts geändert"));
-    assert!(rollback_note(DatabaseKind::Mysql, &ddl).contains("sofort fest"));
-    assert!(rollback_note(DatabaseKind::Oracle, &ddl).contains("sofort fest"));
+    assert!(rollback_note(DatabaseKind::Postgres, &ddl, true).contains("Nichts geändert"));
+    assert!(rollback_note(DatabaseKind::Mysql, &ddl, true).contains("sofort fest"));
+    assert!(rollback_note(DatabaseKind::Oracle, &ddl, true).contains("sofort fest"));
     let own = ran(&[
         "insert into t values (1)",
         "commit",
         "insert into t values (2)",
     ]);
-    assert!(rollback_note(DatabaseKind::Postgres, &own).contains("BEGIN/COMMIT"));
+    assert!(rollback_note(DatabaseKind::Postgres, &own, true).contains("BEGIN/COMMIT"));
 }
 
 #[test]
@@ -493,7 +501,7 @@ fn open_transactions_and_rollback_notes_follow_each_family() {
         "select count(*) from t",
     ]);
     assert!(super::run::open_at_end(DatabaseKind::Postgres, &open));
-    assert!(rollback_note(DatabaseKind::Postgres, &open).contains("Nichts geändert"));
+    assert!(rollback_note(DatabaseKind::Postgres, &open, false).contains("Nichts geändert"));
     let closed = ran(&["begin", "insert into t values (1)", "commit"]);
     assert!(!super::run::open_at_end(DatabaseKind::Postgres, &closed));
     let reopened = ran(&[
@@ -504,12 +512,12 @@ fn open_transactions_and_rollback_notes_follow_each_family() {
         "select 1",
     ]);
     assert!(super::run::open_at_end(DatabaseKind::Postgres, &reopened));
-    assert!(rollback_note(DatabaseKind::Postgres, &reopened).contains("BEGIN/COMMIT"));
+    assert!(rollback_note(DatabaseKind::Postgres, &reopened, false).contains("BEGIN/COMMIT"));
     let savepoint = ran(&["begin", "savepoint a", "rollback to savepoint a"]);
     assert!(super::run::open_at_end(DatabaseKind::Postgres, &savepoint));
     let plsql = ran(&["begin null; end;", "insert into t values (1)"]);
     assert!(!super::run::open_at_end(DatabaseKind::Oracle, &plsql));
-    assert!(rollback_note(DatabaseKind::Oracle, &plsql).contains("Nichts geändert"));
+    assert!(rollback_note(DatabaseKind::Oracle, &plsql, true).contains("Nichts geändert"));
     let block = ran(&["begin print 1 end", "insert into t values (1)"]);
     assert!(!super::run::open_at_end(DatabaseKind::Mssql, &block));
     assert!(super::run::open_at_end(
@@ -521,7 +529,58 @@ fn open_transactions_and_rollback_notes_follow_each_family() {
         "begin",
         "insert into t values (2)",
     ]);
-    assert!(rollback_note(DatabaseKind::Mysql, &mysql).contains("BEGIN/COMMIT"));
+    assert!(rollback_note(DatabaseKind::Mysql, &mysql, true).contains("BEGIN/COMMIT"));
+}
+
+#[test]
+fn rollback_note_names_statements_that_ddl_already_committed() {
+    let ran = |sql: &[&str]| sql.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let mid = ran(&[
+        "insert into p values (52)",
+        "create table d (id int)",
+        "insert into p values (52)",
+    ]);
+    for kind in [DatabaseKind::Mysql, DatabaseKind::Oracle] {
+        let note = rollback_note(kind, &mid, true);
+        assert!(note.contains("Anweisungen 1 bis 2 bleiben bestehen"), "{note}");
+        assert!(!note.contains("Nichts geändert"), "{note}");
+    }
+    let failed_ddl = ran(&["insert into p values (1)", "create table p (id int)"]);
+    assert!(rollback_note(DatabaseKind::Mysql, &failed_ddl, true).contains("Anweisung 1 bleibt"));
+    assert!(rollback_note(DatabaseKind::Mysql, &failed_ddl, false).contains("1 bis 2"));
+    assert!(rollback_note(DatabaseKind::Mysql, &ran(&["create table p (id int)", "x"]), true)
+        .contains("Anweisung 1 bleibt"));
+    assert!(rollback_note(DatabaseKind::Mysql, &ran(&["create table p (id int)"]), true)
+        .contains("Nichts geändert"));
+    for kind in [
+        DatabaseKind::Postgres,
+        DatabaseKind::Sqlite,
+        DatabaseKind::Mssql,
+        DatabaseKind::SqliteHttp,
+    ] {
+        assert!(rollback_note(kind, &mid, true).contains("Nichts geändert"), "{kind:?}");
+    }
+}
+
+#[test]
+fn mssql_scripts_keep_variables_in_one_batch() {
+    assert_eq!(
+        statements(DatabaseKind::Mssql, "DECLARE @x INT = 5; SELECT @x AS v").unwrap(),
+        ["DECLARE @x INT = 5; SELECT @x AS v"]
+    );
+    let open = statements(DatabaseKind::Mssql, "BEGIN TRAN; INSERT INTO t VALUES (1);").unwrap();
+    assert_eq!(open.len(), 2);
+    assert!(super::run::open_at_end(DatabaseKind::Mssql, &open));
+    assert!(writes(
+        DatabaseKind::Mssql,
+        "DECLARE @x INT = 1; INSERT INTO t VALUES (@x)"
+    ));
+    let line = super::run::script_line;
+    assert_eq!(
+        line("SQL Server 8134: Divide by zero (Zeile 1)".into(), 2),
+        "SQL Server 8134: Divide by zero (Zeile 3)"
+    );
+    assert_eq!(line("ohne Zeile".into(), 2), "ohne Zeile");
 }
 
 #[test]
@@ -539,4 +598,29 @@ fn cursor_errors_point_into_the_typed_statement() {
     assert_eq!(super::run::unquoted_column("\"into\"".into()), "into");
     assert_eq!(super::run::unquoted_column("\"a\"\"b\"".into()), "a\"b");
     assert_eq!(super::run::unquoted_column("plain".into()), "plain");
+}
+
+#[test]
+fn sql_starting_with_a_comment_is_not_an_option() {
+    let sql = super::sql_comment_arg("-- Kommentar\nselect 1 as x");
+    assert_eq!(sql, " -- Kommentar\nselect 1 as x");
+    assert_eq!(super::sql_comment_arg("--limit"), "--limit");
+    assert_eq!(super::sql_comment_arg("--"), "--");
+    let argv = ["l8db", "--url", "a.sqlite", "query", sql.as_str(), "-o", "json"];
+    let matches = super::command().try_get_matches_from(argv).unwrap();
+    assert!(<super::Cli as clap::FromArgMatches>::from_arg_matches(&matches).is_ok());
+}
+
+#[test]
+fn read_only_flag_protects_ad_hoc_urls() {
+    let flagged = parse("l8db --url postgres://u@h/db --read-only query \"select 1\"").unwrap();
+    let plain = parse("l8db --url postgres://u@h/db query \"select 1\"").unwrap();
+    let url = || connect::ad_hoc("postgres://u@h/db").unwrap();
+    assert!(read_only(&flagged.global, url()).target().read_only);
+    assert!(!read_only(&plain.global, url()).target().read_only);
+    assert_eq!(
+        read_timeout("Query-Timeout nach 300 Sekunden. Der Serverabschluss ist nicht bestätigt; vor erneutem Schreiben den Zustand prüfen.".into()),
+        "Query-Timeout nach 300 Sekunden. Es wurde nur gelesen; Filter enger setzen."
+    );
+    assert_eq!(read_timeout("anderer Fehler".into()), "anderer Fehler");
 }

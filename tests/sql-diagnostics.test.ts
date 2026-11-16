@@ -75,6 +75,9 @@ test("Postgres position and MySQL line fall back correctly", () => {
   expect(at(sql, sqlErrorMarkers("MySQL 1064: near 'SELEC 2' at line 2", sql, 0, "mysql")[0])).toBe(
     "SELEC 2",
   );
+  expect(
+    at(sql, sqlErrorMarkers("SQL Server 102: Incorrect syntax (Zeile 2)", sql, 0, "mssql")[0]),
+  ).toBe("SELEC 2");
   expect(sqlErrorMarkers("connection refused", sql)).toEqual([]);
 });
 

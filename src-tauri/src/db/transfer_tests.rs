@@ -2178,7 +2178,7 @@ async fn transfer_live_mysql_overwrite_restores_previous_state() {
 #[tokio::test]
 #[ignore]
 async fn transfer_live_mssql_snapshot_source() {
-    let Some(url) = live_url("MSSQL") else { return };
+    let url = required_url("MSSQL");
     let pool = create_pool_state();
     let master = create_adapter_from_string(DatabaseKind::Mssql, &url, None, pool.clone()).unwrap();
     let _ = master

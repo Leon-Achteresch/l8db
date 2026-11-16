@@ -310,7 +310,16 @@ async fn mysql_backup_restore_round_trips() {
     }
     let probed = probe(DatabaseKind::Mysql, &url, None, &tool_paths(), pool.clone()).await;
     println!("{probed:#?}");
-    assert!(probed.tools.iter().all(|tool| tool.path.is_some()));
+    let missing: Vec<_> = probed
+        .tools
+        .iter()
+        .filter(|tool| tool.path.is_none())
+        .map(|tool| tool.name.clone())
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "fehlende Werkzeuge {missing:?}: mysqldump/mysql bzw. mariadb-dump/mariadb in PATH oder L8DB_BACKUP_TOOL_DIR"
+    );
     assert!(probed.warnings.is_empty());
     let target = out_dir().join("mysql.sql");
     let (emit, lines) = recorder();

@@ -174,6 +174,7 @@ fn binary_lit(kind: DatabaseKind, value: &str) -> Option<String> {
             Some(format!("X'{hex}'"))
         }
         DatabaseKind::Mssql => Some(format!("0x{hex}")),
+        DatabaseKind::Duckdb => Some(format!("from_hex('{hex}')")),
         _ => None,
     }
 }
@@ -369,7 +370,7 @@ impl Generic {
                 let sql = format!("INSERT INTO {target} {col_sql} OUTPUT INSERTED.* {val_sql}");
                 self.execute(&sql).await?.rows.into_iter().next()
             }
-            DatabaseKind::SqliteHttp => {
+            DatabaseKind::SqliteHttp | DatabaseKind::Duckdb => {
                 let sql = format!("INSERT INTO {target} {col_sql} {val_sql} RETURNING *");
                 self.execute(&sql).await?.rows.into_iter().next()
             }
@@ -1243,7 +1244,11 @@ mod tests {
             Some("0xab")
         );
         assert_eq!(super::binary_lit(DatabaseKind::Mysql, "\\x0g"), None);
-        assert_eq!(super::binary_lit(DatabaseKind::Duckdb, "\\x00"), None);
+        assert_eq!(
+            super::binary_lit(DatabaseKind::Duckdb, "\\x00ff").as_deref(),
+            Some("from_hex('00ff')")
+        );
+        assert_eq!(super::binary_lit(DatabaseKind::Postgres, "\\x00"), None);
         let binary = std::collections::HashSet::from(["b".to_string()]);
         let value = Some("\\x0102".to_string());
         assert_eq!(
@@ -1352,6 +1357,44 @@ mod tests {
         assert_eq!(res.rows[0]["note"], "\\x41");
         tx.rollback(&id).await.unwrap();
         let _ = std::fs::remove_file(&dir);
+    }
+
+    #[tokio::test]
+    async fn duckdb_row_edits_commit_and_roll_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let url = format!("duckdb://{}?mode=rwc", dir.path().join("edit.duckdb").display());
+        let pool = super::super::pool::create_pool_state();
+        let adapter =
+            super::super::create_adapter_from_string(DatabaseKind::Duckdb, &url, None, pool.clone())
+                .unwrap();
+        adapter
+            .execute_query("CREATE TABLE t (id INTEGER PRIMARY KEY, data BLOB, note VARCHAR)")
+            .await
+            .unwrap();
+        let tx = TransactionManager {
+            transactions: Mutex::new(HashMap::new()),
+        };
+        let id = tx.begin(DatabaseKind::Duckdb, &url, None, &pool).await.unwrap();
+        let values = HashMap::from([
+            ("id".to_string(), Some("1".to_string())),
+            ("data".to_string(), Some("\\x89504e47".to_string())),
+            ("note".to_string(), Some("a".to_string())),
+        ]);
+        let row = tx.insert_row(&id, "main", "t", &values).await.unwrap();
+        assert_eq!(row["data"], "\\x89504e47");
+        let ctid = row["__ctid__"].as_str().unwrap().to_string();
+        let updates = HashMap::from([("note".to_string(), Some("b".to_string()))]);
+        tx.update_row(&id, "main", "t", &ctid, &updates).await.unwrap();
+        tx.commit(&id).await.unwrap();
+        let rows = adapter
+            .fetch_rows("main", "t", None, 10, 0, None, false, false, false)
+            .await
+            .unwrap();
+        assert_eq!(rows.rows[0]["note"], "b");
+        let id = tx.begin(DatabaseKind::Duckdb, &url, None, &pool).await.unwrap();
+        tx.delete_row(&id, "main", "t", &ctid).await.unwrap();
+        tx.rollback(&id).await.unwrap();
+        assert_eq!(adapter.count_rows("main", "t", None, false).await.unwrap(), 1);
     }
 
     #[tokio::test]
@@ -1535,11 +1578,24 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn mysql_transaction_roundtrip() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_MYSQL_URL") else {
+            eprintln!("übersprungen: L8DB_SMOKE_MYSQL_URL fehlt");
+            return;
+        };
+        let schema = std::env::var("L8DB_SMOKE_MYSQL_SCHEMA").unwrap_or_else(|_| {
+            url::Url::parse(&url)
+                .ok()
+                .map(|u| u.path().trim_start_matches('/').to_string())
+                .filter(|db| !db.is_empty())
+                .unwrap_or_else(|| "test".into())
+        });
         generic_roundtrip(
             DatabaseKind::Mysql,
             "L8DB_SMOKE_MYSQL_URL",
-            "test",
-            "CREATE TABLE l8_tx_test (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50))",
+            &schema,
+            &format!(
+                "CREATE TABLE `{schema}`.l8_tx_test (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50))"
+            ),
         )
         .await;
     }

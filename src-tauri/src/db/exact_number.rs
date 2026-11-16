@@ -560,7 +560,19 @@ mod tests {
         let first = data.rows[0]["doc"].as_str().expect("raw text").to_string();
         assert!(first.contains("9007199254740993"), "{first}");
         assert!(first.contains("-9007199254740993"), "{first}");
-        assert_eq!(data.rows[1]["doc"], json!({"n": [1, 2.5]}));
+        let version = adapter
+            .execute_query("SELECT VERSION() AS v")
+            .await
+            .unwrap();
+        let mariadb = version.rows[0]["v"]
+            .as_str()
+            .is_some_and(|v| v.contains("MariaDB"));
+        let plain = if mariadb {
+            json!(r#"{"n": [1, 2.5]}"#)
+        } else {
+            json!({"n": [1, 2.5]})
+        };
+        assert_eq!(data.rows[1]["doc"], plain);
         assert_eq!(data.rows[2]["doc"], json!("9007199254740993"));
         let query = adapter
             .execute_query("SELECT doc FROM l8db_json_exact WHERE id = 1")

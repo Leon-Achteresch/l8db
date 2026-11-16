@@ -93,6 +93,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       title: "Monitor",
       url: "/monitor",
       feature: "monitor",
+      available: (caps) => caps.query_language !== "redis",
       icon: Activity,
       activeIcon: ChartSpline,
       group: 2,

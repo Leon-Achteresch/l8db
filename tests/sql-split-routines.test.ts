@@ -121,6 +121,36 @@ describe("SQL Server batches", () => {
     ]);
   });
 
+  test("variables and control flow keep their batch together, plain statements stay separate", () => {
+    expect(
+      texts("DECLARE @x INT = 5; SELECT @x AS v;\nGO\nSELECT 1; SELECT @@VERSION;", "mssql"),
+    ).toEqual(["DECLARE @x INT = 5; SELECT @x AS v;", "SELECT 1;", "SELECT @@VERSION;"]);
+    expect(
+      texts("SELECT 1; CREATE VIEW v AS SELECT 1; DECLARE @x INT; SELECT @x\nGO 2", "mssql"),
+    ).toEqual([
+      "SELECT 1;",
+      "CREATE VIEW v AS SELECT 1;",
+      "DECLARE @x INT; SELECT @x",
+      "SELECT 1;",
+      "CREATE VIEW v AS SELECT 1;",
+      "DECLARE @x INT; SELECT @x",
+    ]);
+    expect(
+      texts(
+        "BEGIN TRAN; INSERT INTO t VALUES (1); DROP TABLE IF EXISTS x; SELECT 'DECLARE @y';",
+        "mssql",
+      ),
+    ).toEqual([
+      "BEGIN TRAN;",
+      "INSERT INTO t VALUES (1);",
+      "DROP TABLE IF EXISTS x;",
+      "SELECT 'DECLARE @y';",
+    ]);
+    expect(
+      texts("IF 1 = 1 BEGIN SELECT 1; SELECT 2; END; SELECT TRY_CAST('1' AS INT);", "mssql"),
+    ).toEqual(["IF 1 = 1 BEGIN SELECT 1; SELECT 2; END; SELECT TRY_CAST('1' AS INT);"]);
+  });
+
   test("GO inside strings, comments, identifiers or longer words is not a separator", () => {
     const sql = "SELECT 'a\nGO\nb', [x\nGO\ny];\n/*\nGO\n*/ SELECT GOTO_x;\nSELECT 1 GO";
     expect(texts(sql, "mssql")).toEqual([

@@ -40,7 +40,20 @@ export function ConnectionsEmptyState({
         filters: [
           {
             name: "Datenbanken und Dateien",
-            extensions: ["db", "sqlite", "sqlite3", "duckdb", "csv", "parquet", "sql", "l8nb"],
+            extensions: [
+              "db",
+              "sqlite",
+              "sqlite3",
+              "duckdb",
+              "csv",
+              "tsv",
+              "json",
+              "jsonl",
+              "ndjson",
+              "parquet",
+              "sql",
+              "l8nb",
+            ],
           },
         ],
       });

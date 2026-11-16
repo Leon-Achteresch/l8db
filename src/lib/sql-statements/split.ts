@@ -166,6 +166,7 @@ export function splitSqlStatements(
   let blockDepth = 0;
   let delimiter = ";";
   let goFrom = 0;
+  const batches: { from: number; to: number; times: number }[] = [];
   const leadingWords: string[] = [];
   let routine = false;
 
@@ -441,8 +442,9 @@ export function splitSqlStatements(
         if (!sql.slice(lineStart, start).trim() && repeat) {
           flush(start);
           const batchStatements = statements.slice(goFrom);
-          for (let run = 1; run < Math.min(Number(repeat[1]) || 1, MAX_GO_REPEAT); run += 1)
-            statements.push(...batchStatements);
+          const times = Math.max(1, Math.min(Number(repeat[1]) || 1, MAX_GO_REPEAT));
+          batches.push({ from: goFrom, to: statements.length, times });
+          for (let run = 1; run < times; run += 1) statements.push(...batchStatements);
           goFrom = statements.length;
           index = lineEnd;
           continue;
@@ -612,7 +614,62 @@ export function splitSqlStatements(
   }
 
   flush(length);
+  if (dialect === "mssql") {
+    batches.push({ from: goFrom, to: statements.length, times: 1 });
+    return { statements: mssqlBatches(sql, statements, batches), commands, unterminated: false };
+  }
   return { statements, commands, unterminated: false };
+}
+
+const MSSQL_BATCH_START =
+  /^(?:CREATE\s+(?:OR\s+ALTER\s+)?|ALTER\s+)(?:PROC|PROCEDURE|FUNCTION|TRIGGER|VIEW|SCHEMA)\b/i;
+
+function mssqlCode(text: string): string {
+  return text
+    .replace(/'(?:[^']|'')*'/g, "''")
+    .replace(/\[[^\]]*\]/g, "[]")
+    .replace(/--.*$/gm, " ")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .trim();
+}
+
+function needsMssqlBatch(text: string): boolean {
+  const code = mssqlCode(text);
+  return (
+    /(^|[^@\w])@\w/.test(code) ||
+    /\b(DECLARE|WHILE|GOTO|RETURN|BREAK|CONTINUE|TRY|CATCH)\b/i.test(code) ||
+    (/\bIF\b/i.test(code) && !/^DROP\b/i.test(code)) ||
+    /\bBEGIN\b(?!\s+(?:TRAN|TRANSACTION|DISTRIBUTED|DIALOG|CONVERSATION)\b)/i.test(code)
+  );
+}
+
+function mssqlBatches(
+  sql: string,
+  statements: SqlStatement[],
+  batches: { from: number; to: number; times: number }[],
+): SqlStatement[] {
+  const out: SqlStatement[] = [];
+  for (const { from, to, times } of batches) {
+    const segments: SqlStatement[] = [];
+    let run: SqlStatement[] = [];
+    const close = () => {
+      if (run.length > 1 && run.some((statement) => needsMssqlBatch(statement.text))) {
+        const start = run[0].start;
+        const end = run[run.length - 1].end;
+        segments.push({ text: sql.slice(start, end), start, end });
+      } else segments.push(...run);
+      run = [];
+    };
+    for (const statement of statements.slice(from, to)) {
+      if (MSSQL_BATCH_START.test(mssqlCode(statement.text))) {
+        close();
+        segments.push(statement);
+      } else run.push(statement);
+    }
+    close();
+    for (let time = 0; time < times; time += 1) out.push(...segments);
+  }
+  return out;
 }
 
 export function statementAtOffset(
@@ -653,7 +710,9 @@ function onlyGap(sql: string, from: number, to: number): boolean {
 }
 
 export function runsOneStatementPerCall(dialect?: string): boolean {
-  return dialect === "oracle" || dialect === "postgres";
+  return (
+    dialect === "oracle" || dialect === "postgres" || dialect === "mysql" || dialect === "mssql"
+  );
 }
 
 export function sqlToRun(sql: string, selectedSql: string): string {

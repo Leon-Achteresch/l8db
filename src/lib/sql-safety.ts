@@ -177,7 +177,9 @@ const ES_READ_ENDPOINTS = new Set([
   "_termvectors",
   "_mtermvectors",
   "_pit",
+  "_ppl",
 ]);
+const ES_PLUGIN_PREFIXES = new Set(["_plugins", "_opendistro"]);
 
 interface EsRequest {
   method: string;
@@ -189,8 +191,7 @@ export function elasticRequests(sql: string): EsRequest[] | null {
   for (const line of sql.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (trimmed.startsWith("#") || trimmed.startsWith("//")) continue;
-    const [head = "", ...rest] = trimmed.split(/\s+/);
-    const path = rest.join(" ").trim();
+    const [head = "", path = ""] = trimmed.split(/\s+/);
     if (ES_METHODS.has(head.toUpperCase()) && path && !path.startsWith("{"))
       requests.push({ method: head.toUpperCase(), path: path.replace(/^\/+/, "") });
     else if (!requests.length && trimmed) return null;
@@ -213,7 +214,9 @@ function elasticSegments(path: string): string[] | null {
 function elasticReads(request: EsRequest): boolean {
   if (request.method === "GET" || request.method === "HEAD") return true;
   if (request.method !== "POST") return false;
-  const endpoint = elasticSegments(request.path)?.find((segment) => segment.startsWith("_"));
+  const endpoint = elasticSegments(request.path)?.find(
+    (segment) => segment.startsWith("_") && !ES_PLUGIN_PREFIXES.has(segment),
+  );
   return endpoint !== undefined && ES_READ_ENDPOINTS.has(endpoint);
 }
 
@@ -228,7 +231,18 @@ function elasticDestructive(request: EsRequest, strict: boolean): string | null 
   return strict ? "Dokument löschen" : null;
 }
 
-const FLUX_WRITE = /\|>\s*(?:to|wideTo)\s*\(|\.to\s*\(/;
+function fluxWrites(text: string): boolean {
+  const code = text.replace(/"(?:[^"\\]|\\.)*"|\/\/[^\n]*/g, (match) =>
+    match.startsWith('"') ? '""' : "",
+  );
+  for (const match of code.matchAll(/\b(?:to|wideTo)\b/g)) {
+    const before = code.slice(0, match.index).trimEnd().at(-1);
+    const after = code.slice(match.index + match[0].length).trimStart()[0];
+    if (after !== ":" && (before !== "." || after === "(")) return true;
+  }
+  return false;
+}
+
 const FLUX_START = /^\s*(?:from|import|buckets|option)\b|\|>/;
 const LINE_PROTOCOL = /^[^\s,#"(=]+(,\S+)?\s+[^\s=]+=\S.*$/;
 const SQL_START = /^(select|show|explain|with|delete|drop|create|insert|alter|update)\b/i;
@@ -243,7 +257,7 @@ function influxWrites(text: string): boolean | null {
     lines.every((line) => LINE_PROTOCOL.test(line) && !SQL_START.test(line) && !line.includes("|>"))
   )
     return true;
-  if (FLUX_START.test(text)) return FLUX_WRITE.test(text);
+  if (FLUX_START.test(text)) return fluxWrites(text);
   return null;
 }
 

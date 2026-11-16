@@ -148,7 +148,8 @@ export function featureAvailable(
   if (easyMode && entry.hiddenInEasyMode) return false;
   if (capabilities === undefined || !entry.capability) return true;
   if (!capabilities) return false;
-  if (entry.capability === "sql") return capabilities.query_language === "sql";
+  if (entry.capability === "sql")
+    return capabilities.query_language === "sql" && !capabilities.object_storage;
   return (capabilities as Capabilities)[entry.capability] === true;
 }
 

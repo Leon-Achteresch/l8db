@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { ColumnMaskList } from "./csv-export-dialog/column-mask-list";
 import { CsvOptionsFields } from "./csv-export-dialog/csv-options-fields";
 import { type CsvExportDialogProps, PREVIEW_ROWS } from "./csv-export-dialog/types";
@@ -61,6 +62,7 @@ export function CsvExportDialog({
     totalRows,
     update,
   } = useCsvExport({ open, onOpenChange, columns, rows, defaultFileName, fullExport });
+  const { terms } = useActiveCapabilities();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -68,7 +70,8 @@ export function CsvExportDialog({
         <DialogHeader>
           <DialogTitle>CSV exportieren</DialogTitle>
           <DialogDescription>
-            {rows.length} geladene Zeile{rows.length === 1 ? "" : "n"} mit {columns.length} Spalten.
+            {rows.length} geladene {rows.length === 1 ? terms.row : terms.rows}, {columns.length}{" "}
+            {columns.length === 1 ? terms.column : terms.columns}.
           </DialogDescription>
         </DialogHeader>
 
