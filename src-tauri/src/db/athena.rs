@@ -35,6 +35,7 @@ pub struct AthenaResult {
     pub scanned_bytes: i64,
     pub engine_ms: i64,
     pub query_id: String,
+    pub truncated: bool,
 }
 
 pub fn convert_value(data_type: &str, value: Option<&str>) -> Value {
@@ -63,6 +64,25 @@ pub fn convert_value(data_type: &str, value: Option<&str>) -> Value {
         },
         "json" => serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.to_string())),
         _ => Value::String(text.to_string()),
+    }
+}
+
+async fn throttled(client: &AwsClient, action: &str, body: &Value) -> Result<Value, String> {
+    let mut delay = Duration::from_millis(500);
+    let mut attempt = 1;
+    loop {
+        match client.call(action, body).await {
+            Err(error)
+                if attempt < 3
+                    && (error.contains("ThrottlingException")
+                        || error.contains("TooManyRequestsException")) =>
+            {
+                tokio::time::sleep(delay).await;
+                delay *= 2;
+                attempt += 1;
+            }
+            other => return other,
+        }
     }
 }
 
@@ -186,6 +206,10 @@ impl AthenaAdapter {
         key: String,
     ) -> Result<Self, String> {
         let conn = aws::parse_url(connection_string, "athena")?;
+        super::warehouse_auth::check_params(
+            conn.params.keys(),
+            &["endpoint", "profile", "workgroup", "output", "schema"],
+        )?;
         let catalog = database
             .filter(|d| !d.is_empty())
             .map(str::to_string)
@@ -208,7 +232,7 @@ impl AthenaAdapter {
                 if let Some(t) = &token {
                     request["NextToken"] = t.clone();
                 }
-                let response = client.call(action, &request).await?;
+                let response = throttled(&client, action, &request).await?;
                 out.extend(
                     response
                         .get(field)
@@ -258,7 +282,7 @@ impl AthenaAdapter {
         if let Some(output) = self.conn.param("output") {
             body["ResultConfiguration"] = json!({ "OutputLocation": output });
         }
-        let started = client.call("StartQueryExecution", &body).await?;
+        let started = throttled(&client, "StartQueryExecution", &body).await?;
         let id = started
             .get("QueryExecutionId")
             .and_then(Value::as_str)
@@ -280,9 +304,12 @@ impl AthenaAdapter {
                     super::execution::timeout_message()
                 ));
             }
-            let response = client
-                .call("GetQueryExecution", &json!({ "QueryExecutionId": id }))
-                .await?;
+            let response = throttled(
+                &client,
+                "GetQueryExecution",
+                &json!({ "QueryExecutionId": id }),
+            )
+            .await?;
             let execution = response.get("QueryExecution").cloned().unwrap_or_default();
             let status = execution.get("Status").cloned().unwrap_or_default();
             match status.get("State").and_then(Value::as_str).unwrap_or("") {
@@ -316,6 +343,7 @@ impl AthenaAdapter {
             scanned_bytes: stat("DataScannedInBytes"),
             engine_ms: stat("EngineExecutionTimeInMillis"),
             query_id: id.clone(),
+            truncated: false,
         };
         let mut types: Vec<String> = Vec::new();
         let mut token: Option<Value> = None;
@@ -324,11 +352,15 @@ impl AthenaAdapter {
             if cancel.is_cancelled() {
                 return Err("Abruf der Ergebnisse abgebrochen.".to_string());
             }
-            let mut request = json!({ "QueryExecutionId": id, "MaxResults": 1000 });
+            let page_size = max_rows
+                .saturating_sub(result.rows.len())
+                .saturating_add(usize::from(first))
+                .clamp(1, 1000);
+            let mut request = json!({ "QueryExecutionId": id, "MaxResults": page_size });
             if let Some(t) = &token {
                 request["NextToken"] = t.clone();
             }
-            let page = client.call("GetQueryResults", &request).await?;
+            let page = throttled(&client, "GetQueryResults", &request).await?;
             let mut rows = rows_of(&page);
             if first {
                 let info = column_info(&page);
@@ -344,6 +376,7 @@ impl AthenaAdapter {
             }
             for row in rows {
                 if result.rows.len() >= max_rows {
+                    result.truncated = true;
                     break;
                 }
                 result.rows.push(
@@ -355,7 +388,11 @@ impl AthenaAdapter {
                 );
             }
             token = page.get("NextToken").filter(|v| !v.is_null()).cloned();
-            if token.is_none() || result.rows.len() >= max_rows {
+            if token.is_none() {
+                break;
+            }
+            if result.rows.len() >= max_rows {
+                result.truncated = true;
                 break;
             }
         }
@@ -564,9 +601,7 @@ impl DatabaseAdapter for AthenaAdapter {
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let start = Instant::now();
         let statement = sql.trim().trim_end_matches(';').trim();
-        let result = self
-            .run(statement, super::commands::MAX_RESULT_ROWS + 1)
-            .await?;
+        let result = self.run(statement, super::execution::row_limit()).await?;
         server_output::emit(ServerMessage {
             level: "INFO".to_string(),
             message: cost_notice(result.scanned_bytes, result.engine_ms, &result.query_id),
@@ -578,7 +613,7 @@ impl DatabaseAdapter for AthenaAdapter {
             columns: result.columns,
             rows_affected: no_result.then_some(0),
             execution_time_ms: start.elapsed().as_millis() as u64,
-            truncated: false,
+            truncated: result.truncated,
         })
     }
 
@@ -820,6 +855,115 @@ mod tests {
             "{}",
             output[0].message
         );
+    }
+
+    fn paged_athena(total: usize) -> crate::db::http_mock::MockServer {
+        crate::db::http_mock::start(move |req| {
+            let action = req
+                .header("x-amz-target")
+                .unwrap_or_default()
+                .trim_start_matches("AmazonAthena.")
+                .to_string();
+            let request = req.json();
+            let body = match action.as_str() {
+                "StartQueryExecution" => json!({"QueryExecutionId": "q"}),
+                "GetQueryExecution" => json!({"QueryExecution": {
+                    "StatementType": "DML",
+                    "Status": {"State": "SUCCEEDED"}
+                }}),
+                "GetQueryResults" => {
+                    let start: usize = request["NextToken"]
+                        .as_str()
+                        .and_then(|t| t.parse().ok())
+                        .unwrap_or(0);
+                    let size = request["MaxResults"].as_u64().unwrap() as usize;
+                    assert!(size <= 1000);
+                    let mut rows = Vec::new();
+                    if start == 0 {
+                        rows.push(json!({"Data": [{"VarCharValue": "n"}]}));
+                    }
+                    let first = start.saturating_sub(1);
+                    let end = (start + size).saturating_sub(1).min(total);
+                    rows.extend(
+                        (first..end).map(|n| json!({"Data": [{"VarCharValue": n.to_string()}]})),
+                    );
+                    let mut page = json!({"ResultSet": {
+                        "ResultSetMetadata": {"ColumnInfo": [{"Name": "n", "Type": "bigint"}]},
+                        "Rows": rows
+                    }});
+                    if end < total {
+                        page["NextToken"] = json!((end + 1).to_string());
+                    }
+                    page
+                }
+                _ => json!({}),
+            };
+            (200, body.to_string().into())
+        })
+    }
+
+    async fn paged_query(total: usize, limit: Option<usize>) -> (QueryResult, usize) {
+        let server = paged_athena(total);
+        let url = format!(
+            "athena://AKID:secret@eu-central-1/AwsDataCatalog?endpoint={}",
+            server.base.replace(':', "%3A").replace('/', "%2F")
+        );
+        let adapter = AthenaAdapter::new(&url, None, String::new()).unwrap();
+        let future = adapter.execute_query("select n from t");
+        let result = match limit {
+            Some(rows) => crate::db::execution::with_row_limit(rows, future).await,
+            None => future.await,
+        }
+        .unwrap();
+        let pages = server
+            .requests()
+            .iter()
+            .filter(|r| r.header("x-amz-target") == Some("AmazonAthena.GetQueryResults"))
+            .count();
+        (result, pages)
+    }
+
+    #[tokio::test]
+    async fn throttled_calls_retry_twice_at_most() {
+        for (throttles, ok) in [(1, true), (5, false)] {
+            let seen = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let server = crate::db::http_mock::start(move |_| {
+                if seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < throttles {
+                    return (
+                        400,
+                        br#"{"__type":"ThrottlingException","message":"Rate exceeded"}"#.to_vec(),
+                    );
+                }
+                (200, br#"{"WorkGroup": {}}"#.to_vec())
+            });
+            let url = format!(
+                "athena://AKID:secret@eu-central-1/AwsDataCatalog?endpoint={}",
+                server.base.replace(':', "%3A").replace('/', "%2F")
+            );
+            let adapter = AthenaAdapter::new(&url, None, String::new()).unwrap();
+            let client = adapter.client().await.unwrap();
+            let result = throttled(&client, "GetWorkGroup", &json!({})).await;
+            assert_eq!(result.is_ok(), ok, "{result:?}");
+            assert_eq!(server.requests().len(), if ok { 2 } else { 3 });
+        }
+    }
+
+    #[tokio::test]
+    async fn results_page_up_to_the_row_limit() {
+        let (all, pages) = paged_query(5000, None).await;
+        assert_eq!(all.rows.len(), 5000);
+        assert_eq!(all.rows[4999]["n"], json!(4999));
+        assert!(!all.truncated);
+        assert_eq!(pages, 6);
+        let (capped, pages) = paged_query(5000, Some(3001)).await;
+        assert_eq!(capped.rows.len(), 3001);
+        assert_eq!(capped.rows[3000]["n"], json!(3000));
+        assert!(capped.truncated);
+        assert_eq!(pages, 4);
+        let (small, pages) = paged_query(5, Some(1001)).await;
+        assert_eq!(small.rows.len(), 5);
+        assert!(!small.truncated);
+        assert_eq!(pages, 1);
     }
 
     #[tokio::test]

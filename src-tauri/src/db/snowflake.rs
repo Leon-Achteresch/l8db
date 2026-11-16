@@ -9,9 +9,7 @@ use super::{
     ProxyUserInfo, QueryResult, TableData, TableInfo,
 };
 
-const MAX_ROWS: usize = 1000;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum Auth {
     KeyPair {
         pem: String,
@@ -25,6 +23,16 @@ enum Auth {
         token: String,
         kind: &'static str,
     },
+}
+
+impl std::fmt::Debug for Auth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Auth::KeyPair { .. } => f.write_str("KeyPair { <redacted> }"),
+            Auth::KeyFile { path, .. } => f.debug_struct("KeyFile").field("path", path).finish(),
+            Auth::Token { kind, .. } => f.debug_struct("Token").field("kind", kind).finish(),
+        }
+    }
 }
 
 pub struct SnowflakeAdapter {
@@ -228,6 +236,7 @@ struct Statement {
     columns: Vec<Value>,
     rows: Vec<Vec<Value>>,
     rows_affected: Option<u64>,
+    truncated: bool,
 }
 
 impl Statement {
@@ -313,8 +322,32 @@ pub struct SnowflakeUrl {
     pub endpoint: Option<String>,
 }
 
+const ACCOUNT_MISSING: &str =
+    "Der Account-Identifier fehlt (snowflake://benutzer:passwort@account/DB).";
+const SNOWFLAKE_PARAMS: &[&str] = &[
+    "warehouse",
+    "role",
+    "proxy_user",
+    "database",
+    "db",
+    "schema",
+    "user",
+    "authenticator",
+    "auth",
+    "private_key_file",
+    "private_key_path",
+    "endpoint",
+    "host",
+];
+
 pub fn parse_snowflake_url(value: &str) -> Result<SnowflakeUrl, String> {
-    let url = url::Url::parse(value.trim()).map_err(|_| "Ungültige Snowflake-URL".to_string())?;
+    let url = url::Url::parse(value.trim()).map_err(|error| {
+        if error == url::ParseError::EmptyHost {
+            ACCOUNT_MISSING.to_string()
+        } else {
+            "Ungültige Snowflake-URL".to_string()
+        }
+    })?;
     if url.scheme() != "snowflake" {
         return Err("Eine snowflake:// URL ist erforderlich".to_string());
     }
@@ -355,8 +388,9 @@ pub fn parse_snowflake_url(value: &str) -> Result<SnowflakeUrl, String> {
         }
     }
     if account.is_empty() {
-        return Err("Der Account-Identifier fehlt (snowflake://account/…).".into());
+        return Err(ACCOUNT_MISSING.into());
     }
+    warehouse_auth::check_params(url.query_pairs().map(|(k, _)| k), SNOWFLAKE_PARAMS)?;
     Ok(SnowflakeUrl {
         account,
         user,
@@ -507,6 +541,7 @@ impl SnowflakeAdapter {
         body: Option<Value>,
     ) -> Result<(u16, Value), String> {
         let (token, kind) = self.token()?;
+        let idempotent = method == reqwest::Method::GET;
         let mut request = warehouse_auth::http()
             .request(method, format!("{}/api/v2/statements{path}", self.endpoint))
             .query(query)
@@ -516,8 +551,7 @@ impl SnowflakeAdapter {
         if let Some(body) = body {
             request = request.json(&body);
         }
-        let response = request
-            .send()
+        let response = warehouse_auth::send_retrying(request, idempotent)
             .await
             .map_err(|e| format!("Snowflake nicht erreichbar: {e}"))?;
         let (status, body) = warehouse_auth::read_body(response, "Snowflake").await?;
@@ -597,8 +631,9 @@ impl SnowflakeAdapter {
             .as_array()
             .map(Vec::len)
             .unwrap_or(1);
+        let limit = super::execution::row_limit();
         let mut partition = 1;
-        while partition < partitions && rows.len() <= MAX_ROWS && !handle.is_empty() {
+        while partition < partitions && rows.len() < limit && !handle.is_empty() {
             let (_, page) = timed(self.call(
                 reqwest::Method::GET,
                 &format!("/{handle}"),
@@ -609,10 +644,13 @@ impl SnowflakeAdapter {
             rows.extend(convert_rows(&columns, &page["data"]));
             partition += 1;
         }
+        let truncated = rows.len() > limit || (partition < partitions && !handle.is_empty());
+        rows.truncate(limit);
         Ok(Statement {
             columns,
             rows,
             rows_affected: dml_count(&body["stats"]),
+            truncated,
         })
     }
 
@@ -906,11 +944,11 @@ impl DatabaseAdapter for SnowflakeAdapter {
         let statement = self.run(sql).await?;
         let columns = statement.names();
         Ok(QueryResult {
+            truncated: statement.truncated,
             rows: rows_to_objects(&columns, statement.rows),
             columns,
             rows_affected: statement.rows_affected,
             execution_time_ms: started.elapsed().as_millis() as u64,
-            truncated: false,
         })
     }
 
@@ -1037,6 +1075,16 @@ mod tests {
             }
         );
         assert!(SnowflakeAdapter::new("snowflake://u@acct", None).is_err());
+        assert_eq!(
+            parse_snowflake_url("snowflake://user@/DB").err().unwrap(),
+            ACCOUNT_MISSING
+        );
+        assert_eq!(
+            parse_snowflake_url("snowflake://u:pw@acct/DB?warehous=WH")
+                .err()
+                .unwrap(),
+            "Unbekannter URL-Parameter „warehous“. Gemeint: warehouse?"
+        );
         assert!(SnowflakeAdapter::new("snowflake://u:x@acct?authenticator=jwt", None).is_err());
         assert!(
             SnowflakeAdapter::new("snowflake://u:x@acct?authenticator=externalbrowser", None)
@@ -1201,6 +1249,59 @@ mod tests {
         assert_eq!(result.rows[1]["NAME"], Value::Null);
         assert_eq!(result.rows[2]["ID"], json!(3));
         assert_eq!(polls.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn partitions_are_read_up_to_the_row_limit() {
+        let start = || {
+            http_mock::start(|req| {
+                let partition = req
+                    .query("partition")
+                    .and_then(|p| p.parse::<usize>().ok())
+                    .unwrap_or(0);
+                let data: Vec<Value> = (partition * 1000..(partition + 1) * 1000)
+                    .map(|n| json!([n.to_string()]))
+                    .collect();
+                let mut body = json!({"data": data});
+                if partition == 0 {
+                    body["statementHandle"] = json!("h");
+                    body["resultSetMetaData"] = json!({
+                        "partitionInfo": [{}, {}, {}, {}, {}],
+                        "rowType": [col("N", "fixed", 0)]
+                    });
+                }
+                (200, body.to_string().into())
+            })
+        };
+        let adapter = |base: &str| {
+            SnowflakeAdapter::new(
+                &format!(
+                    "snowflake://svc:pat@acme/DB/PUBLIC?warehouse=WH&endpoint={}",
+                    encode(base)
+                ),
+                None,
+            )
+            .unwrap()
+        };
+        let server = start();
+        let all = adapter(&server.base)
+            .execute_query("select n from t")
+            .await
+            .unwrap();
+        assert_eq!(all.rows.len(), 5000);
+        assert_eq!(all.rows[4999]["N"], json!(4999));
+        assert!(!all.truncated);
+        assert_eq!(server.requests().len(), 5);
+        let server = start();
+        let capped = crate::db::execution::with_row_limit(
+            2001,
+            adapter(&server.base).execute_query("select n from t"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(capped.rows.len(), 2001);
+        assert!(capped.truncated);
+        assert_eq!(server.requests().len(), 3);
     }
 
     #[tokio::test]

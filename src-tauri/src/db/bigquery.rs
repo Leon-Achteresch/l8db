@@ -325,6 +325,19 @@ pub fn parse_bigquery_url(value: &str) -> Result<BigqueryUrl, String> {
     if project.is_empty() {
         return Err("Die Projekt-ID fehlt (bigquery://projekt-id).".into());
     }
+    warehouse_auth::check_params(
+        url.query_pairs().map(|(k, _)| k),
+        &[
+            "project",
+            "project_id",
+            "location",
+            "endpoint",
+            "api_endpoint",
+            "credentials_file",
+            "key_file",
+            "auth",
+        ],
+    )?;
     let dataset = url
         .path_segments()
         .and_then(|mut s| s.next())
@@ -431,6 +444,7 @@ impl BigqueryAdapter {
         body: Option<Value>,
     ) -> Result<Value, String> {
         let token = google_token(&self.auth, self.custom_endpoint).await?;
+        let idempotent = method == reqwest::Method::GET;
         let mut request = warehouse_auth::http()
             .request(method, self.url(segments)?)
             .query(query);
@@ -443,13 +457,19 @@ impl BigqueryAdapter {
         if let Some(body) = body {
             request = request.json(&body);
         }
-        let response = request
-            .send()
+        let response = warehouse_auth::send_retrying(request, idempotent)
             .await
             .map_err(|e| format!("BigQuery nicht erreichbar: {e}"))?;
         let (status, body) = warehouse_auth::read_body(response, "BigQuery").await?;
         if !(200..300).contains(&status) {
-            return Err(api_error(status, &body));
+            let anonymous = token.token.is_none() && self.auth == GoogleAuth::Adc;
+            return Err(match status {
+                401 | 403 if anonymous => format!(
+                    "{}\n  Ohne Anmeldung gesendet: keine Application Default Credentials gefunden. Für Emulatoren auth=none setzen, sonst Anmeldedaten hinterlegen.",
+                    api_error(status, &body)
+                ),
+                _ => api_error(status, &body),
+            });
         }
         Ok(body)
     }
@@ -582,7 +602,11 @@ impl BigqueryAdapter {
         .map(|_| ())
     }
 
-    async fn run(&self, sql: &str) -> Result<(Value, Vec<Vec<Value>>, Value), String> {
+    async fn run(
+        &self,
+        sql: &str,
+        limit: usize,
+    ) -> Result<(Value, Vec<Vec<Value>>, Value, bool), String> {
         let started = Instant::now();
         let deadline = started + super::execution::query_duration();
         let mut response = self
@@ -619,8 +643,10 @@ impl BigqueryAdapter {
         let schema = response["schema"].clone();
         let mut rows = convert_rows(&schema, &response["rows"]);
         let mut token = response["pageToken"].as_str().map(str::to_string);
-        while let Some(page_token) = token.filter(|_| rows.len() <= PAGE_SIZE && !job_id.is_empty())
-        {
+        while rows.len() < limit && !job_id.is_empty() {
+            let Some(page_token) = token.take() else {
+                break;
+            };
             let mut page = query.clone();
             page.push(("pageToken", page_token));
             let next =
@@ -628,11 +654,13 @@ impl BigqueryAdapter {
             rows.extend(convert_rows(&schema, &next["rows"]));
             token = next["pageToken"].as_str().map(str::to_string);
         }
-        Ok((schema, rows, response))
+        let truncated = rows.len() > limit || token.is_some();
+        rows.truncate(limit);
+        Ok((schema, rows, response, truncated))
     }
 
     async fn select(&self, sql: &str) -> Result<(Vec<String>, Vec<Vec<Value>>), String> {
-        let (schema, rows, _) = self.run(sql).await?;
+        let (schema, rows, _, _) = self.run(sql, usize::MAX).await?;
         Ok((column_names(&schema), rows))
     }
 
@@ -948,7 +976,8 @@ impl DatabaseAdapter for BigqueryAdapter {
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let started = Instant::now();
-        let (schema, rows, response) = self.run(sql).await?;
+        let (schema, rows, response, truncated) =
+            self.run(sql, super::execution::row_limit()).await?;
         for warning in response["errors"].as_array().into_iter().flatten() {
             super::server_output::emit(super::server_output::ServerMessage {
                 level: "WARNING".to_string(),
@@ -958,13 +987,28 @@ impl DatabaseAdapter for BigqueryAdapter {
                     .map(|reason| format!("Grund {reason}")),
             });
         }
+        if let Some(bytes) = number(&response["totalBytesProcessed"]) {
+            super::server_output::emit(super::server_output::ServerMessage {
+                level: "INFO".to_string(),
+                message: format!(
+                    "BigQuery: {} verarbeitet{}",
+                    super::pretty_bytes(bytes),
+                    if response["cacheHit"] == json!(true) {
+                        " (Cache)"
+                    } else {
+                        ""
+                    }
+                ),
+                detail: Some("Vorab-Schätzung: Explain".into()),
+            });
+        }
         let columns = column_names(&schema);
         Ok(QueryResult {
             rows: rows_to_objects(&columns, rows),
             columns,
             rows_affected: number(&response["numDmlAffectedRows"]).map(|n| n as u64),
             execution_time_ms: started.elapsed().as_millis() as u64,
-            truncated: false,
+            truncated,
         })
     }
 
@@ -973,7 +1017,7 @@ impl DatabaseAdapter for BigqueryAdapter {
             return Ok(dry_run_plan(&self.dry_run(sql).await?));
         }
         let started = Instant::now();
-        let (_, _, response) = self.run(sql).await?;
+        let (_, _, response, _) = self.run(sql, 0).await?;
         let elapsed = started.elapsed().as_secs_f64() * 1000.0;
         let job_id = str_of(&response["jobReference"]["jobId"]).to_string();
         if job_id.is_empty() {
@@ -1304,6 +1348,68 @@ mod tests {
         assert!(dml.columns.is_empty());
     }
 
+    fn paged_server(total: usize) -> http_mock::MockServer {
+        http_mock::start(move |req| {
+            let page = req
+                .query("pageToken")
+                .and_then(|t| t.parse::<usize>().ok())
+                .unwrap_or(0);
+            let start = page * PAGE_SIZE;
+            let end = (start + PAGE_SIZE).min(total);
+            let rows: Vec<Value> = (start..end)
+                .map(|n| json!({"f": [{"v": n.to_string()}]}))
+                .collect();
+            let mut body = json!({
+                "jobComplete": true,
+                "jobReference": {"jobId": "big"},
+                "schema": {"fields": [{"name": "n", "type": "INTEGER"}]},
+                "rows": rows,
+                "totalBytesProcessed": "2048",
+            });
+            if end < total {
+                body["pageToken"] = json!((page + 1).to_string());
+            }
+            (200, body.to_string().into())
+        })
+    }
+
+    #[tokio::test]
+    async fn queries_page_up_to_the_row_limit() {
+        let server = paged_server(5000);
+        let messages = crate::db::server_output::Messages::default();
+        let all = crate::db::server_output::capture(
+            messages.clone(),
+            adapter(&server.base, "").execute_query("select n from t"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(messages.take()[0].message, "BigQuery: 2.0 kB verarbeitet");
+        assert_eq!(all.rows.len(), 5000);
+        assert_eq!(all.rows[4999]["n"], json!(4999));
+        assert!(!all.truncated);
+        assert_eq!(server.requests().len(), 5);
+        let server = paged_server(5000);
+        let capped = crate::db::execution::with_row_limit(
+            2501,
+            adapter(&server.base, "").execute_query("select n from t"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(capped.rows.len(), 2501);
+        assert!(capped.truncated);
+        assert_eq!(server.requests().len(), 3);
+        let server = paged_server(5000);
+        let exact = crate::db::execution::with_row_limit(
+            1000,
+            adapter(&server.base, "").execute_query("select n from t"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(exact.rows.len(), 1000);
+        assert!(exact.truncated);
+        assert_eq!(server.requests().len(), 1);
+    }
+
     #[tokio::test]
     async fn dry_run_explain_reports_bytes() {
         let server = http_mock::start(|req| {
@@ -1374,6 +1480,41 @@ mod tests {
             .requests()
             .iter()
             .any(|r| r.route() == "/bigquery/v2/projects/proj/jobs/slow/cancel"));
+    }
+
+    #[tokio::test]
+    async fn throttled_reads_retry_with_a_cap_and_posts_do_not_retry_5xx() {
+        let start = |failures: usize, status: u16| {
+            let seen = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            http_mock::start_with_headers(move |_| {
+                if seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) < failures {
+                    let headers = vec![("retry-after".to_string(), "0".to_string())];
+                    return (status, headers, b"{}".to_vec());
+                }
+                (200, Vec::new(), br#"{"datasets": [{"datasetReference": {"datasetId": "ds"}}], "jobComplete": true, "jobReference": {"jobId": "j"}}"#.to_vec())
+            })
+        };
+        let server = start(2, 429);
+        let schemas = adapter(&server.base, "").list_schemas().await.unwrap();
+        assert_eq!(schemas, ["ds"]);
+        assert_eq!(server.requests().len(), 3);
+        let server = start(10, 503);
+        let error = adapter(&server.base, "").list_schemas().await.unwrap_err();
+        assert!(error.starts_with("BigQuery 503"), "{error}");
+        assert_eq!(server.requests().len(), 3);
+        let server = start(1, 503);
+        let error = adapter(&server.base, "")
+            .execute_query("select 1")
+            .await
+            .unwrap_err();
+        assert!(error.starts_with("BigQuery 503"), "{error}");
+        assert_eq!(server.requests().len(), 1);
+        let server = start(1, 429);
+        adapter(&server.base, "")
+            .execute_query("select 1")
+            .await
+            .unwrap();
+        assert_eq!(server.requests().len(), 2);
     }
 
     #[tokio::test]

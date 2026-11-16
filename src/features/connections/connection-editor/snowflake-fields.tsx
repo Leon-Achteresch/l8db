@@ -67,14 +67,14 @@ export function ConnectionSnowflakeFields({
       <div className="grid grid-cols-2 gap-3">
         <ConnectionField
           id="connection-snowflake-database"
-          label="Datenbank"
+          label="Datenbank (optional)"
           value={database}
           onChange={(event) => setDatabase(event.target.value)}
           spellCheck={false}
         />
         <ConnectionField
           id="connection-snowflake-schema"
-          label="Schema"
+          label="Schema (optional)"
           placeholder="PUBLIC"
           value={param("schema")}
           onChange={(event) => setParam("schema", event.target.value)}
@@ -84,16 +84,16 @@ export function ConnectionSnowflakeFields({
       <div className="grid grid-cols-2 gap-3">
         <ConnectionField
           id="connection-snowflake-warehouse"
-          label="Warehouse"
-          placeholder="COMPUTE_WH"
+          label="Warehouse (optional)"
+          placeholder="Standard des Benutzers"
           value={param("warehouse")}
           onChange={(event) => setParam("warehouse", event.target.value)}
           spellCheck={false}
         />
         <ConnectionField
           id="connection-snowflake-role"
-          label="Rolle"
-          placeholder="ANALYST"
+          label="Rolle (optional)"
+          placeholder="Standardrolle"
           value={param("role")}
           onChange={(event) => setParam("role", event.target.value)}
           spellCheck={false}

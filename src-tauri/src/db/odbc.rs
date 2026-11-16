@@ -124,6 +124,48 @@ pub fn connection_string_from_url(value: &str) -> Result<String, String> {
         .join(";"))
 }
 
+fn attribute(connection_string: &str, key: &str) -> Option<String> {
+    connection_string.split(';').find_map(|part| {
+        let (k, v) = part.split_once('=')?;
+        k.trim()
+            .eq_ignore_ascii_case(key)
+            .then(|| v.trim().trim_matches(['{', '}']).to_string())
+    })
+}
+
+fn connect_error(connection_string: &str, raw: &str) -> String {
+    let detail: String = raw
+        .split_once("Message: ")
+        .map_or(raw, |(_, message)| message)
+        .chars()
+        .take(160)
+        .collect();
+    let main = if raw.contains("Can't open lib") || raw.contains("State: IM003") {
+        let driver = attribute(connection_string, "Driver").unwrap_or_default();
+        let list = if cfg!(windows) {
+            "ODBC-Datenquellen-Administrator"
+        } else {
+            "odbcinst -q -d"
+        };
+        format!("ODBC-Treiber „{driver}“ nicht gefunden. Name prüfen oder Treiber installieren (installierte Treiber: {list}).")
+    } else if raw.contains("State: IM002") || raw.contains("Data source name not found") {
+        match attribute(connection_string, "DSN") {
+            Some(dsn) => format!(
+                "ODBC-Datenquelle „{dsn}“ nicht gefunden. Name prüfen (vorhandene DSN: {}).",
+                if cfg!(windows) {
+                    "ODBC-Datenquellen-Administrator"
+                } else {
+                    "odbcinst -q -s"
+                }
+            ),
+            None => "Weder Driver= noch DSN= angegeben.".to_string(),
+        }
+    } else {
+        return format!("ODBC-Verbindung fehlgeschlagen: {raw}");
+    };
+    format!("{main}\n  Treiber-Manager: {detail}")
+}
+
 fn percent(value: &str) -> String {
     url::form_urlencoded::parse(format!("v={}", value.replace('+', "%2B")).as_bytes())
         .next()
@@ -217,7 +259,7 @@ impl OdbcAdapter {
                         ..Default::default()
                     },
                 )
-                .map_err(|e| format!("ODBC-Verbindung fehlgeschlagen: {e}"))?;
+                .map_err(|e| connect_error(&connection_string, &e.to_string()))?;
             f(&conn)
         })
         .await
@@ -508,6 +550,26 @@ impl DatabaseAdapter for OdbcAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn connect_errors_name_the_missing_driver_or_dsn() {
+        let lib = "ODBC emitted an error calling 'SQLDriverConnect': State: 01000, Native error: 0, Message: [unixODBC][Driver Manager]Can't open lib 'Nope' : dlopen(Nope, 0x0009): tried: 'Nope' (no such file), '/usr/lib/Nope' (no such file), '/System/Volumes/Preboot/Cryptexes/OSNope' (no such file)";
+        let message = connect_error("Driver={Nope};Server=x", lib);
+        assert!(
+            message.starts_with("ODBC-Treiber „Nope“ nicht gefunden."),
+            "{message}"
+        );
+        assert!(message.lines().nth(1).unwrap().chars().count() < 200);
+        let dsn = "ODBC emitted an error calling 'SQLDriverConnect': State: IM002, Native error: 0, Message: [unixODBC][Driver Manager]Data source name not found and no default driver specified";
+        assert!(
+            connect_error("DSN=nope", dsn).starts_with("ODBC-Datenquelle „nope“ nicht gefunden.")
+        );
+        assert!(connect_error("Server=x", dsn).starts_with("Weder Driver= noch DSN="));
+        assert_eq!(
+            connect_error("DSN=x", "timeout"),
+            "ODBC-Verbindung fehlgeschlagen: timeout"
+        );
+    }
 
     #[test]
     fn system_ini_dir_prefers_existing_configuration() {

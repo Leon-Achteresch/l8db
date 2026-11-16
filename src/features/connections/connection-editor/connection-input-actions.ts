@@ -77,6 +77,7 @@ export function createConnectionInputActions(ctx: ConnectionInputActionsContext)
       setMode("string");
       if (kindFromUrl(value) !== next.kind) setValue("");
     }
+    if (next.id === "odbc") setMode("string");
     if (mode === "tns" && next.kind !== "oracle" && !isProfileConnection(next.kind))
       setMode("fields");
     setPreview(next.kind, next.id);

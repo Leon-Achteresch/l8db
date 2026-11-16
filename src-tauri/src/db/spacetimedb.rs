@@ -18,11 +18,21 @@ const SQL_LIMIT: usize = 16 * 1024 * 1024;
 const INFO_LIMIT: usize = 256 * 1024;
 const LABEL: &str = "SpacetimeDB";
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct Target {
     pub base: url::Url,
     pub database: String,
     pub token: String,
+}
+
+impl std::fmt::Debug for Target {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Target")
+            .field("base", &self.base.as_str())
+            .field("database", &self.database)
+            .field("token", &"<redacted>")
+            .finish()
+    }
 }
 
 impl Target {
@@ -1129,6 +1139,19 @@ mod tests {
             .iter()
             .all(|request| request.header("authorization") == Some("Bearer geheim")));
         assert_eq!(sql.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn plain_http_refusal_names_address_instead_of_tls() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        drop(listener);
+        let target = parse_connection(&local(&address.to_string(), "game"), None).unwrap();
+        let error = run_sql(&target, "SELECT 1").await.unwrap_err();
+        assert!(
+            error.contains(&format!("{address} antwortet nicht")) && !error.contains("TLS"),
+            "{error}"
+        );
     }
 
     #[tokio::test]

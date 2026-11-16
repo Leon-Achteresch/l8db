@@ -625,3 +625,24 @@ async fn live_postgres_jdbc_metadata_parameters_paging_and_memory_budget() {
     tokio::time::sleep(Duration::from_millis(50)).await;
     assert_eq!(bridge.requests, sent);
 }
+
+#[test]
+fn bridge_exit_reports_bounded_stderr_without_password() {
+    let mut buffer = String::new();
+    for _ in 0..500 {
+        keep_tail(
+            &mut buffer,
+            "at org.Example.call(Example.java:1)\n".as_bytes(),
+        );
+    }
+    keep_tail(
+        &mut buffer,
+        b"java.lang.ClassNotFoundException: org.h2.Drive (pw hunter2)\n",
+    );
+    assert!(buffer.len() <= STDERR_TAIL * 2);
+    let message = with_stderr("JDBC-Prozess wurde beendet.".into(), &buffer, "hunter2");
+    assert!(message.starts_with("JDBC-Prozess wurde beendet.\n"));
+    assert!(message.ends_with("org.h2.Drive (pw ***)"), "{message}");
+    assert!(message.len() <= STDERR_TAIL + 40);
+    assert_eq!(with_stderr("x".into(), " \n", "pw"), "x");
+}
