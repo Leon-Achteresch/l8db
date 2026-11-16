@@ -20,7 +20,7 @@ export function placeholderDefaults(info: ProviderInfo) {
       host: url.hostname || "localhost",
       port: url.port || String(info.default_port ?? ""),
       database: decodeURIComponent(url.pathname.slice(1)),
-      user: decodeURIComponent(url.username),
+      user: /^[A-Z_]+$/.test(url.username) ? "" : decodeURIComponent(url.username),
     };
   } catch {
     return { host: "localhost", port: String(info.default_port ?? ""), database: "", user: "" };
@@ -92,7 +92,7 @@ export function seedFields(
 }
 
 export function seedMode(seed: SavedConnection | undefined, info: ProviderInfo): Mode {
-  if (isProfileConnection(info.kind)) return "string";
+  if (isProfileConnection(info.kind) || info.id === "odbc") return "string";
   if (!seed || info.file_based) return "fields";
   if (multiHostUrl(seed.connectionString)) return "string";
   try {

@@ -173,7 +173,7 @@ pub async fn remote(
         .await?
         .into_iter()
         .find(|item| item.profile.id == profile)
-        .ok_or("Workspace ist nicht angemeldet.")?;
+        .ok_or("Workspace ist nicht angemeldet. In der App unter Einstellungen → Allgemein → Team-Workspaces anmelden.")?;
     http(
         &profile.profile.endpoint,
         Some(&profile.token),

@@ -26,6 +26,41 @@ pub(crate) fn http() -> &'static reqwest::Client {
     })
 }
 
+const RETRIES: u32 = 3;
+
+pub(crate) async fn send_retrying(
+    request: reqwest::RequestBuilder,
+    idempotent: bool,
+) -> Result<reqwest::Response, reqwest::Error> {
+    let cancel = super::execution::cancellation_token();
+    let mut delay = Duration::from_millis(500);
+    let mut attempt = 1;
+    loop {
+        let Some(next) = request.try_clone() else {
+            return request.send().await;
+        };
+        let response = next.send().await?;
+        let status = response.status().as_u16();
+        let retry = status == 429 || (idempotent && matches!(status, 502..=504));
+        if !retry || attempt >= RETRIES {
+            return Ok(response);
+        }
+        let wait = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .map_or(delay, Duration::from_secs)
+            .min(Duration::from_secs(5));
+        tokio::select! {
+            _ = cancel.cancelled() => return Ok(response),
+            _ = tokio::time::sleep(wait) => {}
+        }
+        delay *= 2;
+        attempt += 1;
+    }
+}
+
 pub(crate) async fn read_body(
     response: reqwest::Response,
     service: &str,
@@ -43,8 +78,30 @@ pub(crate) async fn read_body(
         Ok(value) => Ok((status, value)),
         Err(_) => Ok((
             status,
-            serde_json::Value::String(String::from_utf8_lossy(&raw).trim().to_string()),
+            serde_json::Value::String(plain_text(&String::from_utf8_lossy(&raw))),
         )),
+    }
+}
+
+pub(crate) fn plain_text(body: &str) -> String {
+    let body = body.trim();
+    let lower = body.to_ascii_lowercase();
+    if !lower.starts_with('<') || (!lower.contains("<html") && !lower.starts_with("<!doctype")) {
+        return body.chars().take(500).collect();
+    }
+    let title = ["<title>", "<h1>"].iter().find_map(|tag| {
+        let start = lower.find(tag)? + tag.len();
+        let end = start + lower[start..].find('<')?;
+        Some(
+            body[start..end]
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+    });
+    match title.filter(|t| !t.is_empty()) {
+        Some(title) => format!("{title} (HTML statt JSON, Endpunkt prüfen)"),
+        None => "Endpunkt liefert HTML statt JSON, URL prüfen.".into(),
     }
 }
 
@@ -83,6 +140,42 @@ pub(crate) fn interrupted_message(timed_out: bool, confirmed: Result<(), String>
             "Abbruch angefordert, Serverabschluss nicht bestätigt: {error}. Die Abfrage kann serverseitig weiterlaufen."
         ),
     }
+}
+
+fn distance(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, x) in a.chars().enumerate() {
+        let mut previous = row[0];
+        row[0] = i + 1;
+        for (j, y) in b.iter().enumerate() {
+            let current = row[j + 1];
+            row[j + 1] = (previous + usize::from(x != *y))
+                .min(row[j] + 1)
+                .min(current + 1);
+            previous = current;
+        }
+    }
+    row[b.len()]
+}
+
+pub(crate) fn check_params(
+    keys: impl IntoIterator<Item = impl AsRef<str>>,
+    known: &[&str],
+) -> Result<(), String> {
+    for key in keys {
+        let key = key.as_ref().to_ascii_lowercase();
+        if key.starts_with("l8db_") || known.contains(&key.as_str()) {
+            continue;
+        }
+        let tolerance = if key.chars().count() > 5 { 2 } else { 1 };
+        if let Some(near) = known.iter().find(|k| distance(&key, k) <= tolerance) {
+            return Err(format!(
+                "Unbekannter URL-Parameter „{key}“. Gemeint: {near}?"
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn digest_key(input: &str) -> String {
@@ -233,7 +326,7 @@ pub(crate) fn snowflake_jwt(
     )
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) enum GoogleAuth {
     Adc,
     Json(String),
@@ -242,10 +335,31 @@ pub(crate) enum GoogleAuth {
     Anonymous,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub(crate) struct GoogleToken {
     pub token: Option<String>,
     pub quota_project: Option<String>,
+}
+
+impl std::fmt::Debug for GoogleAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GoogleAuth::Adc => f.write_str("Adc"),
+            GoogleAuth::Json(_) => f.write_str("Json(<redacted>)"),
+            GoogleAuth::File(path) => f.debug_tuple("File").field(path).finish(),
+            GoogleAuth::Token(_) => f.write_str("Token(<redacted>)"),
+            GoogleAuth::Anonymous => f.write_str("Anonymous"),
+        }
+    }
+}
+
+impl std::fmt::Debug for GoogleToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GoogleToken")
+            .field("token", &self.token.as_ref().map(|_| "<redacted>"))
+            .field("quota_project", &self.quota_project)
+            .finish()
+    }
 }
 
 fn token_cache() -> &'static Mutex<HashMap<String, (String, Instant)>> {
@@ -447,6 +561,41 @@ pub(crate) mod tests {
     pub(crate) fn test_key() -> &'static PKey<Private> {
         static KEY: OnceLock<PKey<Private>> = OnceLock::new();
         KEY.get_or_init(|| PKey::from_rsa(Rsa::generate(2048).unwrap()).unwrap())
+    }
+
+    #[test]
+    fn html_error_pages_shrink_to_their_title() {
+        let page = "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01//EN\">\n<html><head>\n<title>404\n Not Found</title></head><body><p>long</p></body></html>";
+        assert_eq!(
+            plain_text(page),
+            "404 Not Found (HTML statt JSON, Endpunkt prüfen)"
+        );
+        assert_eq!(
+            plain_text("<html><body></body></html>"),
+            "Endpunkt liefert HTML statt JSON, URL prüfen."
+        );
+        assert_eq!(plain_text("  quota exceeded \n"), "quota exceeded");
+        assert_eq!(plain_text(&"x".repeat(2000)).len(), 500);
+    }
+
+    #[test]
+    fn misspelled_params_are_named_and_secrets_stay_out_of_debug() {
+        let known = ["warehouse", "role", "schema", "db"];
+        assert_eq!(
+            check_params(["warehous"], &known).unwrap_err(),
+            "Unbekannter URL-Parameter „warehous“. Gemeint: warehouse?"
+        );
+        assert!(check_params(["Role", "application", "l8db_auth", "x"], &known).is_ok());
+        assert!(check_params(["rolle"], &known).is_err());
+        let auth = format!("{:?}", GoogleAuth::Json("SECRETXQ7".into()));
+        let token = format!(
+            "{:?}",
+            GoogleToken {
+                token: Some("SECRETXQ7".into()),
+                quota_project: None
+            }
+        );
+        assert!(!auth.contains("SECRETXQ7") && !token.contains("SECRETXQ7"));
     }
 
     pub(crate) fn test_key_pem() -> String {

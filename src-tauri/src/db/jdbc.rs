@@ -602,6 +602,36 @@ struct Bridge {
     input: ChildStdin,
     output: BufReader<ChildStdout>,
     requests: u64,
+    errors: Arc<std::sync::Mutex<String>>,
+    secret: String,
+}
+
+const STDERR_TAIL: usize = 600;
+
+fn keep_tail(buffer: &mut String, chunk: &[u8]) {
+    buffer.push_str(&String::from_utf8_lossy(chunk));
+    if buffer.len() > STDERR_TAIL * 2 {
+        let mut cut = buffer.len() - STDERR_TAIL;
+        while !buffer.is_char_boundary(cut) {
+            cut += 1;
+        }
+        buffer.drain(..cut);
+    }
+}
+
+fn with_stderr(message: String, errors: &str, secret: &str) -> String {
+    let mut tail = errors.trim().to_string();
+    if !secret.is_empty() {
+        tail = tail.replace(secret, "***");
+    }
+    let mut cut = tail.len().saturating_sub(STDERR_TAIL);
+    while !tail.is_char_boundary(cut) {
+        cut += 1;
+    }
+    match tail[cut..].trim() {
+        "" => message,
+        tail => format!("{message}\n{tail}"),
+    }
 }
 
 #[derive(Debug)]
@@ -673,11 +703,20 @@ impl Bridge {
             .flush()
             .await
             .map_err(|_| BridgeFailure::Fatal("JDBC-Prozess ist nicht erreichbar.".into()))?;
-        bridge_response(
-            read_frame(&mut self.output)
-                .await
-                .map_err(BridgeFailure::Fatal)?,
-        )
+        let frame = match read_frame(&mut self.output).await {
+            Ok(frame) => frame,
+            Err(message) => {
+                let _ = tokio::time::timeout(Duration::from_millis(500), self.child.wait()).await;
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let errors = self.errors.lock().map(|e| e.clone()).unwrap_or_default();
+                return Err(BridgeFailure::Fatal(with_stderr(
+                    message,
+                    &errors,
+                    &self.secret,
+                )));
+            }
+        };
+        bridge_response(frame)
     }
 }
 
@@ -834,17 +873,33 @@ async fn start(root: &Path, profile: &JdbcProfile, password: &str) -> Result<Bri
         .arg(source_path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)
         .spawn()
         .map_err(|_| "JDK 17 oder neuer fehlt. JAVA_HOME und JDBC-Treiber prüfen.".to_string())?;
     let input = child.stdin.take().ok_or("JDBC-Eingabekanal fehlt")?;
     let output = BufReader::new(child.stdout.take().ok_or("JDBC-Ausgabekanal fehlt")?);
+    let errors = Arc::new(std::sync::Mutex::new(String::new()));
+    if let Some(stderr) = child.stderr.take() {
+        let errors = errors.clone();
+        tokio::spawn(async move {
+            use tokio::io::AsyncReadExt;
+            let mut stderr = stderr;
+            let mut chunk = [0u8; 4096];
+            while let Ok(read @ 1..) = stderr.read(&mut chunk).await {
+                if let Ok(mut buffer) = errors.lock() {
+                    keep_tail(&mut buffer, &chunk[..read]);
+                }
+            }
+        });
+    }
     let mut bridge = Bridge {
         child,
         input,
         output,
         requests: 0,
+        errors,
+        secret: password.to_string(),
     };
     bridge
         .request(&[
@@ -893,7 +948,12 @@ impl JdbcAdapter {
             let profile = load_profiles(&self.root)?
                 .into_iter()
                 .find(|profile| profile.id == self.id)
-                .ok_or("JDBC-Profil fehlt")?;
+                .ok_or_else(|| {
+                    format!(
+                        "JDBC-Profil „{}“ fehlt. In der Treiberverwaltung der App anlegen.",
+                        self.id
+                    )
+                })?;
             if profile.read_only {
                 let sql = match operation {
                     "query" => arguments.first().cloned(),

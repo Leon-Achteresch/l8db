@@ -41,23 +41,27 @@ export function ConnectionHostFields({
   setPassword: (value: string) => void;
   hidePassword?: boolean;
 }) {
+  const d1 = info.id === "d1";
+  const spacetime = kind === "spacetimedb";
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-[1fr_90px] gap-3">
-        <ConnectionField
-          id="connection-host"
-          label="Host"
-          value={host}
-          onChange={(event) => setHost(event.target.value)}
-        />
-        <ConnectionField
-          id="connection-port"
-          label="Port"
-          inputMode="numeric"
-          value={port}
-          onChange={(event) => setPort(event.target.value)}
-        />
-      </div>
+      {!d1 && (
+        <div className="grid grid-cols-[1fr_90px] gap-3">
+          <ConnectionField
+            id="connection-host"
+            label="Host"
+            value={host}
+            onChange={(event) => setHost(event.target.value)}
+          />
+          <ConnectionField
+            id="connection-port"
+            label="Port"
+            inputMode="numeric"
+            value={port}
+            onChange={(event) => setPort(event.target.value)}
+          />
+        </div>
+      )}
       <ConnectionField
         id="connection-database"
         label={databaseLabel}
@@ -82,17 +86,27 @@ export function ConnectionHostFields({
           />
         </label>
       )}
-      <div className={hidePassword ? "grid gap-3" : "grid grid-cols-2 gap-3"}>
-        <ConnectionField
-          id="connection-user"
-          label={windowsAuth ? "Benutzer (optional)" : "Benutzer"}
-          value={user}
-          onChange={(event) => setUser(event.target.value)}
-        />
+      <div className={hidePassword || spacetime ? "grid gap-3" : "grid grid-cols-2 gap-3"}>
+        {!spacetime && (
+          <ConnectionField
+            id="connection-user"
+            label={d1 ? "Account-ID" : windowsAuth ? "Benutzer (optional)" : "Benutzer"}
+            value={user}
+            onChange={(event) => setUser(event.target.value)}
+          />
+        )}
         {!hidePassword && (
           <ConnectionField
             id="connection-password"
-            label={windowsAuth ? "Passwort (optional)" : "Passwort"}
+            label={
+              d1
+                ? "API-Token"
+                : spacetime
+                  ? "Identity-Token"
+                  : windowsAuth
+                    ? "Passwort (optional)"
+                    : "Passwort"
+            }
             type="password"
             autoComplete="new-password"
             value={password}
