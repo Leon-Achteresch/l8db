@@ -118,6 +118,8 @@ export function ObjectBrowser({
     setDetailsId(row.kind === "object" ? row.id : null);
   }
 
+  const folderCount = rows.filter((row) => row.kind === "folder").length;
+
   function activate(row: BrowserRow) {
     if (row.kind === "folder") navigateTo(row.key);
     else setDetailsId(row.id);
@@ -224,9 +226,10 @@ export function ObjectBrowser({
         </div>
         <footer className="flex shrink-0 items-center gap-3 border-t px-3 py-1.5 text-xs text-muted-foreground">
           <span>
-            {rows.length} Einträge
+            {folderCount ? `${folderCount} Ordner · ` : ""}
+            {rows.length - folderCount} {rows.length - folderCount === 1 ? "Objekt" : "Objekte"}
             {selectedRows.length ? ` · ${selectedRows.length} ausgewählt` : ""}
-            {mode === "search" && truncated ? " · Suche gekappt" : ""}
+            {mode === "search" && truncated ? " · Suche begrenzt" : ""}
           </span>
           {listing.hasNextPage ? (
             <Button
@@ -260,7 +263,7 @@ export function ObjectBrowser({
       <TextPromptDialog
         open={newFolderOpen}
         title="Neuer Ordner"
-        description={`Wird unter ${prefix || "/"} angelegt.`}
+        description={`Wird unter ${prefix || "der obersten Ebene"} angelegt.`}
         label="Ordnername"
         placeholder="berichte/2026"
         confirmLabel="Anlegen"
@@ -268,13 +271,14 @@ export function ObjectBrowser({
         onSubmit={async (name) => {
           await s3CreateFolder(actions.url, bucket, `${prefix}${name.trim().replace(/^\/+/, "")}`);
           await actions.refresh();
+          toast.success("Ordner angelegt");
         }}
       />
       <TextPromptDialog
         open={renameRow !== null}
         title={renameRow?.kind === "folder" ? "Ordner umbenennen" : "Objekt umbenennen"}
-        description="Voller Schlüssel. S3 kopiert dafür die Objekte und löscht die Originale."
-        label="Neuer Schlüssel"
+        description="Kopiert auf dem Server und löscht danach die Originale. Ordner mit Inhalt."
+        label="Neuer Pfad"
         initial={renameRow?.key ?? ""}
         confirmLabel="Umbenennen"
         onOpenChange={(open) => !open && setRenameRow(null)}

@@ -9,7 +9,7 @@ use super::xml;
 use crate::db::QueryResult;
 
 const MAX_ROWS: usize = 100_000;
-const MAX_LIST_ROWS: usize = 10_000;
+const MAX_LIST_ROWS: usize = 100_000;
 const MAX_RECORD_BYTES: usize = 128 * 1024 * 1024;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -75,6 +75,22 @@ pub fn parse(sql: &str, default_bucket: Option<&str>) -> Result<Statement, Strin
     let (bucket, key) = split_target(found.as_str(), default_bucket);
     if bucket.is_empty() || key.is_empty() || key.ends_with('/') {
         return Err(format!("Ungültiges Objekt im FROM: {}", found.as_str()));
+    }
+    if let Err(error) = input_serialization(&key) {
+        let rest = text[found.end()..].trim_start();
+        let quoted = found.as_str().starts_with(['\'', '"', '`']);
+        if !quoted
+            && rest
+                .split_whitespace()
+                .next()
+                .is_some_and(|word| word.contains('.'))
+        {
+            return Err(format!(
+                "{error}. Enthält der Pfad Leerzeichen, ihn in '…' setzen: FROM 's3://{bucket}/{key} {}'",
+                rest.split_whitespace().next().unwrap_or_default()
+            ));
+        }
+        return Err(error);
     }
     let expression = format!("{}S3Object{}", &text[..found.start()], &text[found.end()..]);
     Ok(Statement::Select {
@@ -206,7 +222,7 @@ pub fn records_to_result(records: &[u8], elapsed_ms: u64, truncated: bool) -> Qu
         if line.is_empty() {
             continue;
         }
-        if rows.len() >= MAX_ROWS {
+        if rows.len() >= MAX_ROWS.min(crate::db::execution::row_limit()) {
             truncated = true;
             break;
         }
@@ -263,7 +279,9 @@ pub async fn select(
             return Ok((records, false));
         }
         lines += records[seen..].iter().filter(|b| **b == b'\n').count();
-        if lines > MAX_ROWS || records.len() > MAX_RECORD_BYTES {
+        if lines > MAX_ROWS.min(crate::db::execution::row_limit())
+            || records.len() > MAX_RECORD_BYTES
+        {
             return Ok((records, true));
         }
         match response
@@ -297,12 +315,14 @@ pub async fn execute(s3: &S3, sql: &str) -> Result<QueryResult, String> {
             })
         }
         Statement::List { bucket, prefix } => {
+            let cap = MAX_LIST_ROWS.min(crate::db::execution::row_limit());
             let mut rows = Vec::new();
             let mut token: Option<String> = None;
             let mut truncated = false;
             loop {
+                let want = (cap - rows.len()).min(1000) as u32;
                 let page = s3
-                    .list_objects(&bucket, &prefix, Some("/"), token.as_deref(), None)
+                    .list_objects(&bucket, &prefix, Some("/"), token.as_deref(), Some(want))
                     .await?;
                 rows.extend(page.prefixes.into_iter().map(|p| {
                     serde_json::json!({"type": "folder", "key": p, "size": null, "last_modified": null, "storage_class": null, "etag": null})
@@ -310,8 +330,13 @@ pub async fn execute(s3: &S3, sql: &str) -> Result<QueryResult, String> {
                 rows.extend(page.objects.into_iter().map(|o| {
                     serde_json::json!({"type": "object", "key": o.key, "size": o.size, "last_modified": o.last_modified, "storage_class": o.storage_class, "etag": o.etag})
                 }));
+                if rows.len() > cap {
+                    rows.truncate(cap);
+                    truncated = true;
+                    break;
+                }
                 match page.next_token {
-                    Some(next) if rows.len() < MAX_LIST_ROWS => token = Some(next),
+                    Some(next) if rows.len() < cap => token = Some(next),
                     Some(_) => {
                         truncated = true;
                         break;
@@ -396,6 +421,14 @@ mod tests {
                 expression: "SELECT * FROM S3Object".into()
             }
         );
+        let spaced = parse("SELECT name FROM s3://demo/sql/with space.csv", None).unwrap_err();
+        assert!(
+            spaced.contains("FROM 's3://demo/sql/with space.csv'"),
+            "{spaced}"
+        );
+        assert!(!parse("SELECT * FROM s3://demo/x.txt", None)
+            .unwrap_err()
+            .contains("Leerzeichen"));
         assert!(parse("DELETE FROM x", None).is_err());
         assert!(parse("SELECT 1", None).is_err());
     }
@@ -475,5 +508,28 @@ mod tests {
             decode_event_stream(&error).unwrap_err(),
             "S3 Select InvalidQuery: bad"
         );
+    }
+
+    #[tokio::test]
+    async fn list_pages_up_to_the_row_limit() {
+        let server = super::super::tests::bucket_server(2_500);
+        let s3 = S3::connect(&super::super::tests::url(&server))
+            .await
+            .unwrap();
+        let capped = crate::db::execution::with_row_limit(1_201, execute(&s3, "LIST s3://b/"))
+            .await
+            .unwrap();
+        assert_eq!(capped.rows.len(), 1_201);
+        assert!(capped.truncated);
+        let max_keys: Vec<String> = server
+            .requests()
+            .iter()
+            .filter_map(|r| r.query("max-keys"))
+            .collect();
+        assert_eq!(max_keys, ["1000", "201"]);
+        let all = execute(&s3, "LIST s3://b/").await.unwrap();
+        assert_eq!(all.rows.len(), 2_500);
+        assert!(!all.truncated);
+        assert_eq!(server.requests().len(), 5);
     }
 }

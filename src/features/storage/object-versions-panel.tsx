@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { IconButton } from "@/components/icon-button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { formatBytes } from "@/lib/backup";
 import { s3DeleteObjects, s3ListObjectVersions, s3RestoreVersion } from "@/lib/db";
 import { basename } from "@/lib/storage/s3";
@@ -24,7 +25,8 @@ export function ObjectVersionsPanel({
 }) {
   const { connection, url } = useStorageConnection();
   const queryClient = useQueryClient();
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; marker: boolean } | null>(null);
+  const [bypass, setBypass] = useState(false);
   const versions = useQuery({
     queryKey: ["s3", connection?.id, "versions", bucket, objectKey],
     queryFn: async () => {
@@ -126,10 +128,15 @@ export function ObjectVersionsPanel({
                   <IconButton
                     size="icon-xs"
                     variant="ghost"
-                    aria-label="Version endgültig löschen"
-                    onClick={() => setDeleteTarget(version.version_id)}
+                    aria-label={
+                      version.delete_marker ? "Löschung aufheben" : "Version endgültig löschen"
+                    }
+                    onClick={() => {
+                      setBypass(false);
+                      setDeleteTarget({ id: version.version_id, marker: version.delete_marker });
+                    }}
                   >
-                    <TrashIcon />
+                    {version.delete_marker ? <RotateCcwIcon /> : <TrashIcon />}
                   </IconButton>
                 )}
               </span>
@@ -139,20 +146,34 @@ export function ObjectVersionsPanel({
       </ul>
       <ConfirmActionDialog
         open={deleteTarget !== null}
-        title="Version endgültig löschen?"
-        description={`Version ${deleteTarget ?? ""} von "${basename(objectKey)}" wird endgültig entfernt. Das lässt sich nicht rückgängig machen.`}
-        confirmLabel="Endgültig löschen"
+        title={deleteTarget?.marker ? "Löschung aufheben?" : "Version endgültig löschen?"}
+        description={
+          deleteTarget?.marker
+            ? `Der Löschmarker wird entfernt, „${basename(objectKey)}“ ist wieder sichtbar.`
+            : `Version ${deleteTarget?.id ?? ""} von „${basename(objectKey)}“ wird endgültig entfernt. Nicht wiederherstellbar.`
+        }
+        confirmLabel={deleteTarget?.marker ? "Wiederherstellen" : "Endgültig löschen"}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         onConfirm={async () => {
           if (!deleteTarget) return;
-          const outcome = await s3DeleteObjects(url, bucket, [
-            { key: objectKey, version_id: deleteTarget },
-          ]);
+          const outcome = await s3DeleteObjects(
+            url,
+            bucket,
+            [{ key: objectKey, version_id: deleteTarget.id }],
+            bypass,
+          );
           if (outcome.errors.length) throw new Error(outcome.errors.join("\n"));
-          toast.success("Version gelöscht");
+          toast.success(deleteTarget.marker ? "Löschung aufgehoben" : "Version gelöscht");
           await refresh();
         }}
-      />
+      >
+        {!deleteTarget?.marker && (
+          <label className="flex items-center justify-between gap-3 text-sm">
+            Auch gesperrte Version löschen
+            <Switch checked={bypass} onCheckedChange={setBypass} aria-label="Governance umgehen" />
+          </label>
+        )}
+      </ConfirmActionDialog>
     </>
   );
 }

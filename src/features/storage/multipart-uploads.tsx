@@ -13,6 +13,7 @@ export function MultipartUploads({ bucket }: { bucket: string }) {
   const { connection, url, readOnly } = useStorageConnection();
   const queryClient = useQueryClient();
   const [confirmAll, setConfirmAll] = useState(false);
+  const [single, setSingle] = useState<{ key: string; id: string } | null>(null);
   const uploads = useQuery({
     queryKey: ["s3", connection?.id, "multipart", bucket],
     queryFn: () => s3ListMultipartUploads(url, bucket),
@@ -35,7 +36,12 @@ export function MultipartUploads({ bucket }: { bucket: string }) {
     <div className="mx-auto grid max-w-4xl gap-3 p-4">
       <div className="flex items-center gap-2">
         <div className="flex-1">
-          <h2 className="text-sm font-medium">Unvollständige Multipart-Uploads</h2>
+          <h2
+            className="text-sm font-medium"
+            title="Große Dateien werden in Teilen hochgeladen; abgebrochene Uploads belegen weiter Speicher."
+          >
+            Unvollständige Uploads (Multipart)
+          </h2>
           <p className="text-xs text-muted-foreground">
             Abgebrochene Uploads belegen weiterhin Speicher, bis sie beendet oder per
             Lifecycle-Regel entfernt werden.
@@ -94,7 +100,7 @@ export function MultipartUploads({ bucket }: { bucket: string }) {
                       size="icon-xs"
                       variant="ghost"
                       aria-label={`Upload ${upload.key} abbrechen`}
-                      onClick={() => void abort(upload.key, upload.upload_id)}
+                      onClick={() => setSingle({ key: upload.key, id: upload.upload_id })}
                     >
                       <XIcon />
                     </IconButton>
@@ -105,6 +111,16 @@ export function MultipartUploads({ bucket }: { bucket: string }) {
           </tbody>
         </table>
       )}
+      <ConfirmActionDialog
+        open={single !== null}
+        title="Upload abbrechen?"
+        description={`Hochgeladene Teile von „${single?.key ?? ""}“ werden verworfen.`}
+        confirmLabel="Abbrechen"
+        onOpenChange={(open) => !open && setSingle(null)}
+        onConfirm={async () => {
+          if (single) await abort(single.key, single.id);
+        }}
+      />
       <ConfirmActionDialog
         open={confirmAll}
         title={`${list.length} Uploads abbrechen?`}

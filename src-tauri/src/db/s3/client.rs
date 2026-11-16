@@ -28,6 +28,7 @@ pub struct S3Error {
     pub status: u16,
     pub code: String,
     pub message: String,
+    pub detail: String,
 }
 
 impl S3Error {
@@ -50,10 +51,14 @@ impl S3Error {
 
 impl std::fmt::Display for S3Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.message.is_empty() {
-            write!(f, "S3 {}", self.code)
-        } else {
-            write!(f, "S3 {}: {}", self.code, self.message)
+        let (code, message, detail) = (&self.code, &self.message, &self.detail);
+        match (message.is_empty(), detail.is_empty()) {
+            _ if self.status == 0 && detail.is_empty() => write!(f, "{message}"),
+            _ if self.status == 0 => write!(f, "{message} ({detail})"),
+            (true, true) => write!(f, "S3 {code}"),
+            (true, false) => write!(f, "S3 {code}: {detail}"),
+            (false, true) => write!(f, "{message} (S3 {code})"),
+            (false, false) => write!(f, "{message} (S3 {code}: {detail})"),
         }
     }
 }
@@ -69,6 +74,7 @@ fn transport(e: impl std::fmt::Display) -> S3Error {
         status: 0,
         code: "Verbindungsfehler".to_string(),
         message: e.to_string(),
+        detail: String::new(),
     }
 }
 
@@ -166,15 +172,37 @@ fn invalid_header(name: &str, value: &str) -> Option<S3Error> {
         status: 0,
         code: "Ungültige Anfrage".to_string(),
         message,
+        detail: String::new(),
     })
 }
 
-fn error_hint(code: &str) -> Option<&'static str> {
+fn error_hint(code: &str, req: &Request<'_>) -> Option<&'static str> {
+    let listing = req.query.iter().any(|(name, _)| name == "list-type");
     Some(match code {
         "InvalidAccessKeyId" => "Access Key ist dem Server unbekannt.",
         "SignatureDoesNotMatch" => "Secret Key passt nicht zum Access Key.",
         "NoSuchBucket" => "Der Bucket existiert nicht.",
-        "AccessDenied" => "Zugriff verweigert: fehlende Berechtigung oder falsche Zugangsdaten.",
+        "NoSuchKey" | "NotFound" if req.key.is_some() => "Objekt nicht gefunden.",
+        "NoSuchUpload" => "Der Multipart-Upload existiert nicht mehr.",
+        "PreconditionFailed" => "Das Objekt wurde inzwischen geändert.",
+        "BucketNotEmpty" => "Der Bucket ist nicht leer.",
+        "BucketAlreadyOwnedByYou" | "BucketAlreadyExists" => "Der Bucket existiert bereits.",
+        "InvalidBucketName" => "Ungültiger Bucket-Name.",
+        "InvalidObjectState" => "Das Objekt ist archiviert und muss erst wiederhergestellt werden.",
+        "NotImplemented" => "Vom Anbieter nicht unterstützt.",
+        "AccessDenied" if req.key.is_some() && req.method == Method::GET => {
+            "Objekt lesen verweigert: Berechtigung s3:GetObject fehlt."
+        }
+        "AccessDenied" if req.key.is_some() => {
+            "Zugriff auf das Objekt verweigert: Berechtigung fehlt."
+        }
+        "AccessDenied" if listing => {
+            "Bucket auflisten verweigert: Berechtigung s3:ListBucket fehlt."
+        }
+        "AccessDenied" if req.bucket.is_none() && req.method == Method::GET => {
+            "Buckets auflisten verweigert: Berechtigung s3:ListAllMyBuckets fehlt. Bucket als Pfad in der URL angeben (s3://…@region/bucket)."
+        }
+        "AccessDenied" => "Zugriff verweigert: Berechtigung fehlt.",
         "ExpiredToken" | "InvalidToken" => "Das Session-Token ist abgelaufen oder ungültig.",
         "RequestTimeTooSkewed" => "Die Systemzeit weicht zu stark von der Serverzeit ab.",
         "SlowDown" | "ServiceUnavailable" => {
@@ -432,6 +460,7 @@ impl S3 {
                 status: 0,
                 code: "Ungültiger Schlüssel".to_string(),
                 message: dot_segment_error(key),
+                detail: String::new(),
             });
         }
         if let Some(error) = req
@@ -478,6 +507,11 @@ impl S3 {
                 transport(format!("Zeitüberschreitung bei {}", self.endpoint))
             } else if e.is_builder() {
                 transport(format!("Ungültige Anfrage: {e}"))
+            } else if e.is_connect() {
+                transport(format!(
+                    "{} nicht erreichbar. Endpunkt (?endpoint=) und Port prüfen.",
+                    self.endpoint
+                ))
             } else {
                 transport(format!("{} nicht erreichbar: {e}", self.endpoint))
             }
@@ -504,9 +538,9 @@ impl S3 {
             if retry.status().is_success() {
                 return Ok(retry);
             }
-            return Err(read_error(retry).await);
+            return Err(read_error(retry, &req).await);
         }
-        Err(read_error(response).await)
+        Err(read_error(response, &req).await)
     }
 
     pub async fn text(&self, req: Request<'_>) -> Result<String, S3Error> {
@@ -519,7 +553,7 @@ impl S3 {
     }
 }
 
-async fn read_error(response: reqwest::Response) -> S3Error {
+async fn read_error(response: reqwest::Response, req: &Request<'_>) -> S3Error {
     let status = response.status().as_u16();
     let body = response.text().await.unwrap_or_default();
     let parsed = xml::parse(&body).ok();
@@ -531,7 +565,7 @@ async fn read_error(response: reqwest::Response) -> S3Error {
             404 => "NotFound".to_string(),
             _ => format!("HTTP {status}"),
         });
-    let message = parsed
+    let detail = parsed
         .as_ref()
         .and_then(|n| n.text_of("Message"))
         .unwrap_or_else(|| {
@@ -541,15 +575,11 @@ async fn read_error(response: reqwest::Response) -> S3Error {
                 String::new()
             }
         });
-    let message = match (error_hint(&code), message.is_empty()) {
-        (Some(hint), true) => hint.to_string(),
-        (Some(hint), false) => format!("{hint} ({message})"),
-        (None, _) => message,
-    };
     S3Error {
         status,
+        message: error_hint(&code, req).unwrap_or_default().to_string(),
         code,
-        message,
+        detail,
     }
 }
 
@@ -569,20 +599,44 @@ mod tests {
             .contains("mein feld"));
         assert!(invalid_header("x-amz-meta-autor", "a\nb").is_some());
         assert!(invalid_header("x-amz-meta-autor", "Müller").is_none());
+        let list = Request::new(Method::GET, Some("b"), None).query("list-type", "2");
+        let get = Request::new(Method::GET, Some("b"), Some("k"));
         assert_eq!(
-            error_hint("NoSuchBucket"),
+            error_hint("NoSuchBucket", &list),
             Some("Der Bucket existiert nicht.")
+        );
+        assert_eq!(
+            error_hint("NoSuchKey", &get),
+            Some("Objekt nicht gefunden.")
+        );
+        assert!(error_hint("AccessDenied", &list)
+            .unwrap()
+            .contains("ListBucket"));
+        assert!(error_hint("AccessDenied", &get)
+            .unwrap()
+            .contains("GetObject"));
+        let denied = S3Error {
+            status: 403,
+            code: "AccessDenied".into(),
+            message: error_hint("AccessDenied", &get).unwrap().into(),
+            detail: "Access Denied.".into(),
+        };
+        assert_eq!(
+            denied.to_string(),
+            "Objekt lesen verweigert: Berechtigung s3:GetObject fehlt. (S3 AccessDenied: Access Denied.)"
         );
         assert!(S3Error {
             status: 503,
             code: "SlowDown".into(),
-            message: String::new()
+            message: String::new(),
+            detail: String::new(),
         }
         .is_retryable());
         assert!(!S3Error {
             status: 403,
             code: "AccessDenied".into(),
-            message: String::new()
+            message: String::new(),
+            detail: String::new(),
         }
         .is_retryable());
     }

@@ -46,5 +46,9 @@ describe("S3-Provider-Erkennung", () => {
     expect(detectProvider(withEndpoint("https://abc.r2.cloudflarestorage.com"))).toBe("r2");
     expect(detectProvider(withEndpoint("https://s3.us-west-004.backblazeb2.com"))).toBe("b2");
     expect(detectProvider(withEndpoint("https://rgw.example.com"))).toBe("s3-compatible");
+    expect(detectProvider(withEndpoint("https://rgw.example.com:9000"))).toBe("s3-compatible");
+    expect(detectProvider(withEndpoint("https://s3.cn-north-1.amazonaws.com.cn"))).toBe("s3");
+    expect(detectProvider(withEndpoint("https://play.min.io"))).toBe("minio");
+    expect(detectProvider(withEndpoint("127.0.0.1:9000"))).toBe("s3-compatible");
   });
 });
