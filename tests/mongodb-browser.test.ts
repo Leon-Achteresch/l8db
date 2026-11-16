@@ -8,6 +8,7 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
   async () => {
     const browser = await (process.env.L8DB_MONGODB_WEBKIT ? webkit : chromium).launch({
       headless: true,
+      channel: process.env.L8DB_MONGODB_WEBKIT ? undefined : process.env.L8DB_BROWSER_CHANNEL,
     });
     const page = await browser.newPage({ viewport: { width: 1200, height: 850 } });
     const errors: string[] = [];
@@ -103,7 +104,15 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
         useProvidersStore.setState((state) => ({
           providers: state.providers.map((provider) =>
             provider.kind === "mongodb"
-              ? { ...provider, capabilities: { ...provider.capabilities, query_language: "sql" } }
+              ? {
+                  ...provider,
+                  capabilities: {
+                    ...provider.capabilities,
+                    query_language: "sql",
+                    database_is_schema: false,
+                    terms: { ...provider.capabilities.terms, schema: "Schema" },
+                  },
+                }
               : provider,
           ),
         }));
@@ -137,8 +146,8 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
         await loadProviders();
       });
       await page.getByText("items", { exact: true }).first().click();
-      await page.getByRole("tab", { name: "Spalten", exact: true }).click();
-      await page.getByText("Primärschlüssel", { exact: true }).first().waitFor();
+      await page.getByRole("tab", { name: "Felder", exact: true }).click();
+      await page.getByText("PK", { exact: true }).first().waitFor();
       await page.getByRole("tab", { name: "Indizes", exact: true }).click();
       await page.getByText("_id_", { exact: true }).waitFor();
       await page.getByRole("button", { name: "Neuer Index", exact: true }).click();
@@ -147,10 +156,7 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       await indexCommand.fill(
         '{"createIndexes":"items","indexes":[{"key":{"status":1},"name":"status_browser"}]}',
       );
-      await page
-        .getByRole("dialog")
-        .getByRole("button", { name: "Ausführen", exact: true })
-        .click();
+      await page.getByRole("button", { name: "Ausführen", exact: true }).click();
       await page.getByText("status_browser", { exact: true }).waitFor();
       await page.getByRole("tab", { name: "Daten", exact: true }).click();
 
@@ -177,7 +183,8 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
       await page.getByText("257 Zeilen", { exact: false }).first().waitFor();
       await page.getByText('{"value":0}', { exact: true }).first().waitFor();
-      await page.getByText('{"value":0}', { exact: true }).first().click();
+      await page.getByRole("button", { name: "Ergebnisoptionen" }).click();
+      await page.keyboard.press("Escape");
       await page.keyboard.press("ControlOrMeta+f");
       await page.getByRole("textbox", { name: "Ergebnisse durchsuchen" }).fill('"value":250');
       await page.getByText('{"value":250}', { exact: true }).first().waitFor();
@@ -207,7 +214,11 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       expect(await page.getByRole("link", { name: "Sitzungen & Locks", exact: true }).count()).toBe(
         0,
       );
-      await page.getByRole("link", { name: "Collection erstellen", exact: true }).click();
+      await page.getByRole("button", { name: "Mehr", exact: true }).click();
+      expect(await page.getByRole("menuitem", { name: "Replikation", exact: true }).count()).toBe(
+        0,
+      );
+      await page.getByRole("menuitem", { name: "Collection erstellen", exact: true }).click();
       const collectionName = `browser_created_${Date.now()}`;
       await page
         .getByRole("textbox", { name: "Collection-Name", exact: true })
@@ -215,10 +226,11 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       await page.getByRole("button", { name: "Collection erstellen", exact: true }).click();
       await page.getByText("Keine Daten.", { exact: true }).waitFor();
       await page.locator(`[data-name="${collectionName}"]`).click({ button: "right" });
-      await page.getByRole("menuitem", { name: /^Tabelle löschen…/ }).click();
+      await page.getByRole("menuitem", { name: /^Collection löschen…/ }).click();
+      await page.getByRole("alertdialog").getByRole("textbox").fill(collectionName);
       await page
         .getByRole("alertdialog")
-        .getByRole("button", { name: "Drop Table", exact: true })
+        .getByRole("button", { name: "Collection löschen", exact: true })
         .click();
       await page.locator(`[data-name="${collectionName}"]`).waitFor({ state: "detached" });
       expect(errors).toEqual([]);

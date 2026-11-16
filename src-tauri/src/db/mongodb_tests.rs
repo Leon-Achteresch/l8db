@@ -489,3 +489,80 @@ async fn mongodb_cursor_queries_stop_at_the_row_cap() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+#[ignore = "requires L8DB_E2E_MONGODB_URL pointing to the isolated Docker lab"]
+async fn mongodb_field_sample_is_bounded_and_complete() {
+    let uri = std::env::var("L8DB_E2E_MONGODB_URL").expect("L8DB_E2E_MONGODB_URL required");
+    let db = format!(
+        "l8db_fields_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let adapter =
+        create_adapter_from_string(DatabaseKind::Mongodb, &uri, Some(&db), create_pool_state())
+            .unwrap();
+    let padding = "x".repeat(4096);
+    let documents: Vec<serde_json::Value> = (0..1500)
+        .map(|n| {
+            let mut doc = serde_json::json!({"_id": n, "a": n, "pad": padding});
+            if n == 900 {
+                doc["late"] = serde_json::json!("x");
+            }
+            if n == 1200 {
+                doc["beyond_sample"] = serde_json::json!(1);
+            }
+            doc["v"] = match n % 3 {
+                0 => serde_json::json!(1),
+                1 => serde_json::json!("s"),
+                _ => serde_json::Value::Null,
+            };
+            doc
+        })
+        .collect();
+    for chunk in documents.chunks(500) {
+        adapter
+            .execute_query(&serde_json::json!({"insert": "wide", "documents": chunk}).to_string())
+            .await
+            .unwrap();
+    }
+    adapter
+        .execute_query(r#"{"create":"wide_view","viewOn":"wide","pipeline":[]}"#)
+        .await
+        .unwrap();
+    let mut timings = Vec::new();
+    let mut columns = Vec::new();
+    for _ in 0..21 {
+        let started = std::time::Instant::now();
+        columns = adapter
+            .list_table_columns_detailed(&db, "wide")
+            .await
+            .unwrap();
+        timings.push(started.elapsed());
+    }
+    timings.sort();
+    let (median, p95) = (timings[10], timings[19]);
+    println!("field sample over 1500 x 4 KiB documents: median {median:?}, p95 {p95:?}");
+    assert!(p95 < std::time::Duration::from_millis(500), "{p95:?}");
+    let names: Vec<&str> = columns.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["_id", "a", "late", "pad", "v"]);
+    let v = columns.iter().find(|c| c.name == "v").unwrap();
+    assert_eq!(v.data_type, "int, string");
+    assert!(v.is_nullable && !columns[0].is_nullable);
+    assert!(columns
+        .iter()
+        .filter(|c| c.name != "_id")
+        .all(|c| c.is_nullable));
+    let views = adapter.list_views(Some(&db)).await.unwrap();
+    assert_eq!(views.len(), 1);
+    assert_eq!(views[0].name, "wide_view");
+    assert_eq!(adapter.list_tables(Some(&db)).await.unwrap().len(), 2);
+    let none = adapter
+        .execute_query("db.wide.countDocuments({a: -1})")
+        .await
+        .unwrap();
+    assert_eq!(none.rows, vec![serde_json::json!({"count": 0})]);
+    adapter.drop_schema(&db, true).await.unwrap();
+}
