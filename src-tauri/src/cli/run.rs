@@ -629,7 +629,10 @@ async fn mysql_folds_case(session: &Session, job: &str) -> bool {
     .await
     .ok()
     .and_then(|r| r.rows.first().and_then(|row| row.get("l").cloned()))
-    .and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+    .and_then(|v| {
+        v.as_i64()
+            .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+    })
     .is_some_and(|mode| mode != 0)
 }
 

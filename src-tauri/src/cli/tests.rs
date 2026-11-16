@@ -542,23 +542,37 @@ fn rollback_note_names_statements_that_ddl_already_committed() {
     ]);
     for kind in [DatabaseKind::Mysql, DatabaseKind::Oracle] {
         let note = rollback_note(kind, &mid, true);
-        assert!(note.contains("Anweisungen 1 bis 2 bleiben bestehen"), "{note}");
+        assert!(
+            note.contains("Anweisungen 1 bis 2 bleiben bestehen"),
+            "{note}"
+        );
         assert!(!note.contains("Nichts geändert"), "{note}");
     }
     let failed_ddl = ran(&["insert into p values (1)", "create table p (id int)"]);
     assert!(rollback_note(DatabaseKind::Mysql, &failed_ddl, true).contains("Anweisung 1 bleibt"));
     assert!(rollback_note(DatabaseKind::Mysql, &failed_ddl, false).contains("1 bis 2"));
-    assert!(rollback_note(DatabaseKind::Mysql, &ran(&["create table p (id int)", "x"]), true)
-        .contains("Anweisung 1 bleibt"));
-    assert!(rollback_note(DatabaseKind::Mysql, &ran(&["create table p (id int)"]), true)
-        .contains("Nichts geändert"));
+    assert!(rollback_note(
+        DatabaseKind::Mysql,
+        &ran(&["create table p (id int)", "x"]),
+        true
+    )
+    .contains("Anweisung 1 bleibt"));
+    assert!(rollback_note(
+        DatabaseKind::Mysql,
+        &ran(&["create table p (id int)"]),
+        true
+    )
+    .contains("Nichts geändert"));
     for kind in [
         DatabaseKind::Postgres,
         DatabaseKind::Sqlite,
         DatabaseKind::Mssql,
         DatabaseKind::SqliteHttp,
     ] {
-        assert!(rollback_note(kind, &mid, true).contains("Nichts geändert"), "{kind:?}");
+        assert!(
+            rollback_note(kind, &mid, true).contains("Nichts geändert"),
+            "{kind:?}"
+        );
     }
 }
 
@@ -606,7 +620,15 @@ fn sql_starting_with_a_comment_is_not_an_option() {
     assert_eq!(sql, " -- Kommentar\nselect 1 as x");
     assert_eq!(super::sql_comment_arg("--limit"), "--limit");
     assert_eq!(super::sql_comment_arg("--"), "--");
-    let argv = ["l8db", "--url", "a.sqlite", "query", sql.as_str(), "-o", "json"];
+    let argv = [
+        "l8db",
+        "--url",
+        "a.sqlite",
+        "query",
+        sql.as_str(),
+        "-o",
+        "json",
+    ];
     let matches = super::command().try_get_matches_from(argv).unwrap();
     assert!(<super::Cli as clap::FromArgMatches>::from_arg_matches(&matches).is_ok());
 }

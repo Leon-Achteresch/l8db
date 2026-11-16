@@ -49,8 +49,8 @@ pub(crate) mod oracle;
 pub mod pool;
 mod postgres;
 pub mod principals;
-pub(crate) use postgres::run_simple_query as run_postgres_simple_query;
 pub(crate) use mysql::strip_int_widths as mysql_type_text;
+pub(crate) use postgres::run_simple_query as run_postgres_simple_query;
 pub mod postgres_health;
 pub mod provider;
 pub(crate) mod redis;
@@ -2959,9 +2959,27 @@ fn filter_outside_literals(input: &str, mode: FilterLexMode) -> String {
 }
 
 const FILTER_STATEMENT_WORDS: [&str; 21] = [
-    "insert", "update", "delete", "merge", "drop", "create", "alter", "truncate", "exec",
-    "execute", "call", "declare", "grant", "revoke", "waitfor", "shutdown", "dbcc", "bulk",
-    "openquery", "openrowset", "opendatasource",
+    "insert",
+    "update",
+    "delete",
+    "merge",
+    "drop",
+    "create",
+    "alter",
+    "truncate",
+    "exec",
+    "execute",
+    "call",
+    "declare",
+    "grant",
+    "revoke",
+    "waitfor",
+    "shutdown",
+    "dbcc",
+    "bulk",
+    "openquery",
+    "openrowset",
+    "opendatasource",
 ];
 
 fn strip_quoted_identifiers(text: &str) -> String {
