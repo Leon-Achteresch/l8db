@@ -1,7 +1,11 @@
+import { heapStats } from "bun:jsc";
 import { expect, test } from "bun:test";
+import { arch, cpus, platform, release, totalmem } from "node:os";
 import { measureScenario, reportScenario } from "../scripts/performance-report";
+import { getColumnTypeInfo } from "../src/features/table/data-table/column-type-info";
 import { columnFilterCounts } from "../src/features/table/table-columns-list/column-type-config";
 import type { DetailedColumnInfo } from "../src/lib/db";
+import { isDateFilterType } from "../src/lib/sql-filter";
 
 const TYPES = [
   "integer",
@@ -61,4 +65,48 @@ test("Filter-Zählung bleibt bei 10.000 Spalten schnell", async () => {
   await reportScenario("column-filter-counts", { columns: columns.length, counting });
   expect(counting.medianMs).toBeLessThan(40);
   expect(counting.p95Ms).toBeLessThan(80);
+});
+
+test("canonical SQL-Server row versions stay non-temporal across 10,000 columns", async () => {
+  const types = ["rowversion", "datetime2(7)", "rowversion", "datetimeoffset(7)"];
+  const columns = Array.from({ length: 10_000 }, (_, index) => ({
+    ...column(index),
+    data_type: types[index % types.length],
+    is_primary_key: false,
+  }));
+  const run = () => {
+    const dates = columnFilterCounts(columns).find((filter) => filter.id === "date")?.count;
+    if (dates !== 5_000) throw new Error("wrong temporal filter count");
+    for (const detail of columns) {
+      const dated = detail.data_type !== "rowversion";
+      if (
+        (getColumnTypeInfo(detail.name, [], detail).kind === "date") !== dated ||
+        isDateFilterType(detail.data_type) !== dated
+      )
+        throw new Error("wrong type classification");
+    }
+  };
+  const counting = await measureScenario(run, 15);
+  Bun.gc(true);
+  const before = heapStats().heapSize;
+  for (let index = 0; index < 5; index++) run();
+  Bun.gc(true);
+  const retainedBytes = Math.max(0, heapStats().heapSize - before);
+  await reportScenario("rowversion-column-consumers", {
+    columns: columns.length,
+    counting,
+    retainedBytes,
+    dbRequests: 0,
+    environment: {
+      os: platform(),
+      release: release(),
+      arch: arch(),
+      cpu: cpus()[0]?.model,
+      ramBytes: totalmem(),
+      bun: Bun.version,
+    },
+  });
+  expect(counting.medianMs).toBeLessThan(40);
+  expect(counting.p95Ms).toBeLessThan(80);
+  expect(retainedBytes).toBeLessThan(4 * 1024 * 1024);
 });

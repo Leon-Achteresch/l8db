@@ -814,11 +814,19 @@ fn type_sql(type_name: &str, max_length: i64, precision: i64, scale: i64) -> Str
     }
 }
 
+fn metadata_type(type_name: String) -> String {
+    if type_name.eq_ignore_ascii_case("timestamp") || type_name.eq_ignore_ascii_case("rowversion") {
+        "rowversion".to_string()
+    } else {
+        type_name
+    }
+}
+
 fn sized_type(type_name: &str, precision: i64, scale: i64, fraction: i64) -> String {
     match type_name {
         "decimal" | "numeric" => format!("{type_name}({precision},{scale})"),
         "datetime2" | "time" | "datetimeoffset" => format!("{type_name}({fraction})"),
-        _ => type_name.to_string(),
+        _ => metadata_type(type_name.to_string()),
     }
 }
 
@@ -1222,7 +1230,7 @@ impl DatabaseAdapter for MssqlAdapter {
                 schema: text(r, 0),
                 table: text(r, 1),
                 name: text(r, 2),
-                data_type: text(r, 3),
+                data_type: metadata_type(text(r, 3)),
             })
             .collect())
     }
@@ -2136,6 +2144,65 @@ mod catalog;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rowversion_metadata_preserves_binary_semantics() {
+        let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/mssql-rowversion-types.json"
+        ))
+        .unwrap();
+        for case in cases {
+            let raw = case["catalog_type"].as_str().unwrap();
+            assert_eq!(
+                metadata_type(raw.to_string()),
+                case["basic_type"].as_str().unwrap()
+            );
+            assert_eq!(
+                sized_type(raw, 19, 4, 7),
+                case["detailed_type"].as_str().unwrap()
+            );
+        }
+        assert_eq!(type_sql("timestamp", 8, 0, 0), "timestamp");
+        assert_eq!(type_sql("rowversion", 8, 0, 0), "rowversion");
+        assert_eq!(select_expression("version", "timestamp"), "[version]");
+        assert_eq!(select_expression("version", "rowversion"), "[version]");
+        let bytes = vec![0, 0, 0, 0, 0, 0, 7, 211];
+        assert_eq!(
+            value_to_json(&ColumnData::Binary(Some(std::borrow::Cow::Owned(bytes)))),
+            serde_json::json!("\\x00000000000007d3")
+        );
+    }
+
+    #[test]
+    fn rowversion_metadata_remains_bounded_on_large_catalogs() {
+        let input: Vec<String> = ["timestamp", "datetime2", "rowversion", "nvarchar"]
+            .into_iter()
+            .cycle()
+            .take(10_000)
+            .map(str::to_string)
+            .collect();
+        let run = || {
+            let output: Vec<_> = input.iter().cloned().map(metadata_type).collect();
+            assert_eq!(output.len(), 10_000);
+            assert_eq!(
+                output.iter().filter(|kind| *kind == "rowversion").count(),
+                5_000
+            );
+            assert_eq!(output.iter().map(String::len).sum::<usize>(), 92_500);
+        };
+        run();
+        run();
+        let mut durations = Vec::new();
+        for _ in 0..7 {
+            let start = Instant::now();
+            run();
+            durations.push(start.elapsed().as_secs_f64() * 1000.0);
+        }
+        durations.sort_by(f64::total_cmp);
+        eprintln!("rowversion metadata: 10000 columns, median={:.3}ms p95={:.3}ms output=92500 type bytes, db_requests=0", durations[3], durations[6]);
+        assert!(durations[3] < 50.0);
+        assert!(durations[6] < 100.0);
+    }
 
     #[test]
     fn column_changes_run_in_one_transaction() {
