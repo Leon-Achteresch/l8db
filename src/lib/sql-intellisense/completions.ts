@@ -1,6 +1,7 @@
 import type { ColumnInfo, DatabaseKind, FunctionInfo, TableInfo } from "@/lib/db";
 import { toMonacoSnippet } from "@/lib/snippets";
 import { BUILTIN_FUNCTIONS } from "./builtin-functions";
+import { CLICKHOUSE_FUNCTIONS } from "./clickhouse-functions";
 import { quoteIdent } from "./hover";
 import { SQL_KEYWORDS } from "./keywords";
 import { eq, findTable, isPackage } from "./resolve";
@@ -241,21 +242,31 @@ function generalColumnSuggestions(index: RegistryIndex, referenced: Set<string>)
   return out;
 }
 
-const STATIC_SUGGESTIONS: Suggestion[] = [
-  ...SQL_KEYWORDS.map<Suggestion>((keyword) => ({
-    label: keyword,
-    kind: "keyword",
-    insertText: keyword,
-    sortText: `4_${keyword}`,
-  })),
-  ...BUILTIN_FUNCTIONS.map<Suggestion>((fn) => ({
+const KEYWORD_SUGGESTIONS = SQL_KEYWORDS.map<Suggestion>((keyword) => ({
+  label: keyword,
+  kind: "keyword",
+  insertText: keyword,
+  sortText: `4_${keyword}`,
+}));
+
+const functionSuggestions = (functions: { name: string; signature: string }[]) =>
+  functions.map<Suggestion>((fn) => ({
     label: fn.name,
     kind: "function",
     detail: fn.signature,
     insertText: `${fn.name}($0)`,
     snippet: true,
     sortText: `5_${fn.name}`,
-  })),
+  }));
+
+const STATIC_SUGGESTIONS: Suggestion[] = [
+  ...KEYWORD_SUGGESTIONS,
+  ...functionSuggestions(BUILTIN_FUNCTIONS),
+];
+
+const CLICKHOUSE_SUGGESTIONS: Suggestion[] = [
+  ...KEYWORD_SUGGESTIONS,
+  ...functionSuggestions(CLICKHOUSE_FUNCTIONS),
 ];
 
 export function suggestCompletions(
@@ -328,7 +339,8 @@ export function suggestCompletions(
     });
   }
 
-  for (const item of STATIC_SUGGESTIONS) suggestions.push(item);
+  for (const item of dialect === "clickhouse" ? CLICKHOUSE_SUGGESTIONS : STATIC_SUGGESTIONS)
+    suggestions.push(item);
 
   return suggestions;
 }
