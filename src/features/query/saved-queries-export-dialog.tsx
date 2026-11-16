@@ -101,8 +101,8 @@ export function SavedQueriesExportDialog({ open, queries, onOpenChange, onCloseA
         <DialogHeader>
           <DialogTitle id={titleId}>Gespeicherte Queries exportieren</DialogTitle>
           <DialogDescription id={descriptionId}>
-            Exportiert werden nur Name und SQL. Verbindungen, Passwörter und der Verlauf bleiben
-            außen vor. Klick auf einen Eintrag zeigt das enthaltene SQL.
+            Exportiert werden Name, SQL und optionale Herkunft. Verbindungs-URLs, Passwörter und
+            Verlaufseinträge bleiben außen vor. Klick auf einen Eintrag zeigt das SQL.
           </DialogDescription>
         </DialogHeader>
         {queries.length === 0 ? (
