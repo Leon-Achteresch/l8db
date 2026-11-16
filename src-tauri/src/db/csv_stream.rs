@@ -159,10 +159,22 @@ pub struct CsvRows {
     record: usize,
     line: usize,
     done: bool,
+    cancel: tokio_util::sync::CancellationToken,
+    record_line: usize,
 }
 
 impl CsvRows {
     pub fn open(source: &CsvFileSource) -> Result<Self, String> {
+        Self::open_cancellable(source, tokio_util::sync::CancellationToken::new())
+    }
+
+    pub fn open_cancellable(
+        source: &CsvFileSource,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> Result<Self, String> {
+        if cancel.is_cancelled() {
+            return Err("Dateiprüfung abgebrochen.".into());
+        }
         if source.delimiter.chars().count() != 1
             || source.quote.chars().count() != 1
             || source.delimiter == source.quote
@@ -203,11 +215,21 @@ impl CsvRows {
             record: 0,
             line: 1,
             done: false,
+            cancel,
+            record_line: 1,
         })
     }
 
     fn character(&mut self) -> Result<Option<char>, String> {
+        if self.cancel.is_cancelled() {
+            return Err("Dateiprüfung abgebrochen.".into());
+        }
         self.characters.next().transpose()
+    }
+
+    pub(crate) fn next_record(&mut self) -> Result<Option<(usize, Vec<Option<String>>)>, String> {
+        self.record()
+            .map(|row| row.map(|values| (self.record_line, values)))
     }
 
     fn record(&mut self) -> Result<Option<Vec<Option<String>>>, String> {
@@ -230,6 +252,7 @@ impl CsvRows {
                     return Ok(None);
                 }
                 values.push(self.field(field, quoted));
+                self.record_line = start_line;
                 return Ok(Some(values));
             };
             size += character.len_utf8();
@@ -249,7 +272,9 @@ impl CsvRows {
                     }
                 } else {
                     field.push(character);
-                    if character == '\n' {
+                    if character == '\n'
+                        || (character == '\r' && !matches!(self.characters.peek(), Some(Ok('\n'))))
+                    {
                         self.line += 1;
                     }
                 }
@@ -279,6 +304,7 @@ impl CsvRows {
                     continue;
                 }
                 values.push(self.field(field, quoted));
+                self.record_line = start_line;
                 return Ok(Some(values));
             }
             field.push(character);

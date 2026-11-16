@@ -464,3 +464,61 @@ Der Bericht enthält zehn Details und bleibt im Szenario unter 2.000 Zeichen.
 Budgets: Median < 50 ms, p95 < 100 ms, zusätzlicher gehaltener JS-Heap < 4 MiB.
 Keine Browser-/DOM-Leistungsmessung, Windows-/Linux-Messung oder Live-Datenbank
 in diesem Paket; keine CPU-/Heap-Simulation als Plattformabdeckung ausgegeben.
+
+
+## Vollständiger schreibfreier CSV-Dateicheck
+
+Der Import bietet „CSV-Datei prüfen“ über `check_csv_file` an. Der Befehl nimmt
+keine Verbindung oder SQL entgegen und verwendet `import_source::open_csv_records`
+mit dem vorhandenen Streamingparser. Die gewählte Datei muss im Tauri-FS-Scope
+liegen. Parsergrenzen bleiben 1 GiB pro Datei und 1 MiB pro Datensatz; der
+bestehende Encoding-Test liest höchstens 2 MiB zusätzlich. Es werden keine
+Dateiinhalte oder sämtliche Befunde gesammelt: ein Datensatz zur Zeit, exakte
+Anzahl vollständig gelesener Datensätze und höchstens zehn Details ohne Zellwerte.
+Strukturfehler und explizite NULL-Verletzungen werden gezählt, ein nicht mehr
+sicher fortsetzbarer Parserfehler beendet den Lauf als unvollständig.
+
+Ein globaler Slot erlaubt höchstens einen aktiven Dateiscan. Ein wartender Check
+kann abbrechen, bevor er die Datei öffnet; aktive Checks kontrollieren den Token
+je Zeichen. Betriebssystemseitig blockierende Datei-/Metadatenzugriffe sind nicht
+hart unterbrechbar. Fortschritt entsteht ereignisgesteuert statt durch Polling:
+Anfang/Ende und höchstens etwa zehn Zwischenmeldungen je Sekunde. Nach Rückkehr
+bleibt kein Scan oder Hintergrundtimer aktiv.
+
+Der Bericht ist ein Dateistand, kein Probeimport: keine Datentyp-/Wertebereichs-,
+Unique-, FK- oder Triggergarantie. Quell-/Zuordnungs-/Optionswechsel verwerfen den
+Bericht sofort und brechen den alten Lauf ab; späte Antworten werden ignoriert.
+Ein bestätigter Abbruch kann seine tatsächlich gelesene Teilanzahl anzeigen,
+niemals eine vollständige Freigabe. Größen-/Zeitstempeländerungen während des
+Scans und vor späterem Import werden abgeglichen. Das ist kein Hashnachweis oder
+atomarer Dateilock; beliebige Änderungen mit erhaltenem Zeitstempel bzw. zwischen
+letzter Prüfung und Import sind dadurch nicht ausgeschlossen.
+
+Gezielte native Regressionen: `CARGO_BUILD_JOBS=2 cargo test --lib db::csv_ -- --nocapture --test-threads=1`
+im Verzeichnis `src-tauri`. Das deckt den gemeinsamen Parser, späte Struktur-/
+NULL-Befunde, EOF-/Header-/CR-/CRLF-/Multiline-Fälle, Dateiveränderung, Abbruch vor
+und während des Scans, Warteschlange, Fortschrittsbegrenzung und 1-MiB-Grenze ab.
+Der Performancefall liest 100.000 Datensätze mit zwei Pflichtspalten und 200.000
+Befunden: zwei Warmläufe, fünf Messläufe, Medianbudget < 1.500 ms und p95 < 2.500 ms
+im Debug-Testprofil; Bericht < 3.000 Bytes und zehn Details im Szenario. Das sind
+lokale Tempdateien, keine Live-Datenbankzugriffe oder allgemeine Netzwerk-FS-Messung.
+
+Frontend: `tests/csv-file-check*.test.ts(x)` prüft den echten Bridgevertrag,
+Abbruch beim Backend-Start, Listenerbereinigung, verspätete Antworten, erneute
+Prüfung sowie den eingeschränkten UI-Erfolgstext. Der zusätzliche Core-Performancefall
+in `tests/perf-csv-validation.test.ts` misst 1.000 Report-Invalidierungen mit 9
+Messläufen: Median 0,74 ms, p95 1,64 ms, zusätzlicher gehaltener JS-Heap nach GC
+8.579 Bytes; Budgets < 50/< 100 ms und < 4 MiB. Gemessen am 16.11.2026 auf
+macOS/Darwin 27.0.0, arm64, Apple M3, 16 GiB, Bun 1.3.10. Der eingespritzte
+Controllerlauf startet keine nativen Requests. Keine Browser-/DOM-Leistungs- oder
+Windows-/Linux-Abdeckung, kein RSS-/Native-Heap-Nachweis; die native Speichergrenze
+wird hier durch begrenzte Datensatz- und Berichthaltung geprüft, nicht als
+plattformweite Speicherprofilierung ausgegeben.
+
+Native Abschlussmessung dieses Pakets am 16.11.2026 auf demselben Mac im Debug-
+Testprofil: 100.000 Datensätze, zwei Spalten, 200.000 Befunde, Median 67,29 ms,
+p95 68,99 ms, Bericht 996 Bytes. Abbruch im großen Datensatz: 1,81 ms in der
+lokalen Tempdatei, Budget < 1 s. Alle 15 gezielten nativen CSV-Tests bestanden;
+Warteschlangenabbruch öffnet keine Datei und der Scan gibt seinen einen Slot
+wieder frei. Keine Aussage über harte Abbruchlatenz auf blockierenden externen
+Dateisystemen oder andere Plattformen.

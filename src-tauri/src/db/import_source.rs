@@ -11,6 +11,16 @@ const MAX_JSON_RECORD_BYTES: usize = 16 * 1024 * 1024;
 pub type SourceRow = Vec<Option<String>>;
 pub type RowStream = Box<dyn Iterator<Item = Result<SourceRow, String>> + Send>;
 
+pub fn open_csv_records(
+    source: &CsvFileSource,
+    cancel: tokio_util::sync::CancellationToken,
+) -> Result<CsvRows, String> {
+    if source.format != ImportFormat::Csv {
+        return Err("Dateiprüfung unterstützt derzeit nur CSV.".into());
+    }
+    CsvRows::open_cancellable(source, cancel)
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ImportFormat {

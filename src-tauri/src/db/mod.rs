@@ -10,6 +10,7 @@ pub mod commands;
 pub(crate) mod connection;
 pub(crate) use connection::connection_string_is_read_only;
 pub mod constraints;
+pub mod csv_check;
 pub mod csv_stream;
 pub mod data_compare;
 pub mod datagen;
