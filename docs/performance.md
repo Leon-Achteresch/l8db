@@ -673,3 +673,54 @@ sieben Messungen im Rust-Debug-Testprofil: Median 1,257 ms, p95 1,264 ms;
 < 50 ms, p95 < 100 ms, exakt begrenzte Ergebnismenge. Das ist keine Messung
 von Server-/Netzwerkzeit oder native/RSS-Speichernutzung. Beide neuen gezielten
 Rust-Tests bestanden; andere MSSQL-/A37- oder Live-Tests wurden nicht wiederholt.
+
+
+## Teilbarer Schemaänderungsbericht (A03)
+
+Schema-Vergleich → Bericht → Kopieren / Speichern erzeugt einen Markdown-Bericht
+aus dem vorhandenen `CompareResult` und dem bereits berechneten `SyncScript`.
+Es gibt keinen weiteren Katalogzugriff, Vergleichslauf, DDL- oder SQL-Aufruf.
+Der Bericht enthält alle behaltenen Vergleichseinträge unabhängig von Suchfilter
+und Skriptauswahl; Angaben zu kritischen Anweisungen beziehen sich ausdrücklich
+nur auf den ausgewählten, nicht ausgeführten SQL-Plan. Quelle ist der gewünschte
+Stand, Ziel der anzugleichende Stand. Mögliche Umbenennungen sind keine zwingenden
+Löschungen. Datenverlustrisiken werden nicht als vollständig geprüft dargestellt.
+
+Vergleiche speichern zusätzlich angefragte Typen, bekannte Snapshot-Tabellenlisten
+und die Zeitpunkte aus den tatsächlich gelesenen Snapshot-Dateien. Die effektiven
+Typen, ignorierte Merkmale, Ausschlussmuster und ausgelassene Unterschiede werden
+im Bericht genannt. Keine Vollständigkeit des Serverkatalogs, aktuelle Live-
+Übereinstimmung oder ausgeführte Migration wird behauptet. Ältere Ergebnisse ohne
+belegte Typauswahl erfordern einen erneuten Vergleich; unbekannte Berichtsfelder
+werden nicht in einen positiven Vollständigkeitsbefund umgedeutet.
+
+Fehlende, laufende, fehlgeschlagene und hinsichtlich Seiten/Optionen/Typen veraltete
+Vergleiche sperren die Aktion. Nach dem nativen Speicherdialog werden Vergleich
+und Skriptauswahl erneut gegen den aktuellen Store geprüft; bei Änderungen wird
+nichts geschrieben. Abbrechen schreibt nichts. IO-Fehler melden keinen Erfolg.
+Berichtserzeugung findet nur auf ausdrückliche Aktion statt; kein Idle-Worker,
+Polling oder zusätzlicher Abbruchprozess. Eine gestartete synchrone Generierung
+ist durch 20.000 Einträge, 4.194.304 Zeichen und 16.384 Zeichen je Textfeld begrenzt;
+Überschreiten schlägt ausdrücklich fehl und erzeugt keinen still gekürzten Bericht.
+
+Namen, Merkmale und Hinweise stehen als JSON-quotierte, einzeilige Markdown-
+Codespannen mit dynamisch längeren Backtick-Begrenzern im Bericht. Steuerzeichen
+und Richtungswechselzeichen können keine neuen Berichtzeilen oder Überschriften
+vortäuschen. DDL, SQL-Anweisungen, Verbindungs-URLs und vollständige Dateipfade
+werden nicht hinzugefügt. Die vorhandene visuelle Sprache und Copy-/Save-Bridges
+bleiben erhalten; die neue Aktion trägt `schema-compare.report` am echten Button.
+
+`tests/perf-schema-report.test.ts`: 5.000 abweichende Spalteneinträge, zwei
+Warmläufe und neun Messungen; Median 31,240 ms, p95 31,630 ms. Ausgabe 1.510.863
+Zeichen; nach fünf weiteren Generierungen und GC 2.982.783 zusätzliche JS-Heap-
+Bytes einschließlich eines behaltenen Berichts. Budgets: Median < 100 ms,
+p95 < 200 ms, zusätzlicher JS-Heap < 8 MiB, Ausgabe unter dem Berichtslimit.
+Null zusätzliche DB-Requests und null Schreibaktionen nach Abbruch/Idle.
+Dies ist ein neuer Berichtsbenchmark, kein Vorher-/Nachher-Optimierungsnachweis.
+
+Gemessen am 16.11.2026 auf macOS/Darwin 27.0.0, arm64, Apple M3, 16 GiB RAM,
+Bun 1.3.10. 38 gezielte Vertrags-/Aktions-/SSR-/Snapshot-/Tab-/Options-Tests sowie
+Typecheck und scoped Biome bestanden. Keine Rust-/Adapteränderung; deshalb kein
+Cargo-Neulauf. Keine Live-Datenbanken, reale Datei-/Clipboard-Dialogprüfung,
+Browser-/Native-App-Abnahme, Windows/Linux, CPU-Simulation oder native/RSS-
+Messung. Der vorhandene CSV-Opus-Handoff bleibt unverändert offen.
