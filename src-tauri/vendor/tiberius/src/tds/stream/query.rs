@@ -92,6 +92,8 @@ pub struct QueryStream<'a> {
     token_stream: Peekable<BoxStream<'a, crate::Result<ReceivedToken>>>,
     columns: Option<Arc<Vec<Column>>>,
     result_set_index: Option<usize>,
+    affected: Option<u64>,
+    open_result: bool,
 }
 
 impl<'a> Debug for QueryStream<'a> {
@@ -111,6 +113,8 @@ impl<'a> QueryStream<'a> {
             token_stream: token_stream.peekable(),
             columns: None,
             result_set_index: None,
+            affected: None,
+            open_result: false,
         }
     }
 
@@ -127,7 +131,16 @@ impl<'a> QueryStream<'a> {
             match item {
                 Some(ReceivedToken::NewResultset(_)) => break,
                 Some(_) => {
-                    self.token_stream.try_next().await?;
+                    if let Some(
+                        ReceivedToken::Done(done)
+                        | ReceivedToken::DoneInProc(done)
+                        | ReceivedToken::DoneProc(done),
+                    ) = self.token_stream.try_next().await?
+                    {
+                        if let Some(rows) = done.counted() {
+                            self.affected = Some(self.affected.unwrap_or(0) + rows);
+                        }
+                    }
                 }
                 None => break,
             }
@@ -216,6 +229,11 @@ impl<'a> QueryStream<'a> {
         }
 
         Ok(self.columns.as_ref().map(|c| c.as_slice()))
+    }
+
+    #[allow(missing_docs)]
+    pub fn rows_affected(&self) -> Option<u64> {
+        self.affected
     }
 
     /// Collects results from all queries in the stream into memory in the order
@@ -375,6 +393,7 @@ impl<'a> Stream for QueryStream<'a> {
                     this.columns = Some(column_meta.clone());
 
                     this.result_set_index = this.result_set_index.map(|i| i + 1);
+                    this.open_result = true;
 
                     let query_item =
                         QueryItem::metadata(column_meta, *this.result_set_index.get_or_insert(0));
@@ -392,6 +411,18 @@ impl<'a> Stream for QueryStream<'a> {
                     };
 
                     Poll::Ready(Some(Ok(QueryItem::Row(row))))
+                }
+                ReceivedToken::Done(done)
+                | ReceivedToken::DoneInProc(done)
+                | ReceivedToken::DoneProc(done) => {
+                    if let Some(rows) = done.counted() {
+                        if this.open_result {
+                            this.open_result = false;
+                        } else {
+                            this.affected = Some(this.affected.unwrap_or(0) + rows);
+                        }
+                    }
+                    continue;
                 }
                 _ => continue,
             };

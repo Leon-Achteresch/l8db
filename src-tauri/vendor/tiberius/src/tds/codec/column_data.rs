@@ -20,6 +20,7 @@ mod text;
 #[cfg(feature = "tds73")]
 mod time;
 mod var_len;
+mod variant;
 mod xml;
 
 use super::{Encode, FixedLenType, TypeInfo, VarLenType};
