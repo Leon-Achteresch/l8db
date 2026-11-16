@@ -26,6 +26,7 @@ import { CsvConflictOptions } from "./csv-conflict-options";
 import { CsvParseOptions } from "./csv-import-panel/csv-parse-options";
 import { StructuredParseOptions } from "./csv-import-panel/structured-parse-options";
 import type { CsvImportState } from "./csv-import-panel/use-csv-import";
+import { CsvImportValidation } from "./csv-import-validation";
 import { CsvMappingTable } from "./csv-mapping-table";
 import { CsvPreviewTable } from "./csv-preview-table";
 
@@ -288,20 +289,7 @@ export function CsvImportPanel({
           </section>
         )}
 
-        {issues && (issues.errors.length > 0 || issues.warnings.length > 0) && (
-          <ul className="space-y-1 border-b px-4 py-2 text-xs">
-            {issues.errors.slice(0, 10).map((error, index) => (
-              <li key={`e${index}`} className="text-destructive">
-                {error}
-              </li>
-            ))}
-            {issues.warnings.slice(0, 10).map((warning, index) => (
-              <li key={`w${index}`} className="text-amber-700 dark:text-amber-400">
-                {warning}
-              </li>
-            ))}
-          </ul>
-        )}
+        {issues && <CsvImportValidation issues={issues} />}
 
         {parsed && (
           <section id="import-step-run">

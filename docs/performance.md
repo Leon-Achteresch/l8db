@@ -443,3 +443,24 @@ The end-to-end run (`L8DB_CLI_E2E=1 bun test tests/cli-e2e.test.ts`, SQLite, pse
 ### Missing coverage
 
 Windows and Linux were type-checked only (`cargo check --target x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu` on a scratch crate with the TUI modules); the TUI has not run on either. Drivers other than SQLite were not exercised through the TUI. Retained memory was bounded by construction and by the row cap, not measured as process RSS. No throttled-CPU run.
+
+
+## Lokale Importvorprüfung: NULL-Verletzungen
+
+`tests/perf-csv-validation.test.ts` gehört zur Core-Suite und kann einzeln laufen.
+Der synchrone Prüfschritt scannt die geladenen Datensätze, zählt alle Verletzungen
+zugeordneter NOT-NULL-Spalten und hält höchstens zehn Fehlerdetails. Er startet
+keine Datei-/Datenbankzugriffe, Timer oder Hintergrundläufe; ein Abbruch eines
+laufenden Hintergrundjobs ist daher nicht anwendbar. Der Idle-Test prüft, dass
+nach Rückkehr keine weiteren Zellzugriffe stattfinden. Dies ist keine vollständige
+Datei-, Typ-, Unique-, FK- oder Triggerprüfung und kein erfolgreicher Probeimport.
+
+Messung vom 16.11.2026: macOS/Darwin 27.0.0, arm64, Apple M3, 16 GiB RAM,
+Bun 1.3.10. 10.000 Datensätze × 32 NOT-NULL-Spalten, 320.000 Verletzungen,
+15 gemessene Durchläufe nach zwei Warmläufen: Median 1,41 ms, p95 1,48 ms.
+Nach zehn zusätzlichen Durchläufen und GC blieben 29.131 Bytes zusätzliche
+JS-Heapgröße; dies ist eine lokale Heapmessung, kein RSS- oder Native-Heap-Beweis.
+Der Bericht enthält zehn Details und bleibt im Szenario unter 2.000 Zeichen.
+Budgets: Median < 50 ms, p95 < 100 ms, zusätzlicher gehaltener JS-Heap < 4 MiB.
+Keine Browser-/DOM-Leistungsmessung, Windows-/Linux-Messung oder Live-Datenbank
+in diesem Paket; keine CPU-/Heap-Simulation als Plattformabdeckung ausgegeben.
