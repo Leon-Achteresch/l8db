@@ -185,6 +185,12 @@ pub fn write_rows(
 fn object(columns: &[String], row: &Value) -> Value {
     let mut map = serde_json::Map::new();
     for (index, column) in columns.iter().enumerate() {
+        if row
+            .as_object()
+            .is_some_and(|fields| !fields.contains_key(column))
+        {
+            continue;
+        }
         let mut key = column.clone();
         let mut n = 1;
         while map.contains_key(&key) {
@@ -248,6 +254,18 @@ mod tests {
         assert_eq!(text, "{\"b\":true,\"a\":null}\n");
         let text = render(Format::Ndjson, &["id", "id", "id_2"], &[json!([1, 2, 3])]);
         assert_eq!(text, "{\"id\":1,\"id_2\":2,\"id_2_2\":3}\n");
+    }
+
+    #[test]
+    fn json_keeps_missing_document_fields_missing() {
+        let rows = [json!({"_id": 2, "tags": ["x"], "name": null})];
+        let columns = ["_id", "email", "name", "tags"];
+        let text = render(Format::Ndjson, &columns, &rows);
+        assert_eq!(text, "{\"_id\":2,\"name\":null,\"tags\":[\"x\"]}\n");
+        let text = render(Format::Json, &columns, &rows);
+        assert!(!text.contains("email"));
+        let text = render(Format::Csv, &columns, &rows);
+        assert_eq!(text, "_id,email,name,tags\n2,,,\"[\"\"x\"\"]\"\n");
     }
 
     #[test]

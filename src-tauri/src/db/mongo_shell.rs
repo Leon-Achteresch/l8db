@@ -3,10 +3,160 @@ use mongodb::bson::{doc, Bson, Document};
 use serde_json::{json, Value};
 
 pub fn to_command(input: &str) -> Option<Result<Document, String>> {
-    let src = input.trim().trim_end_matches(';').trim_end();
+    let src = skip_comments(input)
+        .trim_end()
+        .trim_end_matches(';')
+        .trim_end();
+    if src.starts_with('{') && src.len() != input.trim().len() {
+        return Some(super::mongodb::parse_document(src, "Der Befehl"));
+    }
     let rest = src.strip_prefix("db.")?;
+    if let Some(inner) = rest.strip_prefix("runCommand") {
+        return Some(run_command(inner.trim_start()));
+    }
     Some(parse_call_chain(rest).and_then(|(coll, calls)| build(&coll, calls)))
 }
+
+pub fn split(input: &str) -> Vec<String> {
+    let chars: Vec<char> = input.chars().collect();
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut depth = 0i32;
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '/' && matches!(chars.get(i + 1), Some('/' | '*')) {
+            let end = comment_end(&chars, i);
+            if depth > 0 {
+                current.extend(&chars[i..end]);
+            }
+            i = end;
+            continue;
+        }
+        let end = match c {
+            '"' | '\'' => skip_string(&chars, i),
+            '/' if regex_position(&current) => skip_regex(&chars, i),
+            _ => i,
+        };
+        if end > i {
+            current.extend(&chars[i..(end + 1).min(chars.len())]);
+            i = end + 1;
+            continue;
+        }
+        match c {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            _ => {}
+        }
+        let boundary = depth <= 0
+            && (c == ';'
+                || (c == '\n'
+                    && !current.trim().is_empty()
+                    && next_code(&chars, i + 1) != Some('.')));
+        if boundary {
+            if !current.trim().is_empty() {
+                parts.push(current.trim().to_string());
+            }
+            current.clear();
+            depth = 0;
+        } else {
+            current.push(c);
+        }
+        i += 1;
+    }
+    if !current.trim().is_empty() {
+        parts.push(current.trim().to_string());
+    }
+    parts
+}
+
+fn next_code(chars: &[char], mut i: usize) -> Option<char> {
+    loop {
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+        if chars.get(i) == Some(&'/') && matches!(chars.get(i + 1), Some('/' | '*')) {
+            i = comment_end(chars, i);
+        } else {
+            return chars.get(i).copied();
+        }
+    }
+}
+
+fn comment_end(chars: &[char], start: usize) -> usize {
+    let mut i = start + 2;
+    if chars.get(start + 1) == Some(&'/') {
+        while i < chars.len() && chars[i] != '\n' {
+            i += 1;
+        }
+        return i;
+    }
+    while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '/') {
+        i += 1;
+    }
+    (i + 2).min(chars.len())
+}
+
+fn skip_comments(input: &str) -> &str {
+    let mut rest = input.trim_start();
+    while rest.starts_with("//") || rest.starts_with("/*") {
+        let chars: Vec<char> = rest.chars().collect();
+        let end = comment_end(&chars, 0);
+        let bytes: usize = chars[..end].iter().map(|c| c.len_utf8()).sum();
+        rest = rest[bytes..].trim_start();
+    }
+    rest
+}
+
+fn regex_position(before: &str) -> bool {
+    matches!(
+        before.trim_end().chars().last(),
+        None | Some(':' | ',' | '(' | '[' | '{')
+    )
+}
+
+fn skip_regex(chars: &[char], start: usize) -> usize {
+    let mut i = start + 1;
+    let mut class = false;
+    while i < chars.len() && chars[i] != '\n' {
+        match chars[i] {
+            '\\' => i += 1,
+            '[' => class = true,
+            ']' => class = false,
+            '/' if !class => {
+                while i + 1 < chars.len() && chars[i + 1].is_ascii_alphabetic() {
+                    i += 1;
+                }
+                return i;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    start
+}
+
+fn run_command(inner: &str) -> Result<Document, String> {
+    let chars: Vec<char> = inner.chars().collect();
+    if chars.first() != Some(&'(') {
+        return Err("Erwartet db.runCommand({...})".into());
+    }
+    let close = matching(&chars, 0)?;
+    if chars[close + 1..].iter().any(|c| !c.is_whitespace()) {
+        return Err("Nach db.runCommand(...) ist nichts weiter möglich".into());
+    }
+    match parse_args(&chars[1..close].iter().collect::<String>())?
+        .into_iter()
+        .next()
+    {
+        Some(Bson::Document(command)) => Ok(command),
+        _ => {
+            Err("db.runCommand erwartet ein Befehlsdokument, z. B. db.runCommand({ping: 1})".into())
+        }
+    }
+}
+
+const SHAPE: &str = "Erwartet db.<collection>.<methode>(...) oder db.runCommand({...}); mehrere Anweisungen mit ; oder Zeilenumbruch trennen";
 
 fn parse_call_chain(rest: &str) -> Result<(String, Vec<(String, Vec<Bson>)>), String> {
     let chars: Vec<char> = rest.chars().collect();
@@ -27,9 +177,7 @@ fn parse_call_chain(rest: &str) -> Result<(String, Vec<(String, Vec<Bson>)>), St
             i += 1;
         }
         let path: String = chars[start..i].iter().collect();
-        let dot = path
-            .rfind('.')
-            .ok_or("Erwartet db.<collection>.<methode>(...)")?;
+        let dot = path.rfind('.').ok_or(SHAPE)?;
         coll = path[..dot].to_string();
         i = start + path[..dot].chars().count();
     }
@@ -37,6 +185,10 @@ fn parse_call_chain(rest: &str) -> Result<(String, Vec<(String, Vec<Bson>)>), St
     while i < chars.len() {
         if chars[i].is_whitespace() {
             i += 1;
+            continue;
+        }
+        if chars[i] == '/' && matches!(chars.get(i + 1), Some('/' | '*')) {
+            i = comment_end(&chars, i);
             continue;
         }
         if chars[i] != '.' {
@@ -62,7 +214,7 @@ fn parse_call_chain(rest: &str) -> Result<(String, Vec<(String, Vec<Bson>)>), St
         i = close + 1;
     }
     if coll.is_empty() || calls.is_empty() {
-        return Err("Erwartet db.<collection>.<methode>(...)".into());
+        return Err(SHAPE.into());
     }
     Ok((coll, calls))
 }
@@ -86,11 +238,7 @@ fn build(coll: &str, calls: Vec<(String, Vec<Bson>)>) -> Result<Document, String
         "aggregate" => {
             doc! { "aggregate": coll, "pipeline": arg(0).unwrap_or(Bson::Array(vec![])), "cursor": {} }
         }
-        "countDocuments" | "count" => doc! {
-            "aggregate": coll,
-            "pipeline": [{ "$match": filter() }, { "$count": "count" }],
-            "cursor": {},
-        },
+        "countDocuments" | "count" => count_command(coll, filter()),
         "distinct" => {
             let mut c =
                 doc! { "distinct": coll, "key": arg(0).ok_or("distinct erwartet ein Feld")? };
@@ -124,8 +272,21 @@ fn build(coll: &str, calls: Vec<(String, Vec<Bson>)>) -> Result<Document, String
         _ => return Err(format!("Nicht unterstützte Methode: {method}")),
     };
     for (name, args) in calls {
+        match name.as_str() {
+            "pretty" | "toArray" => continue,
+            "explain" => return Err("Nicht unterstützt: .explain(). Als Befehlsdokument: {\"explain\": {\"find\": \"users\", \"filter\": {}}}".into()),
+            _ => {}
+        }
         if !command.contains_key("find") {
             return Err(format!(".{name}() ist nur nach find() möglich"));
+        }
+        if name == "count" {
+            let filter = command
+                .get("filter")
+                .cloned()
+                .unwrap_or(Bson::Document(Document::new()));
+            command = count_command(coll, filter);
+            continue;
         }
         let value = args
             .into_iter()
@@ -141,6 +302,18 @@ fn build(coll: &str, calls: Vec<(String, Vec<Bson>)>) -> Result<Document, String
     Ok(command)
 }
 
+fn count_command(coll: &str, filter: Bson) -> Document {
+    doc! {
+        "aggregate": coll,
+        "pipeline": [
+            { "$match": filter },
+            { "$facet": { "c": [{ "$count": "count" }] } },
+            { "$project": { "count": { "$ifNull": [{ "$arrayElemAt": ["$c.count", 0] }, 0] } } },
+        ],
+        "cursor": {},
+    }
+}
+
 fn parse_args(src: &str) -> Result<Vec<Bson>, String> {
     let value: Value = serde_json::from_str(&js_to_json(&format!("[{src}]"))?)
         .map_err(|e| format!("Ungültige Argumente: {e}"))?;
@@ -153,9 +326,16 @@ fn parse_args(src: &str) -> Result<Vec<Bson>, String> {
 fn matching(chars: &[char], open: usize) -> Result<usize, String> {
     let mut depth = 0;
     let mut i = open;
+    let mut prev = None;
     while i < chars.len() {
-        match chars[i] {
+        let c = chars[i];
+        if c == '/' && matches!(chars.get(i + 1), Some('/' | '*')) {
+            i = comment_end(chars, i);
+            continue;
+        }
+        match c {
             '"' | '\'' => i = skip_string(chars, i),
+            '/' if matches!(prev, Some(':' | ',' | '(' | '[' | '{')) => i = skip_regex(chars, i),
             '(' | '[' | '{' => depth += 1,
             ')' | ']' | '}' => {
                 depth -= 1;
@@ -164,6 +344,9 @@ fn matching(chars: &[char], open: usize) -> Result<usize, String> {
                 }
             }
             _ => {}
+        }
+        if !c.is_whitespace() {
+            prev = Some(c);
         }
         i += 1;
     }
@@ -217,6 +400,20 @@ fn js_to_json(src: &str) -> Result<String, String> {
             };
             out.push_str(&serde_json::to_string(&text).unwrap());
             i = end + 1;
+        } else if c == '/' && regex_position(&out) && skip_regex(&chars, i) > i {
+            let end = skip_regex(&chars, i);
+            let body: String = chars[i + 1..=end].iter().collect();
+            let close = body.rfind('/').unwrap_or(body.len());
+            let mut options: Vec<char> = body[close + 1..].chars().collect();
+            options.sort_unstable();
+            out.push_str(
+                &json!({ "$regularExpression": {
+                    "pattern": &body[..close],
+                    "options": options.into_iter().collect::<String>(),
+                } })
+                .to_string(),
+            );
+            i = end + 1;
         } else if c == ',' {
             if !matches!(next_significant(&chars, i + 1), Some('}' | ']')) {
                 out.push(',');
@@ -230,7 +427,11 @@ fn js_to_json(src: &str) -> Result<String, String> {
             {
                 i += 1;
             }
-            out.extend(chars[start + usize::from(c == '+')..i].iter());
+            let token: String = chars[start + usize::from(c == '+')..i].iter().collect();
+            match token.as_str() {
+                "-Infinity" => out.push_str(r#"{"$numberDouble":"-Infinity"}"#),
+                _ => out.push_str(&token),
+            }
         } else if c.is_alphabetic() || c == '_' || c == '$' {
             let start = i;
             while i < chars.len()
@@ -253,13 +454,21 @@ fn js_to_json(src: &str) -> Result<String, String> {
                     let args: Vec<Value> =
                         serde_json::from_str(&js_to_json(&format!("[{inner}]"))?)
                             .map_err(|e| format!("{ident}(): {e}"))?;
-                    out.push_str(&constructor(&ident, args.first())?.to_string());
+                    out.push_str(&constructor(&ident, &args)?.to_string());
                     i = close + 1;
                 }
                 _ => out.push_str(match ident.as_str() {
                     "true" | "false" | "null" => &ident,
                     "undefined" => "null",
-                    _ => return Err(format!("Unbekannter Bezeichner: {ident}")),
+                    "NaN" => r#"{"$numberDouble":"NaN"}"#,
+                    "Infinity" => r#"{"$numberDouble":"Infinity"}"#,
+                    "MinKey" => r#"{"$minKey":1}"#,
+                    "MaxKey" => r#"{"$maxKey":1}"#,
+                    _ => {
+                        return Err(format!(
+                            "Unbekannter Bezeichner: {ident}. Zeichenketten in Anführungszeichen setzen"
+                        ))
+                    }
                 }),
             }
         } else {
@@ -270,7 +479,8 @@ fn js_to_json(src: &str) -> Result<String, String> {
     Ok(out)
 }
 
-fn constructor(name: &str, arg: Option<&Value>) -> Result<Value, String> {
+fn constructor(name: &str, args: &[Value]) -> Result<Value, String> {
+    let arg = args.first();
     let text = arg.map(|v| {
         v.as_str()
             .map(str::to_string)
@@ -293,6 +503,41 @@ fn constructor(name: &str, arg: Option<&Value>) -> Result<Value, String> {
         "NumberLong" | "Long" => json!({ "$numberLong": need()? }),
         "NumberInt" | "Int32" => json!({ "$numberInt": need()? }),
         "NumberDecimal" | "Decimal128" => json!({ "$numberDecimal": need()? }),
+        "Timestamp" => match (
+            args.first().and_then(Value::as_u64),
+            args.get(1).and_then(Value::as_u64),
+        ) {
+            (Some(t), Some(i)) => json!({ "$timestamp": { "t": t, "i": i } }),
+            (None, None) if args.is_empty() => json!({ "$timestamp": { "t": 0, "i": 0 } }),
+            _ => {
+                return Err(
+                    "Timestamp() erwartet zwei Zahlen, z. B. Timestamp(1700000000, 1)".into(),
+                )
+            }
+        },
+        "BinData" => match (
+            args.first().and_then(Value::as_u64),
+            args.get(1).and_then(Value::as_str),
+        ) {
+            (Some(subtype), Some(base64)) if subtype < 256 => {
+                json!({ "$binary": { "base64": base64, "subType": format!("{subtype:02x}") } })
+            }
+            _ => {
+                return Err(
+                    "BinData() erwartet Subtyp und Base64, z. B. BinData(0, \"AAECAw==\")".into(),
+                )
+            }
+        },
+        "UUID" => {
+            let uuid = match arg {
+                None => mongodb::bson::Uuid::new(),
+                Some(_) => mongodb::bson::Uuid::parse_str(need()?)
+                    .map_err(|_| format!("Ungültige UUID: {}", text.clone().unwrap_or_default()))?,
+            };
+            Bson::Binary(mongodb::bson::Binary::from_uuid(uuid)).into_canonical_extjson()
+        }
+        "MinKey" => json!({ "$minKey": 1 }),
+        "MaxKey" => json!({ "$maxKey": 1 }),
         _ => return Err(format!("Unbekannte Funktion: {name}()")),
     })
 }
@@ -357,5 +602,111 @@ mod tests {
         assert_eq!(cmd.get_str("delete").unwrap(), "sys.users");
         assert!(to_command("{\"find\": \"x\"}").is_none());
         assert!(to_command("db.x.foo()").unwrap().is_err());
+    }
+
+    #[test]
+    fn understands_mongosh_helpers_and_regex() {
+        let cmd = to_command(
+            r#"db.t.find({ts: Timestamp(1700000000, 1), bin: BinData(0, "AAECAw=="), uuid: UUID("c9a646d3-9c61-4cb3-b9e1-3f2e0b3e5a10"), lo: MinKey(), hi: MaxKey, nan: NaN, inf: -Infinity, email: /^a\/(b)[)]/i, n: {$in: [1, /x/]}})"#,
+        )
+        .unwrap()
+        .unwrap();
+        let filter = cmd.get_document("filter").unwrap();
+        assert!(
+            matches!(filter.get("ts"), Some(Bson::Timestamp(t)) if t.time == 1_700_000_000 && t.increment == 1)
+        );
+        assert!(matches!(filter.get("bin"), Some(Bson::Binary(b)) if b.bytes == [0, 1, 2, 3]));
+        assert!(
+            matches!(filter.get("uuid"), Some(Bson::Binary(b)) if b.subtype == mongodb::bson::spec::BinarySubtype::Uuid)
+        );
+        assert_eq!(filter.get("lo"), Some(&Bson::MinKey));
+        assert_eq!(filter.get("hi"), Some(&Bson::MaxKey));
+        assert!(filter.get_f64("nan").unwrap().is_nan());
+        assert_eq!(filter.get_f64("inf").unwrap(), f64::NEG_INFINITY);
+        match filter.get("email") {
+            Some(Bson::RegularExpression(re)) => {
+                assert_eq!(re.pattern, "^a\\/(b)[)]");
+                assert_eq!(re.options, "i");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(to_command("db.t.find({x: Timestamp(1)})").unwrap().is_err());
+        assert!(to_command("db.t.find({x: foo})")
+            .unwrap()
+            .unwrap_err()
+            .contains("Anführungszeichen"));
+    }
+
+    #[test]
+    fn chain_errors_name_the_alternative() {
+        let explain = to_command("db.users.find().explain()")
+            .unwrap()
+            .unwrap_err();
+        assert!(
+            explain.contains("Nicht unterstützt: .explain()"),
+            "{explain}"
+        );
+        let count = to_command("db.users.find({a: 1}).count()")
+            .unwrap()
+            .unwrap();
+        assert_eq!(count.get_str("aggregate").unwrap(), "users");
+        assert_eq!(
+            count.get_array("pipeline").unwrap()[0]
+                .as_document()
+                .unwrap()
+                .get_document("$match")
+                .unwrap(),
+            &doc! { "a": 1 }
+        );
+        assert!(to_command("db.users.find().pretty()").unwrap().is_ok());
+        assert_eq!(
+            to_command("db.runCommand({ping: 1})").unwrap().unwrap(),
+            doc! { "ping": 1 }
+        );
+        assert!(to_command("db.runCommand(1)").unwrap().is_err());
+        assert!(to_command("db.stats()")
+            .unwrap()
+            .unwrap_err()
+            .contains("runCommand"));
+        let commented = to_command("// Kommentar\n/* c */ db.users.find() // Ende")
+            .unwrap()
+            .unwrap();
+        assert_eq!(commented.get_str("find").unwrap(), "users");
+        let json = to_command("// c\n{\"ping\": 1}").unwrap().unwrap();
+        assert_eq!(json, doc! { "ping": 1 });
+        assert!(to_command("{\"ping\": 1}").is_none());
+    }
+
+    #[test]
+    fn count_documents_always_returns_one_row() {
+        let cmd = to_command("db.big.countDocuments({status: \"nope\"})")
+            .unwrap()
+            .unwrap();
+        let pipeline = cmd.get_array("pipeline").unwrap();
+        assert!(pipeline[1].as_document().unwrap().contains_key("$facet"));
+        assert!(pipeline[2].as_document().unwrap().contains_key("$project"));
+    }
+
+    #[test]
+    fn splits_statements_at_semicolons_and_lines() {
+        assert_eq!(
+            split("db.a.drop(); db.a.insertOne({_id: 1})"),
+            vec!["db.a.drop()", "db.a.insertOne({_id: 1})"]
+        );
+        assert_eq!(
+            split(
+                "// Kopf\ndb.a.find({\n  x: \";\" // c ;\n})\n  .sort({x: 1})\n\n{\"ping\": 1}\n"
+            ),
+            vec![
+                "db.a.find({\n  x: \";\" // c ;\n})\n  .sort({x: 1})",
+                "{\"ping\": 1}"
+            ]
+        );
+        assert_eq!(
+            split("db.a.find({re: /;\\n(/})"),
+            vec!["db.a.find({re: /;\\n(/})"]
+        );
+        assert_eq!(split("{\"find\": \"x\"}"), vec!["{\"find\": \"x\"}"]);
+        assert!(split("  \n// nur Kommentar\n").is_empty());
     }
 }

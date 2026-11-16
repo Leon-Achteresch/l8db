@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use async_trait::async_trait;
 use futures_util::TryStreamExt;
 use mongodb::bson::{doc, Bson, Document};
@@ -18,8 +16,149 @@ pub struct MongoAdapter {
     key: String,
 }
 
+pub const FIELD_SAMPLE: usize = 1000;
+
+static CLIENTS: std::sync::Mutex<Option<Vec<Client>>> = std::sync::Mutex::new(None);
+
+pub fn track_clients() {
+    if let Ok(mut clients) = CLIENTS.lock() {
+        clients.get_or_insert_with(Vec::new);
+    }
+}
+
+pub async fn close_clients() {
+    let clients = CLIENTS
+        .lock()
+        .ok()
+        .and_then(|mut clients| clients.take())
+        .unwrap_or_default();
+    for client in clients {
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), client.shutdown()).await;
+    }
+}
+
 fn map_err(e: mongodb::error::Error) -> String {
-    format!("MongoDB: {e}")
+    format!("MongoDB: {}", describe_error(&e))
+}
+
+fn describe_error(e: &mongodb::error::Error) -> String {
+    use mongodb::error::{ErrorKind, WriteFailure};
+    match e.kind.as_ref() {
+        ErrorKind::Command(c) => server_error(c.code, &c.code_name, &c.message),
+        ErrorKind::Write(WriteFailure::WriteError(w)) => {
+            server_error(w.code, w.code_name.as_deref().unwrap_or(""), &w.message)
+        }
+        ErrorKind::Write(WriteFailure::WriteConcernError(w)) => {
+            server_error(w.code, &w.code_name, &w.message)
+        }
+        ErrorKind::InsertMany(failure) => match (&failure.write_errors, &failure.write_concern_error)
+        {
+            (Some(errors), _) if !errors.is_empty() => format!(
+                "Dokument {}: {}",
+                errors[0].index + 1,
+                server_error(
+                    errors[0].code,
+                    errors[0].code_name.as_deref().unwrap_or(""),
+                    &errors[0].message
+                )
+            ),
+            (_, Some(w)) => server_error(w.code, &w.code_name, &w.message),
+            _ => e.kind.to_string(),
+        },
+        ErrorKind::Authentication { message, .. } => auth_error(message),
+        ErrorKind::ServerSelection { message, .. } => unreachable_error(message),
+        ErrorKind::DnsResolve { message, .. } if message.contains("no records found") => {
+            "DNS: Für den Host der mongodb+srv-URL gibt es keinen SRV-Eintrag. Hostnamen prüfen."
+                .into()
+        }
+        ErrorKind::DnsResolve { .. } => {
+            "DNS-Auflösung fehlgeschlagen. Hostnamen der URL prüfen.".into()
+        }
+        ErrorKind::InvalidArgument { message, .. } if message.contains("No username provided") => {
+            "Die URL enthält keinen Benutzer, das Anmeldeverfahren verlangt aber einen: mongodb://benutzer:passwort@host/db".into()
+        }
+        ErrorKind::InvalidArgument { message, .. } => format!("Ungültige Angabe: {message}"),
+        ErrorKind::Io(error) => network_error(&error.to_string()),
+        kind => kind.to_string(),
+    }
+}
+
+fn server_error(code: i32, name: &str, message: &str) -> String {
+    let message = message
+        .rsplit(" :: caused by :: ")
+        .next()
+        .unwrap_or(message);
+    match code {
+        13 if message.contains("requires authentication") => "Anmeldung nötig: Der Server verlangt Benutzer und Passwort, z. B. mongodb://benutzer:passwort@host/db?authSource=admin".into(),
+        13 => format!("Keine Berechtigung: {message}"),
+        18 => auth_error(message),
+        _ if name.is_empty() => format!("{message} (Code {code})"),
+        _ => format!("{message} (Code {code}, {name})"),
+    }
+}
+
+fn auth_error(message: &str) -> String {
+    if message.contains("Authentication failed") || message.contains("AuthenticationFailed") {
+        "Anmeldung fehlgeschlagen. Prüfe Benutzer und Datenbankpasswort. Liegt der Benutzer in einer anderen Datenbank, authSource angeben, z. B. ?authSource=admin".into()
+    } else {
+        format!("Anmeldung fehlgeschlagen: {message}")
+    }
+}
+
+fn network_error(message: &str) -> String {
+    if message.contains("Connection refused") {
+        "Verbindung abgelehnt. Läuft der Server, stimmen Host und Port?".into()
+    } else if message.contains("timed out") {
+        "Zeitüberschreitung beim Verbinden.".into()
+    } else {
+        format!("Netzwerkfehler: {message}")
+    }
+}
+
+fn unreachable_error(message: &str) -> String {
+    if message.contains("SCRAM") || message.contains("Authentication") {
+        return auth_error(message);
+    }
+    let mut addresses: Vec<&str> = message
+        .split("Address: ")
+        .skip(1)
+        .filter_map(|part| part.split([',', ' ']).next())
+        .collect();
+    addresses.dedup();
+    let reason = if message.contains("Connection refused") {
+        "Verbindung abgelehnt"
+    } else if message.contains("certificate") || message.contains("TLS") {
+        "TLS-Fehler, Zertifikat prüfen"
+    } else if message.contains("None of the available servers suitable") {
+        "kein passender Server, replicaSet und readPreference prüfen"
+    } else if message.contains("timed out") || message.contains("Timed out") {
+        "Zeitüberschreitung"
+    } else {
+        "keine Antwort"
+    };
+    if addresses.is_empty() {
+        format!("Server nicht erreichbar: {reason}.")
+    } else {
+        format!(
+            "Server {} nicht erreichbar: {reason}.",
+            addresses.join(", ")
+        )
+    }
+}
+
+fn write_error(errors: &[Bson]) -> String {
+    let first = errors.first().and_then(Bson::as_document);
+    let text = first.map_or_else(String::new, |error| {
+        server_error(
+            error.get_i32("code").unwrap_or(0),
+            error.get_str("codeName").unwrap_or(""),
+            error.get_str("errmsg").unwrap_or(""),
+        )
+    });
+    match errors.len() {
+        0 | 1 => format!("MongoDB: {text}"),
+        n => format!("MongoDB: {text} (+{} weitere Schreibfehler)", n - 1),
+    }
 }
 
 async fn collect_capped<T, E>(
@@ -51,8 +190,131 @@ fn to_json(bson: Bson) -> serde_json::Value {
                 .collect(),
         ),
         Bson::Array(values) => serde_json::Value::Array(values.into_iter().map(to_json).collect()),
+        Bson::DateTime(date) => match date.try_to_rfc3339_string() {
+            Ok(text) => serde_json::json!({ "$date": text }),
+            Err(_) => Bson::DateTime(date).into_relaxed_extjson(),
+        },
         value => value.into_relaxed_extjson(),
     }
+}
+
+pub fn shell_rows(rows: &[serde_json::Value]) -> Vec<serde_json::Value> {
+    rows.iter()
+        .map(|row| match row {
+            serde_json::Value::Object(fields) => serde_json::Value::Object(
+                fields
+                    .iter()
+                    .map(|(key, value)| (key.clone(), shell_cell(value)))
+                    .collect(),
+            ),
+            other => shell_cell(other),
+        })
+        .collect()
+}
+
+fn shell_cell(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(_) | serde_json::Value::Array(_) => {
+            serde_json::Value::String(shell_text(value))
+        }
+        other => other.clone(),
+    }
+}
+
+pub fn shell_text(value: &serde_json::Value) -> String {
+    use serde_json::Value;
+    match value {
+        Value::Object(map) => {
+            if let Some(text) = shell_wrapper(map) {
+                return text;
+            }
+            if map.is_empty() {
+                return "{}".into();
+            }
+            let fields: Vec<String> = map
+                .iter()
+                .map(|(key, value)| {
+                    let plain = key.chars().enumerate().all(|(i, c)| {
+                        c == '_'
+                            || c == '$'
+                            || c.is_ascii_alphabetic()
+                            || (i > 0 && c.is_ascii_digit())
+                    });
+                    let key = if plain && !key.is_empty() {
+                        key.clone()
+                    } else {
+                        Value::String(key.clone()).to_string()
+                    };
+                    format!("{key}: {}", shell_text(value))
+                })
+                .collect();
+            format!("{{ {} }}", fields.join(", "))
+        }
+        Value::Array(items) => format!(
+            "[{}]",
+            items.iter().map(shell_text).collect::<Vec<_>>().join(", ")
+        ),
+        other => other.to_string(),
+    }
+}
+
+fn shell_wrapper(map: &serde_json::Map<String, serde_json::Value>) -> Option<String> {
+    use base64::Engine;
+    use serde_json::Value;
+    let (key, inner) = map.iter().next()?;
+    if map.len() != 1 && key != "$code" {
+        return None;
+    }
+    let quoted = |text: &str| Value::String(text.to_string()).to_string();
+    let field = |name: &str| inner.get(name).cloned().unwrap_or(Value::Null);
+    Some(match (key.as_str(), inner) {
+        ("$oid", Value::String(id)) => format!("ObjectId({})", quoted(id)),
+        ("$numberLong", Value::String(n)) => format!("NumberLong({})", quoted(n)),
+        ("$numberDecimal", Value::String(n)) => format!("NumberDecimal({})", quoted(n)),
+        ("$numberDouble" | "$numberInt", Value::String(n)) => n.clone(),
+        ("$date", Value::String(date)) => format!("ISODate({})", quoted(date)),
+        ("$date", Value::Object(_)) => {
+            let millis: i64 = field("$numberLong").as_str()?.parse().ok()?;
+            match mongodb::bson::DateTime::from_millis(millis).try_to_rfc3339_string() {
+                Ok(date) => format!("ISODate({})", quoted(&date)),
+                Err(_) => format!("new Date({millis})"),
+            }
+        }
+        ("$binary", Value::Object(_)) => {
+            let data = field("base64").as_str()?.to_string();
+            let subtype = u8::from_str_radix(field("subType").as_str()?, 16).ok()?;
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(&data)
+                .unwrap_or_default();
+            if subtype == 4 && bytes.len() == 16 {
+                let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+                format!(
+                    "UUID(\"{}-{}-{}-{}-{}\")",
+                    &hex[..8],
+                    &hex[8..12],
+                    &hex[12..16],
+                    &hex[16..20],
+                    &hex[20..]
+                )
+            } else {
+                format!("BinData({subtype}, {})", quoted(&data))
+            }
+        }
+        ("$timestamp", Value::Object(_)) => {
+            format!("Timestamp({}, {})", field("t"), field("i"))
+        }
+        ("$regularExpression", Value::Object(_)) => format!(
+            "/{}/{}",
+            field("pattern").as_str()?,
+            field("options").as_str().unwrap_or_default()
+        ),
+        ("$code", Value::String(code)) => format!("Code({})", quoted(code)),
+        ("$symbol", Value::String(symbol)) => quoted(symbol),
+        ("$minKey", _) => "MinKey()".into(),
+        ("$maxKey", _) => "MaxKey()".into(),
+        ("$undefined", _) => "undefined".into(),
+        _ => return None,
+    })
 }
 
 pub(crate) fn parse_document(input: &str, what: &str) -> Result<Document, String> {
@@ -60,37 +322,31 @@ pub(crate) fn parse_document(input: &str, what: &str) -> Result<Document, String
     if trimmed.is_empty() {
         return Ok(Document::new());
     }
-    let value: serde_json::Value = serde_json::from_str(trimmed)
-        .map_err(|e| format!("{what} muss gültiges JSON sein: {e}"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(trimmed).map_err(|e| json_error(what, trimmed, &e))?;
     match Bson::try_from(value).map_err(|e| format!("{what} konnte nicht gelesen werden: {e}"))? {
         Bson::Document(document) => Ok(document),
         _ => Err(format!("{what} muss ein JSON-Objekt sein")),
     }
 }
 
-fn bson_type(value: &Bson) -> &'static str {
-    match value {
-        Bson::Double(_) => "double",
-        Bson::String(_) => "string",
-        Bson::Array(_) => "array",
-        Bson::Document(_) => "object",
-        Bson::Boolean(_) => "bool",
-        Bson::Null => "null",
-        Bson::RegularExpression(_) => "regex",
-        Bson::JavaScriptCode(_) | Bson::JavaScriptCodeWithScope(_) => "javascript",
-        Bson::Int32(_) => "int",
-        Bson::Int64(_) => "long",
-        Bson::Timestamp(_) => "timestamp",
-        Bson::Binary(_) => "binData",
-        Bson::ObjectId(_) => "objectId",
-        Bson::DateTime(_) => "date",
-        Bson::Symbol(_) => "symbol",
-        Bson::Decimal128(_) => "decimal",
-        Bson::Undefined => "undefined",
-        Bson::MaxKey => "maxKey",
-        Bson::MinKey => "minKey",
-        Bson::DbPointer(_) => "dbPointer",
-    }
+fn json_error(what: &str, input: &str, error: &serde_json::Error) -> String {
+    let reason = if error.is_eof() {
+        "unvollständig, eine Klammer oder ein Anführungszeichen fehlt".to_string()
+    } else {
+        format!("Zeile {}, Spalte {}", error.line(), error.column())
+    };
+    let example = if what == "Der Filter" {
+        "{\"status\": \"open\"}"
+    } else {
+        "db.users.find({}) oder {\"find\": \"users\"}"
+    };
+    let sql = if what == "Der Filter" && !input.starts_with('{') {
+        " SQL-Bedingungen gelten bei MongoDB nicht."
+    } else {
+        ""
+    };
+    format!("{what} muss gültiges JSON sein ({reason}), z. B. {example}.{sql}")
 }
 
 pub fn checked_uri(value: &str) -> Result<String, String> {
@@ -187,7 +443,13 @@ impl MongoAdapter {
                         Some(super::execution::connection_duration());
                     options.connect_timeout = Some(super::execution::connection_duration());
                     options.app_name.get_or_insert_with(|| "l8db".to_string());
-                    Client::with_options(options).map_err(map_err)
+                    let client = Client::with_options(options).map_err(map_err)?;
+                    if let Ok(mut clients) = CLIENTS.lock() {
+                        if let Some(clients) = clients.as_mut() {
+                            clients.push(client.clone());
+                        }
+                    }
+                    Ok(client)
                 },
             )
             .await?;
@@ -211,27 +473,31 @@ impl MongoAdapter {
     ) -> Result<Vec<(String, String, bool)>, String> {
         let client = self.client().await?;
         let coll = client.database(schema).collection::<Document>(table);
-        let mut cursor =
-            timed(async { coll.find(doc! {}).limit(50).await.map_err(map_err) }).await?;
-        let mut seen: BTreeMap<String, (String, usize, bool)> = BTreeMap::new();
-        let mut total = 0usize;
-        while let Some(document) = cursor.try_next().await.map_err(map_err)? {
-            total += 1;
-            for (key, value) in document {
-                let entry = seen
-                    .entry(key)
-                    .or_insert_with(|| (bson_type(&value).to_string(), 0, false));
-                entry.1 += 1;
-                entry.2 |= matches!(value, Bson::Null);
-                if entry.0 == "null" {
-                    entry.0 = bson_type(&value).to_string();
-                }
-            }
+        let pipeline = vec![
+            doc! { "$limit": FIELD_SAMPLE as i64 },
+            doc! { "$project": { "f": { "$objectToArray": "$$ROOT" } } },
+            doc! { "$unwind": "$f" },
+            doc! { "$group": { "_id": { "k": "$f.k", "t": { "$type": "$f.v" } }, "n": { "$sum": 1 } } },
+            doc! { "$sort": { "n": -1, "_id.t": 1 } },
+            doc! { "$group": { "_id": "$_id.k", "types": { "$push": "$_id.t" } } },
+        ];
+        let mut cursor = timed(async { coll.aggregate(pipeline).await.map_err(map_err) }).await?;
+        let mut columns: Vec<(String, String, bool)> = Vec::new();
+        while let Some(field) = cursor.try_next().await.map_err(map_err)? {
+            let name = field.get_str("_id").unwrap_or_default().to_string();
+            let types: Vec<String> = field
+                .get_array("types")
+                .map(|types| {
+                    types
+                        .iter()
+                        .filter_map(Bson::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let nullable = name != "_id";
+            columns.push((name, field_type(&types), nullable));
         }
-        let mut columns: Vec<(String, String, bool)> = seen
-            .into_iter()
-            .map(|(name, (ty, count, null))| (name, ty, null || count < total))
-            .collect();
         columns.sort_by_key(|(name, _, _)| {
             if name == "_id" {
                 String::new()
@@ -240,6 +506,38 @@ impl MongoAdapter {
             }
         });
         Ok(columns)
+    }
+
+    async fn collection_names(&self, db: &str, kind: Option<&str>) -> Result<Vec<String>, String> {
+        let client = self.client().await?;
+        let database = client.database(db);
+        let mut names = timed(async {
+            match kind {
+                Some(kind) => database
+                    .list_collection_names()
+                    .filter(doc! { "type": kind })
+                    .await
+                    .map_err(map_err),
+                None => database.list_collection_names().await.map_err(map_err),
+            }
+        })
+        .await?;
+        names.retain(|n| !n.starts_with("system."));
+        names.sort();
+        Ok(names)
+    }
+}
+
+fn field_type(types: &[String]) -> String {
+    let named: Vec<&str> = types
+        .iter()
+        .map(String::as_str)
+        .filter(|ty| *ty != "null")
+        .collect();
+    if named.is_empty() {
+        "null".into()
+    } else {
+        named.join(", ")
     }
 }
 
@@ -274,17 +572,25 @@ impl DatabaseAdapter for MongoAdapter {
             Some(s) => s.to_string(),
             None => self.database_name(&client).await?,
         };
-        let mut names = timed(async {
-            client
-                .database(&db)
-                .list_collection_names()
-                .await
-                .map_err(map_err)
-        })
-        .await?;
-        names.retain(|n| !n.starts_with("system."));
-        names.sort();
-        Ok(names
+        Ok(self
+            .collection_names(&db, None)
+            .await?
+            .into_iter()
+            .map(|name| TableInfo {
+                schema: db.clone(),
+                name,
+            })
+            .collect())
+    }
+
+    async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
+        let db = match schema {
+            Some(s) => s.to_string(),
+            None => self.database_name(&self.client().await?).await?,
+        };
+        Ok(self
+            .collection_names(&db, Some("view"))
+            .await?
             .into_iter()
             .map(|name| TableInfo {
                 schema: db.clone(),
@@ -486,14 +792,11 @@ impl DatabaseAdapter for MongoAdapter {
             .await?;
             if let Ok(errors) = result.get_array("writeErrors") {
                 if !errors.is_empty() {
-                    return Err(format!("MongoDB: {}", to_json(Bson::Array(errors.clone()))));
+                    return Err(write_error(errors));
                 }
             }
             if let Ok(error) = result.get_document("writeConcernError") {
-                return Err(format!(
-                    "MongoDB: {}",
-                    to_json(Bson::Document(error.clone()))
-                ));
+                return Err(write_error(&[Bson::Document(error.clone())]));
             }
             let batch = result.get_array("documents").ok().cloned();
             (result, batch)
@@ -750,6 +1053,117 @@ impl DatabaseAdapter for MongoAdapter {
         })
     }
 
+    async fn export_table_csv(
+        &self,
+        request: &super::export::TableExportRequest,
+        progress: &(dyn Fn(i64) + Send + Sync),
+    ) -> Result<super::export::TableExportOutcome, String> {
+        use super::export;
+        use super::export_formats::{FileFormat, RowSink, SinkSpec};
+        if request.format == FileFormat::Csv {
+            export::validate_csv_options(&request.options)?;
+        }
+        let filter = parse_document(request.filter.as_deref().unwrap_or(""), "Der Filter")?;
+        let columns: Vec<String> = self
+            .sample_columns(&request.schema, &request.table)
+            .await?
+            .into_iter()
+            .map(|(name, _, _)| name)
+            .collect();
+        if columns.is_empty() {
+            return Err("Keine Felder für den Export gefunden.".into());
+        }
+        let max_rows = export::effective_max_rows(request.max_rows);
+        let client = self.client().await?;
+        let coll = client
+            .database(&request.schema)
+            .collection::<Document>(&request.table);
+        let mut find = coll
+            .find(filter)
+            .limit(max_rows.saturating_add(1))
+            .batch_size(export::EXPORT_BATCH_ROWS as u32);
+        if let Some(field) = request.order_by.as_deref() {
+            find = find.sort(doc! { field: if request.order_desc { -1 } else { 1 } });
+        }
+        let mut cursor = timed(async { find.await.map_err(map_err) }).await?;
+        let mut writer = RowSink::create(SinkSpec {
+            format: request.format,
+            path: &request.path,
+            columns: &columns,
+            kinds: super::export_formats::parquet_kinds(&columns, &[], &[], &request.masks),
+            csv: Some(&request.options),
+            title: Some(&request.table),
+        })?;
+        let shuffle_seed = std::hash::BuildHasher::hash_one(
+            &std::collections::hash_map::RandomState::new(),
+            &request.job_id,
+        );
+        let (mut total, mut truncated) = (0i64, false);
+        let mut batch: Vec<serde_json::Value> = Vec::new();
+        let mut failure: Option<String> = None;
+        loop {
+            let next = if export::is_cancelled(&request.job_id) {
+                None
+            } else {
+                match cursor.try_next().await {
+                    Ok(next) => next,
+                    Err(error) => {
+                        failure = Some(map_err(error));
+                        None
+                    }
+                }
+            };
+            if next.is_some() && total + batch.len() as i64 == max_rows {
+                truncated = true;
+            }
+            let done = next.is_none() || truncated;
+            if let Some(document) = next.filter(|_| !truncated) {
+                batch.push(to_json(Bson::Document(document)));
+            }
+            if failure.is_none() && (done || batch.len() as i64 >= export::EXPORT_BATCH_ROWS) {
+                for mask in request
+                    .masks
+                    .iter()
+                    .filter(|mask| mask.mode == super::masking::MaskMode::Shuffle)
+                {
+                    super::masking::shuffle_column(
+                        &mut batch,
+                        &mask.column,
+                        shuffle_seed ^ total as u64,
+                    );
+                }
+                for value in batch.drain(..) {
+                    if let Err(error) =
+                        writer.write_row(&columns, &value, &request.masks, Some(&request.options))
+                    {
+                        failure = Some(error);
+                        break;
+                    }
+                    total += 1;
+                }
+                progress(total);
+            }
+            if done || failure.is_some() {
+                break;
+            }
+        }
+        if export::is_cancelled(&request.job_id) {
+            writer.abort();
+            export::clear_cancel(&request.job_id);
+            return Err("Export abgebrochen.".to_string());
+        }
+        if let Some(message) = failure {
+            writer.abort();
+            return Err(message);
+        }
+        writer.finish()?;
+        Ok(export::TableExportOutcome {
+            rows: total,
+            path: request.path.clone(),
+            truncated,
+        })
+    }
+
     async fn create_schema(&self, _name: &str) -> Result<(), String> {
         Err(unsupported(
             "Datenbanken werden bei der ersten Collection automatisch angelegt",
@@ -950,6 +1364,102 @@ mod tests {
             "srv".into()
         )
         .is_ok());
+    }
+
+    #[test]
+    fn errors_are_plain_german_text() {
+        assert_eq!(
+            server_error(2, "BadValue", "error processing query: ns=x planner returned error :: caused by :: hint provided does not correspond to an existing index"),
+            "hint provided does not correspond to an existing index (Code 2, BadValue)"
+        );
+        assert!(server_error(
+            13,
+            "Unauthorized",
+            "Command listDatabases requires authentication"
+        )
+        .starts_with("Anmeldung nötig"));
+        assert!(
+            server_error(18, "AuthenticationFailed", "Authentication failed.")
+                .contains("authSource")
+        );
+        let refused = unreachable_error("Server selection timeout: No available servers. Topology: { Type: Unknown, Servers: [ { Address: 127.0.0.1:27066, Type: Unknown, Error: Kind: I/O error: Connection refused (os error 61), labels: {} } ] }");
+        assert_eq!(
+            refused,
+            "Server 127.0.0.1:27066 nicht erreichbar: Verbindung abgelehnt."
+        );
+        let write = write_error(&[
+            Bson::Document(
+                doc! { "index": 0, "code": 11000, "errmsg": "E11000 duplicate key error" },
+            ),
+            Bson::Document(
+                doc! { "index": 1, "code": 11000, "errmsg": "E11000 duplicate key error" },
+            ),
+        ]);
+        assert_eq!(
+            write,
+            "MongoDB: E11000 duplicate key error (Code 11000) (+1 weitere Schreibfehler)"
+        );
+        let filter = parse_document("status = 'open'", "Der Filter").unwrap_err();
+        assert!(filter.starts_with("Der Filter muss gültiges JSON sein (Zeile 1, Spalte 1)"));
+        assert!(filter.contains("SQL-Bedingungen gelten bei MongoDB nicht"));
+        let open = parse_document("{\"status\":\"open\"", "Der Filter").unwrap_err();
+        assert!(open.contains("unvollständig"));
+        assert!(!open.contains("SQL"));
+        for text in [&filter, &open] {
+            assert!(
+                !text.contains("expected") && !text.contains("EOF"),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn shell_text_reads_like_mongosh() {
+        let row = to_json(Bson::Document(doc! {
+            "oid": mongodb::bson::oid::ObjectId::parse_str("65a1b2c3d4e5f60718293a4b").unwrap(),
+            "big": 9_007_199_254_740_993i64,
+            "old": mongodb::bson::DateTime::parse_rfc3339_str("1950-06-15T12:00:00Z").unwrap(),
+            "dec": mongodb::bson::Decimal128::from_bytes([0; 16]),
+            "uuid": mongodb::bson::Binary::from_uuid(mongodb::bson::Uuid::parse_str("c9a646d3-9c61-4cb3-b9e1-3f2e0b3e5a10").unwrap()),
+            "ts": mongodb::bson::Timestamp { time: 1_700_000_000, increment: 1 },
+            "nested": { "id": mongodb::bson::oid::ObjectId::parse_str("65a1b2c3d4e5f60718293a4b").unwrap(), "n": 1 },
+            "name": "x",
+            "nothing": Bson::Null,
+        }));
+        assert_eq!(row["old"]["$date"], "1950-06-15T12:00:00Z");
+        assert_eq!(
+            parse_document(&row.to_string(), "x")
+                .unwrap()
+                .get_datetime("old")
+                .unwrap()
+                .timestamp_millis(),
+            -616_852_800_000
+        );
+        let shell = &shell_rows(&[row])[0];
+        assert_eq!(shell["oid"], "ObjectId(\"65a1b2c3d4e5f60718293a4b\")");
+        assert_eq!(shell["big"], "NumberLong(\"9007199254740993\")");
+        assert_eq!(shell["old"], "ISODate(\"1950-06-15T12:00:00Z\")");
+        assert!(shell["dec"].as_str().unwrap().starts_with("NumberDecimal("));
+        assert_eq!(
+            shell["uuid"],
+            "UUID(\"c9a646d3-9c61-4cb3-b9e1-3f2e0b3e5a10\")"
+        );
+        assert_eq!(shell["ts"], "Timestamp(1700000000, 1)");
+        assert_eq!(
+            shell["nested"],
+            "{ id: ObjectId(\"65a1b2c3d4e5f60718293a4b\"), n: 1 }"
+        );
+        assert_eq!(shell["name"], "x");
+        assert!(shell["nothing"].is_null());
+    }
+
+    #[test]
+    fn field_types_list_every_type_but_null() {
+        let types =
+            |items: &[&str]| field_type(&items.iter().map(|t| t.to_string()).collect::<Vec<_>>());
+        assert_eq!(types(&["int", "null", "string"]), "int, string");
+        assert_eq!(types(&["null"]), "null");
+        assert_eq!(types(&["date"]), "date");
     }
 
     #[test]
