@@ -8,7 +8,7 @@ const DAY = 86_400_000;
 const CATEGORY_MAX_LENGTH = 24;
 const CATEGORY_TOKEN = /^(?:[a-z0-9]+(?:[ _.-][a-z0-9]+)*|[A-Z0-9]+(?:[ _.-][A-Z0-9]+)*)$/;
 const PLAIN_TYPES =
-  /char|text|string|clob|name|citext|xml|json|bytea|blob|binary|inet|cidr|macaddr|tsvector|tsquery|point|line|polygon|geometry|geography|interval|bit|money|ltree|hstore|vector/i;
+  /char|text|string|clob|name|citext|xml|json|bytea|blob|binary|rowversion|inet|cidr|macaddr|tsvector|tsquery|point|line|polygon|geometry|geography|interval|bit|money|ltree|hstore|vector/i;
 
 export const CATEGORY_COLORS = 8;
 const CATEGORY_LIMIT = CATEGORY_COLORS;

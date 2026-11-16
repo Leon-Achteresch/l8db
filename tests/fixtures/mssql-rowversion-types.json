@@ -1,0 +1,52 @@
+[
+  {
+    "catalog_type": "timestamp",
+    "basic_type": "rowversion",
+    "detailed_type": "rowversion"
+  },
+  {
+    "catalog_type": "TIMESTAMP",
+    "basic_type": "rowversion",
+    "detailed_type": "rowversion"
+  },
+  {
+    "catalog_type": "rowversion",
+    "basic_type": "rowversion",
+    "detailed_type": "rowversion"
+  },
+  {
+    "catalog_type": "ROWVERSION",
+    "basic_type": "rowversion",
+    "detailed_type": "rowversion"
+  },
+  {
+    "catalog_type": "datetime2",
+    "basic_type": "datetime2",
+    "detailed_type": "datetime2(7)"
+  },
+  {
+    "catalog_type": "datetimeoffset",
+    "basic_type": "datetimeoffset",
+    "detailed_type": "datetimeoffset(7)"
+  },
+  {
+    "catalog_type": "time",
+    "basic_type": "time",
+    "detailed_type": "time(7)"
+  },
+  {
+    "catalog_type": "date",
+    "basic_type": "date",
+    "detailed_type": "date"
+  },
+  {
+    "catalog_type": "varbinary",
+    "basic_type": "varbinary",
+    "detailed_type": "varbinary"
+  },
+  {
+    "catalog_type": "decimal",
+    "basic_type": "decimal",
+    "detailed_type": "decimal(19,4)"
+  }
+]

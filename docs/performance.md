@@ -623,3 +623,53 @@ Semantik-/Transportmocktests und SSR prüfen die Kennzeichnung, erhaltene Zahlen
 Unbekannt-/Null-Platzhalter und tastaturzugängliches Status-Markup. Keine
 Live-Datenbanken, Browser-/Native-App-Abnahme, Windows/Linux, CPU-Simulation
 oder native/RSS-Messung; keine Rust-/Adapteränderungen in diesem Paket.
+
+
+## SQL-Server-Zeilenversionen (A40)
+
+SQL-Server-Spaltenmetadaten verwenden für den nativen Typnamen `timestamp`
+das gleichbedeutende `rowversion`. Das gilt nur im MSSQL-Adapter: einfache
+`ColumnInfo` und detaillierte `DetailedColumnInfo` erhalten denselben kanonischen
+Namen. Es gibt keine neue Bridge-Eigenschaft, Zusatzabfrage oder Wertkonvertierung.
+Der native DDL-Weg behält `timestamp`, wenn der Server diesen Namen liefert;
+Rohwerte bleiben in der bestehenden binären Hexdarstellung. Andere Adapter und
+echte Zeittypen wie `datetime2`, PostgreSQL-/MySQL-`timestamp` bleiben erhalten.
+
+Gemeinsame Verbraucher erkennen `rowversion` als opaken Text-/Binärwert:
+kein Datumstyp aus Zeilensamples, kein Enum-Vermutungswert, kein fiktiver
+Längenparameter `rowversion(8)`. Bestehende Spaltenfilter, Datumsoperatoren,
+Datumsbeispiele und Dashboard-Typprüfung bekommen damit den korrekten Typ.
+Die Korrektur setzt frisch geladene Metadaten voraus; historische, separat
+gespeicherte Typtexte und alte Cache-Snapshots werden nicht migriert.
+
+`tests/fixtures/mssql-rowversion-types.json` ist ein synthetisches gemeinsames
+Katalogfixture für native und TS-Tests: Alias-Großschreibung, beide Namen,
+echte Zeittypen sowie unveränderte Dezimal-/Binärtypen. Native Tests prüfen
+zusätzlich den unveränderten DDL-Ausdruck, die direkte Spaltenprojektion und
+bestehendes binäres Wertdecoding. Verbraucherregressionen prüfen Gridtyp,
+Spaltenfilter/-anzahl, Datumsoperatorauswahl, AI-Beispiele, Dashboardtyp und
+bestehende Zeitformatierung. Es werden keine Datenbanken verbunden oder SQL,
+DDL, Schreibvorgänge oder Migrationen ausgeführt; dies ist eine Fehlerkorrektur
+bestehender Anzeigen, kein neuer Benutzerweg.
+
+Das vorhandene `tests/perf-column-filters.test.ts` ist um 10.000 gemischte
+SQL-Server-Spalten erweitert (5.000 Zeilenversionen, 5.000 echte Zeittypen).
+Zwei Warmläufe, 15 Messungen: Median 5,515 ms, p95 6,188 ms; nach fünf weiteren
+Läufen und GC 0 gemessene zusätzliche JS-Heap-Bytes. Budgets: Median < 40 ms,
+p95 < 80 ms, zusätzlicher JS-Heap < 4 MiB. Der bestehende allgemeine 10.000-
+Spaltenfall bestand ebenfalls (Median 4,275 ms, p95 4,531 ms, 40 Messungen).
+Keine Budgetanhebung; keine Optimierung oder Vorher-/Nachher-Beschleunigung
+behauptet. Beide zählen/klassifizieren lokal mit null DB-Requests.
+
+Gemessen am 16.11.2026 auf macOS/Darwin 27.0.0, arm64, Apple M3, 16 GiB RAM,
+Bun 1.3.10. Die Zuordnung ist synchron und hat keinen neuen Hintergrundlauf,
+Polling oder Abbruchpfad. Keine Native-App-/Browser-Abnahme, Live-SQL-Server-
+oder PostgreSQL-/MySQL-Laufzeitprüfung, Windows/Linux, CPU-Simulation oder
+native/RSS-Allokationsmessung. Vorhandene Opus-UI-Handoffs bleiben offen.
+
+Der native Alias-Mapper prüft separat 10.000 Katalogtypen, zwei Warmläufe und
+sieben Messungen im Rust-Debug-Testprofil: Median 1,257 ms, p95 1,264 ms;
+10.000 Ausgabe-Strings mit zusammen 92.500 Typzeichenbytes. Budgets: Median
+< 50 ms, p95 < 100 ms, exakt begrenzte Ergebnismenge. Das ist keine Messung
+von Server-/Netzwerkzeit oder native/RSS-Speichernutzung. Beide neuen gezielten
+Rust-Tests bestanden; andere MSSQL-/A37- oder Live-Tests wurden nicht wiederholt.

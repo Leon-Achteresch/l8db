@@ -17,6 +17,7 @@ function kindFromDataType(dataType: string): ColumnTypeKind | null {
   const lower = unwrapDataType(dataType);
   if (/^(?:array|map|tuple|nested|variant|dynamic|json)\(/.test(lower)) return "json";
   if (/^(?:enum(?:8|16)?\(|ipv[46]|fixedstring)/.test(lower)) return "text";
+  if (lower === "rowversion") return "text";
   if (lower.includes("bool")) return "boolean";
   if (lower.includes("uuid") || lower === "uniqueidentifier") return "uuid";
   if (lower.includes("json") || lower === "object" || lower === "array") return "json";

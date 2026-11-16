@@ -18,6 +18,7 @@ import {
 
 const SUITES = {
   core: [
+    "tests/perf-column-filters.test.ts",
     "tests/perf-query-result-timing.test.ts",
     "tests/perf-index-roles.test.tsx",
     "tests/perf-csv-validation.test.ts",
