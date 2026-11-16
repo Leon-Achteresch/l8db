@@ -2050,7 +2050,9 @@ mod tests {
             .is_some_and(|v| v.contains("MariaDB"));
         let legit: Vec<String> = legit
             .into_iter()
-            .filter(|sql| !(mariadb && (sql.starts_with("TABLE ") || sql.starts_with("VALUES ROW"))))
+            .filter(|sql| {
+                !(mariadb && (sql.starts_with("TABLE ") || sql.starts_with("VALUES ROW")))
+            })
             .collect();
         let leaks = [
             format!("SELECT 1 --1, email AS p FROM {db}.customers"),

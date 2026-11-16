@@ -74,8 +74,9 @@ pub fn parse_target(connection_string: &str, scheme: &str) -> Result<AwsTarget, 
         .collect();
     let endpoint = match params.get("endpoint").map(|e| e.trim()) {
         Some(e) if !e.is_empty() => {
-            let parsed = url::Url::parse(e)
-                .map_err(|_| format!("Ungültiger Endpunkt: {e}. Mit Schema angeben, z. B. http://{e}"))?;
+            let parsed = url::Url::parse(e).map_err(|_| {
+                format!("Ungültiger Endpunkt: {e}. Mit Schema angeben, z. B. http://{e}")
+            })?;
             if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
                 return Err(format!(
                     "Der Endpunkt muss mit http:// oder https:// beginnen, z. B. http://{e}"

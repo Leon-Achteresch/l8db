@@ -1362,11 +1362,18 @@ mod tests {
     #[tokio::test]
     async fn duckdb_row_edits_commit_and_roll_back() {
         let dir = tempfile::tempdir().unwrap();
-        let url = format!("duckdb://{}?mode=rwc", dir.path().join("edit.duckdb").display());
+        let url = format!(
+            "duckdb://{}?mode=rwc",
+            dir.path().join("edit.duckdb").display()
+        );
         let pool = super::super::pool::create_pool_state();
-        let adapter =
-            super::super::create_adapter_from_string(DatabaseKind::Duckdb, &url, None, pool.clone())
-                .unwrap();
+        let adapter = super::super::create_adapter_from_string(
+            DatabaseKind::Duckdb,
+            &url,
+            None,
+            pool.clone(),
+        )
+        .unwrap();
         adapter
             .execute_query("CREATE TABLE t (id INTEGER PRIMARY KEY, data BLOB, note VARCHAR)")
             .await
@@ -1374,7 +1381,10 @@ mod tests {
         let tx = TransactionManager {
             transactions: Mutex::new(HashMap::new()),
         };
-        let id = tx.begin(DatabaseKind::Duckdb, &url, None, &pool).await.unwrap();
+        let id = tx
+            .begin(DatabaseKind::Duckdb, &url, None, &pool)
+            .await
+            .unwrap();
         let values = HashMap::from([
             ("id".to_string(), Some("1".to_string())),
             ("data".to_string(), Some("\\x89504e47".to_string())),
@@ -1384,17 +1394,25 @@ mod tests {
         assert_eq!(row["data"], "\\x89504e47");
         let ctid = row["__ctid__"].as_str().unwrap().to_string();
         let updates = HashMap::from([("note".to_string(), Some("b".to_string()))]);
-        tx.update_row(&id, "main", "t", &ctid, &updates).await.unwrap();
+        tx.update_row(&id, "main", "t", &ctid, &updates)
+            .await
+            .unwrap();
         tx.commit(&id).await.unwrap();
         let rows = adapter
             .fetch_rows("main", "t", None, 10, 0, None, false, false, false)
             .await
             .unwrap();
         assert_eq!(rows.rows[0]["note"], "b");
-        let id = tx.begin(DatabaseKind::Duckdb, &url, None, &pool).await.unwrap();
+        let id = tx
+            .begin(DatabaseKind::Duckdb, &url, None, &pool)
+            .await
+            .unwrap();
         tx.delete_row(&id, "main", "t", &ctid).await.unwrap();
         tx.rollback(&id).await.unwrap();
-        assert_eq!(adapter.count_rows("main", "t", None, false).await.unwrap(), 1);
+        assert_eq!(
+            adapter.count_rows("main", "t", None, false).await.unwrap(),
+            1
+        );
     }
 
     #[tokio::test]

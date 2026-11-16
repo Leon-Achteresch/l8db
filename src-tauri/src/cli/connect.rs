@@ -76,7 +76,11 @@ pub fn detect_kind(url: &str) -> Result<DatabaseKind, String> {
                     .map(|(_, own)| own.as_str())
                     .collect::<Vec<_>>()
                     .join(", "),
-                if scheme == "https" { ", jeweils mit ?tls=true" } else { "" }
+                if scheme == "https" {
+                    ", jeweils mit ?tls=true"
+                } else {
+                    ""
+                }
             )),
         };
     }
