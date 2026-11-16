@@ -4,6 +4,7 @@ import { version as appVersion } from "../../package.json";
 export const NEXT_FEATURE_VERSION = "0.19.0";
 
 export const NEW_FEATURES = {
+  "table.structure.indexes.roles": NEXT_FEATURE_VERSION,
   "import.csv.file-check": NEXT_FEATURE_VERSION,
   "import.csv.null-preflight": NEXT_FEATURE_VERSION,
   "sidebar.roles.principals": "0.18.0",

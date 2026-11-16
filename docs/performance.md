@@ -522,3 +522,61 @@ lokalen Tempdatei, Budget < 1 s. Alle 15 gezielten nativen CSV-Tests bestanden;
 Warteschlangenabbruch öffnet keine Datei und der Scan gibt seinen einen Slot
 wieder frei. Keine Aussage über harte Abbruchlatenz auf blockierenden externen
 Dateisystemen oder andere Plattformen.
+
+
+## SQL-Server-Indexrollen (A37)
+
+Der vorhandene `list_indexes`-Lesebefehl kann optionale `roles` liefern. Die
+Trait-Standardmethode übernimmt andere Adapter ohne Rollenänderung; deren JSON
+enthält weiterhin nur die bisherigen Indexfelder. Der native SQL-Server-Pfad
+liest Schlüsselrang/-richtung, INCLUDE und Filter in einer Katalogabfrage mit
+LEFT JOINs. `ROW_NUMBER` überträgt den Filtertext nur einmal pro Index; die
+Zusammenführung erhält ihn auch bei umgeordneten Zeilen. Treiberzeilen werden
+vor der eigentlichen Gruppierung freigegeben; kein Nachladen je Index oder
+neuer Hintergrund-/Pollingprozess kommt hinzu.
+
+Gewöhnliche Clustered-/Nonclustered-Indizes werden als Schlüssel, INCLUDE und
+sonstige/nicht eingeordnete Indexspalten dargestellt. Rang 0 ist nicht allgemein
+INCLUDE; beispielsweise werden Columnstore-Spalten nicht zu INCLUDE-Schlüsseln
+umgedeutet. Filterzustände sind `none`, `known` mit Prädikat, `unavailable`
+(Filter vorhanden, Text nicht verfügbar) und `unknown`. Fehlender Text erzeugt
+keine unfiltrierte CREATE-Definition. Nur bekannte Zeilenindexrollen erlauben
+die ausdrücklich rekonstruierte Schlüssel-/INCLUDE-/Filterdefinition; das ist
+kein vollständiger SQL-Server-DDL-Roundtrip mit allen Optionen/Dateigruppen.
+Bei unbekannten Rollen oder Sondertypen bleibt die Definition unverfügbar.
+Der bestehende Tabellen-DDL-Weg bricht bei einer solchen benötigten Definition
+explizit ab, statt ein unvollständiges Statement als vollständigen Export zu zeigen.
+
+Katalogfixtures in `src-tauri/src/db/mssql/indexes.fixture.json` sind synthetische
+Beispiele der tatsächlich abgefragten Katalogfelder, keine Produktionsdaten oder
+hier aufgenommenen Live-Serverergebnisse. Tests prüfen Reihenfolge/Richtung,
+INCLUDE, Prädikat, ausgeblendeten Filtertext, NULL-Metadaten, Sondertypen,
+Identifierquoting, umgeordnete Zeilen und kompatibles Legacy-JSON. Gezielter Lauf:
+`CARGO_BUILD_JOBS=2 cargo test --lib db::mssql::indexes::tests -- --nocapture --test-threads=1`
+in `src-tauri`. Der Mapping-Performancefall verwendet 1.000 Indizes und 12.000
+Katalogzeilen, zwei Warmläufe und sieben Messungen. Budgets: Median < 250 ms,
+p95 < 500 ms, serialisierter Ausgabevertrag < 2 MiB im Szenario. Das ist reine
+Zuordnung mit null Datenbankzugriffen; keine gemessene Live-Kataloglatenz.
+
+`tests/index-metadata-transport.test.ts` prüft eine bestehende Bridge-Anfrage
+samt optionalen Rollen ohne Folgeanfrage oder neue Idle-Aktivität. Die bestehende
+Indexansicht zeigt zunächst höchstens acht INCLUDE- und acht sonstige Spalten
+je Index und bietet gezieltes Erweitern; bekannte Schlüssel bleiben in ihrer
+Reihenfolge. `tests/perf-index-roles.test.tsx` rendert 500 Indizes mit je 128
+INCLUDE-Spalten als SSR-Markup: 5.000 anfängliche Spalten-Chips, 1.449.011 Bytes
+Markup, Median 31,70 ms, p95 123,42 ms bei neun Messungen nach zwei Warmläufen.
+Nach fünf weiteren Läufen und GC blieben 728 Bytes zusätzlicher JS-Heap.
+Budgets: Median < 250 ms, p95 < 500 ms, zusätzlicher JS-Heap < 8 MiB,
+Markup < 4 MiB. Gemessen am 16.11.2026 auf macOS/Darwin 27.0.0, arm64,
+Apple M3, 16 GiB, Bun 1.3.10. Dies ist SSR-Ausgabe, keine Browser-Layoutmessung
+oder manuelle visuelle Abnahme. Keine Live-SQL-Server-/Windows-/Linux-Messung,
+keine Simulation als Plattformabdeckung und kein Native-/RSS-Profil behauptet.
+
+Native Abschlussmessung der Katalogzuordnung auf demselben Mac im Debug-Testprofil
+(Rust 1.99.0): Median 19,80 ms, p95 21,58 ms, serialisierter Vertrag 723.001 Bytes
+für 1.000 Indizes/12.000 Zeilen. Diese Zahlen enthalten weder Netzwerk-/Serverzeit
+noch das Tiberius-Decoding; es ist kein Vergleichsbenchmark des alten, semantisch
+unvollständigen Vertrags. 20 gezielte native MSSQL-Tests bestanden, zehn bestehende
+Live-DB-Tests blieben ignoriert. Nach dem Filtertext-/Zusammenführungsfix wurden
+nur die sechs betroffenen Katalogtests erneut geprüft und bestanden. Keine neuen
+Indizes angelegt oder produktiven Datenbanken verändert.

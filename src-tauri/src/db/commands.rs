@@ -18,7 +18,7 @@ use super::{
     CompileResult, ConstraintInfo, CreateMatviewRequest, CreatePolicyRequest,
     CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest, CreateTableRequest,
     DatabaseKind, DependencyInfo, DetailedColumnInfo, ERSchema, ExtensionInfo, ForeignKeyInfo,
-    FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, ObjectGrantInfo,
+    FunctionInfo, InvalidCompileOutcome, InvalidObjectInfo, ObjectGrantInfo,
     PackageMemberInfo, PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo, RolePrivileges,
     SchedulerJobInfo, ScriptStatementResult, SequenceInfo, SourceMatch, SynonymInfo, TableData,
     TableInfo, TriggerInfo,
@@ -1787,14 +1787,14 @@ pub async fn list_indexes(
     schema: String,
     table: String,
     pool_state: tauri::State<'_, PoolState>,
-) -> Result<Vec<IndexInfo>, String> {
+) -> Result<Vec<super::index_metadata::IndexMetadata>, String> {
     create_adapter_from_string(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
     )?
-    .list_indexes(&schema, &table)
+    .list_index_metadata(&schema, &table)
     .await
 }
 
