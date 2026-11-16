@@ -159,7 +159,7 @@ fn number_end(bytes: &[u8], index: usize) -> usize {
         .map_or(bytes.len(), |offset| index + offset)
 }
 
-fn has_unsafe_number(json: &str) -> bool {
+fn has_unsafe_number(json: &str, keep_array_lexemes: bool) -> bool {
     let bytes = json.as_bytes();
     let mut in_string = false;
     let mut escaped = false;
@@ -178,7 +178,10 @@ fn has_unsafe_number(json: &str) -> bool {
             in_string = true;
         } else if matches!(byte, b'-' | b'0'..=b'9') {
             let end = number_end(bytes, index);
-            if !is_exact_in_js(&json[index..end]) && !exact_exponent(&json[index..end]) {
+            let token = &json[index..end];
+            if (!is_exact_in_js(token) && !exact_exponent(token))
+                || (keep_array_lexemes && (keeps_scale(token) || token == "-0"))
+            {
                 return true;
             }
             index = end;
@@ -190,7 +193,7 @@ fn has_unsafe_number(json: &str) -> bool {
 }
 
 pub(crate) fn json_document(text: &str) -> Value {
-    if has_unsafe_number(text) {
+    if has_unsafe_number(text, false) {
         return Value::String(text.to_string());
     }
     serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.to_string()))
@@ -231,7 +234,7 @@ pub(crate) fn quote_unsafe_top_level_numbers(json: &str) -> Cow<'_, str> {
                 if depth == 1 {
                     if let Some(start) = container_start.take() {
                         let raw = &json[start..=index];
-                        if has_unsafe_number(raw) {
+                        if has_unsafe_number(raw, raw.starts_with('[')) {
                             let buffer =
                                 out.get_or_insert_with(|| String::with_capacity(json.len() + 16));
                             buffer.push_str(&json[copied..start]);
@@ -282,7 +285,7 @@ pub(crate) fn json_number(text: &str) -> Value {
 }
 
 pub(crate) fn json_text(text: &str) -> Value {
-    if has_unsafe_number(text) {
+    if has_unsafe_number(text, false) {
         return Value::String(text.to_string());
     }
     serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.to_string()))

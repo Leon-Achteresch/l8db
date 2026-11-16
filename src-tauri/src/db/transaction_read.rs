@@ -133,7 +133,10 @@ impl TransactionManager {
                         .map_err(map_pg_err)?;
                     Ok(TableData {
                         columns,
-                        rows: data.iter().map(|row| row.get(0)).collect(),
+                        rows: data
+                            .iter()
+                            .map(|row| row.get::<_, crate::db::exact_number::ExactJson>(0).0)
+                            .collect(),
                     })
                 })
                 .await

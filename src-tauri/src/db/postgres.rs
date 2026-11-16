@@ -2001,28 +2001,11 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async {
             let col_rows = conn
-                .query(
-                    "SELECT column_name FROM information_schema.columns \
-                     WHERE table_schema = $1 AND table_name = $2",
-                    &[&schema, &table],
-                )
+                .query(arrays::COLUMNS_SQL, &[&schema, &table])
                 .await
                 .map_err(map_pg_err)?;
 
-            let valid_columns: std::collections::HashSet<String> =
-                col_rows.iter().map(|r| r.get::<_, String>(0)).collect();
-
-            let mut set_parts: Vec<String> = Vec::new();
-            for (col, val) in updates {
-                if !valid_columns.contains(col) {
-                    return Err(format!("Unbekannte Spalte: {col}"));
-                }
-                let sql_val = match val {
-                    None => "NULL".to_string(),
-                    Some(s) => format!("'{}'", s.replace('\'', "''")),
-                };
-                set_parts.push(format!("{} = {}", quote_ident(col), sql_val));
-            }
+            let set_parts = arrays::update_assignments(&arrays::columns(&col_rows), updates)?;
 
             if set_parts.is_empty() {
                 return Ok(());
@@ -5846,6 +5829,9 @@ impl PostgresAdapter {
 
 #[path = "postgres_bind.rs"]
 mod bind;
+
+#[path = "postgres_array.rs"]
+pub(crate) mod arrays;
 
 #[path = "postgres_catalog.rs"]
 mod catalog;

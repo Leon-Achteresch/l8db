@@ -1,0 +1,117 @@
+{
+  "cases": [
+    {
+      "name": "text-boundaries",
+      "data_type": "text[]",
+      "element_type": "text",
+      "delimiter": ",",
+      "row_json": "{\"items\":[\"\",null,\"NULL\",\"null\",\"a,b\",\"a;b\",\"{x}\",\"\\\"quoted\\\"\",\"a\\\\b\",\"O'Reilly\",\"Grüße\",\"line\\nnext\"]}",
+      "row_value": [
+        "",
+        null,
+        "NULL",
+        "null",
+        "a,b",
+        "a;b",
+        "{x}",
+        "\"quoted\"",
+        "a\\b",
+        "O'Reilly",
+        "Grüße",
+        "line\nnext"
+      ],
+      "input": "[\"\",null,\"NULL\",\"null\",\"a,b\",\"a;b\",\"{x}\",\"\\\"quoted\\\"\",\"a\\\\b\",\"O'Reilly\",\"Grüße\",\"line\\nnext\"]",
+      "expected": "{\"\",NULL,\"NULL\",\"null\",\"a,b\",\"a;b\",\"{x}\",\"\\\"quoted\\\"\",\"a\\\\b\",\"O'Reilly\",\"Grüße\",\"line\nnext\"}"
+    },
+    {
+      "name": "empty",
+      "data_type": "text[]",
+      "element_type": "text",
+      "delimiter": ",",
+      "row_json": "{\"items\":[]}",
+      "row_value": [],
+      "input": "[]",
+      "expected": "{}"
+    },
+    {
+      "name": "all-null",
+      "data_type": "text[]",
+      "element_type": "text",
+      "delimiter": ",",
+      "row_json": "{\"items\":[null,null]}",
+      "row_value": [null, null],
+      "input": "[null,null]",
+      "expected": "{NULL,NULL}"
+    },
+    {
+      "name": "rectangular",
+      "data_type": "integer[]",
+      "element_type": "int4",
+      "delimiter": ",",
+      "row_json": "{\"items\":[[1,null],[2,3]]}",
+      "row_value": [[1, null], [2, 3]],
+      "input": "[[1,null],[2,3]]",
+      "expected": "{{\"1\",NULL},{\"2\",\"3\"}}"
+    },
+    {
+      "name": "boolean",
+      "data_type": "boolean[]",
+      "element_type": "bool",
+      "delimiter": ",",
+      "row_json": "{\"items\":[true,false,null]}",
+      "row_value": [true, false, null],
+      "input": "[true,false,null]",
+      "expected": "{\"true\",\"false\",NULL}"
+    },
+    {
+      "name": "exact-numeric",
+      "data_type": "numeric[]",
+      "element_type": "numeric",
+      "delimiter": ",",
+      "row_json": "{\"items\":[900719925474099312345,1.234567890123456789,12.500,-0.000,1e-30]}",
+      "row_value": "[900719925474099312345,1.234567890123456789,12.500,-0.000,1e-30]",
+      "input": "[900719925474099312345,1.234567890123456789,12.500,-0.000,1e-30]",
+      "expected": "{\"900719925474099312345\",\"1.234567890123456789\",\"12.500\",\"-0.000\",\"1e-30\"}"
+    },
+    {
+      "name": "box-delimiter",
+      "data_type": "box[]",
+      "element_type": "box",
+      "delimiter": ";",
+      "row_json": "{\"items\":[\"(1,2),(3,4)\",\"(5,6),(7,8)\"]}",
+      "row_value": ["(1,2),(3,4)", "(5,6),(7,8)"],
+      "input": "[\"(1,2),(3,4)\",\"(5,6),(7,8)\"]",
+      "expected": "{\"(1,2),(3,4)\";\"(5,6),(7,8)\"}"
+    },
+    {
+      "name": "three-dimensions",
+      "data_type": "text[]",
+      "element_type": "text",
+      "delimiter": ",",
+      "row_json": "{\"items\":[[[\"a\",\"b\"]],[[\"c\",null]]]}",
+      "row_value": [[["a", "b"]], [["c", null]]],
+      "input": "[[[\"a\",\"b\"]],[[\"c\",null]]]",
+      "expected": "{{{\"a\",\"b\"}},{{\"c\",NULL}}}"
+    },
+    {
+      "name": "numeric-scale-only",
+      "data_type": "numeric[]",
+      "element_type": "numeric",
+      "delimiter": ",",
+      "row_json": "{\"items\":[12.500,0.0]}",
+      "row_value": "[12.500,0.0]",
+      "input": "[12.500,0.0]",
+      "expected": "{\"12.500\",\"0.0\"}"
+    },
+    {
+      "name": "negative-zero",
+      "data_type": "double precision[]",
+      "element_type": "float8",
+      "delimiter": ",",
+      "row_json": "{\"items\":[-0,1]}",
+      "row_value": "[-0,1]",
+      "input": "[-0,1]",
+      "expected": "{\"-0\",\"1\"}"
+    }
+  ]
+}

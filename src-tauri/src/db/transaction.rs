@@ -746,28 +746,14 @@ impl TransactionManager {
         let conn = conn.lock().await?;
 
         let col_rows = conn
-            .query(
-                "SELECT column_name FROM information_schema.columns \
-                 WHERE table_schema = $1 AND table_name = $2",
-                &[&schema, &table],
-            )
+            .query(super::postgres::arrays::COLUMNS_SQL, &[&schema, &table])
             .await
             .map_err(map_pg_err)?;
 
-        let valid_columns: std::collections::HashSet<String> =
-            col_rows.iter().map(|r| r.get::<_, String>(0)).collect();
-
-        let mut set_parts: Vec<String> = Vec::new();
-        for (col, val) in updates {
-            if !valid_columns.contains(col) {
-                return Err(format!("Unbekannte Spalte: {col}"));
-            }
-            let sql_val = match val {
-                None => "NULL".to_string(),
-                Some(s) => format!("'{}'", s.replace('\'', "''")),
-            };
-            set_parts.push(format!("{} = {}", quote_ident(col), sql_val));
-        }
+        let set_parts = super::postgres::arrays::update_assignments(
+            &super::postgres::arrays::columns(&col_rows),
+            updates,
+        )?;
 
         if set_parts.is_empty() {
             return Ok(ctid.to_string());
