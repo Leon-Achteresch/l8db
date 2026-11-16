@@ -1,5 +1,7 @@
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::io::Read;
+use std::path::Path;
 
 use super::config::{McpConfig, McpConnection};
 use super::redact::Redactor;
@@ -12,16 +14,75 @@ use crate::db::{self, DatabaseAdapter, DatabaseKind, QueryResult, TxSession};
 pub fn tool_definition() -> Value {
     json!({
         "name": "script",
-        "description": "Multi-statement script (if enabled); statements are checked like query/execute. One transaction (rollback on the first error, commit=false is a dry run); writes need confirm=true. No BEGIN/ROLLBACK/SAVEPOINT. Oracle SQL*Plus: / terminators, DEFINE and &x, SET DEFINE OFF, SET ESCAPE, PROMPT, EXEC, SET SERVEROUTPUT ON, WHENEVER SQLERROR, EXIT; no @file.",
+        "description": "Multi-statement script (if enabled); statements are checked like query/execute. One transaction (rollback on the first error, commit=false is a dry run); writes need confirm=true. No BEGIN/ROLLBACK/SAVEPOINT. Oracle SQL*Plus: / terminators, DEFINE and &x, SET DEFINE OFF, SET ESCAPE, PROMPT, EXEC, SET SERVEROUTPUT ON, WHENEVER SQLERROR, EXIT. Pass sql or file; @file inside a script is refused.",
         "inputSchema": {"type": "object", "properties": {
             "connection": {"type": "string"},
             "database": super::server::database_arg(),
             "sql": {"type": "string"},
+            "file": {"type": "string", "description": "Absolute path to a local .sql file (max 4 MB) instead of sql"},
             "confirm": {"type": "boolean"},
             "commit": {"type": "boolean"},
             "onError": {"type": "string", "enum": ["stop", "continue"]},
             "limit": {"type": "integer", "minimum": 1, "description": "Rows per result, default 20"}
-        }, "required": ["sql"]}
+        }}
+    })
+}
+
+const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
+
+fn read_file(path: &str) -> Result<String, String> {
+    let path = Path::new(path);
+    if !path.is_absolute() {
+        return Err("file braucht einen absoluten Pfad.".into());
+    }
+    let unreadable = |_| "file: Datei nicht gefunden oder nicht lesbar.".to_string();
+    let path = std::fs::canonicalize(path).map_err(unreadable)?;
+    if !path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("sql"))
+    {
+        return Err("file muss auf eine .sql-Datei zeigen (auch nach Auflösen von Links).".into());
+    }
+    let meta = std::fs::metadata(&path).map_err(unreadable)?;
+    if !meta.is_file() {
+        return Err("file ist keine reguläre Datei.".into());
+    }
+    let too_big = || format!("file ist größer als {} MB.", MAX_FILE_BYTES >> 20);
+    if meta.len() > MAX_FILE_BYTES {
+        return Err(too_big());
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::open(&path)
+        .and_then(|file| file.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes))
+        .map_err(unreadable)?;
+    if bytes.len() as u64 > MAX_FILE_BYTES {
+        return Err(too_big());
+    }
+    let text = String::from_utf8(bytes).map_err(|_| "file ist kein gültiges UTF-8.".to_string())?;
+    Ok(match text.strip_prefix('\u{feff}') {
+        Some(rest) => rest.to_string(),
+        None => text,
+    })
+}
+
+fn source(args: &Value) -> Result<(String, bool), String> {
+    match (arg_str(args, "sql").trim(), arg_str(args, "file").trim()) {
+        ("", "") => Err("sql oder file angeben.".into()),
+        (sql, "") => Ok((sql.to_string(), false)),
+        ("", file) => Ok((read_file(file)?, true)),
+        _ => Err("Nur eines von sql und file angeben.".into()),
+    }
+}
+
+fn plan_file(kind: DatabaseKind, sql: &str) -> Result<Plan, String> {
+    plan(kind, sql).map_err(|e| {
+        if e.starts_with('\'') {
+            "Skriptdatei steuert die Transaktion selbst (commit=false für einen Probelauf).".into()
+        } else if e.starts_with("Substitutionsvariable") {
+            "Skriptdatei nutzt eine nicht definierte Substitutionsvariable (DEFINE … oder SET DEFINE OFF).".into()
+        } else {
+            e
+        }
     })
 }
 
@@ -272,7 +333,10 @@ fn sqlplus(
         .find(|form| db::sql_script::abbreviates(arg(0), &[**form]))
         .map_or("", |form| form.0);
     if line.starts_with('@') || command == "START" {
-        return Err("Skriptdateien (@, @@, START) werden über den MCP nicht ausgeführt.".into());
+        return Err(
+            "Skriptdateien (@, @@, START) werden im Skript nicht ausgeführt; eine Datei über den Parameter file übergeben."
+                .into(),
+        );
     }
     if db::sql_script::is_connect_command(line) {
         return Err(db::sql_script::CONNECT_UNSUPPORTED.into());
@@ -452,11 +516,19 @@ impl Server {
         if !SQL_KINDS.contains(&connection.kind) {
             return Err("script unterstützt nur SQL-Datenbanken.".into());
         }
-        let sql = arg_str(args, "sql").trim();
-        if sql.is_empty() {
-            return Err("sql fehlt".into());
-        }
-        let plan = plan(connection.kind, sql)?;
+        let (sql, from_file) = source(args)?;
+        let plan = if from_file {
+            plan_file(connection.kind, &sql)?
+        } else {
+            plan(connection.kind, &sql)?
+        };
+        let label = |statement: &str| {
+            if from_file {
+                String::new()
+            } else {
+                format!(" {}", preview(statement))
+            }
+        };
         let redactor = Redactor::new(&config.redaction, &connection.sensitive_columns());
         let index = self.schema_index(config, connection, &redactor).await?;
         let mut writes = false;
@@ -470,7 +542,7 @@ impl Server {
             } else {
                 check_write_sql(statement, connection, &index)
             };
-            checked.map_err(|e| format!("#{} {}: {e}", number + 1, preview(statement)))?;
+            checked.map_err(|e| format!("#{}{}: {e}", number + 1, label(statement)))?;
             writes = true;
         }
         if writes
@@ -567,11 +639,12 @@ impl Server {
                                 .filter(|line| !line.starts_with("Help:"))
                                 .collect::<Vec<_>>()
                                 .join(" ");
-                            lines.push(format!(
-                                "#{number} ERR {} [{}]",
-                                super::server::scrub_error(&error),
-                                preview(statement)
-                            ));
+                            let error = super::server::scrub_error(&error);
+                            lines.push(if from_file {
+                                format!("#{number} ERR {error}")
+                            } else {
+                                format!("#{number} ERR {error} [{}]", preview(statement))
+                            });
                             if !keep_going {
                                 stopped = Some(number);
                                 break;
@@ -769,5 +842,339 @@ mod tests {
         .unwrap();
         assert_eq!(sqls(&plan).len(), 4);
         assert_eq!(plan.skipped, 1);
+    }
+
+    fn issue_272_check(script: &str) -> Result<(), String> {
+        let connection = McpConnection {
+            id: "o1".into(),
+            name: "Oracle".into(),
+            kind: DatabaseKind::Oracle,
+            connection_string: String::new(),
+            schemas: vec!["app".into()],
+            ssh: false,
+            exposed: true,
+            read_only: false,
+            allow_ddl: false,
+            allow_scripts: true,
+            redact_columns: vec![],
+            mask_rules: vec![],
+            environment: None,
+            allow_production_writes: false,
+            database: None,
+        };
+        let redactor = Redactor::new(
+            &McpConfig::default().redaction,
+            &connection.sensitive_columns(),
+        );
+        let index = super::super::redact::SchemaIndex::from_parts(
+            ["id", "name", "password", "id"].into_iter(),
+            [("app", "kunden"), ("gesperrt", "tabelle")].into_iter(),
+            &redactor,
+            &connection.schemas,
+        );
+        assert!(!index.sensitive_columns.is_empty());
+        for step in &plan(connection.kind, script)?.steps {
+            let Step::Sql(statement) = step else { continue };
+            if check_read_sql(statement, &connection, &index).is_ok() {
+                continue;
+            }
+            check_write_sql(statement, &connection, &index)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn issue_272_plsql_blocks_from_the_report_pass() {
+        for script in [
+            "declare\n  c clob;\nbegin\n  for r in (select line, text from user_source where name='X' order by line) loop\n    c := c || r.text;\n  end loop;\nend;\n/",
+            "declare\n  type tn is table of number;\n  type tt is table of varchar2(4000);\n  vl tn;\n  vt tt;\nbegin\n  select line, text bulk collect into vl, vt from user_source where name='X' order by line;\nend;\n/",
+            "declare\n  c clob;\n  type tt is table of clob;\n  vt tt;\nbegin\n  select text bulk collect into vt from user_source where name='X' order by line;\n  for i in 1 .. cardinality(vt) loop\n    c := c || vt(i);\n  end loop;\nend;\n/",
+            "declare\n  c clob;\nbegin\n  for r in (select k.id, k.name from app.kunden k) loop\n    c := c || r.name;\n  end loop;\nend;\n/",
+        ] {
+            assert_eq!(issue_272_check(script), Ok(()), "{script}");
+        }
+    }
+
+    #[test]
+    fn issue_272_plsql_blocks_keep_the_protection() {
+        for (script, expected) in [
+            (
+                "declare c clob;\nbegin\n  for r in (select * from gesperrt.tabelle) loop\n    c := c || r.id;\n  end loop;\nend;\n/",
+                "gesperrt",
+            ),
+            (
+                "declare c clob;\nbegin\n  for r in (select id from tabelle) loop\n    c := c || r.id;\n  end loop;\nend;\n/",
+                "tabelle",
+            ),
+            (
+                "declare c clob;\nbegin\n  for r in (select password from app.kunden) loop\n    c := c || r.password;\n  end loop;\nend;\n/",
+                "password",
+            ),
+            (
+                "declare c clob;\nbegin\n  for r in (select kunden from app.kunden) loop\n    c := c || r.kunden;\n  end loop;\nend;\n/",
+                "ganze Zeile",
+            ),
+            (
+                "declare c clob;\nbegin\n  for r in (select id from app.kunden) loop\n    c := c || x.id;\n  end loop;\nend;\n/",
+                "'x' ist kein",
+            ),
+            (
+                "declare c clob;\nbegin\n  for i in 1 .. 2 loop\n    c := c || x.id;\n  end loop;\nend;\n/",
+                "'x' ist kein",
+            ),
+            (
+                "declare c clob;\nbegin\n  for i in 1 .. 2 loop\n    c := c || sys..tab.id;\n  end loop;\nend;\n/",
+                "'sys' ist kein",
+            ),
+            (
+                "declare\n  type tt is table of varchar2(4000);\n  vt tt;\nbegin\n  select a bulk collect into vt from app.kunden as t(a, b);\nend;\n/",
+                "Spaltenlisten",
+            ),
+            (
+                "declare\n  type tt is table of varchar2(4000);\n  vt tt;\nbegin\n  for r in (with x(a, b) as (select id, name from app.kunden) select a from x) loop\n    null;\n  end loop;\nend;\n/",
+                "Spaltenlisten",
+            ),
+            (
+                "declare\n  type tt is table of clob;\n  vt tt;\nbegin\n  select kunden bulk collect into vt from app.kunden;\nend;\n/",
+                "ganze Zeile",
+            ),
+        ] {
+            let error = issue_272_check(script).expect_err(script);
+            assert!(error.contains(expected), "{script}: {error}");
+        }
+    }
+
+    fn issue_275_oracle() -> McpConnection {
+        McpConnection {
+            id: "o1".into(),
+            name: "Oracle".into(),
+            kind: DatabaseKind::Oracle,
+            connection_string: String::new(),
+            schemas: vec![],
+            ssh: false,
+            exposed: true,
+            read_only: false,
+            allow_ddl: true,
+            allow_scripts: true,
+            redact_columns: vec![],
+            mask_rules: vec![],
+            environment: None,
+            allow_production_writes: false,
+            database: None,
+        }
+    }
+
+    fn issue_275_check(connection: &McpConnection, plan: &Plan) -> Result<(), String> {
+        let redactor = Redactor::new(&McpConfig::default().redaction, &[]);
+        let index = super::super::redact::SchemaIndex::new(&[], &redactor, &[]);
+        for step in &plan.steps {
+            let Step::Sql(statement) = step else { continue };
+            if check_read_sql(statement, connection, &index).is_ok() {
+                continue;
+            }
+            check_write_sql(statement, connection, &index)?;
+        }
+        Ok(())
+    }
+
+    fn issue_275_file(args: Value) -> Result<String, String> {
+        source(&args).map(|(sql, from_file)| {
+            assert!(from_file);
+            sql
+        })
+    }
+
+    #[test]
+    fn issue_275_file_is_planned_like_sql() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = "DEFINE n = 5\nINSERT INTO t VALUES (&n);\nBEGIN\n  NULL;\nEND;\n/\nSELECT 1 FROM dual;";
+        let path = dir.path().join("Skript.SQL");
+        std::fs::write(&path, format!("\u{feff}{script}\n")).unwrap();
+        let text = issue_275_file(json!({"file": path.to_str().unwrap(), "sql": "  "})).unwrap();
+        assert_eq!(
+            sqls(&plan_file(DatabaseKind::Oracle, &text).unwrap()),
+            sqls(&plan(DatabaseKind::Oracle, script).unwrap())
+        );
+        assert_eq!(
+            source(&json!({"sql": " SELECT 1 "})),
+            Ok(("SELECT 1".to_string(), false))
+        );
+    }
+
+    #[test]
+    fn issue_275_large_package_body_from_file_is_one_statement() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut body = String::from("CREATE OR REPLACE PACKAGE BODY app_pkg AS\n");
+        let mut procedures = 0;
+        while body.len() < 240 * 1024 {
+            procedures += 1;
+            body.push_str(&format!(
+                "  PROCEDURE p{procedures}(a IN NUMBER, b OUT NUMBER) IS\n    v NUMBER := 0;\n    s VARCHAR2(100) := 'x;y / z';\n  BEGIN\n    -- step; /\n    FOR i IN 1 .. a LOOP\n      IF MOD(i, 2) = 0 THEN\n        v := v + i;\n      ELSE\n        v := v - 1;\n      END IF;\n    END LOOP;\n    b := v + LENGTH(s);\n  END p{procedures};\n\n"
+            ));
+        }
+        body.push_str("END app_pkg;\n/\n");
+        let path = dir.path().join("app_pkg.sql");
+        std::fs::write(&path, &body).unwrap();
+        let started = std::time::Instant::now();
+        let text = issue_275_file(json!({"file": path.to_str().unwrap()})).unwrap();
+        let plan = plan_file(DatabaseKind::Oracle, &text).unwrap();
+        issue_275_check(&issue_275_oracle(), &plan).unwrap();
+        let elapsed = started.elapsed();
+        let statements = sqls(&plan);
+        assert_eq!(statements.len(), 1);
+        assert!(statements[0].starts_with("CREATE OR REPLACE PACKAGE BODY app_pkg"));
+        assert!(statements[0].trim_end().ends_with("END app_pkg;"));
+        println!(
+            "issue_275: {} bytes, {procedures} procedures, {elapsed:?}",
+            body.len()
+        );
+        assert!(elapsed < std::time::Duration::from_secs(5), "{elapsed:?}");
+    }
+
+    #[test]
+    fn issue_275_rejects_unsafe_files_without_echoing_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let secret = "TOPSECRET_hunter2";
+        let file = |name: &str, bytes: &[u8]| {
+            let path = dir.path().join(name);
+            std::fs::write(&path, bytes).unwrap();
+            path.to_str().unwrap().to_string()
+        };
+        let text = file("secret.txt", secret.as_bytes());
+        let sql = file("ok.sql", b"SELECT 1 FROM dual;");
+        let binary = file("binary.sql", &[0xff, 0xfe, 0x00, b'T', b'O', b'P']);
+        let big = dir.path().join("big.sql");
+        std::fs::File::create(&big)
+            .unwrap()
+            .set_len(MAX_FILE_BYTES + 1)
+            .unwrap();
+        let folder = dir.path().join("folder.sql");
+        std::fs::create_dir(&folder).unwrap();
+        let link = dir.path().join("link.sql");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&text, &link).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(&text, &link).unwrap();
+        for (args, expected) in [
+            (json!({}), "sql oder file"),
+            (json!({"sql": " ", "file": " "}), "sql oder file"),
+            (json!({"sql": "SELECT 1", "file": sql}), "Nur eines"),
+            (json!({"file": "ok.sql"}), "absoluten Pfad"),
+            (
+                json!({"file": dir.path().join("fehlt.sql")}),
+                "nicht gefunden",
+            ),
+            (json!({"file": folder}), "keine reguläre Datei"),
+            (json!({"file": text}), ".sql-Datei"),
+            (json!({"file": link}), ".sql-Datei"),
+            (json!({"file": big}), "größer als 4 MB"),
+            (json!({"file": binary}), "UTF-8"),
+        ] {
+            let error = issue_275_file(args.clone()).expect_err(&args.to_string());
+            assert!(error.contains(expected), "{args}: {error}");
+            assert!(
+                !error.contains("hunter2") && !error.contains("TOP"),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn issue_275_non_sql_file_errors_do_not_echo_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let connection = issue_275_oracle();
+        for (name, content, fails) in [
+            (
+                "env.sql",
+                "AWS_SECRET_ACCESS_KEY=hunter2xyz\nDB_PASSWORD=hunter2xyz\n",
+                false,
+            ),
+            ("begin.sql", "ROLLBACK hunter2xyz;", true),
+            ("define.sql", "SELECT '&hunter2xyz' FROM dual;", true),
+            ("drop.sql", "DROP TABLE hunter2xyz;", true),
+        ] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, content).unwrap();
+            let text = issue_275_file(json!({"file": path})).unwrap();
+            let mut connection = connection.clone();
+            connection.allow_ddl = name != "drop.sql";
+            let result = plan_file(connection.kind, &text)
+                .and_then(|plan| issue_275_check(&connection, &plan));
+            assert_eq!(result.is_err(), fails, "{name}: {result:?}");
+            if let Err(error) = result {
+                assert!(!error.contains("hunter2xyz"), "{name}: {error}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn issue_275_script_runs_file_through_checks_without_quoting_it() {
+        let (dir, config, mut connection, mut server) =
+            super::super::sandbox::sqlite_fixture("CREATE TABLE t (id INTEGER, secret TEXT);");
+        let file = |name: &str, content: &str| {
+            let path = dir.path().join(name);
+            std::fs::write(&path, content).unwrap();
+            path.to_str().unwrap().to_string()
+        };
+        let ok = file(
+            "ok.sql",
+            "INSERT INTO t VALUES (1, 'a');\nINSERT INTO t VALUES (2, 'b');\nSELECT COUNT(*) AS n FROM t;",
+        );
+        let failing = file(
+            "fail.sql",
+            "INSERT INTO t VALUES (3, 'hunter2xyz', 'zuviel');",
+        );
+        let blocked = file("ddl.sql", "DROP TABLE t; -- hunter2xyz");
+        let denied = server
+            .script(&config, &connection, &json!({"file": ok, "confirm": true}))
+            .await
+            .unwrap_err();
+        assert!(denied.contains("nicht freigegeben"), "{denied}");
+        connection.allow_scripts = true;
+        let unconfirmed = server
+            .script(&config, &connection, &json!({"file": ok}))
+            .await
+            .unwrap_err();
+        assert!(unconfirmed.contains("confirm=true"), "{unconfirmed}");
+        let text = server
+            .script(
+                &config,
+                &connection,
+                &json!({"file": ok, "confirm": true, "commit": false}),
+            )
+            .await
+            .unwrap();
+        assert!(text.contains("rolled back: 3/3 ok"), "{text}");
+        assert!(!text.contains("INSERT INTO"), "{text}");
+        let error = server
+            .script(
+                &config,
+                &connection,
+                &json!({"file": failing, "confirm": true}),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.contains("#1 ERR"), "{error}");
+        assert!(
+            !error.contains("hunter2xyz") && !error.contains("INSERT"),
+            "{error}"
+        );
+        connection.allow_ddl = false;
+        let error = server
+            .script(
+                &config,
+                &connection,
+                &json!({"file": blocked, "confirm": true}),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.starts_with("#1: DDL"), "{error}");
+        assert!(!error.contains("hunter2xyz"), "{error}");
+        let path = dir.path().join("fixture.db");
+        let rows: i64 = rusqlite::Connection::open(path)
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM t", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rows, 0);
     }
 }

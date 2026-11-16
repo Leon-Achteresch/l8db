@@ -45,7 +45,7 @@ Display and buffer commands (`SET LINESIZE/PAGESIZE/FEEDBACK/ECHO/TERMOUT/…`, 
 - `&` inside comments is not substituted.
 - SPOOL writes l8db's transcript format, not SQL*Plus text reports.
 - Exit codes are shown as given, not modulo 256.
-- Other script paths behave differently: the MCP `script` tool runs one transaction with its own SQL*Plus subset (no `@`, `VARIABLE`, `SPOOL`, `ACCEPT`; combined `SET` lines and command abbreviations follow the editor), and `l8db query -f` skips SQL*Plus commands and stops at `EXIT`/`QUIT`.
+- Other script paths behave differently: the MCP `script` tool runs one transaction with its own SQL*Plus subset (no `@`, `VARIABLE`, `SPOOL`, `ACCEPT`; combined `SET` lines and command abbreviations follow the editor; instead of `sql` it takes `file`, an absolute path to a local `.sql` file of at most 4 MB, also after resolving links, valid UTF-8, checked statement by statement like `sql`, with errors that do not quote the file), and `l8db query -f` skips SQL*Plus commands and stops at `EXIT`/`QUIT`.
 - Server messages of other families are collected per connection; queries of other tabs on the same connection that run at the same time can show up under a script statement.
 
 ## Tests
