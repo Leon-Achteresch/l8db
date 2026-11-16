@@ -11,7 +11,7 @@ type ForeignKeyGroups = BTreeMap<(String, String), (String, String, Vec<String>,
 static INTRODUCER: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"(^|[^A-Za-z0-9_$`])_[a-z0-9]+'").unwrap());
 static INT_WIDTH: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"^(tinyint|smallint|mediumint|int|integer|bigint)\((\d+)\)").unwrap()
+    regex::Regex::new(r"(?i)\b(tinyint|smallint|mediumint|int|integer|bigint)\((\d+)\)").unwrap()
 });
 
 pub(super) fn clean_expression(value: &str) -> String {
@@ -20,14 +20,25 @@ pub(super) fn clean_expression(value: &str) -> String {
 }
 
 pub(super) fn normalize_type(column_type: &str) -> String {
-    let lower = column_type.trim().to_string();
-    match INT_WIDTH.captures(&lower) {
-        Some(caps) if !(&caps[1] == "tinyint" && &caps[2] == "1") => {
-            let base = caps[1].to_string();
-            format!("{base}{}", &lower[caps[0].len()..])
+    strip_int_widths(column_type.trim())
+}
+
+pub(crate) fn strip_int_widths(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut copied = 0;
+    for caps in INT_WIDTH.captures_iter(text) {
+        let whole = caps.get(0).unwrap();
+        let rest = text[whole.end()..].to_ascii_lowercase();
+        let zerofill = rest.starts_with(" zerofill") || rest.starts_with(" unsigned zerofill");
+        if zerofill || (caps[1].eq_ignore_ascii_case("tinyint") && &caps[2] == "1") {
+            continue;
         }
-        _ => lower,
+        out.push_str(&text[copied..whole.start()]);
+        out.push_str(&caps[1]);
+        copied = whole.end();
     }
+    out.push_str(&text[copied..]);
+    out
 }
 
 fn is_numeric_type(column_type: &str) -> bool {
@@ -165,13 +176,18 @@ impl MysqlAdapter {
         let s = lit(schema);
         let table_rows = self
             .rows(&format!(
-                "SELECT TABLE_NAME, TABLE_COLLATION FROM information_schema.TABLES \
-                 WHERE TABLE_SCHEMA = {s} AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME"
+                "SELECT TABLE_NAME, TABLE_COLLATION, TABLE_TYPE FROM information_schema.TABLES \
+                 WHERE TABLE_SCHEMA = {s} AND TABLE_TYPE IN ('BASE TABLE','SYSTEM VERSIONED') ORDER BY TABLE_NAME"
             ))
             .await?;
         let collations: HashMap<String, String> = table_rows
             .iter()
             .map(|row| (cell(row, 0), cell(row, 1)))
+            .collect();
+        let versioned: std::collections::HashSet<String> = table_rows
+            .iter()
+            .filter(|row| cell(row, 2) == "SYSTEM VERSIONED")
+            .map(|row| cell(row, 0))
             .collect();
         let statistics = self
             .rows(&format!(
@@ -221,7 +237,7 @@ impl MysqlAdapter {
                     }
                 }
             }
-            self.catalog_tables(schema, mariadb, &collations, &primary_keys, out)
+            self.catalog_tables(schema, mariadb, &collations, &versioned, &primary_keys, out)
                 .await?;
         }
         for row in &constraint_rows {
@@ -308,6 +324,7 @@ impl MysqlAdapter {
         schema: &str,
         mariadb: bool,
         collations: &HashMap<String, String>,
+        versioned: &std::collections::HashSet<String>,
         primary_keys: &HashMap<String, String>,
         out: &mut Vec<CatalogObject>,
     ) -> Result<(), String> {
@@ -317,7 +334,7 @@ impl MysqlAdapter {
                         c.GENERATION_EXPRESSION, c.COLLATION_NAME \
                  FROM information_schema.COLUMNS c JOIN information_schema.TABLES t \
                    ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME \
-                 WHERE c.TABLE_SCHEMA = {} AND t.TABLE_TYPE = 'BASE TABLE' \
+                 WHERE c.TABLE_SCHEMA = {} AND t.TABLE_TYPE IN ('BASE TABLE','SYSTEM VERSIONED') \
                  ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION",
                 lit(schema)
             ))
@@ -340,9 +357,14 @@ impl MysqlAdapter {
                 table.clone(),
                 None,
                 format!(
-                    "CREATE TABLE {} (\n  {}\n)",
+                    "CREATE TABLE {} (\n  {}\n){}",
                     table_name(schema, &table),
-                    columns.join(",\n  ")
+                    columns.join(",\n  "),
+                    if versioned.contains(&table) {
+                        " WITH SYSTEM VERSIONING"
+                    } else {
+                        ""
+                    }
                 ),
             ));
         }
@@ -707,6 +729,15 @@ mod tests {
         assert_eq!(normalize_type("tinyint(1)"), "tinyint(1)");
         assert_eq!(normalize_type("bigint(20)"), "bigint");
         assert_eq!(normalize_type("varchar(20)"), "varchar(20)");
+        assert_eq!(
+            normalize_type("int(5) unsigned zerofill"),
+            "int(5) unsigned zerofill"
+        );
+        assert_eq!(
+            strip_int_widths("IN p_id bigint(20), p_flag tinyint(1), p_n int(11) unsigned"),
+            "IN p_id bigint, p_flag tinyint(1), p_n int unsigned"
+        );
+        assert_eq!(strip_int_widths("point(1)"), "point(1)");
         assert_eq!(
             default_expression("a'b", "", "varchar(10)", false).as_deref(),
             Some("'a''b'")
