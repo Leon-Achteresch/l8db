@@ -74,9 +74,12 @@ pub fn parse_target(connection_string: &str, scheme: &str) -> Result<AwsTarget, 
         .collect();
     let endpoint = match params.get("endpoint").map(|e| e.trim()) {
         Some(e) if !e.is_empty() => {
-            let parsed = url::Url::parse(e).map_err(|_| format!("Ungültiger Endpunkt: {e}"))?;
+            let parsed = url::Url::parse(e)
+                .map_err(|_| format!("Ungültiger Endpunkt: {e}. Mit Schema angeben, z. B. http://{e}"))?;
             if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
-                return Err("Der Endpunkt muss mit http:// oder https:// beginnen.".to_string());
+                return Err(format!(
+                    "Der Endpunkt muss mit http:// oder https:// beginnen, z. B. http://{e}"
+                ));
             }
             Some(parsed)
         }
@@ -293,8 +296,13 @@ impl AwsClient {
             }
         }
         let response = request.body(payload).send().await.map_err(|e| {
+            let hint = if e.is_connect() {
+                ". Endpunkt (?endpoint=) und Port prüfen.".to_string()
+            } else {
+                format!(": {e}")
+            };
             format!(
-                "{} nicht erreichbar ({}): {e}",
+                "{} nicht erreichbar ({}){hint}",
                 self.service.label, self.endpoint
             )
         })?;
@@ -541,7 +549,7 @@ async fn cached_profile_credentials(profile: &str) -> Result<Credentials, String
 
 async fn profile_credentials(profile: &str) -> Result<(Credentials, Option<i64>), String> {
     let section = profile_section(profile, true).ok_or_else(|| {
-        format!("AWS-Profil \"{profile}\" wurde in ~/.aws/config oder ~/.aws/credentials nicht gefunden.")
+        format!("AWS-Profil \"{profile}\" wurde in ~/.aws/config oder ~/.aws/credentials nicht gefunden.\n  Zugangsdaten in der URL (…://KEY:SECRET@REGION), mit ?profile=NAME oder per AWS_ACCESS_KEY_ID und AWS_SECRET_ACCESS_KEY angeben.")
     })?;
     if let (Some(access_key), Some(secret_key)) = (
         section.get("aws_access_key_id"),
