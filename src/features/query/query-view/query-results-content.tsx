@@ -64,7 +64,7 @@ export function QueryResultsContent({
     null,
   );
   const viewable =
-    viewSource !== null && !scriptEntries && !error && result !== null && result.columns.length > 0;
+    viewSource !== null && !scriptEntries && result !== null && result.columns.length > 0;
   const showView = viewable && !classic && !isRunning;
   const showCompare =
     (compareOpen || snapshotCompare) &&

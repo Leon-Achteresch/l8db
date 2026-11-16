@@ -226,7 +226,6 @@ export function useRunSql({
         setError(message);
         const base = locateText(editorSqlRef.current, sql, cursorOffsetRef.current);
         setErrorSource(base === null ? null : { text: sql, base });
-        setViewSource(null);
         finishNotification?.(
           /abgebrochen|cancelled|canceled/i.test(message) ? "cancelled" : "error",
         );
