@@ -36,7 +36,8 @@ const RULES: ProductRule[] = [
   { pattern: /planetscale/, kind: "mysql", label: "PlanetScale" },
   { pattern: /oceanbase/, kind: "mysql", label: "OceanBase" },
   { pattern: /starrocks|doris/, kind: "mysql", label: "Apache Doris" },
-  { pattern: /mysql|aurora/, kind: "mysql", label: "MySQL" },
+  { pattern: /aurora/, kind: "mysql", label: "Aurora MySQL" },
+  { pattern: /mysql/, kind: "mysql", label: "MySQL" },
   {
     pattern: /sqlserver|sql server|mssql|jtds|microsoft|azure ?sql|azuresql/,
     kind: "mssql",
@@ -46,9 +47,15 @@ const RULES: ProductRule[] = [
   { pattern: /clickhouse|(^|[^a-z])ch([^a-z]|$)/, kind: "clickhouse", label: "ClickHouse" },
   { pattern: /duckdb/, kind: "duckdb", label: "DuckDB" },
   { pattern: /sqlite|libsql/, kind: "sqlite", label: "SQLite" },
-  { pattern: /mongo|documentdb|ferretdb/, kind: "mongodb", label: "MongoDB" },
-  { pattern: /redis|valkey|keydb|dragonfly/, kind: "redis", label: "Redis" },
-  { pattern: /cassandra|scylla/, kind: "cassandra", label: "Apache Cassandra" },
+  { pattern: /documentdb/, kind: "mongodb", label: "Amazon DocumentDB" },
+  { pattern: /ferretdb/, kind: "mongodb", label: "FerretDB" },
+  { pattern: /mongo/, kind: "mongodb", label: "MongoDB" },
+  { pattern: /valkey/, kind: "redis", label: "Valkey" },
+  { pattern: /keydb/, kind: "redis", label: "KeyDB" },
+  { pattern: /dragonfly/, kind: "redis", label: "Dragonfly" },
+  { pattern: /redis/, kind: "redis", label: "Redis" },
+  { pattern: /scylla/, kind: "cassandra", label: "ScyllaDB" },
+  { pattern: /cassandra/, kind: "cassandra", label: "Apache Cassandra" },
 ];
 
 function normalize(value: string): string {

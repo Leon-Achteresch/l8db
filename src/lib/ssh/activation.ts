@@ -9,6 +9,7 @@ import { ensurePassword } from "@/lib/password-prompt";
 import { useSettingsStore } from "@/lib/settings";
 import { getTransactionForConnection } from "@/lib/transactions";
 import { effectiveConnectionString } from "./connection-string";
+import { detectServerProduct } from "./server-product";
 import { ensureSshTunnel, type TunnelOutcome } from "./tunnel";
 
 interface ConnectionSwitchState {
@@ -102,6 +103,8 @@ async function performActivation(
       }
     }
     store.setActiveId(id);
+    const active = useConnectionsStore.getState().connections.find((entry) => entry.id === id);
+    if (active) void detectServerProduct(active);
     return { ok: true };
   } finally {
     useConnectionSwitch.setState({ targetId: null, isSwitching: false });
