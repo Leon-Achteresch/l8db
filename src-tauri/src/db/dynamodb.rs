@@ -22,6 +22,8 @@ static SERVICE: Service = Service {
 
 const MAX_TRANSACTION_STATEMENTS: usize = 100;
 const SAMPLE_SIZE: i64 = 100;
+const FILTER_READ_CALLS: usize = 50;
+const MAX_CURSORS: usize = 512;
 
 type Item = Map<String, Value>;
 
@@ -294,6 +296,83 @@ fn rows_for(columns: &[String], items: &[Item]) -> Vec<Value> {
         .collect()
 }
 
+fn unquoted(name: &str) -> Option<String> {
+    let name = name.trim();
+    if let Some(inner) = name.strip_prefix('"').and_then(|n| n.strip_suffix('"')) {
+        return Some(inner.replace("\"\"", "\""));
+    }
+    name.chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, '_' | '-'))
+        .then(|| name.to_string())
+        .filter(|n| !n.is_empty())
+}
+
+fn from_position(statement: &str) -> Option<usize> {
+    let upper = statement.to_ascii_uppercase();
+    let bytes = upper.as_bytes();
+    (1..upper.len().saturating_sub(4)).find(|&i| {
+        &bytes[i..i + 4] == b"FROM"
+            && bytes[i - 1].is_ascii_whitespace()
+            && bytes.get(i + 4).is_some_and(u8::is_ascii_whitespace)
+    })
+}
+
+fn projection(statement: &str) -> Vec<String> {
+    let body = statement.trim_start_matches(|c: char| c.is_whitespace() || c == '(');
+    if !is_select(body) {
+        return Vec::new();
+    }
+    let Some(list) = from_position(body).and_then(|from| body.get(6..from)) else {
+        return Vec::new();
+    };
+    if list.trim() == "*" {
+        return Vec::new();
+    }
+    list.split(',').filter_map(unquoted).collect()
+}
+
+fn from_table(statement: &str) -> Option<String> {
+    let rest = statement[from_position(statement)? + 4..].trim_start();
+    let name = if let Some(quoted) = rest.strip_prefix('"') {
+        let mut out = String::new();
+        let mut chars = quoted.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '"' if chars.peek() == Some(&'"') => {
+                    chars.next();
+                    out.push('"');
+                }
+                '"' => break,
+                other => out.push(other),
+            }
+        }
+        out
+    } else {
+        rest.split(|c: char| c.is_whitespace() || c == '.')
+            .next()?
+            .to_string()
+    };
+    Some(name).filter(|n| !n.is_empty())
+}
+
+fn friendly(error: String, statement: &str, region: &str) -> String {
+    let upper = statement.to_ascii_uppercase();
+    if error.contains("Unexpected path component") && upper.contains("COUNT(") {
+        return "COUNT(*) gibt es in DynamoDB-PartiQL nicht. Zählen: l8db table count <tabelle>"
+            .into();
+    }
+    if error.contains("Unsupported operation") || error.contains("wasn't well formed") {
+        return "PartiQL-Syntaxfehler. DynamoDB kennt nur SELECT, INSERT, UPDATE und DELETE; Tabellen anlegen oder löschen geht nicht über PartiQL.".into();
+    }
+    if error.contains("Operator: like") {
+        return "LIKE gibt es bei DynamoDB nicht. begins_with(attr, 'x') oder contains(attr, 'x') verwenden.".into();
+    }
+    if error.contains("ResourceNotFoundException") {
+        return format!("Tabelle gibt es in Region {region} nicht.");
+    }
+    error
+}
+
 fn is_select(sql: &str) -> bool {
     sql.trim_start_matches(|c: char| c.is_whitespace() || c == '(')
         .get(..6)
@@ -398,11 +477,12 @@ pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String
 }
 
 impl DynamoAdapter {
-    pub fn new(connection_string: &str, key: String) -> Result<Self, String> {
-        Ok(Self {
-            conn: aws::parse_url(connection_string, "dynamodb")?,
-            key,
-        })
+    pub fn new(connection_string: &str, region: Option<&str>, key: String) -> Result<Self, String> {
+        let mut conn = aws::parse_url(connection_string, "dynamodb")?;
+        if let Some(region) = region {
+            conn.region = Some(region.to_string());
+        }
+        Ok(Self { conn, key })
     }
 
     async fn call(&self, action: &str, body: Value) -> Result<Value, String> {
@@ -442,12 +522,16 @@ impl DynamoAdapter {
         Ok(response.get("Item").and_then(Value::as_object).cloned())
     }
 
+    fn friendly(&self, error: String, statement: &str) -> String {
+        friendly(error, statement, &self.conn.region().unwrap_or_default())
+    }
+
     async fn column_types(&self, table: &str) -> Result<HashMap<String, String>, String> {
         Ok(self
             .detailed(table)
             .await?
             .into_iter()
-            .filter(|c| c.data_type != "Mixed")
+            .filter(|c| !c.data_type.contains(" | "))
             .map(|c| (c.name, c.data_type))
             .collect())
     }
@@ -482,6 +566,7 @@ impl DynamoAdapter {
                 .await
             {
                 Ok(items) => return Ok(items),
+                Err(e) if !e.contains("ValidationException") => return Err(e),
                 Err(_) => {
                     if let Ok(mut c) = cursor_cache().lock() {
                         c.remove(&cache_key);
@@ -508,49 +593,82 @@ impl DynamoAdapter {
         let statement = (!where_sql.is_empty())
             .then(|| format!("SELECT * FROM {}{where_sql}", quote_ident(table)));
         let mut items = Vec::new();
+        let mut boundaries: Vec<(i64, Value)> = Vec::new();
+        let mut calls = 0usize;
         while pos < target {
-            let need = (target - pos).min(1000);
+            let skip = statement.is_none() && pos < offset;
             let (action, cursor_field, next_field, mut body) = match &statement {
+                None if skip => (
+                    "Scan",
+                    "ExclusiveStartKey",
+                    "LastEvaluatedKey",
+                    json!({"TableName": table, "Select": "COUNT", "Limit": offset - pos}),
+                ),
                 None => (
                     "Scan",
                     "ExclusiveStartKey",
                     "LastEvaluatedKey",
-                    json!({"TableName": table, "Limit": need}),
+                    json!({"TableName": table, "Limit": (target - pos).min(1000)}),
                 ),
                 Some(s) => (
                     "ExecuteStatement",
                     "NextToken",
                     "NextToken",
-                    json!({"Statement": s, "Limit": need}),
+                    json!({ "Statement": s }),
                 ),
             };
+            if statement.is_some() && calls >= FILTER_READ_CALLS {
+                self.remember(cache_key, &boundaries);
+                return Err(format!(
+                    "Lesebudget erschöpft: {calls} Leseaufrufe, {pos} Treffer. Filter auf Schlüsselattribute setzen oder mit table count zählen."
+                ));
+            }
             if let Some(c) = &cursor {
                 body[cursor_field] = c.clone();
             }
             let response = client.call(action, &body).await?;
-            for item in items_of(&response) {
-                if pos >= offset && pos < target {
-                    items.push(item);
+            calls += 1;
+            #[cfg(test)]
+            tests::READ_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if skip {
+                pos += response.get("Count").and_then(Value::as_i64).unwrap_or(0);
+            } else {
+                for item in items_of(&response) {
+                    if pos >= offset && pos < target {
+                        items.push(item);
+                    }
+                    pos += 1;
                 }
-                pos += 1;
             }
             cursor = response.get(next_field).filter(|v| !v.is_null()).cloned();
-            if cursor.is_none() {
-                break;
+            match &cursor {
+                Some(c) => boundaries.push((pos, c.clone())),
+                None => break,
+            }
+            if super::execution::cancellation_token().is_cancelled() {
+                return Err("Abruf abgebrochen.".to_string());
             }
         }
-        if let (true, Some(c)) = (pos == target, cursor) {
-            if let Ok(mut cache) = cursor_cache().lock() {
-                if cache.len() > 200 {
-                    cache.clear();
-                }
-                cache
-                    .entry(cache_key.to_string())
-                    .or_default()
-                    .insert(target, c);
-            }
-        }
+        self.remember(cache_key, &boundaries);
         Ok(items)
+    }
+
+    fn remember(&self, cache_key: &str, boundaries: &[(i64, Value)]) {
+        if boundaries.is_empty() {
+            return;
+        }
+        if let Ok(mut cache) = cursor_cache().lock() {
+            if cache.len() > 200 {
+                cache.clear();
+            }
+            let entry = cache.entry(cache_key.to_string()).or_default();
+            for (pos, cursor) in boundaries {
+                entry.insert(*pos, cursor.clone());
+            }
+            while entry.len() > MAX_CURSORS {
+                entry.pop_first();
+            }
+        }
     }
 
     async fn count(&self, table: &str, where_sql: &str, cap: Option<i64>) -> Result<i64, String> {
@@ -633,11 +751,7 @@ impl DynamoAdapter {
         let inferred = |name: &str| -> (String, bool) {
             match seen.get(name) {
                 Some((types, present)) => (
-                    if types.len() == 1 {
-                        types.iter().next().cloned().unwrap_or_default()
-                    } else {
-                        "Mixed".to_string()
-                    },
+                    types.iter().cloned().collect::<Vec<_>>().join(" | "),
                     *present < sample.len() || types.contains("Null"),
                 ),
                 None => ("String".to_string(), true),
@@ -706,6 +820,7 @@ impl DatabaseAdapter for DynamoAdapter {
         timed(self.call("ListTables", json!({"Limit": 1})))
             .await
             .map(|_| ())
+            .map_err(|e| self.friendly(e, ""))
     }
 
     async fn list_databases(&self) -> Result<Vec<String>, String> {
@@ -822,14 +937,19 @@ impl DatabaseAdapter for DynamoAdapter {
         filter: Option<&str>,
         limit: i64,
         offset: i64,
-        _order_by: Option<&str>,
+        order_by: Option<&str>,
         _order_desc: bool,
         is_view: bool,
         allow_raw_filter: bool,
     ) -> Result<TableData, String> {
+        if order_by.is_some() {
+            return Err("DynamoDB kann nicht sortieren; Items kommen in Scan-Reihenfolge.".into());
+        }
         let where_sql = where_clause(filter, allow_raw_filter)?;
-        let meta = self.meta(table).await?;
-        let items = timed(self.page(table, &where_sql, offset, limit)).await?;
+        let meta = self.meta(table).await.map_err(|e| self.friendly(e, ""))?;
+        let items = timed(self.page(table, &where_sql, offset, limit))
+            .await
+            .map_err(|e| self.friendly(e, &where_sql))?;
         let keys = meta.key_names();
         let columns = ordered_columns(&keys, &items);
         let mut rows = rows_for(&columns, &items);
@@ -847,7 +967,9 @@ impl DatabaseAdapter for DynamoAdapter {
         allow_raw_filter: bool,
     ) -> Result<i64, String> {
         let where_sql = where_clause(filter, allow_raw_filter)?;
-        timed(self.count(table, &where_sql, None)).await
+        timed(self.count(table, &where_sql, None))
+            .await
+            .map_err(|e| self.friendly(e, &where_sql))
     }
 
     async fn count_rows_capped(
@@ -859,7 +981,9 @@ impl DatabaseAdapter for DynamoAdapter {
         cap: i64,
     ) -> Result<RowCount, String> {
         let where_sql = where_clause(filter, allow_raw_filter)?;
-        let count = timed(self.count(table, &where_sql, Some(cap))).await?;
+        let count = timed(self.count(table, &where_sql, Some(cap)))
+            .await
+            .map_err(|e| self.friendly(e, &where_sql))?;
         if count <= cap {
             return Ok(RowCount::exact(count));
         }
@@ -882,8 +1006,9 @@ impl DatabaseAdapter for DynamoAdapter {
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let start = Instant::now();
         let statement = sql.trim().trim_end_matches(';').trim().to_string();
+        let limit = super::execution::row_limit();
         let client = self.conn.client(&SERVICE).await?;
-        let items = timed(async {
+        let (items, truncated) = timed(async {
             let mut items = Vec::new();
             let mut token: Option<Value> = None;
             loop {
@@ -894,13 +1019,18 @@ impl DatabaseAdapter for DynamoAdapter {
                 let response = client.call("ExecuteStatement", &body).await?;
                 items.extend(items_of(&response));
                 token = response.get("NextToken").filter(|v| !v.is_null()).cloned();
-                if token.is_none() || items.len() >= super::commands::MAX_RESULT_ROWS {
-                    break;
+                if items.len() >= limit {
+                    let more = items.len() > limit || token.is_some();
+                    items.truncate(limit);
+                    return Ok((items, more));
+                }
+                if token.is_none() {
+                    return Ok((items, false));
                 }
             }
-            Ok(items)
         })
-        .await?;
+        .await
+        .map_err(|e| self.friendly(e, &statement))?;
         if !is_select(&statement) {
             return Ok(QueryResult {
                 columns: Vec::new(),
@@ -910,7 +1040,7 @@ impl DatabaseAdapter for DynamoAdapter {
                 truncated: false,
             });
         }
-        let mut columns: Vec<String> = Vec::new();
+        let mut columns = projection(&statement);
         for item in &items {
             for name in item.keys() {
                 if !columns.contains(name) {
@@ -918,12 +1048,21 @@ impl DatabaseAdapter for DynamoAdapter {
                 }
             }
         }
+        if columns.is_empty() {
+            if let Some(table) = from_table(&statement) {
+                columns = self
+                    .meta(&table)
+                    .await
+                    .map(|m| m.key_names())
+                    .unwrap_or_default();
+            }
+        }
         Ok(QueryResult {
             rows: rows_for(&columns, &items),
             columns,
             rows_affected: None,
             execution_time_ms: start.elapsed().as_millis() as u64,
-            truncated: false,
+            truncated,
         })
     }
 }
@@ -1013,7 +1152,7 @@ fn render(staged: &Staged) -> Option<Value> {
 impl DynamoTx {
     pub fn new(connection_string: &str, key: String) -> Result<Self, String> {
         Ok(Self {
-            adapter: DynamoAdapter::new(connection_string, key)?,
+            adapter: DynamoAdapter::new(connection_string, None, key)?,
             staged: tokio::sync::Mutex::new(Vec::new()),
         })
     }
@@ -1250,6 +1389,202 @@ impl DynamoTx {
 mod tests {
     use super::*;
 
+    pub static READ_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    type Log = Arc<Mutex<Vec<Value>>>;
+
+    async fn mock_dynamo() -> (String, Log) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let log: Log = Default::default();
+        let calls = log.clone();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    return;
+                };
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 4096];
+                let (head, body) = loop {
+                    let n = socket.read(&mut chunk).await.unwrap_or(0);
+                    buf.extend_from_slice(&chunk[..n]);
+                    let text = String::from_utf8_lossy(&buf).to_string();
+                    if let Some(end) = text.find("\r\n\r\n") {
+                        let length = text[..end]
+                            .lines()
+                            .find_map(|l| {
+                                l.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse::<usize>().unwrap())
+                            })
+                            .unwrap_or(0);
+                        if buf.len() >= end + 4 + length {
+                            break (text[..end].to_string(), text[end + 4..].to_string());
+                        }
+                    }
+                    if n == 0 {
+                        return;
+                    }
+                };
+                let action = head
+                    .lines()
+                    .find_map(|l| {
+                        let (k, v) = l.split_once(':')?;
+                        k.eq_ignore_ascii_case("x-amz-target").then(|| {
+                            v.trim()
+                                .trim_start_matches("DynamoDB_20120810.")
+                                .to_string()
+                        })
+                    })
+                    .unwrap_or_default();
+                let mut request: Value = serde_json::from_str(&body).unwrap_or_default();
+                request["action"] = json!(action);
+                calls.lock().unwrap().push(request.clone());
+                let start = request["ExclusiveStartKey"]["pk"]["S"]
+                    .as_str()
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .unwrap_or(0);
+                let response = match action.as_str() {
+                    "DescribeTable" => json!({"Table": {
+                        "AttributeDefinitions": [{"AttributeName": "pk", "AttributeType": "S"}],
+                        "KeySchema": [{"AttributeName": "pk", "KeyType": "HASH"}],
+                        "ItemCount": 100000
+                    }}),
+                    "ExecuteStatement" => json!({"Items": [], "NextToken": "more"}),
+                    "Scan" if request["Select"] == "COUNT" => {
+                        let count = request["Limit"].as_i64().unwrap_or(1000).min(3000);
+                        json!({"Count": count, "LastEvaluatedKey": {"pk": {"S": (start + count).to_string()}}})
+                    }
+                    "Scan" => {
+                        let limit = request["Limit"].as_i64().unwrap_or(1000);
+                        let items: Vec<Value> = (start..start + limit)
+                            .map(|i| json!({"pk": {"S": i.to_string()}}))
+                            .collect();
+                        json!({"Items": items, "LastEvaluatedKey": {"pk": {"S": (start + limit).to_string()}}})
+                    }
+                    _ => json!({}),
+                }
+                .to_string();
+                let reply = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/x-amz-json-1.0\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{response}",
+                    response.len()
+                );
+                let _ = socket.write_all(reply.as_bytes()).await;
+            }
+        });
+        (
+            format!("dynamodb://AKID:secret@us-east-1?endpoint=http%3A%2F%2F127.0.0.1%3A{port}"),
+            log,
+        )
+    }
+
+    #[tokio::test]
+    async fn rare_filter_stops_at_read_budget() {
+        let (url, log) = mock_dynamo().await;
+        let adapter = DynamoAdapter::new(&url, None, "ddb-budget".into()).unwrap();
+        let error = adapter
+            .fetch_rows(
+                "",
+                "t",
+                Some("\"total\" > 1"),
+                5,
+                0,
+                None,
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            error.contains("Lesebudget erschöpft: 50 Leseaufrufe"),
+            "{error}"
+        );
+        let log = log.lock().unwrap();
+        let statements: Vec<&Value> = log
+            .iter()
+            .filter(|r| r["action"] == "ExecuteStatement")
+            .collect();
+        assert_eq!(statements.len(), FILTER_READ_CALLS);
+        assert!(statements.iter().all(|r| r.get("Limit").is_none()));
+    }
+
+    #[tokio::test]
+    async fn deep_offset_skips_with_count_scans() {
+        let (url, log) = mock_dynamo().await;
+        let adapter = DynamoAdapter::new(&url, None, "ddb-offset".into()).unwrap();
+        let page = adapter
+            .fetch_rows("", "t", None, 2, 90_000, None, false, false, false)
+            .await
+            .unwrap();
+        let keys: Vec<&str> = page
+            .rows
+            .iter()
+            .map(|r| r["pk"].as_str().unwrap())
+            .collect();
+        assert_eq!(keys, vec!["90000", "90001"]);
+        let scans: Vec<Value> = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r["action"] == "Scan")
+            .cloned()
+            .collect();
+        assert_eq!(scans.len(), 31);
+        assert!(scans[..30].iter().all(|r| r["Select"] == "COUNT"));
+        assert_eq!(scans[30]["Limit"], 2);
+        let next = adapter
+            .fetch_rows("", "t", None, 2, 90_002, None, false, false, false)
+            .await
+            .unwrap();
+        assert_eq!(next.rows[0]["pk"], "90002");
+        assert_eq!(
+            log.lock()
+                .unwrap()
+                .iter()
+                .filter(|r| r["action"] == "Scan")
+                .count(),
+            32
+        );
+        assert!(adapter
+            .fetch_rows("", "t", None, 2, 0, Some("pk"), true, false, false)
+            .await
+            .unwrap_err()
+            .contains("nicht sortieren"));
+    }
+
+    #[test]
+    fn query_columns_follow_the_select_list() {
+        assert_eq!(projection("SELECT pk, \"sk\" FROM \"t\""), vec!["pk", "sk"]);
+        assert_eq!(projection("select *\nfrom t"), Vec::<String>::new());
+        assert_eq!(
+            from_table("SELECT * FROM \"a\"\"b\".\"idx\" WHERE x = 1"),
+            Some("a\"b".into())
+        );
+        assert_eq!(from_table("select pk from orders"), Some("orders".into()));
+        assert!(friendly(
+            "DynamoDB ValidationException: Unsupported operator in Condition Expression. Operator: like".into(),
+            "",
+            "us-east-1"
+        )
+        .contains("begins_with"));
+        assert!(friendly(
+            "DynamoDB ValidationException: Unexpected path component at 1:8:5".into(),
+            "SELECT COUNT(*) FROM t",
+            "us-east-1"
+        )
+        .contains("table count"));
+        assert_eq!(
+            friendly(
+                "DynamoDB ResourceNotFoundException: x".into(),
+                "",
+                "eu-west-1"
+            ),
+            "Tabelle gibt es in Region eu-west-1 nicht."
+        );
+    }
+
     #[test]
     fn unmarshals_all_attribute_types() {
         let item = json!({
@@ -1412,11 +1747,173 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    async fn dynamodb_local_rare_filter_100k() {
+        use std::sync::atomic::Ordering;
+        let url = std::env::var("L8DB_E2E_DYNAMODB_URL").unwrap_or_else(|_| {
+            "dynamodb://local:local@us-east-1?endpoint=http%3A%2F%2F127.0.0.1%3A18000".to_string()
+        });
+        let adapter = DynamoAdapter::new(&url, None, "ddb-100k".to_string()).unwrap();
+        let table = "l8db_e2e_bulk";
+        let _ = adapter
+            .call("DeleteTable", json!({ "TableName": table }))
+            .await;
+        adapter
+            .call(
+                "CreateTable",
+                json!({
+                    "TableName": table,
+                    "BillingMode": "PAY_PER_REQUEST",
+                    "AttributeDefinitions": [
+                        {"AttributeName": "pk", "AttributeType": "S"},
+                        {"AttributeName": "sk", "AttributeType": "N"}
+                    ],
+                    "KeySchema": [
+                        {"AttributeName": "pk", "KeyType": "HASH"},
+                        {"AttributeName": "sk", "KeyType": "RANGE"}
+                    ]
+                }),
+            )
+            .await
+            .unwrap();
+        let started = Instant::now();
+        let batches: Vec<Vec<i64>> = (0..100_000i64)
+            .collect::<Vec<_>>()
+            .chunks(25)
+            .map(<[i64]>::to_vec)
+            .collect();
+        for group in batches.chunks(32) {
+            futures_util::future::try_join_all(group.iter().map(|batch| {
+                let requests: Vec<Value> = batch
+                    .iter()
+                    .map(|i| {
+                        json!({"PutRequest": {"Item": {
+                            "pk": {"S": format!("c{}", i % 10)},
+                            "sk": {"N": i.to_string()},
+                            "total": {"N": (i * 3).to_string()},
+                            "status": {"S": "offen"},
+                            "payload": {"S": format!("Bestellung {i}")}
+                        }}})
+                    })
+                    .collect();
+                adapter.call("BatchWriteItem", json!({"RequestItems": {table: requests}}))
+            }))
+            .await
+            .unwrap();
+        }
+        eprintln!("seed: 100000 Items in {} ms", started.elapsed().as_millis());
+        assert_eq!(
+            adapter.count_rows("", table, None, false).await.unwrap(),
+            100_000
+        );
+
+        let measure = |label: &str, started: Instant| {
+            let calls = READ_CALLS.swap(0, Ordering::Relaxed);
+            eprintln!(
+                "{label}: {} ms, {calls} Leseaufrufe",
+                started.elapsed().as_millis()
+            );
+            calls
+        };
+        READ_CALLS.store(0, Ordering::Relaxed);
+        let started = Instant::now();
+        let rare = adapter
+            .fetch_rows(
+                "",
+                table,
+                Some("\"total\" > 299990"),
+                5,
+                0,
+                None,
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        let calls = measure("rare filter total > 299990", started);
+        assert_eq!(rare.rows.len(), 3);
+        assert!(calls <= FILTER_READ_CALLS, "{calls}");
+        assert!(started.elapsed() < Duration::from_secs(60));
+
+        let started = Instant::now();
+        let contains = adapter
+            .fetch_rows(
+                "",
+                table,
+                Some("contains(\"payload\", 'Bestellung 9999')"),
+                3,
+                0,
+                None,
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        let calls = measure("contains payload", started);
+        assert_eq!(contains.rows.len(), 3);
+        assert!(calls <= FILTER_READ_CALLS, "{calls}");
+
+        let started = Instant::now();
+        let deep = adapter
+            .fetch_rows("", table, None, 2, 90_000, None, false, false, false)
+            .await
+            .unwrap();
+        let calls = measure("offset 90000", started);
+        assert_eq!(deep.rows.len(), 2);
+        assert!(calls <= 40, "{calls}");
+        let started = Instant::now();
+        let next = adapter
+            .fetch_rows("", table, None, 2, 90_002, None, false, false, false)
+            .await
+            .unwrap();
+        let calls = measure("offset 90002 (Cursor-Cache)", started);
+        assert_eq!(next.rows.len(), 2);
+        assert_eq!(calls, 1);
+
+        let started = Instant::now();
+        let all = crate::db::execution::with_row_limit(
+            usize::MAX,
+            adapter.execute_query(&format!("SELECT pk, sk FROM \"{table}\"")),
+        )
+        .await
+        .unwrap();
+        eprintln!(
+            "query --all: {} Zeilen in {} ms",
+            all.rows.len(),
+            started.elapsed().as_millis()
+        );
+        assert_eq!(all.rows.len(), 100_000);
+        assert!(!all.truncated);
+        assert_eq!(all.columns, vec!["pk", "sk"]);
+        let capped = crate::db::execution::with_row_limit(
+            1001,
+            adapter.execute_query(&format!("SELECT pk, sk FROM \"{table}\"")),
+        )
+        .await
+        .unwrap();
+        assert_eq!(capped.rows.len(), 1001);
+        assert!(capped.truncated);
+        let empty = adapter
+            .execute_query(&format!("SELECT * FROM \"{table}\" WHERE \"pk\" = 'none'"))
+            .await
+            .unwrap();
+        assert_eq!(empty.columns, vec!["pk", "sk"]);
+        assert!(empty.rows.is_empty());
+
+        adapter
+            .call("DeleteTable", json!({ "TableName": table }))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn dynamodb_local_end_to_end() {
         let url = std::env::var("L8DB_E2E_DYNAMODB_URL").unwrap_or_else(|_| {
             "dynamodb://local:local@us-east-1?endpoint=http%3A%2F%2F127.0.0.1%3A18000".to_string()
         });
-        let adapter = DynamoAdapter::new(&url, "ddb-e2e".to_string()).unwrap();
+        let adapter = DynamoAdapter::new(&url, None, "ddb-e2e".to_string()).unwrap();
         let table = "l8db_e2e_orders";
         let _ = adapter
             .call("DeleteTable", json!({ "TableName": table }))
