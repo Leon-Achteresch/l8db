@@ -2,6 +2,17 @@ import type { MaskMode } from "@/lib/masking";
 import { invoke, type QueryExecutionOptions } from "./core";
 import type { DatabaseKind } from "./providers";
 
+export interface ExactFilterMetadata {
+  target: string;
+  strategy: "keyword" | "match_phrase";
+  ignore_above:
+    | { state: "configured"; value: number }
+    | { state: "not_declared" }
+    | { state: "unknown" };
+  scope: "single_index" | "multiple_indices";
+  index_mode: "unverified";
+}
+
 export interface DetailedColumnInfo {
   name: string;
   data_type: string;
@@ -11,6 +22,7 @@ export interface DetailedColumnInfo {
   ordinal_position: number;
   character_maximum_length: number | null;
   comment?: string | null;
+  exact_filter?: ExactFilterMetadata;
 }
 
 export interface ImportColumnInfo {

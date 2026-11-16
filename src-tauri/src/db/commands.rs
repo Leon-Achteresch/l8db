@@ -17,11 +17,10 @@ use super::{
     AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ColumnMatch, CompileErrorInfo,
     CompileResult, ConstraintInfo, CreateMatviewRequest, CreatePolicyRequest,
     CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest, CreateTableRequest,
-    DatabaseKind, DependencyInfo, DetailedColumnInfo, ERSchema, ExtensionInfo, ForeignKeyInfo,
-    FunctionInfo, InvalidCompileOutcome, InvalidObjectInfo, ObjectGrantInfo, PackageMemberInfo,
-    PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo,
-    ScriptStatementResult, SequenceInfo, SourceMatch, SynonymInfo, TableData, TableInfo,
-    TriggerInfo,
+    DatabaseKind, DependencyInfo, ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo,
+    InvalidCompileOutcome, InvalidObjectInfo, ObjectGrantInfo, PackageMemberInfo, PrivilegeChange,
+    ProxyUserInfo, QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo, ScriptStatementResult,
+    SequenceInfo, SourceMatch, SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 use super::{ObjectAuditInfo, ObjectDdlRequest};
 
@@ -1562,14 +1561,14 @@ pub async fn list_table_columns_detailed(
     schema: String,
     table: String,
     pool_state: tauri::State<'_, PoolState>,
-) -> Result<Vec<DetailedColumnInfo>, String> {
+) -> Result<Vec<super::column_metadata::ColumnMetadata>, String> {
     create_adapter_from_string(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
     )?
-    .list_table_columns_detailed(&schema, &table)
+    .list_table_column_metadata(&schema, &table)
     .await
 }
 

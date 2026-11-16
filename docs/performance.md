@@ -724,3 +724,76 @@ Typecheck und scoped Biome bestanden. Keine Rust-/Adapteränderung; deshalb kein
 Cargo-Neulauf. Keine Live-Datenbanken, reale Datei-/Clipboard-Dialogprüfung,
 Browser-/Native-App-Abnahme, Windows/Linux, CPU-Simulation oder native/RSS-
 Messung. Der vorhandene CSV-Opus-Handoff bleibt unverändert offen.
+
+
+## Keyword-Mappinggrenzen im Filter (A41)
+
+Der bestehende `list_table_columns_detailed`-Bridge-Aufruf kann ein optionales
+`exact_filter` je Spalte liefern. Ein flacher `ColumnMetadata`-Wrapper erhält die
+bisherigen `DetailedColumnInfo`-Felder und lässt das Zusatzfeld für andere Adapter
+weg; interne DDL-/Import-/Spaltenaufrufe behalten ihren bisherigen Typ. Der
+Elasticsearch-Adapter verwendet denselben vorhandenen Mapping-GET und denselben
+Keyword-Wähler. Keine zusätzliche Settings-, Versions-, Dokument- oder
+Kataloganfrage und keine Änderung des erzeugten Filter-DSL kommen hinzu.
+
+Metadaten nennen das vom Client gewählte Zielfeld (auch ein anders benanntes
+Keyword-Multifeld wie `.raw`), Keyword vs. Match-Phrase und `ignore_above` als
+konfiguriert / nicht deklariert / unbekannt. Auch 0 bleibt eine explizite Zahl;
+fehlende, negative oder nicht ganzzahlige Werte werden nicht als unbegrenzt
+behandelt. Bei mehreren Index-Mappings bleibt die gemeinsame Grenze unbekannt.
+Es gibt keinen Nachweis, dass jeder Alias-Index dieselben Felder besitzt.
+Indexmodus und Wirkung sind ausdrücklich `unverified`: Der Mapping-Abruf belegt
+keine Settings oder Versions-/Indexmodusregeln. Insbesondere wird eine deklarierte
+Zahl nicht pauschal auf alle normalen oder spaltenorientierten Modi übertragen.
+
+Der bestehende Filtereditor zeigt bei =, <>, IN und NOT IN einen kompakten Hinweis
+mit tastaturzugänglichem Tooltip. Alte/fehlende Metadaten bleiben unbekannt;
+Freitext-Kommentare werden nicht zu einem strukturierten Grenznachweis geparst.
+Lokale Zeilenregel-Editoren erhalten diesen Serverhinweis nicht. Zahlen/andere
+nicht unterstützte Feldtypen und andere Provider erhalten keinen Keyword-Hinweis.
+Keine Längenvalidierung oder Blockade verändert den Filterwert: Eine Zahl aus
+`ignore_above` allein beweist weder die wirksame Grenze noch vollständige Abdeckung;
+ein Nichttreffer beweist keinen fehlenden Dokumentinhalt. Nicht-Keyword-Textfilter
+bleiben als analysierte Match-Phrase gekennzeichnet. Feature-ID am tatsächlichen
+Hinweis: `table.filter.keyword-limit`.
+
+Die gemeinsamen synthetischen Mappingfelder in
+`tests/fixtures/elastic-keyword-mapping.json` decken direkte Keywords, `.keyword`,
+`.raw`, fehlende/ungültige Limits, Text ohne Keyword sowie nested/wildcard/numerische
+Felder ab. Native Regressionen erhalten vorhandene Exakt-/Phrase-Filter; der lokale
+HTTP-Mock prüft genau einen Mapping-GET ohne Folgeabfrage oder Idle-Polling.
+Frontendtests prüfen strukturierten Bridge-Transport, alte Daten, sichere Namen,
+Provider-/Operatorgates und die Filterformular-Anbindung. Die Formular-SSR
+verwendet gestubbte Select-/Werteingabe-Primitives; der reale Hinweisknopf und
+Tooltip werden separat gerendert. Das ist keine native oder Browser-UI-Abnahme.
+
+Native Abschlussmessung im Rust-Debug-Testprofil: 2.000 Text-/Keyword-Mappings
+plus `_id`, zwei Warmläufe und sieben Messungen; Median 35,415 ms,
+p95 94,156 ms, serialisierte Ausgabe 741.732 Bytes. Budgets: Median < 250 ms,
+p95 < 500 ms, Ausgabe < 2 MiB im Szenario. Enthalten sind bestehende Mapping-
+Zuordnung, neue Hinweise und JSON-Serialisierung; keine Netzwerk-/Serverlatenz
+oder native/RSS-Allokationsmessung. 17 gezielte Elasticsearch-Adaptertests
+bestanden, einschließlich alter Filter-/Paging-/OpenSearch-Regressionen. Der
+Legacy-Wrapper wird zusätzlich auf exakt gleiche JSON-Felder geprüft.
+
+Frontend: 10.000 Hinweisaktualisierungen, zwei Warmläufe und neun Messungen;
+Median 0,888 ms, p95 0,902 ms, nach fünf weiteren Läufen und GC 0 gemessene
+zusätzliche JS-Heap-Bytes. Budgets: Median < 50 ms, p95 < 100 ms, zusätzlicher
+JS-Heap < 4 MiB. Gemessen während der native Debug-Testbuild noch lief; keine
+CPU-Simulation. Keine neuen DB-Requests, Worker oder Idle-Aktivität; es gibt
+keinen neuen eigenständigen Abbruchpfad. Der bestehende HTTP-Lebenszyklus
+bleibt erhalten, der lokale Mock sieht genau eine Mapping-Anfrage.
+
+Plattform: macOS/Darwin 27.0.0, arm64, Apple M3, 16 GiB, Bun 1.3.10.
+Dies sind neue Semantik-/Übertragungsbenchmarks, kein Vorher-/Nachher-Nachweis
+einer Optimierung. 49 gezielte Frontendtests, Typecheck, Cargo-Check und scoped
+Biome bestanden. Bestehende Tiberius-, Backup-Test- und macOS-Linkerwarnungen
+wurden nicht geändert. Keine produktiven Reads/Writes, echte Elastic-/OpenSearch-
+Versions-/Indexmodusprüfung, Browser-/Native-App-Abnahme, Windows/Linux,
+CPU-/Heap-Simulation oder native/RSS-Messung. Bestehende Opus-Handoffs bleiben offen.
+
+Der zusätzliche Legacy-Wrapper-Test bestand ebenfalls (1/1): Ohne optionalen
+Hinweis entspricht das serialisierte JSON exakt der bisherigen Spaltenform.
+Insgesamt 18 native Prüfungen bestanden. Nicht verglichene Indexsettings,
+externe Mappingänderungen nach dem Lesen und tatsächliche Feldabdeckung bleiben
+unbekannt; es gibt keinen automatischen Aktualisierungs- oder Grenzprüfungsnachweis.
