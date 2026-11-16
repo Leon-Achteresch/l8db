@@ -5,6 +5,9 @@ use async_trait::async_trait;
 use base64::Engine;
 use serde_json::{json, Map, Value};
 
+use super::column_metadata::{
+    ColumnMetadata, ExactFilterMetadata, ExactStrategy, KeywordLimit, MappingScope,
+};
 use super::filter_expr::{self, Cmp, Expr, LikePart, Literal};
 use super::http_api::{self, text, Reply};
 use super::{
@@ -64,6 +67,7 @@ struct Field {
     name: String,
     kind: String,
     keyword: Option<String>,
+    exact_filter: Option<ExactFilterMetadata>,
 }
 
 fn flavors() -> &'static Mutex<HashMap<String, Flavor>> {
@@ -134,15 +138,59 @@ fn flatten_fields(properties: &Map<String, Value>, prefix: &str, out: &mut Vec<F
                     })
                     .map(|(sub, _)| format!("{path}.{sub}"));
                 if out.iter().all(|f| f.name != path) {
+                    let exact_filter = exact_filter_metadata(
+                        &path,
+                        kind.unwrap_or("object"),
+                        keyword.as_deref(),
+                        def,
+                    );
                     out.push(Field {
                         name: path,
                         kind: kind.unwrap_or("object").to_string(),
+                        exact_filter,
                         keyword,
                     });
                 }
             }
         }
     }
+}
+
+fn exact_filter_metadata(
+    path: &str,
+    kind: &str,
+    keyword: Option<&str>,
+    def: &Value,
+) -> Option<ExactFilterMetadata> {
+    if kind != "keyword" && kind != "text" {
+        return None;
+    }
+    let target = keyword.unwrap_or(path).to_string();
+    let keyword_def = match keyword {
+        Some(name) => name
+            .strip_prefix(&format!("{path}."))
+            .and_then(|sub| def.get("fields").and_then(|fields| fields.get(sub))),
+        None if kind == "keyword" => Some(def),
+        _ => None,
+    };
+    let ignore_above = match keyword_def.and_then(|value| value.get("ignore_above")) {
+        Some(value) => match value.as_u64() {
+            Some(value) => KeywordLimit::Configured { value },
+            None => KeywordLimit::Unknown,
+        },
+        None => KeywordLimit::NotDeclared,
+    };
+    Some(ExactFilterMetadata {
+        target,
+        strategy: if keyword.is_some() || kind == "keyword" {
+            ExactStrategy::Keyword
+        } else {
+            ExactStrategy::MatchPhrase
+        },
+        ignore_above,
+        scope: MappingScope::SingleIndex,
+        index_mode: "unverified",
+    })
 }
 
 fn mapping_fields(mapping: &Value) -> Vec<Field> {
@@ -163,6 +211,47 @@ fn mapping_fields(mapping: &Value) -> Vec<Field> {
             }
         }
     }
+    if mapping.as_object().is_some_and(|indices| indices.len() > 1) {
+        for field in &mut out {
+            if let Some(exact) = &mut field.exact_filter {
+                exact.scope = MappingScope::MultipleIndices;
+                exact.ignore_above = KeywordLimit::Unknown;
+            }
+        }
+    }
+    out
+}
+
+fn detailed_columns(fields: Vec<Field>) -> Vec<ColumnMetadata> {
+    let mut out = vec![DetailedColumnInfo {
+        name: "_id".into(),
+        data_type: "_id".into(),
+        is_nullable: false,
+        column_default: None,
+        is_primary_key: true,
+        ordinal_position: 1,
+        character_maximum_length: None,
+        comment: None,
+    }
+    .into()];
+    out.extend(
+        fields
+            .into_iter()
+            .enumerate()
+            .map(|(index, field)| ColumnMetadata {
+                column: DetailedColumnInfo {
+                    name: field.name,
+                    data_type: field.kind,
+                    is_nullable: true,
+                    column_default: None,
+                    is_primary_key: false,
+                    ordinal_position: index as i32 + 2,
+                    character_maximum_length: None,
+                    comment: field.keyword.map(|key| format!("Keyword-Feld: {key}")),
+                },
+                exact_filter: field.exact_filter,
+            }),
+    );
     out
 }
 
@@ -1357,33 +1446,18 @@ impl DatabaseAdapter for ElasticAdapter {
         _schema: &str,
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
-        let fields = self.fields(table).await?;
-        let mut out = vec![DetailedColumnInfo {
-            name: "_id".into(),
-            data_type: "_id".into(),
-            is_nullable: false,
-            column_default: None,
-            is_primary_key: true,
-            ordinal_position: 1,
-            character_maximum_length: None,
-            comment: None,
-        }];
-        out.extend(
-            fields
-                .into_iter()
-                .enumerate()
-                .map(|(i, f)| DetailedColumnInfo {
-                    name: f.name,
-                    data_type: f.kind,
-                    is_nullable: true,
-                    column_default: None,
-                    is_primary_key: false,
-                    ordinal_position: i as i32 + 2,
-                    character_maximum_length: None,
-                    comment: f.keyword.map(|k| format!("Keyword-Feld: {k}")),
-                }),
-        );
-        Ok(out)
+        Ok(detailed_columns(self.fields(table).await?)
+            .into_iter()
+            .map(|metadata| metadata.column)
+            .collect())
+    }
+
+    async fn list_table_column_metadata(
+        &self,
+        _schema: &str,
+        table: &str,
+    ) -> Result<Vec<ColumnMetadata>, String> {
+        Ok(detailed_columns(self.fields(table).await?))
     }
 
     async fn drop_table(&self, schema: &str, table: &str) -> Result<(), String> {
@@ -1425,6 +1499,156 @@ fn warning_text(header: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn keyword_mapping_fixture() -> Value {
+        serde_json::from_str(include_str!(
+            "../../../tests/fixtures/elastic-keyword-mapping.json"
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn keyword_hints_follow_existing_exact_routes_and_explicit_limits() {
+        let fields = mapping_fields(&keyword_mapping_fixture());
+        let columns = serde_json::to_value(detailed_columns(fields.clone())).unwrap();
+        let find = |name: &str| {
+            columns
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|column| column["name"] == name)
+                .unwrap()
+        };
+        assert_eq!(find("message")["exact_filter"]["target"], "message.keyword");
+        assert_eq!(
+            find("message")["exact_filter"]["ignore_above"],
+            json!({"state":"configured", "value":256})
+        );
+        assert_eq!(
+            find("tag")["exact_filter"]["ignore_above"],
+            json!({"state":"configured", "value":20})
+        );
+        assert_eq!(find("name")["exact_filter"]["target"], "name.raw");
+        assert_eq!(
+            find("name")["exact_filter"]["ignore_above"],
+            json!({"state":"configured", "value":0})
+        );
+        assert_eq!(
+            find("no_limit")["exact_filter"]["ignore_above"]["state"],
+            "not_declared"
+        );
+        assert_eq!(
+            find("invalid")["exact_filter"]["ignore_above"]["state"],
+            "unknown"
+        );
+        assert_eq!(find("analyzed")["exact_filter"]["strategy"], "match_phrase");
+        for name in ["_id", "count", "nested", "wild"] {
+            assert!(find(name).get("exact_filter").is_none());
+        }
+        for column in columns.as_array().unwrap() {
+            if column.get("exact_filter").is_some() {
+                assert_eq!(column["exact_filter"]["index_mode"], "unverified");
+            }
+        }
+        assert_eq!(
+            ElasticAdapter::build_query(Some("message = 'long value'"), &fields).unwrap(),
+            json!({"term":{"message.keyword":"long value"}})
+        );
+        assert_eq!(
+            ElasticAdapter::build_query(Some("name = 'x'"), &fields).unwrap(),
+            json!({"term":{"name.raw":"x"}})
+        );
+        assert_eq!(
+            ElasticAdapter::build_query(Some("analyzed = 'x'"), &fields).unwrap(),
+            json!({"match_phrase":{"analyzed":"x"}})
+        );
+        let legacy: Vec<_> = detailed_columns(fields)
+            .into_iter()
+            .map(|column| ColumnMetadata::from(column.column))
+            .collect();
+        assert!(serde_json::to_value(legacy)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|column| column.get("exact_filter").is_none()));
+    }
+
+    #[test]
+    fn keyword_hints_do_not_claim_shared_limits_or_index_mode_support() {
+        let mut mapping = keyword_mapping_fixture();
+        mapping["logs"]["settings"] = json!({"index":{"mode":"logsdb"}});
+        let single = serde_json::to_value(detailed_columns(mapping_fields(&mapping))).unwrap();
+        assert_eq!(single[1]["exact_filter"]["index_mode"], "unverified");
+        mapping["other"] = json!({"mappings":{"properties":{"message":{"type":"text"}}}});
+        let columns = serde_json::to_value(detailed_columns(mapping_fields(&mapping))).unwrap();
+        for column in columns.as_array().unwrap() {
+            if let Some(exact) = column.get("exact_filter") {
+                assert_eq!(exact["scope"], "multiple_indices");
+                assert_eq!(exact["ignore_above"]["state"], "unknown");
+            }
+        }
+        let typed = json!({"logs":{"mappings":{"_doc":{"properties":{"value":{"type":"keyword", "ignore_above":12}}}}}});
+        assert_eq!(
+            serde_json::to_value(detailed_columns(mapping_fields(&typed))).unwrap()[1]
+                ["exact_filter"]["ignore_above"]["value"],
+            12
+        );
+        for value in [json!(-1), json!(1.5), Value::Null] {
+            let def = json!({"type":"keyword","ignore_above":value});
+            assert_eq!(
+                serde_json::to_value(exact_filter_metadata("x", "keyword", None, &def)).unwrap()
+                    ["ignore_above"]["state"],
+                "unknown"
+            );
+        }
+    }
+
+    #[test]
+    fn keyword_hints_mapping_performance_is_bounded() {
+        let properties: Map<String, Value> = (0..2_000).map(|index| (format!("field_{index}"), json!({"type":"text", "fields":{"keyword":{"type":"keyword", "ignore_above":256}}}))).collect();
+        let mapping = json!({"logs":{"mappings":{"properties":properties}}});
+        let run = || {
+            let columns = detailed_columns(mapping_fields(&mapping));
+            assert_eq!(columns.len(), 2_001);
+            let bytes = serde_json::to_vec(&columns).unwrap().len();
+            assert!(bytes < 2 * 1024 * 1024);
+            bytes
+        };
+        run();
+        run();
+        let mut times = Vec::new();
+        let mut bytes = 0;
+        for _ in 0..7 {
+            let start = std::time::Instant::now();
+            bytes = run();
+            times.push(start.elapsed().as_secs_f64() * 1000.0);
+        }
+        times.sort_by(f64::total_cmp);
+        eprintln!(
+            "keyword metadata: fields=2000 median={:.3}ms p95={:.3}ms bytes={bytes} requests=0",
+            times[3], times[6]
+        );
+        assert!(times[3] < 250.0);
+        assert!(times[6] < 500.0);
+    }
+
+    #[tokio::test]
+    async fn keyword_metadata_uses_one_existing_mapping_read_and_no_follow_up() {
+        let server = super::super::http_mock::start(|request| {
+            assert_eq!(request.method, "GET");
+            assert_eq!(request.path, "/logs/_mapping");
+            (200, serde_json::to_vec(&keyword_mapping_fixture()).unwrap())
+        });
+        let adapter = ElasticAdapter::new(&server.base).unwrap();
+        let columns = adapter
+            .list_table_column_metadata("indices", "logs")
+            .await
+            .unwrap();
+        assert!(columns.iter().any(|column| column.exact_filter.is_some()));
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        assert_eq!(server.requests().len(), 1);
+    }
 
     #[test]
     fn warning_headers_yield_their_quoted_text() {

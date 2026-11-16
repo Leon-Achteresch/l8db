@@ -6,6 +6,7 @@ mod bigquery;
 mod cassandra;
 mod clickhouse;
 mod cloud_auth;
+pub mod column_metadata;
 pub mod commands;
 pub(crate) mod connection;
 pub(crate) use connection::connection_string_is_read_only;
@@ -788,6 +789,18 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = schema;
         let _ = table;
         Err(unsupported("Spaltendetails"))
+    }
+    async fn list_table_column_metadata(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<column_metadata::ColumnMetadata>, String> {
+        Ok(self
+            .list_table_columns_detailed(schema, table)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
     }
     async fn list_import_columns(
         &self,

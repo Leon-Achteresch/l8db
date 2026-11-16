@@ -1,0 +1,55 @@
+{
+  "logs": {
+    "mappings": {
+      "properties": {
+        "message": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "tag": {
+          "type": "keyword",
+          "ignore_above": 20
+        },
+        "name": {
+          "type": "text",
+          "fields": {
+            "raw": {
+              "type": "keyword",
+              "ignore_above": 0
+            }
+          }
+        },
+        "no_limit": {
+          "type": "keyword"
+        },
+        "invalid": {
+          "type": "keyword",
+          "ignore_above": "256"
+        },
+        "analyzed": {
+          "type": "text"
+        },
+        "count": {
+          "type": "long"
+        },
+        "nested": {
+          "type": "nested",
+          "properties": {
+            "label": {
+              "type": "keyword",
+              "ignore_above": 8
+            }
+          }
+        },
+        "wild": {
+          "type": "wildcard"
+        }
+      }
+    }
+  }
+}
