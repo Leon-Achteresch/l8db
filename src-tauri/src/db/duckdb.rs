@@ -1,16 +1,17 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use duckdb::core::LogicalTypeId;
 use duckdb::types::{TimeUnit, ValueRef};
 use duckdb::Connection;
 
 use super::pool::PoolState;
 use super::sqlite::existing_file_path;
 use super::{
-    create_table_ddl, hex_blob, rows_to_objects, where_clause, AddColumnRequest,
+    attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, where_clause, AddColumnRequest,
     AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
     DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, IndexInfo, QueryResult, SchemaSize,
-    TableData, TableInfo,
+    SequenceInfo, TableData, TableInfo,
 };
 
 pub struct DuckdbAdapter {
@@ -27,33 +28,142 @@ fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
-fn file_view_sql(path: &str) -> Option<String> {
-    let file = std::path::Path::new(path);
-    let reader = match file.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+fn file_reader(path: &str) -> Option<&'static str> {
+    let extension = std::path::Path::new(path)
+        .extension()?
+        .to_str()?
+        .to_ascii_lowercase();
+    Some(match extension.as_str() {
         "parquet" => "read_parquet",
-        "csv" => "read_csv_auto",
+        "csv" => "csv",
+        "tsv" => "tsv",
+        "json" | "jsonl" | "ndjson" => "read_json_auto",
         _ => return None,
-    };
+    })
+}
+
+fn file_view_sql(path: &str, encoding: Option<&str>) -> Option<String> {
+    let file = std::path::Path::new(path);
+    let reader = file_reader(path)?;
     let name = file
         .file_stem()
         .and_then(|stem| stem.to_str())
         .filter(|stem| !stem.is_empty())
         .unwrap_or("data");
+    let source = match reader {
+        "csv" | "tsv" => format!(
+            "read_csv({}{}, null_padding = true, parallel = false{})",
+            lit(path),
+            if reader == "tsv" {
+                ", delim = '\\t'"
+            } else {
+                ""
+            },
+            encoding
+                .map(|e| format!(", encoding = {}", lit(e)))
+                .unwrap_or_default()
+        ),
+        other => format!("{other}({})", lit(path)),
+    };
     Some(format!(
-        "CREATE VIEW {} AS SELECT * FROM {reader}({})",
-        quote(name),
-        lit(path)
+        "CREATE VIEW {} AS SELECT * FROM {source}",
+        quote(name)
     ))
 }
 
-fn map_err(e: duckdb::Error) -> String {
-    format!("DuckDB: {e}")
+fn german(message: &str) -> String {
+    if message.contains("Could not set lock on file") {
+        let pid = message
+            .split("(PID ")
+            .nth(1)
+            .and_then(|rest| rest.split(')').next())
+            .map(|pid| format!(" (Prozess {pid})"))
+            .unwrap_or_default();
+        return format!("Datei wird gerade von einem anderen Programm verwendet{pid}. Schließen und erneut versuchen.");
+    }
+    if message.contains("not a valid DuckDB database file") {
+        return "Datei ist keine DuckDB-Datenbank.".into();
+    }
+    let extension = message
+        .split("Please try installing and loading the ")
+        .nth(1)
+        .and_then(|rest| rest.split_whitespace().next())
+        .or_else(|| {
+            message
+                .split("\" is an existing extension")
+                .next()
+                .filter(|head| head.len() < message.len())
+                .and_then(|head| head.rsplit("Extension \"").next())
+        });
+    if let Some(name) = extension {
+        return format!("DuckDB-Erweiterung „{name}“ fehlt. l8db lädt Erweiterungen nicht automatisch nach; bei Bedarf bewusst mit „INSTALL {name}; LOAD {name};“ laden.");
+    }
+    let message = message
+        .split("\n\nPossible ")
+        .next()
+        .unwrap_or(message)
+        .split("\n  file = ")
+        .next()
+        .unwrap_or(message);
+    match message.find("CSV Error on Line: ") {
+        Some(start) => format!(
+            "CSV-Fehler in Zeile {}",
+            message[start + "CSV Error on Line: ".len()..].trim_end()
+        ),
+        None => message.trim_end().to_string(),
+    }
 }
 
-fn value_to_json(value: ValueRef<'_>) -> serde_json::Value {
+fn map_err(e: duckdb::Error) -> String {
+    format!("DuckDB: {}", german(&e.to_string()))
+}
+
+fn bit_text(bytes: &[u8]) -> Option<String> {
+    let (&padding, data) = bytes.split_first()?;
+    let bits: String = data
+        .iter()
+        .flat_map(|byte| {
+            (0..8)
+                .rev()
+                .map(move |i| if byte >> i & 1 == 1 { '1' } else { '0' })
+        })
+        .skip(padding as usize)
+        .collect();
+    (padding < 8).then_some(bits)
+}
+
+fn union_json(column: &duckdb::arrow::array::ArrayRef, idx: usize) -> serde_json::Value {
+    use duckdb::arrow::array::{Array, UnionArray};
+    use duckdb::arrow::datatypes::DataType;
+    let value = owned_to_json(ValueRef::Union(column, idx).to_owned());
+    let tag = column
+        .as_any()
+        .downcast_ref::<UnionArray>()
+        .map(|array| array.type_id(idx))
+        .and_then(|id| match column.data_type() {
+            DataType::Union(fields, _) => fields
+                .iter()
+                .find(|(type_id, _)| *type_id == id)
+                .map(|(_, field)| field.name().clone()),
+            _ => None,
+        });
+    match tag {
+        Some(tag) if !value.is_null() => serde_json::json!({ tag: value }),
+        _ => value,
+    }
+}
+
+fn value_to_json(value: ValueRef<'_>, kind: LogicalTypeId) -> serde_json::Value {
     match value {
         ValueRef::Text(t) => serde_json::Value::String(String::from_utf8_lossy(t).into_owned()),
+        ValueRef::Blob(b) if kind == LogicalTypeId::Bit => {
+            serde_json::Value::String(bit_text(b).unwrap_or_else(|| hex_blob(b)))
+        }
         ValueRef::Blob(b) | ValueRef::Geometry(b) => serde_json::Value::String(hex_blob(b)),
+        ValueRef::Timestamp(unit, t) if kind == LogicalTypeId::TimestampTZ => instant(unit, t)
+            .map(|dt| serde_json::Value::String(dt.format("%Y-%m-%d %H:%M:%S%.f+00").to_string()))
+            .unwrap_or_else(|| serde_json::Value::String(t.to_string())),
+        ValueRef::Union(column, idx) => union_json(column, idx),
         other => owned_to_json(duckdb::types::Value::from(other)),
     }
 }
@@ -156,6 +266,7 @@ fn query_limited(
     let mut stmt = conn.prepare(sql).map_err(map_err)?;
     let mut result = stmt.query([]).map_err(map_err)?;
     let mut columns: Vec<String> = Vec::new();
+    let mut kinds: Vec<LogicalTypeId> = Vec::new();
     let mut rows = Vec::new();
     while rows.len() < limit {
         let Some(row) = result.next().map_err(map_err)? else {
@@ -163,11 +274,14 @@ fn query_limited(
         };
         if columns.is_empty() {
             columns = row.as_ref().column_names();
+            kinds = (0..columns.len())
+                .map(|i| row.as_ref().column_logical_type(i).id())
+                .collect();
         }
         let count = columns.len();
         let mut values = Vec::with_capacity(count);
-        for i in 0..count {
-            values.push(value_to_json(row.get_ref(i).map_err(map_err)?));
+        for (i, kind) in kinds.iter().enumerate().take(count) {
+            values.push(value_to_json(row.get_ref(i).map_err(map_err)?, *kind));
         }
         rows.push(values);
     }
@@ -188,6 +302,58 @@ fn text(v: &serde_json::Value) -> String {
     }
 }
 
+fn unwrap_parens(text: &str) -> &str {
+    let Some(inner) = text.strip_prefix('(').and_then(|t| t.strip_suffix(')')) else {
+        return text;
+    };
+    let mut depth = 0;
+    for c in inner.chars() {
+        match c {
+            '(' => depth += 1,
+            ')' if depth == 0 => return text,
+            ')' => depth -= 1,
+            _ => {}
+        }
+    }
+    inner
+}
+
+fn index_columns(expressions: &str) -> Vec<String> {
+    let trimmed = expressions.trim();
+    let inner = trimmed
+        .strip_prefix('[')
+        .and_then(|t| t.strip_suffix(']'))
+        .unwrap_or(trimmed);
+    let mut parts = Vec::new();
+    let (mut depth, mut quoted, mut current) = (0, false, String::new());
+    let mut chars = inner.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' if quoted && chars.peek() == Some(&'\'') => {
+                chars.next();
+                current.push(c);
+            }
+            '\'' => quoted = !quoted,
+            '(' if !quoted => {
+                depth += 1;
+                current.push(c);
+            }
+            ')' if !quoted => {
+                depth -= 1;
+                current.push(c);
+            }
+            ',' if !quoted && depth == 0 => parts.push(std::mem::take(&mut current)),
+            _ => current.push(c),
+        }
+    }
+    parts.push(current);
+    parts
+        .iter()
+        .map(|part| unwrap_parens(part.trim()).to_string())
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
 fn truthy(v: &serde_json::Value) -> bool {
     matches!(v, serde_json::Value::Bool(true)) || v.as_i64().is_some_and(|i| i != 0)
 }
@@ -198,8 +364,14 @@ impl DuckdbAdapter {
         pool_state: PoolState,
         key: String,
     ) -> Result<Self, String> {
+        let path = existing_file_path(connection_string)?;
+        if super::sqlite::file_header(&path).starts_with(b"SQLite format 3\0") {
+            return Err(
+                "Datei ist eine SQLite-Datenbank: sqlite:// statt duckdb:// verwenden.".into(),
+            );
+        }
         Ok(Self {
-            path: existing_file_path(connection_string)?,
+            path,
             pool_state,
             key,
         })
@@ -215,7 +387,11 @@ impl DuckdbAdapter {
         let conn: Arc<Mutex<Connection>> = self
             .pool_state
             .shared(&self.key, || async move {
-                let view = file_view_sql(&path);
+                let encoding = match file_reader(&path) {
+                    Some("csv" | "tsv") => super::csv_stream::duckdb_encoding(&path)?,
+                    _ => None,
+                };
+                let view = file_view_sql(&path, encoding);
                 let seal = sealed.then(|| {
                     let allowed = if view.is_some() { lit(&path) } else { String::new() };
                     format!("SET allowed_paths = [{allowed}]; SET enable_external_access = false; SET lock_configuration = true;")
@@ -225,14 +401,14 @@ impl DuckdbAdapter {
                 } else {
                     Connection::open(&path)
                 }
-                .map_err(|e| format!("DuckDB-Datei konnte nicht geöffnet werden ({path}): {e}"))?;
+                .map_err(|e| format!("DuckDB-Datei konnte nicht geöffnet werden ({path}): {}", german(&e.to_string())))?;
+                conn.execute_batch("SET autoinstall_known_extensions = false")
+                    .map_err(map_err)?;
                 if let Some(sql) = view {
                     conn.execute_batch(&sql)
-                        .map_err(|e| format!("Datei konnte nicht gelesen werden ({path}): {e}"))?;
+                        .map_err(|e| format!("Datei konnte nicht gelesen werden ({path}): {}", german(&e.to_string())))?;
                 }
                 if let Some(sql) = seal {
-                    conn.execute_batch("SET autoinstall_known_extensions = false")
-                        .map_err(map_err)?;
                     for extension in ["icu", "json"] {
                         let _ = conn.execute_batch(&format!("LOAD {extension}"));
                     }
@@ -291,7 +467,12 @@ fn run_sql(c: &Connection, sql: &str, limit: usize) -> Result<QueryResult, Strin
             | "FROM"
             | "SUMMARIZE"
             | "CALL"
-    ) {
+    ) || (matches!(first.as_str(), "INSERT" | "UPDATE" | "DELETE")
+        && sql
+            .to_ascii_uppercase()
+            .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+            .any(|word| word == "RETURNING"))
+    {
         let (columns, rows) = query_limited(c, sql, limit)?;
         return Ok(QueryResult {
             rows: rows_to_objects(&columns, rows),
@@ -450,12 +631,13 @@ impl DatabaseAdapter for DuckdbAdapter {
         allow_raw_filter: bool,
     ) -> Result<TableData, String> {
         let where_sql = where_clause(filter, allow_raw_filter)?;
-        let columns: Vec<String> = self
-            .list_table_columns_detailed(schema, table)
-            .await?
-            .into_iter()
-            .map(|c| c.name)
+        let detailed = self.list_table_columns_detailed(schema, table).await?;
+        let pk: Vec<String> = detailed
+            .iter()
+            .filter(|c| c.is_primary_key)
+            .map(|c| c.name.clone())
             .collect();
+        let columns: Vec<String> = detailed.into_iter().map(|c| c.name).collect();
         let order_sql = match order_by {
             Some(col) if columns.iter().any(|c| c == col) => format!(
                 " ORDER BY {} {}",
@@ -474,13 +656,15 @@ impl DatabaseAdapter for DuckdbAdapter {
             offset.max(0)
         );
         let (cols, rows) = self.run(move |c| query_all(c, &sql)).await?;
+        let mut rows = rows_to_objects(&cols, rows);
+        attach_row_keys(&mut rows, &pk);
         Ok(TableData {
             columns: if columns.is_empty() {
                 cols.clone()
             } else {
                 columns
             },
-            rows: rows_to_objects(&cols, rows),
+            rows,
         })
     }
 
@@ -517,6 +701,29 @@ impl DatabaseAdapter for DuckdbAdapter {
         let tx = DuckdbTx { conn };
         tx.blocking("BEGIN TRANSACTION".into()).await?;
         Ok(Box::new(tx))
+    }
+
+    async fn list_sequences(&self, schema: Option<&str>) -> Result<Vec<SequenceInfo>, String> {
+        let filter = schema
+            .map(|s| format!(" AND schema_name = {}", lit(s)))
+            .unwrap_or_default();
+        let sql = format!("SELECT schema_name, sequence_name, start_value::VARCHAR, min_value::VARCHAR, max_value::VARCHAR, increment_by::VARCHAR, cycle, last_value::VARCHAR FROM duckdb_sequences() WHERE database_name = current_database(){filter} ORDER BY schema_name, sequence_name");
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| SequenceInfo {
+                schema: text(&r[0]),
+                name: text(&r[1]),
+                data_type: "BIGINT".to_string(),
+                start_value: text(&r[2]),
+                min_value: text(&r[3]),
+                max_value: text(&r[4]),
+                increment_by: text(&r[5]),
+                cycle: truthy(&r[6]),
+                last_value: Some(text(&r[7])).filter(|v| !v.is_empty()),
+            })
+            .collect())
     }
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
@@ -681,7 +888,7 @@ impl DatabaseAdapter for DuckdbAdapter {
     }
 
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
-        let sql = format!("SELECT index_name, is_unique, is_primary, sql FROM duckdb_indexes() WHERE schema_name = {} AND table_name = {} ORDER BY index_name", lit(schema), lit(table));
+        let sql = format!("SELECT index_name, is_unique, is_primary, sql, expressions FROM duckdb_indexes() WHERE schema_name = {} AND table_name = {} ORDER BY index_name", lit(schema), lit(table));
         Ok(self
             .rows(sql)
             .await?
@@ -690,7 +897,7 @@ impl DatabaseAdapter for DuckdbAdapter {
                 name: text(&r[0]),
                 is_unique: truthy(&r[1]),
                 is_primary: truthy(&r[2]),
-                columns: vec![],
+                columns: index_columns(&text(&r[4])),
                 index_type: "art".to_string(),
                 definition: text(&r[3]),
             })
@@ -989,7 +1196,7 @@ mod tests {
                 json!("00000000-0000-0000-0000-000000000001"),
                 json!("x"),
                 json!([1, 2]),
-                json!("2024-01-02 03:04:05"),
+                json!("2024-01-02 03:04:05+00"),
             ]
         );
     }
@@ -1031,16 +1238,252 @@ mod tests {
     }
 
     #[test]
-    fn file_views_cover_csv_and_parquet() {
+    fn file_views_cover_csv_tsv_json_and_parquet() {
         assert_eq!(
-            file_view_sql("/tmp/o'hara.CSV").unwrap(),
-            "CREATE VIEW \"o'hara\" AS SELECT * FROM read_csv_auto('/tmp/o''hara.CSV')"
+            file_view_sql("/tmp/o'hara.CSV", None).unwrap(),
+            "CREATE VIEW \"o'hara\" AS SELECT * FROM read_csv('/tmp/o''hara.CSV', null_padding = true, parallel = false)"
         );
-        assert!(file_view_sql("/tmp/a.parquet")
+        assert!(file_view_sql("/tmp/a.tsv", Some("latin-1"))
+            .unwrap()
+            .ends_with(
+                "delim = '\\t', null_padding = true, parallel = false, encoding = 'latin-1')"
+            ));
+        assert!(file_view_sql("/tmp/a.parquet", None)
             .unwrap()
             .contains("read_parquet('/tmp/a.parquet')"));
-        assert!(file_view_sql("/tmp/a.duckdb").is_none());
-        assert!(file_view_sql(":memory:").is_none());
+        assert!(file_view_sql("/tmp/a.jsonl", None)
+            .unwrap()
+            .contains("read_json_auto('/tmp/a.jsonl')"));
+        assert!(file_view_sql("/tmp/a.duckdb", None).is_none());
+        assert!(file_view_sql(":memory:", None).is_none());
+    }
+
+    #[test]
+    fn bits_unions_and_zoned_timestamps_keep_their_meaning() {
+        let conn = Connection::open_in_memory().unwrap();
+        let (_, rows) = query_all(
+            &conn,
+            "SELECT '10101'::BIT, '1010'::BIT, '0'::BIT, union_value(num := 5)::UNION(num INTEGER, str VARCHAR), \
+             union_value(str := 'x')::UNION(num INTEGER, str VARCHAR), TIMESTAMPTZ '2026-11-11 10:00:00+01', 'x'::BLOB",
+        )
+        .unwrap();
+        assert_eq!(
+            rows[0],
+            vec![
+                json!("10101"),
+                json!("1010"),
+                json!("0"),
+                json!({"num": 5}),
+                json!({"str": "x"}),
+                json!("2026-11-11 09:00:00+00"),
+                json!("\\x78"),
+            ]
+        );
+    }
+
+    #[test]
+    fn index_expressions_become_columns() {
+        assert_eq!(index_columns("[a]"), ["a"]);
+        assert_eq!(index_columns("[a, '(lower(b))']"), ["a", "lower(b)"]);
+        assert_eq!(
+            index_columns("['(b = ''x'')', '(a) + (b)']"),
+            ["b = 'x'", "(a) + (b)"]
+        );
+        assert!(index_columns("[]").is_empty());
+    }
+
+    fn file_adapter(path: &std::path::Path, key: &str) -> Result<DuckdbAdapter, String> {
+        DuckdbAdapter::new(
+            &format!("duckdb:{}", path.display()),
+            create_pool_state(),
+            key.to_string(),
+        )
+    }
+
+    async fn first_column(db: &DuckdbAdapter, sql: &str) -> Result<Vec<serde_json::Value>, String> {
+        let result = db.execute_query(sql).await?;
+        Ok(result
+            .rows
+            .iter()
+            .map(|row| row[result.columns[0].as_str()].clone())
+            .collect())
+    }
+
+    #[tokio::test]
+    async fn text_files_keep_every_row_and_decode_common_encodings() {
+        let dir = tempfile::tempdir().unwrap();
+        let ragged = dir.path().join("ragged.csv");
+        std::fs::write(&ragged, "a,b,c\n1,2\n3,4,5,6\n").unwrap();
+        let db = file_adapter(&ragged, "ragged").unwrap();
+        let result = db.execute_query("SELECT * FROM ragged").await.unwrap();
+        assert_eq!(result.columns[..3], ["a", "b", "c"]);
+        assert_eq!(result.rows.len(), 2);
+        assert_eq!(result.rows[0]["c"], json!(null));
+        assert_eq!(result.rows[1]["c"], json!(5));
+        let quoted = dir.path().join("quoted.csv");
+        std::fs::write(&quoted, "id;note\n1;\"a\nb\"\n\n2;x\n").unwrap();
+        let db = file_adapter(&quoted, "quoted").unwrap();
+        assert_eq!(
+            first_column(&db, "SELECT note FROM quoted ORDER BY id")
+                .await
+                .unwrap(),
+            [json!("a\nb"), json!("x")]
+        );
+        let latin = dir.path().join("latin.csv");
+        std::fs::write(&latin, b"id,name\n1,M\xfcller\n").unwrap();
+        let db = file_adapter(&latin, "latin").unwrap();
+        assert_eq!(
+            first_column(&db, "SELECT name FROM latin").await.unwrap(),
+            [json!("Müller")]
+        );
+        let utf16 = dir.path().join("wide.csv");
+        let mut bytes = vec![0xff, 0xfe];
+        bytes.extend(
+            "id,name\n1,Müller\n"
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes),
+        );
+        std::fs::write(&utf16, bytes).unwrap();
+        let db = file_adapter(&utf16, "wide").unwrap();
+        assert_eq!(
+            first_column(&db, "SELECT name FROM wide").await.unwrap(),
+            [json!("Müller")]
+        );
+        let cp1252 = dir.path().join("euro.csv");
+        std::fs::write(&cp1252, b"id,price\n1,5\x80\n").unwrap();
+        let error = file_adapter(&cp1252, "euro")
+            .unwrap()
+            .execute_query("SELECT 1")
+            .await
+            .unwrap_err();
+        assert!(error.contains("Windows-1252"), "{error}");
+        let tsv = dir.path().join("tab.tsv");
+        std::fs::write(&tsv, "id\tname\n1\ta,b\n").unwrap();
+        let db = file_adapter(&tsv, "tsv").unwrap();
+        assert_eq!(
+            first_column(&db, "SELECT name FROM tab").await.unwrap(),
+            [json!("a,b")]
+        );
+        let lines = dir.path().join("events.jsonl");
+        std::fs::write(&lines, "{\"id\":1}\n{\"id\":2,\"extra\":true}\n").unwrap();
+        let db = file_adapter(&lines, "jsonl").unwrap();
+        assert_eq!(
+            first_column(&db, "SELECT count(*) FROM events")
+                .await
+                .unwrap(),
+            [json!(2)]
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 7);
+    }
+
+    #[tokio::test]
+    async fn extensions_are_never_downloaded_and_sqlite_files_are_refused() {
+        let db = DuckdbAdapter::new(":memory:", create_pool_state(), "ext".into()).unwrap();
+        assert_eq!(
+            first_column(
+                &db,
+                "SELECT value FROM duckdb_settings() WHERE name = 'autoinstall_known_extensions'"
+            )
+            .await
+            .unwrap(),
+            [json!("false")]
+        );
+        let parquet = first_column(&db, "SELECT extension_name FROM duckdb_extensions() WHERE install_mode = 'STATICALLY_LINKED' AND extension_name IN ('json', 'parquet') ORDER BY 1").await.unwrap();
+        assert_eq!(parquet, [json!("json"), json!("parquet")]);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("x.sqlite");
+        rusqlite::Connection::open(&path)
+            .unwrap()
+            .execute_batch("CREATE TABLE t (a INT)")
+            .unwrap();
+        let error = file_adapter(&path, "sqlite-file").err().unwrap();
+        assert!(error.contains("sqlite://"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn sequences_index_columns_and_row_keys_are_listed() {
+        let db = DuckdbAdapter::new(":memory:", create_pool_state(), "seq".into()).unwrap();
+        db.exec("CREATE SCHEMA s1; CREATE SEQUENCE s1.seq1 START 10 INCREMENT 2; SELECT nextval('s1.seq1'); \
+                 CREATE TABLE s1.t (id INTEGER PRIMARY KEY, a INTEGER, b VARCHAR, bin BLOB); CREATE INDEX idx_t ON s1.t (a, lower(b))".into())
+            .await
+            .unwrap();
+        let sequences = db.list_sequences(Some("s1")).await.unwrap();
+        assert_eq!(sequences.len(), 1);
+        assert_eq!(
+            (
+                sequences[0].name.as_str(),
+                sequences[0].start_value.as_str(),
+                sequences[0].increment_by.as_str(),
+                sequences[0].last_value.as_deref()
+            ),
+            ("seq1", "10", "2", Some("10"))
+        );
+        assert!(db.list_sequences(Some("main")).await.unwrap().is_empty());
+        let indexes = db.list_indexes("s1", "t").await.unwrap();
+        assert_eq!(indexes[0].columns, ["a", "lower(b)"]);
+        let inserted = db
+            .execute_query("INSERT INTO s1.t VALUES (1, 2, 'x', from_hex('00ff')) RETURNING *")
+            .await
+            .unwrap();
+        assert_eq!(inserted.rows[0]["bin"], json!("\\x00ff"));
+        let rows = db
+            .fetch_rows("s1", "t", None, 10, 0, None, false, false, false)
+            .await
+            .unwrap();
+        assert_eq!(rows.rows[0]["__ctid__"], json!("{\"id\":1}"));
+        let updated = db.execute_query("UPDATE s1.t SET a = 3").await.unwrap();
+        assert_eq!(updated.rows_affected, Some(1));
+    }
+
+    #[test]
+    fn engine_errors_are_shortened_to_german_hints() {
+        assert_eq!(
+            german("IO Error: Could not set lock on file \"/x.duckdb\": Conflicting lock is held in /Apps/l8db (PID 68114) by user leon. See also https://duckdb.org/docs"),
+            "Datei wird gerade von einem anderen Programm verwendet (Prozess 68114). Schließen und erneut versuchen."
+        );
+        let csv = german("Invalid Input Error: CSV Error on Line: 2\nOriginal Line: 1,2\nExpected Number of Columns: 3 Found: 2\n\nPossible fixes: x\n  file = /x.csv\n  delimiter = ,");
+        assert_eq!(
+            csv,
+            "CSV-Fehler in Zeile 2\nOriginal Line: 1,2\nExpected Number of Columns: 3 Found: 2"
+        );
+        assert!(
+            german("Catalog Error: Table with name nope does not exist!")
+                .contains("Table with name nope")
+        );
+        assert!(german("IO Error: Extension \"/h/.duckdb/extensions/v2.0.0/osx_arm64/sqlite_scanner.duckdb_extension\" not found.\nExtension \"sqlite_scanner\" is an existing extension.\n")
+            .starts_with("DuckDB-Erweiterung „sqlite_scanner“ fehlt."));
+    }
+
+    #[tokio::test]
+    async fn csv_views_stay_fast_on_large_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("large.csv");
+        let mut text = String::from("id,name,value\n");
+        for i in 0..300_000 {
+            text.push_str(&format!("{i},n{i},{}\n", i * 2));
+        }
+        std::fs::write(&path, text).unwrap();
+        let db = file_adapter(&path, "large").unwrap();
+        let mut samples = Vec::new();
+        for _ in 0..7 {
+            let start = std::time::Instant::now();
+            let rows = db
+                .execute_query("SELECT count(*) AS n, sum(value) AS s FROM large")
+                .await
+                .unwrap();
+            assert_eq!(rows.rows[0]["n"], json!(300_000));
+            samples.push(start.elapsed());
+        }
+        let page = db
+            .fetch_rows(
+                "main", "large", None, 100, 250_000, None, false, true, false,
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.rows.len(), 100);
+        samples.sort();
+        eprintln!("DuckDB CSV view: 300k rows/5.6 MB, 1 view, 1 query per scan, median {:?}, p95 {:?}, page of 100 rows retained", samples[3], samples[6]);
+        assert!(samples[6] < std::time::Duration::from_secs(3));
     }
 
     #[tokio::test]
