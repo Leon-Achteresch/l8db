@@ -225,7 +225,7 @@ export function CellValueDialog({
                   size="sm"
                   onClick={() => {
                     setLoadedFile(null);
-                    setDraft((prev) => (prev.isNull ? initialDraft() : { ...prev, isNull: true }));
+                    setDraft((prev) => ({ ...prev, isNull: !prev.isNull }));
                   }}
                 >
                   NULL
