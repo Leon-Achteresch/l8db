@@ -103,3 +103,17 @@ L8DB_BROWSER_CHANNEL=chrome bun --no-env-file scripts/test-browser.ts filter-lis
 The fixture mounts the real column filter, list input and SQL import popover. Its apply counter records each explicit filter application, and the browser tests inspect the compiled predicate and reject query IPC. The synthetic paste event uses the component's ordinary clipboard input. The SQL button and recognized paste are exercised in IN and NOT IN. The tests cover invalid and duplicate-only lists, the five-entry preview limit, confirmation, Escape, Cancel, focus restoration, and operator and column changes. Both popovers fit inside a 310 px viewport.
 
 In the shared browser fixture, the SQL trigger showed the NEW badge with the feature release simulated as 0.19.0. After confirmation the input regained focus and the apply counter remained at zero. The separate apply button moved the counter to one and emitted the compiled PostgreSQL predicate. The browser checks use synthesized data and a local callback. Native Tauri clipboard delivery and live provider execution were outside this acceptance.
+
+### A12 table server output
+
+Run the isolated browser fixture with Bun 1.3.10 and installed Chrome.
+
+```sh
+L8DB_BROWSER_CHANNEL=chrome bun --no-env-file scripts/test-browser.ts table-server-output
+```
+
+The fixture mounts the real table output dialog, shared virtualized panel, query output hook and query tabs. The synthetic grid operation uses the existing output delivery function. Its IPC boundary supplies the transaction result and records clipboard writes. The fixture has its own browser profile and loopback listener.
+
+The browser cases verify the disabled and enabled empty states, one explicit activation, message and detail rendering, and a read warning after a successful synthetic write. They switch database context while a read is pending and verify that its late output stays with the original database. Copy and clear are local to the selected database. The query tab still starts closed and exposes the connection-wide history when selected. At 380 × 420 px, the compact table dialog fits the viewport, supports keyboard scrolling and renders fewer than 100 log rows out of 2,000. Escape restores focus to the table trigger.
+
+Native WebView and native clipboard delivery, real write/capture and provider buffers require separate acceptance. These are synthetic outputs and do not establish commit state.

@@ -22,7 +22,13 @@ mock.module("../src/features/query/server-output-panel", () => ({
 }));
 mock.module("../src/components/ui/dialog", () => {
   const box = ({ children }: { children?: ReactNode }) => createElement("div", null, children);
-  return { Dialog: box, DialogContent: box, DialogHeader: box, DialogTitle: box };
+  return {
+    Dialog: box,
+    DialogContent: box,
+    DialogDescription: box,
+    DialogHeader: box,
+    DialogTitle: box,
+  };
 });
 const { TableServerOutput } = await import("../src/features/table/table-view/table-server-output");
 const { useServerOutputStore } = await import("../src/lib/server-output");
