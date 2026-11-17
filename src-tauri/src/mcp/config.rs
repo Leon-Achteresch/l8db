@@ -257,10 +257,26 @@ pub fn audit_path() -> PathBuf {
     config_path().with_file_name("mcp-audit.jsonl")
 }
 
-static PINNED: std::sync::OnceLock<McpConfig> = std::sync::OnceLock::new();
+enum Pinned {
+    Fixed(McpConfig),
+    Only(String),
+}
+
+static PINNED: std::sync::OnceLock<Pinned> = std::sync::OnceLock::new();
+static READ_ONLY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn pin(config: McpConfig) {
-    let _ = PINNED.set(config);
+    let _ = PINNED.set(Pinned::Fixed(config));
+}
+
+pub fn pin_only(wanted: &str) -> Result<(), String> {
+    only(read(), wanted)?;
+    let _ = PINNED.set(Pinned::Only(wanted.to_string()));
+    Ok(())
+}
+
+pub fn force_read_only() {
+    READ_ONLY.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
 pub fn pinned() -> bool {
@@ -303,14 +319,41 @@ pub fn only(mut config: McpConfig, wanted: &str) -> Result<McpConfig, String> {
     Ok(config)
 }
 
-pub fn load() -> McpConfig {
-    if let Some(config) = PINNED.get() {
-        return config.clone();
-    }
+fn read() -> McpConfig {
     std::fs::read(config_path())
         .ok()
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or_default()
+}
+
+pub fn load() -> McpConfig {
+    scoped(
+        PINNED.get(),
+        READ_ONLY.load(std::sync::atomic::Ordering::Relaxed),
+        read,
+    )
+}
+
+fn scoped(pinned: Option<&Pinned>, read_only: bool, read: fn() -> McpConfig) -> McpConfig {
+    let mut config = match pinned {
+        Some(Pinned::Fixed(config)) => config.clone(),
+        Some(Pinned::Only(wanted)) => {
+            let config = read();
+            only(config.clone(), wanted).unwrap_or(McpConfig {
+                connections: Vec::new(),
+                ..config
+            })
+        }
+        None => read(),
+    };
+    if read_only {
+        for connection in &mut config.connections {
+            connection.read_only = true;
+            connection.allow_ddl = false;
+            connection.allow_production_writes = false;
+        }
+    }
+    config
 }
 
 pub fn restrict(path: &std::path::Path) {
@@ -417,6 +460,76 @@ pub fn mcp_clear_audit() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    thread_local! {
+        static FILE: std::cell::RefCell<McpConfig> = std::cell::RefCell::new(McpConfig::default());
+    }
+
+    fn file() -> McpConfig {
+        FILE.with(|file| file.borrow().clone())
+    }
+
+    fn write_file(enabled: bool, connections: Vec<McpConnection>) {
+        FILE.with(|file| {
+            *file.borrow_mut() = McpConfig {
+                enabled,
+                connections,
+                ..McpConfig::default()
+            }
+        });
+    }
+
+    fn shared(name: &str, read_only: bool, exposed: bool) -> McpConnection {
+        serde_json::from_value(serde_json::json!({
+            "id": name,
+            "name": name,
+            "kind": "postgres",
+            "connectionString": "postgres://u@h/db",
+            "exposed": exposed,
+            "readOnly": read_only,
+            "allowDdl": true,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn pinned_selection_follows_later_changes_in_the_app() {
+        let pinned = Pinned::Only("prod".into());
+        write_file(
+            true,
+            vec![shared("prod", false, true), shared("dev", false, true)],
+        );
+        let config = scoped(Some(&pinned), false, file);
+        assert_eq!(config.connections.len(), 1);
+        assert!(!config.connections[0].read_only);
+        write_file(true, vec![shared("prod", true, true)]);
+        assert!(scoped(Some(&pinned), false, file).connections[0].read_only);
+        write_file(true, vec![shared("prod", false, false)]);
+        assert!(scoped(Some(&pinned), false, file).connections.is_empty());
+        write_file(false, vec![shared("prod", false, true)]);
+        let off = scoped(Some(&pinned), false, file);
+        assert!(!off.enabled && off.connections.is_empty());
+    }
+
+    #[test]
+    fn read_only_flag_locks_every_mcp_connection() {
+        write_file(
+            true,
+            vec![shared("prod", false, true), shared("dev", false, true)],
+        );
+        for pinned in [None, Some(Pinned::Only("prod".into()))] {
+            let config = scoped(pinned.as_ref(), true, file);
+            assert!(!config.connections.is_empty());
+            assert!(config
+                .connections
+                .iter()
+                .all(|c| c.read_only && !c.allow_ddl && !c.allow_production_writes));
+        }
+        assert!(scoped(None, false, file)
+            .connections
+            .iter()
+            .all(|c| !c.read_only && c.allow_ddl));
+    }
 
     #[test]
     fn default_rules_compile() {

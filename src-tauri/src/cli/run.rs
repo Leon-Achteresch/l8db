@@ -137,6 +137,9 @@ pub(super) fn task_args(command: TaskCommand, global: &Global) -> Vec<String> {
     if global.output == Some(Format::Json) {
         args.push("--json".into());
     }
+    if read_only_requested(global) && args[0] != "--list-tasks" {
+        args.push("--read-only".into());
+    }
     args
 }
 
@@ -228,8 +231,11 @@ fn mcp_scope(global: &Global) -> Result<(), String> {
     let env_url = std::env::var("L8DB_URL")
         .ok()
         .filter(|v| !v.trim().is_empty());
+    if read_only_requested(global) {
+        config::force_read_only();
+    }
     if let Some(wanted) = &global.connection {
-        config::pin(config::only(config::load(), wanted)?);
+        config::pin_only(wanted)?;
     } else if let Some(url) = global.url.clone().or(env_url) {
         let target = connect::ad_hoc(&url)?;
         let Source::Url { url, target } = target else {
@@ -291,9 +297,17 @@ async fn session(global: &Global, explicit: Option<&str>) -> Result<Session, Str
     connect::open(source, global.database.as_deref()).await
 }
 
-pub(super) fn read_only(global: &Global, mut source: Source) -> Source {
-    let env = std::env::var("L8DB_READ_ONLY").is_ok_and(|v| matches!(v.trim(), "1" | "true"));
-    if global.read_only || env {
+pub(super) fn read_only_requested(global: &Global) -> bool {
+    global.read_only
+        || std::env::var("L8DB_READ_ONLY").is_ok_and(|v| matches!(v.trim(), "1" | "true"))
+}
+
+pub(super) fn read_only(global: &Global, source: Source) -> Source {
+    lock_read_only(source, read_only_requested(global))
+}
+
+pub(super) fn lock_read_only(mut source: Source, read_only: bool) -> Source {
+    if read_only {
         match &mut source {
             Source::Saved(target) | Source::Url { target, .. } => {
                 target.read_only = true;
@@ -1127,17 +1141,20 @@ fn mongo_text(kind: DatabaseKind, format: Format, rows: &[Value]) -> std::borrow
 }
 
 pub(super) fn writes(kind: DatabaseKind, statement: &str) -> bool {
+    let sql = || redact::write_word(statement).is_some() || redact::is_ddl(statement);
     match kind {
         DatabaseKind::Redis => nosql::redis_check(statement, false).is_err(),
         DatabaseKind::Mongodb => nosql::mongo_command(statement)
             .map(|doc| nosql::mongo_writes(&doc))
             .unwrap_or(true),
         DatabaseKind::Elasticsearch => {
-            db::elasticsearch::read_only_request(statement) != Some(true)
+            db::elasticsearch::read_only_request(statement).map_or_else(sql, |read| !read)
         }
-        DatabaseKind::Influxdb => db::influxdb::read_only_statement(statement) != Some(true),
+        DatabaseKind::Influxdb => {
+            db::influxdb::read_only_statement(statement).map_or_else(sql, |read| !read)
+        }
         DatabaseKind::S3 => db::s3::select::parse(statement, Some("_")).is_err(),
-        _ => redact::write_word(statement).is_some() || redact::is_ddl(statement),
+        _ => sql(),
     }
 }
 
@@ -1192,7 +1209,9 @@ pub(super) async fn prepare(
     }
     let writing = parts.iter().any(|statement| writes(target.kind, statement));
     if writing {
-        allow_write(target, &approval).await?;
+        allow_write(target, &approval)
+            .await
+            .map_err(|error| unknown_write(target.kind, &parts, error))?;
     }
     let lines = statement_lines(sql, &parts);
     Ok(Prepared {
@@ -1201,6 +1220,21 @@ pub(super) async fn prepare(
         writing,
         approval,
     })
+}
+
+fn unknown_write(kind: DatabaseKind, parts: &[String], error: String) -> String {
+    let unknown = (kind == DatabaseKind::Redis)
+        .then(|| parts.iter().find(|statement| writes(kind, statement)))
+        .flatten()
+        .and_then(|statement| db::redis::unknown_command(statement));
+    match unknown {
+        Some(name) => error.replacen(
+            "die Anweisung würde schreiben",
+            &format!("„{name}“ ist l8db unbekannt und gilt deshalb als schreibend"),
+            1,
+        ),
+        None => error,
+    }
 }
 
 pub(super) fn statement_lines(sql: &str, parts: &[String]) -> Vec<usize> {
@@ -1345,10 +1379,21 @@ pub(super) async fn run_prepared(
     let (writing, limit, timeout) = (*writing, options.limit, options.timeout);
     let kind = session.target.kind;
     let mut transaction: Option<Box<dyn TxSession>> = None;
+    let carried = carried_begin(kind, parts);
     if parts.len() > 1 && writing && !options.no_transaction {
-        match db::import::open_session(kind, &session.url, database, session.services.pool.clone())
-            .await
-        {
+        let opened = match &carried {
+            Some(begin) => db::import::open_postgres(&session.url, database, begin).await,
+            None => {
+                db::import::open_session(
+                    kind,
+                    &session.url,
+                    database,
+                    session.services.pool.clone(),
+                )
+                .await
+            }
+        };
+        match opened {
             Ok(tx) => transaction = Some(tx),
             Err(e) if e.contains("nicht unterstützt") => {}
             Err(e) => return Err(e),
@@ -1386,7 +1431,12 @@ pub(super) async fn run_prepared(
             && parts[..index].iter().all(|p| control(kind, p).is_none())
         {
             emit(Step::Note(
-                "BEGIN übersprungen: das Skript läuft schon in einer Transaktion.".into(),
+                if carried.is_some() {
+                    "BEGIN übernommen: das Skript läuft schon in einer Transaktion mit diesen Optionen."
+                } else {
+                    "BEGIN übersprungen: das Skript läuft schon in einer Transaktion."
+                }
+                .into(),
             ))?;
             continue;
         }
@@ -1471,13 +1521,14 @@ pub(super) async fn run_prepared(
                 rollback_note(kind, parts, false)
             ));
         }
-        let last = parts.iter().filter_map(|p| control(kind, p)).last();
-        let rolled_back = level.is_none() && last == Some(Control::Close);
-        if level == Some(0) || rolled_back {
-            if rolled_back {
+        let rolled_back = parts
+            .iter()
+            .any(|p| control(kind, p) == Some(Control::Close));
+        if level == Some(0) || (level.is_none() && split_by_script(kind, parts)) {
+            if level.is_none() {
                 let _ = tx.commit().await;
             }
-            return emit(Step::Note(script_end_note(level, last).into()));
+            return emit(Step::Note(script_end_note(rolled_back).into()));
         }
         tx.commit().await?;
         emit(Step::Note(format!(
@@ -1607,12 +1658,35 @@ fn control(kind: DatabaseKind, statement: &str) -> Option<Control> {
     }
 }
 
-fn script_end_note(level: Option<i64>, last: Option<Control>) -> &'static str {
-    if level == Some(0) && last == Some(Control::Commit) {
-        "Achtung: COMMIT im Skript hat die Transaktion beendet; Anweisungen danach sind einzeln festgeschrieben."
-    } else {
+fn script_end_note(rolled_back: bool) -> &'static str {
+    if rolled_back {
         "Achtung: ROLLBACK im Skript hat alles davor verworfen; Anweisungen danach sind einzeln festgeschrieben."
+    } else {
+        "Achtung: COMMIT im Skript hat die Transaktion beendet; Anweisungen danach sind einzeln festgeschrieben."
     }
+}
+
+pub(super) fn split_by_script(kind: DatabaseKind, parts: &[String]) -> bool {
+    parts
+        .iter()
+        .enumerate()
+        .any(|(index, p)| match control(kind, p) {
+            Some(Control::Close) => true,
+            Some(Control::Commit) => index + 1 < parts.len(),
+            _ => false,
+        })
+}
+
+pub(super) fn carried_begin(kind: DatabaseKind, parts: &[String]) -> Option<String> {
+    let first = parts.iter().find(|p| control(kind, p).is_some())?;
+    let words = redact::sql_words(first);
+    let words: Vec<&str> = words.iter().map(String::as_str).collect();
+    let bare = matches!(
+        words.as_slice(),
+        [_] | ["begin", "work" | "transaction"] | ["start", "transaction"]
+    );
+    (kind == DatabaseKind::Postgres && control(kind, first) == Some(Control::Open) && !bare)
+        .then(|| format!("{}\n", first.trim_end().trim_end_matches(';')))
 }
 
 pub(super) fn open_at_end(kind: DatabaseKind, ran: &[String]) -> bool {
@@ -1627,7 +1701,7 @@ pub(super) fn rollback_note(kind: DatabaseKind, ran: &[String], failed: bool) ->
         ran.iter()
             .enumerate()
             .any(|(index, statement)| match control(kind, statement) {
-                Some(Control::Commit) => true,
+                Some(Control::Commit | Control::Close) => true,
                 Some(Control::Open) => kind == DatabaseKind::Mysql && index > 0,
                 _ => false,
             });

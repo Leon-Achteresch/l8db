@@ -473,6 +473,27 @@ fn task_subcommands_map_to_the_automation_cli() {
         super::run::task_args(command, &cli.global),
         ["--list-tasks", "--json"]
     );
+    for (line, expected) in [
+        (
+            "l8db --read-only task run Bericht",
+            vec!["--run-task", "Bericht", "--read-only"],
+        ),
+        (
+            "l8db task tick --read-only",
+            vec!["--automation-tick", "--read-only"],
+        ),
+        ("l8db --read-only task list", vec!["--list-tasks"]),
+    ] {
+        let cli = parse(line).unwrap();
+        let Command::Task { command } = cli.command else {
+            panic!("kein task");
+        };
+        assert_eq!(
+            super::run::task_args(command, &cli.global),
+            expected,
+            "{line}"
+        );
+    }
 }
 
 #[test]
@@ -698,4 +719,116 @@ fn read_only_flag_protects_ad_hoc_urls() {
         "Query-Timeout nach 300 Sekunden. Es wurde nur gelesen; Filter enger setzen."
     );
     assert_eq!(read_timeout("anderer Fehler".into()), "anderer Fehler");
+}
+
+#[test]
+fn shared_write_cases_match_the_app() {
+    let cases: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/write-detection-cases.json"
+    ))
+    .unwrap();
+    for (family, lists) in cases.as_object().unwrap() {
+        let kind: DatabaseKind =
+            serde_json::from_value(serde_json::Value::String(family.clone())).unwrap();
+        for (list, expected) in [("writes", true), ("reads", false)] {
+            for sql in lists[list].as_array().unwrap() {
+                let sql = sql.as_str().unwrap();
+                assert_eq!(writes(kind, sql), expected, "{family}: {sql}");
+            }
+        }
+    }
+}
+
+#[test]
+fn begin_options_carry_into_the_script_transaction() {
+    let ran = |sql: &[&str]| sql.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let carried = |kind, sql: &[&str]| super::run::carried_begin(kind, &ran(sql));
+    let pg = DatabaseKind::Postgres;
+    assert_eq!(
+        carried(
+            pg,
+            &[
+                "BEGIN ISOLATION LEVEL SERIALIZABLE",
+                "update t set a = 1",
+                "COMMIT"
+            ]
+        )
+        .as_deref(),
+        Some("BEGIN ISOLATION LEVEL SERIALIZABLE\n")
+    );
+    assert_eq!(
+        carried(
+            pg,
+            &[
+                "set search_path = s",
+                "START TRANSACTION READ ONLY -- ro",
+                "update t set a = 1"
+            ]
+        )
+        .as_deref(),
+        Some("START TRANSACTION READ ONLY -- ro\n")
+    );
+    for bare in [
+        "BEGIN",
+        "begin work",
+        "BEGIN TRANSACTION",
+        "start transaction",
+    ] {
+        assert_eq!(
+            carried(pg, &[bare, "update t set a = 1", "commit"]),
+            None,
+            "{bare}"
+        );
+    }
+    assert_eq!(
+        carried(pg, &["update t set a = 1", "commit", "begin read only"]),
+        None
+    );
+    assert_eq!(
+        carried(
+            DatabaseKind::Mysql,
+            &["start transaction read only", "select 1"]
+        ),
+        None
+    );
+}
+
+#[test]
+fn rollback_inside_a_script_is_not_reported_as_one_transaction() {
+    let ran = |sql: &[&str]| sql.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let split = |kind, sql: &[&str]| super::run::split_by_script(kind, &ran(sql));
+    for kind in [DatabaseKind::Postgres, DatabaseKind::Mysql] {
+        assert!(split(
+            kind,
+            &[
+                "insert into t values ('a')",
+                "rollback",
+                "insert into t values ('b')",
+                "commit"
+            ]
+        ));
+        assert!(split(
+            kind,
+            &[
+                "insert into t values ('a')",
+                "commit",
+                "insert into t values ('b')"
+            ]
+        ));
+        assert!(!split(
+            kind,
+            &["begin", "insert into t values ('a')", "commit"]
+        ));
+        assert!(!split(
+            kind,
+            &["begin", "savepoint a", "rollback to savepoint a", "commit"]
+        ));
+    }
+    let mid = ran(&[
+        "insert into t values ('a')",
+        "rollback",
+        "insert into t values ('b')",
+        "insert into t values (x)",
+    ]);
+    assert!(rollback_note(DatabaseKind::Postgres, &mid, true).contains("bereits festgeschriebene"));
 }

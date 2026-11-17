@@ -12,7 +12,7 @@ use std::io::IsTerminal;
 use std::sync::{Arc, Mutex};
 
 use super::connect::{Source, Target};
-use super::run::{kind_name, named, runtime, ABORTED};
+use super::run::{kind_name, named, read_only_requested, runtime, ABORTED};
 use super::{store, Global};
 use crate::automation::model::AutomationConnection;
 use app::App;
@@ -99,7 +99,11 @@ pub(super) fn run(global: &Global) -> i32 {
 async fn interact(global: &Global) -> Result<(), String> {
     let (list, source) = named(global, None).await?;
     let (entries, mut preselect) = entries(&list);
-    let backend = Arc::new(Backend::new(global.database.clone(), list.clone()));
+    let backend = Arc::new(Backend::new(
+        global.database.clone(),
+        list.clone(),
+        read_only_requested(global),
+    ));
     let mut model = Model::new(!list.is_empty());
     if let Some(source) = source {
         if let Source::Saved(target) = &source {

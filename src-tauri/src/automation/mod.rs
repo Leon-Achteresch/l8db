@@ -74,6 +74,7 @@ pub fn services_from_app(app: &AppHandle) -> Result<Services, String> {
         }),
         headless: false,
         require_password: true,
+        read_only: false,
     })
 }
 
