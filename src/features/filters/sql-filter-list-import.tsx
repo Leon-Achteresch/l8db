@@ -1,5 +1,5 @@
 import { ListPlusIcon } from "lucide-react";
-import { useId, useMemo } from "react";
+import { type RefObject, useId, useMemo, useRef } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -13,6 +13,7 @@ export function SqlFilterListImport({
   initialSource,
   value,
   onImport,
+  inputRef,
   disabled,
 }: {
   source: string | null;
@@ -20,9 +21,12 @@ export function SqlFilterListImport({
   initialSource: string;
   value: string;
   onImport: (value: string) => void;
+  inputRef?: RefObject<HTMLInputElement | null>;
   disabled?: boolean;
 }) {
   const id = useId();
+  const openedFromButton = useRef(false);
+  const restoreInput = useRef(false);
   const feature = useNewFeatureVisibility<HTMLButtonElement>("table.filter.sql-list");
   const preview = useMemo(
     () => (source === null ? null : prepareSqlFilterListImport(source, value)),
@@ -31,7 +35,10 @@ export function SqlFilterListImport({
   return (
     <Popover
       open={source !== null && !disabled}
-      onOpenChange={(open) => onSourceChange(open ? initialSource : null)}
+      onOpenChange={(open) => {
+        if (open) openedFromButton.current = true;
+        onSourceChange(open ? initialSource : null);
+      }}
     >
       <PopoverTrigger asChild>
         <button
@@ -48,7 +55,21 @@ export function SqlFilterListImport({
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-80 gap-3"
+        className="w-[min(20rem,calc(100vw-1rem))] gap-3"
+        onOpenAutoFocus={() => {
+          restoreInput.current = !openedFromButton.current;
+          openedFromButton.current = false;
+        }}
+        onInteractOutside={() => {
+          restoreInput.current = false;
+        }}
+        onCloseAutoFocus={(event) => {
+          const input = restoreInput.current ? inputRef?.current : null;
+          restoreInput.current = false;
+          if (!input?.isConnected || input.disabled) return;
+          event.preventDefault();
+          input.focus({ preventScroll: true });
+        }}
         onKeyDown={(event) => event.stopPropagation()}
       >
         <label htmlFor={id} className="text-sm font-medium">
@@ -100,7 +121,10 @@ export function SqlFilterListImport({
             size="sm"
             disabled={disabled || !preview?.ok || preview.added === 0}
             onClick={() => {
-              if (!disabled && preview?.ok && preview.added > 0) onImport(preview.encoded);
+              if (!disabled && preview?.ok && preview.added > 0) {
+                restoreInput.current = true;
+                onImport(preview.encoded);
+              }
             }}
           >
             Werte übernehmen

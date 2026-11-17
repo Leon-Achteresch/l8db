@@ -23,6 +23,7 @@ const registered = [
   "csv-file-check",
   "array-editor-development",
   "routine-result-development",
+  "filter-list-import",
 ];
 const requested = process.argv.slice(2);
 if (requested.some((name) => !registered.includes(name)))
@@ -32,8 +33,10 @@ const log = "test-artifacts/browser/tests.log";
 await mkdir("test-artifacts/browser", { recursive: true });
 await writeFile(log, "");
 const isolated = files.length === 1 && files[0].endsWith("-development") ? files[0] : null;
+const filterList = files.length === 1 && files[0] === "filter-list-import";
+const useIsolatedConfig = Boolean(isolated || filterList);
 const server = await createServer(
-  isolated
+  useIsolatedConfig
     ? arrayEditorViteConfig()
     : {
         cacheDir: "node_modules/.vite-browser-tests",
@@ -56,12 +59,17 @@ try {
   if (!address || typeof address === "string") throw new Error("Fixture server failed to start");
   const url = `http://127.0.0.1:${address.port}`;
   const response = await fetch(
-    `${url}/${isolated ? `?${isolated}=1` : "tests/fixtures/table-edit.html"}`,
+    `${url}/${isolated ? `?${isolated}=1` : filterList ? "tests/fixtures/filter-list.html" : "tests/fixtures/table-edit.html"}`,
   );
   if (!response.ok) throw new Error(`Fixture readiness failed: ${response.status}`);
   for (const file of files) {
     const child = Bun.spawn(
-      ["bun", ...(isolated ? ["--no-env-file"] : []), "test", `tests/${file}-browser.test.ts`],
+      [
+        "bun",
+        ...(useIsolatedConfig ? ["--no-env-file"] : []),
+        "test",
+        `tests/${file}-browser.test.ts`,
+      ],
       {
         env: {
           ...process.env,
