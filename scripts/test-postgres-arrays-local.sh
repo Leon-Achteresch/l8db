@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+[ "$#" -le 1 ] || { printf 'Only one explicit mode is accepted.\n' >&2; exit 2; }
+mode=${1:---test}
+if [ "$mode" = --editor ]; then
+  command -v bun >/dev/null
+  [ "$(bun --version)" = 1.3.10 ] || { printf 'Use Bun1.3.10 for the editor launcher.\n' >&2; exit 2; }
+fi
+case "$mode" in --test|--editor|--editor-test) ;; *) printf 'Usage: %s [--test|--editor|--editor-test]\n' "$0" >&2; exit 2 ;; esac
 for tool in initdb pg_ctl createdb python3 cargo; do
   command -v "$tool" >/dev/null || { printf 'Required local tool missing: %s\n' "$tool" >&2; exit 1; }
 done
@@ -17,6 +24,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+trap 'exit 129' HUP
 port=$(python3 - <<'PY'
 import socket
 with socket.socket() as s:
@@ -44,7 +52,20 @@ env -i PATH="$PATH" LC_ALL=C PGPASSFILE="$lab/pgpass" PGSERVICEFILE="$lab/pg_ser
   createdb -h 127.0.0.1 -p "$port" -U l8db_a01 "$database"
 export L8DB_A01_LOCAL_PG_URL="postgresql://l8db_a01@127.0.0.1:$port/$database?sslmode=disable"
 export L8DB_A01_LOCAL_OWNED_DB="$database"
+export L8DB_A01_LOCAL_OWNED_DIR="$lab"
+printf '%s' "$database" >"$lab/a01-owner"
 export CARGO_BUILD_JOBS=2
+if [ "$mode" = --editor ]; then
+  command -v bun >/dev/null
+  cargo build --manifest-path src-tauri/Cargo.toml --locked --bin l8db
+  bun scripts/run-array-editor-development.ts
+  exit
+fi
+if [ "$mode" = --editor-test ]; then
+  cargo test --manifest-path src-tauri/Cargo.toml --locked --lib array_editor_development::tests::isolated_fixture_editor_contract \
+    -- --exact --ignored --test-threads=1 --nocapture
+  exit
+fi
 mkdir -p test-artifacts
 cargo test --manifest-path src-tauri/Cargo.toml --locked --lib \
   db::postgres::arrays::live_tests::a01_local_postgresql_provider_roundtrip \

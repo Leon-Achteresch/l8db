@@ -44,3 +44,27 @@ documented in `docs/performance.md`. Verified locally with PostgreSQL 17.11 on
 macOS arm64. This is a real native-provider integration test, not a mocked SQL
 assertion or a Tauri/editor visual walkthrough. Other providers, PostgreSQL
 versions, platforms and native visual acceptance remain separate.
+
+### A01 isolated editor / IPC development
+
+With Bun1.3.10 and local PostgreSQL binaries on PATH:
+
+```sh
+bash scripts/test-postgres-arrays-local.sh --editor
+```
+
+The explicit debug-only `--array-editor-development` entry opens a fresh incognito WebView before ordinary storage, connections, secrets, CLI/automation or background services initialize. The provisioner creates its own nonce database/role/cluster on127.0.0.1 and checks both its temporary owner file and the server's database/user/cluster marker before fixture DDL. It shares the target guard with the existing A01 provider integration test. Only the four array columns of one synthetic row are writable, one cell at a time; `update_row` retains the ordinary argument shape and delegates to the existing PostgreSQL adapter. No general SQL, connection, import or file commands are registered. The normal app and release build cannot select this backend; adding a frontend query flag alone fails the native handshake.
+
+Choose `items`, `nums`, `empty_items` or `null_items`, then use the unchanged cell dialog's **Bearbeiten**, **NULL**, **Abbrechen** and **Übernehmen** actions. The fixed readback includes grid values, exact numeric raw JSON, native array bounds/text and a statement-attempt counter. The seed includes two-dimensional negative/nonstandard bounds, precision beyond2^53, an empty array and SQL NULL. Try escaped Unicode text, `[]`, SQL NULL and a ragged value such as `[["x"],[]]`; errors retain the draft without a successful write. A committed write whose subsequent readback fails closes the saved draft and requires **Neu lesen** before further editing.
+
+The launcher uses a dedicated random-port Vite instance with config/env-file loading disabled. The app/WebView directory is nested inside the owned cluster directory so the script's EXIT/INT/TERM/HUP cleanup also removes it on interruption. Closing the development window exits the app, closes its server and stops/removes only its own cluster. Do not start this focus-taking window while another native acceptance is active.
+
+Scoped non-GUI checks:
+
+```sh
+CARGO_BUILD_JOBS=2 bash scripts/test-postgres-arrays-local.sh --editor-test
+bun test tests/array-editor-development.test.ts tests/perf-array-editor-development.test.ts
+L8DB_BROWSER_CHANNEL=chrome bun scripts/test-browser.ts array-editor-development
+```
+
+The first command is a real native provider/fixture-contract test, including rejected foreign targets, stale row IDs, busy operations, oversized input and ragged values without any attempted UPDATE. Browser tests mount the actual isolated bootstrap and existing cell dialog but mock the IPC transport; they cover keyboard/focus/cancel, precision/NULL payloads, error retention and failed-readback recovery. Neither automated suite alone substitutes for native WebView IPC and agent-desktop keyboard acceptance. On17 November2026, after the other project released desktop focus, six cases passed in the actual isolated macOS Tauri/WKWebView window: cancelled keyboard draft with unchanged row/counter; Unicode/quotes/backslashes/NULL elements with negative2D bounds; precise raw numeric JSON with zero lower bound; SQL NULL to empty array; empty array to SQL NULL; and rejected ragged/empty-subarray input with retained draft and a fresh unchanged CTID/value/statement-counter readback. The native error-state screenshot was inspected. The owned app, Vite server, WebView directory and PostgreSQL cluster all exited/cleaned successfully. Other providers/platforms, PostgreSQL versions, packaged release and broad visual/theme/clipboard acceptance remain outside this local harness.

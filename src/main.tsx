@@ -1,6 +1,9 @@
 import "./index.css";
 import { initAppStorage, STORAGE_FALLBACK_KEY } from "@/lib/app-storage";
-import { csvCheckDevelopmentSelected } from "@/lib/development-entry";
+import {
+  arrayEditorDevelopmentSelected,
+  csvCheckDevelopmentSelected,
+} from "@/lib/development-entry";
 
 function showStorageFailure() {
   const root = document.getElementById("root");
@@ -27,6 +30,13 @@ if (import.meta.env.DEV && csvCheckDevelopmentSelected(true, location.search)) {
     .catch((error) => {
       const root = document.getElementById("root");
       if (root) root.textContent = `Isolierte CSV-Prüfung nicht verfügbar: ${String(error)}`;
+    });
+} else if (import.meta.env.DEV && arrayEditorDevelopmentSelected(true, location.search)) {
+  void import("./development/array-editor-bootstrap")
+    .then((entry) => entry.startArrayEditorDevelopment())
+    .catch((error) => {
+      const root = document.getElementById("root");
+      if (root) root.textContent = `Isolierter Arrayeditor nicht verfügbar: ${String(error)}`;
     });
 } else
   void initAppStorage().then((mode) => {

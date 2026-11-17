@@ -1125,3 +1125,9 @@ The larger owned fixture was 1,048,576 records / 254,803,976 bytes; native cance
 returned 4,318 records, while the changed-file run discarded its result. No native
 latency/peak-memory comparison is claimed. See `docs/csv-check-development.md`
 for the reproducible explicit entry and the separate desktop-tool limitations.
+
+### A01 isolated editor development harness
+
+The scoped gate regression in `tests/perf-array-editor-development.test.ts` measures30,000 decisions per sample (11 samples,2 warmups), including a1MB query rejected before parsing. Budgets: median<50ms, p95<100ms and retained JSC heap<4MiB; no requests, timers or background work. The browser scenario uses the existing cell dialog with512 text elements over9 measured edits after2 warmups: median<1000ms, p95<2000ms, DOM<1500 nodes, exactly1 handshake plus2 IPC calls per successful edit and zero extra calls during an idle interval. Its transport is synthetic, not a database latency result.
+
+The real `--editor-test` fixture scenario uses512 elements,9 samples after2 warmups, serial provider writes and fixed readback; budgets median<250ms, p95<500ms and serialized snapshot<64KiB. Initial local measurement: median7.915ms/p958.236ms on macOS27/arm64 Apple M3,16GiB, PostgreSQL17.11, debug Rust with2 build jobs. Final browser measurement on installed system Chrome: median983.201ms/p95986.088ms,27 DOM nodes before the subsequent static reread-button exposure,23 calls for11 edits and no idle calls. The final gate scenario measured median2.739ms/p953.556ms and99 bytes retained JSC heap. Native keyboard/IPC correctness subsequently passed; native editor paint latency was not benchmarked. Total native network request counts/peak RSS, physical low-resource hardware, other platforms and native editor paint were not measured. Existing codec/provider budgets and supported array forms are unchanged.

@@ -1,3 +1,7 @@
+#[cfg(debug_assertions)]
+mod array_editor_development;
+#[cfg(any(test, debug_assertions))]
+mod array_editor_target;
 mod ai;
 mod appwrite;
 mod automation;
@@ -85,6 +89,20 @@ pub fn run() {
         }
         #[cfg(not(debug_assertions))]
         eprintln!("CSV-Entwicklung ist nur im Debug-Build verfügbar.");
+        return;
+    }
+    if std::env::args().any(|arg| arg == "--array-editor-development") {
+        #[cfg(debug_assertions)]
+        {
+            if array_editor_development::selected(&std::env::args().skip(1).collect::<Vec<_>>()) {
+                array_editor_development::run(application_context())
+                    .expect("isolated array editor development failed");
+            } else {
+                eprintln!("Array-Entwicklung muss ohne weitere Argumente gestartet werden.");
+            }
+        }
+        #[cfg(not(debug_assertions))]
+        eprintln!("Array-Entwicklung ist nur im Debug-Build verfügbar.");
         return;
     }
     desktop::mark_process_start();

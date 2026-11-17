@@ -5,3 +5,11 @@ export function csvCheckDevelopmentSelected(development: boolean, search: string
     new URLSearchParams(search).get("csv-check-development") === "1"
   );
 }
+
+export function arrayEditorDevelopmentSelected(development: boolean, search: string): boolean {
+  if (!development || search.length >= 8192) return false;
+  const parameters = new URLSearchParams(search);
+  return (
+    parameters.get("array-editor-development") === "1" && !parameters.has("csv-check-development")
+  );
+}

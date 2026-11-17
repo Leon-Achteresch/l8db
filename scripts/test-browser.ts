@@ -1,5 +1,6 @@
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "vite";
+import { arrayEditorViteConfig } from "./array-editor-vite";
 
 const registered = [
   "table-edit",
@@ -20,6 +21,7 @@ const registered = [
   "transaction-commit",
   "command-palette-pointer",
   "csv-file-check",
+  "array-editor-development",
 ];
 const requested = process.argv.slice(2);
 if (requested.some((name) => !registered.includes(name)))
@@ -28,26 +30,33 @@ const files = requested.length ? requested : registered;
 const log = "test-artifacts/browser/tests.log";
 await mkdir("test-artifacts/browser", { recursive: true });
 await writeFile(log, "");
-const server = await createServer({
-  cacheDir: "node_modules/.vite-browser-tests",
-  optimizeDeps: {
-    entries: [
-      "index.html",
-      "tests/fixtures/table-edit.html",
-      "tests/fixtures/table-state.html",
-      "tests/fixtures/query-workspace.html",
-      "tests/fixtures/editor-ai-chat.html",
-      "tests/fixtures/shared-tab-paste.html",
-    ],
-  },
-  server: { host: "127.0.0.1", port: 0, strictPort: false, watch: null, hmr: false },
-});
+const isolatedArray = files.length === 1 && files[0] === "array-editor-development";
+const server = await createServer(
+  isolatedArray
+    ? arrayEditorViteConfig()
+    : {
+        cacheDir: "node_modules/.vite-browser-tests",
+        optimizeDeps: {
+          entries: [
+            "index.html",
+            "tests/fixtures/table-edit.html",
+            "tests/fixtures/table-state.html",
+            "tests/fixtures/query-workspace.html",
+            "tests/fixtures/editor-ai-chat.html",
+            "tests/fixtures/shared-tab-paste.html",
+          ],
+        },
+        server: { host: "127.0.0.1", port: 0, strictPort: false, watch: null, hmr: false },
+      },
+);
 try {
   await server.listen();
   const address = server.httpServer?.address();
   if (!address || typeof address === "string") throw new Error("Fixture server failed to start");
   const url = `http://127.0.0.1:${address.port}`;
-  const response = await fetch(`${url}/tests/fixtures/table-edit.html`);
+  const response = await fetch(
+    `${url}/${isolatedArray ? "?array-editor-development=1" : "tests/fixtures/table-edit.html"}`,
+  );
   if (!response.ok) throw new Error(`Fixture readiness failed: ${response.status}`);
   for (const file of files) {
     const child = Bun.spawn(["bun", "test", `tests/${file}-browser.test.ts`], {
