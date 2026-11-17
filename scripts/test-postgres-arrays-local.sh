@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+for tool in initdb pg_ctl createdb python3 cargo; do
+  command -v "$tool" >/dev/null || { printf 'Required local tool missing: %s\n' "$tool" >&2; exit 1; }
+done
+lab=$(mktemp -d "${TMPDIR:-/tmp}/l8db-a01-pg.XXXXXX")
+cleanup() {
+  result=$?
+  trap - EXIT
+  if [ -f "$lab/data/postmaster.pid" ]; then pg_ctl -D "$lab/data" -m fast -w stop >/dev/null || result=1; fi
+  if [ "$result" -ne 0 ]; then tail -60 "$lab/server.log" 2>/dev/null || true; fi
+  rm -rf "$lab"
+  printf 'Own cluster and temp directory removed: %s\n' "$lab"
+  exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+port=$(python3 - <<'PY'
+import socket
+with socket.socket() as s:
+    s.bind(('127.0.0.1', 0))
+    print(s.getsockname()[1])
+PY
+)
+nonce=$(python3 -c 'import secrets; print(secrets.token_hex(6))')
+database="l8db_a01_$nonce"
+initdb -D "$lab/data" -U l8db_a01 --encoding=UTF8 --locale=C --auth-local=trust --auth-host=reject >"$lab/initdb.log"
+cat >>"$lab/data/postgresql.conf" <<EOF
+listen_addresses = '127.0.0.1'
+port = $port
+unix_socket_directories = ''
+ssl = off
+max_connections = 12
+shared_buffers = '16MB'
+cluster_name = '$database'
+EOF
+printf 'host all l8db_a01 127.0.0.1/32 trust\nhost all all 0.0.0.0/0 reject\nhost all all ::0/0 reject\n' >"$lab/data/pg_hba.conf"
+pg_ctl -D "$lab/data" -l "$lab/server.log" -w -t 15 start >/dev/null
+touch "$lab/pgpass" "$lab/pg_service.conf"
+chmod 600 "$lab/pgpass" "$lab/pg_service.conf"
+env -i PATH="$PATH" LC_ALL=C PGPASSFILE="$lab/pgpass" PGSERVICEFILE="$lab/pg_service.conf" PGCONNECT_TIMEOUT=5 PGSSLMODE=disable \
+  createdb -h 127.0.0.1 -p "$port" -U l8db_a01 "$database"
+export L8DB_A01_LOCAL_PG_URL="postgresql://l8db_a01@127.0.0.1:$port/$database?sslmode=disable"
+export L8DB_A01_LOCAL_OWNED_DB="$database"
+export CARGO_BUILD_JOBS=2
+mkdir -p test-artifacts
+cargo test --manifest-path src-tauri/Cargo.toml --locked --lib \
+  db::postgres::arrays::live_tests::a01_local_postgresql_provider_roundtrip \
+  -- --exact --ignored --test-threads=1 --nocapture | tee test-artifacts/a01-local-postgresql.log
+grep -q '1 passed' test-artifacts/a01-local-postgresql.log
+printf 'Own PostgreSQL cluster/database will now be stopped and removed.\n'

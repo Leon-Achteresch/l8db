@@ -885,9 +885,28 @@ drafts and both mocked update transports, including quotes, backslashes, NULL,
 empty values, numeric scale and unsupported shapes. Codec/editor helpers issue
 no database requests and start no timers/workers; metadata plus the existing
 UPDATE remains the runtime request pattern, established statically here.
-No live PostgreSQL catalog/type-cast/array-bound execution, visual/native-app
-acceptance, Windows/Linux, constrained CPU or native peak-RSS measurement was
-performed. Capacity checks bound retained results, not every temporary allocation.
+The original measurements did not include a live server. The scoped follow-up
+below adds actual PostgreSQL catalog/type-cast/array-bound execution. Visual/native
+editor acceptance, Windows/Linux, constrained CPU and native peak-RSS remain
+unmeasured. Capacity checks bound retained results, not every temporary allocation.
+
+`bash scripts/test-postgres-arrays-local.sh` provisions an owned ephemeral
+PostgreSQL 17.11 server and executes the real native direct/transactional paths.
+On macOS 27.0.1 arm64, Apple M3, 16 GiB, Rust debug profile: 512 escaped Unicode
+text elements, two warmups and nine update-plus-grid-read samples measured
+median **4.471 ms**, p95 **6.707 ms** (limits <250 / <500ms). This includes the
+existing native metadata/write/readback work, not just codec SQL generation.
+No browser/IPC paint or whole-app RSS is measured. The input row ID is fetched
+before the timed interval; calls are serial with a single explicit writer.
+
+The same run verifies 26 valid direct/transactional value/bounds cases, rollback
+visibility, 16 rejections before any UPDATE and zero retained transaction IDs or
+idle-in-transaction sessions. A nontransactional statement-trigger sequence
+detects an attempted UPDATE even when no row mutation would survive. Total
+network/catalog request counts are not instrumented; no claim of one complete
+roundtrip per edit or a before/after optimization is made. Existing codec work/
+capacity budgets are unchanged. Native editor visual acceptance and other
+providers/platforms remain open; only the owned local cluster is stopped/deleted.
 
 
 ## Existing procedure results (A16)
