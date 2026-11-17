@@ -10,8 +10,8 @@ use crate::automation::model::AutomationConnection;
 use crate::cli::connect::{self, Session, Source, Target};
 use crate::cli::output;
 use crate::cli::run::{
-    changed, guarded, kind_name, prepare, relations, run_prepared, Approval, RunOptions, Step,
-    ABORTED, CONFIRM_REQUIRED,
+    changed, guarded, kind_name, lock_read_only, prepare, relations, run_prepared, Approval,
+    RunOptions, Step, ABORTED, CONFIRM_REQUIRED,
 };
 use crate::cli::Limit;
 use crate::db::{execution, QueryResult};
@@ -26,6 +26,7 @@ enum Origin {
 
 pub struct Backend {
     database: Option<String>,
+    read_only: bool,
     job: String,
     list: Vec<AutomationConnection>,
     origin: Mutex<Option<Origin>>,
@@ -54,9 +55,10 @@ fn cells(columns: &[String], rows: &[Value]) -> Vec<Vec<String>> {
 }
 
 impl Backend {
-    pub fn new(database: Option<String>, list: Vec<AutomationConnection>) -> Self {
+    pub fn new(database: Option<String>, list: Vec<AutomationConnection>, read_only: bool) -> Self {
         Backend {
             database,
+            read_only,
             job: format!("tui-{}", std::process::id()),
             list,
             origin: Mutex::new(None),
@@ -121,6 +123,7 @@ impl Backend {
     }
 
     async fn connect(&self, source: Source) -> Result<Arc<Session>, String> {
+        let source = lock_read_only(source, self.read_only);
         let origin = match &source {
             Source::Saved(target) => self
                 .list

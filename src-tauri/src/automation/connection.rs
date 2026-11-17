@@ -560,7 +560,9 @@ pub async fn resolve(
         kind: connection.kind,
         url,
         database: database.map(str::to_string),
-        read_only: connection.read_only || connection.kind == DatabaseKind::Spacetimedb,
+        read_only: connection.read_only
+            || connection.kind == DatabaseKind::Spacetimedb
+            || services.read_only,
         production_locked: connection.production_locked,
         environment: connection.environment,
         via,

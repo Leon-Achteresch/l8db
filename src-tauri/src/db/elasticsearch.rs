@@ -595,16 +595,67 @@ fn console_requests(input: &str) -> Option<Vec<ConsoleRequest>> {
 
 pub fn read_only_request(statement: &str) -> Option<bool> {
     let requests = console_requests(statement)?;
-    Some(requests.iter().all(|r| {
-        matches!(r.method.as_str(), "GET" | "HEAD")
-            || (r.method == "POST" && read_endpoint_path(&r.path))
-    }))
+    Some(requests.iter().all(request_reads))
 }
 
-fn read_endpoint_path(path: &str) -> bool {
-    let Ok(url) = url::Url::parse("http://l8db.invalid/").and_then(|base| base.join(path)) else {
+fn request_reads(request: &ConsoleRequest) -> bool {
+    let Some(endpoint) = request_endpoint(&request.path) else {
         return false;
     };
+    match endpoint.as_deref() {
+        Some(kind @ ("_sql" | "_ppl")) => sql_request_reads(kind, request),
+        endpoint => {
+            matches!(request.method.as_str(), "GET" | "HEAD")
+                || (request.method == "POST"
+                    && endpoint.is_some_and(|endpoint| READ_ENDPOINTS.contains(&endpoint)))
+        }
+    }
+}
+
+fn sql_request_reads(kind: &str, request: &ConsoleRequest) -> bool {
+    let Ok(url) = url::Url::parse("http://l8db.invalid/").and_then(|base| base.join(&request.path))
+    else {
+        return false;
+    };
+    if url
+        .query_pairs()
+        .any(|(key, _)| key == "sql" || key == "query")
+    {
+        return false;
+    }
+    let Some(query) = request
+        .body
+        .as_deref()
+        .and_then(|body| serde_json::from_str::<Value>(body).ok())
+        .and_then(|body| {
+            body.get("query")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+    else {
+        return false;
+    };
+    let query = query.trim().trim_end_matches(';');
+    if query.contains(';') {
+        return false;
+    }
+    let word = query
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+    let reads: &[&str] = if kind == "_ppl" {
+        &["SOURCE", "SEARCH", "DESCRIBE", "SHOW"]
+    } else {
+        &["SELECT", "SHOW", "DESCRIBE", "DESC"]
+    };
+    reads.contains(&word.as_str())
+}
+
+fn request_endpoint(path: &str) -> Option<Option<String>> {
+    let url = url::Url::parse("http://l8db.invalid/")
+        .and_then(|base| base.join(path))
+        .ok()?;
     let raw = path.split(['?', '#']).next().unwrap_or_default();
     let segments: Vec<String> = url
         .path_segments()
@@ -623,13 +674,11 @@ fn read_endpoint_path(path: &str) -> bool {
             let decoded = percent_encoding::percent_decode_str(segment).decode_utf8_lossy();
             decoded == "." || decoded == ".." || decoded.contains(['/', '\\'])
         });
-    !dotted
-        && segments
-            .iter()
-            .find(|segment| {
-                segment.starts_with('_') && !PLUGIN_PREFIXES.contains(&segment.as_str())
-            })
-            .is_some_and(|segment| READ_ENDPOINTS.contains(&segment.as_str()))
+    (!dotted).then(|| {
+        segments.into_iter().find(|segment| {
+            segment.starts_with('_') && !PLUGIN_PREFIXES.contains(&segment.as_str())
+        })
+    })
 }
 
 pub fn is_index_ddl(statement: &str) -> bool {
@@ -1108,14 +1157,21 @@ impl ElasticAdapter {
         let mut cursor = sql_cursor(&first);
         let outcome: Result<(), String> = async {
             while rows.len() < limit {
-                let Some(next) = cursor.take() else {
+                let Some(next) = cursor.clone() else {
                     return Ok(());
                 };
+                if super::execution::cancellation_token().is_cancelled() {
+                    return Err("Abfrage abgebrochen.".into());
+                }
                 let page = self
                     .call("POST", endpoint, Some(json!({"cursor": next})))
                     .await?;
+                let more = sql_rows(&page);
                 cursor = sql_cursor(&page);
-                rows.extend(sql_rows(&page));
+                if more.is_empty() || cursor.as_ref() == Some(&next) {
+                    return Ok(());
+                }
+                rows.extend(more);
             }
             Ok(())
         }
@@ -1774,7 +1830,6 @@ mod tests {
             "logs/_search?size=1",
             "_search/scroll",
             "logs/_explain/1",
-            "_sql?format=txt",
         ] {
             assert_eq!(
                 read_only_request(&format!("POST {path}\n{{}}")),
@@ -1782,16 +1837,27 @@ mod tests {
                 "{path}"
             );
         }
-        for path in [
-            "_plugins/_sql?format=jdbc",
-            "_plugins/_ppl",
-            "_opendistro/_sql",
+        for (path, query) in [
+            ("_sql?format=txt", "SELECT * FROM logs"),
+            ("_plugins/_sql?format=jdbc", "select count(*) from logs;"),
+            ("_opendistro/_sql", "SHOW TABLES LIKE %"),
+            ("_plugins/_sql", "DESCRIBE TABLES LIKE logs"),
+            ("_plugins/_ppl", "source=logs | where a > 1"),
         ] {
-            assert_eq!(
-                read_only_request(&format!("POST {path}\n{{}}")),
-                Some(true),
-                "{path}"
-            );
+            let request = format!("POST {path}\n{{\"query\": \"{query}\"}}");
+            assert_eq!(read_only_request(&request), Some(true), "{request}");
+        }
+        for request in [
+            "POST _plugins/_sql\n{\"query\": \"DELETE FROM logs\"}",
+            "POST _opendistro/_sql\n{\"query\": \"SELECT 1; DELETE FROM logs\"}",
+            "POST _plugins/_sql\n{}",
+            "POST _plugins/_ppl",
+            "GET _plugins/_sql\n{\"query\": \"DELETE FROM logs\"}",
+            "GET _opendistro/_sql?sql=DELETE%20FROM%20logs",
+            "GET logs/../_plugins/_sql\n{\"query\": \"SELECT 1\"}",
+            "POST _sql/close\n{\"cursor\": \"x\"}",
+        ] {
+            assert_eq!(read_only_request(request), Some(false), "{request}");
         }
         assert_eq!(
             read_only_request("POST _plugins/_security/api/x\n{}"),
@@ -1954,6 +2020,46 @@ mod tests {
             }
             (200, out.to_string().into_bytes())
         })
+    }
+
+    #[tokio::test]
+    async fn sql_cursor_stops_on_empty_or_repeated_pages() {
+        for (name, empty) in [("empty", true), ("repeated", false)] {
+            let server = super::super::http_mock::start(move |request| {
+                let route = request.route().to_string();
+                if request.method == "GET" && route == "/" {
+                    return (200, br#"{"version":{"number":"8.19.4"}}"#.to_vec());
+                }
+                if route.ends_with("/close") {
+                    return (200, br#"{"succeeded":true}"#.to_vec());
+                }
+                let rows = if empty && request.json().get("cursor").is_some() {
+                    json!([])
+                } else {
+                    json!([[1]])
+                };
+                let page = json!({"columns": [{"name": "n", "type": "long"}], "rows": rows, "cursor": "same"});
+                (200, page.to_string().into_bytes())
+            });
+            let url = format!(
+                "elasticsearch://{}",
+                server.base.trim_start_matches("http://")
+            );
+            let result = ElasticAdapter::new(&url)
+                .unwrap()
+                .execute_query("SELECT n FROM loop")
+                .await
+                .unwrap();
+            assert_eq!(result.rows.len(), 1, "{name}");
+            assert!(result.truncated, "{name}");
+            let calls: Vec<bool> = server
+                .requests()
+                .iter()
+                .filter(|r| r.route().contains("_sql"))
+                .map(|r| r.route().ends_with("/close"))
+                .collect();
+            assert_eq!(calls, [false, false, true], "{name}");
+        }
     }
 
     #[tokio::test]

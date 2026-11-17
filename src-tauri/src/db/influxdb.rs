@@ -374,51 +374,176 @@ fn is_flux(statement: &str) -> bool {
         || trimmed.starts_with("option ")
 }
 
-fn flux_code(statement: &str) -> String {
-    let mut out = String::with_capacity(statement.len());
-    let mut chars = statement.chars().peekable();
-    while let Some(c) = chars.next() {
+const FLUX_READ_PACKAGES: &[&str] = &[
+    "array",
+    "csv",
+    "date",
+    "date/boundaries",
+    "dict",
+    "experimental",
+    "experimental/aggregate",
+    "experimental/array",
+    "experimental/date/boundaries",
+    "experimental/geo",
+    "experimental/json",
+    "experimental/table",
+    "generate",
+    "influxdata/influxdb",
+    "influxdata/influxdb/sample",
+    "influxdata/influxdb/schema",
+    "influxdata/influxdb/v1",
+    "interpolate",
+    "join",
+    "json",
+    "math",
+    "regexp",
+    "runtime",
+    "sampledata",
+    "strings",
+    "system",
+    "timezone",
+    "types",
+    "universe",
+];
+
+fn flux_ident(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+fn flux_regex_position(code: &str) -> bool {
+    let code = code.trim_end();
+    match code.chars().last() {
+        None => true,
+        Some(c) if "~(,:[{=".contains(c) => true,
+        Some(c) if flux_ident(c) => {
+            let start = code
+                .char_indices()
+                .rev()
+                .take_while(|(_, c)| flux_ident(*c))
+                .last()
+                .map_or(0, |(i, _)| i);
+            matches!(
+                &code[start..],
+                "return" | "then" | "else" | "and" | "or" | "not"
+            )
+        }
+        _ => false,
+    }
+}
+
+fn flux_scan(
+    chars: &[char],
+    mut i: usize,
+    out: &mut String,
+    strings: &mut Vec<String>,
+    level: usize,
+) -> Option<usize> {
+    if level > 32 {
+        return None;
+    }
+    let mut depth = 0usize;
+    while i < chars.len() {
+        let c = chars[i];
         match c {
             '"' => {
-                out.push_str("\"\"");
-                while let Some(c) = chars.next() {
-                    match c {
+                let mut text = String::new();
+                i += 1;
+                loop {
+                    match *chars.get(i)? {
                         '\\' => {
-                            chars.next();
+                            text.push('\\');
+                            text.push(*chars.get(i + 1)?);
+                            i += 2;
                         }
                         '"' => break,
-                        _ => {}
+                        '$' if chars.get(i + 1) == Some(&'{') => {
+                            text.push_str("${");
+                            out.push(' ');
+                            i = flux_scan(chars, i + 2, out, strings, level + 1)?;
+                            out.push(' ');
+                        }
+                        c => {
+                            text.push(c);
+                            i += 1;
+                        }
                     }
                 }
+                out.push_str(&format!("\"{}\"", strings.len()));
+                strings.push(text);
             }
-            '/' if chars.peek() == Some(&'/') => {
-                for c in chars.by_ref() {
-                    if c == '\n' {
-                        out.push('\n');
-                        break;
-                    }
+            '/' if chars.get(i + 1) == Some(&'/') => {
+                while i + 1 < chars.len() && chars[i + 1] != '\n' {
+                    i += 1;
                 }
             }
-            c => out.push(c),
+            '/' if flux_regex_position(out) => {
+                i += 1;
+                loop {
+                    match *chars.get(i)? {
+                        '\\' => i += 2,
+                        '/' => break,
+                        '\n' => return None,
+                        _ => i += 1,
+                    }
+                }
+                out.push_str("\"\"");
+            }
+            '}' if level > 0 && depth == 0 => return Some(i + 1),
+            _ => {
+                match c {
+                    '{' => depth += 1,
+                    '}' => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+                out.push(c);
+            }
         }
+        i += 1;
     }
-    out
+    (level == 0).then_some(i)
+}
+
+fn flux_code(statement: &str) -> Option<(String, Vec<String>)> {
+    let chars: Vec<char> = statement.chars().collect();
+    let mut out = String::with_capacity(statement.len());
+    let mut strings = Vec::new();
+    flux_scan(&chars, 0, &mut out, &mut strings, 0)?;
+    Some((out, strings))
+}
+
+fn flux_import<'a>(rest: &[char], strings: &'a [String]) -> Option<&'a str> {
+    let rest: String = rest.iter().collect();
+    let mut rest = rest.trim_start();
+    if rest.starts_with(flux_ident) {
+        rest = rest.trim_start_matches(flux_ident).trim_start();
+    }
+    let index = rest.strip_prefix('"')?.split('"').next()?;
+    strings
+        .get(index.parse::<usize>().ok()?)
+        .map(String::as_str)
 }
 
 fn flux_writes(statement: &str) -> bool {
-    let code = flux_code(statement);
+    let Some((code, strings)) = flux_code(statement) else {
+        return true;
+    };
     let chars: Vec<char> = code.chars().collect();
-    let ident = |c: char| c.is_alphanumeric() || c == '_';
     let mut i = 0;
     while i < chars.len() {
-        if !ident(chars[i]) || (i > 0 && ident(chars[i - 1])) {
+        if !flux_ident(chars[i]) || (i > 0 && flux_ident(chars[i - 1])) {
             i += 1;
             continue;
         }
         let end = (i..chars.len())
-            .find(|&j| !ident(chars[j]))
+            .find(|&j| !flux_ident(chars[j]))
             .unwrap_or(chars.len());
         let word: String = chars[i..end].iter().collect();
+        if word == "import"
+            && flux_import(&chars[end..], &strings)
+                .is_none_or(|path| !FLUX_READ_PACKAGES.contains(&path))
+        {
+            return true;
+        }
         if matches!(word.as_str(), "to" | "wideTo") {
             let before = chars[..i].iter().rev().find(|c| !c.is_whitespace());
             let after = chars[end..].iter().find(|c| !c.is_whitespace());
@@ -435,8 +560,12 @@ pub fn read_only_statement(statement: &str) -> Option<bool> {
     if is_line_protocol(statement) {
         return Some(false);
     }
-    if is_flux(statement) {
-        return Some(!flux_writes(statement));
+    let flux = is_flux(statement);
+    if flux || !SQL_WORDS.contains(&first_word(statement).as_str()) {
+        let writes = flux_writes(statement);
+        if flux || writes {
+            return Some(!writes);
+        }
     }
     None
 }

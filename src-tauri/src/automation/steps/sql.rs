@@ -158,6 +158,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn read_only_flag_rejects_writes_on_writable_connections() {
+        let mut h = harness().await;
+        h.services.read_only = true;
+        let run =
+            h.db.run(
+                &h.services,
+                vec![step(
+                    "a",
+                    json!({ "type": "sql", "connections": ["db"], "sql": "DELETE FROM items" }),
+                )],
+            )
+            .await;
+        assert_eq!(run.status, RunStatus::Failed);
+        assert!(run.error.unwrap().contains("Lesemodus"));
+        let left: i64 = rusqlite::Connection::open(&h.db.path)
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM items", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(left, 3);
+    }
+
+    #[tokio::test]
     async fn sql_error_names_connection() {
         let h = harness().await;
         let (services, db) = (&h.services, &h.db);
