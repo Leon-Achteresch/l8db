@@ -1,7 +1,7 @@
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "vite";
 
-const files = [
+const registered = [
   "table-edit",
   "table-state",
   "grid-keyboard",
@@ -21,6 +21,10 @@ const files = [
   "command-palette-pointer",
   "csv-file-check",
 ];
+const requested = process.argv.slice(2);
+if (requested.some((name) => !registered.includes(name)))
+  throw new Error(`Unbekannte Browserprüfung: ${requested.join(", ")}`);
+const files = requested.length ? requested : registered;
 const log = "test-artifacts/browser/tests.log";
 await mkdir("test-artifacts/browser", { recursive: true });
 await writeFile(log, "");

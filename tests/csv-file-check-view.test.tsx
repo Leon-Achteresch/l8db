@@ -14,6 +14,7 @@ const report: CsvCheckReport = {
   source_modified_ms: 1234,
 };
 const idle: CsvCheckState = {
+  checkedRows: null,
   checking: false,
   cancelling: false,
   cancelled: false,
@@ -70,6 +71,11 @@ test("running and requested cancellation never show an old report", () => {
   expect(running).toContain("Prüft die ganze Datei…");
   expect(running).toContain("Prüfung abbrechen");
   expect(running).not.toContain("Datensätze gelesen");
+  expect(running).toContain("Datensätze unbekannt");
+  expect(text(render({ checking: true, checkedRows: 0 }))).toContain("0 Datensätze gelesen");
+  expect(text(render({ checking: true, cancelling: true, checkedRows: 16384 }))).toContain(
+    "16.384 Datensätze gelesen",
+  );
   const cancelling = render({ checking: true, cancelling: true });
   expect(text(cancelling)).toContain("Abbruch angefordert…");
   expect(cancelling).toContain('aria-disabled="true"');

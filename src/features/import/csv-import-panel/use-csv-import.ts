@@ -1,7 +1,11 @@
 import { stat } from "@tauri-apps/plugin-fs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useActiveConnection } from "@/lib/connections";
-import { csvCheckMatchesFile, csvFileCheckRequest } from "@/lib/csv-file-check";
+import {
+  csvCheckBlockedReason,
+  csvCheckMatchesFile,
+  csvFileCheckRequest,
+} from "@/lib/csv-file-check";
 import {
   buildImportPayload,
   CSV_MAX_IMPORT_ROWS,
@@ -385,32 +389,29 @@ export function useCsvImport() {
 
   const rowCount = parsed?.rows.length ?? 0;
   const tooManyRows = !filePath && (parsed?.truncated === true || rowCount > CSV_MAX_IMPORT_ROWS);
-  const blockedReason = fileCheck.checking
-    ? "Dateiprüfung läuft"
-    : fileCheck.report &&
-        (fileCheck.report.status !== "complete" || fileCheck.report.error_count > 0)
-      ? "Dateiprüfung enthält Befunde oder ist unvollständig"
-      : !parsed
-        ? "Keine Datei geladen"
-        : parsed.errors.length > 0
-          ? "Die Datei enthält Fehler"
-          : columnsLoading
-            ? "Spalten der Zieltabelle werden geladen"
-            : !targetTable
-              ? "Keine Zieltabelle ausgewählt"
-              : format !== "csv" && !filePath
-                ? "Keine Datei ausgewählt"
-                : rowCount === 0
-                  ? "Die Datei enthält keine Zeilen"
-                  : tooManyRows
-                    ? "Zu viele Zeilen für den Import aus der Vorschau"
-                    : conflict && !conflict.constraint
-                      ? "Kein Konfliktschlüssel für die Konfliktbehandlung gewählt"
-                      : openTransaction
-                        ? "Offene Transaktion zuerst abschließen"
-                        : (issues?.errors.length ?? 1) > 0
-                          ? "Zuordnung der Spalten enthält Fehler"
-                          : null;
+  const blockedReason =
+    csvCheckBlockedReason(fileCheck) ??
+    (!parsed
+      ? "Keine Datei geladen"
+      : parsed.errors.length > 0
+        ? "Die Datei enthält Fehler"
+        : columnsLoading
+          ? "Spalten der Zieltabelle werden geladen"
+          : !targetTable
+            ? "Keine Zieltabelle ausgewählt"
+            : format !== "csv" && !filePath
+              ? "Keine Datei ausgewählt"
+              : rowCount === 0
+                ? "Die Datei enthält keine Zeilen"
+                : tooManyRows
+                  ? "Zu viele Zeilen für den Import aus der Vorschau"
+                  : conflict && !conflict.constraint
+                    ? "Kein Konfliktschlüssel für die Konfliktbehandlung gewählt"
+                    : openTransaction
+                      ? "Offene Transaktion zuerst abschließen"
+                      : (issues?.errors.length ?? 1) > 0
+                        ? "Zuordnung der Spalten enthält Fehler"
+                        : null);
   const blocked = blockedReason !== null;
 
   return {

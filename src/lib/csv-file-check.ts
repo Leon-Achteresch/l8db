@@ -30,6 +30,7 @@ export function csvFileCheckRequest(
 }
 
 export interface CsvCheckState {
+  checkedRows: number | null;
   checking: boolean;
   cancelling: boolean;
   cancelled: boolean;
@@ -38,6 +39,7 @@ export interface CsvCheckState {
 }
 
 const IDLE: CsvCheckState = {
+  checkedRows: null,
   checking: false,
   cancelling: false,
   cancelled: false,
@@ -45,10 +47,23 @@ const IDLE: CsvCheckState = {
   error: null,
 };
 
+export interface CsvCheckEvents {
+  onProgress: (rows: number) => void;
+  onCancelRequested: () => void;
+}
+
+export function csvCheckBlockedReason(check: CsvCheckState): string | null {
+  if (check.checking) return "Dateiprüfung läuft";
+  if (check.cancelled || check.error) return "Dateiprüfung abgebrochen oder fehlgeschlagen";
+  if (check.report && (check.report.status !== "complete" || check.report.error_count > 0))
+    return "Dateiprüfung enthält Befunde oder ist unvollständig";
+  return null;
+}
+
 export function createCsvFileCheck(
   request: CsvCheckRequest | null,
-  run = async (input: CsvCheckRequest, signal: AbortSignal) =>
-    (await import("@/lib/csv-file-check-runner")).runCsvFileCheck(input, signal),
+  run = async (input: CsvCheckRequest, signal: AbortSignal, events: CsvCheckEvents) =>
+    (await import("@/lib/csv-file-check-runner")).runCsvFileCheck(input, signal, events),
 ) {
   let state = IDLE;
   let current: AbortController | null = null;
@@ -73,8 +88,8 @@ export function createCsvFileCheck(
     },
     cancel: () => {
       if (!current || state.cancelling) return;
-      current.abort();
       update({ ...state, cancelling: true });
+      current.abort();
     },
     dispose: () => {
       disposed = true;
@@ -87,7 +102,25 @@ export function createCsvFileCheck(
       current = active;
       update({ ...IDLE, checking: true });
       try {
-        const report = await run(request, active.signal);
+        const report = await run(request, active.signal, {
+          onProgress: (rows) => {
+            if (
+              disposed ||
+              current !== active ||
+              active.signal.aborted ||
+              !Number.isSafeInteger(rows) ||
+              rows < 0 ||
+              (state.checkedRows !== null && rows <= state.checkedRows)
+            )
+              return;
+            update({ ...state, checkedRows: rows });
+          },
+          onCancelRequested: () => {
+            if (disposed || current !== active || active.signal.aborted) return;
+            update({ ...state, cancelling: true });
+            active.abort();
+          },
+        });
         if (!disposed && current === active)
           update(
             active.signal.aborted && report.status === "complete"

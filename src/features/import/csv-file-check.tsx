@@ -114,7 +114,18 @@ export function CsvFileCheck({
           ) : (
             <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", DOT[status.tone])} />
           )}
-          <span className="min-w-0">{status.title}</span>
+          <span className="min-w-0">
+            {status.title}
+            {check.checking && (
+              <span className="tabular-nums">
+                {" "}
+                ·{" "}
+                {check.checkedRows === null
+                  ? "Datensätze unbekannt"
+                  : `${count(check.checkedRows)} Datensätze gelesen`}
+              </span>
+            )}
+          </span>
         </p>
         <div className="ml-auto flex items-center gap-1.5">
           {status.repick && onPickFile && (

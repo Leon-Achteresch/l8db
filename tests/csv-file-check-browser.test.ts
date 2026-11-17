@@ -6,7 +6,7 @@ const run = url ? test : test.skip;
 let browser: Browser;
 
 beforeAll(async () => {
-  if (url) browser = await chromium.launch();
+  if (url) browser = await chromium.launch({ channel: process.env.L8DB_BROWSER_CHANNEL });
 });
 afterAll(async () => {
   await browser?.close();
@@ -32,6 +32,84 @@ const setScenario = (page: Page, value: string) =>
   page.evaluate((next) => {
     (window as unknown as { __csvCheck: { scenario: string } }).__csvCheck.scenario = next;
   }, value);
+
+type Fixture = {
+  emit: (id: string, rows: number) => void;
+  jobs: { jobId: string; fail: (error: string) => void; settle: (report: unknown) => void }[];
+};
+
+run(
+  "inline counts are unknown until a matching event; scope, mapping and unmount reject late events/errors",
+  async () => {
+    const { page, errors } = await open("manual");
+    for (const action of [
+      "Quelle wechseln",
+      "Zuordnung und Optionen wechseln",
+      "Kontext wechseln",
+      "Prüffeld umschalten",
+    ]) {
+      await page.getByRole("button", { name: "CSV-Datei prüfen" }).click();
+      await page.waitForFunction(
+        () => (window as unknown as { __csvCheck: Fixture }).__csvCheck.jobs.length === 1,
+      );
+      expect(await status(page).textContent()).toContain("Datensätze unbekannt");
+      const oldId = await page.evaluate(() => {
+        const f = (window as unknown as { __csvCheck: Fixture }).__csvCheck;
+        const id = f.jobs[0].jobId;
+        f.emit("foreign-import-job", 999999);
+        return id;
+      });
+      expect(await status(page).textContent()).toContain("Datensätze unbekannt");
+      await page.evaluate(
+        (id) => (window as unknown as { __csvCheck: Fixture }).__csvCheck.emit(id, 8192),
+        oldId,
+      );
+      await page.waitForFunction(() =>
+        document
+          .querySelector('section [role="status"]')
+          ?.textContent?.includes("8.192 Datensätze gelesen"),
+      );
+      await page.getByRole("button", { name: action, exact: true }).click();
+      if (action === "Prüffeld umschalten")
+        await page.getByRole("button", { name: action, exact: true }).click();
+      await page.getByRole("button", { name: "CSV-Datei prüfen" }).click();
+      await page.waitForFunction(
+        () => (window as unknown as { __csvCheck: Fixture }).__csvCheck.jobs.length === 2,
+      );
+      await page.evaluate((id) => {
+        const f = (window as unknown as { __csvCheck: Fixture }).__csvCheck;
+        f.emit(id, 999999);
+        f.jobs.find((job) => job.jobId === id)?.fail("late stale file error");
+      }, oldId);
+      await page.waitForFunction(
+        () => (window as unknown as { __csvCheck: Fixture }).__csvCheck.jobs.length === 1,
+      );
+      expect(await status(page).textContent()).toContain("Datensätze unbekannt");
+      expect(await page.getByText("late stale file error").count()).toBe(0);
+      await page.evaluate(() => {
+        const f = (window as unknown as { __csvCheck: Fixture }).__csvCheck;
+        f.jobs[0].settle({
+          status: "changed",
+          checked_rows: 0,
+          error_count: 0,
+          issues: [],
+          source_size: 1,
+          source_modified_ms: 1,
+        });
+      });
+      await page.getByText("Datei während der Prüfung geändert · Ergebnis verworfen").waitFor();
+      await page.getByRole("button", { name: "Quelle wechseln" }).click();
+      await page.getByRole("button", { name: "CSV-Datei prüfen" }).waitFor();
+    }
+    expect(
+      (await commands(page)).every((command) =>
+        ["check_csv_file", "cancel_execution"].includes(command),
+      ),
+    ).toBe(true);
+    expect(errors).toEqual([]);
+    await page.close();
+  },
+);
 
 run("keyboard runs, cancels and restarts without showing an old report", async () => {
   const { page, errors } = await open("slow");
