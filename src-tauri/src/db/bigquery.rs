@@ -6,8 +6,8 @@ use serde_json::{json, Value};
 
 use super::warehouse_auth::{self, google_token, GoogleAuth};
 use super::{
-    rows_to_objects, timed, where_clause, ColumnInfo, DatabaseAdapter, DetailedColumnInfo,
-    QueryResult, TableData, TableInfo,
+    rows_to_objects, where_clause, ColumnInfo, DatabaseAdapter, DetailedColumnInfo, QueryResult,
+    TableData, TableInfo,
 };
 
 const PAGE_SIZE: usize = 1000;
@@ -466,7 +466,7 @@ impl BigqueryAdapter {
         }
         let response = warehouse_auth::send_retrying(request, idempotent)
             .await
-            .map_err(|e| format!("BigQuery nicht erreichbar: {e}"))?;
+            .map_err(|e| warehouse_auth::send_error("BigQuery", &e))?;
         let (status, body) = warehouse_auth::read_body(response, "BigQuery").await?;
         if !(200..300).contains(&status) {
             let anonymous = token.token.is_none() && self.auth == GoogleAuth::Adc;
@@ -482,7 +482,7 @@ impl BigqueryAdapter {
     }
 
     async fn get(&self, segments: &[&str], query: &[(&str, String)]) -> Result<Value, String> {
-        timed(self.call(reqwest::Method::GET, segments, query, None)).await
+        self.call(reqwest::Method::GET, segments, query, None).await
     }
 
     async fn datasets(&self) -> Result<Vec<String>, String> {
@@ -656,8 +656,9 @@ impl BigqueryAdapter {
             };
             let mut page = query.clone();
             page.push(("pageToken", page_token.clone()));
-            let next =
-                timed(self.call(reqwest::Method::GET, &["queries", &job_id], &page, None)).await?;
+            let next = self
+                .call(reqwest::Method::GET, &["queries", &job_id], &page, None)
+                .await?;
             let more = convert_rows(&schema, &next["rows"]);
             token = next_token(&next, "pageToken", None);
             if more.is_empty() || token.as_deref() == Some(page_token.as_str()) {
@@ -688,7 +689,8 @@ impl BigqueryAdapter {
         if let Some(location) = &self.location {
             body["jobReference"] = json!({"projectId": self.project, "location": location});
         }
-        timed(self.call(reqwest::Method::POST, &["jobs"], &[], Some(body))).await
+        self.call(reqwest::Method::POST, &["jobs"], &[], Some(body))
+            .await
     }
 }
 
@@ -696,6 +698,14 @@ fn number(value: &Value) -> Option<i64> {
     value
         .as_i64()
         .or_else(|| value.as_str().and_then(|s| s.parse().ok()))
+}
+
+fn explained(sql: &str) -> Option<&str> {
+    let trimmed = sql.trim_start();
+    let (word, rest) = trimmed.split_at(trimmed.find(char::is_whitespace)?);
+    word.eq_ignore_ascii_case("EXPLAIN")
+        .then(|| rest.trim())
+        .filter(|rest| !rest.is_empty())
 }
 
 fn dry_run_plan(job: &Value) -> Value {
@@ -987,6 +997,28 @@ impl DatabaseAdapter for BigqueryAdapter {
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let started = Instant::now();
+        if let Some(inner) = explained(sql) {
+            let plan = dry_run_plan(&self.dry_run(inner).await?);
+            let node = &plan[0]["Plan"];
+            let columns: Vec<String> = [
+                "Statement Type",
+                "Estimated Bytes",
+                "Bytes Processed",
+                "Relation Name",
+            ]
+            .into_iter()
+            .filter(|key| !node[*key].is_null())
+            .map(String::from)
+            .collect();
+            let row: Vec<Value> = columns.iter().map(|c| node[c.as_str()].clone()).collect();
+            return Ok(QueryResult {
+                rows: rows_to_objects(&columns, vec![row]),
+                columns,
+                rows_affected: None,
+                execution_time_ms: started.elapsed().as_millis() as u64,
+                truncated: false,
+            });
+        }
         let (schema, rows, response, truncated) =
             self.run(sql, super::execution::row_limit()).await?;
         for warning in response["errors"].as_array().into_iter().flatten() {
@@ -1010,7 +1042,7 @@ impl DatabaseAdapter for BigqueryAdapter {
                         ""
                     }
                 ),
-                detail: Some("Vorab-Schätzung: Explain".into()),
+                detail: Some("Vorab-Schätzung: EXPLAIN vor die Abfrage setzen".into()),
             });
         }
         let columns = column_names(&schema);
@@ -1498,6 +1530,22 @@ mod tests {
         assert_eq!(plan[0]["Plan"]["Bytes Processed"], json!(2048));
         assert_eq!(plan[0]["Plan"]["Estimated Bytes"], json!("2.0 kB"));
         assert_eq!(plan[0]["Plan"]["Relation Name"], json!("proj.ds.orders"));
+        let result = a
+            .execute_query("explain\n SELECT * FROM orders")
+            .await
+            .unwrap();
+        assert_eq!(
+            result.columns,
+            [
+                "Statement Type",
+                "Estimated Bytes",
+                "Bytes Processed",
+                "Relation Name"
+            ]
+        );
+        assert_eq!(result.rows[0]["Estimated Bytes"], json!("2.0 kB"));
+        assert_eq!(explained("EXPLAINX SELECT 1"), None);
+        assert_eq!(explained("EXPLAIN"), None);
     }
 
     #[tokio::test]

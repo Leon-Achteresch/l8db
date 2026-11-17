@@ -171,6 +171,16 @@ describe("managed connection integration", () => {
       placeholder: "spacetimedb://token:identity-token@maincloud.spacetimedb.com/datenbank",
     };
     expect(seedFields(undefined, spacetime, false).user).toBe("token");
+    for (const [kind, placeholder] of [
+      ["snowflake", "snowflake://USER@myorg-account/DB/PUBLIC?warehouse=COMPUTE_WH"],
+      ["bigquery", "bigquery://my-project/my_dataset?location=EU"],
+    ] as const) {
+      expect(seedFields(undefined, { ...base, id: kind, kind, placeholder }, false)).toMatchObject({
+        host: "",
+        database: "",
+        user: "",
+      });
+    }
     const odbc = { ...base, id: "odbc", kind: "odbc" as const };
     expect(seedMode(undefined, odbc)).toBe("string");
     expect(seedMode(undefined, base)).toBe("fields");

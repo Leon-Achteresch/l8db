@@ -67,8 +67,21 @@ fn unreachable(label: &str, error: &reqwest::Error) -> String {
 }
 
 pub(crate) async fn send(label: &str, request: reqwest::RequestBuilder) -> Result<Reply, String> {
-    super::timed(async {
-        let response = request.send().await.map_err(|e| unreachable(label, &e))?;
+    let (client, request) = request.build_split();
+    let request = request.map_err(|e| unreachable(label, &e))?;
+    let url = request.url();
+    let target = format!(
+        "{}://{}{}",
+        url.scheme(),
+        url.host_str().unwrap_or_default(),
+        url.port().map(|p| format!(":{p}")).unwrap_or_default()
+    );
+    let deadline = super::execution::query_duration();
+    tokio::time::timeout(deadline, async {
+        let response = client
+            .execute(request)
+            .await
+            .map_err(|e| unreachable(label, &e))?;
         let status = response.status().as_u16();
         let headers = response.headers().clone();
         let body = response
@@ -82,6 +95,12 @@ pub(crate) async fn send(label: &str, request: reqwest::RequestBuilder) -> Resul
         })
     })
     .await
+    .map_err(|_| {
+        format!(
+            "{label}: keine Antwort von {target} nach {} Sekunden. Der Serverabschluss ist nicht bestätigt.",
+            deadline.as_secs()
+        )
+    })?
 }
 
 pub(crate) fn decode(value: &str) -> String {
@@ -311,6 +330,36 @@ pub(crate) mod mock {
 #[cfg(test)]
 mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[tokio::test]
+    async fn silent_servers_time_out_with_their_address() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (_socket, _) = listener.accept().await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        });
+        let started = std::time::Instant::now();
+        let error = crate::db::execution::run(
+            Some(crate::db::execution::ExecutionOptions {
+                query_timeout: Some(5),
+                ..Default::default()
+            }),
+            false,
+            super::send(
+                "libSQL",
+                super::client(false).get(format!("http://127.0.0.1:{port}/x")),
+            ),
+        )
+        .await
+        .err()
+        .unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(7));
+        assert_eq!(
+            error,
+            format!("libSQL: keine Antwort von http://127.0.0.1:{port} nach 5 Sekunden. Der Serverabschluss ist nicht bestätigt.")
+        );
+    }
 
     #[tokio::test]
     async fn https_against_plain_http_names_the_cause() {

@@ -583,6 +583,38 @@ pub fn range_note(connection_string: &str) -> Option<String> {
     ))
 }
 
+fn flux_hint(reason: &str) -> String {
+    let (place, message) = reason
+        .split_once("error @")
+        .and_then(|(_, rest)| rest.split_once(": "))
+        .unwrap_or(("", reason));
+    let at = place
+        .split('-')
+        .next()
+        .and_then(|start| start.split_once(':'))
+        .map(|(line, column)| format!(" in Zeile {line}, Spalte {column}"))
+        .unwrap_or_default();
+    let word = |marker: &str| {
+        message
+            .split_once(marker)
+            .and_then(|(_, rest)| rest.split_whitespace().next())
+            .map(|w| w.trim_matches(|c: char| c == '"' || c == ',' || c == ')'))
+            .filter(|w| !w.is_empty())
+    };
+    if let Some(name) = word("undefined identifier") {
+        format!("Flux kennt „{name}“ nicht{at}: Schreibweise prüfen.")
+    } else if let Some(name) = word("missing required argument") {
+        format!("Flux: Pflichtargument „{name}“ fehlt{at}.")
+    } else if message.contains("expected")
+        || message.contains("got ")
+        || message.contains("invalid")
+    {
+        format!("Flux-Syntaxfehler{at}: Klammern, Kommas und Kommentare prüfen.")
+    } else {
+        format!("Flux-Fehler{at}.")
+    }
+}
+
 fn friendly_error(status: u16, body: &str) -> String {
     let mut reason = http_api::error_message(body);
     if let Some(inner) = reason
@@ -619,7 +651,7 @@ fn friendly_error(status: u16, body: &str) -> String {
     } else if reason.contains("DML not supported") {
         Some("Ändern und Löschen per SQL kann InfluxDB 3 nicht.".to_string())
     } else if reason.starts_with("compilation failed") || reason.contains("error @") {
-        Some("Flux-Fehler.".to_string())
+        Some(flux_hint(&reason))
     } else if reason.starts_with("SQL error") || reason.contains("Expected:") {
         Some("SQL-Fehler.".to_string())
     } else if status == 429 || status == 503 {
@@ -1486,6 +1518,21 @@ mod tests {
             r#"{"error":"Error during planning: DML not supported: Delete"}"#
         )
         .contains("InfluxDB 3 nicht"));
+        let flux = |message: &str| {
+            friendly_error(
+                400,
+                &json!({"code": "invalid", "message": message}).to_string(),
+            )
+        };
+        assert!(flux("compilation failed: error @2:5-2:9: undefined identifier fro")
+            .starts_with("InfluxDB 400: Flux kennt „fro“ nicht in Zeile 2, Spalte 5: Schreibweise prüfen.\n  compilation failed"));
+        assert!(
+            flux("error @1:1-1:20: missing required argument start (argument range)").starts_with(
+                "InfluxDB 400: Flux: Pflichtargument „start“ fehlt in Zeile 1, Spalte 1."
+            )
+        );
+        assert!(flux("compilation failed: error @1:33-1:33: expected RPAREN, got EOF")
+            .starts_with("InfluxDB 400: Flux-Syntaxfehler in Zeile 1, Spalte 33: Klammern, Kommas und Kommentare prüfen."));
         assert!(friendly_error(422, r#"{"code":"unprocessable entity","message":"failure writing points to database: partial write: field type conflict: input field \"usage\" on measurement \"cpu\" is type string, already exists as type float dropped=1"}"#).contains("Feldtyp-Konflikt"));
     }
 
