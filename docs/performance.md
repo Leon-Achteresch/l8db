@@ -925,3 +925,47 @@ paint. No new native code: live provider returns, real DOM/focus/virtual scrolli
 Windows/Linux, constrained CPU and native RSS remain unmeasured. The six SSR
 contracts use actual dialog/result sections with mocked hook/grid dependencies;
 they do not constitute a native-app visual acceptance.
+
+
+## SQL literal-list import into existing IN filters (A11)
+
+The existing list input offers an explicit SQL-list preview/confirm action.
+Recognizable parenthesized SQL-list paste opens that preview without changing
+filter values; ordinary delimiter paste and single-value operators retain their
+existing behavior. Confirmation appends deduplicated string values to the current
+JSON list and uses the unchanged provider/type-aware filter compiler. This is
+value conversion, not execution or preservation of the source expression types.
+No filter-submit/query action is dispatched by the importer.
+
+Supported input is one parenthesized list of standard single-quoted text
+(including doubled quotes and N-prefixed text), decimal number lexemes or boolean
+literals. SQL NULL, empty/blank-only strings, expressions/comments outside text,
+backslash escapes, unsupported literal forms and trailing SQL fail as a whole.
+Existing storage cannot retain blank-only entries, and NULL-in-list semantics
+are not represented as a string. Preview source is invalidated when current
+values/operator change; cancel never changes the current filter.
+
+New import limits: 131,072 UTF-16 code units of source, 1,000 source/combined
+values and 524,288 encoded JSON code units. Existing non-import formats are not
+recapped. The preview renders at most five values, each abbreviated after 120
+code units, plus a remainder count; complete values stay in the encoded list.
+All parsing is synchronous/bounded; a closed preview performs no parsing or
+background work. No native API changes or new polling/cancellation job.
+
+Scoped `tests/perf-sql-filter-list-import.test.tsx` is core-registered. Measured
+once on macOS 27.0.0 arm64, Apple M3, 16 GiB RAM, Bun 1.3.10; two warmups,
+21 parser/rejection samples and nine actual existing-input SSR samples:
+
+| Scenario | Result | Budget |
+|---|---|---|
+| Parse/merge 1,000 literals, 86,891 source code units | median 0.940 ms / p95 1.080 ms | median <20 ms / p95 <40 ms |
+| Existing input SSR after import, 1,000 chips | median 21.166 ms / p95 85.784 ms; 818,610 HTML bytes | median <100 ms / p95 <200 ms; HTML <2 MiB |
+| Oversized input rejection | p95 0.000208 ms | <5 ms |
+| Retained heap after ten prepare/render repeats and GC | 89,328 bytes | <8 MiB |
+
+Functional checks use the actual input/preview callbacks and current compiler,
+including PostgreSQL/MySQL/SQL Server/Oracle/MongoDB output contracts and an
+in-memory SQLite selection fixture. Performance helpers start zero database
+requests or background tasks. SSR/event-harness results do not establish real
+DOM focus/popover/keyboard behavior, native-app paint or provider execution.
+Live databases, Windows/Linux, constrained CPU/heap and native RSS were not tested.

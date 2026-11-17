@@ -1,9 +1,11 @@
 import { PlusIcon, XIcon } from "lucide-react";
-import { type ComponentProps, useRef, useState } from "react";
+import { type ComponentProps, useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { operatorNeedsList, parseFilterList } from "@/lib/sql-filter";
+import { looksLikeSqlFilterList } from "@/lib/sql-filter-list-import";
 import { cn } from "@/lib/utils";
 import { DateFilterInput } from "./date-filter-input";
+import { SqlFilterListImport } from "./sql-filter-list-import";
 
 function splitPasted(text: string): string[] {
   return text
@@ -28,7 +30,16 @@ export function FilterValueInput({
   ...props
 }: FilterValueInputProps) {
   const [draft, setDraft] = useState("");
+  const [sqlImport, setSqlImport] = useState<{
+    operator: string;
+    value: string;
+    source: string;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (sqlImport && (sqlImport.operator !== operator || sqlImport.value !== value))
+      setSqlImport(null);
+  }, [sqlImport, operator, value]);
   if (date && !operatorNeedsList(operator)) {
     return (
       <DateFilterInput
@@ -51,8 +62,16 @@ export function FilterValueInput({
   }
 
   const values = [...new Set(parseFilterList(value))];
+  const source =
+    sqlImport?.operator === operator && sqlImport.value === value ? sqlImport.source : null;
+  const setSource = (source: string | null) =>
+    setSqlImport(source === null ? null : { operator, value, source });
   const addValue = () => {
     if (!draft.trim()) return;
+    if (looksLikeSqlFilterList(draft)) {
+      setSource(draft);
+      return;
+    }
     onValueChange(JSON.stringify([...new Set([...values, draft])]));
     setDraft("");
     inputRef.current?.focus();
@@ -94,7 +113,14 @@ export function FilterValueInput({
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onPaste={(event) => {
-            const parts = splitPasted(event.clipboardData.getData("text"));
+            if (props.disabled) return;
+            const text = event.clipboardData.getData("text");
+            if (looksLikeSqlFilterList(text)) {
+              event.preventDefault();
+              setSource(text);
+              return;
+            }
+            const parts = splitPasted(text);
             if (parts.length < 2) return;
             event.preventDefault();
             onValueChange(JSON.stringify([...new Set([...values, ...parts])]));
@@ -111,6 +137,19 @@ export function FilterValueInput({
           className="h-6 min-w-16 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
         />
       </div>
+      <SqlFilterListImport
+        source={source}
+        onSourceChange={setSource}
+        initialSource={draft}
+        value={value}
+        disabled={props.disabled}
+        onImport={(next) => {
+          onValueChange(next);
+          setDraft("");
+          setSource(null);
+          inputRef.current?.focus();
+        }}
+      />
       <button
         type="button"
         aria-label="Wert hinzufügen"
