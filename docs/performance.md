@@ -1073,8 +1073,17 @@ latency. Actual table/result cells and menu callbacks have separate SSR/event
 regressions with a synthetic current-store selector; all four table styles,
 raw copy/edit/inspect callbacks, persistence merge and width paths are covered.
 The menu remains shared across views rather than a per-column format setting.
-No real browser/native UI, provider data, constrained CPU/heap, Windows/Linux or
-native RSS measurement was performed. No new backend or productive DB work.
+The original formatter package omitted browser and native acceptance.
+
+The isolated A15 Chrome acceptance exercised the existing menus and both grids
+in wide light and 365 px dark layouts, including local setting persistence.
+Format changes sent zero IPC requests. The only recorded IPC on the compact
+path was one synthetic clipboard write. The formatter recheck on the same
+macOS/arm64/Bun configuration stayed within the original budgets: 20,000 exact
+strings took median 12.156 and p95 12.585 ms, 200 maximum-size strings took p95
+3.655 ms, fallback took p95 0.002875 ms and retained heap delta was 0 bytes.
+Browser frame times, native WebView, live provider data, constrained CPU/heap,
+Windows/Linux and native RSS remain outside this check.
 
 ## CSV check inline progress and cancellation integration
 
