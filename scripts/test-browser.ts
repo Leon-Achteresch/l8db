@@ -25,6 +25,7 @@ const registered = [
   "routine-result-development",
   "filter-list-import",
   "table-server-output",
+  "number-display",
 ];
 const requested = process.argv.slice(2);
 if (requested.some((name) => !registered.includes(name)))
@@ -34,12 +35,12 @@ const log = "test-artifacts/browser/tests.log";
 await mkdir("test-artifacts/browser", { recursive: true });
 await writeFile(log, "");
 const isolated = files.length === 1 && files[0].endsWith("-development") ? files[0] : null;
-const fixturePage =
-  files.length === 1 && files[0] === "filter-list-import"
-    ? "tests/fixtures/filter-list.html"
-    : files.length === 1 && files[0] === "table-server-output"
-      ? "tests/fixtures/table-server-output.html"
-      : null;
+const fixturePages: Record<string, string> = {
+  "filter-list-import": "tests/fixtures/filter-list.html",
+  "table-server-output": "tests/fixtures/table-server-output.html",
+  "number-display": "tests/fixtures/number-display.html",
+};
+const fixturePage = files.length === 1 ? fixturePages[files[0]] : undefined;
 const useIsolatedConfig = Boolean(isolated || fixturePage);
 const server = await createServer(
   useIsolatedConfig

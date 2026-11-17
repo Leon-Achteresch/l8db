@@ -117,3 +117,15 @@ The fixture mounts the real table output dialog, shared virtualized panel, query
 The browser cases verify the disabled and enabled empty states, one explicit activation, message and detail rendering, and a read warning after a successful synthetic write. They switch database context while a read is pending and verify that its late output stays with the original database. Copy and clear are local to the selected database. The query tab still starts closed and exposes the connection-wide history when selected. At 380 × 420 px, the compact table dialog fits the viewport, supports keyboard scrolling and renders fewer than 100 log rows out of 2,000. Escape restores focus to the table trigger.
 
 Native WebView and native clipboard delivery, real write/capture and provider buffers require separate acceptance. These are synthetic outputs and do not establish commit state.
+
+### A15 exact number display
+
+Run the isolated browser fixture with Bun 1.3.10 and installed Chrome.
+
+```sh
+L8DB_BROWSER_CHANNEL=chrome bun --no-env-file scripts/test-browser.ts number-display
+```
+
+The fixture renders the existing table and query grids, both **Weitere Aktionen > Zahlen** entries and the shared persisted setting. The runner uses a fresh browser context and its own ephemeral loopback listener. The fixture uses local synthetic rows and rejects every IPC command except the recorded clipboard write.
+
+The cases cover original and grouped display, the 0/2/4 minimum fraction settings, integers beyond 2^53, negative high-precision decimals, NULL, text identifiers and numeric-looking query strings without type metadata. The setting applies to both grids and survives reload. In light and 365 px dark views, keyboard navigation and select/dismiss restore focus and the compact submenu fits the viewport. Copy submits the raw integer to the synthetic clipboard boundary. Editing starts with the raw value and submits exact old and new strings at the existing grid callback. Format changes send no IPC. Native WebView, the OS clipboard, native multi-window synchronization and live provider reads and writes remain separate.
