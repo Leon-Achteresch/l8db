@@ -608,8 +608,23 @@ struct Bridge {
 
 const STDERR_TAIL: usize = 600;
 
-fn keep_tail(buffer: &mut String, chunk: &[u8]) {
+fn redact_secrets(text: &str, secret: &str) -> String {
+    static ASSIGNED: OnceLock<regex::Regex> = OnceLock::new();
+    let assigned = ASSIGNED.get_or_init(|| {
+        regex::Regex::new(r"(?i)\b(password|pwd)\s*=\s*[^;&\s]*").expect("valid regex")
+    });
+    let text = assigned.replace_all(text, "$1=***");
+    if secret.is_empty() {
+        return text.into_owned();
+    }
+    text.replace(secret, "***")
+}
+
+fn keep_tail(buffer: &mut String, chunk: &[u8], secret: &str) {
     buffer.push_str(&String::from_utf8_lossy(chunk));
+    if !secret.is_empty() && buffer.contains(secret) {
+        *buffer = buffer.replace(secret, "***");
+    }
     if buffer.len() > STDERR_TAIL * 2 {
         let mut cut = buffer.len() - STDERR_TAIL;
         while !buffer.is_char_boundary(cut) {
@@ -620,14 +635,19 @@ fn keep_tail(buffer: &mut String, chunk: &[u8]) {
 }
 
 fn with_stderr(message: String, errors: &str, secret: &str) -> String {
-    let mut tail = errors.trim().to_string();
-    if !secret.is_empty() {
-        tail = tail.replace(secret, "***");
+    let mut tail = redact_secrets(errors.trim(), secret);
+    if let Some(len) = (1..secret.len())
+        .rev()
+        .find(|&len| secret.is_char_boundary(len) && tail.ends_with(&secret[..len]))
+    {
+        tail.truncate(tail.len() - len);
+        tail.push_str("***");
     }
     let mut cut = tail.len().saturating_sub(STDERR_TAIL);
     while !tail.is_char_boundary(cut) {
         cut += 1;
     }
+    let message = redact_secrets(&message, secret);
     match tail[cut..].trim() {
         "" => message,
         tail => format!("{message}\n{tail}"),
@@ -882,13 +902,14 @@ async fn start(root: &Path, profile: &JdbcProfile, password: &str) -> Result<Bri
     let errors = Arc::new(std::sync::Mutex::new(String::new()));
     if let Some(stderr) = child.stderr.take() {
         let errors = errors.clone();
+        let secret = password.to_string();
         tokio::spawn(async move {
             use tokio::io::AsyncReadExt;
             let mut stderr = stderr;
             let mut chunk = [0u8; 4096];
             while let Ok(read @ 1..) = stderr.read(&mut chunk).await {
                 if let Ok(mut buffer) = errors.lock() {
-                    keep_tail(&mut buffer, &chunk[..read]);
+                    keep_tail(&mut buffer, &chunk[..read], &secret);
                 }
             }
         });

@@ -630,6 +630,15 @@ fn cell_text(result: &QueryResult, row: usize, column: usize) -> Option<String> 
     super::export::value_text(result.rows.get(row)?.get(name)?)
 }
 
+pub async fn detect_xmax(plan: &mut ImportPlan, session: &mut dyn TxSession) {
+    if plan.dialect == Dialect::Postgres {
+        plan.xmax = !session
+            .execute("SELECT version() LIKE 'CockroachDB%'")
+            .await
+            .is_ok_and(|result| cell_flag(&result, 0, 0));
+    }
+}
+
 fn cell_flag(result: &QueryResult, row: usize, column: usize) -> bool {
     matches!(
         cell_text(result, row, column)
@@ -925,6 +934,18 @@ impl TxSession for AutoCommit {
     }
 }
 
+pub async fn open_postgres(
+    connection_string: &str,
+    database: Option<&str>,
+    begin: &str,
+) -> Result<Box<dyn TxSession>, String> {
+    if super::connection::connection_string_is_read_only(connection_string) {
+        return Err("Lesemodus: Diese Verbindung ist schreibgeschützt.".into());
+    }
+    let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
+    Ok(Box::new(PgTx::open_with(&config, &ssl, begin).await?))
+}
+
 pub async fn open_session(
     kind: DatabaseKind,
     connection_string: &str,
@@ -932,13 +953,7 @@ pub async fn open_session(
     pool: PoolState,
 ) -> Result<Box<dyn TxSession>, String> {
     Ok(match kind {
-        DatabaseKind::Postgres => {
-            if super::connection::connection_string_is_read_only(connection_string) {
-                return Err("Lesemodus: Diese Verbindung ist schreibgeschützt.".into());
-            }
-            let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
-            Box::new(PgTx::open(&config, &ssl).await?)
-        }
+        DatabaseKind::Postgres => open_postgres(connection_string, database, "BEGIN").await?,
         DatabaseKind::Oracle => {
             let key = super::connection::connection_key(connection_string, database);
             let adapter = super::oracle::OracleAdapter::new(connection_string, pool, key)?;
@@ -1660,6 +1675,47 @@ mod tests {
             self.log.lock().unwrap().push("ROLLBACK".into());
             Ok(())
         }
+    }
+
+    struct Server(&'static str);
+
+    #[async_trait]
+    impl TxSession for Server {
+        async fn execute(&mut self, _sql: &str) -> Result<QueryResult, String> {
+            Ok(QueryResult {
+                columns: vec!["c".into()],
+                rows: vec![serde_json::json!({ "c": self.0 })],
+                rows_affected: None,
+                execution_time_ms: 0,
+                truncated: false,
+            })
+        }
+        async fn commit(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+        async fn rollback(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn copies_into_cockroach_skip_xmax_and_postgres_keeps_it() {
+        let mut cockroach = plan(Dialect::Postgres, None);
+        detect_xmax(&mut cockroach, &mut Server("t")).await;
+        assert!(!cockroach.insert_sql(&rows(&cockroach)).contains("xmax"));
+        let mut postgres = plan(Dialect::Postgres, None);
+        detect_xmax(&mut postgres, &mut Server("f")).await;
+        assert!(postgres
+            .insert_sql(&rows(&postgres))
+            .ends_with("RETURNING (xmax = 0)"));
+        let mut mysql = plan(Dialect::Mysql, None);
+        mysql.xmax = true;
+        let mut probes = Recorder {
+            log: Arc::new(std::sync::Mutex::new(Vec::new())),
+            fail_on: None,
+        };
+        detect_xmax(&mut mysql, &mut probes).await;
+        assert!(probes.log.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

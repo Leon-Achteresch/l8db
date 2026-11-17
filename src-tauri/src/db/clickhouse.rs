@@ -749,7 +749,22 @@ fn output_format(sql: &str) -> Option<(usize, usize, String)> {
     let at = all
         .iter()
         .rposition(|t| t.depth == 0 && is_word(sql, Some(t), "FORMAT"))?;
-    let name = all.get(at + 1).filter(|t| t.word && t.depth == 0)?;
+    let after_operand = at.checked_sub(1).map(|i| &all[i]).is_some_and(|t| {
+        ["BY", "AS", "SELECT", "DISTINCT"]
+            .iter()
+            .any(|w| is_word(sql, Some(t), w))
+            || matches!(&sql[t.start..t.end], "," | "." | "(")
+    });
+    let name = all.get(at + 1).filter(|t| {
+        t.word
+            && t.depth == 0
+            && !["ASC", "DESC", "FINAL", "NULLS", "WITH", "COLLATE"]
+                .iter()
+                .any(|w| is_word(sql, Some(t), w))
+    })?;
+    if after_operand {
+        return None;
+    }
     let rest = &all[at + 2..];
     let tail_ok = match rest.first() {
         None => true,
@@ -1460,6 +1475,14 @@ mod tests {
             None
         );
         assert_eq!(strip("SELECT format FROM t"), None);
+        assert_eq!(strip("SELECT * FROM logs ORDER BY format DESC"), None);
+        assert_eq!(strip("SELECT * FROM logs ORDER BY a, format ASC"), None);
+        assert_eq!(strip("SELECT * FROM logs AS format FINAL"), None);
+        assert_eq!(strip("SELECT * FROM logs ORDER BY l.format DESC"), None);
+        assert_eq!(
+            strip("SELECT 1 FORMAT Null"),
+            Some(("SELECT 1 ".to_string(), "Null".to_string()))
+        );
         assert_eq!(strip("SELECT (SELECT 1 FORMAT JSON)"), None);
         assert_eq!(
             strip("SELECT 1 FORMAT Null").map(|r| r.1),

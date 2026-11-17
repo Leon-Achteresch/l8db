@@ -781,7 +781,7 @@ async fn copy_rows(
         return Err("Keine gemeinsamen Spalten zwischen Quelle und Ziel.".into());
     }
     let target_names: Vec<String> = pairs.iter().map(|(_, target)| target.clone()).collect();
-    let plan = import::prepare_plan(
+    let mut plan = import::prepare_plan(
         target,
         target_adapter,
         &request.target_schema,
@@ -791,6 +791,7 @@ async fn copy_rows(
     )
     .await?;
     let mut session = import::open_session(kind, connection_string, database, pool).await?;
+    import::detect_xmax(&mut plan, session.as_mut()).await;
     if request.mode == CopyMode::Truncate {
         if let Err(error) = clear_target(
             target,
@@ -1115,6 +1116,55 @@ mod tests {
         assert_eq!(replaced.error, None, "{kind:?}");
         assert_eq!(replaced.rows, 2);
         assert_eq!((replaced_ids, replaced_total), (2, 2), "{kind:?}");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires L8DB_E2E_CRDB_URL (CockroachDB)"]
+    async fn copies_into_cockroach_without_xmax() {
+        let Ok(url) = std::env::var("L8DB_E2E_CRDB_URL") else {
+            eprintln!("übersprungen: L8DB_E2E_CRDB_URL fehlt");
+            return;
+        };
+        let pool = super::super::pool::create_pool_state();
+        let adapter = super::super::create_adapter_from_string(
+            DatabaseKind::Postgres,
+            &url,
+            None,
+            pool.clone(),
+        )
+        .unwrap();
+        adapter
+            .execute_query(
+                "DROP TABLE IF EXISTS l8db_rv2_src, l8db_rv2_dst; \
+                 CREATE TABLE l8db_rv2_src (id INT PRIMARY KEY, name TEXT); \
+                 INSERT INTO l8db_rv2_src VALUES (1, 'a'), (2, 'b'), (3, NULL)",
+            )
+            .await
+            .unwrap();
+        let request = TableCopyRequest {
+            source: CopySource {
+                kind: DatabaseKind::Postgres,
+                connection_string: url.clone(),
+                database: None,
+                schema: "public".into(),
+                table: "l8db_rv2_src".into(),
+            },
+            target_schema: "public".into(),
+            target_table: "l8db_rv2_dst".into(),
+            mode: CopyMode::Create,
+            include_primary_key: true,
+            include_indexes: false,
+            dry_run: false,
+        };
+        let outcome = copy_table(DatabaseKind::Postgres, &url, None, pool, &request).await;
+        let copied = adapter
+            .execute_query("SELECT count(*) AS n FROM l8db_rv2_dst")
+            .await;
+        let _ = adapter
+            .execute_query("DROP TABLE IF EXISTS l8db_rv2_src, l8db_rv2_dst")
+            .await;
+        assert_eq!(outcome.unwrap().rows, 3);
+        assert_eq!(copied.unwrap().rows[0]["n"], "3");
     }
 
     #[tokio::test]

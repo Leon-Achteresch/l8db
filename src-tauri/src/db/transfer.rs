@@ -2909,7 +2909,7 @@ impl Runner<'_> {
     ) -> Result<u64, String> {
         let d = self.dialect;
         let has_identity = table.columns.iter().any(|c| c.identity);
-        let plan = ImportPlan {
+        let mut plan = ImportPlan {
             dialect: d,
             xmax: true,
             target: d.target(&table.target_schema, &table.target_name),
@@ -2942,7 +2942,8 @@ impl Runner<'_> {
             })
             .collect();
         let names: Vec<String> = table.columns.iter().map(|c| c.target.clone()).collect();
-        let session = self.table_session().await?;
+        let mut session = self.table_session().await?;
+        import::detect_xmax(&mut plan, session.as_mut()).await;
         let mut writer = BatchWriter::new(plan, session);
         if let Err(error) = reader.start(table).await {
             let _ = writer.abort().await;

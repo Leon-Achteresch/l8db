@@ -203,6 +203,21 @@ impl PostgresAdapter {
             .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))
     }
 
+    async fn cockroach(&self, conn: &tokio_postgres::Client) -> bool {
+        if self.pool_key.is_empty() {
+            return is_cockroach(conn).await;
+        }
+        self.pool_state
+            .shared(&format!("{}#cockroach", self.pool_key), || async {
+                conn.query_one("SELECT version() LIKE 'CockroachDB%'", &[])
+                    .await
+                    .map(|row| row.get::<_, bool>(0))
+                    .map_err(|e| e.to_string())
+            })
+            .await
+            .is_ok_and(|cockroach| *cockroach)
+    }
+
     async fn get_meta(&self) -> Result<AdapterConnection, String> {
         if let Some(session) = &self.session {
             return session
@@ -468,8 +483,11 @@ async fn guarded_transaction(
         tx
     } else {
         tx.rollback().await?;
+        let cockroach = is_cockroach(conn).await;
         let tx = conn.transaction().await?;
-        tx.batch_execute(COCKROACH_TRANSACTIONAL_DDL).await?;
+        if cockroach {
+            tx.batch_execute(COCKROACH_TRANSACTIONAL_DDL).await?;
+        }
         tx
     };
     for statement in statements {
@@ -498,8 +516,17 @@ pub(crate) async fn begin_guarded(
     {
         return Ok(());
     }
-    conn.batch_execute(&format!("ROLLBACK; {begin}; {COCKROACH_TRANSACTIONAL_DDL}"))
+    conn.batch_execute("ROLLBACK").await?;
+    conn.batch_execute(&with_cockroach_ddl(begin, is_cockroach(conn).await))
         .await
+}
+
+fn with_cockroach_ddl(begin: &str, cockroach: bool) -> String {
+    if cockroach {
+        format!("{begin}; {COCKROACH_TRANSACTIONAL_DDL}")
+    } else {
+        begin.to_string()
+    }
 }
 
 fn drop_extension_sql(name: &str, cascade: bool) -> String {
@@ -979,6 +1006,7 @@ struct TablePage<'a> {
     is_view: bool,
     limit: i64,
     offset: i64,
+    cockroach: bool,
 }
 
 impl TablePage<'_> {
@@ -990,7 +1018,10 @@ impl TablePage<'_> {
         let (schema, table, where_sql) = (self.schema, self.table, self.where_sql);
         let (limit, offset, is_view) = (self.limit, self.offset, self.is_view);
         let column_rows = conn
-            .query(RELATION_COLUMNS_SQL, &[&schema, &table])
+            .query(
+                &*visible_columns(RELATION_COLUMNS_SQL, self.cockroach),
+                &[&schema, &table],
+            )
             .await
             .map_err(map_pg_err)?;
         let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
@@ -999,7 +1030,8 @@ impl TablePage<'_> {
             .order_by
             .filter(|column| columns.iter().any(|name| name == column))
             .map(|column| (column, self.order_desc));
-        let sql = table_page_sql(schema, table, where_sql, order, !is_view, &primary_key);
+        let with_ctid = !is_view && has_row_ids(&column_rows);
+        let sql = table_page_sql(schema, table, where_sql, order, with_ctid, &primary_key);
         if savepoint {
             conn.batch_execute("SAVEPOINT l8_page")
                 .await
@@ -1008,7 +1040,7 @@ impl TablePage<'_> {
         let data_rows = match conn.query(&sql, &[&limit, &offset]).await {
             Ok(rows) => rows,
             Err(e)
-                if !is_view
+                if with_ctid
                     && matches!(
                         e.code(),
                         Some(&tokio_postgres::error::SqlState::UNDEFINED_COLUMN)
@@ -1037,7 +1069,7 @@ impl TablePage<'_> {
 
 pub(crate) const RELATION_COLUMNS_SQL: &str = "SELECT a.attname::text, \
             format_type(CASE WHEN ty.typtype = 'd' THEN ty.typbasetype ELSE a.atttypid END, NULL), \
-            COALESCE(a.attnum = ANY(pk.indkey), false) \
+            COALESCE(a.attnum = ANY(pk.indkey), false), c.relkind = 'f' \
      FROM pg_catalog.pg_attribute a \
      JOIN pg_catalog.pg_class c ON c.oid = a.attrelid \
      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
@@ -1046,6 +1078,24 @@ pub(crate) const RELATION_COLUMNS_SQL: &str = "SELECT a.attname::text, \
      WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped \
        AND NOT COALESCE((to_jsonb(a) ->> 'attishidden')::boolean, false) \
      ORDER BY a.attnum";
+
+const HIDDEN_ATTRIBUTE_FILTER: &str =
+    "AND NOT COALESCE((to_jsonb(a) ->> 'attishidden')::boolean, false) ";
+const HIDDEN_COLUMN_FILTER: &str = "AND COALESCE(to_jsonb(c) ->> 'is_hidden', 'NO') <> 'YES' ";
+
+pub(crate) fn visible_columns(sql: &str, cockroach: bool) -> std::borrow::Cow<'_, str> {
+    if cockroach {
+        sql.into()
+    } else {
+        sql.replace(HIDDEN_ATTRIBUTE_FILTER, "")
+            .replace(HIDDEN_COLUMN_FILTER, "")
+            .into()
+    }
+}
+
+pub(crate) fn has_row_ids(rows: &[tokio_postgres::Row]) -> bool {
+    !rows.first().is_some_and(|row| row.get::<_, bool>(3))
+}
 
 pub(crate) fn primary_key_columns(rows: &[tokio_postgres::Row]) -> Vec<String> {
     rows.iter()
@@ -1061,7 +1111,7 @@ pub(crate) const TRANSACTION_IDLE_GUARD: &str = "idle_in_transaction_session_tim
 pub(crate) const COCKROACH_TRANSACTIONAL_DDL: &str =
     "SELECT set_config('autocommit_before_ddl', 'off', true) WHERE version() LIKE 'CockroachDB%'";
 
-async fn is_cockroach(conn: &tokio_postgres::Client) -> bool {
+pub(crate) async fn is_cockroach(conn: &tokio_postgres::Client) -> bool {
     conn.query_one("SELECT version() LIKE 'CockroachDB%'", &[])
         .await
         .is_ok_and(|row| row.get::<_, bool>(0))
@@ -1298,31 +1348,38 @@ impl DatabaseAdapter for PostgresAdapter {
             let result = match (schema, table) {
                 (Some(s), Some(t)) => {
                     conn.query(
-                        "SELECT c.table_schema, c.table_name, c.column_name, c.data_type \
+                        &*visible_columns(
+                            "SELECT c.table_schema, c.table_name, c.column_name, c.data_type \
                          FROM information_schema.columns c \
                          WHERE c.table_schema = $1 AND c.table_name = $2 \
                            AND COALESCE(to_jsonb(c) ->> 'is_hidden', 'NO') <> 'YES' \
                          ORDER BY c.ordinal_position",
+                            self.cockroach(&conn).await,
+                        ),
                         &[&s, &t],
                     )
                     .await
                 }
                 (Some(s), None) => {
                     conn.query(
-                        "SELECT c.table_schema, c.table_name, c.column_name, c.data_type \
+                        &*visible_columns(
+                            "SELECT c.table_schema, c.table_name, c.column_name, c.data_type \
                          FROM information_schema.columns c \
                          JOIN information_schema.tables t \
                            ON c.table_schema = t.table_schema AND c.table_name = t.table_name \
                          WHERE t.table_type = $1 AND c.table_schema = $2 \
                            AND COALESCE(to_jsonb(c) ->> 'is_hidden', 'NO') <> 'YES' \
                          ORDER BY c.table_schema, c.table_name, c.ordinal_position",
+                            self.cockroach(&conn).await,
+                        ),
                         &[&type_filter, &s],
                     )
                     .await
                 }
                 _ => {
                     conn.query(
-                        "SELECT c.table_schema, c.table_name, c.column_name, c.data_type \
+                        &*visible_columns(
+                            "SELECT c.table_schema, c.table_name, c.column_name, c.data_type \
                          FROM information_schema.columns c \
                          JOIN information_schema.tables t \
                            ON c.table_schema = t.table_schema AND c.table_name = t.table_name \
@@ -1330,6 +1387,8 @@ impl DatabaseAdapter for PostgresAdapter {
                            AND c.table_schema NOT IN ('pg_catalog', 'information_schema') \
                            AND COALESCE(to_jsonb(c) ->> 'is_hidden', 'NO') <> 'YES' \
                          ORDER BY c.table_schema, c.table_name, c.ordinal_position",
+                            self.cockroach(&conn).await,
+                        ),
                         &[&type_filter],
                     )
                     .await
@@ -1359,7 +1418,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let pattern = like_pattern(term);
         self.timed(conn.cancel_token(), async {
             conn.query(
-                "SELECT c.table_schema, c.table_name, c.column_name, c.data_type, t.table_type \
+                &*visible_columns("SELECT c.table_schema, c.table_name, c.column_name, c.data_type, t.table_type \
                  FROM information_schema.columns c \
                  JOIN information_schema.tables t \
                    ON c.table_schema = t.table_schema AND c.table_name = t.table_name \
@@ -1368,7 +1427,7 @@ impl DatabaseAdapter for PostgresAdapter {
                    AND c.column_name ILIKE $1 \
                    AND COALESCE(to_jsonb(c) ->> 'is_hidden', 'NO') <> 'YES' \
                  ORDER BY c.table_schema, c.table_name, c.ordinal_position \
-                 LIMIT $3",
+                 LIMIT $3", self.cockroach(&conn).await),
                 &[&pattern, &schema, &limit],
             )
             .await
@@ -1739,6 +1798,7 @@ impl DatabaseAdapter for PostgresAdapter {
                 is_view,
                 limit,
                 offset,
+                cockroach: self.cockroach(&conn).await,
             };
             if guarded {
                 let tx = conn
@@ -1771,7 +1831,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = super::execution::connect_postgres(&self.config, &self.ssl).await?;
         let column_rows = conn
             .query(
-                RELATION_COLUMNS_SQL,
+                &*visible_columns(RELATION_COLUMNS_SQL, self.cockroach(&conn).await),
                 &[&request.schema.as_str(), &request.table.as_str()],
             )
             .await
@@ -2641,7 +2701,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
             let rows = conn.query(
-                "SELECT a.attname AS column_name, \
+                &*visible_columns("SELECT a.attname AS column_name, \
                         CASE WHEN ty.typtype = 'd' OR (a.atttypid IN ('varchar'::regtype, 'bpchar'::regtype, 'bit'::regtype, 'varbit'::regtype) AND a.atttypmod > 0) \
                              THEN format_type(a.atttypid, NULL) \
                              ELSE format_type(a.atttypid, a.atttypmod) END AS data_type, \
@@ -2662,7 +2722,7 @@ impl DatabaseAdapter for PostgresAdapter {
                  WHERE n.nspname = $1 AND cl.relname = $2 AND cl.relkind IN ('r', 'p', 'v', 'm', 'f') \
                    AND a.attnum > 0 AND NOT a.attisdropped \
                    AND NOT COALESCE((to_jsonb(a) ->> 'attishidden')::boolean, false) \
-                 ORDER BY a.attnum",
+                 ORDER BY a.attnum", self.cockroach(&conn).await),
                 &[&schema, &table],
             ).await.map_err(map_pg_err)?;
             Ok(rows.iter().map(|r| {
@@ -2691,7 +2751,8 @@ impl DatabaseAdapter for PostgresAdapter {
         self.timed(conn.cancel_token(), async {
             let rows = conn
                 .query(
-                    "SELECT a.attname AS name, \
+                    &*visible_columns(
+                        "SELECT a.attname AS name, \
                             format_type(a.atttypid, a.atttypmod) AS data_type, \
                             NOT a.attnotnull AS is_nullable, \
                             (a.atthasdef AND a.attgenerated = '') AS has_default, \
@@ -2705,6 +2766,8 @@ impl DatabaseAdapter for PostgresAdapter {
                        AND a.attnum > 0 AND NOT a.attisdropped \
                        AND NOT COALESCE((to_jsonb(a) ->> 'attishidden')::boolean, false) \
                      ORDER BY a.attnum",
+                        self.cockroach(&conn).await,
+                    ),
                     &[&schema, &table],
                 )
                 .await
@@ -3191,7 +3254,7 @@ impl DatabaseAdapter for PostgresAdapter {
 
             let col_rows = conn
                 .query(
-                    "SELECT c.table_schema, c.table_name, c.column_name, c.data_type, c.is_nullable, \
+                    &*visible_columns("SELECT c.table_schema, c.table_name, c.column_name, c.data_type, c.is_nullable, \
                          CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END AS is_pk \
                      FROM information_schema.columns c \
                      JOIN information_schema.tables t \
@@ -3208,7 +3271,7 @@ impl DatabaseAdapter for PostgresAdapter {
                          AND pk.column_name = c.column_name \
                      WHERE t.table_type = 'BASE TABLE' AND c.table_schema = $1 \
                        AND COALESCE(to_jsonb(c) ->> 'is_hidden', 'NO') <> 'YES' \
-                     ORDER BY c.table_schema, c.table_name, c.ordinal_position",
+                     ORDER BY c.table_schema, c.table_name, c.ordinal_position", self.cockroach(&conn).await),
                     &[&schema_filter],
                 )
                 .await
@@ -3851,10 +3914,13 @@ impl DatabaseAdapter for PostgresAdapter {
         let ddl = build_object_ddl(req)?;
         let mut conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async move {
+            let cockroach = is_cockroach(&conn).await;
             let tx = conn.transaction().await.map_err(map_pg_err)?;
-            tx.batch_execute(COCKROACH_TRANSACTIONAL_DDL)
-                .await
-                .map_err(map_pg_err)?;
+            if cockroach {
+                tx.batch_execute(COCKROACH_TRANSACTIONAL_DDL)
+                    .await
+                    .map_err(map_pg_err)?;
+            }
             tx.batch_execute(&ddl).await.map_err(map_pg_err)?;
             tx.commit().await.map_err(map_pg_err)?;
             Ok(())
@@ -5598,12 +5664,11 @@ impl PostgresAdapter {
         }
         let mut conn = self.get_conn().await?;
         self.timed(conn.cancel_token(), async move {
+            let cockroach = is_cockroach(&conn).await;
             let tx = conn.transaction().await.map_err(map_pg_err)?;
-            tx.batch_execute(&format!(
-                "{EMPTY_SEARCH_PATH}; {COCKROACH_TRANSACTIONAL_DDL}"
-            ))
-            .await
-            .map_err(map_pg_err)?;
+            tx.batch_execute(&with_cockroach_ddl(EMPTY_SEARCH_PATH, cockroach))
+                .await
+                .map_err(map_pg_err)?;
             let plan = table_copy_plan(&tx, source_schema, target_schema, name).await?;
             tx.batch_execute(&plan.create).await.map_err(map_pg_err)?;
             let mut executed = plan.create.clone();
@@ -6309,6 +6374,37 @@ mod tests {
     }
 
     #[test]
+    fn fallback_transactions_run_cockroach_settings_only_on_cockroach() {
+        assert_eq!(super::with_cockroach_ddl("BEGIN", false), "BEGIN");
+        assert_eq!(
+            super::with_cockroach_ddl("BEGIN", true),
+            format!("BEGIN; {}", super::COCKROACH_TRANSACTIONAL_DDL)
+        );
+    }
+
+    #[test]
+    fn hidden_column_filters_stay_out_of_postgres_redshift_and_greenplum() {
+        let plain = super::visible_columns(super::RELATION_COLUMNS_SQL, false);
+        assert!(!plain.contains("to_jsonb"), "{plain}");
+        assert!(
+            plain.contains("NOT a.attisdropped ORDER BY a.attnum"),
+            "{plain}"
+        );
+        assert!(super::visible_columns(super::RELATION_COLUMNS_SQL, true).contains("attishidden"));
+        let source = include_str!("postgres.rs");
+        let mut sites = 0;
+        for (at, _) in source.match_indices(concat!("COALESCE((to_", "jsonb(a)")) {
+            assert!(source[at - 8..].starts_with(super::HIDDEN_ATTRIBUTE_FILTER.trim_end()));
+            sites += 1;
+        }
+        for (at, _) in source.match_indices(concat!("COALESCE(to_", "jsonb(c)")) {
+            assert!(source[at - 4..].starts_with(super::HIDDEN_COLUMN_FILTER.trim_end()));
+            sites += 1;
+        }
+        assert_eq!(sites, 10);
+    }
+
+    #[test]
     fn routine_ddl_is_rewritten_into_pg_temp() {
         assert_eq!(
             routine_ddl_in_pg_temp(
@@ -6823,6 +6919,52 @@ mod tests {
     fn lab_adapter() -> PostgresAdapter {
         PostgresAdapter::from_connection_string(&lab_connection_string(), None, create_pool_state())
             .expect("adapter")
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn foreign_tables_page_without_row_ids() {
+        let adapter = lab_adapter();
+        adapter
+            .execute_query(
+                "CREATE EXTENSION IF NOT EXISTS file_fdw; \
+                 DROP SERVER IF EXISTS l8db_rv2_files CASCADE; \
+                 CREATE SERVER l8db_rv2_files FOREIGN DATA WRAPPER file_fdw; \
+                 CREATE FOREIGN TABLE public.l8db_rv2_ft (line text) SERVER l8db_rv2_files \
+                 OPTIONS (filename '/etc/hostname')",
+            )
+            .await
+            .unwrap();
+        let page = adapter
+            .fetch_rows(
+                "public",
+                "l8db_rv2_ft",
+                None,
+                100,
+                0,
+                None,
+                false,
+                false,
+                false,
+            )
+            .await;
+        let columns = adapter
+            .list_columns(Some("public"), Some("l8db_rv2_ft"), None)
+            .await;
+        adapter
+            .execute_query("DROP SERVER l8db_rv2_files CASCADE")
+            .await
+            .unwrap();
+        let page = page.unwrap();
+        assert_eq!(page.columns, vec!["line"]);
+        assert_eq!(page.rows.len(), 1);
+        assert!(page.rows[0].get("__ctid__").is_none());
+        assert_eq!(columns.unwrap().len(), 1);
+        let table = adapter
+            .fetch_rows("pg_catalog", "pg_am", None, 1, 0, None, false, false, false)
+            .await
+            .unwrap();
+        assert!(table.rows[0].get("__ctid__").is_some());
     }
 
     #[tokio::test]

@@ -492,8 +492,10 @@ fn parse_cassandra_url(value: &str) -> Result<CassandraUrl, String> {
                 tls.mode = serde_json::from_value(serde_json::Value::String(v.to_string()))
                     .map_err(|_| "Ungültiger SSL-Modus".to_string())?
             }
-            "ssl" | "tls" if matches!(v.as_ref(), "true" | "1") => {
-                tls.mode = tls.mode.max(SslMode::Require)
+            "ssl" | "tls" => {
+                if matches!(v.as_ref(), "true" | "1") {
+                    tls.mode = tls.mode.max(SslMode::Require)
+                }
             }
             "sslrootcert" => tls.root_cert = text(),
             "sslcert" => tls.cert = text(),
@@ -1488,6 +1490,10 @@ mod tests {
                 .unwrap();
         assert_eq!(parsed.datacenter.as_deref(), Some("dc2"));
         assert_eq!(parsed.consistency, Some(Consistency::LocalOne));
+        let mode = |url: &str| parse_cassandra_url(url).unwrap().tls.mode;
+        assert!(mode("cassandra://h/ks?ssl=false") < SslMode::Require);
+        assert!(mode("cassandra://h/ks?tls=0") < SslMode::Require);
+        assert_eq!(mode("cassandra://h/ks?ssl=true"), SslMode::Require);
         assert!(parse_cassandra_url("cassandra://h/ks?datacentre=x")
             .err()
             .unwrap()
