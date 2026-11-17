@@ -292,7 +292,7 @@ export function CsvImportPanel({
         )}
 
         {issues && <CsvImportValidation issues={issues} />}
-        <CsvFileCheck check={fileCheck} importing={running} />
+        <CsvFileCheck check={fileCheck} importing={running} onPickFile={onPickFile} />
 
         {parsed && (
           <section id="import-step-run">

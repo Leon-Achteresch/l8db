@@ -83,7 +83,13 @@ test("changed source/mapping invalidates a running report and discards late comp
   const newRun = check.run();
   first.resolve(report);
   await oldRun;
-  expect(check.getSnapshot()).toEqual({ checking: true, report: null, error: null });
+  expect(check.getSnapshot()).toEqual({
+    checking: true,
+    cancelling: false,
+    cancelled: false,
+    report: null,
+    error: null,
+  });
   second.resolve({ ...report, checked_rows: 10 });
   await newRun;
   expect(check.getSnapshot().report?.checked_rows).toBe(10);
@@ -101,10 +107,19 @@ test("cancelled completion never becomes a clean result; cleanup cancels pending
   const run = check.run();
   check.cancel();
   expect(signal?.aborted).toBe(true);
+  expect(check.getSnapshot()).toMatchObject({ checking: true, cancelling: true, report: null });
+  const before = notifications;
+  check.cancel();
+  expect(notifications).toBe(before);
   pending.resolve(report);
   await run;
-  expect(check.getSnapshot().report).toBeNull();
-  expect(check.getSnapshot().error).toContain("abgebrochen");
+  expect(check.getSnapshot()).toMatchObject({
+    checking: false,
+    cancelling: false,
+    cancelled: true,
+    report: null,
+    error: null,
+  });
   stop();
   check.dispose();
   const after = notifications;
@@ -157,4 +172,17 @@ test("confirmed aborted report retains only the actual partial read count", asyn
   await run;
   expect(check.getSnapshot().report?.status).toBe("cancelled");
   expect(check.getSnapshot().report?.checked_rows).toBe(8192);
+});
+
+test("runner failure stays an error and is not shown as a cancellation", async () => {
+  const check = createCsvFileCheck(request, async () => {
+    throw Error("Datei nicht lesbar");
+  });
+  await check.run();
+  expect(check.getSnapshot()).toMatchObject({
+    cancelled: false,
+    error: "Error: Datei nicht lesbar",
+  });
+  check.cancel();
+  expect(check.getSnapshot().cancelling).toBe(false);
 });
