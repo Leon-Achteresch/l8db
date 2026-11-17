@@ -203,19 +203,21 @@ impl PostgresAdapter {
             .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))
     }
 
-    async fn cockroach(&self, conn: &tokio_postgres::Client) -> bool {
+    async fn server(&self, conn: &tokio_postgres::Client) -> PgServer {
         if self.pool_key.is_empty() {
-            return is_cockroach(conn).await;
+            return PgServer::detect(conn).await.unwrap_or_default();
         }
         self.pool_state
-            .shared(&format!("{}#cockroach", self.pool_key), || async {
-                conn.query_one("SELECT version() LIKE 'CockroachDB%'", &[])
-                    .await
-                    .map(|row| row.get::<_, bool>(0))
-                    .map_err(|e| e.to_string())
+            .shared(&format!("{}#pg-server", self.pool_key), || async {
+                PgServer::detect(conn).await.map_err(|err| err.to_string())
             })
             .await
-            .is_ok_and(|cockroach| *cockroach)
+            .map(|server| *server)
+            .unwrap_or_default()
+    }
+
+    async fn cockroach(&self, conn: &tokio_postgres::Client) -> bool {
+        self.server(conn).await == PgServer::Cockroach
     }
 
     async fn get_meta(&self) -> Result<AdapterConnection, String> {
@@ -963,14 +965,7 @@ pub(crate) fn table_page_sql(
     with_ctid: bool,
     primary_key: &[String],
 ) -> String {
-    let keys: Vec<String> = match order {
-        Some((column, desc)) => vec![format!(
-            "{} {}",
-            quote_ident(column),
-            if desc { "DESC" } else { "ASC" }
-        )],
-        None => primary_key.iter().map(|key| quote_ident(key)).collect(),
-    };
+    let keys = super::stable_order_terms(order, primary_key, quote_ident);
     let (inner_order, outer_order) = if keys.is_empty() {
         (String::new(), String::new())
     } else {
@@ -1006,7 +1001,7 @@ struct TablePage<'a> {
     is_view: bool,
     limit: i64,
     offset: i64,
-    cockroach: bool,
+    server: PgServer,
 }
 
 impl TablePage<'_> {
@@ -1019,17 +1014,17 @@ impl TablePage<'_> {
         let (limit, offset, is_view) = (self.limit, self.offset, self.is_view);
         let column_rows = conn
             .query(
-                &*visible_columns(RELATION_COLUMNS_SQL, self.cockroach),
+                &self.server.columns_sql(self.order_by.is_some()),
                 &[&schema, &table],
             )
             .await
             .map_err(map_pg_err)?;
         let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
-        let primary_key = primary_key_columns(&column_rows);
         let order = self
             .order_by
             .filter(|column| columns.iter().any(|name| name == column))
             .map(|column| (column, self.order_desc));
+        let primary_key = primary_key_columns(&column_rows, order.is_some());
         let with_ctid = !is_view && has_row_ids(&column_rows);
         let sql = table_page_sql(schema, table, where_sql, order, with_ctid, &primary_key);
         if savepoint {
@@ -1067,17 +1062,63 @@ impl TablePage<'_> {
     }
 }
 
-pub(crate) const RELATION_COLUMNS_SQL: &str = "SELECT a.attname::text, \
-            format_type(CASE WHEN ty.typtype = 'd' THEN ty.typbasetype ELSE a.atttypid END, NULL), \
-            COALESCE(a.attnum = ANY(pk.indkey), false), c.relkind = 'f' \
-     FROM pg_catalog.pg_attribute a \
-     JOIN pg_catalog.pg_class c ON c.oid = a.attrelid \
-     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
-     JOIN pg_catalog.pg_type ty ON ty.oid = a.atttypid \
-     LEFT JOIN pg_catalog.pg_index pk ON pk.indrelid = c.oid AND pk.indisprimary \
-     WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped \
-       AND NOT COALESCE((to_jsonb(a) ->> 'attishidden')::boolean, false) \
-     ORDER BY a.attnum";
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum PgServer {
+    Native,
+    Cockroach,
+    #[default]
+    Compatible,
+}
+
+impl PgServer {
+    fn from_version(version: &str) -> Self {
+        if version.starts_with("CockroachDB") {
+            Self::Cockroach
+        } else if version.starts_with("PostgreSQL ")
+            && !["Redshift", "Greenplum", "Yugabyte", "YB-"]
+                .iter()
+                .any(|product| version.contains(product))
+        {
+            Self::Native
+        } else {
+            Self::Compatible
+        }
+    }
+
+    pub(crate) async fn detect(conn: &tokio_postgres::Client) -> Result<Self, tokio_postgres::Error> {
+        let version = conn.query_one("SELECT version()", &[]).await?;
+        Ok(Self::from_version(version.get(0)))
+    }
+
+    pub(crate) fn columns_sql(self, explicit_order: bool) -> String {
+        let tie_key = if explicit_order && self == Self::Native {
+            "COALESCE(pk.indisvalid AND \
+              (c.relkind = 'p' OR (c.relkind = 'r' AND NOT EXISTS ( \
+                SELECT 1 FROM pg_catalog.pg_inherits i WHERE i.inhparent = c.oid \
+              ))) AND EXISTS ( \
+                SELECT 1 FROM pg_catalog.pg_constraint k \
+                WHERE k.conindid = pk.indexrelid AND k.conrelid = c.oid \
+                  AND k.contype = 'p' AND NOT k.condeferrable AND a.attnum = ANY(k.conkey) \
+              ), false)"
+        } else {
+            "false"
+        };
+        let sql = format!(
+            "SELECT a.attname::text, \
+                format_type(CASE WHEN ty.typtype = 'd' THEN ty.typbasetype ELSE a.atttypid END, NULL), \
+                COALESCE(a.attnum = ANY(pk.indkey), false), c.relkind = 'f', {tie_key} \
+             FROM pg_catalog.pg_attribute a \
+             JOIN pg_catalog.pg_class c ON c.oid = a.attrelid \
+             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+             JOIN pg_catalog.pg_type ty ON ty.oid = a.atttypid \
+             LEFT JOIN pg_catalog.pg_index pk ON pk.indrelid = c.oid AND pk.indisprimary \
+             WHERE n.nspname = $1 AND c.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped \
+               AND NOT COALESCE((to_jsonb(a) ->> 'attishidden')::boolean, false) \
+             ORDER BY a.attnum"
+        );
+        visible_columns(&sql, self == Self::Cockroach).into_owned()
+    }
+}
 
 const HIDDEN_ATTRIBUTE_FILTER: &str =
     "AND NOT COALESCE((to_jsonb(a) ->> 'attishidden')::boolean, false) ";
@@ -1097,9 +1138,13 @@ pub(crate) fn has_row_ids(rows: &[tokio_postgres::Row]) -> bool {
     !rows.first().is_some_and(|row| row.get::<_, bool>(3))
 }
 
-pub(crate) fn primary_key_columns(rows: &[tokio_postgres::Row]) -> Vec<String> {
+pub(crate) fn primary_key_columns(
+    rows: &[tokio_postgres::Row],
+    explicit_order: bool,
+) -> Vec<String> {
+    let key_flag = if explicit_order { 4 } else { 2 };
     rows.iter()
-        .filter(|row| row.get::<_, bool>(2))
+        .filter(|row| row.get::<_, bool>(key_flag))
         .map(|row| row.get(0))
         .collect()
 }
@@ -1799,7 +1844,7 @@ impl DatabaseAdapter for PostgresAdapter {
                 is_view,
                 limit,
                 offset,
-                cockroach: self.cockroach(&conn).await,
+                server: self.server(&conn).await,
             };
             if guarded {
                 let tx = conn
@@ -1832,7 +1877,7 @@ impl DatabaseAdapter for PostgresAdapter {
         let conn = super::execution::connect_postgres(&self.config, &self.ssl).await?;
         let column_rows = conn
             .query(
-                &*visible_columns(RELATION_COLUMNS_SQL, self.cockroach(&conn).await),
+                &self.server(&conn).await.columns_sql(false),
                 &[&request.schema.as_str(), &request.table.as_str()],
             )
             .await
@@ -6034,6 +6079,10 @@ fn routine_ddl_in_pg_temp(sql: &str) -> Option<String> {
     ))
 }
 
+#[cfg(all(test, debug_assertions))]
+#[path = "postgres_page_live_tests.rs"]
+mod page_live_tests;
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -6419,14 +6468,32 @@ mod tests {
     }
 
     #[test]
+    fn native_page_keys_only_use_native_explicit_sort_metadata() {
+        use super::PgServer;
+        for version in [
+            "PostgreSQL 8.0.2 on x86_64, Redshift",
+            "PostgreSQL 12.12 (Greenplum Database 7.0.0)",
+            "PostgreSQL 15.12-YB-2025.1.0",
+            "PostgreSQL 11.2-Yugabyte",
+            "CockroachDB CCL v25.1",
+            "",
+        ] {
+            assert!(!PgServer::from_version(version).columns_sql(true).contains("k.conkey"));
+        }
+        let native = PgServer::from_version("PostgreSQL 17.11 (Homebrew)");
+        assert!(native.columns_sql(true).contains("k.conkey"));
+        assert!(!native.columns_sql(false).contains("k.conkey"));
+    }
+
+    #[test]
     fn hidden_column_filters_stay_out_of_postgres_redshift_and_greenplum() {
-        let plain = super::visible_columns(super::RELATION_COLUMNS_SQL, false);
+        let plain = super::PgServer::Compatible.columns_sql(false);
         assert!(!plain.contains("to_jsonb"), "{plain}");
         assert!(
             plain.contains("NOT a.attisdropped ORDER BY a.attnum"),
             "{plain}"
         );
-        assert!(super::visible_columns(super::RELATION_COLUMNS_SQL, true).contains("attishidden"));
+        assert!(super::PgServer::Cockroach.columns_sql(false).contains("attishidden"));
         let source = include_str!("postgres.rs");
         let mut sites = 0;
         for (at, _) in source.match_indices(concat!("COALESCE((to_", "jsonb(a)")) {
