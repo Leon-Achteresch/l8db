@@ -7,7 +7,7 @@ use super::config::{McpConfig, McpConnection};
 use super::redact::Redactor;
 use super::server::{
     adapter, arg_str, cap, check_read_sql, check_write_sql, connection_url, format_result, run,
-    Server, SQL_KINDS,
+    Server,
 };
 use crate::db::{self, DatabaseAdapter, DatabaseKind, QueryResult, TxSession};
 
@@ -513,7 +513,7 @@ impl Server {
                 connection.name
             ));
         }
-        if !SQL_KINDS.contains(&connection.kind) {
+        if !super::server::sql_family(connection.kind) {
             return Err("script unterstützt nur SQL-Datenbanken.".into());
         }
         let (sql, from_file) = source(args)?;

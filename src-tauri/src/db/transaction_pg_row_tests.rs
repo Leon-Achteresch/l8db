@@ -244,6 +244,16 @@ async fn postgres_transaction_batches_return_the_first_result_set() {
         .unwrap();
     assert_eq!(empty.columns, vec!["a"]);
     assert!(empty.rows.is_empty());
+    let missing = manager
+        .insert_row(
+            &tx,
+            "public",
+            "l8db_w6_missing",
+            &HashMap::from([("a".to_string(), Some("1".to_string()))]),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(missing, "Tabelle public.l8db_w6_missing nicht gefunden");
     manager.rollback(&tx).await.unwrap();
 }
 

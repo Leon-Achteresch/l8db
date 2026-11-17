@@ -168,7 +168,13 @@ fn json_lit(kind: DatabaseKind, value: &serde_json::Value) -> String {
 }
 
 fn binary_lit(kind: DatabaseKind, value: &str) -> Option<String> {
-    let hex = super::hex_blob_body(value)?;
+    let hex = match value.get(..2) {
+        Some("0x" | "0X") if matches!(kind, DatabaseKind::Mssql | DatabaseKind::Mysql) => {
+            let body = &value[2..];
+            (body.len() % 2 == 0 && body.bytes().all(|b| b.is_ascii_hexdigit())).then_some(body)?
+        }
+        _ => super::hex_blob_body(value)?,
+    };
     match kind {
         DatabaseKind::Mysql | DatabaseKind::Sqlite | DatabaseKind::SqliteHttp => {
             Some(format!("X'{hex}'"))
@@ -749,6 +755,9 @@ impl TransactionManager {
             .query(super::postgres::arrays::COLUMNS_SQL, &[&schema, &table])
             .await
             .map_err(map_pg_err)?;
+        if col_rows.is_empty() {
+            return Err(format!("Tabelle {schema}.{table} nicht gefunden"));
+        }
 
         let set_parts = super::postgres::arrays::update_assignments(
             &super::postgres::arrays::columns(&col_rows),
@@ -819,6 +828,9 @@ impl TransactionManager {
             .await
             .map_err(map_pg_err)?;
 
+        if col_rows.is_empty() {
+            return Err(format!("Tabelle {schema}.{table} nicht gefunden"));
+        }
         let valid_columns: std::collections::HashSet<String> =
             col_rows.iter().map(|r| r.get::<_, String>(0)).collect();
 
@@ -1229,6 +1241,20 @@ mod tests {
             super::binary_lit(DatabaseKind::Mssql, "\\xab").as_deref(),
             Some("0xab")
         );
+        assert_eq!(
+            super::binary_lit(DatabaseKind::Mssql, "0x00FF").as_deref(),
+            Some("0x00FF")
+        );
+        assert_eq!(
+            super::binary_lit(DatabaseKind::Mssql, "0x").as_deref(),
+            Some("0x")
+        );
+        assert_eq!(super::binary_lit(DatabaseKind::Mssql, "0x0G"), None);
+        assert_eq!(
+            super::binary_lit(DatabaseKind::Mysql, "0xC3A4").as_deref(),
+            Some("X'C3A4'")
+        );
+        assert_eq!(super::binary_lit(DatabaseKind::Sqlite, "0x00"), None);
         assert_eq!(super::binary_lit(DatabaseKind::Mysql, "\\x0g"), None);
         assert_eq!(
             super::binary_lit(DatabaseKind::Duckdb, "\\x00ff").as_deref(),
@@ -1699,7 +1725,7 @@ mod tests {
     async fn binary_cells_survive_row_edits(
         kind: DatabaseKind,
         var: &str,
-        schema: &str,
+        schema_sql: &str,
         binary_type: &str,
         hex: &str,
     ) {
@@ -1710,6 +1736,11 @@ mod tests {
         let pool = super::super::pool::create_pool_state();
         let adapter =
             super::super::create_adapter_from_string(kind, &url, None, pool.clone()).unwrap();
+        let schema = adapter.execute_query(schema_sql).await.unwrap().rows[0]["s"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let schema = schema.as_str();
         let _ = adapter.execute_query("DROP TABLE fixr_bin").await;
         adapter
             .execute_query(&format!(
@@ -1752,7 +1783,13 @@ mod tests {
             .unwrap()
             .rows;
         let shown = rows[0]["data"].as_str().unwrap().to_string();
-        assert_eq!(shown, original, "{kind:?} zeigt den Binärwert anders an");
+        let expected = match kind {
+            DatabaseKind::Mssql | DatabaseKind::Mysql => {
+                format!("0x{}", original[2..].to_ascii_uppercase())
+            }
+            _ => original.clone(),
+        };
+        assert_eq!(shown, expected, "{kind:?} zeigt den Binärwert anders an");
         let mut ctid = rows[0]["__ctid__"].as_str().unwrap().to_string();
         let tx = create_transaction_state();
         for updates in [
@@ -1791,7 +1828,7 @@ mod tests {
         binary_cells_survive_row_edits(
             DatabaseKind::Mysql,
             "L8DB_SMOKE_MYSQL_URL",
-            &std::env::var("L8DB_SMOKE_MYSQL_SCHEMA").unwrap_or_else(|_| "fixr".into()),
+            "SELECT DATABASE() AS s",
             "LONGBLOB",
             "HEX({c})",
         )
@@ -1799,7 +1836,7 @@ mod tests {
         binary_cells_survive_row_edits(
             DatabaseKind::Mssql,
             "L8DB_SMOKE_MSSQL_URL",
-            "dbo",
+            "SELECT SCHEMA_NAME() AS s",
             "VARBINARY(MAX)",
             "CONVERT(VARCHAR(MAX), {c}, 2)",
         )
@@ -1807,7 +1844,7 @@ mod tests {
         binary_cells_survive_row_edits(
             DatabaseKind::Postgres,
             "L8DB_E2E_PG_URL",
-            "public",
+            "SELECT current_schema() AS s",
             "BYTEA",
             "encode({c}, 'hex')",
         )

@@ -5,7 +5,7 @@ use super::insight::{cached_source, Excerpt};
 use super::redact::Redactor;
 use super::server::{
     adapter, arg_str, audit, cap, check_read_sql, database_arg, find_connection, format_result,
-    qualified, run, scrub_error, with_database, Server, SQL_KINDS,
+    qualified, run, scrub_error, with_database, Server,
 };
 use crate::db::{self, DatabaseAdapter, DatabaseKind, QueryResult};
 use futures_util::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
@@ -81,7 +81,7 @@ impl Limits {
 }
 
 pub(super) fn supported(connection: &McpConnection) -> Result<(), String> {
-    if SQL_KINDS.contains(&connection.kind) {
+    if super::server::sql_family(connection.kind) {
         Ok(())
     } else {
         Err(format!(
