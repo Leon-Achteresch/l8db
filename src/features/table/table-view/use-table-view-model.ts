@@ -7,6 +7,7 @@ import { recordFeatureEvent } from "@/lib/discovery/events";
 import { openScopedTable, useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { useRedisRowEdit } from "@/lib/hooks/use-redis-row-edit";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
+import { jsonFilterError } from "@/lib/json-filter";
 import { stagesTableChanges } from "@/lib/managed-transactions";
 import { applyMasks } from "@/lib/masking";
 import { useActiveMasks } from "@/lib/masking-display";
@@ -238,12 +239,17 @@ export function useTableViewModel({
 
   const handleFilterChange = useCallback(
     (newFilter: string, raw = true) => {
+      const invalid = caps.query_language === "json" ? jsonFilterError(newFilter) : null;
+      if (invalid) {
+        toast.error(invalid);
+        return;
+      }
       if (newFilter.trim()) recordFeatureEvent("table.filtered", { mode: raw ? "sql" : "simple" });
       setFilter(newFilter);
       setFilterRaw(raw);
       setPage(0);
     },
-    [setFilter, setFilterRaw, setPage],
+    [caps.query_language, setFilter, setFilterRaw, setPage],
   );
   const updateRow = updateRowMutation.mutateAsync;
   const saveRow = useCallback(

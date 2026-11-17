@@ -51,7 +51,11 @@ describe("S3-Risiken", () => {
 
   test("SQL-Funktionen sind bei Objektspeicher ausgeblendet", () => {
     const s3 = { query_language: "sql", object_storage: true } as Capabilities;
-    const pg = { query_language: "sql", object_storage: false } as Capabilities;
+    const pg = {
+      query_language: "sql",
+      object_storage: false,
+      query_builder: true,
+    } as Capabilities;
     for (const id of ["notebook", "query-builder"]) {
       const entry = featureById(id);
       expect(entry).toBeDefined();

@@ -90,10 +90,17 @@ fn server_error(code: i32, name: &str, message: &str) -> String {
         .unwrap_or(message);
     match code {
         13 if message.contains("requires authentication") => "Anmeldung nötig: Der Server verlangt Benutzer und Passwort, z. B. mongodb://benutzer:passwort@host/db?authSource=admin".into(),
+        13 if message.contains("only be run against the admin database") => format!(
+            "Nur in der Datenbank „admin“ erlaubt. Verbindung mit /admin öffnen und den Befehl dort ausführen. (Code 13: {message})"
+        ),
         13 => format!("Keine Berechtigung: {message}"),
         18 => auth_error(message),
-        _ if name.is_empty() => format!("{message} (Code {code})"),
-        _ => format!("{message} (Code {code}, {name})"),
+        2 if message.contains("hint provided does not correspond to an existing index") => format!(
+            "Der Index aus hint() existiert nicht. Indexnamen mit getIndexes() prüfen. (Code 2, BadValue: {message})"
+        ),
+        11000 => format!("Wert verletzt einen eindeutigen Index: {message} (Code 11000)"),
+        _ if name.is_empty() => format!("Vom Server abgelehnt: {message} (Code {code})"),
+        _ => format!("Vom Server abgelehnt: {message} (Code {code}, {name})"),
     }
 }
 
@@ -1370,8 +1377,20 @@ mod tests {
     fn errors_are_plain_german_text() {
         assert_eq!(
             server_error(2, "BadValue", "error processing query: ns=x planner returned error :: caused by :: hint provided does not correspond to an existing index"),
-            "hint provided does not correspond to an existing index (Code 2, BadValue)"
+            "Der Index aus hint() existiert nicht. Indexnamen mit getIndexes() prüfen. (Code 2, BadValue: hint provided does not correspond to an existing index)"
         );
+        assert!(server_error(
+            20,
+            "IllegalOperation",
+            "renameCollection may only be run against the admin database."
+        )
+        .starts_with("Vom Server abgelehnt"));
+        assert!(server_error(
+            13,
+            "Unauthorized",
+            "renameCollection may only be run against the admin database."
+        )
+        .starts_with("Nur in der Datenbank „admin“"));
         assert!(server_error(
             13,
             "Unauthorized",
@@ -1397,7 +1416,7 @@ mod tests {
         ]);
         assert_eq!(
             write,
-            "MongoDB: E11000 duplicate key error (Code 11000) (+1 weitere Schreibfehler)"
+            "MongoDB: Wert verletzt einen eindeutigen Index: E11000 duplicate key error (Code 11000) (+1 weitere Schreibfehler)"
         );
         let filter = parse_document("status = 'open'", "Der Filter").unwrap_err();
         assert!(filter.starts_with("Der Filter muss gültiges JSON sein (Zeile 1, Spalte 1)"));

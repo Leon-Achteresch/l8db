@@ -40,3 +40,23 @@ test("Redis read-only connection refuses FLUSHDB before asking for confirmation"
   await confirmSqlExecution("redis", target, "GET a", "3");
   expect(prompts).toHaveLength(0);
 });
+
+test("Redis confirmation names the active connection, not another one on the same URL", async () => {
+  useSettingsStore.setState({ confirmDestructiveQueries: true });
+  prompts.length = 0;
+  useConnectionsStore.setState({
+    connections: [
+      connection("Redis Produktion", { environment: "production" }),
+      connection("Redis Test DB 3", {}),
+    ],
+  });
+  const target = effectiveConnectionString(useConnectionsStore.getState().connections[1]);
+  await confirmSqlExecution("redis", target, "FLUSHDB", "3", undefined, "Redis Test DB 3");
+  expect(prompts).toHaveLength(1);
+  expect((prompts[0] as { connection: string }).connection).toBe(
+    "Redis Test DB 3 · gleiche Adresse wie Redis Produktion",
+  );
+  useConnectionsStore.setState({ connections: [connection("Redis Test DB 3", {})] });
+  await confirmSqlExecution("redis", target, "FLUSHDB", "3", undefined, "Redis Test DB 3");
+  expect((prompts[1] as { connection: string }).connection).toBe("Redis Test DB 3");
+});

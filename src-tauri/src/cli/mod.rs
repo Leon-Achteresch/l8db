@@ -185,7 +185,7 @@ enum Command {
         alias = "q",
         help_template = SUB_HELP,
         override_usage = "l8db query [ABFRAGE] [-f DATEI] [-c NAME] [-o FORMAT]",
-        after_help = "Die Abfrage kommt als Argument, mit -f aus einer Datei oder über die Standardeingabe.\nMehrere Anweisungen werden nacheinander ausgeführt; beim ersten Fehler stoppt l8db.\n\nBeispiele:\n  l8db q \"select * from users limit 5\"\n  l8db query -f migration.sql --yes\n  cat bericht.sql | l8db query -o csv > bericht.csv\n  l8db query --all -o ndjson \"select * from events\" | jq .id\n  l8db q \"HGETALL user:1\"  (Redis)"
+        after_help = "Die Abfrage kommt als Argument, mit -f aus einer Datei oder über die Standardeingabe.\nMehrere Anweisungen werden nacheinander ausgeführt; beim ersten Fehler stoppt l8db.\nBindvariablen (:name) setzt die CLI nicht: Werte direkt ins SQL schreiben.\n\nBeispiele:\n  l8db q \"select * from users limit 5\"\n  l8db query -f migration.sql --yes\n  cat bericht.sql | l8db query -o csv > bericht.csv\n  l8db query --all -o ndjson \"select * from events\" | jq .id\n  l8db q \"HGETALL user:1\"  (Redis)"
     )]
     Query(QueryArgs),
     #[command(
@@ -416,22 +416,22 @@ enum TableCommand {
         override_usage = "l8db table describe <TABELLE>"
     )]
     Describe {
-        #[arg(value_name = "TABELLE", help = "Name oder schema.name (S3: Bucket)")]
+        #[arg(value_name = "TABELLE", help = "Name oder schema.name (MongoDB: Collection, S3: Bucket)")]
         table: String,
     },
     #[command(
-        about = "Zeilen einer Tabelle anzeigen (auch: show; Abbruch nach 300 s)",
+        about = "Zeilen einer Tabelle oder Dokumente einer Collection anzeigen (auch: show; Abbruch: Tabellensuche nach 60 s, Zeilen nach 300 s)",
         alias = "show",
         override_usage = "l8db table rows <TABELLE> [--where AUSDRUCK] [--order-by SPALTE] [--desc] [-n ANZAHL]"
     )]
     Rows {
-        #[arg(value_name = "TABELLE", help = "Name oder schema.name (S3: Bucket)")]
+        #[arg(value_name = "TABELLE", help = "Name oder schema.name (MongoDB: Collection, S3: Bucket)")]
         table: String,
         #[arg(
             short = 'w',
             long = "where",
             value_name = "AUSDRUCK",
-            help = "SQL-Filter, z. B. \"id > 10\"; MongoDB: JSON wie '{\"status\":\"open\"}', Redis: Key-Muster wie 'user:*', S3: Schlüssel-Präfix wie 'logs/2026/'"
+            help = "Filter, SQL z. B. \"id > 10\"; MongoDB: JSON wie '{\"status\":\"open\"}', Redis: Key-Muster wie 'user:*', S3: Schlüssel-Präfix wie 'logs/2026/'"
         )]
         filter: Option<String>,
         #[arg(
@@ -467,13 +467,13 @@ enum TableCommand {
         override_usage = "l8db table count <TABELLE> [--where AUSDRUCK]"
     )]
     Count {
-        #[arg(value_name = "TABELLE", help = "Name oder schema.name (S3: Bucket)")]
+        #[arg(value_name = "TABELLE", help = "Name oder schema.name (MongoDB: Collection, S3: Bucket)")]
         table: String,
         #[arg(
             short = 'w',
             long = "where",
             value_name = "AUSDRUCK",
-            help = "SQL-Filter, z. B. \"id > 10\"; MongoDB: JSON wie '{\"status\":\"open\"}', Redis: Key-Muster wie 'user:*', S3: Schlüssel-Präfix wie 'logs/2026/'"
+            help = "Filter, SQL z. B. \"id > 10\"; MongoDB: JSON wie '{\"status\":\"open\"}', Redis: Key-Muster wie 'user:*', S3: Schlüssel-Präfix wie 'logs/2026/'"
         )]
         filter: Option<String>,
     },
@@ -631,7 +631,12 @@ fn localize(command: clap::Command) -> clap::Command {
 
 pub(crate) fn sql_comment_arg(arg: &str) -> String {
     match arg.strip_prefix("--") {
-        Some(rest) if rest.starts_with(char::is_whitespace) => format!(" {arg}"),
+        Some(rest)
+            if rest.starts_with(char::is_whitespace)
+                || rest.split_once('\n').is_some_and(|(line, _)| !line.contains('=')) =>
+        {
+            format!(" {arg}")
+        }
         _ => arg.to_string(),
     }
 }

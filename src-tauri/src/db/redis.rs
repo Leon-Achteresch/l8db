@@ -14,6 +14,142 @@ pub struct RedisAdapter {
     key: String,
 }
 
+const WRITE_COMMANDS: &[&str] = &[
+    "APPEND",
+    "BITFIELD",
+    "BITOP",
+    "BLMOVE",
+    "BLMPOP",
+    "BLPOP",
+    "BRPOP",
+    "BRPOPLPUSH",
+    "BZMPOP",
+    "BZPOPMAX",
+    "BZPOPMIN",
+    "COPY",
+    "DECR",
+    "DECRBY",
+    "DEL",
+    "EXPIRE",
+    "EXPIREAT",
+    "FLUSHALL",
+    "FLUSHDB",
+    "FUNCTION",
+    "GEOADD",
+    "GEORADIUS",
+    "GEORADIUSBYMEMBER",
+    "GEOSEARCHSTORE",
+    "GETDEL",
+    "GETEX",
+    "GETSET",
+    "HDEL",
+    "HEXPIRE",
+    "HEXPIREAT",
+    "HINCRBY",
+    "HINCRBYFLOAT",
+    "HMSET",
+    "HPERSIST",
+    "HPEXPIRE",
+    "HPEXPIREAT",
+    "HSET",
+    "HSETNX",
+    "INCR",
+    "INCRBY",
+    "INCRBYFLOAT",
+    "LINSERT",
+    "LMOVE",
+    "LMPOP",
+    "LPOP",
+    "LPUSH",
+    "LPUSHX",
+    "LREM",
+    "LSET",
+    "LTRIM",
+    "MIGRATE",
+    "MOVE",
+    "MSET",
+    "MSETNX",
+    "PERSIST",
+    "PEXPIRE",
+    "PEXPIREAT",
+    "PFADD",
+    "PFDEBUG",
+    "PFMERGE",
+    "PSETEX",
+    "RENAME",
+    "RENAMENX",
+    "RESTORE",
+    "SADD",
+    "SDIFFSTORE",
+    "SET",
+    "SETBIT",
+    "SETEX",
+    "SETNX",
+    "SETRANGE",
+    "SINTERSTORE",
+    "SMOVE",
+    "SORT",
+    "SPOP",
+    "SREM",
+    "SUNIONSTORE",
+    "SWAPDB",
+    "UNLINK",
+    "XACK",
+    "XADD",
+    "XAUTOCLAIM",
+    "XCLAIM",
+    "XDEL",
+    "XGROUP",
+    "XREADGROUP",
+    "XSETID",
+    "XTRIM",
+    "ZADD",
+    "ZDIFFSTORE",
+    "ZINCRBY",
+    "ZINTERSTORE",
+    "ZMPOP",
+    "ZPOPMAX",
+    "ZPOPMIN",
+    "ZRANGESTORE",
+    "ZREM",
+    "ZREMRANGEBYLEX",
+    "ZREMRANGEBYRANK",
+    "ZREMRANGEBYSCORE",
+    "ZUNIONSTORE",
+    "CONFIG",
+    "DEBUG",
+    "SHUTDOWN",
+    "SLAVEOF",
+    "REPLICAOF",
+    "EVAL",
+    "EVALSHA",
+    "FCALL",
+    "SCRIPT",
+    "MODULE",
+    "CLIENT",
+    "ACL",
+    "SAVE",
+    "BGSAVE",
+    "BGREWRITEAOF",
+    "CLUSTER",
+    "PUBLISH",
+    "JSON.SET",
+    "JSON.DEL",
+    "JSON.MERGE",
+    "JSON.MSET",
+    "JSON.ARRAPPEND",
+    "JSON.ARRINSERT",
+    "JSON.ARRPOP",
+    "JSON.ARRTRIM",
+    "JSON.NUMINCRBY",
+    "JSON.STRAPPEND",
+    "JSON.TOGGLE",
+    "JSON.CLEAR",
+    "FT.CREATE",
+    "FT.DROPINDEX",
+    "FT.ALTER",
+];
+
 const COLUMNS: [&str; 6] = ["key", "type", "ttl", "value", "size", "truncated"];
 
 fn column_type(column: &str) -> &str {
@@ -132,10 +268,13 @@ fn map_err(e: redis::RedisError) -> String {
     }
     let detail = e.detail().unwrap_or_default().trim().to_string();
     match e.code() {
-        Some("NOAUTH") => "NOAUTH: Anmeldung erforderlich, Passwort fehlt".to_string(),
-        Some("WRONGPASS") => "WRONGPASS: Benutzername oder Passwort falsch".to_string(),
-        Some("WRONGTYPE") => "WRONGTYPE: Befehl passt nicht zum Datentyp des Keys".to_string(),
-        Some("NOPERM") => format!("NOPERM: Keine Berechtigung. {detail}"),
+        Some("NOAUTH") => {
+            "Anmeldung erforderlich: Passwort in der URL angeben, z. B. redis://:passwort@host:6379 (NOAUTH)"
+                .to_string()
+        }
+        Some("WRONGPASS") => "Benutzername oder Passwort falsch (WRONGPASS)".to_string(),
+        Some("WRONGTYPE") => "Befehl passt nicht zum Datentyp des Keys (WRONGTYPE)".to_string(),
+        Some("NOPERM") => format!("Keine Berechtigung: {detail} (NOPERM)"),
         Some(code) => server_detail(code, &detail),
         None => e.to_string(),
     }
@@ -219,6 +358,12 @@ fn value_to_json(value: Value) -> serde_json::Value {
         Value::ServerError(e) => serde_json::Value::String(format!("ERR {e:?}")),
         other => serde_json::Value::String(format!("{other:?}")),
     }
+}
+
+pub fn unknown_command(statement: &str) -> Option<String> {
+    let name = split_command(statement.trim()).ok()?.into_iter().next()?;
+    let name = String::from_utf8_lossy(&name).to_ascii_uppercase();
+    (!WRITE_COMMANDS.contains(&name.as_str())).then_some(name)
 }
 
 pub fn split_command(line: &str) -> Result<Vec<Vec<u8>>, String> {
@@ -1205,6 +1350,15 @@ impl DatabaseAdapter for RedisAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unknown_commands_are_named() {
+        assert_eq!(unknown_command("FOOBAR x").as_deref(), Some("FOOBAR"));
+        assert_eq!(unknown_command("nosuch").as_deref(), Some("NOSUCH"));
+        assert_eq!(unknown_command("set a 1"), None);
+        assert_eq!(unknown_command("FLUSHALL"), None);
+        assert_eq!(unknown_command("json.set k $ 1"), None);
+    }
 
     #[test]
     fn like_filters_become_globs() {

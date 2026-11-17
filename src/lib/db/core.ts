@@ -265,6 +265,7 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
         String(args?.sql ?? ""),
         context.database ?? undefined,
         context.connectionName,
+        options.connectionId,
       );
     const jobId = options.jobId ?? crypto.randomUUID();
     backendOptions = { ...backendOptions, jobId };
@@ -356,13 +357,19 @@ export async function confirmSqlExecution(
   sql: string,
   database?: string,
   connectionName?: string,
+  connectionId?: string,
 ): Promise<void> {
   const [{ operationContext }, { useConnectionsStore }, environments] = await Promise.all([
     import("@/lib/operation-context"),
     import("@/lib/connections/store"),
     import("@/lib/environments"),
   ]);
-  const context = operationContext({ kind, connectionString, database });
+  const context = operationContext({
+    kind,
+    connectionString,
+    database,
+    ...(connectionId ? { options: { connectionId } } : {}),
+  });
   const { operationConnections } = await import("@/lib/operation-context");
   const { isReadOnlyConnection } = await import("@/lib/connections");
   if (
@@ -374,12 +381,19 @@ export async function confirmSqlExecution(
   const connection = useConnectionsStore
     .getState()
     .connections.find((entry) => entry.id === context.connectionId);
+  const own = connectionId
+    ? useConnectionsStore.getState().connections.find((entry) => entry.id === connectionId)
+    : undefined;
+  const ownName =
+    own && connection && own.id !== connection.id
+      ? `${own.name} · gleiche Adresse wie ${connection.name}`
+      : own?.name;
   const production = environments.isProduction(connection);
   if (!production && !useSettingsStore.getState().confirmDestructiveQueries) return;
   const findings = destructiveStatements(sql, kind, { strict: production });
   if (!findings.length) return;
   const accepted = await requestSqlConfirmation({
-    connection: connectionName ?? context.connectionName,
+    connection: ownName ?? connectionName ?? context.connectionName,
     database: database ?? context.database,
     statements: findings,
     confirmTexts: production

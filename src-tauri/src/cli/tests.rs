@@ -1,6 +1,6 @@
 use super::run::{
-    address, allow_write, changed, read_only, read_timeout, rollback_note, split_table,
-    statement_lines, statements, writes, Approval,
+    address, allow_write, catalog_timeout, changed, read_only, read_timeout, rollback_note,
+    split_table, statement_lines, statements, writes, Approval,
 };
 use super::*;
 use crate::db::DatabaseKind;
@@ -512,6 +512,15 @@ fn rollback_message_only_promises_what_the_database_keeps() {
         "insert into t values (2)",
     ]);
     assert!(rollback_note(DatabaseKind::Postgres, &own, true).contains("BEGIN/COMMIT"));
+    assert!(rollback_note(DatabaseKind::Mssql, &own, true).contains("BEGIN/COMMIT"));
+    let nested = ran(&[
+        "BEGIN TRAN",
+        "insert into t values (1)",
+        "COMMIT",
+        "insert into t values (1)",
+    ]);
+    assert!(rollback_note(DatabaseKind::Mssql, &nested, true).contains("Nichts geändert"));
+    assert!(rollback_note(DatabaseKind::Postgres, &nested, true).contains("BEGIN/COMMIT"));
 }
 
 #[test]
@@ -671,6 +680,14 @@ fn sql_starting_with_a_comment_is_not_an_option() {
     let sql = super::sql_comment_arg("-- Kommentar\nselect 1 as x");
     assert_eq!(sql, " -- Kommentar\nselect 1 as x");
     assert_eq!(super::sql_comment_arg("--limit"), "--limit");
+    assert_eq!(
+        super::sql_comment_arg("--x\nselect 6 as v"),
+        " --x\nselect 6 as v"
+    );
+    assert_eq!(
+        super::sql_comment_arg("--where=a = 1\nAND b = 2"),
+        "--where=a = 1\nAND b = 2"
+    );
     assert_eq!(super::sql_comment_arg("--"), "--");
     let argv = [
         "l8db",
@@ -705,6 +722,31 @@ async fn read_only_flag_names_itself_on_saved_connections() {
     assert!(saved.contains("nur in der App"), "{saved}");
 }
 
+#[tokio::test]
+async fn read_only_names_unknown_redis_commands() {
+    let target = connect::Target {
+        id: String::new(),
+        name: "redis".into(),
+        kind: DatabaseKind::Redis,
+        read_only: true,
+        read_only_flag: true,
+        production: false,
+    };
+    let reject = |sql: &'static str| {
+        let target = &target;
+        async move {
+            match super::run::prepare(target, sql, Approval::Flag(false), &mut |_| {}).await {
+                Err(error) => error,
+                Ok(_) => panic!("{sql} darf nicht laufen"),
+            }
+        }
+    };
+    let unknown = reject("FOOBAR x").await;
+    assert!(unknown.contains("„FOOBAR“ ist l8db unbekannt"), "{unknown}");
+    let known = reject("FLUSHDB").await;
+    assert_eq!(known, "--read-only: die Anweisung würde schreiben.");
+}
+
 #[test]
 fn read_only_flag_protects_ad_hoc_urls() {
     let flagged = parse("l8db --url postgres://u@h/db --read-only query \"select 1\"").unwrap();
@@ -719,6 +761,16 @@ fn read_only_flag_protects_ad_hoc_urls() {
         "Query-Timeout nach 300 Sekunden. Es wurde nur gelesen; Filter enger setzen."
     );
     assert_eq!(read_timeout("anderer Fehler".into()), "anderer Fehler");
+    assert_eq!(
+        read_timeout("BigQuery: keine Antwort von http://127.0.0.1:9 nach 5 Sekunden. Der Serverabschluss ist nicht bestätigt.".into()),
+        "BigQuery: keine Antwort von http://127.0.0.1:9 nach 5 Sekunden. Es wurde nur gelesen; Filter enger setzen."
+    );
+    assert_eq!(
+        catalog_timeout(
+            "Query-Timeout nach 60 Sekunden. Der Serverabschluss ist nicht bestätigt.".into()
+        ),
+        "Query-Timeout nach 60 Sekunden beim Lesen der Tabellenliste. Es wurde nur gelesen."
+    );
 }
 
 #[test]

@@ -18,6 +18,7 @@ export function LifecycleSettings({ bucket }: { bucket: string }) {
   const [rules, setRules] = useState<LifecycleRule[]>([]);
   const [confirming, setConfirming] = useState(false);
   const deletions = lifecycleDeletions(rules);
+  const removingAll = !rules.length && !!config.data;
   const save = () =>
     rules.length
       ? config.save(lifecycleXml(rules), "Lebenszyklus gespeichert")
@@ -57,23 +58,27 @@ export function LifecycleSettings({ bucket }: { bucket: string }) {
           <Button
             size="sm"
             disabled={config.busy}
-            onClick={() => (deletions.length ? setConfirming(true) : void save())}
+            onClick={() => (deletions.length || removingAll ? setConfirming(true) : void save())}
           >
-            {rules.length || !config.data ? "Speichern" : "Alle Regeln entfernen"}
+            {removingAll ? "Alle Regeln entfernen" : "Speichern"}
           </Button>
         </div>
       )}
       <ConfirmActionDialog
         open={confirming}
-        title="Automatisch löschen?"
+        title={removingAll ? "Alle Regeln entfernen?" : "Automatisch löschen?"}
         description={
-          <ul className="grid gap-0.5">
-            {deletions.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
+          removingAll ? (
+            `Der Lebenszyklus von „${bucket}“ wird gelöscht.`
+          ) : (
+            <ul className="grid gap-0.5">
+              {deletions.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          )
         }
-        confirmLabel="Regeln speichern"
+        confirmLabel={removingAll ? "Entfernen" : "Regeln speichern"}
         onOpenChange={setConfirming}
         onConfirm={async () => {
           await save();

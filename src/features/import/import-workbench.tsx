@@ -9,7 +9,7 @@ import {
   readImportFile,
 } from "@/lib/import-file";
 import { EMPTY_SQL_IMPORT, useImportWorkspace } from "@/lib/import-workspace";
-import { supports } from "@/lib/providers";
+import { capabilitiesFor, supports } from "@/lib/providers";
 import { sqlFileTitle } from "@/lib/sql-file";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { CsvImportPanel } from "./csv-import-panel";
@@ -30,6 +30,7 @@ export function ImportWorkbench({ tab }: { tab?: "csv" }) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const csvEnabled = supports(connection, "csv_import");
+  const scripts = !csvEnabled || capabilitiesFor(connection?.kind).query_language === "sql";
   const csv = useCsvImport();
   const sqlKey = JSON.stringify([connection?.id, database]);
   const sqlDraft = useImportWorkspace((state) => state.sql[sqlKey] ?? EMPTY_SQL_IMPORT);
@@ -42,7 +43,7 @@ export function ImportWorkbench({ tab }: { tab?: "csv" }) {
   }, [tab, csvEnabled, setSelected]);
   const [actions, setActions] = useState<HTMLDivElement | null>(null);
   const [pickError, setPickError] = useState<string | null>(null);
-  const pane = csvEnabled ? selected : "sql";
+  const pane = csvEnabled ? (scripts ? selected : "data") : "sql";
   const summary: [string, string][] = [
     [
       "Ziel",
@@ -98,16 +99,18 @@ export function ImportWorkbench({ tab }: { tab?: "csv" }) {
       const path = await open({
         multiple: false,
         directory: false,
-        filters: csvEnabled
-          ? [
-              { name: "Unterstützte Dateien", extensions: [...DATA_EXTENSIONS, "sql"] },
-              { name: "Daten", extensions: DATA_EXTENSIONS },
-              { name: "SQL-Skript", extensions: ["sql"] },
-            ]
-          : [{ name: "SQL-Skript", extensions: ["sql", "txt"] }],
+        filters: !scripts
+          ? [{ name: "Daten", extensions: DATA_EXTENSIONS }]
+          : csvEnabled
+            ? [
+                { name: "Unterstützte Dateien", extensions: [...DATA_EXTENSIONS, "sql"] },
+                { name: "Daten", extensions: DATA_EXTENSIONS },
+                { name: "SQL-Skript", extensions: ["sql"] },
+              ]
+            : [{ name: "SQL-Skript", extensions: ["sql", "txt"] }],
       });
       if (typeof path !== "string") return;
-      if (!csvEnabled || path.toLowerCase().endsWith(".sql")) return loadSql(path);
+      if (!csvEnabled || (scripts && path.toLowerCase().endsWith(".sql"))) return loadSql(path);
       await csv.handlePickFile({
         path,
         name: sqlFileTitle(path),
@@ -142,6 +145,7 @@ export function ImportWorkbench({ tab }: { tab?: "csv" }) {
         <ImportFileList
           csv={csvEnabled ? csv : null}
           sql={sqlDraft}
+          scripts={scripts}
           selected={pane}
           error={pickError}
           summary={summary}

@@ -19,6 +19,8 @@ import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { useHasNewFeatures } from "@/lib/new-features";
+import { capabilitiesFor } from "@/lib/providers";
 import { useIndexesQuery } from "@/lib/queries";
 import { CreateIndexDialog } from "./table-indexes-list/create-index-dialog";
 import { IndexRoleDetails } from "./table-indexes-list/index-role-details";
@@ -36,6 +38,9 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const rolesFeature = useNewFeatureVisibility<HTMLElement>("table.structure.indexes.roles");
   const hasRoles = indexes?.some((index) => index.roles !== undefined) ?? false;
+  const formIsNew =
+    useHasNewFeatures("table.structure.indexes.mongo-form") &&
+    capabilitiesFor(connection?.kind).query_language === "json";
 
   const handleIndexCreated = async () => {
     await queryClient.invalidateQueries({
@@ -66,6 +71,7 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
         >
           <PlusIcon className="size-3.5" />
           Neuer Index
+          {formIsNew && <NewBadge />}
         </Button>
       </div>
 

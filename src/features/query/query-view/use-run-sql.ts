@@ -182,6 +182,8 @@ export function useRunSql({
           effectiveConnectionString(connection),
           sql,
           database ?? undefined,
+          undefined,
+          connection.id,
         );
         executionStarted = true;
         await enableOracleOutput(

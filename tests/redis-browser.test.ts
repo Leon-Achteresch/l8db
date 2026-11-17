@@ -1,9 +1,12 @@
 import { expect, test } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { chromium, webkit } from "playwright";
 
 const database = "0";
 const provider = process.env.L8DB_REDIS_VARIANT === "valkey" ? "valkey" : "redis";
 const port = process.env.L8DB_REDIS_PORT ?? "6381";
+const shots = process.env.L8DB_SHOTS_DIR ?? tmpdir();
 
 test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
   "Redis: real adapter, keys, pattern, CRUD, editor and database switching",
@@ -109,7 +112,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await pattern.fill("demo:hash");
       await pattern.press("Enter");
       await page.getByText("1–1 von 1", { exact: true }).waitFor();
-      await page.screenshot({ path: "/tmp/l8db-redis-filter.png" });
+      await page.screenshot({ path: join(shots, "l8db-redis-filter.png") });
       await page.getByRole("button", { name: "Zurücksetzen", exact: true }).click();
       await page.getByText("demo:string", { exact: true }).first().waitFor();
       const rowFor = (key: string) =>
@@ -191,7 +194,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       expect(await page.locator('td[data-col="key"]').allTextContents()).toEqual([
         " literal:*?[x] ",
       ]);
-      await page.screenshot({ path: `/tmp/l8db-${provider}-column-filter.png` });
+      await page.screenshot({ path: join(shots, `l8db-${provider}-column-filter.png`) });
       await seed("0", 'DEL " literal:*?[x] " literal:other');
       await page.getByRole("button", { name: "Zurücksetzen", exact: true }).click();
       await page.getByRole("button", { name: "Key verwalten", exact: true }).click();
@@ -229,7 +232,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await choose("Key löschen");
       await dialog.getByRole("button", { name: "Key endgültig löschen", exact: true }).click();
       await dialog.getByRole("region", { name: "Redis-Ergebnis" }).waitFor();
-      await page.screenshot({ path: "/tmp/l8db-redis-key-actions.png" });
+      await page.screenshot({ path: join(shots, "l8db-redis-key-actions.png") });
       for (const [action, key, field, value] of [
         ["Hash-Feld setzen", "browser:hash", "name", "Ada"],
         ["An Liste anhängen", "browser:list", "", "first"],
@@ -275,7 +278,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
       await page.getByText("value; spaced", { exact: true }).first().waitFor({ timeout: 5000 });
       expect(await page.getByRole("dialog").count()).toBe(0);
-      await page.screenshot({ path: "/tmp/l8db-redis-query.png" });
+      await page.screenshot({ path: join(shots, "l8db-redis-query.png") });
       await page.getByRole("combobox", { name: "Datenbank", exact: true }).click();
       await page.getByRole("option", { name: "1", exact: true }).click();
       await page.locator('[data-tour="sidebar-table"]').first().click();
@@ -302,10 +305,10 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await page.locator("#connection-url").fill(`${provider}://127.0.0.1:${port}/9999`);
       await page.getByRole("button", { name: "Testen", exact: true }).click();
       await page.getByRole("alert").first().waitFor();
-      await page.screenshot({ path: "/tmp/l8db-redis-connection.png" });
+      await page.screenshot({ path: join(shots, "l8db-redis-connection.png") });
       expect(errors).toEqual([]);
     } catch (error) {
-      await page.screenshot({ path: "/tmp/l8db-redis-browser-failure.png" });
+      await page.screenshot({ path: join(shots, "l8db-redis-browser-failure.png") });
       throw error;
     } finally {
       await browser.close();

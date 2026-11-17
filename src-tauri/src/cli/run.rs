@@ -463,7 +463,10 @@ pub(super) struct Relation {
     pub(super) schema: String,
     pub(super) name: String,
     pub(super) view: bool,
+    pub(super) label: Option<&'static str>,
 }
+
+const MATERIALIZED_VIEW: &str = "materialized view";
 
 pub(super) async fn relations(
     session: &Session,
@@ -472,12 +475,14 @@ pub(super) async fn relations(
 ) -> Result<Vec<Relation>, String> {
     let kind = session.target.kind;
     let mut found: Vec<Relation> = guarded(job, kind, 60, session.adapter.list_tables(schema))
-        .await?
+        .await
+        .map_err(catalog_timeout)?
         .into_iter()
         .map(|t| Relation {
             schema: t.schema,
             name: t.name,
             view: false,
+            label: None,
         })
         .collect();
     if let Ok(views) = guarded(job, kind, 60, session.adapter.list_views(schema)).await {
@@ -492,6 +497,7 @@ pub(super) async fn relations(
                     schema: v.schema,
                     name: v.name,
                     view: true,
+                    label: None,
                 });
             }
         }
@@ -514,12 +520,84 @@ pub(super) async fn relations(
                         schema: v.schema,
                         name: v.name,
                         view: true,
+                        label: Some(MATERIALIZED_VIEW),
                     });
                 }
             }
         }
     }
     Ok(found)
+}
+
+async fn relation_labels(
+    session: &Session,
+    schema: Option<&str>,
+    job: &str,
+    tables: &mut [Relation],
+) {
+    let kind = session.target.kind;
+    let sql = match kind {
+        DatabaseKind::Oracle => None,
+        DatabaseKind::Postgres => {
+            let filter = schema
+                .map(|s| format!(" WHERE foreign_table_schema = '{}'", s.replace('\'', "''")))
+                .unwrap_or_default();
+            Some(format!(
+                "SELECT foreign_table_schema AS s, foreign_table_name AS n, 'foreign table' AS l FROM information_schema.foreign_tables{filter}"
+            ))
+        }
+        DatabaseKind::Clickhouse => {
+            let filter = schema
+                .map(|s| format!(" AND database = '{}'", s.replace('\\', "\\\\").replace('\'', "\\'")))
+                .unwrap_or_default();
+            Some(format!(
+                "SELECT database AS s, name AS n, if(engine = 'Dictionary', 'dictionary', '{MATERIALIZED_VIEW}') AS l FROM system.tables WHERE engine IN ('MaterializedView', 'Dictionary'){filter}"
+            ))
+        }
+        _ => return,
+    };
+    let named: Vec<(String, String, String)> = match sql {
+        None => match guarded(
+            job,
+            kind,
+            60,
+            session.adapter.list_materialized_views(schema),
+        )
+        .await
+        {
+            Ok(views) => views
+                .into_iter()
+                .map(|v| (v.schema, v.name, MATERIALIZED_VIEW.to_string()))
+                .collect(),
+            Err(_) => return,
+        },
+        Some(sql) => match guarded(job, kind, 60, session.adapter.execute_query(&sql)).await {
+            Ok(result) => result
+                .rows
+                .iter()
+                .filter_map(|row| {
+                    Some((
+                        row.get("s")?.as_str()?.to_string(),
+                        row.get("n")?.as_str()?.to_string(),
+                        row.get("l")?.as_str()?.to_string(),
+                    ))
+                })
+                .collect(),
+            Err(_) => return,
+        },
+    };
+    for table in tables.iter_mut() {
+        if let Some((_, _, label)) = named
+            .iter()
+            .find(|(s, n, _)| *s == table.schema && *n == table.name)
+        {
+            table.label = Some(match label.as_str() {
+                "foreign table" => "foreign table",
+                "dictionary" => "dictionary",
+                _ => MATERIALIZED_VIEW,
+            });
+        }
+    }
 }
 
 fn first_dot(name: &str) -> Option<(String, String)> {
@@ -631,6 +709,7 @@ async fn synonym_target(
         schema: found.target_owner.clone(),
         name: found.target_name.clone(),
         view: found.target_type.contains("view"),
+        label: None,
     })
 }
 
@@ -706,6 +785,7 @@ async fn locate(session: &Session, name: &str, job: &str) -> Result<Relation, St
                 schema: one.schema.clone(),
                 name: one.name.clone(),
                 view: one.view,
+                label: one.label,
             })
         }
         0 => match split_table(name).0.and_then(|s| s.split_once('.').map(|(d, _)| d.to_string())) {
@@ -766,7 +846,8 @@ async fn table(
     }
     match command {
         TableCommand::List { schema } => {
-            let tables = relations(session, schema.as_deref(), job).await?;
+            let mut tables = relations(session, schema.as_deref(), job).await?;
+            relation_labels(session, schema.as_deref(), job, &mut tables).await;
             let mut rows: Vec<Value> = tables
                 .iter()
                 .map(|t| {
@@ -778,9 +859,14 @@ async fn table(
                         (DatabaseKind::Elasticsearch, "data_streams") => "data stream",
                         (DatabaseKind::Elasticsearch, "hidden") => "hidden index",
                         (DatabaseKind::Elasticsearch, _) => "index",
+                        (DatabaseKind::Redis, _) => return json!([t.name, "keyspace"]),
                         _ => "table",
                     };
-                    json!([t.schema, t.name, if t.view { "view" } else { base }])
+                    json!([
+                        t.schema,
+                        t.name,
+                        t.label.unwrap_or(if t.view { "view" } else { base })
+                    ])
                 })
                 .collect();
             if matches!(kind, DatabaseKind::Oracle | DatabaseKind::Mssql) {
@@ -801,7 +887,14 @@ async fn table(
                     }));
                 }
             }
-            if rows.is_empty() {
+            if rows.is_empty() && kind == DatabaseKind::Dynamodb {
+                let region = adapter.list_schemas().await.unwrap_or_default().join(", ");
+                eprintln!("Keine Tabellen in Region {region}.");
+            } else if rows.is_empty()
+                && matches!(kind, DatabaseKind::Sqlite | DatabaseKind::Duckdb)
+            {
+                eprintln!("Keine Tabellen vorhanden.");
+            } else if rows.is_empty() {
                 eprintln!("Keine Tabellen gefunden, auf die diese Verbindung zugreifen darf.");
             }
             write(output::write_rows(
@@ -809,10 +902,17 @@ async fn table(
                 format,
                 &match kind {
                     DatabaseKind::Mongodb => {
-                        ["database".into(), "collection".into(), "type".into()]
+                        vec!["database".into(), "collection".into(), "type".into()]
                     }
-                    DatabaseKind::S3 => ["schema".into(), "bucket".into(), "type".into()],
-                    _ => ["schema".into(), "table".into(), "type".into()],
+                    DatabaseKind::S3 => vec!["schema".into(), "bucket".into(), "type".into()],
+                    DatabaseKind::Redis => vec!["table".into(), "type".into()],
+                    DatabaseKind::Dynamodb => {
+                        vec!["region".into(), "table".into(), "type".into()]
+                    }
+                    DatabaseKind::Cassandra => {
+                        vec!["keyspace".into(), "table".into(), "type".into()]
+                    }
+                    _ => vec!["schema".into(), "table".into(), "type".into()],
                 },
                 &rows,
             ))
@@ -820,6 +920,13 @@ async fn table(
         TableCommand::Describe { table } => {
             let Relation { schema, name, .. } = locate(session, &table, job).await?;
             if matches!(kind, DatabaseKind::Postgres | DatabaseKind::Mssql) {
+                let flags = if kind == DatabaseKind::Postgres {
+                    guarded(job, kind, 60, adapter.list_import_columns(&schema, &name))
+                        .await
+                        .unwrap_or_default()
+                } else {
+                    Vec::new()
+                };
                 let rows: Vec<Value> = guarded(
                     job,
                     kind,
@@ -835,6 +942,11 @@ async fn table(
                         Some(_) => c.data_type.clone(),
                         None => c.data_type.clone(),
                     };
+                    let data_type = match flags.iter().find(|f| f.name == c.name) {
+                        Some(f) if f.is_generated => format!("{data_type} generiert"),
+                        Some(f) if f.is_identity => format!("{data_type} identity"),
+                        _ => data_type,
+                    };
                     json!([
                         c.name,
                         data_type,
@@ -844,7 +956,7 @@ async fn table(
                     ])
                 })
                 .collect();
-                return write(output::write_rows(
+                let written = write(output::write_rows(
                     out,
                     format,
                     &[
@@ -856,6 +968,21 @@ async fn table(
                     ],
                     &rows,
                 ));
+                if written.is_ok() && kind == DatabaseKind::Postgres {
+                    if let Ok(constraints) =
+                        guarded(job, kind, 60, adapter.list_constraints(&schema, &name)).await
+                    {
+                        for c in constraints.iter().filter(|c| {
+                            matches!(
+                                c.constraint_type.as_str(),
+                                "UNIQUE" | "FOREIGN KEY" | "CHECK" | "EXCLUDE"
+                            )
+                        }) {
+                            eprintln!("{}: {}", c.name, c.definition);
+                        }
+                    }
+                }
+                return written;
             }
             if matches!(kind, DatabaseKind::Dynamodb | DatabaseKind::Cassandra) {
                 let rows: Vec<Value> = guarded(
@@ -887,9 +1014,16 @@ async fn table(
                 )
                 .await?
                 .iter()
-                .map(|c| match c.ordinal_position {
-                    0 => json!([c.name, format!("{} unsichtbar", c.data_type)]),
-                    _ => json!([c.name, c.data_type]),
+                .map(|c| {
+                    let identity = c
+                        .column_default
+                        .as_deref()
+                        .is_some_and(|d| d.contains("ISEQ$$_"));
+                    match (c.ordinal_position, identity) {
+                        (0, _) => json!([c.name, format!("{} unsichtbar", c.data_type)]),
+                        (_, true) => json!([c.name, format!("{} identity", c.data_type)]),
+                        _ => json!([c.name, c.data_type]),
+                    }
                 })
                 .collect()
             } else {
@@ -918,7 +1052,7 @@ async fn table(
                 out,
                 format,
                 &[
-                    if kind == DatabaseKind::Mongodb {
+                    if matches!(kind, DatabaseKind::Mongodb | DatabaseKind::Redis) {
                         "field"
                     } else {
                         "column"
@@ -938,7 +1072,9 @@ async fn table(
             offset,
         } => {
             let order_by = order_by.map(unquoted_column);
-            let Relation { schema, name, view } = locate(session, &table, job).await?;
+            let Relation {
+                schema, name, view, ..
+            } = locate(session, &table, job).await?;
             let data = noted(guarded(
                 job,
                 kind,
@@ -973,7 +1109,7 @@ async fn table(
             ))?;
             if data.rows.len() as i64 >= limit {
                 eprintln!(
-                    "Begrenzt auf {} Zeilen. Weiter: --offset {} oder mehr mit -n <anzahl>",
+                    "Begrenzt auf {} Zeilen. Nächste Seite: --offset {}, mehr auf einmal: -n <anzahl>",
                     data.rows.len(),
                     offset.max(0) + limit
                 );
@@ -1113,9 +1249,22 @@ fn influx_range_note(session: &Session) {
     }
 }
 
+pub(super) fn catalog_timeout(error: String) -> String {
+    match error.split_once(". Der Serverabschluss") {
+        Some((head, _))
+            if head.starts_with("Query-Timeout") || head.contains(": keine Antwort von ") =>
+        {
+            format!("{head} beim Lesen der Tabellenliste. Es wurde nur gelesen.")
+        }
+        _ => error,
+    }
+}
+
 pub(super) fn read_timeout(error: String) -> String {
     match error.split_once(". Der Serverabschluss") {
-        Some((head, _)) if head.starts_with("Query-Timeout") => {
+        Some((head, _))
+            if head.starts_with("Query-Timeout") || head.contains(": keine Antwort von ") =>
+        {
             format!("{head}. Es wurde nur gelesen; Filter enger setzen.")
         }
         _ => error,
@@ -1495,8 +1644,14 @@ pub(super) async fn run_prepared(
                     .map(|m| m.into_iter().map(|m| m.message).collect())
                     .unwrap_or_default(),
             };
+            let limit = db::oracle::output_limit_note();
             for line in lines {
-                emit(Step::Note(line))?;
+                if line == limit {
+                    result.truncated = true;
+                    emit(Step::Note(format!("Warnung: {line}")))?;
+                } else {
+                    emit(Step::Note(line))?;
+                }
             }
         }
         emit(Step::Result {
@@ -1697,10 +1852,19 @@ pub(super) fn open_at_end(kind: DatabaseKind, ran: &[String]) -> bool {
 }
 
 pub(super) fn rollback_note(kind: DatabaseKind, ran: &[String], failed: bool) -> String {
+    let mut level = 1;
     let controls =
         ran.iter()
             .enumerate()
             .any(|(index, statement)| match control(kind, statement) {
+                Some(Control::Open) if kind == DatabaseKind::Mssql => {
+                    level += 1;
+                    false
+                }
+                Some(Control::Commit) if kind == DatabaseKind::Mssql => {
+                    level -= 1;
+                    level < 1
+                }
                 Some(Control::Commit | Control::Close) => true,
                 Some(Control::Open) => kind == DatabaseKind::Mysql && index > 0,
                 _ => false,
@@ -1873,7 +2037,8 @@ fn print_result(
 ) -> Result<(), String> {
     let elapsed = started.elapsed().as_millis();
     if result.columns.is_empty() {
-        eprintln!("✓ {} ({elapsed} ms)", changed(kind, result));
+        let mark = if result.truncated { "⚠" } else { "✓" };
+        eprintln!("{mark} {} ({elapsed} ms)", changed(kind, result));
         return Ok(());
     }
     write(output::write_rows(
@@ -1883,10 +2048,15 @@ fn print_result(
         &result.rows,
     ))?;
     let _ = out.flush();
-    if result.truncated {
+    if result.truncated && limit.rows().is_some_and(|rows| result.rows.len() >= rows) {
         eprintln!(
             "Nur die ersten {} Zeilen. Mehr: -n <anzahl> oder --all",
-            limit.rows().unwrap_or(result.rows.len())
+            result.rows.len()
+        );
+    } else if result.truncated {
+        eprintln!(
+            "Nur die ersten {} Zeilen: mehr liefert der Server nicht. Filter enger setzen.",
+            result.rows.len()
         );
     } else if format == Format::Table || script {
         let rows = result.rows.len();
