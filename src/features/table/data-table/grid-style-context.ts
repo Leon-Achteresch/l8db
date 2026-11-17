@@ -4,6 +4,7 @@ import type { GridColumnKind } from "@/lib/grid-cell-format";
 import type { TableStyle } from "@/lib/table-style";
 
 export type GridColumnStyle = {
+  dataType?: string;
   kind: GridColumnKind;
   numeric: boolean;
   primaryKey: boolean;

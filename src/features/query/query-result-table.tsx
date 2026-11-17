@@ -249,6 +249,7 @@ export const QueryResultTable = memo(function QueryResultTable({
   };
 
   const timestamps = useQueryQolSettings((s) => s.timestamps);
+  const numbers = useQueryQolSettings((s) => s.numbers);
   const autoSizeColumns = (content = false) => {
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
@@ -260,6 +261,7 @@ export const QueryResultTable = memo(function QueryResultTable({
       (text) => context.measureText(text).width,
       content,
       timestamps,
+      numbers,
     );
     setAutoColumnWidths(nextWidths);
   };

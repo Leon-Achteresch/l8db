@@ -102,6 +102,7 @@ export function QueryResultWorkbench({
   previous?: boolean;
 }) {
   const timeNew = useHasNewFeatures("query.results.timestamps");
+  const numbersNew = useHasNewFeatures("query.results.numbers");
   const workspace = useQueryWorkspace();
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -248,7 +249,7 @@ export function QueryResultWorkbench({
                 aria-label="Ergebnisoptionen"
               >
                 <MoreHorizontal className="size-4" />
-                {timeNew && <NewBadge className="absolute -right-1 -top-1" />}
+                {(timeNew || numbersNew) && <NewBadge className="absolute -right-1 -top-1" />}
               </Button>
             </DropdownMenuTrigger>
             <IconMenuContent>

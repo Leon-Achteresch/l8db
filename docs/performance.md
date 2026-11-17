@@ -1006,3 +1006,37 @@ API with synthetic transport; two UI SSR cases use mocked dialog/panel boundarie
 and a current-store selector (SSR normally uses Zustand's initial snapshot).
 No live provider/trigger, native capture, browser/focus/dialog or actual log
 virtualization acceptance; no Windows/Linux or constrained CPU/heap run.
+
+## Exact numeric display (A15)
+
+The existing display menu now offers opt-in digit grouping and minimum fraction
+digits (0, 2 or 4). The default remains original. Known numeric table columns
+format exact strings by copying digits, without Number conversion or rounding;
+existing fraction digits and exponent notation remain intact. Missing query
+type metadata leaves numeric-looking strings unchanged. Native finite JavaScript
+numbers can be formatted, but precision already lost upstream cannot be recovered.
+Raw copy, CSV export, sort, filter and edit contracts remain independent of display.
+
+Formatting accepts at most 4,096 input characters and never expands exponents;
+longer or unsupported values use the existing bounded raw preview. No numeric
+cache, timer, background task or database request is introduced. Existing width
+sampling/caps are reused and consider formatted text lazily. There is no
+asynchronous formatting to cancel or retain after a view is abandoned.
+
+Core-registered `tests/perf-number-display.test.ts`, macOS 27.0.1 arm64,
+Apple M3, 16 GiB RAM, Bun 1.3.10; two warmups and 11 measured samples:
+
+| Workload | Result | Budget |
+|---|---|---|
+| Format/check 20,000 exact long integer/decimal strings | median 12.180 ms / p95 12.727 ms | median <75 ms / p95 <150 ms |
+| Format 200 maximum-size strings of 4,096 characters | median 3.506 ms / p95 3.767 ms | p95 <100 ms; output <8,200 characters |
+| Reject a 1,000,000-character value into raw-preview fallback | p95 0.003209 ms | p95 <5 ms |
+| Retained heap delta after five additional batches and GC | 0 bytes | <8 MiB |
+
+These are formatter/validation timings, not browser frame or total grid-render
+latency. Actual table/result cells and menu callbacks have separate SSR/event
+regressions with a synthetic current-store selector; all four table styles,
+raw copy/edit/inspect callbacks, persistence merge and width paths are covered.
+The menu remains shared across views rather than a per-column format setting.
+No real browser/native UI, provider data, constrained CPU/heap, Windows/Linux or
+native RSS measurement was performed. No new backend or productive DB work.
