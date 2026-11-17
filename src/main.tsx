@@ -1,5 +1,6 @@
 import "./index.css";
 import { initAppStorage, STORAGE_FALLBACK_KEY } from "@/lib/app-storage";
+import { csvCheckDevelopmentSelected } from "@/lib/development-entry";
 
 function showStorageFailure() {
   const root = document.getElementById("root");
@@ -20,8 +21,16 @@ function showStorageFailure() {
   });
 }
 
-void initAppStorage().then((mode) => {
-  performance.mark("l8db.storage");
-  if (mode === "failed") showStorageFailure();
-  else void import("./bootstrap");
-});
+if (import.meta.env.DEV && csvCheckDevelopmentSelected(true, location.search)) {
+  void import("./development/csv-check-bootstrap")
+    .then((entry) => entry.startCsvCheckDevelopment())
+    .catch((error) => {
+      const root = document.getElementById("root");
+      if (root) root.textContent = `Isolierte CSV-Prüfung nicht verfügbar: ${String(error)}`;
+    });
+} else
+  void initAppStorage().then((mode) => {
+    performance.mark("l8db.storage");
+    if (mode === "failed") showStorageFailure();
+    else void import("./bootstrap");
+  });

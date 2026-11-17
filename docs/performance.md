@@ -1086,3 +1086,23 @@ the separate AI-workspace config is not a verified fresh isolated runtime. The
 normal profile initializes connection secrets/services. Neither profile's private
 data was opened or altered, and no app or database was started for this check.
 WebKit, Windows/Linux, constrained CPU/heap and native RSS remain untested.
+
+### Isolated CSV development entry
+
+`tests/perf-csv-development.test.ts` measures 10,000 release-gate rejections plus
+10,000 explicit development decisions per sample, two warmups and 11 samples.
+On macOS 27.0.1 / Darwin 27.0.0 arm64, Apple M3, 16 GiB, Bun 1.3.10: median 2.458 ms,
+p95 3.111 ms (limits <50 / <100ms), 22 bytes retained heap after five additional
+batches and GC (limit <4MiB). The gate retains no state and starts no native/DB
+requests, timers or background work. Production-entry compilation removes the
+debug loader; the ordinary bootstrap remains. These are selector microbenchmarks,
+not desktop boot, native parser throughput, constrained CPU/heap or RSS results.
+
+Native functional acceptance now uses the real incognito debug WebView and
+existing parser, with no regular connection/secret/service initialization or
+registered SQL/import-write commands. It verified dialog grants, clean/findings/
+parser-error/cancel/changed states and cleanup of two fresh session directories.
+The larger owned fixture was 1,048,576 records / 254,803,976 bytes; native cancel
+returned 4,318 records, while the changed-file run discarded its result. No native
+latency/peak-memory comparison is claimed. See `docs/csv-check-development.md`
+for the reproducible explicit entry and the separate desktop-tool limitations.

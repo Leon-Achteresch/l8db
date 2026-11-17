@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import type { CsvCheckEvents } from "@/lib/csv-file-check";
-import { type CsvCheckRequest, cancelExecution, checkCsvFile } from "@/lib/db";
+import { cancelExecution } from "@/lib/db/core";
+import { type CsvCheckRequest, checkCsvFile } from "@/lib/db/csv-check";
 import { finishTask, startTask, updateTask } from "@/lib/tasks";
 
 export async function runCsvFileCheck(
