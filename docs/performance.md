@@ -969,3 +969,40 @@ in-memory SQLite selection fixture. Performance helpers start zero database
 requests or background tasks. SSR/event-harness results do not establish real
 DOM focus/popover/keyboard behavior, native-app paint or provider execution.
 Live databases, Windows/Linux, constrained CPU/heap and native RSS were not tested.
+
+
+## Captured server output after grid writes (A12)
+
+`runTableTransaction` drains the existing transaction-output API once after the
+row operation, including failed operations, before immediate commit/rollback.
+Managed operations remain busy until this drain finishes; staged changes/errors
+and finalization guards are unchanged. Retrieval/delivery failures produce a
+neutral existing toast and cannot replace the write outcome. Unsupported
+providers incur no output request. No polling or new driver capture is added.
+
+The table-data entry opens the existing ServerOutputPanel for the captured
+connection/database. Copy and clear affect only that database; the query panel
+keeps its existing connection-wide behavior when no database is supplied. Output
+can include other work in that connection/database, including rolled-back work:
+it is neither current-table attribution nor a commit receipt. Native paths that
+do not already buffer notices are not fixed by this frontend drain. Oracle's
+existing transaction DBMS_OUTPUT retrieval is reused; commit-generated output
+after finalization is not newly captured.
+
+Scoped core-registered `tests/perf-table-server-output.test.ts`, macOS 27.0.0
+arm64, Apple M3, 16 GiB RAM, Bun 1.3.10; two warmups and 11 samples:
+
+| Workload | Result | Budget |
+|---|---|---|
+| One existing output drain of 2,000 messages against a 100,000-entry history | median 1.959 ms / p95 3.099 ms | median <50 ms / p95 <100 ms |
+| Database selection over the retained history | median 0.471 ms / p95 0.620 ms | p95 <25 ms |
+| Retained heap delta after GC | 0 bytes; history remains capped at 100,000 | <32 MiB additional heap |
+
+The measured workload performs exactly 13 mocked output reads, one per explicit
+operation, and zero idle requests over 25 ms. This measures the local delivery
+and bounded existing store, not server/network latency or peak RSS. Failure,
+rollback, staged/busy and late-scope regressions use the actual managed operation
+API with synthetic transport; two UI SSR cases use mocked dialog/panel boundaries
+and a current-store selector (SSR normally uses Zustand's initial snapshot).
+No live provider/trigger, native capture, browser/focus/dialog or actual log
+virtualization acceptance; no Windows/Linux or constrained CPU/heap run.

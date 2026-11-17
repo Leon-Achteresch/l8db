@@ -56,6 +56,24 @@ export const useServerOutputStore = create<ServerOutputState>()((set) => ({
   clear: (connectionId) => set((state) => ({ entries: { ...state.entries, [connectionId]: [] } })),
 }));
 
+export function serverOutputForDatabase(entries: ServerOutputEntry[], database?: string | null) {
+  return database === undefined
+    ? entries
+    : entries.filter((entry) => (entry.database ?? null) === database);
+}
+
+export function clearServerOutputDatabase(connectionId: string, database?: string | null) {
+  if (database === undefined) return useServerOutputStore.getState().clear(connectionId);
+  useServerOutputStore.setState((state) => ({
+    entries: {
+      ...state.entries,
+      [connectionId]: (state.entries[connectionId] ?? []).filter(
+        (entry) => (entry.database ?? null) !== database,
+      ),
+    },
+  }));
+}
+
 export function onNextServerOutput(connectionId: string, onOutput: () => void): () => void {
   const last = () => useServerOutputStore.getState().entries[connectionId]?.at(-1)?.id;
   const before = last();
