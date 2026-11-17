@@ -633,11 +633,13 @@ fn bridge_exit_reports_bounded_stderr_without_password() {
         keep_tail(
             &mut buffer,
             "at org.Example.call(Example.java:1)\n".as_bytes(),
+            "hunter2",
         );
     }
     keep_tail(
         &mut buffer,
         b"java.lang.ClassNotFoundException: org.h2.Drive (pw hunter2)\n",
+        "hunter2",
     );
     assert!(buffer.len() <= STDERR_TAIL * 2);
     let message = with_stderr("JDBC-Prozess wurde beendet.".into(), &buffer, "hunter2");
@@ -645,4 +647,33 @@ fn bridge_exit_reports_bounded_stderr_without_password() {
     assert!(message.ends_with("org.h2.Drive (pw ***)"), "{message}");
     assert!(message.len() <= STDERR_TAIL + 40);
     assert_eq!(with_stderr("x".into(), " \n", "pw"), "x");
+}
+
+#[test]
+fn stderr_never_leaks_parts_of_the_password() {
+    let secret = "correct-horse-battery";
+    let mut buffer = String::new();
+    let chunk = format!("{}{secret}{}", "x".repeat(700), "z".repeat(590));
+    keep_tail(&mut buffer, chunk.as_bytes(), secret);
+    let message = with_stderr("JDBC-Prozess wurde beendet.".into(), &buffer, secret);
+    assert!(
+        !message.contains("battery") && !message.contains("horse"),
+        "{message}"
+    );
+    let mut split = String::new();
+    keep_tail(&mut split, b"login correct-hor", secret);
+    keep_tail(&mut split, b"se-battery rejected", secret);
+    assert!(!split.contains("battery"), "{split}");
+    let pending = with_stderr("x".into(), "login correct-hor", secret);
+    assert!(pending.ends_with("login ***"), "{pending}");
+    let url = with_stderr(
+        "Verbindung fehlgeschlagen: jdbc:sqlserver://h;user=u;password=hunter2;db=x".into(),
+        "url jdbc:h2:mem:t;PWD = s3cret;MODE=x",
+        "",
+    );
+    assert!(!url.contains("hunter2") && !url.contains("s3cret"), "{url}");
+    assert!(
+        url.contains("password=***;db=x") && url.contains("PWD=***;MODE=x"),
+        "{url}"
+    );
 }

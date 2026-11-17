@@ -14,6 +14,11 @@ use super::{
 const NO_SERVER_TLS: &str =
     "Der MySQL-Server unterstützt kein TLS. SSL-Modus „Bevorzugen“ oder „Deaktiviert“ wählen.";
 
+type SessionConns = std::sync::Mutex<std::collections::HashMap<String, (Conn, std::time::Instant)>>;
+
+const SESSION_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+const SESSION_MAX: usize = 8;
+
 pub struct MysqlAdapter {
     opts: Opts,
     plain: Option<Opts>,
@@ -730,6 +735,32 @@ impl MysqlAdapter {
         .await
     }
 
+    async fn execute_in_session(&self, session: &str, sql: &str) -> Result<QueryResult, String> {
+        let sessions = self
+            .pool_state
+            .shared(&format!("{}#script-sessions", self.key), || async {
+                Ok::<SessionConns, String>(std::sync::Mutex::new(Default::default()))
+            })
+            .await?;
+        let parked = {
+            let mut map = sessions.lock().unwrap_or_else(|e| e.into_inner());
+            map.retain(|_, (_, since)| since.elapsed() < SESSION_TTL);
+            map.remove(session).map(|(conn, _)| conn)
+        };
+        let mut conn = match parked {
+            Some(conn) => conn,
+            None => self.open_conn().await?,
+        };
+        let result = run_query(&mut conn, sql).await;
+        if result.is_ok() || conn.ping().await.is_ok() {
+            let mut map = sessions.lock().unwrap_or_else(|e| e.into_inner());
+            if map.len() < SESSION_MAX || map.contains_key(session) {
+                map.insert(session.to_string(), (conn, std::time::Instant::now()));
+            }
+        }
+        result
+    }
+
     async fn rows(&self, sql: &str) -> Result<Vec<Row>, String> {
         let mut conn = self.conn().await?;
         let mariadb = is_mariadb(&conn);
@@ -1095,6 +1126,9 @@ impl DatabaseAdapter for MysqlAdapter {
     }
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
+        if let Some(session) = super::execution::session_id() {
+            return self.execute_in_session(&session, sql).await;
+        }
         let mut conn = self.conn().await?;
         run_query(&mut conn, sql).await
     }
@@ -3053,5 +3087,64 @@ mod tests {
         assert!(
             MysqlAdapter::new("postgres://x@y/z", None, create_pool_state(), "k".into()).is_err()
         );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_script_sessions_keep_state_between_statements() {
+        for url in live_urls() {
+            let pool = create_pool_state();
+            let adapter = MysqlAdapter::new(&url, None, pool, "script-session".into()).unwrap();
+            for sql in [
+                "DROP DATABASE IF EXISTS l8db_rv2_a",
+                "DROP DATABASE IF EXISTS l8db_rv2_b",
+                "CREATE DATABASE l8db_rv2_a",
+                "CREATE DATABASE l8db_rv2_b",
+                "CREATE TABLE l8db_rv2_a.t (id int)",
+                "CREATE TABLE l8db_rv2_b.t (id int)",
+                "INSERT INTO l8db_rv2_a.t VALUES (1)",
+                "INSERT INTO l8db_rv2_b.t VALUES (2)",
+            ] {
+                adapter.execute_query(sql).await.expect(sql);
+            }
+            let step = |sql: &'static str| {
+                crate::db::execution::with_session(
+                    Some("script-a".into()),
+                    adapter.execute_query(sql),
+                )
+            };
+            step("USE l8db_rv2_a").await.unwrap();
+            let busy = adapter.conn().await.unwrap();
+            step("SET @x = 41").await.unwrap();
+            step("CREATE TEMPORARY TABLE l8db_rv2_tmp (n int)")
+                .await
+                .unwrap();
+            step("USE l8db_rv2_b").await.unwrap();
+            step("TRUNCATE t").await.unwrap();
+            assert!(step("SELECT * FROM missing_table").await.is_err());
+            let x = step("SELECT @x + 1 AS x, DATABASE() AS db FROM l8db_rv2_a.l8db_rv2_tmp RIGHT JOIN (SELECT 1) one ON 1=1")
+                .await
+                .unwrap();
+            drop(busy);
+            assert_eq!(x.rows[0]["x"], 42);
+            assert_eq!(x.rows[0]["db"], "l8db_rv2_b");
+            assert_eq!(
+                live_scalar(&adapter, "SELECT COUNT(*) FROM l8db_rv2_a.t").await,
+                "1"
+            );
+            assert_eq!(
+                live_scalar(&adapter, "SELECT COUNT(*) FROM l8db_rv2_b.t").await,
+                "0"
+            );
+            assert!(adapter.execute_query("SELECT @x").await.unwrap().rows[0]["@x"].is_null());
+            adapter
+                .execute_query("DROP DATABASE l8db_rv2_a")
+                .await
+                .unwrap();
+            adapter
+                .execute_query("DROP DATABASE l8db_rv2_b")
+                .await
+                .unwrap();
+        }
     }
 }

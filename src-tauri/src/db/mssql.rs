@@ -784,6 +784,20 @@ async fn open_transactions(client: &mut MsClient) -> i64 {
     }
 }
 
+fn controls_transaction(sql: &str) -> bool {
+    opens_transaction(sql)
+        || code_words(sql)
+            .iter()
+            .any(|word| word == "COMMIT" || word == "ROLLBACK")
+}
+
+fn report_open_transaction(results: &mut [super::ScriptStatementResult]) {
+    if let Some(last) = results.last_mut().filter(|result| result.success) {
+        last.success = false;
+        last.error = Some(OPEN_TRANSACTION.into());
+    }
+}
+
 fn opens_transaction(sql: &str) -> bool {
     let words = code_words(sql);
     words.iter().enumerate().any(|(i, word)| {
@@ -1358,6 +1372,14 @@ impl DatabaseAdapter for MssqlAdapter {
                 break;
             }
         }
+        if let Some(client) = client.as_mut() {
+            if results.iter().any(|r| opens_transaction(&r.statement))
+                && open_transactions(client).await > 0
+            {
+                let _ = run_query(client, "IF @@TRANCOUNT > 0 ROLLBACK").await;
+                report_open_transaction(&mut results);
+            }
+        }
         Ok(results)
     }
 
@@ -1927,6 +1949,12 @@ impl DatabaseAdapter for MssqlAdapter {
     }
 
     async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
+        if analyze && controls_transaction(sql) {
+            return Err(
+                "Analyse ohne BEGIN TRAN, COMMIT oder ROLLBACK ausführen: Sie wird zurückgerollt."
+                    .into(),
+            );
+        }
         let mut client = self.dedicated().await?;
         if analyze {
             return timed(async {
@@ -2641,6 +2669,50 @@ mod tests {
         assert!(starts_batch("/* v2 */ CREATE OR ALTER VIEW v AS SELECT 1"));
         assert!(!opens_transaction("COMMIT"));
         assert!(!opens_transaction("BEGIN SELECT 'BEGIN TRAN' END"));
+    }
+
+    #[test]
+    fn analyze_refuses_sql_that_ends_its_rollback_transaction() {
+        assert!(controls_transaction("UPDATE t SET x=0; COMMIT"));
+        assert!(controls_transaction("update t set x = 0\nrollback tran"));
+        assert!(controls_transaction("BEGIN TRAN; UPDATE t SET x = 0"));
+        assert!(!controls_transaction(
+            "UPDATE t SET note = 'COMMIT' -- ROLLBACK"
+        ));
+        assert!(!controls_transaction("SELECT * FROM t"));
+    }
+
+    #[tokio::test]
+    async fn scripts_with_a_dangling_begin_tran_report_the_rollback() {
+        let pool = crate::db::pool::create_pool_state();
+        let adapter =
+            MssqlAdapter::new("mssql://sa:x@127.0.0.1:1/master", None, pool, "k".into()).unwrap();
+        let error = adapter
+            .explain_query("UPDATE t SET x=0; COMMIT", true)
+            .await
+            .unwrap_err();
+        assert!(error.contains("COMMIT"), "{error}");
+        let ok = |statement: &str| super::super::ScriptStatementResult {
+            statement: statement.into(),
+            success: true,
+            rows_affected: Some(1),
+            error: None,
+        };
+        let mut results = vec![ok("BEGIN TRAN"), ok("UPDATE t SET x=1")];
+        report_open_transaction(&mut results);
+        assert!(results[0].success);
+        assert!(!results[1].success);
+        assert_eq!(results[1].error.as_deref(), Some(OPEN_TRANSACTION));
+        let mut failed = vec![
+            ok("BEGIN TRAN"),
+            super::super::ScriptStatementResult {
+                success: false,
+                error: Some("x".into()),
+                ..ok("bad")
+            },
+        ];
+        report_open_transaction(&mut failed);
+        assert_eq!(failed[1].error.as_deref(), Some("x"));
     }
 
     #[test]

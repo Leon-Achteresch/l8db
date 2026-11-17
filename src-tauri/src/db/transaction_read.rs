@@ -1,8 +1,8 @@
 use super::{map_pg_err, ora, oracle, quote, DatabaseKind, TransactionEntry, TransactionManager};
 use crate::db::execution::guarded;
 use crate::db::postgres::{
-    capped_count, capped_count_sql, primary_key_columns, relation_name, table_page_sql,
-    RELATION_COLUMNS_SQL,
+    capped_count, capped_count_sql, has_row_ids, is_cockroach, primary_key_columns, relation_name,
+    table_page_sql, visible_columns, RELATION_COLUMNS_SQL,
 };
 use crate::db::{attach_row_keys, quote_ident, where_clause, DatabaseAdapter, RowCount, TableData};
 
@@ -109,7 +109,10 @@ impl TransactionManager {
                 let conn = c.lock().await?;
                 pg_read(&conn, ssl, async {
                     let column_rows = conn
-                        .query(RELATION_COLUMNS_SQL, &[&request.schema, &request.table])
+                        .query(
+                            &*visible_columns(RELATION_COLUMNS_SQL, is_cockroach(&conn).await),
+                            &[&request.schema, &request.table],
+                        )
                         .await
                         .map_err(map_pg_err)?;
                     let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
@@ -124,7 +127,7 @@ impl TransactionManager {
                         &request.table,
                         &where_sql,
                         order,
-                        !request.is_view,
+                        !request.is_view && has_row_ids(&column_rows),
                         &primary_key,
                     );
                     let data = conn

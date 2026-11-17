@@ -241,10 +241,11 @@ impl AthenaAdapter {
                         .flatten()
                         .cloned(),
                 );
-                token = response.get("NextToken").filter(|v| !v.is_null()).cloned();
-                if token.is_none() || out.len() >= 10_000 {
+                let next = next_token(&response);
+                if next.is_none() || next == token || out.len() >= 10_000 {
                     break;
                 }
+                token = next;
             }
             Ok(out)
         })
@@ -362,6 +363,7 @@ impl AthenaAdapter {
             }
             let page = throttled(&client, "GetQueryResults", &request).await?;
             let mut rows = rows_of(&page);
+            let fetched = rows.len();
             if first {
                 let info = column_info(&page);
                 result.columns =
@@ -387,14 +389,15 @@ impl AthenaAdapter {
                         .collect(),
                 );
             }
-            token = page.get("NextToken").filter(|v| !v.is_null()).cloned();
-            if token.is_none() {
+            let next = next_token(&page);
+            if next.is_none() {
                 break;
             }
-            if result.rows.len() >= max_rows {
+            if fetched == 0 || next == token || result.rows.len() >= max_rows {
                 result.truncated = true;
                 break;
             }
+            token = next;
         }
         Ok(result)
     }
@@ -625,6 +628,12 @@ impl DatabaseAdapter for AthenaAdapter {
     async fn take_server_output(&self) -> Result<Vec<ServerMessage>, String> {
         Ok(server_output::take(&self.key))
     }
+}
+
+fn next_token(page: &Value) -> Option<Value> {
+    page.get("NextToken")
+        .filter(|token| token.as_str().is_some_and(|token| !token.is_empty()))
+        .cloned()
 }
 
 #[cfg(test)]
@@ -900,6 +909,68 @@ mod tests {
             };
             (200, body.to_string().into())
         })
+    }
+
+    #[tokio::test]
+    async fn paging_stops_on_repeated_tokens_and_empty_pages() {
+        for repeat in [true, false] {
+            let server = crate::db::http_mock::start(move |req| {
+                let action = req
+                    .header("x-amz-target")
+                    .unwrap_or_default()
+                    .trim_start_matches("AmazonAthena.")
+                    .to_string();
+                let request = req.json();
+                let follow = request.get("NextToken").is_some();
+                let body = match action.as_str() {
+                    "ListDatabases" => {
+                        json!({"DatabaseList": [{"Name": "a"}], "NextToken": "same"})
+                    }
+                    "StartQueryExecution" => json!({"QueryExecutionId": "q"}),
+                    "GetQueryExecution" => json!({"QueryExecution": {
+                        "StatementType": "DML",
+                        "Status": {"State": "SUCCEEDED"}
+                    }}),
+                    "GetQueryResults" => {
+                        let mut rows = vec![
+                            json!({"Data": [{"VarCharValue": "n"}]}),
+                            json!({"Data": [{"VarCharValue": "1"}]}),
+                        ];
+                        if follow {
+                            rows = if repeat {
+                                vec![json!({"Data": [{"VarCharValue": "2"}]})]
+                            } else {
+                                vec![]
+                            };
+                        }
+                        json!({"NextToken": if repeat || !follow { "same" } else { "fresh" }, "ResultSet": {
+                            "ResultSetMetadata": {"ColumnInfo": [{"Name": "n", "Type": "bigint"}]},
+                            "Rows": rows
+                        }})
+                    }
+                    _ => json!({}),
+                };
+                (200, body.to_string().into())
+            });
+            let url = format!(
+                "athena://AKID:secret@eu-central-1/AwsDataCatalog?endpoint={}",
+                server.base.replace(':', "%3A").replace('/', "%2F")
+            );
+            let adapter = AthenaAdapter::new(&url, None, String::new()).unwrap();
+            assert_eq!(adapter.list_schemas().await.unwrap(), ["a", "a"]);
+            let result = adapter.execute_query("select n from t").await.unwrap();
+            assert_eq!(result.rows.len(), if repeat { 2 } else { 1 });
+            assert!(result.truncated);
+            let calls = |target: &str| {
+                server
+                    .requests()
+                    .iter()
+                    .filter(|r| r.header("x-amz-target") == Some(target))
+                    .count()
+            };
+            assert_eq!(calls("AmazonAthena.ListDatabases"), 2);
+            assert_eq!(calls("AmazonAthena.GetQueryResults"), 2);
+        }
     }
 
     async fn paged_query(total: usize, limit: Option<usize>) -> (QueryResult, usize) {

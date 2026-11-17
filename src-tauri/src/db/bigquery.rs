@@ -33,6 +33,13 @@ fn percent(value: &str) -> String {
         .unwrap_or_else(|| value.to_string())
 }
 
+fn next_token(page: &Value, key: &str, previous: Option<&str>) -> Option<String> {
+    page[key]
+        .as_str()
+        .filter(|token| !token.is_empty() && Some(*token) != previous)
+        .map(str::to_string)
+}
+
 fn str_of(value: &Value) -> &str {
     value.as_str().unwrap_or("")
 }
@@ -494,7 +501,7 @@ impl BigqueryAdapter {
                         .map(|d| str_of(&d["datasetReference"]["datasetId"]).to_string()),
                 );
             }
-            token = page["nextPageToken"].as_str().map(str::to_string);
+            token = next_token(&page, "nextPageToken", token.as_deref());
             if token.is_none() {
                 break;
             }
@@ -520,7 +527,7 @@ impl BigqueryAdapter {
                     )
                 }));
             }
-            token = page["nextPageToken"].as_str().map(str::to_string);
+            token = next_token(&page, "nextPageToken", token.as_deref());
             if token.is_none() {
                 break;
             }
@@ -642,17 +649,21 @@ impl BigqueryAdapter {
         }
         let schema = response["schema"].clone();
         let mut rows = convert_rows(&schema, &response["rows"]);
-        let mut token = response["pageToken"].as_str().map(str::to_string);
+        let mut token = next_token(&response, "pageToken", None);
         while rows.len() < limit && !job_id.is_empty() {
             let Some(page_token) = token.take() else {
                 break;
             };
             let mut page = query.clone();
-            page.push(("pageToken", page_token));
+            page.push(("pageToken", page_token.clone()));
             let next =
                 timed(self.call(reqwest::Method::GET, &["queries", &job_id], &page, None)).await?;
-            rows.extend(convert_rows(&schema, &next["rows"]));
-            token = next["pageToken"].as_str().map(str::to_string);
+            let more = convert_rows(&schema, &next["rows"]);
+            token = next_token(&next, "pageToken", None);
+            if more.is_empty() || token.as_deref() == Some(page_token.as_str()) {
+                break;
+            }
+            rows.extend(more);
         }
         let truncated = rows.len() > limit || token.is_some();
         rows.truncate(limit);
@@ -917,7 +928,7 @@ impl DatabaseAdapter for BigqueryAdapter {
                 let converted = convert_rows(&meta["schema"], &page["rows"]);
                 let empty = converted.is_empty();
                 rows.extend(converted);
-                token = page["pageToken"].as_str().map(str::to_string);
+                token = next_token(&page, "pageToken", token.as_deref());
                 if token.is_none() || empty {
                     break;
                 }
@@ -1193,6 +1204,54 @@ mod tests {
         assert_eq!(nulls[0][1], Value::Null);
         assert_eq!(nulls[0][2], Value::Null);
         assert_eq!(nulls[0][3], json!([]));
+    }
+
+    #[tokio::test]
+    async fn paging_stops_on_empty_or_repeated_tokens() {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = calls.clone();
+        let server = http_mock::start(move |req| {
+            seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let route = req.route().to_string();
+            let body = match route.as_str() {
+                "/bigquery/v2/projects/proj/datasets" => {
+                    json!({"datasets": [{"datasetReference": {"datasetId": "a"}}], "nextPageToken": "same"})
+                }
+                "/bigquery/v2/projects/proj/datasets/ds/tables" => {
+                    json!({"tables": [], "nextPageToken": ""})
+                }
+                "/bigquery/v2/projects/proj/datasets/ds/tables/orders" => {
+                    json!({"type": "TABLE", "schema": schema()})
+                }
+                "/bigquery/v2/projects/proj/datasets/ds/tables/orders/data" => {
+                    json!({"rows": [row("1")], "pageToken": "same"})
+                }
+                "/bigquery/v2/projects/proj/queries" => {
+                    json!({"jobComplete": true, "jobReference": {"jobId": "j1"}, "schema": schema(), "rows": [row("1")], "pageToken": "same"})
+                }
+                "/bigquery/v2/projects/proj/queries/j1" => {
+                    json!({"jobComplete": true, "schema": schema(), "rows": [row("2")], "pageToken": "same"})
+                }
+                _ => return (404, "{}".into()),
+            };
+            (200, body.to_string().into())
+        });
+        let a = adapter(&server.base, "");
+        let count = || calls.swap(0, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(a.list_schemas().await.unwrap(), ["a", "a"]);
+        assert_eq!(count(), 2);
+        assert!(a.list_tables(Some("ds")).await.unwrap().is_empty());
+        assert_eq!(count(), 1);
+        let page = a
+            .fetch_rows("ds", "orders", None, i64::MAX, 0, None, false, false, false)
+            .await
+            .unwrap();
+        assert_eq!(page.rows.len(), 2);
+        assert_eq!(count(), 3);
+        let result = a.execute_query("SELECT 1").await.unwrap();
+        assert_eq!(result.rows.len(), 1);
+        assert!(result.truncated);
+        assert_eq!(count(), 2);
     }
 
     fn catalog_server() -> http_mock::MockServer {
