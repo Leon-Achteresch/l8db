@@ -95,6 +95,7 @@ export interface Capabilities {
   explain_analyze: boolean;
   packages: boolean;
   insert_sql: boolean;
+  query_builder: boolean;
   database_is_schema: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
   sort: "columns" | "none" | "keyword";

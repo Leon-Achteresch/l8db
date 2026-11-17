@@ -149,6 +149,15 @@ describe("geometry", () => {
     expect(toEwkt(parsed)).toBe("SRID=4326;POINT (1 2)");
   });
 
+  test("parses MySQL geometry shown as 0x hex", () => {
+    const parsed = parseGeometryValue(
+      "0x000000000101000000000000000000F03F0000000000000040",
+      "point",
+    );
+    expect(parsed.format).toBe("mysql");
+    expect(parsed.geometry).toEqual({ type: "Point", coordinates: [1, 2] });
+  });
+
   test("parses polygons with holes, Z multipoints and collections", () => {
     const polygon = parseGeometryValue(PG_POLYGON_HOLE, "geometry");
     expect(polygon.geometry.type).toBe("Polygon");
@@ -326,6 +335,9 @@ describe("detection", () => {
   test("builds cheap grid badges", () => {
     expect(cellValueBadge("\\x89504e470d0a1a0a")?.label).toBe("PNG");
     expect(cellValueBadge("\\x0001")?.title).toBe("Binärdaten · 2 B");
+    expect(cellValueBadge("0x0001", "varbinary(16)")?.title).toBe("Binärdaten · 2 B");
+    expect(cellValueBadge("0x89504E470D0A1A0A", "varbinary(max)")?.label).toBe("PNG");
+    expect(cellValueBadge("0x0001", "nvarchar(10)")).toBeNull();
     expect(cellValueBadge(PG_POINT)?.kind).toBe("geometry");
     expect(cellValueBadge("[1,2,3]", "vector")?.text).toBe("[1, 2, 3] (3d)");
     expect(cellValueBadge({ type: "Point", coordinates: [1, 2] })?.kind).toBe("geometry");

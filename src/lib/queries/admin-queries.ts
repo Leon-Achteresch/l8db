@@ -107,10 +107,12 @@ export function pollUntilFailure<T>(refetchInterval: number | false) {
     query.state.status === "error" && query.state.data === undefined ? false : refetchInterval;
 }
 
+export function isPermissionDenied(error: unknown): boolean {
+  return /ORA-01031|permission denied|insufficient privilege/i.test(String(error));
+}
+
 export function retryUnlessDenied(failureCount: number, error: unknown) {
-  return (
-    failureCount < 3 && !/ORA-01031|permission denied|insufficient privilege/i.test(String(error))
-  );
+  return failureCount < 3 && !isPermissionDenied(error);
 }
 
 export function useSessionsQuery(refetchInterval: number | false = 5000) {

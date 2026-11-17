@@ -9,6 +9,7 @@ import {
   type TableTemplate,
   type Terms,
 } from "@/lib/db";
+import { useServerProducts } from "@/lib/server-products";
 
 export const DEFAULT_TERMS: Terms = {
   database: "Datenbank",
@@ -101,6 +102,7 @@ export const POSTGRES_CAPABILITIES: Capabilities = {
   explain_analyze: true,
   packages: false,
   insert_sql: true,
+  query_builder: true,
   database_is_schema: false,
   query_language: "sql",
   sort: "columns",
@@ -173,6 +175,7 @@ const SQL_COMMON_CAPABILITIES: Capabilities = {
   dml_preview: true,
   multi_target_query: true,
   insert_sql: true,
+  query_builder: true,
 };
 
 const MYSQL_CAPABILITIES: Capabilities = {
@@ -184,6 +187,7 @@ const MYSQL_CAPABILITIES: Capabilities = {
   sessions: true,
   transactions: true,
   table_transactions: true,
+  partitions: true,
   row_edit: true,
   data_compare: true,
   schema_snapshot: true,
@@ -242,7 +246,7 @@ export const FALLBACK_PROVIDERS: ProviderInfo[] = [
     hint: "MariaDB mit eigener visueller Identität.",
     hosts: ["localhost"],
     driver: { type: "builtin" },
-    capabilities: MYSQL_CAPABILITIES,
+    capabilities: { ...MYSQL_CAPABILITIES, sequences: true },
     driver_status: FALLBACK_DRIVER,
   },
   {
@@ -344,7 +348,7 @@ FALLBACK_PROVIDERS.push(
   },
   {
     id: "workspace",
-    name: "Workspace",
+    name: "Team-Workspace",
     group: "Team",
     kind: "workspace",
     default_port: null,
@@ -447,10 +451,17 @@ export function capabilitiesFor(kind: DatabaseKind | null | undefined): Capabili
 }
 
 export function supports(
-  connection: { kind: DatabaseKind } | null | undefined,
+  connection: { kind: DatabaseKind; connectionString?: string } | null | undefined,
   feature: BooleanCapability,
 ): boolean {
-  return Boolean(connection) && capabilitiesFor(connection?.kind)[feature];
+  if (!connection) return false;
+  const product = connection.connectionString
+    ? useServerProducts.getState().products[connection.connectionString]
+    : undefined;
+  const probed = product ? providerById(product) : undefined;
+  const capabilities =
+    probed?.kind === connection.kind ? probed.capabilities : capabilitiesFor(connection.kind);
+  return capabilities[feature];
 }
 
 export function useCapabilities(kind: DatabaseKind | null | undefined): Capabilities {

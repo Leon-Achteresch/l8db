@@ -11,6 +11,7 @@ export interface PartitionInfo {
   strategy: string | null;
   partition_key: string | null;
   partitions: PartitionChild[];
+  read_only: boolean;
 }
 
 export async function getPartitionInfo(

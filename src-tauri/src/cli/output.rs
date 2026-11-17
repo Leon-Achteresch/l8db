@@ -94,7 +94,7 @@ fn write_table(
                 .enumerate()
                 .map(|(index, column)| {
                     if missing(row, column) {
-                        String::new()
+                        "—".into()
                     } else {
                         table_text(&cell(row, column, index))
                     }
@@ -282,6 +282,9 @@ mod tests {
         assert_eq!(text, "_id\temail\tname\ttags\n2\t\t\\N\t[\"x\"]\n");
         let text = render(Format::Table, &["email", "name"], &rows);
         assert_eq!(text.matches("NULL").count(), 1, "{text}");
+        assert_eq!(text.matches('—').count(), 1, "{text}");
+        let text = render(Format::Table, &["email"], &[json!({"email": ""})]);
+        assert!(!text.contains('—'), "{text}");
     }
 
     #[test]

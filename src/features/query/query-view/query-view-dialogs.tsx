@@ -115,7 +115,8 @@ export function QueryViewDialogs({
       <ScriptRunDialog
         open={script.scriptDialogOpen}
         onOpenChange={script.setScriptDialogOpen}
-        statementCount={script.scriptSplit.statements.length + script.scriptSplit.commands.length}
+        statementCount={script.scriptSplit.statements.length}
+        commandCount={script.scriptSplit.commands.length}
         mode={script.scriptMode}
         unterminated={script.scriptSplit.unterminated}
         transactions={caps.transactions}

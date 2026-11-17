@@ -54,16 +54,24 @@ export function detectProvider(value: string, kind = kindFromUrl(value)): string
   if (!candidates.length) return "postgres";
   if (kind === "s3") return detectObjectStorage(value, candidates);
   let host = "";
+  let port = "";
   const oracle = parseOracleKeyValue(value);
   if (oracle) {
     host = oracleEndpointHost(oracle.source).toLowerCase();
   } else {
     try {
-      host = new URL(value.trim()).hostname.toLowerCase();
+      const url = new URL(value.trim());
+      host = url.hostname.toLowerCase();
+      port = url.port;
     } catch {
       host = "";
     }
   }
+  const familyPort = candidates[0].default_port ?? 0;
+  const samePort = candidates.filter(
+    (provider) =>
+      String(provider.default_port) === port && Math.abs(Number(port) - familyPort) > 10,
+  );
   const match = candidates.find((provider) =>
     provider.hosts.some((entry) => (entry.startsWith(".") ? host.endsWith(entry) : host === entry)),
   );
@@ -72,7 +80,10 @@ export function detectProvider(value: string, kind = kindFromUrl(value)): string
     : undefined;
   const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(value.trim())?.[1]?.toLowerCase();
   const byScheme = candidates.find((provider) => provider.id === scheme);
-  return (match ?? cloud ?? byScheme ?? candidates[0]).id;
+  const byPort = samePort.length === 1 ? samePort[0] : undefined;
+  const byDomain = match?.hosts.some((entry) => entry.startsWith(".") && host.endsWith(entry));
+  return ((byDomain ? match : undefined) ?? byPort ?? match ?? cloud ?? byScheme ?? candidates[0])
+    .id;
 }
 
 export function providerFor(connection: {

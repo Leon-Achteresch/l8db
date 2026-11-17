@@ -30,7 +30,8 @@ mock.module("@tauri-apps/api/core", () => ({
         provider("timescale", "postgres", { replication: true }),
         provider("redis", "redis", {}),
         provider("dragonfly", "redis", {}),
-        provider("mysql", "mysql", {}),
+        provider("mysql", "mysql", { sequences: false }),
+        provider("mariadb", "mysql", { sequences: true }),
       ];
     if (command === "execute_query") {
       queries.push({ kind: String(args.kind), sql: String(args.sql) });
@@ -40,7 +41,7 @@ mock.module("@tauri-apps/api/core", () => ({
   },
 }));
 
-const { loadProviders } = await import("../src/lib/providers");
+const { loadProviders, supports } = await import("../src/lib/providers");
 await loadProviders();
 const { detectServerProduct } = await import("../src/lib/ssh/server-product");
 const { productFromProbe, serverProduct } = await import("../src/lib/server-products");
@@ -65,6 +66,8 @@ test("server versions name wire-compatible products", () => {
     productFromProbe("redis", [{ section: "server", key: "dragonfly_version", value: "df-v1" }]),
   ).toBe("dragonfly");
   expect(productFromProbe("redis", [{ result: "redis_version:7.4.0" }])).toBe(null);
+  expect(productFromProbe("mysql", [{ version: "11.4.2-MariaDB-ubu2404" }])).toBe("mariadb");
+  expect(productFromProbe("mysql", [{ version: "8.4.3" }])).toBe(null);
 });
 
 test("activation probes each server once and switches the provider", async () => {
@@ -74,22 +77,39 @@ test("activation probes each server once and switches the provider", async () =>
   answers[crdb] = [{ version: "CockroachDB CCL v26.4.0", timescale: false }];
   answers[pg] = [{ version: "PostgreSQL 18.1", timescale: false }];
   answers[dragonfly] = [{ result: "# Server\r\ndragonfly_version:df-v1.34" }];
+  const maria = "mysql://root@127.0.0.1:13306/app";
+  answers[maria] = [{ version: "11.4.2-MariaDB" }];
+  answers["mysql://root@127.0.0.1/app"] = [{ version: "8.4.3" }];
   queries.length = 0;
   for (const [kind, url] of [
     ["postgres", crdb],
     ["postgres", pg],
     ["redis", dragonfly],
     ["mysql", "mysql://root@127.0.0.1/app"],
+    ["mysql", maria],
   ])
     await detectServerProduct(connection(kind, url));
-  expect(queries.length).toBe(3);
-  expect(queries.map((entry) => entry.kind)).toEqual(["postgres", "postgres", "redis"]);
+  expect(queries.length).toBe(5);
+  expect(queries.map((entry) => entry.kind)).toEqual([
+    "postgres",
+    "postgres",
+    "redis",
+    "mysql",
+    "mysql",
+  ]);
   expect(serverProduct(crdb)).toBe("cockroachdb");
   expect(serverProduct(pg)).toBeUndefined();
   expect(providerFor(connection("postgres", crdb)).id).toBe("cockroachdb");
   expect(providerFor(connection("postgres", crdb)).capabilities.replication).toBe(false);
   expect(providerFor(connection("postgres", pg)).id).toBe("postgres");
   expect(providerFor(connection("redis", dragonfly)).id).toBe("dragonfly");
+  expect(providerFor(connection("mysql", maria)).capabilities.sequences).toBe(true);
+  expect(
+    providerFor(connection("mysql", "mysql://root@127.0.0.1/app")).capabilities.sequences,
+  ).toBe(false);
+  expect(supports(connection("postgres", crdb), "replication")).toBe(false);
+  expect(supports(connection("postgres", pg), "replication")).toBe(true);
+  expect(supports(connection("mysql", maria), "sequences")).toBe(true);
 });
 
 test("connection import keeps the product it names", () => {

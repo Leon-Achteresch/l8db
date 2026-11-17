@@ -548,7 +548,12 @@ async fn relation_labels(
         }
         DatabaseKind::Clickhouse => {
             let filter = schema
-                .map(|s| format!(" AND database = '{}'", s.replace('\\', "\\\\").replace('\'', "\\'")))
+                .map(|s| {
+                    format!(
+                        " AND database = '{}'",
+                        s.replace('\\', "\\\\").replace('\'', "\\'")
+                    )
+                })
                 .unwrap_or_default();
             Some(format!(
                 "SELECT database AS s, name AS n, if(engine = 'Dictionary', 'dictionary', '{MATERIALIZED_VIEW}') AS l FROM system.tables WHERE engine IN ('MaterializedView', 'Dictionary'){filter}"
@@ -890,8 +895,7 @@ async fn table(
             if rows.is_empty() && kind == DatabaseKind::Dynamodb {
                 let region = adapter.list_schemas().await.unwrap_or_default().join(", ");
                 eprintln!("Keine Tabellen in Region {region}.");
-            } else if rows.is_empty()
-                && matches!(kind, DatabaseKind::Sqlite | DatabaseKind::Duckdb)
+            } else if rows.is_empty() && matches!(kind, DatabaseKind::Sqlite | DatabaseKind::Duckdb)
             {
                 eprintln!("Keine Tabellen vorhanden.");
             } else if rows.is_empty() {
@@ -1234,7 +1238,9 @@ fn split_statements(
             }
             parts
         }
-        kind if is_sql(kind) => db::sql_script::split_for(kind, sql),
+        kind if is_sql(kind) || kind == DatabaseKind::Elasticsearch => {
+            db::sql_script::split_for(kind, sql)
+        }
         DatabaseKind::Mongodb => db::mongo_shell::split(sql),
         _ => vec![sql.to_string()],
     };

@@ -416,7 +416,10 @@ enum TableCommand {
         override_usage = "l8db table describe <TABELLE>"
     )]
     Describe {
-        #[arg(value_name = "TABELLE", help = "Name oder schema.name (MongoDB: Collection, S3: Bucket)")]
+        #[arg(
+            value_name = "TABELLE",
+            help = "Name oder schema.name (MongoDB: Collection, S3: Bucket)"
+        )]
         table: String,
     },
     #[command(
@@ -425,7 +428,10 @@ enum TableCommand {
         override_usage = "l8db table rows <TABELLE> [--where AUSDRUCK] [--order-by SPALTE] [--desc] [-n ANZAHL]"
     )]
     Rows {
-        #[arg(value_name = "TABELLE", help = "Name oder schema.name (MongoDB: Collection, S3: Bucket)")]
+        #[arg(
+            value_name = "TABELLE",
+            help = "Name oder schema.name (MongoDB: Collection, S3: Bucket)"
+        )]
         table: String,
         #[arg(
             short = 'w',
@@ -467,7 +473,10 @@ enum TableCommand {
         override_usage = "l8db table count <TABELLE> [--where AUSDRUCK]"
     )]
     Count {
-        #[arg(value_name = "TABELLE", help = "Name oder schema.name (MongoDB: Collection, S3: Bucket)")]
+        #[arg(
+            value_name = "TABELLE",
+            help = "Name oder schema.name (MongoDB: Collection, S3: Bucket)"
+        )]
         table: String,
         #[arg(
             short = 'w',
@@ -633,7 +642,9 @@ pub(crate) fn sql_comment_arg(arg: &str) -> String {
     match arg.strip_prefix("--") {
         Some(rest)
             if rest.starts_with(char::is_whitespace)
-                || rest.split_once('\n').is_some_and(|(line, _)| !line.contains('=')) =>
+                || rest
+                    .split_once('\n')
+                    .is_some_and(|(line, _)| !line.contains('=')) =>
         {
             format!(" {arg}")
         }

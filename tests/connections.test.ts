@@ -44,6 +44,10 @@ const PROVIDERS = [
   provider("supabase", "postgres", ["postgresql", "postgres"], [".supabase.co", ".supabase.com"]),
   provider("neon", "postgres", ["postgresql", "postgres"], [".neon.tech"]),
   provider("cloud-postgres", "postgres", ["postgresql", "postgres"], [".rds.amazonaws.com"]),
+  provider("cockroachdb", "postgres", ["postgresql", "postgres"], [".cockroachlabs.cloud"], {
+    default_port: 26257,
+  }),
+  provider("yugabyte", "postgres", ["postgresql", "postgres"], [], { default_port: 5433 }),
   provider("mysql", "mysql", ["mysql", "mariadb"], ["localhost"], { default_port: 3306 }),
   provider("mongodb", "mongodb", ["mongodb", "mongodb+srv"], ["localhost"], {
     default_port: 27017,
@@ -201,6 +205,8 @@ describe("PostgreSQL URLs", () => {
     expect(detectProvider("postgres://10.0.0.5/app")).toBe("postgres");
     expect(detectProvider("postgres://dbserver/app")).toBe("postgres");
     expect(detectProvider("postgres://user@localhost/app")).toBe("postgres");
+    expect(detectProvider("postgresql://root@127.0.0.1:26257/defaultdb")).toBe("cockroachdb");
+    expect(detectProvider("postgresql://root@127.0.0.1:5433/app")).toBe("postgres");
   });
   test("preserves the hostname for TLS and all URL options through SSH", () => {
     const result = tunneledConnectionString(

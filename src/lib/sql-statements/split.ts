@@ -113,6 +113,37 @@ function isSpace(ch: string): boolean {
   return ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === "\f" || ch === "\v";
 }
 
+const CONSOLE_METHODS = new Set(["GET", "POST", "PUT", "DELETE", "HEAD", "PATCH"]);
+
+function isConsoleRequestLine(line: string): boolean {
+  const match = /^(\S+)\s+(\S.*)$/.exec(line.trim());
+  return Boolean(match && CONSOLE_METHODS.has(match[1].toUpperCase()) && !match[2].startsWith("{"));
+}
+
+function splitConsoleRequests(sql: string): SqlStatement[] | null {
+  const statements: SqlStatement[] = [];
+  let start = -1;
+  let offset = 0;
+  const push = (end: number) => {
+    if (start < 0) return;
+    let stop = end;
+    while (stop > start && (isSpace(sql[stop - 1]) || sql[stop - 1] === ";")) stop -= 1;
+    statements.push({ text: sql.slice(start, stop), start, end: stop });
+  };
+  for (const line of sql.split("\n")) {
+    const trimmed = line.trim();
+    if (isConsoleRequestLine(line)) {
+      push(offset);
+      start = offset + line.indexOf(trimmed);
+    } else if (start < 0 && trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("//")) {
+      return null;
+    }
+    offset += line.length + 1;
+  }
+  push(sql.length);
+  return statements.length > 0 ? statements : null;
+}
+
 export interface SqlSplitOptions {
   blankLines?: boolean;
   slashRuns?: boolean;
@@ -136,6 +167,10 @@ export function splitSqlStatements(
       offset += line.length + 1;
     }
     return { statements, commands: [], unterminated: false };
+  }
+  if (dialect === "elasticsearch") {
+    const requests = splitConsoleRequests(sql);
+    if (requests) return { statements: requests, commands: [], unterminated: false };
   }
   if (dialect === "mongodb") {
     const text = sql.trim();

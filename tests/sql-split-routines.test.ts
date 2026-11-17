@@ -182,3 +182,28 @@ describe("PostgreSQL SQL-standard bodies", () => {
     expect(texts(`${fn}\n${trig}\nSELECT 1;`, "postgres")).toEqual([fn, trig, "SELECT 1;"]);
   });
 });
+
+describe("Elasticsearch console requests", () => {
+  test("every request line starts a statement without semicolons", () => {
+    const sql =
+      '# Suche\nGET a/_search\n{\n  "query": { "match_all": {} }\n}\n\nGET b/_search\nPOST logs/_doc;\n{"a": 1};\n';
+    const result = splitSqlStatements(sql, "elasticsearch");
+    expect(result.statements.map((statement) => statement.text)).toEqual([
+      'GET a/_search\n{\n  "query": { "match_all": {} }\n}',
+      "GET b/_search",
+      'POST logs/_doc;\n{"a": 1}',
+    ]);
+    for (const statement of result.statements)
+      expect(sql.slice(statement.start, statement.end)).toBe(statement.text);
+    expect(statementAtOffset(sql, sql.indexOf("b/_search"), "elasticsearch")?.text).toBe(
+      "GET b/_search",
+    );
+  });
+
+  test("Elasticsearch SQL keeps semicolon splitting", () => {
+    expect(texts("SELECT 1;\nDELETE FROM logs;", "elasticsearch")).toEqual([
+      "SELECT 1;",
+      "DELETE FROM logs;",
+    ]);
+  });
+});

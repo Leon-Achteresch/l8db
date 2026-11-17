@@ -106,6 +106,22 @@ export function columnChecks(
   return checks;
 }
 
+const PG_TEXT =
+  /^(?:text|citext|name|bpchar|character(?: varying)?(?:\(\d+\))?|varchar(?:\(\d+\))?|char(?:\(\d+\))?)$/i;
+
+export function castCheck(
+  column: string,
+  table: string,
+  from: string | undefined,
+  to: string | undefined,
+): DataCheck | null {
+  if (!from || !to || !PG_TEXT.test(from) || PG_TEXT.test(to)) return null;
+  return {
+    sql: `SELECT COUNT(*) FROM ${table} WHERE ${column} IS NOT NULL AND NOT pg_input_is_valid(${column}::text, '${to.replace(/'/g, "''")}')`,
+    message: `Werte nicht in ${to} umwandelbar`,
+  };
+}
+
 export function addColumnCheck(column: CatalogObject, table: string): DataCheck | null {
   const attributes = column.attributes;
   if (

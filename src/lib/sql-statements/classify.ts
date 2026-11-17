@@ -21,6 +21,9 @@ const DML_PATTERN = /^(INSERT|UPDATE|DELETE|MERGE|CALL|EXEC|EXECUTE)\b/i;
 
 const PLSQL_BLOCK_PATTERN = /^(BEGIN|DECLARE)\b/i;
 
+const OUTPUT_ONLY_BLOCK_PATTERN =
+  /^BEGIN\s+(?:(?:DBMS_OUTPUT\s*\.\s*[A-Z_]+\s*(?:\((?:[^'()]|'(?:[^']|'')*')*\))?|NULL)\s*;\s*)+END\s*;?\s*\/?$/i;
+
 const DDL_PATTERN = /^(CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE)\b/i;
 
 const CREATE_VIEW_PATTERN = /^CREATE(\s+OR\s+REPLACE)?(\s+(TEMP|TEMPORARY|RECURSIVE))*\s+VIEW\b/i;
@@ -48,7 +51,10 @@ function leadText(sql: string): string {
 }
 
 function changesData(text: string, kind?: string): boolean {
-  return DML_PATTERN.test(text) || (kind === "oracle" && PLSQL_BLOCK_PATTERN.test(text));
+  return (
+    DML_PATTERN.test(text) ||
+    (kind === "oracle" && PLSQL_BLOCK_PATTERN.test(text) && !OUTPUT_ONLY_BLOCK_PATTERN.test(text))
+  );
 }
 
 function isTransactionalUnit(text: string, kind?: string): boolean {

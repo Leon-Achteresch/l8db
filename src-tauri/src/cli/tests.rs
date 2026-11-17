@@ -311,6 +311,10 @@ fn scripts_are_split_per_family() {
     let body = "create function f() returns int as $$ begin return 1; end $$ language plpgsql;\nselect f();";
     assert_eq!(statements(DatabaseKind::Postgres, body).unwrap().len(), 2);
     assert_eq!(statements(DatabaseKind::Redis, "SET a 1").unwrap().len(), 1);
+    assert_eq!(
+        statements(DatabaseKind::Elasticsearch, "GET a/_search\nGET b/_search").unwrap(),
+        ["GET a/_search", "GET b/_search"]
+    );
     assert!(statements(DatabaseKind::Postgres, " ;\n ; ")
         .unwrap()
         .is_empty());

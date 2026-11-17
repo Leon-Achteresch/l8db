@@ -116,7 +116,7 @@ export function ViewDetailTabs({
               {data && (
                 <TableExportMenu
                   exporting={exporting}
-                  showSql={true}
+                  showSql={caps.insert_sql}
                   onCsv={() => setCsvExportOpen(true)}
                   onXlsx={() => setXlsxExportOpen(true)}
                   onFormat={setDataExportFormat}

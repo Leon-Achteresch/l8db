@@ -115,7 +115,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       group: 1,
       icon: Blocks,
       activeIcon: Grid2x2Plus,
-      available: (caps) => caps.query_language === "sql" && !caps.object_storage,
+      available: (caps) => caps.query_builder,
     },
     {
       title: "ER-Diagramm",

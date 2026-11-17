@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { statementCountLabel } from "@/lib/sql-statements";
 
 export type ScriptRunMode = "existing-transaction" | "new-transaction" | "autocommit";
 
@@ -37,6 +38,7 @@ interface ScriptRunDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   statementCount: number;
+  commandCount?: number;
   mode: ScriptRunMode;
   unterminated: boolean;
   onConfirm: (mode: ScriptRunMode, stopOnError: boolean) => void;
@@ -48,6 +50,7 @@ export function ScriptRunDialog({
   open,
   onOpenChange,
   statementCount,
+  commandCount = 0,
   mode,
   unterminated,
   onConfirm,
@@ -69,8 +72,8 @@ export function ScriptRunDialog({
         <DialogHeader>
           <DialogTitle>Skript ausführen</DialogTitle>
           <DialogDescription>
-            {statementCount} Statement{statementCount === 1 ? "" : "s"} werden nacheinander in der
-            Reihenfolge des Editors ausgeführt.
+            {statementCountLabel(statementCount, commandCount)}, nacheinander in der Reihenfolge des
+            Editors.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-2 text-xs">
@@ -137,7 +140,7 @@ export function ScriptRunDialog({
           <Button
             size="sm"
             onClick={() => onConfirm(selectedMode, forcedStop || stopOnError)}
-            disabled={statementCount === 0 || unterminated}
+            disabled={statementCount + commandCount === 0 || unterminated}
           >
             Skript ausführen
           </Button>

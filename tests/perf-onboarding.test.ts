@@ -197,7 +197,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       await page.evaluate(() => {
         document.querySelector<HTMLElement>('[data-table-style="profile"] input')?.click();
       });
-      await page.getByRole("button", { name: "Überspringen", exact: true }).click();
+      await page.getByRole("button", { name: "Standard behalten", exact: true }).click();
       await page.getByRole("heading", { name: "Wie viel Werkzeug brauchst du?" }).waitFor();
       const settings = await page.evaluate(
         () => JSON.parse(localStorage.getItem("l8db.settings") ?? "{}").state,

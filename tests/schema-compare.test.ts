@@ -321,6 +321,31 @@ describe("postgres sync script", () => {
     expect(script.warnings.some((warning) => warning.includes("m_2024"))).toBe(true);
   });
 
+  test("checks text values before a PostgreSQL type change", () => {
+    const side = (schema: string, type: string) => [
+      object("table", "cust", `CREATE TABLE "${schema}"."cust" ("code" ${type})`),
+      object("column", "code", `"code" ${type}`, "cust", { type, nullable: "YES" }),
+    ];
+    const compared = result(
+      "postgres",
+      side("app", "integer"),
+      side("test", "text"),
+      "app",
+      "test",
+    );
+    const [statement] = buildSyncScript(compared, defaultSelection(compared.items)).statements;
+    expect(statement.checks).toEqual([
+      {
+        sql: `SELECT COUNT(*) FROM "test"."cust" WHERE "code" IS NOT NULL AND NOT pg_input_is_valid("code"::text, 'integer')`,
+        message: "Werte nicht in integer umwandelbar",
+      },
+    ]);
+    const widened = result("postgres", side("app", "text"), side("test", "integer"), "app", "test");
+    expect(buildSyncScript(widened, defaultSelection(widened.items)).statements[0].checks).toBe(
+      undefined,
+    );
+  });
+
   test("rebuilds dependent views around column type changes", () => {
     const side = (schema: string, type: string) => [
       object("table", "t", `CREATE TABLE "${schema}"."t" ("c" ${type})`),

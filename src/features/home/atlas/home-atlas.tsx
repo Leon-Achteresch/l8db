@@ -121,13 +121,15 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
     ) : !atlasTables.length ? (
       <div className="grid h-full place-content-center gap-3 p-6 text-center">
         <Table2 className="mx-auto size-6 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">Dieses Schema enthält noch keine Tabellen.</p>
-        <Button variant="outline" size="sm" className="mx-auto" asChild>
-          <Link to="/create-table">
-            <Plus className="size-3" />
-            Tabelle erstellen
-          </Link>
-        </Button>
+        <p className="text-sm text-muted-foreground">Noch keine {caps.terms.tables}.</p>
+        {caps.ddl && (
+          <Button variant="outline" size="sm" className="mx-auto" asChild>
+            <Link to="/create-table">
+              <Plus className="size-3" />
+              {caps.terms.table} erstellen
+            </Link>
+          </Button>
+        )}
       </div>
     ) : summary.matching === 0 ? (
       <div className="grid h-full place-content-center p-6 text-center text-sm text-muted-foreground">
@@ -164,7 +166,11 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
               type="search"
               className="h-8 w-56 rounded-lg pl-8 text-xs"
               aria-label={`Tabellen in ${schema} finden`}
-              placeholder={`Tabelle in ${schema} finden…`}
+              placeholder={
+                caps.schemas
+                  ? `${caps.terms.table} in ${schema} finden…`
+                  : `${caps.terms.table} finden…`
+              }
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
