@@ -142,12 +142,12 @@ export function FilterValueInput({
         onSourceChange={setSource}
         initialSource={draft}
         value={value}
+        inputRef={inputRef}
         disabled={props.disabled}
         onImport={(next) => {
           onValueChange(next);
           setDraft("");
           setSource(null);
-          inputRef.current?.focus();
         }}
       />
       <button

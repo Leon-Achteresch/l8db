@@ -91,3 +91,15 @@ L8DB_BROWSER_CHANNEL=chrome bun --no-env-file scripts/test-browser.ts routine-re
 The Rust test exercises genuine PostgreSQL `CALL` and the fixture's request gate. The Chrome regression renders the real dialog, result grid and inspector with controlled IPC responses so success and failure ordering can be tested independently of the server.
 
 The macOS 27.0.1 debug window was exercised with agent-desktop and genuine WebView IPC against PostgreSQL 17.11. The long inspector showed all 57,351 UTF-8 bytes, and keyboard dismissal restored focus to the cell and then to the dialog trigger. Both close/reopen and context switch discarded a pending result. The final fast call returned completion number 5, accounting for all five server completions, including the two discarded answers.
+
+### A11 SQL literal lists in the existing filter popovers
+
+Run the database-free fixture with Bun 1.3.10 and an installed Chrome.
+
+```sh
+L8DB_BROWSER_CHANNEL=chrome bun --no-env-file scripts/test-browser.ts filter-list-import
+```
+
+The fixture mounts the real column filter, list input and SQL import popover. Its apply counter records each explicit filter application, and the browser tests inspect the compiled predicate and reject query IPC. The synthetic paste event uses the component's ordinary clipboard input. The SQL button and recognized paste are exercised in IN and NOT IN. The tests cover invalid and duplicate-only lists, the five-entry preview limit, confirmation, Escape, Cancel, focus restoration, and operator and column changes. Both popovers fit inside a 310 px viewport.
+
+In the shared browser fixture, the SQL trigger showed the NEW badge with the feature release simulated as 0.19.0. After confirmation the input regained focus and the apply counter remained at zero. The separate apply button moved the counter to one and emitted the compiled PostgreSQL predicate. The browser checks use synthesized data and a local callback. Native Tauri clipboard delivery and live provider execution were outside this acceptance.

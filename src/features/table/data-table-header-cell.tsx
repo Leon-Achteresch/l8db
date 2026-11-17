@@ -147,7 +147,7 @@ export function DataTableHeaderCell({
           <PopoverContent
             align="start"
             sideOffset={4}
-            className="w-80 p-0 gap-0"
+            className="w-[min(20rem,calc(100vw-1rem))] p-0 gap-0"
             onFocusOutside={(event) => event.preventDefault()}
           >
             <div className="flex items-center gap-2 border-b px-3 py-2">
