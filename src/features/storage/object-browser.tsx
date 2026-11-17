@@ -5,6 +5,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { TableDataError } from "@/features/table/table-data-error";
 import { s3CreateFolder, s3RenameObject } from "@/lib/db";
 import { useTableScrollState } from "@/lib/hooks/use-table-scroll-state";
+import { IS_MAC } from "@/lib/platform";
 import { setBucketDropHandler } from "@/lib/storage/drop-target";
 import { basename, parentPrefix } from "@/lib/storage/s3";
 import { runStorageJob, withOverwritePrompt } from "@/lib/storage/transfers";
@@ -129,13 +130,14 @@ export function ObjectBrowser({
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
       return;
     if (
-      (event.key === "Delete" || (event.key === "Backspace" && event.metaKey)) &&
+      event.key === "Backspace" &&
+      (IS_MAC ? event.metaKey : event.ctrlKey) &&
       selectedRows.length &&
       !actions.readOnly
     ) {
       event.preventDefault();
       setDeleteRows(selectedRows);
-    } else if (event.key === "Backspace" && prefix && !search) {
+    } else if (event.key === "Backspace" && !event.metaKey && !event.ctrlKey && prefix && !search) {
       event.preventDefault();
       navigateTo(parentPrefix(prefix));
     } else if (event.key === "a" && (event.metaKey || event.ctrlKey)) {

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { type ConfigTarget, s3DeleteConfig, s3GetConfig, s3PutConfig } from "@/lib/db";
 import { parseTags, type S3Tag, tagsXml } from "@/lib/storage/s3";
+import { ConfirmActionDialog } from "./confirm-action-dialog";
 import { KeyValueEditor } from "./key-value-editor";
 import { errorText, useStorageConnection } from "./use-storage-connection";
 
@@ -23,6 +24,7 @@ export function TagsEditor({ target, readOnly }: { target: ConfigTarget; readOnl
   const tags = useQuery({ queryKey, queryFn: () => s3GetConfig(url, target, "tagging") });
   const [draft, setDraft] = useState<S3Tag[]>([]);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     if (tags.data !== undefined) setDraft(parseTags(tags.data));
@@ -37,6 +39,9 @@ export function TagsEditor({ target, readOnly }: { target: ConfigTarget; readOnl
   }
   if (tags.isError)
     return <p className="text-sm break-words text-destructive">{errorText(tags.error)}</p>;
+
+  const removingAll =
+    !draft.some((tag) => tag.key.trim()) && parseTags(tags.data ?? null).length > 0;
 
   async function save() {
     setBusy(true);
@@ -68,15 +73,21 @@ export function TagsEditor({ target, readOnly }: { target: ConfigTarget; readOnl
         <Button
           size="sm"
           className="justify-self-start"
-          onClick={() => void save()}
+          onClick={() => (removingAll ? setConfirming(true) : void save())}
           disabled={busy}
         >
           {busy ? <Spinner className="size-4" /> : null}
-          {draft.some((tag) => tag.key.trim()) || !parseTags(tags.data ?? null).length
-            ? "Tags speichern"
-            : "Alle Tags entfernen"}
+          {removingAll ? "Alle Tags entfernen" : "Tags speichern"}
         </Button>
       )}
+      <ConfirmActionDialog
+        open={confirming}
+        title="Alle Tags entfernen?"
+        description={`Die Tags von „${target.key ?? target.bucket}“ werden gelöscht.`}
+        confirmLabel="Entfernen"
+        onOpenChange={setConfirming}
+        onConfirm={save}
+      />
     </div>
   );
 }

@@ -178,6 +178,7 @@ fn invalid_header(name: &str, value: &str) -> Option<S3Error> {
 
 fn error_hint(code: &str, req: &Request<'_>) -> Option<&'static str> {
     let listing = req.query.iter().any(|(name, _)| name == "list-type");
+    let select = req.query.iter().any(|(name, _)| name == "select");
     Some(match code {
         "InvalidAccessKeyId" => "Access Key ist dem Server unbekannt.",
         "SignatureDoesNotMatch" => "Secret Key passt nicht zum Access Key.",
@@ -190,6 +191,9 @@ fn error_hint(code: &str, req: &Request<'_>) -> Option<&'static str> {
         "InvalidBucketName" => "Ungültiger Bucket-Name.",
         "InvalidObjectState" => "Das Objekt ist archiviert und muss erst wiederhergestellt werden.",
         "NotImplemented" => "Vom Anbieter nicht unterstützt.",
+        "AccessDenied" if req.key.is_some() && select => {
+            "S3 Select verweigert: Berechtigung s3:GetObject auf dem Objekt fehlt."
+        }
         "AccessDenied" if req.key.is_some() && req.method == Method::GET => {
             "Objekt lesen verweigert: Berechtigung s3:GetObject fehlt."
         }
@@ -203,7 +207,9 @@ fn error_hint(code: &str, req: &Request<'_>) -> Option<&'static str> {
             "Buckets auflisten verweigert: Berechtigung s3:ListAllMyBuckets fehlt. Bucket als Pfad in der URL angeben (s3://…@region/bucket)."
         }
         "AccessDenied" => "Zugriff verweigert: Berechtigung fehlt.",
-        "ExpiredToken" | "InvalidToken" => "Das Session-Token ist abgelaufen oder ungültig.",
+        "ExpiredToken" | "InvalidToken" | "InvalidTokenId" => {
+            "Das Session-Token ist abgelaufen oder ungültig. Neues Token in der URL nach dem Secret Key angeben (secret:token)."
+        }
         "RequestTimeTooSkewed" => "Die Systemzeit weicht zu stark von der Serverzeit ab.",
         "SlowDown" | "ServiceUnavailable" => {
             "Der Server ist überlastet. Bitte später erneut versuchen."
@@ -615,6 +621,13 @@ mod tests {
         assert!(error_hint("AccessDenied", &get)
             .unwrap()
             .contains("GetObject"));
+        let select = Request::new(Method::POST, Some("b"), Some("k")).query("select", "");
+        assert!(error_hint("AccessDenied", &select)
+            .unwrap()
+            .starts_with("S3 Select verweigert"));
+        assert!(error_hint("InvalidTokenId", &list)
+            .unwrap()
+            .starts_with("Das Session-Token"));
         let denied = S3Error {
             status: 403,
             code: "AccessDenied".into(),

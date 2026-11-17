@@ -13,6 +13,7 @@ import { useActiveConnection } from "@/lib/connections";
 import { executeQuery } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { MongoIndexForm } from "./mongo-index-form";
 
 interface CreateIndexDialogProps {
   open: boolean;
@@ -72,6 +73,9 @@ function CreateIndexDialogContent({
           <DialogTitle className="text-sm">Neuer Index</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-1">
+          {caps.query_language === "json" && (
+            <MongoIndexForm collection={table} onCommand={setSql} />
+          )}
           <textarea
             aria-label="Index-Befehl"
             value={sql}

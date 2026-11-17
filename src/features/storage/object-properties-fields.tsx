@@ -120,7 +120,12 @@ export function ObjectPropertiesFields({
         )}
       </div>
       <div className="grid gap-1.5">
-        <Label className="text-xs text-muted-foreground">Benutzer-Metadaten (x-amz-meta-*)</Label>
+        <Label
+          className="text-xs text-muted-foreground"
+          title="Eigene Schlüssel-Wert-Paare, die S3 als Header mit dem Objekt speichert und ausliefert."
+        >
+          Benutzer-Metadaten (x-amz-meta-*)
+        </Label>
         <KeyValueEditor
           items={metadata}
           disabled={disabled}

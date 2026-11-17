@@ -38,6 +38,7 @@ function badge(tone: "ok" | "warn" | "error" | "info" | "muted", children: React
 export function ImportFileList({
   csv,
   sql,
+  scripts = true,
   selected,
   error,
   summary,
@@ -48,6 +49,7 @@ export function ImportFileList({
 }: {
   csv: CsvImportState | null;
   sql: SqlImportDraft;
+  scripts?: boolean;
   selected: "data" | "sql";
   error: string | null;
   summary: [string, string][];
@@ -142,14 +144,16 @@ export function ImportFileList({
           <UploadCloudIcon className="size-5 text-muted-foreground" />
           <span className="text-sm font-medium">Datei auswählen</span>
           <span className="flex flex-wrap justify-center gap-1">
-            {(csv ? FORMATS : ["SQL"]).map((format) => (
-              <span
-                key={format}
-                className="rounded border bg-background px-1.5 py-px font-mono text-[10px] text-muted-foreground"
-              >
-                {format}
-              </span>
-            ))}
+            {(csv ? FORMATS.filter((format) => scripts || format !== "SQL") : ["SQL"]).map(
+              (format) => (
+                <span
+                  key={format}
+                  className="rounded border bg-background px-1.5 py-px font-mono text-[10px] text-muted-foreground"
+                >
+                  {format}
+                </span>
+              ),
+            )}
           </span>
         </button>
         {error && <p className="mt-2 text-xs break-words text-destructive">{error}</p>}
@@ -170,7 +174,13 @@ export function ImportFileList({
                 onSelect={onPickData}
               />
             )}
-            <IconMenuItem icon={<FileCodeIcon />} label="SQL-Skript wählen…" onSelect={onPickSql} />
+            {scripts && (
+              <IconMenuItem
+                icon={<FileCodeIcon />}
+                label="SQL-Skript wählen…"
+                onSelect={onPickSql}
+              />
+            )}
           </IconMenuContent>
         </IconMenu>
       </div>
@@ -187,24 +197,25 @@ export function ImportFileList({
             dataBadge,
             !csv.fileName,
           )}
-        {row(
-          "sql",
-          <FileCodeIcon className="size-4" />,
-          sql.fileName ?? "SQL-Skript",
-          statements === null
-            ? "Keine Datei"
-            : `Skript · ${statements.toLocaleString("de-DE")} Anweisungen`,
-          sqlRunning
-            ? badge("info", "Läuft")
-            : sqlFailed
-              ? badge("error", "Fehler")
-              : sqlDone
-                ? badge("ok", "Ausgeführt")
-                : sql.fileName
-                  ? badge("muted", "Skript")
-                  : null,
-          !sql.fileName,
-        )}
+        {scripts &&
+          row(
+            "sql",
+            <FileCodeIcon className="size-4" />,
+            sql.fileName ?? "SQL-Skript",
+            statements === null
+              ? "Keine Datei"
+              : `Skript · ${statements.toLocaleString("de-DE")} Anweisungen`,
+            sqlRunning
+              ? badge("info", "Läuft")
+              : sqlFailed
+                ? badge("error", "Fehler")
+                : sqlDone
+                  ? badge("ok", "Ausgeführt")
+                  : sql.fileName
+                    ? badge("muted", "Skript")
+                    : null,
+            !sql.fileName,
+          )}
       </ul>
       <dl className="mt-auto grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 border-t px-4 py-3 text-xs">
         {summary.map(([label, value]) => (

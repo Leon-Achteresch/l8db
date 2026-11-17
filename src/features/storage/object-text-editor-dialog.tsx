@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { s3GetObjectText, s3PutObjectText } from "@/lib/db";
+import { s3GetObjectText, s3HeadObject, s3PutObjectText } from "@/lib/db";
 import { ConfirmActionDialog } from "./confirm-action-dialog";
 import type { BrowserRow } from "./use-object-listing";
 import { errorText, useStorageConnection } from "./use-storage-connection";
@@ -33,6 +33,7 @@ export function ObjectTextEditorDialog({
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const [discarding, setDiscarding] = useState(false);
+  const [etag, setEtag] = useState<string | null>(null);
   const content = useQuery({
     queryKey: ["s3", connection?.id, "text", bucket, row?.key],
     queryFn: () => s3GetObjectText(url, bucket, row!.key),
@@ -48,6 +49,7 @@ export function ObjectTextEditorDialog({
     if (row) {
       setError(null);
       setConflict(false);
+      setEtag(row.etag);
     }
   }, [row]);
 
@@ -74,13 +76,30 @@ export function ObjectTextEditorDialog({
     setError(null);
     setConflict(false);
     try {
-      await s3PutObjectText(url, bucket, row.key, text, undefined, force ? null : row.etag);
+      await s3PutObjectText(url, bucket, row.key, text, undefined, force ? null : etag);
       await queryClient.invalidateQueries({ queryKey: ["s3", connection?.id] });
       toast.success(`${row.name} gespeichert`);
       onClose();
     } catch (e) {
       if (/PreconditionFailed/.test(errorText(e))) setConflict(true);
       else setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reload() {
+    if (!row) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const head = await s3HeadObject(url, bucket, row.key);
+      const fresh = await content.refetch();
+      setEtag(head.etag);
+      if (fresh.data !== undefined) setText(fresh.data);
+      setConflict(false);
+    } catch (e) {
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -114,6 +133,9 @@ export function ObjectTextEditorDialog({
         {conflict ? (
           <div className="flex items-center gap-2 text-xs text-destructive">
             Das Objekt wurde inzwischen geändert.
+            <Button size="xs" variant="outline" onClick={() => void reload()} disabled={busy}>
+              Neu laden
+            </Button>
             <Button size="xs" variant="outline" onClick={() => void save(true)} disabled={busy}>
               Trotzdem überschreiben
             </Button>

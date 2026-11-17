@@ -99,6 +99,7 @@ pub struct Capabilities {
     pub explain_analyze: bool,
     pub packages: bool,
     pub insert_sql: bool,
+    pub query_builder: bool,
     pub database_is_schema: bool,
     pub query_language: &'static str,
     pub sort: &'static str,
@@ -423,6 +424,7 @@ const NONE: Capabilities = Capabilities {
     explain_analyze: false,
     packages: false,
     insert_sql: false,
+    query_builder: false,
     database_is_schema: false,
     query_language: "sql",
     sort: "columns",
@@ -452,6 +454,7 @@ const SQL_COMMON: Capabilities = Capabilities {
     dml_preview: true,
     multi_target_query: true,
     insert_sql: true,
+    query_builder: true,
     ..NONE
 };
 
@@ -485,6 +488,7 @@ impl DatabaseKind {
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Jdbc => Capabilities {
+                query_builder: true,
                 databases: false,
                 schemas: true,
                 views: true,
@@ -497,6 +501,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Workspace => Capabilities {
+                query_builder: true,
                 databases: false,
                 schemas: true,
                 read_only_mode: false,
@@ -506,6 +511,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Spacetimedb => Capabilities {
+                query_builder: true,
                 databases: false,
                 schemas: false,
                 read_only_mode: false,
@@ -574,7 +580,6 @@ impl DatabaseKind {
                 column_search: true,
                 source_search: true,
                 scheduler_jobs: true,
-                sequences: true,
                 table_template: MYSQL_TEMPLATE,
                 terms: Terms {
                     schema: "Datenbank",
@@ -629,6 +634,7 @@ impl DatabaseKind {
                 ..SQL_COMMON
             },
             DatabaseKind::Clickhouse => Capabilities {
+                query_builder: true,
                 multi_target_query: true,
                 query_cancel: true,
                 dashboard_parallelism: 2,
@@ -742,12 +748,14 @@ impl DatabaseKind {
                     rows: "Keys",
                     column: "Feld",
                     columns: "Felder",
+                    primary_key: "eindeutig",
                     ..TERMS
                 },
                 filter_hint: "Key-Pattern, z. B. user:*",
                 ..NONE
             },
             DatabaseKind::Odbc => Capabilities {
+                query_builder: true,
                 server_output: true,
                 databases: false,
                 views: true,
@@ -758,6 +766,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Elasticsearch => Capabilities {
+                query_builder: true,
                 server_output: true,
                 databases: false,
                 query_label: "Elasticsearch",
@@ -799,7 +808,6 @@ impl DatabaseKind {
                 ssh: false,
                 view_editor: false,
                 functions: false,
-                alter_columns: false,
                 constraints: false,
                 overview: false,
                 row_edit: true,
@@ -853,6 +861,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Athena => Capabilities {
+                query_builder: true,
                 ssl: false,
                 ssh: false,
                 query_cancel: true,
@@ -867,6 +876,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Bigquery | DatabaseKind::Snowflake => Capabilities {
+                query_builder: true,
                 databases: self == DatabaseKind::Snowflake,
                 proxy_user: self == DatabaseKind::Snowflake,
                 server_output: self == DatabaseKind::Bigquery,
@@ -1311,6 +1321,9 @@ fn odbc_environment_status() -> Result<Vec<String>, String> {
 }
 
 fn product_capabilities(id: &str, mut caps: Capabilities) -> Capabilities {
+    if id == "mariadb" {
+        caps.sequences = true;
+    }
     if id == "cockroachdb" {
         caps.replication = false;
         caps.proxy_user = false;
@@ -1611,6 +1624,31 @@ mod tests {
         }
         assert!(!DatabaseKind::Mongodb.capabilities().dml_preview);
         assert!(!DatabaseKind::Clickhouse.capabilities().dml_preview);
+    }
+
+    #[test]
+    fn query_builder_and_sequences_follow_the_query_model() {
+        for kind in DatabaseKind::ALL {
+            let caps = kind.capabilities();
+            if caps.query_builder {
+                assert_eq!(caps.query_language, "sql", "{kind:?}");
+                assert!(!caps.object_storage, "{kind:?}");
+            }
+        }
+        for kind in [DatabaseKind::Influxdb, DatabaseKind::Dynamodb, DatabaseKind::S3] {
+            assert!(!kind.capabilities().query_builder, "{kind:?}");
+        }
+        assert!(DatabaseKind::Postgres.capabilities().query_builder);
+        assert!(DatabaseKind::Clickhouse.capabilities().query_builder);
+        let product = |id: &str| {
+            list_providers()
+                .into_iter()
+                .find(|p| p.id == id)
+                .unwrap()
+                .capabilities
+        };
+        assert!(!product("mysql").sequences);
+        assert!(product("mariadb").sequences);
     }
 
     #[test]

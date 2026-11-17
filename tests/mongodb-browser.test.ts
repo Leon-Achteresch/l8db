@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { chromium, webkit } from "playwright";
 
 const database = "l8db_browser_integration_long_database_name";
+const mongoPort = process.env.L8DB_MONGODB_PORT ?? "27018";
+const shots = process.env.L8DB_SHOTS_DIR ?? tmpdir();
 
 test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
   "MongoDB: real adapter, collections, JSON filter, query and scope layout",
@@ -14,7 +18,7 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.addInitScript(
-      ({ database }) => {
+      ({ database, mongoPort }) => {
         localStorage.setItem(
           "l8db.settings",
           JSON.stringify({ state: { tourFinished: true, onboardingDone: true }, version: 0 }),
@@ -28,7 +32,7 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
                   id: "mongo-lab",
                   name: "MongoDB Docker Lab",
                   kind: "mongodb",
-                  connectionString: `mongodb://l8db:l8db_test_only@127.0.0.1:27018/${database}?authSource=admin`,
+                  connectionString: `mongodb://l8db:l8db_test_only@127.0.0.1:${mongoPort}/${database}?authSource=admin`,
                   sslMode: "disable",
                   ssh: null,
                   schemas: [database],
@@ -77,13 +81,13 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
           },
         };
       },
-      { database },
+      { database, mongoPort },
     );
     try {
       await page.goto("http://localhost:1420");
       await page.getByRole("combobox", { name: "Datenbank", exact: true }).waitFor();
       await page.getByText("items", { exact: true }).first().waitFor();
-      await page.screenshot({ path: "/tmp/l8db-mongo-sidebar.png" });
+      await page.screenshot({ path: join(shots, "l8db-mongo-sidebar.png") });
 
       const scope = page.locator('[data-tour="sidebar-scope"]');
       expect(await scope.getByRole("combobox").count()).toBe(1);
@@ -108,7 +112,6 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
                   ...provider,
                   capabilities: {
                     ...provider.capabilities,
-                    query_language: "sql",
                     database_is_schema: false,
                     terms: { ...provider.capabilities.terms, schema: "Schema" },
                   },
@@ -134,7 +137,7 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
             .evaluate((node) => node.scrollWidth <= node.clientWidth),
         ).toBe(true);
       }
-      await page.screenshot({ path: "/tmp/l8db-scope-two-fields.png" });
+      await page.screenshot({ path: join(shots, "l8db-scope-two-fields.png") });
       await page.evaluate(async () => {
         const providersUrl =
           performance
@@ -165,15 +168,21 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       await page.getByRole("textbox", { name: "MongoDB-Filter" }).fill('{"n":{"$gte":250}}');
       await page.getByRole("button", { name: "Filter anwenden", exact: true }).click();
       await page.getByText("250", { exact: true }).first().waitFor();
-      await page.screenshot({ path: "/tmp/l8db-mongo-filter.png" });
+      await page.screenshot({ path: join(shots, "l8db-mongo-filter.png") });
 
       await page.getByRole("textbox", { name: "MongoDB-Filter" }).fill("n = 1");
       await page.getByRole("button", { name: "Filter anwenden", exact: true }).click();
       await page
-        .getByText(/Der Filter muss gültiges JSON sein/)
+        .getByText(/Der Filter muss ein gültiges JSON-Objekt sein/)
         .first()
         .waitFor();
-      await page.getByRole("button", { name: "Zurücksetzen", exact: true }).click();
+      expect(await page.getByText("Fehler beim Laden der Tabelle").count()).toBe(0);
+      await page.getByText("250", { exact: true }).first().waitFor();
+      await page.screenshot({ path: join(shots, "l8db-mongo-filter-invalid.png") });
+      if (!(await page.getByRole("textbox", { name: "MongoDB-Filter" }).isVisible()))
+        await page.getByRole("button", { name: "Filter", exact: true }).click();
+      await page.getByRole("textbox", { name: "MongoDB-Filter" }).fill("");
+      await page.getByRole("button", { name: "Filter anwenden", exact: true }).click();
       await page.getByText("1–100 von 257", { exact: true }).waitFor();
       await page.locator('[data-tour="sidebar-table"]').click({ button: "right" });
       expect(
@@ -190,7 +199,7 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       await page.getByText('{"value":250}', { exact: true }).first().waitFor();
       expect(await page.getByText("[object Object]", { exact: true }).count()).toBe(0);
       await page.getByRole("textbox", { name: "Ergebnisse durchsuchen" }).fill("");
-      await page.screenshot({ path: "/tmp/l8db-mongo-query.png" });
+      await page.screenshot({ path: join(shots, "l8db-mongo-query.png") });
       await page.getByRole("combobox", { name: "Datenbank", exact: true }).click();
       await page.getByRole("option", { name: "l8db_browser_second", exact: true }).click();
       await page.getByText("other", { exact: true }).first().waitFor();
@@ -236,7 +245,7 @@ test.skipIf(!process.env.L8DB_MONGODB_BROWSER)(
       expect(errors).toEqual([]);
     } catch (error) {
       console.log((await page.locator("body").innerText()).slice(-8000));
-      await page.screenshot({ path: "/tmp/l8db-mongo-failure.png" });
+      await page.screenshot({ path: join(shots, "l8db-mongo-failure.png") });
       throw error;
     } finally {
       await browser.close();
