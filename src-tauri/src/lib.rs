@@ -14,6 +14,8 @@ mod community_extensions;
 mod connection_import;
 mod convex;
 mod convex_studio;
+#[cfg(debug_assertions)]
+mod csv_check_development;
 mod db;
 mod desktop;
 mod extension_process;
@@ -65,8 +67,26 @@ fn set_memory_target(window: &tauri::Window, low: bool) {
     });
 }
 
+fn application_context() -> tauri::Context<tauri::Wry> {
+    tauri::generate_context!()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if std::env::args().any(|arg| arg == "--csv-check-development") {
+        #[cfg(debug_assertions)]
+        {
+            if csv_check_development::selected(&std::env::args().skip(1).collect::<Vec<_>>()) {
+                csv_check_development::run(application_context())
+                    .expect("isolated CSV development failed");
+            } else {
+                eprintln!("CSV-Entwicklung muss ohne weitere Argumente gestartet werden.");
+            }
+        }
+        #[cfg(not(debug_assertions))]
+        eprintln!("CSV-Entwicklung ist nur im Debug-Build verfügbar.");
+        return;
+    }
     desktop::mark_process_start();
     if std::env::args().nth(1).as_deref() == Some("--mcp-sandbox") {
         std::process::exit(mcp::sandbox());
@@ -784,7 +804,7 @@ pub fn run() {
             db::commands::get_database_overview,
             db::commands::get_schema_map,
         ]))
-        .build(tauri::generate_context!())
+        .build(application_context())
         .expect("error while running tauri application")
         .run(|_app, _event| {
             if let tauri::RunEvent::Exit = _event {

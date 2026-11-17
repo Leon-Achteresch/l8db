@@ -18,6 +18,7 @@ import {
 
 const SUITES = {
   core: [
+    "tests/perf-csv-development.test.ts",
     "tests/perf-number-display.test.ts",
     "tests/perf-table-server-output.test.ts",
     "tests/perf-saved-query-origin.test.ts",

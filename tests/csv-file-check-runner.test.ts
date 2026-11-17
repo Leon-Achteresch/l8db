@@ -9,6 +9,10 @@ let updates: unknown[] = [];
 let failListen = false;
 let invokeResult: Promise<CsvCheckReport>;
 mock.module("../src/lib/db/core", () => ({
+  cancelExecution: async (id: string) => {
+    calls.push({ command: "cancel_execution", args: { id } });
+    return true;
+  },
   invoke: (command: string, args: Record<string, unknown>) => {
     calls.push({ command, args });
     return invokeResult;
