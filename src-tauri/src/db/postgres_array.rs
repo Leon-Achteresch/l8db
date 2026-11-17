@@ -224,3 +224,7 @@ pub(crate) fn update_assignments(
 #[cfg(test)]
 #[path = "postgres_array_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "postgres_array_live_tests.rs"]
+mod live_tests;
