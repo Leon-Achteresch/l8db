@@ -8,7 +8,7 @@ export function useCsvFileCheck(request: CsvCheckRequest | null, scope: string) 
   const state = useSyncExternalStore(check.subscribe, check.getSnapshot, check.getSnapshot);
   return {
     ...state,
-    canCheck: request !== null,
+    canCheck: request !== null && Boolean(scope),
     run: check.run,
     cancel: check.cancel,
     invalidate: check.invalidate,

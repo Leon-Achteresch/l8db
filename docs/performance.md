@@ -1040,3 +1040,49 @@ raw copy/edit/inspect callbacks, persistence merge and width paths are covered.
 The menu remains shared across views rather than a per-column format setting.
 No real browser/native UI, provider data, constrained CPU/heap, Windows/Linux or
 native RSS measurement was performed. No new backend or productive DB work.
+
+## CSV check inline progress and cancellation integration
+
+The existing runner forwards only matching job-ID events with nonnegative safe
+integer counts. The controller retains one monotone count, initially unknown;
+duplicate/regressing, aborted, invalidated and disposed-run events do not notify
+the view. A single native cancellation promise is reused, including task-dialog
+cancellation and registration races. There is no polling, percentage, inferred
+total or additional file/database request. End results remain authoritative;
+cancelled/error/changed/incomplete checks cannot clear the import blocker.
+
+`tests/perf-csv-validation.test.ts` adds 100,000 progressing counts plus 100,000
+duplicates, 10,000 post-cancel events and one post-disposal event. Two warmups and
+11 samples on macOS27.0.1 / Darwin27.0.0 arm64, Apple M3, 16GiB, Bun1.3.10:
+median **5.288ms**, p95 **8.964ms** (budgets <50 / <100ms). One counter retained;
+heap delta after two additional batches and GC **0 bytes**, budget <4MiB.
+There are exactly100,003 notifications per batch (start, distinct progress,
+cancel request, terminal), one synthetic runner invocation, no post-cancel/idle
+notifications, no polling and no database requests. This is controller/event
+cost, not native parsing throughput, browser frame latency or process RSS.
+
+Real controller/runner/bridge/task-store regressions additionally cover both
+cancel controls, delayed readiness, restart, stale successes/errors/events and
+scope/unmount invalidation; only the native transport is synthetic. Existing
+import actions consume the shared unsuccessful-check blocker. No write import
+or productive connection is exercised.
+
+The registered browser runner supports a scoped existing scenario and an explicit
+installed Chrome channel, without copying tests or downloading a browser:
+
+```sh
+L8DB_BROWSER_CHANNEL=chrome bun scripts/test-browser.ts csv-file-check
+```
+
+System Chrome157.0.8103.79 checks the actual hook/menu status components through
+synthetic IPC, including keyboard cancel/restart, unknown/live row counts, late
+events/errors after source/mapping/options/scope/unmount, all terminal states and
+380px light layout. The shared T3 preview also checked inline counts and narrow
+layout; hot refresh during fixture edits produced a duplicate-root diagnostic,
+so its accumulated transport-call counts are not used as request-count proof.
+The fresh registered browser tests disable HMR. Native Tauri file-dialog/IPC/event
+acceptance remains open: the available03:58 debug binary uses compiled context;
+the separate AI-workspace config is not a verified fresh isolated runtime. The
+normal profile initializes connection secrets/services. Neither profile's private
+data was opened or altered, and no app or database was started for this check.
+WebKit, Windows/Linux, constrained CPU/heap and native RSS remain untested.

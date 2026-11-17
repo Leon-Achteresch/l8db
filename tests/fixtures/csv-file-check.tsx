@@ -1,11 +1,18 @@
 import { useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { CsvFileCheck } from "../../src/features/import/csv-file-check";
-import { useCsvFileCheck } from "../../src/features/import/csv-import-panel/use-csv-file-check";
 import type { CsvCheckReport, CsvCheckRequest } from "../../src/lib/db";
+import { CheckPanel } from "./csv-file-check-panel";
 import "../../src/index.css";
 
-type Scenario = "clean" | "findings" | "incomplete" | "changed" | "error" | "slow" | "stuck";
+type Scenario =
+  | "clean"
+  | "findings"
+  | "incomplete"
+  | "changed"
+  | "error"
+  | "slow"
+  | "stuck"
+  | "manual";
 type Job = {
   jobId: string;
   scenario: Scenario;
@@ -63,7 +70,9 @@ const findings: CsvCheckReport["issues"] = [
   })),
 ];
 
-const reports: Record<Exclude<Scenario, "slow" | "stuck" | "error">, CsvCheckReport> = {
+Object.assign(fixture, { emit });
+
+const reports: Record<Exclude<Scenario, "slow" | "stuck" | "error" | "manual">, CsvCheckReport> = {
   clean: base,
   findings: { ...base, error_count: 1_234, issues: findings },
   incomplete: {
@@ -101,7 +110,7 @@ Object.assign(window, {
       }
       if (cmd === "cancel_execution") {
         const job = fixture.jobs.find((entry) => entry.jobId === args.jobId);
-        if (job?.scenario === "stuck") return false;
+        if (job?.scenario === "stuck" || job?.scenario === "manual") return false;
         job?.settle({ ...base, status: "cancelled", checked_rows: job.rows });
         return job !== undefined;
       }
@@ -128,6 +137,7 @@ Object.assign(window, {
           },
         };
         fixture.jobs.push(job);
+        if (scenario === "manual") return;
         setTimeout(() => emit(jobId, 0), 0);
         job.timer = setInterval(() => {
           job.rows += 8_192;
@@ -151,6 +161,9 @@ function settleLate() {
 }
 
 function Fixture() {
+  const [revision, setRevision] = useState(0);
+  const [scope, setScope] = useState("fixture:orders");
+  const [mounted, setMounted] = useState(true);
   const [path, setPath] = useState("/synthetic/orders.csv");
   const [scenario, setScenario] = useState(fixture.scenario);
   const [light, setLight] = useState(params.get("theme") === "light");
@@ -162,21 +175,20 @@ function Fixture() {
         delimiter: ",",
         quote: '"',
         has_header: true,
-        empty_as_null: true,
+        empty_as_null: revision % 2 === 0,
         null_text: null,
         indices: [0, 1, 2, 3],
       },
       expected_columns: 4,
       columns: [
         { index: 0, name: "id", nullable: false },
-        { index: 1, name: "customer_id", nullable: false },
+        { index: 1, name: revision % 2 ? "customer_new" : "customer_id", nullable: false },
         { index: 2, name: "a_very_long_target_column_name_for_tax_identifiers", nullable: false },
         { index: 3, name: "note", nullable: true },
       ],
     }),
-    [path],
+    [path, revision],
   );
-  const check = useCsvFileCheck(request, "fixture:orders");
   const pick = () => {
     fixture.picks++;
     setPath((value) =>
@@ -198,7 +210,7 @@ function Fixture() {
               setScenario(fixture.scenario);
             }}
           >
-            {["slow", "stuck", "clean", "findings", "incomplete", "changed", "error"].map(
+            {["slow", "stuck", "clean", "findings", "incomplete", "changed", "error", "manual"].map(
               (value) => (
                 <option key={value}>{value}</option>
               ),
@@ -210,6 +222,15 @@ function Fixture() {
         </button>
         <button type="button" className="underline" onClick={settleLate}>
           Alte Antwort spät liefern
+        </button>
+        <button type="button" onClick={() => setRevision((value) => value + 1)}>
+          Zuordnung und Optionen wechseln
+        </button>
+        <button type="button" onClick={() => setScope((value) => `${value}:neu`)}>
+          Kontext wechseln
+        </button>
+        <button type="button" onClick={() => setMounted((value) => !value)}>
+          Prüffeld umschalten
         </button>
         <button
           type="button"
@@ -227,7 +248,7 @@ function Fixture() {
         <h3 className="text-xs font-semibold">Zuordnung</h3>
         <span className="text-xs text-muted-foreground tabular-nums">4 von 4 Spalten</span>
       </div>
-      <CsvFileCheck check={check} importing={false} onPickFile={pick} />
+      {mounted && <CheckPanel request={request} scope={scope} pick={pick} />}
       <div className="flex h-9 items-center gap-2 px-4">
         <h3 className="text-xs font-semibold">Vorschau</h3>
         <span className="text-xs text-muted-foreground tabular-nums">

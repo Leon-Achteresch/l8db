@@ -84,6 +84,7 @@ test("changed source/mapping invalidates a running report and discards late comp
   first.resolve(report);
   await oldRun;
   expect(check.getSnapshot()).toEqual({
+    checkedRows: null,
     checking: true,
     cancelling: false,
     cancelled: false,
