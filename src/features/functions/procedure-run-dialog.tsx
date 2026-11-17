@@ -10,7 +10,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ProcedureRunResult } from "./procedure-run-result";
-import { useProcedureRun } from "./use-procedure-run";
+import { type ProcedureExecution, useProcedureRun } from "./use-procedure-run";
 
 interface ProcedureRunDialogProps {
   open: boolean;
@@ -18,6 +18,7 @@ interface ProcedureRunDialogProps {
   schema: string;
   name: string;
   identityArgs: string;
+  execution?: ProcedureExecution;
 }
 
 export function ProcedureRunDialog({
@@ -26,9 +27,10 @@ export function ProcedureRunDialog({
   schema,
   name,
   identityArgs,
+  execution,
 }: ProcedureRunDialogProps) {
   const { connection, values, setValue, inputs, statement, state, pending, handleRun } =
-    useProcedureRun(open, schema, name, identityArgs);
+    useProcedureRun(open, schema, name, identityArgs, execution);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

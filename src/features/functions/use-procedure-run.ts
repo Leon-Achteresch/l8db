@@ -1,17 +1,29 @@
 import { useCallback, useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useActiveConnection } from "@/lib/connections";
-import { executeQuery } from "@/lib/db";
+import { type DatabaseKind, executeQuery, type QueryResult } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { buildProcedureCall, parseProcedureParams } from "@/lib/procedure-params";
 import { createProcedureRun, IDLE_PROCEDURE_RUN } from "@/lib/procedure-run";
 import { effectiveConnectionString } from "@/lib/ssh";
 
-export function useProcedureRun(open: boolean, schema: string, name: string, identityArgs: string) {
+export type ProcedureExecution = {
+  kind: DatabaseKind;
+  execute: (statement: string) => Promise<QueryResult>;
+};
+
+export function useProcedureRun(
+  open: boolean,
+  schema: string,
+  name: string,
+  identityArgs: string,
+  execution?: ProcedureExecution,
+) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
+  const kind = execution?.kind ?? connection?.kind;
   const context = useMemo(
-    () => ({ connection, database, schema, name, identityArgs }),
-    [connection, database, schema, name, identityArgs],
+    () => ({ connection, database, schema, name, identityArgs, execution }),
+    [connection, database, schema, name, identityArgs, execution],
   );
   const [input, setInput] = useState<{ context: object; values: Record<string, string> }>({
     context,
@@ -22,16 +34,16 @@ export function useProcedureRun(open: boolean, schema: string, name: string, ide
   const inputs = useMemo(() => params.filter((param) => param.mode !== "OUT"), [params]);
   const statement = useMemo(
     () =>
-      connection
+      kind
         ? buildProcedureCall(
-            connection.kind === "oracle" ? "oracle" : "postgres",
+            kind === "oracle" ? "oracle" : "postgres",
             schema,
             name,
             params,
             values,
           )
         : "",
-    [connection, schema, name, params, values],
+    [kind, schema, name, params, values],
   );
   const scope = useMemo(() => (open ? { context, statement } : null), [open, context, statement]);
   const [run] = useState(createProcedureRun);
@@ -54,7 +66,12 @@ export function useProcedureRun(open: boolean, schema: string, name: string, ide
   );
 
   const handleRun = useCallback(async () => {
-    if (!connection || !scope) return;
+    if (!scope) return;
+    if (execution) {
+      await run.run(scope, () => execution.execute(statement));
+      return;
+    }
+    if (!connection) return;
     await run.run(scope, () =>
       executeQuery(
         connection.kind,
@@ -63,10 +80,10 @@ export function useProcedureRun(open: boolean, schema: string, name: string, ide
         database ?? undefined,
       ),
     );
-  }, [connection, database, statement, run, scope]);
+  }, [connection, database, statement, run, scope, execution]);
 
   return {
-    connection,
+    connection: execution ?? connection,
     inputs,
     values,
     setValue,

@@ -22,6 +22,7 @@ const registered = [
   "command-palette-pointer",
   "csv-file-check",
   "array-editor-development",
+  "routine-result-development",
 ];
 const requested = process.argv.slice(2);
 if (requested.some((name) => !registered.includes(name)))
@@ -30,9 +31,9 @@ const files = requested.length ? requested : registered;
 const log = "test-artifacts/browser/tests.log";
 await mkdir("test-artifacts/browser", { recursive: true });
 await writeFile(log, "");
-const isolatedArray = files.length === 1 && files[0] === "array-editor-development";
+const isolated = files.length === 1 && files[0].endsWith("-development") ? files[0] : null;
 const server = await createServer(
-  isolatedArray
+  isolated
     ? arrayEditorViteConfig()
     : {
         cacheDir: "node_modules/.vite-browser-tests",
@@ -55,28 +56,31 @@ try {
   if (!address || typeof address === "string") throw new Error("Fixture server failed to start");
   const url = `http://127.0.0.1:${address.port}`;
   const response = await fetch(
-    `${url}/${isolatedArray ? "?array-editor-development=1" : "tests/fixtures/table-edit.html"}`,
+    `${url}/${isolated ? `?${isolated}=1` : "tests/fixtures/table-edit.html"}`,
   );
   if (!response.ok) throw new Error(`Fixture readiness failed: ${response.status}`);
   for (const file of files) {
-    const child = Bun.spawn(["bun", "test", `tests/${file}-browser.test.ts`], {
-      env: {
-        ...process.env,
-        L8DB_TABLE_BROWSER_URL: url,
-        L8DB_QUERY_BROWSER_URL: url,
-        L8DB_QOL_BROWSER: "1",
-        L8DB_WORKBENCH_BROWSER: "1",
-        L8DB_COMPARE_BROWSER: "1",
-        L8DB_SCHEMA_COMPARE_BROWSER: "1",
-        L8DB_SPLIT_TRANSACTION_BROWSER_URL: url,
-        L8DB_PALETTE_BROWSER_URL: url,
-        L8DB_KEYBOARD_BROWSER: "1",
-        L8DB_SHARED_TAB_BROWSER: "1",
-        L8DB_BROWSER_ENGINES: "chromium",
+    const child = Bun.spawn(
+      ["bun", ...(isolated ? ["--no-env-file"] : []), "test", `tests/${file}-browser.test.ts`],
+      {
+        env: {
+          ...process.env,
+          L8DB_TABLE_BROWSER_URL: url,
+          L8DB_QUERY_BROWSER_URL: url,
+          L8DB_QOL_BROWSER: "1",
+          L8DB_WORKBENCH_BROWSER: "1",
+          L8DB_COMPARE_BROWSER: "1",
+          L8DB_SCHEMA_COMPARE_BROWSER: "1",
+          L8DB_SPLIT_TRANSACTION_BROWSER_URL: url,
+          L8DB_PALETTE_BROWSER_URL: url,
+          L8DB_KEYBOARD_BROWSER: "1",
+          L8DB_SHARED_TAB_BROWSER: "1",
+          L8DB_BROWSER_ENGINES: "chromium",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
       },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    );
     const capture = async (stream: ReadableStream<Uint8Array>) => {
       for await (const chunk of stream) {
         process.stdout.write(chunk);

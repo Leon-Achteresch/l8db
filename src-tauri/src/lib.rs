@@ -35,6 +35,8 @@ mod payments;
 mod pocketbase;
 mod process;
 mod query_notification;
+#[cfg(debug_assertions)]
+mod routine_result_development;
 mod supabase;
 mod supabase_studio;
 mod sync;
@@ -103,6 +105,21 @@ pub fn run() {
         }
         #[cfg(not(debug_assertions))]
         eprintln!("Array-Entwicklung ist nur im Debug-Build verfügbar.");
+        return;
+    }
+    if std::env::args().any(|arg| arg == "--routine-result-development") {
+        #[cfg(debug_assertions)]
+        {
+            let args: Vec<_> = std::env::args().skip(1).collect();
+            if routine_result_development::selected(&args) {
+                routine_result_development::run(application_context())
+                    .expect("isolated routine result development failed");
+            } else {
+                eprintln!("Routinen-Entwicklung muss ohne weitere Argumente gestartet werden.");
+            }
+        }
+        #[cfg(not(debug_assertions))]
+        eprintln!("Routinen-Entwicklung ist nur im Debug-Build verfügbar.");
         return;
     }
     desktop::mark_process_start();

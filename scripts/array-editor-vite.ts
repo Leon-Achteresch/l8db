@@ -6,7 +6,7 @@ import type { InlineConfig } from "vite";
 export function arrayEditorViteConfig(): InlineConfig {
   return {
     configFile: false,
-    envFile: false,
+    envDir: false,
     plugins: [react(), tailwindcss()],
     resolve: { alias: { "@": fileURLToPath(new URL("../src", import.meta.url)) } },
     cacheDir: "node_modules/.vite-array-development",
