@@ -71,6 +71,7 @@ export function TableToolbarActions({
   const { scope: watchScope } = useContext(RowWatchContext);
   const watchNew = useHasNewFeatures("table.rows.watch") && Boolean(watchScope);
   const timeNew = useHasNewFeatures("query.results.timestamps");
+  const numbersNew = useHasNewFeatures("query.results.numbers");
   const isData = tableTab === "data";
   const canTestData = isData && connection && caps.test_data;
   const canPaste =
@@ -99,7 +100,9 @@ export function TableToolbarActions({
         canAdd ||
         canExport ||
         extensionActions.actions.length > 0) && (
-        <TableActionsMenu isNew={extensionActions.isNew || (isData && (watchNew || timeNew))}>
+        <TableActionsMenu
+          isNew={extensionActions.isNew || (isData && (watchNew || timeNew || numbersNew))}
+        >
           {isData && <RowWatchMenuItem />}
           {isData && <TimestampDisplayMenu />}
           {canAdd && (

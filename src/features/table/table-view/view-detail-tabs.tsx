@@ -86,6 +86,7 @@ export function ViewDetailTabs({
   const { scope: watchScope } = useContext(RowWatchContext);
   const watchNew = useHasNewFeatures("table.rows.watch") && Boolean(watchScope);
   const timeNew = useHasNewFeatures("query.results.timestamps");
+  const numbersNew = useHasNewFeatures("query.results.numbers");
   return (
     <Tabs
       value={viewTab}
@@ -108,7 +109,7 @@ export function ViewDetailTabs({
           />
           <ObjectAdminMenu schema={schema} name={table} objectType="view" showAlter={false} />
           {viewTab === "data" && (
-            <TableActionsMenu isNew={extensionActions.isNew || watchNew || timeNew}>
+            <TableActionsMenu isNew={extensionActions.isNew || watchNew || timeNew || numbersNew}>
               <RowWatchMenuItem />
               <TimestampDisplayMenu />
               <TableExtensionActions {...extensionActions} />

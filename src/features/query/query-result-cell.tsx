@@ -1,6 +1,7 @@
 import { memo, useMemo } from "react";
 import { DataTableCellBadge } from "@/features/table/data-table-cell/data-table-cell-badge";
 import { useMasterDetail } from "@/lib/master-detail";
+import { numberCellText } from "@/lib/number-display";
 import { useQueryQolSettings } from "@/lib/query-qol-settings";
 import { resultCellText } from "@/lib/result-grid";
 import { cellPreviewLimit, truncateCellPreview } from "@/lib/table-cell-preview";
@@ -37,7 +38,9 @@ export const QueryResultCell = memo(function QueryResultCell({
 }: QueryResultCellProps) {
   const isNull = value === null || value === undefined;
   const timestamps = useQueryQolSettings((s) => s.timestamps);
-  const text = timestampCellText(value, timestamps) ?? resultCellText(value);
+  const numbers = useQueryQolSettings((s) => s.numbers);
+  const number = numberCellText(value, numbers);
+  const text = number ?? timestampCellText(value, timestamps) ?? resultCellText(value);
   const badge = useMemo(() => cellValueBadge(value), [value]);
   const display = isNull
     ? "NULL"
@@ -66,7 +69,7 @@ export const QueryResultCell = memo(function QueryResultCell({
       role={gridColumn ? "cell" : undefined}
       aria-colindex={gridColumn}
       style={{ fontSize: `${fontSize}px`, gridColumn }}
-      title={isNull ? undefined : onInspect ? display : text}
+      title={isNull ? undefined : number !== null ? String(value) : onInspect ? display : text}
       className={cn(
         active && "ring-1 ring-inset ring-primary bg-primary/10",
         "max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-r px-3 py-[calc(var(--ui-cell-padding)-0.125rem)] font-mono",

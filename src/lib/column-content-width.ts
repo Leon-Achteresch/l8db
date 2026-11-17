@@ -61,6 +61,7 @@ export type ContentWidthInput = {
   style: TableStyle;
   uiScale: number;
   now?: Date;
+  displayText?: (value: unknown) => string | null;
 };
 
 export function contentColumnWidth({
@@ -72,15 +73,19 @@ export function contentColumnWidth({
   style,
   uiScale,
   now = new Date(),
+  displayText,
 }: ContentWidthInput): number {
   let width = name.length * MONO_CHAR + HEADER_CHROME + (hasFk ? FK_CHROME : 0);
   const count = Math.min(values.length, SAMPLE_ROWS);
   for (let i = 0; i < count; i++) {
     const value = values[i];
+    const formatted = displayText?.(value);
     const cell =
-      style === "semantic"
-        ? semanticCellWidth(value, kind, categorical, now)
-        : compactCellText(value).length * MONO_CHAR;
+      formatted != null
+        ? Math.min(formatted.length, PREVIEW_LIMIT) * MONO_CHAR
+        : style === "semantic"
+          ? semanticCellWidth(value, kind, categorical, now)
+          : compactCellText(value).length * MONO_CHAR;
     if (cell + CELL_CHROME > width) width = cell + CELL_CHROME;
     if (width >= CONTENT_COLUMN_MAX) break;
   }

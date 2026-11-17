@@ -3,6 +3,7 @@ import { CopyIcon, LinkIcon, Maximize2Icon } from "lucide-react";
 import { type CSSProperties, memo, useContext, useMemo } from "react";
 import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
 import { shortUuid } from "@/lib/grid-cell-format";
+import { numberCellText } from "@/lib/number-display";
 import { useQueryQolSettings } from "@/lib/query-qol-settings";
 import { cellPreviewLimit, tableCellPreview, truncateCellPreview } from "@/lib/table-cell-preview";
 import { timestampCellText } from "@/lib/timestamp-display";
@@ -101,6 +102,14 @@ export const DataTableCell = memo(function DataTableCell({
   const timestamps = useQueryQolSettings((s) => s.timestamps);
   const timestamp = useMemo(() => timestampCellText(value, timestamps), [value, timestamps]);
   const dataType = column.columnDef.meta?.dataType;
+  const numbers = useQueryQolSettings((state) => state.numbers);
+  const number = useMemo(
+    () =>
+      cellIndex > 0 && !hasCustomContent && !plugin?.output
+        ? numberCellText(value, numbers, dataType)
+        : null,
+    [cellIndex, hasCustomContent, plugin?.output, value, numbers, dataType],
+  );
   const badge = useMemo(
     () => (cellIndex > 0 && !hasCustomContent ? cellValueBadge(value, dataType) : null),
     [value, dataType, cellIndex, hasCustomContent],
@@ -116,8 +125,10 @@ export const DataTableCell = memo(function DataTableCell({
     () =>
       badge?.text
         ? { text: truncateCellPreview(badge.text, previewLimit), kind: "text" as const }
-        : tableCellPreview(value, previewLimit),
-    [value, previewLimit, badge],
+        : number !== null
+          ? { text: truncateCellPreview(number, previewLimit), kind: "number" as const }
+          : tableCellPreview(value, previewLimit),
+    [value, previewLimit, badge, number],
   );
   const isCellEditing = !!editingCell;
   if (isCellEditing && editingCell) {
@@ -294,6 +305,8 @@ export const DataTableCell = memo(function DataTableCell({
           <DataTableCellBadge badge={badge} />
           {preview.text}
         </>
+      ) : number !== null ? (
+        <span title={String(value)}>{preview.text}</span>
       ) : timestamp !== null && !(tableStyle === "semantic" && timestamps.mode === "raw") ? (
         <span title={String(value)}>{truncateCellPreview(timestamp, previewLimit)}</span>
       ) : tableStyle === "semantic" ? (

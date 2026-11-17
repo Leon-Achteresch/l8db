@@ -36,6 +36,7 @@ export function useGridStyle(
       const categorical =
         kind === "text" && isCategorical(values, isEnumDataType(dataTypes.get(name)));
       columns.set(name, {
+        dataType: dataTypes.get(name),
         kind,
         numeric:
           kind === "number" ||
