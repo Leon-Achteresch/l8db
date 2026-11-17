@@ -52,6 +52,7 @@ export function ConnectionSnowflakeFields({
           id="connection-snowflake-account"
           label="Account-Identifier"
           placeholder="myorg-account1"
+          aria-required
           value={host}
           onChange={(event) => setHost(event.target.value)}
           spellCheck={false}

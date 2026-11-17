@@ -32,6 +32,7 @@ pub(crate) async fn send_retrying(
     request: reqwest::RequestBuilder,
     idempotent: bool,
 ) -> Result<reqwest::Response, reqwest::Error> {
+    let request = request.timeout(super::execution::query_duration());
     let cancel = super::execution::cancellation_token();
     let mut delay = Duration::from_millis(500);
     let mut attempt = 1;
@@ -58,6 +59,19 @@ pub(crate) async fn send_retrying(
         }
         delay *= 2;
         attempt += 1;
+    }
+}
+
+pub(crate) fn send_error(service: &str, error: &reqwest::Error) -> String {
+    match error.url().filter(|_| error.is_timeout()) {
+        Some(url) => format!(
+            "{service}: keine Antwort von {}://{}{} nach {} Sekunden. Der Serverabschluss ist nicht bestätigt.",
+            url.scheme(),
+            url.host_str().unwrap_or_default(),
+            url.port().map(|p| format!(":{p}")).unwrap_or_default(),
+            super::execution::query_duration().as_secs()
+        ),
+        None => format!("{service} nicht erreichbar: {error}"),
     }
 }
 

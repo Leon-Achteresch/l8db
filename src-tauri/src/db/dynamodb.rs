@@ -670,7 +670,12 @@ impl DynamoAdapter {
         }
     }
 
-    async fn count(&self, table: &str, where_sql: &str, cap: Option<i64>) -> Result<i64, String> {
+    async fn count(
+        &self,
+        table: &str,
+        where_sql: &str,
+        cap: Option<i64>,
+    ) -> Result<(i64, f64), String> {
         let client = self.conn.client(&SERVICE).await?;
         let statement = if where_sql.is_empty() {
             None
@@ -686,28 +691,35 @@ impl DynamoAdapter {
             ))
         };
         let mut total = 0i64;
+        let mut units = 0f64;
         let mut cursor: Option<Value> = None;
         loop {
-            match &statement {
+            let response = match &statement {
                 None => {
-                    let mut body = json!({"TableName": table, "Select": "COUNT"});
+                    let mut body = json!({"TableName": table, "Select": "COUNT", "ReturnConsumedCapacity": "TOTAL"});
                     if let Some(c) = &cursor {
                         body["ExclusiveStartKey"] = c.clone();
                     }
                     let response = client.call("Scan", &body).await?;
                     total += response.get("Count").and_then(Value::as_i64).unwrap_or(0);
                     cursor = response.get("LastEvaluatedKey").cloned();
+                    response
                 }
                 Some(s) => {
-                    let mut body = json!({ "Statement": s });
+                    let mut body = json!({ "Statement": s, "ReturnConsumedCapacity": "TOTAL" });
                     if let Some(c) = &cursor {
                         body["NextToken"] = c.clone();
                     }
                     let response = client.call("ExecuteStatement", &body).await?;
                     total += items_of(&response).len() as i64;
                     cursor = response.get("NextToken").cloned();
+                    response
                 }
-            }
+            };
+            units += response
+                .pointer("/ConsumedCapacity/CapacityUnits")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0);
             cursor = cursor.filter(|c| !c.is_null());
             if cursor.is_none() || cap.is_some_and(|cap| total > cap) {
                 break;
@@ -716,7 +728,7 @@ impl DynamoAdapter {
                 return Err("Zählung abgebrochen.".to_string());
             }
         }
-        Ok(total)
+        Ok((total, units))
     }
 
     async fn detailed(&self, table: &str) -> Result<Vec<DetailedColumnInfo>, String> {
@@ -810,6 +822,14 @@ impl DynamoAdapter {
             key.insert(name.clone(), text_to_attr(&text, label)?);
         }
         Ok(key)
+    }
+}
+
+fn capacity_note(units: f64) -> String {
+    if units > 0.0 {
+        format!("Zählen liest die ganze Tabelle per Scan: {units:.1} Lesekapazitätseinheiten verbraucht.")
+    } else {
+        "Zählen liest die ganze Tabelle per Scan und verbraucht Lesekapazität.".into()
     }
 }
 
@@ -966,14 +986,15 @@ impl DatabaseAdapter for DynamoAdapter {
         allow_raw_filter: bool,
     ) -> Result<i64, String> {
         let where_sql = where_clause(filter, allow_raw_filter)?;
+        let (count, units) = timed(self.count(table, &where_sql, None))
+            .await
+            .map_err(|e| self.friendly(e, &where_sql))?;
         super::server_output::emit(super::server_output::ServerMessage {
             level: "INFO".into(),
-            message: "Zählen liest die ganze Tabelle per Scan und verbraucht Lesekapazität.".into(),
+            message: capacity_note(units),
             detail: None,
         });
-        timed(self.count(table, &where_sql, None))
-            .await
-            .map_err(|e| self.friendly(e, &where_sql))
+        Ok(count)
     }
 
     async fn count_rows_capped(
@@ -985,7 +1006,7 @@ impl DatabaseAdapter for DynamoAdapter {
         cap: i64,
     ) -> Result<RowCount, String> {
         let where_sql = where_clause(filter, allow_raw_filter)?;
-        let count = timed(self.count(table, &where_sql, Some(cap)))
+        let (count, _) = timed(self.count(table, &where_sql, Some(cap)))
             .await
             .map_err(|e| self.friendly(e, &where_sql))?;
         if count <= cap {

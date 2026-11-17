@@ -9,8 +9,8 @@ use super::http_api::{self, text};
 use super::sqlite::quote;
 use super::{
     create_table_ddl, rows_to_objects, split_statements, where_clause, AddColumnRequest,
-    ColumnInfo, CreateTableRequest, DatabaseAdapter, DetailedColumnInfo, ForeignKeyInfo, IndexInfo,
-    QueryResult, TableData, TableInfo, TriggerInfo, TxSession,
+    AlterColumnRequest, ColumnInfo, CreateTableRequest, DatabaseAdapter, DetailedColumnInfo,
+    ForeignKeyInfo, IndexInfo, QueryResult, TableData, TableInfo, TriggerInfo, TxSession,
 };
 
 fn visible(alias: &str) -> String {
@@ -626,6 +626,28 @@ fn outcome_result(outcome: Outcome, dml: bool, start: std::time::Instant) -> Que
     }
 }
 
+fn rename_column_sql(table: &str, changes: &AlterColumnRequest) -> Result<Option<String>, String> {
+    if changes.data_type.is_some()
+        || changes.set_not_null.is_some()
+        || changes.new_default.is_some()
+        || changes.drop_default
+    {
+        return Err("SQLite unterstützt nur das Umbenennen von Spalten. Typ, NULL und Default erfordern eine neue Tabelle.".to_string());
+    }
+    Ok(changes
+        .new_name
+        .as_deref()
+        .filter(|n| !n.is_empty())
+        .map(|new_name| {
+            format!(
+                "ALTER TABLE {} RENAME COLUMN {} TO {}",
+                quote(table),
+                quote(&changes.old_name),
+                quote(new_name)
+            )
+        }))
+}
+
 #[async_trait]
 impl DatabaseAdapter for SqliteHttpAdapter {
     async fn begin_transaction(&self) -> Result<Box<dyn TxSession>, String> {
@@ -890,6 +912,18 @@ impl DatabaseAdapter for SqliteHttpAdapter {
         self.exec(&sql).await
     }
 
+    async fn alter_column(
+        &self,
+        _schema: &str,
+        table: &str,
+        changes: &AlterColumnRequest,
+    ) -> Result<(), String> {
+        match rename_column_sql(table, changes)? {
+            Some(sql) => self.exec(&sql).await,
+            None => Ok(()),
+        }
+    }
+
     async fn drop_column(&self, _schema: &str, table: &str, column: &str) -> Result<(), String> {
         self.exec(&format!(
             "ALTER TABLE {} DROP COLUMN {}",
@@ -1027,6 +1061,29 @@ impl DatabaseAdapter for SqliteHttpAdapter {
 mod tests {
     use super::*;
     use crate::db::http_api::mock;
+
+    #[test]
+    fn alter_column_only_renames() {
+        let request = |new_name: Option<&str>, data_type: Option<&str>| AlterColumnRequest {
+            old_name: "a\"b".into(),
+            new_name: new_name.map(Into::into),
+            data_type: data_type.map(Into::into),
+            set_not_null: None,
+            new_default: None,
+            drop_default: false,
+            using: None,
+        };
+        assert_eq!(
+            rename_column_sql("t", &request(Some("c"), None))
+                .unwrap()
+                .as_deref(),
+            Some("ALTER TABLE \"t\" RENAME COLUMN \"a\"\"b\" TO \"c\"")
+        );
+        assert_eq!(rename_column_sql("t", &request(None, None)).unwrap(), None);
+        assert!(rename_column_sql("t", &request(Some("c"), Some("TEXT")))
+            .unwrap_err()
+            .contains("nur das Umbenennen"));
+    }
 
     #[test]
     fn system_prefixes_hide_only_real_system_tables() {

@@ -5,8 +5,8 @@ use serde_json::{json, Value};
 
 use super::warehouse_auth;
 use super::{
-    rows_to_objects, timed, where_clause, ColumnInfo, DatabaseAdapter, DetailedColumnInfo,
-    ProxyUserInfo, QueryResult, TableData, TableInfo,
+    rows_to_objects, where_clause, ColumnInfo, DatabaseAdapter, DetailedColumnInfo, ProxyUserInfo,
+    QueryResult, TableData, TableInfo,
 };
 
 #[derive(Clone, PartialEq, Eq)]
@@ -553,7 +553,7 @@ impl SnowflakeAdapter {
         }
         let response = warehouse_auth::send_retrying(request, idempotent)
             .await
-            .map_err(|e| format!("Snowflake nicht erreichbar: {e}"))?;
+            .map_err(|e| warehouse_auth::send_error("Snowflake", &e))?;
         let (status, body) = warehouse_auth::read_body(response, "Snowflake").await?;
         if !(200..300).contains(&status) {
             return Err(api_error(status, &body));
@@ -634,13 +634,14 @@ impl SnowflakeAdapter {
         let limit = super::execution::row_limit();
         let mut partition = 1;
         while partition < partitions && rows.len() < limit && !handle.is_empty() {
-            let (_, page) = timed(self.call(
-                reqwest::Method::GET,
-                &format!("/{handle}"),
-                &[("partition", partition.to_string())],
-                None,
-            ))
-            .await?;
+            let (_, page) = self
+                .call(
+                    reqwest::Method::GET,
+                    &format!("/{handle}"),
+                    &[("partition", partition.to_string())],
+                    None,
+                )
+                .await?;
             rows.extend(convert_rows(&columns, &page["data"]));
             partition += 1;
         }
@@ -656,13 +657,14 @@ impl SnowflakeAdapter {
 
     async fn run(&self, sql: &str) -> Result<Statement, String> {
         let deadline = Instant::now() + super::execution::query_duration();
-        let (status, mut body) = timed(self.call(
-            reqwest::Method::POST,
-            "",
-            &[("async", "true".to_string())],
-            Some(self.statement_body(sql)),
-        ))
-        .await?;
+        let (status, mut body) = self
+            .call(
+                reqwest::Method::POST,
+                "",
+                &[("async", "true".to_string())],
+                Some(self.statement_body(sql)),
+            )
+            .await?;
         if status == 202 || body["resultSetMetaData"].is_null() {
             let handle = str_of(&body["statementHandle"]).to_string();
             if handle.is_empty() {

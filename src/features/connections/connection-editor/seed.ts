@@ -12,8 +12,11 @@ import type { ProviderInfo } from "@/lib/db";
 import { extractUrlPassword } from "@/lib/secrets";
 import type { Mode } from "./types";
 
+const EXAMPLE_PLACEHOLDERS = new Set(["snowflake", "bigquery"]);
+
 export function placeholderDefaults(info: ProviderInfo) {
-  if (isProfileConnection(info.kind)) return { host: "", port: "", database: "", user: "" };
+  if (isProfileConnection(info.kind) || EXAMPLE_PLACEHOLDERS.has(info.kind))
+    return { host: "", port: "", database: "", user: "" };
   try {
     const url = new URL(info.placeholder);
     return {

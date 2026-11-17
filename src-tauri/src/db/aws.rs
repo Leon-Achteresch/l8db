@@ -321,7 +321,7 @@ impl AwsClient {
         let response = request.body(payload).send().await.map_err(|e| {
             if e.is_timeout() {
                 return format!(
-                    "{}: keine Antwort von {} nach {} Sekunden.",
+                    "{}: keine Antwort von {} nach {} Sekunden. Der Serverabschluss ist nicht bestätigt.",
                     self.service.label,
                     self.endpoint,
                     super::execution::query_duration().as_secs()

@@ -110,7 +110,7 @@ fn friendly(raw: &str) -> String {
         return "Cassandra verlangt eine Anmeldung. Zugangsdaten in der URL angeben: cassandra://BENUTZER:PASSWORT@host:port/keyspace".into();
     }
     if raw.contains("bad credentials") || raw.contains("and/or password are incorrect") {
-        return "Cassandra: Benutzer oder Passwort falsch.".into();
+        return "Benutzer oder Passwort falsch.".into();
     }
     if raw.contains("InvalidContentType") || raw.contains("corrupt message") {
         return "Der Server spricht kein TLS. Mit sslmode=disable verbinden oder TLS am Server aktivieren.".into();
@@ -119,6 +119,9 @@ fn friendly(raw: &str) -> String {
         return "Kein Knoten im gewählten Datacenter. Namen unter ?datacenter= prüfen.".into();
     }
     if let Some(name) = between(raw, "Keyspace '", "' does not exist") {
+        if raw.contains("USE KEYSPACE") {
+            return format!("Keyspace {name} gibt es nicht. In der URL nach dem Port angeben oder mit -d wählen.");
+        }
         return format!("Keyspace {name} gibt es nicht.");
     }
     if let Some(name) = raw.split("unconfigured table ").nth(1) {
@@ -175,14 +178,15 @@ fn connect_error(raw: String, nodes: &[String], reported: &[std::net::SocketAddr
         return format!("Host {at} nicht gefunden. Sonderzeichen in Benutzer oder Passwort mit %-Kodierung schreiben (@ → %40, : → %3A, / → %2F).");
     }
     if raw.starts_with("Verbindungs-Timeout") || raw.contains("timed out") {
-        let unknown: Vec<String> = reported
+        let mut unknown: Vec<String> = reported
             .iter()
-            .map(ToString::to_string)
-            .filter(|addr| !nodes.contains(addr))
+            .filter(|addr| !nodes.contains(&addr.to_string()))
+            .map(|addr| addr.ip().to_string())
             .collect();
+        unknown.dedup();
         if !unknown.is_empty() {
             return format!(
-                "{raw}. Der Knoten meldet {}, das ist von hier nicht erreichbar. Bei Docker CASSANDRA_BROADCAST_RPC_ADDRESS=127.0.0.1 setzen.",
+                "{raw}. Der Knoten meldet die Adresse {}, die von hier nicht erreichbar ist. Bei Docker CASSANDRA_BROADCAST_RPC_ADDRESS=127.0.0.1 setzen.",
                 unknown.join(", ")
             );
         }
@@ -827,23 +831,57 @@ fn percent(value: &str) -> String {
         .unwrap_or_else(|| value.to_string())
 }
 
-fn with_filtering(sql: String, has_filter: bool) -> String {
-    if has_filter {
-        super::server_output::emit(super::server_output::ServerMessage {
-            level: "INFO".into(),
-            message: "Filter läuft mit ALLOW FILTERING und kann alle Knoten lesen.".into(),
-            detail: None,
-        });
-        format!("{sql} ALLOW FILTERING")
-    } else {
-        sql
+async fn accepts_anyone(session: &Session) -> bool {
+    let Ok(result) = session
+        .query_unpaged(
+            "SELECT value FROM system_views.settings WHERE name = 'authenticator'",
+            &[],
+        )
+        .await
+    else {
+        return false;
+    };
+    let Ok(rows) = result.into_rows_result() else {
+        return false;
+    };
+    let Ok(mut values) = rows.rows::<(Option<String>,)>() else {
+        return false;
+    };
+    matches!(values.next(), Some(Ok((Some(value),))) if value.contains("AllowAllAuthenticator"))
+}
+
+async fn filtered<T, F, Fut>(sql: String, has_filter: bool, run: F) -> Result<T, String>
+where
+    F: Fn(String) -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    match run(sql.clone()).await {
+        Err(error) if has_filter && error.contains("ALLOW FILTERING") => {
+            super::server_output::emit(super::server_output::ServerMessage {
+                level: "INFO".into(),
+                message: "Filter läuft mit ALLOW FILTERING und kann alle Knoten lesen.".into(),
+                detail: None,
+            });
+            run(format!("{sql} ALLOW FILTERING")).await
+        }
+        other => other,
     }
 }
 
 #[async_trait]
 impl DatabaseAdapter for CassandraAdapter {
     async fn test_connection(&self) -> Result<(), String> {
-        self.exec("SELECT release_version FROM system.local").await
+        self.exec("SELECT release_version FROM system.local")
+            .await?;
+        if self.user.is_some() && accepts_anyone(&*self.session().await?).await {
+            super::server_output::emit(super::server_output::ServerMessage {
+                level: "WARNING".into(),
+                message: "Server ohne Anmeldung: Benutzer und Passwort werden nicht geprüft."
+                    .into(),
+                detail: None,
+            });
+        }
+        Ok(())
     }
 
     async fn list_databases(&self) -> Result<Vec<String>, String> {
@@ -989,18 +1027,18 @@ impl DatabaseAdapter for CassandraAdapter {
             .map(|c| c.name)
             .collect();
         let (limit, offset) = (limit.max(0) as usize, offset.max(0) as usize);
-        let cql = with_filtering(
-            format!(
-                "SELECT * FROM {}.{}{}{} LIMIT {}",
-                quote(schema),
-                quote(table),
-                where_sql,
-                order_sql,
-                (limit + offset).max(1)
-            ),
-            !where_sql.is_empty(),
+        let cql = format!(
+            "SELECT * FROM {}.{}{}{} LIMIT {}",
+            quote(schema),
+            quote(table),
+            where_sql,
+            order_sql,
+            (limit + offset).max(1)
         );
-        let (cols, page, _) = self.query_window(&cql, offset, limit).await?;
+        let (cols, page, _) = filtered(cql, !where_sql.is_empty(), |cql| async move {
+            self.query_window(&cql, offset, limit).await
+        })
+        .await?;
         Ok(TableData {
             columns: if columns.is_empty() {
                 cols.clone()
@@ -1019,16 +1057,16 @@ impl DatabaseAdapter for CassandraAdapter {
         allow_raw_filter: bool,
     ) -> Result<i64, String> {
         let where_sql = cql_where(filter, allow_raw_filter)?;
-        let cql = with_filtering(
-            format!(
-                "SELECT COUNT(*) FROM {}.{}{}",
-                quote(schema),
-                quote(table),
-                where_sql
-            ),
-            !where_sql.is_empty(),
+        let cql = format!(
+            "SELECT COUNT(*) FROM {}.{}{}",
+            quote(schema),
+            quote(table),
+            where_sql
         );
-        let (_, rows) = self.query(&cql).await?;
+        let (_, rows) = filtered(cql, !where_sql.is_empty(), |cql| async move {
+            self.query(&cql).await
+        })
+        .await?;
         Ok(rows.first().and_then(|r| r[0].as_i64()).unwrap_or(0))
     }
 
@@ -1048,22 +1086,24 @@ impl DatabaseAdapter for CassandraAdapter {
             .find(|c| c.is_primary_key)
             .map(|c| quote(&c.name))
             .unwrap_or_else(|| "*".to_string());
-        let cql = with_filtering(
-            format!(
-                "SELECT {key} FROM {}.{}{}",
-                quote(schema),
-                quote(table),
-                where_sql
-            ),
-            !where_sql.is_empty(),
+        let cql = format!(
+            "SELECT {key} FROM {}.{}{}",
+            quote(schema),
+            quote(table),
+            where_sql
         );
-        let mut count = 0i64;
-        let (_, more) = self
-            .scan(&cql, |_| {
-                count += 1;
-                count <= cap
-            })
-            .await?;
+        let seen = std::sync::atomic::AtomicI64::new(0);
+        let (_, more) = filtered(cql, !where_sql.is_empty(), |cql| {
+            let seen = &seen;
+            async move {
+                self.scan(&cql, |_| {
+                    seen.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < cap
+                })
+                .await
+            }
+        })
+        .await?;
+        let count = seen.into_inner();
         Ok(if more {
             RowCount {
                 count: cap.saturating_add(1),
@@ -1303,6 +1343,27 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    async fn live_open_server_warns_about_ignored_credentials() {
+        use crate::db::server_output::{capture, Messages};
+        let url = std::env::var("L8DB_E2E_CASSANDRA_URL")
+            .unwrap_or_else(|_| "cassandra://127.0.0.1:9042".into());
+        let with_user = url.replacen("cassandra://", "cassandra://falsch:falsch@", 1);
+        for (url, warned) in [(url, 0), (with_user, 1)] {
+            let db = CassandraAdapter::new(
+                &url,
+                None,
+                crate::db::pool::create_pool_state(),
+                "open".into(),
+            )
+            .unwrap();
+            let sink = Messages::default();
+            capture(sink.clone(), db.test_connection()).await.unwrap();
+            assert_eq!(sink.take().len(), warned, "{url}");
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn live_response_warnings_are_captured() {
         use crate::db::server_output::{capture, Messages};
         let url = std::env::var("L8DB_E2E_CASSANDRA_URL")
@@ -1437,8 +1498,8 @@ mod tests {
             ("Database returned an error: The query is syntactically correct but invalid, Error message: Invalid STRING constant (x) for \"pk\" of type int", "Wert x passt nicht zum Typ int der Spalte pk."),
             ("Database returned an error: The submitted query has a syntax error, Error message: line 1:45 no viable alternative at input 'OR'", "CQL kennt kein OR. IN (…) oder getrennte Abfragen verwenden."),
             ("Failed to perform initial cluster metadata fetch: Control connection pool error: The pool is broken; Last connection failed with: Failed to perform a connection setup request. Request: AUTH_RESPONSE, reason: Authentication is required. You can use SessionBuilder::user(\"user\", \"pass\")", "Cassandra verlangt eine Anmeldung. Zugangsdaten in der URL angeben: cassandra://BENUTZER:PASSWORT@host:port/keyspace"),
-            ("reason: Database returned an error: Authentication failed - bad credentials, Error message: Provided username cassandra and/or password are incorrect", "Cassandra: Benutzer oder Passwort falsch."),
-            ("'USE KEYSPACE <>' request failed: Database returned an error: The query is syntactically correct but invalid, Error message: Keyspace 'nokeyspace' does not exist", "Keyspace nokeyspace gibt es nicht."),
+            ("reason: Database returned an error: Authentication failed - bad credentials, Error message: Provided username cassandra and/or password are incorrect", "Benutzer oder Passwort falsch."),
+            ("'USE KEYSPACE <>' request failed: Database returned an error: The query is syntactically correct but invalid, Error message: Keyspace 'nokeyspace' does not exist", "Keyspace nokeyspace gibt es nicht. In der URL nach dem Port angeben oder mit -d wählen."),
             ("Last connection failed with: received corrupt message of type InvalidContentType", "Der Server spricht kein TLS. Mit sslmode=disable verbinden oder TLS am Server aktivieren."),
             ("Database returned an error: The submitted query has a syntax error, Error message: line 1:0 no viable alternative at input 'FOO'", "CQL-Syntaxfehler: no viable alternative at input 'FOO'"),
         ];
@@ -1454,13 +1515,16 @@ mod tests {
             ),
             "Kein Cassandra auf 127.0.0.1:19999. Host und Port prüfen."
         );
-        let reported = ["172.17.0.2:9042".parse().unwrap()];
+        let reported = [
+            "172.17.0.2:19999".parse().unwrap(),
+            "172.17.0.2:9042".parse().unwrap(),
+        ];
         assert!(connect_error(
             "Verbindungs-Timeout nach 15 Sekunden".into(),
             &nodes,
             &reported
         )
-        .contains("Knoten meldet 172.17.0.2:9042"));
+        .contains("Knoten meldet die Adresse 172.17.0.2, die"));
     }
 
     #[test]
@@ -1680,9 +1744,50 @@ mod tests {
         assert_eq!(a.nodes, vec!["node1:9042", "node2:9042", "node3:9043"]);
         assert_eq!(a.keyspace.as_deref(), Some("app"));
         assert_eq!(a.user, Some(("cassandra".to_string(), "pw".to_string())));
+    }
+
+    #[tokio::test]
+    async fn allow_filtering_is_added_only_when_cassandra_asks_for_it() {
+        use crate::db::server_output::{capture, Messages};
+        let sent = std::sync::Mutex::new(Vec::new());
+        let run = |cql: String| {
+            sent.lock().unwrap().push(cql.clone());
+            async move {
+                if cql.ends_with("ALLOW FILTERING") || cql.contains("pk = 1") {
+                    Ok(())
+                } else if cql.contains("x = 'a'") {
+                    Err("Wert a passt nicht zum Typ int der Spalte x.".to_string())
+                } else {
+                    Err("Cassandra: Cannot execute this query as it might involve data filtering and thus may have unpredictable performance. If you want to execute this query despite the performance unpredictability, use ALLOW FILTERING".to_string())
+                }
+            }
+        };
+        let messages = Messages::default();
+        capture(messages.clone(), async {
+            filtered("SELECT * FROM t WHERE pk = 1".into(), true, &run)
+                .await
+                .unwrap();
+            assert!(filtered("SELECT * FROM t WHERE x = 'a'".into(), true, &run)
+                .await
+                .is_err());
+            filtered("SELECT * FROM t WHERE ck > 5".into(), true, &run)
+                .await
+                .unwrap();
+            assert!(filtered("SELECT * FROM t".into(), false, &run)
+                .await
+                .is_err());
+        })
+        .await;
         assert_eq!(
-            with_filtering("SELECT 1".into(), true),
-            "SELECT 1 ALLOW FILTERING"
+            *sent.lock().unwrap(),
+            [
+                "SELECT * FROM t WHERE pk = 1",
+                "SELECT * FROM t WHERE x = 'a'",
+                "SELECT * FROM t WHERE ck > 5",
+                "SELECT * FROM t WHERE ck > 5 ALLOW FILTERING",
+                "SELECT * FROM t",
+            ]
         );
+        assert_eq!(messages.take().len(), 1);
     }
 }

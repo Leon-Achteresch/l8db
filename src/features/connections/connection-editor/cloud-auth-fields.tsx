@@ -13,6 +13,11 @@ const LABELS: Record<CloudAuthMode, string> = {
   entra: "Entra ID",
 };
 
+const TITLES: Partial<Record<CloudAuthMode, string>> = {
+  aws_iam: "Kurzlebiges Token aus dem AWS-Profil statt Passwort (RDS, Aurora)",
+  entra: "Token über Microsoft Entra ID statt Passwort (Azure)",
+};
+
 export function ConnectionCloudAuthFields({
   kind,
   draft,
@@ -34,7 +39,7 @@ export function ConnectionCloudAuthFields({
         value={mode}
         onChange={draft.setMode}
         label="Anmeldeverfahren"
-        options={modes.map((value) => ({ value, label: LABELS[value] }))}
+        options={modes.map((value) => ({ value, label: LABELS[value], title: TITLES[value] }))}
       />
       {mode === "aws_iam" && (
         <div className="grid grid-cols-2 gap-3">

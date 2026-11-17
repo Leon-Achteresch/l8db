@@ -321,6 +321,30 @@ async fn libsql_live() {
         .unwrap();
     let tables = db.list_tables(None).await.unwrap();
     assert!(tables.iter().any(|t| t.name == "l8db_people"));
+    let rename = |old: &str, new: &str, data_type: Option<&str>| super::AlterColumnRequest {
+        old_name: old.into(),
+        new_name: Some(new.into()),
+        data_type: data_type.map(Into::into),
+        set_not_null: None,
+        new_default: None,
+        drop_default: false,
+        using: None,
+    };
+    db.alter_column("main", "l8db_people", &rename("name", "full_name", None))
+        .await
+        .unwrap();
+    assert!(db
+        .alter_column(
+            "main",
+            "l8db_people",
+            &rename("full_name", "x", Some("INT"))
+        )
+        .await
+        .unwrap_err()
+        .contains("nur das Umbenennen"));
+    db.alter_column("main", "l8db_people", &rename("full_name", "name", None))
+        .await
+        .unwrap();
     let all_columns = db.list_columns(None, None, None).await.unwrap();
     assert!(all_columns
         .iter()
