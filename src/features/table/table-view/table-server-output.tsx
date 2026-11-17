@@ -2,7 +2,13 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ServerOutputPanel } from "@/features/query/server-output-panel";
 import type { SavedConnection } from "@/lib/connections";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
@@ -52,16 +58,19 @@ export function TableServerOutput({
         {feature.isNew && <NewBadge />}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent ref={feature.ref} className="sm:max-w-3xl">
+        <DialogContent
+          ref={feature.ref}
+          className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-y-auto sm:max-w-3xl"
+        >
           <DialogHeader>
             <DialogTitle>
               Server-Ausgabe · {connection.name}
               {database ? ` / ${database}` : ""}
             </DialogTitle>
           </DialogHeader>
-          <p className="text-xs text-muted-foreground">
+          <DialogDescription className="text-xs">
             Verbindung und Datenbank, nicht nur diese Tabelle. Kein Commit-Nachweis.
-          </p>
+          </DialogDescription>
           <div className="h-80 min-h-0">
             <ServerOutputPanel
               connectionId={connection.id}

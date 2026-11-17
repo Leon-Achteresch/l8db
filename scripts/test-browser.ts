@@ -24,6 +24,7 @@ const registered = [
   "array-editor-development",
   "routine-result-development",
   "filter-list-import",
+  "table-server-output",
 ];
 const requested = process.argv.slice(2);
 if (requested.some((name) => !registered.includes(name)))
@@ -33,8 +34,13 @@ const log = "test-artifacts/browser/tests.log";
 await mkdir("test-artifacts/browser", { recursive: true });
 await writeFile(log, "");
 const isolated = files.length === 1 && files[0].endsWith("-development") ? files[0] : null;
-const filterList = files.length === 1 && files[0] === "filter-list-import";
-const useIsolatedConfig = Boolean(isolated || filterList);
+const fixturePage =
+  files.length === 1 && files[0] === "filter-list-import"
+    ? "tests/fixtures/filter-list.html"
+    : files.length === 1 && files[0] === "table-server-output"
+      ? "tests/fixtures/table-server-output.html"
+      : null;
+const useIsolatedConfig = Boolean(isolated || fixturePage);
 const server = await createServer(
   useIsolatedConfig
     ? arrayEditorViteConfig()
@@ -59,7 +65,7 @@ try {
   if (!address || typeof address === "string") throw new Error("Fixture server failed to start");
   const url = `http://127.0.0.1:${address.port}`;
   const response = await fetch(
-    `${url}/${isolated ? `?${isolated}=1` : filterList ? "tests/fixtures/filter-list.html" : "tests/fixtures/table-edit.html"}`,
+    `${url}/${isolated ? `?${isolated}=1` : (fixturePage ?? "tests/fixtures/table-edit.html")}`,
   );
   if (!response.ok) throw new Error(`Fixture readiness failed: ${response.status}`);
   for (const file of files) {

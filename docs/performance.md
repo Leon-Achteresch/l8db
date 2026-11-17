@@ -1026,6 +1026,22 @@ and a current-store selector (SSR normally uses Zustand's initial snapshot).
 No live provider/trigger, native capture, browser/focus/dialog or actual log
 virtualization acceptance; no Windows/Linux or constrained CPU/heap run.
 
+The subsequent A12 browser acceptance used macOS arm64, Apple M3, 16 GiB RAM,
+Chrome and Bun 1.3.10. The 380 × 420 px dialog rendered 31 rows at the end of a
+2,000-message history. Keyboard scrolling reached both ends with fewer than 100
+mounted log rows and no IPC during the 100 ms idle interval. The existing
+100,000-entry delivery fixture measured 3.085 ms median and 57.057 ms p95.
+Scoped selection measured 1.867 ms median and 4.795 ms p95. The test passed with
+476,762 bytes of retained heap, 13 synthetic output reads and zero idle reads.
+
+The unchanged older benchmarks were rerun in isolation after initial budget
+misses during concurrent checks. Retaining 100,000 of 120,000 messages passed at
+32.631 ms p95. Streaming 2,000 ten-line batches with an output watcher remained
+above its 150 ms gate at 196.689 ms p95. This test exercises the existing output
+store without mounting the dialog. The acceptance patch leaves the store and
+both budgets intact. Timing of native rendering, real provider capture and
+system clipboard delivery remains outside the browser check.
+
 ## Exact numeric display (A15)
 
 The existing display menu now offers opt-in digit grouping and minimum fraction
