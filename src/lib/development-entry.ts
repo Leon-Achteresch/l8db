@@ -13,3 +13,7 @@ export function arrayEditorDevelopmentSelected(development: boolean, search: str
     parameters.get("array-editor-development") === "1" && !parameters.has("csv-check-development")
   );
 }
+
+export function routineResultDevelopmentSelected(development: boolean, search: string): boolean {
+  return development && search === "?routine-result-development=1";
+}

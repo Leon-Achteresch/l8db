@@ -68,3 +68,26 @@ L8DB_BROWSER_CHANNEL=chrome bun scripts/test-browser.ts array-editor-development
 ```
 
 The first command is a real native provider/fixture-contract test, including rejected foreign targets, stale row IDs, busy operations, oversized input and ragged values without any attempted UPDATE. Browser tests mount the actual isolated bootstrap and existing cell dialog but mock the IPC transport; they cover keyboard/focus/cancel, precision/NULL payloads, error retention and failed-readback recovery. Neither automated suite alone substitutes for native WebView IPC and agent-desktop keyboard acceptance. On17 November2026, after the other project released desktop focus, six cases passed in the actual isolated macOS Tauri/WKWebView window: cancelled keyboard draft with unchanged row/counter; Unicode/quotes/backslashes/NULL elements with negative2D bounds; precise raw numeric JSON with zero lower bound; SQL NULL to empty array; empty array to SQL NULL; and rejected ragged/empty-subarray input with retained draft and a fresh unchanged CTID/value/statement-counter readback. The native error-state screenshot was inspected. The owned app, Vite server, WebView directory and PostgreSQL cluster all exited/cleaned successfully. Other providers/platforms, PostgreSQL versions, packaged release and broad visual/theme/clipboard acceptance remain outside this local harness.
+
+### A16 isolated PostgreSQL routine dialog
+
+Start the native debug fixture with Bun 1.3.10 and PostgreSQL binaries on PATH.
+
+```sh
+bash scripts/test-postgres-arrays-local.sh --routine
+```
+
+The launcher provisions its own loopback PostgreSQL cluster and a fresh incognito WebView. It uses the A01 ownership checks and verifies the database, role, cluster marker and loopback address before creating fixture objects. The debug window exposes a readiness check and two fixed routine calls. IPC accepts only the routine variant. The server connection and statements stay inside the fixture process. The launcher disables environment-file loading and closes its server and cluster when the window exits.
+
+Open **Schnelle Routine öffnen** and invoke it with **Ausführen**. The existing grid displays one OUT row with long Unicode text, SQL NULL and a completion number. Tab to a cell's inspection button. Enter or Space opens the read-only inspector and Escape returns focus to the cell button.
+
+Use **Langsame Routine öffnen** to test a pending call. While it runs, close and reopen the dialog or press **Alt + Umschalt + F** to switch routines in place. The dialog discards the old answer and keeps **Ausführen** disabled until the original call settles. The server-side call continues. The next fast result's completion number includes the call whose answer was discarded.
+
+```sh
+bash scripts/test-postgres-arrays-local.sh --routine-test
+L8DB_BROWSER_CHANNEL=chrome bun --no-env-file scripts/test-browser.ts routine-result-development
+```
+
+The Rust test exercises genuine PostgreSQL `CALL` and the fixture's request gate. The Chrome regression renders the real dialog, result grid and inspector with controlled IPC responses so success and failure ordering can be tested independently of the server.
+
+The macOS 27.0.1 debug window was exercised with agent-desktop and genuine WebView IPC against PostgreSQL 17.11. The long inspector showed all 57,351 UTF-8 bytes, and keyboard dismissal restored focus to the cell and then to the dialog trigger. Both close/reopen and context switch discarded a pending result. The final fast call returned completion number 5, accounting for all five server completions, including the two discarded answers.

@@ -3,6 +3,7 @@ import { initAppStorage, STORAGE_FALLBACK_KEY } from "@/lib/app-storage";
 import {
   arrayEditorDevelopmentSelected,
   csvCheckDevelopmentSelected,
+  routineResultDevelopmentSelected,
 } from "@/lib/development-entry";
 
 function showStorageFailure() {
@@ -37,6 +38,13 @@ if (import.meta.env.DEV && csvCheckDevelopmentSelected(true, location.search)) {
     .catch((error) => {
       const root = document.getElementById("root");
       if (root) root.textContent = `Isolierter Arrayeditor nicht verfügbar: ${String(error)}`;
+    });
+} else if (import.meta.env.DEV && routineResultDevelopmentSelected(true, location.search)) {
+  void import("./development/routine-result-bootstrap")
+    .then((entry) => entry.startRoutineResultDevelopment())
+    .catch((error) => {
+      const root = document.getElementById("root");
+      if (root) root.textContent = `Isoliertes Routinenfenster nicht verfügbar: ${String(error)}`;
     });
 } else
   void initAppStorage().then((mode) => {

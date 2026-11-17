@@ -60,7 +60,7 @@ export const QueryResultCell = memo(function QueryResultCell({
       onFocus={selectMaster}
       onClick={selectMaster}
       onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
+        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
           selectMaster();
         }
@@ -81,7 +81,10 @@ export const QueryResultCell = memo(function QueryResultCell({
           type="button"
           className="block w-full truncate text-left focus-visible:outline-2 focus-visible:outline-ring"
           title="Vollständigen Zellwert anzeigen"
-          onClick={() => onInspect(column, value, rowIndex + 1)}
+          onClick={(event) => {
+            event.currentTarget.focus({ preventScroll: true });
+            onInspect(column, value, rowIndex + 1);
+          }}
         >
           {badge && <DataTableCellBadge badge={badge} />}
           {display}

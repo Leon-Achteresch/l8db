@@ -3,11 +3,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 [ "$#" -le 1 ] || { printf 'Only one explicit mode is accepted.\n' >&2; exit 2; }
 mode=${1:---test}
-if [ "$mode" = --editor ]; then
+if [ "$mode" = --editor ] || [ "$mode" = --routine ]; then
   command -v bun >/dev/null
   [ "$(bun --version)" = 1.3.10 ] || { printf 'Use Bun1.3.10 for the editor launcher.\n' >&2; exit 2; }
 fi
-case "$mode" in --test|--editor|--editor-test) ;; *) printf 'Usage: %s [--test|--editor|--editor-test]\n' "$0" >&2; exit 2 ;; esac
+case "$mode" in --test|--editor|--editor-test|--routine|--routine-test) ;; *) printf 'Usage: %s [--test|--editor|--editor-test|--routine|--routine-test]\n' "$0" >&2; exit 2 ;; esac
 for tool in initdb pg_ctl createdb python3 cargo; do
   command -v "$tool" >/dev/null || { printf 'Required local tool missing: %s\n' "$tool" >&2; exit 1; }
 done
@@ -55,10 +55,15 @@ export L8DB_A01_LOCAL_OWNED_DB="$database"
 export L8DB_A01_LOCAL_OWNED_DIR="$lab"
 printf '%s' "$database" >"$lab/a01-owner"
 export CARGO_BUILD_JOBS=2
-if [ "$mode" = --editor ]; then
+if [ "$mode" = --editor ] || [ "$mode" = --routine ]; then
   command -v bun >/dev/null
   cargo build --manifest-path src-tauri/Cargo.toml --locked --bin l8db
-  bun scripts/run-array-editor-development.ts
+  bun --no-env-file scripts/run-array-editor-development.ts "$mode"
+  exit
+fi
+if [ "$mode" = --routine-test ]; then
+  cargo test --manifest-path src-tauri/Cargo.toml --locked --lib routine_result_development::tests::routine_development_provider_contract \
+    -- --exact --ignored --test-threads=1 --nocapture
   exit
 fi
 if [ "$mode" = --editor-test ]; then

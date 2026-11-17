@@ -15,7 +15,7 @@ fn explicit_debug_entry_and_window_only() {
         "--csv-check-development".into()
     ]));
     assert_eq!(
-        development_url("http://127.0.0.1:54321/other?foreign=1#x")
+        development_url("http://127.0.0.1:54321/other?foreign=1#x", LABEL)
             .unwrap()
             .as_str(),
         "http://127.0.0.1:54321/?array-editor-development=1"
@@ -27,7 +27,7 @@ fn explicit_debug_entry_and_window_only() {
         "http://user@127.0.0.1:1234",
         "http://127.0.0.1",
     ] {
-        assert!(development_url(candidate).is_err());
+        assert!(development_url(candidate, LABEL).is_err());
     }
     assert!(window_allowed(LABEL).is_ok());
     assert!(window_allowed("main").is_err());
