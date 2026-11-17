@@ -4,6 +4,7 @@ import { version as appVersion } from "../../package.json";
 export const NEXT_FEATURE_VERSION = "0.19.0";
 
 export const NEW_FEATURES = {
+  "table.rows.server-output": NEXT_FEATURE_VERSION,
   "table.filter.sql-list": NEXT_FEATURE_VERSION,
   "procedures.run.results": NEXT_FEATURE_VERSION,
   "query.saved.origin": NEXT_FEATURE_VERSION,

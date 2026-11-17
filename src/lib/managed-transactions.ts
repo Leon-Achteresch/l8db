@@ -7,6 +7,7 @@ import { useSettingsStore } from "@/lib/settings";
 import { requestSqlConfirmation } from "@/lib/sql-confirmation";
 import { type DestructiveStatement, destructiveStatements } from "@/lib/sql-safety";
 import { effectiveConnectionString } from "@/lib/ssh";
+import { withTableServerOutput } from "@/lib/table-server-output";
 import {
   type ActiveTransaction,
   findTransaction,
@@ -194,7 +195,7 @@ export async function runTableTransaction<T>(
   if (stagesTableChanges(connection, database, schema, table)) {
     const tx = await ensureManagedTransaction(connection, database, scope);
     return runManagedOperation(tx.txId, async () => {
-      const result = await op(tx.txId);
+      const result = await withTableServerOutput(connection, database, tx.txId, () => op(tx.txId));
       store.addChange(tx.txId, {
         id: crypto.randomUUID(),
         timestamp: Date.now(),
@@ -210,7 +211,7 @@ export async function runTableTransaction<T>(
     database ?? undefined,
   );
   try {
-    const result = await op(txId);
+    const result = await withTableServerOutput(connection, database, txId, () => op(txId));
     const applied = change(result);
     if (applied.type === "delete" && !isProduction(connection)) {
       const accepted = await requestSqlConfirmation({

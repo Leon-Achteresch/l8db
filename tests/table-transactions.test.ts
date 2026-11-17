@@ -10,6 +10,7 @@ const active = new Set<string>();
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown> = {}) => {
     calls.push({ command, args });
+    if (command === "transaction_server_output") return [];
     if (command === "begin_transaction") {
       if (failBegin) throw new Error("unavailable");
       const id = `table-test-${++sequence}`;
@@ -191,7 +192,10 @@ describe("table transactions", () => {
     expect(await edit("A")).toBe("legacy");
     expect(await edit("B")).toBe("legacy");
     expect(getQueryTransaction("table-test")?.txId).toBe("legacy");
-    expect(calls).toHaveLength(0);
+    expect(calls.map((call) => call.command)).toEqual([
+      "transaction_server_output",
+      "transaction_server_output",
+    ]);
   });
 
   test("shared mode keeps table edits and SQL together", async () => {
