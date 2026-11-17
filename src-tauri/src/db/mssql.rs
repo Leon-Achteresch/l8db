@@ -15,7 +15,7 @@ use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 use super::pool::PoolState;
 use super::server_output::ServerMessage;
 use super::{
-    attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, timed, unsupported, where_clause,
+    attach_row_keys, create_table_ddl, rows_to_objects, timed, unsupported, where_clause,
     AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
     ProxyUserInfo, QueryResult, SchemaSize, SequenceInfo, SessionInfo, SslMode, TableData,
@@ -36,6 +36,7 @@ const SESSION_MAX: usize = 8;
 pub struct MssqlAdapter {
     config: Config,
     browse: bool,
+    pinned_instance: Option<String>,
     proxy_user: Option<String>,
     pool_state: PoolState,
     key: String,
@@ -171,7 +172,7 @@ fn select_expression(name: &str, data_type: &str) -> String {
         "geography" | "geometry" => format!("{column}.STAsText() AS {column}"),
         "hierarchyid" => format!("{column}.ToString() AS {column}"),
         "sql_variant" => format!(
-            "CASE WHEN SQL_VARIANT_PROPERTY({column}, 'BaseType') IN ('binary', 'varbinary') THEN N'\\x' + LOWER(CONVERT(NVARCHAR(4000), CAST({column} AS VARBINARY(8000)), 2)) ELSE CAST({column} AS NVARCHAR(4000)) END AS {column}"
+            "CASE WHEN SQL_VARIANT_PROPERTY({column}, 'BaseType') IN ('binary', 'varbinary') THEN CONVERT(NVARCHAR(4000), CAST({column} AS VARBINARY(8000)), 1) ELSE CAST({column} AS NVARCHAR(4000)) END AS {column}"
         ),
         "json" | "vector" => format!("CAST({column} AS NVARCHAR(MAX)) AS {column}"),
         "money" | "smallmoney" => format!("CAST({column} AS DECIMAL(19,4)) AS {column}"),
@@ -227,7 +228,7 @@ fn value_to_json(data: &ColumnData<'static>) -> serde_json::Value {
             .unwrap_or(serde_json::Value::Null),
         ColumnData::Binary(v) => v
             .as_ref()
-            .map(|b| serde_json::Value::String(hex_blob(b)))
+            .map(|b| serde_json::Value::String(super::hex_0x(b)))
             .unwrap_or(serde_json::Value::Null),
         ColumnData::Numeric(v) => v
             .map(|n| serde_json::Value::String(numeric_text(n.value(), n.scale())))
@@ -500,12 +501,13 @@ pub fn parse_mssql_url(value: &str) -> Result<MssqlUrl, String> {
             "application_name" | "app" => application_name = Some(value.into_owned()),
             "instance" | "instancename" if !value.is_empty() => instance = Some(value.into_owned()),
             super::cloud_auth::ACCESS_TOKEN_PARAM => access_token = Some(value.into_owned()),
-            "authentication" => authentication = value.to_ascii_lowercase(),
+            "authentication" => authentication = value.into_owned(),
             _ => {}
         }
     }
-    if !matches!(authentication.as_str(), "" | "sqlpassword")
-        && (access_token.is_none() || !authentication.starts_with("activedirectory"))
+    let mode = authentication.to_ascii_lowercase();
+    if !matches!(mode.as_str(), "" | "sqlpassword")
+        && (access_token.is_none() || !mode.starts_with("activedirectory"))
     {
         return Err(format!(
             "authentication={authentication} wird nicht unterstützt. SQL-Login oder Entra-Zugriffstoken ({}) verwenden.",
@@ -609,6 +611,7 @@ impl MssqlAdapter {
         Ok(Self {
             config,
             browse,
+            pinned_instance: parsed.instance.filter(|_| !browse),
             proxy_user: super::connection::proxy_user(&url),
             pool_state,
             key,
@@ -634,7 +637,7 @@ impl MssqlAdapter {
                     let tcp = if self.browse {
                         <TcpStream as tiberius::SqlBrowser>::connect_named(&self.config)
                             .await
-                            .map_err(|e| format!("Verbindung fehlgeschlagen: {}", map_err(e)))?
+                            .map_err(|e| browser_error(&self.config, e))?
                     } else {
                         TcpStream::connect(self.config.get_addr())
                             .await
@@ -644,6 +647,9 @@ impl MssqlAdapter {
                     let mut client = Client::connect(self.config.clone(), tcp.compat_write())
                         .await
                         .map_err(map_err)?;
+                    if let Some(instance) = &self.pinned_instance {
+                        check_instance(&mut client, instance).await?;
+                    }
                     if let Some(user) = &self.proxy_user {
                         impersonate(&mut client, user).await?;
                     }
@@ -744,6 +750,41 @@ impl MssqlAdapter {
             sql
         })
     }
+}
+
+fn browser_error(config: &Config, e: tiberius::error::Error) -> String {
+    let text = e.to_string();
+    if !text.contains("SQL browser") {
+        return format!("Verbindung fehlgeschlagen: {}", map_err(e));
+    }
+    let detail = text.trim_start_matches("Conversion error: ");
+    format!(
+        "Verbindung fehlgeschlagen: SQL Server Browser (UDP 1434) auf {} antwortet nicht. Port angeben (host:port) oder den Browser-Dienst starten.\n  {detail}",
+        config.get_addr().trim_end_matches(":1434")
+    )
+}
+
+async fn check_instance(client: &mut MsClient, wanted: &str) -> Result<(), String> {
+    let row = client
+        .simple_query(
+            "SELECT CAST(ISNULL(SERVERPROPERTY('InstanceName'), 'MSSQLSERVER') AS NVARCHAR(128))",
+        )
+        .await
+        .map_err(map_err)?
+        .into_row()
+        .await
+        .map_err(map_err)?;
+    let actual = row
+        .as_ref()
+        .and_then(|r| r.get::<&str, _>(0))
+        .unwrap_or("MSSQLSERVER")
+        .to_string();
+    if actual.eq_ignore_ascii_case(wanted) {
+        return Ok(());
+    }
+    Err(format!(
+        "SQL Server: Instanz „{wanted}“ läuft nicht auf diesem Port (dort: {actual}). Port oder instance= anpassen."
+    ))
 }
 
 async fn impersonate(client: &mut MsClient, user: &str) -> Result<(), String> {
@@ -2197,7 +2238,7 @@ mod tests {
         let bytes = vec![0, 0, 0, 0, 0, 0, 7, 211];
         assert_eq!(
             value_to_json(&ColumnData::Binary(Some(std::borrow::Cow::Owned(bytes)))),
-            serde_json::json!("\\x00000000000007d3")
+            serde_json::json!("0x00000000000007D3")
         );
     }
 
@@ -2255,7 +2296,7 @@ mod tests {
         );
         assert_eq!(
             select_expression("v", "sql_variant"),
-            "CASE WHEN SQL_VARIANT_PROPERTY([v], 'BaseType') IN ('binary', 'varbinary') THEN N'\\x' + LOWER(CONVERT(NVARCHAR(4000), CAST([v] AS VARBINARY(8000)), 2)) ELSE CAST([v] AS NVARCHAR(4000)) END AS [v]"
+            "CASE WHEN SQL_VARIANT_PROPERTY([v], 'BaseType') IN ('binary', 'varbinary') THEN CONVERT(NVARCHAR(4000), CAST([v] AS VARBINARY(8000)), 1) ELSE CAST([v] AS NVARCHAR(4000)) END AS [v]"
         );
         assert_eq!(select_expression("p", "Point"), "[p].ToString() AS [p]");
         let parsed =
@@ -2656,6 +2697,8 @@ mod tests {
         let fixed = named("mssql://sa:x@srv:14333/master?instanceName=SQLEXPRESS");
         assert!(!fixed.browse);
         assert_eq!(fixed.config.get_addr(), "srv:14333");
+        assert_eq!(fixed.pinned_instance.as_deref(), Some("SQLEXPRESS"));
+        assert!(browsed.pinned_instance.is_none());
         assert!(MssqlAdapter::new("mysql://x@y/z", None, pool.clone(), "k".into()).is_err());
         let trusted = MssqlAdapter::new(
             "mssql://srv/master?trusted_connection=true",
@@ -2940,7 +2983,7 @@ mod tests {
             .execute_query("SELECT v FROM dbo.l8ms_t ORDER BY id")
             .await
             .unwrap();
-        assert_eq!(variant.rows[0]["v"], "\\x4142");
+        assert_eq!(variant.rows[0]["v"], "0x4142");
         assert_eq!(variant.rows[1]["v"], 42);
         let script = adapter
             .execute_script("DECLARE @x INT = 5; SELECT @x AS v\nGO\nCREATE TABLE #l8 (x INT); INSERT INTO #l8 VALUES (1)")

@@ -408,6 +408,32 @@ const AGGREGATE_STATE: &str = "‹Aggregationszustand›";
 
 const MUTATION_STARTED: &str = "Mutation gestartet, läuft asynchron (system.mutations)";
 
+const RAW_BYTE_BASE: u32 = 0x10FF00;
+
+fn is_raw_byte(c: char) -> bool {
+    (RAW_BYTE_BASE..=RAW_BYTE_BASE + 0xFF).contains(&u32::from(c))
+}
+
+fn restore_raw_bytes(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::String(text) if text.chars().any(is_raw_byte) => {
+            let mut bytes = Vec::with_capacity(text.len());
+            let mut buffer = [0u8; 4];
+            for c in text.chars() {
+                if is_raw_byte(c) {
+                    bytes.push((u32::from(c) - RAW_BYTE_BASE) as u8);
+                } else {
+                    bytes.extend_from_slice(c.encode_utf8(&mut buffer).as_bytes());
+                }
+            }
+            *value = serde_json::Value::String(super::hex_blob(&bytes));
+        }
+        serde_json::Value::Array(items) => items.iter_mut().for_each(restore_raw_bytes),
+        serde_json::Value::Object(map) => map.values_mut().for_each(restore_raw_bytes),
+        _ => {}
+    }
+}
+
 fn lossless_text(bytes: Vec<u8>) -> String {
     match String::from_utf8(bytes) {
         Ok(text) => text,
@@ -417,7 +443,7 @@ fn lossless_text(bytes: Vec<u8>) -> String {
             for chunk in bytes.utf8_chunks() {
                 out.push_str(chunk.valid());
                 for byte in chunk.invalid() {
-                    out.push_str(&format!("\\\\x{byte:02X}"));
+                    out.extend(char::from_u32(RAW_BYTE_BASE + u32::from(*byte)));
                 }
             }
             out
@@ -592,7 +618,11 @@ fn parse_body(body: &str) -> Result<(Vec<String>, Rows), String> {
             return Ok((
                 vec!["result".to_string()],
                 body.lines()
-                    .map(|l| vec![serde_json::Value::String(l.to_string())])
+                    .map(|l| {
+                        let mut line = serde_json::Value::String(l.to_string());
+                        restore_raw_bytes(&mut line);
+                        vec![line]
+                    })
                     .collect(),
             ))
         }
@@ -602,6 +632,7 @@ fn parse_body(body: &str) -> Result<(Vec<String>, Rows), String> {
         .and_then(|l| serde_json::from_str::<Vec<String>>(l).ok())
         .unwrap_or_default();
     let rest: Vec<&str> = lines.collect();
+    let raw_bytes = body.chars().any(is_raw_byte);
     let mut rows = Vec::with_capacity(rest.len());
     for (i, line) in rest.iter().enumerate() {
         let parsed = serde_json::from_str::<serde_json::Value>(&quote_unsafe_integers(line));
@@ -619,6 +650,8 @@ fn parse_body(body: &str) -> Result<(Vec<String>, Rows), String> {
                 unquote_safe_ints(value);
             } else if base.starts_with("AggregateFunction(") && !value.is_null() {
                 *value = serde_json::Value::String(AGGREGATE_STATE.to_string());
+            } else if raw_bytes {
+                restore_raw_bytes(value);
             }
         }
         rows.push(row);
@@ -1551,12 +1584,14 @@ mod tests {
     fn broken_streams_and_invalid_bytes_are_not_silent() {
         let body = "[\"n\"]\n[\"UInt8\"]\n[0]\n__exception__\nCode: 395. DB::Exception: boom: while executing 'x'. (FUNCTION_THROW_IF_VALUE_IS_NON_ZERO) (version 25.8.33.6 (official build))\n";
         assert_eq!(parse_body(body).unwrap_err(), "boom: while executing 'x'.");
-        let text = lossless_text(b"[\"Hallo \\u0000\xFF\"]".to_vec());
-        assert_eq!(text, "[\"Hallo \\u0000\\\\xFF\"]");
-        assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&text).unwrap()[0],
-            "Hallo \u{0}\\xFF"
+        let text = lossless_text(
+            b"[\"s\",\"t\"]\n[\"String\",\"String\"]\n[\"Hallo \\u0000\xFF\",\"\\\\xFF\"]\n"
+                .to_vec(),
         );
+        let (_, rows) = parse_body(&text).unwrap();
+        assert_eq!(rows[0][0], "\\x48616c6c6f2000ff");
+        assert_eq!(rows[0][1], "\\xFF");
+        assert_eq!(lossless_text("ü".as_bytes().to_vec()), "ü");
     }
 
     #[test]

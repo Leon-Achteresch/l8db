@@ -5,10 +5,10 @@ use mysql_async::{Column, Conn, Opts, OptsBuilder, Pool, Row, SslOpts, Value};
 
 use super::pool::PoolState;
 use super::{
-    attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, timed, where_clause,
-    AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
-    DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
-    QueryResult, SchemaSize, SessionInfo, SslMode, TableData, TableInfo, TriggerInfo, TxSession,
+    attach_row_keys, create_table_ddl, rows_to_objects, timed, where_clause, AddColumnRequest,
+    AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
+    DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, QueryResult,
+    SchemaSize, SessionInfo, SslMode, TableData, TableInfo, TriggerInfo, TxSession,
 };
 
 const NO_SERVER_TLS: &str =
@@ -354,7 +354,7 @@ fn value_to_json(value: Value, column: &Column) -> serde_json::Value {
                 );
             }
             if is_binary(column) {
-                return serde_json::Value::String(hex_blob(&bytes));
+                return serde_json::Value::String(super::hex_0x(&bytes));
             }
             let text = String::from_utf8_lossy(&bytes).into_owned();
             if is_numeric(column) {
@@ -1735,6 +1735,33 @@ impl DatabaseAdapter for MysqlAdapter {
         Err("MySQL-Events lassen sich nicht manuell starten.".into())
     }
 
+    async fn get_partition_info(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<super::PartitionInfo, String> {
+        let rows = self
+            .rows(&format!(
+                "SELECT DISTINCT partition_name, partition_method, partition_expression, partition_ordinal_position FROM information_schema.partitions WHERE table_schema = {} AND table_name = {} AND partition_name IS NOT NULL ORDER BY partition_ordinal_position LIMIT 10000",
+                lit(schema),
+                lit(table)
+            ))
+            .await?;
+        Ok(super::PartitionInfo {
+            is_partitioned: !rows.is_empty(),
+            strategy: rows.first().map(|r| cell(r, 1)),
+            partition_key: rows.first().and_then(|r| cell_opt(r, 2)),
+            partitions: rows
+                .iter()
+                .map(|r| super::PartitionChild {
+                    schema: table.to_string(),
+                    name: cell(r, 0),
+                })
+                .collect(),
+            read_only: true,
+        })
+    }
+
     async fn list_sequences(
         &self,
         schema: Option<&str>,
@@ -2063,6 +2090,48 @@ mod tests {
                 "Verbindung zu 127.0.0.1:{port} abgelehnt. Läuft der Server und stimmt der Port?"
             )
         );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_partitions_are_listed_read_only() {
+        if live_urls().is_empty() {
+            eprintln!("übersprungen: L8DB_SMOKE_MYSQL_URL und L8DB_SMOKE_MARIADB_URL fehlen");
+        }
+        for url in live_urls() {
+            let adapter = MysqlAdapter::new(&url, None, create_pool_state(), url.clone()).unwrap();
+            let schema = live_scalar(&adapter, "SELECT DATABASE()").await;
+            adapter
+                .execute_query("DROP TABLE IF EXISTS l8db_fix_part, l8db_fix_plain")
+                .await
+                .unwrap();
+            adapter
+                .execute_query("CREATE TABLE l8db_fix_part (id INT, d DATE) PARTITION BY RANGE COLUMNS(d) (PARTITION p2022 VALUES LESS THAN ('2023-01-01'), PARTITION p2023 VALUES LESS THAN ('2024-01-01'), PARTITION pmax VALUES LESS THAN (MAXVALUE))")
+                .await
+                .unwrap();
+            adapter
+                .execute_query("CREATE TABLE l8db_fix_plain (id INT)")
+                .await
+                .unwrap();
+            let info = adapter
+                .get_partition_info(&schema, "l8db_fix_part")
+                .await
+                .unwrap();
+            assert!(info.is_partitioned && info.read_only);
+            assert_eq!(info.strategy.as_deref(), Some("RANGE COLUMNS"));
+            assert_eq!(info.partition_key.as_deref(), Some("`d`"));
+            let names: Vec<_> = info.partitions.iter().map(|p| p.name.as_str()).collect();
+            assert_eq!(names, ["p2022", "p2023", "pmax"]);
+            let plain = adapter
+                .get_partition_info(&schema, "l8db_fix_plain")
+                .await
+                .unwrap();
+            assert!(!plain.is_partitioned && plain.partitions.is_empty());
+            adapter
+                .execute_query("DROP TABLE l8db_fix_part, l8db_fix_plain")
+                .await
+                .unwrap();
+        }
     }
 
     #[tokio::test]

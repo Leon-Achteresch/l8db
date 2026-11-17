@@ -16,6 +16,7 @@ use super::{
 
 pub struct DuckdbAdapter {
     path: String,
+    read_only: bool,
     pool_state: PoolState,
     key: String,
 }
@@ -42,7 +43,7 @@ fn file_reader(path: &str) -> Option<&'static str> {
     })
 }
 
-fn file_view_sql(path: &str, encoding: Option<&str>) -> Option<String> {
+fn file_view_sql(path: &str, source: &str, encoding: Option<&str>) -> Option<String> {
     let file = std::path::Path::new(path);
     let reader = file_reader(path)?;
     let name = file
@@ -53,7 +54,7 @@ fn file_view_sql(path: &str, encoding: Option<&str>) -> Option<String> {
     let source = match reader {
         "csv" | "tsv" => format!(
             "read_csv({}{}, null_padding = true, parallel = false{})",
-            lit(path),
+            lit(source),
             if reader == "tsv" {
                 ", delim = '\\t'"
             } else {
@@ -63,7 +64,7 @@ fn file_view_sql(path: &str, encoding: Option<&str>) -> Option<String> {
                 .map(|e| format!(", encoding = {}", lit(e)))
                 .unwrap_or_default()
         ),
-        other => format!("{other}({})", lit(path)),
+        other => format!("{other}({})", lit(source)),
     };
     Some(format!(
         "CREATE VIEW {} AS SELECT * FROM {source}",
@@ -80,6 +81,9 @@ fn german(message: &str) -> String {
             .map(|pid| format!(" (Prozess {pid})"))
             .unwrap_or_default();
         return format!("Datei wird gerade von einem anderen Programm verwendet{pid}. Schließen und erneut versuchen.");
+    }
+    if message.contains("attached in read-only mode") {
+        return "Nur lesend geöffnet (?mode=ro).".into();
     }
     if message.contains("not a valid DuckDB database file") {
         return "Datei ist keine DuckDB-Datenbank.".into();
@@ -110,8 +114,28 @@ fn german(message: &str) -> String {
             "CSV-Fehler in Zeile {}",
             message[start + "CSV Error on Line: ".len()..].trim_end()
         ),
-        None => message.trim_end().to_string(),
+        None => {
+            let message = message.trim_end();
+            match engine_summary(message) {
+                Some(summary) => format!("{summary}: {message}"),
+                None => message.to_string(),
+            }
+        }
     }
+}
+
+fn engine_summary(message: &str) -> Option<&'static str> {
+    let (class, rest) = message.split_once(" Error: ")?;
+    Some(match class {
+        "Catalog" if rest.contains("does not exist") => "Objekt nicht gefunden",
+        "Catalog" if rest.contains("already exists") => "Objekt existiert bereits",
+        "Parser" => "Syntaxfehler",
+        "Binder" if rest.contains("not found") => "Spalte oder Name nicht gefunden",
+        "Binder" => "Ausdruck ungültig",
+        "Conversion" => "Wert lässt sich nicht umwandeln",
+        "Constraint" => "Bedingung verletzt",
+        _ => return None,
+    })
 }
 
 fn map_err(e: duckdb::Error) -> String {
@@ -372,6 +396,7 @@ impl DuckdbAdapter {
         }
         Ok(Self {
             path,
+            read_only: super::sqlite::opens_read_only(connection_string),
             pool_state,
             key,
         })
@@ -383,21 +408,26 @@ impl DuckdbAdapter {
         F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
     {
         let path = self.path.clone();
+        let read_only = self.read_only;
         let sealed = self.pool_state.seals_files();
         let conn: Arc<Mutex<Connection>> = self
             .pool_state
             .shared(&self.key, || async move {
-                let encoding = match file_reader(&path) {
+                let (source, encoding) = match file_reader(&path) {
                     Some("csv" | "tsv") => super::csv_stream::duckdb_encoding(&path)?,
-                    _ => None,
+                    _ => (path.clone(), None),
                 };
-                let view = file_view_sql(&path, encoding);
+                let view = file_view_sql(&path, &source, encoding);
                 let seal = sealed.then(|| {
-                    let allowed = if view.is_some() { lit(&path) } else { String::new() };
+                    let allowed = if view.is_some() { lit(&source) } else { String::new() };
                     format!("SET allowed_paths = [{allowed}]; SET enable_external_access = false; SET lock_configuration = true;")
                 });
                 let conn = if path == ":memory:" || view.is_some() {
                     Connection::open_in_memory()
+                } else if read_only {
+                    duckdb::Config::default()
+                        .access_mode(duckdb::AccessMode::ReadOnly)
+                        .and_then(|config| Connection::open_with_flags(&path, config))
                 } else {
                     Connection::open(&path)
                 }
@@ -1045,6 +1075,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mode_ro_opens_the_file_read_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ro.duckdb");
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch("CREATE TABLE t(x INT); INSERT INTO t VALUES (1)")
+            .unwrap();
+        let url = format!("duckdb://{}?mode=ro", path.display());
+        let db = DuckdbAdapter::new(&url, create_pool_state(), "ro".into()).unwrap();
+        let err = db
+            .execute_query("INSERT INTO t VALUES (2)")
+            .await
+            .unwrap_err();
+        assert!(err.contains("Nur lesend geöffnet"), "{err}");
+        let rows = db
+            .execute_query("SELECT count(*) AS n FROM t")
+            .await
+            .unwrap();
+        assert_eq!(rows.rows[0]["n"], 1);
+    }
+
+    #[tokio::test]
     async fn column_changes_honour_not_null_and_roll_back_together() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("columns.duckdb");
@@ -1240,22 +1292,22 @@ mod tests {
     #[test]
     fn file_views_cover_csv_tsv_json_and_parquet() {
         assert_eq!(
-            file_view_sql("/tmp/o'hara.CSV", None).unwrap(),
+            file_view_sql("/tmp/o'hara.CSV", "/tmp/o'hara.CSV", None).unwrap(),
             "CREATE VIEW \"o'hara\" AS SELECT * FROM read_csv('/tmp/o''hara.CSV', null_padding = true, parallel = false)"
         );
-        assert!(file_view_sql("/tmp/a.tsv", Some("latin-1"))
+        assert!(file_view_sql("/tmp/a.tsv", "/tmp/a.tsv", Some("latin-1"))
             .unwrap()
             .ends_with(
                 "delim = '\\t', null_padding = true, parallel = false, encoding = 'latin-1')"
             ));
-        assert!(file_view_sql("/tmp/a.parquet", None)
+        assert!(file_view_sql("/tmp/a.parquet", "/tmp/a.parquet", None)
             .unwrap()
             .contains("read_parquet('/tmp/a.parquet')"));
-        assert!(file_view_sql("/tmp/a.jsonl", None)
+        assert!(file_view_sql("/tmp/a.jsonl", "/tmp/a.jsonl", None)
             .unwrap()
             .contains("read_json_auto('/tmp/a.jsonl')"));
-        assert!(file_view_sql("/tmp/a.duckdb", None).is_none());
-        assert!(file_view_sql(":memory:", None).is_none());
+        assert!(file_view_sql("/tmp/a.duckdb", "/tmp/a.duckdb", None).is_none());
+        assert!(file_view_sql(":memory:", ":memory:", None).is_none());
     }
 
     #[test]
@@ -1349,14 +1401,33 @@ mod tests {
             first_column(&db, "SELECT name FROM wide").await.unwrap(),
             [json!("Müller")]
         );
+        let big_endian = dir.path().join("wide_be.csv");
+        let mut bytes = vec![0xfe, 0xff];
+        bytes.extend(
+            "id,name\n1,Müller 😀\n"
+                .encode_utf16()
+                .flat_map(u16::to_be_bytes),
+        );
+        std::fs::write(&big_endian, bytes).unwrap();
+        let db = file_adapter(&big_endian, "wide_be").unwrap();
+        assert_eq!(
+            first_column(&db, "SELECT name FROM wide_be").await.unwrap(),
+            [json!("Müller 😀")]
+        );
+        let excel = dir.path().join("excel.csv");
+        std::fs::write(&excel, b"id;preis\n1;5 \x80 f\xfcr M\xfcller\n").unwrap();
+        let db = file_adapter(&excel, "excel").unwrap();
+        assert_eq!(
+            first_column(&db, "SELECT preis FROM excel").await.unwrap(),
+            [json!("5 € für Müller")]
+        );
         let cp1252 = dir.path().join("euro.csv");
         std::fs::write(&cp1252, b"id,price\n1,5\x80\n").unwrap();
-        let error = file_adapter(&cp1252, "euro")
-            .unwrap()
-            .execute_query("SELECT 1")
-            .await
-            .unwrap_err();
-        assert!(error.contains("Windows-1252"), "{error}");
+        let db = file_adapter(&cp1252, "euro").unwrap();
+        assert_eq!(
+            first_column(&db, "SELECT price FROM euro").await.unwrap(),
+            [json!("5€")]
+        );
         let tsv = dir.path().join("tab.tsv");
         std::fs::write(&tsv, "id\tname\n1\ta,b\n").unwrap();
         let db = file_adapter(&tsv, "tsv").unwrap();
@@ -1373,7 +1444,7 @@ mod tests {
                 .unwrap(),
             [json!(2)]
         );
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 7);
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 9);
     }
 
     #[tokio::test]
@@ -1446,10 +1517,14 @@ mod tests {
             csv,
             "CSV-Fehler in Zeile 2\nOriginal Line: 1,2\nExpected Number of Columns: 3 Found: 2"
         );
-        assert!(
-            german("Catalog Error: Table with name nope does not exist!")
-                .contains("Table with name nope")
+        assert_eq!(
+            german("Catalog Error: Table with name nope does not exist!"),
+            "Objekt nicht gefunden: Catalog Error: Table with name nope does not exist!"
         );
+        assert!(
+            german("Parser Error: syntax error at or near \"selec\"").starts_with("Syntaxfehler: ")
+        );
+        assert_eq!(german("Invalid Input Error: x"), "Invalid Input Error: x");
         assert!(german("IO Error: Extension \"/h/.duckdb/extensions/v2.0.0/osx_arm64/sqlite_scanner.duckdb_extension\" not found.\nExtension \"sqlite_scanner\" is an existing extension.\n")
             .starts_with("DuckDB-Erweiterung „sqlite_scanner“ fehlt."));
     }
