@@ -1045,7 +1045,7 @@ impl Server {
             .map(str::to_string)
             .collect();
         let excerpt = Excerpt::parse(arg_str(args, "lines"))?;
-        let sql = super::server::SQL_KINDS.contains(&connection.kind);
+        let sql = super::server::sql_family(connection.kind);
         let catalog = self.catalog(config, connection).await?;
         let allowed = connection.allowed_schemas();
         let quick = View::new(&catalog, allowed);
@@ -1206,8 +1206,16 @@ impl Server {
                                     continue;
                                 }
                                 if info.indexes.len() < 20 {
+                                    let condition = index
+                                        .definition
+                                        .to_ascii_lowercase()
+                                        .rfind(" where ")
+                                        .map(|at| {
+                                            format!(" where {}", index.definition[at + 7..].trim())
+                                        })
+                                        .unwrap_or_default();
                                     info.indexes.push(format!(
-                                        "{}{}({})",
+                                        "{}{}({}){condition}",
                                         if index.is_unique { "unique " } else { "" },
                                         index.name,
                                         index.columns.join(", ")
@@ -1858,6 +1866,7 @@ mod tests {
                  CREATE TABLE orders(id INTEGER PRIMARY KEY, customer_id INTEGER REFERENCES customers(id), status TEXT);
                  CREATE TABLE items(id INTEGER PRIMARY KEY, order_id INTEGER REFERENCES orders(id), sku TEXT);
                  CREATE INDEX orders_status ON orders(status);
+                 CREATE UNIQUE INDEX customers_x ON customers(email) WHERE email LIKE '%@x';
                  INSERT INTO customers VALUES (1,'a@x'),(2,'b@x');
                  INSERT INTO orders VALUES (1,1,'open'),(2,1,'paid'),(3,2,'open');
                  INSERT INTO items VALUES (1,1,'s1'),(2,3,'s2');",
@@ -1966,6 +1975,10 @@ mod tests {
             "{text}"
         );
         assert!(text.contains(" indexes: orders_status(status)"), "{text}");
+        assert!(
+            text.contains("unique customers_x(email) where email LIKE '%@x'"),
+            "{text}"
+        );
         assert!(
             text.contains("main.customers\n id INTEGER PK\n email TEXT?\n"),
             "{text}"

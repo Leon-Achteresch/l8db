@@ -39,7 +39,7 @@ pub(super) struct PlanRow {
     pub stats: Option<PlanStats>,
 }
 
-pub(super) const MISSING_PRIVILEGES: &str = "EXPLAIN ANALYZE benötigt Leserechte auf V$SESSION und V$SQL_PLAN_STATISTICS_ALL (z. B. über SELECT_CATALOG_ROLE oder SELECT ANY DICTIONARY). Die Abfrage wurde nicht ausgeführt. Ohne diese Rechte steht nur der geschätzte Plan (Explain) zur Verfügung.";
+pub(super) const MISSING_PRIVILEGES: &str = "Plan + Messung braucht Leserechte auf V$SESSION und V$SQL_PLAN_STATISTICS_ALL (z. B. über SELECT_CATALOG_ROLE oder SELECT ANY DICTIONARY). Die Abfrage wurde nicht ausgeführt. Ohne diese Rechte steht nur der geschätzte Plan (Explain) zur Verfügung.";
 
 const COLUMNS: &str = "id, parent_id, operation, options, object_owner, object_name, object_alias, object_type, cost, cardinality, bytes, time, temp_space, access_predicates, filter_predicates";
 
@@ -171,7 +171,7 @@ pub(super) fn explain(
     Ok(plan)
 }
 
-pub(super) const ANALYZE_ONLY_DML: &str = "EXPLAIN ANALYZE ist bei Oracle nur für Abfragen und DML (INSERT, UPDATE, DELETE, MERGE) möglich. DDL und PL/SQL-Blöcke würden sofort festgeschrieben und wurden nicht ausgeführt.";
+pub(super) const ANALYZE_ONLY_DML: &str = "Plan + Messung ist bei Oracle nur für Abfragen und DML (INSERT, UPDATE, DELETE, MERGE) möglich. DDL und PL/SQL-Blöcke würden sofort festgeschrieben und wurden nicht ausgeführt.";
 
 pub(super) fn analyzable(statement: &str) -> bool {
     is_query(statement)

@@ -326,6 +326,17 @@ fn read() -> McpConfig {
         .unwrap_or_default()
 }
 
+pub fn load_error() -> Option<String> {
+    let path = config_path();
+    invalid(&path, &std::fs::read(&path).ok()?)
+}
+
+fn invalid(path: &std::path::Path, bytes: &[u8]) -> Option<String> {
+    serde_json::from_slice::<McpConfig>(bytes)
+        .err()
+        .map(|e| format!("Konfiguration {} ungültig: {e}", path.display()))
+}
+
 pub fn load() -> McpConfig {
     scoped(
         PINNED.get(),
@@ -459,6 +470,21 @@ pub fn mcp_clear_audit() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn invalid_config_names_the_reason() {
+        let path = std::path::Path::new("mcp.json");
+        let message = super::invalid(
+            path,
+            br#"{"enabled": true, "connections": [{"connection_string": "x"}]}"#,
+        )
+        .unwrap();
+        assert!(
+            message.starts_with("Konfiguration mcp.json ungültig: missing field"),
+            "{message}"
+        );
+        assert!(super::invalid(path, br#"{"enabled": true}"#).is_none());
+    }
+
     use super::*;
 
     thread_local! {

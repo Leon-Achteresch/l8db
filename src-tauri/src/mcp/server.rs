@@ -53,6 +53,11 @@ pub(crate) const SQL_KINDS: &[DatabaseKind] = &[
     DatabaseKind::Bigquery,
     DatabaseKind::Snowflake,
 ];
+pub(crate) fn sql_family(kind: DatabaseKind) -> bool {
+    let caps = kind.capabilities();
+    matches!(caps.query_language, "sql" | "cql") && !caps.object_storage
+}
+
 const NOSQL_KINDS: &[DatabaseKind] =
     &[DatabaseKind::Mongodb, DatabaseKind::Redis, DatabaseKind::S3];
 
@@ -121,6 +126,13 @@ pub fn serve() {
         {
             break;
         }
+    }
+}
+
+fn disabled(text: &str) -> String {
+    match config::load_error() {
+        Some(error) => format!("{error}\n{text}"),
+        None => text.to_string(),
     }
 }
 
@@ -230,7 +242,7 @@ pub(super) fn listed_tools(config: &McpConfig) -> Vec<Value> {
             .filter(|tool| tool["name"] != "report_issue" || crate::issues::relay().is_ok())
             .filter(|tool| {
                 tool["name"] != "code"
-                    || exposed(config).any(|connection| SQL_KINDS.contains(&connection.kind))
+                    || exposed(config).any(|connection| sql_family(connection.kind))
             })
             .filter(|tool| {
                 tool["name"] != "script"
@@ -366,7 +378,9 @@ impl Server {
             "initialize" | "server/discover" if !config::load().enabled => Err(rpc_error(
                 id.clone(),
                 -32002,
-                "l8db MCP ist deaktiviert. In l8db unter MCP aktivieren und neu verbinden.",
+                disabled(
+                    "l8db MCP ist deaktiviert. In l8db unter MCP aktivieren und neu verbinden.",
+                ),
             )),
             "initialize" => Ok(json!({
                 "protocolVersion": params
@@ -428,7 +442,7 @@ impl Server {
             return Err(rpc_error(
                 id.clone(),
                 -32002,
-                "l8db MCP ist deaktiviert. In l8db unter MCP aktivieren.",
+                disabled("l8db MCP ist deaktiviert. In l8db unter MCP aktivieren."),
             ));
         }
         let uri = arg_str(params, "uri");
@@ -468,7 +482,7 @@ impl Server {
         };
         if !config.enabled {
             return tool_text(
-                "l8db MCP ist deaktiviert. In l8db unter MCP aktivieren.".into(),
+                disabled("l8db MCP ist deaktiviert. In l8db unter MCP aktivieren."),
                 true,
             );
         }
@@ -1518,6 +1532,16 @@ mod tests {
     use super::*;
 
     use crate::mcp::TEST_ENV_LOCK as ENV_LOCK;
+
+    #[test]
+    fn sql_family_follows_the_registry_for_exposed_kinds() {
+        for kind in SQL_KINDS {
+            assert!(sql_family(*kind), "{kind:?}");
+        }
+        for kind in NOSQL_KINDS {
+            assert!(!sql_family(*kind), "{kind:?}");
+        }
+    }
 
     #[tokio::test]
     async fn paging_families_stop_at_the_mcp_row_cap() {

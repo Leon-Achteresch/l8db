@@ -438,7 +438,7 @@ pub(super) async fn load(
         taken: now(),
         ..Objects::default()
     };
-    if !super::server::SQL_KINDS.contains(&kind) {
+    if !super::server::sql_family(kind) {
         return objects;
     }
     match relations_sql(kind, schemas, allowlist) {
@@ -979,7 +979,7 @@ impl Server {
         connection: &McpConnection,
         catalog: &Catalog,
     ) -> Option<Arc<Objects>> {
-        if !super::server::SQL_KINDS.contains(&connection.kind) {
+        if !super::server::sql_family(connection.kind) {
             return None;
         }
         if let Some(objects) = catalog.objects().filter(|objects| objects.fresh()) {

@@ -65,17 +65,44 @@ pub struct CompareResult {
     pub details_truncated: bool,
 }
 
+fn decimal(text: &str) -> Option<String> {
+    let (negative, body) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text),
+    };
+    let (whole, fraction) = body.split_once('.').unwrap_or((body, ""));
+    let digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
+    if whole.is_empty()
+        || !digits(whole)
+        || !digits(fraction)
+        || (body.contains('.') && fraction.is_empty())
+    {
+        return None;
+    }
+    let fraction = fraction.trim_end_matches('0');
+    let number = if fraction.is_empty() {
+        whole.to_string()
+    } else {
+        format!("{whole}.{fraction}")
+    };
+    if number.bytes().all(|b| b == b'0' || b == b'.') {
+        return Some("0".into());
+    }
+    Some(if negative {
+        format!("-{number}")
+    } else {
+        number
+    })
+}
+
 fn canonical(value: &Value) -> String {
     match value {
         Value::Null => "\0null".into(),
         Value::Bool(value) => format!("s:{}", u8::from(*value)),
-        Value::String(value) => format!("s:{value}"),
+        Value::String(value) => format!("s:{}", decimal(value).unwrap_or_else(|| value.clone())),
         Value::Number(value) => {
-            if value.as_f64() == Some(0.0) {
-                return "s:0".into();
-            }
             let text = value.to_string();
-            format!("s:{}", text.strip_suffix(".0").unwrap_or(&text))
+            format!("s:{}", decimal(&text).unwrap_or(text))
         }
         Value::Array(values) => format!(
             "a:{}",
@@ -218,6 +245,12 @@ mod tests {
     fn codec_is_framed_and_keys_are_unique() {
         assert_ne!(canonical(&json!(["a,s:b"])), canonical(&json!(["a", "b"])));
         assert_eq!(canonical(&json!(true)), canonical(&json!(1)));
+        assert_eq!(canonical(&json!("1.50")), canonical(&json!(1.5)));
+        assert_eq!(canonical(&json!("-0.00")), canonical(&json!(0)));
+        assert_eq!(canonical(&json!("2.0")), canonical(&json!("2")));
+        assert_ne!(canonical(&json!("007")), canonical(&json!("7")));
+        assert_ne!(canonical(&json!("1.5x")), canonical(&json!(1.5)));
+        assert_eq!(canonical(&json!("1e5")), "s:1e5");
         assert_eq!(canonical(&json!(false)), canonical(&json!(0)));
         assert_ne!(canonical(&json!(true)), canonical(&json!(0)));
         assert_ne!(

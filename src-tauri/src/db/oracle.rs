@@ -230,32 +230,35 @@ fn map_err(e: oracle::Error) -> String {
     with_hint(format!("Oracle: {}", error_text(&e)))
 }
 
-const HINTS: &[(&str, &str)] = &[
-    ("ORA-12154", "Der TNS-Alias ist unbekannt. TNS_ADMIN und tnsnames.ora prüfen oder Host:Port/Service direkt angeben."),
-    ("ORA-12514", "Der Listener kennt diesen Service nicht. Service-Namen prüfen; bei Multitenant ist es meist der PDB-Service (z. B. FREEPDB1 statt FREE)."),
-    ("ORA-12505", "Der Listener kennt diese SID nicht. Den Service-Namen statt der SID verwenden oder ?sid= prüfen."),
-    ("ORA-12541", "Auf Host und Port läuft kein Listener. Port (Standard 1521), Listener-Status und Firewall prüfen."),
-    ("ORA-12170", "Zeitüberschreitung beim Verbinden. Host, VPN, Firewall oder SSH-Tunnel prüfen."),
-    ("ORA-12535", "Zeitüberschreitung beim Verbinden. Host, VPN, Firewall oder SSH-Tunnel prüfen."),
-    ("ORA-01017", "Benutzername oder Passwort ist falsch. Passwörter unterscheiden Groß- und Kleinschreibung; Benutzernamen mit Kleinbuchstaben in Anführungszeichen angeben (\"name\"); für Proxy-Logins Benutzer[Zielschema] verwenden."),
-    ("ORA-28000", "Das Konto ist gesperrt. Ein DBA kann es mit ALTER USER <name> ACCOUNT UNLOCK entsperren."),
-    ("ORA-28001", "Das Passwort ist abgelaufen. Ein DBA kann es mit ALTER USER <name> IDENTIFIED BY <neues Passwort> zurücksetzen."),
-    ("ORA-03113", "Die Verbindung zum Server ist abgerissen (Netzwerk, Neustart oder Idle-Timeout). l8db baut die Sitzung beim nächsten Aufruf neu auf."),
-    ("ORA-03114", "Die Verbindung zum Server ist abgerissen (Netzwerk, Neustart oder Idle-Timeout). l8db baut die Sitzung beim nächsten Aufruf neu auf."),
-    ("ORA-04021", "Das Objekt wird gerade von einer anderen Sitzung ausgeführt oder ist gesperrt. Unter Sitzungen & Locks prüfen, wer es benutzt."),
-    ("ORA-01031", "Dafür fehlen Rechte. Welche Rechte die Verbindung hat, zeigt Sitzungen & Locks → Verbindung."),
-    ("ORA-00942", "Tabelle oder View fehlt oder ist nicht freigegeben. Ohne Anführungszeichen schreibt Oracle Namen groß."),
-    ("ORA-00904", "Spalte oder Bezeichner unbekannt. Ohne Anführungszeichen schreibt Oracle Namen groß."),
-    ("ORA-00900", "Oracle erkennt die Anweisung nicht. Das erste Wort prüfen."),
-    ("ORA-00001", "Der Wert verletzt einen Primär- oder Eindeutigkeitsschlüssel."),
-    ("ORA-01008", "Für eine Bindvariable (:name) fehlt der Wert. In der CLI den Wert direkt ins SQL schreiben."),
-    ("ORA-22913", "Für die Nested-Table-Spalte fehlt NESTED TABLE … STORE AS."),
-    ("DPI-1047", "Der Oracle Instant Client fehlt oder passt nicht zur Architektur. Unter Treiber analysiert und repariert l8db das."),
+const HINTS: &[(&str, &str, &str)] = &[
+    ("ORA-12154", "TNS-Alias unbekannt", "Der TNS-Alias ist unbekannt. TNS_ADMIN und tnsnames.ora prüfen oder Host:Port/Service direkt angeben."),
+    ("ORA-12514", "Service unbekannt", "Der Listener kennt diesen Service nicht. Service-Namen prüfen; bei Multitenant ist es meist der PDB-Service (z. B. FREEPDB1 statt FREE)."),
+    ("ORA-12505", "SID unbekannt", "Der Listener kennt diese SID nicht. Den Service-Namen statt der SID verwenden oder ?sid= prüfen."),
+    ("ORA-12541", "Kein Listener", "Auf Host und Port läuft kein Listener. Port (Standard 1521), Listener-Status und Firewall prüfen."),
+    ("ORA-12170", "Zeitüberschreitung", "Zeitüberschreitung beim Verbinden. Host, VPN, Firewall oder SSH-Tunnel prüfen."),
+    ("ORA-12535", "Zeitüberschreitung", "Zeitüberschreitung beim Verbinden. Host, VPN, Firewall oder SSH-Tunnel prüfen."),
+    ("ORA-01017", "Anmeldung fehlgeschlagen", "Benutzername oder Passwort ist falsch. Passwörter unterscheiden Groß- und Kleinschreibung; Benutzernamen mit Kleinbuchstaben in Anführungszeichen angeben (\"name\"); für Proxy-Logins Benutzer[Zielschema] verwenden."),
+    ("ORA-28000", "Konto gesperrt", "Das Konto ist gesperrt. Ein DBA kann es mit ALTER USER <name> ACCOUNT UNLOCK entsperren."),
+    ("ORA-28001", "Passwort abgelaufen", "Das Passwort ist abgelaufen. Ein DBA kann es mit ALTER USER <name> IDENTIFIED BY <neues Passwort> zurücksetzen."),
+    ("ORA-03113", "Verbindung abgerissen", "Die Verbindung zum Server ist abgerissen (Netzwerk, Neustart oder Idle-Timeout). l8db baut die Sitzung beim nächsten Aufruf neu auf."),
+    ("ORA-03114", "Verbindung abgerissen", "Die Verbindung zum Server ist abgerissen (Netzwerk, Neustart oder Idle-Timeout). l8db baut die Sitzung beim nächsten Aufruf neu auf."),
+    ("ORA-04021", "Objekt gesperrt", "Das Objekt wird gerade von einer anderen Sitzung ausgeführt oder ist gesperrt. Unter Sitzungen & Locks prüfen, wer es benutzt."),
+    ("ORA-01031", "Rechte fehlen", "Dafür fehlen Rechte. Welche Rechte die Verbindung hat, zeigt Sitzungen & Locks → Verbindung."),
+    ("ORA-00942", "Tabelle oder View fehlt", "Tabelle oder View fehlt oder ist nicht freigegeben. Ohne Anführungszeichen schreibt Oracle Namen groß."),
+    ("ORA-00904", "Spalte unbekannt", "Spalte oder Bezeichner unbekannt. Ohne Anführungszeichen schreibt Oracle Namen groß."),
+    ("ORA-00900", "Anweisung unbekannt", "Oracle erkennt die Anweisung nicht. Das erste Wort prüfen."),
+    ("ORA-00001", "Schlüssel verletzt", "Der Wert verletzt einen Primär- oder Eindeutigkeitsschlüssel."),
+    ("ORA-01008", "Bindwert fehlt", "Für eine Bindvariable (:name) fehlt der Wert. In der CLI den Wert direkt ins SQL schreiben."),
+    ("ORA-22913", "Speicherklausel fehlt", "Für die Nested-Table-Spalte fehlt NESTED TABLE … STORE AS."),
+    ("DPI-1047", "Instant Client fehlt", "Der Oracle Instant Client fehlt oder passt nicht zur Architektur. Unter Treiber analysiert und repariert l8db das."),
 ];
 
 fn with_hint(message: String) -> String {
-    match HINTS.iter().find(|(code, _)| message.contains(code)) {
-        Some((_, hint)) => format!("{message}\nHinweis: {hint}"),
+    match HINTS.iter().find(|(code, _, _)| message.contains(code)) {
+        Some((_, title, hint)) => match message.strip_prefix("Oracle: ") {
+            Some(raw) => format!("{title}: {raw}\nHinweis: {hint}"),
+            None => format!("{message}\nHinweis: {hint}"),
+        },
         None => message,
     }
 }
@@ -1010,7 +1013,7 @@ const MAX_OUTPUT_LINES: usize = 100_000;
 
 const READ_OUTPUT: &str = "DECLARE l_lines DBMS_OUTPUT.CHARARR; l_count INTEGER := :count; l_out CLOB; BEGIN DBMS_OUTPUT.GET_LINES(l_lines, l_count); IF l_count > 0 THEN DBMS_LOB.CREATETEMPORARY(l_out, TRUE); FOR i IN 1 .. l_count LOOP IF l_lines(i) IS NOT NULL THEN DBMS_LOB.WRITEAPPEND(l_out, LENGTH(l_lines(i)), l_lines(i)); END IF; DBMS_LOB.WRITEAPPEND(l_out, 1, CHR(10)); END LOOP; END IF; :text := l_out; :count := l_count; END;";
 
-fn output_limit_note() -> String {
+pub(crate) fn output_limit_note() -> String {
     format!("… Grenze von {MAX_OUTPUT_LINES} Zeilen erreicht, weitere Ausgabe verworfen.")
 }
 
@@ -2627,6 +2630,27 @@ impl DatabaseAdapter for OracleAdapter {
             .map(|r| TableInfo {
                 schema: s(r, 0),
                 name: s(r, 1),
+            })
+            .collect())
+    }
+
+    async fn list_materialized_views(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<super::MatviewInfo>, String> {
+        let sql = format!(
+            "SELECT owner, mview_name, CASE WHEN last_refresh_date IS NULL THEN 0 ELSE 1 END FROM all_mviews WHERE {} ORDER BY mview_name",
+            Self::owner_filter(schema, "owner")
+        );
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| super::MatviewInfo {
+                schema: s(r, 0),
+                name: s(r, 1),
+                is_populated: i(r, 2) == 1,
+                definition: None,
             })
             .collect())
     }
@@ -6593,9 +6617,12 @@ mod batch_tests {
             with_hint("Oracle: ORA-12899: value too large for column".into()),
             "Oracle: ORA-12899: value too large for column"
         );
+        let missing = with_hint("Oracle: ORA-00942: table or view does not exist".into());
+        assert!(missing.starts_with("Tabelle oder View fehlt: ORA-00942: table or view"));
+        assert!(missing.contains("Hinweis: Tabelle oder View fehlt"));
         assert!(
-            with_hint("Oracle: ORA-00942: table or view does not exist".into())
-                .contains("Hinweis: Tabelle oder View fehlt")
+            with_hint("Oracle-Verbindung fehlgeschlagen: ORA-12514: x".into())
+                .starts_with("Oracle-Verbindung fehlgeschlagen: ORA-12514")
         );
     }
 

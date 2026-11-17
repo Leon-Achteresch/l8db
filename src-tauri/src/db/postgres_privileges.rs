@@ -21,7 +21,13 @@ pub(super) const TABLE_PRIVILEGES_SQL: &str =
         COALESCE('DELETE' = ANY(p.privs), false) AS del, \
         COALESCE('TRUNCATE' = ANY(p.privs), false) AS trunc, \
         COALESCE('REFERENCES' = ANY(p.privs), false) AS refs, \
-        COALESCE('TRIGGER' = ANY(p.privs), false) AS trig \
+        COALESCE('TRIGGER' = ANY(p.privs), false) AS trig, \
+        (SELECT string_agg(x.privilege_type || ' (' || x.cols || ')', ', ' ORDER BY x.privilege_type) \
+         FROM (SELECT ca.privilege_type, string_agg(quote_ident(at.attname), ', ' ORDER BY at.attnum) AS cols \
+               FROM pg_attribute at CROSS JOIN LATERAL aclexplode(at.attacl) ca \
+               WHERE at.attrelid = c.oid AND at.attacl IS NOT NULL AND NOT at.attisdropped \
+                 AND ca.grantee = (SELECT r.oid FROM pg_roles r WHERE r.rolname = $1) \
+               GROUP BY ca.privilege_type) x) AS column_privs \
      FROM pg_class c \
      JOIN pg_namespace n ON n.oid = c.relnamespace \
      LEFT JOIN LATERAL (SELECT array_agg(a.privilege_type) AS privs \
@@ -91,7 +97,9 @@ mod tests {
                  GRANT UPDATE ON l8db_privgrid.t1 TO l8db_priv_alice; \
                  GRANT SELECT ON l8db_privgrid.s1 TO l8db_priv_alice; \
                  CREATE TABLE l8db_privgrid.p1(id int) PARTITION BY RANGE (id); \
-                 GRANT SELECT ON l8db_privgrid.p1 TO l8db_priv_alice",
+                 GRANT SELECT ON l8db_privgrid.p1 TO l8db_priv_alice; \
+                 CREATE TABLE l8db_privgrid.c1(id int, price int, note text); \
+                 GRANT SELECT (price, note), UPDATE (note) ON l8db_privgrid.c1 TO l8db_priv_alice",
             )
             .await
             .unwrap();
@@ -114,6 +122,19 @@ mod tests {
             table(&alice, "p1"),
             [true, false, false, false, false, false, false]
         );
+        let columns = |name: &str| {
+            alice
+                .tables
+                .iter()
+                .find(|t| t.schema == "l8db_privgrid" && t.table == name)
+                .and_then(|t| t.column_privileges.clone())
+        };
+        assert_eq!(table(&alice, "c1"), [false; 7]);
+        assert_eq!(
+            columns("c1").as_deref(),
+            Some("SELECT (price, note), UPDATE (note)")
+        );
+        assert_eq!(columns("t1"), None);
         assert_eq!(schema(&su), (false, false));
         assert_eq!(table(&su, "t1"), [false; 7]);
         assert_eq!(schema(&owner), (true, true));

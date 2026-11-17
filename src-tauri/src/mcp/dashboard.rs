@@ -8,7 +8,7 @@ use std::time::Instant;
 use super::config::{self, McpConfig, McpConnection};
 use super::dashboard_builder as builder;
 use super::redact::{self, Redactor};
-use super::server::{self, Server, SQL_KINDS};
+use super::server::{self, Server};
 use crate::db::QueryResult;
 
 const GRID_COLS: i64 = 12;
@@ -1103,7 +1103,7 @@ fn dashboard_connection<'a>(config: &'a McpConfig, value: &Value) -> Option<&'a 
 
 fn sql_connection<'a>(config: &'a McpConfig, target: &str) -> Result<&'a McpConnection, String> {
     let connection = server::find_connection(config, target)?;
-    if !SQL_KINDS.contains(&connection.kind) {
+    if !server::sql_family(connection.kind) {
         return Err(format!(
             "Dashboards brauchen eine SQL-Verbindung, '{}' ist keine.",
             connection.name
