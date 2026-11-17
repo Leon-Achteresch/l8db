@@ -14,6 +14,7 @@ use super::{
 
 pub struct SqliteAdapter {
     path: String,
+    read_only: bool,
     pool_state: PoolState,
     key: String,
 }
@@ -36,6 +37,17 @@ pub fn strip_params(value: &str) -> &str {
         Some(at) if is_params(&value[at + 1..]) => &value[..at],
         _ => value,
     }
+}
+
+pub fn opens_read_only(connection_string: &str) -> bool {
+    let value = connection_string.trim();
+    value.rfind('?').is_some_and(|at| {
+        let tail = &value[at + 1..];
+        is_params(tail)
+            && tail
+                .split('&')
+                .any(|pair| matches!(pair, "mode=ro" | "immutable=1" | "access_mode=read_only"))
+    })
 }
 
 pub fn file_path(connection_string: &str) -> Result<String, String> {
@@ -111,12 +123,13 @@ fn map_err(e: rusqlite::Error) -> String {
     use rusqlite::ErrorCode;
     let german = match &e {
         rusqlite::Error::SqlInputError { msg, offset, .. } => {
-            return format!("SQLite: {msg} (Position {})", offset + 1);
+            let summary = engine_summary(msg).map(|s| format!("{s}: ")).unwrap_or_default();
+            return format!("SQLite: {summary}{msg} (Position {})", offset + 1);
         }
         rusqlite::Error::SqliteFailure(failure, _) => match failure.code {
             ErrorCode::NotADatabase => Some("Datei ist keine SQLite-Datenbank oder verschlüsselt."),
             ErrorCode::DatabaseCorrupt => Some("Datei ist beschädigt."),
-            ErrorCode::ReadOnly => Some("Datei ist schreibgeschützt."),
+            ErrorCode::ReadOnly => Some("Nur lesend geöffnet (Datei schreibgeschützt oder ?mode=ro)."),
             ErrorCode::DatabaseBusy | ErrorCode::DatabaseLocked => Some(
                 "Datei wird gerade von einem anderen Programm verwendet. Schließen und erneut versuchen.",
             ),
@@ -128,8 +141,33 @@ fn map_err(e: rusqlite::Error) -> String {
     };
     match german {
         Some(text) => format!("SQLite: {text}"),
-        None => format!("SQLite: {e}"),
+        None => {
+            let text = e.to_string();
+            match engine_summary(&text) {
+                Some(summary) => format!("SQLite: {summary}: {text}"),
+                None => format!("SQLite: {text}"),
+            }
+        }
     }
+}
+
+fn engine_summary(message: &str) -> Option<&'static str> {
+    const SUMMARIES: [(&str, &str); 10] = [
+        ("no such table", "Tabelle nicht gefunden"),
+        ("no such column", "Spalte nicht gefunden"),
+        ("no such function", "Funktion nicht gefunden"),
+        ("syntax error", "Syntaxfehler"),
+        ("incomplete input", "Anweisung unvollständig"),
+        ("already exists", "Objekt existiert bereits"),
+        ("UNIQUE constraint failed", "Eindeutigkeit verletzt"),
+        ("NOT NULL constraint failed", "Pflichtfeld leer"),
+        ("FOREIGN KEY constraint failed", "Fremdschlüssel verletzt"),
+        ("cannot store", "Wert passt nicht zum Spaltentyp"),
+    ];
+    SUMMARIES
+        .iter()
+        .find(|(needle, _)| message.contains(needle))
+        .map(|(_, summary)| *summary)
 }
 
 type Rows = (Vec<String>, Vec<Vec<serde_json::Value>>);
@@ -193,12 +231,13 @@ impl SqliteAdapter {
     ) -> Result<Self, String> {
         Ok(Self {
             path: existing_file_path(connection_string)?,
+            read_only: opens_read_only(connection_string),
             pool_state,
             key,
         })
     }
 
-    fn open(path: &str) -> Result<Connection, String> {
+    fn open(path: &str, read_only: bool) -> Result<Connection, String> {
         if file_header(path).get(8..12) == Some(b"DUCK") {
             return Err(
                 "Datei ist eine DuckDB-Datenbank: duckdb:// statt sqlite:// verwenden.".into(),
@@ -207,13 +246,12 @@ impl SqliteAdapter {
         let conn = if path == ":memory:" {
             Connection::open_in_memory().map_err(map_err)?
         } else {
-            Connection::open_with_flags(
-                path,
-                OpenFlags::SQLITE_OPEN_READ_WRITE
-                    | OpenFlags::SQLITE_OPEN_CREATE
-                    | OpenFlags::SQLITE_OPEN_URI,
-            )
-            .map_err(|e| {
+            let mode = if read_only {
+                OpenFlags::SQLITE_OPEN_READ_ONLY
+            } else {
+                OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE
+            };
+            Connection::open_with_flags(path, mode | OpenFlags::SQLITE_OPEN_URI).map_err(|e| {
                 format!(
                     "SQLite-Datei konnte nicht geöffnet werden ({path}): {}",
                     map_err(e).trim_start_matches("SQLite: ")
@@ -227,11 +265,11 @@ impl SqliteAdapter {
 
     async fn conn(&self) -> Result<Arc<Mutex<Connection>>, String> {
         let path = self.path.clone();
+        let read_only = self.read_only;
         self.pool_state
-            .shared(
-                &self.key,
-                || async move { Self::open(&path).map(Mutex::new) },
-            )
+            .shared(&self.key, || async move {
+                Self::open(&path, read_only).map(Mutex::new)
+            })
             .await
     }
 
@@ -568,7 +606,8 @@ impl DatabaseAdapter for SqliteAdapter {
             self.conn().await?
         } else {
             let path = self.path.clone();
-            let conn = tokio::task::spawn_blocking(move || Self::open(&path))
+            let read_only = self.read_only;
+            let conn = tokio::task::spawn_blocking(move || Self::open(&path, read_only))
                 .await
                 .map_err(|e| format!("SQLite-Task fehlgeschlagen: {e}"))??;
             Arc::new(Mutex::new(conn))
@@ -1149,6 +1188,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mode_ro_opens_the_file_read_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ro.sqlite");
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch("CREATE TABLE t(x); INSERT INTO t VALUES (1)")
+            .unwrap();
+        assert!(!opens_read_only(&format!("sqlite://{}", path.display())));
+        assert!(!opens_read_only("sqlite:///d/what?mode=rox.db"));
+        let url = format!("sqlite://{}?mode=ro", path.display());
+        let db = SqliteAdapter::new(&url, create_pool_state(), "ro".into()).unwrap();
+        let err = db
+            .execute_query("INSERT INTO t VALUES (2)")
+            .await
+            .unwrap_err();
+        assert!(err.contains("Nur lesend geöffnet"), "{err}");
+        assert!(db.begin_transaction().await.is_ok());
+        let rows = db
+            .execute_query("SELECT count(*) AS n FROM t")
+            .await
+            .unwrap();
+        assert_eq!(rows.rows[0]["n"], 1);
+    }
+
+    #[tokio::test]
     async fn cancellation_interrupts_only_its_query() {
         let db = adapter();
         let options = super::super::execution::ExecutionOptions {
@@ -1258,7 +1322,7 @@ mod tests {
             .contains("duckdb://"));
         let error = adapter().execute_query("selec 1").await.unwrap_err();
         assert!(
-            error.starts_with("SQLite: near \"selec\": syntax error (Position 1)"),
+            error.starts_with("SQLite: Syntaxfehler: near \"selec\": syntax error (Position 1)"),
             "{error}"
         );
         assert!(!error.contains(" in selec"), "{error}");

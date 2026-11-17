@@ -83,6 +83,44 @@ fn needs_batch(statement: &str) -> bool {
         })
 }
 
+const CONSOLE_METHODS: [&str; 6] = ["GET", "POST", "PUT", "DELETE", "HEAD", "PATCH"];
+
+fn is_console_request_line(line: &str) -> bool {
+    let Some((method, rest)) = line.trim().split_once(char::is_whitespace) else {
+        return false;
+    };
+    let rest = rest.trim_start();
+    !rest.is_empty()
+        && !rest.starts_with('{')
+        && CONSOLE_METHODS
+            .iter()
+            .any(|known| known.eq_ignore_ascii_case(method))
+}
+
+pub fn console_requests(sql: &str) -> Option<Vec<String>> {
+    let finish = |request: String| {
+        request
+            .trim_end_matches(|c: char| c.is_whitespace() || c == ';')
+            .to_string()
+    };
+    let mut requests = Vec::new();
+    let mut current: Option<String> = None;
+    for line in sql.split('\n') {
+        let trimmed = line.trim();
+        if is_console_request_line(line) {
+            requests.extend(current.take().map(finish));
+            current = Some(line.trim_start().to_string());
+        } else if let Some(request) = current.as_mut() {
+            request.push('\n');
+            request.push_str(line);
+        } else if !trimmed.is_empty() && !trimmed.starts_with('#') && !trimmed.starts_with("//") {
+            return None;
+        }
+    }
+    requests.extend(current.map(finish));
+    (!requests.is_empty()).then_some(requests)
+}
+
 pub fn split_for(kind: DatabaseKind, sql: &str) -> Vec<String> {
     split_dialect(
         sql,
@@ -91,6 +129,10 @@ pub fn split_for(kind: DatabaseKind, sql: &str) -> Vec<String> {
             DatabaseKind::Mysql => Dialect::Mysql,
             DatabaseKind::Mssql => return mssql_batches(sql),
             DatabaseKind::Cassandra => return super::cassandra::split_script(sql),
+            DatabaseKind::Elasticsearch => match console_requests(sql) {
+                Some(requests) => return requests,
+                None => Dialect::Lenient,
+            },
             DatabaseKind::Sqlite | DatabaseKind::SqliteHttp | DatabaseKind::Duckdb => {
                 Dialect::Standard
             }
@@ -384,6 +426,23 @@ fn split_inner(sql: &str, dialect: Dialect, go_only: bool) -> (Vec<String>, Vec<
         }
         if c == b';' {
             i += 1;
+            if dialect == Dialect::Postgres
+                && s.words.first().is_some_and(|w| w == "COPY")
+                && s.words.iter().any(|w| w == "STDIN")
+            {
+                let mut end = line_end(sql, i);
+                while end < bytes.len() {
+                    let next = line_end(sql, end + 1);
+                    let line = sql[end + 1..next].trim_end_matches('\r');
+                    end = next;
+                    if line == "\\." {
+                        break;
+                    }
+                }
+                s.flush(end);
+                i = end;
+                continue;
+            }
             if !go_only && !s.batch && s.depth == 0 && delimiter == ";" {
                 s.flush(i - 1);
             }
@@ -399,6 +458,22 @@ fn split_inner(sql: &str, dialect: Dialect, go_only: bool) -> (Vec<String>, Vec<
 #[cfg(test)]
 pub(crate) mod tests {
     use super::{split, split_dialect, split_mssql, split_postgres, Dialect};
+
+    #[test]
+    fn copy_from_stdin_keeps_its_data_in_one_statement() {
+        let parts = split_dialect(
+            "COPY public.t (a, b) FROM STDIN;\n1\tx;y\n2\tz\n\\.\nSELECT 1;\nCOPY t FROM stdin;\n3",
+            Dialect::Postgres,
+        );
+        assert_eq!(
+            parts,
+            vec![
+                "COPY public.t (a, b) FROM STDIN;\n1\tx;y\n2\tz\n\\.".to_string(),
+                "SELECT 1".to_string(),
+                "COPY t FROM stdin;\n3".to_string(),
+            ]
+        );
+    }
 
     pub(crate) fn dialect(name: &str) -> Dialect {
         match name {
@@ -550,6 +625,25 @@ pub(crate) mod tests {
             .len(),
             2
         );
+    }
+
+    #[test]
+    fn elasticsearch_console_requests_split_per_request_line() {
+        let es = super::DatabaseKind::Elasticsearch;
+        let sql = "# Suche\nGET a/_search\n{\n  \"query\": { \"match_all\": {} }\n}\n\nGET b/_search\nPOST logs/_doc;\n{\"a\": 1};\n";
+        assert_eq!(
+            super::split_for(es, sql),
+            vec![
+                "GET a/_search\n{\n  \"query\": { \"match_all\": {} }\n}",
+                "GET b/_search",
+                "POST logs/_doc;\n{\"a\": 1}",
+            ]
+        );
+        assert_eq!(
+            super::split_for(es, "SELECT 1;\nDELETE FROM logs;"),
+            vec!["SELECT 1", "DELETE FROM logs"]
+        );
+        assert_eq!(super::split_for(es, "GET {\"x\": 1}").len(), 1);
     }
 
     #[test]
