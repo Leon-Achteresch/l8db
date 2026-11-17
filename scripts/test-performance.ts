@@ -21,6 +21,7 @@ const SUITES = {
     "tests/perf-saved-query-origin.test.ts",
     "tests/perf-postgres-array-editor.test.ts",
     "tests/perf-procedure-run.test.ts",
+    "tests/perf-sql-filter-list-import.test.tsx",
     "tests/perf-keyword-filter-hint.test.ts",
     "tests/perf-schema-report.test.ts",
     "tests/perf-column-filters.test.ts",
