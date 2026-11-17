@@ -19,6 +19,7 @@ const files = [
   "split-transaction",
   "transaction-commit",
   "command-palette-pointer",
+  "csv-file-check",
 ];
 const log = "test-artifacts/browser/tests.log";
 await mkdir("test-artifacts/browser", { recursive: true });

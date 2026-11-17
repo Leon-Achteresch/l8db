@@ -31,16 +31,26 @@ export function csvFileCheckRequest(
 
 export interface CsvCheckState {
   checking: boolean;
+  cancelling: boolean;
+  cancelled: boolean;
   report: CsvCheckReport | null;
   error: string | null;
 }
+
+const IDLE: CsvCheckState = {
+  checking: false,
+  cancelling: false,
+  cancelled: false,
+  report: null,
+  error: null,
+};
 
 export function createCsvFileCheck(
   request: CsvCheckRequest | null,
   run = async (input: CsvCheckRequest, signal: AbortSignal) =>
     (await import("@/lib/csv-file-check-runner")).runCsvFileCheck(input, signal),
 ) {
-  let state: CsvCheckState = { checking: false, report: null, error: null };
+  let state = IDLE;
   let current: AbortController | null = null;
   let disposed = false;
   const listeners = new Set<() => void>();
@@ -59,10 +69,12 @@ export function createCsvFileCheck(
     invalidate: () => {
       current?.abort();
       current = null;
-      update({ checking: false, report: null, error: null });
+      update(IDLE);
     },
     cancel: () => {
-      current?.abort();
+      if (!current || state.cancelling) return;
+      current.abort();
+      update({ ...state, cancelling: true });
     },
     dispose: () => {
       disposed = true;
@@ -73,22 +85,22 @@ export function createCsvFileCheck(
       if (!request || current || disposed) return;
       const active = new AbortController();
       current = active;
-      update({ checking: true, report: null, error: null });
+      update({ ...IDLE, checking: true });
       try {
         const report = await run(request, active.signal);
         if (!disposed && current === active)
           update(
             active.signal.aborted && report.status === "complete"
-              ? { checking: false, report: null, error: "Dateiprüfung abgebrochen." }
-              : { checking: false, report, error: null },
+              ? { ...IDLE, cancelled: true }
+              : { ...IDLE, report },
           );
       } catch (error) {
         if (!disposed && current === active)
-          update({
-            checking: false,
-            report: null,
-            error: active.signal.aborted ? "Dateiprüfung abgebrochen." : String(error),
-          });
+          update(
+            active.signal.aborted
+              ? { ...IDLE, cancelled: true }
+              : { ...IDLE, error: String(error) },
+          );
       } finally {
         if (current === active) current = null;
       }
