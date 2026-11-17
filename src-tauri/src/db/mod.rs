@@ -481,6 +481,7 @@ pub struct TablePrivileges {
     pub truncate: bool,
     pub references: bool,
     pub trigger: bool,
+    pub column_privileges: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1668,6 +1669,7 @@ pub struct PartitionInfo {
     pub strategy: Option<String>,
     pub partition_key: Option<String>,
     pub partitions: Vec<PartitionChild>,
+    pub read_only: bool,
 }
 
 pub(crate) fn quote_ident(ident: &str) -> String {
@@ -1698,6 +1700,7 @@ fn pg_error_label(code: &str, severity: &str) -> &'static str {
         "23503" => "Fremdschlüssel verletzt",
         "23502" => "NOT NULL verletzt",
         "23514" => "CHECK-Bedingung verletzt",
+        "428C9" => "Spalte ist GENERATED ALWAYS",
         "40P01" => "Deadlock",
         "53300" => "Zu viele Verbindungen",
         "57014" => "Abgebrochen",
@@ -1734,6 +1737,12 @@ pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {
             msg.push_str("\nSQLSTATE 55P04");
         } else if code == &tokio_postgres::error::SqlState::READ_ONLY_SQL_TRANSACTION {
             msg.push_str("\nSQLSTATE 25006");
+        }
+        if db_err
+            .message()
+            .contains("parameter \"role\" cannot be changed")
+        {
+            return format!("Proxy-Benutzer nicht möglich: Dieser Server (z. B. CockroachDB) erlaubt keinen Rollenwechsel beim Verbinden. proxy_user aus der URL entfernen.\n  {msg}");
         }
         msg
     } else {
@@ -2051,6 +2060,17 @@ pub(crate) fn hex_blob(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(2 + bytes.len() * 2);
     out.push_str("\\x");
     const HEX: &[u8; 16] = b"0123456789abcdef";
+    for b in bytes {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    out
+}
+
+pub(crate) fn hex_0x(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(2 + bytes.len() * 2);
+    out.push_str("0x");
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
     for b in bytes {
         out.push(HEX[(b >> 4) as usize] as char);
         out.push(HEX[(b & 0x0f) as usize] as char);

@@ -59,6 +59,7 @@ export function usePerfRunner(): PerfRunnerState {
     async (request: PerfRunRequest) => {
       if (!connection || running) return;
       const timed = request.timed || !capabilities.explain;
+      const analyze = request.analyze && capabilities.explain_analyze;
       const repeats = normalizeRepeats(request.repeats);
       const concurrency = normalizeConcurrency(request.concurrency);
       cancelRef.current = false;
@@ -91,7 +92,7 @@ export function usePerfRunner(): PerfRunnerState {
             connection.kind,
             connectionString,
             request.sql,
-            request.analyze,
+            analyze,
             database ?? undefined,
           );
           const wall = performance.now() - started;
@@ -142,7 +143,7 @@ export function usePerfRunner(): PerfRunnerState {
             databaseKind: connection.kind,
             database,
             capturedAt,
-            analyze: request.analyze,
+            analyze,
             timed,
             concurrency,
             elapsedMs: outcome.elapsedMs,
@@ -160,7 +161,7 @@ export function usePerfRunner(): PerfRunnerState {
         setProgress(null);
       }
     },
-    [connection, database, running, capabilities.explain],
+    [connection, database, running, capabilities.explain, capabilities.explain_analyze],
   );
 
   const cancel = useCallback(() => {

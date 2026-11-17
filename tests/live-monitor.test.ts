@@ -185,3 +185,16 @@ describe("live monitor polling", () => {
     expect(maxInFlight).toBe(1);
   });
 });
+
+test("Rechtefehler beenden das Abfragen ohne Wiederholung", async () => {
+  const { isPermissionDenied, pollUntilFailure, retryUnlessDenied } = await import(
+    "../src/lib/queries/admin-queries"
+  );
+  const denied = "ORA-01031: Sitzungen brauchen Leserechte auf V$SESSION";
+  expect(isPermissionDenied(denied)).toBe(true);
+  expect(isPermissionDenied("permission denied for relation pg_stat_activity")).toBe(true);
+  expect(isPermissionDenied("timeout")).toBe(false);
+  expect(retryUnlessDenied(0, denied)).toBe(false);
+  expect(pollUntilFailure(5000)({ state: { status: "error", data: undefined } })).toBe(false);
+  expect(pollUntilFailure(5000)({ state: { status: "success", data: [] } })).toBe(5000);
+});

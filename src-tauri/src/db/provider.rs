@@ -577,6 +577,7 @@ impl DatabaseKind {
                 explain_analyze: true,
                 database_is_schema: true,
                 locks: true,
+                partitions: true,
                 column_search: true,
                 source_search: true,
                 scheduler_jobs: true,
@@ -1635,7 +1636,11 @@ mod tests {
                 assert!(!caps.object_storage, "{kind:?}");
             }
         }
-        for kind in [DatabaseKind::Influxdb, DatabaseKind::Dynamodb, DatabaseKind::S3] {
+        for kind in [
+            DatabaseKind::Influxdb,
+            DatabaseKind::Dynamodb,
+            DatabaseKind::S3,
+        ] {
             assert!(!kind.capabilities().query_builder, "{kind:?}");
         }
         assert!(DatabaseKind::Postgres.capabilities().query_builder);

@@ -124,7 +124,7 @@ export function cellValueBadge(value: unknown, dataType?: string | null): CellBa
     return null;
   }
   if (typeof value !== "string") return null;
-  if (isHexBlobText(value)) {
+  if (isHexBlobText(value) || (isBinaryDataType(dataType) && /^0x/i.test(value))) {
     const size = formatByteSize(hexBlobByteLength(value));
     if (isGeometryDataType(dataType))
       return { kind: "geometry", label: "GEO", title: `Geometrie · ${size}` };

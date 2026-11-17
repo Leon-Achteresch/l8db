@@ -9,6 +9,7 @@ export const SERVER_PRODUCT_PROBES: Partial<Record<DatabaseKind, string>> = {
   postgres:
     "SELECT version() AS version, EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') AS timescale",
   redis: "INFO server",
+  mysql: "SELECT VERSION() AS version",
 };
 
 export function productFromProbe(
@@ -20,6 +21,7 @@ export function productFromProbe(
     if (String(rows[0]?.version ?? "").startsWith("CockroachDB")) return "cockroachdb";
     return rows[0]?.timescale === true ? "timescale" : null;
   }
+  if (kind === "mysql") return /mariadb/i.test(String(rows[0]?.version ?? "")) ? "mariadb" : null;
   if (kind === "redis") {
     if (text.includes("dragonfly_version")) return "dragonfly";
     if (text.includes("valkey_version")) return "valkey";

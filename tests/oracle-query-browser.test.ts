@@ -176,7 +176,9 @@ test.skipIf(!enabled)(
       );
       await page.getByRole("button", { name: "Weitere Ausführungsarten" }).click();
       await page.getByRole("menuitem", { name: "Alle Statements ausführen" }).click();
-      await page.getByText("7 Statements werden nacheinander", { exact: false }).waitFor();
+      await page
+        .getByText("3 Statements · 4 SQL*Plus-Befehle, nacheinander", { exact: false })
+        .waitFor();
       await page.getByRole("button", { name: "Skript ausführen", exact: true }).click();
       await page.getByText("5/7 erfolgreich · 1 fehlgeschlagen", { exact: true }).waitFor();
       const rows = page.locator("button", { hasText: "SELECT id, txt FROM ui_big WHERE id = 42;" });
@@ -252,7 +254,7 @@ test.skipIf(!enabled)(
       expect(text).toContain('access("D"."ID"="B"."ID")');
       expect(text).not.toContain("Zuletzt tatsächlich verwendeter Plan");
       await sheet.getByRole("button", { name: "Plan + Messung", exact: true }).click();
-      await sheet.getByText(/EXPLAIN ANALYZE benötigt Leserechte auf V\$SESSION/).waitFor();
+      await sheet.getByText(/Plan \+ Messung braucht Leserechte auf V\$SESSION/).waitFor();
     });
   },
   60_000,

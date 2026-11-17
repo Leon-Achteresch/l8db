@@ -80,12 +80,12 @@ export function PerfRunControls({
               disabled={runner.running}
             />
             <Label className="text-xs" htmlFor={`${idPrefix}-timed`}>
-              Nur Laufzeit messen (ohne EXPLAIN)
+              Nur Laufzeit messen (ohne Plan)
             </Label>
           </div>
         ) : (
           <p className="flex h-8 items-center text-xs text-muted-foreground">
-            Ohne EXPLAIN: gemessen wird die Laufzeit der echten Ausführung.
+            Ohne Plan: gemessen wird die Laufzeit der echten Ausführung.
           </p>
         )}
       </div>

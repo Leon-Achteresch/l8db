@@ -32,7 +32,15 @@ export function TablePrivRow({
 
   return (
     <tr className="border-t hover:bg-muted/20 transition-colors">
-      <td className="px-3 py-1 font-mono text-xs truncate max-w-[220px]">{tp.table}</td>
+      <td
+        className="px-3 py-1 font-mono text-xs truncate max-w-[220px]"
+        title={tp.column_privileges ?? undefined}
+      >
+        {tp.table}
+        {tp.column_privileges && (
+          <span className="ml-2 text-muted-foreground">{tp.column_privileges}</span>
+        )}
+      </td>
       <td className="px-2 py-1">
         <Badge
           variant="outline"

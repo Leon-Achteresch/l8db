@@ -6,7 +6,7 @@ import { useContext } from "react";
 import { DataTableColumnProfile } from "@/features/table/data-table-column-profile";
 import { DataTableHeaderName } from "@/features/table/data-table-header-name";
 import { cn } from "@/lib/utils";
-import type { getColumnTypeInfo } from "./data-table/column-type-info";
+import { compactTypeName, type getColumnTypeInfo } from "./data-table/column-type-info";
 import { GridStyleContext } from "./data-table/grid-style-context";
 import { renderTypeIcon } from "./data-table/render-type-icon";
 import type { TableRow } from "./data-table-types";
@@ -73,7 +73,7 @@ export function DataTableColumnHeader({
             className="flex items-center gap-1 font-mono text-[10px] leading-none whitespace-nowrap text-muted-foreground select-none"
           >
             {renderTypeIcon(typeInfo.iconName, "size-2.5")}
-            <span>{typeInfo.label}</span>
+            <span>{compactTypeName(column.columnDef.meta?.dataType) ?? typeInfo.label}</span>
           </div>
         </div>
       </div>

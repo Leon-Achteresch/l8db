@@ -531,7 +531,7 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
     area: "Schema & Struktur",
     keywords: ["builder", "klicken", "ohne sql", "join", "zusammenstellen", "visuell"],
     route: "/query-builder",
-    capability: "sql",
+    capability: "query_builder",
     related: ["query.workspace", "er-diagram"],
   },
   {

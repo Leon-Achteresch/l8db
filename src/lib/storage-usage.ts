@@ -23,7 +23,7 @@ const LABELS: Record<string, string> = {
   "l8db.export-templates": "Exportvorlagen",
   "l8db.views": "Ansichten",
   "l8db.ai": "KI",
-  "l8db.boot": "Startansicht",
+  "l8db.boot": "Darstellung beim Start",
   "l8db-dashboards": "Dashboards",
   "l8db.team": "Team-Verbindungen",
   "l8db.tour": "Rundgang",
@@ -37,6 +37,19 @@ const LABELS: Record<string, string> = {
   "l8db.query-workspace": "Abfrage-Arbeitsbereich",
   "l8db.ui-plugins": "UI-Plugins",
   "l8db.sync": "Synchronisierung",
+  "l8db.discovery.achievements": "Entdecken · Erfolge",
+  "l8db.discovery.feedback": "Entdecken · Rückmeldungen",
+  "l8db.discovery.hotspots": "Entdecken · Hinweispunkte",
+  "l8db.discovery.lessons": "Entdecken · Lektionen",
+  "l8db.discovery.modifier-overlay": "Entdecken · Tastenhilfe",
+  "l8db.discovery.promoter": "Entdecken · Funktionstipps",
+  "l8db.discovery.recap": "Entdecken · Rückblick",
+  "l8db.discovery.related": "Entdecken · Verwandte Funktionen",
+  "l8db.discovery.roadmap": "Entdecken · Roadmap",
+  "l8db.discovery.spotlight": "Entdecken · Spotlight",
+  "l8db.discovery.team-tips": "Entdecken · Team-Tipps",
+  "l8db.discovery.usage": "Entdecken · Funktionsnutzung",
+  "l8db.discovery.wait-tips": "Entdecken · Wartetipps",
 };
 
 const PREFIX_LABELS: [string, string][] = [
