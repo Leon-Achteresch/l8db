@@ -129,3 +129,15 @@ L8DB_BROWSER_CHANNEL=chrome bun --no-env-file scripts/test-browser.ts number-dis
 The fixture renders the existing table and query grids, both **Weitere Aktionen > Zahlen** entries and the shared persisted setting. The runner uses a fresh browser context and its own ephemeral loopback listener. The fixture uses local synthetic rows and rejects every IPC command except the recorded clipboard write.
 
 The cases cover original and grouped display, the 0/2/4 minimum fraction settings, integers beyond 2^53, negative high-precision decimals, NULL, text identifiers and numeric-looking query strings without type metadata. The setting applies to both grids and survives reload. In light and 365 px dark views, keyboard navigation and select/dismiss restore focus and the compact submenu fits the viewport. Copy submits the raw integer to the synthetic clipboard boundary. Editing starts with the raw value and submits exact old and new strings at the existing grid callback. Format changes send no IPC. Native WebView, the OS clipboard, native multi-window synchronization and live provider reads and writes remain separate.
+
+### A21 PostgreSQL table paging with tied sort values
+
+```sh
+bash scripts/test-postgres-arrays-local.sh --paging-test
+```
+
+This mode uses the existing owned loopback PostgreSQL fixture and runs one scoped Rust test. It verifies the normal adapter and active-transaction reader against actual rows. The test walks four pages with duplicate and NULL sort values, checks both sort directions, and sorts by one part of a composite primary key. Quoted identifiers and a primary-key index INCLUDE column of type `json` exercise the distinction between key columns and index payload. Separate tables cover implicit ordering, invalid sort selection and the fallback without a key.
+
+A known PostgreSQL primary key breaks ties behind the selected sort column. The adapter reads the key from its existing column lookup. Deferrable primary keys and classic inheritance parents keep the previous explicit order because their visible rows can have matching key values. OFFSET pages still read the current database or transaction snapshot. Concurrent mutations can move rows between page requests.
+
+On macOS 27.0.1 arm64 (Apple M3, 16 GiB, PostgreSQL 17.11), eleven measured reads at offset 25,000 on 50,000 synthetic rows returned 100 rows each in 44.196 ms median and 87.070 ms p95. The test limits are 100 ms median, 250 ms p95 and 10,000 bytes of serialized rows for this fixture. The change adds no catalog round trip. The result measures local provider reads and decoding for this workload.

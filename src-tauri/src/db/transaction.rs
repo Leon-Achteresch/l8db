@@ -1220,7 +1220,8 @@ mod tests {
             |order| crate::db::postgres::table_page_sql("s", "t", "", order, true, &["id".into()]);
         assert!(keyed(None).contains("ORDER BY t.\"id\" LIMIT"));
         assert!(keyed(None).ends_with("ORDER BY p.\"id\""));
-        assert!(keyed(Some(("name", true))).contains("ORDER BY t.\"name\" DESC LIMIT"));
+        assert!(keyed(Some(("name", true))).contains("ORDER BY t.\"name\" DESC, t.\"id\" LIMIT"));
+        assert!(keyed(Some(("name", true))).ends_with("ORDER BY p.\"name\" DESC, p.\"id\""));
         assert!(
             !crate::db::postgres::table_page_sql("s", "t", "", None, true, &[])
                 .contains("ORDER BY")
