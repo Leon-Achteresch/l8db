@@ -2,9 +2,13 @@ import { useTheme } from "next-themes";
 import { useEffect, useRef, useState } from "react";
 import { VimStatusLine } from "@/components/editor/vim-status-line";
 import { useViewStatePersistence } from "@/features/query/query-editor-pane/use-view-state-persistence";
+import { useActiveConnection } from "@/lib/connections";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { addSqlFormatAction, attachPlsqlLint, monaco, showSqlError } from "@/lib/monaco";
+import { attachGitBlame } from "@/lib/monaco/git-blame";
 import { useEditorKeymap } from "@/lib/monaco/use-editor-keymap";
 import { attachSqlIntellisense } from "@/lib/monaco-intellisense";
+import { type BlameTarget, type FileBlame, loadBlame } from "@/lib/versioning/blame";
 import { themeFor } from "./theme-for";
 
 export interface SqlEditorPaneProps {
@@ -14,6 +18,7 @@ export interface SqlEditorPaneProps {
   revealLine?: number;
   error?: string | null;
   stateKey?: string;
+  blame?: Omit<BlameTarget, "kind">;
 }
 
 export function SqlEditorPane({
@@ -23,6 +28,7 @@ export function SqlEditorPane({
   revealLine,
   error,
   stateKey,
+  blame,
 }: SqlEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const vimStatusRef = useRef<HTMLDivElement | null>(null);
@@ -30,6 +36,15 @@ export function SqlEditorPane({
   const onChangeRef = useRef(onChange);
   const [externalValueVersion, setExternalValueVersion] = useState(0);
   const { resolvedTheme } = useTheme();
+  const kind = useActiveConnection()?.kind;
+  const blameSchema = blame?.schema;
+  const blameName = blame?.name;
+  const blameTypes = blame?.types;
+  const blamePart = blame?.part;
+  const [blameFile, setBlameFile] = useState<FileBlame | null>(null);
+  const blameFeature = useNewFeatureVisibility<HTMLDivElement>(
+    blameFile ? "functions.editor.git-blame" : undefined,
+  );
 
   onChangeRef.current = onChange;
 
@@ -109,6 +124,27 @@ export function SqlEditorPane({
   useViewStatePersistence(editorRef, stateKey);
 
   useEffect(() => {
+    setBlameFile(null);
+    if (!kind || !blameSchema || !blameName || !blameTypes) return;
+    let cancelled = false;
+    loadBlame({ kind, schema: blameSchema, name: blameName, types: blameTypes, part: blamePart })
+      .then((result) => {
+        if (!cancelled) setBlameFile(result);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, blameSchema, blameName, blameTypes, blamePart]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || !blameFile) return;
+    const attached = attachGitBlame(editor, blameFile, blameFeature.isNew);
+    return () => attached.dispose();
+  }, [blameFile, blameFeature.isNew]);
+
+  useEffect(() => {
     monaco.editor.setTheme(themeFor(resolvedTheme));
   }, [resolvedTheme]);
 
@@ -139,7 +175,7 @@ export function SqlEditorPane({
   }, [revealLine, externalValueVersion]);
 
   return (
-    <div className="flex size-full min-h-0 flex-1 flex-col">
+    <div ref={blameFeature.ref} className="flex size-full min-h-0 flex-1 flex-col">
       <div ref={containerRef} className="min-h-0 flex-1" />
       {vimEnabled && <VimStatusLine ref={vimStatusRef} />}
     </div>

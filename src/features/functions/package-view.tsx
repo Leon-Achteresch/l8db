@@ -31,6 +31,7 @@ import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/querie
 import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { PACKAGE_TYPES } from "@/lib/versioning/blame";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 
 export interface PackageViewProps {
@@ -218,6 +219,7 @@ export function PackageView({ schema, name, part, member, highlight, line }: Pac
           ) : null}
           <div className="flex min-h-0 flex-1 flex-col">
             <SqlEditorPane
+              blame={{ schema, name, types: PACKAGE_TYPES, part: activePart }}
               value={edit.editing ? edit.sql : source}
               readOnly={!edit.editing}
               onChange={edit.editing ? edit.setSql : undefined}

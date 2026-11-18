@@ -972,3 +972,40 @@ async fn show_returns_commit_metadata_and_first_parent_patch() {
     assert!(first["patch"].as_str().unwrap().contains("new file mode"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test]
+async fn blames_committed_and_uncommitted_lines() {
+    let root = temp();
+    handle(request(&root, "init")).await.unwrap();
+    git(&root, &["config", "user.email", "test@example.invalid"])
+        .await
+        .unwrap();
+    git(&root, &["config", "user.name", "Blame Test"])
+        .await
+        .unwrap();
+    let path = "database/objects/f.sql";
+    let blame = |root: PathBuf| async move {
+        let mut req = request(&root, "blame");
+        req.path = Some(path.into());
+        handle(req).await.unwrap()
+    };
+    let mut req = request(&root, "write");
+    req.path = Some(path.into());
+    req.content = Some("a\nb\n".into());
+    handle(req).await.unwrap();
+    assert_eq!(blame(root.clone()).await, Value::Null);
+    let mut req = request(&root, "commit");
+    req.paths = Some(vec![path.into()]);
+    req.name = Some("Erster Stand".into());
+    handle(req).await.unwrap();
+    fs::write(root.join(path), "a\nneu\n").unwrap();
+    let text = blame(root.clone()).await;
+    let text = text.as_str().unwrap();
+    assert!(text.contains("author Blame Test"));
+    assert!(text.contains("summary Erster Stand"));
+    assert!(text.contains("author Not Committed Yet"));
+    assert!(text.contains("\tneu\n"));
+    let mut req = request(&root, "blame");
+    req.path = Some("database/../x.sql".into());
+    assert!(handle(req).await.is_err());
+}

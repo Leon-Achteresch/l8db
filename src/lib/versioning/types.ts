@@ -264,6 +264,7 @@ export interface RepositoryRequest {
     | "files"
     | "read"
     | "read-many"
+    | "blame"
     | "drift-cache-read"
     | "drift-cache-write"
     | "write"

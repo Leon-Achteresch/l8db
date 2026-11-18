@@ -595,6 +595,12 @@ body[data-onboarding-active]
   background-color: color-mix(in oklab, var(--primary) 18%, transparent);
 }
 
+.git-blame-annotation {
+  margin-left: 3em;
+  color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
+  font-style: italic;
+}
+
 .tour-mascot * {
   transform-box: fill-box;
 }
