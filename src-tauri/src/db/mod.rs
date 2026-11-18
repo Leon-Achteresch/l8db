@@ -803,6 +803,16 @@ pub trait DatabaseAdapter: Send + Sync {
             .map(Into::into)
             .collect())
     }
+    async fn describe_table_columns(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<column_metadata::TableColumnDetails, String> {
+        Ok(column_metadata::TableColumnDetails {
+            columns: self.list_table_column_metadata(schema, table).await?,
+            unlogged: false,
+        })
+    }
     async fn list_import_columns(
         &self,
         schema: &str,

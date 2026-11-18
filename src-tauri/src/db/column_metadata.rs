@@ -40,6 +40,20 @@ pub struct ColumnMetadata {
     pub exact_filter: Option<ExactFilterMetadata>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct TableColumnDetails {
+    pub columns: Vec<ColumnMetadata>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub unlogged: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum ColumnDetailsResponse {
+    Columns(Vec<ColumnMetadata>),
+    Table(TableColumnDetails),
+}
+
 impl From<DetailedColumnInfo> for ColumnMetadata {
     fn from(column: DetailedColumnInfo) -> Self {
         Self {

@@ -17,8 +17,12 @@ import { useDbSelectionStore } from "../../src/lib/db-selection";
 import { ExtensionManager } from "../../src/lib/extensions/manager";
 import { ExtensionHostContext } from "../../src/lib/extensions/react-context";
 import { SandboxRuntime } from "../../src/lib/extensions/sandbox-runtime";
+import { useProvidersStore } from "../../src/lib/providers";
 import { useSettingsStore } from "../../src/lib/settings";
 import "../../src/index.css";
+
+const testPersistence = new URLSearchParams(location.search).has("persistence");
+if (testPersistence) useProvidersStore.setState({ loaded: true });
 
 useConnectionsStore.setState({
   activeId: "state-test",
@@ -30,6 +34,24 @@ useConnectionsStore.setState({
       connectionString: "postgresql://localhost/first",
       sslMode: "disable",
     },
+    ...(testPersistence
+      ? [
+          {
+            id: "other-postgres",
+            name: "Other PostgreSQL",
+            kind: "postgres" as const,
+            connectionString: "postgresql://127.0.0.1:30212/first",
+            sslMode: "disable" as const,
+          },
+          {
+            id: "other-provider",
+            name: "Other Provider",
+            kind: "mysql" as const,
+            connectionString: "mysql://127.0.0.1:30213/first",
+            sslMode: "disable" as const,
+          },
+        ]
+      : []),
   ],
 });
 useDbSelectionStore.getState().setDatabase("state-test", "first");
@@ -47,7 +69,11 @@ const client = new QueryClient({
 function App() {
   return (
     <div className="flex h-dvh flex-col">
-      <nav className="flex shrink-0 gap-4">
+      <nav
+        className={
+          testPersistence ? "flex shrink-0 flex-wrap gap-2 p-2 text-xs" : "flex shrink-0 gap-4"
+        }
+      >
         <Link to="/tables/$schema/$table" params={{ schema: "public", table: "customers" }}>
           Customers
         </Link>
@@ -73,6 +99,31 @@ function App() {
         >
           Database B
         </button>
+        {testPersistence && (
+          <>
+            <Link to="/tables/$schema/$table" params={{ schema: "scratch", table: "customers" }}>
+              Cached customers
+            </Link>
+            <Link to="/tables/$schema/$table" params={{ schema: "pg_temp_3", table: "customers" }}>
+              Temporary customers
+            </Link>
+            <Link to="/tables/$schema/$table" params={{ schema: "unknown", table: "customers" }}>
+              Unknown customers
+            </Link>
+            <button
+              type="button"
+              onClick={() => useConnectionsStore.getState().setActiveId("other-postgres")}
+            >
+              Other connection
+            </button>
+            <button
+              type="button"
+              onClick={() => useConnectionsStore.getState().setActiveId("other-provider")}
+            >
+              Other provider
+            </button>
+          </>
+        )}
       </nav>
       <Outlet />
     </div>

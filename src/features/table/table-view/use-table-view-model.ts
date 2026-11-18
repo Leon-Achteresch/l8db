@@ -2,6 +2,7 @@ import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ConnectionScopeContext, useActiveConnection } from "@/lib/connections";
+import { tableColumnList } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { recordFeatureEvent } from "@/lib/discovery/events";
 import { openScopedTable, useFkDrawerStack } from "@/lib/fk-drawer-stack";
@@ -13,10 +14,10 @@ import { applyMasks } from "@/lib/masking";
 import { useActiveMasks } from "@/lib/masking-display";
 import {
   useDeleteRowMutation,
-  useDetailedColumnsQuery,
   useExactRowCountMutation,
   useForeignKeysQuery,
   useInsertRowMutation,
+  useTableColumnDetailsQuery,
   useTableRowCountQuery,
   useTableRowsWindow,
   useUpdateRowMutation,
@@ -119,7 +120,16 @@ export function useTableViewModel({
   const [filter, setFilter] = useTableViewState(stateKey, "filter", "");
   const [filterRaw, setFilterRaw] = useTableViewState(stateKey, "filterRaw", false);
   const [storedSorting, setSorting] = useTableViewState(stateKey, "sorting", []);
-  const { data: columnDetails } = useDetailedColumnsQuery(schema, table);
+  const tableDetails = useTableColumnDetailsQuery(schema, table);
+  const columnDetails = tableDetails.data ? tableColumnList(tableDetails.data) : undefined;
+  const unlogged =
+    !isView &&
+    connection?.kind === "postgres" &&
+    tableDetails.isSuccess &&
+    !tableDetails.isPlaceholderData &&
+    tableDetails.fetchStatus === "idle" &&
+    !Array.isArray(tableDetails.data) &&
+    tableDetails.data.unlogged === true;
   const sortableColumns = useMemo(
     () => sortableColumnNames(caps.sort, columnDetails),
     [caps.sort, columnDetails],
@@ -362,6 +372,7 @@ export function useTableViewModel({
   }, [column, isLoading]);
 
   return {
+    unlogged,
     inDrawer,
     isView,
     connection,

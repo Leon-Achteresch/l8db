@@ -1,5 +1,10 @@
 import type { QueryClient, QueryState } from "@tanstack/react-query";
-import type { DetailedColumnInfo, TableInfo } from "@/lib/db";
+import {
+  type DetailedColumnInfo,
+  type TableColumnDetails,
+  type TableInfo,
+  tableColumnList,
+} from "@/lib/db";
 
 export const LOADED_COMMENT_RESULTS_LIMIT = 60;
 export const LOADED_COMMENT_TERM_LIMIT = 160;
@@ -145,8 +150,14 @@ export function readLoadedObjectComments(
     const expiresAt = Math.min(query.state.dataUpdatedAt, catalog.updatedAt) + MAX_METADATA_AGE;
     if (root === "table-comment") {
       if (!add(query.state.data, schema, table, expiresAt)) break;
-    } else if (Array.isArray(query.state.data)) {
-      for (const column of query.state.data as DetailedColumnInfo[]) {
+    } else {
+      const data = query.state.data;
+      if (
+        !Array.isArray(data) &&
+        !(data && typeof data === "object" && "columns" in data && Array.isArray(data.columns))
+      )
+        continue;
+      for (const column of tableColumnList(data as DetailedColumnInfo[] | TableColumnDetails)) {
         const name = typeof column?.name === "string" ? column.name : undefined;
         if (!add(name ? column.comment : null, schema, table, expiresAt, name)) return result;
       }

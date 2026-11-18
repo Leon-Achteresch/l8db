@@ -20,6 +20,7 @@ export const NEW_FEATURES = {
   "schema-compare.report": NEXT_FEATURE_VERSION,
   "query.results.timing-scope": NEXT_FEATURE_VERSION,
   "table.structure.indexes.roles": NEXT_FEATURE_VERSION,
+  "table.structure.unlogged": NEXT_FEATURE_VERSION,
   "table.structure.indexes.mongo-form": NEXT_FEATURE_VERSION,
   "import.csv.file-check": NEXT_FEATURE_VERSION,
   "import.csv.null-preflight": NEXT_FEATURE_VERSION,

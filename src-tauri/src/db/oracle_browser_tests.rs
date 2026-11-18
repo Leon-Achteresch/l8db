@@ -275,6 +275,7 @@ async fn dispatch(
             a(x, "database")?,
             a(x, "schema")?,
             a(x, "table")?,
+            a(x, "withTableContext")?,
             st(&pool),
         )
         .await

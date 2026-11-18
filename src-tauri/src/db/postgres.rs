@@ -6,6 +6,7 @@ use bb8_postgres::PostgresConnectionManager;
 use postgres_native_tls::MakeTlsConnector;
 use tokio_postgres::{Config, SimpleQueryMessage};
 
+use super::column_metadata::TableColumnDetails;
 use super::pool::{PoolState, PoolUse};
 use super::server_output::{self, ServerMessage};
 use super::{build_object_ddl, ObjectAuditInfo, ObjectDdlRequest, ObjectDependent};
@@ -1085,7 +1086,9 @@ impl PgServer {
         }
     }
 
-    pub(crate) async fn detect(conn: &tokio_postgres::Client) -> Result<Self, tokio_postgres::Error> {
+    pub(crate) async fn detect(
+        conn: &tokio_postgres::Client,
+    ) -> Result<Self, tokio_postgres::Error> {
         let version = conn.query_one("SELECT version()", &[]).await?;
         Ok(Self::from_version(version.get(0)))
     }
@@ -2747,10 +2750,29 @@ impl DatabaseAdapter for PostgresAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
+        Ok(self
+            .describe_table_columns(schema, table)
+            .await?
+            .columns
+            .into_iter()
+            .map(|metadata| metadata.column)
+            .collect())
+    }
+
+    async fn describe_table_columns(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<TableColumnDetails, String> {
         let conn = self.get_meta().await?;
         self.timed(conn.cancel_token(), async {
-            let rows = conn.query(
-                &*visible_columns("SELECT a.attname AS column_name, \
+            let server = self.server(&conn).await;
+            let unlogged = if server == PgServer::Native {
+                "cl.relkind = 'r' AND cl.relpersistence = 'u'"
+            } else {
+                "false"
+            };
+            let sql = format!("SELECT a.attname AS column_name, \
                         CASE WHEN ty.typtype = 'd' OR (a.atttypid IN ('varchar'::regtype, 'bpchar'::regtype, 'bit'::regtype, 'varbit'::regtype) AND a.atttypmod > 0) \
                              THEN format_type(a.atttypid, NULL) \
                              ELSE format_type(a.atttypid, a.atttypmod) END AS data_type, \
@@ -2761,24 +2783,29 @@ impl DatabaseAdapter for PostgresAdapter {
                              WHEN a.atttypid IN ('varchar'::regtype, 'bpchar'::regtype) THEN a.atttypmod - 4 \
                              WHEN a.atttypid IN ('bit'::regtype, 'varbit'::regtype) THEN a.atttypmod END)::int4 AS character_maximum_length, \
                         COALESCE(a.attnum = ANY (pk.conkey), false) AS is_primary_key, \
-                        col_description(a.attrelid, a.attnum) AS comment \
-                 FROM pg_catalog.pg_attribute a \
-                 JOIN pg_catalog.pg_class cl ON cl.oid = a.attrelid \
+                        col_description(a.attrelid, a.attnum) AS comment, \
+                        ({unlogged}) AS unlogged \
+                 FROM pg_catalog.pg_class cl \
                  JOIN pg_catalog.pg_namespace n ON n.oid = cl.relnamespace \
-                 JOIN pg_catalog.pg_type ty ON ty.oid = a.atttypid \
+                 LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = cl.oid \
+                   AND a.attnum > 0 AND NOT a.attisdropped \
+                   AND NOT COALESCE((to_jsonb(a) ->> 'attishidden')::boolean, false) \
+                 LEFT JOIN pg_catalog.pg_type ty ON ty.oid = a.atttypid \
                  LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum \
                  LEFT JOIN pg_catalog.pg_constraint pk ON pk.conrelid = cl.oid AND pk.contype = 'p' \
                  WHERE n.nspname = $1 AND cl.relname = $2 AND cl.relkind IN ('r', 'p', 'v', 'm', 'f') \
-                   AND a.attnum > 0 AND NOT a.attisdropped \
-                   AND NOT COALESCE((to_jsonb(a) ->> 'attishidden')::boolean, false) \
-                 ORDER BY a.attnum", self.cockroach(&conn).await),
+                 ORDER BY a.attnum");
+            let rows = conn.query(
+                &*visible_columns(&sql, server == PgServer::Cockroach),
                 &[&schema, &table],
             ).await.map_err(map_pg_err)?;
-            Ok(rows.iter().map(|r| {
+            let unlogged = rows.first().is_some_and(|row| row.get("unlogged"));
+            let columns = rows.iter().filter_map(|r| {
+                let name: String = r.get::<_, Option<String>>("column_name")?;
                 let nullable: String = r.get("is_nullable");
                 let ordinal: i32 = r.get("ordinal_position");
-                DetailedColumnInfo {
-                    name: r.get("column_name"),
+                Some(DetailedColumnInfo {
+                    name,
                     data_type: r.get("data_type"),
                     is_nullable: nullable == "YES",
                     column_default: r.get("column_default"),
@@ -2786,8 +2813,9 @@ impl DatabaseAdapter for PostgresAdapter {
                     ordinal_position: ordinal,
                     character_maximum_length: r.get("character_maximum_length"),
                     comment: r.get("comment"),
-                }
-            }).collect())
+                }.into())
+            }).collect();
+            Ok(TableColumnDetails { columns, unlogged })
         }).await
     }
 
@@ -6041,6 +6069,10 @@ fn routine_ddl_in_pg_temp(sql: &str) -> Option<String> {
 #[path = "postgres_page_live_tests.rs"]
 mod page_live_tests;
 
+#[cfg(all(test, debug_assertions))]
+#[path = "postgres_table_persistence_live_tests.rs"]
+mod table_persistence_live_tests;
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -6436,7 +6468,9 @@ mod tests {
             "CockroachDB CCL v25.1",
             "",
         ] {
-            assert!(!PgServer::from_version(version).columns_sql(true).contains("k.conkey"));
+            assert!(!PgServer::from_version(version)
+                .columns_sql(true)
+                .contains("k.conkey"));
         }
         let native = PgServer::from_version("PostgreSQL 17.11 (Homebrew)");
         assert!(native.columns_sql(true).contains("k.conkey"));
@@ -6451,7 +6485,9 @@ mod tests {
             plain.contains("NOT a.attisdropped ORDER BY a.attnum"),
             "{plain}"
         );
-        assert!(super::PgServer::Cockroach.columns_sql(false).contains("attishidden"));
+        assert!(super::PgServer::Cockroach
+            .columns_sql(false)
+            .contains("attishidden"));
         let source = include_str!("postgres.rs");
         let mut sites = 0;
         for (at, _) in source.match_indices(concat!("COALESCE((to_", "jsonb(a)")) {
