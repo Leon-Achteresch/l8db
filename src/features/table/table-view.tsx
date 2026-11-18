@@ -14,6 +14,7 @@ import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import { PluginDetailTabsContent } from "@/features/ui-plugins/plugin-detail-tabs-content";
 import { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
 import { mysqlColumnOnUpdate } from "@/lib/mysql-column-update";
+import { oracleColumnTextLimit } from "@/lib/oracle-column-text-limit";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
 import { ClickhouseMergeEngineBadge } from "./table-view/clickhouse-merge-engine-badge";
 import { TablePerfPanel } from "./table-view/lazy-panels";
@@ -223,6 +224,10 @@ export function TableView(props: TableViewProps) {
             hasColumnUpdateRules={
               connection?.kind === "mysql" &&
               columnDetails?.some((column) => Boolean(mysqlColumnOnUpdate(column, "mysql")))
+            }
+            hasOracleTextLimits={
+              connection?.kind === "oracle" &&
+              columnDetails?.some((column) => Boolean(oracleColumnTextLimit(column, "oracle")))
             }
           />
           {unlogged ? <UnloggedTableBadge key={stateKey} /> : null}

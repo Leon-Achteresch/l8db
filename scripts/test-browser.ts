@@ -43,6 +43,7 @@ const registered = [
   "table-persistence",
   "clickhouse-merge-context",
   "mysql-column-update",
+  "oracle-text-limit",
   "influx-bucket-retention",
 ];
 const requested = process.argv.slice(2);
@@ -74,6 +75,7 @@ const fixturePages: Record<string, string> = {
   "table-persistence": "tests/fixtures/table-state.html",
   "clickhouse-merge-context": "tests/fixtures/table-state.html?merge-engine",
   "mysql-column-update": "tests/fixtures/mysql-column-update.html",
+  "oracle-text-limit": "tests/fixtures/mysql-column-update.html?oracle",
   "influx-bucket-retention": "tests/fixtures/influx-bucket-retention.html",
 };
 const fixturePage = files.length === 1 ? fixturePages[files[0]] : undefined;

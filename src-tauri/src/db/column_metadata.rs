@@ -1,4 +1,4 @@
-use super::DetailedColumnInfo;
+use super::{oracle_text_limit::OracleTextLimit, DetailedColumnInfo};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -40,6 +40,8 @@ pub struct ColumnMetadata {
     pub exact_filter: Option<ExactFilterMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_update: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oracle_text_limit: Option<OracleTextLimit>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -64,6 +66,7 @@ impl From<DetailedColumnInfo> for ColumnMetadata {
             column,
             exact_filter: None,
             on_update: None,
+            oracle_text_limit: None,
         }
     }
 }

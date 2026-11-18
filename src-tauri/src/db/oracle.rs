@@ -9,6 +9,8 @@ pub use oracle::Connection;
 use oracle::{Connector, Row};
 use tokio_util::sync::CancellationToken;
 
+use super::column_metadata::ColumnMetadata;
+use super::oracle_text_limit::oracle_text_limit;
 use super::pool::{BlockingPool, PoolState, IDLE_CHECK_AFTER};
 use super::server_output::ServerMessage;
 use super::{
@@ -3303,11 +3305,24 @@ impl DatabaseAdapter for OracleAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
+        Ok(self
+            .list_table_column_metadata(schema, table)
+            .await?
+            .into_iter()
+            .map(|metadata| metadata.column)
+            .collect())
+    }
+
+    async fn list_table_column_metadata(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<ColumnMetadata>, String> {
         let sql = String::from(
             "SELECT c.column_name, c.data_type || CASE WHEN c.data_type IN ('VARCHAR2', 'CHAR', 'NVARCHAR2', 'NCHAR') THEN '(' || c.char_length || ')' WHEN c.data_type = 'NUMBER' AND c.data_precision IS NOT NULL THEN '(' || c.data_precision || ',' || NVL(c.data_scale, 0) || ')' ELSE '' END, \
              c.nullable, c.data_default, c.column_id, c.char_length, \
              (SELECT COUNT(*) FROM all_constraints k JOIN all_cons_columns kc ON kc.owner = k.owner AND kc.constraint_name = k.constraint_name WHERE k.constraint_type = 'P' AND k.owner = c.owner AND k.table_name = c.table_name AND kc.column_name = c.column_name), \
-             cc.comments \
+             cc.comments, c.data_type, c.char_used, c.data_length \
              FROM all_tab_columns c LEFT JOIN all_col_comments cc ON cc.owner = c.owner AND cc.table_name = c.table_name AND cc.column_name = c.column_name \
              WHERE c.owner = :owner AND c.table_name = :tbl ORDER BY c.column_id"
         );
@@ -3315,17 +3330,27 @@ impl DatabaseAdapter for OracleAdapter {
             .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
             .await?
             .iter()
-            .map(|r| DetailedColumnInfo {
-                name: s(r, 0),
-                data_type: s(r, 1),
-                is_nullable: s(r, 2) == "Y",
-                column_default: s_opt(r, 3).map(|d| d.trim().to_string()),
-                ordinal_position: i(r, 4) as i32,
-                character_maximum_length: s_opt(r, 5)
+            .map(|r| {
+                let char_length = s_opt(r, 5)
                     .and_then(|v| v.parse().ok())
-                    .filter(|v| *v > 0),
-                is_primary_key: i(r, 6) > 0,
-                comment: s_opt(r, 7).filter(|c| !c.is_empty()),
+                    .filter(|v| *v > 0);
+                let mut metadata = ColumnMetadata::from(DetailedColumnInfo {
+                    name: s(r, 0),
+                    data_type: s(r, 1),
+                    is_nullable: s(r, 2) == "Y",
+                    column_default: s_opt(r, 3).map(|d| d.trim().to_string()),
+                    ordinal_position: i(r, 4) as i32,
+                    character_maximum_length: char_length,
+                    is_primary_key: i(r, 6) > 0,
+                    comment: s_opt(r, 7).filter(|c| !c.is_empty()),
+                });
+                metadata.oracle_text_limit = oracle_text_limit(
+                    &s(r, 8),
+                    s_opt(r, 9).as_deref(),
+                    char_length,
+                    s_opt(r, 10).and_then(|v| v.parse().ok()),
+                );
+                metadata
             })
             .collect())
     }
@@ -4367,6 +4392,39 @@ mod tests {
     }
 
     use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires the isolated A36_FIXTURE Oracle schema on loopback"]
+    async fn live_oracle_text_limit_catalog_fixture() {
+        let url = std::env::var("L8DB_A36_ORACLE_URL").expect("Missing isolated Oracle fixture");
+        let adapter =
+            OracleAdapter::new(&url, crate::db::pool::create_pool_state(), "a36".into()).unwrap();
+        assert_eq!(
+            adapter.tcp.as_ref().map(|(host, _)| host.as_str()),
+            Some("127.0.0.1")
+        );
+        assert!(adapter.user.eq_ignore_ascii_case("A36_FIXTURE"));
+        let columns = adapter
+            .list_table_column_metadata("A36_FIXTURE", "L8DB_A36_TEXT_LIMIT")
+            .await
+            .unwrap();
+        assert_eq!(columns.len(), 4);
+        for (name, expected) in [
+            ("B", serde_json::json!({"length": 4, "unit": "BYTE"})),
+            ("C", serde_json::json!({"length": 2, "unit": "CHAR"})),
+            ("N", serde_json::json!({"length": 2, "unit": "CHAR"})),
+            ("R", serde_json::Value::Null),
+        ] {
+            let column = columns
+                .iter()
+                .find(|column| column.column.name == name)
+                .unwrap();
+            assert_eq!(
+                serde_json::to_value(&column.oracle_text_limit).unwrap(),
+                expected
+            );
+        }
+    }
 
     #[test]
     fn requalifies_unquoted_oracle_qualifiers_case_insensitively() {

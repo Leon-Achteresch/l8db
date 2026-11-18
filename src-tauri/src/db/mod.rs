@@ -49,6 +49,7 @@ pub mod s3;
 #[cfg(feature = "odbc")]
 pub use odbc::configure_system_ini as configure_odbc;
 pub(crate) mod oracle;
+mod oracle_text_limit;
 pub mod pool;
 mod postgres;
 pub mod principals;

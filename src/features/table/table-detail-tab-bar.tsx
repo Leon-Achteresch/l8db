@@ -48,13 +48,17 @@ export function TableDetailTabBar({
   tabs,
   activeTab,
   hasColumnUpdateRules = false,
+  hasOracleTextLimits = false,
 }: {
   tabs: typeof TABLE_DETAIL_TABS;
   activeTab: string;
   hasColumnUpdateRules?: boolean;
+  hasOracleTextLimits?: boolean;
 }) {
   const showColumnUpdateBadge =
     useHasNewFeatures("table.structure.columns.on-update") && hasColumnUpdateRules;
+  const showOracleTextLimitBadge =
+    useHasNewFeatures("table.structure.columns.oracle-text-limit") && hasOracleTextLimits;
   const hidden = useSettingsStore((s) => s.hiddenTableDetailTabs);
   const setVisible = useSettingsStore((s) => s.setTableDetailTabVisible);
   const reset = useSettingsStore((s) => s.resetTableDetailTabs);
@@ -148,7 +152,8 @@ export function TableDetailTabBar({
                     <TabsTrigger key={tab.id} value={tab.id} data-tab-id={tab.id}>
                       <Icon className="size-3.5" />
                       {tab.label}
-                      {tab.id === "columns" && showColumnUpdateBadge && <NewBadge />}
+                      {tab.id === "columns" &&
+                        (showColumnUpdateBadge || showOracleTextLimitBadge) && <NewBadge />}
                     </TabsTrigger>
                   );
                 })}
