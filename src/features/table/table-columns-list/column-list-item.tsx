@@ -7,11 +7,14 @@ import { DataTypeCombobox } from "@/features/alter-table/alter-table-view/data-t
 import { copyText } from "@/lib/clipboard";
 import { columnTypeLabel } from "@/lib/column-type";
 import type { AlterColumnRequest, DatabaseKind, DetailedColumnInfo } from "@/lib/db";
+import { mysqlColumnOnUpdate } from "@/lib/mysql-column-update";
 import { capabilitiesFor, DEFAULT_TERMS } from "@/lib/providers";
 import { getTypeConfig } from "./column-type-config";
+import { type ColumnUpdateFeature, ColumnUpdateRule } from "./column-update-rule";
 
 export function ColumnListItem({
   column,
+  updateFeature,
   copiedColumn,
   setCopiedColumn,
   editable,
@@ -25,6 +28,7 @@ export function ColumnListItem({
   onSaveEdit,
 }: {
   column: DetailedColumnInfo;
+  updateFeature?: ColumnUpdateFeature;
   copiedColumn: string | null;
   setCopiedColumn: (name: string | null) => void;
   editable: boolean;
@@ -45,6 +49,7 @@ export function ColumnListItem({
     : column.column_default;
   const IconComponent = getTypeConfig(column.data_type, column.is_primary_key).icon;
   const caps = capabilitiesFor(kind);
+  const updateRule = mysqlColumnOnUpdate(column, kind);
   const primaryKey = caps.terms.primary_key;
 
   return (
@@ -142,9 +147,14 @@ export function ColumnListItem({
               )}
             </div>
           </div>
-          <span className="truncate font-mono text-xs text-muted-foreground" title={dataType}>
-            {dataType}
-          </span>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="truncate font-mono text-xs text-muted-foreground" title={dataType}>
+              {dataType}
+            </span>
+            {updateRule ? (
+              <ColumnUpdateRule expression={updateRule} feature={updateFeature} />
+            ) : null}
+          </div>
           {caps.constraints ? (
             <>
               <span

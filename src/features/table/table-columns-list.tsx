@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useAlterTable } from "@/features/alter-table/alter-table-view/use-alter-table";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { mysqlColumnOnUpdate } from "@/lib/mysql-column-update";
 import { capabilitiesFor, supports } from "@/lib/providers";
 import { cn } from "@/lib/utils";
 import { ColumnListItem } from "./table-columns-list/column-list-item";
@@ -36,6 +38,10 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
   const [search, setSearch] = useState("");
   const [selectedFilter, setSelectedFilter] = useState<string>("all");
   const [copiedColumn, setCopiedColumn] = useState<string | null>(null);
+
+  const updateFeature = useNewFeatureVisibility<HTMLSpanElement>(
+    "table.structure.columns.on-update",
+  );
 
   const count = columns?.length ?? 0;
   const constraints = supports(connection, "constraints");
@@ -77,6 +83,11 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
 
   const filteredColumns =
     columns?.filter((column) => matchesColumnFilter(column, search, selectedFilter)) ?? [];
+  const updateFeatureColumn = updateFeature.isNew
+    ? filteredColumns.find(
+        (column) => editingColumn !== column.name && mysqlColumnOnUpdate(column, connection?.kind),
+      )?.name
+    : undefined;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
@@ -158,6 +169,7 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
                 <ColumnListItem
                   key={column.name}
                   column={column}
+                  updateFeature={updateFeatureColumn === column.name ? updateFeature : undefined}
                   copiedColumn={copiedColumn}
                   setCopiedColumn={setCopiedColumn}
                   editable={canEdit}

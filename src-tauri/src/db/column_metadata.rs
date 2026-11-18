@@ -38,6 +38,8 @@ pub struct ColumnMetadata {
     pub column: DetailedColumnInfo,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exact_filter: Option<ExactFilterMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub on_update: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -59,6 +61,7 @@ impl From<DetailedColumnInfo> for ColumnMetadata {
         Self {
             column,
             exact_filter: None,
+            on_update: None,
         }
     }
 }

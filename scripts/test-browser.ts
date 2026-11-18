@@ -37,6 +37,7 @@ const registered = [
   "object-comment-search",
   "business-time-zone",
   "table-persistence",
+  "mysql-column-update",
 ];
 const requested = process.argv.slice(2);
 if (requested.some((name) => !registered.includes(name)))
@@ -61,6 +62,7 @@ const fixturePages: Record<string, string> = {
   "object-comment-search": "tests/fixtures/object-comment-search.html",
   "business-time-zone": "tests/fixtures/business-time-zone.html",
   "table-persistence": "tests/fixtures/table-state.html",
+  "mysql-column-update": "tests/fixtures/mysql-column-update.html",
 };
 const fixturePage = files.length === 1 ? fixturePages[files[0]] : undefined;
 const useIsolatedConfig = Boolean(isolated || fixturePage);
