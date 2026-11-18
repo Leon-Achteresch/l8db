@@ -693,7 +693,10 @@ async fn live_compile_pairs_spec_and_body_and_honours_warnings() {
         .await
         .unwrap();
     let strict = strict.unwrap_err();
-    assert!(strict.contains("ORA-24344") && strict.contains("05018"), "{strict}");
+    assert!(
+        strict.contains("ORA-24344") && strict.contains("05018"),
+        "{strict}"
+    );
     assert!(
         setting.contains("ENABLE") && !setting.contains("DISABLE"),
         "{setting}"
