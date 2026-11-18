@@ -666,6 +666,7 @@ pub fn run() {
             db::commands::set_scheduler_job_enabled,
             db::commands::run_scheduler_job,
             db::commands::execute_query,
+            db::commands::read_duckdb_file_path_context,
             db::commands::cancel_execution,
             db::commands::configure_execution_defaults,
             db::commands::execute_query_with_params,

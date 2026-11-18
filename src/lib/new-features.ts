@@ -10,6 +10,7 @@ export const NEW_FEATURES = {
   "query.tools.file.encoding": NEXT_FEATURE_VERSION,
   "query.tools.format-review": NEXT_FEATURE_VERSION,
   "query.tools.pgvector-reference": NEXT_FEATURE_VERSION,
+  "query.tools.duckdb-file-path": NEXT_FEATURE_VERSION,
   "query.results.numbers": NEXT_FEATURE_VERSION,
   "table.rows.server-output": NEXT_FEATURE_VERSION,
   "table.rows.record-view": NEXT_FEATURE_VERSION,

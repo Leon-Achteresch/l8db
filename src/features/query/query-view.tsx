@@ -19,6 +19,7 @@ import { useQueryWorkspace } from "@/lib/query-workspace";
 import { scopeKey, useSessionViews, useSessionViewsStore } from "@/lib/session-views";
 import { useSettingsStore } from "@/lib/settings";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
+import { findTransaction, useTransactionStore } from "@/lib/transactions";
 import { DmlPreviewButton } from "./query-view/dml-preview-button";
 import { ExternalChangeBanner } from "./query-view/external-change-banner";
 import { MultiTargetButton } from "./query-view/multi-target-button";
@@ -85,6 +86,11 @@ export function QueryView({ tabId }: QueryViewProps) {
   useWorkspaceLayoutSync(workspaceGroup, workspace, editorFocus || resultFocus);
   const connection = useActiveConnection();
   const database = useActiveDatabase();
+  const duckdbTransactionId = useTransactionStore((state) =>
+    connection?.kind === "duckdb"
+      ? findTransaction(state.transactions, connection.id, database, { type: "query" })?.txId
+      : undefined,
+  );
   const {
     sql,
     updateQuerySql,
@@ -323,7 +329,22 @@ export function QueryView({ tabId }: QueryViewProps) {
             onResultFocusChange={toggleResultFocus}
             toolsMenu={
               <QueryToolsMenu
-                key={JSON.stringify([tabId, connection?.id, connection?.kind, database])}
+                key={JSON.stringify([
+                  tabId,
+                  connection?.id,
+                  connection?.kind,
+                  database,
+                  duckdbTransactionId,
+                ])}
+                duckdbPathScope={
+                  isSql && connection?.kind === "duckdb"
+                    ? {
+                        connection,
+                        database,
+                        transaction: duckdbTransactionId !== undefined,
+                      }
+                    : undefined
+                }
                 pgvectorReferenceAvailable={isSql && connection?.kind === "postgres"}
                 editorApiRef={editorApiRef}
                 shortcutLabel={shortcutLabel}

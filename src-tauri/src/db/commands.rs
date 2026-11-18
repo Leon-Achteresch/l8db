@@ -657,6 +657,26 @@ where
 }
 
 #[tauri::command]
+pub async fn read_duckdb_file_path_context(
+    connection_string: String,
+    database: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::DuckdbFilePathContext, String> {
+    #[cfg(feature = "duckdb")]
+    return Ok(super::duckdb::file_path_context(
+        pool_state.inner(),
+        &connection_string,
+        database.as_deref(),
+    )
+    .await);
+    #[cfg(not(feature = "duckdb"))]
+    {
+        let _ = (connection_string, database, pool_state);
+        Ok(super::DuckdbFilePathContext::Unknown)
+    }
+}
+
+#[tauri::command]
 pub async fn execute_query(
     kind: DatabaseKind,
     connection_string: String,
