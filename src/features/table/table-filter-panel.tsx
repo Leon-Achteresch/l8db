@@ -11,6 +11,7 @@ import {
 import { motion } from "motion/react";
 import { lazy, type ReactNode, Suspense, useMemo, useState } from "react";
 import { Collapse } from "@/components/motion/collapse";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -25,9 +26,11 @@ import {
 } from "@/lib/filter-parser";
 import { useListAnimation } from "@/lib/hooks/use-list-animation";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { activeRuleConditions, describeRule } from "@/lib/row-rules";
 import { compileFilterConditions } from "@/lib/sql-filter";
 import type { FilterCondition as Condition } from "@/lib/table-view-state";
+import { FilterGroupingPreview } from "./filter-bar/filter-grouping-preview";
 import { ActiveFilterBadge } from "./table-filter-panel/active-filter-badge";
 import { FilterConditionRow } from "./table-filter-panel/filter-condition-row";
 import { createId, emptyCondition } from "./table-filter-panel/filter-conditions";
@@ -59,6 +62,7 @@ export function TableFilterPanel({
   const listRef = useListAnimation<HTMLDivElement>();
   const caps = useActiveCapabilities();
   const kind = useActiveConnection()?.kind;
+  const hasNewGrouping = useHasNewFeatures("table.filter.grouping") && kind === "postgres";
   const json = caps.query_language === "json";
   const redis = caps.query_language === "redis";
   const native = redis;
@@ -186,6 +190,11 @@ export function TableFilterPanel({
         >
           <FilterIcon className="size-4 text-muted-foreground" />
           Filter
+          {!open && hasNewGrouping ? (
+            <span aria-hidden="true">
+              <NewBadge />
+            </span>
+          ) : null}
           <motion.span
             animate={{ rotate: open ? 180 : 0 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
@@ -237,18 +246,28 @@ export function TableFilterPanel({
       <Collapse open={open} durationMs={260}>
         <div className="min-h-0 max-h-[min(22rem,calc(55vh-7rem))] space-y-3 overflow-y-auto px-3 pb-3">
           {!native && !ruleMode && (
-            <Tabs value={mode} onValueChange={(value) => switchMode(value as FilterMode)}>
-              <TabsList>
-                <TabsTrigger value="simple">
-                  <SlidersHorizontalIcon />
-                  Einfach
-                </TabsTrigger>
-                <TabsTrigger value="sql">
-                  <Code2Icon />
-                  {json ? "JSON" : caps.query_label}
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <div className="flex flex-wrap items-center justify-between gap-1">
+              <Tabs value={mode} onValueChange={(value) => switchMode(value as FilterMode)}>
+                <TabsList>
+                  <TabsTrigger value="simple">
+                    <SlidersHorizontalIcon />
+                    Einfach
+                  </TabsTrigger>
+                  <TabsTrigger value="sql">
+                    <Code2Icon />
+                    {json ? "JSON" : caps.query_label}
+                    {mode === "simple" && hasNewGrouping ? (
+                      <span aria-hidden="true">
+                        <NewBadge />
+                      </span>
+                    ) : null}
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              {!json && mode === "sql" && open ? (
+                <FilterGroupingPreview sql={sql} columns={columns} stateKey={stateKey} />
+              ) : null}
+            </div>
           )}
 
           {parseError && (

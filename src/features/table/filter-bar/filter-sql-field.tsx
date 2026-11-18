@@ -5,6 +5,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { IS_MAC } from "@/lib/platform";
+import { FilterGroupingPreview } from "./filter-grouping-preview";
 
 const SqlEditor = lazy(() =>
   import("@/features/table/sql-editor").then((module) => ({ default: module.SqlEditor })),
@@ -15,6 +16,7 @@ export function FilterSqlField({
   json,
   columns,
   label,
+  stateKey,
   dirty,
   onChange,
   onSubmit,
@@ -24,6 +26,7 @@ export function FilterSqlField({
   json: boolean;
   columns: string[];
   label: string;
+  stateKey?: string;
   dirty: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void;
@@ -89,6 +92,9 @@ export function FilterSqlField({
           <Kbd>↵</Kbd>
           anwenden
         </span>
+      ) : null}
+      {!json ? (
+        <FilterGroupingPreview sql={value} columns={columns} stateKey={stateKey} compact />
       ) : null}
       <Popover open={expanded} onOpenChange={setExpanded}>
         <PopoverTrigger asChild>
