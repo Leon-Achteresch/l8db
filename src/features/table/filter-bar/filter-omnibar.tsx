@@ -259,6 +259,7 @@ export function FilterOmnibar(props: FilterBarProps) {
                 </>
               ) : (
                 <FilterSqlField
+                  stateKey={props.stateKey}
                   value={model.sql}
                   json={model.json}
                   columns={model.columns}

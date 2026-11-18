@@ -46,6 +46,7 @@ export function FilterPillBar(props: FilterBarProps) {
         ) : (
           <div className="flex h-7 min-w-48 flex-1 items-center rounded-md border border-input bg-background/60 pl-1 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30">
             <FilterSqlField
+              stateKey={props.stateKey}
               value={model.sql}
               json={model.json}
               columns={model.columns}

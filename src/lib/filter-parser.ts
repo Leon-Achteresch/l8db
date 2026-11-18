@@ -19,18 +19,19 @@ type Token = {
   end?: number;
   normalized?: string;
 };
-type Group = { combinator: "AND" | "OR"; children: Node[] };
-type Node = ParsedFilterCondition | Group;
+export type FilterTree<T> = T | { combinator: "AND" | "OR"; children: FilterTree<T>[] };
+type Node = FilterTree<ParsedFilterCondition>;
 
 function fail(message: string, at: number): never {
   throw new Error(`${message} (Position ${at + 1}).`);
 }
 
-function tokenize(source: string): Token[] {
+function tokenize(source: string, postgres = false): Token[] {
   const tokens: Token[] = [];
   let at = 0;
   while (at < source.length) {
     if (/\s/.test(source[at])) {
+      if (postgres && !/[ \t\n\r\f]/.test(source[at])) fail("Unbekanntes Leerzeichen", at);
       at++;
       continue;
     }
@@ -38,6 +39,7 @@ function tokenize(source: string): Token[] {
     const quote = source[at];
     const smartQuote = ["‚", "‘", "’"].includes(quote);
     if (smartQuote || ["'", '"', "`", "["].includes(quote)) {
+      if (postgres && quote !== "'" && quote !== '"') fail("Unbekannte Zitierweise", start);
       const close = quote === "[" ? "]" : quote;
       let value = "";
       let closed = false;
@@ -117,16 +119,19 @@ const KEYWORDS = new Set([
   "WHERE",
 ]);
 
-export function parseFilterExpression(
+function parseTree<T>(
   source: string,
   columns: string[],
-  kind?: FilterKind,
-): ParsedFilter {
-  if (kind === "mongodb" || kind === "redis") {
-    throw new Error("SQL-Ausdrücke sind für diesen Datenbanktyp nicht verfügbar.");
-  }
+  kind: FilterKind | undefined,
+  leaf: (condition: Node, start: number, end: number) => FilterTree<T>,
+  postgres = false,
+): FilterTree<T> {
   if (source.length > 20_000) throw new Error("Der Filterausdruck ist zu lang.");
-  const tokens = tokenize(source);
+  if (postgres && (source.includes("\\") || source.includes("\0"))) {
+    throw new Error("Escape-Sequenzen können hier nicht eindeutig gelesen werden.");
+  }
+  const tokens = tokenize(source, postgres);
+  const columnNames = postgres ? new Set(columns) : undefined;
   let index = 0;
   const current = () => tokens[index];
   const keyword = (value: string) =>
@@ -144,6 +149,7 @@ export function parseFilterExpression(
   const expected = (value: string) => fail(`${value} erwartet`, current()?.at ?? source.length);
   const literal = (typed = false): { value: string; text: boolean } => {
     if (
+      !postgres &&
       (keyword("DATE") || keyword("TIME") || keyword("TIMESTAMP")) &&
       tokens[index + 1]?.kind === "string"
     ) {
@@ -163,7 +169,9 @@ export function parseFilterExpression(
       (token.kind === "word" && !isBool && KEYWORDS.has(token.value.toUpperCase()))
     )
       return expected("Ein Wert (Text, Zahl oder TRUE/FALSE)");
-    if (token.kind === "word" && !isBool && columns.includes(token.value)) {
+    if (postgres && token.kind !== "number" && token.kind !== "string" && !isBool)
+      return expected("Ein SQL-Literal");
+    if (!postgres && token.kind === "word" && !isBool && columns.includes(token.value)) {
       fail(
         `„${token.value}“ ist ein Spaltenname – Textwerte bitte in Anführungszeichen setzen`,
         token.at,
@@ -176,7 +184,7 @@ export function parseFilterExpression(
         value = value.slice(1, -1).replace(/''/g, "'");
       }
     }
-    if (!value.trim()) {
+    if (!postgres && !value.trim()) {
       fail("Leere Werte bitte im SQL-Modus filtern", token.at);
     }
     return { value, text: token.kind !== "number" && !isBool };
@@ -191,14 +199,18 @@ export function parseFilterExpression(
     const token = current();
     if (!token || !["word", "identifier"].includes(token.kind)) return expected("Ein Spaltenname");
     index++;
+    if (postgres && current()?.kind === "symbol" && current().value === "(")
+      fail("Funktionsaufrufe werden in der Gruppierung nicht gelesen", token.at);
     const lower = token.value.toLowerCase();
-    const matches = columns.filter((column) => column.toLowerCase() === lower);
-    const column = columns.includes(token.value)
-      ? token.value
-      : matches.length === 1
-        ? matches[0]
-        : undefined;
-    if (column === undefined) fail(`Unbekannte oder mehrdeutige Spalte „${token.value}“`, token.at);
+    const column = columnNames
+      ? token.kind === "identifier"
+        ? token.value
+        : /^[a-z_][a-z0-9_$]*$/i.test(token.value)
+          ? lower
+          : undefined
+      : (columns.find((name) => name === token.value) ?? uniqueColumn(columns, lower));
+    if (column === undefined || (columnNames && !columnNames.has(column)))
+      fail(`Unbekannte oder mehrdeutige Spalte „${token.value}“`, token.at);
     const make = (operator: FilterOperatorKey, parsed?: { value: string; text: boolean }) => ({
       column,
       operator: supported(operator, token.at),
@@ -227,7 +239,7 @@ export function parseFilterExpression(
       const starts = parsed.value.startsWith("%");
       const ends = parsed.value.length > 1 && parsed.value.endsWith("%");
       const inner = parsed.value.slice(starts ? 1 : 0, ends ? -1 : undefined);
-      if (/[%_]/.test(inner) || !inner) {
+      if (!postgres && (/[%_]/.test(inner) || !inner)) {
         fail("Platzhalter innerhalb des Musters bitte im SQL-Modus filtern", token.at);
       }
       const operator =
@@ -256,31 +268,69 @@ export function parseFilterExpression(
         "Ein Vergleichsoperator (=, <>, !=, >, >=, <, <=), LIKE, BETWEEN, IN oder IS NULL",
       );
     index++;
-    if ((found === "eq" || found === "neq") && acceptKeyword("NULL")) {
+    if (postgres && comparison.value === "!=" && /^[+-]/.test(source[comparison.at + 2] ?? ""))
+      return expected("Ein Leerzeichen nach !=");
+    if (!postgres && (found === "eq" || found === "neq") && acceptKeyword("NULL")) {
       return make(found === "eq" ? "isNull" : "isNotNull");
     }
     return make(found, literal(found === "gte" || found === "lt"));
   };
-  const primary = (depth: number): Node => {
+  const primary = (depth: number): FilterTree<T> => {
     if (depth > 64) return expected("Weniger verschachtelte Klammern");
-    if (!acceptSymbol("(")) return condition();
+    if (postgres && keyword("NOT"))
+      fail(
+        "NOT vor einer Bedingung oder Gruppe wird in der Gruppierung nicht gelesen",
+        current().at,
+      );
+    if (!acceptSymbol("(")) {
+      const start = current()?.at ?? source.length;
+      const parsed = condition();
+      return leaf(parsed, start, current()?.at ?? source.length);
+    }
     const node = expression(depth + 1);
     if (!acceptSymbol(")")) expected(")");
     return node;
   };
-  const conjunction = (depth: number): Node => {
+  const conjunction = (depth: number): FilterTree<T> => {
     const children = [primary(depth)];
     while (acceptKeyword("AND")) children.push(primary(depth));
     return children.length === 1 ? children[0] : { combinator: "AND", children };
   };
-  const expression = (depth: number): Node => {
+  const expression = (depth: number): FilterTree<T> => {
     const children = [conjunction(depth)];
     while (acceptKeyword("OR")) children.push(conjunction(depth));
     return children.length === 1 ? children[0] : { combinator: "OR", children };
   };
-  acceptKeyword("WHERE");
+  if (!postgres) acceptKeyword("WHERE");
   const root = expression(0);
   if (current()) fail(`Unerwarteter Ausdruck „${current().value}“`, current().at);
+  return root;
+}
+
+function uniqueColumn(columns: string[], lower: string): string | undefined {
+  const matches = columns.filter((column) => column.toLowerCase() === lower);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+export function readPostgresFilterGroups(source: string, columns: string[]): FilterTree<string> {
+  return parseTree<string>(
+    source,
+    columns,
+    "postgres",
+    (_condition, start, end) => source.slice(start, end).trimEnd(),
+    true,
+  );
+}
+
+export function parseFilterExpression(
+  source: string,
+  columns: string[],
+  kind?: FilterKind,
+): ParsedFilter {
+  if (kind === "mongodb" || kind === "redis") {
+    throw new Error("SQL-Ausdrücke sind für diesen Datenbanktyp nicht verfügbar.");
+  }
+  const root = parseTree<ParsedFilterCondition>(source, columns, kind, (condition) => condition);
   const combinator = "combinator" in root ? root.combinator : "AND";
   const conditions: ParsedFilterCondition[] = [];
   const collect = (node: Node) => {

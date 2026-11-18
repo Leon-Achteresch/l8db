@@ -13,6 +13,7 @@ export const NEW_FEATURES = {
   "table.rows.server-output": NEXT_FEATURE_VERSION,
   "table.rows.record-view": NEXT_FEATURE_VERSION,
   "table.filter.sql-list": NEXT_FEATURE_VERSION,
+  "table.filter.grouping": NEXT_FEATURE_VERSION,
   "procedures.run.results": NEXT_FEATURE_VERSION,
   "query.saved.origin": NEXT_FEATURE_VERSION,
   "table.filter.keyword-limit": NEXT_FEATURE_VERSION,
