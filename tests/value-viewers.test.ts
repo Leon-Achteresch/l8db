@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  BINARY_UTF8_MAX_BYTES,
   base64ToBytes,
   bytesToBase64,
   bytesToHexLiteral,
+  decodeBinaryUtf8,
   decodeBinaryValue,
   formatByteSize,
   hexDump,
@@ -80,6 +82,28 @@ describe("binary", () => {
     expect(decodeBinaryValue("AQID")).toBeNull();
     expect(decodeBinaryValue("AQID", "blob")?.bytes).toEqual(Uint8Array.from([1, 2, 3]));
     expect(decodeBinaryValue("0x0102", "varbinary")?.bytes).toEqual(Uint8Array.from([1, 2]));
+  });
+
+  test("explicit UTF-8 retains exact Unicode, BOM and line breaks without changing the bytes", () => {
+    const text = "\uFEFFGrüße 東京 🧪\r\n<sample>\0";
+    const bytes = new TextEncoder().encode(text);
+    const before = bytes.slice();
+    expect(decodeBinaryUtf8(bytes)).toEqual({ state: "text", text });
+    expect(bytes).toEqual(before);
+  });
+
+  test("explicit UTF-8 refuses invalid and incomplete sequences without substitution", () => {
+    for (const bytes of [[0xff], [0xc0, 0xaf], [0xe2, 0x82], [0xed, 0xa0, 0x80], [0x61, 0x80]]) {
+      expect(decodeBinaryUtf8(Uint8Array.from(bytes))).toEqual({ state: "invalid" });
+    }
+  });
+
+  test("explicit UTF-8 distinguishes empty input and checks the byte limit before decoding", () => {
+    expect(decodeBinaryUtf8(new Uint8Array())).toEqual({ state: "empty" });
+    const full = new Uint8Array(BINARY_UTF8_MAX_BYTES).fill(0x61);
+    expect(decodeBinaryUtf8(full)).toEqual({ state: "text", text: "a".repeat(full.length) });
+    const oversize = new Uint8Array(BINARY_UTF8_MAX_BYTES + 1).fill(0xff);
+    expect(decodeBinaryUtf8(oversize)).toEqual({ state: "too-large" });
   });
 
   test("recognizes binary column types without numeric Oracle types", () => {
