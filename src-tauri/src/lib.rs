@@ -1,9 +1,9 @@
+mod ai;
+mod appwrite;
 #[cfg(debug_assertions)]
 mod array_editor_development;
 #[cfg(any(test, debug_assertions))]
 mod array_editor_target;
-mod ai;
-mod appwrite;
 mod automation;
 #[cfg(test)]
 mod baas_browser_tests;

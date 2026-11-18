@@ -1,8 +1,8 @@
 use super::{map_pg_err, ora, oracle, quote, DatabaseKind, TransactionEntry, TransactionManager};
 use crate::db::execution::guarded;
 use crate::db::postgres::{
-    capped_count, capped_count_sql, has_row_ids, primary_key_columns, relation_name, table_page_sql,
-    PgServer,
+    capped_count, capped_count_sql, has_row_ids, primary_key_columns, relation_name,
+    table_page_sql, PgServer,
 };
 use crate::db::{attach_row_keys, quote_ident, where_clause, DatabaseAdapter, RowCount, TableData};
 
