@@ -4,14 +4,15 @@ import { buildColumnValueOptions } from "@/lib/column-value-options";
 import { useActiveConnection } from "@/lib/connections";
 import {
   columnValueOptions,
+  describeTableColumns,
   getErSchema,
   listAvailableExtensions,
   listConstraints,
   listForeignKeys,
   listIndexes,
   listSequences,
-  listTableColumnsDetailed,
   listTriggers,
+  tableColumnList,
   tableComment,
 } from "@/lib/db";
 import { useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
@@ -54,13 +55,13 @@ export function useTriggersQuery(schema: string, table: string) {
   });
 }
 
-export function useDetailedColumnsQuery(schema: string, table: string) {
+function useTableColumnQueryOptions(schema: string, table: string) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
-  return useQuery({
+  return {
     queryKey: ["columns-detailed", connection?.id, database, schema, table],
     queryFn: () =>
-      listTableColumnsDetailed(
+      describeTableColumns(
         connection!.kind,
         effectiveConnectionString(connection!),
         schema,
@@ -69,7 +70,15 @@ export function useDetailedColumnsQuery(schema: string, table: string) {
       ),
     enabled: Boolean(connection) && Boolean(schema) && Boolean(table),
     staleTime: 5 * 60 * 1000,
-  });
+  };
+}
+
+export function useTableColumnDetailsQuery(schema: string, table: string) {
+  return useQuery(useTableColumnQueryOptions(schema, table));
+}
+
+export function useDetailedColumnsQuery(schema: string, table: string) {
+  return useQuery({ ...useTableColumnQueryOptions(schema, table), select: tableColumnList });
 }
 
 export function useErSchemaQuery(schema?: string) {

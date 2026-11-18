@@ -1560,16 +1560,27 @@ pub async fn list_table_columns_detailed(
     database: Option<String>,
     schema: String,
     table: String,
+    with_table_context: Option<bool>,
     pool_state: tauri::State<'_, PoolState>,
-) -> Result<Vec<super::column_metadata::ColumnMetadata>, String> {
-    create_adapter_from_string(
+) -> Result<super::column_metadata::ColumnDetailsResponse, String> {
+    use super::column_metadata::ColumnDetailsResponse;
+    let adapter = create_adapter_from_string(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
-    )?
-    .list_table_column_metadata(&schema, &table)
-    .await
+    )?;
+    if with_table_context == Some(true) {
+        adapter
+            .describe_table_columns(&schema, &table)
+            .await
+            .map(ColumnDetailsResponse::Table)
+    } else {
+        adapter
+            .list_table_column_metadata(&schema, &table)
+            .await
+            .map(ColumnDetailsResponse::Columns)
+    }
 }
 
 #[tauri::command]

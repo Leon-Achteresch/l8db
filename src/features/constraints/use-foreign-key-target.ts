@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { columnTypeLabel } from "@/lib/column-type";
 import { useActiveConnection } from "@/lib/connections";
 import type { ColumnRef } from "@/lib/constraint-designer";
-import { listSchemas, listTableColumnsDetailed, listTables } from "@/lib/db";
+import { describeTableColumns, listSchemas, listTables, tableColumnList } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { effectiveConnectionString } from "@/lib/ssh";
 
@@ -43,10 +43,11 @@ export function useForeignKeyTarget({ schema, table, self }: ForeignKeyTargetOpt
     queryKey: ["columns-detailed", connection?.id, database, schema, table],
     queryFn: () =>
       kind && connectionString
-        ? listTableColumnsDetailed(kind, connectionString, schema, table, database ?? undefined)
+        ? describeTableColumns(kind, connectionString, schema, table, database ?? undefined)
         : [],
     enabled: Boolean(kind && connectionString && table && !isSelf),
     staleTime: 5 * 60 * 1000,
+    select: tableColumnList,
   });
 
   const schemas = useMemo(() => {

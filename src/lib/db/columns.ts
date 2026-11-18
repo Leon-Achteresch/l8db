@@ -25,6 +25,17 @@ export interface DetailedColumnInfo {
   exact_filter?: ExactFilterMetadata;
 }
 
+export interface TableColumnDetails {
+  columns: DetailedColumnInfo[];
+  unlogged?: boolean;
+}
+
+export type TableColumnMetadata = DetailedColumnInfo[] | TableColumnDetails;
+
+export function tableColumnList(data: TableColumnMetadata): DetailedColumnInfo[] {
+  return Array.isArray(data) ? data : data.columns;
+}
+
 export interface ImportColumnInfo {
   name: string;
   data_type: string;
@@ -173,6 +184,25 @@ export async function listTableColumnsDetailed(
     database,
     schema,
     table,
+  });
+}
+
+export async function describeTableColumns(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  database?: string,
+): Promise<TableColumnMetadata> {
+  if (kind !== "postgres")
+    return listTableColumnsDetailed(kind, connectionString, schema, table, database);
+  return invoke("list_table_columns_detailed", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+    withTableContext: true,
   });
 }
 

@@ -4,7 +4,13 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { copyWithToast } from "@/lib/clipboard";
 import { useActiveConnection } from "@/lib/connections";
-import { dropTable, getTableDdl, listTableColumnsDetailed, truncateTable } from "@/lib/db";
+import {
+  describeTableColumns,
+  dropTable,
+  getTableDdl,
+  tableColumnList,
+  truncateTable,
+} from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase, useDbSelectionStore } from "@/lib/db-selection";
 import { EMPTY_CSV_IMPORT, useImportWorkspace } from "@/lib/import-workspace";
 import { favoriteId, useObjectFavoritesStore } from "@/lib/object-favorites";
@@ -99,7 +105,7 @@ export function useSidebarEntityActions(type: "table" | "view") {
       const columns = await queryClient.fetchQuery({
         queryKey: ["columns-detailed", connection.id, activeDatabase, itemSchema, itemName],
         queryFn: () =>
-          listTableColumnsDetailed(
+          describeTableColumns(
             connection.kind,
             effectiveConnectionString(connection),
             itemSchema,
@@ -109,7 +115,7 @@ export function useSidebarEntityActions(type: "table" | "view") {
         staleTime: 5 * 60 * 1000,
       });
       await copyWithToast(
-        templateSql(template, itemSchema, itemName, columns, connection.kind),
+        templateSql(template, itemSchema, itemName, tableColumnList(columns), connection.kind),
         SQL_TEMPLATE_LABELS[template],
       );
     } catch (error) {

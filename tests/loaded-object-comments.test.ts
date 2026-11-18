@@ -29,9 +29,10 @@ test("uses only recent exact table and column metadata from the current database
     setTable(client, "public", "orders");
     setTable(client, "billing", "orders");
     client.setQueryData(comment("public", "orders"), "Kundenauftrag\nZahlung");
-    client.setQueryData(columns("public", "orders"), [
-      { name: "owner", comment: "Zahlungsinhaber" },
-    ]);
+    client.setQueryData(columns("public", "orders"), {
+      columns: [{ name: "owner", comment: "Zahlungsinhaber" }],
+      unlogged: true,
+    });
     client.setQueryData(comment("billing", "orders"), "Zahlung Geschäftskunden");
     client.setQueryData(comment("public", "unknown"), "Zahlung altes Objekt");
     client.setQueryData(

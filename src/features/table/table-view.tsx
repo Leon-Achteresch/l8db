@@ -18,6 +18,7 @@ import { TablePerfPanel } from "./table-view/lazy-panels";
 import { TableDataContent } from "./table-view/table-data-content";
 import { TableExportDialogs } from "./table-view/table-export-dialogs";
 import { TableToolbarActions } from "./table-view/table-toolbar-actions";
+import { UnloggedTableBadge } from "./table-view/unlogged-table-badge";
 import { useTableViewModel } from "./table-view/use-table-view-model";
 import { ViewDetailTabs } from "./table-view/view-detail-tabs";
 
@@ -36,6 +37,7 @@ export function TableView(props: TableViewProps) {
   const {
     inDrawer,
     isView,
+    unlogged,
     connection,
     database,
     saveRedisRow,
@@ -213,6 +215,7 @@ export function TableView(props: TableViewProps) {
           data-tour="table-toolbar"
         >
           <TableDetailTabBar tabs={availableTabs} activeTab={tableTab} />
+          {unlogged ? <UnloggedTableBadge key={stateKey} /> : null}
           <TableToolbarActions
             extensionActions={extensionActions}
             connection={connection}

@@ -7,7 +7,7 @@ if [ "$mode" = --editor ] || [ "$mode" = --routine ]; then
   command -v bun >/dev/null
   [ "$(bun --version)" = 1.3.10 ] || { printf 'Use Bun1.3.10 for the editor launcher.\n' >&2; exit 2; }
 fi
-case "$mode" in --test|--editor|--editor-test|--routine|--routine-test|--paging-test|--index-progress-test|--index-observation-test) ;; *) printf 'Usage: %s [--test|--editor|--editor-test|--routine|--routine-test|--paging-test|--index-progress-test|--index-observation-test]\n' "$0" >&2; exit 2 ;; esac
+case "$mode" in --test|--editor|--editor-test|--routine|--routine-test|--paging-test|--index-progress-test|--index-observation-test|--table-persistence-test) ;; *) printf 'Usage: %s [--test|--editor|--editor-test|--routine|--routine-test|--paging-test|--index-progress-test|--index-observation-test|--table-persistence-test]\n' "$0" >&2; exit 2 ;; esac
 for tool in initdb pg_ctl createdb python3 cargo; do
   command -v "$tool" >/dev/null || { printf 'Required local tool missing: %s\n' "$tool" >&2; exit 1; }
 done
@@ -75,6 +75,12 @@ if [ "$mode" = --paging-test ]; then
   cargo test --manifest-path src-tauri/Cargo.toml --locked --lib \
     db::postgres::page_live_tests::a21_postgres_table_paging \
     -- --exact --ignored --test-threads=2 --nocapture
+  exit
+fi
+if [ "$mode" = --table-persistence-test ]; then
+  cargo test --manifest-path src-tauri/Cargo.toml --locked --lib \
+    db::postgres::table_persistence_live_tests::a47_reads_scoped_table_persistence_with_column_details \
+    -- --exact --ignored --test-threads=1 --nocapture
   exit
 fi
 if [ "$mode" = --routine-test ]; then
