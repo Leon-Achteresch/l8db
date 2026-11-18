@@ -6,6 +6,7 @@ import {
   filterInvalidProblems,
   INVALID_ERRORS_PER_OBJECT,
   INVALID_RENDER_STEP,
+  invalidOpenTarget,
   invalidTypeLabels,
 } from "../src/lib/invalid-objects";
 
@@ -44,11 +45,19 @@ test("20k invalid objects with 90k compile messages group and filter within budg
     invalidTypeLabels(items);
   });
   const unfiltered = filterInvalidProblems(problems, null, "");
+  const jump = await measureScenario(() => {
+    for (const problem of problems.slice(0, INVALID_RENDER_STEP)) {
+      for (const error of problem.errors.slice(0, INVALID_ERRORS_PER_OBJECT)) {
+        invalidOpenTarget(problem.item, error.line ?? undefined);
+      }
+    }
+  });
   await reportScenario("invalid-objects-problems", {
     objects: items.length,
     compileMessages: errors.length,
     build,
     filter,
+    jump,
     limits: { renderStep: INVALID_RENDER_STEP, errorsPerObject: INVALID_ERRORS_PER_OBJECT },
   });
   expect(unfiltered).toBe(problems);
@@ -58,6 +67,7 @@ test("20k invalid objects with 90k compile messages group and filter within budg
   expect(others).toHaveLength(0);
   expect(build.p95Ms).toBeLessThan(120);
   expect(filter.p95Ms).toBeLessThan(60);
+  expect(jump.p95Ms).toBeLessThan(5);
 });
 
 test("messages for valid objects are kept separately without copying the list", async () => {

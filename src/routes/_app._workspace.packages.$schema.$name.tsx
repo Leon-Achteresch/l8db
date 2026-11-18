@@ -6,16 +6,24 @@ import type { PackagePart } from "@/lib/plsql";
 export const Route = createFileRoute("/_app/_workspace/packages/$schema/$name")({
   component: function PackageRoute() {
     const { schema, name } = Route.useParams();
-    const { part, member, highlight } = Route.useSearch();
+    const { part, member, highlight, line } = Route.useSearch();
     return (
-      <PackageView schema={schema} name={name} part={part} member={member} highlight={highlight} />
+      <PackageView
+        schema={schema}
+        name={name}
+        part={part}
+        member={member}
+        highlight={highlight}
+        line={line}
+      />
     );
   },
   validateSearch: (
     search: Record<string, unknown>,
-  ): { part?: PackagePart; member?: string; highlight?: string } => ({
+  ): { part?: PackagePart; member?: string; highlight?: string; line?: number } => ({
     part: search["part"] === "spec" || search["part"] === "body" ? search["part"] : undefined,
     member: typeof search["member"] === "string" ? search["member"] : undefined,
     highlight: typeof search["highlight"] === "string" ? search["highlight"] : undefined,
+    line: typeof search["line"] === "number" ? search["line"] : undefined,
   }),
 });

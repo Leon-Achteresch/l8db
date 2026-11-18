@@ -8,12 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import { useActiveConnection } from "@/lib/connections";
+import type { InvalidObjectInfo } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import {
   buildInvalidProblems,
   compileArgForInvalidType,
   filterInvalidProblems,
   INVALID_RENDER_STEP,
+  invalidOpenTarget,
   invalidTypeLabels,
 } from "@/lib/invalid-objects";
 import {
@@ -120,22 +122,39 @@ export function InvalidObjectsView() {
       setCompilingOid(null);
     }
   };
-  const handleOpen = (schema: string, name: string, objectType: string, oid: string) => {
-    const t = objectType.toUpperCase();
-    if (t === "FUNCTION" || t === "TRIGGER" || t === "TYPE" || t === "TYPE BODY") {
-      openFunctionTab({ schema, name, oid });
-      void navigate({ to: "/functions/$schema/$name", params: { schema, name }, search: { oid } });
-    } else if (t === "PROCEDURE") {
-      openProcedureTab({ schema, name, oid });
-      void navigate({ to: "/procedures/$schema/$name", params: { schema, name }, search: { oid } });
-    } else if (t === "PACKAGE" || t === "PACKAGE BODY") {
+  const handleOpen = (item: InvalidObjectInfo, line?: number) => {
+    const target = invalidOpenTarget(item, line);
+    if (!target) {
+      toast.info(
+        `${item.schema}.${item.name} (${item.object_type}) kann hier nicht geöffnet werden`,
+      );
+      return;
+    }
+    const { schema, name } = target;
+    if (target.kind === "function") {
+      openFunctionTab({ schema, name, oid: target.oid });
+      void navigate({
+        to: "/functions/$schema/$name",
+        params: { schema, name },
+        search: { oid: target.oid, line: target.line },
+      });
+    } else if (target.kind === "procedure") {
+      openProcedureTab({ schema, name, oid: target.oid });
+      void navigate({
+        to: "/procedures/$schema/$name",
+        params: { schema, name },
+        search: { oid: target.oid, line: target.line },
+      });
+    } else if (target.kind === "package") {
       openPackageTab({ schema, name });
-      void navigate({ to: "/packages/$schema/$name", params: { schema, name }, search: {} });
-    } else if (t === "VIEW") {
+      void navigate({
+        to: "/packages/$schema/$name",
+        params: { schema, name },
+        search: { part: target.part, line: target.line },
+      });
+    } else {
       openViewEditorTab({ schema, view: name });
       void navigate({ to: "/view-editor/$schema/$view", params: { schema, view: name } });
-    } else {
-      toast.info(`${schema}.${name} (${objectType}) kann hier nicht geöffnet werden`);
     }
   };
   const toggle = (oid: string) => {
@@ -248,14 +267,7 @@ export function InvalidObjectsView() {
                 blocked={compileAll.isPending}
                 messages={messages}
                 onToggle={() => toggle(problem.item.oid)}
-                onOpen={() =>
-                  handleOpen(
-                    problem.item.schema,
-                    problem.item.name,
-                    problem.item.object_type,
-                    problem.item.oid,
-                  )
-                }
+                onOpen={(line) => handleOpen(problem.item, line)}
                 onCompile={() =>
                   void handleCompileOne(
                     problem.item.oid,

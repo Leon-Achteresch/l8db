@@ -27,7 +27,7 @@ export function InvalidProblemGroup({
   blocked: boolean;
   messages: "loading" | "error" | "ready";
   onToggle: () => void;
-  onOpen: () => void;
+  onOpen: (line?: number) => void;
   onCompile: () => void;
 }) {
   const { item, errors } = problem;
@@ -75,7 +75,7 @@ export function InvalidProblemGroup({
           <Button
             variant="ghost"
             size="icon-xs"
-            onClick={onOpen}
+            onClick={() => onOpen()}
             title="Öffnen"
             aria-label="Öffnen"
           >
@@ -117,7 +117,11 @@ export function InvalidProblemGroup({
         ) : (
           <ul>
             {shown.map((error, index) => (
-              <InvalidMessageRow key={`${error.line}-${error.position}-${index}`} message={error} />
+              <InvalidMessageRow
+                key={`${error.line}-${error.position}-${index}`}
+                message={error}
+                onOpen={synonym ? undefined : onOpen}
+              />
             ))}
             {errors.length > shown.length && (
               <li className="h-6 pl-[3.25rem] font-sans text-[11px] leading-6 text-muted-foreground">
