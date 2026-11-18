@@ -268,6 +268,7 @@ export function TableDataContent({
             foreignKeys={foreignKeys}
             currentSchema={schema}
             currentTable={table}
+            recordView
             onNavigateToTable={handleNavigateToTable}
             onInsertRow={
               masked || isView || !caps.row_edit || connection?.readOnly ? undefined : addRow
