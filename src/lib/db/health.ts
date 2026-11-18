@@ -11,6 +11,11 @@ export interface HealthObject {
   fixSql: string | null;
 }
 
+export interface IndexObservation {
+  databaseStatsResetAt: string | null;
+  tracksCounts: boolean | null;
+}
+
 export interface HealthCheckResult {
   id: string;
   category: HealthCategory;
@@ -21,6 +26,7 @@ export interface HealthCheckResult {
   objects: HealthObject[];
   fixSql: string | null;
   skippedReason: string | null;
+  indexObservation?: IndexObservation;
 }
 
 export interface HealthReport {

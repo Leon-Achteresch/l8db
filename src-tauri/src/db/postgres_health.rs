@@ -49,6 +49,13 @@ pub struct HealthObject {
     pub fix_sql: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexObservation {
+    pub database_stats_reset_at: Option<String>,
+    pub tracks_counts: Option<bool>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HealthCheckResult {
@@ -61,6 +68,8 @@ pub struct HealthCheckResult {
     pub objects: Vec<HealthObject>,
     pub fix_sql: Option<String>,
     pub skipped_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_observation: Option<IndexObservation>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -155,13 +164,18 @@ FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid JOIN pg_class t ON t.o
 WHERE NOT i.indisvalid AND {USER} ORDER BY 1 LIMIT 200";
 
 const UNUSED_INDEX_SQL: &str = "SELECT format('%I.%I', s.schemaname, s.indexrelname) AS object, \
-format('auf %I.%I, %s, 0 Scans seit Statistik-Reset', s.schemaname, s.relname, pg_size_pretty(pg_relation_size(s.indexrelid))) AS detail, \
+format('auf %I.%I, %s, 0 gemeldete Scans', s.schemaname, s.relname, pg_size_pretty(pg_relation_size(s.indexrelid))) AS detail, \
 format('DROP INDEX CONCURRENTLY %I.%I;', s.schemaname, s.indexrelname) AS fix, NULL AS severity \
 FROM pg_stat_user_indexes s JOIN pg_index i ON i.indexrelid = s.indexrelid \
 WHERE s.idx_scan = 0 AND NOT i.indisunique AND NOT i.indisprimary AND i.indisvalid \
 AND pg_relation_size(s.indexrelid) > 2097152 \
 AND NOT EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conindid = s.indexrelid) \
 ORDER BY pg_relation_size(s.indexrelid) DESC LIMIT 200";
+
+const INDEX_OBSERVATION_SQL: &str = r#"SELECT (
+    SELECT pg_catalog.to_char(stats_reset AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+    FROM pg_catalog.pg_stat_database WHERE datname = current_database()
+) AS database_stats_reset_at, current_setting('track_counts', true) AS tracks_counts"#;
 
 const BLOAT_SQL: &str = "SELECT format('%I.%I', s.schemaname, s.relname) AS object, \
 format('%s tote von %s Tupeln (%s %%)', s.n_dead_tup, s.n_live_tup + s.n_dead_tup, round(100.0 * s.n_dead_tup / (s.n_live_tup + s.n_dead_tup), 1)) AS detail, \
@@ -204,6 +218,7 @@ AND s.query NOT LIKE '<insufficient privilege>%' AND s.{MEAN} > 100 \
 ORDER BY s.{TOTAL} DESC LIMIT 10";
 
 const SLOW_QUERY_ID: &str = "slow_queries";
+const UNUSED_INDEX_ID: &str = "unused_indexes";
 const DUPLICATE_INDEX_ID: &str = "duplicate_indexes";
 
 fn checks() -> Vec<Check> {
@@ -273,11 +288,11 @@ fn checks() -> Vec<Check> {
             sql: INVALID_INDEX_SQL,
         },
         Check {
-            id: "unused_indexes",
+            id: UNUSED_INDEX_ID,
             category: Category::Performance,
             severity: Severity::Info,
-            title: "Unbenutzte Indizes",
-            explanation: "Diese Indizes wurden seit dem letzten Statistik-Reset nie gelesen. Prüfe auch Replikas, bevor du sie entfernst.",
+            title: "Indizes ohne gemeldete Scans",
+            explanation: "Resets einzelner Objekte können den Zeitstempel ändern. Zusammen mit Last auf Replikas und nicht beobachteter Last begrenzt das die Aussage der Zähler. Der Zeitstempel garantiert keinen Beobachtungsbeginn für einen einzelnen Index.",
             sql: UNUSED_INDEX_SQL,
         },
         Check {
@@ -354,6 +369,7 @@ fn result(check: &Check, objects: Vec<HealthObject>, severity: Severity) -> Heal
         fix_sql: (!fixes.is_empty()).then(|| fixes.join("\n")),
         objects,
         skipped_reason: None,
+        index_observation: None,
     }
 }
 
@@ -368,6 +384,7 @@ fn skipped(check: &Check, reason: String) -> HealthCheckResult {
         objects: Vec::new(),
         fix_sql: None,
         skipped_reason: Some(reason),
+        index_observation: None,
     }
 }
 
@@ -483,6 +500,23 @@ fn skip_reason(error: &str) -> String {
     }
 }
 
+async fn read_index_observation(adapter: &dyn DatabaseAdapter) -> IndexObservation {
+    let Ok(data) = adapter.execute_query(INDEX_OBSERVATION_SQL).await else {
+        return IndexObservation::default();
+    };
+    let Some(row) = data.rows.first() else {
+        return IndexObservation::default();
+    };
+    IndexObservation {
+        database_stats_reset_at: text(row, "database_stats_reset_at"),
+        tracks_counts: match row["tracks_counts"].as_str() {
+            Some("on") => Some(true),
+            Some("off") => Some(false),
+            _ => None,
+        },
+    }
+}
+
 async fn run_check(adapter: &dyn DatabaseAdapter, check: &Check) -> HealthCheckResult {
     let sql = if check.id == SLOW_QUERY_ID {
         match slow_query_sql(adapter).await {
@@ -495,6 +529,11 @@ async fn run_check(adapter: &dyn DatabaseAdapter, check: &Check) -> HealthCheckR
     match adapter.execute_query(&sql).await {
         Ok(data) if check.id == DUPLICATE_INDEX_ID => {
             result(check, duplicate_indexes(&data.rows), check.severity)
+        }
+        Ok(data) if check.id == UNUSED_INDEX_ID => {
+            let mut result = map_rows(check, &data.rows);
+            result.index_observation = Some(read_index_observation(adapter).await);
+            result
         }
         Ok(data) => map_rows(check, &data.rows),
         Err(error) => skipped(check, skip_reason(&error)),
@@ -621,6 +660,7 @@ mod tests {
 
     #[test]
     fn every_check_sql_is_read_only() {
+        assert!(INDEX_OBSERVATION_SQL.starts_with("SELECT"));
         for check in checks() {
             let sql = check.sql.replace("{USER}", USER_SCHEMA).to_uppercase();
             let head = sql.trim_start();
@@ -632,3 +672,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(all(test, debug_assertions))]
+#[path = "postgres_health_live_tests.rs"]
+mod live_tests;
