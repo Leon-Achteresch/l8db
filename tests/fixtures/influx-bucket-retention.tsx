@@ -39,20 +39,24 @@ function connectionString(org: string) {
   return `influxdb://127.0.0.1:8086/metrics?org=${org}`;
 }
 
-const connections: SavedConnection[] = ["alpha", "beta", "legacy", "failure"].map((id) => ({
+const nativeConnections = (
+  window as Window & { __L8DB_A45_NATIVE_CONNECTIONS__?: SavedConnection[] }
+).__L8DB_A45_NATIVE_CONNECTIONS__;
+const browserConnections: SavedConnection[] = ["alpha", "beta", "legacy", "failure"].map((id) => ({
   id,
   kind: "influxdb",
   name: id,
   connectionString: connectionString(id),
   sslMode: "disable",
 }));
-connections.push({
+browserConnections.push({
   id: "postgres",
   kind: "postgres",
   name: "postgres",
   connectionString: "postgresql://127.0.0.1/metrics",
   sslMode: "disable",
 });
+const connections = nativeConnections ?? browserConnections;
 useConnectionsStore.setState({ activeId: "alpha", connections });
 
 const client = new QueryClient({
@@ -75,20 +79,22 @@ function Fixture() {
             {id}
           </button>
         ))}
-        <button
-          type="button"
-          onClick={() =>
-            useConnectionsStore.setState((state) => ({
-              connections: state.connections.map((entry) =>
-                entry.id === "beta"
-                  ? { ...entry, connectionString: connectionString("gamma") }
-                  : entry,
-              ),
-            }))
-          }
-        >
-          Organisation ändern
-        </button>
+        {!nativeConnections && (
+          <button
+            type="button"
+            onClick={() =>
+              useConnectionsStore.setState((state) => ({
+                connections: state.connections.map((entry) =>
+                  entry.id === "beta"
+                    ? { ...entry, connectionString: connectionString("gamma") }
+                    : entry,
+                ),
+              }))
+            }
+          >
+            Organisation ändern
+          </button>
+        )}
       </nav>
       <aside className="w-full max-w-60">
         {connection && (
