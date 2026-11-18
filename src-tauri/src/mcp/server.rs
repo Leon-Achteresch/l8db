@@ -1,7 +1,7 @@
 use serde_json::{json, Value};
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::io::{BufRead, Write};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use super::catalog::Catalog;
@@ -61,22 +61,82 @@ pub(crate) fn sql_family(kind: DatabaseKind) -> bool {
 const NOSQL_KINDS: &[DatabaseKind] =
     &[DatabaseKind::Mongodb, DatabaseKind::Redis, DatabaseKind::S3];
 
+#[derive(Clone, Default)]
+pub(crate) struct Columns {
+    map: Arc<Mutex<HashMap<String, Arc<Catalog>>>>,
+    gates: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
+}
+
+impl Columns {
+    fn map(&self) -> std::sync::MutexGuard<'_, HashMap<String, Arc<Catalog>>> {
+        self.map.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub(crate) fn get(&self, key: &str) -> Option<Arc<Catalog>> {
+        self.map().get(key).cloned()
+    }
+
+    pub(crate) fn insert(&self, key: String, catalog: Arc<Catalog>) {
+        self.map().insert(key, catalog);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn at(&self, key: &str) -> Arc<Catalog> {
+        self.get(key).expect("catalog")
+    }
+
+    #[cfg(test)]
+    fn holding(key: String, catalog: Arc<Catalog>) -> Self {
+        let columns = Self::default();
+        columns.insert(key, catalog);
+        columns
+    }
+
+    fn retain(&self, keep: impl FnMut(&String, &mut Arc<Catalog>) -> bool) {
+        self.map().retain(keep);
+    }
+
+    fn clear(&self) {
+        self.map().clear();
+    }
+
+    async fn gate(&self, name: String) -> tokio::sync::OwnedMutexGuard<()> {
+        let gate = self
+            .gates
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(name)
+            .or_default()
+            .clone();
+        gate.lock_owned().await
+    }
+
+    async fn loading(&self, key: &str) -> tokio::sync::OwnedMutexGuard<()> {
+        self.gate(format!("load {key}")).await
+    }
+
+    pub(super) async fn listing(&self, key: &str) -> tokio::sync::OwnedMutexGuard<()> {
+        self.gate(format!("list {key}")).await
+    }
+}
+
+#[derive(Clone)]
 pub(crate) struct Server {
     pub(crate) pool: PoolState,
-    pub(crate) columns: HashMap<String, Arc<Catalog>>,
+    pub(crate) columns: Columns,
 }
 
 pub fn serve() {
     let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
+        .worker_threads(super::pump::PARALLEL)
         .enable_all()
         .build()
         .expect("tokio runtime");
-    let mut server = Server {
+    let server = Server {
         pool: db::pool::create_sealed_pool_state(),
-        columns: HashMap::new(),
+        columns: Default::default(),
     };
-    let (input, mut lines) = tokio::sync::mpsc::channel(8);
+    let (input, lines) = tokio::sync::mpsc::channel(8);
     std::thread::spawn(move || {
         for line in std::io::stdin().lock().lines() {
             let Ok(line) = line else { break };
@@ -86,47 +146,19 @@ pub fn serve() {
         }
     });
     let mut stdout = std::io::stdout();
-    let mut pending = VecDeque::new();
-    while let Some(line) = pending
-        .pop_front()
-        .or_else(|| runtime.block_on(lines.recv()))
-    {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let id = serde_json::from_str::<Value>(&line)
-            .ok()
-            .and_then(|v| v.get("id").cloned());
-        let response = runtime.block_on(async {
-            let work = server.handle_line(&line);
-            tokio::pin!(work);
-            loop {
-                tokio::select! {
-                    result = &mut work => return result,
-                    incoming = lines.recv(), if !lines.is_closed() && pending.len() < 64 => {
-                        let Some(incoming) = incoming else { continue; };
-                        if let Ok(value) = serde_json::from_str::<Value>(&incoming) {
-                            if value["method"] == "notifications/cancelled" && id.as_ref() == value["params"].get("requestId") {
-                                return id.clone().map(|id| rpc_error(id, -32800, "Anfrage abgebrochen"));
-                            }
-                            if value.get("method").is_some() {
-                                pending.push_back(incoming);
-                            }
-                        }
-                    }
-                }
-            }
-        });
-        let Some(response) = response else {
-            continue;
-        };
-        if writeln!(stdout, "{response}")
-            .and_then(|_| stdout.flush())
-            .is_err()
-        {
-            break;
-        }
-    }
+    db::execution::enable_parallel_reads();
+    runtime.block_on(super::pump::pump(
+        lines,
+        |line| {
+            let mut server = server.clone();
+            async move { server.handle_line(&line).await }
+        },
+        |response| {
+            writeln!(stdout, "{response}")
+                .and_then(|_| stdout.flush())
+                .is_ok()
+        },
+    ));
 }
 
 fn disabled(text: &str) -> String {
@@ -574,23 +606,34 @@ impl Server {
         }
     }
 
+    fn cached(&self, config: &McpConfig, connection: &McpConnection) -> Option<Arc<Catalog>> {
+        self.columns.get(&cache_key(connection)).filter(|catalog| {
+            catalog.fresh() && super::persist::current(config, connection, catalog)
+        })
+    }
+
+    fn restored(&self, config: &McpConfig, connection: &McpConnection) -> Option<Arc<Catalog>> {
+        let catalog = Arc::new(super::persist::load(config, connection)?);
+        self.columns.insert(cache_key(connection), catalog.clone());
+        Some(catalog)
+    }
+
     pub(super) async fn catalog(
         &mut self,
         config: &McpConfig,
         connection: &McpConnection,
     ) -> Result<Arc<Catalog>, String> {
-        let key = cache_key(connection);
-        if let Some(catalog) = self.columns.get(&key) {
-            if catalog.fresh() && super::persist::current(config, connection, catalog) {
-                return Ok(catalog.clone());
-            }
-        }
-        if let Some(catalog) = super::persist::load(config, connection) {
-            let catalog = Arc::new(catalog);
-            self.columns.insert(key, catalog.clone());
+        if let Some(catalog) = self.cached(config, connection) {
             return Ok(catalog);
         }
-        let catalog = self.load_catalog(config, connection).await?;
+        let _loading = self.columns.loading(&cache_key(connection)).await;
+        if let Some(catalog) = self
+            .cached(config, connection)
+            .or_else(|| self.restored(config, connection))
+        {
+            return Ok(catalog);
+        }
+        let catalog = self.load_catalog(config, connection, None).await?;
         catalog.mark_dirty();
         Ok(catalog)
     }
@@ -600,22 +643,49 @@ impl Server {
         config: &McpConfig,
         connection: &McpConnection,
     ) -> Result<Arc<Catalog>, String> {
-        if let Some(catalog) = self.columns.get(&cache_key(connection)) {
-            if catalog.live && catalog.at.elapsed() < CHECK_TTL {
-                return Ok(catalog.clone());
-            }
+        let key = cache_key(connection);
+        let confirmed = |catalog: &Arc<Catalog>| catalog.confirmed(CHECK_TTL);
+        if let Some(catalog) = self.columns.get(&key).filter(confirmed) {
+            return Ok(catalog);
         }
-        self.load_catalog(config, connection).await
+        let _loading = self.columns.loading(&key).await;
+        if let Some(catalog) = self.columns.get(&key).filter(confirmed) {
+            return Ok(catalog);
+        }
+        let known = self
+            .cached(config, connection)
+            .filter(|catalog| catalog.print.is_some());
+        let Some(catalog) = known else {
+            return self.load_catalog(config, connection, None).await;
+        };
+        let adapter = adapter(connection, &self.pool)?;
+        let print = run(config, connection.kind, adapter.catalog_fingerprint())
+            .await
+            .ok()
+            .flatten();
+        if print == catalog.print {
+            catalog.confirm();
+            return Ok(catalog);
+        }
+        self.load_catalog(config, connection, Some(print)).await
     }
 
     async fn load_catalog(
         &mut self,
         config: &McpConfig,
         connection: &McpConnection,
+        print: Option<Option<String>>,
     ) -> Result<Arc<Catalog>, String> {
         let key = cache_key(connection);
         let started = Instant::now();
         let adapter = adapter(connection, &self.pool)?;
+        let print = match print {
+            Some(print) => print,
+            None => run(config, connection.kind, adapter.catalog_fingerprint())
+                .await
+                .ok()
+                .flatten(),
+        };
         let columns = run(config, connection.kind, async {
             super::objects::count();
             if matches!(
@@ -644,9 +714,10 @@ impl Server {
         })
         .await?;
         let catalog = Catalog::loaded(Arc::new(columns), started.elapsed().as_millis() as u64)
-            .keyed(super::persist::key(config, connection));
+            .keyed(super::persist::key(config, connection))
+            .printed(print);
         if let Some(old) = self.columns.get(&key) {
-            catalog.adopt(old);
+            catalog.adopt(&old);
         }
         self.columns.retain(|_, catalog| catalog.fresh());
         let catalog = Arc::new(catalog);
@@ -679,8 +750,8 @@ impl Server {
 
     pub(super) fn flush(&self, config: &McpConfig, connection: &McpConnection) {
         if let Some(catalog) = self.columns.get(&cache_key(connection)) {
-            if catalog.dirty() {
-                super::persist::save(config, connection, catalog);
+            if catalog.take_dirty() {
+                super::persist::save(config, connection, &catalog);
             }
         }
     }
@@ -739,9 +810,11 @@ impl Server {
         let adapter = adapter(&guarded, &self.pool)?;
         let result = db::execution::with_row_limit(
             limit + 1,
-            run(config, connection.kind, async {
-                adapter.execute_query(sql).await
-            }),
+            run(
+                config,
+                connection.kind,
+                db::execution::with_parallel_reads(adapter.execute_query(sql)),
+            ),
         )
         .await?;
         let config = &McpConfig {
@@ -1523,7 +1596,7 @@ pub(super) fn audit(
     }
     if let Ok(mut file) = options.open(&path) {
         config::restrict(&path);
-        let _ = writeln!(file, "{entry}");
+        let _ = file.write_all(format!("{entry}\n").as_bytes());
     }
 }
 
@@ -1575,7 +1648,7 @@ mod tests {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let mut server = Server {
             pool: db::pool::create_sealed_pool_state(),
-            columns: HashMap::new(),
+            columns: Default::default(),
         };
         assert!(runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":1,"result":{}}"#))
@@ -1892,7 +1965,7 @@ mod tests {
             .unwrap();
         let mut server = Server {
             pool: db::pool::create_pool_state(),
-            columns: HashMap::new(),
+            columns: Default::default(),
         };
         let error = runtime
             .block_on(server.execute(
@@ -1924,7 +1997,7 @@ mod tests {
             .unwrap();
         let mut server = Server {
             pool: db::pool::create_pool_state(),
-            columns: HashMap::new(),
+            columns: Default::default(),
         };
         let init = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}"#))
@@ -1961,7 +2034,7 @@ mod tests {
             .unwrap();
         let mut server = Server {
             pool: db::pool::create_pool_state(),
-            columns: HashMap::new(),
+            columns: Default::default(),
         };
         let init = runtime
             .block_on(server.handle_line(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}"#))
@@ -2029,7 +2102,7 @@ mod tests {
             .unwrap();
         let mut server = Server {
             pool: db::pool::create_pool_state(),
-            columns: HashMap::new(),
+            columns: Default::default(),
         };
         let legacy = |method: &str| json!({"jsonrpc": "2.0", "id": 1, "method": method});
         let hinted = |result: &Value| {
@@ -2255,7 +2328,7 @@ mod tests {
             let sealed = pool.seals_files();
             let mut server = Server {
                 pool,
-                columns: HashMap::new(),
+                columns: Default::default(),
             };
             let mut query = |connection: &str, sql: &str| {
                 let reply = runtime.block_on(server.call_with_config(
@@ -2370,7 +2443,7 @@ mod tests {
             .unwrap();
         let mut server = Server {
             pool: db::pool::create_pool_state(),
-            columns: HashMap::new(),
+            columns: Default::default(),
         };
         let read = |server: &mut Server, uri: &str, version: Option<&str>| {
             let request = match version {
@@ -2713,7 +2786,7 @@ mod discovery_tests {
         );
         let mut server = Server {
             pool: db::pool::create_pool_state(),
-            columns: HashMap::from([(cache_key(&connection), Arc::new(catalog))]),
+            columns: Columns::holding(cache_key(&connection), Arc::new(catalog)),
         };
         let first = server
             .search(&config, &connection, &json!({"term":"users","limit":1}))

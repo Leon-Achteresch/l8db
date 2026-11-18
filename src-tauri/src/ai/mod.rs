@@ -396,7 +396,7 @@ pub async fn ai_run(
     });
     let server = Arc::new(tokio::sync::Mutex::new(crate::mcp::server::Server {
         pool: pool.inner().clone(),
-        columns: HashMap::new(),
+        columns: Default::default(),
     }));
     run.emit("status", json!({"status": "running"}));
     run.emit("usage", json!({"layout": layout}));

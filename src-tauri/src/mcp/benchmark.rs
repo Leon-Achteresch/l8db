@@ -487,7 +487,7 @@ pub fn cli(args: &[String]) -> i32 {
     };
     let mut server = Server {
         pool: crate::db::pool::create_pool_state(),
-        columns: std::collections::HashMap::new(),
+        columns: Default::default(),
     };
     let mut arguments = json!({"connection": parsed.connection});
     if let Some(sql) = &parsed.sql {
@@ -528,7 +528,6 @@ mod tests {
     use super::*;
     use crate::mcp::config::McpConfig;
     use crate::mcp::TEST_ENV_LOCK;
-    use std::collections::HashMap;
 
     fn sample(ms: f64, error: Option<&str>) -> Sample {
         Sample {
@@ -801,7 +800,7 @@ mod tests {
             dir,
             server: Server {
                 pool: crate::db::pool::create_pool_state(),
-                columns: HashMap::new(),
+                columns: Default::default(),
             },
             runtime: tokio::runtime::Builder::new_current_thread()
                 .enable_all()

@@ -549,6 +549,9 @@ pub trait DatabaseAdapter: Send + Sync {
         table: Option<&str>,
         table_type: Option<&str>,
     ) -> Result<Vec<ColumnInfo>, String>;
+    async fn catalog_fingerprint(&self) -> Result<Option<String>, String> {
+        Ok(None)
+    }
     async fn fetch_rows(
         &self,
         schema: &str,

@@ -1628,6 +1628,29 @@ impl OracleAdapter {
             .await
     }
 
+    async fn run_read<T, F>(&self, f: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
+    {
+        let pool = self
+            .pool_state
+            .shared(&format!("{}#read", self.key), || async {
+                Ok(BlockingPool::<Connection>::new(3))
+            })
+            .await?;
+        let call = CallGuard::current("read").killing(self.login());
+        pool.run(
+            || self.open_raw(),
+            alive,
+            move |c| match call.run(c, f) {
+                Err(error) if !alive(c) => Err(error),
+                result => Ok(result),
+            },
+        )
+        .await?
+    }
+
     async fn run_meta<T, F>(&self, f: F) -> Result<T, String>
     where
         T: Send + 'static,
@@ -2154,9 +2177,16 @@ async fn execute_one(adapter: &OracleAdapter, sql: &str) -> Result<QueryResult, 
     let statement = prepare(sql);
     if is_query(&statement) {
         let limit = super::execution::row_limit();
-        let (columns, rows) = adapter
-            .run(move |c| run_query_named(c, &statement, &[], limit))
-            .await?;
+        let read =
+            |statement: String| move |c: &Connection| run_query_named(c, &statement, &[], limit);
+        let pooled = super::execution::parallel_reads() && adapter.session_init().await?.plain();
+        let (columns, rows) = match pooled {
+            true => match adapter.run_read(read(statement.clone())).await {
+                Err(error) if error.contains("ORA-02391") => adapter.run(read(statement)).await?,
+                result => result?,
+            },
+            false => adapter.run(read(statement)).await?,
+        };
         return Ok(QueryResult {
             rows: rows_to_objects(&columns, rows),
             columns,
@@ -2165,6 +2195,7 @@ async fn execute_one(adapter: &OracleAdapter, sql: &str) -> Result<QueryResult, 
             truncated: false,
         });
     }
+    adapter.session_init().await?.touch();
     let plsql = is_plsql(&statement);
     if matches!(sql::first_word(&statement).as_str(), "BEGIN" | "DECLARE") {
         let limit = super::execution::row_limit();
@@ -2300,6 +2331,19 @@ impl DatabaseAdapter for OracleAdapter {
                 name: s(r, 1),
             })
             .collect())
+    }
+
+    async fn catalog_fingerprint(&self) -> Result<Option<String>, String> {
+        let rows = self
+            .rows(format!(
+                "SELECT COUNT(*) || ':' || SUM(ORA_HASH(object_name || TO_CHAR(last_ddl_time, 'YYYYMMDDHH24MISS'))), CASE WHEN MAX(last_ddl_time) >= SYSDATE - 2 / 86400 THEN 1 ELSE 0 END FROM all_objects WHERE {} AND object_type = 'TABLE'",
+                Self::owner_filter(None, "owner")
+            ))
+            .await?;
+        Ok(rows
+            .first()
+            .filter(|row| s(row, 1) == "0")
+            .map(|row| s(row, 0)))
     }
 
     async fn list_columns(
@@ -4095,6 +4139,7 @@ pub(crate) struct SessionInit {
     settings: Mutex<Vec<(String, String)>>,
     notices: Mutex<Vec<String>>,
     warnings: Mutex<Option<super::oracle_warnings::PlsqlWarnings>>,
+    touched: std::sync::atomic::AtomicBool,
 }
 
 impl SessionInit {
@@ -4118,6 +4163,19 @@ impl SessionInit {
                 Some(statement.trim().trim_end_matches(';').to_string()),
             );
         }
+    }
+
+    fn touch(&self) {
+        self.touched
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn plain(&self) -> bool {
+        !self.touched.load(std::sync::atomic::Ordering::Relaxed)
+            && self
+                .settings
+                .lock()
+                .is_ok_and(|settings| settings.is_empty())
     }
 
     fn reopen(&self, login: &Login) -> Result<Connection, String> {

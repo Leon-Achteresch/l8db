@@ -294,6 +294,9 @@ pub(super) fn save(config: &McpConfig, connection: &McpConnection, catalog: &Cat
     } else {
         None
     });
+    if written.is_err() {
+        catalog.mark_dirty();
+    }
     prune(&config::load());
 }
 
@@ -377,7 +380,57 @@ mod tests {
     }
 
     #[test]
-    fn discovery_catalog_persists_privately_but_checks_always_reload_live() {
+    fn unchanged_schema_is_confirmed_by_fingerprint_instead_of_reloading() {
+        let _guard = crate::mcp::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (dir, mut config, mut connection, _) = super::super::sandbox::sqlite_fixture(
+            "CREATE TABLE orders(id INTEGER, note TEXT); INSERT INTO orders VALUES (1, 'a');",
+        );
+        connection.id = "persist-print".into();
+        config.connections = vec![connection.clone()];
+        std::env::set_var("L8DB_MCP_CONFIG", dir.path().join("mcp.json"));
+        config::save(&config).unwrap();
+        let key = cache_key(&connection);
+        let read = json!({"sql": "SELECT id FROM orders"});
+        let mut first = server();
+        let (error, text) = call(&mut first, &config, "search", json!({"term": "orders"}));
+        assert!(!error, "{text}");
+        let loaded = calls();
+        let catalog = first.columns.at(&key);
+        assert!(catalog.print.is_some());
+        for _ in 0..3 {
+            catalog.expire();
+            let (error, text) = call(&mut first, &config, "query", read.clone());
+            assert!(!error, "{text}");
+        }
+        assert_eq!(calls(), loaded, "an unchanged schema must not reload");
+        assert!(Arc::ptr_eq(&first.columns.at(&key), &catalog));
+
+        let mut second = server();
+        let (error, text) = call(&mut second, &config, "query", read.clone());
+        assert!(!error, "{text}");
+        assert!(calls() > loaded, "checks never trust the persisted file");
+        let loaded = calls();
+
+        rusqlite::Connection::open(dir.path().join("fixture.db"))
+            .unwrap()
+            .execute_batch("ALTER TABLE orders ADD COLUMN api_key TEXT")
+            .unwrap();
+        second.columns.at(&key).expire();
+        let (error, text) = call(
+            &mut second,
+            &config,
+            "query",
+            json!({"sql": "SELECT api_key AS k FROM orders"}),
+        );
+        assert!(error && text.contains("redigiert"), "{text}");
+        assert!(calls() > loaded, "a changed schema must reload");
+        std::env::remove_var("L8DB_MCP_CONFIG");
+    }
+
+    #[test]
+    fn discovery_catalog_persists_privately_but_checks_reload_after_schema_changes() {
         let _guard = crate::mcp::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -416,7 +469,7 @@ mod tests {
             before,
             "a persisted catalog must not query the database"
         );
-        assert!(!second.columns[&key].live);
+        assert!(!second.columns.at(&key).confirmed(std::time::Duration::MAX));
 
         rusqlite::Connection::open(dir.path().join("fixture.db"))
             .unwrap()
@@ -430,7 +483,7 @@ mod tests {
         );
         assert!(error && text.contains("redigiert"), "{text}");
         assert!(
-            second.columns[&key].live,
+            second.columns.at(&key).confirmed(std::time::Duration::MAX),
             "checks must reload instead of using the persisted catalog"
         );
 
