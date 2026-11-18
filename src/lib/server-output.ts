@@ -45,11 +45,20 @@ export const useServerOutputStore = create<ServerOutputState>()((set) => ({
         detail: message.detail ?? null,
         at,
       }));
-      const next = [...(state.entries[connectionId] ?? []), ...added];
+      const previous = state.entries[connectionId] ?? [];
+      const roomForPrevious = MAX_SERVER_OUTPUT_ENTRIES - added.length;
+      let next = added;
+      if (roomForPrevious < 0) {
+        next = added.slice(-MAX_SERVER_OUTPUT_ENTRIES);
+      } else if (roomForPrevious > 0 && previous.length > 0) {
+        const retained =
+          previous.length > roomForPrevious ? previous.slice(-roomForPrevious) : previous;
+        next = retained.concat(added);
+      }
       return {
         entries: {
           ...state.entries,
-          [connectionId]: next.slice(Math.max(0, next.length - MAX_SERVER_OUTPUT_ENTRIES)),
+          [connectionId]: next,
         },
       };
     }),
