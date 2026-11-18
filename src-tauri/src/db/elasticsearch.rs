@@ -251,6 +251,7 @@ fn detailed_columns(fields: Vec<Field>) -> Vec<ColumnMetadata> {
                 },
                 exact_filter: field.exact_filter,
                 on_update: None,
+                oracle_text_limit: None,
             }),
     );
     out

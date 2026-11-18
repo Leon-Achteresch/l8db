@@ -8,11 +8,18 @@ import { useDbSelectionStore } from "@/lib/db-selection";
 import { useProvidersStore } from "@/lib/providers";
 import "@/index.css";
 
+const oracle = new URLSearchParams(location.search).has("oracle");
+const connectionId = oracle ? "oracle" : "mysql";
 useProvidersStore.setState({ loaded: true });
 useConnectionsStore.setState({
-  activeId: "mysql",
+  activeId: connectionId,
   connections: [
-    { id: "mysql", name: "MySQL", kind: "mysql", connectionString: "mysql://127.0.0.1/first" },
+    {
+      id: connectionId,
+      name: oracle ? "Oracle" : "MySQL",
+      kind: oracle ? "oracle" : "mysql",
+      connectionString: `${connectionId}://127.0.0.1/first`,
+    },
     {
       id: "other",
       name: "Other",
@@ -21,7 +28,7 @@ useConnectionsStore.setState({
     },
   ],
 });
-useDbSelectionStore.getState().setDatabase("mysql", "first");
+useDbSelectionStore.getState().setDatabase(connectionId, "first");
 
 const client = new QueryClient({
   defaultOptions: { queries: { retry: false, staleTime: Infinity } },
@@ -44,7 +51,7 @@ function Fixture() {
         </button>
         <button
           type="button"
-          onClick={() => useDbSelectionStore.getState().setDatabase("mysql", "second")}
+          onClick={() => useDbSelectionStore.getState().setDatabase(connectionId, "second")}
         >
           Other database
         </button>

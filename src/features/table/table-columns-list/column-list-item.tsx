@@ -1,5 +1,7 @@
 import { CheckCheckIcon, CopyIcon, PencilIcon, SaveIcon, XIcon } from "lucide-react";
 import { motion } from "motion/react";
+import type { Ref } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -8,6 +10,7 @@ import { copyText } from "@/lib/clipboard";
 import { columnTypeLabel } from "@/lib/column-type";
 import type { AlterColumnRequest, DatabaseKind, DetailedColumnInfo } from "@/lib/db";
 import { mysqlColumnOnUpdate } from "@/lib/mysql-column-update";
+import { oracleColumnTextLimit } from "@/lib/oracle-column-text-limit";
 import { capabilitiesFor, DEFAULT_TERMS } from "@/lib/providers";
 import { getTypeConfig } from "./column-type-config";
 import { type ColumnUpdateFeature, ColumnUpdateRule } from "./column-update-rule";
@@ -15,6 +18,7 @@ import { type ColumnUpdateFeature, ColumnUpdateRule } from "./column-update-rule
 export function ColumnListItem({
   column,
   updateFeature,
+  textLimitFeature,
   copiedColumn,
   setCopiedColumn,
   editable,
@@ -29,6 +33,7 @@ export function ColumnListItem({
 }: {
   column: DetailedColumnInfo;
   updateFeature?: ColumnUpdateFeature;
+  textLimitFeature?: { ref: Ref<HTMLSpanElement>; isNew: boolean };
   copiedColumn: string | null;
   setCopiedColumn: (name: string | null) => void;
   editable: boolean;
@@ -50,6 +55,7 @@ export function ColumnListItem({
   const IconComponent = getTypeConfig(column.data_type, column.is_primary_key).icon;
   const caps = capabilitiesFor(kind);
   const updateRule = mysqlColumnOnUpdate(column, kind);
+  const textLimit = oracleColumnTextLimit(column, kind);
   const primaryKey = caps.terms.primary_key;
 
   return (
@@ -154,6 +160,17 @@ export function ColumnListItem({
             {updateRule ? (
               <ColumnUpdateRule expression={updateRule} feature={updateFeature} />
             ) : null}
+            {textLimit && (
+              <span
+                ref={textLimitFeature?.ref}
+                className="flex items-center gap-1 text-[11px] leading-tight text-muted-foreground"
+                title={`Deklarierte Textgrenze: ${textLimit.length} ${textLimit.unit === "BYTE" ? "Byte" : "Zeichen"}`}
+                data-oracle-text-limit
+              >
+                {textLimit.length} {textLimit.unit}
+                {textLimitFeature?.isNew && <NewBadge />}
+              </span>
+            )}
           </div>
           {caps.constraints ? (
             <>

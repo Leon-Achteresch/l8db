@@ -8,6 +8,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useAlterTable } from "@/features/alter-table/alter-table-view/use-alter-table";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { mysqlColumnOnUpdate } from "@/lib/mysql-column-update";
+import { oracleColumnTextLimit } from "@/lib/oracle-column-text-limit";
 import { capabilitiesFor, supports } from "@/lib/providers";
 import { cn } from "@/lib/utils";
 import { ColumnListItem } from "./table-columns-list/column-list-item";
@@ -41,6 +42,9 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
 
   const updateFeature = useNewFeatureVisibility<HTMLSpanElement>(
     "table.structure.columns.on-update",
+  );
+  const textLimitFeature = useNewFeatureVisibility<HTMLSpanElement>(
+    "table.structure.columns.oracle-text-limit",
   );
 
   const count = columns?.length ?? 0;
@@ -88,6 +92,12 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
         (column) => editingColumn !== column.name && mysqlColumnOnUpdate(column, connection?.kind),
       )?.name
     : undefined;
+  const textLimitFeatureColumn =
+    textLimitFeature.isNew && connection?.kind === "oracle"
+      ? filteredColumns.find(
+          (column) => editingColumn !== column.name && oracleColumnTextLimit(column, "oracle"),
+        )?.name
+      : undefined;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
@@ -170,6 +180,9 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
                   key={column.name}
                   column={column}
                   updateFeature={updateFeatureColumn === column.name ? updateFeature : undefined}
+                  textLimitFeature={
+                    textLimitFeatureColumn === column.name ? textLimitFeature : undefined
+                  }
                   copiedColumn={copiedColumn}
                   setCopiedColumn={setCopiedColumn}
                   editable={canEdit}

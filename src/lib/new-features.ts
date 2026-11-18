@@ -28,6 +28,7 @@ export const NEW_FEATURES = {
   "table.structure.clickhouse-merge-engine": NEXT_FEATURE_VERSION,
   "sidebar.scope.bucket-retention": NEXT_FEATURE_VERSION,
   "table.structure.columns.on-update": NEXT_FEATURE_VERSION,
+  "table.structure.columns.oracle-text-limit": NEXT_FEATURE_VERSION,
   "table.structure.indexes.mongo-form": NEXT_FEATURE_VERSION,
   "import.csv.file-check": NEXT_FEATURE_VERSION,
   "import.csv.null-preflight": NEXT_FEATURE_VERSION,

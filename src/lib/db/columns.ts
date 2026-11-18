@@ -24,6 +24,7 @@ export interface DetailedColumnInfo {
   comment?: string | null;
   exact_filter?: ExactFilterMetadata;
   on_update?: string;
+  oracle_text_limit?: { length: number; unit: "BYTE" | "CHAR" };
 }
 
 export interface TableColumnDetails {
