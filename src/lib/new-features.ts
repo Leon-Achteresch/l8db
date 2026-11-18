@@ -135,6 +135,7 @@ export const NEW_FEATURES = {
   "mcp.workflows": "0.10.0",
   "mcp.scripts": "0.14.0",
   "health.advisor": "0.10.0",
+  "health.advisor.index-observation": NEXT_FEATURE_VERSION,
   "monitor.live": "0.14.0",
   "home.customize": "0.8.0",
   "home.activity": "0.16.0",

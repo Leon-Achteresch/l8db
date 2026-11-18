@@ -1,12 +1,15 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon, CopyIcon, SquareTerminalIcon } from "lucide-react";
 import { useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { copyText } from "@/lib/clipboard";
 import type { HealthCheckResult } from "@/lib/db";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 import { showCopiedMessage } from "@/lib/workspace-status";
+import { HealthIndexObservation } from "./health-index-observation";
 import { CATEGORY_LABEL, GROUP_DOT, groupOf } from "./health-meta";
 
 interface Props {
@@ -18,6 +21,10 @@ export function HealthCheckItem({ check }: Props) {
   const navigate = useNavigate();
   const openQueryTabWithSql = useTableTabs((s) => s.openQueryTabWithSql);
   const issue = check.status === "issue";
+  const indexCheck = check.id === "unused_indexes";
+  const indexObservationIsNew = useHasNewFeatures(
+    indexCheck ? "health.advisor.index-observation" : undefined,
+  );
 
   const copy = async (sql: string) => {
     await copyText(sql);
@@ -49,6 +56,7 @@ export function HealthCheckItem({ check }: Props) {
         >
           {check.title}
         </span>
+        {!open && indexObservationIsNew && <NewBadge />}
         <span className="shrink-0 text-xs text-muted-foreground">
           {CATEGORY_LABEL[check.category]}
         </span>
@@ -58,6 +66,7 @@ export function HealthCheckItem({ check }: Props) {
       </button>
       {open && (
         <div className="flex flex-col gap-3 pr-3 pb-3 pl-[2.375rem] text-[13px]">
+          {indexCheck && <HealthIndexObservation observation={check.indexObservation} />}
           <p className="text-muted-foreground">{check.explanation}</p>
           {check.status === "skipped" && (
             <p className="text-xs text-muted-foreground">Übersprungen: {check.skippedReason}</p>

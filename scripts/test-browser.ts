@@ -31,6 +31,7 @@ const registered = [
   "sql-file-encoding",
   "editor-metadata",
   "index-progress-monitor",
+  "index-observation-health",
 ];
 const requested = process.argv.slice(2);
 if (requested.some((name) => !registered.includes(name)))
@@ -49,6 +50,7 @@ const fixturePages: Record<string, string> = {
   "sql-file-encoding": "tests/fixtures/sql-file-encoding.html",
   "editor-metadata": "tests/fixtures/editor-metadata.html",
   "index-progress-monitor": "tests/fixtures/index-progress-monitor.html",
+  "index-observation-health": "tests/fixtures/index-observation-health.html",
 };
 const fixturePage = files.length === 1 ? fixturePages[files[0]] : undefined;
 const useIsolatedConfig = Boolean(isolated || fixturePage);
