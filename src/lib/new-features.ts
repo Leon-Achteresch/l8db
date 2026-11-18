@@ -8,6 +8,7 @@ export const NEW_FEATURES = {
   "monitor.sessions.index-progress": NEXT_FEATURE_VERSION,
   "connections.editor.metadata-prefetch": NEXT_FEATURE_VERSION,
   "query.tools.file.encoding": NEXT_FEATURE_VERSION,
+  "query.tools.format-review": NEXT_FEATURE_VERSION,
   "query.results.numbers": NEXT_FEATURE_VERSION,
   "table.rows.server-output": NEXT_FEATURE_VERSION,
   "table.rows.record-view": NEXT_FEATURE_VERSION,

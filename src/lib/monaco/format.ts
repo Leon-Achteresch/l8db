@@ -30,7 +30,7 @@ export function isSqlFormattingAvailable(): boolean {
   return supportsSqlFormatting(capabilitiesFor(kind).query_language);
 }
 
-function currentFormatOptions(dialect?: SqlDialect): SqlFormatOptions {
+export function currentFormatOptions(dialect?: SqlDialect): SqlFormatOptions {
   const {
     editorTabSize,
     editorKeywordCase,
@@ -46,6 +46,17 @@ function currentFormatOptions(dialect?: SqlDialect): SqlFormatOptions {
     denseOperators: editorFormatDenseOperators ?? false,
     newlineBeforeSemicolon: editorFormatNewlineBeforeSemicolon ?? false,
   };
+}
+
+export async function formatEditorSql(
+  text: string,
+  kind: DatabaseKind | null,
+  options: SqlFormatOptions,
+  signal?: AbortSignal,
+): Promise<SqlFormatResult> {
+  if (splitSqlStatements(text, kind ?? undefined).unterminated)
+    return { ok: false, sql: text, reason: "Nicht abgeschlossenes Literal oder Kommentar." };
+  return formatSqlInWorker(text, options, signal);
 }
 
 function reportFormatError(reason: string): void {
@@ -67,11 +78,9 @@ async function formatRange(
     if (!silent && !token.isCancellationRequested) reportFormatError(reason);
     return [];
   };
-  if (splitSqlStatements(text, activeConnectionKind() ?? undefined).unterminated)
-    return fail("Nicht abgeschlossenes Literal oder Kommentar.");
   let result: SqlFormatResult;
   try {
-    result = await formatSqlInWorker(text, currentFormatOptions());
+    result = await formatEditorSql(text, activeConnectionKind(), currentFormatOptions());
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error));
   }
