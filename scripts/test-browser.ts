@@ -29,6 +29,7 @@ const registered = [
   "table-record",
   "binary-utf8",
   "sql-file-encoding",
+  "editor-metadata",
 ];
 const requested = process.argv.slice(2);
 if (requested.some((name) => !registered.includes(name)))
@@ -45,6 +46,7 @@ const fixturePages: Record<string, string> = {
   "table-record": "tests/fixtures/table-record.html",
   "binary-utf8": "tests/fixtures/binary-utf8.html",
   "sql-file-encoding": "tests/fixtures/sql-file-encoding.html",
+  "editor-metadata": "tests/fixtures/editor-metadata.html",
 };
 const fixturePage = files.length === 1 ? fixturePages[files[0]] : undefined;
 const useIsolatedConfig = Boolean(isolated || fixturePage);

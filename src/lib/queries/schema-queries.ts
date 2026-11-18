@@ -128,7 +128,10 @@ export function useViewsQuery(enabled = true) {
   });
 }
 
-export function useAllSchemaObjectsQuery(enabled = true) {
+export function useAllSchemaObjectsQuery(
+  enabled: boolean | (() => boolean) = true,
+  observeCache = false,
+) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const client = useQueryClient();
@@ -194,8 +197,8 @@ export function useAllSchemaObjectsQuery(enabled = true) {
         },
       });
     },
-    enabled: enabled && Boolean(connection),
-    subscribed: enabled && Boolean(connection),
+    enabled: () => Boolean(connection) && (typeof enabled === "function" ? enabled() : enabled),
+    subscribed: (enabled !== false || observeCache) && Boolean(connection),
     staleTime: 60 * 1000,
   });
 }
