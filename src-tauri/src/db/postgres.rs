@@ -4763,52 +4763,7 @@ impl DatabaseAdapter for PostgresAdapter {
     }
 
     async fn list_sessions(&self) -> Result<Vec<super::SessionInfo>, String> {
-        let conn = self.get_meta().await?;
-        self.timed(conn.cancel_token(), async {
-            let rows = match conn
-                .query(
-                    "SELECT pid, usename, datname, COALESCE(application_name, ''), client_addr::text, \
-                        state, COALESCE(left(query, 4000), ''), query_start::text, xact_start::text, \
-                        wait_event, pid = pg_backend_pid(), pg_blocking_pids(pid), client_port, \
-                        backend_start::text, state_change::text, backend_xid::text, \
-                        wait_event_type, backend_type \
-                 FROM pg_stat_activity WHERE datname IS NOT NULL \
-                 ORDER BY query_start NULLS LAST",
-                    &[],
-                )
-                .await
-            {
-                Err(_) if is_cockroach(&conn).await => {
-                    conn.query(COCKROACH_SESSIONS_SQL, &[]).await
-                }
-                rows => rows,
-            };
-            rows.map_err(map_pg_err).map(|rows| {
-                rows.into_iter()
-                    .map(|row| super::SessionInfo {
-                        pid: row.get(0),
-                        user: row.get(1),
-                        database: row.get(2),
-                        application: row.get(3),
-                        client_addr: row.get(4),
-                        state: row.get(5),
-                        query: row.get(6),
-                        query_start: row.get(7),
-                        transaction_start: row.get(8),
-                        wait_event: row.get(9),
-                        is_self: row.get(10),
-                        blocked_by: row.get(11),
-                        client_port: row.get(12),
-                        backend_start: row.get(13),
-                        state_change: row.get(14),
-                        backend_xid: row.get(15),
-                        wait_event_type: row.get(16),
-                        backend_type: row.get(17),
-                    })
-                    .collect()
-            })
-        })
-        .await
+        session_monitor::list_sessions(self).await
     }
 
     async fn cancel_session(&self, pid: i32) -> Result<bool, String> {
@@ -5969,6 +5924,9 @@ pub(crate) mod arrays;
 
 #[path = "postgres_catalog.rs"]
 mod catalog;
+
+#[path = "postgres_session_monitor.rs"]
+mod session_monitor;
 
 #[path = "postgres_privileges.rs"]
 mod privileges;

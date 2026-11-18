@@ -5,6 +5,7 @@ export const NEXT_FEATURE_VERSION = "0.19.0";
 
 export const NEW_FEATURES = {
   "table.rows.binary.utf8": NEXT_FEATURE_VERSION,
+  "monitor.sessions.index-progress": NEXT_FEATURE_VERSION,
   "connections.editor.metadata-prefetch": NEXT_FEATURE_VERSION,
   "query.tools.file.encoding": NEXT_FEATURE_VERSION,
   "query.results.numbers": NEXT_FEATURE_VERSION,
