@@ -11,6 +11,7 @@ import { executeObjectDdl, type ObjectAdminType } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { objectRenameIssue, renameObjectTab } from "@/lib/object-rename";
+import { forgetTableCommentMetadata } from "@/lib/query-client";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 
@@ -69,6 +70,8 @@ export function ObjectRenameInput({
         },
         database ?? undefined,
       );
+      if (objectType === "table" && connection.kind === "postgres")
+        forgetTableCommentMetadata(queryClient, connection.id, database, schema, name, next);
       useTableTabs.setState((state) => {
         const update = (tabs: typeof state.tabs) =>
           tabs.map((tab) =>

@@ -34,6 +34,7 @@ const registered = [
   "index-observation-health",
   "sql-format-review",
   "filter-grouping",
+  "object-comment-search",
 ];
 const requested = process.argv.slice(2);
 if (requested.some((name) => !registered.includes(name)))
@@ -55,6 +56,7 @@ const fixturePages: Record<string, string> = {
   "index-observation-health": "tests/fixtures/index-observation-health.html",
   "sql-format-review": "tests/fixtures/sql-format-review.html",
   "filter-grouping": "tests/fixtures/filter-bar.html",
+  "object-comment-search": "tests/fixtures/object-comment-search.html",
 };
 const fixturePage = files.length === 1 ? fixturePages[files[0]] : undefined;
 const useIsolatedConfig = Boolean(isolated || fixturePage);

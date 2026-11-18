@@ -96,6 +96,7 @@ export const NEW_FEATURES = {
   "search.commands": "0.9.1",
   "search.commands.new-compare": "0.14.0",
   "search.package-members": "0.16.0",
+  "search.objects.comments": NEXT_FEATURE_VERSION,
   "ai.workspace": "0.8.0",
   "ai.chat": "0.8.0",
   "ai.chat.approval": "0.8.0",
