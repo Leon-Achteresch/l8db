@@ -2,11 +2,11 @@
 pub fn configure_execution_defaults(
     query_timeout: u64,
     connection_timeout: u64,
-    plsql_warnings: Option<bool>,
+    plsql_warnings: Option<super::oracle_warnings::PlsqlWarnings>,
 ) {
     super::execution::configure_defaults(query_timeout, connection_timeout);
-    if let Some(enabled) = plsql_warnings {
-        super::oracle::PLSQL_WARNINGS.store(enabled, std::sync::atomic::Ordering::Relaxed);
+    if let Some(warnings) = plsql_warnings {
+        super::oracle_warnings::set(warnings);
     }
 }
 

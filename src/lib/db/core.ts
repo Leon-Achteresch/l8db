@@ -1,5 +1,5 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { useSettingsStore } from "@/lib/settings";
+import { type PlsqlWarningRules, useSettingsStore } from "@/lib/settings";
 import { requestSqlConfirmation } from "@/lib/sql-confirmation";
 import { destructiveStatements, writesData } from "@/lib/sql-safety";
 import { finishTask, isTaskActive, startTask, updateTask, useTasksStore } from "@/lib/tasks";
@@ -406,7 +406,7 @@ export async function confirmSqlExecution(
 export async function configureExecutionDefaults(
   queryTimeout: number,
   connectionTimeout: number,
-  plsqlWarnings?: boolean,
+  plsqlWarnings?: Partial<PlsqlWarningRules>,
 ): Promise<void> {
   return invoke("configure_execution_defaults", {
     queryTimeout,

@@ -21,6 +21,14 @@ export type EditorWhitespace = "none" | "boundary" | "selection" | "trailing" | 
 export type EditorWrappingIndent = "same" | "indent" | "deepIndent";
 export type EditorAcceptSuggestionOnEnter = "on" | "smart" | "off";
 export type EditorTabCompletion = "on" | "off" | "onlySnippets";
+export type PlsqlWarningLevel = "enable" | "disable" | "error";
+export interface PlsqlWarningRules {
+  severe: PlsqlWarningLevel;
+  performance: PlsqlWarningLevel;
+  informational: PlsqlWarningLevel;
+  ignore: number[];
+  error: number[];
+}
 export type SidebarObjectNav = "tabs" | "select";
 export type UpdateChannel = "stable" | "canary";
 
@@ -87,6 +95,7 @@ export interface SettingsState {
   editorTabCompletion: EditorTabCompletion;
   editorParameterHints: boolean;
   oraclePlsqlWarnings: boolean;
+  oraclePlsqlWarningRules: PlsqlWarningRules;
   editorFormatOnPaste: boolean;
   editorFormatOnType: boolean;
   editorFormatDenseOperators: boolean;
@@ -163,6 +172,7 @@ export interface SettingsState {
   setEditorTabCompletion: (v: EditorTabCompletion) => void;
   setEditorParameterHints: (v: boolean) => void;
   setOraclePlsqlWarnings: (v: boolean) => void;
+  setOraclePlsqlWarningRules: (v: PlsqlWarningRules) => void;
   setEditorFormatOnPaste: (v: boolean) => void;
   setEditorFormatOnType: (v: boolean) => void;
   setEditorFormatDenseOperators: (v: boolean) => void;
@@ -287,6 +297,13 @@ export const DEFAULT_SETTINGS = {
   editorTabCompletion: "off" as EditorTabCompletion,
   editorParameterHints: true,
   oraclePlsqlWarnings: false,
+  oraclePlsqlWarningRules: {
+    severe: "enable",
+    performance: "enable",
+    informational: "enable",
+    ignore: [],
+    error: [],
+  } as PlsqlWarningRules,
   editorFormatOnPaste: false,
   editorFormatOnType: false,
   editorFormatDenseOperators: false,
@@ -393,6 +410,7 @@ export const useSettingsStore = create<SettingsState>()(
       setEditorTabCompletion: (editorTabCompletion) => set({ editorTabCompletion }),
       setEditorParameterHints: (editorParameterHints) => set({ editorParameterHints }),
       setOraclePlsqlWarnings: (oraclePlsqlWarnings) => set({ oraclePlsqlWarnings }),
+      setOraclePlsqlWarningRules: (oraclePlsqlWarningRules) => set({ oraclePlsqlWarningRules }),
       setEditorFormatOnPaste: (editorFormatOnPaste) => set({ editorFormatOnPaste }),
       setEditorFormatOnType: (editorFormatOnType) => set({ editorFormatOnType }),
       setEditorFormatDenseOperators: (editorFormatDenseOperators) =>

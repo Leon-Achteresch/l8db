@@ -286,17 +286,6 @@ fn split_privilege(user: &str) -> (&str, Option<oracle::Privilege>) {
     (user, None)
 }
 
-pub(crate) static PLSQL_WARNINGS: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-fn warnings_sql(enabled: bool) -> &'static str {
-    if enabled {
-        "ALTER SESSION SET PLSQL_WARNINGS = 'ENABLE:ALL'"
-    } else {
-        "ALTER SESSION SET PLSQL_WARNINGS = 'DISABLE:ALL'"
-    }
-}
-
 fn legacy_paging(c: &Connection) -> bool {
     c.server_version().is_ok_and(|(v, _)| v.major() < 12)
 }
@@ -1589,11 +1578,13 @@ impl OracleAdapter {
                 guard.0 = init.reopen(&login)?;
                 init.notice(RECONNECTED);
             }
-            let wanted = PLSQL_WARNINGS.load(Ordering::Relaxed);
-            if init.warnings.load(Ordering::Relaxed) != wanted
-                && guard.0.execute(warnings_sql(wanted), &[]).is_ok()
-            {
-                init.warnings.store(wanted, Ordering::Relaxed);
+            let wanted = super::oracle_warnings::current();
+            if let Ok(mut applied) = init.warnings.lock() {
+                if applied.clone().unwrap_or_default() != wanted
+                    && guard.0.execute(&wanted.sql(), &[]).is_ok()
+                {
+                    *applied = Some(wanted);
+                }
             }
             let result = call.run(&guard.0, f);
             let result = match result {
@@ -1814,7 +1805,8 @@ impl OracleAdapter {
 
     async fn exec(&self, sql: String) -> Result<u64, String> {
         let init = self.session_init().await?;
-        let warnings = PLSQL_WARNINGS.load(Ordering::Relaxed) || init.has("SET PLSQL_WARNINGS");
+        let warnings =
+            super::oracle_warnings::current().enabled() || init.has("SET PLSQL_WARNINGS");
         let (count, warning) = self
             .run(move |c| {
                 let count = super::sql_log::logged(
@@ -1944,21 +1936,13 @@ impl OracleAdapter {
         if let Some(users) = users {
             return Err(format!("{error_type} {owner}.{name} wird gerade ausgeführt: {users}. Kompilieren würde bis zum Ende warten (ORA-04021); später erneut versuchen oder die Sitzung unter Sitzungen & Locks beenden."));
         }
-        let warnings = if PLSQL_WARNINGS.load(Ordering::Relaxed)
-            && !matches!(compile_kind, "VIEW" | "MATERIALIZED VIEW")
-        {
-            " PLSQL_WARNINGS = 'ENABLE:ALL'"
-        } else {
-            ""
-        };
         let compile_error = self
             .exec(format!(
-                "ALTER {} {}.{} COMPILE{}{}",
+                "ALTER {} {}.{} COMPILE{}",
                 compile_kind,
                 quote(owner),
                 quote(name),
-                compile_part,
-                warnings
+                compile_part
             ))
             .await
             .err();
@@ -4110,7 +4094,7 @@ const PROBE_TTL: Duration = Duration::from_secs(300);
 pub(crate) struct SessionInit {
     settings: Mutex<Vec<(String, String)>>,
     notices: Mutex<Vec<String>>,
-    warnings: std::sync::atomic::AtomicBool,
+    warnings: Mutex<Option<super::oracle_warnings::PlsqlWarnings>>,
 }
 
 impl SessionInit {
@@ -4142,7 +4126,9 @@ impl SessionInit {
         for (_, sql) in settings {
             let _ = conn.execute(&sql, &[]);
         }
-        self.warnings.store(false, Ordering::Relaxed);
+        if let Ok(mut applied) = self.warnings.lock() {
+            *applied = None;
+        }
         Ok(conn)
     }
 
