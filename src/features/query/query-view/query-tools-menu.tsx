@@ -1,6 +1,7 @@
 import {
   ArrowDownToLineIcon,
   ArrowUpToLineIcon,
+  BinaryIcon,
   BookmarkCheckIcon,
   BookmarkIcon,
   BookmarkPlusIcon,
@@ -13,6 +14,7 @@ import {
   LibraryIcon,
   MoreHorizontalIcon,
   PackageSearchIcon,
+  RefreshCwIcon,
   SaveAllIcon,
   SaveIcon,
   TerminalIcon,
@@ -37,6 +39,7 @@ import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility"
 import { useHasNewFeatures } from "@/lib/new-features";
 
 import { EDITOR_ACTIONS } from "./constants";
+import type { QueryFileEncodingAction } from "./use-query-file-actions";
 
 interface QueryToolsMenuProps {
   editorApiRef: RefObject<QueryEditorApi | null>;
@@ -47,6 +50,8 @@ interface QueryToolsMenuProps {
   serverOutput: boolean;
   bookmarkCount: number;
   filePath: string | null;
+  fileBusy: boolean;
+  fileRequiresUtf8Copy: boolean;
   isRunning: boolean;
   onOpenHistory: () => void;
   onOpenOutput: () => void;
@@ -55,6 +60,7 @@ interface QueryToolsMenuProps {
   onOpenTabSearch: () => void;
   onClearBookmarks: () => void;
   onFileOpen: () => void;
+  onChooseFileEncoding: (action: QueryFileEncodingAction) => void;
   onFileSave: (saveAs: boolean) => void;
   onClearEditor: () => void;
 }
@@ -68,6 +74,8 @@ export function QueryToolsMenu({
   serverOutput,
   bookmarkCount,
   filePath,
+  fileBusy,
+  fileRequiresUtf8Copy,
   isRunning,
   onOpenHistory,
   onOpenOutput,
@@ -76,10 +84,13 @@ export function QueryToolsMenu({
   onOpenTabSearch,
   onClearBookmarks,
   onFileOpen,
+  onChooseFileEncoding,
   onFileSave,
   onClearEditor,
 }: QueryToolsMenuProps) {
   const packageMembers = useNewFeatureVisibility<HTMLDivElement>("query.tools.package-members");
+  const fileEncoding = useNewFeatureVisibility<HTMLDivElement>("query.tools.file.encoding");
+  const fileNew = useHasNewFeatures("query.tools.file");
   const toolsNew = useHasNewFeatures("query.tools") && isSql;
   const pendingAction = useRef<string | null>(null);
   return (
@@ -223,24 +234,53 @@ export function QueryToolsMenu({
           </IconMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSub>
-          <IconMenuSubTrigger icon={<FileCodeIcon />} label="Datei" />
+          <IconMenuSubTrigger icon={<FileCodeIcon />} label="Datei">
+            {fileNew && <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />}
+          </IconMenuSubTrigger>
           <IconMenuSubContent>
             <IconMenuItem
               icon={<FolderOpenIcon />}
               label="SQL-Datei öffnen…"
               onSelect={onFileOpen}
+              disabled={fileBusy}
             />
             <IconMenuItem
-              icon={<SaveIcon />}
-              label={filePath ? "Speichern" : "Speichern unter…"}
-              onSelect={() => onFileSave(false)}
-              disabled={!hasSql && !filePath}
-            />
+              ref={fileEncoding.ref}
+              icon={<BinaryIcon />}
+              label="SQL-Datei mit Kodierung öffnen…"
+              onSelect={() => onChooseFileEncoding("open")}
+              disabled={fileBusy}
+            >
+              {fileEncoding.isNew && (
+                <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
+              )}
+            </IconMenuItem>
             {filePath && (
+              <IconMenuItem
+                icon={<RefreshCwIcon />}
+                label="Datei mit Kodierung neu laden…"
+                onSelect={() => onChooseFileEncoding("reload")}
+                disabled={fileBusy}
+              />
+            )}
+            <IconMenuItem
+              icon={<SaveIcon />}
+              label={
+                fileRequiresUtf8Copy
+                  ? "UTF-8-Kopie speichern…"
+                  : filePath
+                    ? "Speichern"
+                    : "Speichern unter…"
+              }
+              onSelect={() => onFileSave(false)}
+              disabled={fileBusy || (!hasSql && !filePath)}
+            />
+            {filePath && !fileRequiresUtf8Copy && (
               <IconMenuItem
                 icon={<SaveAllIcon />}
                 label="Speichern unter…"
                 onSelect={() => onFileSave(true)}
+                disabled={fileBusy}
               />
             )}
             <IconMenuItem

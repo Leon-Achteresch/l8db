@@ -151,3 +151,19 @@ L8DB_BROWSER_CHANNEL=chrome bun --no-env-file scripts/test-browser.ts table-reco
 The isolated fixture mounts the table grid. Open **Datensatz anzeigen** from a row's context menu or press **Alt+Enter** on the focused grid selection. The dialog reads the one loaded row, including columns outside the horizontal viewport, and uses the grid's existing value previews and number/time settings. It distinguishes NULL, empty text and missing fields. Long values show a bounded preview with an ellipsis where needed. The record closes when its row is replaced or its table changes. Escape returns focus to the grid or the still-present control that opened the menu.
 
 Chrome cases cover a 320 × 420 px dark viewport, a wide light viewport, keyless rows, exact numeric strings, timestamps, booleans, multiline text and nested values. The 1,200-field case scrolls to the last field by keyboard and repeats opening and closing the dialog. On macOS 27.0.1 arm64 (Apple M3, 16 GiB, Bun 1.3.10, Chrome 157), nine keyboard-to-first-field samples took 21.74 ms median and 37.55 ms p95 against 150 ms and 300 ms limits. At most 15 field rows were mounted at the measured positions against a limit below 45. The fixture recorded zero IPC requests, and closed dialogs unmounted their field lists. This measures the synthetic browser path. Native WebView, native assistive technology and live providers were outside the suite.
+
+### A24 SQL file read encoding
+
+```sh
+bun --no-env-file test tests/sql-file-encoding.test.ts
+L8DB_BROWSER_CHANNEL=chrome bun --no-env-file scripts/test-browser.ts sql-file-encoding
+bun --no-env-file test tests/perf-sql-file-encoding.test.ts
+```
+
+Open the editor's **Weitere Werkzeuge → Datei** menu to choose **SQL-Datei mit Kodierung öffnen…** or **Datei mit Kodierung neu laden…**. Automatic reading still tries UTF-8 first and falls back to Windows-1252. Choose UTF-16 LE or BE explicitly, with or without a matching byte-order mark. A conflicting mark or invalid UTF-16 leaves the existing draft in place. Reloading a file with unsaved changes prompts for confirmation. External-change reload uses the tab's last read choice.
+
+For a protected source, **UTF-8-Kopie speichern…**, the save shortcut and save-on-close require a new target file. A successful save rebinds the tab to the UTF-8 copy. UTF-16, Windows-1252 fallback and automatic input with zero bytes receive this protection when loaded. Older persisted tabs establish the protection on the next read. The decoder does not guess the byte order of an unmarked file.
+
+The Bun fixture reads and writes real temporary synthetic files through a stubbed Tauri IPC boundary. It verifies the sent UTF-8 bytes and exclusive-create option, including a symlink alias targeting the original file. The browser fixture uses the real menu, encoding chooser, external-change banner, tab store and file actions, with a synthetic editor draft and mocked pickers/IPC. Native picker, native WebView and OS file grants remain separate.
+
+The scoped decoder benchmark read 10,485,750 bytes per iteration on macOS 27.0.1 arm64, Apple M3, 16 GiB, Bun 1.3.10. Nine measured iterations after two warmups took 11.83 ms median and 12.48 ms p95 against 70/150 ms limits. The check asserts the decoded UTF-16 length bound. It measures decoding, outside native I/O or peak process memory.

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 
+import { isSqlFileReadEncoding } from "@/lib/sql-file";
 import { isQueryTabDirty, normalizeBookmarks, useTableTabs } from "@/lib/table-tabs";
 
 import { EMPTY_BOOKMARK_SLOTS, EMPTY_BOOKMARKS } from "./constants";
@@ -23,7 +24,25 @@ export function useQueryTabSql(tabId: string) {
     const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
     return tab?.kind === "query" ? Boolean(tab.externalChange) : false;
   });
-  return { sql, updateQuerySql, markQueryTabExecuted, filePath, fileDirty, externalChange };
+  const fileReadEncoding = useTableTabs((state) => {
+    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
+    const encoding = tab?.kind === "query" ? tab.fileReadEncoding : undefined;
+    return isSqlFileReadEncoding(encoding) ? encoding : "auto";
+  });
+  const fileRequiresUtf8Copy = useTableTabs((state) => {
+    const tab = state.tabs.find((t) => t.kind === "query" && t.id === tabId);
+    return tab?.kind === "query" && Boolean(tab.fileRequiresUtf8Copy);
+  });
+  return {
+    sql,
+    updateQuerySql,
+    markQueryTabExecuted,
+    filePath,
+    fileDirty,
+    externalChange,
+    fileReadEncoding,
+    fileRequiresUtf8Copy,
+  };
 }
 
 export function useQueryTabBookmarks(tabId: string) {

@@ -1,4 +1,5 @@
 import type { StoreApi } from "zustand";
+import type { SqlFileReadEncoding } from "@/lib/sql-file";
 import type { ToolId } from "@/lib/tool-tabs";
 import type { BookmarkSlots } from "./query-tabs";
 
@@ -19,12 +20,23 @@ export type QueryTab = {
   filePath?: string;
   savedSql?: string;
   fileMtime?: number | null;
+  fileReadEncoding?: SqlFileReadEncoding;
+  fileRequiresUtf8Copy?: boolean;
   externalChange?: boolean;
   bookmarks?: number[];
   bookmarkSlots?: BookmarkSlots;
   autoRun?: boolean;
 };
-export type QueryFileInfo = { path: string; mtime: number | null; savedSql?: string };
+export type QueryFileRead = {
+  encoding: SqlFileReadEncoding;
+  requiresUtf8Copy: boolean;
+};
+export type QueryFileInfo = {
+  path: string;
+  mtime: number | null;
+  savedSql?: string;
+  read?: QueryFileRead;
+};
 
 export type FunctionTab = { kind: "function"; schema: string; name: string; oid: string };
 export type ProcedureTab = { kind: "procedure"; schema: string; name: string; oid: string };
@@ -123,7 +135,12 @@ export interface TabsState {
   bindQueryTabFile: (id: string, file: QueryFileInfo & { title: string }) => void;
   markQueryTabSaved: (id: string, mtime: number | null, savedSql?: string) => void;
   setQueryTabExternalChange: (id: string, changed: boolean, mtime?: number | null) => void;
-  reloadQueryTabFromFile: (id: string, sql: string, mtime: number | null) => void;
+  reloadQueryTabFromFile: (
+    id: string,
+    sql: string,
+    mtime: number | null,
+    read?: QueryFileRead,
+  ) => void;
   toggleQueryBookmark: (id: string, line: number) => void;
   setQueryBookmarks: (id: string, lines: number[]) => void;
   setQueryBookmarkSlot: (id: string, slot: number, line: number | null) => void;

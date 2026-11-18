@@ -6,7 +6,9 @@ import { toast } from "sonner";
 import {
   defaultSqlFileName,
   fileMtimeChanged,
-  readSqlText,
+  isSqlFileReadEncoding,
+  readSqlFile,
+  type SqlFileReadEncoding,
   sqlFileSizeError,
   sqlFileTitle,
 } from "@/lib/sql-file";
@@ -32,17 +34,41 @@ function findQueryTab(id: string): QueryTab | null {
   return tab && tab.kind === "query" ? tab : null;
 }
 
-export async function openSqlPathAsTab(path: string): Promise<string | null> {
+function sameFileBinding(tab: QueryTab, current: QueryTab | null): current is QueryTab {
+  return Boolean(
+    current &&
+      tab.filePath === current.filePath &&
+      tab.fileReadEncoding === current.fileReadEncoding &&
+      tab.fileRequiresUtf8Copy === current.fileRequiresUtf8Copy,
+  );
+}
+
+async function loadSqlFile(path: string, encoding: SqlFileReadEncoding) {
+  const meta = await readFileMeta(path);
+  const sizeError = sqlFileSizeError(meta.size);
+  if (sizeError) throw new Error(sizeError);
+  const { text, requiresUtf8Copy } = await readSqlFile(path, encoding);
+  return { sql: text, mtime: meta.mtime, read: { encoding, requiresUtf8Copy } };
+}
+
+export async function openSqlPathAsTab(
+  path: string,
+  encoding: SqlFileReadEncoding = "auto",
+): Promise<string | null> {
   try {
-    const meta = await readFileMeta(path);
-    const sizeError = sqlFileSizeError(meta.size);
-    if (sizeError) throw new Error(sizeError);
-    const sql = await readSqlText(path);
+    const existing = useTableTabs
+      .getState()
+      .tabs.find((tab) => tab.kind === "query" && tab.filePath === path);
+    if (existing?.kind === "query") {
+      if (encoding !== "auto" && encoding !== existing.fileReadEncoding)
+        toast.info("Datei ist bereits geöffnet. Wähle die Lesekodierung im vorhandenen Tab.");
+      return existing.id;
+    }
+    const file = await loadSqlFile(path, encoding);
     return useTableTabs.getState().openFileQueryTab({
+      ...file,
       path,
-      sql,
       title: sqlFileTitle(path),
-      mtime: meta.mtime,
     });
   } catch (error) {
     toast.error(`Datei konnte nicht geöffnet werden: ${errorMessage(error)}`);
@@ -50,52 +76,70 @@ export async function openSqlPathAsTab(path: string): Promise<string | null> {
   }
 }
 
-export async function openSqlFileAsTab(): Promise<string | null> {
-  const path = await open({ multiple: false, directory: false, filters: SQL_FILTERS });
-  if (!path) return null;
-  return openSqlPathAsTab(path);
+export async function openSqlFileAsTab(
+  encoding: SqlFileReadEncoding = "auto",
+): Promise<string | null> {
+  try {
+    const path = await open({ multiple: false, directory: false, filters: SQL_FILTERS });
+    return path ? openSqlPathAsTab(path, encoding) : null;
+  } catch (error) {
+    toast.error(`Datei konnte nicht geöffnet werden: ${errorMessage(error)}`);
+    return null;
+  }
 }
 
 export async function detectExternalChange(tabId: string): Promise<boolean> {
   const tab = findQueryTab(tabId);
   if (!tab?.filePath) return false;
   const meta = await readFileMeta(tab.filePath);
-  const changed = fileMtimeChanged(tab.fileMtime, meta.mtime);
-  if (changed && !tab.externalChange) {
+  const current = findQueryTab(tabId);
+  if (!sameFileBinding(tab, current) || current.fileMtime !== tab.fileMtime) return false;
+  const changed = fileMtimeChanged(current.fileMtime, meta.mtime);
+  if (changed && !current.externalChange) {
     useTableTabs.getState().setQueryTabExternalChange(tabId, true);
   }
-  return changed || Boolean(tab.externalChange);
+  return changed || Boolean(current.externalChange);
 }
 
 export async function saveQueryTabFile(tabId: string, saveAs = false): Promise<boolean> {
   try {
     const tab = findQueryTab(tabId);
     if (!tab) return false;
-    if (!saveAs && tab.filePath) {
-      const changed = await detectExternalChange(tabId);
-      if (changed) {
-        toast.warning(
-          "Datei wurde extern geändert. Bitte zuerst neu laden oder lokale Fassung behalten.",
-        );
-        return false;
-      }
+    const copy = !!tab.filePath && !!tab.fileRequiresUtf8Copy;
+    if (!copy && !saveAs && tab.filePath && (await detectExternalChange(tabId))) {
+      toast.warning(
+        "Datei wurde extern geändert. Bitte zuerst neu laden oder lokale Fassung behalten.",
+      );
+      return false;
     }
+
     let path = tab.filePath;
-    if (saveAs || !path) {
+    if (copy || saveAs || !path) {
       const picked = await save({
-        defaultPath: tab.filePath ?? defaultSqlFileName(tab.title),
+        ...(copy && { title: "UTF-8-Kopie speichern" }),
+        defaultPath:
+          copy && path
+            ? `${path.replace(/\.(sql|txt)$/i, "")}-utf8.sql`
+            : (path ?? defaultSqlFileName(tab.title)),
         filters: SQL_FILTERS,
       });
       if (!picked) return false;
+      if (copy && picked === path) {
+        toast.error("Wähle einen neuen Dateinamen für die UTF-8-Kopie.");
+        return false;
+      }
       path = picked;
     }
-    try {
-      await writeTextFile(path, tab.sql);
-    } catch (error) {
-      toast.error(`Datei konnte nicht gespeichert werden: ${errorMessage(error)}`);
+    const current = findQueryTab(tabId);
+    if (
+      !sameFileBinding(tab, current) ||
+      current.fileMtime !== tab.fileMtime ||
+      current.savedSql !== tab.savedSql
+    )
       return false;
-    }
+    await writeTextFile(path, tab.sql, copy ? { createNew: true } : undefined);
     const meta = await readFileMeta(path);
+    if (!sameFileBinding(tab, findQueryTab(tabId))) return false;
     const store = useTableTabs.getState();
     if (path !== tab.filePath) {
       store.bindQueryTabFile(tabId, {
@@ -114,28 +158,49 @@ export async function saveQueryTabFile(tabId: string, saveAs = false): Promise<b
   }
 }
 
+export async function reloadQueryTabFile(
+  tabId: string,
+  encoding?: SqlFileReadEncoding,
+): Promise<boolean> {
+  const tab = findQueryTab(tabId);
+  if (!tab?.filePath) return false;
+  const chosen =
+    encoding ?? (isSqlFileReadEncoding(tab.fileReadEncoding) ? tab.fileReadEncoding : "auto");
+  try {
+    const file = await loadSqlFile(tab.filePath, chosen);
+    const current = findQueryTab(tabId);
+    if (
+      !sameFileBinding(tab, current) ||
+      current.sql !== tab.sql ||
+      current.savedSql !== tab.savedSql ||
+      current.fileMtime !== tab.fileMtime
+    ) {
+      toast.warning("Der Tab wurde während des Neuladens geändert. Bitte erneut versuchen.");
+      return false;
+    }
+    useTableTabs.getState().reloadQueryTabFromFile(tabId, file.sql, file.mtime, file.read);
+    return true;
+  } catch (error) {
+    toast.error(`Datei konnte nicht neu geladen werden: ${errorMessage(error)}`);
+    return false;
+  }
+}
+
 export function useQueryFile(tabId: string) {
   const saveToFile = useCallback((saveAs: boolean) => saveQueryTabFile(tabId, saveAs), [tabId]);
 
-  const reloadFromFile = useCallback(async (): Promise<boolean> => {
-    const tab = findQueryTab(tabId);
-    if (!tab?.filePath) return false;
-    try {
-      const sql = await readSqlText(tab.filePath);
-      const meta = await readFileMeta(tab.filePath);
-      useTableTabs.getState().reloadQueryTabFromFile(tabId, sql, meta.mtime);
-      return true;
-    } catch (error) {
-      toast.error(`Datei konnte nicht neu geladen werden: ${errorMessage(error)}`);
-      return false;
-    }
-  }, [tabId]);
+  const reloadFromFile = useCallback(
+    (encoding?: SqlFileReadEncoding) => reloadQueryTabFile(tabId, encoding),
+    [tabId],
+  );
 
   const keepLocal = useCallback(async () => {
     const tab = findQueryTab(tabId);
     if (!tab?.filePath) return;
     const meta = await readFileMeta(tab.filePath);
-    useTableTabs.getState().setQueryTabExternalChange(tabId, false, meta.mtime);
+    const current = findQueryTab(tabId);
+    if (sameFileBinding(tab, current) && current.fileMtime === tab.fileMtime)
+      useTableTabs.getState().setQueryTabExternalChange(tabId, false, meta.mtime);
   }, [tabId]);
 
   const checkExternal = useCallback(() => detectExternalChange(tabId), [tabId]);
