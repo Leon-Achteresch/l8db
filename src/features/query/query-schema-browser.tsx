@@ -72,6 +72,7 @@ interface QuerySchemaBrowserProps {
   sql: string;
   loading: boolean;
   error: boolean;
+  waitingForMetadata?: boolean;
   onRefresh: () => void;
   onInsert: (text: string) => void;
   onJump: (line: number, column: number) => void;
@@ -87,6 +88,7 @@ export function QuerySchemaBrowser({
   sql,
   loading,
   error,
+  waitingForMetadata,
   onRefresh,
   onInsert,
   onJump,
@@ -318,7 +320,8 @@ export function QuerySchemaBrowser({
                 variant="ghost"
                 size="icon-sm"
                 disabled={loading}
-                aria-label="Schema aktualisieren"
+                aria-label={waitingForMetadata ? "Editor-Metadaten laden" : "Schema aktualisieren"}
+                title={waitingForMetadata ? "Editor-Metadaten laden" : "Schema aktualisieren"}
                 onClick={onRefresh}
               >
                 <RefreshCwIcon className={loading ? "size-3.5 animate-spin" : "size-3.5"} />
@@ -373,7 +376,12 @@ export function QuerySchemaBrowser({
                   Schema wird geladen…
                 </p>
               )}
-              {!loading && !visible.length && (
+              {waitingForMetadata && !loading && !error && (
+                <p className="p-2 text-xs text-muted-foreground">
+                  Editor-Metadaten werden bei Bedarf geladen.
+                </p>
+              )}
+              {!loading && !waitingForMetadata && !visible.length && (
                 <p className="p-2 text-xs text-muted-foreground">
                   {term ? "Keine passenden Tabellen oder Spalten." : "Keine Tabellen verfügbar."}
                 </p>

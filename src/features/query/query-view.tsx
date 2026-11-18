@@ -390,6 +390,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 sql={sql}
                 loading={schema.loading}
                 error={schema.error}
+                waitingForMetadata={schema.waitingForMetadata}
                 onRefresh={schema.refresh}
                 onInsert={(text) => editorApiRef.current?.insertText(text)}
                 onJump={(line, column) => editorApiRef.current?.revealMatch(line, column)}

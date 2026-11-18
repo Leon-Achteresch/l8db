@@ -1,5 +1,5 @@
 import { ChevronDown, Eye, LockKeyhole, Network } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,7 @@ import {
 } from "@/lib/connections";
 import type { Capabilities, SslMode } from "@/lib/db";
 import { ENVIRONMENTS } from "@/lib/environments";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import type { MaskRule } from "@/lib/masking";
 import { useHasNewFeatures } from "@/lib/new-features";
 import type { SshConfigDraft } from "@/lib/ssh";
@@ -41,6 +42,8 @@ interface Props {
   onSsl: (value: SslMode) => void;
   readOnly: boolean;
   onReadOnly: (value: boolean) => void;
+  editorMetadataPrefetch: boolean;
+  onEditorMetadataPrefetch: (value: boolean) => void;
   sshEnabled: boolean;
   onSshEnabled: (value: boolean) => void;
   sshHost: string;
@@ -85,6 +88,8 @@ export function ConnectionAdvancedOptions({
   onSsl,
   readOnly,
   onReadOnly,
+  editorMetadataPrefetch,
+  onEditorMetadataPrefetch,
   sshEnabled,
   onSshEnabled,
   sshHost,
@@ -122,7 +127,13 @@ export function ConnectionAdvancedOptions({
   cloudAuth,
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
-  const hasNew = useHasNewFeatures(caps.ssh ? "connections.editor" : undefined);
+  const hasNew = useHasNewFeatures(
+    caps.ssh || caps.query_language === "sql" ? "connections.editor" : undefined,
+  );
+  const metadataFeature = useNewFeatureVisibility<HTMLLabelElement>(
+    "connections.editor.metadata-prefetch",
+  );
+  const metadataId = useId();
   const showSecurity = true;
 
   return (
@@ -212,6 +223,32 @@ export function ConnectionAdvancedOptions({
               </label>
             }
           </div>
+        )}
+        {caps.query_language === "sql" && (
+          <label
+            ref={metadataFeature.ref}
+            htmlFor={metadataId}
+            className="flex items-center justify-between gap-3 text-xs font-medium"
+          >
+            <span className="min-w-0">
+              Editor-Metadaten vorab laden {metadataFeature.isNew && <NewBadge />}
+              {!editorMetadataPrefetch && (
+                <span
+                  id={`${metadataId}-hint`}
+                  className="mt-0.5 block font-normal text-muted-foreground"
+                >
+                  Im Query-Navigator bei Bedarf laden.
+                </span>
+              )}
+            </span>
+            <Switch
+              id={metadataId}
+              checked={editorMetadataPrefetch}
+              aria-describedby={editorMetadataPrefetch ? undefined : `${metadataId}-hint`}
+              onCheckedChange={onEditorMetadataPrefetch}
+              aria-label="Editor-Metadaten vorab laden"
+            />
+          </label>
         )}
         {caps.ssh && sshEnabled && (
           <div className="space-y-3 rounded-xl border p-3">

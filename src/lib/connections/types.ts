@@ -100,6 +100,7 @@ export interface SavedConnection {
   favorite?: boolean;
   color?: string | null;
   readOnly?: boolean;
+  editorMetadataPrefetch?: boolean;
   proxyUser?: string | null;
   cloudAuth?: CloudAuth | null;
   schemas?: string[] | null;
