@@ -26,6 +26,7 @@ const registered = [
   "filter-list-import",
   "table-server-output",
   "number-display",
+  "table-record",
 ];
 const requested = process.argv.slice(2);
 if (requested.some((name) => !registered.includes(name)))
@@ -39,6 +40,7 @@ const fixturePages: Record<string, string> = {
   "filter-list-import": "tests/fixtures/filter-list.html",
   "table-server-output": "tests/fixtures/table-server-output.html",
   "number-display": "tests/fixtures/number-display.html",
+  "table-record": "tests/fixtures/table-record.html",
 };
 const fixturePage = files.length === 1 ? fixturePages[files[0]] : undefined;
 const useIsolatedConfig = Boolean(isolated || fixturePage);

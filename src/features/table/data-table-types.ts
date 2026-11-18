@@ -66,6 +66,7 @@ export type DataTableProps = {
   pageSize?: number;
   onPageChange?: (page: number) => void;
   hasNextPage?: boolean;
+  recordView?: boolean;
   rowMenuItems?: (row: TableRow) => ReactNode;
   rowOffset?: number;
   rowExtent?: number;

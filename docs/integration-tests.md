@@ -141,3 +141,13 @@ This mode uses the existing owned loopback PostgreSQL fixture and runs one scope
 A known PostgreSQL primary key breaks ties behind the selected sort column. The adapter reads the key from its existing column lookup. Deferrable primary keys and classic inheritance parents keep the previous explicit order because their visible rows can have matching key values. OFFSET pages still read the current database or transaction snapshot. Concurrent mutations can move rows between page requests.
 
 On macOS 27.0.1 arm64 (Apple M3, 16 GiB, PostgreSQL 17.11), eleven measured reads at offset 25,000 on 50,000 synthetic rows returned 100 rows each in 44.196 ms median and 87.070 ms p95. The test limits are 100 ms median, 250 ms p95 and 10,000 bytes of serialized rows for this fixture. The change adds no catalog round trip. The result measures local provider reads and decoding for this workload.
+
+### A22 loaded record view
+
+```sh
+L8DB_BROWSER_CHANNEL=chrome bun --no-env-file scripts/test-browser.ts table-record
+```
+
+The isolated fixture mounts the table grid. Open **Datensatz anzeigen** from a row's context menu or press **Alt+Enter** on the focused grid selection. The dialog reads the one loaded row, including columns outside the horizontal viewport, and uses the grid's existing value previews and number/time settings. It distinguishes NULL, empty text and missing fields. Long values show a bounded preview with an ellipsis where needed. The record closes when its row is replaced or its table changes. Escape returns focus to the grid or the still-present control that opened the menu.
+
+Chrome cases cover a 320 × 420 px dark viewport, a wide light viewport, keyless rows, exact numeric strings, timestamps, booleans, multiline text and nested values. The 1,200-field case scrolls to the last field by keyboard and repeats opening and closing the dialog. On macOS 27.0.1 arm64 (Apple M3, 16 GiB, Bun 1.3.10, Chrome 157), nine keyboard-to-first-field samples took 21.74 ms median and 37.55 ms p95 against 150 ms and 300 ms limits. At most 15 field rows were mounted at the measured positions against a limit below 45. The fixture recorded zero IPC requests, and closed dialogs unmounted their field lists. This measures the synthetic browser path. Native WebView, native assistive technology and live providers were outside the suite.

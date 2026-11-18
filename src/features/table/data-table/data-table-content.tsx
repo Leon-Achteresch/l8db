@@ -1,22 +1,32 @@
 import { DragDropProvider } from "@dnd-kit/react";
-import { type CSSProperties, memo, useId, useMemo } from "react";
+import { type CSSProperties, memo, useId, useMemo, useState } from "react";
 import { gridColumnTemplate } from "@/lib/column-window";
 import { useSpiderVisit } from "@/lib/hooks/use-spider-visit";
+import { markNewFeatureSeen } from "@/lib/new-features";
 import { reorderVisibleColumns } from "@/lib/table-column-prefs";
 import { cn } from "@/lib/utils";
 import { DataTableDraftRow } from "../data-table-draft-row";
-import type { DataTableProps } from "../data-table-types";
+import type { DataTableProps, TableRow } from "../data-table-types";
 import { PageWave } from "../page-wave";
-import { headerSensors } from "./constants";
+import { headerSensors, INDEX_COLUMN } from "./constants";
 import { DataTableBody } from "./data-table-body";
 import { DataTableCellDialogs } from "./data-table-cell-dialogs";
 import { DataTableDraftControls } from "./data-table-draft-controls";
 import { DataTableFooter } from "./data-table-footer";
+import { DataTableRecordDialog } from "./data-table-record-dialog";
 import { DataTableSearchBar } from "./data-table-search-bar";
 import { EditTargetContext } from "./edit-target-context";
 import { GridStyleContext } from "./grid-style-context";
 import { useColumnDragPreview } from "./use-column-drag-preview";
 import { useDataTable } from "./use-data-table";
+
+type LoadedRecord = {
+  original: TableRow;
+  rowIndex: number;
+  rowOffset: number;
+  scope: string;
+  origin: HTMLElement | null;
+};
 
 export const DataTableContent = memo(function DataTableContent(props: DataTableProps) {
   const {
@@ -116,6 +126,30 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
     visibleColumns,
     waveRefs,
   } = useDataTable(props);
+  const [record, setRecord] = useState<LoadedRecord | null>(null);
+  const recordScope = props.stateKey ?? JSON.stringify([currentSchema, currentTable]);
+  const recordColumns = useMemo(
+    () => columnNames.filter((name) => name !== INDEX_COLUMN && name !== "__ctid__"),
+    [columnNames],
+  );
+  const canInspectRecord = !!props.recordView && recordColumns.length > 0;
+  if (
+    record &&
+    (!canInspectRecord ||
+      record.scope !== recordScope ||
+      record.rowOffset !== rowOffset ||
+      rows[record.rowIndex]?.original !== record.original)
+  ) {
+    setRecord(null);
+  }
+  const openRecord = (
+    { rowIndex, original }: Pick<LoadedRecord, "rowIndex" | "original">,
+    origin: HTMLElement | null,
+  ) => {
+    if (rows[rowIndex]?.original !== original) return false;
+    setRecord({ rowIndex, original, rowOffset, scope: recordScope, origin });
+    return true;
+  };
   useSpiderVisit(scrollRef, columnNames, data);
   const columnScope = useId();
   const gridColumns = useMemo(() => gridColumnTemplate(columnWidths), [columnWidths]);
@@ -177,6 +211,26 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
               tabIndex={0}
               role="grid"
               aria-label="Daten"
+              onKeyDown={(event) => {
+                if (!canInspectRecord || !activeCell || editingCell) return;
+                if (
+                  event.target !== event.currentTarget ||
+                  event.defaultPrevented ||
+                  event.repeat ||
+                  event.nativeEvent.isComposing ||
+                  event.key !== "Enter" ||
+                  !event.altKey ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey
+                )
+                  return;
+                const row = rows[activeCell.rowIndex];
+                if (!row) return;
+                event.preventDefault();
+                markNewFeatureSeen("table.rows.record-view");
+                openRecord({ rowIndex: row.index, original: row.original }, event.currentTarget);
+              }}
               style={{ contain: "strict" }}
               className={cn(
                 "relative min-h-0 flex-1 basis-0 overflow-auto overscroll-none outline-none bg-background [scrollbar-gutter:stable] transition-opacity",
@@ -291,6 +345,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
                       columnDetails={columnDetails}
                       currentSchema={props.currentSchema}
                       currentTable={props.currentTable}
+                      onInspectRecord={canInspectRecord ? openRecord : undefined}
                     />
                   </table>
                 </DragDropProvider>
@@ -331,6 +386,21 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
               autoRefreshPause={autoRefreshPause}
               onAutoRefreshChange={setAutoRefreshMs}
               onPageChange={changePage}
+            />
+          )}
+          {record && (
+            <DataTableRecordDialog
+              original={record.original}
+              columns={recordColumns}
+              columnTypeByName={columnTypeByName}
+              rowNumber={record.rowOffset + record.rowIndex + 1}
+              onClose={() => setRecord(null)}
+              returnFocus={() => {
+                const grid = scrollRef.current;
+                if (!grid?.isConnected) return;
+                const target = record.origin && grid.contains(record.origin) ? record.origin : grid;
+                target.focus({ preventScroll: true });
+              }}
             />
           )}
           <DataTableCellDialogs
