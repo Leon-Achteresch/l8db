@@ -662,10 +662,43 @@ async fn live_compile_pairs_spec_and_body_and_honours_warnings() {
         .await
         .unwrap();
     let spec = format!("{owner}\u{1f}L8DB_PAIR\u{1f}PACKAGE");
-    super::oracle::PLSQL_WARNINGS.store(true, std::sync::atomic::Ordering::Relaxed);
+    super::oracle_warnings::set(super::oracle_warnings::PlsqlWarnings::all());
     let warned = db.compile_object(&spec, "package_spec").await;
     let body_warnings = db.list_compile_errors(None).await.unwrap();
-    super::oracle::PLSQL_WARNINGS.store(false, std::sync::atomic::Ordering::Relaxed);
+    let setting = text(
+        &db.execute_query("SELECT DBMS_WARNING.GET_WARNING_SETTING_STRING AS w FROM dual")
+            .await
+            .unwrap(),
+        "W",
+    );
+    super::oracle_warnings::set(super::oracle_warnings::PlsqlWarnings {
+        ignore: vec![5018],
+        ..super::oracle_warnings::PlsqlWarnings::all()
+    });
+    let ignored = text(
+        &db.execute_query("SELECT DBMS_WARNING.GET_WARNING_SETTING_NUM(5018) AS w FROM dual")
+            .await
+            .unwrap(),
+        "W",
+    );
+    super::oracle_warnings::set(super::oracle_warnings::PlsqlWarnings {
+        severe: super::oracle_warnings::WarningLevel::Error,
+        ..super::oracle_warnings::PlsqlWarnings::all()
+    });
+    let strict = db
+        .execute_query("CREATE OR REPLACE PROCEDURE l8db_strict IS BEGIN NULL; END;")
+        .await;
+    super::oracle_warnings::set(super::oracle_warnings::PlsqlWarnings::default());
+    db.execute_query("DROP PROCEDURE l8db_strict")
+        .await
+        .unwrap();
+    let strict = strict.unwrap_err();
+    assert!(strict.contains("ORA-24344") && strict.contains("05018"), "{strict}");
+    assert!(
+        setting.contains("ENABLE") && !setting.contains("DISABLE"),
+        "{setting}"
+    );
+    assert!(ignored.contains("DISABLE"), "{ignored}");
     let warned = warned.unwrap();
     assert_eq!(warned.status, "VALID");
     assert!(

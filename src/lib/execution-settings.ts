@@ -5,9 +5,11 @@ import { useSettingsStore } from "@/lib/settings";
 export function initExecutionSettings() {
   let pending = Promise.resolve();
   const sync = () => {
-    const { queryTimeout, connectionTimeout, oraclePlsqlWarnings } = useSettingsStore.getState();
+    const { queryTimeout, connectionTimeout, oraclePlsqlWarnings, oraclePlsqlWarningRules } =
+      useSettingsStore.getState();
+    const warnings = oraclePlsqlWarnings ? oraclePlsqlWarningRules : {};
     pending = pending
-      .then(() => configureExecutionDefaults(queryTimeout, connectionTimeout, oraclePlsqlWarnings))
+      .then(() => configureExecutionDefaults(queryTimeout, connectionTimeout, warnings))
       .catch((error) => {
         toast.error(`Zeitgrenzen konnten nicht übernommen werden: ${String(error)}`);
       });
@@ -17,7 +19,8 @@ export function initExecutionSettings() {
     if (
       current.queryTimeout !== previous.queryTimeout ||
       current.connectionTimeout !== previous.connectionTimeout ||
-      current.oraclePlsqlWarnings !== previous.oraclePlsqlWarnings
+      current.oraclePlsqlWarnings !== previous.oraclePlsqlWarnings ||
+      current.oraclePlsqlWarningRules !== previous.oraclePlsqlWarningRules
     )
       void sync();
   });

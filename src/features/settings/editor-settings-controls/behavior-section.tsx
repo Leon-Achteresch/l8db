@@ -9,6 +9,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import type { EditorAcceptSuggestionOnEnter, EditorTabCompletion } from "@/lib/settings";
 import { ACCEPT_ON_ENTER_OPTIONS, TAB_COMPLETION_OPTIONS } from "./options";
+import { PlsqlWarningRulesControls } from "./plsql-warning-rules";
 import { Row } from "./row";
 import { Section } from "./section";
 import { SliderValue } from "./slider-value";
@@ -109,6 +110,7 @@ export function EditorBehaviorSection({ store, compact }: { store: Store; compac
           aria-label="PL/SQL-Warnungen"
         />
       </Row>
+      {store.oraclePlsqlWarnings && <PlsqlWarningRulesControls store={store} compact={compact} />}
     </Section>
   );
 }
