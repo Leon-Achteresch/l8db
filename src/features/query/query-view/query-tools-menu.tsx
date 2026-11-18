@@ -18,6 +18,7 @@ import {
   RefreshCwIcon,
   SaveAllIcon,
   SaveIcon,
+  SquareStackIcon,
   TerminalIcon,
   TextSearchIcon,
   WandSparklesIcon,
@@ -46,6 +47,10 @@ import { effectiveConnectionString } from "@/lib/ssh";
 import { EDITOR_ACTIONS } from "./constants";
 import { DuckdbFilePathDialog, type DuckdbPathHelp } from "./duckdb-file-path-dialog";
 import { PgvectorReferenceDialog } from "./pgvector-reference-dialog";
+import {
+  PostgresTransactionContextDialog,
+  type PostgresTransactionStatus,
+} from "./postgres-transaction-context-dialog";
 import type { QueryFileEncodingAction } from "./use-query-file-actions";
 
 interface DuckdbPathScope {
@@ -74,6 +79,8 @@ interface QueryToolsMenuProps {
   isSql: boolean;
   pgvectorReferenceAvailable?: boolean;
   duckdbPathScope?: DuckdbPathScope;
+  postgresTransaction?: PostgresTransactionStatus;
+  hasResult: boolean;
   serverOutput: boolean;
   bookmarkCount: number;
   filePath: string | null;
@@ -100,6 +107,8 @@ export function QueryToolsMenu({
   isSql,
   pgvectorReferenceAvailable = false,
   duckdbPathScope,
+  postgresTransaction,
+  hasResult,
   serverOutput,
   bookmarkCount,
   filePath,
@@ -124,9 +133,13 @@ export function QueryToolsMenu({
     "query.tools.pgvector-reference",
   );
   const duckdbPath = useNewFeatureVisibility<HTMLDivElement>("query.tools.duckdb-file-path");
+  const transactionContext = useNewFeatureVisibility<HTMLDivElement>(
+    "query.tools.postgres-transaction-context",
+  );
   const trigger = useRef<HTMLButtonElement>(null);
-  const pendingHelp = useRef<"pgvector" | "duckdb" | null>(null);
+  const pendingHelp = useRef<"pgvector" | "duckdb" | "postgres-transaction" | null>(null);
   const [referenceOpen, setReferenceOpen] = useState(false);
+  const [transactionContextOpen, setTransactionContextOpen] = useState(false);
   const [duckdbHelp, setDuckdbHelp] = useState<{
     connection: SavedConnection;
     request: Promise<DuckdbPathHelp>;
@@ -138,6 +151,9 @@ export function QueryToolsMenu({
       ? ["query.tools.pgvector-reference" as const]
       : []),
     ...(duckdbPath.isNew && !duckdbPathScope ? ["query.tools.duckdb-file-path" as const] : []),
+    ...(transactionContext.isNew && !postgresTransaction
+      ? ["query.tools.postgres-transaction-context" as const]
+      : []),
   ];
   const visibleToolsSeen = hiddenNewTools.length ? new Set([...seen, ...hiddenNewTools]) : seen;
   const toolsNew = hasNewFeatures("query.tools", visibleToolsSeen) && isSql;
@@ -173,6 +189,11 @@ export function QueryToolsMenu({
               connection: duckdbPathScope.connection,
               request: readPathHelp(duckdbPathScope),
             });
+            return;
+          }
+          if (help === "postgres-transaction" && postgresTransaction) {
+            event.preventDefault();
+            setTransactionContextOpen(true);
             return;
           }
           const id = pendingAction.current;
@@ -296,6 +317,20 @@ export function QueryToolsMenu({
                 )}
               </IconMenuItem>
             )}
+            {postgresTransaction && (
+              <IconMenuItem
+                ref={transactionContext.ref}
+                icon={<SquareStackIcon />}
+                label="PostgreSQL-Lesekontext…"
+                onSelect={() => {
+                  pendingHelp.current = "postgres-transaction";
+                }}
+              >
+                {transactionContext.isNew && (
+                  <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
+                )}
+              </IconMenuItem>
+            )}
             {EDITOR_ACTIONS.map(([id, label, Icon]) => (
               <IconMenuItem
                 key={id}
@@ -411,6 +446,14 @@ export function QueryToolsMenu({
         <DuckdbFilePathDialog
           request={duckdbHelp.request}
           onClose={() => setDuckdbHelp(null)}
+          onRestoreFocus={() => trigger.current?.focus()}
+        />
+      )}
+      {postgresTransaction && transactionContextOpen && (
+        <PostgresTransactionContextDialog
+          transaction={postgresTransaction}
+          hasResult={hasResult}
+          onClose={() => setTransactionContextOpen(false)}
           onRestoreFocus={() => trigger.current?.focus()}
         />
       )}
