@@ -3331,9 +3331,7 @@ impl DatabaseAdapter for OracleAdapter {
             .await?
             .iter()
             .map(|r| {
-                let char_length = s_opt(r, 5)
-                    .and_then(|v| v.parse().ok())
-                    .filter(|v| *v > 0);
+                let char_length = s_opt(r, 5).and_then(|v| v.parse().ok()).filter(|v| *v > 0);
                 let mut metadata = ColumnMetadata::from(DetailedColumnInfo {
                     name: s(r, 0),
                     data_type: s(r, 1),
