@@ -7,6 +7,7 @@ export {
   useAllSchemaObjectsQuery,
   useColumnSearchQuery,
   useColumnsQuery,
+  useDatabaseCatalogQuery,
   useDatabasesQuery,
   useRefreshConnection,
   useSchemaMapQuery,

@@ -131,18 +131,32 @@ pub async fn test_connection_string(
     .await
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+pub enum DatabaseListResponse {
+    Names(Vec<String>),
+    Buckets(super::influxdb::BucketCatalog),
+}
+
 #[tauri::command]
 pub async fn list_databases(
     kind: DatabaseKind,
     connection_string: String,
     pool_state: tauri::State<'_, PoolState>,
     options: Option<super::execution::ExecutionOptions>,
-) -> Result<Vec<String>, String> {
+    with_bucket_retention: Option<bool>,
+) -> Result<DatabaseListResponse, String> {
     super::execution::run(
         options,
         matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
         async {
             super::execution::connect(async {
+                if kind == DatabaseKind::Influxdb && with_bucket_retention == Some(true) {
+                    return super::influxdb::InfluxAdapter::new(&connection_string, None)?
+                        .database_catalog()
+                        .await
+                        .map(DatabaseListResponse::Buckets);
+                }
                 create_adapter_from_string(
                     kind,
                     &connection_string,
@@ -151,6 +165,7 @@ pub async fn list_databases(
                 )?
                 .list_databases()
                 .await
+                .map(DatabaseListResponse::Names)
             })
             .await
         },

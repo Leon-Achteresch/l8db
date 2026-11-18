@@ -16,6 +16,7 @@ import type { SavedConnection } from "@/lib/connections";
 import type { useActiveCapabilities } from "@/lib/db-selection";
 import { useSettingsStore } from "@/lib/settings";
 import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
+import { BucketRetentionLabel } from "./bucket-retention-label";
 import type { SidebarScope } from "./use-sidebar-scope";
 
 interface SidebarScopeSelectsProps {
@@ -86,6 +87,9 @@ export function SidebarScopeSelects({
               ))}
             </SelectContent>
           </Select>
+          {activeConnection.kind === "influxdb" && activeDatabase && !databasesLoading && (
+            <BucketRetentionLabel retention={scope.bucketRetention} />
+          )}
         </div>
       )}
       {caps.schemas && !caps.database_is_schema && (

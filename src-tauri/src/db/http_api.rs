@@ -255,6 +255,13 @@ pub(crate) mod mock {
     where
         F: Fn(&Request) -> (u16, String) + Send + Sync + 'static,
     {
+        serve_with_headers("", handler).await
+    }
+
+    pub async fn serve_with_headers<F>(headers: &'static str, handler: F) -> (String, Log)
+    where
+        F: Fn(&Request) -> (u16, String) + Send + Sync + 'static,
+    {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let log: Log = Default::default();
@@ -315,7 +322,7 @@ pub(crate) mod mock {
                     let (status, body) = handler(&request);
                     log.lock().unwrap().push(request);
                     let response = format!(
-                        "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                        "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n{headers}\r\n{body}",
                         body.len()
                     );
                     let _ = socket.write_all(response.as_bytes()).await;
