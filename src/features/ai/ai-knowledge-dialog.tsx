@@ -1,5 +1,5 @@
 import { Plus, Sparkles, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -17,8 +17,14 @@ import { forgetEditorKnowledge } from "@/lib/ai/editor/context";
 import { type AiKnowledge, aiKnowledgeGet, aiKnowledgeSet } from "@/lib/db/ai";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { AiDataRules } from "./ai-data-rules";
+import { AiKnowledgeTable } from "./ai-knowledge-table";
 
 const EMPTY: AiKnowledge = { notes: "", glossary: [], tables: {} };
+
+interface KnowledgeDraft {
+  connectionId: string;
+  knowledge: AiKnowledge;
+}
 
 export function AiKnowledgeDialog({
   connectionId,
@@ -35,30 +41,40 @@ export function AiKnowledgeDialog({
   onGenerate?: () => void;
   onDiscoverRules?: () => void;
 }) {
-  const [knowledge, setKnowledge] = useState<AiKnowledge>(EMPTY);
-  const [loading, setLoading] = useState(false);
+  const [loadedDraft, setDraft] = useState<KnowledgeDraft | null>(null);
   const [saving, setSaving] = useState(false);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [failedConnectionId, setFailedConnectionId] = useState<string | null>(null);
   const [removedRules, setRemovedRules] = useState<string[]>([]);
+  const request = useRef<AbortController | null>(null);
+  const draft = open && loadedDraft?.connectionId === connectionId ? loadedDraft : null;
+  const knowledge = draft?.knowledge ?? EMPTY;
+  const setKnowledge = (next: AiKnowledge) => {
+    if (draft && !saving) setDraft({ connectionId, knowledge: next });
+  };
   const rulesFeature = useNewFeatureVisibility<HTMLElement>(
     open ? "ai.chat.plus.knowledge.rules" : undefined,
   );
+  const copyFeature = useNewFeatureVisibility<HTMLParagraphElement>(
+    draft ? "ai.chat.plus.knowledge.copy-text" : undefined,
+  );
   useEffect(() => {
-    if (!open) return;
-    let live = true;
-    setLoading(true);
-    setLoadFailed(false);
+    setDraft(null);
+    setSaving(false);
+    setFailedConnectionId(null);
     setRemovedRules([]);
+    if (!open) return;
+    const scope = new AbortController();
+    request.current = scope;
     void aiKnowledgeGet(connectionId)
-      .then((value) => live && setKnowledge(value))
-      .catch((error) => {
-        if (live) setLoadFailed(true);
-        toast.error(String(error));
+      .then((value) => {
+        if (!scope.signal.aborted) setDraft({ connectionId, knowledge: value });
       })
-      .finally(() => live && setLoading(false));
-    return () => {
-      live = false;
-    };
+      .catch((error) => {
+        if (scope.signal.aborted) return;
+        setFailedConnectionId(connectionId);
+        toast.error(String(error));
+      });
+    return () => scope.abort();
   }, [open, connectionId]);
   const tables = Object.entries(knowledge.tables);
   const setTable = (table: string, change: Partial<AiKnowledge["tables"][string]>) =>
@@ -74,20 +90,24 @@ export function AiKnowledgeDialog({
       ),
     });
   const store = async () => {
+    const scope = request.current;
+    if (!draft || saving || !scope || scope.signal.aborted) return;
     setSaving(true);
     try {
       const latest = await aiKnowledgeGet(connectionId);
+      if (scope.signal.aborted) return;
       const invariants = (latest.invariants ?? []).filter(
         (rule) => !removedRules.includes(rule.name),
       );
-      setKnowledge(await aiKnowledgeSet(connectionId, { ...knowledge, invariants }));
+      await aiKnowledgeSet(connectionId, { ...knowledge, invariants });
       forgetEditorKnowledge(connectionId);
+      if (scope.signal.aborted) return;
       toast.success("KI-Wissen gespeichert");
       onOpenChange(false);
     } catch (error) {
-      toast.error(String(error));
+      if (!scope.signal.aborted) toast.error(String(error));
     } finally {
-      setSaving(false);
+      if (!scope.signal.aborted) setSaving(false);
     }
   };
   return (
@@ -208,57 +228,37 @@ export function AiKnowledgeDialog({
         </section>
         <section className="space-y-2" aria-label="Tabellen">
           <h3 className="text-sm font-medium">Tabellen</h3>
-          {!tables.length && (
+          {!tables.length ? (
             <p className="text-xs text-muted-foreground">
-              {loading
-                ? "Wird geladen …"
-                : "Noch keine Beschreibungen. Lass sie von der KI erzeugen oder bitte die KI im Chat, sich etwas zu merken."}
+              {failedConnectionId === connectionId
+                ? "Das KI-Wissen konnte nicht geladen werden."
+                : draft
+                  ? "Noch keine Beschreibungen. Lass sie von der KI erzeugen oder bitte die KI im Chat, sich etwas zu merken."
+                  : "Wird geladen …"}
+            </p>
+          ) : (
+            <p
+              ref={copyFeature.ref}
+              className="flex items-center gap-2 text-xs text-muted-foreground"
+            >
+              <span>
+                Einzelne Texte kopieren und in der anderen Verbindung ins passende Feld einfügen.
+              </span>
+              {copyFeature.isNew && <NewBadge />}
             </p>
           )}
           {tables.map(([table, note]) => (
-            <details key={table} className="group rounded-lg border px-3 py-2">
-              <summary className="flex cursor-pointer items-center gap-2 text-xs">
-                <span className="font-mono font-medium">{table}</span>
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                  {note.description}
-                </span>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-6"
-                  aria-label={`${table} entfernen`}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    const { [table]: _, ...rest } = knowledge.tables;
-                    setKnowledge({ ...knowledge, tables: rest });
-                  }}
-                >
-                  <Trash2 className="size-3" />
-                </Button>
-              </summary>
-              <div className="mt-2 space-y-2">
-                <Textarea
-                  aria-label={`Beschreibung von ${table}`}
-                  value={note.description}
-                  rows={2}
-                  onChange={(event) => setTable(table, { description: event.target.value })}
-                />
-                {Object.entries(note.columns).map(([column, text]) => (
-                  <div key={column} className="flex items-center gap-2 text-xs">
-                    <span className="w-36 shrink-0 truncate font-mono">{column}</span>
-                    <Input
-                      aria-label={`Beschreibung von ${table}.${column}`}
-                      value={text}
-                      onChange={(event) =>
-                        setTable(table, {
-                          columns: { ...note.columns, [column]: event.target.value },
-                        })
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-            </details>
+            <AiKnowledgeTable
+              key={table}
+              table={table}
+              note={note}
+              disabled={saving}
+              onChange={(change) => setTable(table, change)}
+              onRemove={() => {
+                const { [table]: _, ...rest } = knowledge.tables;
+                setKnowledge({ ...knowledge, tables: rest });
+              }}
+            />
           ))}
         </section>
         <section className="space-y-2" aria-label="Notizen">
@@ -275,7 +275,7 @@ export function AiKnowledgeDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Abbrechen
           </Button>
-          <Button disabled={loading || saving || loadFailed} onClick={() => void store()}>
+          <Button disabled={!draft || saving} onClick={() => void store()}>
             Speichern
           </Button>
         </DialogFooter>
