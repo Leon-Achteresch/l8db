@@ -24,8 +24,8 @@ mock.module("../src/features/query/query-result-table/result-error", () => ({
 mock.module("../src/features/query/result-compare/result-compare-view", () => ({
   ResultCompareView: () => null,
 }));
-mock.module("../src/features/query/result-snapshots-button", () => ({
-  ResultSnapshotsButton: () => null,
+mock.module("../src/features/query/result-snapshots", () => ({
+  ResultSnapshots: () => null,
 }));
 
 const { QueryResultsContent } = await import(

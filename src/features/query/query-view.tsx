@@ -31,6 +31,8 @@ import { QueryViewDialogs } from "./query-view/query-view-dialogs";
 import { type QueryHistoryHandle, QueryViewDrawers } from "./query-view/query-view-drawers";
 import { QueryWorkspacePanels } from "./query-view/query-workspace-panels";
 import { ResultActions } from "./query-view/result-actions";
+import { ResultAskAiButton } from "./query-view/result-ask-ai-button";
+import { ResultServerOutputItem } from "./query-view/result-server-output-item";
 import { ResultTabs } from "./query-view/result-tabs";
 import { buildStatusText, runLabelFor } from "./query-view/result-text";
 import { RunControls } from "./query-view/run-controls";
@@ -235,22 +237,25 @@ export function QueryView({ tabId }: QueryViewProps) {
   const isSql = caps.query_language === "sql";
 
   const [compareOpen, setCompareOpen] = useTabState(tabStateKey(exec.scope, "compareOpen"), false);
-  const resultActions = (
+  const hasColumns = Boolean(exec.result && exec.result.columns.length > 0);
+  const resultMenuItems = (
     <>
-      {exec.result && exec.result.columns.length > 0 && (
+      {hasColumns && (
         <ResultCompareButton open={compareOpen} onToggle={() => setCompareOpen((open) => !open)} />
       )}
-      <ResultActions
-        result={exec.result}
-        serverOutput={caps.server_output}
-        outputOpen={output.outputOpen}
-        connected={Boolean(connection)}
-        onToggleOutput={() => output.setOutputOpen((open) => !open)}
-        exportState={exportState}
-        sql={exec.executedSql ?? undefined}
-      />
+      {caps.server_output && (
+        <ResultServerOutputItem
+          open={output.outputOpen}
+          connected={Boolean(connection)}
+          onToggle={() => output.setOutputOpen((open) => !open)}
+        />
+      )}
+      {exec.result && hasColumns && (
+        <ResultAskAiButton result={exec.result} sql={exec.executedSql ?? undefined} />
+      )}
     </>
   );
+  const resultActions = <ResultActions result={exec.result} exportState={exportState} />;
 
   const outputTabs =
     connection && caps.server_output ? (
@@ -460,6 +465,7 @@ export function QueryView({ tabId }: QueryViewProps) {
               kind={connection?.kind}
               statusText={statusText}
               actions={resultActions}
+              menuItems={resultMenuItems}
               chart={chart}
               tables={schema.registry.tables}
               maximized={resultFocus && !editorFocus}

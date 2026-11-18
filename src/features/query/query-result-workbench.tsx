@@ -87,6 +87,7 @@ export function QueryResultWorkbench({
   statusText,
   statusDetails,
   actions,
+  menuItems,
   chart,
   previous = false,
 }: {
@@ -98,6 +99,7 @@ export function QueryResultWorkbench({
   statusText?: string | null;
   statusDetails?: string;
   actions?: ReactNode;
+  menuItems?: ReactNode;
   chart?: ResultChartBinding;
   previous?: boolean;
 }) {
@@ -295,6 +297,12 @@ export function QueryResultWorkbench({
                     label="Als View speichern…"
                     onSelect={() => setViewDialogOpen(true)}
                   />
+                </>
+              )}
+              {menuItems && (
+                <>
+                  <IconMenuSeparator />
+                  {menuItems}
                 </>
               )}
             </IconMenuContent>
