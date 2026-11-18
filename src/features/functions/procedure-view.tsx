@@ -28,6 +28,7 @@ import {
 } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { ROUTINE_TYPES } from "@/lib/versioning/blame";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 
 export interface ProcedureViewProps {
@@ -165,6 +166,7 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
       {edit.editing ? <SqlEditHint /> : null}
 
       <SqlEditorPane
+        blame={{ schema, name, types: ROUTINE_TYPES }}
         value={edit.editing ? edit.sql : (data ?? "")}
         readOnly={!edit.editing}
         onChange={edit.editing ? edit.setSql : undefined}

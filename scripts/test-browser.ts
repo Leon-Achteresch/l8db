@@ -46,6 +46,7 @@ const registered = [
   "mysql-column-update",
   "oracle-text-limit",
   "influx-bucket-retention",
+  "git-blame",
 ];
 const requested = process.argv.slice(2);
 if (requested.some((name) => !registered.includes(name)))
@@ -78,6 +79,7 @@ const fixturePages: Record<string, string> = {
   "mysql-column-update": "tests/fixtures/mysql-column-update.html",
   "oracle-text-limit": "tests/fixtures/mysql-column-update.html?oracle",
   "influx-bucket-retention": "tests/fixtures/influx-bucket-retention.html",
+  "git-blame": "tests/fixtures/git-blame.html",
 };
 const fixturePage = files.length === 1 ? fixturePages[files[0]] : undefined;
 const useIsolatedConfig = Boolean(isolated || fixturePage);

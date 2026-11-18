@@ -98,6 +98,7 @@ const SUITES = {
     "tests/performance-report.test.ts",
     "tests/perf-app-storage.test.ts",
     "tests/perf-storage-usage.test.ts",
+    "tests/perf-versioning-blame.test.ts",
   ],
   browser: [
     "tests/perf-browser.test.ts",

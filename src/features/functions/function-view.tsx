@@ -21,6 +21,7 @@ import { buildInvalidSet, isFunctionInvalid } from "@/lib/invalid-objects";
 import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { ROUTINE_TYPES } from "@/lib/versioning/blame";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 import { SqlEditorPane } from "./function-view/sql-editor-pane";
 
@@ -130,6 +131,7 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
       {edit.editing ? <SqlEditHint /> : null}
 
       <SqlEditorPane
+        blame={{ schema, name, types: ROUTINE_TYPES }}
         value={edit.editing ? edit.sql : (data ?? "")}
         readOnly={!edit.editing}
         onChange={edit.editing ? edit.setSql : undefined}
