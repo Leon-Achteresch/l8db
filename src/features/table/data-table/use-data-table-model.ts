@@ -121,7 +121,13 @@ export function useDataTableModel({
     currentTable,
     sortableColumns,
   });
-  const gridStyle = useGridStyle(columnNames, sampleRows, columnDetails, typeInfoByColumn);
+  const gridStyle = useGridStyle(
+    columnNames,
+    sampleRows,
+    columnDetails,
+    typeInfoByColumn,
+    connection?.kind,
+  );
   const { columnOrder, columnVisibility, searchColumns, columnPinning, pinnedSet } =
     useColumnLayoutState(order, hidden, pinned);
   const search = useGridSearch(data, searchColumns, infinite ? scrollIdentity : data);

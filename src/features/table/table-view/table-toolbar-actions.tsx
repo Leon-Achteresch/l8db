@@ -13,6 +13,7 @@ import { PluginToolbar } from "@/features/ui-plugins/plugin-toolbar";
 import { useReadOnlyConnection } from "@/lib/connections";
 import type { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
 import { useHasNewFeatures } from "@/lib/new-features";
+import { supportsBusinessTimestamp } from "@/lib/timestamp-display";
 import { RowWatchContext } from "@/lib/workbench/row-watch-context";
 import { TableActionsMenu, TableExportMenu } from "./table-export-menu";
 
@@ -71,6 +72,10 @@ export function TableToolbarActions({
   const { scope: watchScope } = useContext(RowWatchContext);
   const watchNew = useHasNewFeatures("table.rows.watch") && Boolean(watchScope);
   const timeNew = useHasNewFeatures("query.results.timestamps");
+  const zoneNew = useHasNewFeatures("query.results.timestamps.business-zone");
+  const canChooseZone = (columnDetails ?? []).some((column) =>
+    supportsBusinessTimestamp(connection?.kind, column.data_type),
+  );
   const numbersNew = useHasNewFeatures("query.results.numbers");
   const isData = tableTab === "data";
   const canTestData = isData && connection && caps.test_data;
@@ -101,7 +106,11 @@ export function TableToolbarActions({
         canExport ||
         extensionActions.actions.length > 0) && (
         <TableActionsMenu
-          isNew={extensionActions.isNew || (isData && (watchNew || timeNew || numbersNew))}
+          businessTimeZone={canChooseZone && isData}
+          isNew={
+            extensionActions.isNew ||
+            (isData && (watchNew || timeNew || numbersNew || (canChooseZone && zoneNew)))
+          }
         >
           {isData && <RowWatchMenuItem />}
           {isData && <TimestampDisplayMenu />}

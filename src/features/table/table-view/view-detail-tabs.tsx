@@ -16,6 +16,7 @@ import { PluginToolbar } from "@/features/ui-plugins/plugin-toolbar";
 import type { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
 import { useHasNewFeatures } from "@/lib/new-features";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
+import { supportsBusinessTimestamp } from "@/lib/timestamp-display";
 import { RowWatchContext } from "@/lib/workbench/row-watch-context";
 import { TablePerfPanel, ViewDefinitionPanel } from "./lazy-panels";
 import { TableExportDialogs } from "./table-export-dialogs";
@@ -25,6 +26,7 @@ import type { useTableViewModel } from "./use-table-view-model";
 type Props = Pick<
   ReturnType<typeof useTableViewModel>,
   | "caps"
+  | "connection"
   | "availableTabs"
   | "pluginTable"
   | "pluginTabs"
@@ -57,6 +59,7 @@ type Props = Pick<
 export function ViewDetailTabs({
   extensionActions,
   caps,
+  connection,
   availableTabs,
   pluginTable,
   pluginTabs,
@@ -86,6 +89,10 @@ export function ViewDetailTabs({
   const { scope: watchScope } = useContext(RowWatchContext);
   const watchNew = useHasNewFeatures("table.rows.watch") && Boolean(watchScope);
   const timeNew = useHasNewFeatures("query.results.timestamps");
+  const zoneNew = useHasNewFeatures("query.results.timestamps.business-zone");
+  const canChooseZone = (columnDetails ?? []).some((column) =>
+    supportsBusinessTimestamp(connection?.kind, column.data_type),
+  );
   const numbersNew = useHasNewFeatures("query.results.numbers");
   return (
     <Tabs
@@ -109,7 +116,16 @@ export function ViewDetailTabs({
           />
           <ObjectAdminMenu schema={schema} name={table} objectType="view" showAlter={false} />
           {viewTab === "data" && (
-            <TableActionsMenu isNew={extensionActions.isNew || watchNew || timeNew || numbersNew}>
+            <TableActionsMenu
+              businessTimeZone={canChooseZone}
+              isNew={
+                extensionActions.isNew ||
+                watchNew ||
+                timeNew ||
+                numbersNew ||
+                (canChooseZone && zoneNew)
+              }
+            >
               <RowWatchMenuItem />
               <TimestampDisplayMenu />
               <TableExtensionActions {...extensionActions} />

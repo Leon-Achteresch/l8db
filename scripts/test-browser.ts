@@ -35,6 +35,7 @@ const registered = [
   "sql-format-review",
   "filter-grouping",
   "object-comment-search",
+  "business-time-zone",
 ];
 const requested = process.argv.slice(2);
 if (requested.some((name) => !registered.includes(name)))
@@ -57,6 +58,7 @@ const fixturePages: Record<string, string> = {
   "sql-format-review": "tests/fixtures/sql-format-review.html",
   "filter-grouping": "tests/fixtures/filter-bar.html",
   "object-comment-search": "tests/fixtures/object-comment-search.html",
+  "business-time-zone": "tests/fixtures/business-time-zone.html",
 };
 const fixturePage = files.length === 1 ? fixturePages[files[0]] : undefined;
 const useIsolatedConfig = Boolean(isolated || fixturePage);

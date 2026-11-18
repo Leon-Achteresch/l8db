@@ -100,8 +100,13 @@ export const DataTableCell = memo(function DataTableCell({
   const editable = canSave && (!canEditCell || canEditCell(row.original, columnId));
   const value = cellIndex > 0 ? row.getValue(columnId) : undefined;
   const timestamps = useQueryQolSettings((s) => s.timestamps);
-  const timestamp = useMemo(() => timestampCellText(value, timestamps), [value, timestamps]);
   const dataType = column.columnDef.meta?.dataType;
+  const gridStyle = useContext(GridStyleContext);
+  const kind = gridStyle.databaseKind;
+  const timestamp = useMemo(
+    () => timestampCellText(value, timestamps, kind, dataType),
+    [value, timestamps, kind, dataType],
+  );
   const numbers = useQueryQolSettings((state) => state.numbers);
   const number = useMemo(
     () =>
@@ -114,7 +119,6 @@ export const DataTableCell = memo(function DataTableCell({
     () => (cellIndex > 0 && !hasCustomContent ? cellValueBadge(value, dataType) : null),
     [value, dataType, cellIndex, hasCustomContent],
   );
-  const gridStyle = useContext(GridStyleContext);
   const tableStyle = gridStyle.style;
   const columnStyle = cellIndex > 0 ? gridStyle.columns.get(columnId) : undefined;
   const previewLimit =
@@ -308,7 +312,15 @@ export const DataTableCell = memo(function DataTableCell({
       ) : number !== null ? (
         <span title={String(value)}>{preview.text}</span>
       ) : timestamp !== null && !(tableStyle === "semantic" && timestamps.mode === "raw") ? (
-        <span title={String(value)}>{truncateCellPreview(timestamp, previewLimit)}</span>
+        <span
+          title={
+            timestamps.mode === "business" && timestamp !== value
+              ? `${timestamp} · ${timestamps.timeZone}\nOriginal ${String(value)}`
+              : String(value)
+          }
+        >
+          {truncateCellPreview(timestamp, previewLimit)}
+        </span>
       ) : tableStyle === "semantic" ? (
         <SemanticCellValue
           value={value}
