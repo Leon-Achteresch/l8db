@@ -65,7 +65,7 @@ export function useDatabasesQuery() {
   });
 }
 
-export function useSchemasQuery() {
+export function useSchemasQuery(enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   return useQuery({
@@ -73,7 +73,7 @@ export function useSchemasQuery() {
     queryFn: () =>
       listSchemas(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
     select: (schemas) => visibleSchemas(connection, schemas),
-    enabled: supports(connection, "schemas"),
+    enabled: enabled && supports(connection, "schemas"),
   });
 }
 

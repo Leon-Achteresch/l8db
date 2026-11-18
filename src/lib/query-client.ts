@@ -49,6 +49,7 @@ const connectionQueryRoots = new Set<string>([
   "sessions",
   "locks",
   "overview",
+  "table-comment",
   "scheduler-jobs",
   "column-search",
   "source-search",
@@ -79,6 +80,23 @@ export function invalidateConnectionQueries(client: QueryClient, connectionId: s
   return client.invalidateQueries({
     predicate: (query) => isConnectionQuery(query.queryKey, connectionId),
   });
+}
+
+export function forgetTableCommentMetadata(
+  client: QueryClient,
+  connectionId: string,
+  database: string | null,
+  schema: string,
+  ...tables: string[]
+) {
+  for (const table of tables) {
+    for (const root of ["table-comment", "columns-detailed"]) {
+      client.removeQueries({
+        queryKey: [root, connectionId, database, schema, table],
+        exact: true,
+      });
+    }
+  }
 }
 
 export function invalidateAfterSql(

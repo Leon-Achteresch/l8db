@@ -1,6 +1,14 @@
 import { useNavigate } from "@tanstack/react-router";
-import { BracesIcon, ColumnsIcon, EyeIcon, SearchIcon, TableIcon } from "lucide-react";
+import {
+  BracesIcon,
+  ColumnsIcon,
+  EyeIcon,
+  MessageSquareTextIcon,
+  SearchIcon,
+  TableIcon,
+} from "lucide-react";
 import { useMemo, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { RegexSearchHelper } from "@/components/regex-search-helper";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -22,6 +30,9 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActiveConnection } from "@/lib/connections";
+import { useActiveDatabase } from "@/lib/db-selection";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { LOADED_COMMENT_TERM_LIMIT } from "@/lib/loaded-object-comments";
 import { supports } from "@/lib/providers";
 import { useColumnSearchQuery, useSchemasQuery, useSourceSearchQuery } from "@/lib/queries";
 import {
@@ -31,8 +42,10 @@ import {
   regexLiteralPrefilter,
 } from "@/lib/regex-search";
 import { useRegexEnabled, useRegexSearchPrefs } from "@/lib/regex-search-prefs";
+import { ObjectCommentResults } from "./object-comment-results";
 
 const ALL_SCHEMAS = "__all__";
+type SearchTab = "columns" | "source" | "comments";
 
 interface ObjectSearchDialogProps {
   open: boolean;
@@ -42,13 +55,22 @@ interface ObjectSearchDialogProps {
 export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogProps) {
   const navigate = useNavigate();
   const connection = useActiveConnection();
+  const database = useActiveDatabase();
   const canSearchColumns = supports(connection, "column_search");
   const canSearchSource = supports(connection, "source_search");
-  const [tab, setTab] = useState<"columns" | "source">(canSearchColumns ? "columns" : "source");
+  const canSearchComments = connection?.kind === "postgres";
+  const commentFeature = useNewFeatureVisibility<HTMLButtonElement>(
+    canSearchComments ? "search.objects.comments" : undefined,
+  );
+  const defaultTab = canSearchColumns ? "columns" : "source";
+  const [selectedTab, setTab] = useState<SearchTab>(defaultTab);
+  const tab = selectedTab === "comments" && !canSearchComments ? defaultTab : selectedTab;
   const [term, setTerm] = useState("");
-  const [schema, setSchema] = useState<string>(ALL_SCHEMAS);
+  const scope = JSON.stringify([connection?.id, database]);
+  const [schemaSelection, setSchemaSelection] = useState({ scope, value: ALL_SCHEMAS });
+  const schema = schemaSelection.scope === scope ? schemaSelection.value : ALL_SCHEMAS;
   const schemaFilter = schema === ALL_SCHEMAS ? undefined : schema;
-  const { data: schemas } = useSchemasQuery();
+  const { data: schemas } = useSchemasQuery(open && tab !== "comments");
 
   const sourceRegex = useRegexEnabled("source");
   const setRegexEnabled = useRegexSearchPrefs((state) => state.setRegexEnabled);
@@ -65,9 +87,12 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
   );
   const sourceTerm = regexActive ? (regexError ? "" : prefilter) : term;
 
-  const columnSearch = useColumnSearchQuery(tab === "columns" ? term : "", schemaFilter);
-  const sourceSearch = useSourceSearchQuery(tab === "source" ? sourceTerm : "", schemaFilter);
-  const active = tab === "columns" ? columnSearch : sourceSearch;
+  const columnSearch = useColumnSearchQuery(open && tab === "columns" ? term : "", schemaFilter);
+  const sourceSearch = useSourceSearchQuery(
+    open && tab === "source" ? sourceTerm : "",
+    schemaFilter,
+  );
+  const active = tab === "columns" ? columnSearch : tab === "source" ? sourceSearch : null;
   const sourceMatches = useMemo(() => {
     const rows = sourceSearch.data ?? [];
     if (!regexActive || !compiled?.ok) return rows;
@@ -88,10 +113,12 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
         <DialogHeader>
           <DialogTitle>Objektsuche</DialogTitle>
           <DialogDescription>
-            Spaltennamen und Quelltext von Routinen und Views der aktiven Datenbank durchsuchen.
+            {tab === "comments"
+              ? "Geladene Tabellen- und Spaltenkommentare der aktiven Datenbank."
+              : "Spaltennamen und Quelltext von Routinen und Views der aktiven Datenbank durchsuchen."}
           </DialogDescription>
         </DialogHeader>
-        <Tabs value={tab} onValueChange={(value) => setTab(value as "columns" | "source")}>
+        <Tabs value={tab} onValueChange={(value) => setTab(value as SearchTab)}>
           <TabsList className="w-full">
             <TabsTrigger value="columns" className="flex-1" disabled={!canSearchColumns}>
               <ColumnsIcon className="size-4" />
@@ -101,21 +128,36 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
               <BracesIcon className="size-4" />
               Quelltext
             </TabsTrigger>
+            {canSearchComments ? (
+              <TabsTrigger value="comments" className="flex-1" ref={commentFeature.ref}>
+                <MessageSquareTextIcon className="size-4" />
+                Kommentare
+                {commentFeature.isNew ? (
+                  <span aria-hidden="true">
+                    <NewBadge />
+                  </span>
+                ) : null}
+              </TabsTrigger>
+            ) : null}
           </TabsList>
           <div className="mt-3 flex items-center gap-2">
             <div className="relative flex-1">
               <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 id="object-search-term"
+                aria-label="Suchtext"
                 autoFocus
                 value={term}
+                maxLength={tab === "comments" ? LOADED_COMMENT_TERM_LIMIT : undefined}
                 onChange={(event) => setTerm(event.target.value)}
                 placeholder={
                   tab === "columns"
                     ? "Spaltenname…"
-                    : sourceRegex
-                      ? "Regulärer Ausdruck im Quelltext…"
-                      : "Text im Quelltext…"
+                    : tab === "comments"
+                      ? "Geladene Kommentare…"
+                      : sourceRegex
+                        ? "Regulärer Ausdruck im Quelltext…"
+                        : "Text im Quelltext…"
                 }
                 className="pl-8"
               />
@@ -143,8 +185,8 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
                 matchCount={sourceMatches.length}
               />
             ) : null}
-            <Select value={schema} onValueChange={setSchema}>
-              <SelectTrigger className="w-48">
+            <Select value={schema} onValueChange={(value) => setSchemaSelection({ scope, value })}>
+              <SelectTrigger aria-label="Schema" className="w-32 sm:w-48">
                 <SelectValue placeholder="Alle Schemas" />
               </SelectTrigger>
               <SelectContent searchable>
@@ -175,13 +217,13 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
               gefundenen Textausschnitte nach.
             </p>
           ) : null}
-          {active.isError ? (
+          {active?.isError ? (
             <p className="mt-2 text-sm text-destructive">
               Suche fehlgeschlagen:{" "}
               {(active.error as Error | null)?.message ?? "Unbekannter Fehler"}
             </p>
           ) : null}
-          {active.isFetching ? (
+          {active?.isFetching ? (
             <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
               <Spinner className="size-4" />
               Suche läuft…
@@ -189,7 +231,7 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
           ) : null}
           <TabsContent value="columns">
             <ScrollArea className="mt-2 h-80">
-              {!active.isError && columnSearch.data?.length === 0 ? (
+              {!columnSearch.isError && columnSearch.data?.length === 0 ? (
                 <p className="p-2 text-sm text-muted-foreground">Keine Treffer.</p>
               ) : null}
               <ul className="flex flex-col gap-1">
@@ -230,7 +272,7 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
           </TabsContent>
           <TabsContent value="source">
             <ScrollArea className="mt-2 h-80">
-              {!active.isError && sourceSearch.data && sourceMatches.length === 0 ? (
+              {!sourceSearch.isError && sourceSearch.data && sourceMatches.length === 0 ? (
                 <p className="p-2 text-sm text-muted-foreground">Keine Treffer.</p>
               ) : null}
               <ul className="flex flex-col gap-1">
@@ -285,6 +327,18 @@ export function ObjectSearchDialog({ open, onOpenChange }: ObjectSearchDialogPro
                 ))}
               </ul>
             </ScrollArea>
+          </TabsContent>
+          <TabsContent value="comments">
+            {open && canSearchComments && connection ? (
+              <ObjectCommentResults
+                connectionId={connection.id}
+                database={database}
+                schema={schemaFilter}
+                allowedSchemas={connection.schemas ?? undefined}
+                term={term}
+                close={close}
+              />
+            ) : null}
           </TabsContent>
         </Tabs>
       </DialogContent>

@@ -212,6 +212,7 @@ export function AppHeaderSearch() {
 
   const askNew = useHasNewFeatures("ai.ask");
   const searchNew = useHasNewFeatures("search");
+  const objectCommentsNew = useHasNewFeatures("search.objects.comments");
   const capabilities = useActiveCapabilities();
   const featureItems = useCallback(
     (query: string, unusedOnly: boolean) =>
@@ -307,7 +308,19 @@ export function AppHeaderSearch() {
               kind: "command",
               group: "Befehle",
               icon: TextSearch,
-              keywords: ["spalte", "column", "quelltext", "source", "suche"],
+              badge:
+                activeConnection?.kind === "postgres" && objectCommentsNew ? (
+                  <NewBadge />
+                ) : undefined,
+              keywords: [
+                "spalte",
+                "column",
+                "quelltext",
+                "source",
+                "suche",
+                "objektsuche",
+                "kommentare",
+              ],
               onSelect: () => {
                 setOpen(false);
                 setObjectSearchOpen(true);
@@ -410,6 +423,7 @@ export function AppHeaderSearch() {
     navigate,
     recentNotebooks,
     objectItems,
+    objectCommentsNew,
     packageMemberItems,
     studio,
     studioItems,
