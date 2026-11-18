@@ -197,7 +197,7 @@ function verifyLines(before: string, after: string): ScriptRunMessage[] {
 
 function createdObject(sql: string): { type: string; owner: string | null; name: string } | null {
   const match =
-    /^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:EDITIONABLE|NONEDITIONABLE)\s+)?(PACKAGE\s+BODY|TYPE\s+BODY|JAVA\s+SOURCE|PACKAGE|PROCEDURE|FUNCTION|TRIGGER|TYPE|VIEW|LIBRARY)\s+((?:"[^"]+"|[\w$#]+)(?:\s*\.\s*(?:"[^"]+"|[\w$#]+))?)/i.exec(
+    /^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NO\s+)?FORCE\s+)?(?:(?:EDITIONABLE|NONEDITIONABLE|EDITIONING)\s+)*(PACKAGE\s+BODY|TYPE\s+BODY|JAVA\s+SOURCE|PACKAGE|PROCEDURE|FUNCTION|TRIGGER|TYPE|VIEW|LIBRARY)\s+((?:"[^"]+"|[\w$#]+)(?:\s*\.\s*(?:"[^"]+"|[\w$#]+))?)/i.exec(
       sql.replace(/^(?:\s|--[^\n]*\n|\/\*[\s\S]*?\*\/)*/, ""),
     );
   if (!match) return null;
