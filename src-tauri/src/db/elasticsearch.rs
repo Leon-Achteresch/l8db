@@ -250,6 +250,7 @@ fn detailed_columns(fields: Vec<Field>) -> Vec<ColumnMetadata> {
                     comment: field.keyword.map(|key| format!("Keyword-Feld: {key}")),
                 },
                 exact_filter: field.exact_filter,
+                on_update: None,
             }),
     );
     out

@@ -13,6 +13,7 @@ import { TableTriggersList } from "@/features/table/table-triggers-list";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import { PluginDetailTabsContent } from "@/features/ui-plugins/plugin-detail-tabs-content";
 import { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
+import { mysqlColumnOnUpdate } from "@/lib/mysql-column-update";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
 import { TablePerfPanel } from "./table-view/lazy-panels";
 import { TableDataContent } from "./table-view/table-data-content";
@@ -214,7 +215,14 @@ export function TableView(props: TableViewProps) {
           className="flex shrink-0 items-center border-b bg-muted/30 px-3"
           data-tour="table-toolbar"
         >
-          <TableDetailTabBar tabs={availableTabs} activeTab={tableTab} />
+          <TableDetailTabBar
+            tabs={availableTabs}
+            activeTab={tableTab}
+            hasColumnUpdateRules={
+              connection?.kind === "mysql" &&
+              columnDetails?.some((column) => Boolean(mysqlColumnOnUpdate(column, "mysql")))
+            }
+          />
           {unlogged ? <UnloggedTableBadge key={stateKey} /> : null}
           <TableToolbarActions
             extensionActions={extensionActions}

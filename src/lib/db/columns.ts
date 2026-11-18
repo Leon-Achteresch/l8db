@@ -23,6 +23,7 @@ export interface DetailedColumnInfo {
   character_maximum_length: number | null;
   comment?: string | null;
   exact_filter?: ExactFilterMetadata;
+  on_update?: string;
 }
 
 export interface TableColumnDetails {

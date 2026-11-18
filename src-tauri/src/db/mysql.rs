@@ -92,6 +92,21 @@ fn on_update_clause(extra: &str) -> Option<String> {
     })
 }
 
+fn timestamp_on_update(data_type: &str, extra: &str) -> Option<String> {
+    let base = data_type.split('(').next().unwrap_or_default();
+    if !(base.eq_ignore_ascii_case("timestamp") || base.eq_ignore_ascii_case("datetime"))
+        || has_flag(extra, "generated")
+    {
+        return None;
+    }
+    let rule = on_update_clause(extra)?.to_ascii_uppercase();
+    let valid_precision = rule
+        .strip_prefix("CURRENT_TIMESTAMP(")
+        .and_then(|suffix| suffix.strip_suffix(')'))
+        .is_some_and(|digits| matches!(digits.as_bytes(), [b'0'..=b'6']));
+    (rule == "CURRENT_TIMESTAMP" || valid_precision).then_some(rule)
+}
+
 fn unescape_info_expr(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     let mut chars = value.chars();
@@ -769,6 +784,54 @@ impl MysqlAdapter {
             .map_err(|e| flavored(mariadb, e))
     }
 
+    async fn detailed_column_metadata(
+        &self,
+        schema: &str,
+        table: &str,
+        include_update: bool,
+    ) -> Result<Vec<super::column_metadata::ColumnMetadata>, String> {
+        let mut conn = self.conn().await?;
+        let mysql8 = include_update && conn.server_version().0 == 8;
+        let update_fields = if mysql8 {
+            ", extra, table_schema, table_name"
+        } else {
+            ""
+        };
+        let sql = format!(
+            "SELECT column_name, column_type, is_nullable, column_default, column_key, ordinal_position, character_maximum_length, column_comment{update_fields} FROM information_schema.columns WHERE table_schema = {} AND table_name = {} ORDER BY ordinal_position",
+            lit(schema),
+            lit(table)
+        );
+        let mariadb = is_mariadb(&conn);
+        let rows: Vec<Row> = timed(async { conn.query(sql).await.map_err(map_err) })
+            .await
+            .map_err(|e| flavored(mariadb, e))?;
+        Ok(rows
+            .iter()
+            .map(|r| {
+                let data_type = catalog::normalize_type(&cell(r, 1));
+                let on_update = if mysql8 && cell(r, 9) == schema && cell(r, 10) == table {
+                    timestamp_on_update(&data_type, &cell(r, 8))
+                } else {
+                    None
+                };
+                let mut metadata =
+                    super::column_metadata::ColumnMetadata::from(DetailedColumnInfo {
+                        name: cell(r, 0),
+                        data_type,
+                        is_nullable: cell(r, 2) == "YES",
+                        column_default: cell_opt(r, 3),
+                        is_primary_key: cell(r, 4) == "PRI",
+                        ordinal_position: cell_i64(r, 5) as i32,
+                        character_maximum_length: cell_opt(r, 6).and_then(|v| v.parse().ok()),
+                        comment: cell_opt(r, 7).filter(|c| !c.is_empty()),
+                    });
+                metadata.on_update = on_update;
+                metadata
+            })
+            .collect())
+    }
+
     async fn exec(&self, sql: &str) -> Result<(), String> {
         let mut conn = self.conn().await?;
         let mariadb = is_mariadb(&conn);
@@ -1274,26 +1337,20 @@ impl DatabaseAdapter for MysqlAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
-        let sql = format!(
-            "SELECT column_name, column_type, is_nullable, column_default, column_key, ordinal_position, character_maximum_length, column_comment FROM information_schema.columns WHERE table_schema = {} AND table_name = {} ORDER BY ordinal_position",
-            lit(schema),
-            lit(table)
-        );
         Ok(self
-            .rows(&sql)
+            .detailed_column_metadata(schema, table, false)
             .await?
-            .iter()
-            .map(|r| DetailedColumnInfo {
-                name: cell(r, 0),
-                data_type: catalog::normalize_type(&cell(r, 1)),
-                is_nullable: cell(r, 2) == "YES",
-                column_default: cell_opt(r, 3),
-                is_primary_key: cell(r, 4) == "PRI",
-                ordinal_position: cell_i64(r, 5) as i32,
-                character_maximum_length: cell_opt(r, 6).and_then(|v| v.parse().ok()),
-                comment: cell_opt(r, 7).filter(|c| !c.is_empty()),
-            })
+            .into_iter()
+            .map(|metadata| metadata.column)
             .collect())
+    }
+
+    async fn list_table_column_metadata(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<super::column_metadata::ColumnMetadata>, String> {
+        self.detailed_column_metadata(schema, table, true).await
     }
 
     async fn add_column(
@@ -2041,6 +2098,10 @@ impl DatabaseAdapter for MysqlAdapter {
 mod catalog;
 
 pub(crate) use catalog::strip_int_widths;
+
+#[cfg(test)]
+#[path = "mysql_column_update_tests.rs"]
+mod column_update_tests;
 
 #[cfg(test)]
 mod tests {
