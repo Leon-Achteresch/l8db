@@ -9,6 +9,7 @@ import "../index.css";
 import { DbThemeRoot } from "@/components/db-theme-root";
 import { SpiderLayer } from "@/components/seasonal/spider-layer";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { PasswordPromptDialog } from "@/features/connections/password-prompt-dialog";
 import { OnboardingHost } from "@/features/onboarding/onboarding-host";
 import { SqlConfirmationDialog } from "@/features/query/sql-confirmation-dialog";
@@ -64,46 +65,48 @@ function RootComponent() {
   return (
     <MotionConfig reducedMotion="user">
       <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
-        <DbThemeRoot className="h-dvh">
-          <WorkbenchHost />
-          <AppHotkeys />
-          <SqlFileDrop />
-          <AppHeader />
-          <AppFrame />
-          <SpiderLayer />
-        </DbThemeRoot>
-        <UpdateAvailableGate />
-        <PasswordPromptDialog />
-        <SqlConfirmationDialog />
-        {(backgroundReady || tasksOpen) && (
-          <Suspense fallback={null}>
-            <TasksDialog />
-          </Suspense>
-        )}
-        <WindowCloseGuard />
-        <AppTourHost />
-        <OnboardingHost />
-        {backgroundReady && (
-          <Suspense fallback={null}>
-            <AutoSyncHost />
-          </Suspense>
-        )}
-        {(backgroundReady || activeFeatureVideo) && (
-          <Suspense fallback={null}>
-            <FeatureVideoHost />
-          </Suspense>
-        )}
-        {backgroundReady && (
-          <Suspense fallback={null}>
-            <BlogSuggestionHost />
-          </Suspense>
-        )}
-        {backgroundReady && (
-          <Suspense fallback={null}>
-            <DiscoveryHost />
-          </Suspense>
-        )}
-        <Toaster />
+        <TooltipProvider>
+          <DbThemeRoot className="h-dvh">
+            <WorkbenchHost />
+            <AppHotkeys />
+            <SqlFileDrop />
+            <AppHeader />
+            <AppFrame />
+            <SpiderLayer />
+          </DbThemeRoot>
+          <UpdateAvailableGate />
+          <PasswordPromptDialog />
+          <SqlConfirmationDialog />
+          {(backgroundReady || tasksOpen) && (
+            <Suspense fallback={null}>
+              <TasksDialog />
+            </Suspense>
+          )}
+          <WindowCloseGuard />
+          <AppTourHost />
+          <OnboardingHost />
+          {backgroundReady && (
+            <Suspense fallback={null}>
+              <AutoSyncHost />
+            </Suspense>
+          )}
+          {(backgroundReady || activeFeatureVideo) && (
+            <Suspense fallback={null}>
+              <FeatureVideoHost />
+            </Suspense>
+          )}
+          {backgroundReady && (
+            <Suspense fallback={null}>
+              <BlogSuggestionHost />
+            </Suspense>
+          )}
+          {backgroundReady && (
+            <Suspense fallback={null}>
+              <DiscoveryHost />
+            </Suspense>
+          )}
+          <Toaster />
+        </TooltipProvider>
       </ThemeProvider>
     </MotionConfig>
   );

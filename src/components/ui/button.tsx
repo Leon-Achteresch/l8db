@@ -2,7 +2,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { Slot } from "radix-ui";
 import * as React from "react";
 
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
@@ -57,22 +57,20 @@ function Button({
 
   if (props.disabled && disabledReason) {
     return (
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex" tabIndex={0}>
-              <Button
-                className={className}
-                variant={variant}
-                size={size}
-                asChild={asChild}
-                {...props}
-              />
-            </span>
-          </TooltipTrigger>
-          <TooltipContent sideOffset={6}>{disabledReason}</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <Tooltip delayDuration={200}>
+        <TooltipTrigger asChild>
+          <span className="inline-flex" tabIndex={0}>
+            <Button
+              className={className}
+              variant={variant}
+              size={size}
+              asChild={asChild}
+              {...props}
+            />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent sideOffset={6}>{disabledReason}</TooltipContent>
+      </Tooltip>
     );
   }
 

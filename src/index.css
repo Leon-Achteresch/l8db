@@ -1078,6 +1078,11 @@ tr[data-context-menu-target] > td {
   transform-origin: var(--radix-dropdown-menu-content-transform-origin);
 }
 
+body:has([data-slot="tooltip-content"][data-state="instant-open"])
+  [data-slot="tooltip-content"][data-state="closed"] {
+  display: none;
+}
+
 [data-icon-menu][data-state="open"] {
   animation: icon-menu-in 220ms var(--ease-smooth-out) both;
 }
