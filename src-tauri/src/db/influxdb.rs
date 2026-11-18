@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 
 use async_trait::async_trait;
+use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use super::filter_expr::{self, Cmp, Expr, LikePart, Literal};
@@ -36,9 +37,98 @@ pub struct InfluxAdapter {
     token: String,
     insecure: bool,
     database: Option<String>,
-    org: Option<String>,
+    org: Option<(&'static str, String)>,
     forced: Option<Version>,
     range: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct BucketCatalog {
+    databases: Vec<String>,
+    bucket_retention: BTreeMap<String, BucketRetention>,
+}
+
+#[derive(Serialize)]
+struct BucketRetention {
+    org_id: String,
+    bucket_id: String,
+    seconds: u64,
+}
+
+fn catalog_org_id<'a>(buckets: &'a [Value], org: Option<&(&str, String)>) -> Option<&'a str> {
+    let (selector, value) = org?;
+    let mut ids = buckets
+        .iter()
+        .filter_map(|bucket| bucket["orgID"].as_str().filter(|id| !id.is_empty()));
+    if *selector == "orgID" {
+        return ids.find(|id| *id == value.as_str());
+    }
+    let first = ids.next()?;
+    ids.all(|id| id == first).then_some(first)
+}
+
+fn expiration_seconds(bucket: &Value) -> Option<u64> {
+    let [rule] = bucket["retentionRules"].as_array()?.as_slice() else {
+        return None;
+    };
+    if rule["type"].as_str() != Some("expire") {
+        return None;
+    }
+    rule["everySeconds"]
+        .as_u64()
+        .filter(|seconds| *seconds <= 9_007_199_254_740_991)
+}
+
+fn bucket_catalog(reply: http_api::Reply, org: Option<&(&str, String)>) -> BucketCatalog {
+    let confirmed = reply
+        .header("x-influxdb-build")
+        .is_some_and(|build| build.eq_ignore_ascii_case("oss"))
+        && reply
+            .header("x-influxdb-version")
+            .is_some_and(|version| version.trim_start_matches('v').starts_with("2."));
+    let body = reply.json().unwrap_or(Value::Null);
+    let buckets = body["buckets"].as_array().map_or(&[][..], Vec::as_slice);
+    let org_id = if confirmed {
+        catalog_org_id(buckets, org)
+    } else {
+        None
+    };
+    let mut names = HashSet::new();
+    let mut duplicates = HashSet::new();
+    let mut bucket_retention = BTreeMap::new();
+    for bucket in buckets {
+        let Some(name) = bucket["name"].as_str().filter(|name| !name.is_empty()) else {
+            continue;
+        };
+        if !names.insert(name) {
+            duplicates.insert(name);
+        }
+        let Some(org_id) = org_id.filter(|id| bucket["orgID"].as_str() == Some(*id)) else {
+            continue;
+        };
+        let Some(bucket_id) = bucket["id"].as_str().filter(|id| !id.is_empty()) else {
+            continue;
+        };
+        if let Some(seconds) = expiration_seconds(bucket) {
+            bucket_retention.insert(
+                name.to_string(),
+                BucketRetention {
+                    org_id: org_id.to_string(),
+                    bucket_id: bucket_id.to_string(),
+                    seconds,
+                },
+            );
+        }
+    }
+    for name in duplicates {
+        bucket_retention.remove(name);
+    }
+    let mut databases = names.into_iter().map(str::to_string).collect::<Vec<_>>();
+    databases.sort_by(|a, b| (a.starts_with('_'), a).cmp(&(b.starts_with('_'), b)));
+    BucketCatalog {
+        databases,
+        bucket_retention,
+    }
 }
 
 fn versions() -> &'static Mutex<HashMap<String, Version>> {
@@ -691,7 +781,7 @@ pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String
         schema: String::new(),
         user: String::new(),
         params: super::endpoint::identity_params(&[
-            ("org", adapter.org.clone()),
+            ("org", adapter.org.map(|(_, value)| value)),
             (
                 "version",
                 adapter.forced.map(|version| match version {
@@ -739,7 +829,15 @@ impl InfluxAdapter {
             token,
             insecure: tls.insecure,
             database,
-            org: http_api::param(&url, &["org", "orgID", "org_id"]),
+            org: url.query_pairs().find_map(|(key, value)| {
+                if key.eq_ignore_ascii_case("org") {
+                    Some(("org", value.into_owned()))
+                } else if key.eq_ignore_ascii_case("orgID") || key.eq_ignore_ascii_case("org_id") {
+                    Some(("orgID", value.into_owned()))
+                } else {
+                    None
+                }
+            }),
             forced,
             range,
         })
@@ -764,12 +862,19 @@ impl InfluxAdapter {
         request.header("Authorization", format!("{scheme} {}", self.token))
     }
 
-    async fn send(&self, request: reqwest::RequestBuilder) -> Result<String, String> {
+    async fn send_reply(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> Result<http_api::Reply, String> {
         let reply = http_api::send("InfluxDB", request).await?;
         if !reply.ok() {
             return Err(friendly_error(reply.status, &reply.body));
         }
-        Ok(reply.body)
+        Ok(reply)
+    }
+
+    async fn send(&self, request: reqwest::RequestBuilder) -> Result<String, String> {
+        Ok(self.send_reply(request).await?.body)
     }
 
     async fn version(&self) -> Result<Version, String> {
@@ -808,7 +913,7 @@ impl InfluxAdapter {
     }
 
     async fn org(&self) -> Result<String, String> {
-        if let Some(org) = &self.org {
+        if let Some((_, org)) = &self.org {
             return Ok(org.clone());
         }
         let key = format!("{}#{}", self.base, self.token);
@@ -830,8 +935,47 @@ impl InfluxAdapter {
         Ok(org)
     }
 
+    fn buckets_request(&self) -> reqwest::RequestBuilder {
+        self.request(
+            reqwest::Method::GET,
+            "/api/v2/buckets?limit=100",
+            Version::V2,
+        )
+    }
+
+    pub async fn database_catalog(&self) -> Result<BucketCatalog, String> {
+        let version = self.version().await?;
+        if version != Version::V2 {
+            return Ok(BucketCatalog {
+                databases: self.databases_for(version).await?,
+                bucket_retention: BTreeMap::new(),
+            });
+        }
+        let org = self
+            .org
+            .clone()
+            .or_else(|| {
+                orgs()
+                    .lock()
+                    .ok()?
+                    .get(&format!("{}#{}", self.base, self.token))
+                    .map(|name| ("org", name.clone()))
+            })
+            .filter(|(_, value)| !value.is_empty());
+        let mut request = self.buckets_request();
+        if let Some((selector, value)) = org.as_ref() {
+            request = request.query(&[(*selector, value.as_str())]);
+        }
+        let reply = self.send_reply(request).await?;
+        Ok(bucket_catalog(reply, org.as_ref()))
+    }
+
     async fn databases(&self) -> Result<Vec<String>, String> {
-        let mut names: Vec<String> = match self.version().await? {
+        self.databases_for(self.version().await?).await
+    }
+
+    async fn databases_for(&self, version: Version) -> Result<Vec<String>, String> {
+        let mut names: Vec<String> = match version {
             Version::V3 => {
                 let body = self
                     .send(self.request(
@@ -849,13 +993,7 @@ impl InfluxAdapter {
                     .collect()
             }
             Version::V2 => {
-                let body = self
-                    .send(self.request(
-                        reqwest::Method::GET,
-                        "/api/v2/buckets?limit=100",
-                        Version::V2,
-                    ))
-                    .await?;
+                let body = self.send(self.buckets_request()).await?;
                 serde_json::from_str::<Value>(&body)
                     .ok()
                     .and_then(|v| v["buckets"].as_array().cloned())
@@ -1409,6 +1547,10 @@ impl DatabaseAdapter for InfluxAdapter {
 }
 
 #[cfg(test)]
+#[path = "influxdb_bucket_retention_tests.rs"]
+mod bucket_retention_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1422,7 +1564,7 @@ mod tests {
         assert_eq!(a.base, "http://localhost:8086");
         assert_eq!(a.token, "abc=");
         assert_eq!(a.database.as_deref(), Some("metrics"));
-        assert_eq!(a.org.as_deref(), Some("acme"));
+        assert_eq!(a.org, Some(("org", "acme".into())));
         assert_eq!(a.range, Some(7 * 86_400));
         let b = InfluxAdapter::new(
             "influxdb://eu-central-1-1.aws.cloud2.influxdata.com?version=3&range=all",

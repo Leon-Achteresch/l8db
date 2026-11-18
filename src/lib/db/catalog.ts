@@ -17,6 +17,30 @@ export async function listSchemas(
   return invoke("list_schemas", { kind, connectionString, database });
 }
 
+export interface BucketRetention {
+  readonly org_id: string;
+  readonly bucket_id: string;
+  readonly seconds: number;
+}
+
+export interface DatabaseCatalog {
+  databases: string[];
+  bucket_retention?: Readonly<Record<string, BucketRetention>>;
+}
+
+export async function listDatabaseCatalog(
+  kind: DatabaseKind,
+  connectionString: string,
+): Promise<DatabaseCatalog> {
+  if (kind !== "influxdb") return { databases: await listDatabases(kind, connectionString) };
+  const result = await invoke<string[] | DatabaseCatalog>("list_databases", {
+    kind,
+    connectionString,
+    withBucketRetention: true,
+  });
+  return Array.isArray(result) ? { databases: result } : result;
+}
+
 export async function listTables(
   kind: DatabaseKind,
   connectionString: string,

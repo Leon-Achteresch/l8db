@@ -22,6 +22,7 @@ export const NEW_FEATURES = {
   "query.results.timing-scope": NEXT_FEATURE_VERSION,
   "table.structure.indexes.roles": NEXT_FEATURE_VERSION,
   "table.structure.unlogged": NEXT_FEATURE_VERSION,
+  "sidebar.scope.bucket-retention": NEXT_FEATURE_VERSION,
   "table.structure.columns.on-update": NEXT_FEATURE_VERSION,
   "table.structure.indexes.mongo-form": NEXT_FEATURE_VERSION,
   "import.csv.file-check": NEXT_FEATURE_VERSION,
