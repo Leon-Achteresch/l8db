@@ -2815,7 +2815,7 @@ impl DatabaseAdapter for PostgresAdapter {
                     comment: r.get("comment"),
                 }.into())
             }).collect();
-            Ok(TableColumnDetails { columns, unlogged })
+            Ok(TableColumnDetails { columns, unlogged, clickhouse_engine: None })
         }).await
     }
 

@@ -38,6 +38,7 @@ const registered = [
   "object-comment-search",
   "business-time-zone",
   "table-persistence",
+  "clickhouse-merge-context",
   "mysql-column-update",
   "influx-bucket-retention",
 ];
@@ -65,6 +66,7 @@ const fixturePages: Record<string, string> = {
   "object-comment-search": "tests/fixtures/object-comment-search.html",
   "business-time-zone": "tests/fixtures/business-time-zone.html",
   "table-persistence": "tests/fixtures/table-state.html",
+  "clickhouse-merge-context": "tests/fixtures/table-state.html?merge-engine",
   "mysql-column-update": "tests/fixtures/mysql-column-update.html",
   "influx-bucket-retention": "tests/fixtures/influx-bucket-retention.html",
 };

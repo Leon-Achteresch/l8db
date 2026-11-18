@@ -2,6 +2,7 @@ use std::sync::OnceLock;
 
 use async_trait::async_trait;
 
+use super::column_metadata::TableColumnDetails;
 use super::{
     rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest, ColumnInfo,
     CreateTableRequest, DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, FunctionInfo,
@@ -21,6 +22,28 @@ pub fn quote(ident: &str) -> String {
 
 fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
+}
+
+fn detailed_columns_sql(schema: &str, table: &str, engine_column: &str) -> String {
+    format!(
+        "SELECT name, type, default_expression, is_in_primary_key, position, comment{engine_column} FROM system.columns WHERE database = {} AND table = {} ORDER BY position",
+        lit(schema), lit(table)
+    )
+}
+
+fn detailed_column(row: &[serde_json::Value]) -> DetailedColumnInfo {
+    let data_type = text(&row[1]);
+    DetailedColumnInfo {
+        name: text(&row[0]),
+        is_nullable: data_type.starts_with("Nullable(")
+            || data_type.starts_with("LowCardinality(Nullable("),
+        data_type,
+        column_default: text_opt(&row[2]),
+        is_primary_key: int(&row[3]) == 1,
+        ordinal_position: int(&row[4]) as i32,
+        character_maximum_length: None,
+        comment: text_opt(&row[5]),
+    }
 }
 
 fn http() -> &'static reqwest::Client {
@@ -1177,23 +1200,38 @@ impl DatabaseAdapter for ClickhouseAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
-        let sql = format!("SELECT name, type, default_expression, is_in_primary_key, position, comment FROM system.columns WHERE database = {} AND table = {} ORDER BY position", lit(schema), lit(table));
+        let sql = detailed_columns_sql(schema, table, "");
         Ok(self
             .rows(&sql)
             .await?
             .iter()
-            .map(|r| DetailedColumnInfo {
-                name: text(&r[0]),
-                is_nullable: text(&r[1]).starts_with("Nullable(")
-                    || text(&r[1]).starts_with("LowCardinality(Nullable("),
-                data_type: text(&r[1]),
-                column_default: text_opt(&r[2]),
-                is_primary_key: int(&r[3]) == 1,
-                ordinal_position: int(&r[4]) as i32,
-                character_maximum_length: None,
-                comment: text_opt(&r[5]),
-            })
+            .map(|row| detailed_column(row))
             .collect())
+    }
+
+    async fn describe_table_columns(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<TableColumnDetails, String> {
+        let engine_column = format!(
+            ", (SELECT if(count() = 1, any(engine), '') FROM system.tables WHERE database = {} AND name = {} AND NOT is_temporary) AS relation_engine",
+            lit(schema),
+            lit(table)
+        );
+        let rows = self
+            .rows(&detailed_columns_sql(schema, table, &engine_column))
+            .await?;
+        let engine = rows
+            .first()
+            .and_then(|row| row.get(6))
+            .and_then(serde_json::Value::as_str)
+            .filter(|engine| !engine.is_empty());
+        Ok(TableColumnDetails {
+            columns: rows.iter().map(|row| detailed_column(row).into()).collect(),
+            unlogged: false,
+            clickhouse_engine: engine.map(str::to_owned),
+        })
     }
 
     async fn add_column(
@@ -1404,6 +1442,10 @@ fn nullable_allowed(data_type: &str) -> bool {
         .iter()
         .any(|prefix| data_type.starts_with(prefix))
 }
+
+#[cfg(test)]
+#[path = "clickhouse_merge_context_tests.rs"]
+mod merge_context_tests;
 
 #[cfg(test)]
 mod tests {
