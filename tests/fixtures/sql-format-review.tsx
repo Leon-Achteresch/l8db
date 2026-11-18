@@ -12,6 +12,7 @@ import { createRoot } from "react-dom/client";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryView } from "@/features/query/query-view";
 import { useConnectionsStore } from "@/lib/connections";
+import { useDbSelectionStore } from "@/lib/db-selection";
 import { ExtensionManager } from "@/lib/extensions/manager";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
 import { SandboxRuntime } from "@/lib/extensions/sandbox-runtime";
@@ -22,6 +23,7 @@ import { useSettingsStore } from "@/lib/settings";
 import { useTableTabs } from "@/lib/table-tabs";
 import "@/index.css";
 
+const reference = new URLSearchParams(location.search).has("pgvector");
 useProvidersStore.setState({ loaded: true });
 useConnectionsStore.setState({
   activeId: "format-fixture",
@@ -29,11 +31,23 @@ useConnectionsStore.setState({
     {
       id: "format-fixture",
       name: "Fixture",
-      kind: "mssql",
-      connectionString: "mssql://127.0.0.1/format",
+      kind: reference ? "postgres" : "mssql",
+      connectionString: reference ? "postgresql://127.0.0.1/format" : "mssql://127.0.0.1/format",
       sslMode: "disable",
       editorMetadataPrefetch: false,
     },
+    ...(reference
+      ? [
+          {
+            id: "mysql",
+            name: "MySQL fixture",
+            kind: "mysql" as const,
+            connectionString: "mysql://127.0.0.1/format",
+            sslMode: "disable" as const,
+            editorMetadataPrefetch: false,
+          },
+        ]
+      : []),
   ],
 });
 useSettingsStore.setState({
@@ -47,8 +61,14 @@ useQueryWorkspace.getState().update({ navigatorVisible: false });
 const store = useTableTabs.getState();
 const first = store.openQueryTab();
 const second = store.openQueryTab();
-store.updateQuerySql(first, "select [id] from [orders];");
-store.updateQuerySql(second, "select [other] from [items];");
+store.updateQuerySql(
+  first,
+  reference ? "SELECT a <-> b FROM items;" : "select [id] from [orders];",
+);
+store.updateQuerySql(
+  second,
+  reference ? "SELECT a <#> b FROM other;" : "select [other] from [items];",
+);
 
 function activeEditor() {
   const editor = monaco.editor
@@ -84,6 +104,23 @@ Object.assign(window, {
         monaco.Range.fromPositions(model.getPositionAt(start), model.getPositionAt(end)),
       );
     },
+    selection: () => {
+      const editor = activeEditor();
+      const selection = editor.getSelection();
+      return selection ? editor.getModel()?.getValueInRange(selection) : undefined;
+    },
+    hover: async (offset: number) => {
+      const editor = activeEditor();
+      const model = editor.getModel();
+      if (!model) throw Error("Missing SQL model");
+      editor.focus();
+      editor.setPosition(model.getPositionAt(offset));
+      await editor.getAction("editor.action.showHover")?.run();
+    },
+    setProvider: (id: "format-fixture" | "mysql" | null) =>
+      useConnectionsStore.getState().setActiveId(id),
+    setDatabase: (database: string) =>
+      useDbSelectionStore.getState().setDatabase("format-fixture", database),
     compare: () => {
       const models = monaco.editor.getDiffEditors()[0]?.getModel();
       return models ? [models.original.getValue(), models.modified.getValue()] : null;

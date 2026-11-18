@@ -323,6 +323,8 @@ export function QueryView({ tabId }: QueryViewProps) {
             onResultFocusChange={toggleResultFocus}
             toolsMenu={
               <QueryToolsMenu
+                key={JSON.stringify([tabId, connection?.id, connection?.kind, database])}
+                pgvectorReferenceAvailable={isSql && connection?.kind === "postgres"}
                 editorApiRef={editorApiRef}
                 shortcutLabel={shortcutLabel}
                 hasSql={Boolean(sql.trim())}

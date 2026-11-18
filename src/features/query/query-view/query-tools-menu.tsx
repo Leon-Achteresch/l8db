@@ -23,7 +23,7 @@ import {
   WandSparklesIcon,
   WrenchIcon,
 } from "lucide-react";
-import { type RefObject, useRef } from "react";
+import { type RefObject, useRef, useState } from "react";
 import {
   IconMenu,
   IconMenuContent,
@@ -38,9 +38,10 @@ import { DropdownMenuSub, DropdownMenuTrigger } from "@/components/ui/dropdown-m
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import { REVIEW_SQL_FORMAT_ACTION } from "@/features/query/query-editor-pane/types";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { useHasNewFeatures } from "@/lib/new-features";
+import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 
 import { EDITOR_ACTIONS } from "./constants";
+import { PgvectorReferenceDialog } from "./pgvector-reference-dialog";
 import type { QueryFileEncodingAction } from "./use-query-file-actions";
 
 interface QueryToolsMenuProps {
@@ -49,6 +50,7 @@ interface QueryToolsMenuProps {
   hasSql: boolean;
   connected: boolean;
   isSql: boolean;
+  pgvectorReferenceAvailable?: boolean;
   serverOutput: boolean;
   bookmarkCount: number;
   filePath: string | null;
@@ -73,6 +75,7 @@ export function QueryToolsMenu({
   hasSql,
   connected,
   isSql,
+  pgvectorReferenceAvailable = false,
   serverOutput,
   bookmarkCount,
   filePath,
@@ -93,13 +96,25 @@ export function QueryToolsMenu({
   const packageMembers = useNewFeatureVisibility<HTMLDivElement>("query.tools.package-members");
   const fileEncoding = useNewFeatureVisibility<HTMLDivElement>("query.tools.file.encoding");
   const formatReview = useNewFeatureVisibility<HTMLDivElement>("query.tools.format-review");
-  const fileNew = useHasNewFeatures("query.tools.file");
-  const toolsNew = useHasNewFeatures("query.tools") && isSql;
+  const pgvectorReference = useNewFeatureVisibility<HTMLDivElement>(
+    "query.tools.pgvector-reference",
+  );
+  const trigger = useRef<HTMLButtonElement>(null);
+  const referenceRequested = useRef(false);
+  const [referenceOpen, setReferenceOpen] = useState(false);
+  const seen = useSeenNewFeatures();
+  const fileNew = hasNewFeatures("query.tools.file", seen);
+  const visibleToolsSeen =
+    pgvectorReference.isNew && !pgvectorReferenceAvailable
+      ? new Set([...seen, "query.tools.pgvector-reference"] as const)
+      : seen;
+  const toolsNew = hasNewFeatures("query.tools", visibleToolsSeen) && isSql;
   const pendingAction = useRef<string | null>(null);
   return (
     <IconMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
+          ref={trigger}
           data-feature="query.tools"
           size="icon-sm"
           variant="ghost"
@@ -113,6 +128,12 @@ export function QueryToolsMenu({
       </DropdownMenuTrigger>
       <IconMenuContent
         onCloseAutoFocus={(event) => {
+          if (referenceRequested.current) {
+            referenceRequested.current = false;
+            event.preventDefault();
+            setReferenceOpen(true);
+            return;
+          }
           const id = pendingAction.current;
           if (!id) return;
           pendingAction.current = null;
@@ -202,6 +223,20 @@ export function QueryToolsMenu({
                 disabled={!hasSql}
               >
                 {packageMembers.isNew && (
+                  <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
+                )}
+              </IconMenuItem>
+            )}
+            {pgvectorReferenceAvailable && (
+              <IconMenuItem
+                ref={pgvectorReference.ref}
+                icon={<BookOpenIcon />}
+                label="pgvector-Referenz…"
+                onSelect={() => {
+                  referenceRequested.current = true;
+                }}
+              >
+                {pgvectorReference.isNew && (
                   <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
                 )}
               </IconMenuItem>
@@ -311,6 +346,12 @@ export function QueryToolsMenu({
           </IconMenuSubContent>
         </DropdownMenuSub>
       </IconMenuContent>
+      {pgvectorReferenceAvailable && referenceOpen && (
+        <PgvectorReferenceDialog
+          onClose={() => setReferenceOpen(false)}
+          onRestoreFocus={() => trigger.current?.focus()}
+        />
+      )}
     </IconMenu>
   );
 }
