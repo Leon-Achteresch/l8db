@@ -170,6 +170,7 @@ export function TableView(props: TableViewProps) {
         <ViewDetailTabs
           extensionActions={extensionActions}
           caps={caps}
+          connection={connection}
           availableTabs={availableTabs}
           pluginTable={pluginTable}
           pluginTabs={pluginTabs}

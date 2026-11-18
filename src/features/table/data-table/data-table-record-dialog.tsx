@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useState } from "react";
+import { useContext, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,7 @@ import {
 import { timestampCellText } from "@/lib/timestamp-display";
 import { cn } from "@/lib/utils";
 import type { TableRow } from "../data-table-types";
+import { GridStyleContext } from "./grid-style-context";
 
 type Props = {
   original: TableRow;
@@ -41,6 +42,7 @@ export function DataTableRecordDialog({
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
   const numbers = useQueryQolSettings((state) => state.numbers);
   const timestamps = useQueryQolSettings((state) => state.timestamps);
+  const { databaseKind } = useContext(GridStyleContext);
   const virtualizer = useVirtualizer({
     count: columns.length,
     getScrollElement: () => scrollElement,
@@ -102,7 +104,12 @@ export function DataTableRecordDialog({
                 const formatted =
                   state === null
                     ? (numberCellText(value, numbers, columnTypeByName.get(name)) ??
-                      timestampCellText(value, timestamps))
+                      timestampCellText(
+                        value,
+                        timestamps,
+                        databaseKind,
+                        columnTypeByName.get(name),
+                      ))
                     : null;
                 const text =
                   state ??

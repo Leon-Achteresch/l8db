@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { columnProfile } from "@/lib/column-profile";
-import type { DetailedColumnInfo } from "@/lib/db";
+import type { DatabaseKind, DetailedColumnInfo } from "@/lib/db";
 import { categoryColorMap, isCategorical, isEnumDataType } from "@/lib/grid-cell-format";
 import { useSettingsStore } from "@/lib/settings";
 import type { TableRow } from "../data-table-types";
@@ -17,12 +17,13 @@ export function useGridStyle(
   data: TableRow[],
   columnDetails: DetailedColumnInfo[] | undefined,
   typeInfoByColumn: Map<string, ReturnType<typeof getColumnTypeInfo>>,
+  databaseKind?: DatabaseKind,
 ): GridStyle {
   const style = useSettingsStore((state) => state.tableStyle);
   return useMemo(() => {
     const columns = new Map<string, GridColumnStyle>();
     const now = new Date();
-    if (style === "classic") return { style, columns, now };
+    if (style === "classic") return { style, columns, now, databaseKind };
     const primaryKeys = new Set(
       (columnDetails ?? []).filter((column) => column.is_primary_key).map((column) => column.name),
     );
@@ -47,6 +48,6 @@ export function useGridStyle(
         profile: style === "profile" ? columnProfile(values, kind, categorical) : null,
       });
     }
-    return { style, columns, now };
-  }, [style, columnNames, data, columnDetails, typeInfoByColumn]);
+    return { style, columns, now, databaseKind };
+  }, [style, columnNames, data, columnDetails, typeInfoByColumn, databaseKind]);
 }

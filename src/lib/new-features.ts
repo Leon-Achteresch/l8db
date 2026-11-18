@@ -73,6 +73,7 @@ export const NEW_FEATURES = {
   "table.rows.watch": "0.17.0",
   "query.results.keep-on-error": "0.17.0",
   "query.results.timestamps": "0.17.0",
+  "query.results.timestamps.business-zone": NEXT_FEATURE_VERSION,
   "query.results.content-width": "0.17.0",
   "query.results.snapshots": "0.17.0",
   "query.notifications": "0.17.0",
