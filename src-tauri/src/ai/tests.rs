@@ -9,7 +9,6 @@ use crate::mcp::{
     server::Server,
 };
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::ipc::{Channel, InvokeResponseBody};
 
@@ -335,7 +334,7 @@ async fn dashboard_mutations_require_approval_and_leave_read_only_database_acces
     std::env::set_var("L8DB_MCP_CONFIG", directory.path().join("mcp.json"));
     let server = tokio::sync::Mutex::new(Server {
         pool: crate::db::pool::create_pool_state(),
-        columns: HashMap::new(),
+        columns: Default::default(),
     });
     let mut connection = policy("active");
     connection.exposed = true;
@@ -670,7 +669,7 @@ async fn sqlite_tools_query_real_data_and_require_user_write_approval() {
     .unwrap();
     let server = tokio::sync::Mutex::new(Server {
         pool: crate::db::pool::create_pool_state(),
-        columns: HashMap::new(),
+        columns: Default::default(),
     });
     let (denied, events) = run(Some(false));
     for (name, args) in [
@@ -993,7 +992,7 @@ async fn abrupt_http_eof_never_executes_a_partially_streamed_tool() {
         .unwrap();
     let server = Arc::new(tokio::sync::Mutex::new(Server {
         pool: crate::db::pool::create_pool_state(),
-        columns: HashMap::new(),
+        columns: Default::default(),
     }));
     let result = byok::run(
         &request,
@@ -1046,7 +1045,7 @@ async fn private_bridge_requires_bearer_and_exposes_only_scoped_connections() {
         .unwrap();
     let server = Arc::new(tokio::sync::Mutex::new(Server {
         pool: crate::db::pool::create_pool_state(),
-        columns: HashMap::new(),
+        columns: Default::default(),
     }));
     let bridge = super::bridge::Bridge::start(server, scoped, run, external)
         .await
@@ -1535,7 +1534,7 @@ async fn byok_discovery_and_failure_recovery_preserve_real_query_results() {
         .unwrap();
     let server = Arc::new(tokio::sync::Mutex::new(Server {
         pool: crate::db::pool::create_pool_state(),
-        columns: HashMap::new(),
+        columns: Default::default(),
     }));
     tokio::time::timeout(
         std::time::Duration::from_secs(15),
@@ -1567,7 +1566,7 @@ async fn byok_discovery_and_failure_recovery_preserve_real_query_results() {
 async fn editor_tool_round_trips_to_the_frontend_without_a_decision_block() {
     let server = tokio::sync::Mutex::new(Server {
         pool: crate::db::pool::create_pool_state(),
-        columns: HashMap::new(),
+        columns: Default::default(),
     });
     let config = McpConfig::default();
     let (run, events) = run(None);

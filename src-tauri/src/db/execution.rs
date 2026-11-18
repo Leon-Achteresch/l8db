@@ -42,6 +42,21 @@ tokio::task_local! {
     static DEADLINE: Duration;
     static UNCLAMPED: ();
     static ROW_LIMIT: usize;
+    static PARALLEL_READS: ();
+}
+
+static PARALLEL_READS_ENABLED: AtomicBool = AtomicBool::new(false);
+
+pub fn enable_parallel_reads() {
+    PARALLEL_READS_ENABLED.store(true, Ordering::Relaxed);
+}
+
+pub fn parallel_reads() -> bool {
+    PARALLEL_READS_ENABLED.load(Ordering::Relaxed) && PARALLEL_READS.try_with(|_| ()).is_ok()
+}
+
+pub async fn with_parallel_reads<T>(future: impl Future<Output = T>) -> T {
+    PARALLEL_READS.scope((), future).await
 }
 
 type Registry = HashMap<String, (CancellationToken, bool)>;

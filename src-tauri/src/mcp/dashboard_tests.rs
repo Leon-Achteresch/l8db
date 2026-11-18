@@ -1,7 +1,6 @@
 use super::*;
 use crate::db::{self, DatabaseKind};
 use crate::mcp::TEST_ENV_LOCK;
-use std::collections::HashMap;
 use std::sync::MutexGuard;
 
 struct Lab {
@@ -84,7 +83,7 @@ fn lab() -> Lab {
         dir,
         server: Server {
             pool: db::pool::create_pool_state(),
-            columns: HashMap::new(),
+            columns: Default::default(),
         },
         runtime: tokio::runtime::Builder::new_current_thread()
             .enable_all()

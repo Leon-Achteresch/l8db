@@ -17,8 +17,9 @@ pub(crate) struct Catalog {
     pub(crate) at: Instant,
     pub(crate) taken: i64,
     pub(crate) ms: u64,
-    pub(crate) live: bool,
     pub(crate) key: Option<String>,
+    pub(crate) print: Option<String>,
+    checked: Mutex<Option<Instant>>,
     pub(crate) columns: Arc<Vec<ColumnInfo>>,
     tables: OnceLock<Tables>,
     indexes: Mutex<Vec<(String, Arc<SchemaIndex>)>>,
@@ -494,8 +495,9 @@ impl Catalog {
             at: Instant::now(),
             taken: now(),
             ms,
-            live: true,
             key: None,
+            print: None,
+            checked: Mutex::new(Some(Instant::now())),
             columns,
             tables: OnceLock::new(),
             indexes: Mutex::new(Vec::new()),
@@ -508,8 +510,8 @@ impl Catalog {
         Self {
             at: Instant::now().checked_sub(age).unwrap_or_else(Instant::now),
             taken,
-            live: false,
             key: Some(key),
+            checked: Mutex::new(None),
             ..Self::loaded(Arc::new(columns), ms)
         }
     }
@@ -600,8 +602,8 @@ impl Catalog {
         extra.dirty = false;
     }
 
-    pub(crate) fn dirty(&self) -> bool {
-        self.extra().dirty
+    pub(crate) fn take_dirty(&self) -> bool {
+        std::mem::take(&mut self.extra().dirty)
     }
 
     pub(crate) fn mark_dirty(&self) {
@@ -617,6 +619,27 @@ impl Catalog {
         extra.objects = previous.objects.clone();
         extra.keys = previous.keys.clone();
         extra.file = previous.file;
+    }
+
+    pub(crate) fn printed(mut self, print: Option<String>) -> Self {
+        self.print = print;
+        self
+    }
+
+    pub(crate) fn confirmed(&self, within: Duration) -> bool {
+        self.checked
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some_and(|at| at.elapsed() < within)
+    }
+
+    pub(crate) fn confirm(&self) {
+        *self.checked.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
+    }
+
+    #[cfg(test)]
+    pub(crate) fn expire(&self) {
+        *self.checked.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
 
     pub(crate) fn keyed(mut self, key: String) -> Self {
@@ -788,6 +811,7 @@ mod tests {
         catalog.at = Instant::now()
             .checked_sub(std::time::Duration::from_secs(seconds))
             .unwrap();
+        catalog.checked = Mutex::new(Some(catalog.at));
         Arc::new(catalog)
     }
 
@@ -809,11 +833,11 @@ mod tests {
         let fresh = aged(known(), 30);
         server.columns.insert(key.clone(), fresh.clone());
         assert!(check(&mut server, "SELECT id FROM t").is_ok());
-        assert!(Arc::ptr_eq(&server.columns[&key], &fresh));
+        assert!(Arc::ptr_eq(&server.columns.at(&key), &fresh));
         let stale = aged(known(), 61);
         server.columns.insert(key.clone(), stale.clone());
         assert!(check(&mut server, "SELECT id FROM t").is_ok());
-        assert!(!Arc::ptr_eq(&server.columns[&key], &stale));
+        assert!(!Arc::ptr_eq(&server.columns.at(&key), &stale));
         let error = check(&mut server, "SELECT api_key AS k FROM t").unwrap_err();
         assert!(error.contains("redigiert"), "{error}");
         let listed = aged(known(), 61);
@@ -823,7 +847,7 @@ mod tests {
             &config,
         ));
         assert_eq!(reply["isError"], false, "{reply}");
-        assert!(Arc::ptr_eq(&server.columns[&key], &listed));
+        assert!(Arc::ptr_eq(&server.columns.at(&key), &listed));
     }
 
     #[test]
@@ -848,7 +872,7 @@ mod tests {
                 .starts_with("No tables")
         );
         let key = super::super::server::cache_key(&connection);
-        let first = server.columns[&key].clone();
+        let first = server.columns.at(&key).clone();
         for _ in 0..3 {
             call(&mut server, "search", serde_json::json!({"term": "t"}));
             call(
@@ -862,7 +886,7 @@ mod tests {
                 serde_json::json!({"sql": "SELECT id FROM t"}),
             );
         }
-        assert!(Arc::ptr_eq(&server.columns[&key], &first));
+        assert!(Arc::ptr_eq(&server.columns.at(&key), &first));
         let done = call(
             &mut server,
             "execute",

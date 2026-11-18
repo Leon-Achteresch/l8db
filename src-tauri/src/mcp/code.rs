@@ -175,7 +175,7 @@ fn execute(prepared: Prepared, config: McpConfig) -> BoxFuture<'static, Finished
             run(
                 &config,
                 prepared.connection.kind,
-                prepared.adapter.execute_query(&prepared.sql),
+                db::execution::with_parallel_reads(prepared.adapter.execute_query(&prepared.sql)),
             ),
         )
         .await;

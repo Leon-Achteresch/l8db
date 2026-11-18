@@ -482,6 +482,31 @@ impl DatabaseAdapter for SqliteAdapter {
         .await
     }
 
+    async fn catalog_fingerprint(&self) -> Result<Option<String>, String> {
+        use sha2::{Digest, Sha256};
+        self.run(|c| {
+            strings(
+                c,
+                "SELECT type || ' ' || name || ' ' || COALESCE(sql, '') FROM main.sqlite_master ORDER BY type, name",
+            )
+        })
+        .await
+        .map(|objects| {
+            let mut digest = Sha256::new();
+            for object in objects {
+                digest.update(object.as_bytes());
+                digest.update([0u8]);
+            }
+            Some(
+                digest
+                    .finalize()
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect(),
+            )
+        })
+    }
+
     async fn list_columns(
         &self,
         schema: Option<&str>,

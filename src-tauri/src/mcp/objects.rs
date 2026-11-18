@@ -5,7 +5,7 @@ use super::config::{McpConfig, McpConnection};
 use super::discovery::{mask_hidden, Notes, View};
 use super::insight::{bulk_query, edges_from, keys_from, keys_query, number, text_cell};
 use super::redact::Redactor;
-use super::server::{adapter, arg_str, run, Server};
+use super::server::{adapter, arg_str, cache_key, run, Server};
 use crate::db::{DatabaseAdapter, DatabaseKind, QueryResult};
 use serde_json::Value;
 use std::collections::{BTreeSet, HashMap};
@@ -985,6 +985,10 @@ impl Server {
         if let Some(objects) = catalog.objects().filter(|objects| objects.fresh()) {
             return Some(objects);
         }
+        let _listing = self.columns.listing(&cache_key(connection)).await;
+        if let Some(objects) = catalog.objects().filter(|objects| objects.fresh()) {
+            return Some(objects);
+        }
         let tables = catalog.tables();
         let schemas: Vec<String> = tables
             .schemas
@@ -1027,6 +1031,10 @@ impl Server {
             return Some(keys);
         }
         let sql = bulk_query(connection.kind)?;
+        let _listing = self.columns.listing(&cache_key(connection)).await;
+        if let Some(keys) = catalog.keys().filter(|keys| fresh(keys.taken, keys.ms)) {
+            return Some(keys);
+        }
         let adapter = adapter(connection, &self.pool).ok()?;
         let started = Instant::now();
         count();
@@ -1049,6 +1057,10 @@ impl Server {
         catalog: &Catalog,
     ) {
         if connection.allowed_schemas().is_empty() || catalog.listed().is_some() {
+            return;
+        }
+        let _listing = self.columns.listing(&cache_key(connection)).await;
+        if catalog.listed().is_some() {
             return;
         }
         let listed = match adapter(connection, &self.pool) {

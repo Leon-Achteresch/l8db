@@ -1896,7 +1896,7 @@ mod tests {
         };
         let server = Server {
             pool: crate::db::pool::create_pool_state(),
-            columns: HashMap::new(),
+            columns: Default::default(),
         };
         (server, config, db)
     }
