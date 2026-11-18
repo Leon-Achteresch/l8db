@@ -13,6 +13,25 @@ export type DecodedBinary = {
   mime?: string;
 };
 
+export const BINARY_UTF8_MAX_BYTES = 256 * 1024;
+
+export type BinaryUtf8Preview =
+  | { state: "text"; text: string }
+  | { state: "empty" | "invalid" | "too-large" };
+
+export function decodeBinaryUtf8(bytes: Uint8Array): BinaryUtf8Preview {
+  if (bytes.byteLength === 0) return { state: "empty" };
+  if (bytes.byteLength > BINARY_UTF8_MAX_BYTES) return { state: "too-large" };
+  try {
+    return {
+      state: "text",
+      text: new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes),
+    };
+  } catch {
+    return { state: "invalid" };
+  }
+}
+
 export function isBinaryDataType(dataType?: string | null): boolean {
   if (!dataType) return false;
   const lower = dataType.toLowerCase().trim();

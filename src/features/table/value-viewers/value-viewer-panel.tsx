@@ -1,6 +1,8 @@
 import { BinaryIcon, BoxIcon, CodeXmlIcon, ImageIcon, MapIcon, TypeIcon } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { analyzeValue, type ValueViewerKind, VIEWER_LABELS } from "@/lib/value-viewers/detect";
 import { BinaryValueViewer } from "./binary-value-viewer";
 import { GeometryValueViewer } from "./geometry-value-viewer";
@@ -32,6 +34,7 @@ export function ValueViewerPanel({
   textView,
   getColumnValues,
 }: ValueViewerPanelProps) {
+  const binaryUtf8New = useHasNewFeatures("table.rows.binary.utf8");
   const analysis = useMemo(() => analyzeValue(value, dataType), [value, dataType]);
   const [selected, setSelected] = useState<ValueViewerKind | null>(null);
   const active = selected && analysis.kinds.includes(selected) ? selected : analysis.initial;
@@ -48,6 +51,7 @@ export function ValueViewerPanel({
                 <TabsTrigger key={kind} value={kind} className="gap-1 px-2.5 text-xs">
                   <Icon className="size-3.5" />
                   {VIEWER_LABELS[kind]}
+                  {kind === "binary" && binaryUtf8New && <NewBadge />}
                 </TabsTrigger>
               );
             })}

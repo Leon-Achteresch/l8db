@@ -1,13 +1,17 @@
 import { CopyIcon, DownloadIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { copyText } from "@/lib/clipboard";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import {
+  BINARY_UTF8_MAX_BYTES,
   bytesToBase64,
   bytesToHex,
   type DecodedBinary,
+  decodeBinaryUtf8,
   formatByteSize,
 } from "@/lib/value-viewers/binary";
 import { saveBytesToFile } from "@/lib/value-viewers/binary-file";
@@ -17,6 +21,14 @@ import { HexDumpView } from "./hex-dump-view";
 
 const BASE64_PREVIEW_BYTES = 256 * 1024;
 
+type BinaryMode = "hex" | "base64" | "utf8";
+
+const UTF8_STATUS = {
+  empty: "Keine Bytes (leerer Wert)",
+  invalid: "Die Bytes sind kein gültiges UTF-8.",
+  "too-large": `Die UTF-8-Ansicht unterstützt bis zu ${formatByteSize(BINARY_UTF8_MAX_BYTES)}.`,
+};
+
 type BinaryValueViewerProps = {
   binary: DecodedBinary;
   image: ImageFormat | null;
@@ -24,8 +36,15 @@ type BinaryValueViewerProps = {
 };
 
 export function BinaryValueViewer({ binary, image, fileName }: BinaryValueViewerProps) {
-  const [mode, setMode] = useState<"hex" | "base64">("hex");
   const { bytes } = binary;
+  const [selection, setSelection] = useState<{ mode: BinaryMode; bytes: Uint8Array }>({
+    mode: "hex",
+    bytes,
+  });
+  const mode = selection.mode === "utf8" && selection.bytes !== bytes ? "hex" : selection.mode;
+  if (selection.bytes !== bytes) setSelection({ mode, bytes });
+  const utf8Feature = useNewFeatureVisibility<HTMLButtonElement>("table.rows.binary.utf8");
+  const utf8 = useMemo(() => (mode === "utf8" ? decodeBinaryUtf8(bytes) : null), [bytes, mode]);
   const base64Preview = useMemo(
     () => (mode === "base64" ? bytesToBase64(bytes.subarray(0, BASE64_PREVIEW_BYTES)) : ""),
     [bytes, mode],
@@ -49,16 +68,24 @@ export function BinaryValueViewer({ binary, image, fileName }: BinaryValueViewer
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ToggleGroup
             type="single"
             size="sm"
             variant="outline"
             value={mode}
-            onValueChange={(next) => next && setMode(next as "hex" | "base64")}
+            aria-label="Binärdarstellung"
+            onValueChange={(next) => {
+              if (next === "hex" || next === "base64" || next === "utf8")
+                setSelection({ mode: next, bytes });
+            }}
           >
             <ToggleGroupItem value="hex">Hex</ToggleGroupItem>
             <ToggleGroupItem value="base64">Base64</ToggleGroupItem>
+            <ToggleGroupItem value="utf8" ref={utf8Feature.ref}>
+              UTF-8-Text
+              {utf8Feature.isNew && <NewBadge />}
+            </ToggleGroupItem>
           </ToggleGroup>
           <span className="text-xs text-muted-foreground" data-testid="binary-size">
             {formatByteSize(bytes.length)}
@@ -94,6 +121,22 @@ export function BinaryValueViewer({ binary, image, fileName }: BinaryValueViewer
       </div>
       {mode === "hex" ? (
         <HexDumpView bytes={bytes} />
+      ) : utf8 ? (
+        utf8.state === "text" ? (
+          <section
+            aria-label="UTF-8-Text"
+            tabIndex={utf8.text.length > 0 ? 0 : undefined}
+            className="max-h-[45vh] min-h-24 overflow-auto rounded-lg border border-border/80 bg-muted/45 p-4 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            <pre className="select-text whitespace-pre-wrap font-mono text-xs [overflow-wrap:anywhere]">
+              {utf8.text}
+            </pre>
+          </section>
+        ) : (
+          <p role="status" className="p-4 text-xs text-muted-foreground">
+            {UTF8_STATUS[utf8.state]}
+          </p>
+        )
       ) : (
         <pre className="h-[45vh] overflow-auto rounded-lg border border-border/80 bg-muted/45 p-4 font-mono text-xs whitespace-pre-wrap break-all shadow-inner">
           {base64Preview}

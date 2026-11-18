@@ -27,6 +27,7 @@ const registered = [
   "table-server-output",
   "number-display",
   "table-record",
+  "binary-utf8",
   "sql-file-encoding",
 ];
 const requested = process.argv.slice(2);
@@ -42,6 +43,7 @@ const fixturePages: Record<string, string> = {
   "table-server-output": "tests/fixtures/table-server-output.html",
   "number-display": "tests/fixtures/number-display.html",
   "table-record": "tests/fixtures/table-record.html",
+  "binary-utf8": "tests/fixtures/binary-utf8.html",
   "sql-file-encoding": "tests/fixtures/sql-file-encoding.html",
 };
 const fixturePage = files.length === 1 ? fixturePages[files[0]] : undefined;

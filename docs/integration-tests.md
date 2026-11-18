@@ -167,3 +167,14 @@ For a protected source, **UTF-8-Kopie speichern…**, the save shortcut and save
 The Bun fixture reads and writes real temporary synthetic files through a stubbed Tauri IPC boundary. It verifies the sent UTF-8 bytes and exclusive-create option, including a symlink alias targeting the original file. The browser fixture uses the real menu, encoding chooser, external-change banner, tab store and file actions, with a synthetic editor draft and mocked pickers/IPC. Native picker, native WebView and OS file grants remain separate.
 
 The scoped decoder benchmark read 10,485,750 bytes per iteration on macOS 27.0.1 arm64, Apple M3, 16 GiB, Bun 1.3.10. Nine measured iterations after two warmups took 11.83 ms median and 12.48 ms p95 against 70/150 ms limits. The check asserts the decoded UTF-16 length bound. It measures decoding, outside native I/O or peak process memory.
+
+### A29 explicit UTF-8 binary view
+
+```sh
+L8DB_BROWSER_CHANNEL=chrome bun --no-env-file scripts/test-browser.ts binary-utf8
+bun --no-env-file test tests/value-viewers.test.ts tests/perf-binary-utf8.test.ts
+```
+
+The isolated Chrome fixture mounts the actual cell value dialog with synthetic loaded bytes. It checks deliberate keyboard selection of **UTF-8-Text**, the return through Base64 to Hex and ASCII, Escape focus restoration, and the original raw, hex and Base64 clipboard payloads. An input change requires a fresh text selection. UTF-8 displays selectable plain text. Empty input, invalid UTF-8 and values larger than 256 KiB have separate messages. The fixture records zero query or file IPC. Clipboard writes go to a synthetic boundary. Native WebView and system clipboard coverage remain separate.
+
+Eleven samples after two warmups on macOS 27.0.1 arm64 (Apple M3, 16 GiB, Bun 1.3.10) measured a batch of 32 full-size decodes at 4.993 ms median and 5.532 ms p95 (60/125 ms limits). A batch of 2,000 length-only rejections of a 16 MiB byte array took 0.010 ms median and 0.028 ms p95 (15 ms p95 limit). The test checks the output length bound. These are decoder timings.
