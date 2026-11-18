@@ -50,6 +50,10 @@ export function createQueryActions(
         filePath: file.path,
         savedSql: file.sql,
         fileMtime: file.mtime,
+        ...(file.read && {
+          fileReadEncoding: file.read.encoding,
+          fileRequiresUtf8Copy: file.read.requiresUtf8Copy,
+        }),
         externalChange: false,
       };
       set((state) => storeFor([...state.tabs, qt], state));
@@ -66,6 +70,8 @@ export function createQueryActions(
             title: file.title,
             savedSql: file.savedSql ?? tab.sql,
             fileMtime: file.mtime,
+            fileReadEncoding: file.read?.encoding,
+            fileRequiresUtf8Copy: file.read?.requiresUtf8Copy,
             externalChange: false,
           }),
           state,
@@ -97,18 +103,24 @@ export function createQueryActions(
         ),
       ),
 
-    reloadQueryTabFromFile: (id, sql, mtime) =>
-      set((state) =>
-        storeFor(
+    reloadQueryTabFromFile: (id, sql, mtime, read) =>
+      set((state) => {
+        const tab = state.tabs.find((entry) => entry.kind === "query" && entry.id === id);
+        if (tab?.kind !== "query") return state;
+        return storeFor(
           patchQueryTab(state.tabs, id, {
             sql,
             savedSql: sql,
             fileMtime: mtime,
+            ...(read && {
+              fileReadEncoding: read.encoding,
+              fileRequiresUtf8Copy: tab.fileRequiresUtf8Copy || read.requiresUtf8Copy,
+            }),
             externalChange: false,
           }),
           state,
-        ),
-      ),
+        );
+      }),
 
     toggleQueryBookmark: (id, line) =>
       set((state) => {

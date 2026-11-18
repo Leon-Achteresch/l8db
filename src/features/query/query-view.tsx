@@ -23,6 +23,7 @@ import { DmlPreviewButton } from "./query-view/dml-preview-button";
 import { ExternalChangeBanner } from "./query-view/external-change-banner";
 import { MultiTargetButton } from "./query-view/multi-target-button";
 import { QueryEditorContent } from "./query-view/query-editor-content";
+import { QueryFileEncodingDialog } from "./query-view/query-file-encoding-dialog";
 import { QueryResultsContent } from "./query-view/query-results-content";
 import { QueryToolsMenu } from "./query-view/query-tools-menu";
 import { QueryViewDialogs } from "./query-view/query-view-dialogs";
@@ -84,8 +85,16 @@ export function QueryView({ tabId }: QueryViewProps) {
   useWorkspaceLayoutSync(workspaceGroup, workspace, editorFocus || resultFocus);
   const connection = useActiveConnection();
   const database = useActiveDatabase();
-  const { sql, updateQuerySql, markQueryTabExecuted, filePath, fileDirty, externalChange } =
-    useQueryTabSql(tabId);
+  const {
+    sql,
+    updateQuerySql,
+    markQueryTabExecuted,
+    filePath,
+    fileDirty,
+    externalChange,
+    fileReadEncoding,
+    fileRequiresUtf8Copy,
+  } = useQueryTabSql(tabId);
   const file = useQueryFileActions(tabId, filePath);
 
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -322,6 +331,8 @@ export function QueryView({ tabId }: QueryViewProps) {
                 serverOutput={caps.server_output}
                 bookmarkCount={bookmarks.normalizedBookmarks.length}
                 filePath={filePath}
+                fileBusy={file.fileBusy}
+                fileRequiresUtf8Copy={fileRequiresUtf8Copy}
                 isRunning={exec.isRunning}
                 onOpenHistory={() => afterPaint(() => historyRef.current?.open())}
                 onOpenOutput={() => {
@@ -333,6 +344,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 onOpenTabSearch={() => setTabSearchOpen(true)}
                 onClearBookmarks={() => bookmarks.clearQueryBookmarks(tabId)}
                 onFileOpen={() => void file.handleFileOpen()}
+                onChooseFileEncoding={file.setEncodingAction}
                 onFileSave={(saveAs) => void file.handleFileSave(saveAs)}
                 onClearEditor={() => {
                   exec.setResultState(null);
@@ -343,6 +355,16 @@ export function QueryView({ tabId }: QueryViewProps) {
             }
           />
         </div>
+
+        {file.encodingAction && (
+          <QueryFileEncodingDialog
+            action={file.encodingAction}
+            dirty={fileDirty}
+            initial={file.encodingAction === "reload" ? fileReadEncoding : "auto"}
+            onClose={() => file.setEncodingAction(null)}
+            onRead={file.applyEncoding}
+          />
+        )}
 
         {externalChange && (
           <ExternalChangeBanner
