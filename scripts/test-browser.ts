@@ -19,6 +19,7 @@ const registered = [
   "schema-compare-tabs",
   "split-transaction",
   "transaction-commit",
+  "temporal-cell-helpers",
   "command-palette-pointer",
   "csv-file-check",
   "array-editor-development",

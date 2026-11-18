@@ -1,6 +1,7 @@
 import type { OnChangeFn, RowData, SortingState } from "@tanstack/react-table";
 import type { ReactNode } from "react";
 import type { DetailedColumnInfo, ForeignKeyInfo } from "@/lib/db";
+import type { TemporalKind } from "@/lib/temporal-helpers";
 
 declare module "@tanstack/react-table" {
   interface ColumnMeta<TData extends RowData, TValue> {
@@ -17,6 +18,7 @@ export type EditingCell = {
   value: string;
   originalValues: Record<string, unknown>;
   typed?: boolean;
+  temporal?: TemporalKind | null;
 };
 
 export type InspectCell = {

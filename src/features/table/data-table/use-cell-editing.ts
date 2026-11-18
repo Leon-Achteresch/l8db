@@ -3,6 +3,7 @@ import { type Dispatch, type SetStateAction, useCallback, useRef, useState } fro
 import { toast } from "sonner";
 import { buildRowUpdates } from "@/lib/cell-editor";
 import type { GridCellRef } from "@/lib/grid-selection";
+import { resolveTemporalShortcut, type TemporalKind } from "@/lib/temporal-helpers";
 import type { DataTableProps, EditingCell, InspectCell, TableRow } from "../data-table-types";
 
 type Options = {
@@ -12,6 +13,7 @@ type Options = {
   canEditCell: DataTableProps["canEditCell"];
   setActiveCell: Dispatch<SetStateAction<GridCellRef | null>>;
   setInspectCell: Dispatch<SetStateAction<InspectCell | null>>;
+  temporalKindOf?: (columnId: string) => TemporalKind | null;
 };
 
 export function needsMultilineEditor(value: unknown): boolean {
@@ -21,8 +23,12 @@ export function needsMultilineEditor(value: unknown): boolean {
 export function cellEditCommitValue(
   editingCell: EditingCell,
   emptyEditValue: string | undefined,
+  now: Date = new Date(),
 ): string | null {
-  if (editingCell.value !== "") return editingCell.value;
+  if (editingCell.value !== "")
+    return (
+      resolveTemporalShortcut(editingCell.value, editingCell.temporal, now) ?? editingCell.value
+    );
   if (editingCell.originalValues[editingCell.columnId] === "") return "";
   return emptyEditValue ?? null;
 }
@@ -34,6 +40,7 @@ export function useCellEditing({
   canEditCell,
   setActiveCell,
   setInspectCell,
+  temporalKindOf,
 }: Options) {
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -108,10 +115,11 @@ export function useCellEditing({
         value,
         originalValues: { ...row.original },
         typed: initial !== undefined,
+        temporal: temporalKindOf?.(columnId) ?? null,
       });
       setActiveCell({ rowIndex: row.index, columnId });
     },
-    [canEditCell, setActiveCell, setInspectCell],
+    [canEditCell, setActiveCell, setInspectCell, temporalKindOf],
   );
 
   return {
