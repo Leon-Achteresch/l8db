@@ -47,6 +47,8 @@ pub struct TableColumnDetails {
     pub columns: Vec<ColumnMetadata>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub unlogged: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clickhouse_engine: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

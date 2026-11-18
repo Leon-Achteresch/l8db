@@ -811,6 +811,7 @@ pub trait DatabaseAdapter: Send + Sync {
         Ok(column_metadata::TableColumnDetails {
             columns: self.list_table_column_metadata(schema, table).await?,
             unlogged: false,
+            clickhouse_engine: None,
         })
     }
     async fn list_import_columns(

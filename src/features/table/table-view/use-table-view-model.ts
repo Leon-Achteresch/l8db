@@ -1,6 +1,7 @@
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { clickhouseMergeContext } from "@/lib/clickhouse-merge-engine";
 import { ConnectionScopeContext, useActiveConnection } from "@/lib/connections";
 import { tableColumnList } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
@@ -122,14 +123,19 @@ export function useTableViewModel({
   const [storedSorting, setSorting] = useTableViewState(stateKey, "sorting", []);
   const tableDetails = useTableColumnDetailsQuery(schema, table);
   const columnDetails = tableDetails.data ? tableColumnList(tableDetails.data) : undefined;
-  const unlogged =
+  const tableContext =
     !isView &&
-    connection?.kind === "postgres" &&
     tableDetails.isSuccess &&
     !tableDetails.isPlaceholderData &&
     tableDetails.fetchStatus === "idle" &&
-    !Array.isArray(tableDetails.data) &&
-    tableDetails.data.unlogged === true;
+    !Array.isArray(tableDetails.data)
+      ? tableDetails.data
+      : undefined;
+  const unlogged = connection?.kind === "postgres" && tableContext?.unlogged === true;
+  const mergeEngine =
+    connection?.kind === "clickhouse" && (!database || database === schema)
+      ? clickhouseMergeContext(tableContext?.clickhouse_engine)
+      : undefined;
   const sortableColumns = useMemo(
     () => sortableColumnNames(caps.sort, columnDetails),
     [caps.sort, columnDetails],
@@ -373,6 +379,7 @@ export function useTableViewModel({
 
   return {
     unlogged,
+    mergeEngine,
     inDrawer,
     isView,
     connection,

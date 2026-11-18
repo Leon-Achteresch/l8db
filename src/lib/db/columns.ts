@@ -29,6 +29,7 @@ export interface DetailedColumnInfo {
 export interface TableColumnDetails {
   columns: DetailedColumnInfo[];
   unlogged?: boolean;
+  clickhouse_engine?: string;
 }
 
 export type TableColumnMetadata = DetailedColumnInfo[] | TableColumnDetails;
@@ -195,7 +196,7 @@ export async function describeTableColumns(
   table: string,
   database?: string,
 ): Promise<TableColumnMetadata> {
-  if (kind !== "postgres")
+  if (kind !== "postgres" && kind !== "clickhouse")
     return listTableColumnsDetailed(kind, connectionString, schema, table, database);
   return invoke("list_table_columns_detailed", {
     kind,

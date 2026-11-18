@@ -15,6 +15,7 @@ import { PluginDetailTabsContent } from "@/features/ui-plugins/plugin-detail-tab
 import { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
 import { mysqlColumnOnUpdate } from "@/lib/mysql-column-update";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
+import { ClickhouseMergeEngineBadge } from "./table-view/clickhouse-merge-engine-badge";
 import { TablePerfPanel } from "./table-view/lazy-panels";
 import { TableDataContent } from "./table-view/table-data-content";
 import { TableExportDialogs } from "./table-view/table-export-dialogs";
@@ -39,6 +40,7 @@ export function TableView(props: TableViewProps) {
     inDrawer,
     isView,
     unlogged,
+    mergeEngine,
     connection,
     database,
     saveRedisRow,
@@ -224,6 +226,7 @@ export function TableView(props: TableViewProps) {
             }
           />
           {unlogged ? <UnloggedTableBadge key={stateKey} /> : null}
+          {mergeEngine && <ClickhouseMergeEngineBadge key={stateKey} context={mergeEngine} />}
           <TableToolbarActions
             extensionActions={extensionActions}
             connection={connection}
