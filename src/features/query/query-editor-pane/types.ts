@@ -4,6 +4,8 @@ import type { ColumnInfo, TableInfo } from "@/lib/db";
 import type { SqlErrorSource } from "@/lib/monaco";
 import type { BookmarkSlots } from "@/lib/table-tabs";
 
+export const REVIEW_SQL_FORMAT_ACTION = "l8db.review-format-sql";
+
 export interface QueryEditorApi {
   insertSnippet: (body: string) => void;
   replaceText: (text: string) => void;

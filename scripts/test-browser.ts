@@ -32,6 +32,7 @@ const registered = [
   "editor-metadata",
   "index-progress-monitor",
   "index-observation-health",
+  "sql-format-review",
 ];
 const requested = process.argv.slice(2);
 if (requested.some((name) => !registered.includes(name)))
@@ -51,12 +52,16 @@ const fixturePages: Record<string, string> = {
   "editor-metadata": "tests/fixtures/editor-metadata.html",
   "index-progress-monitor": "tests/fixtures/index-progress-monitor.html",
   "index-observation-health": "tests/fixtures/index-observation-health.html",
+  "sql-format-review": "tests/fixtures/sql-format-review.html",
 };
 const fixturePage = files.length === 1 ? fixturePages[files[0]] : undefined;
 const useIsolatedConfig = Boolean(isolated || fixturePage);
 const server = await createServer(
   useIsolatedConfig
-    ? arrayEditorViteConfig()
+    ? {
+        ...arrayEditorViteConfig(),
+        ...(files[0] === "sql-format-review" && { optimizeDeps: { include: ["sql-formatter"] } }),
+      }
     : {
         cacheDir: "node_modules/.vite-browser-tests",
         optimizeDeps: {

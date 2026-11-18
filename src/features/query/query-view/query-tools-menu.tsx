@@ -10,6 +10,7 @@ import {
   EraserIcon,
   FileCodeIcon,
   FolderOpenIcon,
+  GitCompareArrowsIcon,
   HistoryIcon,
   LibraryIcon,
   MoreHorizontalIcon,
@@ -35,6 +36,7 @@ import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuSub, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
+import { REVIEW_SQL_FORMAT_ACTION } from "@/features/query/query-editor-pane/types";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useHasNewFeatures } from "@/lib/new-features";
 
@@ -90,6 +92,7 @@ export function QueryToolsMenu({
 }: QueryToolsMenuProps) {
   const packageMembers = useNewFeatureVisibility<HTMLDivElement>("query.tools.package-members");
   const fileEncoding = useNewFeatureVisibility<HTMLDivElement>("query.tools.file.encoding");
+  const formatReview = useNewFeatureVisibility<HTMLDivElement>("query.tools.format-review");
   const fileNew = useHasNewFeatures("query.tools.file");
   const toolsNew = useHasNewFeatures("query.tools") && isSql;
   const pendingAction = useRef<string | null>(null);
@@ -170,6 +173,21 @@ export function QueryToolsMenu({
                 onSelect={() => editorApiRef.current?.format()}
                 disabled={!hasSql}
               />
+            )}
+            {isSql && (
+              <IconMenuItem
+                ref={formatReview.ref}
+                icon={<GitCompareArrowsIcon />}
+                label="Formatierung vergleichen…"
+                onSelect={() => {
+                  pendingAction.current = REVIEW_SQL_FORMAT_ACTION;
+                }}
+                disabled={!hasSql}
+              >
+                {formatReview.isNew && (
+                  <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
+                )}
+              </IconMenuItem>
             )}
             {isSql && (
               <IconMenuItem

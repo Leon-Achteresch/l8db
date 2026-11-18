@@ -26,10 +26,12 @@ import {
   STATIC_EDITOR_OPTIONS,
   themeFor,
 } from "./query-editor-pane/editor-utils";
-import type { QueryEditorPaneProps } from "./query-editor-pane/types";
+import { SqlFormatReviewDialog } from "./query-editor-pane/sql-format-review-dialog";
+import { type QueryEditorPaneProps, REVIEW_SQL_FORMAT_ACTION } from "./query-editor-pane/types";
 import { useEditorBookmarks } from "./query-editor-pane/use-editor-bookmarks";
 import { useEditorOptionsSync } from "./query-editor-pane/use-editor-options-sync";
 import { useEditorSettings } from "./query-editor-pane/use-editor-settings";
+import { useSqlFormatReview } from "./query-editor-pane/use-sql-format-review";
 import { useStatementHighlight } from "./query-editor-pane/use-statement-highlight";
 import { useViewStatePersistence } from "./query-editor-pane/use-view-state-persistence";
 import { useWorkspaceEditorOptions } from "./query-editor-pane/use-workspace-editor-options";
@@ -96,6 +98,9 @@ export function QueryEditorPane({
   registryRef.current = registry;
   errorRef.current = error ?? null;
   const editorSettings = useEditorSettings();
+  const formatReview = useSqlFormatReview(editorRef, stateKey, language);
+  const openFormatReview = useRef(formatReview.open);
+  openFormatReview.current = formatReview.open;
   const {
     bookmarkDecorationsRef,
     bookmarksRef,
@@ -204,6 +209,11 @@ export function QueryEditorPane({
     });
 
     const formatAction = addSqlFormatAction(editor);
+    const reviewAction = editor.addAction({
+      id: REVIEW_SQL_FORMAT_ACTION,
+      label: "Formatierung vergleichen",
+      run: () => openFormatReview.current(),
+    });
 
     const intellisense = attachSqlIntellisense(editor);
 
@@ -218,6 +228,7 @@ export function QueryEditorPane({
       plsqlLint.dispose();
       intellisense.dispose();
       formatAction.dispose();
+      reviewAction.dispose();
       decorationsRef.current = null;
       bookmarkDecorationsRef.current = null;
       slotDecorationsRef.current = [];
@@ -325,6 +336,14 @@ export function QueryEditorPane({
       <div ref={containerRef} className="relative min-h-0 flex-1" />
       <EditorAiLayer controller={aiController} />
       {vimEnabled && <VimStatusLine ref={vimStatusRef} />}
+      {formatReview.review && (
+        <SqlFormatReviewDialog
+          review={formatReview.review}
+          onClose={formatReview.close}
+          onApply={formatReview.apply}
+          onRestoreFocus={formatReview.focus}
+        />
+      )}
     </div>
   );
 }
