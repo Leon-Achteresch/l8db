@@ -81,7 +81,8 @@ test.skipIf(!process.env.L8DB_PERF_BROWSER)(
       await page.getByRole("menuitemradio", { name: "UTC", exact: true }).click();
       await page.getByText("2026-10-25 00:30:45 UTC", { exact: true }).first().waitFor();
       await page.getByRole("button", { name: "Inhaltsbreite", exact: true }).click();
-      await page.getByRole("button", { name: /Ergebnisstände/ }).click();
+      await page.getByRole("button", { name: "Ergebnisoptionen", exact: true }).click();
+      await page.getByRole("menuitem", { name: /Ergebnisstände/ }).click();
       await page.getByRole("textbox", { name: "Name des Ergebnisstands" }).fill("vor Migration");
       await page.getByRole("button", { name: "Speichern", exact: true }).click();
       await page.getByText("vor Migration", { exact: true }).waitFor();
@@ -122,13 +123,15 @@ test.skipIf(!process.env.L8DB_PERF_BROWSER)(
         );
       }
       await page.getByRole("button", { name: "Erfolgreich ausführen" }).click();
-      await page.getByRole("button", { name: /Ergebnisstände/ }).click();
+      await page.getByRole("button", { name: "Ergebnisoptionen", exact: true }).click();
+      await page.getByRole("menuitem", { name: /Ergebnisstände/ }).click();
       await page.getByRole("button", { name: "Vergleichen", exact: true }).click();
       await page.getByRole("button", { name: "Ergebnisstand-Vergleich schließen" }).waitFor();
       await page.screenshot({ path: "test-artifacts/query-qol/compare-390.png", fullPage: true });
       await page.getByRole("button", { name: "Ergebnisstand-Vergleich schließen" }).click();
       await page.reload({ waitUntil: "commit" });
-      await page.getByRole("button", { name: /Ergebnisstände/ }).click();
+      await page.getByRole("button", { name: "Weitere Ergebnis-Aktionen" }).click();
+      await page.getByRole("menuitem", { name: /Ergebnisstände/ }).click();
       await page.getByText("vor Migration", { exact: true }).waitFor();
       await page.screenshot({ path: "test-artifacts/query-qol/snapshots-390.png", fullPage: true });
       await page.setViewportSize({ width: 1440, height: 1000 });

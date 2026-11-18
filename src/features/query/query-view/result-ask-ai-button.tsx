@@ -1,6 +1,6 @@
 import { Sparkles } from "lucide-react";
+import { IconMenuItem } from "@/components/icon-menu/icon-menu-item";
 import { NewBadge } from "@/components/new-badge";
-import { Button } from "@/components/ui/button";
 import { maskQueryResult } from "@/features/query/query-result-masking";
 import { resultDraft } from "@/lib/ai/editor/chat-prompts";
 import { compactResult } from "@/lib/ai/editor/compact";
@@ -12,7 +12,7 @@ import { useActiveMasks } from "@/lib/masking-display";
 
 export function ResultAskAiButton({ result, sql }: { result: QueryResult; sql?: string }) {
   const { active } = useActiveMasks(result.columns);
-  const feature = useNewFeatureVisibility<HTMLButtonElement>("query.result.ask-ai");
+  const feature = useNewFeatureVisibility<HTMLDivElement>("query.result.ask-ai");
   const send = () => {
     const shareValues = useEditorAiSettings.getState().shareValues;
     const masked = maskQueryResult(result, active) ?? result;
@@ -23,18 +23,14 @@ export function ResultAskAiButton({ result, sql }: { result: QueryResult; sql?: 
     useAiStore.getState().draft(resultDraft(summary, sql));
   };
   return (
-    <Button
+    <IconMenuItem
       data-feature="query.result.ask-ai"
       ref={feature.ref}
-      size="sm"
-      variant="ghost"
-      className="h-7 gap-1.5 px-2 text-xs"
-      title="Ergebnis kompakt in den KI-Chat übernehmen"
-      onClick={send}
+      icon={<Sparkles />}
+      label="KI fragen"
+      onSelect={send}
     >
-      <Sparkles className="size-3" />
-      <span className="hidden sm:inline">KI fragen</span>
-      {feature.isNew && <NewBadge />}
-    </Button>
+      {feature.isNew && <NewBadge className="absolute -right-1 -top-1" />}
+    </IconMenuItem>
   );
 }
