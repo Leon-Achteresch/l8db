@@ -37,12 +37,34 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenuSub, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
 import { REVIEW_SQL_FORMAT_ACTION } from "@/features/query/query-editor-pane/types";
+import type { SavedConnection } from "@/lib/connections";
+import { readDuckdbFilePathContext } from "@/lib/db/duckdb-path-context";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 import { EDITOR_ACTIONS } from "./constants";
+import { DuckdbFilePathDialog, type DuckdbPathHelp } from "./duckdb-file-path-dialog";
 import { PgvectorReferenceDialog } from "./pgvector-reference-dialog";
 import type { QueryFileEncodingAction } from "./use-query-file-actions";
+
+interface DuckdbPathScope {
+  connection: SavedConnection;
+  database: string | null;
+  transaction: boolean;
+}
+
+async function readPathHelp(scope: DuckdbPathScope): Promise<DuckdbPathHelp> {
+  if (scope.transaction) return { state: "transaction" };
+  try {
+    return await readDuckdbFilePathContext(
+      effectiveConnectionString(scope.connection),
+      scope.database ?? undefined,
+    );
+  } catch {
+    return { state: "unknown" };
+  }
+}
 
 interface QueryToolsMenuProps {
   editorApiRef: RefObject<QueryEditorApi | null>;
@@ -51,6 +73,7 @@ interface QueryToolsMenuProps {
   connected: boolean;
   isSql: boolean;
   pgvectorReferenceAvailable?: boolean;
+  duckdbPathScope?: DuckdbPathScope;
   serverOutput: boolean;
   bookmarkCount: number;
   filePath: string | null;
@@ -76,6 +99,7 @@ export function QueryToolsMenu({
   connected,
   isSql,
   pgvectorReferenceAvailable = false,
+  duckdbPathScope,
   serverOutput,
   bookmarkCount,
   filePath,
@@ -99,15 +123,23 @@ export function QueryToolsMenu({
   const pgvectorReference = useNewFeatureVisibility<HTMLDivElement>(
     "query.tools.pgvector-reference",
   );
+  const duckdbPath = useNewFeatureVisibility<HTMLDivElement>("query.tools.duckdb-file-path");
   const trigger = useRef<HTMLButtonElement>(null);
-  const referenceRequested = useRef(false);
+  const pendingHelp = useRef<"pgvector" | "duckdb" | null>(null);
   const [referenceOpen, setReferenceOpen] = useState(false);
+  const [duckdbHelp, setDuckdbHelp] = useState<{
+    connection: SavedConnection;
+    request: Promise<DuckdbPathHelp>;
+  } | null>(null);
   const seen = useSeenNewFeatures();
   const fileNew = hasNewFeatures("query.tools.file", seen);
-  const visibleToolsSeen =
-    pgvectorReference.isNew && !pgvectorReferenceAvailable
-      ? new Set([...seen, "query.tools.pgvector-reference"] as const)
-      : seen;
+  const hiddenNewTools = [
+    ...(pgvectorReference.isNew && !pgvectorReferenceAvailable
+      ? ["query.tools.pgvector-reference" as const]
+      : []),
+    ...(duckdbPath.isNew && !duckdbPathScope ? ["query.tools.duckdb-file-path" as const] : []),
+  ];
+  const visibleToolsSeen = hiddenNewTools.length ? new Set([...seen, ...hiddenNewTools]) : seen;
   const toolsNew = hasNewFeatures("query.tools", visibleToolsSeen) && isSql;
   const pendingAction = useRef<string | null>(null);
   return (
@@ -128,10 +160,19 @@ export function QueryToolsMenu({
       </DropdownMenuTrigger>
       <IconMenuContent
         onCloseAutoFocus={(event) => {
-          if (referenceRequested.current) {
-            referenceRequested.current = false;
+          const help = pendingHelp.current;
+          pendingHelp.current = null;
+          if (help === "pgvector") {
             event.preventDefault();
             setReferenceOpen(true);
+            return;
+          }
+          if (help === "duckdb" && duckdbPathScope) {
+            event.preventDefault();
+            setDuckdbHelp({
+              connection: duckdbPathScope.connection,
+              request: readPathHelp(duckdbPathScope),
+            });
             return;
           }
           const id = pendingAction.current;
@@ -233,10 +274,24 @@ export function QueryToolsMenu({
                 icon={<BookOpenIcon />}
                 label="pgvector-Referenz…"
                 onSelect={() => {
-                  referenceRequested.current = true;
+                  pendingHelp.current = "pgvector";
                 }}
               >
                 {pgvectorReference.isNew && (
+                  <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
+                )}
+              </IconMenuItem>
+            )}
+            {duckdbPathScope && (
+              <IconMenuItem
+                ref={duckdbPath.ref}
+                icon={<FolderOpenIcon />}
+                label="DuckDB-Dateipfade…"
+                onSelect={() => {
+                  pendingHelp.current = "duckdb";
+                }}
+              >
+                {duckdbPath.isNew && (
                   <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
                 )}
               </IconMenuItem>
@@ -349,6 +404,13 @@ export function QueryToolsMenu({
       {pgvectorReferenceAvailable && referenceOpen && (
         <PgvectorReferenceDialog
           onClose={() => setReferenceOpen(false)}
+          onRestoreFocus={() => trigger.current?.focus()}
+        />
+      )}
+      {duckdbHelp && duckdbPathScope?.connection === duckdbHelp.connection && (
+        <DuckdbFilePathDialog
+          request={duckdbHelp.request}
+          onClose={() => setDuckdbHelp(null)}
           onRestoreFocus={() => trigger.current?.focus()}
         />
       )}

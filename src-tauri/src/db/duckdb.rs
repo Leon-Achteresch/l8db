@@ -10,8 +10,8 @@ use super::sqlite::existing_file_path;
 use super::{
     attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, where_clause, AddColumnRequest,
     AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
-    DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, IndexInfo, QueryResult, SchemaSize,
-    SequenceInfo, TableData, TableInfo,
+    DatabaseOverview, DetailedColumnInfo, DuckdbFilePathContext, ForeignKeyInfo, IndexInfo,
+    QueryResult, SchemaSize, SequenceInfo, TableData, TableInfo,
 };
 
 pub struct DuckdbAdapter {
@@ -380,6 +380,43 @@ fn index_columns(expressions: &str) -> Vec<String> {
 
 fn truthy(v: &serde_json::Value) -> bool {
     matches!(v, serde_json::Value::Bool(true)) || v.as_i64().is_some_and(|i| i != 0)
+}
+
+const FILE_PATH_CONTEXT_MAX_BYTES: usize = 8_192;
+
+pub(super) async fn file_path_context(
+    pool: &PoolState,
+    connection_string: &str,
+    database: Option<&str>,
+) -> DuckdbFilePathContext {
+    let key = super::connection::connection_key(connection_string, database);
+    let Some(connection) = pool.ready_shared::<Mutex<Connection>>(&key).await else {
+        return DuckdbFilePathContext::NoSession;
+    };
+    tokio::task::spawn_blocking(move || {
+        let connection = match connection.try_lock() {
+            Ok(connection) => connection,
+            Err(std::sync::TryLockError::WouldBlock) => return DuckdbFilePathContext::Busy,
+            Err(std::sync::TryLockError::Poisoned(_)) => return DuckdbFilePathContext::Unknown,
+        };
+        let file_search_path = connection
+            .query_row("SELECT current_setting('file_search_path')", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .ok()
+            .filter(|value| value.len() <= FILE_PATH_CONTEXT_MAX_BYTES);
+        let working_directory = std::env::current_dir()
+            .ok()
+            .filter(|path| path.is_absolute())
+            .and_then(|path| path.into_os_string().into_string().ok())
+            .filter(|value| value.len() <= FILE_PATH_CONTEXT_MAX_BYTES);
+        DuckdbFilePathContext::Snapshot {
+            file_search_path,
+            working_directory,
+        }
+    })
+    .await
+    .unwrap_or(DuckdbFilePathContext::Unknown)
 }
 
 impl DuckdbAdapter {
@@ -1062,6 +1099,10 @@ impl DatabaseAdapter for DuckdbAdapter {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "duckdb_path_context_tests.rs"]
+mod path_context_tests;
 
 #[cfg(test)]
 mod tests {

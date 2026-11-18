@@ -151,6 +151,21 @@ impl RowCount {
 
 pub const MAX_ROW_COUNT_CAP: i64 = 10_000_000;
 
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum DuckdbFilePathContext {
+    #[cfg(feature = "duckdb")]
+    Snapshot {
+        file_search_path: Option<String>,
+        working_directory: Option<String>,
+    },
+    #[cfg(feature = "duckdb")]
+    NoSession,
+    #[cfg(feature = "duckdb")]
+    Busy,
+    Unknown,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct DetailedColumnInfo {
     pub name: String,
