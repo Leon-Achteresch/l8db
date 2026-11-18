@@ -34,6 +34,7 @@ import { WorkloadTab } from "@/features/monitor/monitor-view/workload-tab";
 import type { Capabilities } from "@/lib/db";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { useHasNewFeatures } from "@/lib/new-features";
 
 const PRIMARY_TABS: { value: MonitorTab; label: string; icon: LucideIcon }[] = [
   { value: "live", label: "Live-Monitor", icon: MonitorIcon },
@@ -70,7 +71,12 @@ export function MonitorView() {
   });
   const { ref: liveTabRef, isNew: liveTabIsNew } =
     useNewFeatureVisibility<HTMLButtonElement>("monitor.live");
+  const hasSessionNews = useHasNewFeatures("monitor.sessions");
   const { connection, setTab, scopedServerOutput } = m;
+  const hasNewIndexProgress =
+    hasSessionNews &&
+    connection?.kind === "postgres" &&
+    live.sessions.some((session) => session.index_progress);
   const tab = useDeferredValue(m.tab);
 
   if (!connection) {
@@ -109,7 +115,8 @@ export function MonitorView() {
                 >
                   <Icon className="size-3.5" />
                   {label}
-                  {value === "live" && liveTabIsNew ? <NewBadge /> : null}
+                  {value === "live" && liveTabIsNew && <NewBadge />}
+                  {value === "sessions" && hasNewIndexProgress && <NewBadge />}
                   {value === "locks" && live.waitingLocks > 0 && (
                     <Badge variant="destructive" className="h-4 px-1 text-[10px]">
                       {live.waitingLocks}

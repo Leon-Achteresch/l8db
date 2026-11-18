@@ -1543,6 +1543,30 @@ pub struct CreateSubscriptionRequest {
     pub connect: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IndexProgressUnit {
+    Blocks,
+    Tuples,
+    Lockers,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IndexPhaseCounter {
+    pub unit: IndexProgressUnit,
+    pub done: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IndexBuildProgress {
+    pub phase: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    pub counters: Vec<IndexPhaseCounter>,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct SessionInfo {
     pub pid: i32,
@@ -1563,6 +1587,8 @@ pub struct SessionInfo {
     pub backend_xid: Option<String>,
     pub wait_event_type: Option<String>,
     pub backend_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_progress: Option<IndexBuildProgress>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

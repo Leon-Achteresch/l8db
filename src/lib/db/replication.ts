@@ -156,6 +156,16 @@ export async function dropSubscription(
   await invoke("drop_subscription", { kind, connectionString, database, name });
 }
 
+export interface IndexBuildProgress {
+  phase: string;
+  command?: string;
+  counters: {
+    unit: "blocks" | "tuples" | "lockers";
+    done: string;
+    total?: string;
+  }[];
+}
+
 export interface SessionInfo {
   pid: number;
   user: string;
@@ -175,6 +185,7 @@ export interface SessionInfo {
   backend_xid?: string | null;
   wait_event_type?: string | null;
   backend_type?: string | null;
+  index_progress?: IndexBuildProgress;
 }
 
 export async function listSessions(
