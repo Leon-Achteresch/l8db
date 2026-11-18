@@ -39,6 +39,7 @@ export interface PackageViewProps {
   part?: PackagePart;
   member?: string;
   highlight?: string;
+  line?: number;
 }
 
 function findSourceLine(source: string, needle: string): number | undefined {
@@ -47,7 +48,7 @@ function findSourceLine(source: string, needle: string): number | undefined {
   return index >= 0 ? index + 1 : undefined;
 }
 
-export function PackageView({ schema, name, part, member, highlight }: PackageViewProps) {
+export function PackageView({ schema, name, part, member, highlight, line }: PackageViewProps) {
   const connection = useActiveConnection();
   const openPackageTab = useTableTabs((state) => state.openPackageTab);
   const pane = useWorkspacePane();
@@ -83,9 +84,9 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
   const memberLine =
     activeLine ?? (activeMember ? members.find((m) => m.name === activeMember)?.line : undefined);
   const restored = useMemo(() => readViewStates()[edit.key] !== undefined, [edit.key]);
-  const revealLine = activeMember
-    ? memberLine
-    : (highlightLine ?? (restored ? undefined : members[0]?.line));
+  const revealLine =
+    activeLine ??
+    (activeMember ? memberLine : (highlightLine ?? (restored ? undefined : members[0]?.line)));
   const outlineWidth = usePackageViewPrefs(
     (state) => state.widths[outlineKey] ?? PACKAGE_OUTLINE_DEFAULT_WIDTH,
   );
@@ -98,8 +99,8 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
   useEffect(() => {
     if (part) setActivePart(part);
     setActiveMember(member?.toUpperCase());
-    setActiveLine(undefined);
-  }, [part, member, setActivePart]);
+    setActiveLine(line);
+  }, [part, member, line, setActivePart]);
 
   useEffect(() => {
     resetCompile();
