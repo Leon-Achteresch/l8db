@@ -91,6 +91,14 @@ export function QueryView({ tabId }: QueryViewProps) {
       ? findTransaction(state.transactions, connection.id, database, { type: "query" })?.txId
       : undefined,
   );
+  const postgresTransaction = useTransactionStore((state) => {
+    if (connection?.kind !== "postgres") return undefined;
+    const transaction = findTransaction(state.transactions, connection.id, database, {
+      type: "query",
+    });
+    if (!transaction) return "unassigned";
+    return state.finalizingTransactions.includes(transaction.txId) ? "finalizing" : "assigned";
+  });
   const {
     sql,
     updateQuerySql,
@@ -346,6 +354,8 @@ export function QueryView({ tabId }: QueryViewProps) {
                     : undefined
                 }
                 pgvectorReferenceAvailable={isSql && connection?.kind === "postgres"}
+                postgresTransaction={isSql ? postgresTransaction : undefined}
+                hasResult={Boolean(exec.result)}
                 editorApiRef={editorApiRef}
                 shortcutLabel={shortcutLabel}
                 hasSql={Boolean(sql.trim())}

@@ -16,14 +16,20 @@ import { useDbSelectionStore } from "@/lib/db-selection";
 import { ExtensionManager } from "@/lib/extensions/manager";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
 import { SandboxRuntime } from "@/lib/extensions/sandbox-runtime";
+import { finishManagedTransaction } from "@/lib/managed-transactions";
 import { monaco } from "@/lib/monaco";
 import { useProvidersStore } from "@/lib/providers";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { useSettingsStore } from "@/lib/settings";
+import { queryTabScope, tabStateKey, writeTabState } from "@/lib/tab-state";
 import { useTableTabs } from "@/lib/table-tabs";
+import { type ActiveTransaction, useTransactionStore } from "@/lib/transactions";
 import "@/index.css";
 
-const reference = new URLSearchParams(location.search).has("pgvector");
+const options = new URLSearchParams(location.search);
+const reference = options.has("pgvector");
+const transactionContext = options.has("postgres-transaction");
+const postgres = reference || transactionContext;
 useProvidersStore.setState({ loaded: true });
 useConnectionsStore.setState({
   activeId: "format-fixture",
@@ -31,12 +37,12 @@ useConnectionsStore.setState({
     {
       id: "format-fixture",
       name: "Fixture",
-      kind: reference ? "postgres" : "mssql",
-      connectionString: reference ? "postgresql://127.0.0.1/format" : "mssql://127.0.0.1/format",
+      kind: postgres ? "postgres" : "mssql",
+      connectionString: postgres ? "postgresql://127.0.0.1/format" : "mssql://127.0.0.1/format",
       sslMode: "disable",
       editorMetadataPrefetch: false,
     },
-    ...(reference
+    ...(postgres
       ? [
           {
             id: "mysql",
@@ -61,13 +67,10 @@ useQueryWorkspace.getState().update({ navigatorVisible: false });
 const store = useTableTabs.getState();
 const first = store.openQueryTab();
 const second = store.openQueryTab();
-store.updateQuerySql(
-  first,
-  reference ? "SELECT a <-> b FROM items;" : "select [id] from [orders];",
-);
+store.updateQuerySql(first, postgres ? "SELECT a <-> b FROM items;" : "select [id] from [orders];");
 store.updateQuerySql(
   second,
-  reference ? "SELECT a <#> b FROM other;" : "select [other] from [items];",
+  postgres ? "SELECT a <#> b FROM other;" : "select [other] from [items];",
 );
 
 function activeEditor() {
@@ -127,6 +130,38 @@ Object.assign(window, {
     },
     switchTab: () => selectTab(second),
   },
+  ...(transactionContext && {
+    postgresReadContextFixture: {
+      setTransactions: (transactions: Pick<ActiveTransaction, "txId" | "database" | "scope">[]) =>
+        useTransactionStore.setState({
+          transactions: transactions.map((transaction) => ({
+            ...transaction,
+            connectionId: "format-fixture",
+            connectionName: "Fixture",
+            changes: [],
+            startedAt: 0,
+          })),
+        }),
+      finish: finishManagedTransaction,
+      seedPreviousResult: () => {
+        const scope = queryTabScope(first);
+        const sql = "SELECT 'Voriger Stand' AS value;";
+        writeTabState(tabStateKey(scope, "executedSql"), sql);
+        writeTabState(tabStateKey(scope, "resultOrigin"), {
+          sql,
+          at: 1,
+          connectionId: "format-fixture",
+          database: "format",
+        });
+        writeTabState(tabStateKey(scope, "result"), {
+          columns: ["value"],
+          rows: [{ value: "Voriger Stand" }],
+          rows_affected: null,
+          execution_time_ms: 1,
+        });
+      },
+    },
+  }),
 });
 
 function FormatReviewFixture() {
