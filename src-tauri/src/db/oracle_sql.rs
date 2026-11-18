@@ -503,16 +503,24 @@ pub(super) fn created_object(sql: &str) -> Option<(Option<String>, String, Strin
         return None;
     }
     let mut i = 1;
-    while ["OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE"]
-        .iter()
-        .any(|w| is(i, w))
+    while [
+        "OR",
+        "REPLACE",
+        "NO",
+        "FORCE",
+        "EDITIONABLE",
+        "EDITIONING",
+        "NONEDITIONABLE",
+    ]
+    .iter()
+    .any(|w| is(i, w))
     {
         i += 1;
     }
     let mut kind = words.get(i)?.to_ascii_uppercase();
     if !matches!(
         kind.as_str(),
-        "FUNCTION" | "PROCEDURE" | "PACKAGE" | "TRIGGER" | "TYPE"
+        "FUNCTION" | "PROCEDURE" | "PACKAGE" | "TRIGGER" | "TYPE" | "VIEW"
     ) {
         return None;
     }
@@ -913,6 +921,18 @@ mod tests {
         assert_eq!(
             created_object("create procedure p is begin null; end;"),
             Some((None, "P".into(), "PROCEDURE".into()))
+        );
+        assert_eq!(
+            created_object("CREATE OR REPLACE NO FORCE EDITIONING VIEW v AS SELECT 1 FROM dual"),
+            Some((None, "V".into(), "VIEW".into()))
+        );
+        assert_eq!(
+            created_object("create or replace force view hr.v as select x from missing"),
+            Some((Some("HR".into()), "V".into(), "VIEW".into()))
+        );
+        assert_eq!(
+            created_object("CREATE MATERIALIZED VIEW m AS SELECT 1 FROM dual"),
+            None
         );
         assert_eq!(created_object("CREATE TABLE t (id NUMBER)"), None);
     }
