@@ -9,7 +9,7 @@ import {
   SlidersHorizontalIcon,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { lazy, type ReactNode, Suspense, useMemo, useState } from "react";
+import { lazy, type ReactNode, Suspense, useMemo, useRef, useState } from "react";
 import { Collapse } from "@/components/motion/collapse";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ import { useSettingsStore } from "@/lib/settings";
 import { compileFilterConditions } from "@/lib/sql-filter";
 import type { FilterCondition as Condition } from "@/lib/table-view-state";
 import { FilterGroupingPreview } from "./filter-bar/filter-grouping-preview";
+import { useFilterFocusHotkey } from "./filter-bar/use-filter-focus-hotkey";
 import { ActiveFilterBadge } from "./table-filter-panel/active-filter-badge";
 import { FilterConditionRow } from "./table-filter-panel/filter-condition-row";
 import { createId, emptyCondition } from "./table-filter-panel/filter-conditions";
@@ -85,6 +86,11 @@ export function TableFilterPanel({
   );
   const [rules, setRules] = useTableViewState(stateKey, "rowRules", []);
   const [ruleMode, setRuleMode] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useFilterFocusHotkey(rootRef, () => {
+    setRuleMode(false);
+    setOpen(true);
+  });
   const [ruleColor, setRuleColor] = useState("#3b82f6");
   const [ruleConditions, setRuleConditions] = useState(() => [emptyCondition()]);
   const [ruleCombinator, setRuleCombinator] = useState<Combinator>("AND");
@@ -185,7 +191,7 @@ export function TableFilterPanel({
   };
 
   return (
-    <div className="flex min-h-0 max-h-full flex-col border-b bg-muted/30">
+    <div ref={rootRef} className="flex min-h-0 max-h-full flex-col border-b bg-muted/30">
       <div className="flex h-9 shrink-0 items-center gap-2 px-3">
         {leading}
         <button
@@ -283,6 +289,7 @@ export function TableFilterPanel({
 
           {redis ? (
             <Input
+              data-filter-focus
               aria-label="Redis-Key-Pattern"
               value={sql}
               onChange={(event) => setSql(event.target.value)}
@@ -294,6 +301,7 @@ export function TableFilterPanel({
             />
           ) : json && mode === "sql" && !ruleMode ? (
             <Textarea
+              data-filter-focus
               aria-label="MongoDB-Filter"
               value={sql}
               onChange={(event) => setSql(event.target.value)}
@@ -301,7 +309,7 @@ export function TableFilterPanel({
               className="h-36 font-mono text-xs"
             />
           ) : mode === "simple" || ruleMode ? (
-            <div ref={listRef} className="space-y-2">
+            <div ref={listRef} className="space-y-2" data-filter-focus>
               {conditions.map((condition, index) => (
                 <FilterConditionRow
                   key={condition.id}
@@ -332,7 +340,7 @@ export function TableFilterPanel({
               </p>
             </div>
           ) : (
-            <div className="space-y-1.5">
+            <div className="space-y-1.5" data-filter-focus>
               <Suspense
                 fallback={
                   <div className="h-36" role="status">

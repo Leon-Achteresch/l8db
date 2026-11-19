@@ -42,12 +42,13 @@ export function FilterSqlField({
     onSubmit();
   };
   return (
-    <div className="flex min-w-48 flex-1 items-center gap-1">
+    <div className="flex min-w-48 flex-1 items-center gap-1" data-filter-focus>
       {multiline ? (
         <button
           type="button"
           title={value}
           aria-label={`Mehrzeiligen ${label}-Filter bearbeiten`}
+          data-filter-field
           onClick={() => setExpanded(true)}
           className="h-7 min-w-0 flex-1 truncate rounded px-1 text-left font-mono text-xs outline-none hover:bg-muted/50 focus-visible:bg-muted/50"
         >

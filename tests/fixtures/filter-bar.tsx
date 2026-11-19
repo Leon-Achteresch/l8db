@@ -18,6 +18,7 @@ import "../../src/index.css";
 const params = new URLSearchParams(location.search);
 const kind = (params.get("kind") ?? "postgres") as DatabaseKind;
 useSettingsStore.getState().setFilterBarStyle(normalizeFilterBarStyle(params.get("style")));
+if (params.get("filterMode") === "sql") useSettingsStore.getState().setTableFilterMode("sql");
 document.documentElement.classList.toggle("dark", params.get("theme") !== "light");
 
 const columns = ["id", "message_id", "status", "tokens", "created_at"];
