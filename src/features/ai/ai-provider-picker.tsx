@@ -1,8 +1,9 @@
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Loader2, Server } from "lucide-react";
+import { ChevronDown, Loader2, Server } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import { ThesvgIcon } from "@/components/provider-logo";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { AI_PROVIDERS, useAiStore } from "@/lib/ai/store";
+import { AI_PROVIDERS } from "@/lib/ai/store";
 import type { AiModels, AiProfile } from "@/lib/db/ai";
 import { cn } from "@/lib/utils";
 import { AiModelOptions } from "./ai-model-options";
@@ -13,10 +14,7 @@ function logo(id: string, className: string) {
   return svg ? <ThesvgIcon svg={svg} className={className} /> : <Server className={className} />;
 }
 
-const GROUPS = [
-  { label: "Lokale CLIs", cli: true },
-  { label: "API-Schlüssel", cli: false },
-];
+const GROUPS = [true, false];
 
 interface Props {
   profile: AiProfile;
@@ -27,18 +25,14 @@ interface Props {
 }
 export function AiProviderPicker({ profile, models, disabled, loading, onSelect }: Props) {
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<"provider" | "model">("model");
-  const profiles = useAiStore((state) => state.profiles);
-  const provider = AI_PROVIDERS.find((entry) => entry.id === profile.provider);
+  const [direction, setDirection] = useState(1);
+  const reduced = useReducedMotion();
+  const index = AI_PROVIDERS.findIndex((entry) => entry.id === profile.id);
+  const provider = AI_PROVIDERS[index];
   const model = models.models.find((entry) => entry.id === profile.model)?.name ?? profile.model;
+  const offset = reduced ? 0 : 20;
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (next) setStep("model");
-      }}
-    >
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -62,86 +56,88 @@ export function AiProviderPicker({ profile, models, disabled, loading, onSelect 
         side="top"
         align="end"
         sideOffset={8}
-        className="w-72 max-w-[calc(100vw-32px)] gap-2 rounded-2xl p-2"
+        className="flex w-[360px] max-w-[calc(100vw-32px)] flex-row gap-0 overflow-hidden rounded-2xl p-0"
         aria-label="Anbieter und Modell"
       >
-        {step === "provider" ? (
-          <div role="radiogroup" aria-label="AI-Anbieter auswählen" className="space-y-2">
-            {GROUPS.map((group) => (
-              <div key={group.label} className="space-y-0.5">
-                <div className="px-2 pt-1 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  {group.label}
-                </div>
-                {AI_PROVIDERS.filter((entry) => entry.cli === group.cli).map((entry) => {
-                  const checked = entry.id === profile.id;
-                  const entryModel = profiles.find((item) => item.id === entry.id)?.model;
-                  return (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={checked}
-                      aria-label={entry.name}
-                      disabled={disabled}
-                      onClick={() => {
-                        if (!checked) onSelect(entry.id);
-                        setStep("model");
-                      }}
-                      className={cn(
-                        "flex h-9 w-full items-center gap-2.5 rounded-lg px-2 text-left text-xs outline-none transition-colors hover:bg-muted focus-visible:bg-muted",
-                        checked && "bg-muted",
-                      )}
-                    >
-                      <span className="grid size-6 shrink-0 place-items-center rounded-md bg-muted">
-                        {logo(entry.id, "size-3.5")}
-                      </span>
-                      <span className={cn("min-w-0 flex-1 truncate", checked && "font-medium")}>
-                        {entry.name}
-                      </span>
-                      {entryModel && (
-                        <span className="max-w-24 truncate text-[11px] text-muted-foreground">
-                          {checked ? model : entryModel}
-                        </span>
-                      )}
-                      {checked ? (
-                        <Check className="size-3.5 shrink-0" />
-                      ) : (
-                        <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <button
-              type="button"
-              aria-label={`Anbieter wechseln: ${provider?.name ?? ""}`}
-              onClick={() => setStep("provider")}
-              className="flex h-8 w-full items-center gap-2 rounded-lg px-1 text-left text-xs font-medium outline-none transition-colors hover:bg-muted focus-visible:bg-muted"
+        <div
+          role="radiogroup"
+          aria-label="AI-Anbieter auswählen"
+          className="flex shrink-0 flex-col gap-2 bg-muted/40 p-1.5"
+        >
+          {GROUPS.map((cli) => (
+            <div key={String(cli)} className="flex flex-col gap-0.5">
+              {AI_PROVIDERS.filter((entry) => entry.cli === cli).map((entry) => {
+                const checked = entry.id === profile.id;
+                return (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={checked}
+                    aria-label={entry.name}
+                    title={entry.name}
+                    disabled={disabled}
+                    onClick={() => {
+                      if (checked) return;
+                      setDirection(AI_PROVIDERS.indexOf(entry) > index ? 1 : -1);
+                      onSelect(entry.id);
+                    }}
+                    className={cn(
+                      "group relative grid size-8 place-items-center rounded-xl text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+                      checked && "text-foreground",
+                    )}
+                  >
+                    {checked && (
+                      <motion.span
+                        layoutId="ai-provider-rail"
+                        transition={{ type: "spring", stiffness: 550, damping: 38 }}
+                        className="absolute inset-0 rounded-xl bg-background shadow-sm"
+                      />
+                    )}
+                    <span className="relative transition-transform group-hover:scale-110 group-active:scale-90">
+                      {logo(entry.id, "size-4")}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <div className="relative min-w-0 flex-1 overflow-hidden">
+          <AnimatePresence mode="popLayout" initial={false} custom={direction}>
+            <motion.div
+              key={profile.id}
+              custom={direction}
+              variants={{
+                enter: (dir: number) => ({ y: dir * offset, opacity: 0, filter: "blur(4px)" }),
+                center: { y: 0, opacity: 1, filter: "blur(0px)" },
+                exit: (dir: number) => ({ y: dir * -offset, opacity: 0, filter: "blur(4px)" }),
+              }}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ type: "spring", stiffness: 420, damping: 36 }}
+              className="space-y-1 p-2"
             >
-              <ChevronLeft className="size-3.5 shrink-0 text-muted-foreground" />
-              {logo(profile.provider, "size-3.5 shrink-0")}
-              <span className="min-w-0 flex-1 truncate">{provider?.name}</span>
-            </button>
-            <div className="h-px bg-border/70" />
-            {loading ? (
-              <div className="flex h-20 items-center justify-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="size-3.5 animate-spin" />
-                Modelle werden geladen …
+              <div className="flex items-baseline justify-between gap-2 px-2 pt-1 pb-1.5">
+                <span className="truncate text-[13px] font-semibold tracking-tight">
+                  {provider?.name}
+                </span>
+                <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  {provider?.cli ? "CLI" : "API"}
+                </span>
               </div>
-            ) : (
-              <AiModelOptions
-                key={profile.id}
-                profile={profile}
-                models={models}
-                disabled={disabled}
-              />
-            )}
-          </div>
-        )}
+              {loading ? (
+                <div className="flex h-24 items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Modelle werden geladen …
+                </div>
+              ) : (
+                <AiModelOptions profile={profile} models={models} disabled={disabled} />
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </PopoverContent>
     </Popover>
   );
