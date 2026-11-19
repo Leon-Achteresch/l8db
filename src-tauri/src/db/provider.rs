@@ -1113,6 +1113,7 @@ const PROVIDERS: &[Provider] = &[
     Provider { id: "athena", name: "Amazon Athena", group: "AWS", kind: DatabaseKind::Athena, port: None, placeholder: "athena://eu-central-1/AwsDataCatalog?profile=default&workgroup=primary", hint: "Nativ über die Athena-API. Host ist die Region, Pfad der Katalog. Optional ?output=s3://bucket/pfad/ und ?schema=default.", hosts: &[], driver: Driver::Builtin },
     odbc("odbc", "ODBC (generisch)", None, "", "odbc://?Driver=Name&Server=host&Database=db&UID=user&PWD=pass", "Beliebiger installierter ODBC-Treiber. Die Query-Parameter bilden den Connection String."),
     odbc("db2", "IBM Db2", Some(50000), "IBM DB2 ODBC DRIVER", "odbc://db2inst1:password@localhost:50000/SAMPLE?Driver=IBM%20DB2%20ODBC%20DRIVER", "Benötigt den IBM Data Server Driver (ODBC)."),
+    odbc("ibmi", "IBM i (AS/400)", None, IBMI_DRIVER, "odbc://USER:password@as400.example.com/?Driver=IBM%20i%20Access%20ODBC%20Driver", "Db2 for i über den IBM i Access ODBC Driver. Der Host ist der Systemname, Bibliotheken über ?DBQ=LIB1,LIB2."),
     odbc("firebird", "Firebird", Some(3050), "Firebird/InterBase(r) driver", "odbc://SYSDBA:masterkey@localhost:3050/%2Fdata%2Fdb.fdb?Driver=Firebird%2FInterBase(r)%20driver", "Benötigt den Firebird ODBC-Treiber."),
     odbc("informix", "IBM Informix", Some(9088), "IBM INFORMIX ODBC DRIVER", "odbc://informix:password@localhost:9088/stores?Driver=IBM%20INFORMIX%20ODBC%20DRIVER&Server=ol_informix", "Benötigt das Informix Client SDK."),
     odbc("sybase", "SAP ASE (Sybase)", Some(5000), "Adaptive Server Enterprise", "odbc://sa:password@localhost:5000/master?Driver=Adaptive%20Server%20Enterprise", "Benötigt den SAP ASE ODBC-Treiber."),
@@ -1153,6 +1154,7 @@ fn unixodbc_hints() -> Vec<InstallHint> {
 fn odbc_driver_hints(driver: &'static str) -> Vec<InstallHint> {
     let url = match driver {
         "IBM DB2 ODBC DRIVER" => "https://www.ibm.com/support/pages/db2-odbc-cli-driver-download-and-installation-information",
+        IBMI_DRIVER => "https://www.ibm.com/support/pages/ibm-i-access-client-solutions",
         "Firebird/InterBase(r) driver" => "https://firebirdsql.org/en/odbc-driver/",
         "IBM INFORMIX ODBC DRIVER" => "https://www.ibm.com/products/informix/client-sdk",
         "Adaptive Server Enterprise" => "https://help.sap.com/docs/SAP_ASE",
@@ -1179,6 +1181,23 @@ fn odbc_driver_hints(driver: &'static str) -> Vec<InstallHint> {
     hints
 }
 
+pub const IBMI_DRIVER: &str = "IBM i Access ODBC Driver";
+
+const IBMI_MACOS_INSTALL: &str = r#"brew install unixodbc && brew tap ibm/iaccess https://public.dhe.ibm.com/software/ibmi/products/odbc/macos/tap/ && { brew trust --cask ibm/iaccess/ibm-iaccess >/dev/null 2>&1 || true; } && brew fetch --cask ibm-iaccess && osascript -e 'on run argv' -e 'do shell script "/usr/sbin/installer -pkg " & quoted form of (item 1 of argv) & " -target /" with prompt "l8db installiert den IBM i Access ODBC Driver." with administrator privileges' -e 'end run' "$(brew --cache --cask ibm-iaccess)""#;
+
+const IBMI_LINUX_INSTALL: &str = "if command -v apt-get >/dev/null; then sudo -n curl -fsSL -o /etc/apt/sources.list.d/ibmi-acs-1.1.0.list https://public.dhe.ibm.com/software/ibmi/products/odbc/debs/dists/1.1.0/ibmi-acs-1.1.0.list && sudo -n apt-get update && sudo -n apt-get install -y ibm-iaccess; elif command -v dnf >/dev/null; then sudo -n curl -fsSL -o /etc/yum.repos.d/ibmi-acs.repo https://public.dhe.ibm.com/software/ibmi/products/odbc/rpms/ibmi-acs.repo && sudo -n dnf install -y --refresh ibm-iaccess; elif command -v zypper >/dev/null; then sudo -n curl -fsSL -o /etc/zypp/repos.d/ibmi-acs.repo https://public.dhe.ibm.com/software/ibmi/products/odbc/rpms/ibmi-acs.repo && sudo -n zypper --non-interactive install ibm-iaccess; else echo 'Kein unterstützter Paketmanager (apt, dnf, zypper) gefunden.' >&2; exit 1; fi";
+
+fn product_install_command(id: &str) -> Option<&'static str> {
+    if !cfg!(feature = "odbc") {
+        return None;
+    }
+    match (id, std::env::consts::OS) {
+        ("ibmi", "macos") => Some(IBMI_MACOS_INSTALL),
+        ("ibmi", "linux") if std::env::consts::ARCH == "x86_64" => Some(IBMI_LINUX_INSTALL),
+        _ => None,
+    }
+}
+
 const ORACLE_MACOS_INTEL_INSTALL: &str = "brew tap InstantClientTap/instantclient && brew trust instantclienttap/instantclient && brew install instantclient-basic";
 
 const ORACLE_MACOS_ARM64_INSTALL: &str = "mkdir -p /tmp/l8db-ic && curl -fL -H \"Cookie: oraclelicense=accept-securebackup-cookie\" -o /tmp/l8db-ic/ic.dmg \"https://download.oracle.com/otn_software/mac/instantclient/instantclient-basic-macos-arm64.dmg\" && hdiutil attach -nobrowse -mountpoint /tmp/l8db-ic/mnt /tmp/l8db-ic/ic.dmg && lib=$(ls /tmp/l8db-ic/mnt/libclntsh.dylib /tmp/l8db-ic/mnt/*/libclntsh.dylib 2>/dev/null | head -1) && [ -n \"$lib\" ] && rm -rf \"$HOME/instantclient_macos_arm64\" && cp -R \"$(dirname \"$lib\")/\" \"$HOME/instantclient_macos_arm64\" && { find \"$HOME/lib\" -maxdepth 1 -type l -lname \"$HOME/Downloads/instantclient_*\" -delete 2>/dev/null || true; } && hdiutil detach /tmp/l8db-ic/mnt && rm -rf /tmp/l8db-ic";
@@ -1203,7 +1222,7 @@ pub(super) fn oracle_hints() -> Vec<InstallHint> {
     ]
 }
 
-fn driver_status(kind: DatabaseKind, driver: Driver) -> DriverStatus {
+fn driver_status(id: &str, kind: DatabaseKind, driver: Driver) -> DriverStatus {
     if kind == DatabaseKind::Jdbc {
         return DriverStatus {
             available: false,
@@ -1236,6 +1255,11 @@ fn driver_status(kind: DatabaseKind, driver: Driver) -> DriverStatus {
             },
         },
         Driver::Odbc { driver } => {
+            let install_command = if driver.is_empty() {
+                install_command
+            } else {
+                product_install_command(id).map(str::to_string)
+            };
             let status = odbc_environment_status();
             let mut install = odbc_driver_hints(driver);
             match status {
@@ -1351,18 +1375,21 @@ pub fn list_providers() -> Vec<ProviderInfo> {
             hosts: p.hosts,
             driver: p.driver,
             capabilities: product_capabilities(p.id, p.kind.capabilities()),
-            driver_status: driver_status(p.kind, p.driver),
+            driver_status: driver_status(p.id, p.kind, p.driver),
         })
         .collect()
 }
 
 pub fn kind_driver_status(kind: DatabaseKind) -> DriverStatus {
-    let driver = PROVIDERS
+    PROVIDERS
         .iter()
         .find(|p| p.kind == kind)
-        .map(|p| p.driver)
-        .unwrap_or(Driver::Builtin);
-    driver_status(kind, driver)
+        .map(product_status)
+        .unwrap_or_else(|| driver_status("", kind, Driver::Builtin))
+}
+
+fn product_status(provider: &Provider) -> DriverStatus {
+    driver_status(provider.id, provider.kind, provider.driver)
 }
 
 pub fn install_command(kind: DatabaseKind) -> Result<&'static str, String> {
@@ -1407,8 +1434,12 @@ fn shell(command: &str) -> tokio::process::Command {
     }
 }
 
-pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
-    let command = install_command(kind)?;
+pub async fn install_driver(kind: DatabaseKind, provider: Option<&str>) -> Result<String, String> {
+    let product = provider.and_then(|id| PROVIDERS.iter().find(|p| p.id == id && p.kind == kind));
+    let command = match product.and_then(|p| product_install_command(p.id)) {
+        Some(command) => command,
+        None => install_command(kind)?,
+    };
     if std::env::consts::OS == "macos" && command.contains("brew ") {
         let brew = crate::process::command("sh")
             .arg("-c")
@@ -1446,7 +1477,10 @@ pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
     let short = trimmed[start..].to_string();
     if output.status.success() {
         let mut result = short;
-        let still_missing = !kind_driver_status(kind).available
+        let status = product
+            .map(product_status)
+            .unwrap_or_else(|| kind_driver_status(kind));
+        let still_missing = !status.available
             && (kind == DatabaseKind::Oracle
                 || (kind == DatabaseKind::Odbc && cfg!(feature = "odbc")));
         if still_missing {
@@ -1758,6 +1792,30 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "ok");
+    }
+
+    #[cfg(feature = "odbc")]
+    #[test]
+    fn ibmi_installs_its_own_driver_and_other_odbc_products_do_not() {
+        let command = |id: &str| {
+            list_providers()
+                .into_iter()
+                .find(|p| p.id == id)
+                .unwrap()
+                .driver_status
+                .install_command
+        };
+        match std::env::consts::OS {
+            "macos" => assert!(command("ibmi")
+                .unwrap()
+                .contains("brew fetch --cask ibm-iaccess")),
+            "linux" if std::env::consts::ARCH == "x86_64" => assert!(command("ibmi")
+                .unwrap()
+                .contains("apt-get install -y ibm-iaccess")),
+            _ => assert!(command("ibmi").is_none()),
+        }
+        assert!(command("firebird").is_none());
+        assert!(product_install_command("odbc").is_none());
     }
 
     #[cfg(target_os = "macos")]

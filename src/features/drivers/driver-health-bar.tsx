@@ -28,7 +28,7 @@ export function DriverHealthBar({ summaries }: { summaries: DriverSummary[] }) {
         {summaries.map((summary) => {
           const label = `${summary.title}: ${summary.status.available ? "bereit" : "fehlt"}`;
           return (
-            <li key={summary.kind} className="min-w-0">
+            <li key={summary.id} className="min-w-0">
               <Tooltip wrapperClassName="block" content={label}>
                 <span
                   role="img"
@@ -40,6 +40,7 @@ export function DriverHealthBar({ summaries }: { summaries: DriverSummary[] }) {
                 >
                   <ProviderLogo
                     kind={summary.kind}
+                    providerId={summary.providerId}
                     className={cn("size-4", !summary.status.available && "opacity-60 grayscale")}
                   />
                   <span

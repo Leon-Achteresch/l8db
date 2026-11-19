@@ -418,7 +418,7 @@ pub async fn repair(kind: DatabaseKind) -> Result<DriverRepair, String> {
                     ));
                 }
             }
-            Step::Install => log.push(match install_driver(kind).await {
+            Step::Install => log.push(match install_driver(kind, None).await {
                 Ok(output) => output,
                 Err(error) => error,
             }),

@@ -52,6 +52,7 @@ export const PROVIDER_SLUG: Record<string, string | null> = {
   scylladb: "scylladb",
   odbc: null,
   db2: "ibm",
+  ibmi: "ibm",
   firebird: "firebird",
   informix: "ibm",
   sybase: "sap",

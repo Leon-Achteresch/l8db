@@ -109,8 +109,20 @@ pub fn connection_string_from_url(value: &str) -> Result<String, String> {
     for (k, v) in url.query_pairs() {
         parts.push((k.into_owned(), v.into_owned()));
     }
+    let ibmi = parts.iter().any(|(k, v)| {
+        k.eq_ignore_ascii_case("Driver")
+            && v.to_ascii_lowercase()
+                .starts_with(&super::provider::IBMI_DRIVER.to_ascii_lowercase())
+    });
+    if ibmi && url.port().is_some() {
+        return Err("Der IBM i Access ODBC Driver kennt keinen Port. Entferne den Port; SSH-Tunnel und Proxys sind mit diesem Treiber nicht möglich.".to_string());
+    }
     if let Some(host) = url.host_str() {
-        if !has(&parts, "Server") && !has(&parts, "Hostname") && !has(&parts, "Host") {
+        if ibmi {
+            if !has(&parts, "System") {
+                parts.push(("System".to_string(), host.to_string()));
+            }
+        } else if !has(&parts, "Server") && !has(&parts, "Hostname") && !has(&parts, "Host") {
             parts.push(("Server".to_string(), host.to_string()));
         }
         if let Some(port) = url.port() {
@@ -122,7 +134,7 @@ pub fn connection_string_from_url(value: &str) -> Result<String, String> {
     let database = percent(url.path().trim_start_matches('/'));
     if !database.is_empty()
         && !has(&parts, "Database")
-        && !has(&parts, "DBQ")
+        && (ibmi || !has(&parts, "DBQ"))
         && !has(&parts, "Dbname")
     {
         parts.push(("Database".to_string(), database));
@@ -662,6 +674,15 @@ mod tests {
             connection_string_from_url("odbc://db2inst1:p%3Bw@localhost:50000/SAMPLE?Driver=IBM%20DB2%20ODBC%20DRIVER").unwrap(),
             "Driver=IBM DB2 ODBC DRIVER;Server=localhost;Port=50000;Database=SAMPLE;UID=db2inst1;PWD={p;w}"
         );
+        assert_eq!(
+            connection_string_from_url("odbc://QUSER:pw@as400.example.com/IASP1?Driver=IBM+i+Access+ODBC+Driver&DBQ=LIB1%2CLIB2").unwrap(),
+            "Driver=IBM i Access ODBC Driver;DBQ=LIB1,LIB2;System=as400.example.com;Database=IASP1;UID=QUSER;PWD=pw"
+        );
+        assert!(connection_string_from_url(
+            "odbc://QUSER:pw@127.0.0.1:51234/?Driver=IBM%20i%20Access%20ODBC%20Driver%2064-bit"
+        )
+        .unwrap_err()
+        .contains("kennt keinen Port"));
         assert_eq!(
             connection_string_from_url("DSN=mydsn;UID=a").unwrap(),
             "DSN=mydsn;UID=a"

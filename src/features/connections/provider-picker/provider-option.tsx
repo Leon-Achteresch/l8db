@@ -1,6 +1,7 @@
 import { Check } from "lucide-react";
 import { ProviderLogo } from "@/components/provider-logo";
 import type { ProviderInfo } from "@/lib/db";
+import { installsOwnDriver } from "@/lib/drivers";
 import { cn } from "@/lib/utils";
 
 export function ProviderOption({
@@ -21,7 +22,7 @@ export function ProviderOption({
     <button
       type="button"
       aria-pressed={selected}
-      disabled={unavailable}
+      disabled={unavailable && !installsOwnDriver(provider)}
       onClick={onSelect}
       title={unavailable ? `${provider.name}: Treiber fehlt` : provider.name}
       className={cn(
