@@ -13,9 +13,9 @@ function tone(stage: PipelineStage) {
 }
 
 const DOT = {
-  done: "bg-emerald-500",
+  done: "bg-success",
   pending: "bg-sky-500",
-  blocked: "bg-amber-500",
+  blocked: "bg-warning",
   idle: "bg-muted-foreground/40",
 };
 
@@ -33,16 +33,16 @@ export function VersioningPipelineStages({
       <li
         className={cn(
           "flex h-8 items-center gap-2 rounded-lg border px-2.5 text-xs",
-          committed ? "border-emerald-500/30" : "border-dashed border-border",
+          committed ? "border-success/30" : "border-dashed border-border",
         )}
       >
         {committed ? (
-          <CheckIcon className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+          <CheckIcon className="size-3.5 text-success" />
         ) : (
           <span className="size-2 rounded-full bg-muted-foreground/40" />
         )}
         <span className="font-medium">Release</span>
-        <span className="font-mono text-[11px] text-muted-foreground">
+        <span className="font-mono text-2xs text-muted-foreground">
           {tip ? `${tip.id}${committed ? "" : " · Entwurf"}` : "keiner"}
         </span>
       </li>
@@ -54,13 +54,13 @@ export function VersioningPipelineStages({
             <li
               className={cn(
                 "flex h-8 items-center gap-2 rounded-lg border px-2.5 text-xs",
-                state === "done" ? "border-emerald-500/30" : "border-border/70",
+                state === "done" ? "border-success/30" : "border-border/70",
                 !stage.total && "border-dashed text-muted-foreground",
               )}
             >
               <span className={cn("size-2 rounded-full", DOT[state])} />
               <span className="font-medium">{STAGE_LABELS[stage.stage]}</span>
-              <span className="text-[11px] text-muted-foreground tabular-nums">
+              <span className="text-2xs text-muted-foreground tabular-nums">
                 {stage.total ? `${stage.current}/${stage.total}` : "–"}
               </span>
             </li>

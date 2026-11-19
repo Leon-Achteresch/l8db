@@ -67,13 +67,15 @@ export function DataTableColumnHeader({
     return (
       <div className="flex items-center gap-2 w-full min-w-0 justify-start" title={fkTitle}>
         {sortButton}
-        <div className="ml-auto flex shrink-0 items-center gap-1">
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
           <div
             title={typeTitle}
-            className="flex items-center gap-1 font-mono text-[10px] leading-none whitespace-nowrap text-muted-foreground select-none"
+            className="flex min-w-0 items-center gap-1 font-mono text-2xs leading-none whitespace-nowrap text-muted-foreground select-none"
           >
             {renderTypeIcon(typeInfo.iconName, "size-2.5")}
-            <span>{compactTypeName(column.columnDef.meta?.dataType) ?? typeInfo.label}</span>
+            <span className="truncate py-0.5">
+              {compactTypeName(column.columnDef.meta?.dataType) ?? typeInfo.label}
+            </span>
           </div>
         </div>
       </div>

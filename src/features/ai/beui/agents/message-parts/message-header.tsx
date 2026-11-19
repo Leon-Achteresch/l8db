@@ -8,7 +8,7 @@ export function MessageHeader({ className, ...props }: MessageHeaderProps) {
     <div
       data-slot="message-header"
       className={cn(
-        "flex items-center gap-1.5 px-1 text-[11px] leading-none text-muted-foreground",
+        "flex items-center gap-1.5 px-1 text-2xs leading-none text-muted-foreground",
         from === "user" ? "justify-end" : "justify-start",
         className,
       )}

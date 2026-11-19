@@ -62,7 +62,7 @@ export function DataTableEditingCell({
               if (e.currentTarget.isConnected) commitEditingCell();
             }}
             disabled={isSaving}
-            className="w-full min-w-0 h-8 px-2 bg-transparent font-mono text-[13px] text-foreground outline-none border-0 focus:ring-0 disabled:opacity-60"
+            className="w-full min-w-0 h-8 px-2 bg-transparent font-mono text-sm text-foreground outline-none border-0 focus:ring-0 disabled:opacity-60"
           >
             <option value="">NULL</option>
             {choices.map((choice) => (
@@ -82,7 +82,7 @@ export function DataTableEditingCell({
             }}
             disabled={isSaving}
             placeholder={redis ? "" : "NULL"}
-            className="w-full min-w-0 h-8 px-3 bg-transparent font-mono text-[13px] text-foreground outline-none border-0 focus:ring-0 placeholder:text-muted-foreground/35 disabled:opacity-60"
+            className="w-full min-w-0 h-8 px-3 bg-transparent font-mono text-sm text-foreground outline-none border-0 focus:ring-0 placeholder:text-muted-foreground/35 disabled:opacity-60"
           />
         )}
         {editingCell.temporal ? (
@@ -92,15 +92,15 @@ export function DataTableEditingCell({
             onPick={setValue}
           />
         ) : null}
-        <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap border-t border-border/40 px-3 py-1 text-[11px] text-muted-foreground select-none">
+        <div className="flex items-center gap-3 overflow-hidden whitespace-nowrap border-t border-border/40 px-3 py-1 text-2xs text-muted-foreground select-none">
           <span className="flex items-center gap-1">
-            <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">
+            <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-2xs leading-none">
               ↵
             </kbd>
             <span>Speichern</span>
           </span>
           <span className="flex items-center gap-1">
-            <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-[10px] leading-none">
+            <kbd className="rounded border border-border bg-muted/80 px-1 py-px font-mono text-2xs leading-none">
               esc
             </kbd>
             <span>Abbrechen</span>

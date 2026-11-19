@@ -57,7 +57,7 @@ export function Score({ rows, shape, options }: ChartProps) {
           <div className="text-2xl font-semibold tabular-nums tracking-tight">
             {Math.round((total / totalMax) * 100)}
           </div>
-          <div className="text-[11px] text-muted-foreground">von 100</div>
+          <div className="text-2xs text-muted-foreground">von 100</div>
         </div>
       </div>
     </div>

@@ -26,18 +26,14 @@ export function CliCommandList({ title, examples }: CliCommandListProps) {
 
   return (
     <div className="space-y-1.5">
-      {title ? (
-        <h3 className="px-3 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-          {title}
-        </h3>
-      ) : null}
+      {title ? <h3 className="px-3 font-mono text-2xs text-muted-foreground">{title}</h3> : null}
       <ul className="overflow-hidden rounded-xl bg-muted/40 py-1">
         {examples.map((example) => (
           <li
             key={example.command}
             className="group flex items-center gap-3 px-3 py-[calc(0.25rem+var(--ui-density-step)/2)] transition-colors hover:bg-muted/60"
           >
-            <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground/90">
+            <code className="min-w-0 flex-1 truncate font-mono text-2xs text-foreground/90">
               <span className="mr-2 text-muted-foreground select-none">$</span>
               {example.command}
             </code>

@@ -47,7 +47,7 @@ export function QueryBuilderConditions({
         {conditions.map((condition, index) => (
           <div key={condition.id} className="space-y-1 rounded-md border bg-background p-1.5">
             <div className="flex items-center gap-1">
-              <span className="w-7 shrink-0 text-center text-[11px] text-muted-foreground">
+              <span className="w-7 shrink-0 text-center text-2xs text-muted-foreground">
                 {index === 0 ? "wo" : "und"}
               </span>
               <Select

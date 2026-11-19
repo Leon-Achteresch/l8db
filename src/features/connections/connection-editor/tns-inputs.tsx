@@ -74,7 +74,7 @@ export function ConnectionTnsInputs({
             TNSNames Editor
           </Button>
         </div>
-        <p className="truncate text-[11px] text-muted-foreground">
+        <p className="truncate text-2xs text-muted-foreground">
           {tns?.path ??
             "Keine tnsnames.ora gefunden: TNS_ADMIN setzen oder unter <Instant Client>/network/admin ablegen."}
         </p>

@@ -59,12 +59,12 @@ export function DrawerChrome({
     >
       <div className="flex h-11 shrink-0 items-center gap-1.5 border-b bg-muted/40 px-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 font-mono text-[10px] font-bold text-primary">
+          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 font-mono text-2xs font-medium text-primary">
             {index + 1}
           </span>
-          <span className="truncate font-mono text-xs font-semibold">{title}</span>
+          <span className="truncate font-mono text-xs font-medium">{title}</span>
           {subtitle && (
-            <span className="hidden max-w-56 truncate rounded border px-1.5 py-px font-mono text-[10px] text-muted-foreground lg:inline">
+            <span className="hidden max-w-56 truncate rounded border px-1.5 py-px font-mono text-2xs text-muted-foreground lg:inline">
               {subtitle}
             </span>
           )}
@@ -81,7 +81,7 @@ export function DrawerChrome({
           <button
             type="button"
             onClick={onCloseAll}
-            className="shrink-0 cursor-pointer rounded px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="shrink-0 cursor-pointer rounded px-1.5 py-1 text-2xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             Alle
           </button>

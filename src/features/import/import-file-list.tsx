@@ -22,9 +22,9 @@ function badge(tone: "ok" | "warn" | "error" | "info" | "muted", children: React
   return (
     <span
       className={cn(
-        "shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums",
-        tone === "ok" && "bg-emerald-500/12 text-emerald-700 dark:text-emerald-400",
-        tone === "warn" && "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+        "shrink-0 rounded-md px-1.5 py-0.5 text-2xs font-medium tabular-nums",
+        tone === "ok" && "bg-success/12 text-success",
+        tone === "warn" && "bg-warning/15 text-warning",
         tone === "error" && "bg-destructive/12 text-destructive",
         tone === "info" && "bg-primary/12 text-primary",
         tone === "muted" && "bg-muted text-muted-foreground",
@@ -148,7 +148,7 @@ export function ImportFileList({
               (format) => (
                 <span
                   key={format}
-                  className="rounded border bg-background px-1.5 py-px font-mono text-[10px] text-muted-foreground"
+                  className="rounded border bg-background px-1.5 py-px font-mono text-2xs text-muted-foreground"
                 >
                   {format}
                 </span>
@@ -159,7 +159,7 @@ export function ImportFileList({
         {error && <p className="mt-2 text-xs break-words text-destructive">{error}</p>}
       </div>
       <div className="flex items-center justify-between px-4 pt-1 pb-1.5">
-        <span className="text-xs font-semibold">Dateien</span>
+        <span className="text-xs font-medium">Dateien</span>
         <IconMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-xs" aria-label="Weitere Aktionen">

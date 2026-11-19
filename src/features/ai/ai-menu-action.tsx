@@ -34,7 +34,7 @@ export function AiMenuAction({
           {label}
           {feature.isNew && <NewBadge />}
         </span>
-        <span className="block truncate text-[10px] text-muted-foreground">{hint}</span>
+        <span className="block truncate text-2xs text-muted-foreground">{hint}</span>
       </span>
     </button>
   );

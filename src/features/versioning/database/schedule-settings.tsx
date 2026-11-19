@@ -93,18 +93,18 @@ export function ScheduleSettings({ workspace }: { workspace: BranchingWorkspace 
       <label className="flex items-start justify-between gap-4 rounded-xl bg-muted/40 p-3 text-xs">
         <span>
           <span className="font-medium">Automatisch sichern</span>
-          <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+          <span className="mt-0.5 block text-2xs leading-relaxed text-muted-foreground">
             {masked
               ? "Maskierte Datenbanken werden nicht im Klartext gesichert."
               : `Läuft, solange l8db geöffnet ist, über die Verbindung „${workspace.connection.name}“. Ältere automatische Sicherungen werden entfernt, geschützte bleiben.`}
           </span>
           {current?.lastRunAt && (
-            <span className="mt-1 block text-[11px] text-muted-foreground">
+            <span className="mt-1 block text-2xs text-muted-foreground">
               Zuletzt {relativeTime(current.lastRunAt)}
             </span>
           )}
           {current?.lastError && (
-            <span className="mt-1 block text-[11px] text-destructive">{current.lastError}</span>
+            <span className="mt-1 block text-2xs text-destructive">{current.lastError}</span>
           )}
         </span>
         <Switch

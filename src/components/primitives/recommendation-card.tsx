@@ -33,14 +33,14 @@ export function RecommendationCard({
     >
       <div className="flex items-start gap-2.5">
         {icon && (
-          <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 [&_svg]:size-3.5">
+          <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-warning/15 text-warning [&_svg]:size-3.5">
             {icon}
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-semibold leading-snug">{title}</p>
+          <p className="text-sm font-semibold leading-snug">{title}</p>
           {meta && (
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-2xs text-muted-foreground">
               {meta}
             </div>
           )}
@@ -67,7 +67,7 @@ export function RecommendationCard({
             type="button"
             aria-expanded={open}
             onClick={() => setOpen(!open)}
-            className="-ml-1 flex h-7 items-center gap-1 rounded-md px-1 text-[11px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            className="-ml-1 flex h-7 items-center gap-1 rounded-md px-1 text-2xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
             {detailsLabel}
             <ChevronDown

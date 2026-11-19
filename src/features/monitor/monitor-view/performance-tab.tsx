@@ -112,7 +112,7 @@ export function PerformanceTab({ m }: { m: MonitorViewState }) {
                   <div key={schema.schema} className="space-y-1.5">
                     <div className="flex items-center justify-between gap-3 text-xs">
                       <span className="truncate font-mono">{schema.schema}</span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                      <span className="shrink-0 text-2xs text-muted-foreground">
                         {formatBytes(schema.size_bytes)} · {schema.table_count} Tabellen
                       </span>
                     </div>
@@ -187,7 +187,7 @@ export function PerformanceTab({ m }: { m: MonitorViewState }) {
                       <td className="px-4 py-2.5 text-right">
                         <Badge
                           variant={entry.error ? "destructive" : "secondary"}
-                          className="px-1.5 py-0 text-[10px]"
+                          className="px-1.5 py-0 text-2xs"
                         >
                           {entry.error ? "Fehler" : "OK"}
                         </Badge>

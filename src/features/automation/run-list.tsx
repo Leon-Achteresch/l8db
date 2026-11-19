@@ -84,10 +84,10 @@ export function RunList({ runs, selectedId, loaded, now, onSelect }: Props) {
             >
               <StatusIcon status={run.status} />
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span title={run.taskName} className="truncate text-[13px] font-medium">
+                <span title={run.taskName} className="truncate text-sm font-medium">
                   {run.taskName}
                 </span>
-                <span className="truncate text-[11px] tabular-nums text-muted-foreground">
+                <span className="truncate text-2xs tabular-nums text-muted-foreground">
                   {formatDateTime(run.startedAt)}
                 </span>
               </div>
@@ -100,9 +100,7 @@ export function RunList({ runs, selectedId, loaded, now, onSelect }: Props) {
                 >
                   {duration}
                 </span>
-                <span className="text-[11px] text-muted-foreground">
-                  {triggerLabel(run.trigger)}
-                </span>
+                <span className="text-2xs text-muted-foreground">{triggerLabel(run.trigger)}</span>
               </div>
             </div>
           );

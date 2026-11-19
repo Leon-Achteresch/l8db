@@ -102,7 +102,7 @@ export function SupabaseOverviewSection({ project, capabilities }: SupabaseStudi
           <div ref={feature.ref} className="flex flex-wrap items-center gap-2">
             <h2 className="text-2xl font-semibold tracking-[-0.03em]">{project.name}</h2>
             {!project.self_hosted && (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-2xs font-medium text-primary">
                 {project.status ? statusLabel(project.status) : "Status unbekannt"}
               </span>
             )}

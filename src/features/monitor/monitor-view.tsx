@@ -118,12 +118,12 @@ export function MonitorView() {
                   {value === "live" && liveTabIsNew && <NewBadge />}
                   {value === "sessions" && hasNewIndexProgress && <NewBadge />}
                   {value === "locks" && live.waitingLocks > 0 && (
-                    <Badge variant="destructive" className="h-4 px-1 text-[10px]">
+                    <Badge variant="destructive" className="h-4 px-1 text-2xs">
                       {live.waitingLocks}
                     </Badge>
                   )}
                   {value === "logs" && scopedServerOutput.length > 0 && (
-                    <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                    <Badge variant="secondary" className="h-4 px-1 text-2xs">
                       {scopedServerOutput.length}
                     </Badge>
                   )}

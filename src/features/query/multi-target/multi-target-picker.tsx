@@ -61,7 +61,7 @@ export function MultiTargetPicker({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="min-w-60">
-              <DropdownMenuLabel className="text-[10px] text-muted-foreground">
+              <DropdownMenuLabel className="text-2xs text-muted-foreground">
                 Gespeicherte Zielgruppen
               </DropdownMenuLabel>
               {groups.length === 0 && (
@@ -76,7 +76,7 @@ export function MultiTargetPicker({
                     onClick={() => onReplace(usable)}
                   >
                     <span className="flex-1 truncate">{group.name}</span>
-                    <span className="text-[10px] text-muted-foreground">{usable.length}</span>
+                    <span className="text-2xs text-muted-foreground">{usable.length}</span>
                     <Button
                       size="icon-xs"
                       variant="ghost"
@@ -115,12 +115,12 @@ export function MultiTargetPicker({
             Speichern
           </Button>
         </div>
-        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+        <div className="flex items-center justify-between text-2xs text-muted-foreground">
           <span>{selected.length} Ziele ausgewählt</span>
           <Button
             size="sm"
             variant="link"
-            className="h-4 px-0 text-[11px]"
+            className="h-4 px-0 text-2xs"
             disabled={!selected.length}
             disabledReason="Kein Ziel ausgewählt"
             onClick={() => onReplace([])}

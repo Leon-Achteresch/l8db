@@ -83,14 +83,14 @@ export function AiIssueCard({
           )}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {ISSUE_REPOSITORY}
             {number ? ` · #${number}` : ""}
           </p>
           <h3 className="mt-0.5 line-clamp-2 break-words text-sm font-semibold">
             {title || "Fehlerbericht"}
           </h3>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
             <span role="status" className="font-medium text-foreground/80">
               {label}
             </span>
@@ -98,7 +98,7 @@ export function AiIssueCard({
               <span
                 key={issueLabel.name}
                 style={{ backgroundColor: `#${issueLabel.color}` }}
-                className={`rounded-full px-1.5 text-[10px] font-medium leading-4 ${issueLabel.dark ? "text-white" : "text-black"}`}
+                className={`rounded-full px-1.5 text-2xs font-medium leading-4 ${issueLabel.dark ? "text-white" : "text-black"}`}
               >
                 {issueLabel.name}
               </span>

@@ -98,7 +98,7 @@ export function ConnectionExportDialog({ open, connections, onOpenChange }: Prop
                   aria-label={connection.name}
                 />
                 <span className="min-w-0 flex-1 truncate">{connection.name}</span>
-                <span className="shrink-0 text-[11px] text-muted-foreground">
+                <span className="shrink-0 text-2xs text-muted-foreground">
                   {providerFor(connection).name}
                 </span>
               </label>
@@ -108,7 +108,7 @@ export function ConnectionExportDialog({ open, connections, onOpenChange }: Prop
         {connections.some(
           (connection) => selected.has(connection.id) && connection.commandTunnel?.command?.trim(),
         ) && (
-          <p className="text-xs text-amber-700 dark:text-amber-400">
+          <p className="text-xs text-warning">
             Tunnel-Befehle werden aus Sicherheitsgründen nicht exportiert. Verbindungen mit
             Befehls-Tunnel lassen sich deshalb nicht importieren und müssen manuell angelegt werden.
           </p>

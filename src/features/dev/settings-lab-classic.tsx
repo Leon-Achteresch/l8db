@@ -11,9 +11,7 @@ export function SettingsLabClassic({
   return (
     <div className="grid min-h-[560px] md:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="border-b bg-muted/35 p-5 md:border-b-0 md:border-r">
-        <p className="mb-5 px-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-          Einstellungen
-        </p>
+        <p className="mb-5 px-2 text-2xs font-medium text-muted-foreground">Einstellungen</p>
         <nav
           className="grid grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-1"
           aria-label="Kategorien der klassischen Vorschau"
@@ -48,9 +46,7 @@ export function SettingsLabClassic({
           </div>
         </div>
         <div className="max-w-3xl">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            Optionen
-          </p>
+          <p className="mb-2 text-xs font-medium text-muted-foreground">Optionen</p>
           <SettingsLabOptions category={category} values={values} onValueChange={onValueChange} />
         </div>
       </div>

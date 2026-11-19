@@ -154,7 +154,7 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
     path: "/invalid-objects",
     label: "Ungültige Objekte",
     Icon: TriangleAlertIcon,
-    iconColor: "text-amber-500",
+    iconColor: "text-warning",
     Component: lazy(() =>
       import("@/features/invalid-objects/invalid-objects-view").then((m) => ({
         default: m.InvalidObjectsView,
@@ -196,7 +196,7 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
     path: "/import",
     label: "Import",
     Icon: DownloadIcon,
-    iconColor: "text-emerald-500",
+    iconColor: "text-success",
     Component: lazy(() =>
       import("@/features/import/import-view").then((m) => ({ default: m.ImportView })),
     ),
@@ -214,7 +214,7 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
     path: "/backup",
     label: "Sicherung",
     Icon: ArchiveIcon,
-    iconColor: "text-emerald-500",
+    iconColor: "text-success",
     Component: lazy(() =>
       import("@/features/backup/backup-view").then((m) => ({ default: m.BackupView })),
     ),
@@ -232,7 +232,7 @@ export const TOOL_TABS: Record<ToolId, ToolEntry> = {
     path: "/create-table",
     label: "Neues Objekt",
     Icon: FilePlusIcon,
-    iconColor: "text-emerald-500",
+    iconColor: "text-success",
     Component: lazy(() =>
       import("@/features/tables/create-object-view").then((m) => ({ default: m.CreateObjectView })),
     ),

@@ -14,7 +14,7 @@ export function ProcedureRunResult({ result, kind }: { result: QueryResult; kind
       aria-label="Prozedurergebnis"
       className="flex min-h-0 shrink-0 flex-col gap-2"
     >
-      <p role="status" className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+      <p role="status" className="text-xs font-medium text-success">
         Ausgeführt in {result.execution_time_ms} ms · {result.rows.length}{" "}
         {result.rows.length === 1 ? "Ergebniszeile" : "Ergebniszeilen"}
         {result.truncated ? " · Anzeige begrenzt" : ""}

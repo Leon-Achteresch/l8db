@@ -127,7 +127,7 @@ export function AutomationToolbar() {
                 )}
                 {entry.label}
                 {entry.id === "alerts" && triggered > 0 && (
-                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold tabular-nums text-white dark:text-background">
+                  <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-2xs font-medium tabular-nums text-white dark:text-background">
                     <span className="sr-only">Ausgelöst: </span>
                     {triggered}
                   </span>
@@ -185,7 +185,7 @@ export function AutomationToolbar() {
       {settings && !settings.schedulerEnabled && (
         <div
           role="status"
-          className="flex items-center gap-2.5 border-t border-amber-500/20 bg-amber-500/8 px-4 py-1.5 text-xs text-amber-900 dark:text-amber-200"
+          className="flex items-center gap-2.5 border-t border-warning/20 bg-warning/8 px-4 py-1.5 text-xs text-warning"
         >
           <PauseCircleIcon aria-hidden className="size-3.5 shrink-0" />
           <span className="min-w-0 flex-1 text-pretty">
@@ -195,7 +195,7 @@ export function AutomationToolbar() {
           <Button
             size="xs"
             variant="outline"
-            className="border-amber-500/30 bg-transparent"
+            className="border-warning/30 bg-transparent"
             onClick={() => void update({ schedulerEnabled: true })}
           >
             Fortsetzen

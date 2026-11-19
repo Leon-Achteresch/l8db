@@ -18,11 +18,11 @@ export function VersioningDeliveryGates({
       {report.gates.map((gate) => {
         const Icon = gate.ok ? CircleCheckIcon : CircleXIcon;
         return (
-          <li key={gate.id} className="flex items-start gap-2 text-[11px] leading-relaxed">
+          <li key={gate.id} className="flex items-start gap-2 text-2xs leading-relaxed">
             <Icon
               className={cn(
                 "mt-0.5 size-3.5 shrink-0",
-                gate.ok ? "text-emerald-600 dark:text-emerald-400" : "text-destructive",
+                gate.ok ? "text-success" : "text-destructive",
               )}
             />
             <span className="min-w-0">

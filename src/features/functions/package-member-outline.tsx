@@ -88,10 +88,8 @@ export function PackageMemberOutline({
       className="relative flex min-w-0 shrink-0 flex-col overflow-hidden border-r bg-muted/20"
     >
       <div className="flex min-w-0 items-center justify-between gap-2 border-b px-2.5 py-2">
-        <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-          Mitglieder
-        </span>
-        <span className="text-[11px] tabular-nums text-muted-foreground">{members.length}</span>
+        <span className="text-2xs font-medium text-muted-foreground">Mitglieder</span>
+        <span className="text-2xs tabular-nums text-muted-foreground">{members.length}</span>
       </div>
       {members.length > 8 ? (
         <div className="border-b p-2">
@@ -134,7 +132,7 @@ export function PackageMemberOutline({
                   </span>
                   <span className="min-w-0 truncate font-mono text-xs">{member.name}</span>
                   {overloaded.has(`${member.kind}:${member.name}`) ? (
-                    <span className="ml-auto shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                    <span className="ml-auto shrink-0 font-mono text-2xs tabular-nums text-muted-foreground">
                       :{member.line}
                     </span>
                   ) : null}

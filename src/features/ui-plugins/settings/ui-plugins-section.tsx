@@ -92,7 +92,7 @@ export function UiPluginsSection() {
       {safeMode && (
         <div
           role="alert"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-amber-500/10 px-3 py-2 text-xs"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-warning/10 px-3 py-2 text-xs"
         >
           <p>
             Abgesicherter Modus: Das Laden der Plugins wurde beim letzten Start nicht abgeschlossen.
@@ -155,7 +155,7 @@ export function UiPluginsSection() {
         </div>
       </div>
       {runtime.dir && (
-        <p className="truncate font-mono text-[11px] text-muted-foreground" title={runtime.dir}>
+        <p className="truncate font-mono text-2xs text-muted-foreground" title={runtime.dir}>
           {runtime.dir}
         </p>
       )}

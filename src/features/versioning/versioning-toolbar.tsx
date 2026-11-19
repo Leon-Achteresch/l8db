@@ -20,10 +20,7 @@ export function VersioningToolbar({
 }) {
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-b border-border/60 py-1.5 pr-1 pl-3">
-      <span
-        className="mr-1 max-w-40 truncate text-xs font-semibold"
-        title={workspace.project?.name}
-      >
+      <span className="mr-1 max-w-40 truncate text-xs font-medium" title={workspace.project?.name}>
         {workspace.project?.name}
       </span>
       <span aria-hidden className="text-border">

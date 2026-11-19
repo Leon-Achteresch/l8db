@@ -30,7 +30,7 @@ export function McpStudioChips({
   };
   return (
     <div className="space-y-2">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-2xs text-muted-foreground">{label}</div>
       <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-muted/40 p-1.5">
         {values.map((value) => (
           <button

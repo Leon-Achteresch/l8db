@@ -304,7 +304,7 @@ export function DashboardDesignPanel({
             <SparklesIcon /> {busy ? "KI wird geöffnet…" : "Design mit KI ändern"}
           </Button>
         </div>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Strg/⌘ + Umschalt + D öffnet den Editor und schaltet eigenes CSS vorübergehend aus. So
           bleibt das Dashboard auch nach ungünstigen CSS-Regeln erreichbar.
         </p>

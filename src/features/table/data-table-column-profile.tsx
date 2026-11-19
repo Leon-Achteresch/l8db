@@ -69,7 +69,7 @@ export function DataTableColumnProfile({
     visual = (
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted-foreground/15">
         <span
-          className="block h-full bg-emerald-500/80"
+          className="block h-full bg-success/80"
           style={{ width: percent(profile.trueRatio) }}
         />
       </div>
@@ -90,7 +90,7 @@ export function DataTableColumnProfile({
   return (
     <div className="flex w-full min-w-0 flex-col gap-1" title={title}>
       <div className="flex h-4 items-end">{visual}</div>
-      <div className="flex min-w-0 items-center justify-between gap-1.5 font-sans text-[10px] leading-3 font-normal text-muted-foreground">
+      <div className="flex min-w-0 items-center justify-between gap-1.5 font-sans text-2xs leading-3 font-normal text-muted-foreground">
         <span className="truncate">{stat}</span>
         {nullRatio > 0 ? (
           <span className="shrink-0 text-rose-600 dark:text-rose-400">

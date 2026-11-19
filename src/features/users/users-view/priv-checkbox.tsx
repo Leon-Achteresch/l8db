@@ -25,7 +25,7 @@ export function PrivCheckbox({
       onCheckedChange={onToggle}
       className={cn(
         "size-4",
-        checked && "data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600",
+        checked && "data-[state=checked]:bg-success data-[state=checked]:border-success",
       )}
     />
   );

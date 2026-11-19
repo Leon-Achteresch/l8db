@@ -168,7 +168,7 @@ export function SettingsSecurityTab() {
           className="rounded-xl bg-muted/40 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <p className="flex items-center gap-2 text-sm font-medium">
-            <span className="size-1.5 rounded-full bg-emerald-500" />
+            <span className="size-1.5 rounded-full bg-success" />
             OS-Schlüsselbund aktiv
           </p>
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">

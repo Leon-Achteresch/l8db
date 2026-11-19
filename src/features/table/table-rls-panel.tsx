@@ -93,7 +93,7 @@ export function TableRlsPanel({ schema, table }: TableRlsPanelProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b bg-muted/30 px-4 py-2.5">
-        <ShieldIcon className="size-4 text-emerald-500" />
+        <ShieldIcon className="size-4 text-success" />
         <label className="flex cursor-pointer items-center gap-2 text-xs">
           <Switch
             checked={data.rls_enabled}
@@ -136,11 +136,11 @@ export function TableRlsPanel({ schema, table }: TableRlsPanelProps) {
                 transition={{ layout: SPRING_LAYOUT }}
                 className="flex items-center gap-3 rounded-md px-3 py-2.5 hover:bg-accent/60"
               >
-                <ShieldIcon className="size-4 shrink-0 text-emerald-500" />
+                <ShieldIcon className="size-4 shrink-0 text-success" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{policy.name}</p>
                   {(policy.using_expr || policy.check_expr) && (
-                    <p className="truncate font-mono text-[11px] text-muted-foreground">
+                    <p className="truncate font-mono text-2xs text-muted-foreground">
                       {[
                         policy.using_expr && `USING (${policy.using_expr})`,
                         policy.check_expr && `CHECK (${policy.check_expr})`,
@@ -150,7 +150,7 @@ export function TableRlsPanel({ schema, table }: TableRlsPanelProps) {
                     </p>
                   )}
                 </div>
-                <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px]">
+                <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-2xs">
                   {policy.command}
                 </Badge>
                 <span className="max-w-40 shrink-0 truncate text-xs text-muted-foreground">

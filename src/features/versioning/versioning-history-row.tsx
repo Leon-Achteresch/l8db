@@ -138,7 +138,7 @@ export function VersioningHistoryRow({
                 <span
                   key={release.id}
                   title={`Release ${release.id}${release.track ? ` · Linie ${release.track}` : ""}`}
-                  className="inline-flex shrink-0 items-center gap-1 rounded bg-primary/10 px-1.5 font-mono text-[10px] font-medium text-primary"
+                  className="inline-flex shrink-0 items-center gap-1 rounded bg-primary/10 px-1.5 font-mono text-2xs font-medium text-primary"
                 >
                   <TagIcon className="size-2.5" />
                   {release.id}
@@ -147,7 +147,7 @@ export function VersioningHistoryRow({
               {tags.map((tag) => (
                 <span
                   key={tag}
-                  className="inline-flex shrink-0 items-center gap-1 rounded border border-border px-1.5 font-mono text-[10px] text-muted-foreground"
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-border px-1.5 font-mono text-2xs text-muted-foreground"
                 >
                   <TagIcon className="size-2.5" />
                   {tag}
@@ -156,7 +156,7 @@ export function VersioningHistoryRow({
               {refs.map((ref) => (
                 <span
                   key={ref}
-                  className="shrink-0 rounded border border-primary/40 px-1.5 font-mono text-[10px] text-primary"
+                  className="shrink-0 rounded border border-primary/40 px-1.5 font-mono text-2xs text-primary"
                 >
                   {ref}
                 </span>
@@ -171,9 +171,9 @@ export function VersioningHistoryRow({
                       key={stage}
                       title={`Ausgerollt auf ${STAGE_LABELS[stage]}: ${names.join(", ")}`}
                       className={cn(
-                        "inline-flex shrink-0 items-center gap-1 rounded border px-1.5 text-[10px]",
+                        "inline-flex shrink-0 items-center gap-1 rounded border px-1.5 text-2xs",
                         stage === "production"
-                          ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-400"
+                          ? "border-success/40 text-success"
                           : "border-border text-muted-foreground",
                       )}
                     >
@@ -181,7 +181,7 @@ export function VersioningHistoryRow({
                         className={cn(
                           "size-1.5 rounded-full",
                           stage === "production"
-                            ? "bg-emerald-500"
+                            ? "bg-success"
                             : stage === "test"
                               ? "bg-sky-500"
                               : "bg-muted-foreground/50",
@@ -193,11 +193,11 @@ export function VersioningHistoryRow({
                   );
                 })}
             </span>
-            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+            <span className="shrink-0 font-mono text-2xs text-muted-foreground">
               {commit.id.slice(0, 7)}
             </span>
             <span
-              className="w-24 shrink-0 text-right text-[11px] text-muted-foreground tabular-nums"
+              className="w-24 shrink-0 text-right text-2xs text-muted-foreground tabular-nums"
               title={new Date(commit.date).toLocaleString()}
             >
               {relativeTime(commit.date)}

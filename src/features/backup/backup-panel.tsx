@@ -134,7 +134,7 @@ export function BackupPanel({
           <span className="font-mono text-sm">{database ?? "Standard-Datenbank"}</span>
           {environment && (
             <span
-              className="rounded-md px-1.5 py-0.5 text-[11px] font-medium"
+              className="rounded-md px-1.5 py-0.5 text-2xs font-medium"
               style={{ color: environment.color, backgroundColor: `${environment.color}1f` }}
             >
               {environment.label}
@@ -273,7 +273,7 @@ export function BackupPanel({
           </p>
         )}
         {overwrite === path && (
-          <p role="alert" className="text-xs text-amber-600 dark:text-amber-400">
+          <p role="alert" className="text-xs text-warning">
             {fileName} existiert bereits und wird erst nach erfolgreicher Sicherung ersetzt. Zum
             Fortfahren auf „Überschreiben“ klicken.
           </p>

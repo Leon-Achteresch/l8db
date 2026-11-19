@@ -131,9 +131,7 @@ export function SupabaseTableStructure({
                     {" "}
                     → {key.foreign_schema}.{key.foreign_table}
                   </span>
-                  <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-                    {key.definition}
-                  </p>
+                  <p className="mt-1 font-mono text-2xs text-muted-foreground">{key.definition}</p>
                 </li>
               ))}
             </ul>
@@ -152,7 +150,7 @@ export function SupabaseTableStructure({
                       <Badge variant="outline">eindeutig</Badge>
                     )}
                   </div>
-                  <p className="mt-1 font-mono text-[11px] break-all text-muted-foreground">
+                  <p className="mt-1 font-mono text-2xs break-all text-muted-foreground">
                     {index.definition}
                   </p>
                 </li>

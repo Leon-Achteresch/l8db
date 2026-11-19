@@ -67,7 +67,7 @@ export function KeyValueFields({
             placeholder={keyPlaceholder}
             aria-label={`${keyLabel} ${index + 1}`}
             spellCheck={false}
-            className="font-mono text-[13px]"
+            className="font-mono text-sm"
             onChange={(event) =>
               update(
                 rows.map((item) =>

@@ -26,7 +26,7 @@ export function McpRuleItem({ rule, onUpdate, onRemove }: McpRuleItemProps) {
         aria-label="Regelname"
       />
       <Input
-        className="h-8 flex-1 font-mono text-[11px] bg-background"
+        className="h-8 flex-1 font-mono text-2xs bg-background"
         value={rule.pattern}
         placeholder="Regex-Muster (z. B. credit_card|iban)"
         onChange={(event) => onUpdate({ pattern: event.target.value })}

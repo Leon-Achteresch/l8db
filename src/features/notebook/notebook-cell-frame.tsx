@@ -56,7 +56,7 @@ export function NotebookCellFrame({
   return (
     <section data-cell-id={id} data-page-start={pageBreak && !first ? "" : undefined}>
       {divider && pageBreak && !first && (
-        <div className="mb-3 ml-12 flex items-center gap-2 text-[11px] text-muted-foreground">
+        <div className="mb-3 ml-12 flex items-center gap-2 text-2xs text-muted-foreground">
           <span className="h-px flex-1 border-t border-dashed" />
           Neue Seite
           <span className="h-px flex-1 border-t border-dashed" />

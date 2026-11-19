@@ -73,7 +73,7 @@ export function ObjectPreview({
   const kind = previewKind(objectKey, data.content_type);
   const bytes = decodeBase64(data.data);
   const info = (
-    <p className="mb-2 text-[11px] text-muted-foreground">
+    <p className="mb-2 text-2xs text-muted-foreground">
       {data.content_type ?? "unbekannter Typ"} · {formatBytes(data.size)}
       {data.truncated ? ` · erste ${formatBytes(bytes.length)} angezeigt` : ""}
     </p>
@@ -113,7 +113,7 @@ export function ObjectPreview({
     return (
       <div>
         {info}
-        <pre className="overflow-auto rounded bg-muted p-2 font-mono text-[10px] leading-4">
+        <pre className="overflow-auto rounded bg-muted p-2 font-mono text-2xs leading-4">
           {hexDump(bytes)}
         </pre>
         {kind === "pdf" ? (

@@ -24,7 +24,7 @@ import { NameConfirmDialog } from "./name-confirm-dialog";
 import { SnapshotEditDialog } from "./snapshot-edit-dialog";
 import type { BranchingWorkspace } from "./use-branching";
 
-const CHIP = "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium";
+const CHIP = "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs font-medium";
 
 export function SnapshotRow({
   snapshot,
@@ -91,7 +91,7 @@ export function SnapshotRow({
             <span className={cn(CHIP, "bg-muted text-muted-foreground")}>Automatisch</span>
           )}
           {snapshot.protected && (
-            <span className={cn(CHIP, "bg-amber-500/10 text-amber-700 dark:text-amber-300")}>
+            <span className={cn(CHIP, "bg-warning/10 text-warning")}>
               <LockIcon className="size-2.5" />
               Geschützt
             </span>
@@ -112,14 +112,14 @@ export function SnapshotRow({
         </div>
         <p
           className={cn(
-            "mt-0.5 text-[11px]",
+            "mt-0.5 text-2xs",
             damaged ? "break-words text-destructive" : "truncate text-muted-foreground",
           )}
         >
           {meta.filter(Boolean).join(" · ")}
         </p>
         {snapshot.note && (
-          <p className="mt-1 line-clamp-2 whitespace-pre-line text-[11px] text-muted-foreground">
+          <p className="mt-1 line-clamp-2 whitespace-pre-line text-2xs text-muted-foreground">
             {snapshot.note}
           </p>
         )}

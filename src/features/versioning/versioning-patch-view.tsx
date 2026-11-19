@@ -12,7 +12,7 @@ export function VersioningPatchView({ file }: { file: PatchFile }) {
   if (!file.lines.length)
     return <p className="px-4 py-3 text-xs text-muted-foreground">Nur umbenannt</p>;
   return (
-    <div className="min-h-0 flex-1 overflow-auto overscroll-contain bg-background/60 font-mono text-[11px] leading-[18px]">
+    <div className="min-h-0 flex-1 overflow-auto overscroll-contain bg-background/60 font-mono text-2xs leading-[18px]">
       <table className="w-full border-collapse">
         <tbody>
           {file.lines.slice(0, limit).map((line, index) =>
@@ -26,7 +26,7 @@ export function VersioningPatchView({ file }: { file: PatchFile }) {
               <tr
                 key={index}
                 className={cn(
-                  line.kind === "add" && "bg-emerald-500/10",
+                  line.kind === "add" && "bg-success/10",
                   line.kind === "del" && "bg-red-500/10",
                   line.kind === "note" && "text-muted-foreground italic",
                 )}
@@ -41,7 +41,7 @@ export function VersioningPatchView({ file }: { file: PatchFile }) {
                   <span
                     className={cn(
                       "inline-block w-4 select-none",
-                      line.kind === "add" && "text-emerald-600 dark:text-emerald-400",
+                      line.kind === "add" && "text-success",
                       line.kind === "del" && "text-red-600 dark:text-red-400",
                     )}
                   >

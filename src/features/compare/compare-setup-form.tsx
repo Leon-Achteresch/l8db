@@ -119,7 +119,7 @@ export function CompareSetupForm(
                 disabled={types.length < 2}
                 onClick={() => setSharedType(type)}
                 className={cn(
-                  "flex flex-col items-center gap-1 rounded-xl border px-1.5 py-2 text-center text-[10px] leading-tight transition-colors",
+                  "flex flex-col items-center gap-1 rounded-xl border px-1.5 py-2 text-center text-2xs leading-tight transition-colors",
                   active
                     ? "border-primary bg-primary/10 text-foreground"
                     : "border-border text-muted-foreground hover:bg-muted/60",

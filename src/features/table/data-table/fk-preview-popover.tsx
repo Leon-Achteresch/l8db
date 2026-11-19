@@ -130,11 +130,11 @@ export function FkPreviewPopover({
             <div className="flex items-center justify-between gap-2 border-b px-3 py-2 bg-muted/40">
               <div className="flex items-center gap-1.5 min-w-0">
                 <ExternalLinkIcon className="size-3 shrink-0 text-blue-500" />
-                <span className="font-mono text-[11px] font-semibold text-foreground/80 truncate">
+                <span className="font-mono text-2xs font-medium text-foreground/80 truncate">
                   {primary.schema}.{primary.table}
                 </span>
               </div>
-              <span className="text-[10px] text-muted-foreground shrink-0 font-mono">
+              <span className="text-2xs text-muted-foreground shrink-0 font-mono">
                 {primary.isOutgoing ? "FK" : "Referenced by"}
               </span>
             </div>
@@ -170,7 +170,7 @@ export function FkPreviewPopover({
                   {orderedColumns.length > collapsedCount && (
                     <button
                       type="button"
-                      className="text-[10px] text-muted-foreground hover:text-foreground pt-1 cursor-pointer"
+                      className="text-2xs text-muted-foreground hover:text-foreground pt-1 cursor-pointer"
                       onClick={() => setExpanded((v) => !v)}
                     >
                       {expanded
@@ -186,7 +186,7 @@ export function FkPreviewPopover({
             <div className="border-t px-3 py-1.5 bg-muted/20">
               <button
                 type="button"
-                className="text-[11px] text-blue-500 hover:text-blue-600 font-medium cursor-pointer transition-colors"
+                className="text-2xs text-blue-500 hover:text-blue-600 font-medium cursor-pointer transition-colors"
                 onClick={() =>
                   onNavigate(
                     primary.schema,
@@ -205,7 +205,7 @@ export function FkPreviewPopover({
             <div className="flex items-center justify-between gap-2 border-b px-3 py-2 bg-muted/40">
               <div className="flex items-center gap-1.5 min-w-0">
                 <ExternalLinkIcon className="size-3 shrink-0 text-blue-500" />
-                <span className="font-mono text-[11px] font-semibold text-foreground/80 truncate">
+                <span className="font-mono text-2xs font-medium text-foreground/80 truncate">
                   {links.length} Verknüpfungen
                 </span>
               </div>
@@ -225,10 +225,10 @@ export function FkPreviewPopover({
                     )
                   }
                 >
-                  <span className="min-w-0 truncate font-mono text-[11px]">
+                  <span className="min-w-0 truncate font-mono text-2xs">
                     {link.schema}.{link.table}.{link.column}
                   </span>
-                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                  <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                     {link.isOutgoing ? "FK" : "Referenced by"}
                   </span>
                 </button>

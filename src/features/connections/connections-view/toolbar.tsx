@@ -51,7 +51,7 @@ export function ConnectionsToolbar({
             aria-pressed={favoritesOnly}
             aria-label={favoritesOnly ? "Alle anzeigen" : "Nur Favoriten"}
             onClick={() => setFavoritesOnly((value) => !value)}
-            className={favoritesOnly ? "text-amber-500 border-amber-500/30" : ""}
+            className={favoritesOnly ? "text-warning border-warning/30" : ""}
           >
             <Star className={favoritesOnly ? "size-4 fill-current" : "size-4"} />
           </Button>

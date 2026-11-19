@@ -88,7 +88,7 @@ function CreateEnumDialogContent({
                 aria-invalid={tooLong}
               />
               {tooLong && (
-                <p className="text-[11px] text-destructive">
+                <p className="text-2xs text-destructive">
                   Höchstens 63 Bytes, PostgreSQL würde den Namen sonst kürzen.
                 </p>
               )}

@@ -276,7 +276,7 @@ export function VersioningReleases({
             {creating ? "Migration & Release vorbereiten" : "Releases"}
             {feature.isNew && <NewBadge />}
           </h2>
-          <p className="mt-1 text-[11px] text-muted-foreground">
+          <p className="mt-1 text-2xs text-muted-foreground">
             {creating
               ? "Definitionen und Migrationen gemeinsam fixieren."
               : `${releases.length} Versionen im Repository`}
@@ -376,7 +376,7 @@ export function VersioningReleases({
                     .map((release) => ({ value: release.id, label: release.id })),
                 ]}
               />
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 Führt etwa einen Hotfix zurück in die Hauptlinie. Kunden auf dem Hotfix bekommen nur
                 die Änderungen, die ihnen fehlen.
               </p>
@@ -392,7 +392,7 @@ export function VersioningReleases({
               placeholder="main oder Kundenvariante"
             />
           </label>
-          <label className="flex items-start gap-2 text-[11px] text-muted-foreground">
+          <label className="flex items-start gap-2 text-2xs text-muted-foreground">
             <input
               type="checkbox"
               checked={allowDrops}
@@ -403,7 +403,7 @@ export function VersioningReleases({
               ? " Bei der Projektregel „nur additiv“ gilt das auch für Typwechsel und Verkürzungen und wird als Freigabe im Release vermerkt."
               : ""}
           </label>
-          <label className="flex items-start gap-2 text-[11px] text-muted-foreground">
+          <label className="flex items-start gap-2 text-2xs text-muted-foreground">
             <input
               type="checkbox"
               checked={project?.additiveOnly ?? false}
@@ -452,7 +452,7 @@ export function VersioningReleases({
                 {migration.changes.length} Änderungen automatisch erzeugt
               </p>
               {migration.changes.map((change) => (
-                <p key={change.label} className="text-[11px] text-muted-foreground">
+                <p key={change.label} className="text-2xs text-muted-foreground">
                   {change.status === "added"
                     ? "Neu"
                     : change.status === "removed"
@@ -462,10 +462,7 @@ export function VersioningReleases({
                 </p>
               ))}
               {migration.issues.map((issue) => (
-                <p
-                  key={issue.label}
-                  className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300"
-                >
+                <p key={issue.label} className="text-2xs leading-relaxed text-warning">
                   {issue.label}: {issue.reason}
                 </p>
               ))}
@@ -504,7 +501,7 @@ export function VersioningReleases({
                 : "Eine Baseline erfasst den bestehenden Stand ohne Migration."
             }
           />
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
+          <p className="text-2xs leading-relaxed text-muted-foreground">
             Speichern und committen fixiert den Release mit seinen Definitionen. Danach direkt zu
             den Kundenzielen wechseln und den Rollout prüfen.
           </p>
@@ -540,7 +537,7 @@ export function VersioningReleases({
             <div className="flex flex-col items-center gap-3 py-12 text-center">
               <TagIcon className="size-7 text-muted-foreground" strokeWidth={1.4} />
               <p className="text-xs font-medium">Der erste Stand beginnt hier</p>
-              <p className="max-w-64 text-[11px] leading-relaxed text-muted-foreground">
+              <p className="max-w-64 text-2xs leading-relaxed text-muted-foreground">
                 Nimm deine Definitionen auf und erstelle daraus eine Baseline.
               </p>
               <Button size="sm" variant="ghost" onClick={() => void run(prepare)}>
@@ -562,14 +559,14 @@ export function VersioningReleases({
                 <TagIcon className="size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-mono text-xs font-medium">{release.id}</span>
-                  <span className="mt-1 block text-[11px] text-muted-foreground">
+                  <span className="mt-1 block text-2xs text-muted-foreground">
                     {releaseTrack(release)} · {release.objects.length} Objekte ·{" "}
                     {releaseParents(release).length
                       ? `von ${releaseParents(release).join(" + ")}`
                       : "Baseline"}
                   </span>
                 </span>
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-2xs text-muted-foreground">
                   {changes.has(`database/releases/${release.id}.json`)
                     ? "Entwurf"
                     : new Date(release.createdAt).toLocaleDateString()}
@@ -580,12 +577,12 @@ export function VersioningReleases({
           {chosen && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold">{chosen.id}</h3>
-                <span className="text-[11px] text-muted-foreground">
+                <h3 className="text-xs font-medium">{chosen.id}</h3>
+                <span className="text-2xs text-muted-foreground">
                   {chosen.migrations.length} Migrationen
                 </span>
               </div>
-              <p className="text-[11px] leading-relaxed text-muted-foreground">
+              <p className="text-2xs leading-relaxed text-muted-foreground">
                 {chosen.objects
                   .map(
                     (entry) =>
@@ -593,7 +590,7 @@ export function VersioningReleases({
                   )
                   .join(" · ")}
               </p>
-              <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/30 p-3 font-mono text-[11px] leading-relaxed">
+              <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-muted/30 p-3 font-mono text-2xs leading-relaxed">
                 {chosen.migrations.map((entry) => entry.sql).join("\n\n") ||
                   "Baseline · bestehender Ausgangsstand ohne Migration"}
               </pre>
@@ -636,7 +633,7 @@ export function VersioningReleases({
               {revertFrom.map((tip) => (
                 <div key={tip.id} className="flex items-start gap-3 rounded-lg bg-muted/30 p-3">
                   <Undo2Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                  <div className="min-w-0 flex-1 text-[11px] leading-relaxed">
+                  <div className="min-w-0 flex-1 text-2xs leading-relaxed">
                     <p className="font-medium">
                       {tip.id} auf den Stand von {chosen.id} zurücknehmen
                     </p>
@@ -649,7 +646,7 @@ export function VersioningReleases({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 text-[11px]"
+                    className="h-7 text-2xs"
                     onClick={() =>
                       void run(
                         () => rollback(chosen, tip),

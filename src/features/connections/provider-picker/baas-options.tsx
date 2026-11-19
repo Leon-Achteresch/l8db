@@ -13,7 +13,7 @@ export function BaasOptions({ onSelect }: { onSelect: (provider: BaasProvider) =
     <div className="space-y-1.5">
       <p
         ref={feature.ref}
-        className="flex items-center gap-1.5 font-mono text-[10px] tracking-widest text-muted-foreground uppercase"
+        className="flex items-center gap-1.5 font-mono text-2xs text-muted-foreground"
       >
         Backend-as-a-Service
         {feature.isNew && <NewBadge />}

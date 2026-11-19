@@ -152,7 +152,7 @@ export function DataTableHeaderCell({
           >
             <div className="flex items-center gap-2 border-b px-3 py-2">
               <FilterIcon className="size-3.5 shrink-0 text-muted-foreground" />
-              <span className="font-mono text-[12px] font-semibold text-foreground/80 truncate">
+              <span className="font-mono text-xs font-medium text-foreground/80 truncate">
                 {header.id}
               </span>
             </div>

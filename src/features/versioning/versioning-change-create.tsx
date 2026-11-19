@@ -56,7 +56,7 @@ export function VersioningChangeCreate({
         Einzeländerung anlegen{feature.isNew && <NewBadge />}
       </summary>
       <div className="mt-2 space-y-3">
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Einmal bauen, per Pull Request in main bringen und unter Kunden an mehrere Ziele
           verteilen. Ein späterer Release mit derselben Änderung führt sie nicht erneut aus.
         </p>
@@ -92,9 +92,9 @@ export function VersioningChangeCreate({
                   )
                 }
               />
-              <span className="font-mono text-[11px]">{object.selection.objectName}</span>
+              <span className="font-mono text-2xs">{object.selection.objectName}</span>
               {object.id in touches && (
-                <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <label className="flex items-center gap-1 text-2xs text-muted-foreground">
                   <input
                     type="checkbox"
                     checked={touches[object.id] === "before"}

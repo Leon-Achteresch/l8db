@@ -95,7 +95,7 @@ export function HomeAddWidgetMenu({ connectionId }: { connectionId: string }) {
                             ?.name ||
                           CHARTS[chart.chart].label}
                       </span>
-                      <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                      <span className="ml-auto shrink-0 text-2xs text-muted-foreground">
                         {CHARTS[chart.chart].label}
                       </span>
                     </DropdownMenuItem>

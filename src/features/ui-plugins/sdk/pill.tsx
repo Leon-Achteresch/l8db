@@ -5,7 +5,7 @@ import { toneSoft } from "@/lib/ui-plugins/tones";
 export function Pill({ tone, children }: { tone?: Tone; children?: ReactNode }) {
   return (
     <span
-      className="inline-flex h-4 max-w-full shrink-0 items-center truncate rounded-full px-1.5 font-sans text-[10.5px] font-medium leading-4"
+      className="inline-flex h-4 max-w-full shrink-0 items-center truncate rounded-full px-1.5 font-sans text-2xs font-medium leading-4"
       style={toneSoft(tone)}
     >
       {children}

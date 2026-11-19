@@ -62,7 +62,7 @@ export function CloudAccountsView() {
               <Cloud />
             </EmptyMedia>
             <EmptyTitle>Noch kein Cloud-Konto</EmptyTitle>
-            <p className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+            <p className="font-mono text-2xs text-muted-foreground">
               {Object.values(PROVIDER_LABEL).join(" · ")}
             </p>
           </EmptyHeader>

@@ -22,7 +22,7 @@ export function PlanWarningBadges({ warnings }: PlanWarningBadgesProps) {
         <span
           key={warning.kind}
           title={warning.message}
-          className="inline-flex items-center gap-0.5 rounded border border-amber-500/40 bg-amber-500/10 px-1 text-[10px] leading-4 font-medium text-amber-700 dark:text-amber-400"
+          className="inline-flex items-center gap-0.5 rounded border border-warning/40 bg-warning/10 px-1 text-2xs leading-4 font-medium text-warning"
         >
           <AlertTriangleIcon className="size-2.5" />
           {SHORT_LABEL[warning.kind]}

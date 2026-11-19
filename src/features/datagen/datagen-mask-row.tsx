@@ -23,7 +23,7 @@ export function DatagenMaskRow({ column, mask, onColumn, onMask }: Props) {
     <div className="grid grid-cols-[minmax(0,12rem)_11rem_minmax(0,1fr)] items-center gap-2 py-1">
       <div className="min-w-0">
         <p className="truncate font-mono text-xs font-medium">{column.name}</p>
-        <p className="truncate text-[10px] text-muted-foreground">
+        <p className="truncate text-2xs text-muted-foreground">
           {column.dataType}
           {column.nullable ? "" : " · NOT NULL"}
         </p>

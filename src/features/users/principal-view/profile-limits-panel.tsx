@@ -18,9 +18,7 @@ export function ProfileLimitsPanel({ limits, value, onChange }: ProfileLimitsPan
     <div className="flex max-w-3xl flex-col gap-6">
       {GROUPS.map((group) => (
         <section key={group.kind} className="flex flex-col">
-          <h3 className="px-2 pb-1 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-            {group.label}
-          </h3>
+          <h3 className="px-2 pb-1 font-mono text-2xs text-muted-foreground">{group.label}</h3>
           {limits
             .filter((limit) => limit.kind === group.kind)
             .map((limit) => {

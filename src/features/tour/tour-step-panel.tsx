@@ -43,12 +43,12 @@ export function TourStepPanel({ aiReady, history, lastAnswer, onThinking }: Prop
   return (
     <>
       <div className="flex items-center gap-1 pt-3 pr-2 pl-4">
-        <span className="min-w-0 flex-1 truncate font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+        <span className="min-w-0 flex-1 truncate font-mono text-2xs text-muted-foreground">
           {chapterIndex + 1} · {chapter?.title}
         </span>
         <span
           data-tour-ui="progress"
-          className="mr-1 font-mono text-[10px] text-muted-foreground tabular-nums"
+          className="mr-1 font-mono text-2xs text-muted-foreground tabular-nums"
         >
           {progress.current}/{progress.total}
         </span>
@@ -87,19 +87,16 @@ export function TourStepPanel({ aiReady, history, lastAnswer, onThinking }: Prop
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
             className="px-4 pt-3"
           >
-            <h2 data-tour-ui="step-title" className="text-[15px] font-semibold tracking-tight">
+            <h2 data-tour-ui="step-title" className="text-sm font-semibold tracking-tight">
               {step?.title}
             </h2>
-            <p
-              data-tour-ui="step-body"
-              className="mt-1.5 text-[13px] leading-5 text-muted-foreground"
-            >
+            <p data-tour-ui="step-body" className="mt-1.5 text-sm leading-5 text-muted-foreground">
               {step?.body}
             </p>
             {step?.action ? (
               <p
                 data-tour-ui="step-action"
-                className="mt-3 flex gap-2 rounded-lg bg-primary/10 px-3 py-2 text-[13px] leading-5 font-medium text-foreground"
+                className="mt-3 flex gap-2 rounded-lg bg-primary/10 px-3 py-2 text-sm leading-5 font-medium text-foreground"
               >
                 <MousePointerClick className="mt-0.5 size-3.5 shrink-0 text-primary" />
                 {step.action}
@@ -165,7 +162,7 @@ export function TourStepPanel({ aiReady, history, lastAnswer, onThinking }: Prop
           title="Autopilot: Die Tour klickt für dich"
           onClick={() => useTourStore.getState().setAutoPilot(!autoPilot)}
           className={cn(
-            "inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-medium transition-colors",
+            "inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-2xs font-medium transition-colors",
             autoPilot
               ? "bg-primary/15 text-foreground"
               : "text-muted-foreground hover:bg-muted hover:text-foreground",

@@ -73,7 +73,7 @@ export function SettingsAboutTab() {
           <Button variant="outline" size="sm" onClick={() => void copyDiagnosticInfo()}>
             <MorphIcon
               icon={copied ? Check : Copy}
-              className={copied ? "size-3.5 text-emerald-500" : "size-3.5"}
+              className={copied ? "size-3.5 text-success" : "size-3.5"}
             />
             <span>{copied ? "Kopiert" : "Infos kopieren"}</span>
           </Button>

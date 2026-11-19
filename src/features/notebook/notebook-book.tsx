@@ -48,7 +48,7 @@ export function NotebookBook({
         {pageNumber(index) !== null && (
           <span
             className={cn(
-              "pointer-events-none sticky top-full mt-auto self-end pt-4 font-mono text-[10px] text-muted-foreground",
+              "pointer-events-none sticky top-full mt-auto self-end pt-4 font-mono text-2xs text-muted-foreground",
               side === "left" && "self-start",
             )}
           >

@@ -94,7 +94,7 @@ export function BranchSettingsDialog({
               </span>
             )}
             {renamed && database.sessions > 0 && (
-              <span className="text-amber-700 dark:text-amber-300">
+              <span className="text-warning">
                 Umbenennen gelingt nur ohne offene Verbindungen ({database.sessions}).
               </span>
             )}

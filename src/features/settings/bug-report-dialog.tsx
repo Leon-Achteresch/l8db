@@ -144,7 +144,7 @@ export function BugReportDialog({ open, onOpenChange }: Props) {
           </div>
           <details className="text-xs text-muted-foreground">
             <summary className="cursor-pointer select-none">Angehängte Umgebungsdaten</summary>
-            <pre className="mt-2 max-h-40 overflow-auto rounded-md border bg-muted/40 p-2 font-mono text-[11px] break-words whitespace-pre-wrap text-foreground">
+            <pre className="mt-2 max-h-40 overflow-auto rounded-md border bg-muted/40 p-2 font-mono text-2xs break-words whitespace-pre-wrap text-foreground">
               {diagnostics || "Wird gesammelt…"}
             </pre>
           </details>

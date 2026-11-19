@@ -63,7 +63,7 @@ export function OpenSourceLicensesDialog({ open, onOpenChange }: Props) {
               <pre
                 key={section.slice(0, 200)}
                 dir="auto"
-                className="whitespace-pre-wrap break-words border-b p-4 font-mono text-[11px] leading-relaxed [contain-intrinsic-size:auto_600px] [content-visibility:auto]"
+                className="whitespace-pre-wrap break-words border-b p-4 font-mono text-2xs leading-relaxed [contain-intrinsic-size:auto_600px] [content-visibility:auto]"
               >
                 {section}
               </pre>

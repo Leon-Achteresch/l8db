@@ -34,7 +34,7 @@ export function ResultSortHeader({ col, gridColumn, sorts, setSorts }: ResultSor
         onClick={(event) =>
           setSorts((prev) => toggleResultSort(prev, col, event.shiftKey || event.altKey))
         }
-        className="flex w-full items-center gap-1 px-3 py-1.5 text-left text-xs font-semibold text-foreground hover:bg-muted"
+        className="flex w-full items-center gap-1 px-3 py-1.5 text-left text-xs font-medium text-foreground hover:bg-muted"
       >
         <span className="truncate">{col}</span>
         <MorphIcon
@@ -42,7 +42,7 @@ export function ResultSortHeader({ col, gridColumn, sorts, setSorts }: ResultSor
           className={cn("size-3 shrink-0", !direction && "opacity-25")}
         />
         {rank !== null && sorts.length > 1 && (
-          <span className="font-mono text-[10px] text-muted-foreground">{rank}</span>
+          <span className="font-mono text-2xs text-muted-foreground">{rank}</span>
         )}
       </button>
     </th>

@@ -104,7 +104,7 @@ export function ChipsInput({
           }}
           className={cn(
             "h-6 min-w-24 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground",
-            mono && "font-mono text-[13px]",
+            mono && "font-mono text-sm",
           )}
         />
       </div>

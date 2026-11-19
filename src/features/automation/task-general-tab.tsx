@@ -147,7 +147,7 @@ export function TaskGeneralTab({ task, tasks, issues, onChange }: Props) {
         {awsEnv.length > 0 && (
           <p
             data-testid="automation-aws-env-hint"
-            className="ml-11 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-pretty text-amber-800 dark:text-amber-300"
+            className="ml-11 rounded-lg bg-warning/10 px-3 py-2 text-xs text-pretty text-warning"
           >
             Im Hintergrund stehen Umgebungsvariablen der Shell nicht zur Verfügung. Nutze ein
             AWS-Profil für {awsEnv.map((name) => `„${name}“`).join(", ")}.

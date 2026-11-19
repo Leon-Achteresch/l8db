@@ -98,14 +98,14 @@ export function OutputSpecFields({
               checked={value.appendTimestamp}
               onCheckedChange={(appendTimestamp) => patch({ appendTimestamp })}
             />
-            <Label htmlFor={timestampId} className="text-[13px] font-normal">
+            <Label htmlFor={timestampId} className="text-sm font-normal">
               Zeitstempel anhängen
             </Label>
           </div>
           {allowZip && (
             <div className="flex items-center gap-2.5">
               <Switch id={zipId} checked={value.zip} onCheckedChange={(zip) => patch({ zip })} />
-              <Label htmlFor={zipId} className="text-[13px] font-normal">
+              <Label htmlFor={zipId} className="text-sm font-normal">
                 Als ZIP packen
               </Label>
             </div>
@@ -121,7 +121,7 @@ export function OutputSpecFields({
               patch({ cleanup: checked ? { olderThanDays: 30, keepLast: 10 } : null })
             }
           />
-          <Label htmlFor={cleanupId} className="text-[13px] font-normal">
+          <Label htmlFor={cleanupId} className="text-sm font-normal">
             Ältere Dateien im Zielordner aufräumen
           </Label>
         </div>

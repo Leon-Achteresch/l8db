@@ -49,10 +49,10 @@ export function VersioningForgeConnect({
       }}
     >
       <div>
-        <h3 className="text-xs font-semibold">
+        <h3 className="text-xs font-medium">
           Mit {selected ? FORGE_LABELS[selected] : "der Git-Plattform"} verbinden
         </h3>
-        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+        <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
           Pull Requests, Reviews und Merges laufen über {info.remote.host}. Der Token liegt nur im
           Schlüsselbund dieses Rechners und wird ausschließlich an diesen Host gesendet.
         </p>
@@ -78,14 +78,14 @@ export function VersioningForgeConnect({
           spellCheck={false}
           value={token}
           onChange={(event) => setToken(event.target.value)}
-          className="font-mono text-[11px]"
+          className="font-mono text-2xs"
         />
       </label>
       {selected && (
-        <p className="text-[11px] leading-relaxed text-muted-foreground">{SCOPES[selected]}</p>
+        <p className="text-2xs leading-relaxed text-muted-foreground">{SCOPES[selected]}</p>
       )}
       {info.problem && (
-        <p role="alert" className="text-[11px] leading-relaxed text-destructive">
+        <p role="alert" className="text-2xs leading-relaxed text-destructive">
           {info.problem}
         </p>
       )}

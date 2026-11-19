@@ -60,7 +60,7 @@ export function VersioningPullCreate({
     return (
       <div className="flex items-center gap-3 rounded-xl bg-muted/35 p-3">
         <GitPullRequestCreateIcon className="size-4 shrink-0 text-primary" />
-        <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-muted-foreground">
+        <p className="min-w-0 flex-1 text-2xs leading-relaxed text-muted-foreground">
           <span className="font-mono text-foreground">{branch}</span> zur Prüfung in{" "}
           <span className="font-mono text-foreground">{defaultBranch}</span> vorschlagen.
           {pending > 0 && ` Zuerst ${pending} offene Änderungen committen.`}
@@ -78,7 +78,7 @@ export function VersioningPullCreate({
         create();
       }}
     >
-      <h3 className="text-xs font-semibold">
+      <h3 className="text-xs font-medium">
         Pull Request: <span className="font-mono">{branch}</span> →{" "}
         <span className="font-mono">{defaultBranch}</span>
       </h3>
@@ -92,7 +92,7 @@ export function VersioningPullCreate({
         aria-label="Beschreibung des Pull Requests"
         value={body}
         onChange={(event) => setBody(event.target.value)}
-        className="min-h-48 font-mono text-[11px]"
+        className="min-h-48 font-mono text-2xs"
       />
       <label className="flex items-center gap-2 text-xs">
         <input
@@ -102,7 +102,7 @@ export function VersioningPullCreate({
         />
         Als Entwurf erstellen
       </label>
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
+      <p className="text-2xs leading-relaxed text-muted-foreground">
         Der Branch wird vorher veröffentlicht. Die Beschreibung listet Releases, Migrationen und
         erkannte Risiken für das Review.
       </p>

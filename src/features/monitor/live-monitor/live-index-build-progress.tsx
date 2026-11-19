@@ -21,7 +21,7 @@ export function LiveIndexBuildProgress({ progress }: { progress: IndexBuildProgr
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <h4 className="font-medium">Indexfortschritt</h4>
         {progress.command && (
-          <span className="font-mono text-[11px] wrap-anywhere text-muted-foreground">
+          <span className="font-mono text-2xs wrap-anywhere text-muted-foreground">
             {progress.command}
           </span>
         )}

@@ -116,15 +116,12 @@ export function DriverListVariant({
               <span
                 className={cn(
                   "hidden items-center gap-1.5 text-xs md:inline-flex",
-                  available ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400",
+                  available ? "text-muted-foreground" : "text-warning",
                 )}
               >
                 <span
                   aria-hidden
-                  className={cn(
-                    "size-1.5 rounded-full",
-                    available ? "bg-emerald-500" : "bg-amber-500",
-                  )}
+                  className={cn("size-1.5 rounded-full", available ? "bg-success" : "bg-warning")}
                 />
                 {available ? "Bereit" : "Fehlt"}
               </span>

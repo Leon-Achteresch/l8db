@@ -47,10 +47,10 @@ export function SupabaseSqlLibrary({
         className="w-full rounded-md px-2 py-1.5 text-left hover:bg-muted"
         title="In neuem Tab öffnen"
       >
-        <pre className="line-clamp-2 font-mono text-[11px] break-all whitespace-pre-wrap">
+        <pre className="line-clamp-2 font-mono text-2xs break-all whitespace-pre-wrap">
           {entry.sql}
         </pre>
-        <span className={`text-[10px] ${entry.ok ? "text-muted-foreground" : "text-destructive"}`}>
+        <span className={`text-2xs ${entry.ok ? "text-muted-foreground" : "text-destructive"}`}>
           {time.format(entry.at)}
           {entry.ok
             ? ` · ${entry.rows ?? 0} Zeilen · ${entry.durationMs ?? 0} ms`

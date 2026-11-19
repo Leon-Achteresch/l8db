@@ -92,7 +92,7 @@ export function SshAuthFields({
               </Button>
             )}
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Alle Schlüssel des Agents werden nacheinander probiert.
             {onePassword
               ? ""

@@ -234,7 +234,7 @@ export function Onboarding() {
                     <AppLogo className="size-9" />
                     <div>
                       <p className="text-sm font-semibold">Willkommen bei l8db</p>
-                      <p className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground">
+                      <p className="text-2xs text-muted-foreground">
                         Schritt {step} von {steps.length}
                       </p>
                     </div>

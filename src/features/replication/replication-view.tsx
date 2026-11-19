@@ -71,7 +71,7 @@ export function ReplicationView() {
     <main className="mx-auto flex h-full w-full max-w-6xl min-h-0 flex-col gap-4 p-6">
       <header className="flex shrink-0 items-center gap-2">
         <RadioIcon className="size-5 text-primary" />
-        <h1 className="text-xl font-bold tracking-tight">Logische Replikation</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Logische Replikation</h1>
       </header>
 
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
@@ -132,7 +132,7 @@ export function ReplicationView() {
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-medium">{pub.name}</span>
                     {pub.all_tables && (
-                      <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                      <Badge variant="secondary" className="px-1.5 py-0 text-2xs">
                         FOR ALL TABLES
                       </Badge>
                     )}
@@ -147,24 +147,24 @@ export function ReplicationView() {
                       <Trash2Icon className="size-3.5" />
                     </Button>
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-2xs text-muted-foreground">
                     {pub.insert && (
-                      <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                      <Badge variant="outline" className="px-1.5 py-0 text-2xs">
                         insert
                       </Badge>
                     )}
                     {pub.update && (
-                      <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                      <Badge variant="outline" className="px-1.5 py-0 text-2xs">
                         update
                       </Badge>
                     )}
                     {pub.delete && (
-                      <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                      <Badge variant="outline" className="px-1.5 py-0 text-2xs">
                         delete
                       </Badge>
                     )}
                     {pub.truncate && (
-                      <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                      <Badge variant="outline" className="px-1.5 py-0 text-2xs">
                         truncate
                       </Badge>
                     )}
@@ -228,7 +228,7 @@ export function ReplicationView() {
                     <span className="font-mono text-sm font-medium">{sub.name}</span>
                     <Badge
                       variant={sub.enabled ? "default" : "outline"}
-                      className="px-1.5 py-0 text-[10px]"
+                      className="px-1.5 py-0 text-2xs"
                     >
                       {sub.enabled ? "aktiv" : "deaktiviert"}
                     </Badge>
@@ -251,7 +251,7 @@ export function ReplicationView() {
                     Publikationen: {sub.publications.join(", ")}
                   </p>
                   <p
-                    className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground"
+                    className="mt-0.5 truncate font-mono text-2xs text-muted-foreground"
                     title={sub.connection_string}
                   >
                     {sub.connection_string}

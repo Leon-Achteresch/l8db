@@ -27,9 +27,9 @@ import { VersioningIconButton } from "./versioning-icon-button";
 import { VersioningSelect } from "./versioning-select";
 
 const CHECKS = {
-  success: { label: "Prüfungen bestanden", icon: CircleCheckIcon, tone: "text-emerald-600" },
+  success: { label: "Prüfungen bestanden", icon: CircleCheckIcon, tone: "text-success" },
   failure: { label: "Prüfungen fehlgeschlagen", icon: CircleXIcon, tone: "text-destructive" },
-  pending: { label: "Prüfungen laufen", icon: CircleDashedIcon, tone: "text-amber-600" },
+  pending: { label: "Prüfungen laufen", icon: CircleDashedIcon, tone: "text-warning" },
   none: { label: "Keine Prüfungen", icon: CircleDashedIcon, tone: "text-muted-foreground" },
 } as const;
 
@@ -98,12 +98,12 @@ export function VersioningPullConversation({
   const threads = commentThreads(comments);
   return (
     <div className="space-y-4 text-xs">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-2xs">
         <span className="flex items-center gap-1.5">
           <CircleCheckIcon
             className={cn(
               "size-3.5",
-              detail.approvals.length ? "text-emerald-600" : "text-muted-foreground",
+              detail.approvals.length ? "text-success" : "text-muted-foreground",
             )}
           />
           {detail.approvals.length
@@ -115,7 +115,7 @@ export function VersioningPullConversation({
           {checks.label}
         </span>
         {detail.staleApprovals.length > 0 && (
-          <span className="text-amber-700 dark:text-amber-300">
+          <span className="text-warning">
             Veraltet nach neuen Commits: {detail.staleApprovals.join(", ")}
           </span>
         )}
@@ -126,7 +126,7 @@ export function VersioningPullConversation({
         )}
       </div>
       <article className="rounded-lg border border-border/60">
-        <header className="flex items-center gap-1.5 border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[11px]">
+        <header className="flex items-center gap-1.5 border-b border-border/60 bg-muted/30 px-3 py-1.5 text-2xs">
           <span className="font-medium">{pull.author}</span>
           <span className="text-muted-foreground">
             möchte {pull.head} in {pull.base} übernehmen
@@ -150,7 +150,7 @@ export function VersioningPullConversation({
               aria-label="Beschreibung des Pull Requests"
               value={body}
               onChange={(event) => setBody(event.target.value)}
-              className="min-h-48 font-mono text-[11px]"
+              className="min-h-48 font-mono text-2xs"
             />
             <div className="flex gap-2">
               <Button size="sm" onClick={saveBody}>
@@ -162,7 +162,7 @@ export function VersioningPullConversation({
             </div>
           </div>
         ) : (
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words p-3 font-sans text-[11px] leading-relaxed">
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words p-3 font-sans text-2xs leading-relaxed">
             {detail.body.trim() || "Keine Beschreibung."}
           </pre>
         )}
@@ -226,7 +226,7 @@ export function VersioningPullConversation({
       {open && (
         <div className="space-y-2 rounded-lg bg-muted/30 p-3">
           {blockers.length > 0 ? (
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
+            <p className="text-2xs leading-relaxed text-muted-foreground">
               Merge gesperrt: {blockers.join(" · ")}.
             </p>
           ) : merging ? (

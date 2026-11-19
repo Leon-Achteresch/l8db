@@ -20,7 +20,7 @@ export function DatagenGeneratorParams({ name, generator, onChange }: Props) {
     hint?: string,
   ) => (
     <div className="flex min-w-0 flex-1 items-center gap-1.5" title={hint}>
-      <span className="shrink-0 text-[10px] text-muted-foreground">{label}</span>
+      <span className="shrink-0 text-2xs text-muted-foreground">{label}</span>
       <Input
         className="h-7 min-w-0 flex-1 font-mono text-xs"
         aria-label={`${label} ${name}`}

@@ -51,9 +51,7 @@ export function HealthCheckItem({ check }: Props) {
           )}
         />
         <span className={cn("size-1.5 shrink-0 rounded-full", GROUP_DOT[groupOf(check)])} />
-        <span
-          className={cn("min-w-0 flex-1 truncate text-[13px]", !issue && "text-muted-foreground")}
-        >
+        <span className={cn("min-w-0 flex-1 truncate text-sm", !issue && "text-muted-foreground")}>
           {check.title}
         </span>
         {!open && indexObservationIsNew && <NewBadge />}
@@ -65,7 +63,7 @@ export function HealthCheckItem({ check }: Props) {
         </span>
       </button>
       {open && (
-        <div className="flex flex-col gap-3 pr-3 pb-3 pl-[2.375rem] text-[13px]">
+        <div className="flex flex-col gap-3 pr-3 pb-3 pl-[2.375rem] text-sm">
           {indexCheck && <HealthIndexObservation observation={check.indexObservation} />}
           <p className="text-muted-foreground">{check.explanation}</p>
           {check.status === "skipped" && (

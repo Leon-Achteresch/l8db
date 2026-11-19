@@ -3,7 +3,7 @@ import type { ScriptRunEntry } from "./script-result-list";
 const OUTPUT_PREVIEW = 12;
 
 function outputTone(level: string): string {
-  if (level === "WARNING") return "text-amber-600 dark:text-amber-400";
+  if (level === "WARNING") return "text-warning";
   if (level === "ERROR") return "text-destructive";
   if (level === "OUTPUT" || level === "PROMPT") return "text-foreground";
   return "text-muted-foreground";
@@ -14,7 +14,7 @@ export function ScriptEntryOutput({ entry }: { entry: ScriptRunEntry }) {
   if (!output.length && !entry.feedback && !entry.note) return null;
   const hidden = output.length - OUTPUT_PREVIEW;
   return (
-    <span className="mt-0.5 block whitespace-pre-wrap break-words font-mono text-[11px] leading-4">
+    <span className="mt-0.5 block whitespace-pre-wrap break-words font-mono text-2xs leading-4">
       {output
         .slice(0, OUTPUT_PREVIEW)
         .map((line, position) => ({ line, id: `${entry.index}.${position}` }))

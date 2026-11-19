@@ -71,7 +71,7 @@ export function QueryBuilderNode({
       >
         <TableIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate font-medium">{table}</span>
-        {alias && <span className="font-mono text-[11px] text-muted-foreground">{alias}</span>}
+        {alias && <span className="font-mono text-2xs text-muted-foreground">{alias}</span>}
         <IconMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -138,7 +138,7 @@ export function QueryBuilderNode({
               </span>
               {column.isPrimaryKey && (
                 <KeyRoundIcon
-                  className="size-3 shrink-0 text-amber-500"
+                  className="size-3 shrink-0 text-warning"
                   aria-label="Primärschlüssel"
                 />
               )}
@@ -154,7 +154,7 @@ export function QueryBuilderNode({
               {column.sorted && (
                 <ArrowDownUpIcon className="size-3 shrink-0 text-primary" aria-label="Sortiert" />
               )}
-              <span className="ml-auto shrink-0 truncate pl-2 font-mono text-[11px] text-muted-foreground">
+              <span className="ml-auto shrink-0 truncate pl-2 font-mono text-2xs text-muted-foreground">
                 {column.dataType}
               </span>
             </label>

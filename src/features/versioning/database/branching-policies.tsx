@@ -48,7 +48,7 @@ export function BranchingPolicies({ workspace }: { workspace: BranchingWorkspace
             <h3 id={`branching-policy-${section.id}`} className="text-sm font-semibold">
               {section.title}
             </h3>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+            <p className="mt-0.5 text-2xs leading-relaxed text-muted-foreground">
               {section.description}
             </p>
           </div>

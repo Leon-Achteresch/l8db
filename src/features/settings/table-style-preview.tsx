@@ -79,8 +79,8 @@ export function TableStylePreview({ style }: { style: TableStyle }) {
       >
         <div className="flex h-3.5 shrink-0 items-center gap-1 border-b border-border/70 bg-card px-1.5">
           <span className="size-1 rounded-full bg-rose-400/80" />
-          <span className="size-1 rounded-full bg-amber-400/80" />
-          <span className="size-1 rounded-full bg-emerald-400/80" />
+          <span className="size-1 rounded-full bg-warning/80" />
+          <span className="size-1 rounded-full bg-success/80" />
           <span className="ml-1 font-sans text-[7px] text-muted-foreground">public.orders</span>
         </div>
         <div
@@ -135,7 +135,7 @@ export function TableStylePreview({ style }: { style: TableStyle }) {
                   </div>
                 ) : column.name === "gift" ? (
                   <div className="h-[3px] w-full overflow-hidden rounded-full bg-muted-foreground/20">
-                    <span className="block h-full w-[43%] bg-emerald-500/80" />
+                    <span className="block h-full w-[43%] bg-success/80" />
                   </div>
                 ) : column.numeric || column.type === "date" ? (
                   <div className="flex h-[7px] items-end gap-px">
@@ -187,16 +187,14 @@ export function TableStylePreview({ style }: { style: TableStyle }) {
                   );
                 if (column.name === "gift")
                   content = raw ? (
-                    <CheckIcon className="size-2 text-emerald-500" />
+                    <CheckIcon className="size-2 text-success" />
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   );
                 if (column.name === "created_at")
                   content = <span className="font-sans">{row[6]}</span>;
                 if (column.name === "id")
-                  content = (
-                    <span className="text-amber-600 dark:text-amber-400">{String(raw)}</span>
-                  );
+                  content = <span className="text-warning">{String(raw)}</span>;
               }
               return (
                 <div

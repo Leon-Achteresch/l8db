@@ -97,9 +97,7 @@ export function CodeBlock({
         {filename ? (
           <span className="min-w-0 truncate font-mono text-xs text-foreground/80">{filename}</span>
         ) : null}
-        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-          {language}
-        </span>
+        <span className="text-2xs font-medium text-muted-foreground">{language}</span>
         {copyable || onCopy ? (
           <motion.button
             type="button"

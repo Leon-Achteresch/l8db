@@ -28,12 +28,12 @@ export function InvalidOtherMessages({
             open && "rotate-90",
           )}
         />
-        <TriangleAlertIcon className="size-3.5 shrink-0 text-amber-500" />
+        <TriangleAlertIcon className="size-3.5 shrink-0 text-warning" />
         <span className="truncate font-sans font-medium">Weitere Meldungen</span>
-        <span className="shrink-0 font-sans text-[11px] text-muted-foreground">
+        <span className="shrink-0 font-sans text-2xs text-muted-foreground">
           ohne invalides Objekt
         </span>
-        <span className="ml-1 shrink-0 rounded-full bg-muted px-1.5 font-sans text-[10px] text-muted-foreground tabular-nums">
+        <span className="ml-1 shrink-0 rounded-full bg-muted px-1.5 font-sans text-2xs text-muted-foreground tabular-nums">
           {messages.length}
           <span className="sr-only"> Meldungen</span>
         </span>
@@ -48,7 +48,7 @@ export function InvalidOtherMessages({
             />
           ))}
           {messages.length > shown.length && (
-            <li className="h-6 pl-[3.25rem] font-sans text-[11px] leading-6 text-muted-foreground">
+            <li className="h-6 pl-[3.25rem] font-sans text-2xs leading-6 text-muted-foreground">
               +{messages.length - shown.length} weitere Meldungen
             </li>
           )}

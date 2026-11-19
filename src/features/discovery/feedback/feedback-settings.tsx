@@ -40,8 +40,8 @@ export default function FeedbackSettings() {
                 <Icon
                   className={
                     answer.vote === "up"
-                      ? "size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400"
-                      : "size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
+                      ? "size-3.5 shrink-0 text-success"
+                      : "size-3.5 shrink-0 text-warning"
                   }
                 />
                 <span className="shrink-0 font-medium">
@@ -50,7 +50,7 @@ export default function FeedbackSettings() {
                 <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                   {answer.text}
                 </span>
-                <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
                   {dateFormat.format(answer.at)}
                 </span>
                 <Button

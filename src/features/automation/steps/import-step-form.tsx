@@ -155,7 +155,7 @@ export function ImportStepForm({ action, onChange }: StepFormProps<"import">) {
                   value={column.target}
                   placeholder="spalte"
                   aria-label={`Tabellenspalte ${index + 1}`}
-                  className="font-mono text-[13px]"
+                  className="font-mono text-sm"
                   onChange={(event) =>
                     onChange({
                       ...action,
@@ -213,7 +213,7 @@ export function ImportStepForm({ action, onChange }: StepFormProps<"import">) {
                 <Input
                   value={conflict.constraint}
                   placeholder="orders_pkey"
-                  className="font-mono text-[13px]"
+                  className="font-mono text-sm"
                   onChange={(event) =>
                     onChange({
                       ...action,

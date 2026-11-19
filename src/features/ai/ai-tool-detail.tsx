@@ -13,7 +13,7 @@ export function AiToolDetail({ block }: { block: ToolBlock }) {
       {(block.sql || table) && (
         <div className="flex items-start gap-2 rounded-xl bg-muted/60 py-1 pr-1 pl-3">
           {block.sql ? (
-            <pre className="min-w-0 flex-1 overflow-auto whitespace-pre-wrap py-1 font-mono text-[11px] text-foreground/80">
+            <pre className="min-w-0 flex-1 overflow-auto whitespace-pre-wrap py-1 font-mono text-2xs text-foreground/80">
               {block.sql}
             </pre>
           ) : (
@@ -25,13 +25,13 @@ export function AiToolDetail({ block }: { block: ToolBlock }) {
       {table ? (
         <div className="overflow-hidden rounded-xl bg-card shadow-[0_1px_2px_oklch(0_0_0/5%)]">
           <AiResultTable table={table} />
-          <p className="px-3.5 py-1.5 text-[11px] text-muted-foreground">
+          <p className="px-3.5 py-1.5 text-2xs text-muted-foreground">
             {aiRowsLabel(table.footer)}
           </p>
         </div>
       ) : (
         block.output && (
-          <div className="max-h-64 overflow-auto whitespace-pre-wrap rounded-xl bg-muted/60 px-3 py-2 font-mono text-[11px] text-foreground/80">
+          <div className="max-h-64 overflow-auto whitespace-pre-wrap rounded-xl bg-muted/60 px-3 py-2 font-mono text-2xs text-foreground/80">
             {block.output}
           </div>
         )

@@ -272,7 +272,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                   {editForm.data_type !== undefined &&
                     editForm.data_type.trim() !== col.data_type && (
                       <div className="col-span-5 flex flex-wrap items-center gap-2 bg-background px-4 py-1.5 text-xs text-muted-foreground">
-                        <span className="text-amber-600 dark:text-amber-500">
+                        <span className="text-warning">
                           Typänderungen wandeln bestehende Werte um und können sie kürzen oder
                           fehlschlagen lassen.
                         </span>
@@ -292,7 +292,7 @@ export function AlterTableView({ schema, table }: AlterTableViewProps) {
                 <>
                   <div className="flex items-center gap-1.5 bg-background px-4 py-2">
                     {col.is_primary_key && (
-                      <KeyRoundIcon className="size-3.5 shrink-0 text-amber-500" />
+                      <KeyRoundIcon className="size-3.5 shrink-0 text-warning" />
                     )}
                     <span className="truncate">{col.name}</span>
                   </div>

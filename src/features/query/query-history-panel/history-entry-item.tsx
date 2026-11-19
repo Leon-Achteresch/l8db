@@ -37,11 +37,11 @@ export const HistoryEntryItem = memo(function HistoryEntryItem({
         title="In neuem SQL-Tab öffnen"
       >
         <p className="truncate font-mono text-xs">{firstLine(entry.sql)}</p>
-        <p className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+        <p className="mt-0.5 flex items-center gap-1.5 text-2xs text-muted-foreground">
           <span>{formatTime(entry.ranAt)}</span>
           {entry.database && <span>· {entry.database}</span>}
           {entry.truncated && (
-            <span className="text-amber-600">
+            <span className="text-warning">
               · SQL gekürzt ({entry.sql.length}/{entry.originalSqlLength} Zeichen)
             </span>
           )}
@@ -55,7 +55,7 @@ export const HistoryEntryItem = memo(function HistoryEntryItem({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 gap-1 px-1.5 text-[11px]"
+            className="h-6 gap-1 px-1.5 text-2xs"
             onClick={() => onLoad(entry.sql, "new")}
           >
             <PlayIcon className="size-3" />
@@ -64,7 +64,7 @@ export const HistoryEntryItem = memo(function HistoryEntryItem({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 px-1.5 text-[11px]"
+            className="h-6 px-1.5 text-2xs"
             onClick={() => onLoad(entry.sql, "replace")}
           >
             Editor ersetzen
@@ -72,7 +72,7 @@ export const HistoryEntryItem = memo(function HistoryEntryItem({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 px-1.5 text-[11px]"
+            className="h-6 px-1.5 text-2xs"
             onClick={() => {
               useSavedQueriesStore.getState().saveQuery(firstLine(entry.sql) || "Query", entry.sql);
               toast.success("Query dauerhaft gespeichert");
@@ -83,7 +83,7 @@ export const HistoryEntryItem = memo(function HistoryEntryItem({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
+            className="h-6 gap-1 px-1.5 text-2xs text-muted-foreground"
             onClick={() => undoableRemove(entry.id)}
           >
             <Trash2Icon className="size-3" />

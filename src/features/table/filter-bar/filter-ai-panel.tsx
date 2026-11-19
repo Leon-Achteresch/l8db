@@ -90,7 +90,7 @@ export function FilterAiPanel({
         </ul>
       ) : null}
       {proposal.warnings.length ? (
-        <ul className="grid gap-0.5 text-xs text-amber-700 dark:text-amber-400">
+        <ul className="grid gap-0.5 text-xs text-warning">
           {proposal.warnings.map((warning) => (
             <li key={warning} className="flex gap-1.5">
               <TriangleAlertIcon className="mt-0.5 size-3 shrink-0" />

@@ -34,7 +34,7 @@ export function McpStudioCore({ enabled, onToggle }: McpStudioCoreProps) {
       </button>
       <div className="text-center">
         <div className="text-sm font-semibold">{enabled ? "Läuft" : "Aus"}</div>
-        <div className="text-[11px] text-muted-foreground">
+        <div className="text-2xs text-muted-foreground">
           {enabled ? "Klicken zum Stoppen" : "Klicken zum Starten"}
         </div>
       </div>

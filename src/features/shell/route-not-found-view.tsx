@@ -24,7 +24,7 @@ export function RouteNotFoundView() {
         </div>
         <div className="mt-4 flex items-center justify-center gap-2">
           <Badge variant="secondary">404</Badge>
-          <span className="font-mono text-[11px] text-muted-foreground">NOT_FOUND</span>
+          <span className="font-mono text-2xs text-muted-foreground">NOT_FOUND</span>
         </div>
         <h1 className="mt-2 text-xl font-semibold tracking-tight">Seite nicht gefunden</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">

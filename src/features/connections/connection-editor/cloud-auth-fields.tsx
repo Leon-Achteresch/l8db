@@ -69,7 +69,7 @@ export function ConnectionCloudAuthFields({
         />
       )}
       {mode !== "password" && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {mode === "aws_iam"
             ? "Erzeugt bei jedem Verbindungsaufbau ein RDS-Token (15 Min.) aus deinen AWS-Anmeldedaten. TLS ist dabei Pflicht."
             : "Holt ein Zugriffstoken über die Azure CLI (az login erforderlich). TLS ist dabei Pflicht."}

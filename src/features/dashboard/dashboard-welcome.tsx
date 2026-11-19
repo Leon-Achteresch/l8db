@@ -92,7 +92,7 @@ export function DashboardWelcome({
           <span>Kennzahlen zusammenstellen</span>
           <ArrowRightIcon className="size-3" />
           <span>Chart gestalten</span>
-          <span className="ml-auto text-[11px]">Illustrationen · keine Daten geladen</span>
+          <span className="ml-auto text-2xs">Illustrationen · keine Daten geladen</span>
         </div>
       </main>
     </div>

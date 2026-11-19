@@ -64,11 +64,11 @@ function firstLine(sql: string): string {
 }
 
 function statusIcon(status: ScriptRunStatus) {
-  if (status === "success") return <CheckCircle2Icon className="size-3.5 text-emerald-500" />;
+  if (status === "success") return <CheckCircle2Icon className="size-3.5 text-success" />;
   if (status === "error") return <XCircleIcon className="size-3.5 text-destructive" />;
-  if (status === "warning") return <AlertTriangleIcon className="size-3.5 text-amber-500" />;
+  if (status === "warning") return <AlertTriangleIcon className="size-3.5 text-warning" />;
   if (status === "running") return <LoaderIcon className="size-3.5 animate-spin" />;
-  if (status === "ignored") return <CircleMinusIcon className="size-3.5 text-amber-500" />;
+  if (status === "ignored") return <CircleMinusIcon className="size-3.5 text-warning" />;
   return <CircleDashedIcon className="size-3.5 text-muted-foreground" />;
 }
 

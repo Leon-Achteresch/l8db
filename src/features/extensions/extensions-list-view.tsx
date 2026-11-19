@@ -119,10 +119,8 @@ export function AvailableExtensionsView() {
         {installed.length > 0 && (
           <section>
             <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-muted/50 px-4 py-2">
-              <CheckIcon className="size-4 text-emerald-500" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Installiert
-              </span>
+              <CheckIcon className="size-4 text-success" />
+              <span className="text-xs font-medium text-muted-foreground">Installiert</span>
               <span className="ml-auto text-xs text-muted-foreground">{installed.length}</span>
             </div>
             <div className="divide-y">
@@ -145,9 +143,7 @@ export function AvailableExtensionsView() {
           <section>
             <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-muted/50 px-4 py-2">
               <PackageIcon className="size-4 text-muted-foreground" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Verfügbar
-              </span>
+              <span className="text-xs font-medium text-muted-foreground">Verfügbar</span>
               <span className="ml-auto text-xs text-muted-foreground">{available.length}</span>
             </div>
             <div className="divide-y">

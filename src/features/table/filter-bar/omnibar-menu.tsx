@@ -37,7 +37,7 @@ export function OmnibarMenu({
       {items.map((item, index) => (
         <Fragment key={item.id}>
           {index === 0 && item.kind === "column" ? (
-            <div className="px-2 pt-1 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <div className="px-2 pt-1 pb-0.5 text-2xs font-medium text-muted-foreground">
               Spalten
             </div>
           ) : null}

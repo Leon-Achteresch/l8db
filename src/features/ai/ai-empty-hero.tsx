@@ -9,7 +9,7 @@ export function AiEmptyHero({ connectionName }: { connectionName?: string }) {
       <h2 className="text-balance text-[22px] font-semibold leading-tight tracking-[-0.02em]">
         {connectionName ? `Was möchtest du über ${connectionName} wissen?` : "Wie kann ich helfen?"}
       </h2>
-      <p className="mt-1.5 text-[13px] text-muted-foreground">
+      <p className="mt-1.5 text-sm text-muted-foreground">
         Frag in Alltagssprache – du bekommst Antwort, Diagramm und SQL.
       </p>
     </div>

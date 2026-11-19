@@ -76,7 +76,7 @@ export function VersioningCustomerCreate({
       }}
     >
       <div className="flex items-center gap-3">
-        <h3 className="shrink-0 text-[13px] font-semibold tracking-tight">Neuer Kunde</h3>
+        <h3 className="shrink-0 text-sm font-semibold tracking-tight">Neuer Kunde</h3>
         <Input
           id="vcs-customer-name"
           aria-label="Kundenname"
@@ -87,7 +87,7 @@ export function VersioningCustomerCreate({
           onKeyDown={(event) => {
             if (event.key === "Escape") onDone();
           }}
-          className="h-9 rounded-lg bg-background/70 text-[13px] font-medium"
+          className="h-9 rounded-lg bg-background/70 text-sm font-medium"
         />
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -108,7 +108,7 @@ export function VersioningCustomerCreate({
       </div>
       <div className="flex items-center gap-2">
         {sourceSchemas.size !== 1 && (
-          <p className="mr-auto text-[11px] text-amber-700 dark:text-amber-300">
+          <p className="mr-auto text-2xs text-warning">
             Zuerst genau ein Quellschema unter Änderungen aufnehmen
           </p>
         )}

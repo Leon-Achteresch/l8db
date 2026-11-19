@@ -20,7 +20,7 @@ export function LiveMonitorFooter({
         <span
           className={cn(
             "size-2 rounded-full",
-            m.metricsError ? "bg-destructive" : m.paused ? "bg-amber-500" : "bg-emerald-500",
+            m.metricsError ? "bg-destructive" : m.paused ? "bg-warning" : "bg-success",
           )}
         />
         <span className="truncate">{connectionName}</span>
@@ -44,7 +44,7 @@ export function LiveMonitorFooter({
         <span>
           Zeitzone: {m.metrics?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone}
         </span>
-        {m.paused && <span className="text-amber-600 dark:text-amber-400">Pausiert</span>}
+        {m.paused && <span className="text-warning">Pausiert</span>}
       </div>
     </footer>
   );

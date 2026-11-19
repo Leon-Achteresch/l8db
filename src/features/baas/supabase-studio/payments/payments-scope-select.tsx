@@ -28,7 +28,7 @@ export function PaymentsScopeSelect({
           <SelectItem value="account">Ganzes Stripe-Konto</SelectItem>
         </SelectContent>
       </Select>
-      <span className="text-[11px] text-muted-foreground">
+      <span className="text-2xs text-muted-foreground">
         {value === "project"
           ? `Stripe-Suche nach Metadatum l8db_project = ${reference}.`
           : "Zeigt alle Objekte des verbundenen Kontos, auch von anderen Apps."}{" "}

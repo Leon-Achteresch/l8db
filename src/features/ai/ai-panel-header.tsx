@@ -70,7 +70,7 @@ export function AiPanelHeader({
       ) : null}
       <h2
         className={cn(
-          "mr-auto min-w-0 truncate text-[13px] font-semibold tracking-[-0.005em]",
+          "mr-auto min-w-0 truncate text-sm font-semibold tracking-[-0.005em]",
           view === "chat" && !minimized && "pl-1.5",
         )}
       >

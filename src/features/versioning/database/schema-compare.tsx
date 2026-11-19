@@ -80,7 +80,7 @@ export function SchemaCompare({
           />
         </label>
       </div>
-      <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-3 text-2xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate">
           {!loaded
             ? "Schema wird gelesen…"
@@ -131,7 +131,7 @@ export function SchemaCompare({
       ) : (
         !error && <Skeleton className="h-[480px] rounded-lg" />
       )}
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
+      <p className="text-2xs leading-relaxed text-muted-foreground">
         Verglichen wird die normalisierte DDL ohne Eigentümer und Rechte. Gesicherte Schemata
         stammen aus dem verschlüsselten Tresor und werden vor dem Anzeigen geprüft.
       </p>

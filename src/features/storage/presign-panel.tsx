@@ -136,15 +136,15 @@ export function PresignPanel({
           <Textarea
             aria-label="Presigned URL"
             readOnly
-            className="min-h-24 font-mono text-[11px]"
+            className="min-h-24 font-mono text-2xs"
             value={link}
           />
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {method === "PUT" ? "Hochladen" : "Lesen"} für jeden mit der URL, gültig bis{" "}
             {formatDate(validUntil)}
           </p>
           {method === "PUT" && (
-            <p className="text-[11px] text-amber-600 dark:text-amber-400">
+            <p className="text-2xs text-warning">
               Überschreibt „{basename(row.key)}“ ohne Rückfrage.
             </p>
           )}
@@ -159,7 +159,7 @@ export function PresignPanel({
             )}
           </div>
           {method === "PUT" && (
-            <code className="rounded bg-muted p-2 text-[11px] break-all">
+            <code className="rounded bg-muted p-2 text-2xs break-all">
               curl -X PUT --upload-file {basename(row.key)} "{link}"
             </code>
           )}

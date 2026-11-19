@@ -11,7 +11,7 @@ export function PolicyCoverageSummary({ tables }: { tables: DbRlsTable[] }) {
       label: "Geregelt",
       value: guarded,
       hint: "RLS aktiv, Zugriff über Richtlinien",
-      color: "bg-emerald-500",
+      color: "bg-success",
     },
     {
       label: "Gesperrt",

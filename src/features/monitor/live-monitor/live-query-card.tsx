@@ -35,8 +35,8 @@ export function LiveQueryCard({
                 key={`${tokenIndex}-${token.text}`}
                 className={cn(
                   token.kind === "keyword" && "text-blue-600 dark:text-blue-400",
-                  token.kind === "string" && "text-emerald-700 dark:text-emerald-400",
-                  token.kind === "number" && "text-amber-700 dark:text-amber-400",
+                  token.kind === "string" && "text-success",
+                  token.kind === "number" && "text-warning",
                 )}
               >
                 {token.text}
@@ -85,7 +85,7 @@ export function LiveQueryCard({
     <Card size="sm" className="min-w-0">
       <CardHeader className="flex items-center gap-2">
         <CardTitle className="text-sm">Aktuelle Abfrage</CardTitle>
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           Laufzeit: {formatSeconds(sessionRuntime(session, m.now))}
         </span>
         <CardAction>{actions}</CardAction>

@@ -78,7 +78,7 @@ export function VersioningSafetyEditor({
         value={value.postconditions}
         onChange={(postconditions) => onChange({ ...value, postconditions })}
       />
-      <p className="text-[10px] leading-relaxed text-muted-foreground">
+      <p className="text-2xs leading-relaxed text-muted-foreground">
         Jede SELECT-Prüfung liefert genau einen Wert. Keine Kundendaten werden gespeichert. Für
         Produktion sind Betriebsplan und Nachprüfung erforderlich. Oracle-Zeitlimit gilt je
         Datenbankaufruf.

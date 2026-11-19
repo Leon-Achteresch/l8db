@@ -24,11 +24,11 @@ export const CHANGE_TONE: Record<
   added: {
     glyph: "+",
     label: "Neu",
-    text: "text-emerald-600 dark:text-emerald-400",
-    fill: "fill-emerald-500",
-    edge: "border-l-emerald-500",
-    wash: "bg-emerald-500/[0.07]",
-    dot: "bg-emerald-500",
+    text: "text-success",
+    fill: "fill-success",
+    edge: "border-l-success",
+    wash: "bg-success/[0.07]",
+    dot: "bg-success",
   },
   removed: {
     glyph: "−",

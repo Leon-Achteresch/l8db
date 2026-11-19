@@ -25,7 +25,7 @@ export function AiContextChips({
                 ? item.sql?.slice(0, 600)
                 : undefined
           }
-          className="flex h-6 items-center gap-1 rounded-full bg-muted pr-0.5 pl-2 text-[11px] text-muted-foreground"
+          className="flex h-6 items-center gap-1 rounded-full bg-muted pr-0.5 pl-2 text-2xs text-muted-foreground"
         >
           {item.kind === "tab" ? (
             <SquareCode className="size-3 shrink-0" />

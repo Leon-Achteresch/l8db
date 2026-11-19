@@ -47,7 +47,7 @@ export function McpRuleList({ title, description, rules, onChange }: McpRuleList
           <div className="flex items-center gap-2">
             <Shield className="size-4 text-primary" />
             <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-            <Badge variant="secondary" className="text-[10px]">
+            <Badge variant="secondary" className="text-2xs">
               {activeCount} von {rules.length} aktiv
             </Badge>
           </div>

@@ -38,7 +38,7 @@ export function HexDumpView({ bytes }: { bytes: Uint8Array }) {
             >
               <span className="w-[8ch] text-muted-foreground">{line.offset}</span>
               <span className="w-[48ch] text-foreground">{line.hex}</span>
-              <span className="text-emerald-700 dark:text-emerald-400">{line.ascii}</span>
+              <span className="text-success">{line.ascii}</span>
             </div>
           );
         })}

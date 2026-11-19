@@ -22,7 +22,7 @@ export function ConvexOverviewSection({ deployment }: ConvexStudioSectionProps) 
             <h2 className="truncate text-xl font-semibold tracking-tight">{deployment.title}</h2>
             {state && (
               <span
-                className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${state === "running" ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-amber-500/10 text-amber-600 dark:text-amber-400"}`}
+                className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-2xs font-medium ${state === "running" ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}
               >
                 <span className="size-1.5 rounded-full bg-current" />
                 {state === "running" ? "Läuft" : state === "paused" ? "Pausiert" : state}

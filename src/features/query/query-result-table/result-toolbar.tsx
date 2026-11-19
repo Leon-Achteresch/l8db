@@ -79,7 +79,7 @@ export function ResultToolbar({
           <FilterIcon className="size-3" />
           Filter
           {filterCount > 0 && (
-            <span className="rounded-full bg-primary/15 px-1.5 font-mono text-[10px] text-primary">
+            <span className="rounded-full bg-primary/15 px-1.5 font-mono text-2xs text-primary">
               {filterCount}
             </span>
           )}

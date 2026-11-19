@@ -70,7 +70,7 @@ export function SupabaseStorageBucketHeader({
             ))}
           <span className="truncate">{bucket.name}</span>
           {known && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-normal text-muted-foreground">
+            <span className="rounded-full bg-muted px-2 py-0.5 text-2xs font-normal text-muted-foreground">
               {bucket.public ? "Öffentlich" : "Privat"}
             </span>
           )}

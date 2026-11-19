@@ -67,13 +67,13 @@ export function AiSettingsKeyField({
           <motion.div
             key="sealed"
             {...SWAP}
-            className="flex items-center gap-2.5 rounded-xl bg-emerald-500/[0.07] py-1.5 pr-1.5 pl-2.5 ring-1 ring-emerald-500/20 ring-inset"
+            className="flex items-center gap-2.5 rounded-xl bg-success/[0.07] py-1.5 pr-1.5 pl-2.5 ring-1 ring-success/20 ring-inset"
           >
             <motion.span
               initial={{ opacity: 0, transform: "scale(0.25)", filter: "blur(4px)" }}
               animate={{ opacity: 1, transform: "scale(1)", filter: "blur(0px)" }}
               transition={ICON_SWAP}
-              className="grid size-6 shrink-0 place-items-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+              className="grid size-6 shrink-0 place-items-center rounded-lg bg-success/15 text-success"
             >
               <ShieldCheck className="size-3.5" />
             </motion.span>
@@ -81,7 +81,7 @@ export function AiSettingsKeyField({
               <span className="block font-mono tracking-[0.2em] text-muted-foreground">
                 ••••••••••••
               </span>
-              <span className="block text-[11px] text-muted-foreground">
+              <span className="block text-2xs text-muted-foreground">
                 Im Schlüsselbund gespeichert
               </span>
             </span>
@@ -103,7 +103,7 @@ export function AiSettingsKeyField({
           <motion.div key="form" {...SWAP} className="space-y-1">
             <label htmlFor={`${id}-key`} className="flex items-baseline justify-between gap-2">
               <span>API-Schlüssel</span>
-              {optional && <span className="text-[11px] text-muted-foreground">optional</span>}
+              {optional && <span className="text-2xs text-muted-foreground">optional</span>}
             </label>
             <div className="flex gap-1.5">
               <div className="relative min-w-0 flex-1">
@@ -164,7 +164,7 @@ export function AiSettingsKeyField({
               <button
                 type="button"
                 onClick={() => setReplacing(false)}
-                className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                className="text-2xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
               >
                 Gespeicherten Schlüssel behalten
               </button>
@@ -176,7 +176,7 @@ export function AiSettingsKeyField({
         <button
           type="button"
           onClick={() => void openUrl(keyUrl).catch((error) => onError(String(error)))}
-          className="flex items-center gap-1 text-[11px] text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
+          className="flex items-center gap-1 text-2xs text-muted-foreground underline-offset-2 transition-colors duration-150 hover:text-foreground hover:underline"
         >
           Noch keinen Schlüssel? Beim Anbieter erstellen
           <ExternalLink className="size-3" />

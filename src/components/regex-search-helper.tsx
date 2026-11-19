@@ -55,7 +55,7 @@ export function RegexSearchHelper({
             type="button"
             title="Regex-Hilfe und Musterbibliothek"
             disabled={!enabled}
-            className="inline-flex h-6 shrink-0 items-center justify-center rounded-xl px-1.5 font-mono text-[11px] cursor-pointer hover:bg-accent disabled:opacity-30 disabled:pointer-events-none"
+            className="inline-flex h-6 shrink-0 items-center justify-center rounded-xl px-1.5 font-mono text-2xs cursor-pointer hover:bg-accent disabled:opacity-30 disabled:pointer-events-none"
           >
             .*
           </button>
@@ -63,12 +63,12 @@ export function RegexSearchHelper({
         <PopoverContent align="end" className="w-80 p-0">
           <div className="flex items-center gap-2 border-b border-border px-3 py-2">
             <span className="text-xs font-medium">Muster einfügen</span>
-            <span className="ml-auto font-mono text-[11px] tabular-nums text-muted-foreground">
+            <span className="ml-auto font-mono text-2xs tabular-nums text-muted-foreground">
               {error ? "—" : `${matchCount} Treffer`}
             </span>
           </div>
           {error && (
-            <p className="border-b border-border px-3 py-2 text-[11px] text-destructive">
+            <p className="border-b border-border px-3 py-2 text-2xs text-destructive">
               {describeRegexError(error)}
             </p>
           )}
@@ -83,13 +83,11 @@ export function RegexSearchHelper({
                   >
                     <span className="flex w-full items-center gap-2">
                       <span className="text-xs font-medium">{template.label}</span>
-                      <code className="ml-auto truncate rounded-xl bg-muted px-1 font-mono text-[11px]">
+                      <code className="ml-auto truncate rounded-xl bg-muted px-1 font-mono text-2xs">
                         {template.pattern}
                       </code>
                     </span>
-                    <span className="text-[11px] text-muted-foreground">
-                      {template.description}
-                    </span>
+                    <span className="text-2xs text-muted-foreground">{template.description}</span>
                   </button>
                 </li>
               ))}

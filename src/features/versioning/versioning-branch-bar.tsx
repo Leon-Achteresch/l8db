@@ -95,13 +95,13 @@ export function VersioningBranchBar({
             Branch erstellen
           </Button>
         </div>
-        <span className="font-mono text-[10px] text-muted-foreground">
+        <span className="font-mono text-2xs text-muted-foreground">
           {status.head?.slice(0, 8) ?? "Noch kein Commit"}
         </span>
       </VersioningPopover>
       {info && (
         <span
-          className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums"
+          className="shrink-0 font-mono text-2xs text-muted-foreground tabular-nums"
           title={`${info.ahead ?? 0} lokale Commits nicht im Remote · ${info.behind ?? 0} Commits nicht abgeholt`}
         >
           ↑{info.ahead ?? 0} ↓{info.behind ?? 0}
@@ -110,7 +110,7 @@ export function VersioningBranchBar({
       {label && (
         <span
           title={label}
-          className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground"
+          className="min-w-0 flex-1 truncate text-right text-2xs text-muted-foreground"
         >
           {label}
         </span>
@@ -134,7 +134,7 @@ export function VersioningBranchBar({
             <Icon className="size-4 text-muted-foreground" />
             <span className="text-xs font-medium">
               {label}
-              <span className="mt-0.5 block text-[11px] font-normal text-muted-foreground">
+              <span className="mt-0.5 block text-2xs font-normal text-muted-foreground">
                 {description}
               </span>
             </span>

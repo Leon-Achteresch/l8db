@@ -69,7 +69,7 @@ export function EntityFilterPanel({
               {selectedEntity.name}
             </span>
             {whereClause && (
-              <Badge variant="secondary" className="text-[10px]">
+              <Badge variant="secondary" className="text-2xs">
                 {kind === "mongodb" ? "JSON" : kind === "redis" ? "MATCH" : "WHERE"}
               </Badge>
             )}
@@ -174,7 +174,7 @@ export function EntityFilterPanel({
         <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
           <FilterIcon className="size-8 text-muted-foreground/30" />
           <p className="text-xs text-muted-foreground">Tabelle auswahlen um Filter zu setzen</p>
-          <p className="text-[10px] text-muted-foreground">Doppelklick offnet direkt</p>
+          <p className="text-2xs text-muted-foreground">Doppelklick offnet direkt</p>
         </div>
       )}
     </div>

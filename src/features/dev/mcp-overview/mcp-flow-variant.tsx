@@ -38,9 +38,7 @@ export function McpFlowVariant({ state, onToggleServer, onToggleDatabase }: McpV
         )}
       >
         l8db
-        <span className="text-[11px] font-normal opacity-80">
-          {state.enabled ? "läuft" : "aus"}
-        </span>
+        <span className="text-2xs font-normal opacity-80">{state.enabled ? "läuft" : "aus"}</span>
       </button>
       <ul className="space-y-1">
         {state.databases.map((db) => (

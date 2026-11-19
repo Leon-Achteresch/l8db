@@ -170,7 +170,7 @@ export function SchemaCopyView() {
                   >
                     {entry.name}
                   </button>
-                  <Badge variant={statusVariant(entry.status)} className="text-[10px]">
+                  <Badge variant={statusVariant(entry.status)} className="text-2xs">
                     {statusLabel(entry.status)}
                   </Badge>
                 </div>
@@ -200,7 +200,7 @@ export function SchemaCopyView() {
                       inputMode="numeric"
                     />
                     {!limitValid && (
-                      <span className="text-[10px] text-destructive">
+                      <span className="text-2xs text-destructive">
                         Wert zwischen 1 und {MAX_DATA_ROWS}.
                       </span>
                     )}
@@ -209,7 +209,7 @@ export function SchemaCopyView() {
               </div>
             )}
             {conflicts.length > 0 && (
-              <p className="text-[10px] text-destructive">
+              <p className="text-2xs text-destructive">
                 Namenskonflikt: {conflicts.join(", ")} existiert bereits in {targetSchema}.
               </p>
             )}
@@ -256,11 +256,11 @@ export function SchemaCopyView() {
               DDL-Vorschau (wird exakt so ausgeführt)
             </div>
             <ScrollArea className="h-40 border-t">
-              <pre className="p-3 font-mono text-[11px] whitespace-pre-wrap">{ddl}</pre>
+              <pre className="p-3 font-mono text-2xs whitespace-pre-wrap">{ddl}</pre>
             </ScrollArea>
           </div>
           {log.length > 0 && (
-            <div className="max-h-32 shrink-0 overflow-auto border-t p-3 text-[11px]">
+            <div className="max-h-32 shrink-0 overflow-auto border-t p-3 text-2xs">
               {log.map((line) => (
                 <div key={line} className="font-mono">
                   {line}

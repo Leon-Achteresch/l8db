@@ -387,7 +387,7 @@ export function SchemaCompareView({ tabId }: { tabId?: string } = {}) {
                   {result.omitted ? (
                     <p
                       role="status"
-                      className="flex items-start gap-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400"
+                      className="flex items-start gap-1.5 rounded-md bg-warning/10 px-2 py-1 text-xs text-warning"
                     >
                       <TriangleAlertIcon className="mt-0.5 size-3 shrink-0" />
                       Limit erreicht: {result.omitted} weitere Unterschiede werden nicht angezeigt

@@ -128,9 +128,7 @@ export function ScriptRunDialog({
             Bei Fehler stoppen
           </label>
           {unterminated && (
-            <p className="text-amber-600 dark:text-amber-400">
-              Literal oder Kommentar nicht abgeschlossen.
-            </p>
+            <p className="text-warning">Literal oder Kommentar nicht abgeschlossen.</p>
           )}
         </div>
         <DialogFooter>

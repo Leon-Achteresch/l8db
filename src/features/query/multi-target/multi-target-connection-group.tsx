@@ -99,13 +99,13 @@ export function MultiTargetConnectionGroup({
         {environment && (
           <Badge
             variant={environment.value === "production" ? "destructive" : "secondary"}
-            className="text-[10px]"
+            className="text-2xs"
           >
             {environment.label}
           </Badge>
         )}
         {connection.readOnly && (
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" className="text-2xs">
             Nur lesen
           </Badge>
         )}
@@ -114,7 +114,7 @@ export function MultiTargetConnectionGroup({
         <Button
           size="sm"
           variant="link"
-          className="ml-6 h-5 px-0 text-[11px]"
+          className="ml-6 h-5 px-0 text-2xs"
           disabled={selectingAll}
           onClick={() => void selectAll()}
         >
@@ -125,12 +125,12 @@ export function MultiTargetConnectionGroup({
       {open && caps.databases && (
         <ul>
           {databases.isLoading && (
-            <li className="flex items-center gap-1.5 py-1 pl-6 text-[11px] text-muted-foreground">
+            <li className="flex items-center gap-1.5 py-1 pl-6 text-2xs text-muted-foreground">
               <LoaderIcon className="size-3 animate-spin" /> Datenbanken werden geladen…
             </li>
           )}
           {databases.error && (
-            <li className="py-1 pl-6 text-[11px] text-destructive">{String(databases.error)}</li>
+            <li className="py-1 pl-6 text-2xs text-destructive">{String(databases.error)}</li>
           )}
           {visible.map((database) => (
             <MultiTargetDatabaseRow

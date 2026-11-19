@@ -136,7 +136,7 @@ export function ApprovalCard({
                       <MessageCircleQuestion className="size-3.5" />
                     </span>
                     <div className="min-w-0 flex-1 pt-1">
-                      <p className="text-[13px] font-semibold leading-snug">{question.title}</p>
+                      <p className="text-sm font-semibold leading-snug">{question.title}</p>
                       {question.description && (
                         <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
                           {question.description}
@@ -182,14 +182,14 @@ export function ApprovalCard({
                           <span className="min-w-0 flex-1">
                             <span
                               className={cn(
-                                "block text-[13px] leading-4 transition-colors",
+                                "block text-sm leading-4 transition-colors",
                                 on ? "font-medium text-foreground" : "text-foreground/85",
                               )}
                             >
                               {option.label}
                             </span>
                             {option.hint && (
-                              <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                              <span className="mt-0.5 block text-2xs text-muted-foreground">
                                 {option.hint}
                               </span>
                             )}
@@ -221,7 +221,7 @@ export function ApprovalCard({
                             ? question.title
                             : "Eigene Antwort"
                         }
-                        className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+                        className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                       />
                     </label>
                   </div>
@@ -243,7 +243,7 @@ export function ApprovalCard({
             >
               <ChevronLeft />
             </Button>
-            <span className="inline-flex h-4 overflow-hidden text-[11px] font-medium tabular-nums">
+            <span className="inline-flex h-4 overflow-hidden text-2xs font-medium tabular-nums">
               <span
                 key={step}
                 className={cn(

@@ -76,7 +76,7 @@ export function ConvexSettingsExport({ deployment }: { deployment: ConvexStudioD
           <RefreshCw className={`size-3.5 ${status.isFetching ? "animate-spin" : ""}`} />
         </Button>
       </div>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <p className="mt-1 text-2xs text-muted-foreground">
         Erstellt ein ZIP mit allen Tabellen als JSONL, optional mit gespeicherten Dateien.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">

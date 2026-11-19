@@ -217,17 +217,17 @@ export function FirebaseFirestoreView({ projectId }: { projectId: string }) {
                       <FileJson className="size-3.5" /> {selectedDocument.name.split("/").at(-1)}
                     </div>
                     {!selectedDocument.createTime && (
-                      <p className="mt-2 text-[11px] text-muted-foreground">
+                      <p className="mt-2 text-2xs text-muted-foreground">
                         Übergeordnetes Dokument ohne eigene Daten
                       </p>
                     )}
-                    <p className="mt-2 text-[11px] text-muted-foreground">
+                    <p className="mt-2 text-2xs text-muted-foreground">
                       Aktualisiert:{" "}
                       {selectedDocument.updateTime
                         ? new Date(selectedDocument.updateTime).toLocaleString("de-DE")
                         : "Nicht angegeben"}
                     </p>
-                    <pre className="mt-3 max-h-72 overflow-auto rounded-lg bg-muted/50 p-3 text-[11px] leading-relaxed">
+                    <pre className="mt-3 max-h-72 overflow-auto rounded-lg bg-muted/50 p-3 text-2xs leading-relaxed">
                       {JSON.stringify(
                         Object.fromEntries(
                           Object.entries(selectedDocument.fields).map(([key, value]) => [

@@ -100,7 +100,7 @@ export function SettingsHotkeysTab() {
       </div>
 
       {conflicts.length > 0 && (
-        <div className="flex items-start gap-2 rounded-xl bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+        <div className="flex items-start gap-2 rounded-xl bg-warning/10 px-3 py-2.5 text-xs text-warning">
           <AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
           <p>
             {conflicts.length} {conflicts.length === 1 ? "Doppelbelegung" : "Doppelbelegungen"}:{" "}
@@ -120,9 +120,7 @@ export function SettingsHotkeysTab() {
           )}
           {groups.map((group) => (
             <section key={group.area} className="flex flex-col gap-0.5">
-              <h3 className="px-3 pb-1 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-                {group.area}
-              </h3>
+              <h3 className="px-3 pb-1 font-mono text-2xs text-muted-foreground">{group.area}</h3>
               {group.commands.map((command) => {
                 const current = resolveHotkey(command.id, overrides);
                 const isDefault = !(command.id in overrides);
@@ -152,7 +150,7 @@ export function SettingsHotkeysTab() {
                         )}
                       </p>
                       {conflict.length > 0 && (
-                        <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-warning">
                           <AlertTriangleIcon className="size-3" />
                           Kollidiert mit{" "}
                           {conflict.map((hit) => commandById(hit)?.label ?? hit).join(", ")}

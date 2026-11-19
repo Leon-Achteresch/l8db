@@ -79,7 +79,7 @@ export function VersioningNav({
             <Icon className="size-3.5 shrink-0" />
             {label}
             {counts[id] !== undefined && counts[id] !== 0 && (
-              <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+              <span className="font-mono text-2xs text-muted-foreground tabular-nums">
                 {counts[id]}
               </span>
             )}

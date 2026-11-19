@@ -44,12 +44,12 @@ export function UiPluginGalleryCard({
         )}
         <div className="flex flex-wrap gap-1">
           {entry.tags.map((tag) => (
-            <Badge key={tag} variant="outline" className="text-[10px]">
+            <Badge key={tag} variant="outline" className="text-2xs">
               {tag}
             </Badge>
           ))}
           {entry.http.length > 0 && (
-            <Badge variant="outline" className="gap-1 text-[10px]" title={entry.http.join(", ")}>
+            <Badge variant="outline" className="gap-1 text-2xs" title={entry.http.join(", ")}>
               <GlobeIcon className="size-3" />
               Netzwerk
             </Badge>

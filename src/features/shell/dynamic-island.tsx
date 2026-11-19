@@ -132,12 +132,12 @@ export function DynamicIsland({ buttonRef, shortcut, badge, onOpen }: Props) {
               <span className="ml-auto flex shrink-0 items-center gap-1.5 @max-[8rem]/header-search:hidden">
                 {view.since !== undefined ? <IslandElapsed since={view.since} /> : null}
                 {view.percent !== undefined ? (
-                  <span className="text-[11px] text-current/70 tabular-nums">
+                  <span className="text-2xs text-current/70 tabular-nums">
                     {PERCENT.format(view.percent / 100)}
                   </span>
                 ) : null}
                 {view.more ? (
-                  <span className="rounded-full bg-current/15 px-1.5 text-[10px] font-medium leading-4">
+                  <span className="rounded-full bg-current/15 px-1.5 text-2xs font-medium leading-4">
                     +{view.more}
                   </span>
                 ) : null}
@@ -148,13 +148,13 @@ export function DynamicIsland({ buttonRef, shortcut, badge, onOpen }: Props) {
                       view.action?.run();
                       dismissIslandMoment(view.key);
                     }}
-                    className="pointer-events-auto -mr-1 h-5 cursor-pointer rounded-full bg-current/15 px-2 text-[11px] font-medium transition-colors hover:bg-current/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                    className="pointer-events-auto -mr-1 h-5 cursor-pointer rounded-full bg-current/15 px-2 text-2xs font-medium transition-colors hover:bg-current/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
                     {view.action.label}
                   </button>
                 ) : null}
                 {view.idle ? (
-                  <kbd className="inline-flex items-center rounded-full bg-current/10 px-1.5 py-px font-sans text-[10px] text-current/60">
+                  <kbd className="inline-flex items-center rounded-full bg-current/10 px-1.5 py-px font-sans text-2xs text-current/60">
                     {shortcut}
                   </kbd>
                 ) : null}

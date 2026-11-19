@@ -49,7 +49,7 @@ export function QueryWidget({
             {title}
           </h2>
           {query.data && (
-            <p className="mt-0.5 text-[10px] text-muted-foreground">
+            <p className="mt-0.5 text-2xs text-muted-foreground">
               {query.data.truncated
                 ? `Erste ${ROW_LIMIT} Zeilen`
                 : `${rows.length.toLocaleString("de-DE")} Zeilen`}{" "}

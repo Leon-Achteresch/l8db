@@ -166,7 +166,7 @@ export function SupabaseStorageBucketList({
           >
             <ChevronLeft className="size-3.5" />
           </Button>
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             {offset + 1}–{offset + buckets.data.buckets.length}
           </span>
           <Button
@@ -199,7 +199,7 @@ export function SupabaseStorageBucketList({
             });
           }}
         >
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Mit Publishable/anon Key zeigt Supabase nur Buckets, die Richtlinien freigeben. Bekannte
             Buckets direkt öffnen:
           </p>

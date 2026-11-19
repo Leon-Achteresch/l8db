@@ -247,6 +247,6 @@ export const LEVEL_CLASS: Record<string, string> = {
   DEBUG: "text-muted-foreground",
   LOG: "text-foreground",
   INFO: "text-sky-600 dark:text-sky-400",
-  WARN: "text-amber-600 dark:text-amber-400",
+  WARN: "text-warning",
   ERROR: "text-destructive",
 };

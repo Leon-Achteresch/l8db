@@ -142,7 +142,7 @@ export function ChartQuestionStep({
                 key={f.id}
                 type="button"
                 onClick={() => setFilterDraft({ field: fieldOf(f.column), filterId: f.id })}
-                className="flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-[11px] hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+                className="flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-2xs hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
               >
                 <span className="font-medium">{fieldOf(f.column).label}</span>
                 <span className="text-muted-foreground">
@@ -199,7 +199,7 @@ export function ChartQuestionStep({
         )}
         <div className="space-y-1.5">
           <p className="text-xs font-medium">Zeitspalte für die Zeitraum-Auswahl</p>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Mit einer Zeitspalte kannst du im Chart später „Letzte 30 Tage“ u. ä. wählen.
           </p>
           <div className="max-w-72">

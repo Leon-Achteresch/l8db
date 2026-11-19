@@ -145,7 +145,7 @@ export function TableConstraintsEditor({ schema, table, columns }: TableConstrai
       </div>
 
       {dialect.alterNote && (
-        <p className="border-b bg-muted/30 px-4 py-2 text-[11px] text-muted-foreground">
+        <p className="border-b bg-muted/30 px-4 py-2 text-2xs text-muted-foreground">
           {dialect.alterNote}
         </p>
       )}
@@ -166,13 +166,13 @@ export function TableConstraintsEditor({ schema, table, columns }: TableConstrai
             >
               <Badge
                 variant="outline"
-                className={`mt-0.5 shrink-0 text-[10px] ${constraintTypeColor(constraint.constraint_type)}`}
+                className={`mt-0.5 shrink-0 text-2xs ${constraintTypeColor(constraint.constraint_type)}`}
               >
                 {constraint.constraint_type}
               </Badge>
               <div className="min-w-0 flex-1">
                 <div className="font-mono text-xs font-medium">{constraint.name}</div>
-                <div className="break-all font-mono text-[11px] text-muted-foreground">
+                <div className="break-all font-mono text-2xs text-muted-foreground">
                   {constraint.definition}
                 </div>
               </div>
@@ -230,7 +230,7 @@ export function TableConstraintsEditor({ schema, table, columns }: TableConstrai
             <AlertDialogDescription asChild>
               <div className="space-y-2">
                 {dropSql ? (
-                  <pre className="whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-[11px] text-foreground">
+                  <pre className="whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-2xs text-foreground">
                     {dropSql}
                   </pre>
                 ) : dropError ? (

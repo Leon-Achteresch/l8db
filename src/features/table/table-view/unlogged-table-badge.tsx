@@ -13,7 +13,7 @@ export function UnloggedTableBadge() {
           type="button"
           size="xs"
           variant="secondary"
-          className="relative mx-1 shrink-0 font-mono text-[10px]"
+          className="relative mx-1 shrink-0 font-mono text-2xs"
         >
           UNLOGGED
           {feature.isNew ? (

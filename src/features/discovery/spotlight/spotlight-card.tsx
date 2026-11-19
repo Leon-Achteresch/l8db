@@ -26,8 +26,8 @@ export function SpotlightCard({
         <SpotlightArt id={entry.id} index={index} />
       )}
       <div className="flex flex-1 flex-col gap-1 px-2">
-        <h3 className="text-[15px] font-semibold tracking-tight">{entry.title}</h3>
-        <p className="text-[13px] leading-5 text-muted-foreground">{entry.summary}</p>
+        <h3 className="text-sm font-semibold tracking-tight">{entry.title}</h3>
+        <p className="text-sm leading-5 text-muted-foreground">{entry.summary}</p>
       </div>
       <Button
         size="sm"

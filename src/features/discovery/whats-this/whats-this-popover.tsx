@@ -84,9 +84,7 @@ export function WhatsThisPopover({
             </span>
             {feature.isNew && <NewBadge />}
             {entry && (
-              <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
-                {entry.area}
-              </span>
+              <span className="ml-auto shrink-0 text-2xs text-muted-foreground">{entry.area}</span>
             )}
           </div>
           {entry && <p className="text-xs text-muted-foreground">{entry.summary}</p>}

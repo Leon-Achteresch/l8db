@@ -90,14 +90,14 @@ export const AtlasTile = memo(function AtlasTile({
         <span
           className={cn(
             "block max-w-full truncate font-mono font-medium leading-tight tracking-[-0.01em]",
-            area > 60_000 ? "text-[15px]" : area > 18_000 ? "text-[13px]" : "text-[11.5px]",
+            area > 60_000 ? "text-sm" : area > 18_000 ? "text-sm" : "text-2xs",
           )}
         >
           {tile.name}
         </span>
       )}
       {showMeta && primary && (
-        <span className="block max-w-full text-[10.5px] leading-tight tabular-nums text-muted-foreground">
+        <span className="block max-w-full text-2xs leading-tight tabular-nums text-muted-foreground">
           <span className="block truncate font-medium text-foreground/75">{primary}</span>
           {secondary && tile.h >= 80 && <span className="block truncate">{secondary}</span>}
         </span>

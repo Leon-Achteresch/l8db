@@ -47,7 +47,7 @@ export function VersioningAlign({
         }}
         options={main.map((release) => ({ value: release.id, label: release.id }))}
       />
-      <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+      <label className="flex items-center gap-2 text-2xs text-muted-foreground">
         <input
           type="checkbox"
           checked={allowDrops}
@@ -74,17 +74,15 @@ export function VersioningAlign({
             Abweichungen werden auf {draft.from} zurückgeführt
           </p>
           {draft.variances.length > 0 && (
-            <p className="font-mono text-[11px]">{draft.variances.join(", ")}</p>
+            <p className="font-mono text-2xs">{draft.variances.join(", ")}</p>
           )}
           {draft.issues.map((issue) => (
-            <p key={issue.label} className="text-amber-600 dark:text-amber-400">
+            <p key={issue.label} className="text-warning">
               {issue.label}: {issue.reason}
             </p>
           ))}
           {draft.sql && (
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-[11px]">
-              {draft.sql}
-            </pre>
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-2xs">{draft.sql}</pre>
           )}
           <ol className="list-decimal space-y-1 pl-4 text-muted-foreground">
             <li>Angleich-Änderung speichern und committen, dann als Einzeländerung ausrollen.</li>

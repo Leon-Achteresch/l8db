@@ -45,7 +45,7 @@ export function SessionRow({
       className={cn(
         "hover:bg-muted/40",
         isBlocked && "bg-destructive/10 hover:bg-destructive/15",
-        !isBlocked && isBlocking && "bg-amber-500/10 hover:bg-amber-500/15",
+        !isBlocked && isBlocking && "bg-warning/10 hover:bg-warning/15",
         highlighted && "ring-2 ring-inset ring-primary",
       )}
     >
@@ -65,7 +65,7 @@ export function SessionRow({
         {session.state ? (
           <Badge
             variant={session.state.toLowerCase() === "active" ? "default" : "outline"}
-            className="px-1.5 py-0 text-[10px]"
+            className="px-1.5 py-0 text-2xs"
           >
             {session.state}
           </Badge>
@@ -79,7 +79,7 @@ export function SessionRow({
         ) : (
           <div className="flex flex-wrap items-center gap-1">
             {isBlocked && (
-              <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
+              <Badge variant="destructive" className="px-1.5 py-0 text-2xs">
                 blockiert von
               </Badge>
             )}
@@ -90,7 +90,7 @@ export function SessionRow({
                   key={`b-${pid}`}
                   variant="outline"
                   size="sm"
-                  className="h-5 px-1.5 font-mono text-[10px] tabular-nums"
+                  className="h-5 px-1.5 font-mono text-2xs tabular-nums"
                   disabled={missing}
                   onClick={() => onJump(pid)}
                   title={
@@ -105,7 +105,7 @@ export function SessionRow({
               );
             })}
             {isBlocking && (
-              <Badge className="border-amber-500/40 bg-amber-500/20 px-1.5 py-0 text-[10px] text-amber-700 dark:text-amber-300">
+              <Badge className="border-warning/40 bg-warning/20 px-1.5 py-0 text-2xs text-warning">
                 blockiert
               </Badge>
             )}
@@ -114,7 +114,7 @@ export function SessionRow({
                 key={`v-${pid}`}
                 variant="outline"
                 size="sm"
-                className="h-5 px-1.5 font-mono text-[10px] tabular-nums"
+                className="h-5 px-1.5 font-mono text-2xs tabular-nums"
                 onClick={() => onJump(pid)}
                 title={`Zu Sitzung ${pid} springen`}
               >
@@ -138,7 +138,7 @@ export function SessionRow({
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 gap-1 px-2 text-[11px]"
+          className="h-7 gap-1 px-2 text-2xs"
           disabled={acting || /^(idle|sleep)/i.test(session.state ?? "")}
           disabledReason="Keine laufende Abfrage. Sperren löst nur „Beenden“."
           onClick={() => onCancel(session.pid)}
@@ -151,7 +151,7 @@ export function SessionRow({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 gap-1 px-2 text-[11px] text-muted-foreground hover:text-destructive"
+            className="h-7 gap-1 px-2 text-2xs text-muted-foreground hover:text-destructive"
             disabled={acting}
             onClick={() => onTerminate(session.pid)}
             title="Sitzung hart beenden (Transaktionen gehen verloren)"

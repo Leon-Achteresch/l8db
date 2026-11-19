@@ -69,7 +69,7 @@ export function AiProviderPicker({ profile, models, disabled, loading, onSelect 
           <div role="radiogroup" aria-label="AI-Anbieter auswählen" className="space-y-2">
             {GROUPS.map((group) => (
               <div key={group.label} className="space-y-0.5">
-                <div className="px-2 pt-1 pb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                <div className="px-2 pt-1 pb-0.5 text-2xs font-medium text-muted-foreground">
                   {group.label}
                 </div>
                 {AI_PROVIDERS.filter((entry) => entry.cli === group.cli).map((entry) => {
@@ -99,7 +99,7 @@ export function AiProviderPicker({ profile, models, disabled, loading, onSelect 
                         {entry.name}
                       </span>
                       {entryModel && (
-                        <span className="max-w-24 truncate text-[11px] text-muted-foreground">
+                        <span className="max-w-24 truncate text-2xs text-muted-foreground">
                           {checked ? model : entryModel}
                         </span>
                       )}

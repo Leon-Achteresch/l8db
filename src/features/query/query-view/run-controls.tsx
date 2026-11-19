@@ -80,7 +80,7 @@ export function RunControls({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="min-w-52 whitespace-nowrap">
-            <DropdownMenuLabel className="text-[10px] text-muted-foreground">
+            <DropdownMenuLabel className="text-2xs text-muted-foreground">
               Ausführung
             </DropdownMenuLabel>
             <DropdownMenuItem
@@ -90,7 +90,7 @@ export function RunControls({
               disabled={runDisabled}
             >
               Statement ausführen
-              <span className="ml-auto text-[10px] text-muted-foreground">
+              <span className="ml-auto text-2xs text-muted-foreground">
                 {shortcutLabel("query.runStatement")}
               </span>
             </DropdownMenuItem>
@@ -100,7 +100,7 @@ export function RunControls({
               disabled={isRunning || !connected || !hasSelection}
             >
               Auswahl ausführen
-              <span className="ml-auto text-[10px] text-muted-foreground">
+              <span className="ml-auto text-2xs text-muted-foreground">
                 {shortcutLabel("query.runSelection")}
               </span>
             </DropdownMenuItem>

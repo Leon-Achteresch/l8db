@@ -187,7 +187,7 @@ export function DriversView() {
               </section>
             ) : (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CircleCheck className="size-4 text-emerald-500" />
+                <CircleCheck className="size-4 text-success" />
                 Du kannst jede unterstützte Datenbank direkt verbinden.
               </p>
             )}

@@ -99,7 +99,7 @@ export function AppwriteResourceCard<T extends ResourceItem>({
                   {item.name || item.id}
                 </p>
               )}
-              <p className="mt-1 truncate text-[11px] text-muted-foreground" title={detail(item)}>
+              <p className="mt-1 truncate text-2xs text-muted-foreground" title={detail(item)}>
                 {detail(item)}
               </p>
               {renderActions?.(item, index)}

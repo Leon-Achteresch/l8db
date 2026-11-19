@@ -45,9 +45,7 @@ export function AiReasoningPicker({ profile, models, disabled }: Props) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="end" sideOffset={8} className="w-40 rounded-2xl">
-        <DropdownMenuLabel className="text-[11px] text-muted-foreground">
-          Reasoning
-        </DropdownMenuLabel>
+        <DropdownMenuLabel className="text-2xs text-muted-foreground">Reasoning</DropdownMenuLabel>
         <DropdownMenuRadioGroup value={current} onValueChange={select}>
           {["", ...efforts].map((effort) => (
             <DropdownMenuRadioItem key={effort} value={effort} className="text-xs capitalize">

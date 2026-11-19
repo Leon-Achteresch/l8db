@@ -104,7 +104,7 @@ export function RealtimeMessageList({
                 onClick={() => setSelected(entry.id)}
                 className={`flex w-full items-center gap-2 border-b px-2 py-1 text-left text-xs last:border-b-0 ${selected === entry.id ? "bg-primary/10" : "hover:bg-muted"}`}
               >
-                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                   {new Date(entry.receivedAt).toLocaleTimeString("de-DE")}
                 </span>
                 <Badge variant="outline">{entry.event}</Badge>

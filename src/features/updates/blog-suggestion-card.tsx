@@ -100,7 +100,7 @@ export function BlogSuggestionCard({ post, suspended, onDismiss, onRead, onExpir
         </div>
       ) : null}
       <div className="px-4 pt-4 pb-3.5">
-        <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+        <div className="mb-2 flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
           <span className="size-1.5 rounded-full bg-primary" />
           <span>Aus dem Blog</span>
           <span aria-hidden="true">·</span>
@@ -109,7 +109,7 @@ export function BlogSuggestionCard({ post, suspended, onDismiss, onRead, onExpir
         </div>
         <h2
           id={titleId}
-          className="line-clamp-2 break-words text-[15px] font-semibold leading-snug tracking-tight"
+          className="line-clamp-2 break-words text-sm font-semibold leading-snug tracking-tight"
         >
           {post.title}
         </h2>
@@ -117,10 +117,7 @@ export function BlogSuggestionCard({ post, suspended, onDismiss, onRead, onExpir
           {post.summary}
         </p>
         <div className="mt-4 flex items-center gap-2 border-t border-border/60 pt-3">
-          <time
-            dateTime={post.publishedAt}
-            className="text-[11px] tabular-nums text-muted-foreground"
-          >
+          <time dateTime={post.publishedAt} className="text-2xs tabular-nums text-muted-foreground">
             {dateFormat.format(new Date(`${post.publishedAt}T00:00:00Z`))}
           </time>
           <div className="flex-1" />

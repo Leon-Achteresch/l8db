@@ -25,12 +25,12 @@ export function HttpStepForm({ action, onChange }: StepFormProps<"http">) {
             value={action.method}
             onValueChange={(method) => onChange({ ...action, method: method as HttpMethod })}
           >
-            <SelectTrigger aria-label="Methode" className="w-full rounded-lg font-mono text-[13px]">
+            <SelectTrigger aria-label="Methode" className="w-full rounded-lg font-mono text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {HTTP_METHODS.map((method) => (
-                <SelectItem key={method} value={method} className="font-mono text-[13px]">
+                <SelectItem key={method} value={method} className="font-mono text-sm">
                   {method.toUpperCase()}
                 </SelectItem>
               ))}

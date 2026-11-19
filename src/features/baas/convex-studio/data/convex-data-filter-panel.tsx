@@ -140,7 +140,7 @@ export function ConvexDataFilterPanel({
             </div>
           ))}
         {state.mode === "search" && (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Volltextsuche liefert Treffer nach Relevanz; die Sortierung ist dabei fest.
           </p>
         )}

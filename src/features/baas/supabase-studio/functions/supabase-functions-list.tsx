@@ -118,13 +118,13 @@ export function SupabaseFunctionsList({
               <span className="min-w-0 flex-1 truncate">
                 {item.slug}
                 {item.label && (
-                  <span className="block truncate text-[11px] text-muted-foreground">
+                  <span className="block truncate text-2xs text-muted-foreground">
                     {item.label}
                   </span>
                 )}
               </span>
               {item.version != null && (
-                <span className="text-[10px] text-muted-foreground">v{item.version}</span>
+                <span className="text-2xs text-muted-foreground">v{item.version}</span>
               )}
               {item.status && item.status !== "ACTIVE" && (
                 <Badge variant="outline">{statusLabel(item.status)}</Badge>

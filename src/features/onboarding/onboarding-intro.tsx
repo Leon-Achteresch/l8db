@@ -110,7 +110,7 @@ export function OnboardingIntro({ onComplete }: OnboardingIntroProps) {
           ))}
         </h1>
         <motion.p
-          className="text-xs font-medium uppercase text-white/60"
+          className="text-xs font-medium text-white/60"
           initial={{ opacity: 0, letterSpacing: "1.4em" }}
           animate={{ opacity: 1, letterSpacing: "0.5em" }}
           transition={{ duration: 2, delay: 3.1, ease: EASE_OUT }}
@@ -137,7 +137,7 @@ export function OnboardingIntro({ onComplete }: OnboardingIntroProps) {
       <motion.button
         type="button"
         onClick={onComplete}
-        className="absolute right-6 bottom-5 z-20 text-[10px] uppercase tracking-[0.35em] text-white/40 transition-colors hover:text-white"
+        className="absolute right-6 bottom-5 z-20 text-2xs text-white/40 transition-colors hover:text-white"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1.2, duration: 0.8 }}

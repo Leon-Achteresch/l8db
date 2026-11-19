@@ -44,7 +44,7 @@ export function DropPrincipalDialog({
           <AlertDialogDescription className="font-mono text-xs">{statement}</AlertDialogDescription>
         </AlertDialogHeader>
         {label && (
-          <label className="flex cursor-pointer items-center gap-2 text-[13px]">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
             <Checkbox checked={cascade} onCheckedChange={(on) => setCascade(on === true)} />
             {label}
           </label>

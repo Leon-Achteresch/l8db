@@ -89,7 +89,7 @@ export function SupabaseSettingsDataApi({ reference }: { reference: string }) {
                 autoComplete="off"
                 spellCheck={false}
               />
-              <p className="text-[11px] text-muted-foreground">{hint}</p>
+              <p className="text-2xs text-muted-foreground">{hint}</p>
             </div>
           ))}
           <div className="flex gap-2">

@@ -65,7 +65,7 @@ export function SupabaseFunctionSecrets({ reference }: { reference: string }) {
           {save.isPending ? "Wird gespeichert…" : "Setzen"}
         </Button>
       </form>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Bestehende Secrets mit gleichem Namen werden überschrieben. Supabase zeigt Werte nur als
         Hash; Namen mit SUPABASE_ sind reserviert.
       </p>

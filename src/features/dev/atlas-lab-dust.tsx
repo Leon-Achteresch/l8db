@@ -30,9 +30,9 @@ export function AtlasLabDust({ tables }: { tables: LabTable[] }) {
                 )}
                 style={auroraStyle(tile, width, height, 80 - tile.heat * 40)}
               >
-                <span className="truncate font-mono text-[12.5px] font-medium">{tile.name}</span>
+                <span className="truncate font-mono text-xs font-medium">{tile.name}</span>
                 {tile.h >= 56 && (
-                  <span className="truncate text-[10.5px] tabular-nums text-muted-foreground">
+                  <span className="truncate text-2xs tabular-nums text-muted-foreground">
                     {labFacts(tile)}
                   </span>
                 )}

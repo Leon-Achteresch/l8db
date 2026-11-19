@@ -88,7 +88,7 @@ export function MultiTargetConfirmDialog({
             >
               <span className="min-w-0 flex-1 truncate">{labels.get(target.id) ?? target.id}</span>
               {production.has(target.id) && (
-                <Badge variant="destructive" className="text-[10px]">
+                <Badge variant="destructive" className="text-2xs">
                   Produktion
                 </Badge>
               )}

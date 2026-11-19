@@ -198,7 +198,7 @@ export function VersioningTargetPolicy({
               production={production}
               onChange={setDelivery}
             />
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Gemeinsam in der Datenbank · Revision {record?.revision ?? "—"}. Freigaben benötigen
               einen anderen Datenbankbenutzer.
             </p>
@@ -213,7 +213,7 @@ export function VersioningTargetPolicy({
           Regeln speichern
         </Button>
         {target.binding && (
-          <p className="break-words text-[10px] text-muted-foreground">
+          <p className="break-words text-2xs text-muted-foreground">
             {target.binding.label}
             {target.binding.edition ? ` · ${target.binding.edition}` : ""}
           </p>

@@ -14,7 +14,7 @@ export function StepGraphStartNode({ data }: NodeProps<Extract<StepFlowNode, { t
       className="flex flex-col justify-center gap-0.5 rounded-xl border border-dashed bg-background/80 px-3 text-left"
       style={{ width: STEP_WIDTH, height: startHeight(startLines(active.length)) }}
     >
-      <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+      <span className="flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
         <PlayIcon className="size-3 fill-current" aria-hidden />
         Start
       </span>

@@ -28,7 +28,7 @@ export function CsvImportValidation({ issues }: { issues: CsvMappingIssues }) {
           </li>
         )}
         {warnings.map((warning) => (
-          <li key={warning} className="text-amber-700 dark:text-amber-400">
+          <li key={warning} className="text-warning">
             {warning}
           </li>
         ))}

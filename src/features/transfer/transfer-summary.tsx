@@ -53,7 +53,7 @@ export function TransferSummary({
   return (
     <div className="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto">
       <section className="rounded-xl border bg-card p-4">
-        <h3 className="text-xs font-semibold">Auswahl</h3>
+        <h3 className="text-xs font-medium">Auswahl</h3>
         <div className="mt-2 grid grid-cols-3 gap-2">
           {[
             [selected.length, "Schemas"],
@@ -78,7 +78,7 @@ export function TransferSummary({
             <dd
               className={
                 conflicts.length
-                  ? "font-medium text-amber-700 tabular-nums dark:text-amber-400"
+                  ? "font-medium text-warning tabular-nums"
                   : "font-medium tabular-nums"
               }
             >
@@ -97,7 +97,7 @@ export function TransferSummary({
               <dd>
                 <button
                   type="button"
-                  className="flex items-center gap-1 font-medium text-amber-700 hover:underline dark:text-amber-400"
+                  className="flex items-center gap-1 font-medium text-warning hover:underline"
                   onClick={() => onShowPlan(plan.manual.length ? "manual" : "warnings")}
                 >
                   <TriangleAlertIcon className="size-3.5" />
@@ -118,8 +118,8 @@ export function TransferSummary({
       />
 
       {conflicts.length > 0 && (
-        <section className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-xs">
-          <p className="font-medium text-amber-700 dark:text-amber-400">
+        <section className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-xs">
+          <p className="font-medium text-warning">
             Im Ziel existieren bereits {conflicts.length} Objekte. Anderes Zielschema wählen, die
             Objekte entfernen oder überschreiben.
           </p>
@@ -131,7 +131,7 @@ export function TransferSummary({
 
       {largest.length > 0 && (
         <section className="rounded-xl border bg-card p-4">
-          <h3 className="text-xs font-semibold">Größte Schemas</h3>
+          <h3 className="text-xs font-medium">Größte Schemas</h3>
           <ul className="mt-3 grid gap-3">
             {largest.map((entry) => (
               <li key={entry.schema} className="grid gap-1">

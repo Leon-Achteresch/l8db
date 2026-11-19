@@ -80,14 +80,14 @@ export function SupabaseTablesMap({
                   backgroundColor: `color-mix(in oklch, var(--chart-1) ${Math.round(strength * 100)}%, var(--card))`,
                 }}
               >
-                <span className="w-full truncate text-xs font-semibold">{item.name}</span>
+                <span className="w-full truncate text-xs font-medium">{item.name}</span>
                 {roomy && (
                   <span className="flex w-full items-end justify-between gap-2">
                     <span className="text-lg font-semibold tabular-nums tracking-tight">
                       {rowsFormat.format(rows)}
                     </span>
                     {!item.rls_enabled && (
-                      <span className="text-[10px] font-medium text-destructive">RLS aus</span>
+                      <span className="text-2xs font-medium text-destructive">RLS aus</span>
                     )}
                   </span>
                 )}
@@ -96,7 +96,7 @@ export function SupabaseTablesMap({
           );
         })}
       </ul>
-      <figcaption className="flex flex-wrap justify-between gap-2 text-[11px] text-muted-foreground">
+      <figcaption className="flex flex-wrap justify-between gap-2 text-2xs text-muted-foreground">
         <span>Fläche und Farbe zeigen die geschätzte Zeilenzahl. Gestrichelt: ohne RLS.</span>
         {(hidden > 0 || tables.data?.has_more) && (
           <span>

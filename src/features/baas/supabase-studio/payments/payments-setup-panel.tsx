@@ -52,7 +52,7 @@ export function PaymentsSetupPanel({
         ) : (
           <Badge variant="outline">Einrichtung nötig</Badge>
         )}
-        {status.webhook_id && <span className="font-mono text-[11px]">{status.webhook_id}</span>}
+        {status.webhook_id && <span className="font-mono text-2xs">{status.webhook_id}</span>}
       </div>
       <div className="max-w-xl space-y-1.5">
         <Label htmlFor="payments-origin" className="text-xs">
@@ -66,7 +66,7 @@ export function PaymentsSetupPanel({
           placeholder="https://app.example.com"
           aria-invalid={origin !== "" && !ORIGIN.test(origin.trim())}
         />
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Nur Schema, Host und Port. Nach dem Bezahlen leitet Stripe auf /billing dieser Adresse
           zurück.
         </p>
@@ -105,7 +105,7 @@ export function PaymentsSetupPanel({
           </ol>
           <details>
             <summary className="cursor-pointer text-muted-foreground">SQL anzeigen</summary>
-            <pre className="mt-2 max-h-72 overflow-auto rounded bg-muted/40 p-2 font-mono text-[11px]">
+            <pre className="mt-2 max-h-72 overflow-auto rounded bg-muted/40 p-2 font-mono text-2xs">
               {preview.data.sql}
             </pre>
           </details>
@@ -114,7 +114,7 @@ export function PaymentsSetupPanel({
               <summary className="cursor-pointer text-muted-foreground">
                 Quelltext {fn.slug}
               </summary>
-              <pre className="mt-2 max-h-72 overflow-auto rounded bg-muted/40 p-2 font-mono text-[11px]">
+              <pre className="mt-2 max-h-72 overflow-auto rounded bg-muted/40 p-2 font-mono text-2xs">
                 {fn.source}
               </pre>
             </details>
@@ -134,7 +134,7 @@ export function PaymentsSetupPanel({
       <Button size="sm" disabled={!valid || setup.isPending} onClick={() => setConfirming(true)}>
         {status.setup_current ? "Einrichtung erneut ausführen" : "Einrichten"}
       </Button>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Jeder Schritt ist wiederholbar. Bricht die Einrichtung ab, setzt der nächste Lauf dort fort,
         ohne einen zweiten Webhook anzulegen.
       </p>

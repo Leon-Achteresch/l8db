@@ -86,7 +86,7 @@ export function SettingsUsageTab() {
             <span
               className={cn(
                 "size-1.5 rounded-full",
-                localUsageStats ? "bg-emerald-500" : "bg-muted-foreground/40",
+                localUsageStats ? "bg-success" : "bg-muted-foreground/40",
               )}
             />
             {localUsageStats ? "Erfassung aktiv" : "Erfassung pausiert"}
@@ -143,9 +143,7 @@ export function SettingsUsageTab() {
           { label: "Erfasste Vorgänge", value: formatUsageCount(summary.operationCount) },
         ].map((metric) => (
           <div key={metric.label} className="rounded-xl bg-muted/40 px-4 py-3">
-            <dt className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-              {metric.label}
-            </dt>
+            <dt className="font-mono text-2xs text-muted-foreground">{metric.label}</dt>
             <dd className="mt-1.5 text-2xl font-medium tabular-nums">{metric.value}</dd>
           </div>
         ))}

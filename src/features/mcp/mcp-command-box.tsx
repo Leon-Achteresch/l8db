@@ -59,7 +59,7 @@ export function McpCommandBox({ command }: McpCommandBoxProps) {
       </div>
 
       <div className="mt-3 overflow-x-auto rounded-xl border border-border/60 bg-muted/70 p-3">
-        <code className="block font-mono text-[11px] text-foreground/90 whitespace-pre">
+        <code className="block font-mono text-2xs text-foreground/90 whitespace-pre">
           {command}
         </code>
       </div>

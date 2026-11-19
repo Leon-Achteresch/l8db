@@ -14,10 +14,10 @@ import {
 import { VersioningPatchView } from "./versioning-patch-view";
 
 const STATUS: Record<PatchStatus, { letter: string; className: string; label: string }> = {
-  added: { letter: "A", className: "text-emerald-600 dark:text-emerald-400", label: "Neu" },
+  added: { letter: "A", className: "text-success", label: "Neu" },
   deleted: { letter: "D", className: "text-red-600 dark:text-red-400", label: "Gelöscht" },
   renamed: { letter: "R", className: "text-sky-600 dark:text-sky-400", label: "Umbenannt" },
-  modified: { letter: "M", className: "text-amber-600 dark:text-amber-400", label: "Geändert" },
+  modified: { letter: "M", className: "text-warning", label: "Geändert" },
 };
 
 export function VersioningCommitDetails({
@@ -63,7 +63,7 @@ export function VersioningCommitDetails({
     >
       <header className="flex shrink-0 items-start gap-3 px-4 pt-3 pb-2">
         <div className="min-w-0 flex-1">
-          <h3 className="text-[13px] leading-5 font-semibold tracking-tight">
+          <h3 className="text-sm leading-5 font-semibold tracking-tight">
             {subject || (error ? "Commit" : "Wird geladen…")}
           </h3>
           {body.join("\n").trim() && (
@@ -71,7 +71,7 @@ export function VersioningCommitDetails({
               {body.join("\n").trim()}
             </p>
           )}
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-2xs text-muted-foreground">
             {details && <span className="font-medium text-foreground/80">{details.author}</span>}
             {details && (
               <span title={new Date(details.date).toLocaleString()}>
@@ -82,7 +82,7 @@ export function VersioningCommitDetails({
               type="button"
               onClick={copy}
               title="Commit-Hash kopieren"
-              className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] transition-colors hover:bg-muted-foreground/15 hover:text-foreground"
+              className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-muted px-2 py-0.5 font-mono text-2xs transition-colors hover:bg-muted-foreground/15 hover:text-foreground"
             >
               {commitId.slice(0, 10)}
               <CopyIcon className="size-2.5" />
@@ -121,10 +121,7 @@ export function VersioningCommitDetails({
                 >
                   <span
                     title={status.label}
-                    className={cn(
-                      "w-3 shrink-0 font-mono text-[10px] font-semibold",
-                      status.className,
-                    )}
+                    className={cn("w-3 shrink-0 font-mono text-2xs font-medium", status.className)}
                   >
                     {status.letter}
                   </span>
@@ -135,10 +132,8 @@ export function VersioningCommitDetails({
                     <span className="text-muted-foreground">{entry.path.slice(0, slash + 1)}</span>
                     {entry.path.slice(slash + 1)}
                   </span>
-                  <span className="shrink-0 font-mono text-[10px] tabular-nums">
-                    {entry.added > 0 && (
-                      <span className="text-emerald-600 dark:text-emerald-400">+{entry.added}</span>
-                    )}
+                  <span className="shrink-0 font-mono text-2xs tabular-nums">
+                    {entry.added > 0 && <span className="text-success">+{entry.added}</span>}
                     {entry.removed > 0 && (
                       <span className="ml-1 text-red-600 dark:text-red-400">−{entry.removed}</span>
                     )}

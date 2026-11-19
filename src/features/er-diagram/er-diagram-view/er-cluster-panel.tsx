@@ -33,7 +33,7 @@ export function ErClusterPanel({
       </div>
       <span className="font-medium text-foreground">{tableCount}</span> Tabellen,{" "}
       <span className="font-medium text-foreground">{foreignKeyCount}</span> Foreign Keys
-      <p className="mt-1 text-[10px]">Hineinzoomen öffnet Cluster mit PK/FK-Verbindungen.</p>
+      <p className="mt-1 text-2xs">Hineinzoomen öffnet Cluster mit PK/FK-Verbindungen.</p>
     </div>
   );
 }

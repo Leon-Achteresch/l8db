@@ -31,7 +31,7 @@ export function SavedPlanPanel({
   return (
     <div className="flex min-h-0 min-w-0 flex-col rounded-lg border bg-card">
       <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
-        <span className="text-xs font-semibold">{label}</span>
+        <span className="text-xs font-medium">{label}</span>
         {loaded && (
           <Badge variant={loaded.data.mode === "ANALYZE" ? "default" : "secondary"}>
             {loaded.data.mode === "ANALYZE" ? "ANALYZE (gemessen)" : "EXPLAIN (geschätzt)"}
@@ -86,7 +86,7 @@ export function SavedPlanPanel({
               {loaded.data.databaseKind ? ` (${loaded.data.databaseKind})` : ""}
             </dd>
           </dl>
-          <pre className="max-h-32 shrink-0 overflow-auto border-b px-3 py-2 font-mono text-[11px] whitespace-pre-wrap">
+          <pre className="max-h-32 shrink-0 overflow-auto border-b px-3 py-2 font-mono text-2xs whitespace-pre-wrap">
             {loaded.data.sql}
           </pre>
           <div className="min-h-0 flex-1 overflow-auto px-3 py-2">

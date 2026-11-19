@@ -41,12 +41,12 @@ export function AtlasLabPane({ tables }: { tables: LabTable[] }) {
                 style={auroraStyle(tile, width, height, active ? 30 : 86 - tile.heat * 46)}
               >
                 {showName && (
-                  <span className="truncate font-mono text-[11.5px] font-medium leading-tight">
+                  <span className="truncate font-mono text-2xs font-medium leading-tight">
                     {tile.name}
                   </span>
                 )}
                 {showMeta && (
-                  <span className="truncate text-[10.5px] tabular-nums text-muted-foreground">
+                  <span className="truncate text-2xs tabular-nums text-muted-foreground">
                     {labFacts(tile)}
                   </span>
                 )}

@@ -8,7 +8,7 @@ export function DividerBlock({ block }: { block: WidgetBlock }) {
       {block.text && (
         <span
           className={cn(
-            "dashboard-block-divider-label shrink-0 text-xs font-semibold tracking-wide text-muted-foreground uppercase",
+            "dashboard-block-divider-label shrink-0 text-xs font-medium text-muted-foreground",
           )}
         >
           {block.text}

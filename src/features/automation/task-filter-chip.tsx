@@ -18,7 +18,7 @@ export function TaskFilterChip({ label, value, children }: Props) {
     <DropdownMenu>
       <DropdownMenuTrigger
         className={cn(
-          "inline-flex h-6 min-w-0 max-w-full items-center gap-1 rounded-md border px-2 text-[11px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+          "inline-flex h-6 min-w-0 max-w-full items-center gap-1 rounded-md border px-2 text-2xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
           value
             ? "border-primary/30 bg-primary/8 text-foreground"
             : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",

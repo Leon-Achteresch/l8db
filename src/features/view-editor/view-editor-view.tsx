@@ -287,7 +287,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
               </div>
             )}
             {compileStatus === "ok" && (
-              <div className="shrink-0 border-t border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+              <div className="shrink-0 border-t border-success/20 bg-success/5 px-3 py-2 text-xs font-medium text-success">
                 Validierung erfolgreich.
               </div>
             )}

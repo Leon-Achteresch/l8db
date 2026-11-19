@@ -96,7 +96,7 @@ export function DataTypeCombobox({ value, onChange, kind, className }: DataTypeC
             </CommandList>
           </Command>
           {isCustom && (
-            <div className="border-t px-2 py-1.5 text-[10px] text-muted-foreground">
+            <div className="border-t px-2 py-1.5 text-2xs text-muted-foreground">
               Aktuell: <span className="font-mono">{value}</span>
             </div>
           )}

@@ -24,9 +24,7 @@ export function StepCatalogGrid({ onPick }: Props) {
       </div>
       {STEP_GROUPS.map((group) => (
         <section key={group} className="flex flex-col gap-2">
-          <h4 className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-            {group}
-          </h4>
+          <h4 className="text-2xs font-medium text-muted-foreground">{group}</h4>
           <div className="grid grid-cols-1 gap-1.5 @md/catalog:grid-cols-2 @3xl/catalog:grid-cols-3">
             {ACTION_TYPES.filter((type) => STEP_CATALOG[type].group === group).map((type) => {
               const entry = STEP_CATALOG[type];
@@ -47,11 +45,11 @@ export function StepCatalogGrid({ onPick }: Props) {
                     <Icon className="size-4" />
                   </span>
                   <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="flex items-center gap-1.5 text-[13px] font-medium">
+                    <span className="flex items-center gap-1.5 text-sm font-medium">
                       {entry.label}
                       {entry.risky && (
                         <TriangleAlertIcon
-                          className="size-3 text-amber-600 dark:text-amber-400"
+                          className="size-3 text-warning"
                           aria-label="Verändert Daten oder Dateien"
                         />
                       )}

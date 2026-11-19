@@ -41,7 +41,7 @@ export function HolidayVisitor({
         role="status"
         className="relative min-w-0 flex-1 rounded-2xl rounded-br-sm border bg-popover px-3.5 py-3 text-popover-foreground shadow-lg"
       >
-        <p className="mb-1 text-[10px] font-medium tracking-wide text-muted-foreground">
+        <p className="mb-1 text-2xs font-medium tracking-wide text-muted-foreground">
           {info.guest} · {info.name}
         </p>
         <p className="text-xs leading-relaxed">{visit.quip}</p>

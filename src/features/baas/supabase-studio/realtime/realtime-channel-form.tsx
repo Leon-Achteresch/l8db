@@ -181,7 +181,7 @@ export function RealtimeChannelForm({
         >
           <Plus className="size-3.5" /> Filter hinzufügen
         </Button>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Änderungen kommen nur für Tabellen an, die in der Publikation supabase_realtime sind. Ohne
           Filter empfängt der Kanal nur Broadcast und Presence.
         </p>

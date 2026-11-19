@@ -61,11 +61,11 @@ export function StepAddMenu({ onPick, children, align = "start", side = "bottom"
                         <Icon className="size-3.5" style={{ color: "inherit" }} />
                       </span>
                       <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="flex items-center gap-1.5 text-[13px] font-medium">
+                        <span className="flex items-center gap-1.5 text-sm font-medium">
                           {entry.label}
                           {entry.risky && (
                             <TriangleAlertIcon
-                              className="size-3 text-amber-600 dark:text-amber-400"
+                              className="size-3 text-warning"
                               aria-label="Verändert Daten oder Dateien"
                             />
                           )}

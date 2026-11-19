@@ -83,7 +83,7 @@ export function VariableEditor({
             title={example}
             onClick={() => setType(t)}
             className={cn(
-              "flex flex-col items-center gap-1 rounded-lg border px-1 py-2 text-[11px] transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring",
+              "flex flex-col items-center gap-1 rounded-lg border px-1 py-2 text-2xs transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring",
               type === t && "border-primary bg-primary/5 text-primary",
             )}
           >
@@ -127,7 +127,7 @@ export function VariableEditor({
               rows={3}
               spellCheck={false}
               placeholder="SELECT DISTINCT mandant FROM bestand ORDER BY 1"
-              className="w-full rounded-lg border bg-background px-2.5 py-1.5 font-mono text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-full rounded-lg border bg-background px-2.5 py-1.5 font-mono text-2xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           )}
         </div>
@@ -138,7 +138,7 @@ export function VariableEditor({
           <VariableControl variable={draft} value={defaultValue} onChange={setDefaultValue} />
         </div>
       </div>
-      <div className="space-y-1.5 rounded-lg bg-muted/50 p-2.5 text-[11px] text-muted-foreground">
+      <div className="space-y-1.5 rounded-lg bg-muted/50 p-2.5 text-2xs text-muted-foreground">
         <p>
           Koppel den Filter im Chart unter{" "}
           <span className="font-medium text-foreground">Filter</span> oder nutze ihn in SQL:
@@ -149,7 +149,7 @@ export function VariableEditor({
             void navigator.clipboard?.writeText(variableToken(name));
             showCopiedMessage("Platzhalter kopiert");
           }}
-          className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 font-mono text-[11px] text-foreground hover:border-primary/50 focus-visible:outline-2 focus-visible:outline-ring"
+          className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 font-mono text-2xs text-foreground hover:border-primary/50 focus-visible:outline-2 focus-visible:outline-ring"
         >
           {variableToken(name)} <CopyIcon className="size-3" />
         </button>

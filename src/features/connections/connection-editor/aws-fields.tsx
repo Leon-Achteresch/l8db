@@ -138,7 +138,7 @@ export function ConnectionAwsFields({
         />
       )}
       {mode !== "keys" && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {mode === "profile"
             ? "Unterstützt Schlüssel, credential_process und AWS SSO (vorher aws sso login ausführen)."
             : "Nutzt AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY oder AWS_PROFILE und ~/.aws. Aus dem Finder gestartete Apps sehen keine Shell-Variablen."}

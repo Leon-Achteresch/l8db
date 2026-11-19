@@ -33,13 +33,13 @@ export function PlanVisualizer({ plan }: PlanVisualizerProps) {
     <div className="flex min-h-0 min-w-0 flex-col gap-2" data-plan-view={view}>
       <div className="flex flex-wrap items-center gap-2">
         <PlanViewSwitcher hasText={text !== null} view={view} />
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           {analysis.ops.length} Knoten · Gewichtung {METRIC_LABEL[analysis.metric]}
           {warnings > 0 && ` · ${warnings} Hinweis${warnings === 1 ? "" : "e"}`}
         </span>
       </div>
       {view === "text" ? (
-        <pre className="max-h-80 min-w-0 overflow-auto rounded-md border bg-muted/40 p-2 font-mono text-[11px] leading-snug">
+        <pre className="max-h-80 min-w-0 overflow-auto rounded-md border bg-muted/40 p-2 font-mono text-2xs leading-snug">
           {text}
         </pre>
       ) : view === "graph" ? (

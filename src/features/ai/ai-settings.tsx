@@ -159,7 +159,7 @@ export function AiSettings({ profile, cwd, setCwd, refresh, onError }: Props) {
           }
         >
           {raw !== "checking" && !status?.installed && (
-            <p className="rounded-xl bg-amber-500/[0.08] px-2.5 py-2 text-amber-700 ring-1 ring-amber-500/20 ring-inset dark:text-amber-300">
+            <p className="rounded-xl bg-warning/[0.08] px-2.5 py-2 text-warning ring-1 ring-warning/20 ring-inset">
               {provider.name} wurde nicht gefunden. Installiere die CLI oder gib den vollständigen
               Pfad zur ausführbaren Datei an.
             </p>
@@ -266,7 +266,7 @@ export function AiSettings({ profile, cwd, setCwd, refresh, onError }: Props) {
           }
         >
           {local && !status?.installed && raw !== "checking" && (
-            <p className="rounded-xl bg-amber-500/[0.08] px-2.5 py-2 text-amber-700 ring-1 ring-amber-500/20 ring-inset dark:text-amber-300">
+            <p className="rounded-xl bg-warning/[0.08] px-2.5 py-2 text-warning ring-1 ring-warning/20 ring-inset">
               {provider.id === "ollama"
                 ? "Ollama läuft nicht. Installiere Ollama, lade ein Modell mit „ollama pull llama3.2“ und prüfe erneut."
                 : "LM Studio antwortet nicht. Lade ein Modell und starte unter „Developer“ den lokalen Server."}{" "}
@@ -293,7 +293,7 @@ export function AiSettings({ profile, cwd, setCwd, refresh, onError }: Props) {
             <span className="flex items-baseline justify-between gap-2">
               <span>API-Endpoint</span>
               {!compatible && !local && (
-                <span className="text-[11px] text-muted-foreground">optional</span>
+                <span className="text-2xs text-muted-foreground">optional</span>
               )}
             </span>
             <Input
@@ -386,7 +386,7 @@ export function AiSettings({ profile, cwd, setCwd, refresh, onError }: Props) {
                   {entry.label}
                   {entry.id === "byok" && localNew && mode !== "byok" && <NewBadge />}
                   {count > 0 && (
-                    <span className="grid min-w-4 place-items-center rounded-full bg-emerald-500/15 px-1 text-[10px] tabular-nums text-emerald-700 dark:text-emerald-300">
+                    <span className="grid min-w-4 place-items-center rounded-full bg-success/15 px-1 text-2xs tabular-nums text-success">
                       {count}
                     </span>
                   )}
@@ -470,7 +470,7 @@ export function AiSettings({ profile, cwd, setCwd, refresh, onError }: Props) {
                           );
                         })}
                       </div>
-                      <h4 className="mt-3 flex items-center gap-1.5 text-[13px] font-medium">
+                      <h4 className="mt-3 flex items-center gap-1.5 text-sm font-medium">
                         Bring your own key oder lokal
                         {localFeature.isNew && <NewBadge />}
                       </h4>
@@ -487,7 +487,7 @@ export function AiSettings({ profile, cwd, setCwd, refresh, onError }: Props) {
                             "Im Chat Anbieter und Modell wählen",
                           ].map((step, index) => (
                             <li key={step} className="flex items-center gap-2">
-                              <span className="grid size-4 shrink-0 place-items-center rounded-full bg-background text-[10px] font-medium tabular-nums ring-1 ring-border">
+                              <span className="grid size-4 shrink-0 place-items-center rounded-full bg-background text-2xs font-medium tabular-nums ring-1 ring-border">
                                 {index + 1}
                               </span>
                               {step}
@@ -495,7 +495,7 @@ export function AiSettings({ profile, cwd, setCwd, refresh, onError }: Props) {
                           ))}
                         </ol>
                       )}
-                      <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <p className="mt-3 flex items-center gap-1.5 text-2xs text-muted-foreground">
                         <KeyRound className="size-3" />
                         Schlüssel liegen nur im Schlüsselbund deines Systems.
                       </p>
@@ -539,7 +539,7 @@ export function AiSettings({ profile, cwd, setCwd, refresh, onError }: Props) {
                       <div className="flex items-center justify-between gap-2 rounded-xl bg-muted/40 py-1 pr-1 pl-3">
                         <span className="min-w-0 truncate">
                           {server.name}
-                          <span className="ml-2 font-mono text-[11px] text-muted-foreground">
+                          <span className="ml-2 font-mono text-2xs text-muted-foreground">
                             {server.transport}
                           </span>
                         </span>

@@ -116,12 +116,12 @@ export function SupabaseTableRowDialog({
               <div key={column.name} className="grid gap-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-xs font-medium">{column.name}</span>
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-2xs text-muted-foreground">
                     {column.data_type || "unbekannt"}
                   </span>
                   {column.is_primary_key && <Badge variant="outline">PK</Badge>}
                   {column.default_value && (
-                    <span className="truncate text-[11px] text-muted-foreground">
+                    <span className="truncate text-2xs text-muted-foreground">
                       Standard: {column.default_value}
                     </span>
                   )}

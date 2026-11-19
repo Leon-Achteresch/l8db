@@ -101,7 +101,7 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
           ) : !project ? (
             <fieldset disabled={busy} className="mx-5 mt-8 flex max-w-md flex-col gap-4">
               <div>
-                <p className="mb-1 text-[11px] text-muted-foreground">Repository verbunden</p>
+                <p className="mb-1 text-2xs text-muted-foreground">Repository verbunden</p>
                 <h2 className="text-base font-semibold">Datenbankprojekt einrichten</h2>
               </div>
               <Input
@@ -142,7 +142,7 @@ export function VersioningView({ workspace }: { workspace: VersioningWorkspace }
           {message && !workbench && (
             <p
               role="status"
-              className="shrink-0 truncate px-5 py-2 text-[10px] text-muted-foreground"
+              className="shrink-0 truncate px-5 py-2 text-2xs text-muted-foreground"
               title={message}
             >
               {message}

@@ -78,7 +78,7 @@ export function SqlCell({
   return (
     <div className="grid">
       <div className="flex h-9 items-center gap-2 border-b px-3">
-        <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+        <span className="rounded bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
           SQL
         </span>
         <NotebookConnectionSelect
@@ -91,7 +91,7 @@ export function SqlCell({
           className="w-auto max-w-48 border-transparent bg-transparent px-1.5 text-muted-foreground shadow-none hover:bg-muted dark:bg-transparent"
         />
         {connection?.readOnly && (
-          <span className="text-[10px] text-muted-foreground">schreibgeschützt</span>
+          <span className="text-2xs text-muted-foreground">schreibgeschützt</span>
         )}
       </div>
       <NotebookSqlEditor
@@ -121,7 +121,7 @@ export function SqlCell({
           ) : (
             output && (
               <>
-                <CircleCheckIcon className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                <CircleCheckIcon className="size-3.5 text-success" />
                 <span className="text-foreground/80">{status}</span>
                 <span>·</span>
                 <span>{output.executionMs.toLocaleString("de-DE")} ms</span>

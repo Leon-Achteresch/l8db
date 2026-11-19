@@ -99,13 +99,13 @@ export function ConvexFunctionTree({
                       >
                         <span
                           title={TYPE_TITLE[fn.udfType]}
-                          className="flex size-4 shrink-0 items-center justify-center rounded bg-muted font-mono text-[10px] text-muted-foreground"
+                          className="flex size-4 shrink-0 items-center justify-center rounded bg-muted font-mono text-2xs text-muted-foreground"
                         >
                           {TYPE_LABEL[fn.udfType]}
                         </span>
                         <span className="min-w-0 flex-1 truncate">{fn.name}</span>
                         {fn.visibility === "internal" && (
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-2xs">
                             intern
                           </Badge>
                         )}

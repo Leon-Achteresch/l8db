@@ -43,13 +43,11 @@ export function TourOffer() {
         >
           <X className="size-3.5" />
         </button>
-        <p className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-          {TOUR_CHAPTERS.length} Kapitel
-        </p>
-        <p className="mt-1.5 pr-6 text-[15px] font-semibold tracking-tight">
+        <p className="font-mono text-2xs text-muted-foreground">{TOUR_CHAPTERS.length} Kapitel</p>
+        <p className="mt-1.5 pr-6 text-sm font-semibold tracking-tight">
           Hi, ich bin {TOUR_MASCOT_NAME}.
         </p>
-        <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
+        <p className="mt-1 text-sm leading-5 text-muted-foreground">
           Soll ich dir l8db zeigen? Ich laufe vor und erkläre alles Schritt für Schritt.
         </p>
         <div className="mt-3.5 flex items-center gap-1.5">

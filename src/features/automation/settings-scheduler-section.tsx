@@ -91,7 +91,7 @@ export function SettingsSchedulerSection({ settings, update }: Props) {
             {settings.defaultOutputDir ? (
               <>
                 <span
-                  className="max-w-56 truncate rounded-md bg-muted px-2 py-1 font-mono text-[11px]"
+                  className="max-w-56 truncate rounded-md bg-muted px-2 py-1 font-mono text-2xs"
                   title={settings.defaultOutputDir}
                 >
                   {settings.defaultOutputDir}

@@ -72,13 +72,13 @@ export function EntityResultList({
           {filteredEntities.length} Ergebnis{filteredEntities.length !== 1 ? "se" : ""}
         </span>
         {counts.tables > 0 && (
-          <Badge variant="secondary" className="text-[10px]">
+          <Badge variant="secondary" className="text-2xs">
             <TableIcon className="size-2.5" />
             {counts.tables}
           </Badge>
         )}
         {counts.views > 0 && (
-          <Badge variant="secondary" className="text-[10px]">
+          <Badge variant="secondary" className="text-2xs">
             <EyeIcon className="size-2.5" />
             {counts.views}
           </Badge>
@@ -137,7 +137,7 @@ export function EntityResultList({
                     ) : (
                       <EyeIcon className="size-3.5 shrink-0 text-muted-foreground" />
                     )}
-                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                    <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                       {entity.schema}
                     </span>
                     <span className="min-w-0 flex-1 truncate font-medium">{entity.name}</span>
@@ -147,14 +147,14 @@ export function EntityResultList({
                       {entity.matchingColumns.slice(0, 3).map((col) => (
                         <div
                           key={col}
-                          className="flex items-center gap-1.5 px-1 py-0.5 text-[10px] text-muted-foreground"
+                          className="flex items-center gap-1.5 px-1 py-0.5 text-2xs text-muted-foreground"
                         >
                           <ColumnsIcon className="size-2.5 shrink-0" />
                           <span className="truncate">{col}</span>
                         </div>
                       ))}
                       {entity.matchingColumns.length > 3 && (
-                        <span className="px-1 text-[10px] text-muted-foreground">
+                        <span className="px-1 text-2xs text-muted-foreground">
                           +{entity.matchingColumns.length - 3} weitere
                         </span>
                       )}

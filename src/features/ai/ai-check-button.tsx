@@ -35,7 +35,7 @@ export function AiCheckButton({ profile }: { profile: AiProfile }) {
       {state.text && (
         <p
           role="status"
-          className={`flex items-start gap-1.5 text-[11px] ${state.ok ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}
+          className={`flex items-start gap-1.5 text-2xs ${state.ok ? "text-success" : "text-destructive"}`}
         >
           {state.ok ? (
             <CircleCheck className="mt-px size-3.5 shrink-0" />

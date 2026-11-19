@@ -28,11 +28,11 @@ export function ResultCompareDetail({
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b px-3 py-2 text-xs">
         <span className={cn("font-medium", tone.text)}>{tone.label}</span>
-        <span className="truncate font-mono text-[11px] text-foreground/90">
+        <span className="truncate font-mono text-2xs text-foreground/90">
           {changeKeyLabel(change, keyColumns, masks)}
         </span>
         {change.kind === "changed" && (
-          <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">
+          <span className="ml-auto shrink-0 text-2xs tabular-nums text-muted-foreground">
             {change.changed.length} {change.changed.length === 1 ? "Spalte" : "Spalten"}
           </span>
         )}
@@ -42,7 +42,7 @@ export function ResultCompareDetail({
           <caption className="sr-only">
             {tone.label} {changeKeyLabel(change, keyColumns, masks)}: Werte vorher und jetzt
           </caption>
-          <thead className="sticky top-0 bg-card text-[11px] text-muted-foreground">
+          <thead className="sticky top-0 bg-card text-2xs text-muted-foreground">
             <tr className="border-b">
               <th scope="col" className="w-[30%] px-3 py-1.5 text-left font-medium">
                 Spalte
@@ -79,12 +79,12 @@ export function ResultCompareDetail({
                   >
                     {column}
                   </th>
-                  <td className="px-2 py-1 font-mono text-[11px] break-all whitespace-pre-wrap">
+                  <td className="px-2 py-1 font-mono text-2xs break-all whitespace-pre-wrap">
                     {before ?? <span className="text-muted-foreground">–</span>}
                   </td>
                   <td
                     className={cn(
-                      "px-2 py-1 font-mono text-[11px] break-all whitespace-pre-wrap",
+                      "px-2 py-1 font-mono text-2xs break-all whitespace-pre-wrap",
                       changed && "text-foreground",
                     )}
                   >

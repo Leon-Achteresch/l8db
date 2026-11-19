@@ -51,16 +51,16 @@ export function InvalidProblemGroup({
           />
           <InvalidTypeIcon objectType={item.object_type} className="size-3.5" />
           <span className="truncate font-medium">{item.name}</span>
-          <span className="shrink-0 font-sans text-[11px] text-muted-foreground">
+          <span className="shrink-0 font-sans text-2xs text-muted-foreground">
             {item.schema} · {invalidTypeLabel(item.object_type)}
           </span>
           {debug && (
-            <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 font-sans text-[10px] text-amber-700 dark:text-amber-400">
+            <span className="shrink-0 rounded-full bg-warning/15 px-1.5 font-sans text-2xs text-warning">
               Debug-kompiliert
             </span>
           )}
           {messages === "ready" && (
-            <span className="ml-1 shrink-0 rounded-full bg-muted px-1.5 font-sans text-[10px] text-muted-foreground tabular-nums">
+            <span className="ml-1 shrink-0 rounded-full bg-muted px-1.5 font-sans text-2xs text-muted-foreground tabular-nums">
               {errors.length}
               <span className="sr-only"> Meldungen</span>
             </span>
@@ -100,14 +100,14 @@ export function InvalidProblemGroup({
         (messages !== "ready" ? (
           <p
             className={cn(
-              "h-6 pl-[3.25rem] font-sans text-[11px] leading-6",
+              "h-6 pl-[3.25rem] font-sans text-2xs leading-6",
               messages === "error" ? "text-destructive" : "text-muted-foreground",
             )}
           >
             {messages === "error" ? "Meldungen nicht geladen" : "Lade Meldungen…"}
           </p>
         ) : errors.length === 0 ? (
-          <p className="h-6 pl-[3.25rem] font-sans text-[11px] leading-6 text-muted-foreground">
+          <p className="h-6 pl-[3.25rem] font-sans text-2xs leading-6 text-muted-foreground">
             {synonym
               ? "Ziel des Synonyms fehlt oder ist invalid"
               : debug
@@ -124,7 +124,7 @@ export function InvalidProblemGroup({
               />
             ))}
             {errors.length > shown.length && (
-              <li className="h-6 pl-[3.25rem] font-sans text-[11px] leading-6 text-muted-foreground">
+              <li className="h-6 pl-[3.25rem] font-sans text-2xs leading-6 text-muted-foreground">
                 +{errors.length - shown.length} weitere{" "}
                 {errors.length - shown.length === 1 ? "Meldung" : "Meldungen"}
               </li>

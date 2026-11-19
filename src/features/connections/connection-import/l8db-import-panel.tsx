@@ -142,15 +142,15 @@ export function L8dbImportPanel({ onClose }: Props) {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{candidate.label}</span>
                   {candidate.error ? (
-                    <span className="block text-[11px] text-destructive">
+                    <span className="block text-2xs text-destructive">
                       Ungültig: {candidate.error}
                     </span>
                   ) : candidate.duplicateOf ? (
-                    <span className="block text-[11px] text-amber-600 dark:text-amber-400">
+                    <span className="block text-2xs text-warning">
                       Dublette von „{candidate.duplicateOf.name}“
                     </span>
                   ) : (
-                    <span className="block text-[11px] text-muted-foreground">
+                    <span className="block text-2xs text-muted-foreground">
                       {candidate.profile?.kind}
                       {candidate.profile?.ssh ? " · SSH-Tunnel" : ""}
                     </span>
@@ -168,7 +168,7 @@ export function L8dbImportPanel({ onClose }: Props) {
           />
         )}
         {invalid.length > 0 && (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {invalid.length === 1
               ? "1 Eintrag ist ungültig und wird nicht importiert."
               : `${invalid.length} Einträge sind ungültig und werden nicht importiert.`}

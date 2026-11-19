@@ -43,7 +43,7 @@ export function ResultCompareMap({
 
   return (
     <div className="flex items-center gap-2 px-3 pb-2 pt-1.5">
-      <span className="w-9 shrink-0 text-[10px] leading-none text-muted-foreground">
+      <span className="w-9 shrink-0 text-2xs leading-none text-muted-foreground">
         Jetzt
         <br />
         Basis

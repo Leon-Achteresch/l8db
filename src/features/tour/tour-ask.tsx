@@ -83,11 +83,9 @@ export function TourAsk({ stepId, stepTitle, history, lastAnswer, onThinking }: 
           aria-live="polite"
           className="mb-2 rounded-xl bg-muted/50 px-3 py-2.5"
         >
-          <p className="truncate text-[11px] font-medium text-muted-foreground">{asked}</p>
+          <p className="truncate text-2xs font-medium text-muted-foreground">{asked}</p>
           {shown ? (
-            <p className="mt-1 text-[13px] leading-5 whitespace-pre-wrap text-foreground">
-              {shown}
-            </p>
+            <p className="mt-1 text-sm leading-5 whitespace-pre-wrap text-foreground">{shown}</p>
           ) : busy ? (
             <p
               className="mt-2 flex gap-1"
@@ -128,7 +126,7 @@ export function TourAsk({ stepId, stepTitle, history, lastAnswer, onThinking }: 
           maxLength={TOUR_QUESTION_MAX}
           placeholder={`Frag ${TOUR_MASCOT_NAME} …`}
           aria-label={`Frage an ${TOUR_MASCOT_NAME}`}
-          className="h-7 min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+          className="h-7 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
         {busy ? (
           <button

@@ -116,7 +116,7 @@ export function ResizableDrawer({
         >
           <span className="h-12 w-1 rounded-full bg-border" />
         </div>
-        <p className="border-t px-4 py-2 text-[11px] text-muted-foreground">
+        <p className="border-t px-4 py-2 text-2xs text-muted-foreground">
           Am Rand ziehen, um die Breite zu ändern. Die Größe wird automatisch gespeichert.
         </p>
       </SheetContent>

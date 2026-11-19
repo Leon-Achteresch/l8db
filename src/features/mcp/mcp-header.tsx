@@ -20,8 +20,8 @@ export function McpHeader({ enabled, exposedCount, onToggleEnabled }: McpHeaderP
             >
               {enabled ? (
                 <>
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-75" />
+                  <span className="relative inline-flex size-2 rounded-full bg-success" />
                 </>
               ) : (
                 <span className="relative inline-flex size-2 rounded-full bg-muted-foreground/40" />
@@ -31,15 +31,13 @@ export function McpHeader({ enabled, exposedCount, onToggleEnabled }: McpHeaderP
 
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+              <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                 Model Context Protocol (MCP)
               </h1>
               <span
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors",
-                  enabled
-                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                    : "bg-muted text-muted-foreground",
+                  enabled ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
                 )}
               >
                 {enabled ? (
@@ -65,7 +63,7 @@ export function McpHeader({ enabled, exposedCount, onToggleEnabled }: McpHeaderP
 
         <div className="flex shrink-0 items-center justify-between gap-3 rounded-2xl border border-border/70 bg-background/60 px-4 py-3 sm:flex-col sm:items-end sm:justify-center">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-foreground">
+            <span className="text-xs font-medium text-foreground">
               {enabled ? "Server aktiv" : "Server pausiert"}
             </span>
             <Switch
@@ -75,7 +73,7 @@ export function McpHeader({ enabled, exposedCount, onToggleEnabled }: McpHeaderP
               aria-label="MCP-Server aktivieren oder pausieren"
             />
           </div>
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             {enabled ? "Bereit für KI-Werkzeuge" : "Alle Anfragen werden blockiert"}
           </span>
         </div>

@@ -24,8 +24,8 @@ export function ChartMetricPicker({
   return (
     <section aria-label="Kennzahlen im Chart" className="space-y-3 rounded-xl border bg-card p-4">
       <div>
-        <h3 className="text-xs font-semibold">Kennzahlen im Chart</h3>
-        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+        <h3 className="text-xs font-medium">Kennzahlen im Chart</h3>
+        <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
           {maximum === 1
             ? "Diese Darstellung zeigt eine Kennzahl. Wähle, welche du sehen möchtest."
             : `Wähle bis zu ${maximum} Kennzahlen. Die Reihenfolge bestimmt ihre Rolle im Chart.`}
@@ -68,7 +68,7 @@ export function ChartMetricPicker({
               {active && <CheckIcon className="size-3" />}
               {metric.label}
               {active && maximum > 1 && (
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-2xs text-muted-foreground">
                   {selected.indexOf(metric.key) + 1}
                 </span>
               )}

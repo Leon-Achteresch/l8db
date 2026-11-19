@@ -83,14 +83,14 @@ export function AiUserMessage({
     >
       {message.attachments?.length ? <AiAttachmentChips files={message.attachments} /> : null}
       {message.contextLabels?.length ? (
-        <p className="text-[11px] text-muted-foreground" title="Mitgeschickter Kontext">
+        <p className="text-2xs text-muted-foreground" title="Mitgeschickter Kontext">
           {message.contextLabels.join(" · ")}
         </p>
       ) : null}
       <div className="max-w-full rounded-[20px] rounded-br-md bg-foreground/[0.06] px-3.5 py-2 dark:bg-muted">
         <div
           className={cn(
-            "whitespace-pre-wrap break-words text-[14px] leading-relaxed text-foreground",
+            "whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground",
             long &&
               !expanded &&
               "max-h-44 overflow-hidden [mask-image:linear-gradient(to_bottom,black_calc(100%-1.75rem),transparent)]",

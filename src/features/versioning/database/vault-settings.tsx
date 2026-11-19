@@ -23,7 +23,7 @@ export function VaultSettings({ workspace }: { workspace: BranchingWorkspace }) 
   ] as const;
   return (
     <div className="space-y-3">
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-xl bg-muted/40 p-3 text-[11px]">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-xl bg-muted/40 p-3 text-2xs">
         {facts.map(([label, value]) => (
           <div key={label} className="contents">
             <dt className="text-muted-foreground">{label}</dt>
@@ -49,7 +49,7 @@ export function VaultSettings({ workspace }: { workspace: BranchingWorkspace }) 
                 readOnly
                 value={key}
                 aria-label="Wiederherstellungsschlüssel"
-                className="min-w-0 font-mono text-[11px]"
+                className="min-w-0 font-mono text-2xs"
                 onFocus={(event) => event.currentTarget.select()}
               />
               <VersioningIconButton
@@ -65,7 +65,7 @@ export function VaultSettings({ workspace }: { workspace: BranchingWorkspace }) 
                 onClick={() => setKey(null)}
               />
             </div>
-            <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+            <p className="text-2xs leading-relaxed text-warning">
               Wer diesen Schlüssel besitzt, kann alle Sicherungen dieses Tresors entschlüsseln. Nur
               in einem Passwortmanager oder Tresor des Unternehmens ablegen.
             </p>
@@ -104,7 +104,7 @@ export function VaultSettings({ workspace }: { workspace: BranchingWorkspace }) 
               autoComplete="off"
               onChange={(event) => setRecovery(event.target.value)}
               placeholder="l8dbvk1.…"
-              className="font-mono text-[11px]"
+              className="font-mono text-2xs"
             />
           </label>
           <Button

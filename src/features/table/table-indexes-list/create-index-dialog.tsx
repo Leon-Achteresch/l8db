@@ -85,7 +85,7 @@ function CreateIndexDialogContent({
             className="w-full resize-none rounded-md border border-input bg-muted/30 px-3 py-2 font-mono text-xs text-foreground outline-none focus:border-ring focus:ring-1 focus:ring-ring"
           />
           {error && (
-            <pre className="whitespace-pre-wrap break-all rounded-md bg-destructive/5 px-3 py-2 font-mono text-[11px] text-destructive select-text">
+            <pre className="whitespace-pre-wrap break-all rounded-md bg-destructive/5 px-3 py-2 font-mono text-2xs text-destructive select-text">
               {error}
             </pre>
           )}

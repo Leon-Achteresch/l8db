@@ -20,7 +20,7 @@ export function AtlasLabSpectrum({ tables }: { tables: LabTable[] }) {
     <div className="h-full w-full space-y-5 overflow-auto pr-1">
       {bands.map((band) => (
         <section key={band.label} className="space-y-2">
-          <h4 className="sticky top-0 z-10 flex items-baseline gap-2 bg-gradient-to-b from-background/90 to-transparent pb-1 text-[11px] font-medium tracking-wide text-muted-foreground backdrop-blur-sm">
+          <h4 className="sticky top-0 z-10 flex items-baseline gap-2 bg-gradient-to-b from-background/90 to-transparent pb-1 text-2xs font-medium tracking-wide text-muted-foreground backdrop-blur-sm">
             {band.label}
             <span className="tabular-nums">{band.tables.length}</span>
           </h4>
@@ -36,8 +36,8 @@ export function AtlasLabSpectrum({ tables }: { tables: LabTable[] }) {
                   className="absolute inset-y-1 left-0 rounded-r-md bg-gradient-to-r from-[var(--chart-1)] via-[var(--chart-2)] to-[var(--chart-3)] opacity-25 transition-opacity group-hover:opacity-60"
                   style={{ width: `${(table.weight / largest) * 100}%` }}
                 />
-                <span className="relative truncate font-mono text-[11.5px]">{table.name}</span>
-                <span className="relative shrink-0 text-[10.5px] tabular-nums text-muted-foreground">
+                <span className="relative truncate font-mono text-2xs">{table.name}</span>
+                <span className="relative shrink-0 text-2xs tabular-nums text-muted-foreground">
                   {formatBytes(table.bytes)}
                 </span>
               </button>

@@ -37,7 +37,7 @@ export function InventoryLine({ database, schema }: { database: string | null; s
   );
 
   return (
-    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-[13px] text-muted-foreground">
+    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
       {database && <span className="font-mono text-foreground">{database}</span>}
       {sized && <span className="tabular-nums text-foreground">{overview.data?.size_pretty}</span>}
       {(database || sized) && (

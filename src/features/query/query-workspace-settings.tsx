@@ -54,8 +54,8 @@ export function QueryWorkspaceSettings() {
             className="rounded-lg border bg-muted/20 p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted focus-visible:outline-ring"
             onClick={() => workspace.update(QUERY_WORKSPACE_PRESETS[id])}
           >
-            <span className="block text-xs font-semibold">{title}</span>
-            <span className="mt-1 block text-[10px] text-muted-foreground">{detail}</span>
+            <span className="block text-xs font-medium">{title}</span>
+            <span className="mt-1 block text-2xs text-muted-foreground">{detail}</span>
           </button>
         ))}
       </div>

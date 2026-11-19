@@ -14,10 +14,10 @@ export const GROUP_LABEL: Record<HealthGroup, string> = {
 
 export const GROUP_DOT: Record<HealthGroup, string> = {
   critical: "bg-destructive",
-  warning: "bg-amber-500",
+  warning: "bg-warning",
   info: "bg-sky-500",
   skipped: "bg-muted-foreground/40",
-  ok: "bg-emerald-500",
+  ok: "bg-success",
 };
 
 export function groupOf(check: HealthCheckResult): HealthGroup {

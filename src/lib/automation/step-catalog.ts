@@ -52,8 +52,8 @@ export const STEP_GROUPS: StepGroup[] = [
 
 export const STEP_GROUP_TONE: Record<StepGroup, string> = {
   Datenbank: "bg-sky-500/12 text-sky-600 dark:text-sky-400",
-  Daten: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
-  Dateien: "bg-amber-500/14 text-amber-700 dark:text-amber-400",
+  Daten: "bg-success/12 text-success",
+  Dateien: "bg-warning/14 text-warning",
   Ablauf: "bg-violet-500/12 text-violet-600 dark:text-violet-400",
   Kommunikation: "bg-fuchsia-500/12 text-fuchsia-600 dark:text-fuchsia-400",
 };

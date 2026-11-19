@@ -15,9 +15,9 @@ export function JsonStatusBar({ state }: { state: JsonEditorState }) {
     return { segment, path: selectedPath.slice(0, index + 1), kind: jsonKind(cursor) };
   });
   return (
-    <div className="flex min-h-8 items-center gap-3 border-t border-border/70 px-3 py-1 text-[11px] text-muted-foreground">
+    <div className="flex min-h-8 items-center gap-3 border-t border-border/70 px-3 py-1 text-2xs text-muted-foreground">
       {parsed.ok ? (
-        <span className="inline-flex shrink-0 items-center gap-1 text-emerald-600 dark:text-emerald-400">
+        <span className="inline-flex shrink-0 items-center gap-1 text-success">
           <CircleCheckIcon className="size-3.5" />
           Gültig
         </span>

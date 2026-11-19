@@ -74,7 +74,7 @@ export function QueryResultView({
             <QueryResultStatus
               text={statusText}
               details={statusDetails}
-              className="hidden truncate text-[10px] tabular-nums text-muted-foreground md:inline"
+              className="hidden truncate text-2xs tabular-nums text-muted-foreground md:inline"
             />
           )}
           {actions}

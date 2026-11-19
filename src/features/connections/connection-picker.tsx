@@ -146,7 +146,7 @@ export function ConnectionPicker({
             filteredServerGroups.map((group) => (
               <DropdownMenuGroup key={group.key}>
                 {grouped && (
-                  <DropdownMenuLabel className="flex items-center gap-1.5 pt-2 font-mono text-[10px] font-normal text-muted-foreground">
+                  <DropdownMenuLabel className="flex items-center gap-1.5 pt-2 font-mono text-2xs font-normal text-muted-foreground">
                     <ProviderLogo
                       providerId={providerFor(group.connections[0]).id}
                       kind={group.kind}
@@ -157,7 +157,7 @@ export function ConnectionPicker({
                       {group.connections.length}
                     </span>
                     {favoriteServerKeys.includes(group.key) && (
-                      <StarIcon className="size-3 fill-current text-amber-500" />
+                      <StarIcon className="size-3 fill-current text-warning" />
                     )}
                   </DropdownMenuLabel>
                 )}
@@ -177,7 +177,7 @@ export function ConnectionPicker({
                     <span className="flex min-w-0 flex-1 items-center gap-1.5">
                       <span className="truncate">{connection.name}</span>
                       {grouped && connectionUser(connection) && (
-                        <span className="truncate font-mono text-[10px] text-muted-foreground">
+                        <span className="truncate font-mono text-2xs text-muted-foreground">
                           {connectionUser(connection)}
                         </span>
                       )}

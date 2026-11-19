@@ -86,7 +86,7 @@ export function SupabaseFunctionSettings({
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border text-xs lg:grid-cols-3">
         {facts.map(([label, value]) => (
           <div key={label} className="min-w-0 bg-card px-3 py-2.5">
-            <dt className="text-[11px] text-muted-foreground">{label}</dt>
+            <dt className="text-2xs text-muted-foreground">{label}</dt>
             <dd className="mt-0.5 truncate font-mono" title={value}>
               {value}
             </dd>
@@ -101,7 +101,7 @@ export function SupabaseFunctionSettings({
             save.mutate();
           }}
         >
-          <h4 className="text-xs font-semibold">Konfiguration</h4>
+          <h4 className="text-xs font-medium">Konfiguration</h4>
           <div className="grid gap-1.5">
             <Label htmlFor="edge-function-name">Name</Label>
             <Input
@@ -135,7 +135,7 @@ export function SupabaseFunctionSettings({
           </div>
         </form>
         <section className="grid content-start gap-3 rounded-xl bg-muted/25 p-4">
-          <h4 className="text-xs font-semibold">Versionen</h4>
+          <h4 className="text-xs font-medium">Versionen</h4>
           <p className="text-xs leading-relaxed text-muted-foreground">
             Ein neues Deployment ersetzt Version {data.version ?? "–"}. Löschen entfernt die
             Funktion mit allen Versionen.

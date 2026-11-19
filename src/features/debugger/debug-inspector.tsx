@@ -24,7 +24,7 @@ export function DebugInspector({ snapshot, paused, oracle, onAction }: DebugInsp
     <aside className="debug-inspector" aria-label="Debug-Inspektion">
       <div className="debug-pane-heading">
         <span>Inspektion</span>
-        <span className="text-[10px] font-normal text-muted-foreground">
+        <span className="text-2xs font-normal text-muted-foreground">
           {paused ? "Aktueller Frame" : "Sitzung"}
         </span>
       </div>

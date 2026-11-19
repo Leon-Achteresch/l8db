@@ -57,7 +57,7 @@ export function MultiTargetDatabaseRow({
           <Button
             size="sm"
             variant="ghost"
-            className="h-5 gap-1 px-1.5 text-[11px] text-muted-foreground"
+            className="h-5 gap-1 px-1.5 text-2xs text-muted-foreground"
             aria-expanded={open}
             onClick={() => setOpen((value) => !value)}
           >
@@ -69,12 +69,12 @@ export function MultiTargetDatabaseRow({
       {open && schemasSupported && (
         <ul className="ml-10 border-l pl-2">
           {schemas.isLoading && (
-            <li className="flex items-center gap-1.5 py-1 text-[11px] text-muted-foreground">
+            <li className="flex items-center gap-1.5 py-1 text-2xs text-muted-foreground">
               <LoaderIcon className="size-3 animate-spin" /> Schemas werden geladen…
             </li>
           )}
           {schemas.error && (
-            <li className="py-1 text-[11px] text-destructive">{String(schemas.error)}</li>
+            <li className="py-1 text-2xs text-destructive">{String(schemas.error)}</li>
           )}
           {visibleSchemas.map((schema) => {
             const scoped = multiTarget(connection.id, database, schema);
@@ -94,7 +94,7 @@ export function MultiTargetDatabaseRow({
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-5 px-1.5 text-[11px]"
+                className="h-5 px-1.5 text-2xs"
                 onClick={() =>
                   onToggle(
                     visibleSchemas.map((schema) => multiTarget(connection.id, database, schema)),

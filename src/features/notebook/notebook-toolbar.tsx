@@ -119,7 +119,7 @@ export function NotebookToolbar({
             data-feature="notebook.run-all"
           >
             <PlayIcon className="size-3" /> Alle ausführen
-            <span className="text-[10px] opacity-70">⇧⌘↵</span>
+            <span className="text-2xs opacity-70">⇧⌘↵</span>
           </Button>
         )}
         <IconMenu>

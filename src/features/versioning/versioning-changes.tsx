@@ -61,7 +61,7 @@ export function VersioningChanges({
                 ? `Prüfung läuft: ${drift.progress.reused} unverändert übernommen, ${drift.progress.captured} neu gelesen${drift.progress.ignored ? `, ${drift.progress.ignored} ausgeschlossen` : ""}`
                 : "Datenbank wird geprüft"
             }
-            className="flex shrink-0 items-center gap-1 font-mono text-[10px] text-muted-foreground tabular-nums"
+            className="flex shrink-0 items-center gap-1 font-mono text-2xs text-muted-foreground tabular-nums"
           >
             <LoaderCircleIcon aria-hidden className="size-3.5 animate-spin" />
             {drift.progress && drift.progress.total > 0
@@ -76,7 +76,7 @@ export function VersioningChanges({
           title={development.showAll ? "Nur Änderungen zeigen" : "Alle Dateien zeigen"}
           onClick={() => development.setShowAll(!development.showAll)}
           className={cn(
-            "rounded px-1.5 py-0.5 text-[11px] transition-colors",
+            "rounded px-1.5 py-0.5 text-2xs transition-colors",
             development.showAll
               ? "bg-muted text-foreground"
               : "text-muted-foreground hover:text-foreground",
@@ -106,13 +106,13 @@ export function VersioningChanges({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5 pb-2">
         {!drift.ready && (
-          <p className="px-2 py-2 text-[11px] leading-relaxed text-muted-foreground">
+          <p className="px-2 py-2 text-2xs leading-relaxed text-muted-foreground">
             Oben eine Entwicklungsdatenbank als Arbeitskopie wählen, damit ihre Änderungen hier
             erscheinen.
           </p>
         )}
         {drift.error && (
-          <p className="px-2 py-2 text-[11px] leading-relaxed text-destructive">{drift.error}</p>
+          <p className="px-2 py-2 text-2xs leading-relaxed text-destructive">{drift.error}</p>
         )}
         <VersioningDriftList drift={drift} onOpen={openDrift} />
         {(development.showAll || summary.files > 0 || !summary.database) && (

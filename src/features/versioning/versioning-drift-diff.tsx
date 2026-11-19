@@ -47,7 +47,7 @@ export function VersioningDriftDiff({
           {selection.schema}.{selection.objectName}
         </h2>
         <span
-          className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground"
+          className="shrink-0 whitespace-nowrap text-2xs text-muted-foreground"
           title={`Repository ↔ ${drift.scope}`}
         >
           {COMPARE_OBJECT_LABELS[selection.objectType]} · {STATUS[entry.status]}
@@ -57,7 +57,7 @@ export function VersioningDriftDiff({
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 shrink-0 text-[11px]"
+            className="h-7 shrink-0 text-2xs"
             onClick={openInEditor}
           >
             <SquareTerminalIcon className="size-3.5" />

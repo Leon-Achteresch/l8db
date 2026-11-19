@@ -249,7 +249,7 @@ export function InvalidObjectsView() {
           <p className="p-4 text-sm text-destructive">{String(invalidQuery.error)}</p>
         ) : invalid.length === 0 && others.length === 0 ? (
           <p className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground">
-            <CircleCheckIcon className="size-4 text-emerald-500" />
+            <CircleCheckIcon className="size-4 text-success" />
             Keine Probleme. Alle Objekte sind VALID.
           </p>
         ) : visible.length === 0 && !showOthers ? (
@@ -299,7 +299,7 @@ export function InvalidObjectsView() {
           </ul>
         )}
       </div>
-      <div className="flex h-6 shrink-0 items-center gap-3 border-t bg-muted/40 px-3 text-[11px] text-muted-foreground">
+      <div className="flex h-6 shrink-0 items-center gap-3 border-t bg-muted/40 px-3 text-2xs text-muted-foreground">
         <span className="inline-flex items-center gap-1">
           <CircleXIcon className="size-3 text-destructive" />
           <span className="tabular-nums">{messages === "ready" ? errors.length : "–"}</span>

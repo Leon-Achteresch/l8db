@@ -44,7 +44,7 @@ export function SupabaseTablesOpener({
       </form>
       {recent.length > 0 && (
         <div className="grid gap-1">
-          <p className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+          <p className="flex items-center gap-1 text-2xs font-medium text-muted-foreground">
             <History className="size-3" /> Zuletzt geöffnet
           </p>
           <div className="grid gap-0.5">

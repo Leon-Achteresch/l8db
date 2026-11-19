@@ -149,7 +149,7 @@ export function ConnectionAdvancedOptions({
           Erweitert
           {hasNew && <NewBadge />}
         </span>
-        <span className="text-[11px] font-normal text-muted-foreground">
+        <span className="text-2xs font-normal text-muted-foreground">
           {cloudAuth ? "Cloud-Anmeldung, " : ""}SSL, SSH, Proxy, Umgebung, Farbe
         </span>
       </CollapsibleTrigger>

@@ -66,7 +66,7 @@ export function ConvexSettingsDanger({ deployment }: { deployment: ConvexStudioD
             <p className="text-xs font-medium">
               {paused ? "Deployment fortsetzen" : "Deployment pausieren"}
             </p>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               {paused
                 ? "Funktionen, HTTP-Actions, Cronjobs und geplante Funktionen laufen wieder."
                 : "Blockiert alle Funktionsaufrufe, HTTP-Actions, Cronjobs und geplanten Funktionen, bis das Deployment fortgesetzt wird. Daten bleiben erhalten."}
@@ -85,7 +85,7 @@ export function ConvexSettingsDanger({ deployment }: { deployment: ConvexStudioD
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-background/50 p-3">
           <div>
             <p className="text-xs font-medium">Von l8db trennen</p>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               {deployment.selfHosted
                 ? "Entfernt diese Instanz und ihren Admin-Key aus l8db. Die Instanz selbst bleibt unverändert."
                 : "Entfernt den Team-Token und damit alle Projekte dieses Teams aus l8db. Die Deployments bleiben unverändert."}

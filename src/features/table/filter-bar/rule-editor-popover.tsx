@@ -114,7 +114,7 @@ export function RuleEditorPopover({
           {draft.conditions.map((condition, index) => (
             <div key={condition.id} className="grid gap-2">
               {index > 0 ? (
-                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-2 text-2xs text-muted-foreground">
                   <span className="h-px flex-1 bg-border" />
                   {orSupported ? (
                     <button
@@ -125,13 +125,13 @@ export function RuleEditorPopover({
                           combinator: current.combinator === "AND" ? "OR" : "AND",
                         }))
                       }
-                      className="rounded-md bg-muted px-1.5 py-0.5 font-medium uppercase text-foreground hover:bg-muted/70"
+                      className="rounded-md bg-muted px-1.5 py-0.5 font-medium text-foreground hover:bg-muted/70"
                       title="Zwischen „und“ und „oder“ wechseln"
                     >
                       {draft.combinator === "OR" ? "oder" : "und"}
                     </button>
                   ) : (
-                    <span className="font-medium uppercase">und</span>
+                    <span className="font-medium">und</span>
                   )}
                   <span className="h-px flex-1 bg-border" />
                 </div>

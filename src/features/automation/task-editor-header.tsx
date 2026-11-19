@@ -71,7 +71,7 @@ export function TaskEditorHeader({
           className="-mx-1.5 min-w-0 flex-1 truncate rounded-lg bg-transparent px-1.5 py-0.5 text-lg font-semibold tracking-tight outline-none placeholder:text-muted-foreground/60 hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring/50"
         />
         {(dirty || isNew) && (
-          <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground animate-in duration-150 fade-in-0">
+          <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground animate-in duration-150 fade-in-0">
             {isNew ? "Neu" : "Geändert"}
           </span>
         )}
@@ -98,7 +98,7 @@ export function TaskEditorHeader({
                 errors.length
                   ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
                   : warnings
-                    ? "bg-amber-500/10 text-amber-700 hover:bg-amber-500/15 dark:text-amber-400"
+                    ? "bg-warning/10 text-warning hover:bg-warning/15"
                     : "text-muted-foreground",
               )}
             >
@@ -107,10 +107,7 @@ export function TaskEditorHeader({
               ) : warnings ? (
                 <TriangleAlertIcon className="size-3.5" aria-hidden />
               ) : (
-                <CircleCheckIcon
-                  className="size-3.5 text-emerald-600 dark:text-emerald-400"
-                  aria-hidden
-                />
+                <CircleCheckIcon className="size-3.5 text-success" aria-hidden />
               )}
               <span
                 className={cn(
@@ -152,13 +149,13 @@ export function TaskEditorHeader({
                         />
                       ) : (
                         <TriangleAlertIcon
-                          className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
+                          className="mt-0.5 size-3.5 shrink-0 text-warning"
                           aria-label="Hinweis"
                         />
                       )}
                       <span className="flex min-w-0 flex-col">
-                        <span className="text-[13px] text-pretty">{issue.message}</span>
-                        <span className="truncate text-[11px] text-muted-foreground">
+                        <span className="text-sm text-pretty">{issue.message}</span>
+                        <span className="truncate text-2xs text-muted-foreground">
                           {describeIssue(issue)}
                         </span>
                       </span>

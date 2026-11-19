@@ -36,7 +36,7 @@ export function TransferReplace({
     >
       <div className="flex items-center gap-2">
         <Switch id="transfer-replace" size="sm" checked={replace} onCheckedChange={onReplace} />
-        <Label htmlFor="transfer-replace" className="text-xs font-semibold">
+        <Label htmlFor="transfer-replace" className="text-xs font-medium">
           {label}
         </Label>
         {feature.isNew && <NewBadge />}

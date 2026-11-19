@@ -10,9 +10,9 @@ type Props = {
 };
 
 const KIND_TEXT: Record<string, string> = {
-  string: "text-emerald-700 dark:text-emerald-300",
+  string: "text-success",
   number: "text-blue-600 tabular-nums dark:text-blue-300 text-right",
-  boolean: "text-amber-600 dark:text-amber-300",
+  boolean: "text-warning",
   null: "italic text-muted-foreground",
   object: "text-muted-foreground",
   array: "text-muted-foreground",

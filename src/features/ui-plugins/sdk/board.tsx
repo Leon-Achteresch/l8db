@@ -22,7 +22,7 @@ export function Board<T>({
             data-board-column={column.id}
             className="flex w-64 shrink-0 flex-col gap-2 rounded-lg bg-muted/40 p-2"
           >
-            <header className="flex items-center gap-1.5 px-1 text-xs font-semibold">
+            <header className="flex items-center gap-1.5 px-1 text-xs font-medium">
               <span
                 className="size-2 shrink-0 rounded-full"
                 style={{ backgroundColor: toneColor(column.tone) }}

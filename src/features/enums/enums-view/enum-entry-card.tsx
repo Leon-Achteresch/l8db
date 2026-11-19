@@ -87,7 +87,7 @@ export function EnumEntryCard({
           >
             <Badge
               variant={renaming === label ? "default" : "secondary"}
-              className="px-1.5 py-0 font-mono text-[11px]"
+              className="px-1.5 py-0 font-mono text-2xs"
             >
               {label}
             </Badge>

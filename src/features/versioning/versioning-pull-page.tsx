@@ -195,7 +195,7 @@ export function VersioningPullPage({
             />
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-6 text-[11px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-6 text-2xs text-muted-foreground">
           <VersioningPullState pull={current} />
           <span>
             {current.author} ·{" "}
@@ -232,7 +232,7 @@ export function VersioningPullPage({
           >
             {label}
             {count > 0 && (
-              <span className="ml-1.5 font-mono text-[10px] text-muted-foreground tabular-nums">
+              <span className="ml-1.5 font-mono text-2xs text-muted-foreground tabular-nums">
                 {count}
               </span>
             )}
@@ -240,7 +240,7 @@ export function VersioningPullPage({
         ))}
       </div>
       {(detail.error || comments.error) && (
-        <p role="alert" className="rounded-lg bg-destructive/5 p-3 text-[11px] text-destructive">
+        <p role="alert" className="rounded-lg bg-destructive/5 p-3 text-2xs text-destructive">
           {String(detail.error ?? comments.error)}
         </p>
       )}

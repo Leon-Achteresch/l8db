@@ -164,12 +164,12 @@ export function SessionsView() {
     <main className="mx-auto flex h-full w-full max-w-6xl min-h-0 flex-col gap-4 p-6">
       <header className="flex shrink-0 items-center gap-2">
         <ActivityIcon className="size-5 text-primary" />
-        <h1 className="text-xl font-bold tracking-tight">Sitzungen & Locks</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Sitzungen & Locks</h1>
         {!(isError && sessions === undefined) && (
           <span className="text-xs text-muted-foreground">aktualisiert alle 5 s</span>
         )}
         {blockedCount > 0 && (
-          <Badge variant="destructive" className="ml-2 px-1.5 py-0 text-[10px]">
+          <Badge variant="destructive" className="ml-2 px-1.5 py-0 text-2xs">
             {blockedCount} blockiert
           </Badge>
         )}
@@ -271,7 +271,7 @@ export function SessionsView() {
                                   className="size-3.5"
                                 />
                                 {group.label}
-                                <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                                <Badge variant="secondary" className="px-1.5 py-0 text-2xs">
                                   {group.sessions.length}
                                 </Badge>
                               </span>

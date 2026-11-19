@@ -50,7 +50,7 @@ export function SavedTabsMenu() {
             className={`${iconButton} relative ${saved.length ? "w-11 gap-0.5" : ""}`}
           >
             <BookmarkIcon className="size-3.5" />
-            {saved.length > 0 && <span className="text-[10px] tabular-nums">{saved.length}</span>}
+            {saved.length > 0 && <span className="text-2xs tabular-nums">{saved.length}</span>}
             {(feature.isNew || linkNew) && <NewBadge className="absolute -top-1.5 left-4" />}
           </button>
         </DropdownMenuTrigger>
@@ -83,7 +83,7 @@ export function SavedTabsMenu() {
                 <Icon className="size-3.5 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{entry.name}</span>
-                  <span className="block truncate text-[10px] text-muted-foreground">
+                  <span className="block truncate text-2xs text-muted-foreground">
                     {sharedTabSource(entry.tab)}
                   </span>
                 </span>

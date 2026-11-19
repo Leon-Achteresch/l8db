@@ -75,9 +75,7 @@ function ShortcutsDialogContent({ open, onOpenChange }: ShortcutsDialogProps) {
             )}
             {groups.map((group) => (
               <section key={group.area} className="flex flex-col gap-1">
-                <h3 className="px-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  {group.area}
-                </h3>
+                <h3 className="px-1 text-xs font-medium text-muted-foreground">{group.area}</h3>
                 {group.commands.map((command) => {
                   const available = isHotkeyAvailable(command.id, {
                     hasConnection: connection !== null,

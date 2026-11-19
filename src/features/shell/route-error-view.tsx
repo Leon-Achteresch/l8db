@@ -55,12 +55,9 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
         transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
         className="w-full max-w-md"
       >
-        <div className="flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+        <div className="flex items-center gap-2 font-mono text-2xs text-muted-foreground">
           <span
-            className={cn(
-              "size-1.5 rounded-full",
-              chunkFailure ? "bg-amber-500" : "bg-destructive",
-            )}
+            className={cn("size-1.5 rounded-full", chunkFailure ? "bg-warning" : "bg-destructive")}
           />
           {chunkFailure ? "CHUNK_504" : "ROUTE_ERROR"}
         </div>
@@ -102,7 +99,7 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
             </Button>
           </div>
           {detailsOpen && (
-            <pre className="max-h-56 overflow-auto px-5 pt-1 pb-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+            <pre className="max-h-56 overflow-auto px-5 pt-1 pb-3 font-mono text-2xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
               {stack?.includes(message)
                 ? stack
                 : [message || "Unbekannter Fehler", stack].filter(Boolean).join("\n\n")}

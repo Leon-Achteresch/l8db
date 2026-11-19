@@ -161,7 +161,7 @@ export function ProxyUserSwitchOptions({
               {option.key === "custom" && <CornerDownLeft className="size-4" />}
               <span className="truncate">{option.name}</span>
               {option.bypassesRls && (
-                <span className="ml-auto shrink-0 rounded bg-amber-500/10 px-1.5 text-[10px] text-amber-700 dark:text-amber-400">
+                <span className="ml-auto shrink-0 rounded bg-warning/10 px-1.5 text-2xs text-warning">
                   umgeht RLS
                 </span>
               )}

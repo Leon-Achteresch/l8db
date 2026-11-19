@@ -93,7 +93,7 @@ export function PlanNodeDetails({ analysis, op, onClose }: PlanNodeDetailsProps)
           ))}
         </dl>
         {op.warnings.length > 0 && (
-          <ul className="space-y-0.5 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-amber-700 dark:text-amber-400">
+          <ul className="space-y-0.5 rounded border border-warning/40 bg-warning/10 px-2 py-1 text-warning">
             {op.warnings.map((warning) => (
               <li key={warning.kind} className="flex items-start gap-1.5">
                 <AlertTriangleIcon className="mt-0.5 size-3 shrink-0" />
@@ -103,13 +103,13 @@ export function PlanNodeDetails({ analysis, op, onClose }: PlanNodeDetailsProps)
           </ul>
         )}
         {CONDITIONS.filter(([key]) => node[key]).map(([key, label]) => (
-          <p key={key} className="font-mono text-[11px] break-words">
+          <p key={key} className="font-mono text-2xs break-words">
             <span className="text-muted-foreground">{label}: </span>
             {display(node[key])}
           </p>
         ))}
         {planText && (
-          <pre className="max-h-48 overflow-auto rounded bg-muted p-2 font-mono text-[11px]">
+          <pre className="max-h-48 overflow-auto rounded bg-muted p-2 font-mono text-2xs">
             {planText}
           </pre>
         )}
@@ -118,7 +118,7 @@ export function PlanNodeDetails({ analysis, op, onClose }: PlanNodeDetailsProps)
             <summary className="cursor-pointer text-muted-foreground">
               Weitere Eigenschaften ({extras.length})
             </summary>
-            <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-[11px]">
+            <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-2xs">
               {extras.map(([key, value]) => (
                 <div key={key} className="contents">
                   <dt className="text-muted-foreground">{key}</dt>

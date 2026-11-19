@@ -12,8 +12,8 @@ interface Props {
 const STATUS_CONFIG: Record<ConnectionStatus, { label: string; dot: string; pulse: boolean }> = {
   disconnected: { label: "Getrennt", dot: "bg-muted-foreground/45", pulse: false },
   connecting: { label: "Wird verbunden", dot: "bg-sky-500", pulse: true },
-  connected: { label: "Verbunden", dot: "bg-emerald-500", pulse: false },
-  disconnecting: { label: "Wird getrennt", dot: "bg-amber-500", pulse: true },
+  connected: { label: "Verbunden", dot: "bg-success", pulse: false },
+  disconnecting: { label: "Wird getrennt", dot: "bg-warning", pulse: true },
   error: { label: "Verbindungsfehler", dot: "bg-red-500", pulse: false },
 };
 
@@ -47,7 +47,7 @@ export function ConnectionStatusIndicator({ connectionId, showLabel = false, cla
           config.pulse && "animate-pulse",
         )}
       />
-      {showLabel && <span className="text-[10px] text-muted-foreground">{config.label}</span>}
+      {showLabel && <span className="text-2xs text-muted-foreground">{config.label}</span>}
     </span>
   );
 }

@@ -16,7 +16,7 @@ export function ColumnMultiSelect({
   label,
 }: ColumnMultiSelectProps) {
   if (columns.length === 0) {
-    return <p className="text-[11px] text-muted-foreground">{emptyText}</p>;
+    return <p className="text-2xs text-muted-foreground">{emptyText}</p>;
   }
   return (
     <fieldset aria-label={label} className="flex flex-wrap gap-1">
@@ -32,7 +32,7 @@ export function ColumnMultiSelect({
               onChange(selected ? value.filter((c) => c !== column) : [...value, column])
             }
             className={cn(
-              "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[11px] transition-colors",
+              "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-2xs transition-colors",
               selected
                 ? "border-primary/50 bg-primary/10 text-foreground"
                 : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",

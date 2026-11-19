@@ -156,7 +156,7 @@ export function LiveSessionsCard({ m }: { m: LiveMonitorState }) {
               </p>
             )}
             {filteredSessions.length > visible.length && (
-              <p className="border-t px-3 py-2 text-center text-[11px] text-muted-foreground">
+              <p className="border-t px-3 py-2 text-center text-2xs text-muted-foreground">
                 {filteredSessions.length - visible.length} weitere Sessions ausgeblendet. Filter
                 verwenden, um sie zu finden.
               </p>

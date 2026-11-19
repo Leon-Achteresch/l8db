@@ -47,7 +47,7 @@ export function TransferTableList({
             return (
               <div
                 key={item.key}
-                className="absolute top-0 left-0 flex w-full items-end px-2 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase"
+                className="absolute top-0 left-0 flex w-full items-end px-2 pb-1 text-2xs font-medium text-muted-foreground"
                 style={style}
               >
                 {item.name}

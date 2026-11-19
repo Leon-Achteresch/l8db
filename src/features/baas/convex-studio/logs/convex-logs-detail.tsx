@@ -105,7 +105,7 @@ export function ConvexLogsDetail({
                         {line.message}
                       </span>
                       {line.truncated && (
-                        <Badge variant="outline" className="h-4 px-1 text-[10px]">
+                        <Badge variant="outline" className="h-4 px-1 text-2xs">
                           gekürzt
                         </Badge>
                       )}

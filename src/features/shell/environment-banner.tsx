@@ -58,7 +58,7 @@ export function EnvironmentBanner() {
       style={{ backgroundColor: environment.color }}
     >
       <ShieldAlert className="size-4" />
-      <span className="uppercase tracking-wide">Produktion</span>
+      <span className="">Produktion</span>
       <span className="truncate opacity-90">{connection.name}</span>
       <span className="ml-auto flex items-center gap-2">
         {productionReadOnly && remaining === null && (

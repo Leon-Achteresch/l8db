@@ -40,7 +40,7 @@ export function VersioningAreaSwitch({
           <GitBranchIcon className="size-3.5" />
           Git &amp; Releases
           {area === "database" && count > 0 && (
-            <span className="font-mono text-[10px] text-muted-foreground">{count}</span>
+            <span className="font-mono text-2xs text-muted-foreground">{count}</span>
           )}
           {area === "database" && (reviewsNew || pipelineNew) && <NewBadge />}
         </TabsTrigger>

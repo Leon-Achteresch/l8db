@@ -23,7 +23,7 @@ export function OmnibarHelp() {
           </span>
         </div>
       ))}
-      <p className="pt-1 text-[11px] text-muted-foreground">
+      <p className="pt-1 text-2xs text-muted-foreground">
         Weitere Beispiele: name LIKE '%max%' · id IN (1, 2) · note IS NULL. Die KI sieht
         Spaltennamen, -typen, deine Anfrage und die aktiven Filter, aber keine Tabellenzeilen.
       </p>

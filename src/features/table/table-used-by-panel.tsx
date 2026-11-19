@@ -76,19 +76,19 @@ export function TableUsedByPanel({ schema, name }: TableUsedByPanelProps) {
       <DependencyIcon objectType={dep.object_type} />
       <span className="w-32 shrink-0 truncate text-xs text-muted-foreground">{dep.owner}</span>
       <span className="min-w-0 flex-1 truncate font-mono">{dep.name}</span>
-      <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px]">
+      <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-2xs">
         {dep.object_type}
       </Badge>
       <Badge
         variant="outline"
-        className={`shrink-0 px-1.5 py-0 text-[10px] ${
+        className={`shrink-0 px-1.5 py-0 text-2xs ${
           dep.status.toUpperCase().startsWith("INVALID") ? "text-destructive" : ""
         }`}
       >
         {dep.status}
       </Badge>
       {dep.detail ? (
-        <span className="hidden w-64 shrink-0 truncate text-[11px] text-muted-foreground lg:block">
+        <span className="hidden w-64 shrink-0 truncate text-2xs text-muted-foreground lg:block">
           {dep.detail}
         </span>
       ) : null}
@@ -150,9 +150,7 @@ export function TableUsedByPanel({ schema, name }: TableUsedByPanelProps) {
           {groups.map((group) => (
             <section key={group.relation}>
               <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-muted/50 px-4 py-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {group.relation}
-                </span>
+                <span className="text-xs font-medium text-muted-foreground">{group.relation}</span>
                 <span className="ml-auto text-xs text-muted-foreground">{group.items.length}</span>
               </div>
               <div className="divide-y">

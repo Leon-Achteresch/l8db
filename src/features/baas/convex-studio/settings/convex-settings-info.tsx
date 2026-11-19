@@ -72,10 +72,10 @@ export function ConvexSettingsInfo({ deployment }: { deployment: ConvexStudioDep
             <Copy className="size-3.5" /> Kopieren
           </Button>
         </div>
-        <pre className="mt-3 overflow-x-auto rounded-lg bg-background/50 p-3 font-mono text-[11px]">
+        <pre className="mt-3 overflow-x-auto rounded-lg bg-background/50 p-3 font-mono text-2xs">
           {snippet}
         </pre>
-        <p className="mt-2 text-[11px] text-muted-foreground">
+        <p className="mt-2 text-2xs text-muted-foreground">
           {deployment.selfHosted
             ? "Den Admin-Key erzeugst du auf dem Server mit ./generate_admin_key.sh. l8db zeigt den gespeicherten Key nicht an."
             : "Für CI-Deployments erzeugst du im Convex-Dashboard unter Settings → Deploy Keys einen CONVEX_DEPLOY_KEY. l8db gibt keine Schlüssel aus."}

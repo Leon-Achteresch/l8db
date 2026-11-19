@@ -90,11 +90,11 @@ export function AuditLog({ workspace }: { workspace: BranchingWorkspace }) {
         <div
           className={cn(
             "flex items-start gap-3 rounded-xl p-3",
-            verification.valid ? "bg-emerald-500/5" : "bg-destructive/5",
+            verification.valid ? "bg-success/5" : "bg-destructive/5",
           )}
         >
           {verification.valid ? (
-            <ShieldCheckIcon className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <ShieldCheckIcon className="mt-0.5 size-4 shrink-0 text-success" />
           ) : (
             <ShieldAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
           )}
@@ -136,7 +136,7 @@ export function AuditLog({ workspace }: { workspace: BranchingWorkspace }) {
           aria-label="Protokoll durchsuchen"
           className="h-8 min-w-0 flex-1 text-xs"
         />
-        <label className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
+        <label className="flex shrink-0 items-center gap-2 text-2xs text-muted-foreground">
           Alle Server
           <Switch
             checked={everything}
@@ -168,7 +168,7 @@ export function AuditLog({ workspace }: { workspace: BranchingWorkspace }) {
                 >
                   <time
                     dateTime={entry.at}
-                    className="w-28 shrink-0 whitespace-nowrap font-mono text-[10px] text-muted-foreground"
+                    className="w-28 shrink-0 whitespace-nowrap font-mono text-2xs text-muted-foreground"
                   >
                     {new Date(entry.at).toLocaleString("de-DE", {
                       day: "2-digit",
@@ -183,7 +183,7 @@ export function AuditLog({ workspace }: { workspace: BranchingWorkspace }) {
                     {OUTCOMES[entry.outcome] && (
                       <span
                         className={cn(
-                          "ml-1.5 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+                          "ml-1.5 rounded-md px-1.5 py-0.5 text-2xs font-medium",
                           entry.outcome === "failed"
                             ? "bg-destructive/10 text-destructive"
                             : "bg-muted text-muted-foreground",
@@ -192,11 +192,11 @@ export function AuditLog({ workspace }: { workspace: BranchingWorkspace }) {
                         {OUTCOMES[entry.outcome]}
                       </span>
                     )}
-                    <span className="ml-1.5 font-mono text-[11px] text-muted-foreground">
+                    <span className="ml-1.5 font-mono text-2xs text-muted-foreground">
                       {entry.database.slice(entry.database.indexOf("/") + 1)}
                       {entry.target && entry.target !== entry.database ? ` → ${entry.target}` : ""}
                     </span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
+                    <span className="block truncate text-2xs text-muted-foreground">
                       {entry.actor.osUser}@{entry.actor.host}
                       {entry.actor.dbUser ? ` · Rolle ${entry.actor.dbUser}` : ""}
                       {reason ? ` · Grund: ${reason}` : ""}
@@ -205,7 +205,7 @@ export function AuditLog({ workspace }: { workspace: BranchingWorkspace }) {
                   </span>
                 </summary>
                 {hasDetail && (
-                  <pre className="mt-1.5 ml-30 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted/40 p-2 font-mono text-[10px] text-muted-foreground">
+                  <pre className="mt-1.5 ml-30 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted/40 p-2 font-mono text-2xs text-muted-foreground">
                     {JSON.stringify(detail, null, 2)}
                   </pre>
                 )}

@@ -62,7 +62,7 @@ export function CategoryPicker({
             >
               <entry.icon className="size-3.5 shrink-0" />
               <span className="flex-1 truncate">{entry.title}</span>
-              <span className="text-[10px] tabular-nums text-muted-foreground">{count}</span>
+              <span className="text-2xs tabular-nums text-muted-foreground">{count}</span>
             </button>
           );
         })}

@@ -16,9 +16,9 @@ function renderAttributes(element: Element) {
   return Array.from(element.attributes).map((attr) => (
     <span key={attr.name}>
       {" "}
-      <span className="text-amber-700 dark:text-amber-400">{attr.name}</span>
+      <span className="text-warning">{attr.name}</span>
       <span className="text-muted-foreground">=</span>
-      <span className="text-emerald-700 dark:text-emerald-400">"{attr.value}"</span>
+      <span className="text-success">"{attr.value}"</span>
     </span>
   ));
 }

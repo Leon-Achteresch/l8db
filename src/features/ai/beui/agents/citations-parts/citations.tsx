@@ -40,7 +40,7 @@ export function Citations({
       >
         <BookOpenText className="size-4" />
         <span className="font-medium">{title}</span>
-        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+        <span className="rounded-full bg-muted px-1.5 py-0.5 text-2xs font-medium tabular-nums">
           {citations.length}
         </span>
         <motion.span

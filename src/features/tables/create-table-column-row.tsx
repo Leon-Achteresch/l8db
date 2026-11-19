@@ -43,7 +43,7 @@ export function CreateTableColumnRow({
         <div className="flex items-center gap-1">
           <span className="flex w-4 shrink-0 justify-center">
             {column.is_primary_key ? (
-              <KeyRoundIcon className="size-3.5 text-amber-500" aria-label="Primärschlüssel" />
+              <KeyRoundIcon className="size-3.5 text-warning" aria-label="Primärschlüssel" />
             ) : foreignKey ? (
               <LinkIcon className="size-3.5 text-primary" aria-label="Fremdschlüssel" />
             ) : null}

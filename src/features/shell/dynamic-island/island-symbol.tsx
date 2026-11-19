@@ -39,7 +39,7 @@ export function IslandSymbol({ glyph }: { glyph: IslandGlyph }) {
       transition={SPRING_PRESS}
       className={cn(
         "flex size-4 shrink-0 items-center justify-center rounded-full",
-        glyph.kind === "check" ? "bg-emerald-500" : "bg-red-500",
+        glyph.kind === "check" ? "bg-success" : "bg-red-500",
       )}
     >
       <motion.svg

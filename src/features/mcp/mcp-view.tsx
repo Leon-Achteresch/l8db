@@ -210,12 +210,12 @@ export function McpView() {
                   <Icon className="size-3.5" />
                   {tab.label}
                   {tab.id === "connections" && exposedCount > 0 ? (
-                    <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4">
+                    <Badge variant="secondary" className="px-1.5 py-0 text-2xs h-4">
                       {exposedCount}
                     </Badge>
                   ) : null}
                   {tab.id === "clients" && registeredClientsCount > 0 ? (
-                    <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4">
+                    <Badge variant="secondary" className="px-1.5 py-0 text-2xs h-4">
                       {registeredClientsCount}
                     </Badge>
                   ) : null}

@@ -122,7 +122,7 @@ export function SidebarPrincipalList() {
                       title={item.status}
                       className={cn(
                         "ml-auto size-1.5 shrink-0 rounded-full",
-                        item.status.includes("LOCKED") ? "bg-destructive" : "bg-amber-500",
+                        item.status.includes("LOCKED") ? "bg-destructive" : "bg-warning",
                       )}
                     />
                   )}

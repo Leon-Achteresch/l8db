@@ -156,7 +156,7 @@ export function ObjectList({
                   <td className="max-w-0 px-2 py-1">
                     <span className="flex min-w-0 items-center gap-2">
                       {row.kind === "folder" ? (
-                        <FolderIcon className="size-4 shrink-0 text-amber-500" />
+                        <FolderIcon className="size-4 shrink-0 text-warning" />
                       ) : (
                         <FileIcon className="size-4 shrink-0 text-muted-foreground" />
                       )}

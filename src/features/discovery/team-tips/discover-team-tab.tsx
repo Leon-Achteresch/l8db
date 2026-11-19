@@ -43,9 +43,7 @@ export function DiscoverTeamTab() {
                     {tip.body}
                   </span>
                   {feature && (
-                    <span className="mt-1 text-[11px] font-medium text-primary">
-                      {feature.title}
-                    </span>
+                    <span className="mt-1 text-2xs font-medium text-primary">{feature.title}</span>
                   )}
                 </button>
               </li>

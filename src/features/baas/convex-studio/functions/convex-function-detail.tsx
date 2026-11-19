@@ -106,7 +106,7 @@ export function ConvexFunctionDetail({
               <summary className="cursor-pointer text-xs text-muted-foreground">
                 Validator als JSON
               </summary>
-              <pre className="mt-1 max-h-80 overflow-auto rounded-lg bg-muted/30 p-3 font-mono text-[11px]">
+              <pre className="mt-1 max-h-80 overflow-auto rounded-lg bg-muted/30 p-3 font-mono text-2xs">
                 {JSON.stringify({ args, returns: fn.returns }, null, 2)}
               </pre>
             </details>
@@ -129,7 +129,7 @@ export function ConvexFunctionDetail({
           {detail.data?.source && (
             <div className="space-y-1">
               {detail.data.sourceTruncated && (
-                <p className="text-xs text-amber-600">Quelltext auf 2 MB gekürzt.</p>
+                <p className="text-xs text-warning">Quelltext auf 2 MB gekürzt.</p>
               )}
               <pre className="max-h-[60vh] overflow-auto rounded-xl bg-muted/30 p-3 font-mono text-xs">
                 {detail.data.source}

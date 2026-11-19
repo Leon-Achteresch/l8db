@@ -24,11 +24,11 @@ export function VariablesCell({
   return (
     <div className="grid">
       <div className="flex h-9 items-center gap-2 border-b px-3">
-        <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+        <span className="rounded bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
           Variablen
         </span>
         <span
-          className="ml-auto font-mono text-[11px] text-muted-foreground"
+          className="ml-auto font-mono text-2xs text-muted-foreground"
           title="In SQL-Zellen darunter als Bind-Parameter :name oder als Textbaustein ${name} verwenden"
         >
           :name · {"${name}"}

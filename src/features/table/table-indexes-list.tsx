@@ -107,7 +107,7 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 shrink-0">
                       {idx.is_primary ? (
-                        <KeyRoundIcon className="size-4 text-amber-500" />
+                        <KeyRoundIcon className="size-4 text-warning" />
                       ) : (
                         <LayersIcon
                           className={`size-4 ${idx.is_unique ? "text-blue-500" : "text-muted-foreground"}`}
@@ -119,13 +119,13 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
                         <span className="text-sm font-medium font-mono text-foreground">
                           {idx.name}
                         </span>
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        <Badge variant="outline" className="text-2xs px-1.5 py-0">
                           {idx.index_type.toUpperCase()}
                         </Badge>
                         {idx.is_primary && (
                           <Badge
                             variant="outline"
-                            className="text-[10px] px-1.5 py-0 text-amber-500 border-amber-500/20 bg-amber-500/5"
+                            className="text-2xs px-1.5 py-0 text-warning border-warning/20 bg-warning/5"
                           >
                             PRIMARY
                           </Badge>
@@ -133,7 +133,7 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
                         {idx.is_unique && !idx.is_primary && (
                           <Badge
                             variant="outline"
-                            className="text-[10px] px-1.5 py-0 text-blue-500 border-blue-500/20 bg-blue-500/5"
+                            className="text-2xs px-1.5 py-0 text-blue-500 border-blue-500/20 bg-blue-500/5"
                           >
                             UNIQUE
                           </Badge>
@@ -148,14 +148,14 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
                               {idx.columns.map((col) => (
                                 <span
                                   key={col}
-                                  className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                                  className="rounded bg-muted px-1.5 py-0.5 font-mono text-2xs text-muted-foreground"
                                 >
                                   {col}
                                 </span>
                               ))}
                             </div>
                           )}
-                          <p className="font-mono text-[11px] text-muted-foreground break-all">
+                          <p className="font-mono text-2xs text-muted-foreground break-all">
                             {idx.definition}
                           </p>
                         </>

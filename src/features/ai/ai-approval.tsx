@@ -136,7 +136,7 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
   const extra = !questionInput &&
     !schema &&
     Object.keys(shown).some((key) => key !== "requestedSchema") && (
-      <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
+      <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all font-mono text-2xs text-foreground/80">
         {JSON.stringify(shown, null, 2)}
       </pre>
     );
@@ -227,10 +227,10 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
                     <div
                       key={`${entry.label}-${entry.value}`}
                       ref={impact.ref}
-                      className="flex items-start gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-foreground"
+                      className="flex items-start gap-2 rounded-xl bg-warning/10 px-3 py-2 text-foreground"
                     >
                       <dt className="sr-only">{entry.label}</dt>
-                      <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                      <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" />
                       <dd className="min-w-0 flex-1 whitespace-pre-wrap break-words">
                         {entry.value}
                       </dd>
@@ -239,7 +239,7 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
                   ) : /^(SQL|Anweisungen|Befehl)$/.test(entry.label) ? (
                     <div key={`${entry.label}-${entry.value}`}>
                       <dt className="sr-only">{entry.label}</dt>
-                      <dd className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted/70 px-3 py-2 font-mono text-[11.5px] leading-relaxed text-foreground/90">
+                      <dd className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-muted/70 px-3 py-2 font-mono text-2xs leading-relaxed text-foreground/90">
                         {entry.value}
                       </dd>
                     </div>
@@ -267,9 +267,7 @@ export function AiApproval({ event, runId, onResolved, onError }: Props) {
           ))}
           {Object.keys(properties).length > 0 && (
             <details className="mt-3">
-              <summary className="min-h-7 cursor-pointer py-1 text-[11px]">
-                Als JSON antworten
-              </summary>
+              <summary className="min-h-7 cursor-pointer py-1 text-2xs">Als JSON antworten</summary>
               <textarea
                 aria-label="Antwort als JSON"
                 value={advanced}

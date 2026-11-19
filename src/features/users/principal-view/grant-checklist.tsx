@@ -56,7 +56,7 @@ export function GrantChecklist({
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
             placeholder={placeholder}
-            className="h-8 pl-8 text-[13px]"
+            className="h-8 pl-8 text-sm"
           />
         </div>
         <div className="flex rounded-full bg-muted/60 p-0.5">
@@ -74,7 +74,7 @@ export function GrantChecklist({
           ))}
         </div>
       </div>
-      <div className="flex h-6 items-center gap-2.5 px-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+      <div className="flex h-6 items-center gap-2.5 px-2 font-mono text-2xs text-muted-foreground">
         <span className="flex-1" />
         <span className="w-14 text-center">Admin</span>
         {withDefault && <span className="w-14 text-center">Default</span>}
@@ -133,7 +133,7 @@ export function GrantChecklist({
           );
         })}
         {visible.length === 0 && (
-          <p className="px-2 py-3 text-[13px] text-muted-foreground">Keine Treffer.</p>
+          <p className="px-2 py-3 text-sm text-muted-foreground">Keine Treffer.</p>
         )}
         {visible.length > MAX_GRANT_ROWS && (
           <p className="px-2 py-2 text-xs text-muted-foreground tabular-nums">

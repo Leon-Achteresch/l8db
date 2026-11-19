@@ -83,18 +83,16 @@ export function VersioningDeliveryRules({
               Erst wenn derselbe Release fehlerfrei auf einem Testsystem des Kunden läuft
             </label>
           )}
-          <p className="break-all text-[10px] text-muted-foreground">
-            Gebunden an {value.repository}
-          </p>
+          <p className="break-all text-2xs text-muted-foreground">Gebunden an {value.repository}</p>
           {identity && identity !== value.repository && (
-            <p className="text-[10px] text-amber-700 dark:text-amber-300">
+            <p className="text-2xs text-warning">
               Das geöffnete Repository ({identity}) weicht ab. Auslieferungen daraus sind gesperrt.
             </p>
           )}
         </>
       )}
       {!value && !identity && remote.data && (
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Dafür braucht das Repository einen Remote „origin“.
         </p>
       )}

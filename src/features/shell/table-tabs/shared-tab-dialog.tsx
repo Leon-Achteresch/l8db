@@ -119,7 +119,7 @@ export function SharedTabDialog() {
           </DialogDescription>
         </DialogHeader>
         {tab?.kind === "table" && tab.view.filterRaw && (
-          <span className="-mb-4 w-fit rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+          <span className="-mb-4 w-fit rounded-full bg-warning/15 px-2 py-0.5 text-2xs font-medium text-warning">
             Roh-SQL
           </span>
         )}
@@ -139,7 +139,7 @@ export function SharedTabDialog() {
             {options.map((connection) => (
               <SelectItem key={connection.id} value={connection.id}>
                 {connection.name}
-                <span className="text-[10px] text-muted-foreground">{connection.kind}</span>
+                <span className="text-2xs text-muted-foreground">{connection.kind}</span>
               </SelectItem>
             ))}
           </SelectContent>

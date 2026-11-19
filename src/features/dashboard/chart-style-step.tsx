@@ -150,7 +150,7 @@ export function ChartStyleStep({
       />
       <ChartMetricPicker widget={widget} shape={shape} onChange={onChange} />
       <section className="space-y-3 rounded-xl border bg-card/60 p-4">
-        <h3 className="text-xs font-semibold">Feinschliff</h3>
+        <h3 className="text-xs font-medium">Feinschliff</h3>
         <div className="grid gap-x-6 gap-y-2.5 sm:grid-cols-2">
           {CHARTS[widget.chart].options.map((key) => {
             if (key === "metricKeys" || key === "colorOffset" || key === "showPeriod") return null;

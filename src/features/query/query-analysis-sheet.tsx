@@ -102,7 +102,7 @@ export function QueryAnalysisSheet({
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-5 shrink-0 px-1.5 text-[10px]"
+                className="h-5 shrink-0 px-1.5 text-2xs"
                 onClick={onPlanErrorDismiss}
               >
                 <XIcon className="size-3" />

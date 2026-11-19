@@ -106,7 +106,7 @@ export function MaskingEditor({ workspace }: { workspace: BranchingWorkspace }) 
           </TabsTrigger>
         </TabsList>
       </Tabs>
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
+      <p className="text-2xs leading-relaxed text-muted-foreground">
         {scope === "team"
           ? owner
             ? "Team-Regeln liegen in der Datenbank und gelten für alle. Sie haben Vorrang vor eigenen Regeln."
@@ -130,7 +130,7 @@ export function MaskingEditor({ workspace }: { workspace: BranchingWorkspace }) 
           <div
             className={cn(
               "flex items-center gap-3 rounded-xl p-3 text-xs",
-              open.length ? "bg-amber-500/10" : "bg-emerald-500/5",
+              open.length ? "bg-warning/10" : "bg-success/5",
             )}
           >
             <span className="min-w-0 flex-1">
@@ -148,7 +148,7 @@ export function MaskingEditor({ workspace }: { workspace: BranchingWorkspace }) 
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 gap-1.5 text-[11px]"
+                className="h-7 gap-1.5 text-2xs"
                 onClick={() =>
                   update([...rules, ...suggestedRules(columns, effective).slice(effective.length)])
                 }
@@ -166,7 +166,7 @@ export function MaskingEditor({ workspace }: { workspace: BranchingWorkspace }) 
               aria-label="Spalten durchsuchen"
               className="h-8 min-w-0 flex-1 text-xs"
             />
-            <label className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
+            <label className="flex shrink-0 items-center gap-2 text-2xs text-muted-foreground">
               Nur relevante
               <Switch
                 checked={relevant}
@@ -193,20 +193,20 @@ export function MaskingEditor({ workspace }: { workspace: BranchingWorkspace }) 
                   className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/40"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-mono text-[11px]">
+                    <p className="truncate font-mono text-2xs">
                       <span className="text-muted-foreground">
                         {column.schema}.{column.table}.
                       </span>
                       {column.column}
                     </p>
-                    <p className="truncate text-[10px] text-muted-foreground">
+                    <p className="truncate text-2xs text-muted-foreground">
                       {column.dataType}
                       {column.notNull ? " · NOT NULL" : ""}
                       {column.pii ? ` · ${column.pii.reason}` : ""}
                     </p>
                   </div>
                   {inherited ? (
-                    <span className="w-44 shrink-0 truncate text-[11px] text-muted-foreground">
+                    <span className="w-44 shrink-0 truncate text-2xs text-muted-foreground">
                       Team: {STRATEGY_LABELS[inherited.strategy]}
                     </span>
                   ) : (
@@ -237,7 +237,7 @@ export function MaskingEditor({ workspace }: { workspace: BranchingWorkspace }) 
                           }
                           placeholder="Fester Wert"
                           aria-label={`Fester Wert für ${key}`}
-                          className="h-7 text-[11px]"
+                          className="h-7 text-2xs"
                         />
                       )}
                     </div>
@@ -252,7 +252,7 @@ export function MaskingEditor({ workspace }: { workspace: BranchingWorkspace }) 
             )}
           </ul>
           {errors.length > 0 && (
-            <ul className="space-y-1 rounded-lg bg-destructive/5 p-3 text-[11px] text-destructive">
+            <ul className="space-y-1 rounded-lg bg-destructive/5 p-3 text-2xs text-destructive">
               {errors.slice(0, 8).map((error) => (
                 <li key={error} className="flex gap-1.5">
                   <CircleAlertIcon className="mt-0.5 size-3 shrink-0" />

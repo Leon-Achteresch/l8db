@@ -43,7 +43,7 @@ import { NameConfirmDialog } from "./name-confirm-dialog";
 import type { BranchingWorkspace } from "./use-branching";
 
 const INDENT = 20;
-const CHIP = "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium";
+const CHIP = "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs font-medium";
 
 export function BranchRow({
   row,
@@ -171,7 +171,7 @@ export function BranchRow({
               </span>
             )}
             {locked && (
-              <span className={cn(CHIP, "bg-amber-500/10 text-amber-700 dark:text-amber-300")}>
+              <span className={cn(CHIP, "bg-warning/10 text-warning")}>
                 <LockIcon className="size-2.5" />
                 {protection ? PROTECTION_LABELS[protection] : "Geschützt"}
               </span>
@@ -189,7 +189,7 @@ export function BranchRow({
             )}
             {active && <span className={cn(CHIP, "bg-primary/10 text-primary")}>Aktiv</span>}
           </div>
-          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+          <p className="mt-0.5 truncate text-2xs text-muted-foreground">
             {meta.filter(Boolean).join(" · ")}
           </p>
         </div>
@@ -197,7 +197,7 @@ export function BranchRow({
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-[11px] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            className="h-7 px-2 text-2xs opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
             onClick={() => workspace.openDatabase(database.name)}
           >
             Öffnen

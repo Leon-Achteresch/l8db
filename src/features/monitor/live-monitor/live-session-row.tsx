@@ -50,7 +50,7 @@ export function LiveSessionRow({
       <td className="px-3 py-1.5 text-muted-foreground tabular-nums">{index + 1}</td>
       <td className="px-3 py-1.5 font-mono tabular-nums">
         {session.pid}
-        {session.is_self && <span className="ml-1 text-[10px] text-muted-foreground">(ich)</span>}
+        {session.is_self && <span className="ml-1 text-2xs text-muted-foreground">(ich)</span>}
       </td>
       <td className="max-w-32 truncate px-3 py-1.5">{session.user || "—"}</td>
       <td className="max-w-32 truncate px-3 py-1.5">{session.database || "—"}</td>

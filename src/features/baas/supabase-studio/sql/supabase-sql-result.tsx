@@ -42,7 +42,7 @@ export function SupabaseSqlResult({
           <span className="tabular-nums">{result.duration_ms} ms</span>
           {result.read_only && <span>Nur-Lesen</span>}
           {result.truncated && (
-            <span className="text-amber-600 dark:text-amber-400">
+            <span className="text-warning">
               Angezeigt werden die ersten {result.rows.length} Zeilen.
             </span>
           )}

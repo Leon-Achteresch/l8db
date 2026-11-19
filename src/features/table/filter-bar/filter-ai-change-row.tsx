@@ -5,7 +5,7 @@ const KIND = {
   add: {
     sign: "+",
     spoken: "Neu",
-    tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+    tone: "bg-success/15 text-success",
   },
   remove: { sign: "−", spoken: "Entfällt", tone: "bg-red-500/15 text-red-700 dark:text-red-300" },
   keep: { sign: "=", spoken: "Bleibt", tone: "bg-muted text-muted-foreground" },

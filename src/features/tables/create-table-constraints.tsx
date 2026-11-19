@@ -68,7 +68,7 @@ export function CreateTableConstraints({
               <TabsTrigger key={kind} value={kind} className="text-xs">
                 {kind === "check" ? "Checks" : CONSTRAINT_KIND_LABEL[kind]}
                 {count > 0 && (
-                  <span className="rounded bg-muted px-1 font-mono text-[10px] text-muted-foreground tabular-nums">
+                  <span className="rounded bg-muted px-1 font-mono text-2xs text-muted-foreground tabular-nums">
                     {count}
                   </span>
                 )}

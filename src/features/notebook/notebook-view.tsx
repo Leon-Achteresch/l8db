@@ -188,7 +188,7 @@ export function NotebookView() {
         onCancel={runner.cancel}
       />
       {restored && (
-        <div className="flex shrink-0 items-center gap-2 border-b bg-amber-500/10 px-3 py-1 text-xs text-amber-700 dark:text-amber-400">
+        <div className="flex shrink-0 items-center gap-2 border-b bg-warning/10 px-3 py-1 text-xs text-warning">
           Ungespeicherter Entwurf aus der letzten Sitzung wiederhergestellt.
           <Button
             size="sm"

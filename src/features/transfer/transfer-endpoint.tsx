@@ -105,9 +105,7 @@ export function TransferEndpoint({
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-xl border bg-card px-4 py-3">
       <div className="flex min-w-0 items-center gap-3">
-        <span className="w-12 shrink-0 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-          {title}
-        </span>
+        <span className="w-12 shrink-0 text-2xs font-medium text-muted-foreground">{title}</span>
         <Select value={value.connectionId ?? ""} onValueChange={pickConnection}>
           <SelectTrigger
             ref={triggerRef}
@@ -131,7 +129,7 @@ export function TransferEndpoint({
         </Select>
         {environment && (
           <span
-            className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-medium"
+            className="shrink-0 rounded-md px-1.5 py-0.5 text-2xs font-medium"
             style={{ color: environment.color, backgroundColor: `${environment.color}1f` }}
           >
             {environment.label}

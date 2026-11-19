@@ -40,7 +40,7 @@ export function getStatusClass(status: ToolResultStatus) {
     return "text-blue-600 dark:text-blue-400";
   }
   if (status === "success") {
-    return "text-emerald-600 dark:text-emerald-400";
+    return "text-success";
   }
   if (status === "error") {
     return "text-rose-600 dark:text-rose-400";

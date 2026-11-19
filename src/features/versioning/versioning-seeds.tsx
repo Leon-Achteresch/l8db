@@ -143,7 +143,7 @@ export function VersioningSeeds({ workspace }: { workspace: VersioningWorkspace 
         danach Seeds anwenden. Vorhandene Daten werden ergänzt.
       </p>
       {!allowed && (
-        <p role="status" className="rounded-lg bg-amber-500/10 p-3 text-xs">
+        <p role="status" className="rounded-lg bg-warning/10 p-3 text-xs">
           Seeds sind auf {status.branch ?? "Detached HEAD"} gesperrt. Unter Branches zu Development
           oder einem Feature-Branch wechseln.
         </p>
@@ -168,20 +168,20 @@ export function VersioningSeeds({ workspace }: { workspace: VersioningWorkspace 
           }))}
         />
         {!targets.length && (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Unter Kunden & Umgebungen ein Ziel hinzufügen und die Produktionskennzeichnung
             deaktivieren.
           </p>
         )}
         {target && (
-          <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <p className="flex items-center gap-2 text-2xs text-muted-foreground">
             <DatabaseIcon className="size-3.5" />
             {connection?.name ?? "Verbindung fehlt"} · {target.database} / {target.schema}
             {!target.release && " · Zuerst Baseline prüfen"}
           </p>
         )}
         <div className="rounded-xl bg-muted/25 p-3 space-y-3">
-          <h3 className="text-xs font-semibold">Beispieldaten aus der Tabellenstruktur erzeugen</h3>
+          <h3 className="text-xs font-medium">Beispieldaten aus der Tabellenstruktur erzeugen</h3>
           <VersioningSelect
             label="Seed-Tabelle"
             value={table}
@@ -245,7 +245,7 @@ export function VersioningSeeds({ workspace }: { workspace: VersioningWorkspace 
             <WandSparklesIcon className="size-3.5" />
             {plan ? "Seed-SQL hinzufügen" : "Generatoren ermitteln"}
           </Button>
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
+          <p className="text-2xs leading-relaxed text-muted-foreground">
             Typen, Pflichtfelder und vorhandene Fremdschlüssel werden berücksichtigt. Neue abhängige
             Tabellen in der richtigen Reihenfolge befüllen. Gleiche Konfiguration und Referenzdaten
             erzeugen mit demselben Zufalls-Seed dieselben Werte.
@@ -328,7 +328,7 @@ export function VersioningSeeds({ workspace }: { workspace: VersioningWorkspace 
         href="https://supabase.com/docs/guides/local-development/seeding-your-database"
         target="_blank"
         rel="noreferrer"
-        className="inline-block text-[11px] text-muted-foreground underline underline-offset-4"
+        className="inline-block text-2xs text-muted-foreground underline underline-offset-4"
       >
         Ablauf nach Supabase Seed-Dateien
       </a>

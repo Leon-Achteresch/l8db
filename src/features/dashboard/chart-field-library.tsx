@@ -27,8 +27,8 @@ export function ChartFieldLibrary({
   return (
     <aside aria-label="Verfügbare Datenfelder" className="min-w-0 rounded-xl bg-muted/35 p-3">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold">Datenfelder</h3>
-        <span className="text-[11px] tabular-nums text-muted-foreground">{columns.length}</span>
+        <h3 className="text-xs font-medium">Datenfelder</h3>
+        <span className="text-2xs tabular-nums text-muted-foreground">{columns.length}</span>
       </div>
       <div className="relative mb-3">
         <SearchIcon className="pointer-events-none absolute top-2.5 left-2.5 size-3.5 text-muted-foreground" />
@@ -40,7 +40,7 @@ export function ChartFieldLibrary({
           className="h-9 bg-background pl-8 text-xs"
         />
       </div>
-      <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
+      <p className="mb-3 text-2xs leading-relaxed text-muted-foreground">
         Ziehe ein Feld nach rechts. Oder wähle es aus und klicke auf „Zuweisen“.
       </p>
       <div className="max-h-100 space-y-1 overflow-y-auto">
@@ -71,7 +71,7 @@ export function ChartFieldLibrary({
               <Icon className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-xs font-medium">{field.label}</span>
-                <span className="block truncate text-[10px] text-muted-foreground">
+                <span className="block truncate text-2xs text-muted-foreground">
                   {fieldTypeLabel(field.type)} · {field.type}
                 </span>
               </span>

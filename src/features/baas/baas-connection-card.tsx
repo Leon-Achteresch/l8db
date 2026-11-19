@@ -91,7 +91,7 @@ export function BaasConnectionCard({
               >
                 {connection.name}
               </h3>
-              <p className="truncate text-[11px] text-muted-foreground">
+              <p className="truncate text-2xs text-muted-foreground">
                 {providerName} · {connection.detail}
               </p>
             </div>
@@ -131,7 +131,7 @@ export function BaasConnectionCard({
           </IconMenu>
         </div>
 
-        <div className="mt-3 flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 p-2.5 text-[11px]">
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 p-2.5 text-2xs">
           <PrimaryIcon className="size-3.5 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium text-foreground/90">
@@ -140,7 +140,7 @@ export function BaasConnectionCard({
             {supabase && (
               <p className="flex items-center gap-1 truncate text-muted-foreground">
                 <span
-                  className={`size-1.5 shrink-0 rounded-full ${database ? "bg-emerald-500" : "bg-muted-foreground/40"}`}
+                  className={`size-1.5 shrink-0 rounded-full ${database ? "bg-success" : "bg-muted-foreground/40"}`}
                 />
                 {database ? "Im SQL-Arbeitsplatz verbunden" : "Noch nicht verbunden"}
               </p>
@@ -172,7 +172,7 @@ export function BaasConnectionCard({
                   key={section}
                   type="button"
                   onClick={() => open(section)}
-                  className="inline-flex h-6 items-center gap-1 rounded-full border bg-background px-2 text-[11px] text-muted-foreground transition-colors hover:border-foreground/25 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="inline-flex h-6 items-center gap-1 rounded-full border bg-background px-2 text-2xs text-muted-foreground transition-colors hover:border-foreground/25 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <Icon className="size-3" />
                   {SECTION_INFO[section].label}

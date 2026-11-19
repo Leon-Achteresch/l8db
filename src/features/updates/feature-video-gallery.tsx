@@ -9,9 +9,7 @@ export function FeatureVideoGallery() {
   return (
     <section className="mt-6" aria-label="Neue Features als Video">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-          Kurz gezeigt
-        </h2>
+        <h2 className="font-mono text-2xs text-muted-foreground">Kurz gezeigt</h2>
         <Button
           size="icon-sm"
           variant="ghost"

@@ -250,7 +250,7 @@ export function ExternalImportPanel({ source, onClose }: Props) {
           />
         )}
         {stats.skipped > 0 && (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {stats.skipped === 1
               ? "1 Eintrag wird übersprungen (nicht unterstützt oder unvollständig)."
               : `${stats.skipped} Einträge werden übersprungen (nicht unterstützt oder unvollständig).`}

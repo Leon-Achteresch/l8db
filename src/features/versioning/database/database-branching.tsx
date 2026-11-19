@@ -102,7 +102,7 @@ export function DatabaseBranching({
                 <item.icon className="size-3.5" />
                 {item.label}
                 {"count" in item && Boolean(item.count) && (
-                  <span className="ml-0.5 font-mono text-[10px] text-muted-foreground">
+                  <span className="ml-0.5 font-mono text-2xs text-muted-foreground">
                     {item.count}
                   </span>
                 )}

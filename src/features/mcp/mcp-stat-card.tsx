@@ -34,14 +34,14 @@ export function McpStatCard({
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground">{label}</p>
-          <div className="text-2xl font-bold tracking-tight text-foreground">{value}</div>
-          <p className="text-[11px] text-muted-foreground">{subtext}</p>
+          <div className="text-2xl font-semibold tracking-tight text-foreground">{value}</div>
+          <p className="text-2xs text-muted-foreground">{subtext}</p>
         </div>
         <div
           className={cn(
             "flex size-10 items-center justify-center rounded-xl transition-colors",
-            status === "active" && "bg-emerald-500/10 text-emerald-500",
-            status === "warning" && "bg-amber-500/10 text-amber-500",
+            status === "active" && "bg-success/10 text-success",
+            status === "warning" && "bg-warning/10 text-warning",
             status === "default" && "bg-primary/10 text-primary",
           )}
         >

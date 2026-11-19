@@ -23,7 +23,7 @@ export function CitationRow({
         ) : null}
       </span>
       <span className="flex shrink-0 items-center gap-1.5">
-        <span className="grid size-5 place-items-center rounded-md bg-foreground/[0.05] text-[10px] font-semibold tabular-nums text-muted-foreground">
+        <span className="grid size-5 place-items-center rounded-md bg-foreground/[0.05] text-2xs font-medium tabular-nums text-muted-foreground">
           {index}
         </span>
         {citation.url ? (

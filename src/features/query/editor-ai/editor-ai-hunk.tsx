@@ -11,11 +11,11 @@ interface Props {
 export function EditorAiHunk({ hunk, font, onAccept, onReject }: Props) {
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-[26px] items-center gap-1 pl-1 text-[11px]">
+      <div className="flex h-[26px] items-center gap-1 pl-1 text-2xs">
         <button
           type="button"
           onClick={onAccept}
-          className="inline-flex h-5 items-center gap-1 rounded-md bg-emerald-600/90 px-1.5 font-medium text-white shadow-xs transition-colors hover:bg-emerald-600"
+          className="inline-flex h-5 items-center gap-1 rounded-md bg-success/90 px-1.5 font-medium text-success-foreground shadow-xs transition-colors hover:bg-success"
         >
           <Check className="size-3" aria-hidden />
           Annehmen

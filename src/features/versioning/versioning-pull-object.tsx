@@ -70,21 +70,21 @@ export function VersioningPullObject({
           <span className="font-medium">{entry.name}</span>
         </span>
         {comments > 0 && (
-          <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-0.5 text-2xs text-muted-foreground">
             <MessageSquareIcon className="size-3" />
             {comments}
           </span>
         )}
-        <span className={cn("shrink-0 text-[10px]", status.tone)}>{status.label}</span>
+        <span className={cn("shrink-0 text-2xs", status.tone)}>{status.label}</span>
       </button>
       {expanded && (
         <div className="space-y-2 py-2 pl-5">
-          <p className="truncate font-mono text-[10px] text-muted-foreground">
+          <p className="truncate font-mono text-2xs text-muted-foreground">
             {CATEGORY_LABELS[entry.category][0]} · {entry.path}
           </p>
           {content.isLoading && <Skeleton className="h-32 rounded-lg" />}
           {content.error && (
-            <p role="alert" className="text-[11px] text-destructive">
+            <p role="alert" className="text-2xs text-destructive">
               {String(content.error)}
             </p>
           )}
@@ -93,19 +93,16 @@ export function VersioningPullObject({
               {structure.map((change) => (
                 <li
                   key={change.section}
-                  className="flex flex-wrap items-center gap-1 rounded-md bg-muted/40 px-2 py-1 text-[10px]"
+                  className="flex flex-wrap items-center gap-1 rounded-md bg-muted/40 px-2 py-1 text-2xs"
                 >
                   <span className="font-medium">{change.section}</span>
                   {change.added.map((name) => (
-                    <span
-                      key={`+${name}`}
-                      className="font-mono text-emerald-700 dark:text-emerald-400"
-                    >
+                    <span key={`+${name}`} className="font-mono text-success">
                       +{name}
                     </span>
                   ))}
                   {change.changed.map((name) => (
-                    <span key={`~${name}`} className="font-mono text-amber-700 dark:text-amber-400">
+                    <span key={`~${name}`} className="font-mono text-warning">
                       ~{name}
                     </span>
                   ))}

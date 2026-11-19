@@ -113,7 +113,7 @@ export function TablePerfPanel({ schema, table, filter, isView }: TablePerfPanel
             disabled={runner.running}
           />
         </div>
-        <pre className="overflow-x-auto rounded-md bg-muted/50 px-3 py-2 font-mono text-[11px] md:col-span-2">
+        <pre className="overflow-x-auto rounded-md bg-muted/50 px-3 py-2 font-mono text-2xs md:col-span-2">
           {`${planPrefix(connection?.kind, timed)}${sql}`}
         </pre>
         {!readOnly && (

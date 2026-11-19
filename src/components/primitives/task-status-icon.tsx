@@ -9,7 +9,7 @@ export function TaskStatusIcon({ status, step }: { status: TaskStatus; step: num
       <span
         className={cn(
           "flex size-[18px] items-center justify-center rounded-full text-white animate-in zoom-in-50 fade-in duration-300",
-          status === "done" ? "bg-emerald-500" : "bg-destructive",
+          status === "done" ? "bg-success" : "bg-destructive",
         )}
       >
         {status === "done" ? (

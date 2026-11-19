@@ -217,7 +217,7 @@ export function AppHeader() {
               aria-label="DEV · Design Lab"
               aria-current={section === "/dev" ? "page" : undefined}
               className={cn(
-                "inline-flex h-7 shrink-0 items-center justify-center rounded-md px-2 font-mono text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                "inline-flex h-7 shrink-0 items-center justify-center rounded-md px-2 font-mono text-2xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
                 section === "/dev" && "bg-primary/12 text-foreground",
               )}
             >
@@ -293,7 +293,7 @@ export function AppHeader() {
                 <span
                   role="img"
                   aria-label="Status nicht verfügbar"
-                  className="absolute right-0 top-0 size-1.5 rounded-full bg-amber-500"
+                  className="absolute right-0 top-0 size-1.5 rounded-full bg-warning"
                 />
               ) : null}
             </button>

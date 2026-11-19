@@ -471,7 +471,7 @@ export function AppHeaderSearch() {
             Suchen
           </span>
           {searchNew ? <NewBadge /> : null}
-          <kbd className="inline-flex shrink-0 items-center rounded-full border border-border/60 @max-[8rem]/header-search:hidden bg-background/70 px-1.5 py-px font-sans text-[10px]">
+          <kbd className="inline-flex shrink-0 items-center rounded-full border border-border/60 @max-[8rem]/header-search:hidden bg-background/70 px-1.5 py-px font-sans text-2xs">
             {formatHotkeyDisplay(paletteHotkey)}
           </kbd>
         </button>

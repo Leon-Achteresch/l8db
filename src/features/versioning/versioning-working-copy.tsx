@@ -34,7 +34,7 @@ export function VersioningWorkingCopy({
           <span
             className={cn(
               "size-1.5 shrink-0 rounded-full",
-              drift.ready ? "bg-emerald-500" : "bg-amber-500",
+              drift.ready ? "bg-success" : "bg-warning",
             )}
           />
           <DatabaseIcon className="size-3.5 shrink-0 text-muted-foreground" />
@@ -50,7 +50,7 @@ export function VersioningWorkingCopy({
         schemaOnly
         className="border-0 bg-transparent p-0"
       />
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
+      <p className="text-2xs leading-relaxed text-muted-foreground">
         Änderungen in dieser Entwicklungsdatenbank erscheinen unter Änderungen und werden mit dem
         Commit ins Repository übernommen. Die Zuordnung lässt sich pro Branch in Git teilen;
         Zugangsdaten bleiben auf diesem Rechner.

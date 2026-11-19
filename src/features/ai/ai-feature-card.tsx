@@ -25,7 +25,7 @@ export function AiFeatureCard({ id }: { id: string }) {
         >
           {entry.title}
           {shortcut && (
-            <kbd className="rounded bg-background/70 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+            <kbd className="rounded bg-background/70 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground">
               {shortcut}
             </kbd>
           )}

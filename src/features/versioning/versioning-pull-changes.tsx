@@ -59,14 +59,14 @@ export function VersioningPullChanges({
   if (changes.isLoading) return <Skeleton className="h-32 rounded-lg" />;
   if (changes.error)
     return (
-      <div className="flex items-center gap-2 rounded-lg bg-muted/30 p-3 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-2 rounded-lg bg-muted/30 p-3 text-2xs text-muted-foreground">
         <span className="flex-1">
           Der Stand des Pull Requests ist lokal noch nicht vorhanden. Zuerst abrufen.
         </span>
         <Button
           size="sm"
           variant="outline"
-          className="h-7 text-[11px]"
+          className="h-7 text-2xs"
           onClick={() =>
             void run(async () => {
               await versioningRepository({ action: "fetch", repo });
@@ -79,7 +79,7 @@ export function VersioningPullChanges({
       </div>
     );
   if (!changes.data?.files.length)
-    return <p className="text-[11px] text-muted-foreground">Keine Änderungen unter database/.</p>;
+    return <p className="text-2xs text-muted-foreground">Keine Änderungen unter database/.</p>;
   const data = changes.data;
   return (
     <div className="space-y-4">
@@ -89,7 +89,7 @@ export function VersioningPullChanges({
           return (
             <span
               key={group.category}
-              className="flex items-center gap-1 rounded-md bg-muted/40 px-2 py-1 text-[10px]"
+              className="flex items-center gap-1 rounded-md bg-muted/40 px-2 py-1 text-2xs"
             >
               <Icon className="size-3 text-muted-foreground" strokeWidth={1.7} />
               {group.entries.length}{" "}
@@ -108,7 +108,7 @@ export function VersioningPullChanges({
         const Icon = CATEGORY_ICONS[group.category];
         return (
           <section key={group.category} className="space-y-0.5">
-            <h4 className="flex items-center gap-1.5 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <h4 className="flex items-center gap-1.5 px-1.5 text-2xs font-medium text-muted-foreground">
               <Icon className="size-3" strokeWidth={1.7} />
               {CATEGORY_LABELS[group.category][1]}
             </h4>

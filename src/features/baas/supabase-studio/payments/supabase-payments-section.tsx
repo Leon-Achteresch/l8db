@@ -62,9 +62,7 @@ export function SupabasePaymentsSection({ project, capabilities }: SupabaseStudi
               ) : (
                 <Badge variant="destructive">LIVE</Badge>
               )}
-              <span className="font-mono text-[11px] text-muted-foreground">
-                {current.account_id}
-              </span>
+              <span className="font-mono text-2xs text-muted-foreground">{current.account_id}</span>
               {!current.setup_current && <Badge variant="outline">Einrichtung nötig</Badge>}
             </div>
           )

@@ -45,7 +45,7 @@ export function RetryFields({ value, onChange, offLabel, error }: Props) {
           checked={Boolean(value)}
           onCheckedChange={(checked) => onChange(checked ? { ...DEFAULT_RETRY } : null)}
         />
-        <Label htmlFor={id} className="text-[13px] font-normal">
+        <Label htmlFor={id} className="text-sm font-normal">
           {value ? describeRetry(value) : offLabel}
         </Label>
       </div>

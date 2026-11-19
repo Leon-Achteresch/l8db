@@ -33,7 +33,7 @@ export function McpNumbersVariant({ state, onToggleDatabase }: McpVariantProps) 
             <ProviderLogo kind={db.kind} className="size-4" />
             <span className={cn("flex-1", !db.exposed && "text-muted-foreground")}>{db.name}</span>
             {db.environment === "production" && (
-              <span className="size-1.5 rounded-full bg-amber-500" title="Produktion" />
+              <span className="size-1.5 rounded-full bg-warning" title="Produktion" />
             )}
             <Switch
               checked={db.exposed}

@@ -142,7 +142,7 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
 
       {compileResult && compileResult.status !== "VALID" ? (
         <div className="flex flex-col gap-1 border-t bg-destructive/5 px-4 py-2.5">
-          <span className="text-xs font-semibold text-destructive">
+          <span className="text-xs font-medium text-destructive">
             Kompilierfehler
             {compileResult.line ? ` in Zeile ${compileResult.line}` : ""}
             {compileResult.position ? `, Position ${compileResult.position}` : ""}

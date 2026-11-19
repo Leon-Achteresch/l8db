@@ -130,9 +130,7 @@ export function QueryResultsContent({
 
       <Collapse open={Boolean(statementError)} className="shrink-0">
         {statementError && (
-          <p className="border-b px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400">
-            {statementError}
-          </p>
+          <p className="border-b px-3 py-1.5 text-xs text-warning">{statementError}</p>
         )}
       </Collapse>
 

@@ -247,7 +247,7 @@ export function ChartFilterEditor({
               })}
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Der Chart folgt dem Wert, den du oben im Dashboard einstellst. Ist der Filter leer,
             zeigt der Chart alle Daten.
           </p>
@@ -313,7 +313,7 @@ export function ChartFilterEditor({
                 </label>
               ))}
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {chosen.length} ausgewählt · Bis zu 100 Werte werden angeboten. Weitere Werte lassen
             sich über eine Bedingung eingeben.
           </p>

@@ -41,13 +41,13 @@ export function VersioningReviewArtifact({ content }: { content: string }) {
       throw new Error("Invalid artifact");
   } catch {
     return (
-      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words text-[11px]">
+      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words text-2xs">
         {content}
       </pre>
     );
   }
   const code =
-    "max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/30 p-3 font-mono text-[11px]";
+    "max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/30 p-3 font-mono text-2xs";
   return (
     <Tabs defaultValue="sql" className="my-3">
       <TabsList className="w-full justify-start bg-transparent">

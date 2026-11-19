@@ -117,7 +117,7 @@ export function DiscoverRoadmapTab() {
                     <div className="flex items-start gap-2">
                       <span className="text-sm font-medium text-foreground">{item.title}</span>
                       {item.eta && (
-                        <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+                        <span className="ml-auto shrink-0 text-2xs text-muted-foreground">
                           {item.eta}
                         </span>
                       )}
@@ -136,7 +136,7 @@ export function DiscoverRoadmapTab() {
                           <ArrowUpRight className="size-3" />
                         </Button>
                         {item.votes !== undefined && (
-                          <span className="text-[11px] tabular-nums text-muted-foreground">
+                          <span className="text-2xs tabular-nums text-muted-foreground">
                             {item.votes}
                           </span>
                         )}

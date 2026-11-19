@@ -86,9 +86,7 @@ export function SidebarMatviewList({
   return (
     <div className="mt-2">
       <div className="flex items-center justify-between py-1">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Materialized Views
-        </p>
+        <p className="text-2xs font-medium text-muted-foreground">Materialized Views</p>
         <button
           type="button"
           onClick={() => setDialogOpen(true)}

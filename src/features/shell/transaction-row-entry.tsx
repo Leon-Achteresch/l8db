@@ -25,39 +25,39 @@ export function DiffRowEntry({ change }: { change: TransactionChange }) {
         title={change.ctid ? `ctid ${change.ctid}` : undefined}
       >
         {isInsert ? (
-          <PlusIcon className="size-3 text-emerald-500" />
+          <PlusIcon className="size-3 text-success" />
         ) : (
           <Trash2Icon className="size-3 text-red-500" />
         )}
-        <span className="font-mono text-[11px] font-semibold text-foreground/80">
+        <span className="font-mono text-2xs font-medium text-foreground/80">
           {[change.schema, change.table].filter(Boolean).join(".")}
         </span>
         {isNew && <NewBadge />}
-        <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+        <span className="ml-auto font-mono text-2xs text-muted-foreground">
           {isInsert ? "INSERT" : "DELETE"}
           {change.planned ? " · geplant" : ""}
         </span>
       </div>
-      <div className="font-mono text-[11px] leading-[1.7]">
+      <div className="font-mono text-2xs leading-[1.7]">
         {keys.map((key) => (
           <div
             key={key}
             className={cn(
               "flex px-2.5",
               isInsert
-                ? "bg-emerald-500/[0.07] text-emerald-600 dark:text-emerald-400"
+                ? "bg-success/[0.07] text-success"
                 : "bg-red-500/[0.07] text-red-600 dark:text-red-400",
             )}
           >
             <span
               className={cn(
                 "w-4 shrink-0 select-none",
-                isInsert ? "text-emerald-500/60" : "text-red-500/60",
+                isInsert ? "text-success/60" : "text-red-500/60",
               )}
             >
               {isInsert ? "+" : "-"}
             </span>
-            <span className={isInsert ? "text-emerald-500/70" : "text-red-500/70"}>{key}: </span>
+            <span className={isInsert ? "text-success/70" : "text-red-500/70"}>{key}: </span>
             <span className="ml-1 truncate">{formatValue(values[key])}</span>
           </div>
         ))}

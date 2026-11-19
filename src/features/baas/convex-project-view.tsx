@@ -51,13 +51,13 @@ export function ConvexProjectView({ id, project }: { id: string; project: Convex
                 <Server className="size-3.5 text-muted-foreground" />
                 <span className="truncate text-xs font-medium">{deployment.name}</span>
               </div>
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-2xs text-muted-foreground">
                 {deployment.deploymentType} · {deployment.region ?? deployment.kind}
                 {deployment.isDefault ? " · Standard" : ""}
               </p>
               {deployment.deploymentUrl && (
                 <p
-                  className="mt-2 truncate font-mono text-[10px] text-muted-foreground"
+                  className="mt-2 truncate font-mono text-2xs text-muted-foreground"
                   title={deployment.deploymentUrl}
                 >
                   {deployment.deploymentUrl}

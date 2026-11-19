@@ -207,7 +207,7 @@ export function SupabaseAuthUserSheet({ reference, userId, capabilities, onClose
           <SheetTitle className="truncate">
             {user?.email || user?.phone || userId || "Benutzer"}
           </SheetTitle>
-          <SheetDescription className="font-mono text-[11px] break-all">{userId}</SheetDescription>
+          <SheetDescription className="font-mono text-2xs break-all">{userId}</SheetDescription>
         </SheetHeader>
         <div className="grid gap-5 px-4 pb-6 text-xs">
           {detail.isPending ? (
@@ -452,7 +452,7 @@ export function SupabaseAuthUserSheet({ reference, userId, capabilities, onClose
                           <span className="truncate">
                             {factor.friendly_name || factor.factor_type}
                           </span>
-                          <span className="font-mono text-[10px] text-muted-foreground">
+                          <span className="font-mono text-2xs text-muted-foreground">
                             {factor.factor_type} · {factor.status} · {factor.id}
                           </span>
                         </div>

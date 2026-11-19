@@ -39,7 +39,7 @@ export function VariableDefaultInput({
         value={variable.defaultValue || "__none"}
         onValueChange={(value) => onChange(value === "__none" ? "" : value)}
       >
-        <SelectTrigger aria-label={label} className="h-8 w-full rounded-lg text-[13px]">
+        <SelectTrigger aria-label={label} className="h-8 w-full rounded-lg text-sm">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -60,7 +60,7 @@ export function VariableDefaultInput({
       inputMode={variable.kind === "number" ? "decimal" : undefined}
       placeholder={variable.kind === "date" ? "JJJJ-MM-TT oder ${date-1d}" : "leer = Pflicht"}
       onChange={(event) => onChange(event.target.value)}
-      className="h-8 text-[13px]"
+      className="h-8 text-sm"
     />
   );
 }

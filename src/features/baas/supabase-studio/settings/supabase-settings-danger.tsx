@@ -54,7 +54,7 @@ export function SupabaseSettingsDanger({
               <p className="text-xs font-medium">
                 {paused ? "Projekt wiederherstellen" : "Projekt pausieren"}
               </p>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 {paused
                   ? "Startet das pausierte Projekt wieder. Das kann einige Minuten dauern."
                   : "Stoppt Datenbank und Dienste. Apps können das Projekt bis zur Wiederherstellung nicht nutzen."}
@@ -74,7 +74,7 @@ export function SupabaseSettingsDanger({
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-background/50 p-3">
           <div>
             <p className="text-xs font-medium">Von l8db trennen</p>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               {project.self_hosted
                 ? "Entfernt diese Instanz und ihren Key aus l8db. Die Instanz selbst bleibt unverändert."
                 : "Entfernt den Supabase-Zugangstoken und gespeicherte Projekt-Keys aller Cloud-Projekte aus l8db. Die Projekte bleiben unverändert."}

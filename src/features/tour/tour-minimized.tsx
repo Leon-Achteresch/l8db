@@ -36,7 +36,7 @@ export function TourMinimized() {
         </span>
         <span
           data-tour-ui="progress"
-          className="font-mono text-[11px] text-muted-foreground tabular-nums"
+          className="font-mono text-2xs text-muted-foreground tabular-nums"
         >
           {progress.current}/{progress.total}
         </span>

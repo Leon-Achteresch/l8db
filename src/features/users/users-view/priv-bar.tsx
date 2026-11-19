@@ -7,7 +7,7 @@ export function PrivBar({ granted, total }: { granted: number; total: number }) 
       <div
         className={cn(
           "h-full rounded-full transition-all",
-          pct === 0 ? "bg-muted" : pct === 100 ? "bg-emerald-500" : "bg-amber-500",
+          pct === 0 ? "bg-muted" : pct === 100 ? "bg-success" : "bg-warning",
         )}
         style={{ width: `${pct}%` }}
       />

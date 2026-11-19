@@ -70,13 +70,13 @@ export function LiveSessionDetails({ m, session }: { m: LiveMonitorState; sessio
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className="font-mono text-base font-semibold">PID {session.pid}</span>
-              <Badge variant="outline" className="gap-1.5 px-2 py-0 text-[10px]">
+              <Badge variant="outline" className="gap-1.5 px-2 py-0 text-2xs">
                 <span className={cn("size-1.5 rounded-full", sessionDotClass(session))} />
                 {sessionStateLabel(session)}
               </Badge>
             </div>
             {session.is_self && (
-              <p className="text-[11px] text-muted-foreground">Eigene Monitor-Verbindung</p>
+              <p className="text-2xs text-muted-foreground">Eigene Monitor-Verbindung</p>
             )}
           </div>
           <Button

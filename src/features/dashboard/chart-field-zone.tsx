@@ -49,8 +49,8 @@ export function ChartFieldZone({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="text-xs font-semibold">{title}</h3>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{hint}</p>
+          <h3 className="text-xs font-medium">{title}</h3>
+          <p className="mt-0.5 text-2xs leading-relaxed text-muted-foreground">{hint}</p>
         </div>
         <Button
           size="xs"

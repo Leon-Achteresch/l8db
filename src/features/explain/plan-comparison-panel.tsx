@@ -57,12 +57,12 @@ export function PlanComparisonPanel({
   return (
     <div className="flex flex-col gap-3">
       {comparison.warnings.length > 0 && (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
-          <p className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+        <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2">
+          <p className="flex items-center gap-1.5 text-xs font-medium text-warning">
             <AlertTriangleIcon className="size-3.5" />
             Eingeschränkte Vergleichbarkeit
           </p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-amber-700 dark:text-amber-400">
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-warning">
             {comparison.warnings.map((warning) => (
               <li key={warning}>{warning}</li>
             ))}
@@ -103,7 +103,7 @@ export function PlanComparisonPanel({
                         : row.delta === 0
                           ? ""
                           : (row.delta ?? 0) < 0
-                            ? "text-emerald-600 dark:text-emerald-400"
+                            ? "text-success"
                             : "text-destructive"
                     }`}
                   >
@@ -116,7 +116,7 @@ export function PlanComparisonPanel({
       </div>
 
       <div className="rounded-lg border">
-        <p className="border-b px-3 py-2 text-xs font-semibold">Knotenunterschiede</p>
+        <p className="border-b px-3 py-2 text-xs font-medium">Knotenunterschiede</p>
         <ul className="max-h-64 divide-y overflow-y-auto">
           {comparison.nodes.map((node) => (
             <li key={node.signature} className="flex items-center gap-2 px-3 py-1.5 text-xs">
@@ -145,7 +145,7 @@ export function PlanComparisonPanel({
 
       <div className="rounded-lg border">
         <div className="flex items-center gap-2 border-b px-3 py-2">
-          <p className="text-xs font-semibold">Text-Diff der Planbäume</p>
+          <p className="text-xs font-medium">Text-Diff der Planbäume</p>
           <Button
             size="sm"
             variant="ghost"

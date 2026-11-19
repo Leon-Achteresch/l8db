@@ -71,7 +71,7 @@ export function PerformanceStats({ m }: { m: MonitorViewState }) {
           <p className="mt-2 truncate text-2xl font-medium tracking-tight" title={detail}>
             {value}
           </p>
-          <p className="mt-1 truncate text-[10px] text-muted-foreground" title={detail}>
+          <p className="mt-1 truncate text-2xs text-muted-foreground" title={detail}>
             {detail}
           </p>
         </div>

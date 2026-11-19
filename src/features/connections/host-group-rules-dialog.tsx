@@ -135,7 +135,7 @@ export function HostGroupRulesDialog({ open, draft, onOpenChange }: Props) {
                     ))}
                   </SelectContent>
                 </Select>
-                <span className="w-24 shrink-0 text-right text-[11px] text-muted-foreground">
+                <span className="w-24 shrink-0 text-right text-2xs text-muted-foreground">
                   {count} {count === 1 ? "Verbindung" : "Verbindungen"}
                 </span>
                 <Button

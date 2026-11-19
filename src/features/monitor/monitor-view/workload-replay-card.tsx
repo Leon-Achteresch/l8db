@@ -101,9 +101,7 @@ export function WorkloadReplayCard({ replay }: { replay: WorkloadReplayState }) 
                         onChange={replay.updateParam}
                       />
                     )}
-                  {reason && (
-                    <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">{reason}</p>
-                  )}
+                  {reason && <p className="mt-1 text-2xs text-warning">{reason}</p>}
                 </li>
               );
             })}
@@ -206,7 +204,7 @@ export function WorkloadReplayCard({ replay }: { replay: WorkloadReplayState }) 
         {result && (
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold">
+              <span className="text-xs font-medium">
                 Ergebnis gegen {result.connectionName} · {result.repeats} Läufe ·{" "}
                 {result.concurrency} parallel
               </span>
@@ -234,7 +232,7 @@ export function WorkloadReplayCard({ replay }: { replay: WorkloadReplayState }) 
 
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold">Vergleich</span>
+            <span className="text-xs font-medium">Vergleich</span>
             <Button
               size="sm"
               variant="outline"

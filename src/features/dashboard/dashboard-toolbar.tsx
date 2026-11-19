@@ -153,7 +153,7 @@ export function DashboardToolbar({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-64">
-            <DropdownMenuLabel className="truncate text-[11px] font-normal text-muted-foreground">
+            <DropdownMenuLabel className="truncate text-2xs font-normal text-muted-foreground">
               Dashboards · {database || "Aktive Datenbank"}
             </DropdownMenuLabel>
             <DropdownMenuRadioGroup value={dashboard.id} onValueChange={onSelect}>
@@ -175,7 +175,7 @@ export function DashboardToolbar({
         {dashboard.filePath && (
           <span
             title={dashboard.filePath}
-            className="ml-1 max-w-48 truncate rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground"
+            className="ml-1 max-w-48 truncate rounded border px-1.5 py-0.5 text-2xs text-muted-foreground"
           >
             {fileLabel(dashboard.filePath)}
           </span>
@@ -183,7 +183,7 @@ export function DashboardToolbar({
         {dashboard.mcpId && (
           <span
             title="Über den l8db-MCP von einem KI-Assistenten angelegt. Änderungen werden in beide Richtungen synchronisiert."
-            className="ml-1 rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+            className="ml-1 rounded border border-primary/40 px-1.5 py-0.5 text-2xs font-medium text-primary"
           >
             MCP
           </span>
@@ -314,16 +314,14 @@ export function DashboardToolbar({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-64">
-                    <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">
+                    <DropdownMenuLabel className="text-2xs font-normal text-muted-foreground">
                       Inhalte für diese Seite
                     </DropdownMenuLabel>
                     {(Object.keys(BLOCK_LABEL) as BlockKind[]).map((type) => (
                       <DropdownMenuItem key={type} onSelect={() => onAddBlock(type)}>
                         <div className="grid">
                           <span>{BLOCK_LABEL[type]}</span>
-                          <span className="text-[11px] text-muted-foreground">
-                            {BLOCK_HINT[type]}
-                          </span>
+                          <span className="text-2xs text-muted-foreground">{BLOCK_HINT[type]}</span>
                         </div>
                       </DropdownMenuItem>
                     ))}

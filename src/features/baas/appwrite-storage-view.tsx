@@ -382,7 +382,7 @@ export function AppwriteStorageView({ id }: { id: string }) {
                         {file.key || `${file.folder ?? ""}${file.name}`}
                       </span>
                       {(file.mime_type || formatDate(file.created_at)) && (
-                        <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
+                        <span className="mt-0.5 block truncate text-2xs text-muted-foreground">
                           {[file.mime_type, formatDate(file.created_at)]
                             .filter(Boolean)
                             .join(" · ")}

@@ -161,7 +161,7 @@ export function SupabaseTablesBrowser({
           >
             <ChevronLeft className="size-3.5" />
           </Button>
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             {offset + 1}–{offset + tables.data.tables.length}
           </span>
           <Button

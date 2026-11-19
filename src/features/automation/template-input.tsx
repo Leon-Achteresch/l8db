@@ -137,7 +137,7 @@ export function TemplateInput({
       multiline
         ? "max-h-96 resize-y py-2 leading-relaxed"
         : "h-[calc(2.25rem+var(--ui-density-step))]",
-      mono && "font-mono text-[13px]",
+      mono && "font-mono text-sm",
       className,
     ),
   };
@@ -205,7 +205,7 @@ export function TemplateInput({
               <span className="flex items-baseline justify-between gap-3">
                 <span className="truncate font-mono text-xs text-foreground">{`\${${entry.name}}`}</span>
                 {entry.example && (
-                  <span className="truncate font-mono text-[11px] text-muted-foreground">
+                  <span className="truncate font-mono text-2xs text-muted-foreground">
                     {entry.example}
                   </span>
                 )}

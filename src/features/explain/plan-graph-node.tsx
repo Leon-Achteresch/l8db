@@ -23,7 +23,7 @@ export function PlanGraphNode({ data }: NodeProps<PlanGraphNodeType>) {
         isConnectable={false}
       />
       <div className="absolute inset-0" style={{ background: heat }} />
-      <div className="relative flex h-full flex-col gap-0.5 px-2 py-1.5 text-[11px]">
+      <div className="relative flex h-full flex-col gap-0.5 px-2 py-1.5 text-2xs">
         <div className="flex items-center gap-1.5">
           <span className="truncate font-semibold" title={op.label}>
             {op.label}

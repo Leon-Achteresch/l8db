@@ -31,9 +31,9 @@ export function McpLimitField({
           <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <Icon className="size-3.5" />
           </div>
-          <span className="text-xs font-semibold text-foreground">{label}</span>
+          <span className="text-xs font-medium text-foreground">{label}</span>
         </div>
-        <p className="text-[11px] text-muted-foreground leading-relaxed">{description}</p>
+        <p className="text-2xs text-muted-foreground leading-relaxed">{description}</p>
       </div>
 
       <div className="flex items-center gap-2 pt-1">
@@ -59,7 +59,7 @@ export function McpLimitField({
         ) : null}
       </div>
 
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground font-mono">
+      <div className="flex items-center justify-between text-2xs text-muted-foreground font-mono">
         <span>Min: {min}</span>
         <span>Max: {max}</span>
       </div>

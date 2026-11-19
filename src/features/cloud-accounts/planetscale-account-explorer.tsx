@@ -59,7 +59,7 @@ export function PlanetScaleAccountExplorer({ accountId }: { accountId: string })
     <div className="flex flex-col gap-6">
       <div className="grid gap-4 lg:grid-cols-3">
         <section className="flex flex-col gap-2">
-          <h3 className="text-xs font-medium uppercase text-muted-foreground">Organisationen</h3>
+          <h3 className="text-xs font-medium text-muted-foreground">Organisationen</h3>
           {organizations.isError && (
             <CloudSectionError
               error={organizations.error}
@@ -88,7 +88,7 @@ export function PlanetScaleAccountExplorer({ accountId }: { accountId: string })
           />
         </section>
         <section className="flex flex-col gap-2">
-          <h3 className="text-xs font-medium uppercase text-muted-foreground">Datenbanken</h3>
+          <h3 className="text-xs font-medium text-muted-foreground">Datenbanken</h3>
           {!organization && (
             <p className="text-sm text-muted-foreground">Organisation auswählen.</p>
           )}
@@ -120,7 +120,7 @@ export function PlanetScaleAccountExplorer({ accountId }: { accountId: string })
           />
         </section>
         <section className="flex flex-col gap-2">
-          <h3 className="text-xs font-medium uppercase text-muted-foreground">Branches</h3>
+          <h3 className="text-xs font-medium text-muted-foreground">Branches</h3>
           {!database && <p className="text-sm text-muted-foreground">Datenbank auswählen.</p>}
           {branches.isError && (
             <CloudSectionError error={branches.error} onRetry={() => void branches.refetch()} />

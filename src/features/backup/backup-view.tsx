@@ -89,12 +89,9 @@ export function BackupView() {
         <div ref={setActions} className="ml-auto flex items-center gap-2" />
       </div>
       {(probe.data?.warnings.length ?? 0) > 0 && (
-        <div className="grid gap-1 border-b bg-amber-500/10 px-4 py-2">
+        <div className="grid gap-1 border-b bg-warning/10 px-4 py-2">
           {probe.data?.warnings.map((warning) => (
-            <p
-              key={warning}
-              className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400"
-            >
+            <p key={warning} className="flex items-start gap-2 text-xs text-warning">
               <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
               {warning}
             </p>

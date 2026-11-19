@@ -16,7 +16,7 @@ const ROW_HEIGHT = 32;
 
 function statusClass(execution: ConvexExecution) {
   if (!execution.completed) return "bg-muted-foreground/50";
-  return execution.success ? "bg-emerald-500" : "bg-destructive";
+  return execution.success ? "bg-success" : "bg-destructive";
 }
 
 export function ConvexLogsList({
@@ -51,12 +51,12 @@ export function ConvexLogsList({
               <div
                 key={`group-${row.requestId}`}
                 style={{ height: ROW_HEIGHT }}
-                className="flex items-center gap-2 border-b bg-muted/40 px-3 font-mono text-[11px] text-muted-foreground"
+                className="flex items-center gap-2 border-b bg-muted/40 px-3 font-mono text-2xs text-muted-foreground"
               >
                 <span className="font-semibold text-foreground">Request {row.requestId}</span>
                 <span>{row.executions.length} Ausführungen</span>
                 {failed && (
-                  <Badge variant="destructive" className="h-4 px-1.5 text-[10px]">
+                  <Badge variant="destructive" className="h-4 px-1.5 text-2xs">
                     Fehler
                   </Badge>
                 )}
@@ -84,7 +84,7 @@ export function ConvexLogsList({
                 className={cn("size-2 shrink-0 rounded-full", statusClass(execution))}
                 title={execution.completed ? (execution.success ? "Erfolg" : "Fehler") : "Läuft"}
               />
-              <span className="w-16 shrink-0 text-[10px] text-muted-foreground uppercase">
+              <span className="w-16 shrink-0 text-2xs text-muted-foreground uppercase">
                 {execution.udfType}
               </span>
               <span className="w-56 shrink-0 truncate" title={execution.identifier}>
@@ -94,7 +94,7 @@ export function ConvexLogsList({
                 {formatDuration(execution.executionTimeMs)}
               </span>
               {execution.cached && (
-                <Badge variant="secondary" className="h-4 shrink-0 px-1.5 text-[10px]">
+                <Badge variant="secondary" className="h-4 shrink-0 px-1.5 text-2xs">
                   Cache
                 </Badge>
               )}
@@ -111,7 +111,7 @@ export function ConvexLogsList({
                     : ""}
               </span>
               {lines.length > 1 && (
-                <span className="shrink-0 text-[10px] text-muted-foreground">
+                <span className="shrink-0 text-2xs text-muted-foreground">
                   {lines.length} Zeilen
                 </span>
               )}

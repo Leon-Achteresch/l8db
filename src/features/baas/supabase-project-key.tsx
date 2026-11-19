@@ -132,7 +132,7 @@ export function SupabaseProjectKey({ reference }: { reference: string }) {
       </div>
       {!hasKey.data && !hasKey.isPending && !hasKey.isError && (
         <>
-          <p className="mt-2 text-[11px] text-muted-foreground">
+          <p className="mt-2 text-2xs text-muted-foreground">
             Dafür braucht das Zugangstoken die Rechte API Keys: Read und API Key Secrets: Read.
           </p>
           <form

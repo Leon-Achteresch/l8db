@@ -37,7 +37,7 @@ export function DatagenPreviewTable({ preview }: { preview: DatagenPreview }) {
         </table>
       </div>
       {preview.statement && (
-        <pre className="max-h-24 overflow-auto rounded-md bg-muted/50 p-2 font-mono text-[10px] whitespace-pre-wrap break-all">
+        <pre className="max-h-24 overflow-auto rounded-md bg-muted/50 p-2 font-mono text-2xs whitespace-pre-wrap break-all">
           {preview.statement}
         </pre>
       )}

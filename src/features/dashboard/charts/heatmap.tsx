@@ -26,7 +26,7 @@ export function Heatmap({ rows, shape, options }: ChartProps) {
   const yNames = dimensionLabels(ys);
   return (
     <div className="h-full overflow-auto">
-      <table className="w-full border-separate border-spacing-1 text-[11px]">
+      <table className="w-full border-separate border-spacing-1 text-2xs">
         <thead>
           <tr>
             <th />

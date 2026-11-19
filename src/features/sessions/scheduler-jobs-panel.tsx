@@ -115,23 +115,21 @@ export function SchedulerJobsPanel() {
             <td className="px-3 py-2 font-mono">
               {job.owner ? `${job.owner}.` : ""}
               {job.name}
-              <div className="max-w-md truncate text-[11px] text-muted-foreground">
-                {job.command}
-              </div>
+              <div className="max-w-md truncate text-2xs text-muted-foreground">{job.command}</div>
             </td>
             <td className="px-3 py-2">
               <Badge
                 variant="outline"
-                className={`px-1.5 py-0 text-[10px] ${job.enabled ? "" : "text-muted-foreground"}`}
+                className={`px-1.5 py-0 text-2xs ${job.enabled ? "" : "text-muted-foreground"}`}
               >
                 {job.state}
               </Badge>
             </td>
-            <td className="px-3 py-2 font-mono text-[11px]">{job.schedule || "—"}</td>
+            <td className="px-3 py-2 font-mono text-2xs">{job.schedule || "—"}</td>
             <td className="px-3 py-2">
               {job.last_run ?? "—"}
               {job.last_status ? (
-                <div className="text-[11px] text-muted-foreground">{job.last_status}</div>
+                <div className="text-2xs text-muted-foreground">{job.last_status}</div>
               ) : null}
             </td>
             <td className="px-3 py-2">{job.next_run ?? "—"}</td>

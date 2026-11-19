@@ -17,13 +17,13 @@ const LEVELS = [
     id: "read",
     label: "Nur lesen",
     hint: "Abfragen und Diagramme, keine Änderungen",
-    dot: "bg-emerald-500",
+    dot: "bg-success",
   },
   {
     id: "write",
     label: "Daten ändern",
     hint: "INSERT, UPDATE, DELETE nach deiner Freigabe",
-    dot: "bg-amber-500",
+    dot: "bg-warning",
   },
   {
     id: "ddl",
@@ -36,15 +36,14 @@ const LEVELS = [
 const TONE: Record<AiAccessLevel | "production", string> = {
   locked: "",
   read: "",
-  write:
-    "bg-amber-500/12 text-amber-900 hover:bg-amber-500/20 data-[state=open]:bg-amber-500/20 dark:text-amber-200",
+  write: "bg-warning/12 text-warning hover:bg-warning/20 data-[state=open]:bg-warning/20",
   ddl: "bg-red-500/10 text-red-900 hover:bg-red-500/15 data-[state=open]:bg-red-500/15 dark:text-red-200",
   production:
     "bg-red-500/10 text-red-900 hover:bg-red-500/15 data-[state=open]:bg-red-500/15 dark:text-red-200",
 };
 
 const trigger =
-  "flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] text-foreground/80 outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60 data-[state=open]:bg-muted";
+  "flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs text-foreground/80 outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60 data-[state=open]:bg-muted";
 
 export function AiAccessStrip({
   level,
@@ -86,7 +85,7 @@ export function AiAccessStrip({
             <Database className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate">{connectionLabel}</span>
             {production && (
-              <span className="shrink-0 rounded-full bg-red-500/15 px-1.5 text-[10px] font-semibold text-red-700 dark:text-red-300">
+              <span className="shrink-0 rounded-full bg-red-500/15 px-1.5 text-2xs font-medium text-red-700 dark:text-red-300">
                 Produktion
               </span>
             )}
@@ -124,7 +123,7 @@ export function AiAccessStrip({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="start" sideOffset={6} className="w-72 rounded-2xl">
-            <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">
+            <DropdownMenuLabel className="text-2xs font-normal text-muted-foreground">
               Was darf die KI in diesem Gespräch?
             </DropdownMenuLabel>
             {LEVELS.map((entry) => (
@@ -136,12 +135,12 @@ export function AiAccessStrip({
                 <span className={cn("mt-1 size-2 shrink-0 rounded-full", entry.dot)} />
                 <span className="min-w-0 flex-1">
                   <span className="block text-xs font-medium">{entry.label}</span>
-                  <span className="block text-[11px] text-muted-foreground">{entry.hint}</span>
+                  <span className="block text-2xs text-muted-foreground">{entry.hint}</span>
                 </span>
                 {entry.id === level && <Check className="mt-0.5 size-3.5 shrink-0" />}
               </DropdownMenuItem>
             ))}
-            <p className="px-2 pt-1 pb-1.5 text-[10px] leading-relaxed text-muted-foreground">
+            <p className="px-2 pt-1 pb-1.5 text-2xs leading-relaxed text-muted-foreground">
               {production
                 ? "Produktion: Schreibrechte erst nach doppelter Bestätigung, nur für dieses Gespräch."
                 : "Verbindungsschutz, Produktionssperren und Maskierung gelten immer."}

@@ -83,9 +83,7 @@ export function SettingsBackgroundSection() {
               <Icon
                 aria-hidden
                 className={
-                  data?.installed
-                    ? "size-3.5 text-emerald-600 dark:text-emerald-400"
-                    : "size-3.5 text-muted-foreground"
+                  data?.installed ? "size-3.5 text-success" : "size-3.5 text-muted-foreground"
                 }
               />
               {label}
@@ -124,14 +122,14 @@ export function SettingsBackgroundSection() {
             {data.location && (
               <p className="flex min-w-0 gap-2">
                 <span className="shrink-0 text-muted-foreground">Ort</span>
-                <span className="truncate font-mono text-[11px]" title={data.location}>
+                <span className="truncate font-mono text-2xs" title={data.location}>
                   {data.location}
                 </span>
               </p>
             )}
             <p className="flex min-w-0 gap-2">
               <span className="shrink-0 text-muted-foreground">Programm</span>
-              <span className="truncate font-mono text-[11px]" title={data.binary}>
+              <span className="truncate font-mono text-2xs" title={data.binary}>
                 {data.binary}
               </span>
             </p>

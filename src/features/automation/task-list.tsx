@@ -266,7 +266,7 @@ export function TaskList() {
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Tasks durchsuchen …"
             aria-label="Tasks durchsuchen"
-            className="text-[13px]"
+            className="text-sm"
           />
           {search && (
             <InputGroupAddon align="inline-end">
@@ -325,7 +325,7 @@ export function TaskList() {
                 setTagFilter(null);
                 setStatusFilter("all");
               }}
-              className="ml-auto rounded-sm px-1 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+              className="ml-auto rounded-sm px-1 text-2xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
             >
               Zurücksetzen
             </button>

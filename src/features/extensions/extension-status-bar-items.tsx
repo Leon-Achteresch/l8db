@@ -21,7 +21,7 @@ export function ExtensionStatusBarItems({ side }: { side: "left" | "right" }) {
             "truncate rounded px-1 hover:text-foreground",
             item.update.command && "cursor-pointer",
             item.update.background === "error" && "text-destructive",
-            item.update.background === "warning" && "text-amber-500",
+            item.update.background === "warning" && "text-warning",
             item.update.background === "info" && "text-sky-500",
           )}
         >

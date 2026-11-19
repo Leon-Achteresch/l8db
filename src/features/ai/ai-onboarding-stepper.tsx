@@ -23,7 +23,7 @@ export function AiOnboardingStepper({ steps, current }: Props) {
             <span className="flex items-center gap-2">
               <span
                 className={cn(
-                  "relative grid size-6 shrink-0 place-items-center rounded-full border text-[11px] font-medium tabular-nums transition-[background-color,border-color,color] duration-300 ease-smooth-out",
+                  "relative grid size-6 shrink-0 place-items-center rounded-full border text-2xs font-medium tabular-nums transition-[background-color,border-color,color] duration-300 ease-smooth-out",
                   done && "border-primary bg-primary text-primary-foreground",
                   active && "border-primary text-primary",
                   !done && !active && "border-border text-muted-foreground",

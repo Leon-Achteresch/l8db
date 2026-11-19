@@ -5,8 +5,8 @@ import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility"
 import { cn } from "@/lib/utils";
 
 const DOT = {
-  ok: "bg-emerald-500",
-  warn: "bg-amber-500",
+  ok: "bg-success",
+  warn: "bg-warning",
   error: "bg-red-500",
 } as const;
 
@@ -15,7 +15,7 @@ export function DriverFindings({ diagnosis }: { diagnosis: DriverDiagnosis }) {
   return (
     <div ref={badge.ref} className="space-y-3">
       <div className="space-y-1.5">
-        <p className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
+        <p className="flex items-center gap-2 text-2xs font-medium text-muted-foreground">
           Analyse
           {badge.isNew && <NewBadge />}
         </p>
@@ -30,7 +30,7 @@ export function DriverFindings({ diagnosis }: { diagnosis: DriverDiagnosis }) {
                 <p className="text-xs font-medium">{finding.title}</p>
                 {finding.detail && (
                   <p
-                    className="truncate font-mono text-[11px] text-muted-foreground"
+                    className="truncate font-mono text-2xs text-muted-foreground"
                     title={finding.detail}
                   >
                     {finding.detail}
@@ -43,7 +43,7 @@ export function DriverFindings({ diagnosis }: { diagnosis: DriverDiagnosis }) {
       </div>
       {(diagnosis.steps.length > 0 || diagnosis.manual) && (
         <div className="space-y-1.5">
-          <p className="text-[11px] font-medium text-muted-foreground">Lösung</p>
+          <p className="text-2xs font-medium text-muted-foreground">Lösung</p>
           <ol className="space-y-1">
             {diagnosis.steps.map((step) => (
               <li key={step} className="flex items-center gap-2 text-xs">
@@ -53,7 +53,7 @@ export function DriverFindings({ diagnosis }: { diagnosis: DriverDiagnosis }) {
             ))}
           </ol>
           {diagnosis.manual && (
-            <p className="rounded-lg bg-muted/40 p-2 font-mono text-[11px] break-words select-text">
+            <p className="rounded-lg bg-muted/40 p-2 font-mono text-2xs break-words select-text">
               {diagnosis.manual}
             </p>
           )}

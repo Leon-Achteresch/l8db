@@ -24,7 +24,7 @@ export function AiResultTable({ table }: { table: AiTable }) {
                 key={column}
                 scope="col"
                 className={cn(
-                  "whitespace-nowrap px-3.5 py-2 text-[11px] font-medium text-muted-foreground",
+                  "whitespace-nowrap px-3.5 py-2 text-2xs font-medium text-muted-foreground",
                   numeric.has(column) && "text-right",
                 )}
               >

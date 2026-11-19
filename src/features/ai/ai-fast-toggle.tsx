@@ -29,9 +29,7 @@ export function AiFastToggle({ profile, models, disabled }: Props) {
       onClick={() => saveProfile({ ...profile, fast: !fast })}
       className={cn(
         "relative flex h-8 shrink-0 items-center gap-1 rounded-full px-2 text-xs outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
-        fast
-          ? "text-amber-500 hover:text-amber-500"
-          : "text-muted-foreground hover:text-foreground",
+        fast ? "text-warning hover:text-warning" : "text-muted-foreground hover:text-foreground",
       )}
     >
       <Zap className={cn("size-3.5", fast && "fill-current")} />

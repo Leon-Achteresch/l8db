@@ -78,10 +78,8 @@ export function DmlPreviewDialog({
           )}
 
           {derivation?.status === "unavailable" && (
-            <div className="space-y-1 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm">
-              <p className="font-medium text-amber-700 dark:text-amber-400">
-                Vorschau nicht möglich
-              </p>
+            <div className="space-y-1 rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm">
+              <p className="font-medium text-warning">Vorschau nicht möglich</p>
               <p className="text-muted-foreground">{derivation.reason}</p>
               <p className="text-xs text-muted-foreground">
                 Die Anweisung kann trotzdem nach Bestätigung ausgeführt werden.
@@ -117,7 +115,7 @@ export function DmlPreviewDialog({
           )}
 
           {overThreshold && (
-            <div className="flex items-start gap-2 rounded-md border border-amber-500/60 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-700 dark:text-amber-400">
+            <div className="flex items-start gap-2 rounded-md border border-warning/60 bg-warning/10 px-3 py-2 text-sm font-medium text-warning">
               <AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
               Mehr als {NUMBER.format(warnThreshold)} Zeilen betroffen.
             </div>
@@ -125,9 +123,7 @@ export function DmlPreviewDialog({
 
           {plan?.note && <p className="text-xs text-muted-foreground">{plan.note}</p>}
 
-          {state?.note && (
-            <p className="text-xs font-medium text-amber-700 dark:text-amber-400">{state.note}</p>
-          )}
+          {state?.note && <p className="text-xs font-medium text-warning">{state.note}</p>}
 
           {plan?.assignments
             .filter((assignment) => !assignment.previewed)

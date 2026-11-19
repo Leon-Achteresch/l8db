@@ -99,10 +99,10 @@ export function DataTableDraftRow({ columns, fields, disabled, onChange }: DataT
                       },
                     })
                   }
-                  className="h-8 w-full min-w-0 rounded border border-input bg-background px-1.5 font-mono text-[13px] outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
+                  className="h-8 w-full min-w-0 rounded border border-input bg-background px-1.5 font-mono text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50"
                 />
                 {field.isPrimaryKey && (
-                  <span className="text-[10px] font-semibold text-primary">PK</span>
+                  <span className="text-2xs font-medium text-primary">PK</span>
                 )}
               </div>
             ) : (

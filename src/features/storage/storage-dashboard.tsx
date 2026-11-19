@@ -65,7 +65,7 @@ export function StorageDashboard({ connection }: { connection: SavedConnection }
             <div className="mb-3 flex items-center gap-2">
               <span className="eyebrow">Objektspeicher</span>
               <span className="text-muted-foreground">/</span>
-              <span className="text-[11px] text-muted-foreground">{provider.name}</span>
+              <span className="text-2xs text-muted-foreground">{provider.name}</span>
             </div>
             <h1 className="text-3xl font-semibold tracking-[-0.045em]">{connection.name}</h1>
             <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -159,7 +159,7 @@ export function StorageDashboard({ connection }: { connection: SavedConnection }
                       <span className="min-w-0 flex-1 truncate font-mono text-xs">
                         {bucket.name}
                       </span>
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-2xs text-muted-foreground">
                         {formatDate(bucket.creation_date)}
                       </span>
                       <ArrowRight className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
@@ -201,7 +201,7 @@ export function StorageDashboard({ connection }: { connection: SavedConnection }
                   <button
                     key={sql}
                     type="button"
-                    className="truncate rounded-md border bg-card px-2.5 py-1.5 text-left font-mono text-[11px] hover:bg-muted"
+                    className="truncate rounded-md border bg-card px-2.5 py-1.5 text-left font-mono text-2xs hover:bg-muted"
                     onClick={() => newQuery(sql)}
                   >
                     {sql}

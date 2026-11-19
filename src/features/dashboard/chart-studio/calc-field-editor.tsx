@@ -161,7 +161,7 @@ export function CalcFieldEditor({
           <p className="text-sm font-semibold">
             {field ? "Formel bearbeiten" : "Neues berechnetes Feld"}
           </p>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Rechne mit Feldern, wie in einer Tabellenkalkulation
           </p>
         </div>
@@ -209,7 +209,7 @@ export function CalcFieldEditor({
           className="w-full resize-y rounded-lg border bg-background px-3 py-2 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         {missing.length > 0 && (
-          <p className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
+          <p className="flex items-center gap-1 text-2xs text-warning">
             <CircleAlertIcon className="size-3" /> Ersetze {missing.map((m) => `[${m}]`).join(", ")}{" "}
             durch ein Feld: markieren, dann unten klicken.
           </p>
@@ -220,7 +220,7 @@ export function CalcFieldEditor({
             value={fieldSearch}
             onChange={(e) => setFieldSearch(e.target.value)}
             placeholder="Feld einsetzen…"
-            className="mb-1.5 h-7 w-full rounded-md bg-background px-2 text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="mb-1.5 h-7 w-full rounded-md bg-background px-2 text-2xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
           <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
             {foundFields.map((c) => (
@@ -228,7 +228,7 @@ export function CalcFieldEditor({
                 key={c.ref}
                 type="button"
                 onClick={() => insert(`[${c.label}]`)}
-                className="rounded-md border bg-background px-1.5 py-0.5 text-[11px] hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-ring"
+                className="rounded-md border bg-background px-1.5 py-0.5 text-2xs hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-ring"
               >
                 {c.label}
               </button>
@@ -238,7 +238,7 @@ export function CalcFieldEditor({
                 key={v.id}
                 type="button"
                 onClick={() => insert(variableToken(v.name))}
-                className="rounded-md border border-primary/30 bg-primary/5 px-1.5 py-0.5 text-[11px] text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-ring"
+                className="rounded-md border border-primary/30 bg-primary/5 px-1.5 py-0.5 text-2xs text-primary hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-ring"
               >
                 Filter: {v.label}
               </button>
@@ -266,18 +266,18 @@ export function CalcFieldEditor({
             onCheckedChange={(v) => setAggregate(v)}
             aria-label="Fasst Zeilen zusammen"
           />
-          <span className="text-[11px] leading-snug">
+          <span className="text-2xs leading-snug">
             <span className="block font-medium">Fasst Zeilen zusammen</span>
             <span className="text-muted-foreground">sum, avg, count … in der Formel</span>
           </span>
         </div>
       </div>
       <div className="space-y-1.5 rounded-lg bg-muted/40 p-2.5" aria-live="polite">
-        <p className="text-[11px] font-medium text-muted-foreground">Vorschau mit echten Daten</p>
+        <p className="text-2xs font-medium text-muted-foreground">Vorschau mit echten Daten</p>
         {!sampleSql ? (
-          <p className="text-[11px] text-muted-foreground">Gib eine Formel ein.</p>
+          <p className="text-2xs text-muted-foreground">Gib eine Formel ein.</p>
         ) : sample.isError ? (
-          <p role="alert" className="text-[11px] text-destructive">
+          <p role="alert" className="text-2xs text-destructive">
             {queryErrorMessage(sample.error)}
           </p>
         ) : sample.isFetching && values.length === 0 ? (
@@ -287,7 +287,7 @@ export function CalcFieldEditor({
             {values.map((value, index) => (
               <span
                 key={`${index}:${String(value)}`}
-                className="rounded-md bg-background px-1.5 py-0.5 font-mono text-[11px] tabular-nums"
+                className="rounded-md bg-background px-1.5 py-0.5 font-mono text-2xs tabular-nums"
               >
                 {value === null || value === undefined ? "leer" : toLabel(value)}
               </span>

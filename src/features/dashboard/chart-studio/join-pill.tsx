@@ -35,7 +35,7 @@ export function JoinPill({
           style={style}
           aria-label={`Verknüpfung ${parent.table} mit ${node.table} bearbeiten`}
           className={cn(
-            "absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full border bg-background px-2 py-1 text-[10px] font-medium shadow-sm transition-[transform,box-shadow] hover:scale-105 hover:shadow-md focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:border-primary data-[state=open]:text-primary",
+            "absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full border bg-background px-2 py-1 text-2xs font-medium shadow-sm transition-[transform,box-shadow] hover:scale-105 hover:shadow-md focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:border-primary data-[state=open]:text-primary",
           )}
         >
           <JoinVenn kind={kind} className="text-primary" />

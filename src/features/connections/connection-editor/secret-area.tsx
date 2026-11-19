@@ -26,7 +26,7 @@ export function ConnectionSecretArea({
         onChange={(event) => onChange(event.target.value)}
         spellCheck={false}
         autoComplete="off"
-        className="max-h-40 min-h-20 rounded-xl bg-background/70 font-mono text-[11px]"
+        className="max-h-40 min-h-20 rounded-xl bg-background/70 font-mono text-2xs"
       />
     </div>
   );

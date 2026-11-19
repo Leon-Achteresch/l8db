@@ -39,8 +39,8 @@ interface Props {
 
 const PILL = {
   running: "bg-primary/10 text-primary",
-  success: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  warning: "bg-amber-500/12 text-amber-800 dark:text-amber-300",
+  success: "bg-success/10 text-success",
+  warning: "bg-warning/12 text-warning",
   danger: "bg-destructive/10 text-destructive",
   neutral: "bg-muted text-muted-foreground",
 } as const;
@@ -136,7 +136,7 @@ export function RunDetail({ runId }: Props) {
           <div className="flex min-w-0 flex-1 basis-56 flex-col gap-1.5">
             <span
               className={cn(
-                "inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                "inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-2xs font-medium",
                 PILL[tone],
               )}
             >
@@ -212,8 +212,8 @@ export function RunDetail({ runId }: Props) {
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           {meta.map((entry) => (
             <div key={entry.label} className="flex flex-col gap-0.5">
-              <dt className="text-[11px] text-muted-foreground">{entry.label}</dt>
-              <dd className="text-[13px] tabular-nums">{entry.value}</dd>
+              <dt className="text-2xs text-muted-foreground">{entry.label}</dt>
+              <dd className="text-sm tabular-nums">{entry.value}</dd>
             </div>
           ))}
         </dl>
@@ -227,8 +227,8 @@ export function RunDetail({ runId }: Props) {
             role="alert"
             className="rounded-xl border border-destructive/25 bg-destructive/6 px-3.5 py-2.5"
           >
-            <p className="text-xs font-semibold text-destructive">Fehler</p>
-            <p className="mt-0.5 text-[13px] break-words whitespace-pre-wrap text-foreground/90">
+            <p className="text-xs font-medium text-destructive">Fehler</p>
+            <p className="mt-0.5 text-sm break-words whitespace-pre-wrap text-foreground/90">
               {summary.error}
             </p>
           </div>
@@ -236,7 +236,7 @@ export function RunDetail({ runId }: Props) {
       </header>
 
       <section aria-labelledby="run-timeline-title" className="flex flex-col gap-2">
-        <h3 id="run-timeline-title" className="text-[13px] font-semibold">
+        <h3 id="run-timeline-title" className="text-sm font-semibold">
           Zeitleiste
         </h3>
         <RunTimeline
@@ -256,7 +256,7 @@ export function RunDetail({ runId }: Props) {
           <TabsTrigger value="outputs" className="text-xs">
             Ausgaben
             {(data?.outputs.length ?? summary.outputs) > 0 && (
-              <span className="text-[10px] tabular-nums text-muted-foreground">
+              <span className="text-2xs tabular-nums text-muted-foreground">
                 {data?.outputs.length ?? summary.outputs}
               </span>
             )}
@@ -291,7 +291,7 @@ export function RunDetail({ runId }: Props) {
           )}
         </TabsContent>
         <TabsContent value="definition">
-          <pre className="max-h-96 overflow-auto rounded-xl border bg-muted/30 p-3 font-mono text-[11px] leading-5">
+          <pre className="max-h-96 overflow-auto rounded-xl border bg-muted/30 p-3 font-mono text-2xs leading-5">
             {data ? JSON.stringify(data.definition, null, 2) : "Wird geladen …"}
           </pre>
         </TabsContent>

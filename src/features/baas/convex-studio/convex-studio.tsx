@@ -12,10 +12,10 @@ import { dataKey, tableScope } from "./data/convex-data-utils";
 
 const route = getRouteApi("/baas");
 const ENVIRONMENTS: Record<string, { label: string; className: string }> = {
-  prod: { label: "Produktion", className: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
+  prod: { label: "Produktion", className: "bg-warning/15 text-warning" },
   dev: {
     label: "Entwicklung",
-    className: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+    className: "bg-success/15 text-success",
   },
   preview: { label: "Preview", className: "bg-sky-500/15 text-sky-600 dark:text-sky-400" },
 };
@@ -67,7 +67,7 @@ export function ConvexStudio({
           {deployment.title}
           {environment ? (
             <span
-              className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${environment.className}`}
+              className={`ml-1.5 rounded-full px-1.5 py-0.5 text-2xs font-medium ${environment.className}`}
             >
               {environment.label}
             </span>

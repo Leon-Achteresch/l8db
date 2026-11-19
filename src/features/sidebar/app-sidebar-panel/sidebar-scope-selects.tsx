@@ -136,7 +136,7 @@ export function SidebarScopeSelects({
               <SelectContent searchable collisionPadding={{ top: 48 }}>
                 {siblings.length > 0 && (
                   <SelectGroup>
-                    <SelectLabel className="flex items-center gap-1.5 text-[10px]">
+                    <SelectLabel className="flex items-center gap-1.5 text-2xs">
                       <KeyRoundIcon className="size-3" />
                       Mit eigenem Login
                     </SelectLabel>
@@ -148,7 +148,7 @@ export function SidebarScopeSelects({
                             {connectionUser(connection) || connection.name}
                           </span>
                           {connectionUser(connection) && (
-                            <span className="truncate text-[10px] text-muted-foreground">
+                            <span className="truncate text-2xs text-muted-foreground">
                               {connection.name}
                             </span>
                           )}

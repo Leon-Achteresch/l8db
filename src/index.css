@@ -86,6 +86,10 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -100,6 +104,13 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --text-2xs: 0.6875rem;
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.06), 0 2px 4px -2px rgb(0 0 0 / 0.06);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.06), 0 4px 6px -4px rgb(0 0 0 / 0.06);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.06), 0 8px 10px -6px rgb(0 0 0 / 0.06);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.16);
   --radius-sm: calc(var(--radius) * 0.5);
   --radius-md: calc(var(--radius) * 0.75);
   --radius-lg: var(--radius);
@@ -144,7 +155,7 @@
 :root {
   --app-header-height: 2.875rem;
   --db-hue: 248;
-  --db-chroma: 0.12;
+  --db-chroma: 0.045;
   --db-glow: 0.16;
   --db-tint: 1;
   --discovery-deep: oklch(0.24 0.07 var(--db-hue));
@@ -166,7 +177,11 @@
   --accent: oklch(0.945 calc(0.01 * var(--db-tint)) var(--db-hue));
   --accent-foreground: oklch(0.24 calc(0.014 * var(--db-tint)) var(--db-hue));
   --destructive: oklch(0.56 0.2 28);
-  --border: oklch(0.89 calc(0.008 * var(--db-tint)) var(--db-hue));
+  --warning: oklch(0.54 0.12 60);
+  --warning-foreground: oklch(0.99 0.01 80);
+  --success: oklch(0.52 0.1 160);
+  --success-foreground: oklch(0.99 0.01 160);
+  --border: oklch(0.92 calc(0.008 * var(--db-tint)) var(--db-hue));
   --input: oklch(0.91 calc(0.008 * var(--db-tint)) var(--db-hue));
   --ring: oklch(0.5 0.06 var(--db-hue));
   --chart-1: oklch(0.62 0.14 var(--db-hue));
@@ -181,12 +196,12 @@
   --sidebar-primary-foreground: oklch(0.99 calc(0.01 * var(--db-tint)) var(--db-hue));
   --sidebar-accent: oklch(0.925 calc(0.008 * var(--db-tint)) var(--db-hue));
   --sidebar-accent-foreground: oklch(0.22 calc(0.012 * var(--db-tint)) var(--db-hue));
-  --sidebar-border: oklch(0.89 calc(0.006 * var(--db-tint)) var(--db-hue));
+  --sidebar-border: oklch(0.92 calc(0.006 * var(--db-tint)) var(--db-hue));
   --sidebar-ring: oklch(0.58 0.1 var(--db-hue));
   --menu: oklch(0.998 calc(0.002 * var(--db-tint)) var(--db-hue));
   --menu-highlight: oklch(0.56 0.145 var(--db-hue));
-  --shadow-menu: 0 0 0 0.5px rgb(17 24 39 / 0.14), 0 12px 32px -8px rgb(17 24 39 / 0.22),
-    0 3px 8px rgb(17 24 39 / 0.07);
+  --shadow-menu: 0 0 0 0.5px rgb(17 24 39 / 0.12), 0 12px 32px -8px rgb(17 24 39 / 0.15),
+    0 3px 8px rgb(17 24 39 / 0.05);
 }
 
 .dark {
@@ -205,7 +220,11 @@
   --accent: oklch(0.28 calc(0.014 * var(--db-tint)) var(--db-hue));
   --accent-foreground: oklch(0.96 calc(0.01 * var(--db-tint)) var(--db-hue));
   --destructive: oklch(0.72 0.16 24);
-  --border: oklch(1 0 0 / 12%);
+  --warning: oklch(0.8 0.1 82);
+  --warning-foreground: oklch(0.2 0.03 82);
+  --success: oklch(0.78 0.1 162);
+  --success-foreground: oklch(0.2 0.03 162);
+  --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 16%);
   --ring: oklch(0.74 0.1 var(--db-hue));
   --chart-1: oklch(0.76 0.12 var(--db-hue));
@@ -219,7 +238,7 @@
   --sidebar-primary-foreground: oklch(0.18 calc(0.03 * var(--db-tint)) var(--db-hue));
   --sidebar-accent: oklch(0.27 calc(0.014 * var(--db-tint)) var(--db-hue));
   --sidebar-accent-foreground: oklch(0.96 calc(0.01 * var(--db-tint)) var(--db-hue));
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-border: oklch(1 0 0 / 7%);
   --sidebar-ring: oklch(0.7 0.08 var(--db-hue));
   --menu: oklch(0.25 calc(0.009 * var(--db-tint)) var(--db-hue));
   --menu-highlight: oklch(0.6 0.14 var(--db-hue));
@@ -1001,24 +1020,8 @@ body[data-onboarding-active]
   font-size: 0.5625rem;
 }
 
-:root[data-ui-scale] .text-\[10px\] {
-  font-size: 0.625rem;
-}
-
 :root[data-ui-scale] .text-\[11px\] {
   font-size: 0.6875rem;
-}
-
-:root[data-ui-scale] .text-\[12px\] {
-  font-size: 0.75rem;
-}
-
-:root[data-ui-scale] .text-\[13px\] {
-  font-size: 0.8125rem;
-}
-
-:root[data-ui-scale] .text-\[15px\] {
-  font-size: 0.9375rem;
 }
 
 :root:is([data-ui-density="compact"], [data-ui-density="spacious"]) [data-slot="sidebar-menu-sub-button"] {

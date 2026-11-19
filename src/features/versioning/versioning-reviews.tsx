@@ -106,7 +106,7 @@ export function VersioningReviews({ workspace }: { workspace: VersioningWorkspac
         </p>
       )}
       {info.data && !remote && (
-        <p className="rounded-xl bg-muted/35 p-4 text-[11px] leading-relaxed text-muted-foreground">
+        <p className="rounded-xl bg-muted/35 p-4 text-2xs leading-relaxed text-muted-foreground">
           {info.data.problem ??
             "Das Repository hat keinen Remote „origin“ auf GitHub, GitLab, Azure DevOps oder Gitea."}
         </p>

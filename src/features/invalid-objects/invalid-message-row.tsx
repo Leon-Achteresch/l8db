@@ -33,7 +33,7 @@ export function InvalidMessageRow({
         <Icon
           aria-label={warning ? "Warnung" : "Fehler"}
           className={
-            warning ? "size-3.5 shrink-0 text-amber-500" : "size-3.5 shrink-0 text-destructive"
+            warning ? "size-3.5 shrink-0 text-warning" : "size-3.5 shrink-0 text-destructive"
           }
         />
         {source && <span className="shrink-0 text-muted-foreground">{source}</span>}

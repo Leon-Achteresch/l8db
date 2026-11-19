@@ -68,7 +68,7 @@ export function SnapshotCreateDialog({
               options={choices.map((entry) => ({ value: entry.name, label: entry.name }))}
             />
             {masked && (
-              <span className="block text-amber-700 dark:text-amber-300">
+              <span className="block text-warning">
                 Maskierte Datenbanken werden nicht im Klartext gesichert. Ein anonymisierter Branch
                 ist der sichere Weg.
               </span>

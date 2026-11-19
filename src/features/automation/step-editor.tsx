@@ -47,7 +47,7 @@ export function StepEditor({ entry, onChange, onDuplicate, onRemove, onMove, onC
           <Icon className="size-4" />
         </span>
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+          <span className="flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
             <span className="tabular-nums">Schritt {number}</span>
             <span aria-hidden>·</span>
             <span className="truncate">{catalog.label}</span>
@@ -57,11 +57,11 @@ export function StepEditor({ entry, onChange, onDuplicate, onRemove, onMove, onC
             onChange={(event) => onChange({ ...step, name: event.target.value })}
             placeholder={catalog.label}
             aria-label="Name des Schritts"
-            className="-mx-1 min-w-0 text-ellipsis rounded-md bg-transparent px-1 text-[15px] font-semibold tracking-tight outline-none placeholder:text-muted-foreground/60 hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="-mx-1 min-w-0 text-ellipsis rounded-md bg-transparent px-1 text-sm font-semibold tracking-tight outline-none placeholder:text-muted-foreground/60 hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring/50"
           />
         </div>
         {risky && (
-          <span className="hidden shrink-0 items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 @xl/step:inline-flex dark:text-amber-400">
+          <span className="hidden shrink-0 items-center gap-1 rounded-md bg-warning/10 px-2 py-1 text-2xs font-medium text-warning @xl/step:inline-flex">
             <TriangleAlertIcon className="size-3" aria-hidden />
             Verändert Daten/Dateien
           </span>
@@ -133,7 +133,7 @@ export function StepEditor({ entry, onChange, onDuplicate, onRemove, onMove, onC
           className="mx-auto flex max-w-3xl flex-col gap-8 px-5 pt-5 pb-16 animate-in duration-150 fade-in-0"
         >
           {risky && (
-            <p className="flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-pretty text-amber-800 @xl/step:hidden dark:text-amber-300">
+            <p className="flex items-start gap-2 rounded-lg bg-warning/10 px-3 py-2 text-xs text-pretty text-warning @xl/step:hidden">
               <TriangleAlertIcon className="mt-px size-3.5 shrink-0" aria-hidden />
               Verändert Daten/Dateien
             </p>

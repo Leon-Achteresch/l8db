@@ -62,7 +62,7 @@ export function SchemaStrip({ connectionId, schema }: { connectionId: string; sc
             >
               {entry.name}
             </span>
-            <span className="truncate text-[10px] tabular-nums text-muted-foreground">
+            <span className="truncate text-2xs tabular-nums text-muted-foreground">
               {[
                 entry.bytes != null ? formatBytes(entry.bytes) : null,
                 entry.tables != null

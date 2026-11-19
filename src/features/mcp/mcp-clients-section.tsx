@@ -25,7 +25,7 @@ export function McpClientsSection({
             KI-Assistenten & Editoren
           </h2>
           {isInitialSetup ? (
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-2xs font-medium text-primary">
               Empfohlener Start
             </span>
           ) : null}

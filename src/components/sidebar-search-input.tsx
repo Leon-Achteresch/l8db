@@ -137,7 +137,7 @@ export function SidebarSearchInput({
         </div>
       ) : null}
       {regexError ? (
-        <p className="absolute left-0 right-0 top-full mt-0.5 truncate text-[11px] text-destructive">
+        <p className="absolute left-0 right-0 top-full mt-0.5 truncate text-2xs text-destructive">
           {describeRegexError(regexError)}
         </p>
       ) : null}

@@ -36,7 +36,7 @@ export function JsonValue({ row, query, readOnly, onToggleBoolean, onOpenUrl, on
           {row.childCount > 0 && "…"}
           {close}
         </span>
-        <span className="shrink-0 rounded-full bg-muted px-1.5 text-[10px] font-medium text-muted-foreground tabular-nums">
+        <span className="shrink-0 rounded-full bg-muted px-1.5 text-2xs font-medium text-muted-foreground tabular-nums">
           {row.childCount}{" "}
           {row.kind === "object" ? "Schlüssel" : row.childCount === 1 ? "Element" : "Elemente"}
         </span>
@@ -57,15 +57,15 @@ export function JsonValue({ row, query, readOnly, onToggleBoolean, onOpenUrl, on
           onToggleBoolean();
         }}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-md font-medium text-amber-600 dark:text-amber-300",
-          !readOnly && "hover:bg-amber-500/10 px-1 -mx-1",
+          "inline-flex items-center gap-1.5 rounded-md font-medium text-warning",
+          !readOnly && "hover:bg-warning/10 px-1 -mx-1",
         )}
         title={readOnly ? undefined : "Klicken zum Umschalten"}
       >
         <span
           className={cn(
             "relative inline-flex h-3 w-5 rounded-full transition-colors",
-            row.value ? "bg-amber-500" : "bg-muted-foreground/30",
+            row.value ? "bg-warning" : "bg-muted-foreground/30",
           )}
         >
           <span
@@ -104,12 +104,12 @@ export function JsonValue({ row, query, readOnly, onToggleBoolean, onOpenUrl, on
         />
       )}
       <span
-        className="truncate text-emerald-700 dark:text-emerald-300"
+        className="truncate text-success"
         title={(text ?? "").length > 60 ? (text ?? "") : undefined}
       >
-        <span className="text-emerald-700/50 dark:text-emerald-300/50">"</span>
+        <span className="text-success/50">"</span>
         <JsonHighlight text={shown} query={query} />
-        <span className="text-emerald-700/50 dark:text-emerald-300/50">"</span>
+        <span className="text-success/50">"</span>
       </span>
       {hint === "url" && (
         <button
@@ -128,7 +128,7 @@ export function JsonValue({ row, query, readOnly, onToggleBoolean, onOpenUrl, on
       {hint === "uuid" && <FingerprintIcon className="size-3 shrink-0 text-muted-foreground" />}
       {hint === "date" && (
         <span
-          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 text-[10px] text-muted-foreground"
+          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 text-2xs text-muted-foreground"
           title={new Date(text ?? "").toString()}
         >
           <CalendarIcon className="size-2.5" />
@@ -143,7 +143,7 @@ export function JsonValue({ row, query, readOnly, onToggleBoolean, onOpenUrl, on
             event.stopPropagation();
             onUnpack();
           }}
-          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-500/12 px-1.5 text-[10px] font-medium text-violet-600 enabled:hover:bg-violet-500/20 dark:text-violet-300"
+          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-500/12 px-1.5 text-2xs font-medium text-violet-600 enabled:hover:bg-violet-500/20 dark:text-violet-300"
           title={readOnly ? "Enthält eingebettetes JSON" : "Eingebettetes JSON entpacken"}
         >
           <PackageOpenIcon className="size-2.5" />

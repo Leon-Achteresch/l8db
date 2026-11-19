@@ -17,7 +17,7 @@ export function Card({
       style={tone ? { borderLeft: `3px solid ${toneColor(tone)}` } : undefined}
     >
       {title !== undefined && (
-        <h3 className="mb-2 truncate text-xs font-semibold text-foreground/90">{title}</h3>
+        <h3 className="mb-2 truncate text-xs font-medium text-foreground/90">{title}</h3>
       )}
       {children}
     </section>

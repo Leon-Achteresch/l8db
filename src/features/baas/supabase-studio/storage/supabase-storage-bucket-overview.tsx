@@ -45,7 +45,7 @@ export function SupabaseStorageBucketOverview({
                 <FolderOpen className="size-5" />
               </span>
               <span
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${bucket.public ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium ${bucket.public ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}
               >
                 {bucket.public ? <Globe2 className="size-3" /> : <Lock className="size-3" />}
                 {bucket.public ? "Öffentlich" : "Privat"}
@@ -53,11 +53,11 @@ export function SupabaseStorageBucketOverview({
             </span>
             <span className="min-w-0">
               <span className="block truncate text-sm font-semibold">{bucket.name}</span>
-              <span className="mt-0.5 block text-[11px] text-muted-foreground">
+              <span className="mt-0.5 block text-2xs text-muted-foreground">
                 Erstellt {formatDate(bucket.created_at)}
               </span>
             </span>
-            <span className="mt-auto grid w-full grid-cols-2 gap-2 border-t pt-3 text-[11px]">
+            <span className="mt-auto grid w-full grid-cols-2 gap-2 border-t pt-3 text-2xs">
               <span className="min-w-0">
                 <span className="block text-muted-foreground">Max. Dateigröße</span>
                 <span className="font-medium">

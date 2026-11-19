@@ -42,7 +42,7 @@ export function PlanetScaleIssuedList({ accountId }: { accountId: string }) {
   const list = issued.data ?? [];
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium uppercase text-muted-foreground">Von l8db ausgestellt</h3>
+      <h3 className="text-xs font-medium text-muted-foreground">Von l8db ausgestellt</h3>
       {list.length === 0 && (
         <p className="text-sm text-muted-foreground">Noch keine Zugangsdaten ausgestellt.</p>
       )}

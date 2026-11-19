@@ -943,11 +943,11 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         const live = runId && liveSession.current?.id === entry.id;
         const [icon, label, tone] = live
           ? approvals.length
-            ? [CircleHelp, "Wartet auf Eingabe", "text-amber-500"]
+            ? [CircleHelp, "Wartet auf Eingabe", "text-warning"]
             : [LoaderCircle, "Arbeitet", "animate-spin text-primary"]
           : entry.failed
             ? [CircleX, "Fehlgeschlagen", "text-destructive"]
-            : [CircleCheck, "Fertig", "text-emerald-500"];
+            : [CircleCheck, "Fertig", "text-success"];
         return {
           id: entry.id,
           label: entry.title,
@@ -1281,10 +1281,10 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
                     className={cn(
                       "size-2 shrink-0 rounded-full",
                       level === "write"
-                        ? "bg-amber-500"
+                        ? "bg-warning"
                         : level === "ddl"
                           ? "bg-red-500"
-                          : "bg-emerald-500",
+                          : "bg-success",
                     )}
                   />
                   <span className="truncate">{active.name}</span>
@@ -1396,7 +1396,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       )}
       {fullPage && view === "chat" && thread.length > 0 && (
         <div className="flex h-12 shrink-0 items-center px-5">
-          <h2 className="min-w-0 truncate text-[13px] font-semibold">{session?.title}</h2>
+          <h2 className="min-w-0 truncate text-sm font-semibold">{session?.title}</h2>
         </div>
       )}
       {view === "settings" ? (
@@ -1461,9 +1461,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               {shelf && view === "chat" && (
                 <div className="flex w-[25rem] shrink-0 flex-col bg-muted/30">
                   <div className="flex h-12 shrink-0 items-center gap-2 px-4">
-                    <h2 className="text-[13px] font-semibold">Ergebnisse</h2>
+                    <h2 className="text-sm font-semibold">Ergebnisse</h2>
                     {figures.length > 0 && (
-                      <span className="rounded-md bg-primary/10 px-1.5 text-[11px] font-semibold tabular-nums text-primary">
+                      <span className="rounded-md bg-primary/10 px-1.5 text-2xs font-medium tabular-nums text-primary">
                         {figures.length}
                       </span>
                     )}

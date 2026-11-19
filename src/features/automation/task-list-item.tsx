@@ -120,19 +120,19 @@ export function TaskListItem({
         <span className="flex w-full min-w-0 items-center gap-1.5">
           <span
             title={task.name}
-            className={cn("truncate text-[13px] font-medium", !task.enabled && "opacity-70")}
+            className={cn("truncate text-sm font-medium", !task.enabled && "opacity-70")}
           >
             {task.name || "Unbenannter Task"}
           </span>
           {task.needsReview && (
-            <span className="shrink-0 rounded-md bg-amber-500/12 px-1.5 py-px text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+            <span className="shrink-0 rounded-md bg-warning/12 px-1.5 py-px text-2xs font-medium text-warning">
               Prüfen
             </span>
           )}
         </span>
         <span
           className={cn(
-            "truncate text-[11px] tabular-nums",
+            "truncate text-2xs tabular-nums",
             summary.runningRunId
               ? "text-primary"
               : failing && task.enabled

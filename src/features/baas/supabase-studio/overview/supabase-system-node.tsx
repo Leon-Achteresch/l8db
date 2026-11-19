@@ -36,15 +36,13 @@ export function SupabaseSystemNode({
         <Icon className="size-4" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5 text-xs font-semibold">
+        <span className="flex items-center gap-1.5 text-xs font-medium">
           {label}
           {healthy !== undefined && (
-            <span
-              className={cn("size-1.5 rounded-full", healthy ? "bg-emerald-500" : "bg-amber-500")}
-            />
+            <span className={cn("size-1.5 rounded-full", healthy ? "bg-success" : "bg-warning")} />
           )}
         </span>
-        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+        <span className="mt-0.5 block truncate text-2xs text-muted-foreground">
           {disabledReason ?? (status ? statusLabel(status) : " ")}
         </span>
       </span>

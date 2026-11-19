@@ -22,23 +22,20 @@ export function TourFeaturePanel({ featureId }: Props) {
       data-tour-ui="feature"
     >
       <div className="flex items-center gap-2 px-4 pt-3.5">
-        <span className="flex-1 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+        <span className="flex-1 font-mono text-2xs text-muted-foreground">
           {entry?.area ?? "Funktion"}
         </span>
         {shortcut ? (
-          <kbd className="rounded border border-border px-1 font-mono text-[10px] text-muted-foreground">
+          <kbd className="rounded border border-border px-1 font-mono text-2xs text-muted-foreground">
             {shortcut}
           </kbd>
         ) : null}
       </div>
-      <h2 data-tour-ui="step-title" className="px-4 pt-2 text-[15px] font-semibold tracking-tight">
+      <h2 data-tour-ui="step-title" className="px-4 pt-2 text-sm font-semibold tracking-tight">
         {entry?.title ?? featureId}
       </h2>
       {entry?.summary ? (
-        <p
-          data-tour-ui="step-body"
-          className="px-4 pt-1.5 text-[13px] leading-5 text-muted-foreground"
-        >
+        <p data-tour-ui="step-body" className="px-4 pt-1.5 text-sm leading-5 text-muted-foreground">
           {entry.summary}
         </p>
       ) : null}

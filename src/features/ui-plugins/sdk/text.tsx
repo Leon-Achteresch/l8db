@@ -3,7 +3,7 @@ import type { Tone } from "@/lib/ui-plugins/api";
 import { toneColor } from "@/lib/ui-plugins/tones";
 import { cn } from "@/lib/utils";
 
-const SIZES = { xs: "text-[11px]", sm: "text-xs", md: "text-sm" } as const;
+const SIZES = { xs: "text-2xs", sm: "text-xs", md: "text-sm" } as const;
 const WEIGHTS = { normal: "font-normal", medium: "font-medium", bold: "font-semibold" } as const;
 
 export function Text({

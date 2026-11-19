@@ -130,7 +130,7 @@ export function LogsHealthTab({ reference, refetchInterval }: LogsTabProps) {
                     <td>{row.slot_type}</td>
                     <td>{row.plugin ?? "–"}</td>
                     <td>{row.database ?? "–"}</td>
-                    <td className={row.active ? "" : "text-amber-600 dark:text-amber-400"}>
+                    <td className={row.active ? "" : "text-warning"}>
                       {row.active ? `ja (${row.active_pid})` : "nein"}
                     </td>
                     <td className="tabular-nums">{row.retained_wal ?? "–"}</td>

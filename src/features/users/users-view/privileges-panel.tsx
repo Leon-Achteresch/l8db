@@ -97,9 +97,7 @@ export function PrivilegesPanel({ roleName }: { roleName: string }) {
       </h3>
 
       <div className="space-y-3">
-        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          Schema-Rechte
-        </h4>
+        <h4 className="text-xs font-medium text-muted-foreground">Schema-Rechte</h4>
         <div className="rounded-lg border">
           <table className="w-full text-sm">
             <thead>
@@ -128,9 +126,7 @@ export function PrivilegesPanel({ roleName }: { roleName: string }) {
       </div>
 
       <div className="space-y-3">
-        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-          Tabellen- & View-Rechte
-        </h4>
+        <h4 className="text-xs font-medium text-muted-foreground">Tabellen- & View-Rechte</h4>
         {schemaGroups.length === 0 ? (
           <p className="text-sm text-muted-foreground">Keine Objekte.</p>
         ) : (

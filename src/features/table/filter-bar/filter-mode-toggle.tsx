@@ -19,7 +19,7 @@ export function FilterModeToggle({
   return (
     <fieldset
       aria-label="Filtermodus"
-      className="m-0 flex h-6 min-w-0 shrink-0 items-stretch overflow-hidden rounded-md border border-border/80 bg-background/40 p-0 text-[11px] font-medium"
+      className="m-0 flex h-6 min-w-0 shrink-0 items-stretch overflow-hidden rounded-md border border-border/80 bg-background/40 p-0 text-2xs font-medium"
     >
       {(["simple", "sql"] as const).map((value) => (
         <button

@@ -20,22 +20,18 @@ export function DiffUpdateEntry({ change }: { change: TransactionChange }) {
         title={change.ctid ? `ctid ${change.ctid}` : undefined}
       >
         <ChevronRightIcon className="size-3 text-muted-foreground" />
-        <span className="font-mono text-[11px] font-semibold text-foreground/80">
+        <span className="font-mono text-2xs font-medium text-foreground/80">
           {[change.schema, change.table].filter(Boolean).join(".")}
         </span>
         {isNew && <NewBadge />}
         {change.planned && (
-          <span className="text-[10px] text-muted-foreground">
-            Geplant · Ausführung beim Commit
-          </span>
+          <span className="text-2xs text-muted-foreground">Geplant · Ausführung beim Commit</span>
         )}
         {change.rowKey && (
-          <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-            {change.rowKey}
-          </span>
+          <span className="ml-auto font-mono text-2xs text-muted-foreground">{change.rowKey}</span>
         )}
       </div>
-      <div className="font-mono text-[11px] leading-[1.7]">
+      <div className="font-mono text-2xs leading-[1.7]">
         {allKeys.map((key) => {
           const raw = oldVals[key];
           const oldStr =
@@ -53,9 +49,9 @@ export function DiffUpdateEntry({ change }: { change: TransactionChange }) {
                 <span className="text-red-500/70">{key}: </span>
                 <span className="ml-1 truncate">{oldStr}</span>
               </div>
-              <div className="flex bg-emerald-500/[0.07] text-emerald-600 dark:text-emerald-400 px-2.5">
-                <span className="w-4 shrink-0 select-none text-emerald-500/60">+</span>
-                <span className="text-emerald-500/70">{key}: </span>
+              <div className="flex bg-success/[0.07] text-success px-2.5">
+                <span className="w-4 shrink-0 select-none text-success/60">+</span>
+                <span className="text-success/70">{key}: </span>
                 <span className="ml-1 truncate">{newStr}</span>
               </div>
             </div>

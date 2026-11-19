@@ -207,7 +207,7 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
           {FEATURES.map(({ icon: Icon, text }) => (
             <li
               key={text}
-              className="flex items-center gap-2 rounded-xl bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground @md:flex-col @md:items-start"
+              className="flex items-center gap-2 rounded-xl bg-muted/50 px-3 py-2 text-2xs text-muted-foreground @md:flex-col @md:items-start"
             >
               <Icon className="size-3.5 shrink-0 text-primary" />
               {text}
@@ -252,7 +252,7 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
                 </span>
                 <span className="min-w-0 flex-1 space-y-0.5">
                   <span className="block text-xs font-medium">{entry.title}</span>
-                  <span className="block text-[11px] text-muted-foreground">{entry.text}</span>
+                  <span className="block text-2xs text-muted-foreground">{entry.text}</span>
                 </span>
                 <ArrowRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 ease-smooth-out group-hover:translate-x-0.5" />
               </button>
@@ -288,7 +288,7 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
                 </span>
                 <span className="min-w-0 flex-1 space-y-0.5">
                   <span className="block text-xs font-medium">{entry.name}</span>
-                  <span className="block text-[11px] text-muted-foreground">
+                  <span className="block text-2xs text-muted-foreground">
                     {DETAILS[entry.id].text}
                   </span>
                 </span>
@@ -312,7 +312,7 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
           <ol className="space-y-3 text-xs">
             <motion.li variants={ITEM} className="space-y-1.5">
               <span className="font-medium">1. Installieren</span>
-              <div className="flex items-center gap-2 rounded-xl border bg-muted/40 py-1.5 pr-1.5 pl-3 font-mono text-[11px]">
+              <div className="flex items-center gap-2 rounded-xl border bg-muted/40 py-1.5 pr-1.5 pl-3 font-mono text-2xs">
                 <span className="text-muted-foreground select-none">$</span>
                 <code className="min-w-0 flex-1 truncate">{install}</code>
                 <Button
@@ -327,7 +327,7 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
                   }
                 >
                   {copied ? (
-                    <Check className="size-3.5 text-emerald-500" />
+                    <Check className="size-3.5 text-success" />
                   ) : (
                     <Copy className="size-3.5" />
                   )}
@@ -369,7 +369,7 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
             <motion.li variants={ITEM} className="space-y-1.5">
               <span className="font-medium">2. Modell laden</span>
               {details.model ? (
-                <div className="flex items-center gap-2 rounded-xl border bg-muted/40 py-1.5 pr-1.5 pl-3 font-mono text-[11px]">
+                <div className="flex items-center gap-2 rounded-xl border bg-muted/40 py-1.5 pr-1.5 pl-3 font-mono text-2xs">
                   <span className="text-muted-foreground select-none">$</span>
                   <code className="min-w-0 flex-1 truncate">{details.model}</code>
                   <Button
@@ -417,7 +417,7 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
               {details.keyUrl && (
                 <button
                   type="button"
-                  className="flex items-center gap-1 text-[11px] text-primary hover:underline"
+                  className="flex items-center gap-1 text-2xs text-primary hover:underline"
                   onClick={() => void openUrl(details.keyUrl ?? "")}
                 >
                   Schlüssel erstellen
@@ -437,7 +437,7 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
                 if (event.key === "Enter" && key.trim() && !busy) void verify();
               }}
             />
-            <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <p className="flex items-center gap-1.5 text-2xs text-muted-foreground">
               <ShieldCheck className="size-3.5 shrink-0" />
               Wird sicher im Schlüsselbund deines Betriebssystems gespeichert.
             </p>
@@ -497,13 +497,13 @@ export function AiOnboarding({ onDone, onSettings }: Props) {
       <motion.div variants={ITEM} className="flex flex-col items-center gap-4 py-4 text-center">
         <div className="relative grid size-16 place-items-center">
           <motion.span
-            className="absolute inset-0 rounded-full bg-emerald-500/15"
+            className="absolute inset-0 rounded-full bg-success/15"
             initial={{ transform: "scale(0.4)", opacity: 0 }}
             animate={{ transform: "scale(1)", opacity: 1 }}
             transition={{ type: "spring", duration: 0.5, bounce: 0.35 }}
           />
           <motion.span
-            className="grid size-11 place-items-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/30"
+            className="grid size-11 place-items-center rounded-full bg-success text-success-foreground shadow-lg shadow-success/30"
             initial={{ transform: "scale(0)" }}
             animate={{ transform: "scale(1)" }}
             transition={{ type: "spring", duration: 0.5, bounce: 0.45, delay: 0.08 }}

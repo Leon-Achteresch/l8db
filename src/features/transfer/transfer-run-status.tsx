@@ -57,14 +57,14 @@ export function TransferRunStatus({
   if (outcome.committed)
     return (
       <div className="flex flex-col gap-1 text-sm">
-        <span className="flex items-center gap-2 font-medium text-emerald-700 dark:text-emerald-400">
+        <span className="flex items-center gap-2 font-medium text-success">
           <CircleCheckIcon className="size-4" />
           {content === "structure"
             ? `Struktur von ${outcome.tables.length} Tabellen angelegt.`
             : `${outcome.rows} Zeilen in ${outcome.tables.length} Tabellen übertragen und verifiziert.`}
         </span>
         {outcome.warnings.map((warning) => (
-          <span key={warning} className="text-xs text-amber-700 dark:text-amber-400">
+          <span key={warning} className="text-xs text-warning">
             {warning}
           </span>
         ))}
@@ -94,7 +94,7 @@ export function TransferRunStatus({
       )}
       {(outcome.kept || outcome.secured) &&
         outcome.warnings.map((warning) => (
-          <span key={warning} className="text-xs text-amber-700 dark:text-amber-400">
+          <span key={warning} className="text-xs text-warning">
             {warning}
           </span>
         ))}

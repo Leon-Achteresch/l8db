@@ -58,7 +58,7 @@ export function TableCopyStepForm({ action, onChange }: StepFormProps<"table_cop
             {action.tables.length > 0 && (
               <div
                 aria-hidden
-                className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto_minmax(0,2fr)_minmax(0,3fr)_auto] items-center gap-1 px-0.5 text-[11px] font-medium text-muted-foreground"
+                className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto_minmax(0,2fr)_minmax(0,3fr)_auto] items-center gap-1 px-0.5 text-2xs font-medium text-muted-foreground"
               >
                 <span>Schema</span>
                 <span>Tabelle</span>
@@ -77,7 +77,7 @@ export function TableCopyStepForm({ action, onChange }: StepFormProps<"table_cop
                   value={item.schema}
                   placeholder="public"
                   aria-label={`Quellschema ${index + 1}`}
-                  className="font-mono text-[13px]"
+                  className="font-mono text-sm"
                   onChange={(event) =>
                     setItem(index, {
                       schema: event.target.value,
@@ -90,7 +90,7 @@ export function TableCopyStepForm({ action, onChange }: StepFormProps<"table_cop
                   value={item.table}
                   placeholder="orders"
                   aria-label={`Quelltabelle ${index + 1}`}
-                  className="font-mono text-[13px]"
+                  className="font-mono text-sm"
                   onChange={(event) =>
                     setItem(index, {
                       table: event.target.value,
@@ -104,14 +104,14 @@ export function TableCopyStepForm({ action, onChange }: StepFormProps<"table_cop
                   value={item.targetSchema}
                   placeholder="public"
                   aria-label={`Zielschema ${index + 1}`}
-                  className="font-mono text-[13px]"
+                  className="font-mono text-sm"
                   onChange={(event) => setItem(index, { targetSchema: event.target.value })}
                 />
                 <Input
                   value={item.targetTable}
                   placeholder="orders"
                   aria-label={`Zieltabelle ${index + 1}`}
-                  className="font-mono text-[13px]"
+                  className="font-mono text-sm"
                   onChange={(event) => setItem(index, { targetTable: event.target.value })}
                 />
                 <Button

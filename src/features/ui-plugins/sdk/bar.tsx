@@ -19,7 +19,7 @@ export function Bar({
       : 0;
   const color = toneColor(tone);
   return (
-    <span className="flex w-full min-w-0 items-center gap-1.5 font-sans text-[11px]">
+    <span className="flex w-full min-w-0 items-center gap-1.5 font-sans text-2xs">
       <span
         title={`${value} / ${max}`}
         className="relative h-1.5 min-w-8 flex-1 overflow-hidden rounded-full"

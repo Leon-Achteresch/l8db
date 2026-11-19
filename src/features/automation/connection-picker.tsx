@@ -135,7 +135,7 @@ export function ConnectionPicker({
             </SelectItem>
             {unknown && (
               <SelectItem value={value}>
-                <CircleAlertIcon className="size-3.5 text-amber-600" />„{value}“ (nicht gefunden)
+                <CircleAlertIcon className="size-3.5 text-warning" />„{value}“ (nicht gefunden)
               </SelectItem>
             )}
             <SelectGroup>
@@ -193,7 +193,7 @@ export function ConnectionPicker({
           role="status"
           className={cn(
             "flex items-start gap-1.5 text-xs text-pretty",
-            check.ok ? "text-emerald-700 dark:text-emerald-400" : "text-destructive",
+            check.ok ? "text-success" : "text-destructive",
           )}
         >
           {check.ok ? (

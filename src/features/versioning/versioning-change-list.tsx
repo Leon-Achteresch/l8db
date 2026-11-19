@@ -85,9 +85,7 @@ export function VersioningChangeList({
                 {name}
                 {part}
               </span>
-              <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
-                {kind}
-              </span>
+              <span className="min-w-0 flex-1 truncate text-2xs text-muted-foreground">{kind}</span>
               {change && (
                 <span
                   role="img"
@@ -98,12 +96,12 @@ export function VersioningChangeList({
                     added ? "Neu" : removed ? "Entfernt" : letter === "U" ? "Konflikt" : "Geändert"
                   }
                   className={cn(
-                    "w-3 shrink-0 text-center font-mono text-[11px] font-semibold",
+                    "w-3 shrink-0 text-center font-mono text-2xs font-medium",
                     added
-                      ? "text-emerald-600 dark:text-emerald-400"
+                      ? "text-success"
                       : removed || letter === "U"
                         ? "text-destructive"
-                        : "text-amber-600 dark:text-amber-400",
+                        : "text-warning",
                   )}
                 >
                   {letter}
@@ -114,7 +112,7 @@ export function VersioningChangeList({
         );
       })}
       {!files.length && (
-        <li className="flex items-center gap-2 px-2 py-3 text-[11px] text-muted-foreground">
+        <li className="flex items-center gap-2 px-2 py-3 text-2xs text-muted-foreground">
           <CheckCircle2Icon className="size-3.5 shrink-0" />
           {status.files.length ? "Alles committet" : "Noch keine Definitionen im Repository"}
         </li>

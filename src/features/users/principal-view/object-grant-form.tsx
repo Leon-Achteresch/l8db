@@ -88,7 +88,7 @@ export function ObjectGrantForm({ owners, allowGrantOption, onAdd }: ObjectGrant
                 size="xs"
                 variant={active ? "default" : "outline"}
                 aria-pressed={active}
-                className={cn("rounded-full font-mono text-[11px]", !active && "bg-background")}
+                className={cn("rounded-full font-mono text-2xs", !active && "bg-background")}
                 onClick={() =>
                   setPrivileges(
                     active

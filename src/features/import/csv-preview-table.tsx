@@ -10,7 +10,7 @@ interface CsvPreviewTableProps {
 export function CsvPreviewTable({ headers, rows, numeric = [] }: CsvPreviewTableProps) {
   return (
     <div className="min-h-0 overflow-auto">
-      <table className="w-full border-collapse text-[13px]">
+      <table className="w-full border-collapse text-sm">
         <thead className="sticky top-0 bg-background text-xs">
           <tr>
             <th className="w-10 border-b px-2 py-1 text-right font-medium text-muted-foreground">

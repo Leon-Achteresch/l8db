@@ -12,12 +12,12 @@ import type { CompareObjectType } from "@/lib/compare-types";
 import { cn } from "@/lib/utils";
 
 const VISUAL: Record<CompareObjectType, { Icon: typeof TableIcon; className: string }> = {
-  table: { Icon: TableIcon, className: "text-emerald-500" },
+  table: { Icon: TableIcon, className: "text-success" },
   view: { Icon: EyeIcon, className: "text-cyan-500" },
   materialized_view: { Icon: LayersIcon, className: "text-teal-500" },
   routine: { Icon: BracesIcon, className: "text-violet-500" },
   procedure: { Icon: PlayIcon, className: "text-fuchsia-500" },
-  package: { Icon: PackageIcon, className: "text-amber-500" },
+  package: { Icon: PackageIcon, className: "text-warning" },
   sequence: { Icon: ListOrderedIcon, className: "text-orange-500" },
 };
 
