@@ -34,7 +34,6 @@ import {
 } from "@/lib/table-detail-tabs";
 import { useTableTabs } from "@/lib/table-tabs";
 import { detailTabFor, tableViewStateKey, useTableViewStateStore } from "@/lib/table-view-state";
-import { usePluginDetailTabs, usePluginTableInfo } from "@/lib/ui-plugins/table-slots";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 import type { TableViewProps } from "../table-view";
 
@@ -108,12 +107,7 @@ export function useTableViewModel({
   const caps = useActiveCapabilities();
   const hiddenTabs = useSettingsStore((s) => s.hiddenTableDetailTabs);
   const easyMode = useSettingsStore((s) => s.easyMode);
-  const pluginTable = usePluginTableInfo(connection, database, schema, table, isView);
-  const pluginTabs = usePluginDetailTabs(easyMode ? null : pluginTable);
-  const availableTabs = [
-    ...availableTableDetailTabs(isView, caps, easyMode),
-    ...pluginTabs.map((entry) => ({ id: entry.key, label: entry.tab.label })),
-  ];
+  const availableTabs = availableTableDetailTabs(isView, caps, easyMode);
   const visibleTabs = availableTabs.filter((tab) => !hiddenTabs.includes(tab.id));
   const viewTab = resolveTableDetailTab(selectedTab, visibleTabs);
   const tableTab = resolveTableDetailTab(selectedTab, visibleTabs);
@@ -389,8 +383,6 @@ export function useTableViewModel({
     stateKey,
     caps,
     availableTabs,
-    pluginTable,
-    pluginTabs,
     viewTab,
     tableTab,
     tableRows,

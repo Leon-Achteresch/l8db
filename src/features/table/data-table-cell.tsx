@@ -7,10 +7,8 @@ import { numberCellText } from "@/lib/number-display";
 import { useQueryQolSettings } from "@/lib/query-qol-settings";
 import { cellPreviewLimit, tableCellPreview, truncateCellPreview } from "@/lib/table-cell-preview";
 import { timestampCellText } from "@/lib/timestamp-display";
-import type { PluginCellState } from "@/lib/ui-plugins/grid";
 import { cn } from "@/lib/utils";
 import { cellValueBadge } from "@/lib/value-viewers/detect";
-import { PluginCell } from "../ui-plugins/plugin-cell";
 import { GridStyleContext } from "./data-table/grid-style-context";
 import { DataTableCellBadge } from "./data-table-cell/data-table-cell-badge";
 import { DataTableEditingCell } from "./data-table-cell/data-table-editing-cell";
@@ -53,7 +51,6 @@ export type DataTableCellProps = Pick<
   isMatch: boolean;
   isActiveMatch: boolean;
   hasOutgoingFk: boolean;
-  plugin?: PluginCellState;
 };
 
 export const DataTableCell = memo(function DataTableCell({
@@ -88,7 +85,6 @@ export const DataTableCell = memo(function DataTableCell({
   isMatch,
   isActiveMatch,
   hasOutgoingFk,
-  plugin,
 }: DataTableCellProps) {
   const cell = useMemo(
     () => (hasCustomContent ? createCell(table, row, column, column.id) : null),
@@ -109,11 +105,8 @@ export const DataTableCell = memo(function DataTableCell({
   );
   const numbers = useQueryQolSettings((state) => state.numbers);
   const number = useMemo(
-    () =>
-      cellIndex > 0 && !hasCustomContent && !plugin?.output
-        ? numberCellText(value, numbers, dataType)
-        : null,
-    [cellIndex, hasCustomContent, plugin?.output, value, numbers, dataType],
+    () => (cellIndex > 0 && !hasCustomContent ? numberCellText(value, numbers, dataType) : null),
+    [cellIndex, hasCustomContent, value, numbers, dataType],
   );
   const badge = useMemo(
     () => (cellIndex > 0 && !hasCustomContent ? cellValueBadge(value, dataType) : null),
@@ -248,8 +241,6 @@ export const DataTableCell = memo(function DataTableCell({
           "font-sans",
         tableStyle === "semantic" && hasCustomContent && "text-blue-600 dark:text-blue-400",
         tableStyle !== "classic" && columnStyle?.numeric && "text-right tabular-nums",
-        plugin?.align === "end" && "text-right",
-        plugin?.align === "center" && "text-center",
         cellIndex === 0 &&
           "w-12 border-r border-border sticky left-0 z-10 text-center text-muted-foreground select-none",
         cellIndex === 0 && tableStyle !== "classic" && "px-1",
@@ -295,13 +286,6 @@ export const DataTableCell = memo(function DataTableCell({
         >
           {rowIndex + 1 + pageOffset}
         </button>
-      ) : plugin?.output ? (
-        <PluginCell
-          output={plugin.output}
-          align={plugin.align}
-          fallback={preview.text}
-          resetKey={plugin.resetKey}
-        />
       ) : cell ? (
         flexRender(cell.column.columnDef.cell, cell.getContext())
       ) : badge ? (

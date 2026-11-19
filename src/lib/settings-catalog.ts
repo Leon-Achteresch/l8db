@@ -321,7 +321,8 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
       "Ob neue Tabellenfilter im Modus Einfach oder SQL starten. Ein für eine Tabelle gewählter Modus bleibt erhalten.",
     keywords: ["filter", "sql", "einfach", "simple", "where", "modus", "standard"],
     key: "tableFilterMode",
-  },  {
+  },
+  {
     id: "reset-appearance",
     tabId: "appearance",
     title: "Darstellung zurücksetzen",
@@ -1115,27 +1116,7 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
       "zugangsdaten",
     ],
   },
-  {
-    id: "ui-plugins",
-    tabId: "extensions",
-    title: "UI-Plugins",
-    description:
-      "Tabellen, Tab-Leiste und geteilte Ansichten mit eigenen React-Plugins umbauen, auch per KI.",
-    keywords: [
-      "ui-plugin",
-      "build your own ui",
-      "oberfläche",
-      "anpassen",
-      "react",
-      "tabelle",
-      "zelle",
-      "tab-leiste",
-      "split",
-      "kanban",
-      "ki",
-      "galerie",
-    ],
-  },
+
   {
     id: "hotkeys",
     tabId: "hotkeys",

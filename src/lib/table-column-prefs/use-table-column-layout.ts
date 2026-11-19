@@ -26,7 +26,6 @@ export function useTableColumnLayout(
   columns: string[],
   database?: string | null,
   layoutKey?: string | null,
-  defaults?: TableColumnPref,
 ) {
   const key = layoutKey
     ? layoutKey
@@ -49,8 +48,7 @@ export function useTableColumnLayout(
   const setProfilesFor = useTableColumnPrefs((state) => state.setProfiles);
   const storedProfiles = useTableColumnPrefs((state) => (key ? state.profiles?.[key] : undefined));
   const [ephemeral, setEphemeral] = useState<TableColumnPref | undefined>();
-  const custom = key ? saved : ephemeral;
-  const source = custom ?? defaults;
+  const source = key ? saved : ephemeral;
   const resolved = useMemo(() => resolveColumnPrefs(columns, source), [columns, source]);
 
   const write = useCallback(
@@ -160,6 +158,6 @@ export function useTableColumnLayout(
     renameProfile,
     deleteProfile,
     canUseProfiles: key !== null,
-    isCustomized: custom !== undefined,
+    isCustomized: source !== undefined,
   };
 }

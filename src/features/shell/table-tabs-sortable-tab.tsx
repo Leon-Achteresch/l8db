@@ -26,7 +26,6 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { AiFlash } from "@/features/automation/ai-flash";
-import { PluginTabItem } from "@/features/shell/table-tabs/plugin-tab-item";
 import { SPRING, SPRING_PRESS } from "@/lib/ease";
 import { focusNeighborTab } from "@/lib/keyboard-nav";
 import { useSavedTabsStore } from "@/lib/saved-tabs";
@@ -38,7 +37,6 @@ import { underPointer } from "@/lib/tab-drop";
 import { tabLabel } from "@/lib/tab-navigation";
 import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
 import { TOOL_TABS } from "@/lib/tool-tabs";
-import { useUiPluginRegistry } from "@/lib/ui-plugins/store";
 import { cn } from "@/lib/utils";
 
 export interface TableTabActions {
@@ -122,8 +120,6 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
 }: TableTabsSortableTabProps) {
   const reduceMotion = useReducedMotion();
   const easyMode = useSettingsStore((state) => state.easyMode);
-  const closeButton = useUiPluginRegistry((registry) => registry.closeButton);
-  const tabItem = useUiPluginRegistry((registry) => registry.tabItem);
   const detachable = useSplitView((state) => pane !== null && !isBoundToSplit(state, tabKey(tab)));
   const { ref, handleRef, isDragging } = useSortable({
     id: `${group}:${tabKey(tab)}`,
@@ -227,13 +223,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
             aria-current={isActive ? (dimmed ? "true" : "page") : undefined}
             className="flex h-full min-w-0 max-w-44 items-center gap-1.5 rounded-full pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
-            {tabItem ? (
-              <PluginTabItem tab={tab} active={isActive} tabItem={tabItem}>
-                {defaultContent}
-              </PluginTabItem>
-            ) : (
-              defaultContent
-            )}
+            {defaultContent}
             {tab.kind === "query" && tab.externalChange && (
               <span className="shrink-0 text-amber-500" title="Datei extern geändert">
                 !
@@ -245,23 +235,21 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
               </span>
             )}
           </motion.button>
-          {closeButton !== "never" && (
-            <button
-              type="button"
-              onClick={onClose}
-              tabIndex={-1}
-              aria-label={`${label} schließen`}
-              data-hotkey={isActive ? "tab.close" : undefined}
-              className={cn(
-                "grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-[background-color,color,opacity,transform] duration-200 hover:bg-foreground/10 hover:text-foreground motion-safe:active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                closeButton === "always" || (closeButton === "auto" && isActive)
-                  ? "opacity-100"
-                  : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
-              )}
-            >
-              <XIcon className="size-3" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={onClose}
+            tabIndex={-1}
+            aria-label={`${label} schließen`}
+            data-hotkey={isActive ? "tab.close" : undefined}
+            className={cn(
+              "grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-[background-color,color,opacity,transform] duration-200 hover:bg-foreground/10 hover:text-foreground motion-safe:active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              isActive
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+            )}
+          >
+            <XIcon className="size-3" />
+          </button>
         </motion.div>
       </ContextMenuTrigger>
       <ContextMenuContent>

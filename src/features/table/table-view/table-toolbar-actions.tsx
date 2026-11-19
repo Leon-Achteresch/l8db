@@ -9,7 +9,6 @@ import { RedisKeyActions } from "@/features/table/redis-key-actions";
 import { RowWatchMenuItem } from "@/features/table/row-watch-menu-item";
 import { TableExtensionActions } from "@/features/table/table-extension-actions";
 import { TimestampDisplayMenu } from "@/features/table/timestamp-display-menu";
-import { PluginToolbar } from "@/features/ui-plugins/plugin-toolbar";
 import { useReadOnlyConnection } from "@/lib/connections";
 import type { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
 import { useHasNewFeatures } from "@/lib/new-features";
@@ -28,7 +27,6 @@ type Props = Pick<
   | "tableTab"
   | "insertRowMutation"
   | "data"
-  | "tableRows"
   | "columnDetails"
   | "refetch"
   | "exporting"
@@ -37,7 +35,6 @@ type Props = Pick<
   | "setDataExportFormat"
   | "handleExport"
   | "requestAddRow"
-  | "pluginTable"
 > & {
   schema: string;
   table: string;
@@ -53,7 +50,6 @@ export function TableToolbarActions({
   tableTab,
   insertRowMutation,
   data,
-  tableRows,
   columnDetails,
   refetch,
   exporting,
@@ -62,7 +58,6 @@ export function TableToolbarActions({
   setDataExportFormat,
   handleExport,
   requestAddRow,
-  pluginTable,
   schema,
   table,
 }: Props) {
@@ -86,14 +81,6 @@ export function TableToolbarActions({
   const canExport = isData && data;
   return (
     <div className="ml-auto flex items-center gap-1">
-      <PluginToolbar
-        info={pluginTable}
-        stateKey={stateKey}
-        rows={tableRows}
-        columnNames={data?.columns}
-        columnDetails={columnDetails}
-        refresh={() => void refetch()}
-      />
       <ObjectAdminMenu schema={schema} name={table} objectType="table" />
       {isData && caps.query_language === "redis" && (
         <RedisKeyActions key={`${connection?.id}:${database}`} />

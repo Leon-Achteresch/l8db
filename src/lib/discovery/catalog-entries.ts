@@ -1137,7 +1137,7 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
   {
     id: "settings.extensions",
     title: "Erweiterungen",
-    summary: "l8db mit offiziellen Erweiterungen und UI-Plugins ergänzen.",
+    summary: "l8db mit offiziellen Erweiterungen ergänzen.",
     area: "Einstellungen & App",
     keywords: ["erweiterung", "extension", "plugin", "markt", "addon", "installieren"],
     route: "/settings?tab=extensions",

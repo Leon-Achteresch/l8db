@@ -37,54 +37,16 @@ export async function connectDemo(page: Page, path: string) {
   await navigateInApp(page, path);
 }
 
-export const CATALOG_URL =
-  "https://raw.githubusercontent.com/Leon-Achteresch/l8db-ui-plugins/catalog/";
-
-export type CatalogPlugin = { id: string; name: string; source: string };
-
-async function serveCatalog(page: Page, plugins: readonly CatalogPlugin[]) {
-  const files = new Map(
-    plugins.map((plugin) => [`plugins/${plugin.id}/plugin.tsx`, plugin.source]),
-  );
-  const catalog = JSON.stringify({
-    schemaVersion: 1,
-    plugins: plugins.map((plugin) => ({
-      id: plugin.id,
-      name: plugin.name,
-      description: `${plugin.name} aus der Test-Galerie.`,
-      version: "1.0.0",
-      author: "test",
-      file: `plugins/${plugin.id}/plugin.tsx`,
-      sha256: new Bun.CryptoHasher("sha256").update(plugin.source).digest("hex"),
-      tags: ["grid"],
-      http: [],
-    })),
-  });
-  await page.route(`${CATALOG_URL}**`, (route) => {
-    const path = route.request().url().slice(CATALOG_URL.length);
-    const body = path === "catalog.json" ? catalog : files.get(path);
-    return route.fulfill({
-      status: body === undefined ? 404 : 200,
-      body: body ?? "",
-      headers: { "access-control-allow-origin": "*" },
-    });
-  });
-}
-
-export async function seedUiPluginApp(
+export async function seedDemoApp(
   page: Page,
-  plugins: Record<string, string>,
   options: {
     tabs?: DemoTab[];
     settings?: Record<string, unknown>;
-    uiPlugins?: unknown;
     environment?: "production" | "staging" | "test" | "development" | null;
-    catalog?: readonly CatalogPlugin[];
   } = {},
 ): Promise<void> {
-  await serveCatalog(page, options.catalog ?? []);
   await page.addInitScript(
-    ({ plugins, tabs, settings, uiPlugins, environment }) => {
+    ({ tabs, settings, environment }) => {
       const day = 86_400_000;
       const now = Date.now();
       const iso = (offset: number) => new Date(now + offset * day).toISOString().slice(0, 10);
@@ -214,9 +176,6 @@ export async function seedUiPluginApp(
         },
       };
       const handlers = new Map<string, number[]>();
-      const pluginFiles = new Map<string, string>(Object.entries(plugins));
-      const written: Record<string, string> = {};
-      const calls: { command: string; args: Record<string, unknown> }[] = [];
       const rowsOf = (schema: unknown, table: unknown) => tables[`${schema}.${table}`];
       const unquote = (name: string) => name.replace(/""/g, '"');
       const filtered = (rows: Record<string, unknown>[], filter: unknown) => {
@@ -230,7 +189,6 @@ export async function seedUiPluginApp(
         );
       };
       const invoke = async (command: string, args: Record<string, unknown> = {}) => {
-        if (!command.startsWith("plugin:event")) calls.push({ command, args });
         switch (command) {
           case "organization_policy":
             return {
@@ -308,23 +266,6 @@ export async function seedUiPluginApp(
                 { schema: "crm", table_count: 2, size_bytes: 12 * 1024 * 1024 },
               ],
             };
-          case "ui_plugins_scan":
-            return {
-              dir: "/Users/demo/.l8db/ui",
-              files: [...pluginFiles].map(([name, source]) => ({ name, source, modified: 0 })),
-              skipped: [],
-            };
-          case "ui_plugins_write":
-            pluginFiles.set(String(args.name), String(args.source));
-            return null;
-          case "ui_plugins_remove":
-            pluginFiles.delete(String(args.name));
-            return null;
-          case "ui_plugins_write_sdk":
-            return null;
-          case "ui_plugins_write_support":
-            written[String(args.name)] = String(args.contents);
-            return null;
           case "plugin:event|listen": {
             const event = String(args.event);
             handlers.set(event, [...(handlers.get(event) ?? []), Number(args.handler)]);
@@ -334,22 +275,7 @@ export async function seedUiPluginApp(
             return [];
         }
       };
-      const emit = (event: string) => {
-        for (const id of handlers.get(event) ?? []) {
-          const callback = (window as unknown as Record<string, unknown>)[`_${id}`];
-          if (typeof callback === "function") callback({ event, id: 1, payload: null });
-        }
-      };
       Object.assign(window, {
-        __uiPluginDemo: {
-          setPlugin: (name: string, source: string | null) => {
-            if (source === null) pluginFiles.delete(name);
-            else pluginFiles.set(name, source);
-            emit("ui-plugins-changed");
-          },
-          written,
-          calls,
-        },
         __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
         __TAURI_INTERNALS__: {
           metadata: {
@@ -365,8 +291,8 @@ export async function seedUiPluginApp(
           invoke,
         },
       });
-      if (sessionStorage.getItem("ui-plugin-demo-seeded")) return;
-      sessionStorage.setItem("ui-plugin-demo-seeded", "1");
+      if (sessionStorage.getItem("demo-seeded")) return;
+      sessionStorage.setItem("demo-seeded", "1");
       localStorage.setItem(
         "l8db.connections",
         JSON.stringify({
@@ -403,8 +329,6 @@ export async function seedUiPluginApp(
           version: 0,
         }),
       );
-      if (uiPlugins)
-        localStorage.setItem("l8db.ui-plugins", JSON.stringify({ state: uiPlugins, version: 1 }));
       if (tabs.length)
         localStorage.setItem(
           "l8db.table-tabs",
@@ -425,10 +349,8 @@ export async function seedUiPluginApp(
         );
     },
     {
-      plugins,
       tabs: options.tabs ?? [],
       settings: options.settings ?? {},
-      uiPlugins: options.uiPlugins ?? null,
       environment: options.environment === undefined ? "production" : options.environment,
     },
   );

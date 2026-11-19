@@ -11,8 +11,6 @@ import { TableExtensionActions } from "@/features/table/table-extension-actions"
 import { TableGrantsPanel } from "@/features/table/table-grants-panel";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import { TimestampDisplayMenu } from "@/features/table/timestamp-display-menu";
-import { PluginDetailTabsContent } from "@/features/ui-plugins/plugin-detail-tabs-content";
-import { PluginToolbar } from "@/features/ui-plugins/plugin-toolbar";
 import type { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
 import { useHasNewFeatures } from "@/lib/new-features";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
@@ -28,14 +26,9 @@ type Props = Pick<
   | "caps"
   | "connection"
   | "availableTabs"
-  | "pluginTable"
-  | "pluginTabs"
-  | "stateKey"
   | "columnDetails"
-  | "refetch"
   | "viewTab"
   | "data"
-  | "tableRows"
   | "exporting"
   | "csvExportOpen"
   | "setCsvExportOpen"
@@ -61,14 +54,9 @@ export function ViewDetailTabs({
   caps,
   connection,
   availableTabs,
-  pluginTable,
-  pluginTabs,
-  stateKey,
   columnDetails,
-  refetch,
   viewTab,
   data,
-  tableRows,
   exporting,
   csvExportOpen,
   setCsvExportOpen,
@@ -106,14 +94,6 @@ export function ViewDetailTabs({
       >
         <TableDetailTabBar tabs={availableTabs} activeTab={viewTab} />
         <div className="ml-auto flex items-center gap-1">
-          <PluginToolbar
-            info={pluginTable}
-            stateKey={stateKey}
-            rows={tableRows}
-            columnNames={data?.columns}
-            columnDetails={columnDetails}
-            refresh={() => void refetch()}
-          />
           <ObjectAdminMenu schema={schema} name={table} objectType="view" showAlter={false} />
           {viewTab === "data" && (
             <TableActionsMenu
@@ -188,15 +168,6 @@ export function ViewDetailTabs({
       <TabsContent value="audit" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {caps.object_admin && <ObjectAuditPanel schema={schema} name={table} objectType="view" />}
       </TabsContent>
-
-      <PluginDetailTabsContent
-        entries={pluginTabs}
-        info={pluginTable}
-        stateKey={stateKey}
-        rows={tableRows}
-        columnNames={data?.columns}
-        columnDetails={columnDetails}
-      />
 
       <TableExportDialogs
         table={table}
