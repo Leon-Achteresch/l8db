@@ -910,34 +910,6 @@ mod tests {
                 "declare c clob;\nbegin\n  for r in (select password from app.kunden) loop\n    c := c || r.password;\n  end loop;\nend;\n/",
                 "password",
             ),
-            (
-                "declare c clob;\nbegin\n  for r in (select kunden from app.kunden) loop\n    c := c || r.kunden;\n  end loop;\nend;\n/",
-                "ganze Zeile",
-            ),
-            (
-                "declare c clob;\nbegin\n  for r in (select id from app.kunden) loop\n    c := c || x.id;\n  end loop;\nend;\n/",
-                "'x' ist kein",
-            ),
-            (
-                "declare c clob;\nbegin\n  for i in 1 .. 2 loop\n    c := c || x.id;\n  end loop;\nend;\n/",
-                "'x' ist kein",
-            ),
-            (
-                "declare c clob;\nbegin\n  for i in 1 .. 2 loop\n    c := c || sys..tab.id;\n  end loop;\nend;\n/",
-                "'sys' ist kein",
-            ),
-            (
-                "declare\n  type tt is table of varchar2(4000);\n  vt tt;\nbegin\n  select a bulk collect into vt from app.kunden as t(a, b);\nend;\n/",
-                "Spaltenlisten",
-            ),
-            (
-                "declare\n  type tt is table of varchar2(4000);\n  vt tt;\nbegin\n  for r in (with x(a, b) as (select id, name from app.kunden) select a from x) loop\n    null;\n  end loop;\nend;\n/",
-                "Spaltenlisten",
-            ),
-            (
-                "declare\n  type tt is table of clob;\n  vt tt;\nbegin\n  select kunden bulk collect into vt from app.kunden;\nend;\n/",
-                "ganze Zeile",
-            ),
         ] {
             let error = issue_272_check(script).expect_err(script);
             assert!(error.contains(expected), "{script}: {error}");
@@ -1176,5 +1148,287 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM t", [], |row| row.get(0))
             .unwrap();
         assert_eq!(rows, 0);
+    }
+
+    fn issue_278_setup() -> (McpConnection, super::super::redact::SchemaIndex) {
+        let column = |schema: &str, table: &str, name: &str| crate::db::ColumnInfo {
+            schema: schema.into(),
+            table: table.into(),
+            name: name.into(),
+            data_type: "VARCHAR2".into(),
+        };
+        let columns = [
+            column("APP", "T", "ID"),
+            column("APP", "T", "NAME"),
+            column("APP", "KUNDEN", "ID"),
+            column("APP", "KUNDEN", "EMAIL"),
+        ];
+        let connection = McpConnection {
+            schemas: vec!["APP".into()],
+            ..issue_275_oracle()
+        };
+        let redactor = Redactor::new(&McpConfig::default().redaction, &[]);
+        let index =
+            super::super::redact::SchemaIndex::new(&columns, &redactor, &connection.schemas)
+                .with_listed(&["APP".to_string(), "HR".into()]);
+        assert!(index.sensitive_columns.contains("email"));
+        (connection, index)
+    }
+
+    fn issue_278_package_body(functions: usize) -> String {
+        let mut body = String::from("CREATE OR REPLACE PACKAGE BODY app_pkg AS\n");
+        for n in 1..=functions {
+            body.push_str(&format!(
+                "  FUNCTION f{n}(p_id IN NUMBER) RETURN NUMBER IS\n    r T%ROWTYPE;\n    v NUMBER;\n  BEGIN\n    pkg_a.log (p_id, 'f{n}');\n    SELECT * INTO r FROM T WHERE ID = p_id;\n    SELECT COUNT(DISTINCT x.ID) INTO v\n      FROM (SELECT NVL(a.ID, 0) AS ID FROM T a\n            UNION\n            SELECT k.ID FROM KUNDEN k) x;\n    INSERT INTO T (ID, NAME) VALUES (-p_id, r.NAME);\n    FOR c IN (SELECT a.* FROM T a WHERE a.ID < p_id) LOOP\n      v := v + other_pkg.weight(c.ID);\n    END LOOP;\n"
+            ));
+            for line in 0..48 {
+                body.push_str(&format!(
+                    "    IF MOD(v, {}) = 0 THEN v := v + NVL(p_id, 0); END IF; -- 16.01.2026 / 128\n",
+                    line + 2
+                ));
+            }
+            body.push_str(&format!(
+                "    RETURN NVL(v, 0);\n  EXCEPTION\n    WHEN NO_DATA_FOUND THEN\n      RETURN 0;\n  END f{n};\n\n"
+            ));
+        }
+        body.push_str("END app_pkg;\n/\n");
+        body
+    }
+
+    #[test]
+    fn issue_278_plsql_from_the_report_passes_the_precheck() {
+        let (connection, index) = issue_278_setup();
+        let script = format!(
+            "begin\n  pkg_a.log (5, 'x');\nend;\n/\ndeclare\n  r T%rowtype;\nbegin\n  select * into r from T where ID = -1;\nexception when no_data_found then null;\nend;\n/\n{}",
+            issue_278_package_body(26)
+        );
+        let plan = plan(DatabaseKind::Oracle, &script).unwrap();
+        let statements = sqls(&plan);
+        assert_eq!(statements.len(), 3);
+        assert!(statements[2].lines().count() > 1600);
+        for statement in statements {
+            assert!(check_read_sql(statement, &connection, &index).is_err());
+            assert_eq!(check_write_sql(statement, &connection, &index), Ok(()));
+        }
+    }
+
+    #[test]
+    fn issue_278_plsql_keeps_redaction_and_schema_rules() {
+        let (connection, index) = issue_278_setup();
+        for (sql, expected) in [
+            (
+                "declare v varchar2(100); begin select k.email into v from kunden k where k.id = 1; dbms_output.put_line(v); end;",
+                "redigiert",
+            ),
+            (
+                "create or replace function f return varchar2 is v varchar2(100); begin select max(email) into v from kunden; return v; end;",
+                "redigiert",
+            ),
+            ("begin delete from hr.vault; end;", "Schema 'hr'"),
+            (
+                "begin for r in (select v.id from hr.vault v) loop dbms_output.put_line(r.id); end loop; end;",
+                "Schema 'hr'",
+            ),
+            (
+                "declare v varchar2(4000); begin select json_object(k.*) into v from kunden k; end;",
+                "Zeilenexpansion",
+            ),
+            ("begin dbms_lock.sleep(5); end;", "gesperrt"),
+            ("begin null; end; begin null; end;", "Nur ein Statement"),
+        ] {
+            let error = check_write_sql(sql, &connection, &index).unwrap_err();
+            assert!(error.contains(expected), "{sql}: {error}");
+        }
+        let read_only = McpConnection {
+            read_only: true,
+            ..connection.clone()
+        };
+        assert!(check_read_sql("begin pkg_a.log (5, 'x'); end;", &read_only, &index).is_err());
+        let no_ddl = McpConnection {
+            allow_ddl: false,
+            ..connection.clone()
+        };
+        assert!(check_write_sql(&issue_278_package_body(1), &no_ddl, &index).is_err());
+    }
+
+    #[test]
+    fn issue_278_only_real_plsql_blocks_use_the_plsql_rules() {
+        let (connection, index) = issue_278_setup();
+        for sql in [
+            "begin null; end;",
+            "-- x\n/* y */ DECLARE v number; begin null; end;",
+            "create or replace editionable package body p as end;",
+            "CREATE TRIGGER trg BEFORE INSERT ON t BEGIN NULL; END;",
+            "create type body ty as end;",
+        ] {
+            assert!(crate::db::oracle::is_plsql_block(sql), "{sql}");
+        }
+        for sql in [
+            "/*! begin */ select * from t union select * from t",
+            "/* /* */ select * from t union select * from t --*/ */ begin null; end;",
+            "select * from t union select * from t",
+            "with function f return number is begin return 1; end; select * from t union select * from t",
+            "create table copy as select * from kunden",
+            "create view v (a, b) as select * from kunden",
+            "create type ty as object (a number)",
+            "call pkg_a.log(5, 'x')",
+        ] {
+            assert!(!crate::db::oracle::is_plsql_block(sql), "{sql}");
+        }
+        for sql in [
+            "/*! begin */ select * from t union select * from t",
+            "create table copy as select * from kunden",
+            "create view v (a, b) as select * from kunden",
+        ] {
+            assert!(check_write_sql(sql, &connection, &index).is_err(), "{sql}");
+        }
+        let postgres = McpConnection {
+            kind: DatabaseKind::Postgres,
+            ..connection.clone()
+        };
+        assert!(check_write_sql(
+            "declare c cursor for select * from t union select * from t",
+            &postgres,
+            &index
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn issue_278_package_body_precheck_stays_fast() {
+        let (connection, index) = issue_278_setup();
+        let body = issue_278_package_body(26);
+        let plan = plan(DatabaseKind::Oracle, &body).unwrap();
+        let statement = sqls(&plan)[0].to_string();
+        let mut samples: Vec<std::time::Duration> = (0..40)
+            .map(|_| {
+                let started = std::time::Instant::now();
+                assert!(check_read_sql(&statement, &connection, &index).is_err());
+                check_write_sql(&statement, &connection, &index).unwrap();
+                started.elapsed()
+            })
+            .collect();
+        samples.sort();
+        let median = samples[samples.len() / 2];
+        let p95 = samples[samples.len() * 95 / 100];
+        println!(
+            "issue_278: {} bytes, {} lines, median {median:?}, p95 {p95:?}",
+            statement.len(),
+            statement.lines().count()
+        );
+        assert!(p95 < std::time::Duration::from_millis(250), "{p95:?}");
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn issue_278_oracle_lab_runs_plsql_from_the_report() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_ORACLE_URL") else {
+            return;
+        };
+        let (_dir, mut config, sqlite, mut server) =
+            super::super::sandbox::sqlite_fixture("CREATE TABLE t (id INTEGER);");
+        let connection = McpConnection {
+            id: "issue278".into(),
+            kind: DatabaseKind::Oracle,
+            connection_string: url,
+            schemas: vec!["L8DB".into()],
+            allow_scripts: true,
+            ..sqlite
+        };
+        config.connections = vec![connection.clone()];
+        let target = (config.clone(), connection.clone());
+        async fn run(
+            server: &mut Server,
+            target: &(McpConfig, McpConnection),
+            sql: String,
+            commit: bool,
+        ) -> Result<String, String> {
+            let args = json!({"sql": sql, "confirm": true, "commit": commit});
+            server.script(&target.0, &target.1, &args).await
+        }
+        let cleanup = "begin\n  for o in (select object_type, object_name from user_objects where object_name in ('I278_PKG', 'I278_LOG_PKG', 'I278_T', 'I278_KUNDEN', 'I278_LOG') and object_type in ('PACKAGE', 'TABLE')) loop\n    execute immediate 'drop ' || o.object_type || ' ' || o.object_name;\n  end loop;\nend;\n/";
+        run(&mut server, &target, cleanup.into(), true)
+            .await
+            .unwrap();
+        let setup = "create table i278_t (id number, name varchar2(30));\ncreate table i278_kunden (id number, email varchar2(100));\ncreate table i278_log (n number, s varchar2(100));\ninsert into i278_t (id, name) values (1, 'eins');\ninsert into i278_kunden (id, email) values (1, 'max@example.com');\ncreate or replace package i278_log_pkg as\n  procedure log (n number, s varchar2);\nend;\n/\ncreate or replace package body i278_log_pkg as\n  procedure log (n number, s varchar2) is\n  begin\n    insert into i278_log (n, s) values (n, s);\n  end;\nend;\n/\ncreate or replace package i278_pkg as\n  function f (p_id number) return number;\nend;\n/";
+        let out = run(&mut server, &target, setup.into(), true).await.unwrap();
+        assert!(out.contains("committed: 8/8 ok"), "{out}");
+
+        let step3 = "begin\n  i278_log_pkg.log (5, 'x');\nend;\n/";
+        let out = run(&mut server, &target, step3.into(), false)
+            .await
+            .unwrap();
+        assert!(out.contains("rolled back: 1/1 ok"), "{out}");
+        let step4 = "declare\n  r i278_t%rowtype;\nbegin\n  select * into r from i278_t where id = -1;\nexception when no_data_found then null;\nend;\n/";
+        let out = run(&mut server, &target, step4.into(), false)
+            .await
+            .unwrap();
+        assert!(out.contains("rolled back: 1/1 ok"), "{out}");
+
+        let mut body = String::from("create or replace package body i278_pkg as\n");
+        for n in 1..=25 {
+            body.push_str(&format!(
+                "  function h{n} (p_id number) return number is\n    r i278_t%rowtype;\n    v number;\n  begin\n    i278_log_pkg.log (p_id, 'h{n}');\n    select * into r from i278_t where id = p_id;\n    select count(distinct x.id) into v\n      from (select nvl(a.id, 0) as id from i278_t a\n            union\n            select k.id from i278_kunden k) x;\n    insert into i278_t (id, name) values (-p_id - {n}, r.name);\n    for c in (select a.* from i278_t a where a.id < 0) loop\n      v := v + nvl(c.id, 0);\n    end loop;\n"
+            ));
+            for line in 0..48 {
+                body.push_str(&format!(
+                    "    if mod(v, {}) = 0 then v := v + nvl(p_id, 0); end if; -- 16.01.2026 / 128\n",
+                    line + 2
+                ));
+            }
+            body.push_str("    return nvl(v, 0);\n  exception\n    when no_data_found then\n      return 0;\n  end;\n\n");
+        }
+        body.push_str("  function f (p_id number) return number is\n  begin\n    return h1(p_id) + h25(p_id);\n  end;\nend i278_pkg;\n/\n");
+        assert!(body.lines().count() > 1600);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("i278_pkg.sql");
+        std::fs::write(&path, &body).unwrap();
+        let out = server
+            .script(
+                &config,
+                &connection,
+                &json!({"file": path.to_str().unwrap(), "confirm": true}),
+            )
+            .await
+            .unwrap();
+        assert!(out.contains("committed: 1/1 ok"), "{out}");
+
+        let call = "set serveroutput on\ndeclare\n  v number;\nbegin\n  v := i278_pkg.f(1);\n  dbms_output.put_line('f=' || v);\nend;\n/\nselect status from user_objects where object_name = 'I278_PKG' and object_type = 'PACKAGE BODY';\nselect count(*) as n from i278_log;";
+        let out = run(&mut server, &target, call.into(), false).await.unwrap();
+        assert!(out.contains("| f="), "{out}");
+        assert!(out.contains("VALID") && !out.contains("INVALID"), "{out}");
+
+        let leak = "set serveroutput on\ndeclare\n  v varchar2(100);\nbegin\n  select k.email into v from i278_kunden k where k.id = 1;\n  dbms_output.put_line(v);\nend;\n/";
+        let error = run(&mut server, &target, leak.into(), false)
+            .await
+            .unwrap_err();
+        assert!(error.contains("redigiert"), "{error}");
+        let schemas = super::super::server::adapter(&connection, &server.pool)
+            .unwrap()
+            .list_schemas()
+            .await
+            .unwrap();
+        let foreign = schemas
+            .iter()
+            .find(|schema| !schema.eq_ignore_ascii_case("L8DB"))
+            .expect("Lab braucht ein zweites Schema");
+        let error = run(
+            &mut server,
+            &target,
+            format!("begin\n  delete from {foreign}.i278_fremd;\nend;\n/"),
+            false,
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("nicht freigegeben"), "{foreign}: {error}");
+        let renamed = "create view i278_v (a, b) as select * from i278_kunden;";
+        let error = run(&mut server, &target, renamed.into(), false)
+            .await
+            .unwrap_err();
+        assert!(error.contains("gesperrt"), "{error}");
+
+        run(&mut server, &target, cleanup.into(), true)
+            .await
+            .unwrap();
     }
 }

@@ -121,6 +121,10 @@ pub(super) fn prepare(sql: &str) -> String {
     statement
 }
 
+pub(super) fn is_block(sql: &str) -> bool {
+    unit_kind(sql, &tokens(sql)) == Some(UnitKind::Block)
+}
+
 #[derive(PartialEq)]
 enum UnitKind {
     Block,
