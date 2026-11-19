@@ -307,7 +307,7 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
     summary: "Tabellen ohne SQL filtern, mit Vorschlägen für Spalten und Werte.",
     area: "Daten & Tabellen",
     keywords: ["filtern", "filter", "where", "suchen", "eingrenzen", "bedingung"],
-    hotkey: "grid.search",
+    hotkey: "grid.filter",
     related: ["table.filter.ai", "table.filter.rules"],
     steps: [
       { anchor: "table.filter-bar", title: "Filter eingeben" },

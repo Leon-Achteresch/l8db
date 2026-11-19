@@ -20,6 +20,7 @@ import { OmnibarHelp } from "./omnibar-help";
 import { type OmnibarItem, OmnibarMenu } from "./omnibar-menu";
 import { useFilterAi } from "./use-filter-ai";
 import { type FilterBarProps, useFilterBarModel } from "./use-filter-bar-model";
+import { useFilterFocusHotkey } from "./use-filter-focus-hotkey";
 
 export function FilterOmnibar(props: FilterBarProps) {
   const model = useFilterBarModel(props);
@@ -28,6 +29,8 @@ export function FilterOmnibar(props: FilterBarProps) {
   const listId = useId();
   const barRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useFilterFocusHotkey(rootRef);
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
   const [help, setHelp] = useState(false);
@@ -195,7 +198,7 @@ export function FilterOmnibar(props: FilterBarProps) {
   };
 
   return (
-    <div className="shrink-0 border-b bg-muted/30 px-3 py-2">
+    <div ref={rootRef} className="shrink-0 border-b bg-muted/30 px-3 py-2">
       <Popover
         open={menuOpen}
         onOpenChange={(open) => {
@@ -229,6 +232,7 @@ export function FilterOmnibar(props: FilterBarProps) {
                   />
                   <input
                     data-feature="table.filter-bar"
+                    data-filter-focus
                     ref={inputRef}
                     value={text}
                     role="combobox"
