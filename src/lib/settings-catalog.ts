@@ -55,6 +55,14 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "dbThemes",
   },
   {
+    id: "success-toasts",
+    tabId: "general",
+    title: "Erfolgsmeldungen",
+    description: "Bestätigungen wie „Kopiert“ zeigen. Fehler erscheinen immer.",
+    keywords: ["toast", "meldung", "benachrichtigung", "popup", "erfolg", "bestätigung"],
+    key: "successToasts",
+  },
+  {
     id: "filter-operators",
     tabId: "general",
     title: "Filteroperatoren übersetzen",
