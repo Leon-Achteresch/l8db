@@ -17,6 +17,7 @@ export const ICON_MENU_SUB_BELOW = {
   "data-side": "bottom",
   sideOffset: -32,
   alignOffset: 42,
+  sticky: "always",
 } as const;
 
 export function moveIconMenuFocus(event: KeyboardEvent<HTMLDivElement>) {
