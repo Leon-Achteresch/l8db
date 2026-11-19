@@ -145,11 +145,11 @@ for (const engine of [chromium, webkit]) {
 
         const menu = await page.locator("[data-icon-menu]").boundingBox();
         await moveTo(page, page.getByRole("menuitem", { name: "Anzeige" }));
-        const option = page.getByRole("menuitem", { name: "Original" });
-        await option.waitFor();
+        const subContent = page.locator("[data-slot=dropdown-menu-sub-content]");
+        await subContent.waitFor();
         await page.waitForTimeout(300);
-        const sub = await option.boundingBox();
-        expect(sub?.y).toBeGreaterThanOrEqual((menu?.y ?? 0) + (menu?.height ?? 0));
+        const sub = await subContent.boundingBox();
+        expect(sub?.y).toBeGreaterThan((menu?.y ?? 0) + (menu?.height ?? 0));
         expect(sub?.x).toBeLessThan((menu?.x ?? 0) + (menu?.width ?? 0));
 
         const { median, p95 } = stats(warm);
