@@ -28,15 +28,11 @@ static LINE_PREFIX: LazyLock<regex::Regex> = LazyLock::new(|| {
     )
     .expect("prefix pattern")
 });
-const SOURCE_EXTENSIONS: [&str; 5] = [".rs", ".ts", ".tsx", ".js", ".mjs"];
 const PLAIN_UPPERCASE: &str = " AI ALL ALTER AND API AS BEGIN BETWEEN BIGINT BLOB BODY BOOLEAN BY CALL CASE CHAR CHECK CLASS CLOB COLUMN COMMIT CONSTRAINT CREATE CSV DATABASE DATE DB DEBUG DECLARE DEFAULT DELETE DIRECTORY DISTINCT DROP ELSE END EOF ERROR EXCEPTION EXECUTE EXISTS FATAL FOREIGN FROM FUNCTION GRANT GROUP HAVING HTTP HTTPS ID IN INDEX INFO INNER INSERT INT INTEGER INTO IO IS JAVA JDBC JOIN JSON KEY LEFT LIBRARY LIKE LIMIT LINK MATERIALIZED MCP MERGE NOT NULL NUMBER NUMERIC NVARCHAR ODBC OFFSET OK ON OR ORA ORDER OS OUTER PACKAGE PL PLS PRIMARY PROCEDURE REFERENCES REPLACE RETURNING REVOKE RIGHT ROLE ROLLBACK SCHEMA SELECT SEQUENCE SET SOURCE SQL SQLSTATE SSH SSL SYNONYM TABLE TCP TEXT THEN TIMESTAMP TLS TNS TRIGGER TRUNCATE TYPE UNION UNIQUE UPDATE URL USER UTF VALUES VARCHAR VARCHAR2 VIEW WARN WARNING WHEN WHERE WITH XML ";
 
 fn is_object_name(line: &str, word: regex::Match) -> bool {
     let text = word.as_str();
-    if text.contains('.') {
-        return !SOURCE_EXTENSIONS.iter().any(|ext| text.ends_with(ext));
-    }
-    if text.contains('_') {
+    if text.contains('.') || text.contains('_') {
         return true;
     }
     if text.chars().count() < 2
@@ -260,8 +256,8 @@ mod tests {
             assert!(body.contains(kept), "{kept}\n{body}");
         }
         assert_eq!(
-            scrub_log_line("[2026-11-19][09:48:30][WARN][odbc_api::handles::logging] State: HY000, panicked at src/db/oracle_security.rs:12:5 for T_AUFTRAG"),
-            "[2026-11-19][09:48:30][WARN][odbc_api::handles::logging] State: HY000, panicked at src/db/oracle_security.rs:12:5 for …"
+            scrub_log_line("[2026-11-19][09:48:30][WARN][odbc_api::handles::logging] State: HY000, Message: [Microsoft][ODBC Driver Manager] Sicht T_AUFTRAG fehlt"),
+            "[2026-11-19][09:48:30][WARN][odbc_api::handles::logging] State: HY000, Message: [Microsoft][ODBC Driver Manager] Sicht … fehlt"
         );
     }
 
