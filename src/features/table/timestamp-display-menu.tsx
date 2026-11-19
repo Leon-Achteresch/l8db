@@ -1,6 +1,7 @@
 import { ClockIcon } from "lucide-react";
 import { useContext } from "react";
 import { IconMenuSubTrigger } from "@/components/icon-menu";
+import { ICON_MENU_SUB_BELOW } from "@/components/icon-menu/shared";
 import { NewBadge } from "@/components/new-badge";
 import {
   DropdownMenuItem,
@@ -38,7 +39,7 @@ export function TimestampDisplayMenu() {
           {(feature.isNew || zoneNew) && <NewBadge className="absolute -right-1 -top-1" />}
         </IconMenuSubTrigger>
         <DropdownMenuPortal>
-          <DropdownMenuSubContent className="w-64 whitespace-normal" sideOffset={8}>
+          <DropdownMenuSubContent className="w-64 whitespace-normal" {...ICON_MENU_SUB_BELOW}>
             <div ref={feature.ref}>
               <DropdownMenuLabel>Zeitdarstellung</DropdownMenuLabel>
               <DropdownMenuRadioGroup

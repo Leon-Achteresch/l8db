@@ -1,5 +1,6 @@
 import { HashIcon } from "lucide-react";
 import { IconMenuSubTrigger } from "@/components/icon-menu";
+import { ICON_MENU_SUB_BELOW } from "@/components/icon-menu/shared";
 import { NewBadge } from "@/components/new-badge";
 import {
   DropdownMenuLabel,
@@ -26,7 +27,7 @@ export function NumberDisplayMenu() {
         {feature.isNew && <NewBadge className="absolute -right-1 -top-1" />}
       </IconMenuSubTrigger>
       <DropdownMenuPortal>
-        <DropdownMenuSubContent className="w-64 whitespace-normal" sideOffset={8}>
+        <DropdownMenuSubContent className="w-64 whitespace-normal" {...ICON_MENU_SUB_BELOW}>
           <div ref={feature.ref}>
             <DropdownMenuLabel>Zahlendarstellung</DropdownMenuLabel>
             <DropdownMenuRadioGroup
