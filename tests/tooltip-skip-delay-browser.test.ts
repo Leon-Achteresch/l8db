@@ -126,6 +126,32 @@ for (const engine of [chromium, webkit]) {
         }
         await expectColdDelay(page, items[3] as Locator, "Menü 4");
 
+        const lockedItem = page.getByRole("menuitem", { name: "Menü gesperrt" });
+        for (let round = 0; round < 6; round++) {
+          for (const target of [items[4], lockedItem, items[3], lockedItem]) {
+            const box = await (target as Locator).boundingBox();
+            if (box) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+          }
+        }
+        await page.waitForTimeout(350);
+        expect(await visibleTip(page)).toBe("Menü gesperrt");
+        await moveTo(page, page.locator("[data-icon-menu] [role=separator]").last());
+        await page.waitForTimeout(200);
+        expect(await visibleTip(page)).toBeNull();
+        await moveTo(page, items[4] as Locator);
+        await page.mouse.move(5, 5, { steps: 5 });
+        await page.waitForTimeout(200);
+        expect(await visibleTip(page)).toBeNull();
+
+        const menu = await page.locator("[data-icon-menu]").boundingBox();
+        await moveTo(page, page.getByRole("menuitem", { name: "Anzeige" }));
+        const option = page.getByRole("menuitem", { name: "Original" });
+        await option.waitFor();
+        await page.waitForTimeout(300);
+        const sub = await option.boundingBox();
+        expect(sub?.y).toBeGreaterThanOrEqual((menu?.y ?? 0) + (menu?.height ?? 0));
+        expect(sub?.x).toBeLessThan((menu?.x ?? 0) + (menu?.width ?? 0));
+
         const { median, p95 } = stats(warm);
         console.info(
           `${engine.name()} tooltip warm switch: n=${warm.length} median ${median} ms, p95 ${p95} ms`,
