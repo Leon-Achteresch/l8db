@@ -2196,7 +2196,7 @@ pub(crate) fn where_clause_in(
     match filter.map(str::trim).filter(|f| !f.is_empty()) {
         Some(expression) => {
             if allow_raw {
-                return Ok(format!(" WHERE {expression}"));
+                return Ok(format!(" WHERE {expression}\n"));
             }
             validate_table_filter_in(expression, hash_comments)?;
             Ok(format!(" WHERE ({expression})"))
@@ -2806,7 +2806,11 @@ mod tests {
         );
         assert_eq!(
             super::where_clause(Some("a = 1 ORDER BY b"), true).unwrap(),
-            " WHERE a = 1 ORDER BY b"
+            " WHERE a = 1 ORDER BY b\n"
+        );
+        assert_eq!(
+            super::where_clause(Some("a = 1 -- b"), true).unwrap(),
+            " WHERE a = 1 -- b\n"
         );
         assert_eq!(super::where_clause(Some("  "), false).unwrap(), "");
     }
