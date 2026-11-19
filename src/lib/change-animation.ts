@@ -10,7 +10,7 @@ export function animateChange(element: HTMLElement, kind: ChangeAnimation = "vie
     return () => undefined;
 
   const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
-  const reduced = preference.matches;
+  const reduced = preference.matches || (window.navigator?.hardwareConcurrency ?? 8) <= 4;
   const animations: Animation[] = [];
   const add = (target: HTMLElement, frames: Keyframe[], duration: number, delay = 0) => {
     animations.push(

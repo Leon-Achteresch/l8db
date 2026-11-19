@@ -1164,3 +1164,29 @@ The local PostgreSQL 17.11 fixture returns a single OUT row with 57,351 UTF-8 by
 The existing 1,000-row by 100-column controller test retained 39,829 bytes on Bun 1.3.10. Result lifecycle timing was 0.007 ms median and 0.523 ms p95, with one maximum concurrent execution and no idle requests. The earlier controller run measured 0.003 ms median and 0.005 ms p95. These runs measure controller overhead on separate invocations. No new controller algorithm was introduced. The browser regression verifies one truncated cell preview and the full read-only value after opening the inspector. Native rendering latency and peak process memory were outside these measurements.
 
 The A11 popover acceptance repeated the same workload on macOS 27.0.1 arm64 (Apple M3, 16 GiB, Bun 1.3.10). The parser measured 1.174 ms median and 2.799 ms p95 for 1,000 values. SSR measured 28.839 ms median and 47.592 ms p95, with 818,610 HTML bytes and no measured retained heap growth in the 10-cycle test. The size and timing budgets above still apply. The browser fixture additionally verifies the five bounded preview nodes and counts zero query IPC calls. Browser interactions and native paint latency are outside the SSR timing.
+
+## Low-end devices: reduced motion, grid scrolling and tab switches (2026-11-19)
+
+Reported on a weak Windows PC: tables and tab switches lag. `bun scripts/perf-profile-probe.ts` opens three table tabs (500 rows × 24 columns, 3,000 tables) in the production build with the mocked transport, then traces 18 tab switches and 120 wheel steps (400 px vertically, partly 300 px horizontally) with `devtools.timeline` plus a 200 µs CPU profile. `PROBE_REDUCED=1` emulates `prefers-reduced-motion: reduce`, `PROBE_DIST` selects another build, `PROBE_WAIT` the settle time per switch and `PROBE_INCLUSIVE=<n>` prints inclusive function times. Use an unminified build for readable names.
+
+Findings and changes:
+
+- The global reduced-motion rule set `transition-duration: 0.01ms` on every element. With the default `transition-property: all`, every style change on every element then started a transition: 120 wheel steps dispatched about 5,000 `transitionrun`/`start`/`end`/`cancel` events, which React's root listener received about 20,000 times, and each one cost extra style and paint frames. Windows reports reduced motion when its animation effects are off, which is common on weak PCs, so this mode was slower than full motion. The rule now sets `transition-duration: 0s` and `transition-delay: 0s`, so no transition starts; animations keep `0.01ms` so `animationend` still fires. `Collapse` already unmounts without `transitionend` in this mode.
+- Rows moving under a resting pointer changed their hover background on every step, which repainted and re-layerized rows. `trackScrolling` (`src/lib/hooks/use-scrolling-flag.ts`) sets `data-scrolling` on the grid scroller with one attribute write per scroll burst and removes it 140 ms after the last event; the `grid-hover` and `row-hover` variants skip their style while it is set. Pointer events stay enabled, so clicks, selection and `elementFromPoint` are unchanged. The flag is not set while a pointer button is down.
+- `hasNewFeatures` built 316 entry tuples and ran one regular expression per feature on every call, and tab strips, layouts and menus call it on every render. It now scans a cached list of the current release's IDs.
+- `animateChange` uses the brief opacity feedback instead of the 420 ms travel when `navigator.hardwareConcurrency` is at most 4.
+
+Measured on macOS 27.0, arm64, Apple M3 (8 cores), 16 GiB RAM, Bun 1.4.3, Playwright Chromium, no CPU throttling. Values are main-thread totals for the whole run.
+
+| 120 wheel steps | Script | Style | Layout | Paint | Layerize | Sum incl. pre-paint and hit tests |
+| --- | --- | --- | --- | --- | --- | --- |
+| Full motion, before | 471 ms | 112 ms | 58 ms | 295 ms | 386 ms | 1,454 ms |
+| Full motion, after | 455 ms | 111 ms | 59 ms | 188 ms | 207 ms | 1,140 ms |
+| Reduced motion, before | 1,196 ms | 449 ms | 156 ms | 703 ms | 691 ms | 3,450 ms |
+| Reduced motion, after | 496 ms | 155 ms | 58 ms | 183 ms | 205 ms | 1,219 ms |
+
+18 tab switches under reduced motion went from 831 ms script / 280 ms style to 738 / 220 ms. The existing gates passed once: workspace table scroll 5,000 × 120 at 60.0 fps, frame p95 18.2 ms (previously confirmed red at 21.2–22.5 ms against < 21 ms), infinite scroll frame p95 18.3 ms, and all eight `tests/perf-browser.test.ts` grid scenarios. `tests/perf-low-end.test.ts` measured 20,000 badge lookups over 316 features at median 9.0 ms / p95 9.3 ms (before: 180.5 / 195.2 ms; gate 40 ms p95) and 10,000 scroll events in 1.9 ms with one attribute write, no flag while a button is pressed, and no listeners, timer or writes left after disposal. None of this starts database work.
+
+Open: a tab switch still unmounts one view and mounts the next, about 34 ms of React work, 12 ms style and 13 ms paint/layerize per switch on this machine. Within that, the grid's `DragDropProvider` teardown takes about 2.7 ms and motion's layout projection about 1.7 ms. Sticky row-number cells are one compositor layer each (31 of 65 layers); without them Layerize dropped a further 40 % in an experiment. Keeping recent tabs mounted would remove most of the switch cost and is not implemented.
+
+Not covered: no Windows machine, WebView2 build, weak GPU or CPU throttling was measured; the throttled suites do not run on this Mac. The mocked transport excludes database time. The core-count heuristic was verified only in `tests/change-animation.test.ts`; `tests/perf-workspace-motion.test.ts` pins eight cores and was not run.

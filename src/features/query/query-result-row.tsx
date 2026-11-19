@@ -55,8 +55,8 @@ export const QueryResultRow = memo(function QueryResultRow({
         isMarked
           ? "bg-primary/10"
           : stripedRows && rowIdx % 2 !== 0
-            ? "bg-muted/20 hover:bg-muted/50"
-            : "bg-background hover:bg-muted/50",
+            ? "bg-muted/20 grid-hover:bg-muted/50"
+            : "bg-background grid-hover:bg-muted/50",
       )}
     >
       <td

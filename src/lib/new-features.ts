@@ -336,10 +336,18 @@ function releaseOf(version: string): string {
   return version.replace(/-.*$/, "");
 }
 
+const featureIdsByVersion = new Map<string, NewFeatureId[]>();
+
 function currentFeatureIds(version: string): NewFeatureId[] {
-  return (Object.keys(NEW_FEATURES) as NewFeatureId[]).filter(
-    (id) => NEW_FEATURES[id] === releaseOf(version),
-  );
+  let ids = featureIdsByVersion.get(version);
+  if (!ids) {
+    const release = releaseOf(version);
+    ids = (Object.keys(NEW_FEATURES) as NewFeatureId[]).filter(
+      (id) => NEW_FEATURES[id] === release,
+    );
+    featureIdsByVersion.set(version, ids);
+  }
+  return ids;
 }
 
 export function hasNewFeatures(
@@ -348,11 +356,8 @@ export function hasNewFeatures(
   version = appVersion,
 ): boolean {
   if (!scope) return false;
-  return (Object.entries(NEW_FEATURES) as [NewFeatureId, string][]).some(
-    ([id, introducedIn]) =>
-      introducedIn === releaseOf(version) &&
-      !seen.has(id) &&
-      (id === scope || id.startsWith(`${scope}.`)),
+  return currentFeatureIds(version).some(
+    (id) => !seen.has(id) && (id === scope || id.startsWith(`${scope}.`)),
   );
 }
 

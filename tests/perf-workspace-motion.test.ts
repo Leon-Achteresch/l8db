@@ -17,6 +17,7 @@ for (const engine of process.env.L8DB_MOTION_ENGINE === "chromium"
         const errors: string[] = [];
         page.on("pageerror", (error) => errors.push(error.message));
         await page.addInitScript(() => {
+          Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 8 });
           Object.assign(window, {
             motionDbCalls: 0,
             __TAURI_INTERNALS__: {
@@ -228,15 +229,15 @@ for (const engine of process.env.L8DB_MOTION_ENGINE === "chromium"
           const tabs = lists[0].querySelectorAll<HTMLElement>('[role="tab"]');
           const nodes = document.querySelectorAll("*").length;
           const durations: number[] = [];
-        let selections = 0;
+          let selections = 0;
           for (let index = 0; index < 100; index++) {
             const start = performance.now();
-          const target = tabs[(index + 1) % tabs.length];
-          target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+            const target = tabs[(index + 1) % tabs.length];
+            target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
             await new Promise(requestAnimationFrame);
             await new Promise(requestAnimationFrame);
             durations.push(performance.now() - start);
-          if (target.getAttribute("aria-selected") === "true") selections++;
+            if (target.getAttribute("aria-selected") === "true") selections++;
           }
           await new Promise((resolve) => setTimeout(resolve, 800));
           let idleWrites = 0;
@@ -254,13 +255,13 @@ for (const engine of process.env.L8DB_MOTION_ENGINE === "chromium"
             nodeGrowth: document.querySelectorAll("*").length - nodes,
             highlights: document.querySelectorAll("[data-motion-highlight]").length,
             idleWrites,
-          selections,
+            selections,
           };
         });
         expect(timings.p95Ms).toBeLessThan(120);
         expect(timings.nodeGrowth).toBe(0);
         expect(timings.highlights).toBe(50);
-      expect(timings.selections).toBe(100);
+        expect(timings.selections).toBe(100);
         expect(timings.idleWrites).toBe(0);
         const selected = page
           .getByRole("tablist", { name: "group-0", exact: true })
