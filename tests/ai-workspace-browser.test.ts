@@ -137,7 +137,6 @@ test.skipIf(!enabled)(
       expect(growth.paste.ms).toBeLessThan(50);
 
       await panel.getByRole("button", { name: "Anbieter und Modell auswählen" }).click();
-      await page.getByRole("button", { name: /^Anbieter wechseln/ }).click();
       await page.getByRole("radio", { name: "Gemini CLI", exact: true }).click();
       await page.getByRole("radio", { name: "Eigene Modell-ID …", exact: true }).click();
       await page.getByLabel("Modell-ID", { exact: true }).fill("private-model");
@@ -244,7 +243,6 @@ test.skipIf(!enabled)(
           1,
       );
       await panel.getByRole("button", { name: "Anbieter und Modell auswählen" }).click();
-      await page.getByRole("button", { name: /^Anbieter wechseln/ }).click();
       await page.getByRole("radio", { name: "OpenAI · API", exact: true }).click();
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "KI-Einstellungen", exact: true }).click();
@@ -260,7 +258,6 @@ test.skipIf(!enabled)(
       ).not.toContain("fixture-api-key-never-persist");
       await page.getByRole("button", { name: "KI-Einstellungen", exact: true }).click();
       await panel.getByRole("button", { name: "Anbieter und Modell auswählen" }).click();
-      await page.getByRole("button", { name: /^Anbieter wechseln/ }).click();
       await page.getByRole("radio", { name: "OpenAI-compatible · API", exact: true }).click();
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "KI-Einstellungen", exact: true }).click();
