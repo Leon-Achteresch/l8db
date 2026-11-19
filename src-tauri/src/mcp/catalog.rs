@@ -660,13 +660,19 @@ impl Catalog {
     }
 
     pub(crate) fn index(&self, redactor: &Redactor, allowed: &[String]) -> Arc<SchemaIndex> {
-        let key = format!("{}\u{0}{}", redactor.column_key(), allowed.join("\u{0}"));
+        let listed = self.listed().flatten();
+        let key = format!(
+            "{}\u{0}{}\u{0}{}",
+            redactor.column_key(),
+            allowed.join("\u{0}"),
+            listed.is_some()
+        );
         let mut slots = self.indexes.lock().unwrap_or_else(|e| e.into_inner());
         if let Some((_, index)) = slots.iter().find(|(slot, _)| *slot == key) {
             return index.clone();
         }
         let tables = self.tables();
-        let index = Arc::new(SchemaIndex::from_parts(
+        let index = SchemaIndex::from_parts(
             tables
                 .column_names
                 .iter()
@@ -677,7 +683,11 @@ impl Catalog {
                 .map(|table| (tables.schema(table), tables.name(table))),
             redactor,
             allowed,
-        ));
+        );
+        let index = Arc::new(match listed {
+            Some(listed) => index.with_listed(&listed),
+            None => index,
+        });
         if slots.len() >= INDEX_SLOTS {
             slots.remove(0);
         }

@@ -732,6 +732,9 @@ impl Server {
         redactor: &Redactor,
     ) -> Result<Arc<redact::SchemaIndex>, String> {
         let catalog = self.live_catalog(config, connection).await?;
+        if connection.kind == DatabaseKind::Oracle && !connection.writes_blocked() {
+            self.list_schemas(config, connection, &catalog).await;
+        }
         Ok(catalog.index(redactor, connection.allowed_schemas()))
     }
 
@@ -946,6 +949,9 @@ pub(super) fn check_write_sql(
             "DDL ist für '{}' nicht freigegeben.",
             connection.name
         ));
+    }
+    if connection.kind == DatabaseKind::Oracle && db::oracle::is_plsql_block(sql) {
+        return redact::check_plsql(sql, index);
     }
     redact::check_references(sql, index, row_values(connection.kind))
 }

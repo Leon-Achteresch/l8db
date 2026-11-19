@@ -995,6 +995,10 @@ pub(crate) fn statement_count(sql: &str) -> usize {
     sql::split_statements(sql).len()
 }
 
+pub(crate) fn is_plsql_block(sql: &str) -> bool {
+    sql::is_block(sql)
+}
+
 pub(crate) fn script_items(sql: &str) -> Vec<(bool, String)> {
     sql::split_items(sql)
 }
