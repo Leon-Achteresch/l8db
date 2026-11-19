@@ -6,7 +6,7 @@ import { type Browser, chromium, type Locator, type Page } from "playwright";
 import { ROADMAP_URL } from "../src/lib/discovery/roadmap/model";
 import { ASSET_BASE, FEED_URL } from "../src/lib/feature-videos/model";
 import { DURATION_BUCKETS } from "../src/lib/usage-statistics";
-import { seedUiPluginApp, serveBuiltApp } from "./fixtures/ui-plugins-app";
+import { seedDemoApp, serveBuiltApp } from "./fixtures/demo-app";
 
 const enabled = Boolean(process.env.L8DB_DISCOVERY_BROWSER);
 const SHOTS = resolve(process.env.L8DB_DISCOVERY_SHOTS ?? "test-artifacts/discovery-browser");
@@ -259,19 +259,15 @@ async function boot(options: Boot): Promise<Session> {
     });
   }, now - Date.now());
   const channels = Object.fromEntries(CHANNELS.map((id) => [id, id !== "achievements"]));
-  await seedUiPluginApp(
-    page,
-    {},
-    {
-      environment: null,
-      settings: {
-        theme: options.dark ? "dark" : "light",
-        blogSuggestions: false,
-        discovery: { enabled: true, channels: { ...channels, ...options.channels }, labs: {} },
-        ...options.settings,
-      },
+  await seedDemoApp(page, {
+    environment: null,
+    settings: {
+      theme: options.dark ? "dark" : "light",
+      blogSuggestions: false,
+      discovery: { enabled: true, channels: { ...channels, ...options.channels }, labs: {} },
+      ...options.settings,
     },
-  );
+  });
   const feed = videoFeed(now);
   const seeds: Seeds = {
     "l8db.discovery.spotlight": persisted({ seenVersion: VERSION, lastActive: now - DAY }),

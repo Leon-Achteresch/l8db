@@ -20,7 +20,7 @@ Disabled: blocked; the app rejects the related backend calls.
 
 Enabled or Not Configured: allowed.</string>
       <string id="AllowExtensions">Allow extensions</string>
-      <string id="AllowExtensions_Help">Community extensions and UI plugins.
+      <string id="AllowExtensions_Help">Community extensions.
 
 Disabled: blocked; the app rejects the related backend calls.
 

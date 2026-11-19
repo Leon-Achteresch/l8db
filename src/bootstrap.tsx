@@ -4,8 +4,6 @@ import { RouterProvider } from "@tanstack/react-router";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ExtensionPrompts } from "@/features/extensions/extension-prompts";
-import { bootUiPlugins } from "@/features/ui-plugins/boot";
-import { PluginProposals } from "@/features/ui-plugins/plugin-proposals";
 import { initAppearance } from "@/lib/appearance";
 import { initBootPaint } from "@/lib/boot-paint";
 import { initConnectionSecrets, isMainWindow, windowConnectionId } from "@/lib/connections";
@@ -17,7 +15,6 @@ import { createExtensionHost } from "@/lib/extensions/host";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
 import { installNativeGuards } from "@/lib/native-guards";
 import { initOrganization } from "@/lib/organization";
-import { useOrganizationStore } from "@/lib/organization-state";
 import { loadProviders } from "@/lib/providers";
 import { createAppQueryClient } from "@/lib/query-client";
 import { useSettingsViewState } from "@/lib/settings-view-state";
@@ -26,7 +23,6 @@ import { initTeam } from "@/lib/team/sync";
 import { recordDuration, trackRoute } from "@/lib/telemetry";
 import { initUsageTracking } from "@/lib/usage-tracking";
 import { initWindowIntegration } from "@/lib/window-integration";
-import { isPluginError } from "../packages/ui-plugin-api/src/errors";
 import { router } from "./router";
 
 performance.mark("l8db.modules");
@@ -70,11 +66,7 @@ for (const match of router.matchRoutes(router.state.location))
     ?.catch(() => undefined);
 
 const container = document.getElementById("root") as HTMLElement;
-const root = ReactDOM.createRoot(container, {
-  onCaughtError: (error, info) =>
-    isPluginError(error) ? console.warn(error) : console.error(error, info.componentStack),
-  onRecoverableError: (error) => (isPluginError(error) ? console.warn(error) : reportError(error)),
-});
+const root = ReactDOM.createRoot(container);
 function render() {
   root.render(
     <React.StrictMode>
@@ -82,7 +74,6 @@ function render() {
         <QueryClientProvider client={queryClient}>
           <ExtensionHostContext.Provider value={extensionHost.manager}>
             <RouterProvider router={router} />
-            <PluginProposals />
             <ExtensionPrompts />
           </ExtensionHostContext.Provider>
         </QueryClientProvider>
@@ -92,12 +83,6 @@ function render() {
 }
 
 let startupReady = false;
-
-void organizationReady
-  .then(() => {
-    if (useOrganizationStore.getState().policy?.allowExtensions !== false) return bootUiPlugins();
-  })
-  .catch((error) => console.warn("UI-Plugins konnten nicht starten", error));
 
 Promise.all([organizationReady, executionSettings.ready, initConnectionSecrets(), loadProviders()])
   .then(async () => {

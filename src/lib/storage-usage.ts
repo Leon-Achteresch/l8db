@@ -35,7 +35,6 @@ const LABELS: Record<string, string> = {
   "l8db.split-view": "Geteilte Ansicht",
   "l8db.workbench": "Arbeitsbereich",
   "l8db.query-workspace": "Abfrage-Arbeitsbereich",
-  "l8db.ui-plugins": "UI-Plugins",
   "l8db.sync": "Synchronisierung",
   "l8db.discovery.achievements": "Entdecken · Erfolge",
   "l8db.discovery.feedback": "Entdecken · Rückmeldungen",

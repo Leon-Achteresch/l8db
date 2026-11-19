@@ -1,4 +1,4 @@
-import type { SplitLayout } from "@/lib/ui-plugins/api";
+export type SplitLayout = "columns" | "rows" | "leftStack" | "topStack" | "grid";
 
 export type SplitAxis = "row" | "column";
 export type SplitEdge = "left" | "right" | "top" | "bottom";
@@ -37,15 +37,8 @@ export function defaultSplitLayout(count: number, orientation: SplitOrientation)
   return count === 3 ? "leftStack" : "grid";
 }
 
-export function autoLayout(
-  count: number,
-  orientation: SplitOrientation,
-  plugin?: ((count: number, orientation: SplitOrientation) => SplitLayout | undefined) | null,
-): SplitTree {
-  return namedLayout(
-    (count > 1 && plugin?.(count, orientation)) || defaultSplitLayout(count, orientation),
-    count,
-  );
+export function autoLayout(count: number, orientation: SplitOrientation): SplitTree {
+  return namedLayout(defaultSplitLayout(count, orientation), count);
 }
 
 function normalize(tree: SplitTree): SplitTree {

@@ -2,6 +2,7 @@ import type { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { saveQueryTabFile } from "@/lib/hooks/use-query-file";
+import { noteActiveTab, recentTabKeys } from "@/lib/recent-tabs";
 import { standaloneTabs, tabAfterClose, useSplitView } from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import {
@@ -11,7 +12,6 @@ import {
   tabKey,
   useTableTabs,
 } from "@/lib/table-tabs";
-import { noteActiveTab, recentTabKeys } from "@/lib/ui-plugins/tabs-policy";
 import { useWorkbenchTabs, workbenchTabBusy } from "@/lib/workbench-tabs";
 
 export type PendingClose = { keys: string[]; keep?: string } | null;

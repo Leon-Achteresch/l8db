@@ -10,7 +10,7 @@ import {
   syncAnchor,
 } from "@/lib/split-links";
 import { usePaneTabs, useSplitView } from "@/lib/split-view";
-import { useSplitLayout } from "@/lib/ui-plugins/split-layout";
+import { useSplitLayout } from "@/lib/use-split-layout";
 
 export function MasterDetailLinks() {
   const ref = useRef<HTMLDivElement>(null);

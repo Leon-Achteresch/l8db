@@ -7,7 +7,6 @@ import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { buildDuplicatePrefill } from "@/lib/row-duplicate";
 import { rowRuleColor } from "@/lib/row-rules";
 import { useSettingsStore } from "@/lib/settings";
-import { UiPluginGridContext } from "@/lib/ui-plugins/grid";
 import { RowWatchContext } from "@/lib/workbench/row-watch-context";
 import { saveRowWatch } from "@/lib/workbench/row-watches";
 import { DataTableRow } from "../data-table-row";
@@ -148,7 +147,6 @@ export function DataTableBody({
       (columnDetails ?? []).filter((column) => column.is_primary_key).map((column) => column.name),
     [columnDetails],
   );
-  const pluginGrid = useContext(UiPluginGridContext);
   const menuOrigin = useRef<HTMLElement | null>(null);
 
   return (
@@ -209,7 +207,6 @@ export function DataTableBody({
                     isMarked={markedRows.has(row.original)}
                     ruleColor={
                       (rules.length ? rowRuleColor(row.original, rules) : undefined) ??
-                      pluginGrid?.rowColor?.(row.original) ??
                       (changedRows.has(row.original) ? "var(--primary)" : undefined)
                     }
                     isContextMenuTarget={menuRow?.original === row.original}

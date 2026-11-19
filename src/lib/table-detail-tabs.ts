@@ -12,8 +12,7 @@ export type TableDetailTab =
   | "grants"
   | "used-by"
   | "performance"
-  | "audit"
-  | `plugin:${string}`;
+  | "audit";
 
 export const TABLE_DETAIL_TABS: {
   id: TableDetailTab;

@@ -33,8 +33,7 @@ describe("split layout tree", () => {
     expect(autoLayout(2, "horizontal")).toEqual(row(null, null));
     expect(autoLayout(2, "vertical")).toEqual(column(null, null));
     expect(autoLayout(3, "vertical")).toEqual(row(null, column(null, null)));
-    expect(autoLayout(3, "horizontal", () => "rows")).toEqual(column(null, null, null));
-    expect(autoLayout(4, "horizontal", () => undefined)).toEqual(namedLayout("grid", 4));
+    expect(autoLayout(4, "horizontal")).toEqual(namedLayout("grid", 4));
   });
 
   test("Einfügen an einer Kante teilt genau den Zielbereich", () => {

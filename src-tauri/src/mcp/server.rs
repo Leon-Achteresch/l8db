@@ -242,7 +242,6 @@ pub fn tool_definitions() -> Value {
         super::health::tool_definition(),
         super::workflow::tool_definition(),
         super::open::tool_definition(),
-        crate::ui_plugin_proposals::definition(),
         super::code::tool_definition(),
         super::script::tool_definition(),
         super::watch::tool_definition(),
@@ -330,7 +329,6 @@ const ANNOTATIONS: &[(&str, &str, bool, bool, bool)] = &[
     ("rules", "Data rules", false, true, false),
     ("notebook", "Notebook", false, false, false),
     ("report_issue", "Report issue", false, false, false),
-    ("ui_plugins", "UI plugins", false, true, false),
 ];
 
 pub(crate) fn published(tools: Vec<Value>) -> Vec<Value> {
@@ -533,7 +531,6 @@ impl Server {
                 }
                 result
             }
-            "ui_plugins" => crate::ui_plugin_proposals::call(&args).await,
             "open" => self.open(config, &args).await,
             "report_issue" if args["confirm"] != true => Err(
                 "Titel und Text erst dem Benutzer zeigen und nach seiner Zustimmung mit confirm=true senden."

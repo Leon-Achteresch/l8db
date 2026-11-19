@@ -1,14 +1,12 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { PlusIcon } from "lucide-react";
 import type * as React from "react";
-import { Fragment, useRef } from "react";
+import { useRef } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { HiddenTabsMenu } from "@/features/shell/table-tabs/hidden-tabs-menu";
-import { TabGroupLabel } from "@/features/shell/table-tabs/tab-group-label";
 import { useTabClose } from "@/features/shell/table-tabs/use-tab-close";
-import { useTabGroups } from "@/features/shell/table-tabs/use-tab-groups";
 import {
   type TableTabActions,
   TableTabsSortableTab,
@@ -32,7 +30,6 @@ export function PaneTabStrip({ index, focused }: { index: number; focused: boole
   const pendingTab = useActiveWorkspaceTab(true);
   const navigate = useNavigate();
   const router = useRouter();
-  const groups = useTabGroups(tabs);
   const group = `pane-${index}`;
   const keys = tabs.map(tabKey);
   const { containerRef, navRef, trackRef, overflow, hiddenKeys, revealTab } = useTabOverflow(
@@ -143,28 +140,24 @@ export function PaneTabStrip({ index, focused }: { index: number; focused: boole
         >
           <div ref={trackRef} className="relative flex w-max items-center gap-0.5 px-0.5">
             {tabs.map((tab, position) => {
-              const label = groups?.[position];
-              const previous = position > 0 ? groups?.[position - 1] : undefined;
               const key = tabKey(tab);
               return (
-                <Fragment key={key}>
-                  {label && label.id !== previous?.id && <TabGroupLabel group={label} />}
-                  <TableTabsSortableTab
-                    tab={tab}
-                    index={position}
-                    group={group}
-                    pane={index}
-                    paneCount={paneCount}
-                    isActive={key === active}
-                    dimmed={!focused}
-                    isPending={Boolean(pendingTab && tabKey(pendingTab) === key)}
-                    color={colorOf(tab)}
-                    hasTabsToRight={position < tabs.length - 1}
-                    tabsCount={tabs.length}
-                    canSplit={paneCount < MAX_SPLIT_PANES}
-                    actions={actions}
-                  />
-                </Fragment>
+                <TableTabsSortableTab
+                  key={key}
+                  tab={tab}
+                  index={position}
+                  group={group}
+                  pane={index}
+                  paneCount={paneCount}
+                  isActive={key === active}
+                  dimmed={!focused}
+                  isPending={Boolean(pendingTab && tabKey(pendingTab) === key)}
+                  color={colorOf(tab)}
+                  hasTabsToRight={position < tabs.length - 1}
+                  tabsCount={tabs.length}
+                  canSplit={paneCount < MAX_SPLIT_PANES}
+                  actions={actions}
+                />
               );
             })}
           </div>

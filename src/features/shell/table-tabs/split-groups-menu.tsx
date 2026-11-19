@@ -11,10 +11,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { ForeignSplitGroup, SplitGroup } from "@/lib/split-view";
 import { tabLabel } from "@/lib/tab-navigation";
-import type { TemplateEntry } from "@/lib/ui-plugins/registry";
 import { cn } from "@/lib/utils";
 import { iconButton } from "./constants";
-import { TemplateItems } from "./template-items";
 
 interface SplitGroupsMenuProps {
   groups: SplitGroup[];
@@ -27,8 +25,6 @@ interface SplitGroupsMenuProps {
   onToggleShared: (group: SplitGroup, connectionId?: string) => void;
   sharedNew: boolean;
   sharedRef: React.Ref<HTMLDivElement>;
-  templates: readonly TemplateEntry[];
-  onOpenTemplate: (entry: TemplateEntry) => void;
 }
 
 export function SplitGroupsMenu({
@@ -42,8 +38,6 @@ export function SplitGroupsMenu({
   onToggleShared,
   sharedNew,
   sharedRef,
-  templates,
-  onOpenTemplate,
 }: SplitGroupsMenuProps) {
   const total = groups.length + foreign.length;
   const label = `Tab-Gruppen (${total})`;
@@ -122,7 +116,6 @@ export function SplitGroupsMenu({
             </div>
           );
         })}
-        <TemplateItems templates={templates} onOpenTemplate={onOpenTemplate} />
       </DropdownMenuContent>
     </DropdownMenu>
   );
