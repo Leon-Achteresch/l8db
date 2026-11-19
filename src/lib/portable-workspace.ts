@@ -95,6 +95,7 @@ const settingEnums: Record<string, string[]> = {
   uiDensity: ["compact", "normal", "spacious"],
   tableStyle: ["classic", "compact", "semantic", "profile"],
   filterBarStyle: ["classic", "omnibar", "pills"],
+  tableFilterMode: ["simple", "sql"],
   sslDefaultMode: ["prefer", "require", "disable", "verify-full"],
 };
 const settingRanges: Record<string, [number, number]> = {

@@ -31,6 +31,7 @@ export interface PlsqlWarningRules {
 }
 export type SidebarObjectNav = "tabs" | "select";
 export type UpdateChannel = "stable" | "canary";
+export type TableFilterMode = "simple" | "sql";
 
 export type EditorKeymap = "default" | "vim";
 export type EditorFontFamily =
@@ -137,6 +138,7 @@ export interface SettingsState {
   monochromeCells: boolean;
   tableStyle: TableStyle;
   filterBarStyle: FilterBarStyle;
+  tableFilterMode: TableFilterMode;
   connectionTimeout: number;
   sslDefaultMode: SslDefaultMode;
   setRowLimit: (v: number) => void;
@@ -215,6 +217,7 @@ export interface SettingsState {
   setMonochromeCells: (value: boolean) => void;
   setTableStyle: (value: TableStyle) => void;
   setFilterBarStyle: (value: FilterBarStyle) => void;
+  setTableFilterMode: (value: TableFilterMode) => void;
   setConnectionTimeout: (v: number) => void;
   setSslDefaultMode: (v: SslDefaultMode) => void;
   resetToDefaults: () => void;
@@ -237,6 +240,7 @@ export const TABLE_APPEARANCE_DEFAULTS = {
   monochromeCells: true,
   tableStyle: "classic",
   filterBarStyle: "classic",
+  tableFilterMode: "simple",
 } satisfies Partial<SettingsState>;
 
 export const UI_SCALE_MIN = 80;
@@ -346,6 +350,7 @@ export const DEFAULT_SETTINGS = {
   monochromeCells: true,
   tableStyle: "classic" as TableStyle,
   filterBarStyle: "classic" as FilterBarStyle,
+  tableFilterMode: "simple" as TableFilterMode,
   connectionTimeout: 15,
   sslDefaultMode: "prefer" as SslDefaultMode,
 };
@@ -465,6 +470,8 @@ export const useSettingsStore = create<SettingsState>()(
       setTableStyle: (tableStyle) => set({ tableStyle: normalizeTableStyle(tableStyle) }),
       setFilterBarStyle: (filterBarStyle) =>
         set({ filterBarStyle: normalizeFilterBarStyle(filterBarStyle) }),
+      setTableFilterMode: (tableFilterMode) =>
+        set({ tableFilterMode: tableFilterMode === "sql" ? "sql" : "simple" }),
       resetAppearance: () => set({ ...LAYOUT_APPEARANCE_DEFAULTS, ...TABLE_APPEARANCE_DEFAULTS }),
       setConnectionTimeout: (connectionTimeout) => set({ connectionTimeout }),
       setSslDefaultMode: (sslDefaultMode) => set({ sslDefaultMode }),
@@ -514,6 +521,7 @@ export const useSettingsStore = create<SettingsState>()(
           monochromeCells: saved?.monochromeCells !== false,
           tableStyle: normalizeTableStyle(saved?.tableStyle),
           filterBarStyle: normalizeFilterBarStyle(saved?.filterBarStyle),
+          tableFilterMode: saved?.tableFilterMode === "sql" ? "sql" : "simple",
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
           dmlPreviewMode: normalizeDmlPreviewMode(saved?.dmlPreviewMode),
           updateChannel: saved?.updateChannel === "canary" ? "canary" : "stable",

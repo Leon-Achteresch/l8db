@@ -314,6 +314,14 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "filterBarStyle",
   },
   {
+    id: "table-filter-mode",
+    tabId: "appearance",
+    title: "Standardmodus für Tabellenfilter",
+    description:
+      "Ob neue Tabellenfilter im Modus Einfach oder SQL starten. Ein für eine Tabelle gewählter Modus bleibt erhalten.",
+    keywords: ["filter", "sql", "einfach", "simple", "where", "modus", "standard"],
+    key: "tableFilterMode",
+  },  {
     id: "reset-appearance",
     tabId: "appearance",
     title: "Darstellung zurücksetzen",
