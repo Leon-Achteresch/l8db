@@ -282,3 +282,38 @@ describe("Was ist das? Screenshot gehört zum Entwurf", () => {
     expect(setPendingIssueScreenshot(null)).toBeNull();
   });
 });
+
+describe("Issue-Bericht ohne Objektnamen", () => {
+  test("failed statements lose the names their SQL mentions, even in huge scripts", async () => {
+    const { useQueryHistoryStore } = await import("../src/lib/query-history");
+    const entry = (sql: string, error: string) => ({
+      id: sql.slice(0, 20),
+      connectionId: "c",
+      database: null,
+      sql,
+      ranAt: 0,
+      durationMs: null,
+      rowCount: null,
+      error,
+    });
+    useQueryHistoryStore.setState({
+      entries: [
+        entry("select betrag from Rechnungskopf", "no such table: Rechnungskopf"),
+        entry(
+          `create package body pa_abrechnung as\n${"x := 1;\n".repeat(300_000)}end;`,
+          "ORA-24344: PACKAGE BODY PA_ABRECHNUNG wurde mit Kompilierfehlern erstellt",
+        ),
+        entry("select 1", "ok"),
+        entry("select geheim from t", "column geheim missing"),
+      ],
+    });
+    const started = performance.now();
+    const { diagnostics } = await handleChatIssueRequest();
+    const elapsed = performance.now() - started;
+    useQueryHistoryStore.setState({ entries: [] });
+    expect(diagnostics).toBe(
+      "diag\n\nLetzte fehlgeschlagene Abfragen:\n- no such table: …\n- ORA-24344: PACKAGE BODY … wurde mit Kompilierfehlern erstellt\n- ok",
+    );
+    expect(elapsed).toBeLessThan(100);
+  });
+});
