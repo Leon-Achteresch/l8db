@@ -275,7 +275,7 @@ export const DataTableCell = memo(function DataTableCell({
             "outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)]",
             !isSticky && "relative z-1 bg-primary/[0.03]",
           ),
-        !isActive && cellIndex > 0 && !isSticky && "hover:bg-muted/10",
+        !isActive && cellIndex > 0 && !isSticky && "grid-hover:bg-muted/10",
       )}
     >
       {cellIndex === 0 ? (

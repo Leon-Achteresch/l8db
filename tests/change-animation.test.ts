@@ -96,3 +96,18 @@ test("reduced motion keeps brief opacity feedback with no spatial movement", () 
   preference.matches = false;
   animateChange({} as HTMLElement)();
 });
+
+test("devices with at most four cores skip the spatial view travel", () => {
+  const host = window as unknown as { navigator?: { hardwareConcurrency: number } };
+  host.navigator = { hardwareConcurrency: 4 };
+  const stop = animateChange(element);
+  const animation = animations.at(-1)!;
+  expect(animation.frames.every((frame) => frame.transform === undefined)).toBe(true);
+  expect(animation.options.duration).toBe(100);
+  stop();
+  host.navigator = { hardwareConcurrency: 8 };
+  const full = animateChange(element);
+  expect(animations.at(-1)!.options.duration).toBe(420);
+  full();
+  delete host.navigator;
+});

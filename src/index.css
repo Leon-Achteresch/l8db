@@ -14,7 +14,15 @@
 }
 @custom-variant row-hover {
   @media (hover: hover) {
-    .group\/row:hover & {
+    .group\/row:hover:not([data-scrolling] *) & {
+      @slot;
+    }
+  }
+}
+
+@custom-variant grid-hover {
+  @media (hover: hover) {
+    &:hover:not([data-scrolling] *) {
       @slot;
     }
   }
@@ -532,7 +540,8 @@ body[data-onboarding-active]
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
     scroll-behavior: auto !important;
   }
 }

@@ -20,6 +20,7 @@ const SUITES = {
   core: [
     "tests/perf-csv-development.test.ts",
     "tests/perf-number-display.test.ts",
+    "tests/perf-low-end.test.ts",
     "tests/perf-sql-file-encoding.test.ts",
     "tests/perf-binary-utf8.test.ts",
     "tests/perf-table-server-output.test.ts",

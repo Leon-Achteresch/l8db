@@ -1,6 +1,7 @@
 import { DragDropProvider } from "@dnd-kit/react";
 import { type CSSProperties, memo, useId, useMemo, useState } from "react";
 import { gridColumnTemplate } from "@/lib/column-window";
+import { useScrollingFlag } from "@/lib/hooks/use-scrolling-flag";
 import { useSpiderVisit } from "@/lib/hooks/use-spider-visit";
 import { markNewFeatureSeen } from "@/lib/new-features";
 import { reorderVisibleColumns } from "@/lib/table-column-prefs";
@@ -151,6 +152,7 @@ export const DataTableContent = memo(function DataTableContent(props: DataTableP
     return true;
   };
   useSpiderVisit(scrollRef, columnNames, data);
+  useScrollingFlag(scrollRef);
   const columnScope = useId();
   const gridColumns = useMemo(() => gridColumnTemplate(columnWidths), [columnWidths]);
   const dragPreview = useColumnDragPreview({
