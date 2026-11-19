@@ -21,6 +21,7 @@ function useIconMenuTip() {
     let visible = false;
     let warmUntil = 0;
     let current: HTMLElement | null = null;
+    let hovered: HTMLElement | null = null;
     let anchors: Map<Element, string> | null = null;
     const anchor = (el: HTMLElement) =>
       `translate(${el.offsetLeft + el.offsetWidth / 2}px, ${el.offsetTop - TIP_GAP}px) translate(-50%, -100%)`;
@@ -76,14 +77,16 @@ function useIconMenuTip() {
       onFocus(event: FocusEvent<HTMLDivElement>) {
         const item = itemIn(event.currentTarget, event.target);
         if (item) show(item);
-        else hide();
+        else if (!hovered) hide();
       },
       onPointerOver(event: PointerEvent<HTMLDivElement>) {
-        const item = itemIn(event.currentTarget, event.target);
-        if (item?.hasAttribute("data-disabled")) show(item);
+        hovered = itemIn(event.currentTarget, event.target);
+        if (hovered) show(hovered);
+        else hide();
       },
       onPointerLeave() {
-        if (current?.hasAttribute("data-disabled")) hide();
+        hovered = null;
+        hide();
       },
       onBlur(event: FocusEvent<HTMLDivElement>) {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) hide();

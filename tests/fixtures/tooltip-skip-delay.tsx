@@ -12,8 +12,16 @@ import { IconMenu } from "../../src/components/icon-menu/icon-menu";
 import { IconMenuContent } from "../../src/components/icon-menu/icon-menu-content";
 import { IconMenuItem } from "../../src/components/icon-menu/icon-menu-item";
 import { IconMenuSeparator } from "../../src/components/icon-menu/icon-menu-separator";
+import { IconMenuSubTrigger } from "../../src/components/icon-menu/icon-menu-sub-trigger";
+import { ICON_MENU_SUB_BELOW } from "../../src/components/icon-menu/shared";
 import { Button } from "../../src/components/ui/button";
-import { DropdownMenuTrigger } from "../../src/components/ui/dropdown-menu";
+import {
+  DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuTrigger,
+} from "../../src/components/ui/dropdown-menu";
 import { TooltipProvider } from "../../src/components/ui/tooltip";
 import "../../src/index.css";
 
@@ -52,6 +60,16 @@ function Fixture() {
             {icons.slice(3).map((Icon, index) => (
               <IconMenuItem key={Icon.displayName} icon={<Icon />} label={`Menü ${index + 4}`} />
             ))}
+            <IconMenuItem icon={<SaveIcon />} label="Menü gesperrt" disabled />
+            <IconMenuSeparator />
+            <DropdownMenuSub>
+              <IconMenuSubTrigger icon={<PlayIcon />} label="Anzeige" />
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent className="w-64" {...ICON_MENU_SUB_BELOW}>
+                  <DropdownMenuItem>Original</DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
           </IconMenuContent>
         </IconMenu>
       </div>
