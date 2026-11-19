@@ -422,6 +422,10 @@ export function setDriverStatus(kind: DatabaseKind, status: DriverStatus): void 
 }
 
 export async function refreshDriverStatus(kind: DatabaseKind): Promise<DriverStatus> {
+  if (kind === "odbc") {
+    await loadProviders();
+    return providerForKind(kind)?.driver_status ?? FALLBACK_DRIVER;
+  }
   const status = await driverStatus(kind);
   setDriverStatus(kind, status);
   return status;

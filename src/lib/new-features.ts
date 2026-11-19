@@ -36,6 +36,7 @@ export const NEW_FEATURES = {
   "import.csv.null-preflight": NEXT_FEATURE_VERSION,
   "sidebar.roles.principals": "0.18.0",
   "drivers.repair": NEXT_FEATURE_VERSION,
+  "drivers.ibmi": NEXT_FEATURE_VERSION,
   "query.results.output-tab": "0.18.0",
   "workspace.motion": "0.18.0",
   "settings.storage.overview": "0.18.0",

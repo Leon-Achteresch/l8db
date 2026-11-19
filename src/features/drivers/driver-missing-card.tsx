@@ -1,4 +1,5 @@
 import { Copy, ExternalLink, RefreshCw } from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Spinner } from "@/components/ui/spinner";
 import { DriverFindings } from "@/features/drivers/driver-findings";
@@ -7,6 +8,7 @@ import { InstallCommand } from "@/features/drivers/install-command";
 import { copyText } from "@/lib/clipboard";
 import type { DriverDiagnosis } from "@/lib/db";
 import type { DriverSummary } from "@/lib/drivers";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
 interface Props {
   summary: DriverSummary;
@@ -31,18 +33,23 @@ export function DriverMissingCard({
   onRepair,
   onRecheck,
 }: Props) {
+  const badge = useNewFeatureVisibility<HTMLElement>("drivers.ibmi");
+  const product = summary.providerId === "ibmi";
   const repairable = Boolean(diagnosis?.steps.length);
+  const names = summary.providerId
+    ? summary.typeLabel
+    : summary.providers.map((provider) => provider.name).join(", ");
   return (
     <article className="flex min-w-0 flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-amber-500/30">
       <div className="flex items-center gap-3">
-        <ProviderLogo kind={summary.kind} className="size-7" />
+        <ProviderLogo kind={summary.kind} providerId={summary.providerId} className="size-7" />
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-medium">{summary.title}</h3>
-          <p
-            className="truncate text-xs text-muted-foreground"
-            title={summary.providers.map((provider) => provider.name).join(", ")}
-          >
-            {summary.providers.map((provider) => provider.name).join(", ")}
+          <h3 className="flex items-center gap-2 text-sm font-medium">
+            <span className="truncate">{summary.title}</span>
+            {product && badge.isNew && <NewBadge />}
+          </h3>
+          <p className="truncate text-xs text-muted-foreground" title={names}>
+            {names}
           </p>
         </div>
         <button

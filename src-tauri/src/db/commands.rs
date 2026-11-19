@@ -86,8 +86,11 @@ pub fn oracle_open_tnsnames(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
-    super::provider::install_driver(kind).await
+pub async fn install_driver(
+    kind: DatabaseKind,
+    provider: Option<String>,
+) -> Result<String, String> {
+    super::provider::install_driver(kind, provider.as_deref()).await
 }
 
 #[tauri::command]

@@ -128,6 +128,7 @@ const {
   driverTypeLabel,
   platformOs,
   diagnosableKinds,
+  installsOwnDriver,
 } = await import("../src/lib/drivers");
 const { installDriver, diagnoseDriver, repairDriver } = await import("../src/lib/db");
 
@@ -247,6 +248,67 @@ describe("drivers", () => {
   test("installDriver invokes the backend command", async () => {
     calls.length = 0;
     await expect(installDriver("oracle")).resolves.toBe("Installation abgeschlossen.");
-    expect(calls).toEqual([{ command: "install_driver", args: { kind: "oracle" } }]);
+    await installDriver("odbc", "ibmi");
+    expect(calls).toEqual([
+      { command: "install_driver", args: { kind: "oracle" } },
+      { command: "install_driver", args: { kind: "odbc", provider: "ibmi" } },
+    ]);
+  });
+
+  test("ODBC rechecks reload every product and URLs resolve by driver name", async () => {
+    const { refreshDriverStatus, useProvidersStore } = await import("../src/lib/providers");
+    const { detectProvider } = await import("../src/lib/connection-url");
+    calls.length = 0;
+    await refreshDriverStatus("odbc");
+    expect(calls.map((call) => call.command)).toEqual(["list_providers"]);
+    const status = { available: false, detail: "", install: [], install_command: null };
+    useProvidersStore.setState({
+      providers: [
+        provider("odbc", "odbc", { type: "odbc", driver: "" }, status),
+        provider("db2", "odbc", { type: "odbc", driver: "IBM DB2 ODBC DRIVER" }, status),
+        provider("ibmi", "odbc", { type: "odbc", driver: "IBM i Access ODBC Driver" }, status),
+      ] as never,
+      loaded: true,
+    });
+    expect(detectProvider("odbc://u@as400/?Driver=IBM+i+Access+ODBC+Driver", "odbc")).toBe("ibmi");
+    expect(detectProvider("odbc://u@h:50000/DB?driver=IBM%20DB2%20ODBC%20DRIVER", "odbc")).toBe(
+      "db2",
+    );
+    expect(detectProvider("odbc://u@h/?Driver=Unbekannt", "odbc")).toBe("odbc");
+  });
+
+  test("an ODBC product with its own installer gets its own entry, within budget", () => {
+    const odbc = (id: string, driver: string, available: boolean, command: string | null) =>
+      provider(
+        id,
+        "odbc",
+        { type: "odbc", driver },
+        { available, detail: "", install: [], install_command: command },
+      );
+    const providers = [
+      odbc("odbc", "", true, null),
+      odbc("db2", "IBM DB2 ODBC DRIVER", false, null),
+      odbc("ibmi", "IBM i Access ODBC Driver", false, "brew install --cask ibm-iaccess"),
+    ];
+    const summaries = summarizeDrivers(providers as never, "macos");
+    expect(summaries.map((entry) => [entry.id, entry.providerId, entry.installable])).toEqual([
+      ["odbc", undefined, false],
+      ["ibmi", "ibmi", true],
+    ]);
+    expect(summaries[1]?.title).toBe("ibmi");
+    expect(installsOwnDriver(providers[1] as never)).toBe(false);
+
+    const many = Array.from({ length: 5000 }, (_, index) =>
+      odbc(`p${index}`, "x", false, index % 50 ? null : "install"),
+    );
+    const samples: number[] = [];
+    for (let run = 0; run < 15; run += 1) {
+      const started = performance.now();
+      expect(summarizeDrivers(many as never, "macos")).toHaveLength(101);
+      samples.push(performance.now() - started);
+    }
+    samples.sort((a, b) => a - b);
+    expect(samples[7]).toBeLessThan(15);
+    expect(samples[14]).toBeLessThan(60);
   });
 });

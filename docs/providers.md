@@ -116,6 +116,7 @@ Relevant Firebase and Google Cloud documentation: [Firebase project API](https:/
 | S3-kompatibel | S3 | builtin |
 | ODBC (generisch) | Odbc | installed ODBC driver |
 | IBM Db2 | Odbc | IBM DB2 ODBC DRIVER |
+| IBM i (AS/400) | Odbc | IBM i Access ODBC Driver |
 | Firebird | Odbc | Firebird/InterBase(r) driver |
 | IBM Informix | Odbc | IBM INFORMIX ODBC DRIVER |
 | SAP ASE (Sybase) | Odbc | Adaptive Server Enterprise |
@@ -267,6 +268,8 @@ Every session reports MODULE `l8db` and an ACTION such as `editor <pid>.<n>`, `m
 ## Default and optional builds
 
 Standard builds include DuckDB and ODBC (Cargo default features `duckdb` and `odbc`). DuckDB is compiled from the bundled sources. ODBC uses odbc-api's `vendored-unix-odbc`: the unixODBC driver manager is compiled from source and linked statically on macOS and Linux, so the binary has no dynamic dependency on `libodbc` and starts on machines without unixODBC (`otool -L` / `ldd` show no ODBC library). Windows links the system `odbc32.dll`, which is always present. Only the vendor driver from the table above is still needed, registered in `odbcinst.ini` and matching the app architecture. The static driver manager reads `/etc/odbcinst.ini`; on macOS l8db sets `ODBCSYSINI` to `/opt/homebrew/etc`, `/usr/local/etc` or `/Library/ODBC` when `/etc/odbcinst.ini` is missing and `ODBCSYSINI`/`ODBCINSTINI` are not set. The vendored unixODBC is LGPL-2.1.
+
+IBM i (AS/400, product id `ibmi`) is the only ODBC product with its own install command (`product_install_command` in `provider.rs`); the install button passes the product id to `install_driver`. macOS installs Homebrew's `unixodbc` (the IBM driver links its `libodbcinst`) and fetches the `ibm-iaccess` cask from IBM's tap (Homebrew verifies the checksum; the `.pkg` is unsigned), then runs `installer` through the macOS administrator dialog. Linux adds IBM's apt/dnf/zypper repository with `sudo -n` (x86_64 packages only). Windows has no unattended download because IBM requires a login; the UI links to the download page. `connection_string_from_url` maps the URL host to `System=` for this driver and rejects a port, because the driver has no port keyword; SSH tunnels and proxies therefore do not work with it.
 
 `bun run tauri build -- --no-default-features` builds without both; add `--features duckdb` or `--features odbc` to re-enable one. Oracle loads Oracle Instant Client at runtime; install it for the app's architecture. A provider entry can remain visible even when its driver is unavailable.
 

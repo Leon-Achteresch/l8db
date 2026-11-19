@@ -53,6 +53,20 @@ export function detectProvider(value: string, kind = kindFromUrl(value)): string
   const candidates = allProviders().filter((provider) => provider.kind === (kind ?? "postgres"));
   if (!candidates.length) return "postgres";
   if (kind === "s3") return detectObjectStorage(value, candidates);
+  if (kind === "odbc") {
+    const raw = /(?:^|[;?&])\s*driver\s*=\s*\{?([^};&]+)/i.exec(value)?.[1] ?? "";
+    let driver = raw.replace(/\+/g, " ");
+    try {
+      driver = decodeURIComponent(driver);
+    } catch {}
+    const byDriver = candidates.find(
+      (provider) =>
+        provider.driver.type === "odbc" &&
+        provider.driver.driver !== "" &&
+        provider.driver.driver.toLowerCase() === driver.trim().toLowerCase(),
+    );
+    if (byDriver) return byDriver.id;
+  }
   let host = "";
   let port = "";
   const oracle = parseOracleKeyValue(value);

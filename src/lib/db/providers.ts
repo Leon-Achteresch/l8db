@@ -181,8 +181,8 @@ export function openTnsNames(): Promise<void> {
   return invoke("oracle_open_tnsnames");
 }
 
-export async function installDriver(kind: DatabaseKind): Promise<string> {
-  return invoke("install_driver", { kind });
+export async function installDriver(kind: DatabaseKind, provider?: string): Promise<string> {
+  return invoke("install_driver", provider ? { kind, provider } : { kind });
 }
 
 export interface DriverFinding {
