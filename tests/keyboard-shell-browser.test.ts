@@ -477,6 +477,108 @@ scenario("i: bestehende Tab-Kürzel funktionieren weiter", async (page) => {
   expect(await tabNames(page)).toContain(names[3]);
 });
 
+scenario("k: nach Tabwechsel liegt der Fokus im Inhalt, Suche öffnet sofort", async (page) => {
+  await openTables(page, 3);
+  const names = await tabNames(page);
+  const inGrid = () =>
+    page.evaluate(() => Boolean(document.activeElement?.closest('[role="grid"]')));
+  const inContent = async () => {
+    const deadline = Date.now() + 5000;
+    while (!(await inGrid()) && Date.now() < deadline) await frames(page, 2);
+    return (await focused(page)).region;
+  };
+  const searchOpens = async () => {
+    await pressMod(page, "f");
+    const input = page.locator('input[placeholder$="suchen…"]:visible').first();
+    await input.waitFor({ timeout: 3000 });
+    expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("INPUT");
+    await page.keyboard.press("Escape");
+    await frames(page, 3);
+  };
+
+  await tabs(page).nth(0).click();
+  await expectSelectedTab(page, names[0]);
+  expect(await inContent()).toBe("content");
+  await searchOpens();
+
+  await page.locator('[data-focus-region="sidebar"] input').first().click();
+  await pressMod(page, "PageDown");
+  await expectSelectedTab(page, names[1]);
+  await frames(page, 4);
+  expect((await focused(page)).tag).toBe("INPUT");
+  expect((await focused(page)).region).toBe("sidebar");
+
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await pressMod(page, "PageDown");
+  await expectSelectedTab(page, names[2]);
+  expect(await inContent()).toBe("content");
+
+  await pressMod(page, "w");
+  expect(await inContent()).toBe("content");
+  await searchOpens();
+});
+
+scenario("k2: Fokusübergabe beim Tabwechsel bleibt billig und ruhig", async (page) => {
+  await openTables(page, 2);
+  await page.evaluate(() => {
+    const internals = (
+      window as unknown as { __TAURI_INTERNALS__: { invoke: (...args: unknown[]) => unknown } }
+    ).__TAURI_INTERNALS__;
+    const original = internals.invoke;
+    const probe = { invokes: 0, focusins: 0 };
+    Object.assign(window, { __focusProbe: probe });
+    internals.invoke = (...args: unknown[]) => {
+      probe.invokes++;
+      return original(...args);
+    };
+    document.addEventListener("focusin", () => probe.focusins++, true);
+  });
+  const probe = () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { __focusProbe: { invokes: number; focusins: number } }).__focusProbe,
+    );
+  for (let warm = 0; warm < 2; warm++) {
+    await tabs(page)
+      .nth(warm % 2)
+      .click();
+    await page.waitForFunction(() => Boolean(document.activeElement?.closest('[role="grid"]')));
+  }
+  const start = await probe();
+  const durations: number[] = [];
+  const switches = 20;
+  for (let index = 0; index < switches; index++) {
+    const begin = Date.now();
+    await tabs(page)
+      .nth(index % 2)
+      .click();
+    await page.waitForFunction(
+      (name) =>
+        [...document.querySelectorAll('[role="tab"][aria-selected="true"]')].some(
+          (tab) => tab.textContent?.trim() === name,
+        ) && Boolean(document.activeElement?.closest('[role="grid"]')),
+      `table_000${index % 2}`,
+      { polling: "raf", timeout: 5000 },
+    );
+    durations.push(Date.now() - begin);
+  }
+  const end = await probe();
+  await page.waitForTimeout(2500);
+  const idle = await probe();
+  const sorted = [...durations].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  const p95 = sorted[Math.ceil(sorted.length * 0.95) - 1];
+  const invokes = (end.invokes - start.invokes) / switches;
+  const focusins = (end.focusins - start.focusins) / switches;
+  console.log(
+    `tab-focus: switches=${switches} medianMs=${median} p95Ms=${p95} invokesPerSwitch=${invokes} focusinsPerSwitch=${focusins} idleFocusins=${idle.focusins - end.focusins} idleInvokes=${idle.invokes - end.invokes}`,
+  );
+  expect(p95).toBeLessThan(3000);
+  expect(focusins).toBeLessThanOrEqual(3);
+  expect(idle.focusins - end.focusins).toBe(0);
+  expect(invokes).toBeLessThanOrEqual(3);
+});
+
 scenario(
   "h3: F1 öffnet die Tastenkürzel-Ansicht als Arbeits-Tab aus der Seitenleisten-Liste",
   async (page) => {

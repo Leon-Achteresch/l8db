@@ -44,6 +44,7 @@ import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
 import { tabKey, useTableTabs } from "@/lib/table-tabs";
 import { toolIdForPath } from "@/lib/tool-tabs";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
+import { useTabContentFocus } from "@/lib/use-tab-content-focus";
 
 const FkDrawerStack = lazy(() =>
   import("@/features/table/fk-drawer-stack").then((module) => ({ default: module.FkDrawerStack })),
@@ -137,6 +138,7 @@ export function WorkspaceLayout() {
   const selectionKey = usePaneSourceKey(routeKey || null);
   const previousKey = useRef("");
   const dropped = useRef(false);
+  useTabContentFocus(routeKey, !switchingTab);
 
   useEffect(() => {
     if (!easyMode && routeKey && previousKey.current !== routeKey) reveal(routeKey);
