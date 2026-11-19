@@ -72,7 +72,7 @@ export function AutomationEmptyState() {
                 className="mt-0.5 size-4 shrink-0 text-fuchsia-600 dark:text-fuchsia-400"
               />
               <span className="flex min-w-0 flex-col gap-0.5">
-                <span className="text-[13px] font-medium">{entry.title}</span>
+                <span className="text-sm font-medium">{entry.title}</span>
                 <span className="text-xs text-muted-foreground">{entry.text}</span>
               </span>
             </li>
@@ -80,7 +80,7 @@ export function AutomationEmptyState() {
         </motion.ol>
 
         <div className="flex flex-col gap-3">
-          <motion.h2 {...rise(2)} className="text-[13px] font-semibold">
+          <motion.h2 {...rise(2)} className="text-sm font-semibold">
             Mit einer Vorlage beginnen
           </motion.h2>
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">

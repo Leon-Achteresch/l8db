@@ -174,7 +174,7 @@ export function CreatePrincipalDialog({
                 ))}
               </div>
               <div className="flex items-center justify-between">
-                <Label htmlFor="principal-new-expire" className="text-[13px]">
+                <Label htmlFor="principal-new-expire" className="text-sm">
                   Passwort beim ersten Login ändern
                 </Label>
                 <Switch
@@ -185,7 +185,7 @@ export function CreatePrincipalDialog({
                 />
               </div>
               <div className="flex items-center justify-between">
-                <Label htmlFor="principal-new-locked" className="text-[13px]">
+                <Label htmlFor="principal-new-locked" className="text-sm">
                   Gesperrt
                 </Label>
                 <Switch
@@ -198,7 +198,7 @@ export function CreatePrincipalDialog({
             </>
           )}
           {template?.object_privileges_truncated && (
-            <p className="text-xs text-amber-600 dark:text-amber-500">
+            <p className="text-xs text-warning">
               Nur die ersten {template.object_privileges.length} Objektrechte werden übernommen.
             </p>
           )}

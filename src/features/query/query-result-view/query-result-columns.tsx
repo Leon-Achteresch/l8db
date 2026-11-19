@@ -50,7 +50,7 @@ export function QueryResultColumns({
                 <td className="px-3 py-1.5">
                   <div className="flex flex-wrap items-center gap-1">
                     {column.is_primary_key && (
-                      <Badge variant="secondary" className="gap-1 text-[10px]">
+                      <Badge variant="secondary" className="gap-1 text-2xs">
                         <KeyRoundIcon className="size-3" />
                         PK
                       </Badge>
@@ -59,7 +59,7 @@ export function QueryResultColumns({
                       <Badge
                         key={`${fk.constraint_name}:${fk.to_schema}.${fk.to_table}.${fk.to_column}`}
                         variant="outline"
-                        className="gap-1 text-[10px]"
+                        className="gap-1 text-2xs"
                         title={fk.constraint_name}
                       >
                         <LinkIcon className="size-3" />

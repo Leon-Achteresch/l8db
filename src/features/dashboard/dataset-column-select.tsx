@@ -45,7 +45,7 @@ export function ColumnSelect({
         {list.map((col) => (
           <SelectItem key={col.ref} value={col.ref}>
             <span className="truncate">{col.label}</span>
-            <span className="ml-auto pl-2 font-mono text-[10px] text-muted-foreground">
+            <span className="ml-auto pl-2 font-mono text-2xs text-muted-foreground">
               {col.type}
             </span>
           </SelectItem>

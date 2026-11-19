@@ -47,9 +47,9 @@ export function ServerGroupSection<T extends Groupable>({
               <h2 className="truncate font-mono text-sm font-semibold tracking-tight">
                 {group.label}
               </h2>
-              {favorite && <Star className="size-3 shrink-0 fill-current text-amber-500" />}
+              {favorite && <Star className="size-3 shrink-0 fill-current text-warning" />}
             </div>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               {group.connections.length}{" "}
               {group.connections.length === 1 ? "Verbindung" : "Verbindungen"}
               {` · ${provider.name}`}
@@ -132,7 +132,7 @@ export function ConnectionServerGroupSection({
                 icon={
                   <Star
                     className={
-                      favoriteServerKeys.includes(group.key) ? "fill-current text-amber-500" : ""
+                      favoriteServerKeys.includes(group.key) ? "fill-current text-warning" : ""
                     }
                   />
                 }

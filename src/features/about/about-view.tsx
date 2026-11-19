@@ -51,7 +51,7 @@ export function AboutView() {
               <div className="flex items-center gap-2">
                 <p className="text-sm font-semibold tracking-tight">Über l8db</p>
                 {appVersion ? (
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-mono text-muted-foreground">
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-2xs font-mono text-muted-foreground">
                     v{appVersion}
                   </span>
                 ) : null}

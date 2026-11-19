@@ -323,7 +323,7 @@ export function DataModelCanvas({
                   >
                     <div className="mb-1 flex items-center gap-1.5 px-1">
                       <SigmaIcon className="size-3.5 text-primary" />
-                      <p className="flex-1 text-xs font-semibold">Berechnete Felder</p>
+                      <p className="flex-1 text-xs font-medium">Berechnete Felder</p>
                       {formulas.isNew && <NewBadge />}
                     </div>
                     <ul className="space-y-0.5">
@@ -342,11 +342,11 @@ export function DataModelCanvas({
                                   event.dataTransfer.effectAllowed = "copy";
                                 }}
                                 className={cn(
-                                  "flex w-full cursor-grab items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring",
+                                  "flex w-full cursor-grab items-center gap-1.5 rounded-md px-2 py-1 text-left text-2xs hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring",
                                   used.has(calcRef(field.id)) && "font-medium text-primary",
                                 )}
                               >
-                                <span className="font-mono text-[10px] text-primary">ƒx</span>
+                                <span className="font-mono text-2xs text-primary">ƒx</span>
                                 <span className="min-w-0 flex-1 truncate">{field.label}</span>
                               </button>
                             </PopoverTrigger>
@@ -410,7 +410,7 @@ export function DataModelCanvas({
                   ref={joinsFeature.ref}
                   className="w-64 space-y-2 rounded-xl border bg-card p-2.5 shadow-sm"
                 >
-                  <p className="flex items-center gap-1.5 text-xs font-semibold">
+                  <p className="flex items-center gap-1.5 text-xs font-medium">
                     Wie gehören die Daten zusammen?
                     {joinsFeature.isNew && <NewBadge />}
                   </p>
@@ -426,13 +426,13 @@ export function DataModelCanvas({
                       ))}
                     </div>
                   ) : (
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-2xs text-muted-foreground">
                       {pendingColumns?.isLoading
                         ? "Suche passende Spalten…"
                         : "Kein automatischer Vorschlag gefunden."}
                     </p>
                   )}
-                  <p className="studio-drag-hint flex items-center gap-1.5 rounded-md bg-muted/60 px-2 py-1.5 text-[11px] text-muted-foreground">
+                  <p className="studio-drag-hint flex items-center gap-1.5 rounded-md bg-muted/60 px-2 py-1.5 text-2xs text-muted-foreground">
                     <span className="studio-drag-dot size-1.5 shrink-0 rounded-full bg-primary" />
                     Oder ziehe eine Spalte aus einer Karte auf die passende Spalte hier.
                   </p>

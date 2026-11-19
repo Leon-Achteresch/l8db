@@ -88,7 +88,7 @@ export function ConvexDataSchemaView({
           </div>
         )}
         {schema?.has_schema && (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Schema-Validierung {schema.schema_validation ? "aktiv" : "deaktiviert"}.
           </p>
         )}
@@ -164,7 +164,7 @@ export function ConvexDataSchemaView({
             </Button>
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Abgeleitet aus den neuesten 200 Dokumenten, als Vorlage für schema.ts.
         </p>
         {!inferred.data && !inferred.isFetching && !inferred.isError ? (

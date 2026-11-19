@@ -74,7 +74,7 @@ export function FirebaseAuthView({ projectId }: { projectId: string }) {
                       className={`size-3.5 shrink-0 transition-transform ${expandedId === user.localId ? "rotate-180" : ""}`}
                     />
                   </button>
-                  <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
+                  <p className="mt-1 truncate font-mono text-2xs text-muted-foreground">
                     {user.localId}
                   </p>
                   {expandedId === user.localId && (

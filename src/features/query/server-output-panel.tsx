@@ -30,7 +30,7 @@ const NO_ENTRIES: ServerOutputEntry[] = [];
 function levelClass(level: string): string {
   const upper = level.toUpperCase();
   if (upper.includes("ERROR") || upper.includes("FEHLER")) return "text-destructive";
-  if (upper.includes("WARN")) return "text-amber-600 dark:text-amber-400";
+  if (upper.includes("WARN")) return "text-warning";
   return "text-muted-foreground";
 }
 

@@ -100,7 +100,7 @@ export function SchedulePreview({ schedule, taskNames, blocked }: Props) {
         </p>
       ) : (
         <div className="flex flex-col gap-1.5">
-          <p className="text-[11px] font-medium text-muted-foreground">Nächste Läufe</p>
+          <p className="text-2xs font-medium text-muted-foreground">Nächste Läufe</p>
           {state.status === "ready" && state.runs.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               Keine Termine in den nächsten 5 Jahren. Zeitfenster, Ausnahmen und Zeitraum prüfen.
@@ -120,7 +120,7 @@ export function SchedulePreview({ schedule, taskNames, blocked }: Props) {
                   return (
                     <li
                       key={run || index}
-                      className="grid grid-cols-[1fr_auto_auto] items-baseline gap-3 border-b border-dashed border-border/70 py-1.5 text-[13px] tabular-nums last:border-b-0"
+                      className="grid grid-cols-[1fr_auto_auto] items-baseline gap-3 border-b border-dashed border-border/70 py-1.5 text-sm tabular-nums last:border-b-0"
                     >
                       {date && label ? (
                         <>

@@ -100,7 +100,7 @@ export function VersioningWorkbench({
               <p className="text-xs font-medium">
                 {pending ? "Änderung auswählen, um den Unterschied zu sehen" : "Alles committet"}
               </p>
-              <p className="max-w-72 text-[11px] leading-relaxed text-muted-foreground">
+              <p className="max-w-72 text-2xs leading-relaxed text-muted-foreground">
                 {pending
                   ? "Angehakte Änderungen aus Datenbank und Dateien landen gemeinsam im nächsten Commit."
                   : "Ändere Objekte in der Arbeitskopie. Sie erscheinen hier, sobald die Datenbank geprüft wurde."}
@@ -129,7 +129,7 @@ export function VersioningWorkbench({
           {message && (
             <p
               role="status"
-              className="shrink-0 truncate border-t border-border/60 px-4 py-1.5 text-[10px] text-muted-foreground"
+              className="shrink-0 truncate border-t border-border/60 px-4 py-1.5 text-2xs text-muted-foreground"
               title={message}
             >
               {message}

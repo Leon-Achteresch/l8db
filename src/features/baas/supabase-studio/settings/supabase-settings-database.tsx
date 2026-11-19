@@ -122,7 +122,7 @@ export function SupabaseSettingsDatabase({
           </p>
         )}
         {project.self_hosted && (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Selbst gehostet: Benutzer postgres.&lt;POOLER_TENANT_ID&gt;, Passwort POSTGRES_PASSWORD
             aus der .env der Instanz.
           </p>

@@ -57,12 +57,12 @@ export function BaasFilePreview({
     <div ref={feature.ref} className={cn("mt-4 rounded-xl border bg-background/70 p-4", className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="flex items-center gap-2 truncate text-xs font-semibold" title={name}>
+          <p className="flex items-center gap-2 truncate text-xs font-medium" title={name}>
             <span className="truncate">{name}</span>
             {feature.isNew && <NewBadge />}
           </p>
           {preview.data && (
-            <p className="mt-1 text-[11px] text-muted-foreground">
+            <p className="mt-1 text-2xs text-muted-foreground">
               {mime} · {preview.data.size.toLocaleString("de-DE")} Bytes
             </p>
           )}

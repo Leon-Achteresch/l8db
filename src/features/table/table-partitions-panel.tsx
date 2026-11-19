@@ -83,7 +83,7 @@ export function TablePartitionsPanel({ schema, table }: TablePartitionsPanelProp
         <LayersIcon className="size-4 text-sky-500" />
         <span className="text-sm font-medium">{data.partitions.length} Partitionen</span>
         {data.strategy && (
-          <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+          <Badge variant="secondary" className="px-1.5 py-0 text-2xs">
             {data.strategy}
           </Badge>
         )}

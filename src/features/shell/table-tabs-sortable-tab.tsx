@@ -79,7 +79,7 @@ export function tabVisual(tab: Tab) {
     case "procedure":
       return { Icon: BracesIcon, iconColor: "text-fuchsia-500" };
     case "extension":
-      return { Icon: PackageIcon, iconColor: "text-amber-500" };
+      return { Icon: PackageIcon, iconColor: "text-warning" };
     case "extension-panel":
       return { Icon: PanelRightIcon, iconColor: "text-teal-500" };
     case "package":
@@ -101,7 +101,7 @@ export function tabVisual(tab: Tab) {
     default:
       return (tab.entityType ?? "table") === "view"
         ? { Icon: EyeIcon, iconColor: "text-cyan-500" }
-        : { Icon: TableIcon, iconColor: "text-emerald-500" };
+        : { Icon: TableIcon, iconColor: "text-success" };
   }
 }
 
@@ -235,12 +235,12 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
               defaultContent
             )}
             {tab.kind === "query" && tab.externalChange && (
-              <span className="shrink-0 text-amber-500" title="Datei extern geändert">
+              <span className="shrink-0 text-warning" title="Datei extern geändert">
                 !
               </span>
             )}
             {tab.kind === "query" && isQueryTabDirty(tab) && (
-              <span className="shrink-0 text-amber-500" title="Ungespeicherte Änderungen">
+              <span className="shrink-0 text-warning" title="Ungespeicherte Änderungen">
                 ●
               </span>
             )}

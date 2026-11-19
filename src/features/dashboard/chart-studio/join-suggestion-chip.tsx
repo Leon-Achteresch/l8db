@@ -31,7 +31,7 @@ export function JoinSuggestionChip({
       onClick={onPick}
       className="group w-full space-y-1.5 rounded-lg border bg-background p-2 text-left transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-ring"
     >
-      <span className="flex items-start gap-2 text-[11px]">
+      <span className="flex items-start gap-2 text-2xs">
         <span className="min-w-0 flex-1 space-y-0.5">
           <span
             className="block truncate font-medium"

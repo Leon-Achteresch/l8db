@@ -45,8 +45,8 @@ export function TaskRows({
           onClick={() => setOpen(!open)}
           className="flex h-10 w-full items-center gap-2 px-3.5 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         >
-          <span className="min-w-0 flex-1 truncate text-xs font-semibold">{title}</span>
-          <span className="text-[11px] tabular-nums text-muted-foreground">
+          <span className="min-w-0 flex-1 truncate text-xs font-medium">{title}</span>
+          <span className="text-2xs tabular-nums text-muted-foreground">
             {done}/{rows.length}
           </span>
           <ChevronDown
@@ -90,14 +90,14 @@ export function TaskRows({
                     {row.label}
                   </span>
                   {row.meta && (
-                    <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                    <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
                       {row.meta}
                     </span>
                   )}
                   {pill && (
                     <span
                       className={cn(
-                        "shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-medium animate-in fade-in",
+                        "shrink-0 rounded-full px-2 py-0.5 text-2xs font-medium animate-in fade-in",
                         pill[1],
                       )}
                     >

@@ -58,12 +58,12 @@ export function VersioningReviewDiff({
     }
   };
   if (!rows.length)
-    return <p className="px-3 py-4 text-[11px] text-muted-foreground">Inhalt unverändert.</p>;
+    return <p className="px-3 py-4 text-2xs text-muted-foreground">Inhalt unverändert.</p>;
   return (
     <div className="min-w-0 space-y-2">
       {placed.loose.length > 0 && (
         <div className="space-y-2">
-          <p className="text-[10px] text-muted-foreground">Kommentare zu älteren Ständen</p>
+          <p className="text-2xs text-muted-foreground">Kommentare zu älteren Ständen</p>
           {placed.loose.map((thread) => (
             <VersioningCommentThread
               key={thread[0].thread}
@@ -74,14 +74,14 @@ export function VersioningReviewDiff({
           ))}
         </div>
       )}
-      <div className="overflow-x-auto rounded-lg border border-border/60 bg-muted/10 font-mono text-[11px] leading-5">
+      <div className="overflow-x-auto rounded-lg border border-border/60 bg-muted/10 font-mono text-2xs leading-5">
         <table className="w-full border-collapse">
           <tbody>
             {rows.slice(0, limit).map((row) => {
               if (row.kind === "gap")
                 return (
                   <tr key={`gap-${row.from}`} className="bg-muted/40 text-muted-foreground">
-                    <td colSpan={4} className="px-3 py-0.5 text-[10px]">
+                    <td colSpan={4} className="px-3 py-0.5 text-2xs">
                       ⋯ {row.hidden} unveränderte {row.hidden === 1 ? "Zeile" : "Zeilen"}
                     </td>
                   </tr>
@@ -98,7 +98,7 @@ export function VersioningReviewDiff({
                   <tr
                     className={cn(
                       "group",
-                      row.kind === "add" && "bg-emerald-500/10",
+                      row.kind === "add" && "bg-success/10",
                       row.kind === "remove" && "bg-red-500/10",
                     )}
                   >
@@ -125,7 +125,7 @@ export function VersioningReviewDiff({
                     <td
                       className={cn(
                         "w-4 select-none text-center align-top",
-                        row.kind === "add" && "text-emerald-700 dark:text-emerald-400",
+                        row.kind === "add" && "text-success",
                         row.kind === "remove" && "text-red-700 dark:text-red-400",
                       )}
                     >

@@ -29,9 +29,9 @@ export function getTypeConfig(dataType: string, isPrimaryKey: boolean) {
   if (isPrimaryKey) {
     return {
       icon: KeyRoundIcon,
-      color: "text-amber-500 bg-amber-500/10 border-amber-500/20",
+      color: "text-warning bg-warning/10 border-warning/20",
       label: "Primärschlüssel",
-      badgeColor: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+      badgeColor: "bg-warning/10 text-warning border-warning/20",
     };
   }
   if (
@@ -62,9 +62,9 @@ export function getTypeConfig(dataType: string, isPrimaryKey: boolean) {
   ) {
     return {
       icon: TypeIcon,
-      color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20",
+      color: "text-success bg-success/10 border-success/20",
       label: "Text",
-      badgeColor: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+      badgeColor: "bg-success/10 text-success border-success/20",
     };
   }
   if (lower.includes("time") || lower.includes("date") || lower.includes("interval")) {

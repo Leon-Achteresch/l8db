@@ -32,7 +32,7 @@ export function EditorAiMetricsSection() {
       <div className="flex w-full min-w-0 flex-col items-end gap-2">
         {rows.length ? (
           <div className="w-full overflow-x-auto rounded-lg border border-border/70">
-            <table className="w-full min-w-[34rem] text-left text-[11px] tabular-nums">
+            <table className="w-full min-w-[34rem] text-left text-2xs tabular-nums">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
                   <th className="px-2 py-1 font-medium">Aktion</th>
@@ -75,7 +75,7 @@ export function EditorAiMetricsSection() {
         ) : (
           <p className="text-xs text-muted-foreground">Noch keine KI-Anfragen aus dem Editor.</p>
         )}
-        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-3 text-2xs text-muted-foreground">
           <span>
             Seit {new Date(since).toLocaleDateString("de-DE")}
             {cost > 0

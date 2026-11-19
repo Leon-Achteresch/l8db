@@ -18,7 +18,7 @@ export function DiscoverView() {
     <main className="workspace-canvas h-full w-full min-w-0 overflow-y-auto">
       <div className="mx-auto w-full max-w-5xl px-6 py-8">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Entdecken</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Entdecken</h1>
           {tabs.length > 1 && (
             <div role="tablist" aria-label="Entdecken" className="flex flex-wrap gap-1">
               {tabs.map((tab) => {

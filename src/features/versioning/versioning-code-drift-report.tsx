@@ -48,7 +48,7 @@ export function VersioningCodeDriftReport({
         <h2 className="flex flex-1 items-center gap-2 font-semibold">
           Programmcode bei allen Kunden{feature.isNew && <NewBadge />}
         </h2>
-        <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}>
+        <Button size="sm" variant="ghost" className="h-6 px-2 text-2xs" onClick={onClose}>
           Schließen
         </Button>
       </div>
@@ -61,14 +61,14 @@ export function VersioningCodeDriftReport({
       {open.map((row) => (
         <div key={`${row.target}:${row.object}`} className="flex flex-wrap items-center gap-2">
           <span className="w-40 truncate">{name(row.target)}</span>
-          <span className="font-mono text-[11px]">{row.label}</span>
-          <span className="text-amber-600 dark:text-amber-400">{LABELS[row.state]}</span>
+          <span className="font-mono text-2xs">{row.label}</span>
+          <span className="text-warning">{LABELS[row.state]}</span>
           {row.state === "drift" && (
             <>
               <Button
                 size="sm"
                 variant="outline"
-                className="h-6 px-2 text-[11px]"
+                className="h-6 px-2 text-2xs"
                 disabled={busy}
                 onClick={() => onAdopt(row)}
               >
@@ -77,7 +77,7 @@ export function VersioningCodeDriftReport({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-6 px-2 text-[11px]"
+                className="h-6 px-2 text-2xs"
                 disabled={busy}
                 onClick={() => onVariance(row)}
               >

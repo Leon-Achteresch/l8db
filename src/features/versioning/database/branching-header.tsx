@@ -49,22 +49,22 @@ export function BranchingHeader({
               <span
                 className={
                   protection === "masked"
-                    ? "rounded-md bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:text-violet-300"
-                    : "rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300"
+                    ? "rounded-md bg-violet-500/10 px-1.5 py-0.5 text-2xs font-medium text-violet-700 dark:text-violet-300"
+                    : "rounded-md bg-warning/10 px-1.5 py-0.5 text-2xs font-medium text-warning"
                 }
               >
                 {PROTECTION_LABELS[protection]}
               </span>
             )}
           </h2>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-muted-foreground">
             <span>
               {overview
                 ? `PostgreSQL ${overview.server.version.split(" ")[0]} · ${overview.server.user}`
                 : workspace.connection.name}
             </span>
             {overview?.server.instantClone && (
-              <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+              <span className="inline-flex items-center gap-1 text-success">
                 <ZapIcon className="size-3" />
                 Sofort-Klon
               </span>
@@ -100,7 +100,7 @@ export function BranchingHeader({
       {warnings.map((warning) => (
         <p
           key={warning}
-          className="flex gap-2 rounded-lg bg-amber-500/5 p-2.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-200"
+          className="flex gap-2 rounded-lg bg-warning/5 p-2.5 text-2xs leading-relaxed text-warning"
         >
           <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
           <span className="min-w-0 break-words">{warning}</span>

@@ -40,9 +40,7 @@ export function SettingsLabInspector({
       </nav>
       <section className="min-w-0 px-6 py-7 sm:px-9">
         <div className="mb-8">
-          <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            SETTINGS / {category.id}
-          </p>
+          <p className="mb-2 font-mono text-2xs text-muted-foreground">SETTINGS / {category.id}</p>
           <h3 className="text-2xl font-semibold tracking-tight">{category.label}</h3>
           <p className="mt-1 text-sm text-muted-foreground">{category.description}</p>
         </div>
@@ -56,9 +54,7 @@ export function SettingsLabInspector({
         </div>
       </section>
       <aside className="hidden border-l bg-muted/20 p-6 xl:block">
-        <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          Kontext
-        </p>
+        <p className="font-mono text-2xs text-muted-foreground">Kontext</p>
         <h4 className="mt-5 text-sm font-semibold">{category.label}</h4>
         <p className="mt-2 text-xs leading-5 text-muted-foreground">
           {category.description}. Änderungen in dieser Vorschau bleiben lokal.

@@ -15,7 +15,7 @@ export function AiBranchSwitcher({
   const index = siblings.indexOf(id);
   if (siblings.length < 2 || index < 0) return null;
   return (
-    <div className="flex items-center text-[11px] text-muted-foreground tabular-nums">
+    <div className="flex items-center text-2xs text-muted-foreground tabular-nums">
       <ResponseAction
         label="Vorherige Version"
         disabled={disabled || index === 0}

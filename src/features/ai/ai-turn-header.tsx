@@ -46,7 +46,7 @@ export function AiTurnHeader({
       aria-expanded={onToggle ? open : undefined}
       onClick={onToggle}
       className={cn(
-        "-ml-1.5 flex h-7 items-center gap-1.5 rounded-full px-2 text-[12px] tabular-nums text-muted-foreground outline-none transition-colors enabled:hover:bg-muted enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
+        "-ml-1.5 flex h-7 items-center gap-1.5 rounded-full px-2 text-xs tabular-nums text-muted-foreground outline-none transition-colors enabled:hover:bg-muted enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
         stopped && !streaming && "text-destructive/90 enabled:hover:text-destructive",
       )}
     >

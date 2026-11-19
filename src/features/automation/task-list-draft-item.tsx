@@ -16,12 +16,10 @@ export function TaskListDraftItem({ name }: Props) {
         <FilePenLineIcon className="size-3.5" aria-hidden />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5 py-1.5">
-        <span className="truncate text-[13px] font-medium" title={name || undefined}>
+        <span className="truncate text-sm font-medium" title={name || undefined}>
           {name || "Neuer Task"}
         </span>
-        <span className="truncate text-[11px] text-muted-foreground">
-          Entwurf · nicht gespeichert
-        </span>
+        <span className="truncate text-2xs text-muted-foreground">Entwurf · nicht gespeichert</span>
       </span>
     </div>
   );

@@ -56,7 +56,7 @@ export function McpConnectionSettings({
               <Shield className="size-4 text-primary" />
               <div>
                 <p className="text-xs font-medium text-foreground">Nur Lesen</p>
-                <p className="text-[10px] text-muted-foreground">Verhindert Schreibbefehle</p>
+                <p className="text-2xs text-muted-foreground">Verhindert Schreibbefehle</p>
               </div>
             </div>
             <Switch
@@ -77,7 +77,7 @@ export function McpConnectionSettings({
                 <ShieldAlert className="size-4 text-red-500" />
                 <div>
                   <p className="text-xs font-medium text-foreground">Produktion beschreiben</p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     Ohne Freigabe verweigert der MCP Schreibzugriffe
                   </p>
                 </div>
@@ -96,12 +96,12 @@ export function McpConnectionSettings({
               <AlertTriangle
                 className={cn(
                   "size-4",
-                  connection.allowDdl ? "text-amber-500" : "text-muted-foreground",
+                  connection.allowDdl ? "text-warning" : "text-muted-foreground",
                 )}
               />
               <div>
                 <p className="text-xs font-medium text-foreground">DDL erlauben</p>
-                <p className="text-[10px] text-muted-foreground">Tabellen anlegen/ändern</p>
+                <p className="text-2xs text-muted-foreground">Tabellen anlegen/ändern</p>
               </div>
             </div>
             <Switch
@@ -117,7 +117,7 @@ export function McpConnectionSettings({
               <ListOrdered
                 className={cn(
                   "size-4",
-                  connection.allowScripts ? "text-amber-500" : "text-muted-foreground",
+                  connection.allowScripts ? "text-warning" : "text-muted-foreground",
                 )}
               />
               <div>
@@ -125,7 +125,7 @@ export function McpConnectionSettings({
                   Skripte erlauben
                   {scripts.isNew ? <NewBadge /> : null}
                 </p>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   Mehrere Statements und SQL*Plus in einer Transaktion
                 </p>
               </div>
@@ -147,7 +147,7 @@ export function McpConnectionSettings({
             </label>
             <Input
               id={`mcp-redact-${connection.id}`}
-              className="h-7 font-mono text-[11px] bg-background"
+              className="h-7 font-mono text-2xs bg-background"
               defaultValue={connection.redactColumns.join(", ")}
               placeholder="z. B. passwort, iban, geheim.*"
               onBlur={(event) =>

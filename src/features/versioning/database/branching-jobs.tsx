@@ -29,7 +29,7 @@ export function BranchingJobs({ jobs }: { jobs: BranchingJob[] }) {
                 <CircleAlertIcon className="size-3.5 shrink-0 text-destructive" />
               )}
               <span className="min-w-0 flex-1 truncate text-xs font-medium">{job.label}</span>
-              <span className="shrink-0 text-[11px] text-muted-foreground">
+              <span className="shrink-0 text-2xs text-muted-foreground">
                 {job.state === "running"
                   ? `${job.phase}${percent === null ? (job.done > 0 ? ` · ${formatBytes(job.done)}` : "") : ` · ${percent} %`}`
                   : "Fehlgeschlagen"}
@@ -50,7 +50,7 @@ export function BranchingJobs({ jobs }: { jobs: BranchingJob[] }) {
               />
             )}
             {job.state === "failed" && job.error && (
-              <p className="mt-1.5 line-clamp-4 whitespace-pre-line break-words text-[11px] leading-relaxed text-destructive">
+              <p className="mt-1.5 line-clamp-4 whitespace-pre-line break-words text-2xs leading-relaxed text-destructive">
                 {job.error}
               </p>
             )}

@@ -46,8 +46,8 @@ interface SchemaCompareRunDialogProps {
 const STEP_ICON = {
   pending: { Icon: CircleDashedIcon, color: "text-muted-foreground" },
   running: { Icon: LoaderIcon, color: "animate-spin text-sky-500" },
-  ok: { Icon: CircleCheckIcon, color: "text-emerald-500" },
-  warning: { Icon: TriangleAlertIcon, color: "text-amber-500" },
+  ok: { Icon: CircleCheckIcon, color: "text-success" },
+  warning: { Icon: TriangleAlertIcon, color: "text-warning" },
   error: { Icon: CircleXIcon, color: "text-destructive" },
   skipped: { Icon: CircleDashedIcon, color: "text-muted-foreground" },
 };
@@ -284,7 +284,7 @@ export function SchemaCompareRunDialog({
                   {statementCount(dangerous.length)} {dangerous.length === 1 ? "kann" : "können"}{" "}
                   Daten löschen oder verändern:
                 </p>
-                <ul className="max-h-32 overflow-auto font-mono text-[11px]">
+                <ul className="max-h-32 overflow-auto font-mono text-2xs">
                   {dangerous.map((statement) => (
                     <li key={statement.sql} className="truncate">
                       {firstLine(statement.sql)}
@@ -336,12 +336,12 @@ export function SchemaCompareRunDialog({
                     {step.message && (
                       <span
                         className={cn(
-                          "whitespace-pre-wrap pl-5.5 font-mono text-[11px]",
+                          "whitespace-pre-wrap pl-5.5 font-mono text-2xs",
                           step.status === "error"
                             ? "text-destructive"
                             : step.status === "skipped"
                               ? "text-muted-foreground"
-                              : "text-amber-600",
+                              : "text-warning",
                         )}
                       >
                         {step.message}
@@ -359,8 +359,8 @@ export function SchemaCompareRunDialog({
                   summary.failed > 0
                     ? "border-destructive/40 bg-destructive/5 text-destructive"
                     : summary.incomplete
-                      ? "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-400"
-                      : "border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400",
+                      ? "border-warning/40 bg-warning/5 text-warning"
+                      : "border-success/40 bg-success/5 text-success",
                 )}
               >
                 {outcomeText(summary)}
@@ -369,7 +369,7 @@ export function SchemaCompareRunDialog({
                   !summary.blocked &&
                   ` ${summary.warnings} mit Kompilierwarnungen.`}
                 {summary.invalid.length > 0 && (
-                  <div className="mt-1 text-amber-600">
+                  <div className="mt-1 text-warning">
                     Nach dem Neukompilieren noch ungültig:{" "}
                     {summary.invalid.map((item) => `${item.object_type} ${item.name}`).join(", ")}
                   </div>

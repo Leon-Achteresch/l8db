@@ -21,11 +21,11 @@ export function DriverHealthVariant({ summaries, installing, onInstall }: Driver
           </p>
           <span className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden className="size-2 rounded-sm bg-emerald-500" />
+              <span aria-hidden className="size-2 rounded-sm bg-success" />
               Bereit
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden className="size-2 rounded-sm bg-amber-500" />
+              <span aria-hidden className="size-2 rounded-sm bg-warning" />
               Fehlt
             </span>
           </span>
@@ -42,7 +42,7 @@ export function DriverHealthVariant({ summaries, installing, onInstall }: Driver
                   aria-label={`${summary.title}: ${summary.status.available ? "bereit" : "fehlt"}`}
                   className={cn(
                     "flex h-12 flex-col items-center justify-center gap-1.5 rounded-md",
-                    summary.status.available ? "bg-emerald-500/10" : "bg-amber-500/15",
+                    summary.status.available ? "bg-success/10" : "bg-warning/15",
                   )}
                 >
                   <ProviderLogo
@@ -53,7 +53,7 @@ export function DriverHealthVariant({ summaries, installing, onInstall }: Driver
                     aria-hidden
                     className={cn(
                       "h-0.5 w-3/5 rounded-full",
-                      summary.status.available ? "bg-emerald-500/70" : "bg-amber-500",
+                      summary.status.available ? "bg-success/70" : "bg-warning",
                     )}
                   />
                 </span>
@@ -72,7 +72,7 @@ export function DriverHealthVariant({ summaries, installing, onInstall }: Driver
             {missing.map((summary) => (
               <article
                 key={summary.kind}
-                className="flex min-w-0 flex-col gap-3 rounded-xl bg-background p-4 ring-1 ring-amber-500/30"
+                className="flex min-w-0 flex-col gap-3 rounded-xl bg-background p-4 ring-1 ring-warning/30"
               >
                 <div className="flex items-center gap-3">
                   <ProviderLogo kind={summary.kind} className="size-7" />
@@ -117,7 +117,7 @@ export function DriverHealthVariant({ summaries, installing, onInstall }: Driver
         </section>
       ) : (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <CircleCheck className="size-4 text-emerald-500" />
+          <CircleCheck className="size-4 text-success" />
           Du kannst jede unterstützte Datenbank direkt verbinden.
         </p>
       )}

@@ -72,12 +72,12 @@ export function CommandPaletteOption({
       {item.badge ? <span className="relative z-10 shrink-0">{item.badge}</span> : null}
       {feature.isNew ? <NewBadge className="relative z-10" /> : null}
       {item.context ? (
-        <span className="relative z-10 shrink-0 text-[10px] text-muted-foreground">
+        <span className="relative z-10 shrink-0 text-2xs text-muted-foreground">
           {item.context}
         </span>
       ) : null}
       {item.hint ? (
-        <kbd className="relative z-10 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground">
+        <kbd className="relative z-10 rounded border border-border bg-background px-1.5 py-0.5 text-2xs text-muted-foreground">
           <CommandMatchText text={item.hint} query={query} />
         </kbd>
       ) : null}

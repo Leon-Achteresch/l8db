@@ -103,7 +103,7 @@ export function McpConnectionsSection({
               Datenbank-Verbindungen
             </h2>
             {isInitialSetup ? (
-              <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+              <span className="rounded-full bg-warning/10 px-2 py-0.5 text-2xs font-medium text-warning">
                 Aktion erforderlich
               </span>
             ) : null}

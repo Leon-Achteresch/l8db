@@ -45,12 +45,12 @@ export function VersioningPullRow({
               ? "text-red-600 dark:text-red-400"
               : pull.draft
                 ? "text-muted-foreground"
-                : "text-emerald-600 dark:text-emerald-400",
+                : "text-success",
         )}
       />
       <span className="min-w-0 flex-1 space-y-1">
         <span className="block truncate text-xs font-medium">{pull.title}</span>
-        <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] text-muted-foreground">
+        <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-2xs text-muted-foreground">
           <span className="truncate">
             #{pull.number} · {pull.author} ·{" "}
             <span className="font-mono">
@@ -62,7 +62,7 @@ export function VersioningPullRow({
         </span>
       </span>
       {pull.updatedAt && (
-        <time dateTime={pull.updatedAt} className="shrink-0 text-[10px] text-muted-foreground">
+        <time dateTime={pull.updatedAt} className="shrink-0 text-2xs text-muted-foreground">
           {relativeTime(pull.updatedAt, now)}
         </time>
       )}

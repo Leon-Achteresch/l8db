@@ -5,10 +5,10 @@ import type { DatabaseTarget } from "@/lib/versioning/types";
 import { ledgerDetail } from "@/lib/versioning/workflow";
 
 const DOT = {
-  current: "bg-emerald-500",
+  current: "bg-success",
   pending: "bg-sky-500",
-  blocked: "bg-amber-500",
-  baseline: "bg-amber-500",
+  blocked: "bg-warning",
+  baseline: "bg-warning",
   paused: "bg-muted-foreground/50",
 };
 
@@ -23,7 +23,7 @@ export function VersioningPipelineCell({
 }) {
   if (!entries.length)
     return (
-      <div className="flex min-h-12 items-center rounded-lg border border-dashed border-border/50 px-2.5 text-[11px] text-muted-foreground">
+      <div className="flex min-h-12 items-center rounded-lg border border-dashed border-border/50 px-2.5 text-2xs text-muted-foreground">
         –
       </div>
     );
@@ -37,12 +37,12 @@ export function VersioningPipelineCell({
           title={[progress.label, ledgerDetail(progress)].filter(Boolean).join(" · ")}
         >
           <span className={cn("size-2 shrink-0 rounded-full", DOT[progress.state])} />
-          <span className="min-w-0 flex-1 truncate text-[11px]">
+          <span className="min-w-0 flex-1 truncate text-2xs">
             {target.environment || target.name}
           </span>
           <span
             className={cn(
-              "shrink-0 font-mono text-[10px]",
+              "shrink-0 font-mono text-2xs",
               progress.state === "current" ? "text-muted-foreground" : "text-foreground",
             )}
           >
@@ -54,7 +54,7 @@ export function VersioningPipelineCell({
         <Button
           size="sm"
           variant={untested ? "outline" : "default"}
-          className="h-6 text-[11px]"
+          className="h-6 text-2xs"
           title={
             untested ? "Dieser Release ist auf dem Testsystem noch nicht ausgerollt" : undefined
           }

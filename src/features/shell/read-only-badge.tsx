@@ -12,7 +12,7 @@ export function ReadOnlyBadge({ className }: Props) {
   return (
     <span
       className={cn(
-        "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 text-xs font-medium text-amber-700 dark:text-amber-400",
+        "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-warning/60 bg-warning/10 px-2.5 text-xs font-medium text-warning",
         className,
       )}
       title="Lesemodus: Schreibzugriffe sind für diese Verbindung gesperrt."

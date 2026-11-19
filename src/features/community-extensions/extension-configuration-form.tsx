@@ -28,7 +28,7 @@ export function ExtensionConfigurationForm({
           <div key={key} className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
               <p className="text-xs font-medium">{property.description ?? key}</p>
-              <p className="font-mono text-[11px] text-muted-foreground">{key}</p>
+              <p className="font-mono text-2xs text-muted-foreground">{key}</p>
             </div>
             {choices ? (
               <Select

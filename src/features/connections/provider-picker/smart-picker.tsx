@@ -103,9 +103,7 @@ export function SmartPicker({
             if (!members.length && !extraMembers.length) return null;
             return (
               <div key={category.id} className="space-y-1.5">
-                <p className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-                  {category.title}
-                </p>
+                <p className="font-mono text-2xs text-muted-foreground">{category.title}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {members.map((provider) => (
                     <ProviderOption

@@ -48,12 +48,12 @@ export function SnapshotList({
         <LockKeyholeIcon className="mt-0.5 size-4 shrink-0 text-primary" strokeWidth={1.7} />
         <div className="min-w-0 flex-1 space-y-1.5">
           <h3 className="text-sm font-semibold">Verschlüsselter Tresor</h3>
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
+          <p className="text-2xs leading-relaxed text-muted-foreground">
             Sicherungen werden lokal mit AES-256-GCM verschlüsselt, signiert und vor jeder Nutzung
             geprüft. Eine Wiederherstellung baut den Stand daneben auf, prüft ihn und tauscht dann
             in einem Schritt – der bisherige Stand bleibt erhalten.
           </p>
-          <p className="flex flex-wrap items-center gap-x-2 text-[11px]">
+          <p className="flex flex-wrap items-center gap-x-2 text-2xs">
             <CalendarClockIcon className="size-3.5 text-muted-foreground" />
             <span>
               {schedule
@@ -69,7 +69,7 @@ export function SnapshotList({
             </button>
           </p>
           {schedule?.lastError && (
-            <p className="text-[11px] text-destructive">Letzter Lauf: {schedule.lastError}</p>
+            <p className="text-2xs text-destructive">Letzter Lauf: {schedule.lastError}</p>
           )}
         </div>
         <Button
@@ -84,7 +84,7 @@ export function SnapshotList({
       </div>
       {order.map((database) => (
         <div key={database || "problem"} className="space-y-1">
-          <h4 className="px-1 text-[11px] font-medium text-muted-foreground">
+          <h4 className="px-1 text-2xs font-medium text-muted-foreground">
             {database
               ? `${database}${family.has(database) ? "" : " · nicht mehr vorhanden"}`
               : "Beschädigt oder verändert"}
@@ -138,7 +138,7 @@ export function SnapshotList({
         </div>
       )}
       {overview.vault.ready && (
-        <p className="px-1 text-[11px] text-muted-foreground">
+        <p className="px-1 text-2xs text-muted-foreground">
           Tresor: {overview.vault.snapshots} Sicherungen · {formatBytes(overview.vault.bytes)}
         </p>
       )}

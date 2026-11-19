@@ -34,7 +34,7 @@ export function SetupStepper({ step, onStep }: Props) {
             >
               <span
                 className={cn(
-                  "grid size-5 shrink-0 place-items-center rounded-full text-[11px] font-semibold tabular-nums",
+                  "grid size-5 shrink-0 place-items-center rounded-full text-2xs font-medium tabular-nums",
                   active && "bg-primary text-primary-foreground",
                   done && "bg-primary/20 text-primary",
                   !active && !done && "bg-muted text-muted-foreground",

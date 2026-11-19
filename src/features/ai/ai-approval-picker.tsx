@@ -41,9 +41,8 @@ export function AiApprovalPicker({ profile, disabled }: Props) {
           title={`Freigaben: ${current.name}`}
           disabled={disabled}
           className={cn(
-            "flex h-7 min-w-0 shrink items-center gap-1.5 rounded-full px-2 text-[12px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60 data-[state=open]:bg-muted",
-            current.id &&
-              "bg-amber-500/12 px-2.5 text-amber-900 hover:bg-amber-500/20 dark:text-amber-200",
+            "flex h-7 min-w-0 shrink items-center gap-1.5 rounded-full px-2 text-xs text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60 data-[state=open]:bg-muted",
+            current.id && "bg-warning/12 px-2.5 text-warning hover:bg-warning/20",
           )}
         >
           <ShieldCheck className="size-3.5 shrink-0" />
@@ -52,7 +51,7 @@ export function AiApprovalPicker({ profile, disabled }: Props) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" sideOffset={6} className="w-64">
-        <DropdownMenuLabel className="text-[11px] text-muted-foreground">
+        <DropdownMenuLabel className="text-2xs text-muted-foreground">
           Freigaben · Datenbank-Änderungen fragen immer
         </DropdownMenuLabel>
         <DropdownMenuRadioGroup
@@ -62,7 +61,7 @@ export function AiApprovalPicker({ profile, disabled }: Props) {
           {MODES.map((mode) => (
             <DropdownMenuRadioItem key={mode.id} value={mode.id} className="flex-col items-start">
               <span className="text-xs">{mode.name}</span>
-              <span className="text-[11px] text-muted-foreground">{mode.hint}</span>
+              <span className="text-2xs text-muted-foreground">{mode.hint}</span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

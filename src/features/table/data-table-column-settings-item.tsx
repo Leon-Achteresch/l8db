@@ -51,11 +51,11 @@ export function DataTableColumnSettingsItem({
       <label
         htmlFor={`column-visibility-${id}`}
         className={cn(
-          "min-w-0 flex-1 cursor-pointer font-mono text-[12px]",
+          "min-w-0 flex-1 cursor-pointer font-mono text-xs",
           (disabled || loading) && "cursor-not-allowed opacity-50",
         )}
       >
-        <span className="truncate font-mono text-[12px]">{id}</span>
+        <span className="truncate font-mono text-xs">{id}</span>
       </label>
     </div>
   );

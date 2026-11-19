@@ -171,7 +171,7 @@ export function ObjectLockPanel({
               Aufbewahrung speichern
             </Button>
             {mode === "COMPLIANCE" && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-400">
+              <p className="text-2xs text-warning">
                 Compliance-Aufbewahrung kann von niemandem verkürzt oder entfernt werden.
               </p>
             )}

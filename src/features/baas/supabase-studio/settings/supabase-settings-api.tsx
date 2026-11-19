@@ -117,14 +117,14 @@ export function SupabaseSettingsApi({
         </div>
       )}
       {capabilities.service_key && revealed && (
-        <p className="mt-2 text-[11px] text-destructive">
+        <p className="mt-2 text-2xs text-destructive">
           Secret Keys umgehen Row Level Security und gehören nie in Browser- oder App-Code.
         </p>
       )}
 
       <div className="mt-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h4 className="text-xs font-semibold">Verbindung für Apps</h4>
+          <h4 className="text-xs font-medium">Verbindung für Apps</h4>
           <div className="flex gap-1">
             {canInsertPublic && (
               <Button variant="ghost" size="sm" onClick={() => setUsePublic((value) => !value)}>
@@ -179,7 +179,7 @@ export function SupabaseSettingsApi({
               {busy ? "Prüfe…" : "Prüfen & speichern"}
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Der neue Key wird gegen /auth/v1/settings geprüft und ersetzt danach den gespeicherten.
           </p>
           {error && (

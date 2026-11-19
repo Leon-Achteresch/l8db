@@ -43,16 +43,16 @@ export function McpClientCard({ client, onToggle }: McpClientCardProps) {
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-foreground">{client.name}</span>
                 {client.registered ? (
-                  <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px]">
+                  <Badge className="bg-success/10 text-success text-2xs">
                     <Check className="size-3" />
                     Aktiv
                   </Badge>
                 ) : client.installed ? (
-                  <Badge variant="secondary" className="text-[10px]">
+                  <Badge variant="secondary" className="text-2xs">
                     Erkannt
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                  <Badge variant="outline" className="text-2xs text-muted-foreground">
                     Nicht installiert
                   </Badge>
                 )}
@@ -68,7 +68,7 @@ export function McpClientCard({ client, onToggle }: McpClientCardProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 rounded-lg bg-muted/50 px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-1.5 rounded-lg bg-muted/50 px-2.5 py-1.5 font-mono text-2xs text-muted-foreground">
           <FolderCode className="size-3.5 shrink-0 opacity-70" />
           <span className="truncate" title={client.configPath}>
             {client.configPath}
@@ -77,7 +77,7 @@ export function McpClientCard({ client, onToggle }: McpClientCardProps) {
       </div>
 
       <div className="flex items-center justify-between border-t border-border/40 pt-3">
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           {client.registered ? "Im Client hinterlegt" : "Server eintragen"}
         </span>
         <Button

@@ -49,7 +49,7 @@ export function VersioningJournal({
             .filter((item) => item.kind === project?.kind)
             .map((item) => ({ value: item.id, label: item.name }))}
         />
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Für Freigaben eine Verbindung zum selben Ziel mit einem anderen DB-Benutzer wählen. Das
           Journal bleibt auch ohne dieses lokale Repository erhalten.
         </p>
@@ -71,7 +71,7 @@ export function VersioningJournal({
             {entry.EVENT === "review_requested" ? (
               <VersioningReviewArtifact content={content(entry)} />
             ) : (
-              <pre className="my-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/30 p-3 text-[11px]">
+              <pre className="my-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/30 p-3 text-2xs">
                 {content(entry)}
               </pre>
             )}

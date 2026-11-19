@@ -60,7 +60,7 @@ export function useDataTableColumns({
         header: () => (
           <span
             title="Rechtsklick: Spalten"
-            className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase select-none"
+            className="text-2xs font-medium text-muted-foreground select-none"
           >
             #
           </span>

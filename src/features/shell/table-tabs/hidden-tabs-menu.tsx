@@ -44,7 +44,7 @@ export function HiddenTabsMenu({ hiddenTabs, onSelect }: HiddenTabsMenuProps) {
             className={`${iconButton} w-11 gap-0.5 bg-primary/8 text-primary`}
           >
             <ChevronDownIcon className="size-3.5" />
-            <span className="text-[10px] tabular-nums">{hiddenTabs.length}</span>
+            <span className="text-2xs tabular-nums">{hiddenTabs.length}</span>
           </button>
         </DropdownMenuTrigger>
       </Tooltip>
@@ -84,17 +84,17 @@ export function HiddenTabsMenu({ hiddenTabs, onSelect }: HiddenTabsMenuProps) {
           >
             <span className="min-w-0 flex-1">
               <span className="block truncate">{tabLabel(tab)}</span>
-              <span className="block truncate text-[10px] text-muted-foreground">
+              <span className="block truncate text-2xs text-muted-foreground">
                 {"schema" in tab ? tab.schema : tab.kind === "query" ? "SQL-Abfrage" : tab.kind}
               </span>
             </span>
             {tab.kind === "query" && isQueryTabDirty(tab) && (
-              <span role="img" className="text-amber-500" aria-label="Ungespeicherte Änderungen">
+              <span role="img" className="text-warning" aria-label="Ungespeicherte Änderungen">
                 ●
               </span>
             )}
             {tab.kind === "query" && tab.externalChange && (
-              <span role="img" className="text-amber-500" aria-label="Datei extern geändert">
+              <span role="img" className="text-warning" aria-label="Datei extern geändert">
                 !
               </span>
             )}

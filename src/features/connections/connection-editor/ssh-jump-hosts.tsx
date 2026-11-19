@@ -11,7 +11,7 @@ export function SshJumpHosts({ network }: { network: NetworkDraft }) {
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-xs font-medium">Sprung-Hosts (ProxyJump)</p>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Werden in dieser Reihenfolge vor dem SSH-Server durchlaufen.
           </p>
         </div>

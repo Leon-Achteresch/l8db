@@ -14,7 +14,7 @@ import { useConvexFunctionHistory } from "./convex-function-history-store";
 
 const LEVEL_CLASS: Record<string, string> = {
   ERROR: "text-destructive",
-  WARN: "text-amber-600",
+  WARN: "text-warning",
   INFO: "text-sky-600",
   DEBUG: "text-muted-foreground",
 };
@@ -141,7 +141,7 @@ export function ConvexFunctionRunner({
             {result.logLines.length === 0 ? (
               <p className="text-xs text-muted-foreground">Keine Logzeilen.</p>
             ) : (
-              <pre className="max-h-48 overflow-auto rounded-lg bg-muted/30 p-3 font-mono text-[11px] whitespace-pre-wrap">
+              <pre className="max-h-48 overflow-auto rounded-lg bg-muted/30 p-3 font-mono text-2xs whitespace-pre-wrap">
                 {numbered(result.logLines).map((line) => (
                   <span
                     key={line.position}

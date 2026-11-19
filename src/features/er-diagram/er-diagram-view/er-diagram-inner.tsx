@@ -229,15 +229,15 @@ export function ERDiagramInner() {
               onDepthChange={(depth) => setFocus(focusKey, depth)}
               onClear={() => setFocus(null, 1)}
             />
-            <div className="px-3 py-2 text-[10px] text-muted-foreground flex flex-col gap-0.5">
+            <div className="px-3 py-2 text-2xs text-muted-foreground flex flex-col gap-0.5">
               <div className="flex items-center gap-1.5">
-                <KeyRound className="size-3 text-amber-500" /> Primary Key
+                <KeyRound className="size-3 text-warning" /> Primary Key
               </div>
               <div className="flex items-center gap-1.5">
                 <KeyRound className="size-3 text-blue-500" /> Foreign Key
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-amber-500 font-bold">*</span> NOT NULL
+                <span className="text-warning font-semibold">*</span> NOT NULL
               </div>
             </div>
           </PopoverContent>

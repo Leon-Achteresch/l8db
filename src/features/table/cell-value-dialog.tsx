@@ -156,15 +156,15 @@ export function CellValueDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base font-semibold">
             <DatabaseIcon className="size-4 text-primary" />
-            Spalte: <span className="font-mono text-primary font-bold">{columnName}</span>
+            Spalte: <span className="font-mono text-primary font-semibold">{columnName}</span>
             {kind === "json" && (
-              <span className="inline-flex items-center gap-1 rounded border border-border bg-muted/60 px-1.5 py-px font-mono text-[10px] text-muted-foreground">
+              <span className="inline-flex items-center gap-1 rounded border border-border bg-muted/60 px-1.5 py-px font-mono text-2xs text-muted-foreground">
                 <BracesIcon className="size-3" />
                 JSON
               </span>
             )}
             {dataType && (
-              <span className="rounded border border-border bg-muted/60 px-1.5 py-px font-mono text-[10px] font-normal text-muted-foreground">
+              <span className="rounded border border-border bg-muted/60 px-1.5 py-px font-mono text-2xs font-normal text-muted-foreground">
                 {dataType}
               </span>
             )}

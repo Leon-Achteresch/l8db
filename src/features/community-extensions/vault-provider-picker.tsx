@@ -41,7 +41,7 @@ export function VaultProviderPicker({
           <span
             aria-hidden
             className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold shadow-xs",
+              "flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-semibold shadow-xs",
               provider.tone,
             )}
           >

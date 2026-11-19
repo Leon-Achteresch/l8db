@@ -27,10 +27,9 @@ export function StepGraphTerminalNode({
       role="img"
       aria-label={label}
       className={cn(
-        "flex items-center justify-center gap-1.5 rounded-full border px-3 text-[11px] font-medium",
+        "flex items-center justify-center gap-1.5 rounded-full border px-3 text-2xs font-medium",
         kind === "entry" && "border-violet-500/25 bg-card text-violet-700 dark:text-violet-300",
-        kind === "end_success" &&
-          "border-emerald-500/35 bg-emerald-500/8 text-emerald-700 dark:text-emerald-300",
+        kind === "end_success" && "border-success/35 bg-success/8 text-success",
         kind === "end_failure" &&
           "border-destructive/35 bg-destructive/8 text-red-700 dark:text-red-300",
       )}

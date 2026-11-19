@@ -19,7 +19,7 @@ export function IslandEmoji({ emoji, effect }: { emoji: string; effect: "wave" |
     return (
       <span
         aria-hidden
-        className="flex size-4 shrink-0 items-center justify-center text-[13px] leading-none"
+        className="flex size-4 shrink-0 items-center justify-center text-sm leading-none"
       >
         {emoji}
       </span>
@@ -27,7 +27,7 @@ export function IslandEmoji({ emoji, effect }: { emoji: string; effect: "wave" |
   return (
     <span
       aria-hidden
-      className="relative flex size-4 shrink-0 items-center justify-center text-[13px] leading-none"
+      className="relative flex size-4 shrink-0 items-center justify-center text-sm leading-none"
     >
       {pop
         ? SPARKS.map((spark) => (

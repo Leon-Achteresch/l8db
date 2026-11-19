@@ -16,7 +16,7 @@ export function VersioningActivity({ workspace }: { workspace: VersioningWorkspa
   return (
     <div className="space-y-7">
       <section>
-        <h2 className="text-xs font-semibold">Gemeinsame Historie & Freigaben</h2>
+        <h2 className="text-xs font-medium">Gemeinsame Historie & Freigaben</h2>
         {workspace.targets?.targets
           .filter((target) => target.release)
           .map((target) => (
@@ -24,7 +24,7 @@ export function VersioningActivity({ workspace }: { workspace: VersioningWorkspa
           ))}
       </section>
       <div>
-        <h2 className="mb-3 text-xs font-semibold">
+        <h2 className="mb-3 text-xs font-medium">
           Deployments{" "}
           <span className="ml-1 text-muted-foreground tabular-nums">{events.length}</span>
         </h2>
@@ -37,9 +37,9 @@ export function VersioningActivity({ workspace }: { workspace: VersioningWorkspa
           <details key={event.id} className="group py-3">
             <summary className="flex cursor-pointer list-none items-start gap-3">
               {event.status === "succeeded" || event.status === "reconciled" ? (
-                <CheckCircle2Icon className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+                <CheckCircle2Icon className="mt-0.5 size-4 shrink-0 text-success" />
               ) : (
-                <CircleAlertIcon className="mt-0.5 size-4 shrink-0 text-amber-500" />
+                <CircleAlertIcon className="mt-0.5 size-4 shrink-0 text-warning" />
               )}
               <span className="min-w-0 flex-1">
                 <span className="block text-xs font-medium">
@@ -48,7 +48,7 @@ export function VersioningActivity({ workspace }: { workspace: VersioningWorkspa
                     {event.from?.id ?? "—"} → {event.to.id}
                   </span>
                 </span>
-                <span className="mt-1 block text-[11px] text-muted-foreground">
+                <span className="mt-1 block text-2xs text-muted-foreground">
                   {new Date(event.startedAt).toLocaleString()} ·{" "}
                   {event.status === "succeeded"
                     ? "Abgeschlossen"
@@ -63,7 +63,7 @@ export function VersioningActivity({ workspace }: { workspace: VersioningWorkspa
             <div className="ml-7 mt-3 space-y-2 text-xs text-muted-foreground">
               <p>Migrationen: {event.completedMigrations.join(", ") || "Keine bestätigt"}</p>
               {event.inFlightStatement && (
-                <p className="text-amber-700 dark:text-amber-300">
+                <p className="text-warning">
                   Ausgang unbestätigt: {event.inFlightStatement}. Die Anweisung kann bereits wirksam
                   sein.
                 </p>
@@ -85,7 +85,7 @@ export function VersioningActivity({ workspace }: { workspace: VersioningWorkspa
         ))}
       </div>
       <div>
-        <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold">
+        <h2 className="mb-3 flex items-center gap-2 text-xs font-medium">
           <HistoryIcon className="size-3.5 text-muted-foreground" />
           Git-Historie
         </h2>
@@ -99,7 +99,7 @@ export function VersioningActivity({ workspace }: { workspace: VersioningWorkspa
               <GitCommitHorizontalIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
               <p className="min-w-0 flex-1 text-xs">
                 {subject.join("\t")}
-                <span className="mt-1 block font-mono text-[10px] text-muted-foreground">
+                <span className="mt-1 block font-mono text-2xs text-muted-foreground">
                   {hash.slice(0, 8)}
                 </span>
               </p>

@@ -64,7 +64,7 @@ export function DiscoverAchievementsTab() {
                 <button
                   type="button"
                   onClick={() => void highlightFeature(next.id)}
-                  className="mt-1 cursor-pointer self-start rounded text-[11px] font-medium text-primary hover:underline"
+                  className="mt-1 cursor-pointer self-start rounded text-2xs font-medium text-primary hover:underline"
                 >
                   {next.title}
                 </button>

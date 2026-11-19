@@ -17,7 +17,7 @@ export function AiIssueIntro() {
         type="button"
         onClick={() => setOpen(true)}
         title="So meldest du Probleme direkt als Issue – mit Vorschau und geschwärztem Screenshot"
-        className="mt-3 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-[11px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="mt-3 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-2xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
         <CircleDot className="size-3 shrink-0" />
         Problem als Issue melden

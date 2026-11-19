@@ -39,11 +39,11 @@ export function ResultCompareKeyMenu({
         >
           <KeyRoundIcon className="size-3 shrink-0" />
           <span className="hidden @min-[44rem]/compare:inline">Schlüssel:</span>
-          <span className="truncate font-mono text-[11px]">{label}</span>
+          <span className="truncate font-mono text-2xs">{label}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="max-h-80 w-64 overflow-y-auto">
-        <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">
+        <DropdownMenuLabel className="text-2xs font-medium text-muted-foreground">
           Zeilen zuordnen über
         </DropdownMenuLabel>
         <DropdownMenuCheckboxItem
@@ -52,7 +52,7 @@ export function ResultCompareKeyMenu({
           onSelect={(event) => event.preventDefault()}
         >
           Automatisch
-          <span className="ml-auto truncate pl-2 font-mono text-[11px] text-muted-foreground">
+          <span className="ml-auto truncate pl-2 font-mono text-2xs text-muted-foreground">
             {detected.length > 0 ? detected.join(", ") : "ganze Zeile"}
           </span>
         </DropdownMenuCheckboxItem>
@@ -64,7 +64,7 @@ export function ResultCompareKeyMenu({
           Ganze Zeile, ohne Schlüssel
         </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">
+        <DropdownMenuLabel className="text-2xs font-medium text-muted-foreground">
           Schlüsselspalten
         </DropdownMenuLabel>
         {columns.map((column) => (
@@ -73,7 +73,7 @@ export function ResultCompareKeyMenu({
             checked={effective.includes(column)}
             onCheckedChange={() => toggle(column)}
             onSelect={(event) => event.preventDefault()}
-            className="font-mono text-[11px]"
+            className="font-mono text-2xs"
           >
             {column}
           </DropdownMenuCheckboxItem>

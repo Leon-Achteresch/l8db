@@ -126,7 +126,7 @@ export function ForeignKeyFields({
             {target.columns?.some((c) => c.is_primary_key) && (
               <button
                 type="button"
-                className="text-[11px] text-muted-foreground hover:text-foreground"
+                className="text-2xs text-muted-foreground hover:text-foreground"
                 onClick={() =>
                   patch({
                     ref_columns: (target.columns ?? [])
@@ -140,7 +140,7 @@ export function ForeignKeyFields({
             )}
           </div>
           {target.loadingColumns ? (
-            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-2 text-2xs text-muted-foreground">
               <Spinner className="size-3" />
               Lade Spalten…
             </div>

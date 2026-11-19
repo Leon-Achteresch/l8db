@@ -28,7 +28,7 @@ export function TourChapterButton({ index, title, summary, active, done, onSelec
     >
       <span
         className={cn(
-          "mt-0.5 grid size-5 shrink-0 place-items-center rounded-full text-[10px] font-semibold",
+          "mt-0.5 grid size-5 shrink-0 place-items-center rounded-full text-2xs font-medium",
           done && "bg-primary text-primary-foreground",
           active && !done && "bg-primary/20 text-foreground",
           !active && !done && "bg-muted text-muted-foreground",
@@ -37,10 +37,8 @@ export function TourChapterButton({ index, title, summary, active, done, onSelec
         {done ? <Check className="size-3" /> : index + 1}
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-xs font-semibold text-foreground">{title}</span>
-        <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
-          {summary}
-        </span>
+        <span className="block truncate text-xs font-medium text-foreground">{title}</span>
+        <span className="mt-0.5 block text-2xs leading-snug text-muted-foreground">{summary}</span>
       </span>
     </motion.button>
   );

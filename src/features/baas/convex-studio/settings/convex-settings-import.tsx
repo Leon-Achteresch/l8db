@@ -78,7 +78,7 @@ export function ConvexSettingsImport({ deployment }: { deployment: ConvexStudioD
   return (
     <section className="rounded-2xl bg-muted/25 p-5">
       <h3 className="text-sm font-semibold">Import</h3>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <p className="mt-1 text-2xs text-muted-foreground">
         ZIP-Snapshot (alle Tabellen) oder eine .jsonl-, .json- bzw. .csv-Datei in eine Zieltabelle.
         Vor dem Schreiben zeigt Convex eine Zusammenfassung zur Bestätigung.
       </p>
@@ -127,7 +127,7 @@ export function ConvexSettingsImport({ deployment }: { deployment: ConvexStudioD
             <p className="text-muted-foreground">Status wird geladen…</p>
           ) : state.state === "waiting_for_confirmation" ? (
             <>
-              <pre className="overflow-x-auto font-mono text-[11px] whitespace-pre-wrap">
+              <pre className="overflow-x-auto font-mono text-2xs whitespace-pre-wrap">
                 {state.message_to_confirm}
               </pre>
               {status.data?.mode === "replace" && (

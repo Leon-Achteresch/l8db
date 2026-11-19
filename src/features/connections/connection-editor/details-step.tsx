@@ -156,17 +156,14 @@ export function ConnectionDetailsStep({
       {guided && (
         <button
           type="button"
-          className="self-start text-[11px] text-muted-foreground underline"
+          className="self-start text-2xs text-muted-foreground underline"
           onClick={() => setStep(1)}
         >
           Andere Datenbank wählen
         </button>
       )}
       {(mode === "string" ? quickProviderId : provider) === "neon" && (
-        <Link
-          to="/cloud-accounts"
-          className="self-start text-[11px] text-muted-foreground underline"
-        >
+        <Link to="/cloud-accounts" className="self-start text-2xs text-muted-foreground underline">
           Mit Neon-Konto verbinden und Branch auswählen
         </Link>
       )}
@@ -260,7 +257,7 @@ export function ConnectionDetailsStep({
         <ConnectionOracleLoginFields extraParams={extraParams} setExtraParams={setExtraParams} />
       )}
       {mode === "string" && value.trim() ? (
-        <p className="truncate text-[11px] text-muted-foreground">Erkannt: {quickInfo.name}</p>
+        <p className="truncate text-2xs text-muted-foreground">Erkannt: {quickInfo.name}</p>
       ) : null}
       {isProfileConnection(mode === "string" ? quickKind : kind) && (
         <p className="text-xs text-muted-foreground">
@@ -270,14 +267,14 @@ export function ConnectionDetailsStep({
         </p>
       )}
       {kind === "oracle" && mode === "string" && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Oracle geht auch als Key-Value: User Id=scott;Password=tiger;Data Source=host:1521/service
         </p>
       )}
       {poolerWarning && (
         <p
           role="status"
-          className="min-w-0 break-words rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700 [overflow-wrap:anywhere] dark:text-amber-300"
+          className="min-w-0 break-words rounded-lg bg-warning/10 p-3 text-xs text-warning [overflow-wrap:anywhere]"
         >
           Du nutzt einen Transaction Pooler. Für den vollständigen SQL-Arbeitsplatz nutze eine
           direkte Verbindung oder den Session Pooler auf Port 5432.
@@ -352,13 +349,13 @@ export function ConnectionDetailsStep({
             </Label>
           </div>
           {connection?.vault && !storeInVault && (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Ohne Haken gilt die Änderung nur bis zum nächsten Abgleich mit {vault.name}.
             </p>
           )}
         </div>
       ) : (
-        <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+        <p className="flex items-center gap-1.5 text-2xs text-muted-foreground">
           <LockKeyhole className="size-3" />
           Passwörter bleiben im System-Schlüsselbund
         </p>

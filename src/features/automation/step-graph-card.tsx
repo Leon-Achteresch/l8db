@@ -68,25 +68,25 @@ export function StepGraphCard({ data, className }: Props) {
             aria-hidden
             className={cn(
               "absolute -top-1 -right-1 size-2.5 rounded-full ring-2 ring-card",
-              errors ? "bg-destructive" : "bg-amber-500",
+              errors ? "bg-destructive" : "bg-warning",
             )}
           />
         )}
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex min-w-0 items-center gap-1.5">
-          <span className="shrink-0 text-[11px] font-medium text-muted-foreground tabular-nums">
+          <span className="shrink-0 text-2xs font-medium text-muted-foreground tabular-nums">
             {number}
           </span>
           <span
             className={cn(
-              "truncate text-[13px] leading-5 font-medium",
+              "truncate text-sm leading-5 font-medium",
               !step.enabled && "text-muted-foreground line-through decoration-muted-foreground/40",
             )}
           >
             {name}
           </span>
-          <span className="ml-auto flex shrink-0 items-center gap-1 pl-1 text-[11px] font-medium text-muted-foreground tabular-nums">
+          <span className="ml-auto flex shrink-0 items-center gap-1 pl-1 text-2xs font-medium text-muted-foreground tabular-nums">
             {retry && (
               <span className="inline-flex items-center gap-0.5" title={`${retry} Wiederholungen`}>
                 <RotateCwIcon className="size-2.5" aria-hidden />
@@ -106,7 +106,7 @@ export function StepGraphCard({ data, className }: Props) {
               <span
                 className={cn(
                   "inline-flex items-center gap-0.5",
-                  errors ? "text-destructive" : "text-amber-600 dark:text-amber-400",
+                  errors ? "text-destructive" : "text-warning",
                 )}
                 title={issues}
               >
@@ -119,7 +119,7 @@ export function StepGraphCard({ data, className }: Props) {
         </span>
         <span
           className={cn(
-            "truncate text-[11px] leading-4",
+            "truncate text-2xs leading-4",
             summary ? "text-muted-foreground" : "text-muted-foreground italic",
           )}
         >

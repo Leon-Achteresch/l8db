@@ -49,7 +49,7 @@ export function VersioningTeamSettings({ workspace }: { workspace: VersioningWor
         return (
           <div key={connection.id} className="space-y-2 border-t border-border pt-3">
             <p className="text-xs font-medium">{connection.name}</p>
-            <p className="break-words font-mono text-[11px] text-muted-foreground">
+            <p className="break-words font-mono text-2xs text-muted-foreground">
               {connection.host}:{connection.port}
               {connection.service ? ` / ${connection.service}` : ""}
               {connection.requiresTunnel ? " · Tunnel erforderlich" : ""}

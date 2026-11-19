@@ -31,7 +31,7 @@ export function TaskListFolder({ name, count, depth, open, onToggle, children }:
         />
         <Icon aria-hidden className="size-3.5 shrink-0" />
         <span className="min-w-0 flex-1 truncate">{name}</span>
-        <span className="shrink-0 tabular-nums text-[11px] text-muted-foreground">{count}</span>
+        <span className="shrink-0 tabular-nums text-2xs text-muted-foreground">{count}</span>
       </button>
       {open && <div className="flex flex-col gap-px">{children}</div>}
     </div>

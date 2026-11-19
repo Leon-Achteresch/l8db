@@ -69,7 +69,7 @@ export function ColumnListItem({
       {editing && kind ? (
         <>
           <div className="flex items-center gap-2">
-            <span className="w-5 text-right text-xs font-semibold text-muted-foreground tabular-nums">
+            <span className="w-5 text-right text-xs font-medium text-muted-foreground tabular-nums">
               {column.ordinal_position}
             </span>
             <Input
@@ -126,20 +126,20 @@ export function ColumnListItem({
       ) : (
         <>
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="w-5 shrink-0 text-right text-xs font-semibold text-muted-foreground tabular-nums">
+            <span className="w-5 shrink-0 text-right text-xs font-medium text-muted-foreground tabular-nums">
               {column.ordinal_position}
             </span>
             <IconComponent
               className={`size-3.5 shrink-0 ${
-                column.is_primary_key ? "text-amber-500" : "text-muted-foreground"
+                column.is_primary_key ? "text-warning" : "text-muted-foreground"
               }`}
             />
             <div className="min-w-0">
-              <p className="flex items-center gap-2 text-[13px] font-medium">
+              <p className="flex items-center gap-2 text-sm font-medium">
                 <span className="truncate">{column.name}</span>
                 {column.is_primary_key && (
                   <span
-                    className="shrink-0 rounded-full bg-amber-500/10 px-1.5 text-[10px] font-medium text-amber-500"
+                    className="shrink-0 rounded-full bg-warning/10 px-1.5 text-2xs font-medium text-warning"
                     title={primaryKey}
                   >
                     {primaryKey === DEFAULT_TERMS.primary_key ? "PK" : primaryKey}
@@ -163,7 +163,7 @@ export function ColumnListItem({
             {textLimit && (
               <span
                 ref={textLimitFeature?.ref}
-                className="flex items-center gap-1 text-[11px] leading-tight text-muted-foreground"
+                className="flex items-center gap-1 text-2xs leading-tight text-muted-foreground"
                 title={`Deklarierte Textgrenze: ${textLimit.length} ${textLimit.unit === "BYTE" ? "Byte" : "Zeichen"}`}
                 data-oracle-text-limit
               >
@@ -210,7 +210,7 @@ export function ColumnListItem({
               }}
             >
               {copiedColumn === column.name ? (
-                <CheckCheckIcon className="size-3.5 text-emerald-500" />
+                <CheckCheckIcon className="size-3.5 text-success" />
               ) : (
                 <CopyIcon className="size-3.5" />
               )}

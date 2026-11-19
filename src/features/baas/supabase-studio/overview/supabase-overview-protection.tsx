@@ -27,7 +27,7 @@ export function SupabaseOverviewProtection({
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           {safe ? (
-            <ShieldCheck className="mt-0.5 size-4 text-emerald-600 dark:text-emerald-400" />
+            <ShieldCheck className="mt-0.5 size-4 text-success" />
           ) : (
             <ShieldAlert
               className={`mt-0.5 size-4 ${open.length ? "text-destructive" : "text-muted-foreground"}`}

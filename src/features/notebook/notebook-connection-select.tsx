@@ -36,7 +36,7 @@ export function NotebookConnectionSelect({
           <SelectItem key={connection.id} value={connection.id}>
             <span className="truncate">{connection.name}</span>
             {connection.readOnly && (
-              <span className="ml-auto pl-2 text-[10px] text-muted-foreground">nur lesen</span>
+              <span className="ml-auto pl-2 text-2xs text-muted-foreground">nur lesen</span>
             )}
           </SelectItem>
         ))}

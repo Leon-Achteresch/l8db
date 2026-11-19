@@ -234,7 +234,7 @@ export const DataTableCell = memo(function DataTableCell({
         cellIndex > 0 &&
           tableStyle === "semantic" &&
           (columnStyle?.primaryKey && !badge
-            ? "text-amber-600 dark:text-amber-400"
+            ? "text-warning"
             : columnStyle?.numeric
               ? "text-foreground"
               : columnStyle?.kind === "uuid"
@@ -264,11 +264,11 @@ export const DataTableCell = memo(function DataTableCell({
               : "bg-[var(--row-bg,var(--background))] row-hover:bg-[color-mix(in_oklab,var(--muted)_15%,var(--row-bg,var(--background)))]",
           ),
         !isSticky && isSelected && "bg-primary/10",
-        !isSticky && isMatch && "bg-amber-400/15",
+        !isSticky && isMatch && "bg-warning/15",
         isActiveMatch &&
           cn(
-            "outline outline-2 -outline-offset-2 outline-amber-500",
-            !isSticky && "relative z-2 bg-amber-400/30",
+            "outline outline-2 -outline-offset-2 outline-warning",
+            !isSticky && "relative z-2 bg-warning/30",
           ),
         isActive &&
           cn(

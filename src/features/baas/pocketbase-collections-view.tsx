@@ -435,7 +435,7 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
           <div className="mt-5 border-t pt-4">
             <div className="flex flex-wrap items-center gap-2">
               <h4 className="text-sm font-semibold">{selected?.name}</h4>
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-2xs text-primary">
                 {selected?.kind === "auth" ? "Auth" : "Daten"}
               </span>
               <span className="text-xs text-muted-foreground">
@@ -560,7 +560,7 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                     ? `Datensatz ${editor.recordId} bearbeiten`
                     : "Datensatz erstellen"}
                 </p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="mt-1 text-2xs text-muted-foreground">
                   Sichtbare Felder als JSON-Objekt eingeben. Dateifelder werden unten separat
                   verwaltet.
                 </p>
@@ -612,7 +612,7 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                           <span className="mr-2">
                             {typeof title === "string" ? title : record.id}
                           </span>
-                          <span className="font-mono text-[10px] font-normal text-muted-foreground">
+                          <span className="font-mono text-2xs font-normal text-muted-foreground">
                             {record.id}
                           </span>
                         </summary>
@@ -624,7 +624,7 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                             )
                             .map((field) => (
                               <div key={field.name} className="min-w-0">
-                                <p className="text-[10px] text-muted-foreground">{field.name}</p>
+                                <p className="text-2xs text-muted-foreground">{field.name}</p>
                                 <p
                                   className="truncate text-xs"
                                   title={displayValue(record[field.name])}
@@ -704,7 +704,7 @@ export function PocketBaseCollectionsView({ id }: { id: string }) {
                           {attachments.map((file) => (
                             <div
                               key={`${file.field}:${file.name}`}
-                              className="inline-flex min-w-0 max-w-full items-center rounded-lg border bg-background text-[11px] text-muted-foreground"
+                              className="inline-flex min-w-0 max-w-full items-center rounded-lg border bg-background text-2xs text-muted-foreground"
                             >
                               <button
                                 type="button"

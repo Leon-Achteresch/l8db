@@ -99,7 +99,7 @@ export function SettingsView() {
     >
       <div ref={featureRef} className="mx-auto w-full max-w-6xl px-6 py-8">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Einstellungen</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Einstellungen</h1>
           <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <div className="min-w-48 flex-1 sm:w-72">
               <SettingsSearch value={query} onChange={setQuery} />

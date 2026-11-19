@@ -54,7 +54,7 @@ export function TransferStepForm({ action, onChange }: StepFormProps<"transfer">
                   value={pair.source}
                   placeholder="public"
                   aria-label={`Quellschema ${index + 1}`}
-                  className="font-mono text-[13px]"
+                  className="font-mono text-sm"
                   onChange={(event) =>
                     setPair(index, {
                       source: event.target.value,
@@ -67,7 +67,7 @@ export function TransferStepForm({ action, onChange }: StepFormProps<"transfer">
                   value={pair.target}
                   placeholder="public"
                   aria-label={`Zielschema ${index + 1}`}
-                  className="font-mono text-[13px]"
+                  className="font-mono text-sm"
                   onChange={(event) => setPair(index, { target: event.target.value })}
                 />
                 <Button

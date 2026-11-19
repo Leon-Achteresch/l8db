@@ -39,7 +39,7 @@ export function RunOutputs({ outputs, stepNames }: Props) {
         const { name, dir } = split(output.path);
         return (
           <li key={`${output.stepId}-${output.path}`} className="flex items-center gap-3 px-3 py-2">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-2xs font-medium uppercase tracking-wide text-muted-foreground">
               {output.format ? (
                 output.format.slice(0, 4)
               ) : (
@@ -47,10 +47,10 @@ export function RunOutputs({ outputs, stepNames }: Props) {
               )}
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="truncate text-[13px] font-medium" title={output.path}>
+              <span className="truncate text-sm font-medium" title={output.path}>
                 {name}
               </span>
-              <span className="truncate text-[11px] text-muted-foreground" title={dir}>
+              <span className="truncate text-2xs text-muted-foreground" title={dir}>
                 {[stepNames.get(output.stepId), formatBytesShort(output.bytes), dir]
                   .filter(Boolean)
                   .join(" · ")}

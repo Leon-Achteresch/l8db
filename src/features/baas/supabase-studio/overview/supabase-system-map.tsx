@@ -80,18 +80,18 @@ export function SupabaseSystemMap({
       <div className="grid grid-cols-[minmax(150px,190px)_40px_minmax(230px,1fr)_40px_minmax(190px,250px)] items-stretch max-lg:grid-cols-1 max-lg:gap-3">
         <div className="flex flex-col justify-center">
           <div className="rounded-xl bg-background/60 p-3">
-            <p className="flex items-center gap-1.5 text-xs font-semibold">
+            <p className="flex items-center gap-1.5 text-xs font-medium">
               <Globe2 className="size-3.5 text-muted-foreground" />
               Deine App
             </p>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+            <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
               Spricht über{" "}
               <span className="font-medium text-foreground">
                 {project.self_hosted ? (project.api_url ?? "die API-URL") : "supabase.co"}
               </span>{" "}
               mit dem Projekt.
             </p>
-            <p className="mt-2 inline-flex rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium">
+            <p className="mt-2 inline-flex rounded-md bg-muted px-1.5 py-0.5 text-2xs font-medium">
               {keyType}
             </p>
           </div>
@@ -130,18 +130,15 @@ export function SupabaseSystemMap({
               PostgreSQL
               {db && (
                 <span
-                  className={cn(
-                    "size-1.5 rounded-full",
-                    db.healthy ? "bg-emerald-500" : "bg-amber-500",
-                  )}
+                  className={cn("size-1.5 rounded-full", db.healthy ? "bg-success" : "bg-warning")}
                 />
               )}
             </span>
-            <span className="mt-3 block text-[11px] text-muted-foreground">Datenbankgröße</span>
+            <span className="mt-3 block text-2xs text-muted-foreground">Datenbankgröße</span>
             <span className="block text-2xl font-semibold tracking-tight tabular-nums">
               {formatBytes(stats?.database_size)}
             </span>
-            <span className="mt-3 grid grid-cols-2 gap-2 border-t border-primary/15 pt-3 text-[11px]">
+            <span className="mt-3 grid grid-cols-2 gap-2 border-t border-primary/15 pt-3 text-2xs">
               <span>
                 <span className="block text-muted-foreground">Version</span>
                 <span className="font-medium">{project.database?.version ?? "–"}</span>
@@ -153,7 +150,7 @@ export function SupabaseSystemMap({
                     <span
                       className={cn(
                         "size-1.5 rounded-full",
-                        pooler.healthy ? "bg-emerald-500" : "bg-amber-500",
+                        pooler.healthy ? "bg-success" : "bg-warning",
                       )}
                     />
                   )}
@@ -162,7 +159,7 @@ export function SupabaseSystemMap({
               </span>
             </span>
             {db && (
-              <span className="mt-2 block text-[11px] text-muted-foreground">
+              <span className="mt-2 block text-2xs text-muted-foreground">
                 {statusLabel(db.status)}
               </span>
             )}

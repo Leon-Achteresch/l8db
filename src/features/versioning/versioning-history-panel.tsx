@@ -70,7 +70,7 @@ export function VersioningHistoryPanel({
   return (
     <section aria-label="Verlauf" className="flex min-h-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <p className="flex h-9 shrink-0 items-center px-4 text-[11px] text-muted-foreground tabular-nums">
+        <p className="flex h-9 shrink-0 items-center px-4 text-2xs text-muted-foreground tabular-nums">
           {status.branches.length} Branches · {commits.length} Commits
         </p>
         <div className="min-h-0 flex-1 overflow-auto overscroll-contain pb-2">

@@ -28,8 +28,8 @@ interface Row {
 
 const BAR: Record<StatusTone, string> = {
   running: "bg-primary",
-  success: "bg-emerald-500 dark:bg-emerald-400",
-  warning: "bg-amber-500 dark:bg-amber-400",
+  success: "bg-success",
+  warning: "bg-warning",
   danger: "bg-destructive",
   neutral: "bg-muted-foreground/40",
 };
@@ -102,7 +102,7 @@ export function RunTimeline({ steps, startedAt, finishedAt, live, now }: Props) 
       <figcaption className="sr-only">
         Zeitleiste der Schritte. Jede Zeile nennt Schritt, Status und Dauer.
       </figcaption>
-      <div className="grid grid-cols-[minmax(6rem,min(35%,14rem))_1fr_4.5rem] items-end gap-x-3 pb-1 text-[10px] tabular-nums text-muted-foreground">
+      <div className="grid grid-cols-[minmax(6rem,min(35%,14rem))_1fr_4.5rem] items-end gap-x-3 pb-1 text-2xs tabular-nums text-muted-foreground">
         <span>Schritt</span>
         <div className="relative h-3.5">
           <span className="absolute bottom-0 left-0">0 s</span>
@@ -143,12 +143,12 @@ export function RunTimeline({ steps, startedAt, finishedAt, live, now }: Props) 
                   {row.label}
                 </span>
                 {row.iteration != null && (
-                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                  <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
                     #{row.iteration + 1}
                   </span>
                 )}
                 {row.attempts.length > 1 && (
-                  <span className="shrink-0 rounded bg-muted px-1 text-[10px] tabular-nums text-muted-foreground">
+                  <span className="shrink-0 rounded bg-muted px-1 text-2xs tabular-nums text-muted-foreground">
                     {row.attempts.length} Versuche
                   </span>
                 )}

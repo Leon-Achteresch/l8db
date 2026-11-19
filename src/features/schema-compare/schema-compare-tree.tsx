@@ -271,7 +271,7 @@ export function SchemaCompareTree({
                 </span>
               )}
               {item.blocked && (
-                <span className="flex min-w-0 items-center gap-1 text-amber-700 dark:text-amber-400">
+                <span className="flex min-w-0 items-center gap-1 text-warning">
                   <TriangleAlertIcon className="size-3 shrink-0" />
                   <span className="truncate">{item.blocked}</span>
                 </span>

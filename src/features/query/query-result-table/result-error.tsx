@@ -66,7 +66,7 @@ export function ResultError({
             )}
             {insight.suggestion && (
               <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <LightbulbIcon className="size-3.5 shrink-0 text-amber-500" />
+                <LightbulbIcon className="size-3.5 shrink-0 text-warning" />
                 <span>
                   Meintest du{" "}
                   <code className="font-mono text-foreground">{insight.suggestion}</code>?

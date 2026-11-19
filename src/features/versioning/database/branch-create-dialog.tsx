@@ -262,7 +262,7 @@ export function BranchCreateDialog({
                     {option.title}
                     {option.id === "anonymized" && anonymizedFeature.isNew && <NewBadge />}
                   </span>
-                  <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+                  <span className="mt-0.5 block text-2xs leading-relaxed text-muted-foreground">
                     {option.disabled ?? option.detail}
                   </span>
                 </span>
@@ -280,7 +280,7 @@ export function BranchCreateDialog({
                 options={METHOD_OPTIONS}
               />
               {method !== "stream" && (sourceInfo?.sessions ?? 0) > 0 && (
-                <span className="block text-[11px] text-muted-foreground">
+                <span className="block text-2xs text-muted-foreground">
                   „{source}“ hat {sourceInfo?.sessions} offene Verbindungen.{" "}
                   {method === "clone"
                     ? "Ein Sofort-Klon braucht eine unbenutzte Quelle."
@@ -292,9 +292,9 @@ export function BranchCreateDialog({
           {kind === "anonymized" && (
             <div
               className={cn(
-                "space-y-1.5 rounded-lg p-3 text-[11px] leading-relaxed",
+                "space-y-1.5 rounded-lg p-3 text-2xs leading-relaxed",
                 coverageOpen && !columns.isLoading
-                  ? "bg-amber-500/5 text-amber-800 dark:text-amber-200"
+                  ? "bg-warning/5 text-warning"
                   : "bg-muted/40 text-muted-foreground",
               )}
             >
@@ -325,7 +325,7 @@ export function BranchCreateDialog({
                 </>
               ) : (
                 <p className="flex items-center gap-1.5">
-                  <CheckCircle2Icon className="size-3.5 text-emerald-600" />
+                  <CheckCircle2Icon className="size-3.5 text-success" />
                   {rules.length} Regeln decken alle erkannten personenbezogenen Spalten ab
                   {strict ? " (Teamregeln)" : ""}.
                 </p>

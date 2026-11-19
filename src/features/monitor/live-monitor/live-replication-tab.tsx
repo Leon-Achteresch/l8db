@@ -62,7 +62,7 @@ export function LiveReplicationTab({ m }: { m: LiveMonitorState }) {
                     <td className="px-3 py-2 font-mono">{replica.name || "—"}</td>
                     <td className="px-3 py-2 font-mono">{replica.client_addr ?? "—"}</td>
                     <td className="px-3 py-2">
-                      <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                      <Badge variant="secondary" className="px-1.5 py-0 text-2xs">
                         {replica.state || "—"}
                       </Badge>
                     </td>

@@ -9,12 +9,12 @@ const LETTER: Record<DriftStatus, { letter: string; label: string; className: st
   changed: {
     letter: "M",
     label: "In der Datenbank geändert",
-    className: "text-amber-600 dark:text-amber-400",
+    className: "text-warning",
   },
   added: {
     letter: "A",
     label: "Neu in der Datenbank",
-    className: "text-emerald-600 dark:text-emerald-400",
+    className: "text-success",
   },
   removed: {
     letter: "D",
@@ -74,7 +74,7 @@ export function VersioningDriftList({
               >
                 {selection.objectName}
               </span>
-              <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+              <span className="min-w-0 flex-1 truncate text-2xs text-muted-foreground">
                 {COMPARE_OBJECT_LABELS[selection.objectType]}
               </span>
               <DatabaseIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />
@@ -83,7 +83,7 @@ export function VersioningDriftList({
                 title={status.label}
                 aria-label={status.label}
                 className={cn(
-                  "w-3 shrink-0 text-center font-mono text-[11px] font-semibold",
+                  "w-3 shrink-0 text-center font-mono text-2xs font-medium",
                   status.className,
                 )}
               >

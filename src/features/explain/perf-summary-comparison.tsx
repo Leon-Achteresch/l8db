@@ -77,7 +77,7 @@ function deltaClass(row: Row): string {
   if (row.left === null || row.right === null || row.left === row.right) return "";
   if (row.label === "Parallele Verbindungen") return "";
   const better = row.lowerIsBetter ? row.right < row.left : row.right > row.left;
-  return better ? "text-emerald-600 dark:text-emerald-400" : "text-destructive";
+  return better ? "text-success" : "text-destructive";
 }
 
 export function PerfSummaryComparison({
@@ -90,9 +90,9 @@ export function PerfSummaryComparison({
   const differentSql = left !== null && left.sql.trim() !== right.sql.trim();
   return (
     <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">
-      <span className="text-xs font-semibold">Kennzahlen vergleichen</span>
+      <span className="text-xs font-medium">Kennzahlen vergleichen</span>
       {differentSql && (
-        <p className="text-xs text-amber-700 dark:text-amber-400">
+        <p className="text-xs text-warning">
           Die beiden Tests haben unterschiedliche Abfragen gemessen.
         </p>
       )}

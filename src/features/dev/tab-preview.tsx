@@ -98,12 +98,10 @@ export function TabPreview({
                 aria-label="Offene Tabellen"
                 className="flex h-7 min-w-0 gap-2 items-center rounded-sm px-2 text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <Table2 className="size-3.5 shrink-0 text-emerald-500" />
+                <Table2 className="size-3.5 shrink-0 text-success" />
                 <span className="truncate">{active || "Keine Tabelle geöffnet"}</span>
                 <ChevronDown className="size-3 shrink-0" />
-                <span className="text-[10px] tabular-nums text-muted-foreground">
-                  {tabs.length}
-                </span>
+                <span className="text-2xs tabular-nums text-muted-foreground">{tabs.length}</span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="min-w-56">
@@ -156,7 +154,7 @@ export function TabPreview({
                   )}
                 >
                   {flat && (
-                    <span className="grid size-5 shrink-0 place-items-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    <span className="grid size-5 shrink-0 place-items-center rounded-full bg-success/10 text-success">
                       <Table2 className="size-3" />
                     </span>
                   )}

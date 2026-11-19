@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 const STATUS: Record<TargetStatus, { label: string; icon: typeof LoaderIcon; tone: string }> = {
   queued: { label: "Wartet", icon: CircleDashedIcon, tone: "text-muted-foreground" },
   running: { label: "Läuft", icon: LoaderIcon, tone: "text-primary" },
-  done: { label: "Fertig", icon: CheckCircle2Icon, tone: "text-emerald-600 dark:text-emerald-400" },
+  done: { label: "Fertig", icon: CheckCircle2Icon, tone: "text-success" },
   error: { label: "Fehler", icon: XCircleIcon, tone: "text-destructive" },
   cancelled: { label: "Abgebrochen", icon: BanIcon, tone: "text-muted-foreground" },
   rejected: { label: "Abgelehnt", icon: ShieldXIcon, tone: "text-destructive" },
@@ -72,7 +72,7 @@ export function MultiTargetResultRow({
           {label}
         </span>
         {production && (
-          <Badge variant="destructive" className="text-[10px]">
+          <Badge variant="destructive" className="text-2xs">
             Produktion
           </Badge>
         )}
@@ -90,7 +90,7 @@ export function MultiTargetResultRow({
         <Button
           size="sm"
           variant="ghost"
-          className="h-6 px-2 text-[11px]"
+          className="h-6 px-2 text-2xs"
           disabled={status !== "queued" && status !== "running"}
           onClick={onCancel}
         >
@@ -98,7 +98,7 @@ export function MultiTargetResultRow({
         </Button>
       </div>
       {run?.notice && (
-        <p className="px-11 pb-2 text-xs text-amber-700 dark:text-amber-400" title={run.notice}>
+        <p className="px-11 pb-2 text-xs text-warning" title={run.notice}>
           {run.notice}
         </p>
       )}

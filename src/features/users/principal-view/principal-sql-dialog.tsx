@@ -56,7 +56,7 @@ export function PrincipalSqlDialog({
         {isLoading ? (
           <Spinner />
         ) : error ? (
-          <p className="text-[13px] text-destructive select-text">{String(error)}</p>
+          <p className="text-sm text-destructive select-text">{String(error)}</p>
         ) : (
           <pre className="max-h-[50vh] overflow-auto rounded-2xl bg-muted/40 p-4 font-mono text-xs leading-5 whitespace-pre-wrap select-text">
             {sql}

@@ -178,7 +178,7 @@ export function SchemaCompareScript({
       {open && (
         <div className="flex h-72 min-h-0 flex-col border-t">
           {script.warnings.length > 0 && (
-            <ul className="max-h-24 shrink-0 overflow-auto border-b bg-amber-500/5 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+            <ul className="max-h-24 shrink-0 overflow-auto border-b bg-warning/5 px-3 py-1.5 text-xs text-warning">
               {script.warnings.map((warning) => (
                 <li key={warning} className="flex items-start gap-1.5">
                   <TriangleAlertIcon className="mt-0.5 size-3 shrink-0" />

@@ -126,7 +126,7 @@ export function AiModelOptions({ profile, models, disabled }: Props) {
             );
             if (!choices.length) return null;
             return (
-              <label key={id} className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              <label key={id} className="flex items-center gap-1 text-2xs text-muted-foreground">
                 <span>{String(option.name ?? id)}</span>
                 <select
                   aria-label={String(option.name ?? id)}

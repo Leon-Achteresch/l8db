@@ -30,13 +30,13 @@ const ICONS = {
 
 const COLORS: Record<RunStatus, string> = {
   running: "text-primary",
-  success: "text-emerald-600 dark:text-emerald-400",
-  warning: "text-amber-600 dark:text-amber-400",
+  success: "text-success",
+  warning: "text-warning",
   failed: "text-destructive",
   timeout: "text-destructive",
   cancelled: "text-muted-foreground",
   skipped: "text-muted-foreground",
-  interrupted: "text-amber-600 dark:text-amber-400",
+  interrupted: "text-warning",
 };
 
 export function StatusIcon({ status, className, label }: Props) {

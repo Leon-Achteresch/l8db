@@ -6,16 +6,16 @@ export function DiffQueryEntry({ change }: { change: TransactionChange }) {
     <div className="rounded border border-border/60 bg-background overflow-hidden">
       <div className="flex items-center gap-1.5 border-b border-border/40 bg-muted/40 px-2.5 py-1.5">
         <TerminalIcon className="size-3 text-muted-foreground" />
-        <span className="font-mono text-[11px] font-semibold text-foreground/80">
+        <span className="font-mono text-2xs font-medium text-foreground/80">
           SQL Query{change.planned ? " · geplant" : ""}
         </span>
-        <span className="ml-auto text-[10px] text-muted-foreground">
+        <span className="ml-auto text-2xs text-muted-foreground">
           {new Date(change.timestamp).toLocaleTimeString("de-DE")}
         </span>
       </div>
-      <div className="font-mono text-[11px] leading-[1.7]">
-        <div className="bg-emerald-500/[0.07] text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5">
-          <span className="mr-1 select-none text-emerald-500/60">+</span>
+      <div className="font-mono text-2xs leading-[1.7]">
+        <div className="bg-success/[0.07] text-success px-2.5 py-0.5">
+          <span className="mr-1 select-none text-success/60">+</span>
           <span className="break-all">{change.sql}</span>
         </div>
         {change.rowsAffected != null && (

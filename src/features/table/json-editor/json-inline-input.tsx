@@ -46,7 +46,7 @@ export function JsonInlineInput({ initial, validate, onCommit, onCancel, classNa
         )}
       />
       {error && (
-        <span className="absolute top-full left-0 z-10 mt-1 rounded-md bg-destructive px-1.5 py-0.5 text-[10px] text-white shadow">
+        <span className="absolute top-full left-0 z-10 mt-1 rounded-md bg-destructive px-1.5 py-0.5 text-2xs text-white shadow">
           {error}
         </span>
       )}

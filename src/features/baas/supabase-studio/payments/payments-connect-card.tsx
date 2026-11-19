@@ -83,7 +83,7 @@ export function PaymentsConnectCard({
             onChange={(event) => setKey(event.target.value)}
             placeholder="sk_test_… oder rk_test_…"
           />
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Der Schlüssel wird nur im System-Schlüsselbund gespeichert und nie wieder angezeigt.
             Empfohlen ist ein Restricted Key mit Schreibrechten für Products, Prices, Customers,
             Subscriptions, Checkout Sessions, Customer Portal und Webhook Endpoints.
@@ -92,7 +92,7 @@ export function PaymentsConnectCard({
         {live && (
           <div className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
             <p className="text-xs font-medium text-destructive">Live-Schlüssel erkannt</p>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Änderungen betreffen echte Kunden und Zahlungen. Teste zuerst mit einem
               sk_test-Schlüssel.
             </p>
@@ -109,7 +109,7 @@ export function PaymentsConnectCard({
           </div>
         )}
         {status?.connected && (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Ein anderes Stripe-Konto oder ein Wechsel zwischen Test und Live verwirft den
             gespeicherten Webhook. Danach die Einrichtung erneut ausführen.
           </p>

@@ -33,7 +33,7 @@ export function LocksTable({
               <td className="px-3 py-2">
                 <Badge
                   variant={lock.granted ? "secondary" : "destructive"}
-                  className="px-1.5 py-0 text-[10px]"
+                  className="px-1.5 py-0 text-2xs"
                 >
                   {lock.granted ? "gewährt" : "wartet"}
                 </Badge>

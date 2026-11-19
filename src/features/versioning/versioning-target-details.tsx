@@ -74,7 +74,7 @@ export function VersioningTargetDetails({
         </Button>
         {removing ? (
           <div className="space-y-2">
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
+            <p className="text-2xs leading-relaxed text-muted-foreground">
               Entfernt das Ziel aus der gemeinsamen Git-Konfiguration. Die Datenbank und ihr Journal
               bleiben erhalten. Die Änderung kann in Git geprüft und zurückgenommen werden.
             </p>

@@ -80,7 +80,7 @@ export function VersioningPipeline({
               aria-selected={entry === track}
               onClick={() => setChosen(entry)}
               className={cn(
-                "h-7 rounded-md px-2.5 font-mono text-[11px] transition-colors",
+                "h-7 rounded-md px-2.5 font-mono text-2xs transition-colors",
                 entry === track
                   ? "bg-muted font-medium text-foreground"
                   : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
@@ -101,7 +101,7 @@ export function VersioningPipeline({
           <Button
             size="sm"
             variant="ghost"
-            className="ml-auto h-7 text-[11px]"
+            className="ml-auto h-7 text-2xs"
             title={`${pipeline.tip.id} mit einem neuen Release auf ${releaseParents(pipeline.tip)[0]} zurücknehmen`}
             onClick={() => {
               workspace.setRequestedRollbackId(
@@ -119,11 +119,11 @@ export function VersioningPipeline({
         <div className="flex items-center gap-3 rounded-xl bg-primary/5 px-3 py-2.5">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium">{next.title}</p>
-            <p className="truncate text-[11px] text-muted-foreground">{next.detail}</p>
+            <p className="truncate text-2xs text-muted-foreground">{next.detail}</p>
           </div>
           <Button
             size="sm"
-            className="h-7 text-[11px]"
+            className="h-7 text-2xs"
             onClick={() => (next.area === "customer" ? setCreating(true) : onNavigate(next.area))}
           >
             {next.action}
@@ -139,7 +139,7 @@ export function VersioningPipeline({
         <div className="space-y-1.5">
           <div
             aria-hidden
-            className="grid grid-cols-[minmax(6rem,1fr)_repeat(3,minmax(0,1.4fr))] gap-1.5 px-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase"
+            className="grid grid-cols-[minmax(6rem,1fr)_repeat(3,minmax(0,1.4fr))] gap-1.5 px-1 text-2xs font-medium text-muted-foreground"
           >
             <span>Kunde</span>
             {PIPELINE_STAGES.map((stage) => (
@@ -154,7 +154,7 @@ export function VersioningPipeline({
                 aria-label={row.customer}
                 className="grid grid-cols-[minmax(6rem,1fr)_repeat(3,minmax(0,1.4fr))] items-start gap-1.5 rounded-xl bg-muted/25 p-1.5"
               >
-                <h3 className="truncate px-1 pt-1.5 text-xs font-semibold" title={row.customer}>
+                <h3 className="truncate px-1 pt-1.5 text-xs font-medium" title={row.customer}>
                   {row.customer}
                 </h3>
                 {PIPELINE_STAGES.map((stage) => (

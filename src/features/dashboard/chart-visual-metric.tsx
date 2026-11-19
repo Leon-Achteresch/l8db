@@ -71,7 +71,7 @@ export function ChartVisualMetric({
         value={metric.label}
         onChange={(event) => onChange({ label: event.target.value })}
         placeholder="Name im Chart (optional)"
-        className="h-7 border-transparent bg-transparent text-[11px] shadow-none hover:border-input focus-visible:border-input"
+        className="h-7 border-transparent bg-transparent text-2xs shadow-none hover:border-input focus-visible:border-input"
       />
     </div>
   );

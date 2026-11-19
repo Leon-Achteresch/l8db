@@ -39,7 +39,7 @@ export function AiResultCard({ block, inShelf = false }: { block: ToolBlock; inS
   const label = number ? (
     <span
       title={`Abbildung ${number}`}
-      className="grid size-5 shrink-0 place-items-center rounded-md bg-primary/10 text-[11px] font-semibold tabular-nums text-primary"
+      className="grid size-5 shrink-0 place-items-center rounded-md bg-primary/10 text-2xs font-medium tabular-nums text-primary"
     >
       {number}
     </span>
@@ -55,10 +55,10 @@ export function AiResultCard({ block, inShelf = false }: { block: ToolBlock; inS
       >
         {label}
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-medium" title={title}>
+          <span className="block truncate text-sm font-medium" title={title}>
             {title}
           </span>
-          <span className="block truncate text-[11px] text-muted-foreground">
+          <span className="block truncate text-2xs text-muted-foreground">
             {chartable ? "Diagramm" : "Tabelle"} · {aiRowsLabel(table.footer)}
           </span>
         </span>
@@ -78,7 +78,7 @@ export function AiResultCard({ block, inShelf = false }: { block: ToolBlock; inS
     >
       <figcaption className="flex min-h-11 items-center gap-2 py-1.5 pr-1.5 pl-3.5">
         {label}
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[13px] font-semibold">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-semibold">
           <span className="truncate" title={title}>
             {title}
           </span>
@@ -132,7 +132,7 @@ export function AiResultCard({ block, inShelf = false }: { block: ToolBlock; inS
       ) : (
         <AiResultTable table={table} />
       )}
-      <div className="flex min-h-8 items-center gap-2 px-3.5 pb-1 text-[11px] text-muted-foreground">
+      <div className="flex min-h-8 items-center gap-2 px-3.5 pb-1 text-2xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate tabular-nums">{aiRowsLabel(table.footer)}</span>
         {block.sql && (
           <button
@@ -149,7 +149,7 @@ export function AiResultCard({ block, inShelf = false }: { block: ToolBlock; inS
         )}
       </div>
       {sqlOpen && block.sql && (
-        <pre className="mx-2 mb-2 max-h-48 overflow-auto rounded-xl bg-muted/70 px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/80">
+        <pre className="mx-2 mb-2 max-h-48 overflow-auto rounded-xl bg-muted/70 px-3 py-2 font-mono text-2xs leading-relaxed whitespace-pre-wrap text-foreground/80">
           {block.sql}
         </pre>
       )}

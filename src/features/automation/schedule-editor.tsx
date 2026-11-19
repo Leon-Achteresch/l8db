@@ -282,7 +282,7 @@ export function ScheduleEditor({ schedule, task, tasks, issues, onChange }: Prop
               value={trigger.expression}
               onChange={(event) => setTrigger({ ...trigger, expression: event.target.value })}
               spellCheck={false}
-              className="font-mono text-[13px]"
+              className="font-mono text-sm"
               placeholder="0 9 * * 1-5"
             />
           </FormRow>

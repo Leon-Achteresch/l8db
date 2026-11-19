@@ -252,7 +252,7 @@ export function GeometryMap({ items, srid }: { items: GeometryMapItem[]; srid: n
           </Button>
         </div>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-[11px] text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-2xs text-muted-foreground">
         <span data-testid="geometry-bounds">
           {srid !== null ? `SRID ${srid} · ` : ""}x {formatCoordinate(bounds.minX)} …{" "}
           {formatCoordinate(bounds.maxX)} · y {formatCoordinate(bounds.minY)} …{" "}

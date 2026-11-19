@@ -160,7 +160,7 @@ export function SavedQueriesExportDialog({ open, queries, onOpenChange, onCloseA
                         </button>
                       </div>
                       {expanded === query.id && (
-                        <pre className="mt-1 max-h-40 overflow-auto rounded-md bg-muted/60 p-2 font-mono text-[11px] whitespace-pre-wrap">
+                        <pre className="mt-1 max-h-40 overflow-auto rounded-md bg-muted/60 p-2 font-mono text-2xs whitespace-pre-wrap">
                           {query.sql}
                         </pre>
                       )}

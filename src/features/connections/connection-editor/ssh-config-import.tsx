@@ -69,7 +69,7 @@ export function SshConfigImport({ onApply }: { onApply: (draft: SshConfigDraft) 
           {loading ? "Lese ~/.ssh/config…" : "Aus ~/.ssh/config übernehmen"}
         </Button>
       )}
-      {error && <p className="text-[11px] text-muted-foreground">{error}</p>}
+      {error && <p className="text-2xs text-muted-foreground">{error}</p>}
     </div>
   );
 }

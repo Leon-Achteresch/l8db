@@ -24,7 +24,7 @@ export function ExternalImportRow({ candidate, checked, onToggle }: Props) {
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="min-w-0 truncate">{candidate.label}</span>
-          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
             {candidate.product}
           </span>
           {candidate.profile?.ssh && (
@@ -38,28 +38,23 @@ export function ExternalImportRow({ candidate, checked, onToggle }: Props) {
           )}
         </span>
         {candidate.folder && (
-          <span className="block truncate text-[11px] text-muted-foreground">
-            {candidate.folder}
-          </span>
+          <span className="block truncate text-2xs text-muted-foreground">{candidate.folder}</span>
         )}
         {candidate.skipReason ? (
-          <span className="flex items-start gap-1 text-[11px] text-destructive">
+          <span className="flex items-start gap-1 text-2xs text-destructive">
             <Ban className="mt-0.5 size-3 shrink-0" />
             Wird übersprungen: {candidate.skipReason}
           </span>
         ) : (
           <>
             {candidate.duplicateOf && (
-              <span className="flex items-start gap-1 text-[11px] text-amber-600 dark:text-amber-400">
+              <span className="flex items-start gap-1 text-2xs text-warning">
                 <Copy className="mt-0.5 size-3 shrink-0" />
                 Dublette von „{candidate.duplicateOf.name}“
               </span>
             )}
             {candidate.warnings.map((warning) => (
-              <span
-                key={warning}
-                className="flex items-start gap-1 text-[11px] text-amber-600 dark:text-amber-400"
-              >
+              <span key={warning} className="flex items-start gap-1 text-2xs text-warning">
                 <AlertTriangle className="mt-0.5 size-3 shrink-0" />
                 {warning}
               </span>

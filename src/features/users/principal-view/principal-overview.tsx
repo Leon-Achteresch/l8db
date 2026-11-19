@@ -59,7 +59,7 @@ export function PrincipalOverview({
   ].filter((fact): fact is [string, string] => Boolean(fact[1]));
 
   return (
-    <div className="grid max-w-xl grid-cols-[11rem_1fr] items-center gap-x-4 gap-y-2 text-[13px]">
+    <div className="grid max-w-xl grid-cols-[11rem_1fr] items-center gap-x-4 gap-y-2 text-sm">
       {choices.map((choice) => (
         <div key={choice.label} className="contents">
           <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">

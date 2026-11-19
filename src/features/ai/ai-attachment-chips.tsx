@@ -15,9 +15,9 @@ export function AiAttachmentChips({
         <li
           key={file.path}
           title={`${file.path}\n${file.columns.length} Spalten`}
-          className="flex max-w-full items-center gap-2 rounded-xl bg-muted/70 py-1 pr-1 pl-1 text-[11px]"
+          className="flex max-w-full items-center gap-2 rounded-xl bg-muted/70 py-1 pr-1 pl-1 text-2xs"
         >
-          <span className="grid size-6 shrink-0 place-items-center rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
+          <span className="grid size-6 shrink-0 place-items-center rounded-lg bg-success/15 text-success">
             <FileSpreadsheet className="size-3.5" />
           </span>
           <span className="min-w-0 truncate font-medium">{file.name}</span>

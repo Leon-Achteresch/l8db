@@ -12,12 +12,9 @@ export function VersioningConflicts({
   if (!hasMergeMarkers(content)) return null;
   const conflicts = mergeConflicts(content);
   return (
-    <div
-      role="alert"
-      className="space-y-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3"
-    >
+    <div role="alert" className="space-y-3 rounded-lg border border-warning/30 bg-warning/5 p-3">
       <div className="flex items-start gap-2 text-xs">
-        <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-amber-600" />
+        <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-warning" />
         <div>
           <p className="font-semibold">
             {conflicts.length
@@ -32,17 +29,17 @@ export function VersioningConflicts({
       </div>
       {conflicts.map((conflict, index) => (
         <div key={conflict.start} className="space-y-2 rounded-md border bg-background/80 p-2.5">
-          <p className="text-[11px] font-medium">Konflikt {index + 1}</p>
+          <p className="text-2xs font-medium">Konflikt {index + 1}</p>
           <div className="grid min-w-0 gap-2 sm:grid-cols-2">
             <div className="min-w-0">
-              <p className="mb-1 text-[10px] font-medium text-muted-foreground">Aktueller Branch</p>
-              <pre className="max-h-32 overflow-auto rounded bg-muted/40 p-2 text-[10px]">
+              <p className="mb-1 text-2xs font-medium text-muted-foreground">Aktueller Branch</p>
+              <pre className="max-h-32 overflow-auto rounded bg-muted/40 p-2 text-2xs">
                 {conflict.current || "(leer)"}
               </pre>
             </div>
             <div className="min-w-0">
-              <p className="mb-1 text-[10px] font-medium text-muted-foreground">Quell-Branch</p>
-              <pre className="max-h-32 overflow-auto rounded bg-muted/40 p-2 text-[10px]">
+              <p className="mb-1 text-2xs font-medium text-muted-foreground">Quell-Branch</p>
+              <pre className="max-h-32 overflow-auto rounded bg-muted/40 p-2 text-2xs">
                 {conflict.incoming || "(leer)"}
               </pre>
             </div>
@@ -66,7 +63,7 @@ export function VersioningConflicts({
         </div>
       ))}
       {!conflicts.length && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Die Konfliktmarker sind unvollständig. Bitte manuell im Editor entfernen.
         </p>
       )}

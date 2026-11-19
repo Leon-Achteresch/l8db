@@ -50,13 +50,13 @@ export function FilterToken({
       ? ([
           ["column", column, ""],
           ["operator", operator, "text-muted-foreground"],
-          ["value", value, "max-w-52 font-mono text-[11.5px]"],
+          ["value", value, "max-w-52 font-mono text-2xs"],
         ] as const)
       : ([
           [
             "value",
             [column, operator, value].filter(Boolean).join(" "),
-            "max-w-80 font-mono text-[11.5px]",
+            "max-w-80 font-mono text-2xs",
           ],
         ] as const);
   return (

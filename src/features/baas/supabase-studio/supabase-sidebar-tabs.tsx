@@ -41,7 +41,7 @@ export function SupabaseSidebarTabs({
               <item.icon />
               <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
               {item.hint !== undefined && item.hint !== null && (
-                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                   {item.hint}
                 </span>
               )}

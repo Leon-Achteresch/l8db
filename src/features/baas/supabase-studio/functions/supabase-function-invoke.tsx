@@ -160,7 +160,7 @@ export function SupabaseFunctionInvoke({
               )}
             </div>
             {!hasProjectKey && (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 Kein Projekt-Key gespeichert: Aufruf nur mit eigenem Token.
               </p>
             )}
@@ -204,13 +204,13 @@ export function SupabaseFunctionInvoke({
             </Badge>
             <span className="text-muted-foreground">{response.duration_ms} ms</span>
             <span className="text-muted-foreground">{response.size} Bytes</span>
-            {response.truncated && <span className="text-amber-600">Antwort auf 1 MB gekürzt</span>}
+            {response.truncated && <span className="text-warning">Antwort auf 1 MB gekürzt</span>}
           </div>
           <details>
             <summary className="cursor-pointer text-xs text-muted-foreground">
               {response.headers.length} Header
             </summary>
-            <pre className="mt-1 overflow-auto font-mono text-[11px] whitespace-pre-wrap">
+            <pre className="mt-1 overflow-auto font-mono text-2xs whitespace-pre-wrap">
               {response.headers.map(([name, value]) => `${name}: ${value}`).join("\n")}
             </pre>
           </details>

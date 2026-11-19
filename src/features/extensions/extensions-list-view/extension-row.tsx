@@ -29,13 +29,13 @@ export function ExtensionRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-medium">{name}</span>
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+          <Badge variant="outline" className="text-2xs px-1.5 py-0 text-muted-foreground">
             {version}
           </Badge>
           {installed && (
             <Badge
               variant="outline"
-              className="text-[10px] px-1.5 py-0 text-emerald-600 border-emerald-500/20 bg-emerald-500/5"
+              className="text-2xs px-1.5 py-0 text-success border-success/20 bg-success/5"
             >
               installiert
             </Badge>

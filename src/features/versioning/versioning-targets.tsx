@@ -286,7 +286,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
           <h2 className="flex items-center gap-2 text-sm font-semibold">
             Kunden & Umgebungen{feature.isNew && <NewBadge />}
           </h2>
-          <p className="mt-1 text-[11px] text-muted-foreground">
+          <p className="mt-1 text-2xs text-muted-foreground">
             {customerGroups(targets.targets).length} Kunden · {targets.targets.length} Umgebungen ·
             ein gemeinsames Produkt
           </p>
@@ -349,8 +349,8 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
       {setupOpen && (
         <div className="space-y-4 rounded-xl bg-muted/35 p-4">
           <div>
-            <h3 className="text-xs font-semibold">Kundenumgebung zuordnen</h3>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+            <h3 className="text-xs font-medium">Kundenumgebung zuordnen</h3>
+            <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
               Die Zuordnung speichert nur das Ziel. Eine Baseline wird erst nach Prüfung des
               vorhandenen Schemas gesetzt.
             </p>
@@ -449,13 +449,13 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
             </label>
           )}
           {sourceSchema.length === 1 && schema && (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Zuordnung: <span className="font-mono">{sourceSchema[0]}</span> →{" "}
               <span className="font-mono">{schema}</span>
             </p>
           )}
           {sourceSchema.length !== 1 && (
-            <p className="text-[11px] text-amber-700 dark:text-amber-300">
+            <p className="text-2xs text-warning">
               Vor der Zuordnung genau ein Quellschema unter Änderungen aufnehmen.
             </p>
           )}
@@ -589,8 +589,8 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                     setPreflight([]);
                   }}
                 />
-                <h3 className="flex-1 text-xs font-semibold">{group.customer}</h3>
-                <span className="text-[10px] text-muted-foreground">
+                <h3 className="flex-1 text-xs font-medium">{group.customer}</h3>
+                <span className="text-2xs text-muted-foreground">
                   {group.targets.length} Umgebungen
                 </span>
                 <Button
@@ -639,12 +639,12 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                           <span className="truncate">{target.environment || target.name}</span>
                           {target.production && (
                             <span
-                              className="size-1 shrink-0 rounded-full bg-amber-500"
+                              className="size-1 shrink-0 rounded-full bg-warning"
                               title="Produktion"
                             />
                           )}
                         </p>
-                        <p className="mt-1 truncate text-[10px] text-muted-foreground">
+                        <p className="mt-1 truncate text-2xs text-muted-foreground">
                           {connections.find((entry) => entry.id === target.connectionId)?.name ??
                             "Verbindung fehlt"}
                           {connectionServerLabel(
@@ -659,7 +659,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                         </p>
                         <p
                           className={cn(
-                            "mt-1 text-[10px]",
+                            "mt-1 text-2xs",
                             targetProgress(target, releases, workspace.status).state === "pending"
                               ? "text-primary"
                               : "text-muted-foreground",
@@ -670,13 +670,13 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                           />
                         </p>
                         {unresolved && (
-                          <p className="mt-1 flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
+                          <p className="mt-1 flex items-center gap-1 text-2xs text-warning">
                             <CircleAlertIcon className="size-3" />
                             Stand abgleichen
                           </p>
                         )}
                         {(target.paused || target.pinnedRelease || target.track) && (
-                          <p className="mt-1 text-[10px] text-muted-foreground">
+                          <p className="mt-1 text-2xs text-muted-foreground">
                             {target.track ?? "main"}
                             {target.paused ? " · Pausiert" : ""}
                             {target.pinnedRelease ? ` · Max. ${target.pinnedRelease}` : ""}
@@ -686,7 +686,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="mt-2 h-7 px-2 text-[11px]"
+                            className="mt-2 h-7 px-2 text-2xs"
                             disabled={!target.connectionId}
                             onClick={() =>
                               void run(async () => {
@@ -710,7 +710,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="mt-2 h-7 px-2 text-[11px]"
+                            className="mt-2 h-7 px-2 text-2xs"
                             disabled={!target.connectionId}
                             onClick={() =>
                               void run(async () => {
@@ -732,7 +732,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
                           </Button>
                         )}
                       </div>
-                      <span className="max-w-24 truncate rounded-md bg-muted/50 px-2 py-1 font-mono text-[10px] text-muted-foreground">
+                      <span className="max-w-24 truncate rounded-md bg-muted/50 px-2 py-1 font-mono text-2xs text-muted-foreground">
                         {target.release?.id ?? "Ohne Baseline"}
                       </span>
                       <IconMenu>
@@ -818,7 +818,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
         <div className="flex flex-col items-center gap-3 py-12 text-center">
           <DatabaseIcon className="size-7 text-muted-foreground" strokeWidth={1.4} />
           <p className="text-xs font-medium">Ein Produkt, mehrere Kundenstände</p>
-          <p className="max-w-64 text-[11px] leading-relaxed text-muted-foreground">
+          <p className="max-w-64 text-2xs leading-relaxed text-muted-foreground">
             Ordne jedem Kunden seine Umgebungen mit Serververbindung, Datenbank und Schema zu. Ein
             gemeinsamer Release aktualisiert die ausgewählten Ziele auf ihren jeweiligen
             Ausgangsständen.
@@ -939,9 +939,9 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
         <div
           role="dialog"
           aria-label="Stand abgleichen"
-          className="flex flex-col gap-3 rounded-lg bg-amber-500/5 p-4"
+          className="flex flex-col gap-3 rounded-lg bg-warning/5 p-4"
         >
-          <h2 className="text-xs font-semibold">{recovery.name}: Stand abgleichen</h2>
+          <h2 className="text-xs font-medium">{recovery.name}: Stand abgleichen</h2>
           <p className="text-xs leading-relaxed">
             Vorher sicherstellen, dass kein Deployment mehr läuft und alle Datenmigrationen manuell
             geprüft oder repariert wurden. Der Schema-Vergleich allein kann Änderungen an
@@ -982,7 +982,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
       )}
       {differences.length > 0 && (
         <div className="space-y-2">
-          <h2 className="mb-2 text-xs font-semibold">Standprüfung · {differenceName}</h2>
+          <h2 className="mb-2 text-xs font-medium">Standprüfung · {differenceName}</h2>
           {differences.map((difference) => (
             <details key={difference.id} className="rounded-lg bg-muted/30 p-3 text-xs">
               <summary>
@@ -1062,7 +1062,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
       {plans.length > 0 && (
         <div className="flex flex-col gap-3 rounded-xl bg-muted/35 p-4">
           <div ref={scriptFeature.ref} className="flex items-center gap-1">
-            <h2 className="flex flex-1 items-center gap-2 text-xs font-semibold">
+            <h2 className="flex flex-1 items-center gap-2 text-xs font-medium">
               Rollout prüfen{scriptFeature.isNew && <NewBadge />}
             </h2>
             <VersioningIconButton
@@ -1086,7 +1086,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
               }
             />
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Vor dem Start werden alle ausgewählten Ziele erneut geprüft. Freigabe: 15 Minuten.
             Spätere Release-Vorbedingungen werden nach ihren Vorgängern geprüft.
           </p>
@@ -1145,7 +1145,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
               )}
               {!item.releases.length && <p>Bereits auf dem Zielstand · wird übersprungen.</p>}
               {item.risks.map((risk) => (
-                <p className="mt-2 text-amber-700 dark:text-amber-300" key={risk}>
+                <p className="mt-2 text-warning" key={risk}>
                   {risk}
                 </p>
               ))}
@@ -1174,7 +1174,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
               ))}
             </details>
           ))}
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
+          <p className="text-2xs leading-relaxed text-muted-foreground">
             Ziele werden nacheinander aktualisiert. Beim ersten Fehler stoppt der Rollout.{" "}
             {project.kind === "oracle"
               ? "Oracle-DDL kann bei einem Fehler bereits gespeichert sein."
@@ -1191,7 +1191,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
               { value: "1000", label: "Große Welle · bis zu 1.000 Datenbanken" },
             ]}
           />
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Nach jeder Welle Anwendung und Betrieb prüfen. Verbleibende Ziele anschließend neu
             planen und ausdrücklich starten.
           </p>
@@ -1207,7 +1207,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
               />
               <span>
                 Vorher eine Sicherung jedes Produktivsystems erstellen
-                <span className="block text-[11px] text-muted-foreground">
+                <span className="block text-2xs text-muted-foreground">
                   Verschlüsselt mit pg_dump im Tresor unter Datenbank → Sicherungen. Schlägt sie
                   fehl, startet der Rollout nicht. Große Datenbanken brauchen entsprechend Zeit und
                   Platz.
@@ -1219,7 +1219,7 @@ export function VersioningTargets({ workspace }: { workspace: VersioningWorkspac
             plans.some(
               (item) => item.releases.length && targetStage(item.target) === "production",
             ) && (
-              <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+              <p className="text-2xs leading-relaxed text-warning">
                 Für Oracle erstellt l8db keine Sicherung. Vor dem Rollout auf Produktion eine eigene
                 Sicherung anlegen, etwa per RMAN, Flashback oder Export der Packages.
               </p>

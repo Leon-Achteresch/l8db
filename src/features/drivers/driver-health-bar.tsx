@@ -15,11 +15,11 @@ export function DriverHealthBar({ summaries }: { summaries: DriverSummary[] }) {
         </p>
         <span className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="size-2 rounded-sm bg-emerald-500" />
+            <span aria-hidden className="size-2 rounded-sm bg-success" />
             Bereit
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="size-2 rounded-sm bg-amber-500" />
+            <span aria-hidden className="size-2 rounded-sm bg-warning" />
             Fehlt
           </span>
         </span>
@@ -35,7 +35,7 @@ export function DriverHealthBar({ summaries }: { summaries: DriverSummary[] }) {
                   aria-label={label}
                   className={cn(
                     "flex h-12 flex-col items-center justify-center gap-1.5 rounded-md",
-                    summary.status.available ? "bg-emerald-500/10" : "bg-amber-500/15",
+                    summary.status.available ? "bg-success/10" : "bg-warning/15",
                   )}
                 >
                   <ProviderLogo
@@ -46,7 +46,7 @@ export function DriverHealthBar({ summaries }: { summaries: DriverSummary[] }) {
                     aria-hidden
                     className={cn(
                       "h-0.5 w-3/5 rounded-full",
-                      summary.status.available ? "bg-emerald-500/70" : "bg-amber-500",
+                      summary.status.available ? "bg-success/70" : "bg-warning",
                     )}
                   />
                 </span>

@@ -275,7 +275,7 @@ export function FilterOmnibar(props: FilterBarProps) {
               )}
               <FilterRuleTokens model={model} variant="chip" showLabel={false} />
               {simple && focused && !trimmed ? (
-                <span className="hidden shrink-0 items-center gap-1 text-[11px] text-muted-foreground md:flex">
+                <span className="hidden shrink-0 items-center gap-1 text-2xs text-muted-foreground md:flex">
                   <Kbd>↵</Kbd>Filter
                   <Kbd>⇧↵</Kbd>Farbe
                 </span>

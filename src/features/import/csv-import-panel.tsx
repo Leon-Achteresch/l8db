@@ -179,14 +179,14 @@ export function CsvImportPanel({
           </p>
         )}
         {outcome && !outcome.error && (
-          <p className="flex items-center gap-2 border-b bg-emerald-500/5 px-4 py-2 text-xs text-emerald-700 dark:text-emerald-400">
+          <p className="flex items-center gap-2 border-b bg-success/5 px-4 py-2 text-xs text-success">
             <CheckCircle2Icon className="size-4 shrink-0" />
             {outcome.inserted_rows} eingefügt · {outcome.updated_rows ?? 0} aktualisiert ·{" "}
             {outcome.skipped_rows ?? 0} übersprungen.
           </p>
         )}
         {openTransaction && (
-          <p className="flex items-center gap-2 border-b bg-amber-500/5 px-4 py-2 text-xs text-amber-700 dark:text-amber-400">
+          <p className="flex items-center gap-2 border-b bg-warning/5 px-4 py-2 text-xs text-warning">
             <AlertTriangleIcon className="size-4 shrink-0" />
             Offene Transaktion für diese Verbindung. Erst abschließen, dann importieren.
           </p>
@@ -215,7 +215,7 @@ export function CsvImportPanel({
         {parsed && mappingTargets.length > 0 && (
           <section id="import-step-mapping" className="border-b">
             <div className="flex h-9 items-center gap-2 px-4">
-              <h3 className="text-xs font-semibold">Zuordnung</h3>
+              <h3 className="text-xs font-medium">Zuordnung</h3>
               <span className="text-xs text-muted-foreground tabular-nums">
                 {mapped.length} von {parsed.headers.length} Spalten
               </span>
@@ -297,7 +297,7 @@ export function CsvImportPanel({
         {parsed && (
           <section id="import-step-run">
             <div className="flex h-9 items-center gap-2 px-4">
-              <h3 className="text-xs font-semibold">Vorschau</h3>
+              <h3 className="text-xs font-medium">Vorschau</h3>
               <span className="truncate text-xs text-muted-foreground tabular-nums">
                 erste {Math.min(rowCount, CSV_PREVIEW_ROWS)} von{" "}
                 {total === null || total === undefined
@@ -340,7 +340,7 @@ export function CsvImportPanel({
               />
             )}
             {structured?.source_types.some(Boolean) && (
-              <p className="px-4 py-2 font-mono text-[11px] text-muted-foreground">
+              <p className="px-4 py-2 font-mono text-2xs text-muted-foreground">
                 {structured.columns
                   .map((column, index) => `${column}: ${structured.source_types[index] ?? "?"}`)
                   .join(" · ")}

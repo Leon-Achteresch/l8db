@@ -134,7 +134,7 @@ export function AppwriteDatabasesView({ id }: { id: string }) {
                     className={`block w-full py-2 text-left text-xs ${selectedTable?.id === table.id ? "text-primary" : "hover:text-primary"}`}
                   >
                     <p className="truncate font-medium">{table.name}</p>
-                    <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                    <p className="mt-1 truncate font-mono text-2xs text-muted-foreground">
                       {table.id}
                     </p>
                   </button>

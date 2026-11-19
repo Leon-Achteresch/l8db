@@ -62,7 +62,7 @@ export function SplitGroupsMenu({
             className={`${iconButton} relative w-11 gap-0.5`}
           >
             <LayoutPanelLeftIcon className="size-3.5" />
-            <span className="text-[10px] tabular-nums">{total}</span>
+            <span className="text-2xs tabular-nums">{total}</span>
             {isNew && <NewBadge className="absolute -top-1.5 left-6" />}
           </button>
         </DropdownMenuTrigger>
@@ -85,7 +85,7 @@ export function SplitGroupsMenu({
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{group.name}</span>
-                  <span className="block truncate text-[10px] text-muted-foreground">{detail}</span>
+                  <span className="block truncate text-2xs text-muted-foreground">{detail}</span>
                 </span>
               </DropdownMenuItem>
               <DropdownMenuItem

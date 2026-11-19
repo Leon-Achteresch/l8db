@@ -45,7 +45,7 @@ export function VectorValueViewer({ vector }: { vector: ParsedVector }) {
         >
           {facts.map(([label, value]) => (
             <div key={label} className="flex flex-col">
-              <dt className="text-[10px] tracking-wide text-muted-foreground uppercase">{label}</dt>
+              <dt className="text-2xs text-muted-foreground">{label}</dt>
               <dd className="font-mono tabular-nums">{value}</dd>
             </div>
           ))}
@@ -64,7 +64,7 @@ export function VectorValueViewer({ vector }: { vector: ParsedVector }) {
         </Button>
       </div>
       {vector.source === "float32" && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Binärwert als Little-Endian-float32-Folge interpretiert.
         </p>
       )}

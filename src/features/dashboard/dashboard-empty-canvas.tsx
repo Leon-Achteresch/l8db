@@ -28,9 +28,7 @@ export function DashboardEmptyCanvas({
           <ChartKindPreview kind="donut" className="h-16 w-full text-muted-foreground" />
         </div>
       </div>
-      <p className="text-[11px] text-muted-foreground">
-        Illustrationen · hier erscheinen deine Daten
-      </p>
+      <p className="text-2xs text-muted-foreground">Illustrationen · hier erscheinen deine Daten</p>
       <h2 className="mt-3 text-2xl font-semibold tracking-tight">
         Dein erster Blick auf die Daten.
       </h2>
@@ -55,7 +53,7 @@ export function DashboardEmptyCanvas({
           Wähle „Bearbeiten“, um Charts hinzuzufügen.
         </p>
       )}
-      <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-[11px] text-muted-foreground">
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-2xs text-muted-foreground">
         <MousePointer2Icon className="size-3.5" />
         <span>Felder ziehen oder anklicken</span>
         <ArrowRightIcon className="size-3" />

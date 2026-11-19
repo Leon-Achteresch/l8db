@@ -6,7 +6,7 @@ export function TabGroupLabel({ group }: { group: TabGroup }) {
   return (
     <span
       data-tab-group={group.id}
-      className="ml-1 flex h-5 max-w-32 shrink-0 select-none items-center truncate rounded-full px-2 text-[10px] font-semibold uppercase tracking-wide"
+      className="ml-1 flex h-5 max-w-32 shrink-0 select-none items-center truncate rounded-full px-2 text-2xs font-medium"
       style={{ color, backgroundColor: `color-mix(in oklab, ${color} 12%, transparent)` }}
     >
       {group.label}

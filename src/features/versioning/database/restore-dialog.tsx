@@ -115,7 +115,7 @@ export function RestoreDialog({
             </li>
           </ol>
           {target.sessions > 0 && (
-            <p className="flex gap-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+            <p className="flex gap-2 text-xs leading-relaxed text-warning">
               <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
               {target.sessions} offene Verbindungen werden beim Tausch getrennt.
               {foreign > 0 &&

@@ -40,7 +40,7 @@ export function InstallCommand({
         onClick={() => void copyText(command).then(() => setCopied(true))}
         className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground transition-[transform,background-color,color] duration-150 hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:scale-95"
       >
-        {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+        {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
       </button>
     </div>
   );

@@ -136,7 +136,7 @@ export function SupabaseStorageObjectPanel({
             <>
               <dt className="text-muted-foreground">Metadaten</dt>
               <dd>
-                <pre className="max-h-32 overflow-auto rounded border bg-card p-2 text-[11px]">
+                <pre className="max-h-32 overflow-auto rounded border bg-card p-2 text-2xs">
                   {userMetadata}
                 </pre>
               </dd>
@@ -165,7 +165,7 @@ export function SupabaseStorageObjectPanel({
         <div className="space-y-1.5">
           <p className="text-xs font-medium">Öffentliche URL</p>
           <div className="flex gap-1">
-            <Input readOnly value={publicUrl.data} className="h-8 font-mono text-[11px]" />
+            <Input readOnly value={publicUrl.data} className="h-8 font-mono text-2xs" />
             <Button
               size="icon-sm"
               variant="outline"
@@ -196,7 +196,7 @@ export function SupabaseStorageObjectPanel({
             <Link2 className="size-3.5" /> {signing ? "Erstellt…" : "Erstellen & kopieren"}
           </Button>
         </div>
-        {signed && <Input readOnly value={signed} className="h-8 font-mono text-[11px]" />}
+        {signed && <Input readOnly value={signed} className="h-8 font-mono text-2xs" />}
       </div>
       {previewing && (
         <BaasFilePreview

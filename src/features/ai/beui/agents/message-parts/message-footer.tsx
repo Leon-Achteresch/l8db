@@ -8,7 +8,7 @@ export function MessageFooter({ className, ...props }: MessageFooterProps) {
     <div
       data-slot="message-footer"
       className={cn(
-        "flex min-h-5 items-center gap-1 px-1 text-[11px] text-muted-foreground",
+        "flex min-h-5 items-center gap-1 px-1 text-2xs text-muted-foreground",
         from === "user" ? "justify-end" : "justify-start",
         className,
       )}

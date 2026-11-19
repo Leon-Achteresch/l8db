@@ -14,7 +14,7 @@ export function ExternalImportSummary({ summary, keychainFailures }: Props) {
   return (
     <div role="status" className="flex flex-col gap-2 rounded-md border px-3 py-3 text-sm">
       <p className="flex items-center gap-2 font-medium">
-        <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
+        <CheckCircle2 className="size-4 text-success" />
         Import abgeschlossen
       </p>
       <ul className="grid gap-1 text-xs text-muted-foreground">
@@ -29,7 +29,7 @@ export function ExternalImportSummary({ summary, keychainFailures }: Props) {
           {summary.missingPassword > 0 ? ", bitte im Profil ergänzen" : ""}
         </li>
         {keychainFailures > 0 && (
-          <li className="text-amber-600 dark:text-amber-400">
+          <li className="text-warning">
             {keychainFailures === 1 ? "1 Geheimnis gilt" : `${keychainFailures} Geheimnisse gelten`}{" "}
             nur in dieser Sitzung: Schlüsselbund nicht verfügbar.
           </li>

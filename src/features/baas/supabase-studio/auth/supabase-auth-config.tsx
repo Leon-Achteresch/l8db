@@ -219,7 +219,7 @@ export function SupabaseAuthConfigPanel({ reference, capabilities }: Props) {
                       key={key}
                       className="grid items-center gap-1 sm:grid-cols-[minmax(0,16rem)_1fr]"
                     >
-                      <Label htmlFor={id} className="font-mono text-[11px] break-all">
+                      <Label htmlFor={id} className="font-mono text-2xs break-all">
                         {key}
                       </Label>
                       {typeof original === "boolean" ? (

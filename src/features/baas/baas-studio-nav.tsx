@@ -54,7 +54,7 @@ export function BaasStudioNav({
                   aria-hidden="true"
                   className={cn(
                     "size-1.5 shrink-0 rounded-full",
-                    tab.status.healthy ? "bg-emerald-500" : "bg-amber-500",
+                    tab.status.healthy ? "bg-success" : "bg-warning",
                   )}
                 />
               )}

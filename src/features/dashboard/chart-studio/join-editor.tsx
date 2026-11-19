@@ -70,8 +70,8 @@ export function JoinEditor({
             )}
           >
             <JoinVenn kind={option.kind} className="h-5 w-8" />
-            <span className="text-xs font-semibold">{option.title}</span>
-            <span className="text-[11px] leading-snug text-muted-foreground">
+            <span className="text-xs font-medium">{option.title}</span>
+            <span className="text-2xs leading-snug text-muted-foreground">
               {option.text(parent.table, node.table)}
             </span>
           </button>

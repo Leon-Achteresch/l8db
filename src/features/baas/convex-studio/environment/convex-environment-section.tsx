@@ -169,7 +169,7 @@ export function ConvexEnvironmentSection({ deployment }: ConvexStudioSectionProp
           </Button>
         </form>
         {variables.data?.includes(name.trim()) && (
-          <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
+          <p className="mt-2 text-2xs text-warning">
             {name.trim()} existiert bereits und wird überschrieben.
           </p>
         )}
@@ -209,7 +209,7 @@ export function ConvexEnvironmentSection({ deployment }: ConvexStudioSectionProp
         ) : (
           <div className="mt-3 overflow-x-auto rounded-lg bg-background/50">
             <table className="w-full text-left">
-              <thead className="text-[11px] text-muted-foreground">
+              <thead className="text-2xs text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">Name</th>
                   <th className="px-3 py-2 font-medium">Wert</th>

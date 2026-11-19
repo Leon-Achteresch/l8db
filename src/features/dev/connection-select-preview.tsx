@@ -284,7 +284,7 @@ export function ConnectionSelectPreview({ variant, many }: { variant: Variant; m
                 </span>
               </span>
               {variant !== "command" && (
-                <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                <span className="block truncate font-mono text-2xs text-muted-foreground">
                   {selected.database} · {selected.host}
                 </span>
               )}
@@ -324,7 +324,7 @@ export function ConnectionSelectPreview({ variant, many }: { variant: Variant; m
             {variant === "clear" && (
               <div className="flex items-center justify-between px-3 pb-2 pt-3">
                 <span className="text-xs font-medium">Verbindung wechseln</span>
-                <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                <span className="font-mono text-2xs tabular-nums text-muted-foreground">
                   {connections.length} gespeichert
                 </span>
               </div>
@@ -339,7 +339,7 @@ export function ConnectionSelectPreview({ variant, many }: { variant: Variant; m
                     value={server}
                     onChange={(event) => setServer(event.target.value)}
                     aria-label="Server wählen"
-                    className="h-8 w-full rounded-md border border-border bg-card px-2 font-mono text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="h-8 w-full rounded-md border border-border bg-card px-2 font-mono text-2xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {servers.map((item) => (
                       <option key={item} value={item}>
@@ -358,7 +358,7 @@ export function ConnectionSelectPreview({ variant, many }: { variant: Variant; m
                         aria-pressed={server === item}
                         onClick={() => setServer(item)}
                         className={cn(
-                          "shrink-0 rounded-md px-2 py-1 font-mono text-[10px] transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                          "shrink-0 rounded-md px-2 py-1 font-mono text-2xs transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                           server === item
                             ? "bg-primary text-primary-foreground"
                             : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -381,8 +381,8 @@ export function ConnectionSelectPreview({ variant, many }: { variant: Variant; m
             )}
             {variant === "cards" && (
               <div className="flex items-center justify-between px-1 pb-2 pt-1">
-                <span className="text-xs font-semibold">Meine Verbindungen</span>
-                <span className="text-[10px] text-muted-foreground">Status & Details</span>
+                <span className="text-xs font-medium">Meine Verbindungen</span>
+                <span className="text-2xs text-muted-foreground">Status & Details</span>
               </div>
             )}
             {search}
@@ -413,7 +413,7 @@ export function ConnectionSelectPreview({ variant, many }: { variant: Variant; m
                   return (
                     <div key={connection.id}>
                       {variant === "clear" && group !== previousGroup && (
-                        <div className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        <div className="px-3 pb-1 pt-2 text-2xs font-medium text-muted-foreground">
                           {group}
                         </div>
                       )}
@@ -421,12 +421,12 @@ export function ConnectionSelectPreview({ variant, many }: { variant: Variant; m
                         many &&
                         group === "Weitere" &&
                         connection.host !== previous?.host && (
-                          <div className="px-3 pb-1 pt-2 font-mono text-[10px] text-muted-foreground">
+                          <div className="px-3 pb-1 pt-2 font-mono text-2xs text-muted-foreground">
                             {connection.host}
                           </div>
                         )}
                       {variant === "command" && group !== previousGroup && !query && (
-                        <div className="px-3 pb-1 pt-2 text-[10px] font-medium text-muted-foreground">
+                        <div className="px-3 pb-1 pt-2 text-2xs font-medium text-muted-foreground">
                           {group}
                         </div>
                       )}
@@ -473,18 +473,18 @@ export function ConnectionSelectPreview({ variant, many }: { variant: Variant; m
                                 </span>
                               )}
                             </span>
-                            <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                            <span className="block truncate font-mono text-2xs text-muted-foreground">
                               {variant === "server"
                                 ? connection.database
                                 : `${connection.database} · ${connection.host}`}
                             </span>
                             {variant === "cards" && (
-                              <span className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
+                              <span className="mt-1 flex items-center gap-1 text-2xs text-muted-foreground">
                                 <span
                                   className={cn(
                                     "size-1.5 rounded-full",
                                     connection.status === "online"
-                                      ? "bg-emerald-500"
+                                      ? "bg-success"
                                       : connection.status === "offline"
                                         ? "bg-rose-400"
                                         : "bg-muted-foreground/50",
@@ -499,7 +499,7 @@ export function ConnectionSelectPreview({ variant, many }: { variant: Variant; m
                             )}
                           </span>
                           {variant === "command" && index < 3 && (
-                            <kbd className="shrink-0 rounded border px-1 font-mono text-[10px] text-muted-foreground">
+                            <kbd className="shrink-0 rounded border px-1 font-mono text-2xs text-muted-foreground">
                               {index + 1}
                             </kbd>
                           )}
@@ -521,7 +521,7 @@ export function ConnectionSelectPreview({ variant, many }: { variant: Variant; m
                               "absolute right-2 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
                               variant === "cards" ? "top-5" : "",
                               favorite
-                                ? "text-amber-500"
+                                ? "text-warning"
                                 : "text-muted-foreground opacity-60 group-hover:opacity-100 group-focus-within:opacity-100",
                               active && "right-7",
                             )}
@@ -536,20 +536,20 @@ export function ConnectionSelectPreview({ variant, many }: { variant: Variant; m
               )}
             </div>
             {variant === "server" && (
-              <div className="flex items-center gap-1.5 border-t border-border/60 px-3 py-2 text-[10px] text-muted-foreground">
+              <div className="flex items-center gap-1.5 border-t border-border/60 px-3 py-2 text-2xs text-muted-foreground">
                 <Database className="size-3" /> {visible.length}{" "}
                 {visible.length === 1 ? "Verbindung" : "Verbindungen"}
                 {server === "Alle" ? " insgesamt" : " auf diesem Server"}
               </div>
             )}
             {variant === "command" && (
-              <div className="flex items-center justify-between border-t border-border/60 px-3 py-2 text-[10px] text-muted-foreground">
+              <div className="flex items-center justify-between border-t border-border/60 px-3 py-2 text-2xs text-muted-foreground">
                 <span>↑ ↓ navigieren · ↵ wählen · ⌥1–3 direkt</span>
                 <span>esc schließen</span>
               </div>
             )}
             {variant === "cards" && (
-              <div className="flex items-center justify-between px-1 pb-1 pt-2 text-[10px] text-muted-foreground">
+              <div className="flex items-center justify-between px-1 pb-1 pt-2 text-2xs text-muted-foreground">
                 <span>Favoriten mit ★ markieren</span>
                 <ChevronDown className="size-3" />
               </div>

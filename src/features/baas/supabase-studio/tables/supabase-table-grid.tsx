@@ -299,7 +299,7 @@ export function SupabaseTableGrid({
                             <ArrowUp className="size-3" />
                           ))}
                       </button>
-                      <span className="block text-[10px] font-normal text-muted-foreground">
+                      <span className="block text-2xs font-normal text-muted-foreground">
                         {column.data_type}
                         {column.is_primary_key ? " · PK" : ""}
                       </span>

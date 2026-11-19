@@ -180,12 +180,12 @@ function TestDataDialogContent({
               />
             </div>
           </div>
-          <p className="-mt-1 text-[11px] text-muted-foreground">
+          <p className="-mt-1 text-2xs text-muted-foreground">
             Gleicher Seed erzeugt bei jedem Lauf dieselben Werte.
           </p>
           <div className="min-h-0 flex-1 overflow-y-auto rounded-md border px-3 pb-1">
             {state.mode === "generate" && !state.loading && (
-              <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,10rem)_11rem_minmax(0,1fr)_5.5rem] gap-2 border-b bg-background py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,10rem)_11rem_minmax(0,1fr)_5.5rem] gap-2 border-b bg-background py-1.5 text-2xs font-medium text-muted-foreground">
                 <span>Spalte</span>
                 <span>Inhalt</span>
                 <span>Einstellungen</span>
@@ -225,7 +225,7 @@ function TestDataDialogContent({
             </div>
           )}
           {readOnly && (
-            <p className="text-xs text-amber-600">
+            <p className="text-xs text-warning">
               Verbindung ist schreibgeschützt – nur Vorschau möglich.
             </p>
           )}

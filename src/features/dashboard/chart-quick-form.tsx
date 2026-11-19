@@ -63,9 +63,7 @@ export function ChartQuickForm({
                     {source.schema ? `${source.schema}.` : ""}
                     {source.name}
                   </span>
-                  <span className="ml-auto pl-2 text-[10px] text-muted-foreground">
-                    {source.kind}
-                  </span>
+                  <span className="ml-auto pl-2 text-2xs text-muted-foreground">{source.kind}</span>
                 </SelectItem>
               ))}
             </SelectContent>

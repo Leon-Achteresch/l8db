@@ -45,8 +45,8 @@ export function ChartBuilderPreview({
       className="flex min-h-0 flex-col gap-4 overflow-y-auto bg-muted/20 p-5"
     >
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-xs font-semibold">Live-Vorschau</h2>
-        <span role="status" className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+        <h2 className="text-xs font-medium">Live-Vorschau</h2>
+        <span role="status" className="flex items-center gap-1.5 text-2xs text-muted-foreground">
           {loading ? (
             "Wird aktualisiert…"
           ) : query.isError ? (
@@ -133,14 +133,14 @@ export function ChartBuilderPreview({
           <h3 className="text-xs font-medium">Daten hinter dem Chart</h3>
         </div>
         {updating ? (
-          <p role="status" className="px-3 py-4 text-[11px] text-muted-foreground">
+          <p role="status" className="px-3 py-4 text-2xs text-muted-foreground">
             Deine Auswahl wird geladen…
           </p>
         ) : (
           <ChartPreviewTable query={query} />
         )}
       </section>
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
+      <p className="text-2xs leading-relaxed text-muted-foreground">
         Änderungen erscheinen sofort in der Vorschau. Erst beim Speichern wird dein Dashboard
         aktualisiert.
       </p>

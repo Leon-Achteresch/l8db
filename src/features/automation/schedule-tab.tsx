@@ -100,14 +100,14 @@ export function ScheduleTab({ task, tasks, issues, onChange }: Props) {
                   >
                     <span
                       className={cn(
-                        "min-w-0 flex-1 truncate text-[13px] font-medium",
+                        "min-w-0 flex-1 truncate text-sm font-medium",
                         !schedule.enabled && "text-muted-foreground",
                       )}
                     >
                       {describeSchedule(schedule, taskNames)}
                     </span>
                     {failing && (
-                      <span className="shrink-0 rounded-md bg-destructive/10 px-1.5 py-0.5 text-[11px] font-medium text-destructive">
+                      <span className="shrink-0 rounded-md bg-destructive/10 px-1.5 py-0.5 text-2xs font-medium text-destructive">
                         Unvollständig
                       </span>
                     )}

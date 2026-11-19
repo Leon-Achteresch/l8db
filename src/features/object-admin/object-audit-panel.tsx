@@ -114,7 +114,7 @@ export function ObjectAuditPanel({ schema, name, objectType }: ObjectAuditPanelP
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-muted-foreground">Abhängige Objekte</span>
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-2xs">
               {info.dependents.length}
             </Badge>
           </div>

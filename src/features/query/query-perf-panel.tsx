@@ -39,7 +39,7 @@ export function QueryPerfPanel({ sql, onClose }: QueryPerfPanelProps) {
     <div className="flex max-h-[60%] shrink-0 flex-col gap-3 overflow-y-auto border-b bg-muted/20 p-3">
       <div className="flex items-center gap-2">
         <GaugeIcon className="size-3.5 text-muted-foreground" />
-        <span className="text-xs font-semibold">Performance-Test der aktuellen Abfrage</span>
+        <span className="text-xs font-medium">Performance-Test der aktuellen Abfrage</span>
         <Button
           size="sm"
           variant="ghost"

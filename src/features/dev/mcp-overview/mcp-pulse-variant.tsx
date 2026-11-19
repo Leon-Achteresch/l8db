@@ -13,12 +13,12 @@ export function McpPulseVariant({ state, onToggleServer }: McpVariantProps) {
       <div className="flex items-center gap-3">
         <span className="relative flex size-3">
           {state.enabled && (
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500/60" />
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-success/60" />
           )}
           <span
             className={cn(
               "relative inline-flex size-3 rounded-full",
-              state.enabled ? "bg-emerald-500" : "bg-muted-foreground/40",
+              state.enabled ? "bg-success" : "bg-muted-foreground/40",
             )}
           />
         </span>

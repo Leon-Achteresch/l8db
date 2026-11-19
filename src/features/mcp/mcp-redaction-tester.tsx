@@ -34,16 +34,14 @@ export function McpRedactionTester({ config }: McpRedactionTesterProps) {
           <Sparkles className="size-4 text-primary" />
           <h3 className="text-sm font-semibold text-foreground">Regeln live testen</h3>
           {hasChanged ? (
-            <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px]">
-              Maskierung greift
-            </Badge>
+            <Badge className="bg-success/10 text-success text-2xs">Maskierung greift</Badge>
           ) : (
-            <Badge variant="outline" className="text-[10px] text-muted-foreground">
+            <Badge variant="outline" className="text-2xs text-muted-foreground">
               Unverändert
             </Badge>
           )}
         </div>
-        <span className="text-[11px] text-muted-foreground">Live-Vorschau der Maskierung</span>
+        <span className="text-2xs text-muted-foreground">Live-Vorschau der Maskierung</span>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -85,7 +83,7 @@ export function McpRedactionTester({ config }: McpRedactionTesterProps) {
               <Eye className="size-3.5 text-primary" />
               Ergebnis nach Maskierung
             </span>
-            <span className="text-[10px] font-mono text-muted-foreground">
+            <span className="text-2xs font-mono text-muted-foreground">
               Ersatz: {config.redaction.replacement}
             </span>
           </div>

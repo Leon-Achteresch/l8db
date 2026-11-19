@@ -111,7 +111,7 @@ export function Donut({ rows, shape, options, compare }: ChartProps) {
               <div className="truncate text-lg font-semibold tabular-nums tracking-tight">
                 {center ? fmtShare(center.value, total) : fmtValueCompact(total, options)}
               </div>
-              <div className="truncate text-[11px] text-muted-foreground">
+              <div className="truncate text-2xs text-muted-foreground">
                 {center ? center.name : (shape.metrics[0]?.label ?? "Gesamt")}
               </div>
             </div>

@@ -130,7 +130,7 @@ export function SchemaPicker({
                   />
                   <span className="truncate font-mono">{name}</span>
                   {missing.includes(name) && (
-                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                    <span className="ml-auto shrink-0 text-2xs text-muted-foreground">
                       nicht gefunden
                     </span>
                   )}

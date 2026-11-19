@@ -82,9 +82,7 @@ export function ObjectDetails({
             {row.name}
           </p>
           {versionId ? (
-            <p className="truncate font-mono text-[11px] text-muted-foreground">
-              Version {versionId}
-            </p>
+            <p className="truncate font-mono text-2xs text-muted-foreground">Version {versionId}</p>
           ) : null}
         </div>
         {editable && (

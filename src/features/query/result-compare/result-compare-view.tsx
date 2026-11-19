@@ -160,7 +160,7 @@ export function ResultCompareView({
     ].filter(Boolean);
     body = (
       <ResultCompareNotice
-        icon={<CircleCheckIcon className="text-emerald-600 dark:text-emerald-400" />}
+        icon={<CircleCheckIcon className="text-success" />}
         title={
           sameSql(pair.baseline.sql, pair.latest.sql)
             ? "Identisch mit dem vorherigen Lauf"
@@ -277,7 +277,7 @@ export function ResultCompareView({
       </div>
 
       {pair && comparison && counts && (
-        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b px-2 py-1.5 text-[11px] text-muted-foreground">
+        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b px-2 py-1.5 text-2xs text-muted-foreground">
           <fieldset aria-label="Unterschiede filtern" className="flex items-center gap-0.5">
             {total > 0 &&
               filters.map((option) => {
@@ -324,7 +324,7 @@ export function ResultCompareView({
             </span>
             {!sameSql(pair.baseline.sql, pair.latest.sql) && (
               <span
-                className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+                className="rounded-md bg-primary/10 px-1.5 py-0.5 text-2xs font-medium text-primary"
                 title={`SQL der Basis:\n${pair.baseline.sql}`}
               >
                 Andere SQL

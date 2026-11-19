@@ -229,16 +229,16 @@ export function TableContentSearch({ onClose }: { onClose: () => void }) {
                 ) : (
                   <EyeIcon className="size-3.5 shrink-0 text-muted-foreground" />
                 )}
-                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                   {hit.schema}
                 </span>
                 <span className="min-w-0 flex-1 truncate font-medium">{hit.name}</span>
-                <span className="min-w-0 max-w-[45%] truncate text-[10px] text-muted-foreground">
+                <span className="min-w-0 max-w-[45%] truncate text-2xs text-muted-foreground">
                   {hit.columns.slice(0, 3).join(", ")}
                   {hit.columns.length > 3 ? ` +${hit.columns.length - 3}` : ""}
                 </span>
                 {hit.count !== null && (
-                  <Badge variant="secondary" className="shrink-0 text-[10px]">
+                  <Badge variant="secondary" className="shrink-0 text-2xs">
                     {shortRowCount(hit.count)}
                   </Badge>
                 )}

@@ -14,16 +14,16 @@ type Phase = "ready" | "running" | "done";
 const DOT: Record<Tone, string> = {
   idle: "bg-muted-foreground/40",
   busy: "",
-  ok: "bg-emerald-500",
-  warn: "bg-amber-500",
+  ok: "bg-success",
+  warn: "bg-warning",
   bad: "bg-destructive",
 };
 
 const TEXT: Record<Tone, string> = {
   idle: "text-muted-foreground",
   busy: "text-muted-foreground",
-  ok: "text-emerald-700 dark:text-emerald-400",
-  warn: "text-amber-700 dark:text-amber-400",
+  ok: "text-success",
+  warn: "text-warning",
   bad: "text-destructive",
 };
 
@@ -170,7 +170,7 @@ export function CsvFileCheck({
             <caption className="sr-only">
               Erste {report.issues.length} von {count(report.error_count)} Befunden
             </caption>
-            <thead className="text-[11px] text-muted-foreground">
+            <thead className="text-2xs text-muted-foreground">
               <tr>
                 <th scope="col" className="py-1 pr-3 font-medium whitespace-nowrap">
                   Datensatz

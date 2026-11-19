@@ -7,7 +7,7 @@ import { useFeatureVideoStore } from "@/lib/feature-videos/store";
 import { cn } from "@/lib/utils";
 
 const SECONDARY =
-  "inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground active:scale-[0.97]";
+  "inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground active:scale-[0.97]";
 
 export const AtlasTile = memo(function AtlasTile({
   feature,
@@ -41,7 +41,7 @@ export const AtlasTile = memo(function AtlasTile({
         <span className="sr-only">{used ? "Genutzt" : "Noch nie genutzt"}</span>
         <span className="truncate text-sm font-medium text-foreground">{feature.title}</span>
         {isNew && (
-          <span className="shrink-0 rounded bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+          <span className="shrink-0 rounded bg-primary px-1 text-2xs font-medium text-primary-foreground">
             NEU
           </span>
         )}

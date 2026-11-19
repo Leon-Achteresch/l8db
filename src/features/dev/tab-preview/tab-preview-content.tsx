@@ -30,7 +30,7 @@ export function TabPreviewContent({ active, tabsCount, sidebar, split }: TabPrev
               {[1, 2].map((id) => (
                 <tr key={id} className="border-b border-border/40 last:border-0">
                   <td className="h-8 px-3 font-mono text-muted-foreground">{id}</td>
-                  <td className="px-3 text-[11px]">{active}</td>
+                  <td className="px-3 text-2xs">{active}</td>
                   <td className="px-3 text-muted-foreground">Aktiv</td>
                   <td className="whitespace-nowrap px-3 tabular-nums text-muted-foreground">
                     07.09.2026

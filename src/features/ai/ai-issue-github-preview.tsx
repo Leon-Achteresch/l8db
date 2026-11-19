@@ -22,7 +22,7 @@ export function AiIssueGithubPreview({
     ["Development", "No branches or pull requests"],
   ];
   return (
-    <div data-github-issue-preview className="text-[14px] leading-6">
+    <div data-github-issue-preview className="text-sm leading-6">
       <p className="text-xs text-muted-foreground">
         {ISSUE_REPOSITORY.split("/")[0]} /{" "}
         <strong className="text-foreground">{ISSUE_REPOSITORY.split("/")[1]}</strong>
@@ -32,13 +32,13 @@ export function AiIssueGithubPreview({
         <span className="font-light text-muted-foreground">{number ? `#${number}` : ""}</span>
       </h2>
       <div className="mt-3 flex flex-wrap items-center gap-2 border-b pb-4 text-muted-foreground">
-        <span className="inline-flex items-center gap-1 rounded-full bg-[#1f883d] px-3 py-1 text-[13px] font-medium text-white">
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#1f883d] px-3 py-1 text-sm font-medium text-white">
           <CircleDot className="size-4" />
           Open
         </span>
         <span>
           <strong className="font-semibold text-foreground">{AUTHOR}</strong>
-          <span className="mx-1 rounded-full border px-1.5 text-[11px] font-medium">bot</span>
+          <span className="mx-1 rounded-full border px-1.5 text-2xs font-medium">bot</span>
           opened this issue now · 0 comments
         </span>
       </div>
@@ -53,11 +53,9 @@ export function AiIssueGithubPreview({
           >
             <header className="flex items-center gap-1.5 border-b border-[#0969da]/30 bg-[#ddf4ff] px-4 py-2 text-muted-foreground dark:border-[#4493f8]/30 dark:bg-[#121d2f]">
               <strong className="font-semibold text-foreground">{AUTHOR}</strong>
-              <span className="rounded-full border px-1.5 text-[11px] font-medium">bot</span>
+              <span className="rounded-full border px-1.5 text-2xs font-medium">bot</span>
               <span>opened now</span>
-              <span className="ml-auto rounded-full border px-2 text-[12px] font-medium">
-                Author
-              </span>
+              <span className="ml-auto rounded-full border px-2 text-xs font-medium">Author</span>
             </header>
             <div className="min-w-0 space-y-3 px-4 py-3 [overflow-wrap:anywhere] [&_pre]:max-w-full [&_pre]:[overflow-wrap:normal] [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:text-base [&_h3:first-child]:mt-0 [&_pre]:rounded-md [&_pre]:py-3">
               <AiMarkdown source={body || "Der Bericht wird vorbereitet."} />
@@ -80,7 +78,7 @@ export function AiIssueGithubPreview({
                 <span
                   key={label.name}
                   style={{ backgroundColor: `#${label.color}` }}
-                  className={`rounded-full px-2 py-px text-[12px] font-medium ${label.dark ? "text-white" : "text-black"}`}
+                  className={`rounded-full px-2 py-px text-xs font-medium ${label.dark ? "text-white" : "text-black"}`}
                 >
                   {label.name}
                 </span>

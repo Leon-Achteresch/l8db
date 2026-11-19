@@ -70,11 +70,11 @@ export function ObjectGrantsPanel({
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
           placeholder="Objekt oder Recht filtern"
-          className="h-8 pl-8 text-[13px]"
+          className="h-8 pl-8 text-sm"
         />
       </div>
       <div className="flex flex-col">
-        <div className="flex h-6 items-center gap-3 px-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+        <div className="flex h-6 items-center gap-3 px-2 font-mono text-2xs text-muted-foreground">
           <span className="flex-1">Objekt</span>
           <span className="w-24">Typ</span>
           <span className="w-28">Recht</span>
@@ -139,7 +139,7 @@ export function ObjectGrantsPanel({
           );
         })}
         {visible.length === 0 && (
-          <p className="px-2 py-3 text-[13px] text-muted-foreground">Keine Objektrechte.</p>
+          <p className="px-2 py-3 text-sm text-muted-foreground">Keine Objektrechte.</p>
         )}
         {(visible.length > MAX_GRANT_ROWS || truncated) && (
           <p className="px-2 py-2 text-xs text-muted-foreground tabular-nums">

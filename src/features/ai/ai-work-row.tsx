@@ -10,7 +10,7 @@ const NODE: Record<AiStationTone, string> = {
   active: "",
   done: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
   failed: "bg-destructive/12 text-destructive",
-  allowed: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  allowed: "bg-warning/15 text-warning",
   denied: "bg-destructive/12 text-destructive",
   lead: "bg-muted-foreground/12 text-muted-foreground",
 };
@@ -70,7 +70,7 @@ export function AiWorkRow({
         disabled={!interactive}
         aria-expanded={interactive ? open : undefined}
         onClick={() => (onToggle ? onToggle() : setOwn(!own))}
-        className="group/work -ml-1.5 flex min-h-7 w-[calc(100%+0.375rem)] select-none items-center gap-2 rounded-lg px-1.5 text-left text-[12.5px] leading-relaxed outline-none transition-colors enabled:hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+        className="group/work -ml-1.5 flex min-h-7 w-[calc(100%+0.375rem)] select-none items-center gap-2 rounded-lg px-1.5 text-left text-xs leading-relaxed outline-none transition-colors enabled:hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
       >
         <StepNode station={station} />
         {Icon && (
@@ -102,7 +102,7 @@ export function AiWorkRow({
         {meta && <span className="ml-auto flex shrink-0 items-center">{meta}</span>}
       </button>
       {open && detail && typeof detail === "string" && (
-        <div className="mt-1 mb-2 ml-6 max-h-64 overflow-auto rounded-xl bg-muted/60 px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/80">
+        <div className="mt-1 mb-2 ml-6 max-h-64 overflow-auto rounded-xl bg-muted/60 px-3 py-2 font-mono text-2xs leading-relaxed whitespace-pre-wrap text-foreground/80">
           {detail}
         </div>
       )}

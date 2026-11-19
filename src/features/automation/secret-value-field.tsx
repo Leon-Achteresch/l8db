@@ -76,7 +76,7 @@ export function SecretValueField({ account, label }: Props) {
               void save();
             }
           }}
-          className="h-8 pl-8 text-[13px]"
+          className="h-8 pl-8 text-sm"
         />
       </div>
       {draft ? (

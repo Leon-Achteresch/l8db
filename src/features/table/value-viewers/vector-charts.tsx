@@ -72,7 +72,7 @@ export function VectorCharts({
             vectorEffect="non-scaling-stroke"
           />
         </svg>
-        <figcaption className="text-[11px] text-muted-foreground">Werte nach Index</figcaption>
+        <figcaption className="text-2xs text-muted-foreground">Werte nach Index</figcaption>
       </figure>
       <figure className="flex flex-col gap-1">
         <svg
@@ -100,7 +100,7 @@ export function VectorCharts({
             );
           })}
         </svg>
-        <figcaption className="text-[11px] text-muted-foreground">Verteilung</figcaption>
+        <figcaption className="text-2xs text-muted-foreground">Verteilung</figcaption>
       </figure>
     </div>
   );

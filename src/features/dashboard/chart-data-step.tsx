@@ -73,7 +73,7 @@ export function ChartDataStep({
         onChange={(schema, table) => onChange({ simple: { ...emptySimple(), schema, table } })}
       />
       {hasFks && s.table && (
-        <div className="flex gap-2 rounded-xl border bg-card/60 p-4 text-[11px] leading-relaxed text-muted-foreground">
+        <div className="flex gap-2 rounded-xl border bg-card/60 p-4 text-2xs leading-relaxed text-muted-foreground">
           <LinkIcon className="size-4 shrink-0" />
           <p>
             Spalten aus verknüpften Tabellen, zum Beispiel der Kundenname zur Bestellung, findest du

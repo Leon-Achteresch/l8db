@@ -190,10 +190,8 @@ export function QuerySchemaBrowser({
     return (
       <aside className="flex h-full min-h-0 flex-col bg-muted/15" aria-label="Package-Mitglieder">
         <div className="flex h-10 shrink-0 items-center gap-2 border-b px-2.5">
-          <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-            Mitglieder
-          </span>
-          <span className="text-[11px] tabular-nums text-muted-foreground">{members.length}</span>
+          <span className="text-2xs font-medium text-muted-foreground">Mitglieder</span>
+          <span className="text-2xs tabular-nums text-muted-foreground">{members.length}</span>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -344,7 +342,7 @@ export function QuerySchemaBrowser({
                   aria-label="Sitzungs-Views"
                   className="mb-2 rounded-md border border-dashed p-1.5"
                 >
-                  <p className="px-1 pb-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                  <p className="px-1 pb-1 text-2xs font-medium text-muted-foreground">
                     Sitzungs-Views
                   </p>
                   {sessionViews.map((view) => (
@@ -420,7 +418,7 @@ export function QuerySchemaBrowser({
                           <span className="ml-1 font-mono" title={qualified}>
                             {table.name}
                           </span>
-                          <span className="ml-2 text-[10px] text-muted-foreground">
+                          <span className="ml-2 text-2xs text-muted-foreground">
                             {table.schema}
                           </span>
                         </summary>
@@ -429,14 +427,14 @@ export function QuerySchemaBrowser({
                             <Button
                               variant="outline"
                               size="sm"
-                              className="mb-1 h-6 w-full justify-start gap-1 text-[10px]"
+                              className="mb-1 h-6 w-full justify-start gap-1 text-2xs"
                               onClick={() => onInsert(qualified)}
                             >
                               <PlusIcon className="size-3" />
                               Tabellennamen einfügen
                             </Button>
                             {!fields.length && (
-                              <p className="py-2 text-[10px] text-muted-foreground">
+                              <p className="py-2 text-2xs text-muted-foreground">
                                 Keine Spaltenmetadaten verfügbar.
                               </p>
                             )}
@@ -451,7 +449,7 @@ export function QuerySchemaBrowser({
                                 <span className="min-w-0 flex-1 truncate font-mono">
                                   {column.name}
                                 </span>
-                                <span className="max-w-24 truncate text-[10px] text-muted-foreground">
+                                <span className="max-w-24 truncate text-2xs text-muted-foreground">
                                   {column.data_type}
                                 </span>
                               </button>
@@ -464,7 +462,7 @@ export function QuerySchemaBrowser({
                 })}
               </div>
             </div>
-            <div className="flex h-7 shrink-0 items-center gap-2 border-t px-3 text-[10px] text-muted-foreground">
+            <div className="flex h-7 shrink-0 items-center gap-2 border-t px-3 text-2xs text-muted-foreground">
               <DatabaseIcon className="size-3" />
               {visible.length} / {tables.length} Tabellen
             </div>
@@ -497,7 +495,7 @@ export function QuerySchemaBrowser({
                       className="block w-full rounded-md p-2 text-left hover:bg-muted focus-visible:outline-ring"
                       onClick={() => afterPaint(() => onJump(statement.line, statement.column))}
                     >
-                      <span className="flex justify-between text-[10px] text-muted-foreground">
+                      <span className="flex justify-between text-2xs text-muted-foreground">
                         <span>
                           {String(virtualRow.index + 1).padStart(2, "0")} · {statement.summary.kind}
                         </span>

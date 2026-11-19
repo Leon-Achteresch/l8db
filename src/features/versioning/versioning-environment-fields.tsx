@@ -66,16 +66,16 @@ export function VersioningEnvironmentFields({
   return (
     <fieldset className="min-w-0 space-y-2.5 rounded-xl bg-background/70 p-3.5">
       <legend className="sr-only">{label}</legend>
-      <div className="flex items-center gap-2 text-xs font-semibold" aria-hidden="true">
+      <div className="flex items-center gap-2 text-xs font-medium" aria-hidden="true">
         <span
           className={cn(
             "size-1.5 rounded-full",
-            tone === "production" ? "bg-emerald-500" : "bg-sky-500",
+            tone === "production" ? "bg-success" : "bg-sky-500",
           )}
         />
         {label}
         {value.connectionId && value.schema.trim() && (
-          <span className="ml-auto font-mono text-[10px] font-normal text-muted-foreground">
+          <span className="ml-auto font-mono text-2xs font-normal text-muted-foreground">
             {value.schema}
           </span>
         )}
@@ -151,7 +151,7 @@ export function VersioningEnvironmentFields({
         </div>
       )}
       {schemas.error && (
-        <p role="alert" className="text-[11px] text-destructive">
+        <p role="alert" className="text-2xs text-destructive">
           {String(schemas.error)}
         </p>
       )}

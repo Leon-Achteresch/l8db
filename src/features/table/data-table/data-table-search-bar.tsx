@@ -32,7 +32,7 @@ export function DataTableSearchBar({ search, loadedRowCount, visibleColumnCount 
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/40 px-3 py-1.5">
       <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
-      <div className="flex shrink-0 overflow-hidden rounded border border-border text-[11px]">
+      <div className="flex shrink-0 overflow-hidden rounded border border-border text-2xs">
         <button
           type="button"
           onClick={() => setSearchMode("rows")}
@@ -82,7 +82,7 @@ export function DataTableSearchBar({ search, loadedRowCount, visibleColumnCount 
       />
       <span
         className={cn(
-          "shrink-0 font-mono text-[11px] tabular-nums",
+          "shrink-0 font-mono text-2xs tabular-nums",
           searchError ? "text-destructive" : "text-muted-foreground",
         )}
         title={searchError ? describeRegexError(searchError) : undefined}
@@ -115,7 +115,7 @@ export function DataTableSearchBar({ search, loadedRowCount, visibleColumnCount 
         />
       )}
       {searchMode === "rows" && (
-        <span className="shrink-0 text-[11px] text-muted-foreground">
+        <span className="shrink-0 text-2xs text-muted-foreground">
           {loadedRowCount} geladene {loadedRowCount === 1 ? "Zeile" : "Zeilen"} ·{" "}
           {visibleColumnCount} sichtbare Spalten
         </span>

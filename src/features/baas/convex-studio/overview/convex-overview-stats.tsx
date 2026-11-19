@@ -49,7 +49,7 @@ export function ConvexOverviewStats({ deployment }: { deployment: ConvexStudioDe
             }
             className="rounded-xl bg-muted/40 px-3 py-2.5 text-left transition-colors hover:bg-muted active:bg-muted/70"
           >
-            <span className="block truncate text-[11px] text-muted-foreground">{card.label}</span>
+            <span className="block truncate text-2xs text-muted-foreground">{card.label}</span>
             <span className="mt-1 block text-xl font-medium tabular-nums">
               {stats.isPending ? "…" : card.value}
             </span>

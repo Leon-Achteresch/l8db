@@ -43,7 +43,7 @@ export function DriverMosaicVariant({
                 )}
               />
               {!available && (
-                <span className="absolute top-2.5 right-2.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                <span className="absolute top-2.5 right-2.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-2xs font-medium text-warning">
                   Fehlt
                 </span>
               )}

@@ -138,7 +138,7 @@ export function FileDiff({
                       key={line.id}
                       className={cn(
                         "grid grid-cols-[2.25rem_2.25rem_1rem_minmax(0,1fr)]",
-                        type === "added" && "bg-emerald-500/[0.07]",
+                        type === "added" && "bg-success/[0.07]",
                         type === "removed" && "bg-rose-500/[0.07]",
                       )}
                     >
@@ -151,7 +151,7 @@ export function FileDiff({
                       <span
                         className={cn(
                           "select-none text-center text-muted-foreground",
-                          type === "added" && "text-emerald-600 dark:text-emerald-400",
+                          type === "added" && "text-success",
                           type === "removed" && "text-rose-600 dark:text-rose-400",
                         )}
                       >

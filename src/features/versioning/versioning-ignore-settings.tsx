@@ -65,13 +65,13 @@ export function VersioningIgnoreSettings({
     }, "Ausschlussliste gespeichert");
   return (
     <VersioningPopover icon={EyeOffIcon} label="Ausgeschlossene Objekte" className="w-96">
-      <p ref={feature.ref} className="text-[11px] leading-relaxed text-muted-foreground">
+      <p ref={feature.ref} className="text-2xs leading-relaxed text-muted-foreground">
         Objekte, die hier passen, liest die Prüfung nicht und schlägt sie nicht zur Aufnahme vor.
         Bereits verwaltete Objekte bleiben versioniert. Ein Muster pro Zeile, optional mit Typ.
         {feature.isNew && <NewBadge />}
       </p>
       {(file.error || file.data?.problem) && (
-        <p className="text-[11px] text-destructive">
+        <p className="text-2xs text-destructive">
           {file.data?.problem
             ? `${file.data.problem} Die Liste wird bis zur Korrektur nicht angewendet.`
             : String(file.error)}
@@ -82,9 +82,9 @@ export function VersioningIgnoreSettings({
         placeholder={"view:V_EXP_*\nTMP_*\nroutine:DBG_*"}
         value={value}
         onChange={(event) => setText(event.target.value)}
-        className="min-h-32 font-mono text-[11px]"
+        className="min-h-32 font-mono text-2xs"
       />
-      <p className="text-[10px] leading-relaxed text-muted-foreground">
+      <p className="text-2xs leading-relaxed text-muted-foreground">
         <span className="font-mono">*</span> steht für beliebige Zeichen,{" "}
         <span className="font-mono">?</span> für genau eines. Typen: table, view, materialized_view,
         routine, procedure, package, sequence. Gespeichert in{" "}

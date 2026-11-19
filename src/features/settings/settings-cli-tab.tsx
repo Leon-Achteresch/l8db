@@ -11,10 +11,10 @@ import { type CliState, installCli, uninstallCli } from "@/lib/db/cli";
 import { cn } from "@/lib/utils";
 
 const STATE: Record<CliState, { label: string; dot: string }> = {
-  ready: { label: "Im PATH", dot: "bg-emerald-500" },
+  ready: { label: "Im PATH", dot: "bg-success" },
   missing: { label: "Nicht im PATH", dot: "bg-blue-500" },
   not_on_path: { label: "Ordner fehlt im PATH", dot: "bg-blue-500" },
-  other: { label: "Anderes l8db im PATH", dot: "bg-amber-500" },
+  other: { label: "Anderes l8db im PATH", dot: "bg-warning" },
 };
 
 export function SettingsCliTab() {
@@ -125,7 +125,7 @@ export function SettingsCliTab() {
           </div>
         </SettingsRow>
         {status ? (
-          <p className="-mt-1 truncate font-mono text-[11px] text-muted-foreground">
+          <p className="-mt-1 truncate font-mono text-2xs text-muted-foreground">
             {status.location
               ? `l8db → ${status.location}`
               : `Ohne PATH: „${status.target}“ direkt aufrufen.`}

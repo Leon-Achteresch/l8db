@@ -44,7 +44,7 @@ export function VersioningHeader({
   return (
     <header className={cn("flex h-12 shrink-0 items-center gap-1 px-4", className)}>
       <GitPullRequestIcon className="mr-1 size-4 text-primary" strokeWidth={1.7} />
-      <h1 className={cn("flex-1 truncate text-xs font-semibold", compact && "sr-only")}>
+      <h1 className={cn("flex-1 truncate text-xs font-medium", compact && "sr-only")}>
         Versionierung
       </h1>
       {compact && <span className="flex-1" />}

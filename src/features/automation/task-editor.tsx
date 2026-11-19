@@ -341,15 +341,13 @@ export function TaskEditor({ taskId, draft, onSaved, onClose }: TaskEditorProps)
         <div className="overflow-x-auto border-b px-4 [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]">
           <TabsList variant="line" className="h-9 w-max" aria-label="Bereiche des Tasks">
             {(Object.keys(TAB_LABELS) as TabId[]).map((id) => (
-              <TabsTrigger key={id} value={id} className="flex-none px-2.5 text-[13px]">
+              <TabsTrigger key={id} value={id} className="flex-none px-2.5 text-sm">
                 {TAB_LABELS[id]}
                 {id === "steps" && stepCount > 0 && (
-                  <span className="text-[11px] text-muted-foreground tabular-nums">
-                    {stepCount}
-                  </span>
+                  <span className="text-2xs text-muted-foreground tabular-nums">{stepCount}</span>
                 )}
                 {id === "schedule" && task.schedules.length > 0 && (
-                  <span className="text-[11px] text-muted-foreground tabular-nums">
+                  <span className="text-2xs text-muted-foreground tabular-nums">
                     {task.schedules.length}
                   </span>
                 )}
@@ -378,7 +376,7 @@ export function TaskEditor({ taskId, draft, onSaved, onClose }: TaskEditorProps)
                 <>
                   <span
                     aria-hidden
-                    className="hidden items-center gap-3 text-[11px] text-muted-foreground @4xl/editor:flex"
+                    className="hidden items-center gap-3 text-2xs text-muted-foreground @4xl/editor:flex"
                   >
                     <span className="flex items-center gap-1.5">
                       <span className="h-px w-4 bg-muted-foreground/60" />
@@ -507,7 +505,7 @@ export function TaskEditor({ taskId, draft, onSaved, onClose }: TaskEditorProps)
       </Tabs>
       {activeRun && <TaskRunBar run={activeRun} />}
       {!activeRun && task.needsReview && (
-        <div className="flex items-center gap-2 border-t bg-amber-500/10 px-4 py-2 text-xs text-amber-800 dark:text-amber-300">
+        <div className="flex items-center gap-2 border-t bg-warning/10 px-4 py-2 text-xs text-warning">
           <ListTreeIcon className="size-3.5 shrink-0" aria-hidden />
           Importiert: Prüfe Verbindungen, Pfade und Empfänger, dann speichern. Bis dahin laufen
           keine Zeitpläne.

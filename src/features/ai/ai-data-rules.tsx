@@ -81,7 +81,7 @@ export function AiDataRules({
             </summary>
             <div className="mt-2 space-y-1.5 text-xs">
               {rule.description && <p>{rule.description}</p>}
-              <pre className="overflow-x-auto rounded-md bg-muted/50 p-2 font-mono text-[11px] whitespace-pre-wrap">
+              <pre className="overflow-x-auto rounded-md bg-muted/50 p-2 font-mono text-2xs whitespace-pre-wrap">
                 {rule.sql}
               </pre>
             </div>

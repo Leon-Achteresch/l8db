@@ -117,7 +117,7 @@ export function FkValuePickerDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base font-semibold">
             <LinkIcon className="size-4 text-blue-500" />
-            <span className="font-mono text-primary font-bold">{columnName}</span>
+            <span className="font-mono text-primary font-semibold">{columnName}</span>
             <span className="text-xs font-normal text-muted-foreground font-mono">
               → {target.schema}.{target.table}.{target.keyColumn}
             </span>
@@ -161,7 +161,7 @@ export function FkValuePickerDialog({
                       isCurrent && "bg-primary/10",
                     )}
                   >
-                    <span className="shrink-0 font-mono text-xs font-semibold text-primary">
+                    <span className="shrink-0 font-mono text-xs font-medium text-primary">
                       {value ?? "NULL"}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
@@ -186,7 +186,7 @@ export function FkValuePickerDialog({
               </Button>
               {isSaving && <Loader2Icon className="size-3.5 animate-spin text-muted-foreground" />}
             </div>
-            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-1 text-2xs text-muted-foreground">
               <span className="mr-1">Seite {page + 1}</span>
               <button
                 type="button"

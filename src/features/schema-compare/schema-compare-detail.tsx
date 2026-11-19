@@ -64,9 +64,7 @@ export function SchemaCompareDetail({
             ` · ${stats.changes} ${stats.changes === 1 ? "Änderung" : "Änderungen"}`}
           {item.differsBy.length > 0 && ` · Unterschied in: ${item.differsBy.join(", ")}`}
         </span>
-        {item.blocked && (
-          <span className="truncate text-amber-700 dark:text-amber-400">{item.blocked}</span>
-        )}
+        {item.blocked && <span className="truncate text-warning">{item.blocked}</span>}
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <ToggleGroup
             type="single"

@@ -75,7 +75,7 @@ export function BackupHistory({
   return (
     <aside className="hidden min-h-0 w-[21rem] shrink-0 flex-col border-l lg:flex">
       <div className="flex h-10 shrink-0 items-center px-4">
-        <h3 className="text-xs font-semibold">Letzte Sicherungen</h3>
+        <h3 className="text-xs font-medium">Letzte Sicherungen</h3>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {entries.length === 0 ? (
@@ -90,9 +90,9 @@ export function BackupHistory({
               const icon = active ? (
                 <Spinner className="size-3.5 text-muted-foreground" />
               ) : task.status === "success" ? (
-                <CircleCheckIcon className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                <CircleCheckIcon className="size-3.5 text-success" />
               ) : task.status === "interrupted" ? (
-                <CircleAlertIcon className="size-3.5 text-amber-600 dark:text-amber-400" />
+                <CircleAlertIcon className="size-3.5 text-warning" />
               ) : (
                 <CircleXIcon className="size-3.5 text-destructive" />
               );
@@ -115,7 +115,7 @@ export function BackupHistory({
                       <span className="mt-0.5">{icon}</span>
                       <span className="grid min-w-0 gap-0.5">
                         <span className="truncate font-mono text-xs">{name}</span>
-                        <span className="truncate text-[11px] text-muted-foreground tabular-nums">
+                        <span className="truncate text-2xs text-muted-foreground tabular-nums">
                           {when(task.startedAt)}
                           {task.finishedAt
                             ? ` · ${duration(task.finishedAt - task.startedAt)}`

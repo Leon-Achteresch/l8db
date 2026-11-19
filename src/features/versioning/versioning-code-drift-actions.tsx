@@ -24,12 +24,12 @@ export function VersioningCodeDriftActions({
     <div className="space-y-1.5 text-foreground">
       {drifting.map((id) => (
         <div key={id} className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-[11px]">{label(id)}</span>
+          <span className="font-mono text-2xs">{label(id)}</span>
           <span className="text-muted-foreground">beim Kunden direkt geändert</span>
           <Button
             size="sm"
             variant="outline"
-            className="h-6 px-2 text-[11px]"
+            className="h-6 px-2 text-2xs"
             disabled={busy}
             onClick={() => onAdopt(id)}
           >
@@ -38,7 +38,7 @@ export function VersioningCodeDriftActions({
           <Button
             size="sm"
             variant="outline"
-            className="h-6 px-2 text-[11px]"
+            className="h-6 px-2 text-2xs"
             disabled={busy}
             onClick={() => onVariance(id)}
           >
@@ -47,7 +47,7 @@ export function VersioningCodeDriftActions({
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 px-2 text-[11px]"
+            className="h-6 px-2 text-2xs"
             disabled={busy}
             onClick={() => onOverride(id)}
           >

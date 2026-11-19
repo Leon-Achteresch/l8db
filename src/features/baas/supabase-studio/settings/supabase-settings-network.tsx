@@ -53,7 +53,7 @@ export function SupabaseSettingsNetwork({ reference }: { reference: string }) {
       <div className="mt-4 flex items-center justify-between gap-3 rounded-lg bg-background/50 p-3">
         <div>
           <p className="text-xs font-medium">SSL erzwingen</p>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Lehnt unverschlüsselte Verbindungen zur Datenbank ab.
           </p>
         </div>
@@ -95,7 +95,7 @@ export function SupabaseSettingsNetwork({ reference }: { reference: string }) {
           </ul>
         )}
         {network.data?.status && (
-          <p className="mt-1 text-[11px] text-muted-foreground">Status: {network.data.status}</p>
+          <p className="mt-1 text-2xs text-muted-foreground">Status: {network.data.status}</p>
         )}
       </div>
       {error && (

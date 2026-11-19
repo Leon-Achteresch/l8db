@@ -32,7 +32,7 @@ export function SavedQueryOriginChoice({
         {feature.isNew && <NewBadge />}
       </div>
       <p
-        className="truncate text-[11px] text-muted-foreground"
+        className="truncate text-2xs text-muted-foreground"
         title={
           origin
             ? `${origin.connectionName ?? "Verbindung"} · ${origin.database ?? "Datenbank unbekannt"}`
@@ -43,7 +43,7 @@ export function SavedQueryOriginChoice({
           ? `${origin.connectionName ?? "Verbindung"} · ${origin.database ?? "Datenbank unbekannt"}`
           : "Allgemein · ohne Herkunft"}
       </p>
-      <p className="text-[11px] text-muted-foreground">Nur ein Hinweis, kein Ausführungsziel.</p>
+      <p className="text-2xs text-muted-foreground">Nur ein Hinweis, kein Ausführungsziel.</p>
     </div>
   );
 }

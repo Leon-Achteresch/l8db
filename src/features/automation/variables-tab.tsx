@@ -145,8 +145,8 @@ export function VariablesTab({ task, issues, onChange }: Props) {
           <div className="flex flex-col gap-0.5">
             <h3 className="text-sm font-semibold tracking-tight">Variablen</h3>
             <p className="max-w-prose text-xs text-pretty text-muted-foreground">
-              In jedem Textfeld als <code className="font-mono text-[11px]">{"${name}"}</code>{" "}
-              nutzbar. Ohne Standardwert muss ein Wert aus Umgebung, Zeitplan oder Abfrage kommen.
+              In jedem Textfeld als <code className="font-mono text-2xs">{"${name}"}</code> nutzbar.
+              Ohne Standardwert muss ein Wert aus Umgebung, Zeitplan oder Abfrage kommen.
             </p>
           </div>
           {variables.length > 0 && (
@@ -187,7 +187,7 @@ export function VariablesTab({ task, issues, onChange }: Props) {
                       value={variable.name}
                       spellCheck={false}
                       onChange={(event) => setVariable(index, { name: event.target.value.trim() })}
-                      className="h-8 font-mono text-[13px]"
+                      className="h-8 font-mono text-sm"
                     />
                     <Select
                       value={variable.kind}
@@ -203,7 +203,7 @@ export function VariablesTab({ task, issues, onChange }: Props) {
                         })
                       }
                     >
-                      <SelectTrigger aria-label="Typ" className="h-8 w-full rounded-lg text-[13px]">
+                      <SelectTrigger aria-label="Typ" className="h-8 w-full rounded-lg text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -295,12 +295,12 @@ export function VariablesTab({ task, issues, onChange }: Props) {
         </header>
         {environments.length > 0 && (
           <div className="overflow-x-auto rounded-xl border bg-card">
-            <table className="w-full min-w-max border-collapse text-[13px]">
+            <table className="w-full min-w-max border-collapse text-sm">
               <thead>
                 <tr className="border-b">
                   <th
                     scope="col"
-                    className="w-40 px-3 py-2 text-left text-[11px] font-medium text-muted-foreground"
+                    className="w-40 px-3 py-2 text-left text-2xs font-medium text-muted-foreground"
                   >
                     Variable
                   </th>
@@ -323,7 +323,7 @@ export function VariablesTab({ task, issues, onChange }: Props) {
                             onChange={(event) =>
                               renameEnvironment(envIndex, event.target.value.trim())
                             }
-                            className="h-7 border-transparent bg-transparent px-1.5 text-[13px] font-semibold shadow-none hover:border-input dark:bg-transparent"
+                            className="h-7 border-transparent bg-transparent px-1.5 text-sm font-semibold shadow-none hover:border-input dark:bg-transparent"
                           />
                           <Button
                             type="button"
@@ -335,7 +335,7 @@ export function VariablesTab({ task, issues, onChange }: Props) {
                             }
                             title={isDefault ? "Standard-Umgebung" : "Als Standard festlegen"}
                             onClick={() => onChange({ defaultEnvironment: env.name })}
-                            className={cn(isDefault ? "text-amber-500" : "text-muted-foreground")}
+                            className={cn(isDefault ? "text-warning" : "text-muted-foreground")}
                           >
                             <StarIcon className={cn(isDefault && "fill-current")} />
                           </Button>
@@ -374,15 +374,12 @@ export function VariablesTab({ task, issues, onChange }: Props) {
                         <th scope="row" className="px-3 py-1.5 text-left font-normal">
                           <span className="flex flex-col">
                             <span
-                              className={cn(
-                                "font-mono text-[13px]",
-                                orphan && "text-muted-foreground",
-                              )}
+                              className={cn("font-mono text-sm", orphan && "text-muted-foreground")}
                             >
                               {key}
                             </span>
                             {orphan && (
-                              <span className="text-[11px] text-muted-foreground">
+                              <span className="text-2xs text-muted-foreground">
                                 nur in Umgebungen
                               </span>
                             )}
@@ -405,7 +402,7 @@ export function VariablesTab({ task, issues, onChange }: Props) {
                                     : "Standard"
                                 }
                                 onChange={(event) => setCell(envIndex, key, event.target.value)}
-                                className="h-8 text-[13px]"
+                                className="h-8 text-sm"
                               />
                             )}
                           </td>

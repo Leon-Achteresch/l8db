@@ -38,7 +38,7 @@ export function EntityChip({
         py-px pl-[3px] pr-1.5 align-middle shadow-hairline ${className}`}
     >
       <Monogram color={color}>{monogram ?? name.charAt(0)}</Monogram>
-      <span className="text-[12px] font-medium text-ink">{name}</span>
+      <span className="text-xs font-medium text-ink">{name}</span>
     </span>
   );
 }

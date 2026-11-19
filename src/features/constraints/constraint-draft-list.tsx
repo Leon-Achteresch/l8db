@@ -29,7 +29,7 @@ export function ConstraintDraftList({
         </Button>
       </div>
       {constraints.length === 0 ? (
-        <p className="rounded-md border border-dashed px-3 py-3 text-[11px] text-muted-foreground">
+        <p className="rounded-md border border-dashed px-3 py-3 text-2xs text-muted-foreground">
           Fremdschlüssel, CHECK- und mehrspaltige Unique-Constraints werden hier definiert.
         </p>
       ) : (
@@ -44,18 +44,18 @@ export function ConstraintDraftList({
                 key={`${constraint.kind}-${constraint.name ?? ""}-${describeConstraint(constraint)}`}
                 className="flex items-start gap-3 px-3 py-2"
               >
-                <Badge variant="outline" className="mt-0.5 shrink-0 text-[10px]">
+                <Badge variant="outline" className="mt-0.5 shrink-0 text-2xs">
                   {CONSTRAINT_KIND_LABEL[constraint.kind]}
                 </Badge>
                 <div className="min-w-0 flex-1">
                   {constraint.name && (
                     <div className="font-mono text-xs font-medium">{constraint.name}</div>
                   )}
-                  <div className="break-all font-mono text-[11px] text-muted-foreground">
+                  <div className="break-all font-mono text-2xs text-muted-foreground">
                     {describeConstraint(constraint)}
                   </div>
                   {missing.length > 0 && (
-                    <div className="text-[11px] text-destructive">
+                    <div className="text-2xs text-destructive">
                       Unbekannte Spalten: {missing.join(", ")}
                     </div>
                   )}

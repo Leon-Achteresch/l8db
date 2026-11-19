@@ -23,7 +23,7 @@ export function VersioningTicketChips({
           </>
         );
         const style =
-          "inline-flex items-center gap-1 rounded-md bg-sky-500/10 px-1.5 py-0.5 font-mono text-[10px] text-sky-700 dark:text-sky-300";
+          "inline-flex items-center gap-1 rounded-md bg-sky-500/10 px-1.5 py-0.5 font-mono text-2xs text-sky-700 dark:text-sky-300";
         return linked && ticket.url ? (
           <button
             key={ticket.key}

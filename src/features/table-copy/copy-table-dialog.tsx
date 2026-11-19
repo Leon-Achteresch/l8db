@@ -189,7 +189,7 @@ export function CopyTableDialog({
           <div className="grid gap-2">
             {preview.error && <p className="text-sm text-destructive">{preview.error}</p>}
             {preview.warnings.map((warning) => (
-              <p key={warning} className="text-xs text-amber-600 dark:text-amber-400">
+              <p key={warning} className="text-xs text-warning">
                 {warning}
               </p>
             ))}

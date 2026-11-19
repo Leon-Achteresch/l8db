@@ -43,7 +43,7 @@ export function DataTableLayoutProfiles({
       <ContextMenuSeparator />
       <ContextMenuLabel>Layouts</ContextMenuLabel>
       {profiles.length === 0 && (
-        <div className="px-2 py-1 text-[11px] text-muted-foreground">
+        <div className="px-2 py-1 text-2xs text-muted-foreground">
           Noch kein Layout gespeichert.
         </div>
       )}

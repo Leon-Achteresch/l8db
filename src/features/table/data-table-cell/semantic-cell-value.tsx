@@ -22,17 +22,14 @@ type Props = {
 export function SemanticCellValue({ value, preview, column, now }: Props) {
   if (value === null || value === undefined)
     return (
-      <span className="rounded bg-muted px-1 font-mono text-[10.5px] leading-none text-muted-foreground">
+      <span className="rounded bg-muted px-1 font-mono text-2xs leading-none text-muted-foreground">
         null
       </span>
     );
   if (typeof value === "boolean" || column?.kind === "boolean") {
     const truthy = value === true || value === "true" || value === 1 || value === "t";
     return truthy ? (
-      <CheckIcon
-        aria-label="true"
-        className="inline size-3.5 align-top text-emerald-600 dark:text-emerald-400"
-      />
+      <CheckIcon aria-label="true" className="inline size-3.5 align-top text-success" />
     ) : (
       <span title="false" className="text-muted-foreground">
         —
@@ -43,7 +40,7 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
     return (
       <span
         className={cn(
-          "my-[0.0625rem] inline-block max-w-full truncate rounded-full px-2 align-top font-sans text-[11px] leading-[1.125rem] font-medium before:mr-1.5 before:inline-block before:size-1.5 before:rounded-full before:bg-current before:align-middle before:opacity-80",
+          "my-[0.0625rem] inline-block max-w-full truncate rounded-full px-2 align-top font-sans text-2xs leading-[1.125rem] font-medium before:mr-1.5 before:inline-block before:size-1.5 before:rounded-full before:bg-current before:align-middle before:opacity-80",
           CATEGORY_PILL_CLASSES[column.categoryColors?.get(value) ?? categoryColorIndex(value)],
         )}
       >
@@ -76,7 +73,7 @@ export function SemanticCellValue({ value, preview, column, now }: Props) {
         <span title={value}>
           {display.primary}
           {display.secondary ? (
-            <span className="ml-1.5 font-mono text-[11px] leading-none text-muted-foreground">
+            <span className="ml-1.5 font-mono text-2xs leading-none text-muted-foreground">
               {display.secondary}
             </span>
           ) : null}

@@ -67,7 +67,7 @@ export function BackupJobLog({ jobId }: BackupJobLogProps) {
       )}
       <pre
         ref={logRef}
-        className="max-h-72 min-h-24 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/40 p-2 font-mono text-[11px]"
+        className="max-h-72 min-h-24 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/40 p-2 font-mono text-2xs"
       >
         {lines.length ? lines.join("\n") : "Noch keine Ausgabe."}
       </pre>

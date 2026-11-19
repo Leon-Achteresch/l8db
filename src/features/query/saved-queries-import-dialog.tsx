@@ -167,16 +167,14 @@ export function SavedQueriesImportDialog({ open, onOpenChange, onCloseAutoFocus 
                   >
                     <span className="block truncate text-sm">{candidate.label}</span>
                     {candidate.error ? (
-                      <span className="text-[11px] text-destructive">{candidate.error}</span>
+                      <span className="text-2xs text-destructive">{candidate.error}</span>
                     ) : candidate.duplicateOf ? (
-                      <span className="text-[11px] text-muted-foreground">
-                        Name bereits vorhanden
-                      </span>
+                      <span className="text-2xs text-muted-foreground">Name bereits vorhanden</span>
                     ) : null}
                   </button>
                 </div>
                 {expanded === candidate.index && candidate.query && (
-                  <pre className="mt-1 max-h-40 overflow-auto rounded-md bg-muted/60 p-2 font-mono text-[11px] whitespace-pre-wrap">
+                  <pre className="mt-1 max-h-40 overflow-auto rounded-md bg-muted/60 p-2 font-mono text-2xs whitespace-pre-wrap">
                     {candidate.query.sql}
                   </pre>
                 )}

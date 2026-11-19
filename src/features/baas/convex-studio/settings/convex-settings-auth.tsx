@@ -10,7 +10,7 @@ export function ConvexSettingsAuth({ deployment }: { deployment: ConvexStudioDep
     <div className="grid gap-6 lg:grid-cols-2">
       <section className="rounded-2xl bg-muted/25 p-5">
         <h3 className="text-sm font-semibold">Authentifizierung</h3>
-        <p className="mt-1 text-[11px] text-muted-foreground">
+        <p className="mt-1 text-2xs text-muted-foreground">
           Provider aus convex/auth.config.ts des zuletzt deployten Codes. Änderungen erfolgen per
           Deploy.
         </p>
@@ -42,7 +42,7 @@ export function ConvexSettingsAuth({ deployment }: { deployment: ConvexStudioDep
       </section>
       <section className="rounded-2xl bg-muted/25 p-5">
         <h3 className="text-sm font-semibold">Komponenten</h3>
-        <p className="mt-1 text-[11px] text-muted-foreground">
+        <p className="mt-1 text-2xs text-muted-foreground">
           Installierte Convex-Komponenten. Die Root-App erscheint mit leerem Pfad.
         </p>
         {info.isPending ? (
@@ -60,7 +60,7 @@ export function ConvexSettingsAuth({ deployment }: { deployment: ConvexStudioDep
                   {component.path || component.name || "Root-App"}
                 </span>
                 {component.state && (
-                  <span className="ml-auto rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  <span className="ml-auto rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
                     {component.state === "active" ? "Aktiv" : component.state}
                   </span>
                 )}

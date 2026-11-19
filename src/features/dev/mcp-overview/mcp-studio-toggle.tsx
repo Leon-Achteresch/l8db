@@ -23,9 +23,7 @@ export function McpStudioToggle({
         disabled && "opacity-40",
       )}
     >
-      <span className={cn(tone === "warn" && checked && "text-amber-600 dark:text-amber-400")}>
-        {label}
-      </span>
+      <span className={cn(tone === "warn" && checked && "text-warning")}>{label}</span>
       <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} aria-label={label} />
     </div>
   );

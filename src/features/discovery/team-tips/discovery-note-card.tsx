@@ -64,7 +64,7 @@ export function DiscoveryNoteCard({ icon: Icon, eyebrow, title, body, actions, o
           <Icon className="size-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-medium text-muted-foreground">{eyebrow}</p>
+          <p className="text-2xs font-medium text-muted-foreground">{eyebrow}</p>
           <h2 id={titleId} className="text-sm font-semibold leading-snug">
             {title}
           </h2>

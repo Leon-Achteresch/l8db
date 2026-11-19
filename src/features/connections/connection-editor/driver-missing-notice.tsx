@@ -16,10 +16,7 @@ export function DriverMissingNotice({
   kind: DatabaseKind;
 }) {
   return (
-    <div
-      role="status"
-      className="space-y-1 rounded-xl bg-amber-500/10 p-2.5 text-[11px] text-amber-700 dark:text-amber-300"
-    >
+    <div role="status" className="space-y-1 rounded-xl bg-warning/10 p-2.5 text-2xs text-warning">
       <DriverDetail detail={activeInfo.driver_status.detail} className="block" />
       <div className="flex gap-3">
         <button

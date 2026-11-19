@@ -78,7 +78,7 @@ export function ConnectionBigqueryFields({
         options={AUTH_OPTIONS}
       />
       {auth === "adc" && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Nutzt GOOGLE_APPLICATION_CREDENTIALS oder die gcloud-Anmeldung (gcloud auth
           application-default login).
         </p>
@@ -113,7 +113,7 @@ export function ConnectionBigqueryFields({
         />
       )}
       {auth === "none" && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Nur für Emulatoren ohne Anmeldung, z. B. bigquery-emulator.
         </p>
       )}

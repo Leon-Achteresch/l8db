@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import type { PullComment } from "@/lib/versioning/forge";
 
 const REVIEW_LABELS = {
-  approved: { label: "hat freigegeben", icon: CircleCheckIcon, tone: "text-emerald-600" },
+  approved: { label: "hat freigegeben", icon: CircleCheckIcon, tone: "text-success" },
   changes_requested: { label: "fordert Änderungen", icon: CircleXIcon, tone: "text-destructive" },
   commented: { label: "hat geprüft", icon: CornerDownRightIcon, tone: "text-muted-foreground" },
 } as const;
@@ -53,7 +53,7 @@ export function VersioningCommentThread({
         <button
           type="button"
           onClick={() => onOpenFile(first.path ?? "")}
-          className="flex max-w-full items-center gap-1.5 truncate text-[10px] text-muted-foreground hover:text-foreground"
+          className="flex max-w-full items-center gap-1.5 truncate text-2xs text-muted-foreground hover:text-foreground"
         >
           <FileCodeIcon className="size-3 shrink-0" />
           <span className="truncate font-mono">
@@ -66,8 +66,8 @@ export function VersioningCommentThread({
         const review = comment.review ? REVIEW_LABELS[comment.review] : null;
         return (
           <article key={comment.id} className={cn("space-y-1", comment.reply && "pl-4")}>
-            <header className="flex items-center gap-1.5 text-[11px]">
-              <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold uppercase">
+            <header className="flex items-center gap-1.5 text-2xs">
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-2xs font-medium uppercase">
                 {comment.author.slice(0, 1) || "?"}
               </span>
               <span className="font-medium">{comment.author}</span>
@@ -78,13 +78,13 @@ export function VersioningCommentThread({
                 </span>
               )}
               {comment.createdAt && (
-                <time dateTime={comment.createdAt} className="text-[10px] text-muted-foreground">
+                <time dateTime={comment.createdAt} className="text-2xs text-muted-foreground">
                   {relativeTime(comment.createdAt, now)}
                 </time>
               )}
             </header>
             {comment.body.trim() && (
-              <p className="whitespace-pre-wrap break-words pl-6.5 text-[11px] leading-relaxed">
+              <p className="whitespace-pre-wrap break-words pl-6.5 text-2xs leading-relaxed">
                 {comment.body}
               </p>
             )}
@@ -118,7 +118,7 @@ export function VersioningCommentThread({
           <button
             type="button"
             onClick={() => setReplying(true)}
-            className="pl-6.5 text-[11px] text-muted-foreground hover:text-foreground"
+            className="pl-6.5 text-2xs text-muted-foreground hover:text-foreground"
           >
             Antworten…
           </button>

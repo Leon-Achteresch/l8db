@@ -11,7 +11,7 @@ const STATES = {
   open: {
     label: "Offen",
     icon: GitPullRequestIcon,
-    tone: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    tone: "bg-success/10 text-success",
   },
   draft: {
     label: "Entwurf",
@@ -35,7 +35,7 @@ export function VersioningPullState({ pull }: { pull: PullRequest }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium",
         state.tone,
       )}
     >

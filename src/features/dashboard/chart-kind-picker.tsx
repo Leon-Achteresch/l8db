@@ -116,7 +116,7 @@ export function ChartKindPicker({
         </p>
         <div className="flex items-center gap-2">
           {feature.isNew && <NewBadge />}
-          <span className="text-[10px] text-muted-foreground">Schematische Vorschauen</span>
+          <span className="text-2xs text-muted-foreground">Schematische Vorschauen</span>
         </div>
       </div>
       <fieldset aria-label="Darstellungen nach Zweck filtern" className="flex flex-wrap gap-1.5">
@@ -141,10 +141,10 @@ export function ChartKindPicker({
         {visibleGroups.map((item) => (
           <section key={item.id} aria-labelledby={`${id}-${item.id}`}>
             <div className="mb-2.5 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <h3 id={`${id}-${item.id}`} className="text-xs font-semibold">
+              <h3 id={`${id}-${item.id}`} className="text-xs font-medium">
                 {item.label}
               </h3>
-              <p className="text-[11px] text-muted-foreground">{item.hint}</p>
+              <p className="text-2xs text-muted-foreground">{item.hint}</p>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {item.kinds.map((kind) => {
@@ -180,17 +180,17 @@ export function ChartKindPicker({
                       kind={kind}
                       className={cn("mb-2", problem && "text-muted-foreground")}
                     />
-                    <span className="flex items-center gap-1.5 text-xs font-semibold">
+                    <span className="flex items-center gap-1.5 text-xs font-medium">
                       {LABELS[kind] ?? CHARTS[kind].label}
                       {kind === "pivot" && pivotFeature.isNew && <NewBadge />}
                     </span>
                     <span
                       id={descriptionId}
-                      className="mt-1 text-[11px] leading-relaxed text-muted-foreground"
+                      className="mt-1 text-2xs leading-relaxed text-muted-foreground"
                     >
                       {HINTS[kind]}
                       {problem && (
-                        <span className="mt-2 block border-t border-border/70 pt-2 text-[10px] leading-relaxed">
+                        <span className="mt-2 block border-t border-border/70 pt-2 text-2xs leading-relaxed">
                           {problem}
                         </span>
                       )}

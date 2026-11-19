@@ -38,7 +38,7 @@ export function LiveStatTile({
               tone === "danger"
                 ? "bg-destructive"
                 : tone === "warning"
-                  ? "bg-amber-500"
+                  ? "bg-warning"
                   : "bg-foreground/70",
             )}
             style={{ width: `${width}%` }}

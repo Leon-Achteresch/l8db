@@ -48,7 +48,7 @@ export function CsvMappingTable({
   const usedTargets = new Set(mappings.map((m) => m.target).filter(Boolean) as string[]);
 
   return (
-    <table className="w-full table-fixed border-collapse text-[13px]">
+    <table className="w-full table-fixed border-collapse text-sm">
       <colgroup>
         <col className="w-[22%]" />
         <col />
@@ -114,11 +114,11 @@ export function CsvMappingTable({
                       >
                         <span className="flex items-center gap-2">
                           <span className="font-mono">{target.name}</span>
-                          <span className="text-[10px] text-muted-foreground">
+                          <span className="text-2xs text-muted-foreground">
                             {targetHint(target)}
                           </span>
                           {isRequiredColumn(target) && (
-                            <Badge variant="outline" className="text-[10px]">
+                            <Badge variant="outline" className="text-2xs">
                               Pflicht
                             </Badge>
                           )}
@@ -140,8 +140,8 @@ export function CsvMappingTable({
                       variant="outline"
                       className={
                         mismatch
-                          ? "border-amber-500/30 bg-amber-500/5 text-[10px] text-amber-600"
-                          : "text-[10px] text-muted-foreground"
+                          ? "border-warning/30 bg-warning/5 text-2xs text-warning"
+                          : "text-2xs text-muted-foreground"
                       }
                       title={
                         mismatch

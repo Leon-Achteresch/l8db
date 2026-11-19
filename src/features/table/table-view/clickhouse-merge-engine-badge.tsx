@@ -16,7 +16,7 @@ export function ClickhouseMergeEngineBadge({ context }: { context: ClickhouseMer
           type="button"
           size="xs"
           variant="secondary"
-          className="relative mx-1 shrink-0 font-mono text-[10px]"
+          className="relative mx-1 shrink-0 font-mono text-2xs"
           aria-label={`Merge-Engine ${context.engine}`}
           title={context.engine}
         >

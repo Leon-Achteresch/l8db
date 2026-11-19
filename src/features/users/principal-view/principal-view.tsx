@@ -158,7 +158,7 @@ export function PrincipalView({ name, profile = false }: { name: string; profile
   if (error || !detail || !origin || !base || !draft) {
     return (
       <div className="flex flex-1 items-center justify-center bg-background p-6">
-        <p className="max-w-md text-center text-[13px] text-muted-foreground select-text">
+        <p className="max-w-md text-center text-sm text-muted-foreground select-text">
           {error ? String(error) : `"${name}" nicht gefunden.`}
         </p>
       </div>
@@ -242,15 +242,11 @@ export function PrincipalView({ name, profile = false }: { name: string; profile
         <Icon className="size-4 shrink-0 text-muted-foreground" />
         <h2 className="truncate font-mono text-sm font-semibold tracking-tight">{name}</h2>
         {detail.status && (
-          <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+          <span className="flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
             <span
               className={cn(
                 "size-1.5 rounded-full",
-                detail.locked
-                  ? "bg-destructive"
-                  : detail.expired
-                    ? "bg-amber-500"
-                    : "bg-emerald-500",
+                detail.locked ? "bg-destructive" : detail.expired ? "bg-warning" : "bg-success",
               )}
             />
             {detail.status}
@@ -319,9 +315,7 @@ export function PrincipalView({ name, profile = false }: { name: string; profile
               {section.icon ? <section.icon className="size-3.5" /> : null}
               {section.label}
               {section.count !== undefined && (
-                <span className="text-[11px] text-muted-foreground tabular-nums">
-                  {section.count}
-                </span>
+                <span className="text-2xs text-muted-foreground tabular-nums">{section.count}</span>
               )}
             </TabsTrigger>
           ))}
@@ -397,7 +391,7 @@ export function PrincipalView({ name, profile = false }: { name: string; profile
                 </div>
               ))}
               {detail.members.length === 0 && (
-                <p className="px-2 py-3 text-[13px] text-muted-foreground">Keine Benutzer.</p>
+                <p className="px-2 py-3 text-sm text-muted-foreground">Keine Benutzer.</p>
               )}
             </div>
           )}
@@ -416,7 +410,7 @@ export function PrincipalView({ name, profile = false }: { name: string; profile
       {count > 0 && (
         <div className="flex shrink-0 items-center gap-2 bg-muted/40 px-4 py-2">
           <span className="size-1.5 rounded-full bg-primary" />
-          <span className="text-[13px] font-medium tabular-nums">
+          <span className="text-sm font-medium tabular-nums">
             {count} {count === 1 ? "Änderung" : "Änderungen"}
           </span>
           <div className="ml-auto flex items-center gap-1.5">

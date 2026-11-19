@@ -125,7 +125,7 @@ export function FilterAiPopover({ ai, model }: { ai: FilterAi; model: FilterBarM
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               {availability.label} sieht Spaltennamen, -typen, deine Anfrage und die aktiven Filter,
               aber keine Tabellenzeilen. Vor dem Übernehmen siehst du jede Änderung.
             </p>

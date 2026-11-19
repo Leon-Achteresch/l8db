@@ -80,7 +80,7 @@ export function HealthView() {
         <h1 className="text-sm font-semibold">Health & Advisor</h1>
         {isNew && <NewBadge />}
         {report.data && (
-          <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase tabular-nums">
+          <span className="font-mono text-2xs text-muted-foreground tabular-nums">
             {checks.length} Prüfungen · {report.data.durationMs} ms
           </span>
         )}
@@ -177,7 +177,7 @@ export function HealthView() {
             ({ group, items }) =>
               items.length > 0 && (
                 <section key={group}>
-                  <h2 className="flex items-center gap-2 px-2 pb-1 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+                  <h2 className="flex items-center gap-2 px-2 pb-1 font-mono text-2xs text-muted-foreground">
                     {GROUP_LABEL[group]}
                     <span className="tabular-nums opacity-60">{items.length}</span>
                   </h2>

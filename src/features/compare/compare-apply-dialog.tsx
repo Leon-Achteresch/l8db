@@ -165,7 +165,7 @@ export function CompareApplyDialog({
                   ? "Eine Anweisung löscht Spalten samt Daten:"
                   : `${destructive.length} Anweisungen löschen Spalten samt Daten:`}
               </p>
-              <ul className="max-h-24 overflow-auto font-mono text-[11px]">
+              <ul className="max-h-24 overflow-auto font-mono text-2xs">
                 {destructive.map((statement) => (
                   <li key={statement} className="truncate">
                     {statement}
@@ -195,7 +195,7 @@ export function CompareApplyDialog({
             </p>
           )}
           {status === "checked" && checked.current === fingerprint && (
-            <p role="status" className="text-sm text-emerald-600">
+            <p role="status" className="text-sm text-success">
               Prüfung erfolgreich. Bereit zur Bestätigung.
             </p>
           )}

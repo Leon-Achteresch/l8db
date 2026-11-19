@@ -51,7 +51,7 @@ export function WorkloadComparisonTable({
                   row.deltaMs === null || row.deltaMs === 0
                     ? "text-muted-foreground"
                     : row.deltaMs < 0
-                      ? "text-emerald-600 dark:text-emerald-400"
+                      ? "text-success"
                       : "text-destructive"
                 }`}
               >

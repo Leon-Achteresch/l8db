@@ -16,8 +16,8 @@ export function ExternalChangeBanner({
   onKeepLocal,
 }: ExternalChangeBannerProps) {
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs">
-      <AlertTriangleIcon className="size-3.5 text-amber-500" />
+    <div className="flex shrink-0 items-center gap-2 border-b border-warning/40 bg-warning/10 px-3 py-1.5 text-xs">
+      <AlertTriangleIcon className="size-3.5 text-warning" />
       <span className="min-w-0 flex-1 truncate">
         Datei wurde außerhalb von l8db geändert
         {fileDirty ? " – lokale Änderungen vorhanden" : ""}

@@ -41,10 +41,10 @@ export function ExtensionTreeNode({
           )}
           <span className="truncate">{item.label}</span>
           {item.description && (
-            <span className="truncate text-[10px] text-muted-foreground">{item.description}</span>
+            <span className="truncate text-2xs text-muted-foreground">{item.description}</span>
           )}
           {item.badge !== undefined && (
-            <span className="ml-auto rounded-full bg-primary/12 px-1.5 text-[10px] tabular-nums">
+            <span className="ml-auto rounded-full bg-primary/12 px-1.5 text-2xs tabular-nums">
               {item.badge}
             </span>
           )}

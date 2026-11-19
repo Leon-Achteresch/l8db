@@ -80,7 +80,7 @@ export function LiveLocksTab({
             <>
               <LocksTable locks={sorted.slice(0, LOCK_RENDER_LIMIT)} />
               {sorted.length > LOCK_RENDER_LIMIT && (
-                <p className="border-t px-3 py-2 text-center text-[11px] text-muted-foreground">
+                <p className="border-t px-3 py-2 text-center text-2xs text-muted-foreground">
                   {sorted.length - LOCK_RENDER_LIMIT} weitere Locks ausgeblendet.
                 </p>
               )}

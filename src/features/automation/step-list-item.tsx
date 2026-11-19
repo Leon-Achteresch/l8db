@@ -134,19 +134,19 @@ export function StepListItem({
                 aria-hidden
                 className={cn(
                   "absolute -top-1 -right-1 size-2.5 rounded-full ring-2 ring-background",
-                  errors ? "bg-destructive" : "bg-amber-500",
+                  errors ? "bg-destructive" : "bg-warning",
                 )}
               />
             )}
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex min-w-0 items-baseline gap-1.5">
-              <span className="shrink-0 text-[11px] font-medium text-muted-foreground tabular-nums">
+              <span className="shrink-0 text-2xs font-medium text-muted-foreground tabular-nums">
                 {number}
               </span>
               <span
                 className={cn(
-                  "truncate text-[13px] font-medium",
+                  "truncate text-sm font-medium",
                   !step.enabled &&
                     "text-muted-foreground line-through decoration-muted-foreground/40",
                 )}
@@ -155,7 +155,7 @@ export function StepListItem({
               </span>
               {catalog.risky && (step.action.type !== "unzip" || step.action.overwrite) && (
                 <TriangleAlertIcon
-                  className="size-3 shrink-0 self-center text-amber-600 dark:text-amber-400"
+                  className="size-3 shrink-0 self-center text-warning"
                   aria-hidden
                 />
               )}
@@ -173,20 +173,20 @@ export function StepListItem({
                 {badges.map((badge) => (
                   <span
                     key={badge}
-                    className="inline-flex h-[18px] items-center gap-0.5 rounded-md bg-background/80 px-1.5 text-[11px] font-medium text-muted-foreground ring-1 ring-border/70"
+                    className="inline-flex h-[18px] items-center gap-0.5 rounded-md bg-background/80 px-1.5 text-2xs font-medium text-muted-foreground ring-1 ring-border/70"
                   >
                     <CornerDownRightIcon className="size-2.5" aria-hidden />
                     {badge}
                   </span>
                 ))}
                 {step.retry && step.retry.attempts > 0 && (
-                  <span className="inline-flex h-[18px] items-center gap-0.5 rounded-md bg-background/80 px-1.5 text-[11px] font-medium text-muted-foreground tabular-nums ring-1 ring-border/70">
+                  <span className="inline-flex h-[18px] items-center gap-0.5 rounded-md bg-background/80 px-1.5 text-2xs font-medium text-muted-foreground tabular-nums ring-1 ring-border/70">
                     <RotateCwIcon className="size-2.5" aria-hidden />
                     {step.retry.attempts}×
                   </span>
                 )}
                 {step.timeoutSeconds && (
-                  <span className="inline-flex h-[18px] items-center gap-0.5 rounded-md bg-background/80 px-1.5 text-[11px] font-medium text-muted-foreground tabular-nums ring-1 ring-border/70">
+                  <span className="inline-flex h-[18px] items-center gap-0.5 rounded-md bg-background/80 px-1.5 text-2xs font-medium text-muted-foreground tabular-nums ring-1 ring-border/70">
                     <TimerIcon className="size-2.5" aria-hidden />
                     {step.timeoutSeconds} s
                   </span>

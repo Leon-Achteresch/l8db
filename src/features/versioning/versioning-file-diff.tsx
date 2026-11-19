@@ -78,12 +78,12 @@ export function VersioningFileDiff({
         {letter && (
           <span
             className={cn(
-              "shrink-0 font-mono text-[11px] font-semibold",
+              "shrink-0 font-mono text-2xs font-medium",
               letter === "A"
-                ? "text-emerald-600 dark:text-emerald-400"
+                ? "text-success"
                 : letter === "D"
                   ? "text-destructive"
-                  : "text-amber-600 dark:text-amber-400",
+                  : "text-warning",
             )}
           >
             {letter}
@@ -91,21 +91,21 @@ export function VersioningFileDiff({
         )}
         {unsaved && (
           <span
-            className="size-1.5 shrink-0 rounded-full bg-amber-500"
+            className="size-1.5 shrink-0 rounded-full bg-warning"
             role="img"
             aria-label="Ungespeichert"
             title="Ungespeichert"
           />
         )}
         {fill && (
-          <span className="hidden min-w-0 truncate border-l border-border/60 pl-2 text-[11px] text-muted-foreground 2xl:inline">
+          <span className="hidden min-w-0 truncate border-l border-border/60 pl-2 text-2xs text-muted-foreground 2xl:inline">
             {status?.branch ?? "HEAD"}{" "}
             <span className="font-mono">{status?.head?.slice(0, 7) ?? ""}</span> → Arbeitskopie
           </span>
         )}
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {stats && (
-            <span className="mr-1 text-[11px] text-muted-foreground tabular-nums">
+            <span className="mr-1 text-2xs text-muted-foreground tabular-nums">
               {stats.changes} {stats.changes === 1 ? "Änderung" : "Änderungen"}
             </span>
           )}
@@ -133,10 +133,10 @@ export function VersioningFileDiff({
             aria-label="Diff-Umfang"
             className="mx-1"
           >
-            <ToggleGroupItem value="all" className="h-7 px-2 text-[11px]">
+            <ToggleGroupItem value="all" className="h-7 px-2 text-2xs">
               Ganze Datei
             </ToggleGroupItem>
-            <ToggleGroupItem value="changes" className="h-7 px-2 text-[11px]">
+            <ToggleGroupItem value="changes" className="h-7 px-2 text-2xs">
               Nur Änderungen
             </ToggleGroupItem>
           </ToggleGroup>
@@ -196,7 +196,7 @@ export function VersioningFileDiff({
         </div>
       </div>
       {mergedFrom && unsaved && (
-        <p className={cn("text-[11px] text-muted-foreground", fill && "px-3 pt-2")}>
+        <p className={cn("text-2xs text-muted-foreground", fill && "px-3 pt-2")}>
           Entwurf mit {mergedFrom} zusammengeführt. Prüfe die Definition vor dem Commit.
         </p>
       )}

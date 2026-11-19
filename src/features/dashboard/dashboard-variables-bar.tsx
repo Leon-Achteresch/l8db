@@ -53,7 +53,7 @@ export function DashboardVariablesBar({
               value && "border-primary/40 bg-primary/5",
             )}
           >
-            <span className="text-[11px] text-muted-foreground">{variable.label}</span>
+            <span className="text-2xs text-muted-foreground">{variable.label}</span>
             <VariableControl
               variable={variable}
               value={value}

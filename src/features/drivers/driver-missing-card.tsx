@@ -33,7 +33,7 @@ export function DriverMissingCard({
 }: Props) {
   const repairable = Boolean(diagnosis?.steps.length);
   return (
-    <article className="flex min-w-0 flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-amber-500/30">
+    <article className="flex min-w-0 flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-warning/30">
       <div className="flex items-center gap-3">
         <ProviderLogo kind={summary.kind} className="size-7" />
         <div className="min-w-0 flex-1">
@@ -80,7 +80,7 @@ export function DriverMissingCard({
       )}
       {log && (
         <div>
-          <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+          <div className="mb-1 flex items-center gap-2 text-2xs text-muted-foreground">
             <span className="font-medium">Protokoll</span>
             <button
               type="button"
@@ -92,7 +92,7 @@ export function DriverMissingCard({
               Kopieren
             </button>
           </div>
-          <pre className="max-h-40 overflow-auto rounded-lg bg-muted/70 p-2 font-mono text-[11px] whitespace-pre-wrap">
+          <pre className="max-h-40 overflow-auto rounded-lg bg-muted/70 p-2 font-mono text-2xs whitespace-pre-wrap">
             {log}
           </pre>
         </div>

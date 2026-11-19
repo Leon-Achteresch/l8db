@@ -31,7 +31,7 @@ export function TemplateCard({ template, onPick, className }: Props) {
       )}
     >
       <span className="flex items-start justify-between gap-2">
-        <span className="text-[13px] leading-snug font-semibold text-balance">{template.name}</span>
+        <span className="text-sm leading-snug font-semibold text-balance">{template.name}</span>
         <ArrowRightIcon
           aria-hidden
           className="mt-0.5 size-3.5 shrink-0 text-muted-foreground opacity-0 transition-[opacity,transform] duration-150 ease-out group-hover/template:translate-x-0.5 group-hover/template:opacity-100 group-focus-visible/template:opacity-100 motion-reduce:transition-none"
@@ -41,7 +41,7 @@ export function TemplateCard({ template, onPick, className }: Props) {
         {template.description}
       </span>
       {facts && (
-        <span className="mt-auto flex items-center gap-3 pt-1 text-[11px] text-muted-foreground">
+        <span className="mt-auto flex items-center gap-3 pt-1 text-2xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
             <ListOrderedIcon aria-hidden className="size-3" />
             {facts.steps === 1 ? "1 Schritt" : `${facts.steps} Schritte`}

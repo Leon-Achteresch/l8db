@@ -74,7 +74,7 @@ export function DiscoveryCard({
       className="fixed right-4 bottom-11 z-40 rounded-2xl bg-popover/95 px-4 pt-3.5 pb-3 text-popover-foreground shadow-xl shadow-foreground/10 backdrop-blur-xl"
       style={{ width: "min(340px, calc(100vw - 32px))" }}
     >
-      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+      <div className="mb-1.5 flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
         <span className="size-1.5 rounded-full bg-primary" />
         <span className="truncate">{label}</span>
         {isNew ? <NewBadge /> : null}

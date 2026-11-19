@@ -43,7 +43,7 @@ export function FormRow({
   return (
     <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
       <div className="flex min-h-5 items-center justify-between gap-2">
-        <Label htmlFor={bind ? id : undefined} className="text-[13px] font-medium">
+        <Label htmlFor={bind ? id : undefined} className="text-sm font-medium">
           {label}
         </Label>
         {aside}
@@ -54,7 +54,7 @@ export function FormRow({
           id={messageId}
           className={cn(
             "flex items-start gap-1.5 text-xs text-pretty",
-            error ? "text-destructive" : "text-amber-700 dark:text-amber-400",
+            error ? "text-destructive" : "text-warning",
           )}
         >
           {error ? (

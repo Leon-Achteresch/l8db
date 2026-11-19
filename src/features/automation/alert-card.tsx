@@ -53,8 +53,8 @@ const STATUS_STYLE: Record<AlertStatus, { icon: typeof SirenIcon; pill: string; 
   },
   error: {
     icon: TriangleAlertIcon,
-    pill: "bg-amber-500/12 text-amber-800 dark:text-amber-300",
-    card: "border-amber-500/35",
+    pill: "bg-warning/12 text-warning",
+    card: "border-warning/35",
   },
   unknown: {
     icon: CircleHelpIcon,
@@ -63,7 +63,7 @@ const STATUS_STYLE: Record<AlertStatus, { icon: typeof SirenIcon; pill: string; 
   },
   ok: {
     icon: CircleCheckIcon,
-    pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+    pill: "bg-success/10 text-success",
     card: "",
   },
 };
@@ -154,7 +154,7 @@ export function AlertCard({ summary, step, state, now }: Props) {
         </div>
         <span
           className={cn(
-            "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+            "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium",
             style.pill,
           )}
         >
@@ -165,26 +165,23 @@ export function AlertCard({ summary, step, state, now }: Props) {
 
       <dl className="grid grid-cols-3 gap-3">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <dt className="text-[11px] text-muted-foreground">Letzter Wert</dt>
+          <dt className="text-2xs text-muted-foreground">Letzter Wert</dt>
           <dd
-            className="truncate font-mono text-[13px] tabular-nums"
+            className="truncate font-mono text-sm tabular-nums"
             title={state?.lastValue ?? undefined}
           >
             {state?.lastValue ?? "–"}
           </dd>
         </div>
         <div className="flex min-w-0 flex-col gap-0.5">
-          <dt className="text-[11px] text-muted-foreground">Seit</dt>
-          <dd className="truncate text-[13px] tabular-nums" title={formatDateTime(state?.since)}>
+          <dt className="text-2xs text-muted-foreground">Seit</dt>
+          <dd className="truncate text-sm tabular-nums" title={formatDateTime(state?.since)}>
             {state?.since ? formatRelative(state.since, now) : "–"}
           </dd>
         </div>
         <div className="flex min-w-0 flex-col gap-0.5">
-          <dt className="text-[11px] text-muted-foreground">Geprüft</dt>
-          <dd
-            className="truncate text-[13px] tabular-nums"
-            title={formatDateTime(state?.checkedAt)}
-          >
+          <dt className="text-2xs text-muted-foreground">Geprüft</dt>
+          <dd className="truncate text-sm tabular-nums" title={formatDateTime(state?.checkedAt)}>
             {state?.checkedAt ? formatRelative(state.checkedAt, now) : "noch nie"}
           </dd>
         </div>

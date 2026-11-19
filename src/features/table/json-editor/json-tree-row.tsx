@@ -137,7 +137,7 @@ export const JsonTreeRow = memo(function JsonTreeRow({
             onCancel={onCancelEdit}
           />
         ) : typeof row.key === "number" ? (
-          <span className="shrink-0 rounded bg-muted px-1 font-mono text-[10px] text-muted-foreground tabular-nums">
+          <span className="shrink-0 rounded bg-muted px-1 font-mono text-2xs text-muted-foreground tabular-nums">
             {row.key}
           </span>
         ) : (

@@ -86,16 +86,13 @@ export function SupabaseSettingsPostgres({ reference }: { reference: string }) {
           }}
           className="mt-4 space-y-3"
         >
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Leere Felder nutzen den Supabase-Standard. Nur geänderte Werte werden gesendet.
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {SETTINGS.map(([key, hint]) => (
               <div key={key} className="grid gap-1">
-                <label
-                  htmlFor={`supabase-pg-${key}-${reference}`}
-                  className="font-mono text-[11px]"
-                >
+                <label htmlFor={`supabase-pg-${key}-${reference}`} className="font-mono text-2xs">
                   {key}
                 </label>
                 <Input

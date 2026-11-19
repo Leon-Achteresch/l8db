@@ -44,7 +44,7 @@ export function SimpleResultTable({
         </tbody>
       </table>
       {rows.length > maxRows ? (
-        <p className="px-2 py-1 text-[11px] text-muted-foreground">
+        <p className="px-2 py-1 text-2xs text-muted-foreground">
           {maxRows} von {rows.length} Zeilen angezeigt.
         </p>
       ) : null}

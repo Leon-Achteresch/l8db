@@ -56,7 +56,7 @@ export function GuidedPicker({
                   <span className="block text-xs leading-5 text-muted-foreground">
                     {entry.description}
                   </span>
-                  <span className="flex items-center gap-1.5 pt-1 text-[11px] text-muted-foreground">
+                  <span className="flex items-center gap-1.5 pt-1 text-2xs text-muted-foreground">
                     <span className="flex -space-x-1.5">
                       {examples.map((provider) => (
                         <span
@@ -104,7 +104,7 @@ export function GuidedPicker({
       {groups.map((group) => (
         <div key={group} className="space-y-1">
           {groups.length > 1 && (
-            <p className="px-2.5 text-[11px] font-medium text-muted-foreground">{group}</p>
+            <p className="px-2.5 text-2xs font-medium text-muted-foreground">{group}</p>
           )}
           <div className="grid gap-0.5 sm:grid-cols-2">
             {members

@@ -39,7 +39,7 @@ export function SpotlightDialog({ content }: { content: SpotlightContent }) {
           <div className="absolute -right-10 -bottom-32 -z-10 size-96 rounded-full bg-(--discovery-2)/45 blur-3xl" />
           <div className="absolute top-6 right-1/3 -z-10 size-48 rounded-full bg-(--discovery-3)/35 blur-3xl" />
           <div className="discovery-grain absolute inset-0 -z-10 opacity-50 mix-blend-overlay" />
-          <p className="font-mono text-[10px] tracking-widest text-white/60 uppercase">
+          <p className="font-mono text-2xs text-white/60">
             {welcome ? "Willkommen zurück" : `Release ${content.label}`}
           </p>
           <DialogTitle className="mt-2 flex items-center gap-2 text-4xl font-semibold tracking-[-0.03em]">
@@ -63,9 +63,7 @@ export function SpotlightDialog({ content }: { content: SpotlightContent }) {
             <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
               {content.others.map((group) => (
                 <section key={group.area} className="flex flex-col gap-2">
-                  <h3 className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-                    {group.area}
-                  </h3>
+                  <h3 className="font-mono text-2xs text-muted-foreground">{group.area}</h3>
                   <div className="flex flex-wrap gap-1.5">
                     {group.entries.map((entry) => (
                       <button

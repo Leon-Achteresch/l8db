@@ -91,9 +91,9 @@ export function TransactionPanel() {
     >
       <div className="flex h-full w-full min-w-0 flex-col border-l border-border bg-card">
         <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
-          <span className="text-xs font-semibold text-foreground">Transaktionen</span>
+          <span className="text-xs font-medium text-foreground">Transaktionen</span>
           {transactions.length > 0 && (
-            <span className="inline-flex size-4 items-center justify-center rounded-full bg-amber-500/15 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+            <span className="inline-flex size-4 items-center justify-center rounded-full bg-warning/15 text-2xs font-medium text-warning">
               {transactions.length}
             </span>
           )}
@@ -109,7 +109,7 @@ export function TransactionPanel() {
 
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-3 p-3">
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
+            <p className="text-2xs leading-relaxed text-muted-foreground">
               {perTable && capabilities.table_transactions
                 ? "Vorgemerkt, noch nicht in der Datenbank. Commit übernimmt je Tabelle."
                 : perTable
@@ -124,7 +124,7 @@ export function TransactionPanel() {
                 <p className="text-xs font-medium text-muted-foreground">
                   Keine offenen Transaktionen
                 </p>
-                <p className="max-w-[220px] text-[10px] leading-relaxed text-muted-foreground">
+                <p className="max-w-[220px] text-2xs leading-relaxed text-muted-foreground">
                   Schreiboperationen (UPDATE, INSERT, DELETE) werden automatisch in einer
                   Transaktion ausgeführt.
                 </p>

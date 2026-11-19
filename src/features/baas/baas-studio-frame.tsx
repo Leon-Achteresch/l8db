@@ -60,7 +60,7 @@ export function BaasStudioFrame({
       >
         <div className="space-y-2 p-2">
           {header}
-          <div className="flex min-w-0 items-center gap-2 px-1 text-[11px] text-muted-foreground">
+          <div className="flex min-w-0 items-center gap-2 px-1 text-2xs text-muted-foreground">
             <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary/70" />
             <span
               className="min-w-0 flex-1 truncate"
@@ -74,7 +74,7 @@ export function BaasStudioFrame({
         <nav ref={navRef} aria-label={label} className="shrink-0 px-2 pb-2">
           <BaasStudioNav tabs={tabs} value={value} onValueChange={onValueChange} />
         </nav>
-        <p className="flex h-8 shrink-0 items-center gap-2 border-t px-4 pt-1 text-[10px] font-semibold tracking-[0.12em] text-sidebar-foreground/60 uppercase [&:has(+div:empty)]:hidden">
+        <p className="flex h-8 shrink-0 items-center gap-2 border-t px-4 pt-1 text-2xs font-medium text-sidebar-foreground/60 [&:has(+div:empty)]:hidden">
           {sidebarLabel ?? active?.label}
         </p>
         <div

@@ -24,7 +24,7 @@ export function ElasticExactFilterHint({
       <TooltipTrigger
         ref={feature.ref}
         type="button"
-        className="flex min-w-0 w-full items-center gap-1.5 text-left text-[10px] text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-ring cursor-help"
+        className="flex min-w-0 w-full items-center gap-1.5 text-left text-2xs text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-ring cursor-help"
         aria-label={`${hint.summary}. ${hint.details}`}
       >
         <InfoIcon className="size-3 shrink-0" />

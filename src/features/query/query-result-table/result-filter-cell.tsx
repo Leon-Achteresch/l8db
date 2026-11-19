@@ -61,7 +61,7 @@ export function ResultFilterCell({
               size="sm"
               variant="ghost"
               className={cn(
-                "h-6 shrink-0 px-1.5 text-[10px] font-normal",
+                "h-6 shrink-0 px-1.5 text-2xs font-normal",
                 isFilterActive(filter) && "text-primary",
               )}
             >

@@ -90,7 +90,7 @@ export function ExplainNodeCard({
             {op && <PlanWarningBadges warnings={op.warnings} />}
           </div>
           {(node["Index Cond"] || node["Filter"] || node["Hash Cond"]) && (
-            <div className="mt-0.5 space-y-0.5 font-mono text-[11px] text-muted-foreground">
+            <div className="mt-0.5 space-y-0.5 font-mono text-2xs text-muted-foreground">
               {node["Index Cond"] && <p>Bedingung: {node["Index Cond"]}</p>}
               {node["Hash Cond"] && <p>Hash: {node["Hash Cond"]}</p>}
               {node["Filter"] && <p>Filter: {node["Filter"]}</p>}

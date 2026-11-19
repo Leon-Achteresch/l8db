@@ -114,7 +114,7 @@ export function PaymentsPriceForm({ reference }: { reference: string }) {
         </p>
       )}
       {products.data?.length === 0 && (
-        <p className="w-full text-[11px] text-muted-foreground">
+        <p className="w-full text-2xs text-muted-foreground">
           Zuerst ein Produkt in diesem Projekt anlegen.
         </p>
       )}

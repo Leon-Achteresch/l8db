@@ -33,7 +33,7 @@ export function SetupStep({
       />
       <span
         className={cn(
-          "relative flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums transition-colors",
+          "relative flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium tabular-nums transition-colors",
           state === "done" && "bg-primary text-primary-foreground",
           state === "active" && "bg-background text-primary ring-2 ring-primary ring-inset",
           state === "upcoming" && "bg-muted text-muted-foreground",

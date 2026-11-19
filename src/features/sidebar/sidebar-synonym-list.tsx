@@ -106,7 +106,7 @@ export function SidebarSynonymList({ items, isLoading, isError, error }: Sidebar
                   <InvalidMarker label={synonym.status} />
                 ) : null}
                 <span
-                  className={`ml-auto shrink-0 text-[10px] ${
+                  className={`ml-auto shrink-0 text-2xs ${
                     synonym.status.toUpperCase() === "VALID"
                       ? "text-muted-foreground"
                       : "text-destructive"
@@ -115,7 +115,7 @@ export function SidebarSynonymList({ items, isLoading, isError, error }: Sidebar
                   {synonym.status}
                 </span>
               </span>
-              <span className="w-full truncate pl-6 text-[11px] text-muted-foreground">
+              <span className="w-full truncate pl-6 text-2xs text-muted-foreground">
                 {targetLabel}
               </span>
             </SidebarMenuButton>

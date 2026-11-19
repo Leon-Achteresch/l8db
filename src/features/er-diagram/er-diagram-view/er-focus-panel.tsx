@@ -32,9 +32,7 @@ export function ErFocusPanel({
 }) {
   return (
     <div className="flex flex-col gap-1.5 rounded-md border border-border bg-card px-3 py-2 shadow-sm">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        Fokus
-      </span>
+      <span className="text-2xs font-medium text-muted-foreground">Fokus</span>
       <Select value={focusKey ?? ""} onValueChange={onFocusChange}>
         <SelectTrigger size="sm" className="w-56">
           <SelectValue placeholder="Tabelle wählen…" />

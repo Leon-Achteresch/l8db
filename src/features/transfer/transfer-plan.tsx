@@ -97,7 +97,7 @@ export function TransferPlanDetails({
             </Button>
           </div>
           <TabsContent value="tables" className="min-h-0 flex-1 overflow-auto rounded-xl border">
-            <table className="w-full text-[13px]">
+            <table className="w-full text-sm">
               <thead className="sticky top-0 bg-background text-left text-muted-foreground">
                 <tr>
                   <th className="px-2 py-1.5 font-medium">#</th>
@@ -134,7 +134,7 @@ export function TransferPlanDetails({
             </table>
           </TabsContent>
           <TabsContent value="script" className="min-h-0 flex-1 overflow-auto">
-            <pre className="min-h-full rounded-xl border bg-muted/40 p-4 font-mono text-[13px] leading-relaxed whitespace-pre-wrap">
+            <pre className="min-h-full rounded-xl border bg-muted/40 p-4 font-mono text-sm leading-relaxed whitespace-pre-wrap">
               {text}
             </pre>
           </TabsContent>
@@ -173,10 +173,7 @@ export function TransferPlanDetails({
             ) : (
               <ul className="flex flex-col gap-1.5">
                 {plan.warnings.map((warning) => (
-                  <li
-                    key={warning}
-                    className="flex gap-2 text-xs text-amber-700 dark:text-amber-400"
-                  >
+                  <li key={warning} className="flex gap-2 text-xs text-warning">
                     <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
                     <span>{warning}</span>
                   </li>

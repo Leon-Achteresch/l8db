@@ -40,7 +40,7 @@ export function McpStudioSettings({
         <div className="grid grid-cols-2 gap-2">
           {LIMITS.map(({ key, label, unit }) => (
             <label key={key} className="rounded-xl bg-muted/50 px-3 py-2.5">
-              <span className="block text-[11px] text-muted-foreground">{label}</span>
+              <span className="block text-2xs text-muted-foreground">{label}</span>
               <span className="flex items-baseline gap-1">
                 <input
                   type="number"

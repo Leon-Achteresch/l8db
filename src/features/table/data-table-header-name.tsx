@@ -17,7 +17,7 @@ export function DataTableHeaderName({ name, isFk = false }: { name: string; isFk
       <span
         ref={ref}
         className={cn(
-          "min-w-0 truncate font-mono font-semibold text-[12px] tracking-tight",
+          "min-w-0 truncate font-mono font-medium text-xs tracking-tight",
           isFk ? "text-blue-600 dark:text-blue-400" : "text-foreground/80",
         )}
         onPointerEnter={() => {
@@ -35,7 +35,7 @@ export function DataTableHeaderName({ name, isFk = false }: { name: string; isFk
             align="start"
             side="bottom"
             sideOffset={6}
-            className="pointer-events-none w-auto max-w-sm gap-0 p-2 font-mono text-xs font-semibold"
+            className="pointer-events-none w-auto max-w-sm gap-0 p-2 font-mono text-xs font-medium"
             onOpenAutoFocus={(event) => event.preventDefault()}
             onCloseAutoFocus={(event) => event.preventDefault()}
           >

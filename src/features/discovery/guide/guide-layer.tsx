@@ -115,7 +115,7 @@ export function GuideLayer() {
         style={position}
       >
         <div aria-live="polite" className="space-y-1">
-          <p className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
+          <p className="flex items-center gap-2 text-2xs font-medium text-muted-foreground">
             {guide.title}
             {isNew && <NewBadge />}
           </p>

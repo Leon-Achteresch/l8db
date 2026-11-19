@@ -72,7 +72,7 @@ export function EnumsView() {
     <main className="mx-auto flex h-full w-full max-w-6xl min-h-0 flex-col gap-4 p-6">
       <header className="flex shrink-0 items-center gap-2">
         <ListIcon className="size-5 text-primary" />
-        <h1 className="text-xl font-bold tracking-tight">Enum-Typen</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Enum-Typen</h1>
         <Button
           size="sm"
           className="ml-auto h-8 gap-1.5 text-xs"

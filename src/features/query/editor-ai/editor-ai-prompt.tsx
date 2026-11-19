@@ -119,7 +119,7 @@ export function EditorAiPrompt({ session, snapshot }: Props) {
           {chat ? (
             <span
               ref={feature.ref}
-              className="flex min-h-6 flex-1 items-center gap-1.5 truncate py-1 text-[13px] leading-5"
+              className="flex min-h-6 flex-1 items-center gap-1.5 truncate py-1 text-sm leading-5"
             >
               {snapshot.instruction}
               {feature.isNew && <NewBadge />}
@@ -140,7 +140,7 @@ export function EditorAiPrompt({ session, snapshot }: Props) {
                     : snapshot.placeholder
               }
               aria-label="Anweisung an die KI"
-              className="min-h-6 flex-1 resize-none bg-transparent py-1 text-[13px] leading-5 outline-none! placeholder:text-muted-foreground/70 disabled:placeholder:animate-pulse"
+              className="min-h-6 flex-1 resize-none bg-transparent py-1 text-sm leading-5 outline-none! placeholder:text-muted-foreground/70 disabled:placeholder:animate-pulse"
             />
           )}
           {chat ? null : running ? (
@@ -182,7 +182,7 @@ export function EditorAiPrompt({ session, snapshot }: Props) {
           )}
         </div>
         {footer && (
-          <div className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/60 px-2.5 py-1 text-[11px] text-muted-foreground">
+          <div className="flex min-h-7 flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/60 px-2.5 py-1 text-2xs text-muted-foreground">
             {label && (
               <span className="rounded-md bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
                 {label}
@@ -204,7 +204,7 @@ export function EditorAiPrompt({ session, snapshot }: Props) {
                 <Button
                   type="button"
                   size="xs"
-                  className="h-5 bg-emerald-600/90 text-white hover:bg-emerald-600"
+                  className="h-5 bg-success/90 text-success-foreground hover:bg-success"
                   onClick={() => session.acceptAll()}
                 >
                   <Check />
@@ -246,16 +246,13 @@ export function EditorAiPrompt({ session, snapshot }: Props) {
               <span className="text-destructive">{snapshot.error}</span>
             )}
             {snapshot.warning && (
-              <span
-                title={snapshot.warning}
-                className="line-clamp-3 min-w-0 text-amber-700 dark:text-amber-300"
-              >
+              <span title={snapshot.warning} className="line-clamp-3 min-w-0 text-warning">
                 {snapshot.warning}
               </span>
             )}
             <span className="ml-auto flex items-center gap-2">
               {snapshot.earlier.length > 0 && <span>Runde {snapshot.earlier.length + 1}</span>}
-              {snapshot.model && <span className="font-mono text-[10px]">{snapshot.model}</span>}
+              {snapshot.model && <span className="font-mono text-2xs">{snapshot.model}</span>}
               {usage && <span className="tabular-nums">{usage}</span>}
             </span>
           </div>

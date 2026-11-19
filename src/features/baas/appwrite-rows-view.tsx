@@ -68,7 +68,7 @@ export function AppwriteRowsView({
                   {typeof label === "string" && (
                     <>
                       {" "}
-                      <span className="ml-2 font-mono text-[10px] font-normal text-muted-foreground">
+                      <span className="ml-2 font-mono text-2xs font-normal text-muted-foreground">
                         {row.$id}
                       </span>
                     </>
@@ -79,7 +79,7 @@ export function AppwriteRowsView({
                     .filter(([key]) => key !== "$id")
                     .map(([key, value]) => (
                       <div key={key} className="min-w-0">
-                        <p className="text-[10px] text-muted-foreground">{key}</p>
+                        <p className="text-2xs text-muted-foreground">{key}</p>
                         <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all font-sans text-xs">
                           {displayValue(value)}
                         </pre>

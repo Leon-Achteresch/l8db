@@ -179,7 +179,7 @@ function ConstraintEditorDialogContent({
               placeholder="Automatisch"
               className="h-8 font-mono text-xs"
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Leer lassen, damit die Datenbank einen Namen vergibt.
               {suggestedName && !spec.name?.trim() && (
                 <>
@@ -246,13 +246,13 @@ function ConstraintEditorDialogContent({
           )}
 
           {dialect.createNote && isNewTable && (
-            <p className="rounded-md border border-dashed bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+            <p className="rounded-md border border-dashed bg-muted/30 px-3 py-2 text-2xs text-muted-foreground">
               {dialect.createNote}
             </p>
           )}
 
           {issues.length > 0 && (
-            <ul className="list-disc space-y-0.5 rounded-md border border-destructive/30 bg-destructive/5 px-5 py-2 text-[11px] text-destructive">
+            <ul className="list-disc space-y-0.5 rounded-md border border-destructive/30 bg-destructive/5 px-5 py-2 text-2xs text-destructive">
               {issues.map((issue) => (
                 <li key={issue}>{issue}</li>
               ))}
@@ -263,11 +263,11 @@ function ConstraintEditorDialogContent({
             <div className="space-y-1.5">
               <Label className="text-xs">SQL-Vorschau</Label>
               {previewSql ? (
-                <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-[11px]">
+                <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-2xs">
                   {previewSql}
                 </pre>
               ) : (
-                <p className="text-[11px] text-destructive">{previewError}</p>
+                <p className="text-2xs text-destructive">{previewError}</p>
               )}
             </div>
           )}

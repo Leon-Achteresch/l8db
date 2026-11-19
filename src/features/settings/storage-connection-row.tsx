@@ -102,7 +102,7 @@ export function StorageConnectionRow({ id, name, kind, share, maxBytes, connecti
                   className="flex items-center gap-2 rounded-md px-1 py-0.5 hover:bg-muted/60"
                 >
                   <span className="min-w-0 flex-1 truncate text-xs">{tabLabel(tab)}</span>
-                  <span className="text-[11px] tabular-nums text-muted-foreground">
+                  <span className="text-2xs tabular-nums text-muted-foreground">
                     {formatBytes(tabBytes(tab))}
                   </span>
                   <StorageConfirmButton
@@ -142,7 +142,7 @@ export function StorageConnectionRow({ id, name, kind, share, maxBytes, connecti
                   .map(([key, size]) => (
                     <li key={key} className="flex items-center gap-2 rounded-md px-1 py-0.5">
                       <span className="min-w-0 flex-1 truncate text-xs">{storageLabel(key)}</span>
-                      <span className="text-[11px] tabular-nums text-muted-foreground">
+                      <span className="text-2xs tabular-nums text-muted-foreground">
                         {formatBytes(size)}
                       </span>
                       {CONNECTION_REMOVABLE_KEYS.has(key) ? (

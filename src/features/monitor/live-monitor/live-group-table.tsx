@@ -30,7 +30,7 @@ export function LiveGroupTable({ title, rows }: { title: string; rows: LiveGroup
               </div>
               <div className="flex h-1.5 overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full bg-emerald-500"
+                  className="h-full bg-success"
                   style={{ width: `${(row.active / max) * 100}%` }}
                 />
                 <div

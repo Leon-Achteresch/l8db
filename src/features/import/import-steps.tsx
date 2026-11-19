@@ -40,7 +40,7 @@ export function ImportSteps({ csv }: { csv: CsvImportState }) {
             >
               <span
                 className={cn(
-                  "flex size-4.5 items-center justify-center rounded-full border text-[10px] tabular-nums",
+                  "flex size-4.5 items-center justify-center rounded-full border text-2xs tabular-nums",
                   step.done && "border-primary/40 bg-primary/15 text-primary",
                   index === current && "border-primary bg-primary text-primary-foreground",
                 )}

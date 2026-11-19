@@ -30,7 +30,7 @@ export function SupabaseSystemConnectors({
             strokeDasharray={healthy === false ? "4 3" : undefined}
             className={cn(
               healthy === false
-                ? "stroke-amber-500"
+                ? "stroke-warning"
                 : healthy
                   ? "stroke-primary/45"
                   : "stroke-border",

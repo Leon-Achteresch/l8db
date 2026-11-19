@@ -39,7 +39,7 @@ export function BucketRetentionLabel({ retention }: { retention?: BucketRetentio
   return (
     <p
       ref={feature.ref}
-      className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[11px] leading-4 text-muted-foreground"
+      className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-2xs leading-4 text-muted-foreground"
       data-slot="bucket-retention"
       title={
         known && seconds > 0

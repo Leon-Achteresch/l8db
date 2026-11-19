@@ -60,7 +60,7 @@ export function TableConstraintsList({ schema, table }: TableConstraintsListProp
                   <span className="text-sm font-medium font-mono text-foreground">{con.name}</span>
                   <Badge
                     variant="outline"
-                    className={`text-[10px] px-1.5 py-0 font-medium ${constraintTypeColor(con.constraint_type)} border-current/20 bg-current/5`}
+                    className={`text-2xs px-1.5 py-0 font-medium ${constraintTypeColor(con.constraint_type)} border-current/20 bg-current/5`}
                   >
                     {con.constraint_type}
                   </Badge>
@@ -70,14 +70,14 @@ export function TableConstraintsList({ schema, table }: TableConstraintsListProp
                     {con.columns.map((col) => (
                       <span
                         key={col}
-                        className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                        className="rounded bg-muted px-1.5 py-0.5 font-mono text-2xs text-muted-foreground"
                       >
                         {col}
                       </span>
                     ))}
                   </div>
                 )}
-                <p className="font-mono text-[11px] text-muted-foreground break-all">
+                <p className="font-mono text-2xs text-muted-foreground break-all">
                   {con.definition}
                 </p>
               </div>

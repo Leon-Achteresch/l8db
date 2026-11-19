@@ -42,7 +42,7 @@ const STATUS: Record<string, string> = {
   uncollectible: "uneinbringlich",
 };
 
-const mono = (value: ReactNode) => <span className="font-mono text-[11px]">{value}</span>;
+const mono = (value: ReactNode) => <span className="font-mono text-2xs">{value}</span>;
 const active = (row: PaymentRecord) => (row.active ? "aktiv" : "archiviert");
 
 const COLUMNS: Record<PaymentResource, Column[]> = {
@@ -160,7 +160,7 @@ export function PaymentsResourceTable({
           </tbody>
         </table>
       )}
-      <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+      <div className="flex items-center justify-between gap-3 text-2xs text-muted-foreground">
         <span>
           {rows.length} Einträge geladen, je Seite höchstens {PAYMENT_PAGE_LIMIT}
           {pages.length >= PAYMENT_MAX_PAGES && list.hasNextPage

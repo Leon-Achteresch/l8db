@@ -33,8 +33,8 @@ export const CATEGORY_ICONS: Record<ObjectCategory, LucideIcon> = {
 };
 
 export const STATUS_TONES: Record<string, { label: string; tone: string }> = {
-  A: { label: "neu", tone: "text-emerald-600 dark:text-emerald-400" },
-  M: { label: "geändert", tone: "text-amber-600 dark:text-amber-400" },
+  A: { label: "neu", tone: "text-success" },
+  M: { label: "geändert", tone: "text-warning" },
   D: { label: "entfernt", tone: "text-destructive" },
-  T: { label: "Typ geändert", tone: "text-amber-600 dark:text-amber-400" },
+  T: { label: "Typ geändert", tone: "text-warning" },
 };

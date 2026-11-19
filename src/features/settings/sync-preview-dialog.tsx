@@ -72,7 +72,7 @@ export function SyncPreviewDialog({ decision, onDecide }: Props) {
           </tbody>
         </table>
         {decision && decision.devicePaths.length > 0 && (
-          <p className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs">
+          <p className="rounded-md border border-warning/40 bg-warning/5 p-2 text-xs">
             {decision.devicePaths.length} übernommene Angaben sind gerätespezifische Pfade
             (SSH-Schlüssel, Agent-Sockets oder Datenbankdateien). Prüfen Sie diese auf diesem
             Rechner.

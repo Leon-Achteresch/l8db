@@ -85,7 +85,7 @@ export function McpStudioLog({ calls, kindByName }: McpStudioLogProps) {
                     { label: "Antwort", body: call.response },
                   ].map(({ label, body }) => (
                     <div key={label} className="min-w-0 space-y-1.5">
-                      <div className="text-[11px] text-muted-foreground">
+                      <div className="text-2xs text-muted-foreground">
                         {label}
                         {label === "Antwort" && ` · ${call.connection}`}
                       </div>

@@ -28,15 +28,13 @@ export function AiPanelTabs({
           aria-selected={tab === id}
           onClick={() => onTab(id)}
           className={cn(
-            "flex h-7 flex-1 items-center justify-center gap-1.5 rounded-lg text-[12px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+            "flex h-7 flex-1 items-center justify-center gap-1.5 rounded-lg text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
             tab === id && "bg-background font-medium text-foreground shadow-xs",
           )}
         >
           {label}
           {id === "results" && (
-            <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">
-              {count}
-            </span>
+            <span className="text-2xs font-medium tabular-nums text-muted-foreground">{count}</span>
           )}
         </button>
       ))}

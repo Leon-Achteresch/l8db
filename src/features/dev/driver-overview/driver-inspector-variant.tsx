@@ -50,9 +50,7 @@ export function DriverInspectorVariant({
               {summary.title}
             </span>
             {!summary.status.available && (
-              <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
-                Fehlt
-              </span>
+              <span className="text-2xs font-medium text-warning">Fehlt</span>
             )}
           </button>
         ))}
@@ -73,7 +71,7 @@ export function DriverInspectorVariant({
             <p className="mt-0.5 flex items-center gap-2 text-sm text-muted-foreground">
               <span
                 aria-hidden
-                className={cn("size-2 rounded-full", available ? "bg-emerald-500" : "bg-amber-500")}
+                className={cn("size-2 rounded-full", available ? "bg-success" : "bg-warning")}
               />
               {available ? "Einsatzbereit" : "Nicht installiert"}
               <span aria-hidden className="text-border">

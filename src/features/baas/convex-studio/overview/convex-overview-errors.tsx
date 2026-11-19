@@ -57,7 +57,7 @@ export function ConvexOverviewErrors({ deployment }: { deployment: ConvexStudioD
         </p>
       ) : errors.isPending ? null : insights.length === 0 ? (
         <p className="mt-3 flex items-center gap-2 rounded-xl bg-muted/40 px-3 py-3 text-xs text-muted-foreground">
-          <CircleCheck className="size-3.5 text-emerald-500" /> Keine Fehler im Log-Puffer
+          <CircleCheck className="size-3.5 text-success" /> Keine Fehler im Log-Puffer
         </p>
       ) : (
         <ul className="mt-3 space-y-1">
@@ -68,7 +68,7 @@ export function ConvexOverviewErrors({ deployment }: { deployment: ConvexStudioD
                 onClick={() => openLogs(insight.identifier || undefined)}
                 className="group flex w-full items-center gap-3 rounded-xl bg-muted/40 px-3 py-2 text-left text-xs transition-colors hover:bg-muted active:bg-muted/70"
               >
-                <span className="w-9 shrink-0 rounded-full bg-destructive/10 py-0.5 text-center text-[11px] font-medium text-destructive tabular-nums">
+                <span className="w-9 shrink-0 rounded-full bg-destructive/10 py-0.5 text-center text-2xs font-medium text-destructive tabular-nums">
                   {insight.count}×
                 </span>
                 <span className="min-w-0 flex-1">
@@ -77,16 +77,16 @@ export function ConvexOverviewErrors({ deployment }: { deployment: ConvexStudioD
                       {insight.identifier || "Unbekannt"}
                     </span>
                     {insight.udfType && (
-                      <span className="shrink-0 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+                      <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                         {insight.udfType}
                       </span>
                     )}
                   </span>
-                  <span className="mt-0.5 block truncate font-mono text-[11px] text-destructive">
+                  <span className="mt-0.5 block truncate font-mono text-2xs text-destructive">
                     {insight.message}
                   </span>
                 </span>
-                <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">
                   {formatRelative(insight.last * 1000)}
                 </span>
                 <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />

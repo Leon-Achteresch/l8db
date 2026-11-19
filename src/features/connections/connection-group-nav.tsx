@@ -24,9 +24,7 @@ export function ConnectionGroupNav({
   return (
     <nav aria-label="Servergruppen" className="flex min-h-0 flex-col gap-3">
       <div>
-        <p className="px-2 pb-1.5 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-          Übersicht
-        </p>
+        <p className="px-2 pb-1.5 text-2xs font-medium text-muted-foreground">Übersicht</p>
         <button
           type="button"
           onClick={() => onSelect("all")}
@@ -52,7 +50,7 @@ export function ConnectionGroupNav({
           </span>
           <span
             className={cn(
-              "rounded-full px-1.5 py-0.5 text-[10px] font-mono tabular-nums",
+              "rounded-full px-1.5 py-0.5 text-2xs font-mono tabular-nums",
               selectedKey === "all"
                 ? "bg-background text-foreground font-semibold"
                 : "bg-muted text-muted-foreground",
@@ -65,10 +63,8 @@ export function ConnectionGroupNav({
 
       <div className="flex min-h-0 flex-col">
         <div className="flex items-center justify-between px-2 pb-1.5">
-          <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-            Hosts &amp; Server
-          </p>
-          <span className="text-[10px] text-muted-foreground">{groups.length}</span>
+          <p className="text-2xs font-medium text-muted-foreground">Hosts &amp; Server</p>
+          <span className="text-2xs text-muted-foreground">{groups.length}</span>
         </div>
         <ul className="flex flex-col gap-1 overflow-y-auto pr-0.5">
           {groups.map((group) => {
@@ -100,22 +96,20 @@ export function ConnectionGroupNav({
                     <span className="flex items-center gap-1.5">
                       {active && (
                         <span
-                          className="size-1.5 shrink-0 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20"
+                          className="size-1.5 shrink-0 rounded-full bg-success ring-2 ring-success/20"
                           title="Aktive Verbindung in diesem Host"
                         />
                       )}
                       <span className="truncate font-mono text-xs">{group.label}</span>
-                      {favorite && (
-                        <Star className="size-2.5 shrink-0 fill-current text-amber-500" />
-                      )}
+                      {favorite && <Star className="size-2.5 shrink-0 fill-current text-warning" />}
                     </span>
-                    <span className="block truncate text-[10px] text-muted-foreground">
+                    <span className="block truncate text-2xs text-muted-foreground">
                       {provider.name}
                     </span>
                   </span>
                   <span
                     className={cn(
-                      "rounded-full px-1.5 py-0.5 text-[10px] font-mono tabular-nums shrink-0",
+                      "rounded-full px-1.5 py-0.5 text-2xs font-mono tabular-nums shrink-0",
                       selected
                         ? "bg-background text-foreground font-semibold"
                         : "bg-muted text-muted-foreground",

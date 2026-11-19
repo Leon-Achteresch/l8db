@@ -32,7 +32,7 @@ export function SwitchRow({
         className="mt-0.5"
       />
       <div className="flex min-w-0 flex-col gap-0.5">
-        <Label htmlFor={id} className="text-[13px] leading-snug font-normal">
+        <Label htmlFor={id} className="text-sm leading-snug font-normal">
           {label}
         </Label>
         {description && (

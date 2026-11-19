@@ -69,7 +69,7 @@ export function ConvexFunctionsSection({ deployment }: ConvexStudioSectionProps)
         </p>
       )}
       {catalog.data?.truncated && (
-        <p className="text-xs text-amber-600">Liste auf 5000 Funktionen begrenzt.</p>
+        <p className="text-xs text-warning">Liste auf 5000 Funktionen begrenzt.</p>
       )}
       <BaasSidebarPortal>
         <ConvexFunctionTree

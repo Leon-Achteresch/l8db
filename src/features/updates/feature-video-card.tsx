@@ -196,13 +196,13 @@ export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
       </div>
       <div className="px-4 pt-4 pb-3.5">
         <div>
-          <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+          <div className="mb-2 flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
             <span className="size-1.5 rounded-full bg-primary" />
             <span>Neu in l8db</span>
             <span aria-hidden="true">·</span>
             <span>{item.releaseVersion}</span>
           </div>
-          <h2 className="text-[15px] font-semibold leading-snug tracking-tight">{item.title}</h2>
+          <h2 className="text-sm font-semibold leading-snug tracking-tight">{item.title}</h2>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.summary}</p>
         </div>
         <div className="mt-4 flex items-center gap-1 border-t border-border/60 pt-3">
@@ -217,7 +217,7 @@ export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
           >
             {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
           </Button>
-          <span className="text-[11px] tabular-nums text-muted-foreground">
+          <span className="text-2xs tabular-nums text-muted-foreground">
             {Math.round(item.durationSeconds * progress)} / {Math.round(item.durationSeconds)} s
           </span>
           <Button

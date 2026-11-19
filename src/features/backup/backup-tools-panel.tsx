@@ -51,13 +51,7 @@ export function BackupToolsPanel({ probe, loading, onRefresh, actions }: BackupT
         <section key={tool.name} className="grid gap-2 rounded-lg border p-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="font-mono text-sm font-medium">{tool.name}</span>
-            <span
-              className={
-                tool.path
-                  ? "text-xs text-emerald-600 dark:text-emerald-400"
-                  : "text-xs text-destructive"
-              }
-            >
+            <span className={tool.path ? "text-xs text-success" : "text-xs text-destructive"}>
               {tool.path ? `Version ${tool.version ?? "unbekannt"}` : "Nicht gefunden"}
             </span>
           </div>

@@ -106,7 +106,7 @@ export function QueryBuilderCanvas({
           <>
             <button
               type="button"
-              className="absolute -translate-x-1/2 -translate-y-1/2 rounded-md border bg-background px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground hover:border-primary/60 hover:text-foreground"
+              className="absolute -translate-x-1/2 -translate-y-1/2 rounded-md border bg-background px-1.5 py-0.5 font-mono text-2xs text-muted-foreground hover:border-primary/60 hover:text-foreground"
               style={{ left: mx, top: (y1 + y2) / 2 }}
               title="Join-Typ wechseln"
               onClick={() => onJoinTypeChange(join.type === "INNER" ? "LEFT" : "INNER")}

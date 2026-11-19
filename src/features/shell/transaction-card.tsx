@@ -67,13 +67,13 @@ export function TransactionCard({ tx }: { tx: ActiveTransaction }) {
       className="rounded-lg border border-border bg-card shadow-xs"
     >
       <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
-        <div className="size-2 rounded-full bg-amber-500 animate-pulse" />
+        <div className="size-2 rounded-full bg-warning animate-pulse" />
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold text-foreground truncate">{title}</p>
-          <p className="text-[10px] text-muted-foreground truncate">
+          <p className="text-xs font-medium text-foreground truncate">{title}</p>
+          <p className="text-2xs text-muted-foreground truncate">
             {[tx.connectionName, tx.database].filter(Boolean).join(" · ")}
           </p>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {new Date(tx.startedAt).toLocaleTimeString("de-DE")} · {tx.changes.length}{" "}
             {tx.changes.length === 1 ? "Eintrag" : "Einträge"}
           </p>
@@ -92,7 +92,7 @@ export function TransactionCard({ tx }: { tx: ActiveTransaction }) {
         </div>
       )}
       {tx.scope?.type === "table" && (
-        <p className="px-3 pt-2 text-[10px] text-muted-foreground">
+        <p className="px-3 pt-2 text-2xs text-muted-foreground">
           Eigene Transaktion für diese Tabelle. Trigger und Kaskaden gehören ebenfalls dazu.
         </p>
       )}
@@ -100,7 +100,7 @@ export function TransactionCard({ tx }: { tx: ActiveTransaction }) {
         <div className="space-y-2 border-b border-border/50 p-2.5">
           <p
             ref={databaseDiff.ref}
-            className="flex items-center gap-1.5 text-[10px] text-muted-foreground"
+            className="flex items-center gap-1.5 text-2xs text-muted-foreground"
           >
             Gesamtstand laut Datenbank ·{" "}
             {new Date(tx.databaseChanges.at).toLocaleTimeString("de-DE")}
@@ -114,7 +114,7 @@ export function TransactionCard({ tx }: { tx: ActiveTransaction }) {
             ),
           )}
           {tx.databaseChanges.notes.map((note) => (
-            <p key={note} className="text-[10px] text-muted-foreground">
+            <p key={note} className="text-2xs text-muted-foreground">
               {note}
             </p>
           ))}
@@ -151,7 +151,7 @@ export function TransactionCard({ tx }: { tx: ActiveTransaction }) {
         >
           <CheckIcon className="size-3" />
           {tx.scope?.type === "table" ? "Tabelle committen" : "Alles committen"}
-          <kbd className="font-sans text-[10px] opacity-60">{formatMenuShortcut("Mod+Enter")}</kbd>
+          <kbd className="font-sans text-2xs opacity-60">{formatMenuShortcut("Mod+Enter")}</kbd>
         </Button>
         <Button
           size="sm"

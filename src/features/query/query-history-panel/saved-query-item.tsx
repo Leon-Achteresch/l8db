@@ -65,7 +65,7 @@ export const SavedQueryItem = memo(function SavedQueryItem({
           {!renaming && <p className="min-w-0 flex-1 truncate text-xs font-medium">{entry.name}</p>}
           <SavedQueryOriginLabel info={originInfo} />
         </div>
-        <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+        <p className="mt-0.5 truncate font-mono text-2xs text-muted-foreground">
           {firstLine(entry.sql)}
         </p>
       </button>
@@ -74,7 +74,7 @@ export const SavedQueryItem = memo(function SavedQueryItem({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 gap-1 px-1.5 text-[11px]"
+            className="h-6 gap-1 px-1.5 text-2xs"
             onClick={() => onLoad(entry.sql, "new")}
           >
             <PlayIcon className="size-3" />
@@ -83,7 +83,7 @@ export const SavedQueryItem = memo(function SavedQueryItem({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
+            className="h-6 gap-1 px-1.5 text-2xs text-muted-foreground"
             onClick={() => setRenaming(true)}
           >
             <PencilIcon className="size-3" />
@@ -92,7 +92,7 @@ export const SavedQueryItem = memo(function SavedQueryItem({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground"
+            className="h-6 gap-1 px-1.5 text-2xs text-muted-foreground"
             onClick={() => onDelete(entry.id)}
           >
             <Trash2Icon className="size-3" />

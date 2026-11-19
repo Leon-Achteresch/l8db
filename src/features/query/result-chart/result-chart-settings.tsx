@@ -51,7 +51,7 @@ export function ResultChartSettings({
   const yLabel = config.y.length ? config.y.join(", ") : "Keine";
   return (
     <div className="flex shrink-0 flex-wrap items-end gap-2 border-b px-3 py-2">
-      <div className="grid gap-1 text-[10px] text-muted-foreground">
+      <div className="grid gap-1 text-2xs text-muted-foreground">
         Diagrammtyp
         <Select
           value={config.chart}
@@ -73,7 +73,7 @@ export function ResultChartSettings({
           </SelectContent>
         </Select>
       </div>
-      <div className="grid gap-1 text-[10px] text-muted-foreground">
+      <div className="grid gap-1 text-2xs text-muted-foreground">
         {scatter ? "X (Zahl)" : "X / Kategorie"}
         <ColumnSelect
           label="X-Spalte"
@@ -84,7 +84,7 @@ export function ResultChartSettings({
           className="w-40"
         />
       </div>
-      <div className="grid gap-1 text-[10px] text-muted-foreground">
+      <div className="grid gap-1 text-2xs text-muted-foreground">
         {scatter ? "Y / Größe" : "Y-Werte"}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -113,7 +113,7 @@ export function ResultChartSettings({
                 }
               >
                 <span className="truncate">{column.label}</span>
-                <span className="ml-auto pl-2 font-mono text-[10px] text-muted-foreground">
+                <span className="ml-auto pl-2 font-mono text-2xs text-muted-foreground">
                   {column.type}
                 </span>
               </DropdownMenuCheckboxItem>
@@ -121,7 +121,7 @@ export function ResultChartSettings({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <div className="grid gap-1 text-[10px] text-muted-foreground">
+      <div className="grid gap-1 text-2xs text-muted-foreground">
         {scatter ? "Farbe" : "Serie"}
         <ColumnSelect
           label="Serien-Spalte"
@@ -132,7 +132,7 @@ export function ResultChartSettings({
           className="w-36"
         />
       </div>
-      <div className="grid gap-1 text-[10px] text-muted-foreground">
+      <div className="grid gap-1 text-2xs text-muted-foreground">
         Aggregation
         <Select value={config.agg} onValueChange={(agg) => onChange({ agg: agg as ResultAgg })}>
           <SelectTrigger size="sm" aria-label="Aggregation" className="h-8 w-32 text-xs">
@@ -147,7 +147,7 @@ export function ResultChartSettings({
           </SelectContent>
         </Select>
       </div>
-      <div className="grid gap-1 text-[10px] text-muted-foreground">
+      <div className="grid gap-1 text-2xs text-muted-foreground">
         Sortierung
         <Select
           value={config.sort}
@@ -165,7 +165,7 @@ export function ResultChartSettings({
           </SelectContent>
         </Select>
       </div>
-      <div className="grid gap-1 text-[10px] text-muted-foreground">
+      <div className="grid gap-1 text-2xs text-muted-foreground">
         Top N
         <Input
           type="number"

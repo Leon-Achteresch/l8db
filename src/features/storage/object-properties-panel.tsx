@@ -121,7 +121,7 @@ export function ObjectPropertiesPanel({
             {busy ? <Spinner className="size-4" /> : null}
             Speichern
           </Button>
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             Schreibt das Objekt neu, bei Versionierung als neue Version.
           </span>
         </div>

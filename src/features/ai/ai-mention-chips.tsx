@@ -17,7 +17,7 @@ export function AiMentionChips({
           type="button"
           disabled={disabled}
           aria-label={`Verbindung ${connection.name} aus Kontext entfernen`}
-          className="flex h-6 items-center gap-1 rounded-full bg-muted px-2 text-[11px] text-foreground/85 outline-none transition-colors hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex h-6 items-center gap-1 rounded-full bg-muted px-2 text-2xs text-foreground/85 outline-none transition-colors hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => onRemove(connection.id)}
         >
           <Database className="size-3 text-muted-foreground" />

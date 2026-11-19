@@ -88,7 +88,7 @@ export function FilterSqlField({
         </Suspense>
       )}
       {dirty && !multiline ? (
-        <span className="hidden shrink-0 items-center gap-1 text-[11px] text-muted-foreground sm:flex">
+        <span className="hidden shrink-0 items-center gap-1 text-2xs text-muted-foreground sm:flex">
           <Kbd>↵</Kbd>
           anwenden
         </span>

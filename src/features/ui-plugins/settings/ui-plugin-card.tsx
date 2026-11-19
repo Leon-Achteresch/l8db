@@ -78,7 +78,7 @@ export function UiPluginCard({
           {status.description && (
             <p className="mt-0.5 text-xs text-pretty text-muted-foreground">{status.description}</p>
           )}
-          <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+          <p className="mt-0.5 truncate font-mono text-2xs text-muted-foreground">
             {status.file}
             {status.id ? ` · ${status.id}` : ""}
           </p>
@@ -117,7 +117,7 @@ export function UiPluginCard({
         </p>
       )}
       {faults.length > 0 && (
-        <ul className="space-y-1 rounded-xl bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+        <ul className="space-y-1 rounded-xl bg-warning/10 p-3 text-xs text-warning">
           {faults.map((fault) => (
             <li key={fault} className="break-words">
               {fault}

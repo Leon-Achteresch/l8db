@@ -50,7 +50,7 @@ export function AtlasLabIslands({ tables }: { tables: LabTable[] }) {
               style={placeStyle(island.box, width, height)}
             >
               {island.header > 0 && (
-                <div className="flex items-baseline gap-1.5 px-2.5 pt-1 text-[11px]">
+                <div className="flex items-baseline gap-1.5 px-2.5 pt-1 text-2xs">
                   <span className="truncate font-semibold tracking-wide">{island.name}</span>
                   <span className="text-muted-foreground tabular-nums">
                     {island.tables.length} · {formatBytes(island.bytes)}
@@ -74,7 +74,7 @@ export function AtlasLabIslands({ tables }: { tables: LabTable[] }) {
                   style={auroraStyle(tile, width, height, 84 - tile.heat * 44)}
                 >
                   {tile.w >= 76 && tile.h >= 22 && (
-                    <span className="truncate font-mono text-[10.5px] text-foreground/80">
+                    <span className="truncate font-mono text-2xs text-foreground/80">
                       {tile.name.slice(tile.group.length + 1) || tile.name}
                     </span>
                   )}

@@ -44,7 +44,7 @@ export function AiCapabilities({ metadata }: Props) {
         <summary className="min-h-8 cursor-pointer py-1.5 text-muted-foreground">
           Weitere native Konfigurationsdetails
         </summary>
-        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted/20 p-3 text-[11px]">
+        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted/20 p-3 text-2xs">
           {JSON.stringify(metadata, null, 2)}
         </pre>
       </details>

@@ -221,11 +221,9 @@ export function ChartStudio({
             onChange={(event) => patchWidget({ title: event.target.value })}
             className="w-72 max-w-full rounded-md bg-transparent px-1 text-base font-semibold tracking-tight outline-none placeholder:text-foreground/70 hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring"
           />
-          <p className="flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
+          <p className="flex items-center gap-1.5 px-1 text-2xs text-muted-foreground">
             {tab.isNew ? "Neuer Chart" : "Chart bearbeiten"}
-            {tab.dirty && (
-              <span className="text-amber-600 dark:text-amber-400">· ungespeichert</span>
-            )}
+            {tab.dirty && <span className="text-warning">· ungespeichert</span>}
             {feature.isNew && <NewBadge />}
           </p>
         </div>

@@ -42,7 +42,7 @@ export function FilterConditionsEditor({
     <>
       {conditions.map((condition, index) => (
         <div key={condition.id} className="flex flex-col gap-1.5">
-          <div className="text-[10px] text-muted-foreground">
+          <div className="text-2xs text-muted-foreground">
             {index === 0 ? (
               "Wo"
             ) : (
@@ -121,7 +121,7 @@ export function FilterConditionsEditor({
         Bedingung
       </Button>
       {compiledSimple && (
-        <p className="break-all font-mono text-[10px] text-muted-foreground">
+        <p className="break-all font-mono text-2xs text-muted-foreground">
           {kind === "mongodb" ? "JSON" : "WHERE"} {compiledSimple}
         </p>
       )}

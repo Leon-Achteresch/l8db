@@ -83,7 +83,7 @@ export function StudioSourceList({
             {source.table}
           </span>
           {placed ? (
-            <span className="text-[10px] text-muted-foreground">im Modell</span>
+            <span className="text-2xs text-muted-foreground">im Modell</span>
           ) : (
             <PlusIcon className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
           )}
@@ -98,10 +98,10 @@ export function StudioSourceList({
       className="flex min-h-0 flex-col gap-3 border-r bg-muted/25 p-3"
     >
       <div>
-        <h2 className="text-xs font-semibold">
+        <h2 className="text-xs font-medium">
           {hasBase ? "Tabelle verbinden" : "Womit startest du?"}
         </h2>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">
+        <p className="mt-0.5 text-2xs text-muted-foreground">
           {hasBase
             ? "Klicken oder ins Datenmodell ziehen"
             : "Wähle die Tabelle mit deinen Kennzahlen"}
@@ -120,7 +120,7 @@ export function StudioSourceList({
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
         {suggested.length > 0 && (
           <section aria-label="Passende Tabellen">
-            <h3 className="mb-1 flex items-center gap-1 px-2 text-[10px] font-semibold tracking-wide text-primary uppercase">
+            <h3 className="mb-1 flex items-center gap-1 px-2 text-2xs font-medium text-primary">
               <SparklesIcon className="size-3" /> Passt zu deinen Daten
             </h3>
             <ul className="space-y-0.5">{suggested.map((s) => row(s, true))}</ul>
@@ -128,9 +128,7 @@ export function StudioSourceList({
         )}
         <section aria-label="Alle Tabellen">
           {suggested.length > 0 && (
-            <h3 className="mb-1 px-2 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
-              Alle
-            </h3>
+            <h3 className="mb-1 px-2 text-2xs font-medium text-muted-foreground">Alle</h3>
           )}
           <ul className="space-y-0.5">
             {loading &&

@@ -77,7 +77,7 @@ export function ConvexLogsToolbar({
         aria-label="Log-Level"
       >
         {LOG_LEVELS.map((level) => (
-          <ToggleGroupItem key={level} value={level} className="h-8 px-2 text-[11px]">
+          <ToggleGroupItem key={level} value={level} className="h-8 px-2 text-2xs">
             {level}
           </ToggleGroupItem>
         ))}

@@ -31,26 +31,26 @@ export function VersioningRemoteBanner({ workspace }: { workspace: VersioningWor
     }, "Hauptbranch aktualisiert");
   if (!info.configured)
     return (
-      <p className="rounded-xl bg-muted/35 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
+      <p className="rounded-xl bg-muted/35 px-3 py-2.5 text-2xs leading-relaxed text-muted-foreground">
         Ohne gemeinsamen Remote „origin“ gibt es keine Reviews und keine Auslieferungsregeln.
       </p>
     );
   if (!main)
     return (
-      <div className="flex items-center gap-3 rounded-xl bg-muted/35 px-3 py-2 text-[11px]">
+      <div className="flex items-center gap-3 rounded-xl bg-muted/35 px-3 py-2 text-2xs">
         <p className="flex-1 leading-relaxed text-muted-foreground">
           Der Hauptbranch des Remotes ist noch unbekannt.
         </p>
-        <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={synchronize}>
+        <Button size="sm" variant="outline" className="h-7 text-2xs" onClick={synchronize}>
           Abrufen
         </Button>
       </div>
     );
   if (info.branch === main && !info.ahead && !info.behind) return null;
   return (
-    <div className="flex items-center gap-3 rounded-xl bg-amber-500/5 px-3 py-2">
-      <GitBranchIcon className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-      <div className="min-w-0 flex-1 text-[11px] leading-relaxed">
+    <div className="flex items-center gap-3 rounded-xl bg-warning/5 px-3 py-2">
+      <GitBranchIcon className="size-4 shrink-0 text-warning" />
+      <div className="min-w-0 flex-1 text-2xs leading-relaxed">
         <p className="font-medium">Ausgeliefert wird nur der gemergte Stand von {main}.</p>
         <p className="text-muted-foreground">
           {info.branch !== main
@@ -58,7 +58,7 @@ export function VersioningRemoteBanner({ workspace }: { workspace: VersioningWor
             : `${info.ahead ? `${info.ahead} lokale Commits fehlen im Remote. ` : ""}${info.behind ? `${info.behind} Commits sind noch nicht abgeholt.` : ""}`}
         </p>
       </div>
-      <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={synchronize}>
+      <Button size="sm" variant="outline" className="h-7 text-2xs" onClick={synchronize}>
         {info.branch !== main ? `Auf ${main} wechseln` : "Aktualisieren"}
       </Button>
     </div>

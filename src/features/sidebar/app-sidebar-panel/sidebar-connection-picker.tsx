@@ -350,7 +350,7 @@ export function SidebarConnectionPicker({
                     return (
                       <div key={row.id}>
                         {!query && group !== previousGroup && (
-                          <div className="px-3 pb-1 pt-2 text-[10px] font-medium text-muted-foreground">
+                          <div className="px-3 pb-1 pt-2 text-2xs font-medium text-muted-foreground">
                             {group}
                           </div>
                         )}
@@ -397,14 +397,14 @@ export function SidebarConnectionPicker({
                                 </span>
                               )}
                             </span>
-                            <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                            <span className="block truncate font-mono text-2xs text-muted-foreground">
                               {row.detail || row.groupLabel}
                             </span>
                           </span>
                           {busyId === row.id ? (
                             <Spinner className="size-3.5 shrink-0" />
                           ) : index < 3 ? (
-                            <kbd className="shrink-0 rounded border px-1 font-mono text-[10px] text-muted-foreground">
+                            <kbd className="shrink-0 rounded border px-1 font-mono text-2xs text-muted-foreground">
                               {index + 1}
                             </kbd>
                           ) : active ? (
@@ -438,7 +438,7 @@ export function SidebarConnectionPicker({
                   <Settings className="size-3.5 text-muted-foreground" /> Verbindungen verwalten
                 </Link>
               </div>
-              <div className="flex items-center justify-between border-t border-border/70 px-3 py-1.5 text-[10px] text-muted-foreground">
+              <div className="flex items-center justify-between border-t border-border/70 px-3 py-1.5 text-2xs text-muted-foreground">
                 <span>↑ ↓ · ↵ · ⌥1–3</span>
                 <span>esc schließen</span>
               </div>

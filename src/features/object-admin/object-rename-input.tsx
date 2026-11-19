@@ -134,11 +134,11 @@ export function ObjectRenameInput({
         />
         {feature.isNew && <NewBadge />}
       </div>
-      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+      <div className="flex items-center gap-2 text-2xs text-muted-foreground">
         <Button
           type="submit"
           variant="ghost"
-          className="h-5 gap-1 px-1 text-[10px]"
+          className="h-5 gap-1 px-1 text-2xs"
           disabled={pending || Boolean(objectRenameIssue(name, value))}
           aria-label="Namen übernehmen"
         >
@@ -148,7 +148,7 @@ export function ObjectRenameInput({
         <Button
           type="button"
           variant="ghost"
-          className="h-5 gap-1 px-1 text-[10px]"
+          className="h-5 gap-1 px-1 text-2xs"
           disabled={pending}
           onClick={onClose}
           aria-label="Umbenennen abbrechen"

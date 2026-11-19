@@ -137,8 +137,8 @@ export function AiRichContent({
                 <span
                   className={
                     block.outcome === "denied"
-                      ? "shrink-0 rounded-md bg-destructive/10 px-1.5 py-0.5 text-[11px] font-medium text-destructive"
-                      : "shrink-0 rounded-md bg-amber-500/12 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+                      ? "shrink-0 rounded-md bg-destructive/10 px-1.5 py-0.5 text-2xs font-medium text-destructive"
+                      : "shrink-0 rounded-md bg-warning/12 px-1.5 py-0.5 text-2xs font-medium text-warning"
                   }
                 >
                   {block.outcome === "allowed"

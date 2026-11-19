@@ -149,7 +149,7 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
         </div>
       </div>
 
-      <p className="border-b px-3 py-2 text-[10px] text-muted-foreground">
+      <p className="border-b px-3 py-2 text-2xs text-muted-foreground">
         Bis zu {limit} Einträge je Verbindung. Sehr lange SQL-Texte werden gekennzeichnet gekürzt.
         Aufbewahrung in den Einstellungen ändern.
       </p>

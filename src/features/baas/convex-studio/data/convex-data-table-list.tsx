@@ -99,7 +99,7 @@ export function ConvexDataTableList({
         </div>
       )}
       {tables.data?.has_more && (
-        <p className="text-[11px] text-muted-foreground">Nur die ersten 1000 Tabellen.</p>
+        <p className="text-2xs text-muted-foreground">Nur die ersten 1000 Tabellen.</p>
       )}
       {creating && (
         <ConvexDataCreateTableDialog

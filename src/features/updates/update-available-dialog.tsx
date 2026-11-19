@@ -128,8 +128,10 @@ export function UpdateAvailableDialog() {
           <div className="space-y-3.5 p-5">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold tracking-tight">l8db v{visibleUpdate.version}</h2>
-                <span className="rounded-full border border-primary/25 bg-primary/15 px-2 py-0.5 text-[0.625rem] font-bold uppercase tracking-wider text-primary">
+                <h2 className="text-lg font-semibold tracking-tight">
+                  l8db v{visibleUpdate.version}
+                </h2>
+                <span className="rounded-full border border-primary/25 bg-primary/15 px-2 py-0.5 text-2xs font-medium text-primary">
                   {manual ? "Versionswechsel" : "Neu"}
                 </span>
               </div>
@@ -155,13 +157,13 @@ export function UpdateAvailableDialog() {
             ) : null}
 
             <div className="flex items-baseline gap-2">
-              <span className="text-xl font-bold tracking-tight">v{visibleUpdate.version}</span>
+              <span className="text-xl font-semibold tracking-tight">v{visibleUpdate.version}</span>
               {currentVersion ? (
                 <span className="text-xs text-muted-foreground line-through">
                   v{currentVersion}
                 </span>
               ) : null}
-              <span className="text-[0.6875rem] text-muted-foreground">
+              <span className="text-2xs text-muted-foreground">
                 {published ? `• ${published}` : "• Bereit zur Installation"}
               </span>
             </div>

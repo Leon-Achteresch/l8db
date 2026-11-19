@@ -36,7 +36,7 @@ export function StudioSteps({
             aria-current={current === step.id ? "step" : undefined}
             title={step.detail}
             className={cn(
-              "flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring",
+              "flex items-center gap-1.5 rounded-full border px-2 py-1 text-2xs transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring",
               step.done && "border-primary/30 text-foreground",
               !step.done && "text-muted-foreground",
               current === step.id && "border-primary bg-primary/5 text-primary",

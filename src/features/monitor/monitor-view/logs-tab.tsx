@@ -110,19 +110,19 @@ export function LogsTab({
                   <span>Aktiv</span>
                 </div>
               ) : (
-                <Badge variant="outline" className="text-[10px]">
+                <Badge variant="outline" className="text-2xs">
                   Nicht verfügbar
                 </Badge>
               )}
             </CardAction>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="flex items-center justify-between border-b px-4 py-2 text-[10px] text-muted-foreground">
+            <div className="flex items-center justify-between border-b px-4 py-2 text-2xs text-muted-foreground">
               <span>{scopedServerOutput.length} Meldungen gespeichert</span>
               <Button
                 variant="ghost"
                 size="xs"
-                className="h-6 px-2 text-[10px]"
+                className="h-6 px-2 text-2xs"
                 disabled={scopedServerOutput.length === 0}
                 onClick={() => connection && clearServerOutput(connection.id)}
               >
@@ -142,12 +142,12 @@ export function LogsTab({
                 <ul className="divide-y divide-border/60">
                   {visibleOutput.map((entry: ServerOutputEntry) => (
                     <li key={entry.id} className="flex items-start gap-2 px-4 py-2.5 text-xs">
-                      <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                      <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                         {formatTime(entry.at)}
                       </span>
                       <Badge
                         variant={levelVariant(entry.level)}
-                        className="shrink-0 px-1.5 py-0 text-[10px]"
+                        className="shrink-0 px-1.5 py-0 text-2xs"
                       >
                         {entry.level}
                       </Badge>
@@ -186,7 +186,7 @@ export function LogsTab({
               <Button
                 variant="ghost"
                 size="xs"
-                className="h-7 px-2 text-[10px]"
+                className="h-7 px-2 text-2xs"
                 disabled={scopedHistory.length === 0}
                 onClick={() => clearHistory(connection.id)}
               >
@@ -258,31 +258,31 @@ export function LogsTab({
                         onClick={() => setExpandedHistoryId(expanded ? null : entry.id)}
                         aria-expanded={expanded}
                       >
-                        <span className="w-16 shrink-0 font-mono text-[10px] text-muted-foreground">
+                        <span className="w-16 shrink-0 font-mono text-2xs text-muted-foreground">
                           {formatTime(entry.ranAt)}
                         </span>
                         <span className="min-w-0 flex-1 truncate font-mono" title={entry.sql}>
                           {firstLine(entry.sql)}
                         </span>
-                        <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                        <span className="shrink-0 font-mono text-2xs tabular-nums text-muted-foreground">
                           {formatMs(entry.durationMs)}
                         </span>
-                        <span className="hidden shrink-0 text-[10px] text-muted-foreground sm:inline">
+                        <span className="hidden shrink-0 text-2xs text-muted-foreground sm:inline">
                           {entry.rowCount == null ? "—" : `${formatCount(entry.rowCount)} Zeilen`}
                         </span>
                         <Badge
                           variant={entry.error ? "destructive" : "secondary"}
-                          className="shrink-0 px-1.5 py-0 text-[10px]"
+                          className="shrink-0 px-1.5 py-0 text-2xs"
                         >
                           {entry.error ? "Fehler" : "OK"}
                         </Badge>
                       </button>
                       {expanded && (
                         <div className="space-y-2 border-t bg-muted/20 px-4 py-3">
-                          <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-background p-3 font-mono text-[11px] leading-relaxed">
+                          <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-background p-3 font-mono text-2xs leading-relaxed">
                             {entry.sql}
                           </pre>
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-2xs text-muted-foreground">
                             <span>{formatDateTime(entry.ranAt)}</span>
                             <span>Laufzeit {formatMs(entry.durationMs)}</span>
                             <span>
@@ -292,7 +292,7 @@ export function LogsTab({
                             </span>
                           </div>
                           {entry.error && (
-                            <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-[11px] text-destructive">
+                            <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-2xs text-destructive">
                               {entry.error}
                             </p>
                           )}

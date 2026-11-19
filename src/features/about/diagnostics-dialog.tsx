@@ -152,20 +152,20 @@ export function DiagnosticsDialog({ open, onOpenChange }: Props) {
                 />
                 <span className="min-w-0">
                   <span className="block leading-tight">{section.label}</span>
-                  <span className="block text-[11px] text-muted-foreground">
+                  <span className="block text-2xs text-muted-foreground">
                     {section.description}
                   </span>
                 </span>
               </label>
             ))}
           </div>
-          <pre className="max-h-80 min-h-40 overflow-auto rounded-md border bg-muted/40 p-2 font-mono text-[11px] whitespace-pre-wrap">
+          <pre className="max-h-80 min-h-40 overflow-auto rounded-md border bg-muted/40 p-2 font-mono text-2xs whitespace-pre-wrap">
             {loading ? "Daten werden gesammelt…" : preview}
           </pre>
         </div>
 
         {input && input.warnings.length > 0 && (
-          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">
+          <div className="rounded-md border border-warning/40 bg-warning/10 p-2 text-xs">
             {input.warnings.map((warning) => (
               <p key={warning} className="flex items-start gap-1.5">
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />

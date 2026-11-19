@@ -45,7 +45,7 @@ const HEADING = {
   1: "mt-4 text-xl font-semibold tracking-tight text-foreground first:mt-0",
   2: "mt-4 text-base font-semibold tracking-tight text-foreground first:mt-0",
   3: "mt-3 text-sm font-semibold text-foreground first:mt-0",
-  4: "mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground first:mt-0",
+  4: "mt-3 text-xs font-medium text-muted-foreground first:mt-0",
 } as const;
 
 export function Markdown({ source, className }: { source: string; className?: string }) {

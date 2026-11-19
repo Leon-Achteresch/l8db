@@ -488,7 +488,7 @@ export function DefinitionCompareView(props: DefinitionCompareViewProps) {
                 <div className="flex min-h-0 flex-1 flex-col">
                   <div className="flex shrink-0 items-center gap-3 border-b px-3 py-1.5 text-xs">
                     <span className="font-medium">Merge-Ergebnis</span>
-                    <span className="ml-auto flex items-center gap-3 text-[11px] text-muted-foreground">
+                    <span className="ml-auto flex items-center gap-3 text-2xs text-muted-foreground">
                       <span className="flex items-center gap-1.5">
                         <span className="merge-origin-source size-2.5 rounded-sm" />
                         aus Quelle

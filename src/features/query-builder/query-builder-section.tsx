@@ -26,7 +26,7 @@ export function QueryBuilderSection({
       <div className="flex h-6 items-center gap-1.5">
         <h3 className="text-xs font-medium">{title}</h3>
         {count !== undefined && count > 0 && (
-          <span className="rounded bg-muted px-1 font-mono text-[10px] text-muted-foreground tabular-nums">
+          <span className="rounded bg-muted px-1 font-mono text-2xs text-muted-foreground tabular-nums">
             {count}
           </span>
         )}

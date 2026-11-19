@@ -84,7 +84,7 @@ export function ToastDropPreview({
         variants={parts.card}
         style={kind === "chip" ? { ...STATIC, padding: 0 } : STATIC}
         className={cn(
-          `l8-toast--${tone} flex flex-none items-center gap-2.5 text-[13px] leading-[1.4]`,
+          `l8-toast--${tone} flex flex-none items-center gap-2.5 text-sm leading-[1.4]`,
           kind === "capsule" &&
             "h-[38px] w-[252px] gap-2 rounded-[19px] px-2 text-card-foreground shadow-[0_6px_24px_-6px_oklch(0_0_0/0.18)]",
           kind === "thread" &&
@@ -172,7 +172,7 @@ export function ToastDropPreview({
         >
           <Search className="size-3.5 shrink-0 opacity-60" strokeWidth={2} />
           <span className="flex-1">Suchen</span>
-          <kbd className="rounded-full border border-border/60 px-1.5 py-px font-sans text-[10px]">
+          <kbd className="rounded-full border border-border/60 px-1.5 py-px font-sans text-2xs">
             ⌘K
           </kbd>
         </div>

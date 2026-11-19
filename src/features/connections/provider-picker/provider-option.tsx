@@ -56,13 +56,11 @@ export function ProviderOption({
           {provider.name}
         </span>
         {note && size !== "chip" && (
-          <span className="block truncate text-[11px] text-muted-foreground">{note}</span>
+          <span className="block truncate text-2xs text-muted-foreground">{note}</span>
         )}
       </span>
       {unavailable && size !== "chip" && (
-        <span className="shrink-0 text-[10px] font-medium text-amber-700 dark:text-amber-300">
-          Treiber fehlt
-        </span>
+        <span className="shrink-0 text-2xs font-medium text-warning">Treiber fehlt</span>
       )}
       {selected && size !== "chip" && <Check className="size-4 shrink-0 text-primary" />}
     </button>

@@ -96,7 +96,7 @@ export function DashboardSharedSection({
       </div>
       {enabled && (
         <>
-          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+          <p className="rounded-md border border-warning/40 bg-warning/10 p-2 text-xs leading-relaxed text-warning">
             Achtung: Gespeicherte Dashboards landen in der Tabelle{" "}
             <code className="font-mono">{SHARED_DASHBOARD_TABLE}</code> in {target}. Sie wird beim
             ersten Speichern angelegt und ist für alle mit Zugriff auf die Datenbank sichtbar.

@@ -80,14 +80,14 @@ export function SettingsSearchResults({
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold">{result.title}</span>
                 {modified.has(result.id) ? (
-                  <Badge variant="secondary" className="text-[10px]">
+                  <Badge variant="secondary" className="text-2xs">
                     Geändert
                   </Badge>
                 ) : null}
                 {hasNewFeatures(`settings.${result.tabId}.${result.id}`, seenFeatures) ? (
                   <NewBadge />
                 ) : null}
-                <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                <span className="rounded-md bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
                   {result.tabLabel}
                 </span>
               </div>

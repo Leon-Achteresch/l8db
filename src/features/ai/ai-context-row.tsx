@@ -32,7 +32,7 @@ export function AiContextRow({
       <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-muted">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-medium">{label}</span>
-        {hint && <span className="block truncate text-[10px] text-muted-foreground">{hint}</span>}
+        {hint && <span className="block truncate text-2xs text-muted-foreground">{hint}</span>}
       </span>
       <span
         className={cn(

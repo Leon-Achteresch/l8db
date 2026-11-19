@@ -17,7 +17,7 @@ export function VersioningForgeAccount({
   if (!remote) return null;
   return (
     <VersioningPopover icon={PlugZapIcon} label="Git-Plattform">
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[11px]">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-2xs">
         <dt className="text-muted-foreground">Plattform</dt>
         <dd>{info.kind ? FORGE_LABELS[info.kind] : remote.host}</dd>
         <dt className="text-muted-foreground">Repository</dt>
@@ -31,7 +31,7 @@ export function VersioningForgeAccount({
           </>
         )}
       </dl>
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
+      <p className="text-2xs leading-relaxed text-muted-foreground">
         Alle Kunden teilen ein Repository. Änderungen kommen über Pull Requests in den Hauptbranch,
         ausgeliefert wird nur, was gemergt ist. Der Zugangstoken liegt im Schlüsselbund des
         Betriebssystems.

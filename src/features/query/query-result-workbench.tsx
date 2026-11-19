@@ -196,12 +196,12 @@ export function QueryResultWorkbench({
         <span
           role="status"
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10px]",
+            "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-2xs",
             isLoading
               ? "border-primary/30 bg-primary/10 text-primary"
               : error
                 ? "border-destructive/30 bg-destructive/10 text-destructive"
-                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                : "border-success/30 bg-success/10 text-success",
           )}
         >
           <span className={cn("size-1.5 rounded-full bg-current", isLoading && "animate-pulse")} />
@@ -217,7 +217,7 @@ export function QueryResultWorkbench({
           <QueryResultStatus
             text={statusText}
             details={statusDetails}
-            className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground"
+            className="min-w-0 truncate text-2xs tabular-nums text-muted-foreground"
           />
         )}
         {searchOpen && (
@@ -237,7 +237,7 @@ export function QueryResultWorkbench({
           />
         )}
         {!chartView && workspace.resultView === "json" && term && (
-          <span className="text-[10px] tabular-nums text-muted-foreground">
+          <span className="text-2xs tabular-nums text-muted-foreground">
             {filtered?.rows.length} / {result.rows.length} Zeilen
           </span>
         )}

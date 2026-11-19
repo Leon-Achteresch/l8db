@@ -46,14 +46,14 @@ export function VersioningTicketSettings({
     : [];
   return (
     <VersioningPopover icon={TicketIcon} label="Ticket-Systeme" className="w-96">
-      <p ref={feature.ref} className="text-[11px] leading-relaxed text-muted-foreground">
+      <p ref={feature.ref} className="text-2xs leading-relaxed text-muted-foreground">
         {feature.isNew && <NewBadge />} Ticket-Schlüssel wie{" "}
         <span className="font-mono">SHOP-142</span> werden in Branches, Commits und Pull Requests
         erkannt und verlinkt. Jira, YouTrack, Linear, Azure Boards und jedes System mit eigener
         Adresse funktionieren gleich. Ohne Einrichtung werden Schlüssel im Format{" "}
         <span className="font-mono">ABC-123</span> ohne Link erkannt.
       </p>
-      {tickets.problem && <p className="text-[11px] text-destructive">{tickets.problem}</p>}
+      {tickets.problem && <p className="text-2xs text-destructive">{tickets.problem}</p>}
       <ul className="space-y-3">
         {list.map((tracker, index) => (
           <li key={tracker.id} className="space-y-1.5 rounded-lg bg-muted/35 p-2.5">
@@ -77,14 +77,14 @@ export function VersioningTicketSettings({
               placeholder="Muster, z. B. [A-Z]+-\d+"
               value={tracker.pattern}
               onChange={(event) => update(index, { pattern: event.target.value })}
-              className="h-7 font-mono text-[11px]"
+              className="h-7 font-mono text-2xs"
             />
             <Input
               aria-label="Link-Vorlage mit {key} oder {id}"
               placeholder="https://…/{key}"
               value={tracker.url}
               onChange={(event) => update(index, { url: event.target.value })}
-              className="h-7 font-mono text-[11px]"
+              className="h-7 font-mono text-2xs"
             />
           </li>
         ))}
@@ -103,16 +103,16 @@ export function VersioningTicketSettings({
           placeholder="Erkennung testen, z. B. feature/SHOP-142-rabatt"
           value={sample}
           onChange={(event) => setSample(event.target.value)}
-          className="h-7 text-[11px]"
+          className="h-7 text-2xs"
         />
         {sample.trim() &&
           (preview.length ? (
             <VersioningTicketChips tickets={preview} />
           ) : (
-            <p className="text-[10px] text-muted-foreground">Kein Ticket erkannt.</p>
+            <p className="text-2xs text-muted-foreground">Kein Ticket erkannt.</p>
           ))}
       </div>
-      <p className="text-[10px] leading-relaxed text-muted-foreground">
+      <p className="text-2xs leading-relaxed text-muted-foreground">
         Gespeichert in <span className="font-mono">{TICKETS_PATH}</span> und mit dem nächsten Commit
         für das ganze Team geteilt.
       </p>

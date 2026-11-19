@@ -19,9 +19,7 @@ function Change({ value }: { value: number | null }) {
   return (
     <span
       className={
-        up
-          ? "flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400"
-          : "flex items-center gap-0.5 text-amber-600 dark:text-amber-400"
+        up ? "flex items-center gap-0.5 text-success" : "flex items-center gap-0.5 text-warning"
       }
     >
       <Icon className="size-3" />

@@ -70,7 +70,7 @@ export function FirebaseFunctionsView({ projectId }: { projectId: string }) {
                       className={`size-3.5 shrink-0 transition-transform ${expandedName === item.name ? "rotate-180" : ""}`}
                     />
                   </button>
-                  <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
+                  <p className="mt-1 truncate font-mono text-2xs text-muted-foreground">
                     {item.name.split("/")[3] ?? ""} · {item.environment ?? ""}
                   </p>
                   {expandedName === item.name && (

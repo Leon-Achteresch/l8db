@@ -45,7 +45,7 @@ export function VersioningBaselineReview({
   const invalidReason = result.variances.some((variance) => !reasons[variance.object]?.trim());
   const label = (entry: BaselineEntry) => (
     <>
-      <span className="font-mono text-[10px] text-muted-foreground">{entry.id}</span> {entry.title}
+      <span className="font-mono text-2xs text-muted-foreground">{entry.id}</span> {entry.title}
       {entry.data ? " · Datenänderung" : ""}
     </>
   );
@@ -68,7 +68,7 @@ export function VersioningBaselineReview({
         </p>
       </div>
       {result.missing.length > 0 && (
-        <p className="flex items-start gap-1.5 text-amber-600 dark:text-amber-400">
+        <p className="flex items-start gap-1.5 text-warning">
           <CircleAlertIcon className="mt-0.5 size-3 shrink-0" />
           Beim Kunden fehlen {result.missing.join(", ")}, und keine Änderung legt sie an. Erst einen
           Release mit Grundstand wählen oder die Objekte anlegen.
@@ -96,7 +96,7 @@ export function VersioningBaselineReview({
           <h3 className="font-medium">Als Abweichung festhalten</h3>
           {result.variances.map((variance) => (
             <div key={variance.object} className="flex items-center gap-2">
-              <span className="w-48 truncate font-mono text-[11px]">{variance.object}</span>
+              <span className="w-48 truncate font-mono text-2xs">{variance.object}</span>
               <Input
                 aria-label={`Grund für ${variance.object}`}
                 className="h-7 text-xs"

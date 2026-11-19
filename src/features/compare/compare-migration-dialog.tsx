@@ -159,7 +159,7 @@ export function CompareMigrationDialog({
               >
                 <span className="flex w-full items-center gap-2 text-sm font-medium">
                   {LABEL[item]}
-                  <span className="ml-auto rounded bg-muted px-1.5 font-mono text-[10px] tabular-nums">
+                  <span className="ml-auto rounded bg-muted px-1.5 font-mono text-2xs tabular-nums">
                     {plan.statements.length}
                   </span>
                 </span>

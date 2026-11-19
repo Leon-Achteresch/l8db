@@ -18,8 +18,8 @@ const TONES: Record<ContextTileKind, string> = {
   tools: "bg-sky-500/12 text-sky-700 dark:text-sky-300",
   context: "bg-indigo-500/12 text-indigo-700 dark:text-indigo-300",
   chat: "bg-purple-500/12 text-purple-700 dark:text-purple-300",
-  results: "bg-amber-500/15 text-amber-800 dark:text-amber-300",
-  summary: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  results: "bg-warning/15 text-warning",
+  summary: "bg-success/15 text-success",
   draft: "bg-foreground/[0.06] text-foreground/70",
   other: "bg-slate-500/10 text-slate-600 dark:text-slate-300",
 };
@@ -101,7 +101,7 @@ export function AiContextMap({ layout, messages, summary, prompt, measured, limi
               >
                 {labelled && <div className="truncate font-medium">{tile.label}</div>}
                 {detailed && (
-                  <div className="truncate text-[10px] opacity-70 tabular-nums">
+                  <div className="truncate text-2xs opacity-70 tabular-nums">
                     {formatTokens(tile.tokens)}
                     {KINDS[tile.kind] === tile.label ? "" : ` · ${KINDS[tile.kind]}`}
                   </div>
@@ -125,7 +125,7 @@ export function AiContextMap({ layout, messages, summary, prompt, measured, limi
               {placed.free.w >= 40 && (
                 <>
                   <div className="truncate">Frei</div>
-                  <div className="truncate text-[10px] opacity-70 tabular-nums">
+                  <div className="truncate text-2xs opacity-70 tabular-nums">
                     {formatTokens(free)}
                   </div>
                 </>
@@ -135,7 +135,7 @@ export function AiContextMap({ layout, messages, summary, prompt, measured, limi
         )}
       </div>
       {after.compacted > 0 ? (
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-2 text-2xs text-muted-foreground">
           <span className="min-w-0 flex-1 truncate tabular-nums">
             {after.compacted} Nachrichten komprimiert · −{formatTokens(after.saved)}
           </span>
@@ -160,7 +160,7 @@ export function AiContextMap({ layout, messages, summary, prompt, measured, limi
           </div>
         </div>
       ) : (
-        <div className="text-[11px] text-muted-foreground/70">Noch nicht komprimiert</div>
+        <div className="text-2xs text-muted-foreground/70">Noch nicht komprimiert</div>
       )}
     </div>
   );

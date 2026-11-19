@@ -113,13 +113,13 @@ export function ChartVisualBuilder({
             onSelect={selectField}
           />
           {selectedField && (
-            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+            <p className="mt-2 text-2xs leading-relaxed text-muted-foreground">
               <span className="font-medium text-foreground">{selectedField.label}</span> ausgewählt.
               Rechts zuweisen oder ein weiteres Feld wählen.
             </p>
           )}
           {columns.some((field) => field.ref.startsWith("join:")) && (
-            <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+            <p className="mt-3 text-2xs leading-relaxed text-muted-foreground">
               Felder verknüpfter Tabellen verbinden wir automatisch.
             </p>
           )}
@@ -290,7 +290,7 @@ export function ChartVisualBuilder({
               />
             </div>
             {simple.filters.length === 0 && (
-              <p className="text-[11px] text-muted-foreground">Alle Daten werden berücksichtigt.</p>
+              <p className="text-2xs text-muted-foreground">Alle Daten werden berücksichtigt.</p>
             )}
           </ChartFieldZone>
           {filterDraft && (

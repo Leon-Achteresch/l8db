@@ -34,18 +34,18 @@ export function ImportReportDialog({ report, onClose }: Props) {
           </DialogDescription>
         </DialogHeader>
         {review.length > 0 && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/8 p-3">
-            <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
+          <div className="rounded-xl border border-warning/30 bg-warning/8 p-3">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-warning">
               <ShieldAlertIcon aria-hidden className="size-3.5" />
               Muss geprüft werden
             </p>
-            <p className="mt-1 text-xs text-pretty text-amber-900/80 dark:text-amber-200/80">
+            <p className="mt-1 text-xs text-pretty text-warning/80">
               Sie führen Programme aus, senden Daten nach außen, löschen Dateien oder haben
               Zeitpläne. Öffne jeden Task, prüfe die Schritte und aktiviere ihn dann.
             </p>
             <ul className="mt-2 flex flex-col gap-1">
               {review.map((name) => (
-                <li key={name} className="truncate text-[13px] font-medium">
+                <li key={name} className="truncate text-sm font-medium">
                   {name}
                 </li>
               ))}
@@ -59,7 +59,7 @@ export function ImportReportDialog({ report, onClose }: Props) {
             </p>
             <ul className="flex flex-col gap-0.5">
               {renamed.map((name) => (
-                <li key={name} className="flex items-center gap-1.5 truncate text-[13px]">
+                <li key={name} className="flex items-center gap-1.5 truncate text-sm">
                   <CircleCheckIcon
                     aria-hidden
                     className="size-3.5 shrink-0 text-muted-foreground"

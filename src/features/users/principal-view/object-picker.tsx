@@ -57,9 +57,7 @@ export function ObjectPicker({ owner, value, onChange }: ObjectPickerProps) {
                 }}
               >
                 <span className="min-w-0 flex-1 truncate font-mono text-xs">{item.name}</span>
-                <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-                  {item.object_type}
-                </span>
+                <span className="font-mono text-2xs text-muted-foreground">{item.object_type}</span>
               </CommandItem>
             ))}
           </CommandList>

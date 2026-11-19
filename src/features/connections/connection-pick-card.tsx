@@ -86,7 +86,7 @@ export function ConnectionPickCard({
                 className={cn(
                   "grid size-7 cursor-pointer place-items-center rounded-md transition-[color,background-color,opacity] hover:bg-muted",
                   favorite
-                    ? "text-amber-500"
+                    ? "text-warning"
                     : "text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-foreground",
                 )}
               >
@@ -321,7 +321,7 @@ function ConnectionCardShell({
               >
                 {connection.name}
               </h3>
-              <p className="truncate text-[11px] text-muted-foreground">
+              <p className="truncate text-2xs text-muted-foreground">
                 {provider.name}
                 {colorLabel ? ` · ${colorLabel}` : ""}
               </p>

@@ -30,7 +30,7 @@ export function SettingsSearch({ value, onChange }: SettingsSearchProps) {
         </button>
       ) : (
         <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
-          <Kbd className="text-[10px]">⌘F</Kbd>
+          <Kbd className="text-2xs">⌘F</Kbd>
         </div>
       )}
     </div>

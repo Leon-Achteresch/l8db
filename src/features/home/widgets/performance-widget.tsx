@@ -81,9 +81,9 @@ export function PerformanceWidget({ connectionId }: { connectionId: string }) {
       <div className="grid shrink-0 grid-cols-2 gap-x-4 gap-y-3 border-b px-5 py-4 @md:grid-cols-4">
         {stats.map(({ label, value, detail }) => (
           <div key={label} className="min-w-0">
-            <p className="text-[11px] text-muted-foreground">{label}</p>
+            <p className="text-2xs text-muted-foreground">{label}</p>
             <p className="mt-1 truncate text-xl font-medium tracking-tight">{value}</p>
-            <p className="truncate text-[10px] text-muted-foreground" title={detail}>
+            <p className="truncate text-2xs text-muted-foreground" title={detail}>
               {detail}
             </p>
           </div>

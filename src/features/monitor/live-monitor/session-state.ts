@@ -3,8 +3,8 @@ import type { SessionInfo } from "@/lib/db";
 export function sessionDotClass(session: SessionInfo): string {
   if (session.blocked_by.length > 0) return "bg-destructive";
   const state = session.state ?? "";
-  if (state === "active") return "bg-emerald-500";
-  if (state.startsWith("idle in transaction")) return "bg-amber-500";
+  if (state === "active") return "bg-success";
+  if (state.startsWith("idle in transaction")) return "bg-warning";
   return "bg-muted-foreground/50";
 }
 

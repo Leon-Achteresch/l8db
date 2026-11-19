@@ -66,7 +66,7 @@ export function VersioningOverview({
             {project.name}
             {feature.isNew && <NewBadge />}
           </h2>
-          <p className="truncate text-[11px] text-muted-foreground">
+          <p className="truncate text-2xs text-muted-foreground">
             {providerForKind(project.kind)?.name ?? project.kind} ·{" "}
             {model.objects.toLocaleString("de-DE")} versionierte Objekte ·{" "}
             <span className="font-mono">{status.branch ?? "Detached HEAD"}</span>
@@ -89,7 +89,7 @@ export function VersioningOverview({
                 <span className="block text-sm font-semibold tabular-nums">
                   {count.toLocaleString("de-DE")}
                 </span>
-                <span className="block truncate text-[10px] text-muted-foreground">
+                <span className="block truncate text-2xs text-muted-foreground">
                   {CATEGORY_LABELS[category][count === 1 ? 0 : 1]}
                 </span>
               </span>
@@ -97,7 +97,7 @@ export function VersioningOverview({
           );
         })}
         {!model.schema.length && (
-          <li className="col-span-full rounded-xl bg-muted/35 px-3 py-3 text-[11px] text-muted-foreground">
+          <li className="col-span-full rounded-xl bg-muted/35 px-3 py-3 text-2xs text-muted-foreground">
             Noch keine Objekte versioniert. Unter Änderungen die Arbeitskopie prüfen und die Objekte
             committen.
           </li>
@@ -110,7 +110,7 @@ export function VersioningOverview({
           action="Änderungen öffnen"
           onOpen={() => onNavigate("development")}
         >
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
+          <p className="text-2xs leading-relaxed text-muted-foreground">
             {pending === null
               ? "Noch nicht geprüft."
               : pending
@@ -125,13 +125,13 @@ export function VersioningOverview({
           onOpen={() => onNavigate("reviews")}
         >
           {!info.data?.connected ? (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               {info.data?.remote ? "Git-Plattform noch nicht verbunden." : "Kein Remote „origin“."}
             </p>
           ) : pulls.data?.length ? (
             <ul className="space-y-1.5">
               {pulls.data.slice(0, 4).map((pull) => (
-                <li key={pull.number} className="flex min-w-0 items-center gap-2 text-[11px]">
+                <li key={pull.number} className="flex min-w-0 items-center gap-2 text-2xs">
                   <VersioningPullState pull={pull} />
                   <span className="min-w-0 flex-1 truncate">{pull.title}</span>
                   <VersioningTicketChips
@@ -144,7 +144,7 @@ export function VersioningOverview({
               ))}
             </ul>
           ) : (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               {pulls.isLoading ? "Wird geladen…" : "Keine offenen Pull Requests."}
             </p>
           )}
@@ -158,8 +158,8 @@ export function VersioningOverview({
           {model.commits.length ? (
             <ol className="space-y-1.5">
               {model.commits.map((commit) => (
-                <li key={commit.hash} className="flex min-w-0 items-center gap-2 text-[11px]">
-                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                <li key={commit.hash} className="flex min-w-0 items-center gap-2 text-2xs">
+                  <span className="shrink-0 font-mono text-2xs text-muted-foreground">
                     {commit.hash.slice(0, 7)}
                   </span>
                   <span className="min-w-0 flex-1 truncate">{commit.subject}</span>
@@ -168,7 +168,7 @@ export function VersioningOverview({
               ))}
             </ol>
           ) : (
-            <p className="text-[11px] text-muted-foreground">Noch keine Commits unter database/.</p>
+            <p className="text-2xs text-muted-foreground">Noch keine Commits unter database/.</p>
           )}
         </VersioningOverviewCard>
         {deploys ? (
@@ -190,16 +190,16 @@ export function VersioningOverview({
                   <dd
                     className={cn(
                       "text-sm font-semibold tabular-nums",
-                      label === "zu klären" && value > 0 && "text-amber-600 dark:text-amber-400",
+                      label === "zu klären" && value > 0 && "text-warning",
                     )}
                   >
                     {value}
                   </dd>
-                  <dt className="text-[10px] text-muted-foreground">{label}</dt>
+                  <dt className="text-2xs text-muted-foreground">{label}</dt>
                 </div>
               ))}
             </dl>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               {model.environments} Umgebungen · neuester Release{" "}
               <span className="font-mono">{model.latest ?? "–"}</span>
             </p>
@@ -211,7 +211,7 @@ export function VersioningOverview({
             action="Branches öffnen"
             onOpen={() => onNavigate("branches")}
           >
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               {model.branches} lokale Branches · aktiv{" "}
               <span className="font-mono">{status.branch ?? "–"}</span>
             </p>

@@ -51,7 +51,7 @@ export function EditorAiSection({ compact }: { compact: boolean }) {
           aria-label="KI im Editor"
         />
       </Row>
-      <p className="text-[11px] leading-snug text-muted-foreground" aria-live="polite">
+      <p className="text-2xs leading-snug text-muted-foreground" aria-live="polite">
         {status}
       </p>
       <Row settingId="editor-ai-inline" compact={compact}>

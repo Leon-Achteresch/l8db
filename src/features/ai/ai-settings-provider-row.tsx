@@ -57,7 +57,7 @@ export function AiSettingsProviderRow({
           <span className="flex items-center gap-1.5">
             <span className="truncate font-medium">{name}</span>
             {active && (
-              <span className="rounded-full bg-primary/10 px-1.5 py-px text-[10px] font-medium text-primary">
+              <span className="rounded-full bg-primary/10 px-1.5 py-px text-2xs font-medium text-primary">
                 Aktiv
               </span>
             )}
@@ -80,7 +80,7 @@ export function AiSettingsProviderRow({
                       className={cn(
                         "size-1.5 rounded-full",
                         tone === "ready"
-                          ? "bg-emerald-500 shadow-[0_0_0_3px_rgb(16_185_129/0.15)]"
+                          ? "bg-success shadow-[0_0_0_3px_rgb(16_185_129/0.15)]"
                           : "bg-muted-foreground/40",
                       )}
                     />

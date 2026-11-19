@@ -55,7 +55,7 @@ export function PaymentsRowActions({
   if (!belongsToProject(row, reference)) {
     return (
       <span
-        className="text-[11px] text-muted-foreground"
+        className="text-2xs text-muted-foreground"
         title={`Nur Objekte mit Metadatum l8db_project = ${reference} sind hier änderbar.`}
       >
         nur lesen
@@ -121,7 +121,7 @@ export function PaymentsRowActions({
     <div className="flex flex-col items-end gap-1">
       {action}
       {mutation.isError && !confirm && (
-        <p role="alert" className="max-w-56 text-right text-[11px] text-destructive">
+        <p role="alert" className="max-w-56 text-right text-2xs text-destructive">
           {String(mutation.error)}
         </p>
       )}

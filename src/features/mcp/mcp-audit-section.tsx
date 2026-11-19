@@ -115,7 +115,7 @@ export function McpAuditSection({ audit, onRefresh }: McpAuditSectionProps) {
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-border/70 bg-muted/40 font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+                <tr className="border-b border-border/70 bg-muted/40 font-mono text-2xs text-muted-foreground">
                   <th className="px-3.5 py-2">Zeitpunkt</th>
                   <th className="px-3.5 py-2">Verbindung</th>
                   <th className="px-3.5 py-2">Tool</th>

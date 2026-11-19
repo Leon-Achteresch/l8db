@@ -35,7 +35,7 @@ export function TaskRunBar({ run }: Props) {
         className="size-4 shrink-0 animate-spin text-primary motion-reduce:animate-none"
         aria-hidden
       />
-      <p className="min-w-0 flex-1 truncate text-[13px]">
+      <p className="min-w-0 flex-1 truncate text-sm">
         <span className="font-medium">Läuft</span>
         <span className="text-muted-foreground">
           {" · "}

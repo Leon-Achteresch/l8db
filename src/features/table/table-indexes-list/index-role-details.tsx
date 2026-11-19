@@ -9,13 +9,13 @@ export function IndexRoleDetails({ roles, definition }: { roles: IndexRoles; def
   const included = expanded ? roles.included : roles.included.slice(0, INDEX_ROLE_PREVIEW_COLUMNS);
   const other = expanded ? roles.other : roles.other.slice(0, INDEX_ROLE_PREVIEW_COLUMNS);
   const hidden = roles.included.length - included.length + roles.other.length - other.length;
-  const chip = "rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground";
+  const chip = "rounded bg-muted px-1.5 py-0.5 font-mono text-2xs text-muted-foreground";
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap items-center gap-1">
-        <span className="mr-1 text-[11px] text-muted-foreground">Schlüssel</span>
+        <span className="mr-1 text-2xs text-muted-foreground">Schlüssel</span>
         {roles.keys.length === 0 && (
-          <span className="text-[11px] text-muted-foreground">nicht eingeordnet</span>
+          <span className="text-2xs text-muted-foreground">nicht eingeordnet</span>
         )}
         {roles.keys.map((key) => (
           <span
@@ -31,7 +31,7 @@ export function IndexRoleDetails({ roles, definition }: { roles: IndexRoles; def
       </div>
       {roles.included.length > 0 && (
         <div className="flex flex-wrap items-center gap-1">
-          <span className="mr-1 text-[11px] text-muted-foreground">
+          <span className="mr-1 text-2xs text-muted-foreground">
             INCLUDE ({roles.included.length})
           </span>
           {included.map((name) => (
@@ -43,7 +43,7 @@ export function IndexRoleDetails({ roles, definition }: { roles: IndexRoles; def
       )}
       {roles.other.length > 0 && (
         <div className="flex flex-wrap items-center gap-1">
-          <span className="mr-1 text-[11px] text-muted-foreground">
+          <span className="mr-1 text-2xs text-muted-foreground">
             Sonstige Indexspalten ({roles.other.length})
           </span>
           {other.map((name) => (
@@ -63,7 +63,7 @@ export function IndexRoleDetails({ roles, definition }: { roles: IndexRoles; def
           {expanded ? "Weniger Spalten" : `${hidden} weitere Spalten anzeigen`}
         </Button>
       )}
-      <p className="font-mono text-[11px] break-all text-muted-foreground">
+      <p className="font-mono text-2xs break-all text-muted-foreground">
         {roles.filter.state === "known"
           ? `Filter: ${roles.filter.predicate}`
           : roles.filter.state === "none"
@@ -74,11 +74,11 @@ export function IndexRoleDetails({ roles, definition }: { roles: IndexRoles; def
       </p>
       {roles.definition_status === "reconstructed" ? (
         <>
-          <p className="text-[11px] text-muted-foreground">Rekonstruierte Definition</p>
-          <p className="font-mono text-[11px] text-muted-foreground break-all">{definition}</p>
+          <p className="text-2xs text-muted-foreground">Rekonstruierte Definition</p>
+          <p className="font-mono text-2xs text-muted-foreground break-all">{definition}</p>
         </>
       ) : (
-        <p className="text-[11px] text-muted-foreground">Definition nicht rekonstruiert</p>
+        <p className="text-2xs text-muted-foreground">Definition nicht rekonstruiert</p>
       )}
     </div>
   );

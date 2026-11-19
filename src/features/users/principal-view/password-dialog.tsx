@@ -66,7 +66,7 @@ export function PasswordDialog({ open, onOpenChange, name }: PasswordDialogProps
             />
           </div>
           <div className="flex items-center justify-between">
-            <Label htmlFor="principal-expire" className="text-[13px]">
+            <Label htmlFor="principal-expire" className="text-sm">
               Beim nächsten Login ändern
             </Label>
             <Switch id="principal-expire" size="sm" checked={expire} onCheckedChange={setExpire} />

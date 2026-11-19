@@ -75,7 +75,7 @@ export function ProtectionSettings({ workspace }: { workspace: BranchingWorkspac
                 strokeWidth={1.7}
               />
               <span className="text-xs font-medium">{level.label}</span>
-              <span className="text-[11px] leading-relaxed text-muted-foreground">
+              <span className="text-2xs leading-relaxed text-muted-foreground">
                 {level.description}
               </span>
             </button>
@@ -83,11 +83,11 @@ export function ProtectionSettings({ workspace }: { workspace: BranchingWorkspac
         })}
       </div>
       {!owner && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Nur der Eigentümer ({root.owner}) oder ein Superuser kann die Schutzstufe ändern.
         </p>
       )}
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
+      <p className="text-2xs leading-relaxed text-muted-foreground">
         Die Schutzstufe ist eine Leitplanke für l8db, kein Ersatz für Datenbankrechte: Wer
         Eigentümer ist, kann sie auch per SQL ändern. Jede Änderung wird protokolliert.
       </p>

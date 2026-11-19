@@ -36,7 +36,7 @@ export function McpSmartGuide({
               <h3 className="text-sm font-semibold text-foreground">
                 Schnelleinrichtung empfohlen
               </h3>
-              <span className="rounded-full bg-primary/15 px-2 py-0.5 font-mono text-[10px] font-medium text-primary">
+              <span className="rounded-full bg-primary/15 px-2 py-0.5 font-mono text-2xs font-medium text-primary">
                 Schritt für Schritt
               </span>
             </div>
@@ -56,7 +56,7 @@ export function McpSmartGuide({
             size="sm"
             className={cn(
               "h-8 text-xs font-medium",
-              !needsClient && "border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
+              !needsClient && "border-success/30 text-success",
             )}
             onClick={onGoToClients}
           >
@@ -68,7 +68,7 @@ export function McpSmartGuide({
               </>
             ) : (
               <>
-                <CheckCircle2 className="size-3.5 text-emerald-500" />
+                <CheckCircle2 className="size-3.5 text-success" />
                 Client bereit
               </>
             )}
@@ -79,7 +79,7 @@ export function McpSmartGuide({
             size="sm"
             className={cn(
               "h-8 text-xs font-medium",
-              !needsConnection && "border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
+              !needsConnection && "border-success/30 text-success",
             )}
             onClick={onGoToConnections}
           >
@@ -91,7 +91,7 @@ export function McpSmartGuide({
               </>
             ) : (
               <>
-                <CheckCircle2 className="size-3.5 text-emerald-500" />
+                <CheckCircle2 className="size-3.5 text-success" />
                 Datenbank aktiv
               </>
             )}

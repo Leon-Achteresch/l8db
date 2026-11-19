@@ -44,7 +44,7 @@ export function ModifierOverlayHost() {
         <kbd
           key={`${badge.id}:${badge.left}:${badge.top}`}
           style={{ left: badge.left, top: badge.top }}
-          className="absolute -translate-x-1/2 -translate-y-1/2 rounded-md bg-foreground px-1.5 py-0.5 font-sans text-[10px] leading-none font-medium whitespace-nowrap text-background shadow-md motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95"
+          className="absolute -translate-x-1/2 -translate-y-1/2 rounded-md bg-foreground px-1.5 py-0.5 font-sans text-2xs leading-none font-medium whitespace-nowrap text-background shadow-md motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95"
         >
           {badge.label}
         </kbd>

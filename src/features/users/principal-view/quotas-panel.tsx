@@ -24,7 +24,7 @@ export function QuotasPanel({ tablespaces, value, original, onChange }: QuotasPa
 
   return (
     <div className="flex max-w-3xl flex-col">
-      <div className="flex h-6 items-center gap-3 px-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+      <div className="flex h-6 items-center gap-3 px-2 font-mono text-2xs text-muted-foreground">
         <span className="flex-1">Tablespace</span>
         <span className="w-24 text-right">Belegt</span>
         <span className="w-64">Quota</span>
@@ -87,7 +87,7 @@ export function QuotasPanel({ tablespaces, value, original, onChange }: QuotasPa
         );
       })}
       {names.length === 0 && (
-        <p className="px-2 py-3 text-[13px] text-muted-foreground">Keine Tablespaces.</p>
+        <p className="px-2 py-3 text-sm text-muted-foreground">Keine Tablespaces.</p>
       )}
     </div>
   );

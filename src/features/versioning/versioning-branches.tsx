@@ -47,7 +47,7 @@ export function VersioningBranches({ workspace }: { workspace: VersioningWorkspa
         <GitBranchIcon className="size-4 text-primary" />
         <h2 className="flex-1 text-sm font-semibold">Branches</h2>
         {feature.isNew && <NewBadge />}
-        <span className="font-mono text-[11px] text-muted-foreground">
+        <span className="font-mono text-2xs text-muted-foreground">
           {status.branches.length} lokal
         </span>
       </div>
@@ -75,7 +75,7 @@ export function VersioningBranches({ workspace }: { workspace: VersioningWorkspa
             label: `${target.name} · ${target.database ?? "Datenbank"} / ${target.schema}`,
           }))}
       />
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
+      <p className="text-2xs leading-relaxed text-muted-foreground">
         Der Branchwechsel verändert nur Git-Dateien. Die Zuordnung der Entwicklungsdatenbank wird im
         Repository geteilt. Jedes Teammitglied verknüpft sein lokales Verbindungsprofil.
       </p>
@@ -130,7 +130,7 @@ export function VersioningBranches({ workspace }: { workspace: VersioningWorkspa
               .filter((branch) => branch !== status.branch)
               .map((value) => ({ value, label: value }))}
           />
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
+          <p className="text-2xs leading-relaxed text-muted-foreground">
             Übernimmt alle Änderungen aus dem gewählten Branch nach {status.branch ?? "HEAD"}. Bei
             Konflikten wird der Merge abgebrochen; einzelne Dateien lassen sich unter Änderungen
             zusammenführen.
@@ -165,8 +165,8 @@ export function VersioningBranches({ workspace }: { workspace: VersioningWorkspa
         </div>
       </details>
       <div>
-        <h3 className="text-xs font-semibold">Git-Verlauf · Swimlanes</h3>
-        <p className="mt-1 text-[11px] text-muted-foreground">
+        <h3 className="text-xs font-medium">Git-Verlauf · Swimlanes</h3>
+        <p className="mt-1 text-2xs text-muted-foreground">
           Alle lokalen und abgerufenen Remote-Branches · letzte 120 Commits
         </p>
       </div>
@@ -227,14 +227,14 @@ export function VersioningBranches({ workspace }: { workspace: VersioningWorkspa
                   .map((ref) => (
                     <span
                       key={ref}
-                      className="rounded bg-primary/8 px-1.5 py-0.5 font-mono text-[10px] text-primary"
+                      className="rounded bg-primary/8 px-1.5 py-0.5 font-mono text-2xs text-primary"
                     >
                       {ref}
                     </span>
                   ))}
               </div>
               <p className="mt-1 max-w-lg truncate text-xs font-medium">{commit.subject}</p>
-              <p className="mt-1 text-[10px] text-muted-foreground">
+              <p className="mt-1 text-2xs text-muted-foreground">
                 <span className="font-mono">{commit.id.slice(0, 8)}</span> ·{" "}
                 {new Date(commit.date).toLocaleString()}
               </p>

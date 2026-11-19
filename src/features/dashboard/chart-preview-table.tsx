@@ -6,20 +6,20 @@ import type { QueryResult } from "@/lib/db";
 export function ChartPreviewTable({ query }: { query: UseQueryResult<QueryResult> }) {
   if (query.isError)
     return (
-      <p role="alert" className="px-3 py-2 text-[11px] text-destructive">
+      <p role="alert" className="px-3 py-2 text-2xs text-destructive">
         {queryErrorMessage(query.error)}
       </p>
     );
   const data = query.data;
   if (!data || data.rows.length === 0)
     return (
-      <p className="px-3 py-2 text-[11px] text-muted-foreground">
+      <p className="px-3 py-2 text-2xs text-muted-foreground">
         {query.isFetching ? "Daten werden geladen…" : "Noch keine Daten zum Anzeigen."}
       </p>
     );
   return (
     <div className="max-h-44 overflow-auto">
-      <table className="w-full text-[11px]">
+      <table className="w-full text-2xs">
         <thead>
           <tr className="sticky top-0 bg-muted text-left text-muted-foreground">
             {data.columns.map((c) => (
@@ -41,7 +41,7 @@ export function ChartPreviewTable({ query }: { query: UseQueryResult<QueryResult
           ))}
         </tbody>
       </table>
-      <p className="px-2 py-1 text-[10px] text-muted-foreground">
+      <p className="px-2 py-1 text-2xs text-muted-foreground">
         {data.rows.length} Zeilen im Ergebnis
       </p>
     </div>

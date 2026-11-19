@@ -9,14 +9,14 @@ export function ReleaseGroup({ group }: { group: ChangelogGroup }) {
   const items = open ? group.items : group.items.slice(0, PREVIEW);
   return (
     <section>
-      <h3 className="flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+      <h3 className="flex items-center gap-2 font-mono text-2xs text-muted-foreground">
         {group.title}
         <span className="tabular-nums opacity-60">{group.items.length}</span>
       </h3>
       <ul className="mt-2 space-y-1.5">
         {items.map((item) => (
           <li key={item}>
-            <Markdown source={item} className="text-[13px] leading-5 text-foreground/85" />
+            <Markdown source={item} className="text-sm leading-5 text-foreground/85" />
           </li>
         ))}
       </ul>

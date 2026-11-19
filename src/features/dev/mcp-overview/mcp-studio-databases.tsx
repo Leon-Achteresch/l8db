@@ -77,7 +77,7 @@ export function McpStudioDatabases({
                   type="button"
                   onClick={() => toggleGroup(group)}
                   aria-expanded={open}
-                  className="flex flex-1 cursor-pointer items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground hover:text-foreground"
+                  className="flex flex-1 cursor-pointer items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground hover:text-foreground"
                 >
                   <ChevronRight
                     className={cn("size-3.5 transition-transform", open && "rotate-90")}
@@ -124,7 +124,7 @@ export function McpStudioDatabases({
                       <span className="truncate">{item.name}</span>
                       {item.environment === "production" && (
                         <span
-                          className="size-1.5 shrink-0 rounded-full bg-amber-500"
+                          className="size-1.5 shrink-0 rounded-full bg-warning"
                           title="Produktion"
                         />
                       )}

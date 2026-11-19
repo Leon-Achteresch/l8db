@@ -107,7 +107,7 @@ export function TransferSchemas({
         <TransferContentSelect value={content} onChange={onContent} />
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full table-fixed border-collapse text-[13px]">
+        <table className="w-full table-fixed border-collapse text-sm">
           <colgroup>
             <col className="w-10" />
             <col />
@@ -226,7 +226,7 @@ export function TransferSchemas({
                       {!checked ? (
                         "–"
                       ) : blocked > 0 ? (
-                        <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-amber-700 dark:text-amber-400">
+                        <span className="rounded-md bg-warning/15 px-1.5 py-0.5 text-warning">
                           {blocked} vorhanden
                         </span>
                       ) : missing ? (
@@ -264,7 +264,7 @@ export function TransferSchemas({
                           <td />
                           <td className="py-1.5 pr-3 text-xs">
                             {exists ? (
-                              <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-amber-700 dark:text-amber-400">
+                              <span className="rounded-md bg-warning/15 px-1.5 py-0.5 text-warning">
                                 Vorhanden, blockiert
                               </span>
                             ) : (

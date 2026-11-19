@@ -143,7 +143,7 @@ export function PerfRunsReport({ current, running, fileBase, onError }: PerfRuns
       {current && (
         <div className="rounded-lg border bg-card">
           <div className="flex items-center gap-2 border-b px-3 py-2">
-            <span className="text-xs font-semibold">Läufe</span>
+            <span className="text-xs font-medium">Läufe</span>
             <span className="text-xs text-muted-foreground">
               {formatCapturedAt(current.capturedAt)}
             </span>
@@ -229,7 +229,7 @@ export function PerfRunsReport({ current, running, fileBase, onError }: PerfRuns
       {sources.length > 1 && (
         <div className="flex flex-col gap-3 rounded-lg border bg-card p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold">Zwei Ausführungspläne vergleichen</span>
+            <span className="text-xs font-medium">Zwei Ausführungspläne vergleichen</span>
             <Select value={fallbackLeft?.id ?? ""} onValueChange={(value) => setLeftId(value)}>
               <SelectTrigger size="sm" className="h-7 w-64 text-xs">
                 <SelectValue placeholder="Lauf A wählen" />

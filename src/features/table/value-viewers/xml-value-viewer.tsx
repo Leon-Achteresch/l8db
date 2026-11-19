@@ -28,7 +28,7 @@ export function XmlValueViewer({ text }: { text: string }) {
             <ToggleGroupItem value="pretty">Formatiert</ToggleGroupItem>
           </ToggleGroup>
           {parsed.document ? (
-            <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
+            <span className="inline-flex items-center gap-1 text-xs text-success">
               <CheckCircle2Icon className="size-3.5" />
               Wohlgeformt
             </span>

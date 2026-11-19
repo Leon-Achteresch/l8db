@@ -50,7 +50,7 @@ export function SpacetimeAccountExplorer({ account }: { account: CloudAccount })
   return (
     <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
       <section className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium uppercase text-muted-foreground">Datenbanken</h3>
+        <h3 className="text-xs font-medium text-muted-foreground">Datenbanken</h3>
         <p className="break-all text-xs text-muted-foreground">
           Identität {account.identity ?? "–"}
           {account.endpoint ? ` · ${account.endpoint}` : " · Maincloud"}
@@ -106,7 +106,7 @@ export function SpacetimeAccountExplorer({ account }: { account: CloudAccount })
             {schema.data && (
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="flex flex-col gap-2">
-                  <h4 className="text-xs font-medium uppercase text-muted-foreground">Tabellen</h4>
+                  <h4 className="text-xs font-medium text-muted-foreground">Tabellen</h4>
                   <ul className="divide-y rounded-md border text-sm">
                     {tables.map((table) => (
                       <li key={table.name} className="flex flex-col gap-1 px-3 py-2">
@@ -130,7 +130,7 @@ export function SpacetimeAccountExplorer({ account }: { account: CloudAccount })
                   </ul>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <h4 className="text-xs font-medium uppercase text-muted-foreground">Reducer</h4>
+                  <h4 className="text-xs font-medium text-muted-foreground">Reducer</h4>
                   <ul className="divide-y rounded-md border text-sm">
                     {reducers.map((entry) => (
                       <li key={entry.name} className="flex items-center gap-2 px-3 py-2">

@@ -131,7 +131,7 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
               <EntityFilterPanel {...search} />
             </div>
 
-            <div className="flex items-center gap-3 border-t px-3 py-1.5 text-[10px] text-muted-foreground">
+            <div className="flex items-center gap-3 border-t px-3 py-1.5 text-2xs text-muted-foreground">
               <span>
                 <kbd className="rounded border border-border/40 bg-background/60 px-1 font-sans">
                   ;

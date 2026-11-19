@@ -165,13 +165,11 @@ export function DataCompareSidePicker({
       <div className="flex items-center gap-2">
         <MorphIcon
           icon={lockConnection ? Lock : GitCompare}
-          className={cn("size-3.5 shrink-0", lockConnection ? "text-emerald-500" : "text-sky-500")}
+          className={cn("size-3.5 shrink-0", lockConnection ? "text-success" : "text-sky-500")}
         />
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {title}
-        </span>
+        <span className="text-xs font-medium text-muted-foreground">{title}</span>
         {lockConnection && (
-          <span className="ml-auto flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span className="ml-auto flex min-w-0 items-center gap-1.5 text-2xs text-muted-foreground">
             <ProviderLogo
               providerId={providerFor(lockConnection).id}
               kind={lockConnection.kind}
@@ -277,7 +275,7 @@ export function DataCompareSidePicker({
               icon={loadingTables ? Loader : Table}
               className={cn(
                 "size-3.5",
-                loadingTables ? "animate-spin text-muted-foreground" : "text-emerald-500",
+                loadingTables ? "animate-spin text-muted-foreground" : "text-success",
               )}
             />
             Tabelle
@@ -296,7 +294,7 @@ export function DataCompareSidePicker({
             <SelectContent searchable>
               {tables.map((name) => (
                 <SelectItem key={name} value={name} className="text-xs">
-                  <TableIcon className="size-3.5 text-emerald-500" />
+                  <TableIcon className="size-3.5 text-success" />
                   {name}
                 </SelectItem>
               ))}

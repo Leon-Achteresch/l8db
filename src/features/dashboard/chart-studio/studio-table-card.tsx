@@ -70,10 +70,10 @@ export const StudioTableCard = forwardRef<
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: accent }} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold" title={title}>
+          <p className="truncate text-xs font-medium" title={title}>
             {title}
           </p>
-          {subtitle && <p className="truncate text-[10px] text-muted-foreground">{subtitle}</p>}
+          {subtitle && <p className="truncate text-2xs text-muted-foreground">{subtitle}</p>}
         </div>
         {onRemove && (
           <IconButton
@@ -94,7 +94,7 @@ export const StudioTableCard = forwardRef<
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Spalte suchen…"
-            className="h-7 w-full rounded-md bg-muted/50 pr-2 pl-6 text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-7 w-full rounded-md bg-muted/50 pr-2 pl-6 text-2xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
       )}
@@ -151,7 +151,7 @@ export const StudioTableCard = forwardRef<
                 }}
                 onClick={() => onSelect(selected === field.ref ? null : field.ref)}
                 className={cn(
-                  "group flex w-full cursor-grab items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring active:cursor-grabbing",
+                  "group flex w-full cursor-grab items-center gap-1.5 rounded-md px-2 py-1 text-left text-2xs transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring active:cursor-grabbing",
                   selected === field.ref && "bg-primary/10 text-primary",
                   dropTarget === name && "bg-primary/15 ring-2 ring-primary",
                 )}
@@ -161,7 +161,7 @@ export const StudioTableCard = forwardRef<
                 {KEYISH.test(name) && (
                   <KeyRoundIcon
                     aria-label="Schlüsselspalte"
-                    className="size-3 shrink-0 text-amber-500"
+                    className="size-3 shrink-0 text-warning"
                   />
                 )}
                 {isUsed && (

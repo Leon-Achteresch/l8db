@@ -26,7 +26,7 @@ export const JSON_KIND_META: Record<
   string: {
     icon: QuoteIcon,
     label: "Text",
-    className: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-300",
+    className: "bg-success/12 text-success",
   },
   number: {
     icon: HashIcon,
@@ -36,7 +36,7 @@ export const JSON_KIND_META: Record<
   boolean: {
     icon: ToggleLeftIcon,
     label: "Boolean",
-    className: "bg-amber-500/14 text-amber-600 dark:text-amber-300",
+    className: "bg-warning/14 text-warning",
   },
   null: {
     icon: CircleSlashIcon,

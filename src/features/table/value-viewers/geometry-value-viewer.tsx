@@ -110,7 +110,7 @@ export function GeometryValueViewer({
         <>
           <GeometryMap items={column?.items ?? single} srid={parsed.srid} />
           {column && (
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {column.items.length.toLocaleString("de-DE")} Geometrien aus{" "}
               {column.total.toLocaleString("de-DE")} Zeilen
               {column.skipped > 0 && ` · ${column.skipped} nicht lesbar`}

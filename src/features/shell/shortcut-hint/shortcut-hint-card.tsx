@@ -70,7 +70,7 @@ export function ShortcutHintCard({ hint }: { hint: ActiveHint }) {
             transition={SPRING_PRESS}
           >
             <motion.span
-              className="grid size-8 place-items-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+              className="grid size-8 place-items-center rounded-xl bg-success/15 text-success"
               initial={{ scale: 0.4, rotate: -30 }}
               animate={{ scale: 1, rotate: 0 }}
               transition={{ type: "spring", stiffness: 520, damping: 18 }}

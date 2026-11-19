@@ -14,7 +14,7 @@ export function PolicyAccessCell({
       {covered ? (
         <span
           title={`${command}: durch Richtlinie geregelt`}
-          className="inline-grid size-6 place-items-center rounded-md bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
+          className="inline-grid size-6 place-items-center rounded-md bg-success/12 text-success"
         >
           <Check className="size-3.5" />
           <span className="sr-only">{command} geregelt</span>

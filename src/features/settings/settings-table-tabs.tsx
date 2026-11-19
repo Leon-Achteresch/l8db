@@ -20,7 +20,7 @@ export function SettingsTableTabs() {
         <h3 className="text-sm font-medium">Tabbar für Tabellen & Views</h3>
         {hidden.length > 0 && (
           <>
-            <Badge variant="secondary" className="text-[10px]">
+            <Badge variant="secondary" className="text-2xs">
               Geändert
             </Badge>
             <Button variant="ghost" size="xs" onClick={reset} className="text-muted-foreground">

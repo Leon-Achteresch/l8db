@@ -73,12 +73,12 @@ export function SettingsSmtpSection({ settings, update }: Props) {
             <li key={profile.id} className="flex items-center gap-3 px-3.5 py-2.5">
               <MailIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span title={profile.name} className="truncate text-[13px] font-medium">
+                <span title={profile.name} className="truncate text-sm font-medium">
                   {profile.name}
                 </span>
                 <span
                   title={`${profile.from} · ${profile.host}:${profile.port}`}
-                  className="truncate text-[11px] text-muted-foreground"
+                  className="truncate text-2xs text-muted-foreground"
                 >
                   {profile.from} · {profile.host}:{profile.port} · {SECURITY[profile.security]}
                 </span>

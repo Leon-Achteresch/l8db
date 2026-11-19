@@ -18,7 +18,7 @@ export function ResultCompareNotice({
         {icon}
       </span>
       <div className="max-w-md space-y-1.5">
-        <p className="text-[13px] font-semibold tracking-[-0.005em]">{title}</p>
+        <p className="text-sm font-semibold tracking-[-0.005em]">{title}</p>
         <div className="text-xs leading-relaxed text-muted-foreground">{children}</div>
       </div>
     </div>

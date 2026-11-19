@@ -118,7 +118,7 @@ export function VersioningCommitBox({
         </DropdownMenu>
       </ButtonGroup>
       {open && blockedReason && Boolean(message.trim()) && (
-        <p className="text-[11px] text-muted-foreground">{blockedReason}</p>
+        <p className="text-2xs text-muted-foreground">{blockedReason}</p>
       )}
     </div>
   );

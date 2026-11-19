@@ -39,7 +39,7 @@ const COLORS: [keyof DashboardTheme, string][] = [
 ];
 
 const SECTION = "space-y-2.5 border-t pt-3";
-const HEADING = "text-xs font-semibold";
+const HEADING = "text-xs font-medium";
 
 export function DashboardThemeEditor({
   theme,

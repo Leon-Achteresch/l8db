@@ -22,7 +22,7 @@ export function VersioningOverviewCard({
     >
       <header className="flex items-center gap-2">
         <Icon className="size-4 text-muted-foreground" strokeWidth={1.7} />
-        <h3 className="flex-1 text-xs font-semibold">{title}</h3>
+        <h3 className="flex-1 text-xs font-medium">{title}</h3>
         <VersioningIconButton
           icon={ArrowRightIcon}
           label={action}

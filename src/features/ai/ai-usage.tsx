@@ -33,7 +33,7 @@ export function AiUsage({ data, profile, metadata, messages, prompt, summary, on
     <section
       ref={feature.ref}
       aria-label="Kontext, Tokens und Kosten"
-      className="flex shrink-0 text-[11px] text-muted-foreground"
+      className="flex shrink-0 text-2xs text-muted-foreground"
     >
       <Popover>
         <PopoverTrigger asChild>
@@ -62,7 +62,7 @@ export function AiUsage({ data, profile, metadata, messages, prompt, summary, on
                   percent >= 90
                     ? "stroke-destructive"
                     : percent >= 70
-                      ? "stroke-amber-500"
+                      ? "stroke-warning"
                       : "stroke-foreground/70"
                 }
               />
@@ -119,7 +119,7 @@ export function AiUsage({ data, profile, metadata, messages, prompt, summary, on
             <summary className="min-h-7 cursor-pointer py-1 text-muted-foreground">
               Berechnung &amp; weitere Details
             </summary>
-            <div className="mt-2 space-y-2 text-[11px] leading-relaxed text-muted-foreground">
+            <div className="mt-2 space-y-2 text-2xs leading-relaxed text-muted-foreground">
               <p>
                 {count(usage.total)} Tokens{usage.model ? ` · ${usage.model}` : ""}
               </p>

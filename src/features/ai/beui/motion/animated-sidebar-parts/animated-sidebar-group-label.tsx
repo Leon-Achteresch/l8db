@@ -11,7 +11,7 @@ export const AnimatedSidebarGroupLabel = forwardRef<HTMLDivElement, HTMLAttribut
         aria-hidden={collapsed}
         data-slot="sidebar-group-label"
         className={cn(
-          "mb-1 h-7 overflow-hidden px-2 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground transition-opacity",
+          "mb-1 h-7 overflow-hidden px-2 text-2xs font-medium text-muted-foreground transition-opacity",
           collapsed ? "opacity-0" : "opacity-100",
           className,
         )}

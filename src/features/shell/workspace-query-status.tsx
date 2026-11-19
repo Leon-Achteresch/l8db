@@ -78,7 +78,7 @@ export function WorkspaceQueryStatus() {
           {message.tone === "error" ? (
             <XIcon className="size-3 shrink-0 text-destructive" />
           ) : message.tone === "success" ? (
-            <CheckIcon className="size-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <CheckIcon className="size-3 shrink-0 text-success" />
           ) : null}
           <span
             className={`max-w-48 truncate text-foreground ${task ? "@max-[720px]/footer:sr-only" : ""}`}

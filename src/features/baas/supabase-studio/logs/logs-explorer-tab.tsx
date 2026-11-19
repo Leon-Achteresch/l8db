@@ -167,7 +167,7 @@ export function LogsExplorerTab({ reference, refetchInterval }: LogsTabProps) {
                       tone === "error"
                         ? "border-l-destructive"
                         : tone === "warning"
-                          ? "border-l-amber-500"
+                          ? "border-l-warning"
                           : "border-l-transparent"
                     }`}
                   >

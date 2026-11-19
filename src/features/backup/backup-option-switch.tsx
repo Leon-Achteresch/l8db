@@ -32,7 +32,7 @@ export function BackupOptionSwitch({
         <Label htmlFor={id} className="text-xs font-normal">
           {label}
         </Label>
-        {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
+        {hint && <span className="text-2xs text-muted-foreground">{hint}</span>}
       </div>
     </div>
   );

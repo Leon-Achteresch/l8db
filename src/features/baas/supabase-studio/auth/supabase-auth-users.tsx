@@ -189,7 +189,7 @@ export function SupabaseAuthUsers({ reference, capabilities }: Props) {
                         >
                           {user.email || user.phone || "Ohne Kennung"}
                         </button>
-                        <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                        <span className="block truncate font-mono text-2xs text-muted-foreground">
                           {user.id}
                         </span>
                       </td>

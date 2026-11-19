@@ -53,8 +53,8 @@ export const GOTO_COLOR = "oklch(0.62 0.15 237)";
 
 export function statusTone(status: RunStatus | null): string {
   if (status === "running") return "border-primary ring-2 ring-primary/25";
-  if (status === "success") return "border-emerald-500/60";
-  if (status === "warning" || status === "interrupted") return "border-amber-500/60";
+  if (status === "success") return "border-success/60";
+  if (status === "warning" || status === "interrupted") return "border-warning/60";
   if (status === "failed" || status === "timeout")
     return "border-destructive/70 ring-2 ring-destructive/15";
   return "";

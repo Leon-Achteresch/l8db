@@ -50,7 +50,7 @@ export function ExtensionPermissionConsent({
             />
             <label htmlFor={`${manifest.id}-${permission}`} className="min-w-0 text-xs">
               <span className="block font-medium">{PERMISSION_LABELS[permission]}</span>
-              <span className="block break-words font-mono text-[11px] text-muted-foreground">
+              <span className="block break-words font-mono text-2xs text-muted-foreground">
                 {permission}
                 {detail(permission) && ` · ${detail(permission)}`}
                 {!supported(permission) && " · wird nicht unterstützt"}

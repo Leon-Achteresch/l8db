@@ -6,7 +6,7 @@ export function PreviousResultNotice({ sql, at }: { sql: string; at: number | nu
   return (
     <details
       ref={feature.ref}
-      className="shrink-0 border-b bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+      className="shrink-0 border-b bg-warning/10 px-3 py-2 text-xs text-warning"
     >
       <summary className="cursor-pointer">
         Vorheriger erfolgreicher Lauf{at !== null && ` vom ${new Date(at).toLocaleString("de-DE")}`}{" "}

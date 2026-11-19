@@ -24,7 +24,7 @@ export function DataTableTemporalHelpers({
           disabled={disabled}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onPick(helper.value(new Date()))}
-          className="shrink-0 cursor-pointer rounded bg-muted/50 px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted/80 disabled:opacity-60"
+          className="shrink-0 cursor-pointer rounded bg-muted/50 px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-muted/80 disabled:opacity-60"
         >
           {helper.label}
         </button>

@@ -48,7 +48,7 @@ export function PlanFlameView({ analysis, selectedId, onSelect }: PlanFlameViewP
 
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <div className="flex min-h-6 items-center gap-2 text-[11px] text-muted-foreground">
+      <div className="flex min-h-6 items-center gap-2 text-2xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate">
           {hovered
             ? describe(analysis, hovered)
@@ -58,7 +58,7 @@ export function PlanFlameView({ analysis, selectedId, onSelect }: PlanFlameViewP
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 shrink-0 px-2 text-[11px]"
+            className="h-6 shrink-0 px-2 text-2xs"
             onClick={() => setFocusId(null)}
           >
             Zoom zurücksetzen
@@ -78,7 +78,7 @@ export function PlanFlameView({ analysis, selectedId, onSelect }: PlanFlameViewP
               key={rect.id}
               type="button"
               data-plan-node={rect.id}
-              className={`absolute overflow-hidden border-r border-b border-background bg-muted px-1 text-left text-[10px] leading-[21px] whitespace-nowrap hover:brightness-95 ${rect.ancestor ? "opacity-60" : ""} ${selectedId === rect.id ? "z-10 outline-2 -outline-offset-2 outline-primary" : ""}`}
+              className={`absolute overflow-hidden border-r border-b border-background bg-muted px-1 text-left text-2xs leading-[21px] whitespace-nowrap hover:brightness-95 ${rect.ancestor ? "opacity-60" : ""} ${selectedId === rect.id ? "z-10 outline-2 -outline-offset-2 outline-primary" : ""}`}
               style={{
                 left: `${rect.x * 100}%`,
                 width: `${rect.width * 100}%`,

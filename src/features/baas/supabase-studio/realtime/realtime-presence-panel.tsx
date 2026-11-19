@@ -56,7 +56,7 @@ export function RealtimePresencePanel({
           {push.error instanceof Error ? push.error.message : String(push.error)}
         </p>
       )}
-      <pre className="max-h-48 overflow-auto rounded-lg bg-muted/30 p-2 font-mono text-[11px]">
+      <pre className="max-h-48 overflow-auto rounded-lg bg-muted/30 p-2 font-mono text-2xs">
         {keys.length ? JSON.stringify(presence, null, 2) : "Niemand anwesend."}
       </pre>
     </div>

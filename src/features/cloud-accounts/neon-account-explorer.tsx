@@ -107,7 +107,7 @@ export function NeonAccountExplorer({ accountId }: { accountId: string }) {
       {organizations.isError && <CloudSectionError error={organizations.error} />}
       <div className="grid gap-4 lg:grid-cols-[16rem_14rem_minmax(0,1fr)]">
         <div className="flex flex-col gap-2">
-          <h3 className="text-xs font-medium uppercase text-muted-foreground">Projekte</h3>
+          <h3 className="text-xs font-medium text-muted-foreground">Projekte</h3>
           {projects.isError && (
             <CloudSectionError error={projects.error} onRetry={() => void projects.refetch()} />
           )}
@@ -139,7 +139,7 @@ export function NeonAccountExplorer({ accountId }: { accountId: string }) {
           />
         </div>
         <div className="flex flex-col gap-2">
-          <h3 className="text-xs font-medium uppercase text-muted-foreground">Branches</h3>
+          <h3 className="text-xs font-medium text-muted-foreground">Branches</h3>
           {!project && <p className="text-sm text-muted-foreground">Projekt auswählen.</p>}
           {branches.isError && (
             <CloudSectionError error={branches.error} onRetry={() => void branches.refetch()} />

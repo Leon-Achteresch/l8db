@@ -29,7 +29,7 @@ export function ResultHeader({
       <span
         role="status"
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[10px]",
+          "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-2xs",
           isRunning
             ? "border-primary/30 bg-primary/10 text-primary"
             : error
@@ -50,7 +50,7 @@ export function ResultHeader({
         <QueryResultStatus
           text={statusText}
           details={statusDetails}
-          className="min-w-0 truncate text-[10px] tabular-nums text-muted-foreground"
+          className="min-w-0 truncate text-2xs tabular-nums text-muted-foreground"
         />
       )}
       <div className="ml-auto flex shrink-0 items-center gap-1">{actions}</div>

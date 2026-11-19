@@ -80,7 +80,7 @@ export function FirebaseHostingView({ projectId }: { projectId: string }) {
                     }}
                   >
                     <p className="truncate text-xs font-medium">{site.name.split("/").at(-1)}</p>
-                    <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                    <p className="mt-1 truncate text-2xs text-muted-foreground">
                       {site.defaultUrl ?? site.type ?? "Keine URL"}
                     </p>
                   </button>
@@ -167,7 +167,7 @@ export function FirebaseHostingView({ projectId }: { projectId: string }) {
                             <p className="mt-1 break-words text-xs">{release.message}</p>
                           )}
                           {release.version?.name && (
-                            <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
+                            <p className="mt-1 truncate font-mono text-2xs text-muted-foreground">
                               {release.version.name}
                             </p>
                           )}

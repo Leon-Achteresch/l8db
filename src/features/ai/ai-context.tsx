@@ -22,9 +22,8 @@ interface Props {
   part: "connections" | "tools";
 }
 
-const heading =
-  "px-2 pt-1.5 pb-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase";
-const empty = "px-2 py-2 text-[11px] text-muted-foreground";
+const heading = "px-2 pt-1.5 pb-1 text-2xs font-medium text-muted-foreground";
+const empty = "px-2 py-2 text-2xs text-muted-foreground";
 
 export function AiContext({
   connections,
@@ -71,7 +70,7 @@ export function AiContext({
           );
         })}
         {connections.length === 0 && <p className={empty}>Noch keine Verbindungen vorhanden.</p>}
-        <p className="mt-1 border-t px-2 pt-2 pb-1 text-[10px] text-muted-foreground">
+        <p className="mt-1 border-t px-2 pt-2 pb-1 text-2xs text-muted-foreground">
           Die aktive Verbindung ist immer dabei.
         </p>
       </div>

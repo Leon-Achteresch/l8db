@@ -17,16 +17,16 @@ import { cn } from "@/lib/utils";
 
 const LOOKS: { icon: LucideIcon; from: string; to: string; glow: string }[] = [
   { icon: PuzzleIcon, from: "bg-indigo-500", to: "bg-fuchsia-500", glow: "shadow-indigo-500/40" },
-  { icon: PuzzleIcon, from: "bg-sky-500", to: "bg-emerald-400", glow: "shadow-sky-500/40" },
-  { icon: PuzzleIcon, from: "bg-amber-500", to: "bg-rose-500", glow: "shadow-amber-500/40" },
+  { icon: PuzzleIcon, from: "bg-sky-500", to: "bg-success", glow: "shadow-sky-500/40" },
+  { icon: PuzzleIcon, from: "bg-warning", to: "bg-rose-500", glow: "shadow-warning/40" },
 ];
 
 const KNOWN: Record<string, (typeof LOOKS)[number]> = {
   "l8db.password-manager": {
     icon: KeyRoundIcon,
-    from: "bg-emerald-500",
+    from: "bg-success",
     to: "bg-cyan-500",
-    glow: "shadow-emerald-500/40",
+    glow: "shadow-success/40",
   },
   "l8db.jev": {
     icon: ActivityIcon,
@@ -112,7 +112,7 @@ export function OnboardingExtensionCard({
         <AnimatePresence>
           {installed && (
             <motion.span
-              className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-background/80 px-2 py-0.5 text-[11px] font-medium backdrop-blur"
+              className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-background/80 px-2 py-0.5 text-2xs font-medium backdrop-blur"
               initial={{ opacity: 0, scale: 0.6 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.6 }}
@@ -130,7 +130,7 @@ export function OnboardingExtensionCard({
           <div className="flex items-center gap-1.5">
             <h3 className="truncate text-sm font-semibold">{entry.name}</h3>
             <BadgeCheckIcon aria-label="Offiziell" className="size-4 shrink-0 text-primary" />
-            <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
+            <span className="ml-auto text-2xs text-muted-foreground tabular-nums">
               v{entry.version}
             </span>
           </div>

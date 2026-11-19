@@ -47,7 +47,7 @@ export function AiSchemaField({ name, schema, value, onChange, required, disable
         {required ? " *" : ""}
       </label>
       {Boolean(schema.description) && (
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
+        <p className="text-2xs leading-relaxed text-muted-foreground">
           {String(schema.description)}
         </p>
       )}

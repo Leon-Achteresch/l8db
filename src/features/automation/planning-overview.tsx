@@ -107,7 +107,7 @@ export function PlanningOverview() {
             <div className="@container/plan rounded-xl border bg-card px-4 pt-3 pb-2 shadow-xs">
               <div className="grid grid-cols-[minmax(6rem,min(30%,11rem))_1fr] gap-x-4">
                 <div />
-                <div className="relative h-5 text-[10px] tabular-nums text-muted-foreground">
+                <div className="relative h-5 text-2xs tabular-nums text-muted-foreground">
                   <span className="absolute top-0 left-0 whitespace-nowrap">Jetzt</span>
                   {ticks.map((at, index) => (
                     <span
@@ -185,7 +185,7 @@ export function PlanningOverview() {
                 })}
               </div>
               {lanes.length > MAX_LANES && (
-                <p className="pt-1 text-[11px] text-muted-foreground">
+                <p className="pt-1 text-2xs text-muted-foreground">
                   + {lanes.length - MAX_LANES} weitere Tasks mit Terminen
                 </p>
               )}
@@ -195,7 +195,7 @@ export function PlanningOverview() {
 
         <div className="grid grid-cols-1 gap-8 @2xl:grid-cols-2">
           <section aria-labelledby="planning-agenda" className="flex flex-col gap-2">
-            <h3 id="planning-agenda" className="text-[13px] font-semibold">
+            <h3 id="planning-agenda" className="text-sm font-semibold">
               Termine
             </h3>
             {agenda.length === 0 ? (
@@ -216,11 +216,11 @@ export function PlanningOverview() {
                       </span>
                       <span
                         title={names.get(entry.taskId)}
-                        className="min-w-0 flex-1 truncate text-[13px]"
+                        className="min-w-0 flex-1 truncate text-sm"
                       >
                         {names.get(entry.taskId) ?? "Unbekannter Task"}
                       </span>
-                      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                      <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
                         {formatRelative(entry.at, now)}
                       </span>
                     </button>
@@ -231,7 +231,7 @@ export function PlanningOverview() {
           </section>
 
           <section aria-labelledby="planning-failed" className="flex flex-col gap-2">
-            <h3 id="planning-failed" className="text-[13px] font-semibold">
+            <h3 id="planning-failed" className="text-sm font-semibold">
               Zuletzt fehlgeschlagen
             </h3>
             {(failed.data ?? []).length === 0 ? (
@@ -252,7 +252,7 @@ export function PlanningOverview() {
                     >
                       <StatusIcon status={run.status} className="mt-0.5" />
                       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <span title={run.taskName} className="truncate text-[13px] font-medium">
+                        <span title={run.taskName} className="truncate text-sm font-medium">
                           {run.taskName}
                         </span>
                         <span
@@ -262,7 +262,7 @@ export function PlanningOverview() {
                           {run.error ?? "Ohne Fehlermeldung"}
                         </span>
                       </span>
-                      <span className="flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-muted-foreground">
+                      <span className="flex shrink-0 items-center gap-1 text-2xs tabular-nums text-muted-foreground">
                         {formatRelative(run.startedAt, now)}
                         <ArrowRightIcon
                           aria-hidden

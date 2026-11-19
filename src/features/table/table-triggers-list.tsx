@@ -82,13 +82,13 @@ export function TableTriggersList({ schema, table }: TableTriggersListProps) {
               </span>
               <Badge
                 variant={triggerStatus(trigger.enabled).disabled ? "destructive" : "outline"}
-                className="shrink-0 text-[10px] px-1.5 py-0"
+                className="shrink-0 text-2xs px-1.5 py-0"
               >
                 {trigger.orientation}
               </Badge>
               <Badge
                 variant={triggerStatus(trigger.enabled).disabled ? "destructive" : "secondary"}
-                className="shrink-0 text-[10px] px-1.5 py-0"
+                className="shrink-0 text-2xs px-1.5 py-0"
               >
                 {triggerStatus(trigger.enabled).label}
               </Badge>

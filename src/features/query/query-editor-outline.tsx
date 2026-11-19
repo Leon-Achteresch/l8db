@@ -52,12 +52,12 @@ export function QueryEditorOutline({ sql, dialect, onJump }: QueryEditorOutlineP
               onClick={() => onJump(line, column)}
               className="flex items-start gap-2"
             >
-              <span className="mt-0.5 shrink-0 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
+              <span className="mt-0.5 shrink-0 rounded bg-primary/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-primary">
                 {summary.kind}
               </span>
               <span className="min-w-0">
                 <span className="block truncate font-mono text-xs">{summary.preview}</span>
-                <span className="block text-[10px] text-muted-foreground tabular-nums">
+                <span className="block text-2xs text-muted-foreground tabular-nums">
                   Statement {index + 1} · Zeile {line}
                 </span>
               </span>

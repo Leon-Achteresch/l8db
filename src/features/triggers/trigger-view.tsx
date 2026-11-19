@@ -238,18 +238,18 @@ export function TriggerView({ schema, table, trigger: triggerName }: TriggerView
             {trigger.trigger_name}
           </span>
           <div className="flex items-center gap-1.5">
-            <Badge variant="outline" className="shrink-0 text-[10px] px-1.5 py-0">
+            <Badge variant="outline" className="shrink-0 text-2xs px-1.5 py-0">
               {trigger.timing}
             </Badge>
-            <Badge variant="outline" className="shrink-0 text-[10px] px-1.5 py-0">
+            <Badge variant="outline" className="shrink-0 text-2xs px-1.5 py-0">
               {trigger.event}
             </Badge>
-            <Badge variant="outline" className="shrink-0 text-[10px] px-1.5 py-0">
+            <Badge variant="outline" className="shrink-0 text-2xs px-1.5 py-0">
               {trigger.orientation}
             </Badge>
             <Badge
               variant={triggerStatus(trigger.enabled).disabled ? "destructive" : "secondary"}
-              className="shrink-0 text-[10px] px-1.5 py-0"
+              className="shrink-0 text-2xs px-1.5 py-0"
             >
               {triggerStatus(trigger.enabled).label}
             </Badge>

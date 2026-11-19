@@ -41,7 +41,7 @@ export function IndexAdvisorPanel({ plan, connectionString, database }: IndexAdv
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-1.5 text-xs font-semibold">
+          <div className="flex items-center gap-1.5 text-xs font-medium">
             <LightbulbIcon className="size-3.5" /> Index-Berater {feature.isNew && <NewBadge />}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">

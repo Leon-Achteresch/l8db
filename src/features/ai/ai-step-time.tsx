@@ -21,7 +21,7 @@ export function AiStepTime({
   const ms = Math.max(0, (end ?? now) - start);
   if (ticking && ms < 1000) return null;
   return (
-    <span className="shrink-0 pl-2 text-[11.5px] tabular-nums text-muted-foreground/70">
+    <span className="shrink-0 pl-2 text-2xs tabular-nums text-muted-foreground/70">
       {ms < 1000 ? "<1 s" : ticking && ms < 60_000 ? `${Math.floor(ms / 1000)} s` : duration(ms)}
     </span>
   );

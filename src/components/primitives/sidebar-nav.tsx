@@ -78,7 +78,7 @@ export function SidebarNav({
             </button>
           ) : (
             <>
-              <h2 className="mr-auto truncate pl-2 text-[13px] font-semibold">{title}</h2>
+              <h2 className="mr-auto truncate pl-2 text-sm font-semibold">{title}</h2>
               {headerActions}
               {collapsible && (
                 <button
@@ -125,7 +125,7 @@ export function SidebarNav({
           <div className="relative mt-2 mb-1 h-8 shrink-0">
             <span
               className={cn(
-                "absolute inset-y-0 left-2 flex items-center text-[11px] font-medium text-muted-foreground transition-[opacity,translate] duration-200",
+                "absolute inset-y-0 left-2 flex items-center text-2xs font-medium text-muted-foreground transition-[opacity,translate] duration-200",
                 searching && "pointer-events-none -translate-x-1 opacity-0",
               )}
             >

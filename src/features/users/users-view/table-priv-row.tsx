@@ -45,10 +45,9 @@ export function TablePrivRow({
         <Badge
           variant="outline"
           className={cn(
-            "text-[10px] px-1.5 py-0",
+            "text-2xs px-1.5 py-0",
             tp.object_type === "view" && "border-cyan-500/30 text-cyan-600 dark:text-cyan-400",
-            tp.object_type === "sequence" &&
-              "border-amber-500/30 text-amber-600 dark:text-amber-400",
+            tp.object_type === "sequence" && "border-warning/30 text-warning",
           )}
         >
           {tp.object_type === "materialized_view" ? "mview" : tp.object_type}

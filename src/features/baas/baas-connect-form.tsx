@@ -263,7 +263,7 @@ export function BaasConnectForm({
             />
           </div>
         ))}
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Zugangsdaten werden im OS-Schlüsselbund gespeichert.
         </p>
         {onDirectDatabase && (

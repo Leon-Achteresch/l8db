@@ -73,7 +73,7 @@ export function PaneSidebarPanel({ index }: { index: number }) {
           />
           <span className="min-w-0 flex-1">
             <span className="block truncate font-medium">{connection.name}</span>
-            <span className="block truncate text-[10px] text-muted-foreground">
+            <span className="block truncate text-2xs text-muted-foreground">
               Auswahl öffnet in Bereich {index + 1}
             </span>
           </span>

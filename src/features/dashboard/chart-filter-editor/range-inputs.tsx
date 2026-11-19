@@ -43,7 +43,7 @@ export function ChartFilterRangeInputs({
           />
         </label>
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Du kannst eine Grenze frei lassen. Gefiltert werden die einzelnen Datensätze, bevor ihre
         Werte zusammengefasst werden.
       </p>

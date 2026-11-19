@@ -18,7 +18,7 @@ function DaysField({
 }) {
   return (
     <div className="grid gap-1">
-      <Label className="text-[11px] text-muted-foreground">{label}</Label>
+      <Label className="text-2xs text-muted-foreground">{label}</Label>
       <Input
         type="number"
         min={1}
@@ -77,7 +77,7 @@ export function LifecycleRuleEditor({
         )}
       </div>
       <div className="grid gap-1">
-        <Label className="text-[11px] text-muted-foreground">Präfix (leer = ganzer Bucket)</Label>
+        <Label className="text-2xs text-muted-foreground">Präfix (leer = ganzer Bucket)</Label>
         <Input
           className="h-7 font-mono text-xs"
           value={rule.prefix}
@@ -134,7 +134,7 @@ export function LifecycleRuleEditor({
           </label>
         )}
         {(rule.extra || rule.filterConditions.length > 0) && (
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             + weitere Bedingungen bleiben erhalten
           </span>
         )}

@@ -35,10 +35,10 @@ export function ResultChartView({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ResultChartSettings config={config} roles={roles} onChange={update} />
-      <div className="flex shrink-0 items-center gap-2 border-b px-3 py-1 text-[11px] text-muted-foreground">
+      <div className="flex shrink-0 items-center gap-2 border-b px-3 py-1 text-2xs text-muted-foreground">
         {!stored && <span>Automatisch vorgeschlagen</span>}
         {data.truncated && (
-          <span className="text-amber-600 dark:text-amber-400">
+          <span className="text-warning">
             Zeigt die ersten {data.rows.length.toLocaleString("de-DE")} von{" "}
             {data.total.toLocaleString("de-DE")} Punkten. Aggregation oder Top N verwenden.
           </span>

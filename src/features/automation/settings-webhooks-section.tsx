@@ -72,10 +72,10 @@ export function SettingsWebhooksSection({ settings, update }: Props) {
             <li key={webhook.id} className="flex items-center gap-3 px-3.5 py-2.5">
               <WebhookIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span title={webhook.name} className="truncate text-[13px] font-medium">
+                <span title={webhook.name} className="truncate text-sm font-medium">
                   {webhook.name}
                 </span>
-                <span className="flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
+                <span className="flex items-center gap-1.5 truncate text-2xs text-muted-foreground">
                   {WEBHOOK_KINDS.find((entry) => entry.value === webhook.kind)?.label ??
                     webhook.kind}
                   {webhook.sign && (

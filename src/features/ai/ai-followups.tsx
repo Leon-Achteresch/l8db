@@ -13,7 +13,7 @@ export function AiFollowups({
           key={question}
           type="button"
           onClick={() => onAsk(question)}
-          className="rounded-2xl bg-muted/70 px-3 py-1.5 text-left text-[12.5px] leading-snug text-foreground/80 outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-2xl bg-muted/70 px-3 py-1.5 text-left text-xs leading-snug text-foreground/80 outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           {question}
         </button>

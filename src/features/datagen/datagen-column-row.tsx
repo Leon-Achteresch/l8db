@@ -22,7 +22,7 @@ export function DatagenColumnRow({ column, onChange }: Props) {
         <p className="truncate font-mono text-xs font-medium" title={column.name}>
           {column.name}
         </p>
-        <p className="truncate text-[10px] text-muted-foreground" title={column.note ?? undefined}>
+        <p className="truncate text-2xs text-muted-foreground" title={column.note ?? undefined}>
           {column.dataType}
           {column.nullable ? "" : " · NOT NULL"}
           {column.note ? ` · ${column.note}` : ""}
@@ -70,7 +70,7 @@ export function DatagenColumnRow({ column, onChange }: Props) {
             })
           }
         />
-        <span className="text-[10px] text-muted-foreground">%</span>
+        <span className="text-2xs text-muted-foreground">%</span>
       </div>
     </div>
   );

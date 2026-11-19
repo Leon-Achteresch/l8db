@@ -177,7 +177,7 @@ export function MultiTargetSheet({
               </div>
             </div>
             <p
-              className="truncate border-b px-3 py-1 font-mono text-[11px] text-muted-foreground"
+              className="truncate border-b px-3 py-1 font-mono text-2xs text-muted-foreground"
               title={run.lastSql ?? trimmedSql}
             >
               {run.lastSql ?? (trimmedSql || "Kein SQL im Editor.")}

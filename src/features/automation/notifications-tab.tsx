@@ -101,7 +101,7 @@ export function NotificationsTab({ task, onChange }: Props) {
                 >
                   <SelectTrigger
                     aria-label="Wann"
-                    className="h-8 w-56 rounded-lg text-[13px] font-medium"
+                    className="h-8 w-56 rounded-lg text-sm font-medium"
                   >
                     <SelectValue />
                   </SelectTrigger>

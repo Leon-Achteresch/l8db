@@ -67,7 +67,7 @@ export function CompileInvalidButton({ types }: { types: string[] }) {
       disabled={loading}
       title={`${items.length} invalide Objekte dieser Gruppe kompilieren`}
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-destructive hover:bg-destructive/10",
+        "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs font-medium text-destructive hover:bg-destructive/10",
         "disabled:pointer-events-none disabled:opacity-50",
       )}
     >

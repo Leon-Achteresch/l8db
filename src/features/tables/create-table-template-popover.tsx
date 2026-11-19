@@ -49,7 +49,7 @@ export function CreateTableTemplatePopover({
           </SelectContent>
         </Select>
         {notes.length > 0 && (
-          <ul className="list-disc space-y-0.5 pl-4 text-[11px] text-muted-foreground">
+          <ul className="list-disc space-y-0.5 pl-4 text-2xs text-muted-foreground">
             {notes.map((note) => (
               <li key={note}>{note}</li>
             ))}

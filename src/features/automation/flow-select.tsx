@@ -66,7 +66,7 @@ export function FlowSelect({
           Nächster Schritt
         </SelectItem>
         <SelectItem value="end_success">
-          <SquareCheckIcon className="size-3.5 text-emerald-600" />
+          <SquareCheckIcon className="size-3.5 text-success" />
           Erfolgreich beenden
         </SelectItem>
         <SelectItem value="end_failure">

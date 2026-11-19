@@ -43,7 +43,7 @@ export function DashboardTabStrip({
           <span className="truncate">{label}</span>
           {tab?.dirty && (
             <>
-              <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-amber-500" />
+              <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-warning" />
               <span className="sr-only">Ungespeichert</span>
             </>
           )}

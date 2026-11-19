@@ -15,9 +15,7 @@ export function SettingsLabToolbar({
         <div className="flex items-center gap-2 text-sm font-semibold">
           <SlidersHorizontal className="size-4" /> Einstellungen
         </div>
-        <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-          L8DB / PREFERENCES
-        </span>
+        <span className="ml-auto font-mono text-2xs text-muted-foreground">L8DB / PREFERENCES</span>
       </div>
       <nav
         className="flex gap-1 overflow-x-auto border-b bg-muted/25 px-5 pt-3 sm:px-8"
