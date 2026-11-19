@@ -58,6 +58,8 @@ export interface SettingsState {
   setAutoFeatureVideos: (value: boolean) => void;
   blogSuggestions: boolean;
   setBlogSuggestions: (value: boolean) => void;
+  successToasts: boolean;
+  setSuccessToasts: (value: boolean) => void;
   discovery: DiscoverySettings;
   setDiscovery: (value: Partial<DiscoverySettings>) => void;
   autoUpdateCheck: boolean;
@@ -264,6 +266,7 @@ export const DEFAULT_SETTINGS = {
   transactionsPerTable: true,
   autoFeatureVideos: true,
   blogSuggestions: true,
+  successToasts: false,
   discovery: DEFAULT_DISCOVERY_SETTINGS,
   autoUpdateCheck: true,
   crashReports: false,
@@ -367,6 +370,7 @@ export const useSettingsStore = create<SettingsState>()(
       setTransactionsPerTable: (transactionsPerTable) => set({ transactionsPerTable }),
       setAutoFeatureVideos: (autoFeatureVideos) => set({ autoFeatureVideos }),
       setBlogSuggestions: (blogSuggestions) => set({ blogSuggestions }),
+      setSuccessToasts: (successToasts) => set({ successToasts }),
       setDiscovery: (value) =>
         set((state) => ({
           discovery: normalizeDiscoverySettings({ ...state.discovery, ...value }),
@@ -488,6 +492,7 @@ export const useSettingsStore = create<SettingsState>()(
           easyMode: saved?.easyMode === true,
           autoFeatureVideos: saved?.autoFeatureVideos !== false,
           blogSuggestions: saved?.blogSuggestions !== false,
+          successToasts: saved?.successToasts === true,
           discovery: normalizeDiscoverySettings(saved?.discovery),
           onboardingDone: saved?.onboardingDone === true,
           crashReports: saved?.crashReports === true,

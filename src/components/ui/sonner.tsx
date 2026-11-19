@@ -3,9 +3,18 @@ import { useTheme } from "next-themes";
 import { type CSSProperties, type MouseEvent, useEffect, useRef } from "react";
 import { Toaster as Sonner, type ToasterProps, toast } from "sonner";
 import { ToastDrop } from "@/components/motion/toast-drop";
+import { useSettingsStore } from "@/lib/settings";
 
 const OFFSET = { top: "calc(var(--app-header-height) + 24px)", bottom: "40px" };
 const MAX_TOASTS = 5;
+
+const showSuccess = toast.success;
+toast.success = (message, data) => {
+  if (useSettingsStore.getState().successToasts || data?.action || data?.cancel)
+    return showSuccess(message, data);
+  if (data?.id !== undefined) toast.dismiss(data.id);
+  return data?.id ?? "";
+};
 const WIDTH = { "--width": "min(380px, calc(100vw - 32px))" } as CSSProperties;
 
 function dismissOnClick(event: MouseEvent<HTMLDivElement>) {

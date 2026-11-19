@@ -27,6 +27,8 @@ export function SettingsGeneralTab() {
     setHideOwnSchemaSelect,
     sidebarObjectNav,
     setSidebarObjectNav,
+    successToasts,
+    setSuccessToasts,
   } = useSettingsStore();
 
   const handleReset = () => {
@@ -50,6 +52,14 @@ export function SettingsGeneralTab() {
           />
         </SettingsRow>
         {!easyMode && <SettingsTableTabs />}
+
+        <SettingsRow settingId="success-toasts">
+          <Switch
+            checked={successToasts}
+            onCheckedChange={setSuccessToasts}
+            aria-label="Erfolgsmeldungen"
+          />
+        </SettingsRow>
 
         <SettingsRow settingId="filter-operators">
           <Switch
