@@ -27,7 +27,6 @@ import type { CommandItem } from "@/components/motion/command-palette";
 import { NewBadge } from "@/components/new-badge";
 import { DynamicIsland } from "@/features/shell/dynamic-island";
 import { useAiStore } from "@/lib/ai/store";
-import { OBJECTS_PREFIX } from "@/lib/command-palette-search";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { useExtensionHost } from "@/lib/extensions/react-context";
@@ -158,7 +157,7 @@ export function AppHeaderSearch() {
       },
       {
         hotkey: quickOpenHotkey,
-        callback: () => openSearch(`${OBJECTS_PREFIX} `),
+        callback: () => openSearch(),
         options: { ignoreInputs: false },
       },
       {

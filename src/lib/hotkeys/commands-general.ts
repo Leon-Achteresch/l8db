@@ -14,7 +14,7 @@ export const GENERAL_COMMANDS: HotkeyCommand[] = [
   {
     id: "palette.quickOpen",
     label: "Schnell öffnen",
-    description: "Direkt zu Tabellen, Views und anderen Objekten springen",
+    description: "Direkt zu Tabellen, Views und Abfragen springen",
     area: "Allgemein",
     defaultHotkey: "Mod+P",
     origin: "VS Code",
