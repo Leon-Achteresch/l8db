@@ -292,6 +292,7 @@ export const NEW_FEATURES = {
   "settings.general.sidebar-object-nav": "0.10.0",
   "settings.appearance.table-style": "0.14.0",
   "settings.appearance.filter-bar": "0.16.0",
+  "settings.appearance.filter-mode": NEXT_FEATURE_VERSION,
   "settings.appearance.seasonal": "0.15.0",
   "settings.appearance.themes": "0.17.0",
   "settings.appearance.db-themes": "0.17.0",

@@ -9,6 +9,7 @@ import { localIsoDate } from "@/lib/filter-bar-format";
 import { normalizeFilterExpressionQuotes, parseFilterExpression } from "@/lib/filter-parser";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { activeRuleConditions } from "@/lib/row-rules";
+import { useSettingsStore } from "@/lib/settings";
 import { compileFilterConditions, filterSupportsOr } from "@/lib/sql-filter";
 import type { FilterCondition, RowRule } from "@/lib/table-view-state";
 
@@ -31,7 +32,11 @@ export function useFilterBarModel({
   const caps = useActiveCapabilities();
   const kind = useActiveConnection()?.kind;
   const json = caps.query_language === "json";
-  const [mode, setMode] = useTableViewState(stateKey, "filterMode", "simple");
+  const [mode, setMode] = useTableViewState(
+    stateKey,
+    "filterMode",
+    useSettingsStore.getState().tableFilterMode,
+  );
   const [stored, setStored] = useTableViewState(stateKey, "filterConditions", () => [
     emptyCondition(),
   ]);

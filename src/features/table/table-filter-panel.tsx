@@ -28,6 +28,7 @@ import { useListAnimation } from "@/lib/hooks/use-list-animation";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { useHasNewFeatures } from "@/lib/new-features";
 import { activeRuleConditions, describeRule } from "@/lib/row-rules";
+import { useSettingsStore } from "@/lib/settings";
 import { compileFilterConditions } from "@/lib/sql-filter";
 import type { FilterCondition as Condition } from "@/lib/table-view-state";
 import { FilterGroupingPreview } from "./filter-bar/filter-grouping-preview";
@@ -67,7 +68,11 @@ export function TableFilterPanel({
   const redis = caps.query_language === "redis";
   const native = redis;
   const [open, setOpen] = useTableViewState(stateKey, "filterOpen", false);
-  const [mode, setMode] = useTableViewState(stateKey, "filterMode", "simple");
+  const [mode, setMode] = useTableViewState(
+    stateKey,
+    "filterMode",
+    useSettingsStore.getState().tableFilterMode,
+  );
   const [filterConditions, setFilterConditions] = useTableViewState(
     stateKey,
     "filterConditions",
