@@ -2,12 +2,26 @@ import { collectDiagnosticText } from "@/features/settings/bug-report-dialog";
 import { redactErrorMessage } from "@/lib/diagnostics/redact";
 import { captureRedactedScreenshot } from "@/lib/issue-screenshot";
 import { useQueryHistoryStore } from "@/lib/query-history";
+import { SQL_KEYWORDS } from "@/lib/sql-intellisense/keywords";
 
 export function withoutValues(message: string): string {
   return message
     .replace(/'(?:[^']|'')*'/g, "'…'")
     .replace(/"[^"\n]*"/g, '"…"')
     .replace(/=\([^)]*\)/g, "=(…)");
+}
+
+const WORD = /[\p{L}_][\p{L}\p{N}_$#]*/gu;
+const KEYWORDS = new Set(SQL_KEYWORDS.flatMap((keyword) => keyword.toLowerCase().split(" ")));
+const STATEMENT_SCAN_CHARS = 20_000;
+
+export function withoutStatementNames(message: string, sql: string): string {
+  const names = new Set<string>();
+  for (const word of sql.slice(0, STATEMENT_SCAN_CHARS).match(WORD) ?? []) {
+    const name = word.toLowerCase();
+    if (name.length > 1 && !KEYWORDS.has(name)) names.add(name);
+  }
+  return message.replace(WORD, (word) => (names.has(word.toLowerCase()) ? "…" : word));
 }
 
 const PENDING_SCREENSHOT_MS = 10 * 60_000;
@@ -39,7 +53,7 @@ export async function handleChatIssueRequest(texts: readonly string[] = []): Pro
     .getState()
     .entries.filter((entry) => entry.error)
     .slice(0, 3)
-    .map((entry) => `- ${redactErrorMessage(entry.error ?? "")}`);
+    .map((entry) => `- ${withoutStatementNames(redactErrorMessage(entry.error ?? ""), entry.sql)}`);
   return {
     diagnostics: withoutValues(
       failed.length

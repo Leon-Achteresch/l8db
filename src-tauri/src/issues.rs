@@ -18,6 +18,73 @@ static HOST_PORT: LazyLock<regex::Regex> = LazyLock::new(|| {
     .expect("host pattern")
 });
 
+static NAME: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"\b[\p{L}_][\p{L}\p{N}_$#]*(?:\.[\p{L}_][\p{L}\p{N}_$#]*)*")
+        .expect("name pattern")
+});
+static LINE_PREFIX: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(
+        r"^(?:\[\d{4}-\d\d-\d\d\]\[[\d:]+\]\[[A-Z]+\]\[[^\]]*\]|- \[\d{4}-[^\]]*\] [\w.-]+:)",
+    )
+    .expect("prefix pattern")
+});
+const SOURCE_EXTENSIONS: [&str; 5] = [".rs", ".ts", ".tsx", ".js", ".mjs"];
+const PLAIN_UPPERCASE: &str = " AI ALL ALTER AND API AS BEGIN BETWEEN BIGINT BLOB BODY BOOLEAN BY CALL CASE CHAR CHECK CLASS CLOB COLUMN COMMIT CONSTRAINT CREATE CSV DATABASE DATE DB DEBUG DECLARE DEFAULT DELETE DIRECTORY DISTINCT DROP ELSE END EOF ERROR EXCEPTION EXECUTE EXISTS FATAL FOREIGN FROM FUNCTION GRANT GROUP HAVING HTTP HTTPS ID IN INDEX INFO INNER INSERT INT INTEGER INTO IO IS JAVA JDBC JOIN JSON KEY LEFT LIBRARY LIKE LIMIT LINK MATERIALIZED MCP MERGE NOT NULL NUMBER NUMERIC NVARCHAR ODBC OFFSET OK ON OR ORA ORDER OS OUTER PACKAGE PL PLS PRIMARY PROCEDURE REFERENCES REPLACE RETURNING REVOKE RIGHT ROLE ROLLBACK SCHEMA SELECT SEQUENCE SET SOURCE SQL SQLSTATE SSH SSL SYNONYM TABLE TCP TEXT THEN TIMESTAMP TLS TNS TRIGGER TRUNCATE TYPE UNION UNIQUE UPDATE URL USER UTF VALUES VARCHAR VARCHAR2 VIEW WARN WARNING WHEN WHERE WITH XML ";
+
+fn is_object_name(line: &str, word: regex::Match) -> bool {
+    let text = word.as_str();
+    if text.contains('.') {
+        return !SOURCE_EXTENSIONS.iter().any(|ext| text.ends_with(ext));
+    }
+    if text.contains('_') {
+        return true;
+    }
+    if text.chars().count() < 2
+        || !text.chars().any(char::is_uppercase)
+        || text.chars().any(char::is_lowercase)
+        || PLAIN_UPPERCASE.contains(&format!(" {text} "))
+    {
+        return false;
+    }
+    let mut after = line[word.end()..].chars();
+    if after.next() == Some('-') && after.next().is_some_and(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    let before = &line[..word.start()];
+    let state = before
+        .char_indices()
+        .rev()
+        .nth(11)
+        .map_or(before, |(start, _)| &before[start..]);
+    !(text.len() == 5
+        && text.chars().any(|c| c.is_ascii_digit())
+        && state.to_ascii_uppercase().contains("STATE"))
+}
+
+fn scrub_names(text: &str) -> String {
+    text.lines()
+        .map(|line| {
+            let keep = LINE_PREFIX.find(line).map_or(0, |prefix| prefix.end());
+            let rest = &line[keep..];
+            let mut scrubbed = String::with_capacity(line.len());
+            scrubbed.push_str(&line[..keep]);
+            let mut last = 0;
+            for word in NAME.find_iter(rest) {
+                scrubbed.push_str(&rest[last..word.start()]);
+                scrubbed.push_str(if is_object_name(rest, word) {
+                    "…"
+                } else {
+                    word.as_str()
+                });
+                last = word.end();
+            }
+            scrubbed.push_str(&rest[last..]);
+            scrubbed
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn scrub_log_line(line: &str) -> String {
     let mut line = crate::desktop::redact(line);
     for home in ["HOME", "USERPROFILE"]
@@ -31,7 +98,7 @@ fn scrub_log_line(line: &str) -> String {
     }
     let line = QUOTED.replace_all(&line, "$1'…'");
     let line = HOST_PORT.replace_all(&line, "<host>");
-    line.chars().take(400).collect()
+    scrub_names(&line).chars().take(400).collect()
 }
 
 pub fn set_log_dir(dir: PathBuf) {
@@ -108,7 +175,7 @@ pub fn compose(args: &Value, diagnostics: &str) -> Result<(String, String), Stri
         env!("CARGO_PKG_VERSION"),
         std::env::consts::OS,
         std::env::consts::ARCH,
-        crate::desktop::redact(diagnostics)
+        scrub_names(&crate::desktop::redact(diagnostics))
     );
     let environment: String = environment.chars().take(4_000).collect();
     let mut body = format!(
@@ -176,6 +243,29 @@ mod tests {
     }
 
     #[test]
+    fn diagnostics_and_logs_lose_object_names_but_keep_codes() {
+        let diagnostics = "l8db: 0.19.0-canary.3\nOS: windows (Win32)\n- [2026-11-19T09:48:30.123Z] window.error: Tabelle KUNDEN fehlt\n\nLetzte fehlgeschlagene Abfragen:\n- Oracle: ORA-24344: PACKAGE BODY PA_ABRECHNUNG wurde mit Kompilierfehlern erstellt\nZeile 1, Spalte 15: PLS-00905: Objekt KUNDEN_TEST.PA_ABRECHNUNG ist ungültig\nPL/SQL: Compilation unit analysis terminated\n- no such table: main.rechnung_kopf (SQLSTATE HY000) in ÄRZTE";
+        let (_, body) = compose(&json!({"title": "t", "body": "b"}), diagnostics).unwrap();
+        for name in ["KUNDEN", "PA_ABRECHNUNG", "rechnung_kopf", "ÄRZTE"] {
+            assert!(!body.contains(name), "{name}");
+        }
+        for kept in [
+            "l8db: 0.19.0-canary.3\nOS: windows (Win32)",
+            "- [2026-11-19T09:48:30.123Z] window.error: Tabelle … fehlt",
+            "- Oracle: ORA-24344: PACKAGE BODY … wurde mit Kompilierfehlern erstellt",
+            "Zeile 1, Spalte 15: PLS-00905: Objekt … ist ungültig",
+            "PL/SQL: Compilation unit analysis terminated",
+            "- no such table: … (SQLSTATE HY000) in …",
+        ] {
+            assert!(body.contains(kept), "{kept}\n{body}");
+        }
+        assert_eq!(
+            scrub_log_line("[2026-11-19][09:48:30][WARN][odbc_api::handles::logging] State: HY000, panicked at src/db/oracle_security.rs:12:5 for T_AUFTRAG"),
+            "[2026-11-19][09:48:30][WARN][odbc_api::handles::logging] State: HY000, panicked at src/db/oracle_security.rs:12:5 for …"
+        );
+    }
+
+    #[test]
     fn recent_log_keeps_bounded_redacted_warnings_of_newest_file() {
         let dir = tempfile::tempdir().unwrap();
         let old = dir.path().join("old.log");
@@ -192,6 +282,7 @@ mod tests {
                 "[d][t][INFO][x] info {i}\n[d][t][WARN][x] warn {i}\n"
             ));
         }
+        log.push_str("[2026-11-06][12:34:05][ERROR][l8db_lib] PLS-00905: Objekt KUNDEN_TEST.PA_ABRECHNUNG ist ungültig\n");
         log.push_str("[2026-11-06][12:34:05][ERROR][l8db_lib] panic: couldn't reach db.intern:5432 or 10.0.0.7:1521 WHERE name = 'Max' password=hunter2\n");
         std::fs::write(dir.path().join("l8db.log"), &log).unwrap();
         let started = std::time::Instant::now();
@@ -200,6 +291,7 @@ mod tests {
         assert_eq!(text.lines().count(), LOG_LINES);
         assert!(text.len() <= LOG_LINES * 401 * 4);
         assert!(text.ends_with("[2026-11-06][12:34:05][ERROR][l8db_lib] panic: couldn't reach <host> or <host> WHERE name = '…' password=<redacted>"));
+        assert!(text.contains("[ERROR][l8db_lib] PLS-00905: Objekt … ist ungültig\n"));
         assert!(!text.contains("info") && !text.contains("alt"));
         assert!(recent_log(&dir.path().join("fehlt")).is_empty());
     }
