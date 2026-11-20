@@ -1,9 +1,8 @@
 import { PlusIcon } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useId } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { CHART_FIELD_MIME } from "./chart-visual-builder-model";
-import { useFieldDragActive } from "./use-field-drag-active";
+import { useFieldDragActive, useFieldDrop } from "./field-dnd";
 
 export function ChartFieldZone({
   title,
@@ -20,26 +19,17 @@ export function ChartFieldZone({
   onDrop: (ref: string) => void;
   children: ReactNode;
 }) {
-  const [over, setOver] = useState(false);
-  const dragging = useFieldDragActive(CHART_FIELD_MIME);
+  const zone = useFieldDrop(
+    useId(),
+    (data) => Boolean(data.ref),
+    (data) => data.ref && onDrop(data.ref),
+  );
+  const over = zone.isDropTarget;
+  const dragging = useFieldDragActive("ref");
   return (
     <section
       aria-label={title}
-      onDragOver={(event) => {
-        if (!event.dataTransfer.types.includes(CHART_FIELD_MIME)) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "copy";
-        setOver(true);
-      }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(false);
-      }}
-      onDrop={(event) => {
-        event.preventDefault();
-        setOver(false);
-        const ref = event.dataTransfer.getData(CHART_FIELD_MIME);
-        if (ref) onDrop(ref);
-      }}
+      ref={zone.ref}
       className={cn(
         "space-y-3 rounded-xl border bg-card p-3 transition-[border-color,background-color,box-shadow] duration-200",
         dragging && !over && "border-dashed border-primary/50 bg-primary/[0.03]",

@@ -8,7 +8,6 @@ import {
 import type { DatasetColumn } from "./use-dataset-query";
 
 export type ChartFieldTarget = "metric" | "dimension" | "dimension2" | "filter";
-export const CHART_FIELD_MIME = "application/x-l8db-chart-field";
 
 export function fieldTypeLabel(type: string): string {
   return isNumericType(type) ? "Zahl" : isDateType(type) ? "Datum" : "Text";

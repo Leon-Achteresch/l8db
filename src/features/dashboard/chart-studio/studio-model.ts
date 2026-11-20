@@ -10,9 +10,6 @@ import type { DatabaseKind } from "@/lib/db";
 import { identifierStyleForKind, quoteIdentifier } from "@/lib/export";
 import type { DatasetColumn } from "../use-dataset-query";
 
-export const JOIN_COLUMN_MIME = "application/x-l8db-join-column";
-export const SOURCE_TABLE_MIME = "application/x-l8db-source-table";
-
 export interface StudioNode {
   id: string;
   parent: string | null;

@@ -1,10 +1,14 @@
 import { EyeIcon, PlusIcon, SearchIcon, SparklesIcon, Table2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Input } from "@/components/ui/input";
+import { WidthHandle } from "@/components/width-handle";
+import { SOURCE_LIST_MAX_WIDTH, SOURCE_LIST_MIN_WIDTH } from "@/lib/dashboard-workspace";
 import { likelyRelated } from "@/lib/dashboards";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useTablesQuery, useViewsQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
-import { SOURCE_TABLE_MIME } from "./studio-model";
+import { FieldDragButton } from "../field-drag-button";
 
 const MAX_VISIBLE_SOURCES = 100;
 
@@ -20,14 +24,19 @@ export function StudioSourceList({
   columnNames,
   fkTables,
   onPick,
+  width,
+  onWidth,
 }: {
   hasBase: boolean;
   onCanvas: Set<string>;
   columnNames: string[];
   fkTables: Set<string>;
   onPick: (source: SourceTable) => void;
+  width: number;
+  onWidth: (width: number) => void;
 }) {
   const [search, setSearch] = useState("");
+  const feature = useNewFeatureVisibility<HTMLElement>("dashboard.studio.source-width");
   const tables = useTablesQuery();
   const views = useViewsQuery();
   const sources = useMemo<SourceTable[]>(
@@ -54,26 +63,24 @@ export function StudioSourceList({
   const row = (source: SourceTable, hint?: boolean) => {
     const placed = onCanvas.has(key(source));
     const Icon = source.view ? EyeIcon : Table2Icon;
+    const name = source.schema ? `${source.schema}.${source.table}` : source.table;
     return (
       <li key={`${source.view ? "v" : "t"}:${key(source)}`}>
-        <button
-          type="button"
-          draggable={!placed}
+        <FieldDragButton
+          dragId={`source:${source.view ? "v" : "t"}:${key(source)}`}
+          drag={{ source }}
+          dragDisabled={placed}
           disabled={placed}
-          onDragStart={(event) => {
-            event.dataTransfer.setData(SOURCE_TABLE_MIME, JSON.stringify(source));
-            event.dataTransfer.effectAllowed = "copy";
-          }}
           onClick={() => onPick(source)}
           title={
             placed
-              ? "Schon im Datenmodell"
+              ? `${name} · schon im Datenmodell`
               : hasBase
-                ? `${source.table} verbinden`
-                : `Mit ${source.table} starten`
+                ? `${name} verbinden`
+                : `Mit ${name} starten`
           }
           className={cn(
-            "group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-50",
+            "group flex w-full cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-50",
             hint && "bg-primary/5 hover:bg-primary/10",
           )}
         >
@@ -87,19 +94,30 @@ export function StudioSourceList({
           ) : (
             <PlusIcon className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
           )}
-        </button>
+        </FieldDragButton>
       </li>
     );
   };
 
   return (
     <aside
+      ref={feature.ref}
       aria-label="Datenquellen"
-      className="flex min-h-0 flex-col gap-3 border-r bg-muted/25 p-3"
+      className="relative flex min-h-0 flex-col gap-3 border-r bg-muted/25 p-3"
     >
+      <WidthHandle
+        label="Breite der Tabellenliste"
+        side="left"
+        width={width}
+        min={SOURCE_LIST_MIN_WIDTH}
+        max={SOURCE_LIST_MAX_WIDTH}
+        onChange={onWidth}
+        className="hidden lg:flex"
+      />
       <div>
-        <h2 className="text-xs font-semibold">
+        <h2 className="flex items-center gap-1.5 text-xs font-semibold">
           {hasBase ? "Tabelle verbinden" : "Womit startest du?"}
+          {feature.isNew && <NewBadge />}
         </h2>
         <p className="mt-0.5 text-[11px] text-muted-foreground">
           {hasBase

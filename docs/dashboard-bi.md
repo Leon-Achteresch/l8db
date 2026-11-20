@@ -37,6 +37,34 @@ hex, `rgb()`, `hsl()`, `oklch()` or `oklab()`; anything else is rejected when sa
 importing or syncing and dropped from the live preview. The theme compiles to scoped CSS
 before the dashboard's own CSS.
 
+## Filters and periods
+
+Dashboard filters (`variables`) are separate pills, so several can be combined
+(for example customer and order type); all active filters apply with `AND`.
+
+- **From a column** (`column: { schema, table, column, dataType? }`): the values are
+  loaded with a dialect-aware `SELECT DISTINCT`-style query (up to 500 values). The
+  filter applies automatically to every builder chart whose base table or a join is
+  exactly that table; schema and table must match. A chart filter coupled to the same
+  variable wins, so the condition is never added twice. Expert SQL charts still use the
+  `{{name}}` token.
+- **Multiple values** (`multiple: true`, select filters only): the value is stored as a
+  JSON array. Builder charts get `IN (...)` (`=` becomes `IN`, `<>` becomes `NOT IN`);
+  in SQL the token expands to a quoted list, so write `column IN ({{name}})`. An empty
+  selection means "all". Oracle lists are split into chunks of 1000. Changing a
+  filter's definition resets its current selection.
+- **Custom period**: next to the presets, `period` accepts `YYYY-MM-DD..YYYY-MM-DD`
+  (inclusive, normalized so start <= end). It filters `>= start AND < end + 1 day`.
+  Comparison uses the previous span of equal length or the same span one year earlier;
+  the trend bucket is daily up to 62 days, weekly up to 190 days, then monthly.
+  Malformed values count as "all" and are never put into SQL; the MCP accepts the same
+  format.
+
+Fields, tables and join columns in the chart studio are dragged with pointer events
+(`@dnd-kit`), not native HTML5 drag and drop, because the webview's file drop handling
+swallows native drags on Windows. The table list on the left can be resized
+(200-640 px, stored per installation).
+
 ## Interactions
 
 - **Cross filter** (`options.crossFilter`, default on): clicking a bar, slice, row or

@@ -13,6 +13,7 @@ import { type Dataset, type DatasetShape, emptySimple, type Widget } from "@/lib
 import { useHasNewFeatures } from "@/lib/new-features";
 import { useTablesQuery, useViewsQuery } from "@/lib/queries";
 import { ChartVisualBuilder } from "./chart-visual-builder";
+import { FieldDndProvider } from "./field-dnd-provider";
 
 export function ChartQuickForm({
   dataset,
@@ -84,7 +85,9 @@ export function ChartQuickForm({
         </label>
       </div>
       {simple.table ? (
-        <ChartVisualBuilder key={sourceKey} dataset={dataset} onChange={onDataset} />
+        <FieldDndProvider>
+          <ChartVisualBuilder key={sourceKey} dataset={dataset} onChange={onDataset} />
+        </FieldDndProvider>
       ) : (
         <div className="flex flex-col items-start gap-3 rounded-xl bg-muted/35 p-6">
           <Table2Icon className="size-6 text-muted-foreground" />

@@ -1,4 +1,5 @@
 import type { DatabaseKind } from "@/lib/db";
+import { parseFilterList } from "@/lib/sql-filter";
 import { quoteString } from "@/lib/sql-filter/quote";
 import type { DashboardVariable } from "./model";
 
@@ -47,11 +48,27 @@ export function scopeValue(scope: VariableScope, name: string): string | null {
   return scope.values[name] ?? variable.defaultValue ?? "";
 }
 
+export function variableList(variable: DashboardVariable, value: string): string[] {
+  if (variable.multiple)
+    return parseFilterList(value)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  return value.trim() ? [value] : [];
+}
+
 export function variableLiteral(
   variable: DashboardVariable,
   value: string,
   kind: DatabaseKind | null,
 ): string {
+  if (variable.multiple) {
+    const list = variableList(variable, value);
+    return list.length
+      ? list
+          .map((item) => quoteString(neutralBackslashes(item, kind), kind ?? undefined))
+          .join(", ")
+      : "NULL";
+  }
   const trimmed = value.trim();
   if (!trimmed) return "NULL";
   if (variable.type === "number") return /^-?\d+(\.\d+)?$/.test(trimmed) ? trimmed : "NULL";

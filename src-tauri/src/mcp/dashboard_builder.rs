@@ -123,7 +123,61 @@ pub(super) fn variable_value(
     )
 }
 
+fn variable_list(variable: &Value, value: &str) -> Vec<String> {
+    let raw: Vec<String> = if variable["multiple"].as_bool() == Some(true) {
+        match serde_json::from_str::<Vec<Value>>(value) {
+            Ok(list) => list
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect(),
+            Err(_) => vec![value.to_string()],
+        }
+    } else {
+        vec![value.to_string()]
+    };
+    let mut out: Vec<String> = Vec::new();
+    for item in raw {
+        let item = item.trim().to_string();
+        if !item.is_empty() && !out.contains(&item) {
+            out.push(item);
+        }
+    }
+    out
+}
+
+fn multi_condition(col: &str, op: &str, list: &[String], kind: DatabaseKind) -> Option<String> {
+    if list.is_empty() {
+        return None;
+    }
+    match op {
+        "eq" | "in" => condition(col, "in", &json!(list).to_string(), kind),
+        "neq" | "notIn" => condition(col, "notIn", &json!(list).to_string(), kind),
+        _ => {
+            let parts: Vec<String> = list
+                .iter()
+                .filter_map(|value| condition(col, op, value, kind))
+                .collect();
+            match parts.len() {
+                0 => None,
+                1 => parts.into_iter().next(),
+                _ => Some(format!("({})", parts.join(" OR "))),
+            }
+        }
+    }
+}
+
 fn variable_literal(variable: &Value, value: &str, kind: DatabaseKind) -> String {
+    if variable["multiple"].as_bool() == Some(true) {
+        let list = variable_list(variable, value);
+        if list.is_empty() {
+            return "NULL".into();
+        }
+        return list
+            .iter()
+            .map(|item| quote_string(item, kind))
+            .collect::<Vec<_>>()
+            .join(", ");
+    }
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return "NULL".into();
@@ -294,9 +348,32 @@ pub(super) fn parse_variables(value: &Value) -> Result<Vec<Value>, String> {
             {
                 variable["optionsSql"] = json!(sql);
             }
-            if variable.get("options").is_none() && variable.get("optionsSql").is_none() {
+            if item["multiple"].as_bool() == Some(true) {
+                variable["multiple"] = json!(true);
+            }
+            if let Some(bound) = item["column"].as_object() {
+                let text = |key: &str| bound.get(key).and_then(Value::as_str).unwrap_or("").trim();
+                if text("table").is_empty() || text("column").is_empty() {
+                    return Err(format!(
+                        "variable '{name}'.column braucht table und column."
+                    ));
+                }
+                let mut column = json!({
+                    "schema": text("schema"),
+                    "table": text("table"),
+                    "column": text("column"),
+                });
+                if !text("dataType").is_empty() {
+                    column["dataType"] = json!(text("dataType"));
+                }
+                variable["column"] = column;
+            }
+            if variable.get("options").is_none()
+                && variable.get("optionsSql").is_none()
+                && variable.get("column").is_none()
+            {
                 return Err(format!(
-                    "variable '{name}' (select) braucht options oder optionsSql."
+                    "variable '{name}' (select) braucht options, optionsSql oder column."
                 ));
             }
         }
@@ -1121,31 +1198,71 @@ pub(super) fn builder_sql(
             on.join(" AND ")
         ));
     }
-    let wheres: Vec<String> = simple["filters"]
+    let mut coupled: Vec<String> = Vec::new();
+    let mut wheres: Vec<String> = simple["filters"]
         .as_array()
         .into_iter()
         .flatten()
         .filter_map(|filter| {
             let column = filter["column"].as_str()?;
             let raw = filter["value"].as_str().unwrap_or("");
-            let value = match token_name(raw) {
+            let op = filter["operator"].as_str().unwrap_or("eq");
+            let col = ref_expr(simple, column, kind, 0);
+            match token_name(raw) {
                 Some(name) => {
+                    coupled.push(name.to_string());
+                    let variable = variables.iter().find(|v| v["name"] == name)?;
                     let value = variable_value(variables, values, name)?;
                     if value.trim().is_empty() {
                         return None;
                     }
-                    value
+                    if variable["multiple"].as_bool() == Some(true) {
+                        return multi_condition(&col, op, &variable_list(variable, &value), kind);
+                    }
+                    condition(&col, op, &value, kind)
                 }
-                None => raw.to_string(),
-            };
-            condition(
-                &ref_expr(simple, column, kind, 0),
-                filter["operator"].as_str().unwrap_or("eq"),
-                &value,
-                kind,
-            )
+                None => condition(&col, op, raw, kind),
+            }
         })
         .collect();
+    let joins = joins_of(simple);
+    for variable in variables {
+        let Some(bound) = variable["column"].as_object() else {
+            continue;
+        };
+        let name = variable["name"].as_str().unwrap_or("");
+        if coupled.iter().any(|c| c == name) {
+            continue;
+        }
+        let text = |key: &str| bound.get(key).and_then(Value::as_str).unwrap_or("");
+        let (schema, table, column) = (text("schema"), text("table"), text("column"));
+        if column.is_empty() {
+            continue;
+        }
+        let reference = if simple["schema"].as_str().unwrap_or("") == schema && table_name == table
+        {
+            column.to_string()
+        } else if let Some(join) = joins.iter().find(|j| {
+            j["schema"].as_str().unwrap_or("") == schema
+                && j["table"].as_str().unwrap_or("") == table
+        }) {
+            format!(
+                "{JOIN_PREFIX}{}:{column}",
+                join["id"].as_str().unwrap_or("")
+            )
+        } else {
+            continue;
+        };
+        let value = variable_value(variables, values, name).unwrap_or_default();
+        if let Some(found) = multi_condition(
+            &ref_expr(simple, &reference, kind, 0),
+            "in",
+            &variable_list(variable, &value),
+            kind,
+        ) {
+            wheres.push(found);
+        }
+    }
     if !wheres.is_empty() {
         lines.push(format!("WHERE {}", wheres.join(" AND ")));
     }

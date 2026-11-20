@@ -171,3 +171,279 @@ test.skipIf(!process.env.L8DB_DASH_E2E)(
   },
   60000,
 );
+
+test.skipIf(!process.env.L8DB_DASH_E2E)(
+  "Studio drags, resizes the source list, filters by custom ranges and multi value filters",
+  async () => {
+    ensureSeeded(DB, "public.orders", `${import.meta.dir}/fixtures/dashboard-e2e-seed.sql`);
+    const browser = await chromium.launch();
+    const errors: string[] = [];
+    log.length = 0;
+    try {
+      const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+      page.on("pageerror", (error) => errors.push(error.message));
+      await page.exposeFunction("__db", (cmd: string, args: Record<string, string>) => {
+        try {
+          return db(cmd, args);
+        } catch (error) {
+          return { __error: String(error) };
+        }
+      });
+      await page.addInitScript(initScript);
+      await page.goto(`${BASE}/dashboard`);
+      await page.getByRole("button", { name: "Dashboard erstellen", exact: true }).click();
+      await page.getByRole("button", { name: "Ersten Chart erstellen", exact: true }).click();
+
+      const sources = page.getByRole("complementary", { name: "Datenquellen" });
+      const model = page.getByRole("region", { name: "Datenmodell", exact: true });
+      const rect = async (locator: import("playwright").Locator) => {
+        const box = await locator.boundingBox();
+        if (!box) throw new Error("Element ist nicht sichtbar");
+        return box;
+      };
+      const pointerDrag = async (
+        from: import("playwright").Locator,
+        to: import("playwright").Locator,
+      ) => {
+        const a = await rect(from);
+        const b = await rect(to);
+        await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(a.x + a.width / 2 + 10, a.y + a.height / 2 + 6, { steps: 3 });
+        await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 });
+        await page.mouse.up();
+      };
+
+      const source = (name: string) =>
+        sources.getByRole("button", { name: new RegExp(`^public\\.${name}( |$)`) });
+      const orders = source("orders");
+      await pointerDrag(orders, sources.getByRole("textbox", { name: "Tabellen suchen" }));
+      await page.waitForTimeout(300);
+      expect(await page.locator("[data-node]").count()).toBe(0);
+
+      const box = await rect(orders);
+      await page.mouse.move(box.x + 20, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x + 22, box.y + box.height / 2 + 1);
+      await page.mouse.up();
+      await page.locator("[data-node]").first().waitFor();
+      expect(await page.locator("[data-node]").count()).toBe(1);
+      expect(await orders.isDisabled()).toBe(true);
+
+      await pointerDrag(source("customers"), model);
+      const pendingCard = page.locator('[data-node="__pending"]');
+      await pendingCard.waitFor();
+      await pendingCard.getByRole("button", { name: /^id( |$)/ }).waitFor();
+      await pointerDrag(
+        page.locator('[data-node=""]').getByRole("button", { name: /^customer_id( |$)/ }),
+        page.locator('[data-node=""]').getByRole("button", { name: /^plan( |$)/ }),
+      );
+      await page.waitForTimeout(200);
+      expect(await pendingCard.count()).toBe(1);
+      await pointerDrag(
+        page.locator('[data-node=""]').getByRole("button", { name: /^customer_id( |$)/ }),
+        pendingCard.getByRole("button", { name: /^id( |$)/ }),
+      );
+      await pendingCard.waitFor({ state: "detached" });
+      expect(await page.locator("[data-node]").count()).toBe(2);
+
+      const handle = page.getByRole("separator", { name: "Breite der Tabellenliste" });
+      const before = (await rect(sources)).width;
+      expect(Math.round(before)).toBe(240);
+      const h = await rect(handle);
+      await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(h.x + 160, h.y + h.height / 2, { steps: 6 });
+      await page.mouse.up();
+      const wider = (await rect(sources)).width;
+      expect(wider).toBeGreaterThan(before + 140);
+      await page.mouse.move(h.x + 160, h.y + h.height / 2);
+      const h2 = await rect(handle);
+      await page.mouse.move(h2.x + h2.width / 2, h2.y + h2.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(h2.x + 2000, h2.y + h2.height / 2, { steps: 4 });
+      await page.mouse.up();
+      expect(Math.round((await rect(sources)).width)).toBe(640);
+      await handle.focus();
+      await page.keyboard.press("Home");
+      expect(Math.round((await rect(sources)).width)).toBe(200);
+      await page.keyboard.press("ArrowRight");
+      expect(await handle.getAttribute("aria-valuenow")).toBe("220");
+      await page.keyboard.press("End");
+      await page.waitForFunction(
+        () =>
+          JSON.parse(localStorage.getItem("l8db.dashboard-workspace") ?? "{}").state
+            ?.sourceListWidth === 640,
+        undefined,
+        { timeout: 5000 },
+      );
+      const truncated = await source("v_orders").evaluate((el) => {
+        const label = el.querySelector("span.truncate") as HTMLElement;
+        return label.scrollWidth > label.clientWidth;
+      });
+      expect(truncated).toBe(false);
+
+      const field = (name: string) =>
+        page
+          .locator("[data-node]")
+          .first()
+          .getByRole("button", { name: new RegExp(`^${name}( |$)`) });
+      const zone = (name: string) => page.getByRole("region", { name, exact: true });
+      await zone("Kennzahlen").scrollIntoViewIfNeeded();
+      await pointerDrag(field("amount"), zone("Kennzahlen"));
+      await pointerDrag(field("created_at"), zone("Aufteilung"));
+      await page.locator(".chart-surface").first().waitFor();
+      await field("plan").click();
+      await zone("Zweite Aufteilung")
+        .getByRole("button", { name: /zuweisen/ })
+        .click();
+      await page.waitForTimeout(800);
+      expect(log.some((e) => e.sql.includes('"plan"') && e.sql.includes("SUM("))).toBe(true);
+
+      const add = page.getByRole("button", { name: "Zum Dashboard hinzufügen", exact: true });
+      await add.click();
+      await add.waitFor({ state: "hidden" });
+      await page.locator(".l8-item .chart-surface").first().waitFor();
+
+      await page.getByRole("button", { name: "Filter hinzufügen" }).click();
+      const editor = page.getByRole("dialog");
+      await editor.getByRole("button", { name: "Aus Spalte", exact: true }).click();
+      await editor.getByRole("combobox", { name: "Tabelle" }).click();
+      await page.getByRole("option", { name: "public.orders", exact: true }).click();
+      await editor.getByRole("combobox", { name: "Spalte" }).click();
+      await page.getByRole("option", { name: /^plan/ }).click();
+      await editor.getByRole("checkbox", { name: "Mehrfachauswahl" }).click();
+      await editor.getByText("IN ({{plan}})").waitFor();
+      await editor.getByRole("button", { name: "Filter anlegen" }).click();
+      const bar = page.getByRole("toolbar", { name: "Dashboard-Filter" });
+      await editor.waitFor({ state: "hidden" });
+      const plan = bar.getByRole("button", { name: "plan", exact: true });
+      await plan.waitFor();
+      log.length = 0;
+      await plan.click();
+      await page.getByRole("checkbox", { name: "Pro" }).click();
+      await page.getByRole("checkbox", { name: "Team" }).click();
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(1200);
+      const multi = log.filter((e) => e.sql.includes(`"plan" IN ('Pro', 'Team')`));
+      expect(multi.length).toBeGreaterThan(0);
+      expect(multi.at(-1)?.error).toBeUndefined();
+      expect(await plan.textContent()).toContain("Pro, Team");
+
+      await page.getByRole("button", { name: "Filter hinzufügen" }).click();
+      await editor.getByRole("textbox", { name: "Name des Filters" }).fill("Kunde");
+      await editor.getByRole("button", { name: "Aus Spalte", exact: true }).click();
+      await editor.getByRole("combobox", { name: "Tabelle" }).click();
+      await page.getByRole("option", { name: "public.customers", exact: true }).click();
+      await editor.getByRole("combobox", { name: "Spalte" }).click();
+      await page.getByRole("option", { name: /^name/ }).click();
+      await editor.getByRole("button", { name: "Filter anlegen" }).click();
+      await editor.waitFor({ state: "hidden" });
+      await bar.getByRole("combobox", { name: "Kunde", exact: true }).click();
+      await page.getByRole("option", { name: "Kunde 7", exact: true }).click();
+      await page.waitForTimeout(1200);
+      const both = log.filter(
+        (e) => e.sql.includes(`"plan" IN ('Pro', 'Team')`) && e.sql.includes(`'Kunde 7'`),
+      );
+      expect(both.length).toBeGreaterThan(0);
+      expect(both.at(-1)?.error).toBeUndefined();
+
+      log.length = 0;
+      await page.getByRole("combobox", { name: "Zeitraum" }).first().click();
+      await page.getByRole("option", { name: "Eigener Zeitraum…" }).click();
+      const range = page.getByRole("dialog");
+      await range.getByLabel("Von").fill("2026-01-01");
+      await range.getByLabel("Bis").fill("2026-01-31");
+      await page.waitForTimeout(600);
+      await range.getByRole("button", { name: "Übernehmen" }).click();
+      await page.waitForTimeout(1200);
+      const ranged = log.filter(
+        (e) =>
+          e.sql.includes(`>= '2026-01-01'`) &&
+          e.sql.includes(`< '2026-02-01'`) &&
+          e.sql.includes(`"plan" IN`),
+      );
+      expect(ranged.length).toBeGreaterThan(0);
+      expect(ranged.at(-1)?.error).toBeUndefined();
+      expect(
+        await page.getByRole("combobox", { name: "Zeitraum" }).first().textContent(),
+      ).toContain("01.01.2026 – 31.01.2026");
+
+      await page.getByRole("combobox", { name: "Zeitraum" }).first().click();
+      await page.getByRole("option", { name: "Eigener Zeitraum…" }).click();
+      await range.getByLabel("Von").fill("2026-03-31");
+      await range.getByLabel("Bis").fill("2026-03-01");
+      await range.getByRole("button", { name: "Übernehmen" }).click();
+      await page.waitForTimeout(800);
+      expect(
+        await page.getByRole("combobox", { name: "Zeitraum" }).first().textContent(),
+      ).toContain("01.03.2026 – 31.03.2026");
+      await page.getByRole("combobox", { name: "Zeitraum" }).first().click();
+      await page.getByRole("option", { name: "Eigener Zeitraum…" }).click();
+      await range.getByLabel("Von").fill("");
+      expect(await range.getByRole("button", { name: "Übernehmen" }).isDisabled()).toBe(true);
+      await range.getByRole("button", { name: "Abbrechen" }).click();
+      await page.getByRole("combobox", { name: "Zeitraum" }).first().click();
+      await page.getByRole("option", { name: "Letzte 30 Tage" }).click();
+      expect(
+        await page.getByRole("combobox", { name: "Zeitraum" }).first().textContent(),
+      ).toContain("Letzte 30 Tage");
+
+      const toolbarPeriod = page.getByRole("combobox", { name: "Zeitraum" }).first();
+      await toolbarPeriod.click();
+      await page.getByRole("option", { name: "Zeitraum je Chart" }).click();
+      const widgetPeriod = page.locator(".l8-item").getByRole("combobox", { name: "Zeitraum" });
+      await widgetPeriod.click();
+      await page.getByRole("option", { name: "Eigener Zeitraum…" }).click();
+      log.length = 0;
+      await range.getByLabel("Von").fill("2025-12-24");
+      await range.getByLabel("Bis").fill("2025-12-24");
+      await range.getByRole("button", { name: "Übernehmen" }).click();
+      await page.waitForTimeout(1200);
+      expect(await widgetPeriod.textContent()).toContain("24.12.2025");
+      const oneDay = log.filter(
+        (e) => e.sql.includes(`>= '2025-12-24'`) && e.sql.includes(`< '2025-12-25'`),
+      );
+      expect(oneDay.length).toBeGreaterThan(0);
+      expect(oneDay.at(-1)?.error).toBeUndefined();
+
+      await bar.getByRole("button", { name: "Filter plan bearbeiten" }).click();
+      await editor.getByRole("button", { name: "Aus Spalte", exact: true }).waitFor();
+      expect(await editor.getByRole("combobox", { name: "Tabelle" }).textContent()).toContain(
+        "public.orders",
+      );
+      expect(await editor.getByRole("combobox", { name: "Spalte" }).textContent()).toContain(
+        "plan",
+      );
+      expect(await editor.getByRole("checkbox", { name: "Mehrfachauswahl" }).isChecked()).toBe(
+        true,
+      );
+      await editor.getByRole("checkbox", { name: "Mehrfachauswahl" }).click();
+      log.length = 0;
+      await editor.getByRole("button", { name: "Übernehmen" }).click();
+      await editor.waitFor({ state: "hidden" });
+      await page.waitForTimeout(1200);
+      expect(log.some((e) => e.sql.includes(`'["Pro","Team"]'`))).toBe(false);
+      expect(log.some((e) => e.sql.includes(`"plan" IN`))).toBe(false);
+      expect(
+        await bar.getByRole("combobox", { name: "plan", exact: true }).textContent(),
+      ).toContain("Alle");
+
+      await page.getByRole("button", { name: "Filter hinzufügen" }).click();
+      await editor.getByRole("button", { name: "Aus Spalte", exact: true }).click();
+      expect(await editor.getByRole("button", { name: "Filter anlegen" }).isDisabled()).toBe(true);
+      await editor.getByRole("combobox", { name: "Tabelle" }).click();
+      await page.getByRole("option", { name: "public.orders", exact: true }).click();
+      expect(await editor.getByRole("button", { name: "Filter anlegen" }).isDisabled()).toBe(true);
+      await editor.getByRole("button", { name: "Abbrechen" }).click();
+
+      await page.waitForTimeout(500);
+      expect(log.filter((entry) => entry.error)).toEqual([]);
+      expect(errors).toEqual([]);
+      await page.screenshot({ path: "/tmp/l8db-dashboard-filters.png" });
+    } finally {
+      await browser.close();
+    }
+  },
+  90000,
+);

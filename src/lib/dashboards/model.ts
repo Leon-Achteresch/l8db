@@ -2,7 +2,9 @@ export type Agg = "count" | "count_distinct" | "sum" | "avg" | "min" | "max" | "
 export type TimeBucket = "none" | "day" | "week" | "month" | "quarter" | "year";
 export type DatasetMode = "simple" | "expert";
 export type SortMode = "dimension" | "metric_desc" | "metric_asc";
-export type Period = "all" | "7d" | "30d" | "90d" | "quarter" | "year" | "12m";
+export type PresetPeriod = "all" | "7d" | "30d" | "90d" | "quarter" | "year" | "12m";
+export type CustomPeriod = `${string}..${string}`;
+export type Period = PresetPeriod | CustomPeriod;
 export type CompareMode = "none" | "previous" | "year";
 export type HeadlineMode = "auto" | "total" | "last" | "average" | "max" | "min";
 export type ChartKind =
@@ -101,7 +103,7 @@ export const BUCKET_LABEL: Record<TimeBucket, string> = {
   year: "Pro Jahr",
 };
 
-export const PERIOD_LABEL: Record<Period, string> = {
+export const PERIOD_LABEL: Record<PresetPeriod, string> = {
   all: "Gesamt",
   "7d": "Letzte 7 Tage",
   "30d": "Letzte 30 Tage",
@@ -169,6 +171,15 @@ export interface DashboardVariable {
   defaultValue: string;
   options?: string[];
   optionsSql?: string;
+  multiple?: boolean;
+  column?: VariableColumn;
+}
+
+export interface VariableColumn {
+  schema: string;
+  table: string;
+  column: string;
+  dataType?: string;
 }
 
 export const CROSS_WHERE = Symbol("crossWhere");

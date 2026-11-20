@@ -3,7 +3,8 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { isDateType, isNumericType } from "@/lib/dashboards";
 import { cn } from "@/lib/utils";
-import { CHART_FIELD_MIME, fieldTypeLabel } from "./chart-visual-builder-model";
+import { fieldTypeLabel } from "./chart-visual-builder-model";
+import { FieldDragButton } from "./field-drag-button";
 import type { DatasetColumn } from "./use-dataset-query";
 
 export function ChartFieldLibrary({
@@ -51,17 +52,12 @@ export function ChartFieldLibrary({
               ? CalendarDaysIcon
               : TypeIcon;
           return (
-            <button
+            <FieldDragButton
               key={field.ref}
-              type="button"
-              draggable
+              dragId={`library:${field.ref}`}
+              drag={{ ref: field.ref }}
               aria-pressed={selected === field.ref}
               title={`${field.label} · ${field.type}`}
-              onDragStart={(event) => {
-                event.dataTransfer.setData(CHART_FIELD_MIME, field.ref);
-                event.dataTransfer.effectAllowed = "copy";
-                onSelect(field);
-              }}
               onClick={() => onSelect(field)}
               className={cn(
                 "flex w-full cursor-grab items-center gap-2 rounded-lg border border-transparent px-2 py-2 text-left transition-colors hover:bg-background focus-visible:outline-2 focus-visible:outline-ring active:cursor-grabbing",
@@ -76,7 +72,7 @@ export function ChartFieldLibrary({
                 </span>
               </span>
               <GripVerticalIcon className="size-3 shrink-0 text-muted-foreground" />
-            </button>
+            </FieldDragButton>
           );
         })}
         {found.length === 0 && (
