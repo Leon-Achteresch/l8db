@@ -34,12 +34,17 @@ export function useMasterDetailQuery(
     try {
       const row = selection.row ?? { [selection.column]: selection.value };
       const kind = connection?.kind ?? "postgres";
-      const inlined = bindMasterDetail(sql, selection.value, row, (value) =>
-        masterDetailLiteral(value, kind),
+      const many = selection.rows?.map((entry) => ({ value: entry[selection.column], row: entry }));
+      const inlined = bindMasterDetail(
+        sql,
+        selection.value,
+        row,
+        (value) => masterDetailLiteral(value, kind),
+        many,
       );
       return {
         error: null,
-        bound: bindMasterDetail(sql, selection.value, row),
+        bound: bindMasterDetail(sql, selection.value, row, undefined, many),
         table: editable && capabilities.row_edit ? masterDetailTable(inlined.sql, kind) : null,
       };
     } catch (failure) {

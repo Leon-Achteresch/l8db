@@ -1,4 +1,13 @@
-import { type Dispatch, type SetStateAction, useCallback, useMemo, useRef, useState } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { copyText } from "@/lib/clipboard";
 import {
   cellKey,
@@ -9,6 +18,7 @@ import {
   selectionRange,
   summarizeCells,
 } from "@/lib/grid-selection";
+import { MasterSelectionContext, useMasterDetail } from "@/lib/master-detail";
 import type { TableRow } from "../data-table-types";
 import { INDEX_COLUMN } from "./constants";
 
@@ -50,6 +60,30 @@ export function useGridSelection(
     () => (selectedCount > 1 ? summarizeCells(data, selectedCells) : null),
     [selectedCount, data, selectedCells],
   );
+
+  const selectionKey = useContext(MasterSelectionContext);
+  const masterRows = useMemo(() => {
+    if (selectedByRow.size < 2) return undefined;
+    return [...selectedByRow.keys()]
+      .sort((a, b) => a - b)
+      .flatMap((index) => (data[index] ? [data[index]] : []));
+  }, [selectedByRow, data]);
+  useEffect(() => {
+    if (!selectionKey) return;
+    const row = activeCell ? data[activeCell.rowIndex] : undefined;
+    useMasterDetail.getState().selectCell(
+      selectionKey,
+      activeCell && row && Object.hasOwn(row, activeCell.columnId)
+        ? {
+            column: activeCell.columnId,
+            rowIndex: activeCell.rowIndex,
+            value: row[activeCell.columnId],
+            row,
+            rows: masterRows,
+          }
+        : null,
+    );
+  }, [selectionKey, activeCell, data, masterRows]);
 
   const committedRef = useRef({ selectedRange, extraCells });
   committedRef.current = { selectedRange, extraCells };
