@@ -93,6 +93,30 @@ run(
 );
 
 run(
+  "Mod+G inside the classic filter panel collapses it, from the grid reopens it",
+  async () => {
+    for (const query of ["style=classic", "style=classic&filterMode=sql"]) {
+      const { page, context, errors } = await fixture(query);
+      try {
+        expect((await pressFromGrid(page)).inFilter).toBe(true);
+        const started = Date.now();
+        await page.keyboard.press(HOTKEY);
+        await page.waitForFunction(
+          () => !document.querySelector("[data-filter-focus] input, .cm-content"),
+        );
+        expect(Date.now() - started).toBeLessThan(500);
+        expect((await active(page)).inFilter).toBe(false);
+        expect((await pressFromGrid(page)).inFilter).toBe(true);
+        expect(errors).toEqual([]);
+      } finally {
+        await context.close();
+      }
+    }
+  },
+  30_000,
+);
+
+run(
   "a saved per-table filter mode wins over the default setting",
   async () => {
     const { page, context } = await fixture("style=classic&filterMode=sql&late=1");

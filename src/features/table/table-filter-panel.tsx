@@ -87,10 +87,14 @@ export function TableFilterPanel({
   const [rules, setRules] = useTableViewState(stateKey, "rowRules", []);
   const [ruleMode, setRuleMode] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  useFilterFocusHotkey(rootRef, () => {
-    setRuleMode(false);
-    setOpen(true);
-  });
+  useFilterFocusHotkey(
+    rootRef,
+    () => {
+      setRuleMode(false);
+      setOpen(true);
+    },
+    open ? () => setOpen(false) : undefined,
+  );
   const [ruleColor, setRuleColor] = useState("#3b82f6");
   const [ruleConditions, setRuleConditions] = useState(() => [emptyCondition()]);
   const [ruleCombinator, setRuleCombinator] = useState<Combinator>("AND");

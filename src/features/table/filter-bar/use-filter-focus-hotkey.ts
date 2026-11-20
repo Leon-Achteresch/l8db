@@ -28,7 +28,11 @@ export function focusFilterTarget(root: HTMLElement | null): boolean {
   return true;
 }
 
-export function useFilterFocusHotkey(rootRef: RefObject<HTMLElement | null>, reveal?: () => void) {
+export function useFilterFocusHotkey(
+  rootRef: RefObject<HTMLElement | null>,
+  reveal?: () => void,
+  collapse?: () => void,
+) {
   const pane = useWorkspacePane();
   const hotkey = useResolvedHotkey("grid.filter");
   useHotkey(
@@ -38,6 +42,13 @@ export function useFilterFocusHotkey(rootRef: RefObject<HTMLElement | null>, rev
       const root = rootRef.current;
       if (!root || root.getClientRects().length === 0) return;
       const target = event.target;
+      if (collapse && target instanceof Node && root.contains(target)) {
+        handled.add(event);
+        event.preventDefault();
+        if (target instanceof HTMLElement) target.blur();
+        collapse();
+        return;
+      }
       if (target instanceof Element && target.closest(EDITOR_SELECTOR)) return;
       handled.add(event);
       event.preventDefault();
