@@ -55,6 +55,52 @@ describe("master detail", () => {
     expect(bindMasterDetail(sql, false).params).toEqual(["false"]);
     expect(bindMasterDetail(sql, "").params).toEqual([""]);
   });
+  test("turns comparisons into IN lists for several selected master rows", () => {
+    const rows = [
+      { id: 1, tenant: "A" },
+      { id: 2, tenant: "A" },
+      { id: 1, tenant: "B" },
+    ];
+    const many = rows.map((row) => ({ value: row.id, row }));
+    expect(
+      bindMasterDetail(
+        "SELECT * FROM s.t WHERE a = :master.id::uuid AND b <> :master.tenant AND c >= 0",
+        1,
+        rows[0],
+        undefined,
+        many,
+      ),
+    ).toEqual({
+      sql: "SELECT * FROM s.t WHERE a IN ($1::uuid, $2::uuid) AND b NOT IN ($3, $4) AND c >= 0",
+      params: ["1", "2", "A", "B"],
+    });
+    expect(
+      bindMasterDetail(
+        "SELECT * FROM s.t WHERE a=:master",
+        1,
+        rows[0],
+        (value) => masterDetailLiteral(value, "postgres"),
+        many,
+      ).sql,
+    ).toBe("SELECT * FROM s.t WHERE a IN ('1', '2')");
+    expect(
+      bindMasterDetail("SELECT * FROM s.t WHERE a >= :master.id", 1, rows[0], undefined, many),
+    ).toEqual({ sql: "SELECT * FROM s.t WHERE a >= $1", params: ["1"] });
+    const large = Array.from({ length: 1001 }, (_, id) => ({ value: id, row: { id } }));
+    const started = performance.now();
+    expect(() =>
+      bindMasterDetail("SELECT * FROM s.t WHERE a = :master.id", 0, { id: 0 }, undefined, large),
+    ).toThrow("Höchstens 1000");
+    const bound = bindMasterDetail(
+      "SELECT * FROM s.t WHERE a = :master.id",
+      0,
+      { id: 0 },
+      undefined,
+      large.slice(0, 1000),
+    );
+    expect(bound.params).toHaveLength(1000);
+    expect(performance.now() - started).toBeLessThan(50);
+  });
   test("requires a master parameter and rejects writes and extra statements", () => {
     expect(masterDetailScriptError(sql)).toBeNull();
     for (const invalid of [

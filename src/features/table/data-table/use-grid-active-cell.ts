@@ -18,20 +18,5 @@ export function useGridActiveCell(
     const column = columnNames.find((name) => name !== "__ctid__");
     if (column) setActiveCell({ rowIndex: 0, columnId: column });
   }, [autoSelectFirstCell, activeCell, data, columnNames]);
-  useEffect(() => {
-    if (!selectionKey) return;
-    const row = activeCell ? data[activeCell.rowIndex] : undefined;
-    useMasterDetail.getState().selectCell(
-      selectionKey,
-      activeCell && row && Object.hasOwn(row, activeCell.columnId)
-        ? {
-            column: activeCell.columnId,
-            rowIndex: activeCell.rowIndex,
-            value: row[activeCell.columnId],
-            row,
-          }
-        : null,
-    );
-  }, [selectionKey, activeCell, data]);
   return [activeCell, setActiveCell] as const;
 }

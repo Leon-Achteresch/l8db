@@ -123,7 +123,9 @@ export function MasterDetailResult({
       <div className="flex shrink-0 items-center gap-2 border-b bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1">
           {preview ? "Vorschau" : "Details"} · {count} {count === 1 ? "Datensatz" : "Datensätze"} ·
-          Master-Zeile {selection.rowIndex + 1}
+          {selection.rows
+            ? `${selection.rows.length} Master-Zeilen`
+            : `Master-Zeile ${selection.rowIndex + 1}`}
         </span>
         <Button
           variant="ghost"
