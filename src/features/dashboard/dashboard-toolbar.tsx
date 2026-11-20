@@ -1,6 +1,5 @@
 import { useIsFetching } from "@tanstack/react-query";
 import {
-  CalendarIcon,
   CheckIcon,
   ChevronDownIcon,
   EllipsisIcon,
@@ -41,7 +40,6 @@ import {
   Select,
   SelectContent,
   SelectItem,
-  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -53,7 +51,6 @@ import {
   type BlockKind,
   type Dashboard,
   type DashboardPaletteMode,
-  PERIOD_LABEL,
   type Period,
   redoDashboards,
   undoDashboards,
@@ -62,6 +59,7 @@ import {
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useHasNewFeatures } from "@/lib/new-features";
 import { cn } from "@/lib/utils";
+import { PeriodPicker } from "./period-picker";
 
 const REFRESH_OPTIONS = [
   ["0", "Manuell"],
@@ -69,8 +67,6 @@ const REFRESH_OPTIONS = [
   ["60", "Jede Minute"],
   ["300", "Alle 5 Min."],
 ] as const;
-
-const WIDGET_PERIOD = "widget";
 
 const TIME = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
 
@@ -192,24 +188,7 @@ export function DashboardToolbar({
       {!compact && (
         <>
           <span className="mx-1 h-5 w-px shrink-0 bg-border" />
-          <Select
-            value={period ?? WIDGET_PERIOD}
-            onValueChange={(value) => onPeriod(value === WIDGET_PERIOD ? null : (value as Period))}
-          >
-            <SelectTrigger size="sm" aria-label="Zeitraum" className="h-7 gap-1.5 text-xs">
-              <CalendarIcon className="size-3.5" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={WIDGET_PERIOD}>Zeitraum je Chart</SelectItem>
-              <SelectSeparator />
-              {(Object.keys(PERIOD_LABEL) as Period[]).map((key) => (
-                <SelectItem key={key} value={key}>
-                  {PERIOD_LABEL[key]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <PeriodPicker value={period} onChange={onPeriod} perWidget />
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
             {editing && (
               <UndoRedoControls

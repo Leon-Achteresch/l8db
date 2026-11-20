@@ -5,6 +5,7 @@ interface VariableValuesState {
   values: Record<string, VariableValues>;
   set: (dashboardId: string, name: string, value: string) => void;
   reset: (dashboardId: string) => void;
+  clear: (dashboardId: string, name: string) => void;
 }
 
 export const useVariableValuesStore = create<VariableValuesState>()((set) => ({
@@ -16,6 +17,12 @@ export const useVariableValuesStore = create<VariableValuesState>()((set) => ({
         [dashboardId]: { ...state.values[dashboardId], [name]: value },
       },
     })),
+  clear: (dashboardId, name) =>
+    set((state) => {
+      const current = { ...state.values[dashboardId] };
+      delete current[name];
+      return { values: { ...state.values, [dashboardId]: current } };
+    }),
   reset: (dashboardId) =>
     set((state) => {
       const values = { ...state.values };

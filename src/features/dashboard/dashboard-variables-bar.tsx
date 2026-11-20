@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { type DashboardVariable, useVariableValuesStore } from "@/lib/dashboards";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { cn } from "@/lib/utils";
 import { VariableControl } from "./variable-control";
 import { VariableEditor } from "./variable-editor";
@@ -21,20 +22,31 @@ export function DashboardVariablesBar({
   onChange: (variables: DashboardVariable[]) => void;
 }) {
   const feature = useNewFeatureVisibility<HTMLDivElement>("dashboard.filters");
+  const hasNew = useHasNewFeatures("dashboard.filters");
   const values = useVariableValuesStore((s) => s.values[dashboardId]);
   const setValue = useVariableValuesStore((s) => s.set);
   const reset = useVariableValuesStore((s) => s.reset);
+  const clear = useVariableValuesStore((s) => s.clear);
   const [open, setOpen] = useState<string | null>(null);
   if (!editing && variables.length === 0) return null;
   const changed = variables.some(
     (v) => values?.[v.name] !== undefined && values[v.name] !== v.defaultValue,
   );
-  const save = (variable: DashboardVariable) =>
+  const save = (variable: DashboardVariable) => {
+    const previous = variables.find((v) => v.id === variable.id);
+    if (
+      previous &&
+      (previous.type !== variable.type ||
+        Boolean(previous.multiple) !== Boolean(variable.multiple) ||
+        JSON.stringify(previous.column) !== JSON.stringify(variable.column))
+    )
+      clear(dashboardId, variable.name);
     onChange(
       variables.some((v) => v.id === variable.id)
         ? variables.map((v) => (v.id === variable.id ? variable : v))
         : [...variables, variable],
     );
+  };
   return (
     <div
       ref={feature.ref}
@@ -80,6 +92,7 @@ export function DashboardVariablesBar({
                     taken={variables.map((v) => v.name)}
                     onSave={save}
                     onDelete={() => {
+                      clear(dashboardId, variable.name);
                       onChange(variables.filter((v) => v.id !== variable.id));
                       setOpen(null);
                     }}
@@ -96,7 +109,7 @@ export function DashboardVariablesBar({
           <PopoverTrigger asChild>
             <Button variant="ghost" size="xs" className="rounded-full border border-dashed">
               <PlusIcon /> Filter hinzufügen
-              {feature.isNew && <NewBadge />}
+              {(feature.isNew || hasNew) && <NewBadge />}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-80" align="start">
