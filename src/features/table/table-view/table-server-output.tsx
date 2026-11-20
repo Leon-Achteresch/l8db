@@ -1,7 +1,5 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { NewBadge } from "@/components/new-badge";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -18,20 +16,16 @@ import { effectiveConnectionString } from "@/lib/ssh";
 export function TableServerOutput({
   connection,
   database,
+  open,
+  onOpenChange,
 }: {
   connection: SavedConnection;
   database: string | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const feature = useNewFeatureVisibility<HTMLDivElement>("table.rows.server-output");
-  const count = useServerOutputStore(
-    (state) =>
-      state.entries[connection.id]?.reduce(
-        (count, entry) => count + Number((entry.database ?? null) === database),
-        0,
-      ) ?? 0,
-  );
   const enabled = useServerOutputStore(
     (state) => state.enabled[connection.id] ?? connection.kind === "oracle",
   );
@@ -52,37 +46,31 @@ export function TableServerOutput({
     }
   };
   return (
-    <div className="shrink-0 px-2 py-1">
-      <Button type="button" size="xs" variant="ghost" onClick={() => setOpen(true)}>
-        Server-Ausgabe{count > 0 ? ` · ${count}` : ""}
-        {feature.isNew && <NewBadge />}
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          ref={feature.ref}
-          className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-y-auto sm:max-w-3xl"
-        >
-          <DialogHeader>
-            <DialogTitle>
-              Server-Ausgabe · {connection.name}
-              {database ? ` / ${database}` : ""}
-            </DialogTitle>
-          </DialogHeader>
-          <DialogDescription className="text-xs">
-            Verbindung und Datenbank, nicht nur diese Tabelle. Kein Commit-Nachweis.
-          </DialogDescription>
-          <div className="h-80 min-h-0">
-            <ServerOutputPanel
-              connectionId={connection.id}
-              database={database}
-              enabled={enabled}
-              busy={busy}
-              tabs={null}
-              onToggle={handleToggle}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        ref={feature.ref}
+        className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-y-auto sm:max-w-3xl"
+      >
+        <DialogHeader>
+          <DialogTitle>
+            Server-Ausgabe · {connection.name}
+            {database ? ` / ${database}` : ""}
+          </DialogTitle>
+        </DialogHeader>
+        <DialogDescription className="text-xs">
+          Verbindung und Datenbank, nicht nur diese Tabelle. Kein Commit-Nachweis.
+        </DialogDescription>
+        <div className="h-80 min-h-0">
+          <ServerOutputPanel
+            connectionId={connection.id}
+            database={database}
+            enabled={enabled}
+            busy={busy}
+            tabs={null}
+            onToggle={handleToggle}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

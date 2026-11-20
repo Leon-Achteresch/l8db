@@ -22,6 +22,7 @@ useProvidersStore.setState({ loaded: true, providers: [FALLBACK_PROVIDERS[0]] })
 
 function Fixture() {
   const [database, setDatabase] = useState("alpha");
+  const [outputScope, setOutputScope] = useState<string | null>(null);
   const [outcome, setOutcome] = useState({ text: "", count: 0 });
   const output = useServerOutput(connection, database, POSTGRES_CAPABILITIES, false);
   const tabs = (
@@ -45,10 +46,13 @@ function Fixture() {
 
   return (
     <main className="p-4">
+      <Button onClick={() => setOutputScope(database)}>Server-Ausgabe</Button>
       <TableServerOutput
         key={JSON.stringify([connection.id, database])}
         connection={connection}
         database={database}
+        open={outputScope === database}
+        onOpenChange={(open) => setOutputScope(open ? database : null)}
       />
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => setDatabase("alpha")}>Alpha</Button>

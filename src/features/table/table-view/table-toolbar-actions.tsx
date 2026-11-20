@@ -15,6 +15,8 @@ import { useHasNewFeatures } from "@/lib/new-features";
 import { supportsBusinessTimestamp } from "@/lib/timestamp-display";
 import { RowWatchContext } from "@/lib/workbench/row-watch-context";
 import { TableActionsMenu, TableExportMenu } from "./table-export-menu";
+import { TableServerOutput } from "./table-server-output";
+import { TableServerOutputMenuItem } from "./table-server-output-menu-item";
 
 import type { useTableViewModel } from "./use-table-view-model";
 
@@ -64,6 +66,7 @@ export function TableToolbarActions({
   const readOnly = useReadOnlyConnection();
   const [testDataOpen, setTestDataOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
+  const [outputScope, setOutputScope] = useState<string | null>(null);
   const { scope: watchScope } = useContext(RowWatchContext);
   const watchNew = useHasNewFeatures("table.rows.watch") && Boolean(watchScope);
   const timeNew = useHasNewFeatures("query.results.timestamps");
@@ -72,6 +75,7 @@ export function TableToolbarActions({
     supportsBusinessTimestamp(connection?.kind, column.data_type),
   );
   const numbersNew = useHasNewFeatures("query.results.numbers");
+  const outputNew = useHasNewFeatures("table.rows.server-output");
   const isData = tableTab === "data";
   const canTestData = isData && connection && caps.test_data;
   const canPaste =
@@ -79,6 +83,8 @@ export function TableToolbarActions({
   const canAdd = isData && caps.row_edit;
   const canMask = isData && caps.query_language !== "redis";
   const canExport = isData && data;
+  const canOutput = isData && connection && caps.server_output;
+  const scope = JSON.stringify([connection?.id, database]);
   return (
     <div className="ml-auto flex items-center gap-1">
       <ObjectAdminMenu schema={schema} name={table} objectType="table" />
@@ -96,7 +102,8 @@ export function TableToolbarActions({
           businessTimeZone={canChooseZone && isData}
           isNew={
             extensionActions.isNew ||
-            (isData && (watchNew || timeNew || numbersNew || (canChooseZone && zoneNew)))
+            (isData && (watchNew || timeNew || numbersNew || (canChooseZone && zoneNew))) ||
+            Boolean(canOutput && outputNew)
           }
         >
           {isData && <RowWatchMenuItem />}
@@ -124,6 +131,13 @@ export function TableToolbarActions({
             />
           )}
           {canMask && <MaskingToggle />}
+          {canOutput && (
+            <TableServerOutputMenuItem
+              connectionId={connection.id}
+              database={database ?? null}
+              onSelect={() => setOutputScope(scope)}
+            />
+          )}
           {extensionActions.actions.length > 0 &&
             (canMask || canTestData || canPaste || canAdd) && <IconMenuSeparator />}
           <TableExtensionActions {...extensionActions} />
@@ -141,6 +155,15 @@ export function TableToolbarActions({
             </>
           )}
         </TableActionsMenu>
+      )}
+      {canOutput && (
+        <TableServerOutput
+          key={scope}
+          connection={connection}
+          database={database ?? null}
+          open={outputScope === scope}
+          onOpenChange={(open) => setOutputScope(open ? scope : null)}
+        />
       )}
       {canTestData && (
         <TestDataDialog

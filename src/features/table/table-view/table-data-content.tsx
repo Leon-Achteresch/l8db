@@ -10,7 +10,6 @@ import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { canEditRedisCell, REDIS_KEY_FILTER_OPERATORS, redisKeyFilter } from "@/lib/redis-commands";
 import { tableColumnPrefKey, useTableColumnPrefs } from "@/lib/table-column-prefs";
 import { useTableViewStateStore } from "@/lib/table-view-state";
-import { TableServerOutput } from "./table-server-output";
 import type { useTableViewModel } from "./use-table-view-model";
 
 type Props = Pick<
@@ -118,13 +117,6 @@ export function TableDataContent({
       : undefined;
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      {connection && caps.server_output && (
-        <TableServerOutput
-          key={JSON.stringify([connection.id, database])}
-          connection={connection}
-          database={database ?? null}
-        />
-      )}
       {stateKey && <AiFlash id={`table:${stateKey}`} neon />}
       <div
         className="flex min-h-0 max-h-[min(28rem,55%)] shrink-0 flex-col overflow-hidden"
