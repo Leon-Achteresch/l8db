@@ -12,6 +12,7 @@ import { IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { SidebarNav } from "@/components/primitives/sidebar-nav";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { aiEnabled, requestAiConsent } from "@/lib/ai/access";
 import { handleAppRequest } from "@/lib/ai/app-companion";
 import { aiAttachable, aiAttachment } from "@/lib/ai/attachments";
 import {
@@ -192,7 +193,13 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const run = useRef<string | null>(null);
   const appController = useRef<AbortController | null>(null);
-  useEffect(() => () => appController.current?.abort(), []);
+  useEffect(
+    () => () => {
+      appController.current?.abort();
+      if (run.current && !aiEnabled()) void aiCancel(run.current).catch(() => undefined);
+    },
+    [],
+  );
   const afterTool = useRef(false);
   const stopping = useRef(false);
   const approvalTitles = useRef(new Map<string, string>());
@@ -399,6 +406,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const runTurn = async (history: AiMessage[], user?: AiMessage, onStart?: () => void) => {
     const turn = user ? [...history, user] : history;
     if (!turn.length || run.current) return;
+    if (!(await requestAiConsent(profile)) || run.current) return;
     setError("");
     const id = crypto.randomUUID();
     const assistantId = crypto.randomUUID();

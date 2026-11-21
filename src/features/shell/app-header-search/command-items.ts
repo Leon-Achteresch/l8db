@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { CommandItem } from "@/components/motion/command-palette";
 import { SEARCH_ITEMS } from "@/features/settings/settings-search-results/search-items";
+import { aiEnabled, isAiFeatureId } from "@/lib/ai/access";
 import type { Capabilities, PackageMemberInfo } from "@/lib/db";
 import {
   FEATURE_CATALOG,
@@ -66,7 +67,10 @@ export function buildFeatureItems(
   entries: readonly FeatureEntry[] = FEATURE_CATALOG,
 ): CommandItem[] {
   if (!unusedOnly && !query.trim()) return [];
-  const pool = unusedOnly ? entries.filter((entry) => !featureUsed(entry.id)) : entries;
+  const ai = aiEnabled();
+  const pool = entries.filter(
+    (entry) => (ai || !isAiFeatureId(entry.id)) && !(unusedOnly && featureUsed(entry.id)),
+  );
   const limit = unusedOnly ? UNUSED_LIMIT : options.limit;
   return searchFeatures(query, { ...options, limit }, pool).map((entry, index) => ({
     id: `feature:${entry.id}`,

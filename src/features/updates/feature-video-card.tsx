@@ -3,6 +3,7 @@ import { ArrowRight, Expand, Minimize2, Pause, Play, RotateCcw, X } from "lucide
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useAiEnabled } from "@/lib/ai/access";
 import { useAiStore } from "@/lib/ai/store";
 import { EASE_OUT } from "@/lib/ease";
 import type { FeatureVideo } from "@/lib/feature-videos/model";
@@ -17,6 +18,7 @@ interface Props {
 
 export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
   const reduce = useReducedMotion();
+  const aiOn = useAiEnabled();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [wantsPlay, setWantsPlay] = useState(!reduce);
@@ -239,7 +241,7 @@ export function FeatureVideoCard({ item, suspended, next, preview }: Props) {
               Nächstes Feature
               <ArrowRight className="size-3.5" />
             </Button>
-          ) : !failed && item.id === "ai-issue-report" ? (
+          ) : !failed && item.id === "ai-issue-report" && aiOn ? (
             <Button
               size="sm"
               className="h-8 rounded-lg px-2.5 text-xs"

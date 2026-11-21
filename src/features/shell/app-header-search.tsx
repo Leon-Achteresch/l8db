@@ -8,6 +8,7 @@ import {
   Plug,
   Puzzle,
   Search,
+  Signpost,
   Sparkles,
   TextSearch,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import { toast } from "sonner";
 import type { CommandItem } from "@/components/motion/command-palette";
 import { NewBadge } from "@/components/new-badge";
 import { DynamicIsland } from "@/features/shell/dynamic-island";
+import { useAiEnabled } from "@/lib/ai/access";
 import { useAiStore } from "@/lib/ai/store";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
@@ -210,6 +212,7 @@ export function AppHeaderSearch() {
   }, [extensionHost, extensionVersion]);
 
   const askNew = useHasNewFeatures("ai.ask");
+  const aiOn = useAiEnabled();
   const searchNew = useHasNewFeatures("search");
   const objectCommentsNew = useHasNewFeatures("search.objects.comments");
   const capabilities = useActiveCapabilities();
@@ -332,7 +335,7 @@ export function AppHeaderSearch() {
       label: "Produkttour von vorn",
       kind: "command",
       group: "Hilfe",
-      icon: Sparkles,
+      icon: Signpost,
       keywords: ["tour", "hilfe", "onboarding", "guide"],
       onSelect: () => {
         setOpen(false);
@@ -492,7 +495,7 @@ export function AppHeaderSearch() {
             emptyMessage={builders ? "Keine Treffer" : "Suchbefehle laden…"}
             maxVisible={MAX_VISIBLE_RESULTS}
             featureId="search.fuzzy"
-            queryItem={askAiItem}
+            queryItem={aiOn ? askAiItem : undefined}
             queryItems={featureItems}
             initialQuery={initialQuery}
             commandFeatureId="search.commands"

@@ -1,4 +1,4 @@
-import { ArrowRight, CheckCircle2, Database, Sparkles, Terminal } from "lucide-react";
+import { ArrowRight, CheckCircle2, Compass, Database, Terminal } from "lucide-react";
 import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -29,7 +29,7 @@ export function McpSmartGuide({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-start gap-3.5">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <Sparkles className="size-5" />
+            <Compass className="size-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">

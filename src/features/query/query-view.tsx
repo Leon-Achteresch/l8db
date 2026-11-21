@@ -10,6 +10,7 @@ import { QuerySchemaBrowser } from "@/features/query/query-schema-browser";
 import { ServerOutputPanel } from "@/features/query/server-output-panel";
 import { SqlStatesButton } from "@/features/query/sql-states-button";
 import { afterPaint } from "@/lib/after-paint";
+import { useEditorAiAvailable } from "@/lib/ai/editor/use-editor-ai-available";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
@@ -80,6 +81,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const workspace = useQueryWorkspace(useShallow(viewWorkspace));
   const workspaceGroup = useGroupRef();
   const [editorFocus, setEditorFocus] = useState(false);
+  const editorAiAvailable = useEditorAiAvailable();
   const [resultFocus, setResultFocus] = useState(false);
   const toggleResultFocus = () => {
     setEditorFocus(false);
@@ -487,7 +489,9 @@ export function QueryView({ tabId }: QueryViewProps) {
               }
               sql={sql}
               names={errorNames}
-              onFixWithAi={() => editorApiRef.current?.action("l8db.ai.fix")}
+              onFixWithAi={
+                editorAiAvailable ? () => editorApiRef.current?.action("l8db.ai.fix") : undefined
+              }
               onRevealError={(marker) => {
                 const prefix = sql.slice(0, marker.start);
                 const line = prefix.split("\n").length;

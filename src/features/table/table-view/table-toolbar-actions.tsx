@@ -1,4 +1,4 @@
-import { ClipboardPasteIcon, PlusIcon, SparklesIcon } from "lucide-react";
+import { ClipboardPasteIcon, DicesIcon, PlusIcon } from "lucide-react";
 import { useContext, useState } from "react";
 import { IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
 import { TestDataDialog } from "@/features/datagen/test-data-dialog";
@@ -125,7 +125,7 @@ export function TableToolbarActions({
           )}
           {canTestData && (
             <IconMenuItem
-              icon={<SparklesIcon />}
+              icon={<DicesIcon />}
               label="Testdaten oder maskierte Kopie erzeugen"
               onSelect={() => setTestDataOpen(true)}
             />

@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AppHotkeyBindings } from "@/features/shell/app-hotkey-bindings";
+import { aiEnabled } from "@/lib/ai/access";
 import { useAiStore } from "@/lib/ai/store";
 import { useActiveConnection } from "@/lib/connections";
 import { openAppWindow } from "@/lib/db";
@@ -198,6 +199,7 @@ export function AppHotkeys() {
     {
       id: "ai.toggle",
       action: () => {
+        if (!aiEnabled()) return;
         const ai = useAiStore.getState();
         ai.setOpen(!ai.open);
       },

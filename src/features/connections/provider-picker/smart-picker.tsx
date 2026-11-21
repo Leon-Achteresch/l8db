@@ -1,4 +1,4 @@
-import { ArrowRight, ClipboardPaste, Sparkles } from "lucide-react";
+import { ArrowRight, ClipboardPaste } from "lucide-react";
 import { useState } from "react";
 import { ProviderLogo } from "@/components/provider-logo";
 import { Button } from "@/components/ui/button";
@@ -50,7 +50,7 @@ export function SmartPicker({
   return (
     <div className="space-y-4">
       <div className="flex h-10 items-center gap-2 rounded-xl bg-muted/50 pr-1 pl-3 focus-within:ring-2 focus-within:ring-ring">
-        <Sparkles className="size-4 shrink-0 text-primary" />
+        <ClipboardPaste className="size-4 shrink-0 text-primary" />
         <input
           value={value}
           onChange={(event) => setValue(event.target.value)}

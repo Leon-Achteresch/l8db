@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { AiAccessRow } from "@/features/settings/ai-access-row";
 import { OrganizationPanel } from "@/features/settings/organization-panel";
 import { PortableWorkspacePanel } from "@/features/settings/portable-workspace-panel";
 import { SettingsRow } from "@/features/settings/settings-row";
@@ -51,6 +52,7 @@ export function SettingsGeneralTab() {
             data-feature="settings.easy-mode"
           />
         </SettingsRow>
+        <AiAccessRow />
         {!easyMode && <SettingsTableTabs />}
 
         <SettingsRow settingId="success-toasts">

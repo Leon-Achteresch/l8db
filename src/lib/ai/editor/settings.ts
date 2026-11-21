@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { aiEnabled, useAiAccess } from "@/lib/ai/access";
 import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
@@ -75,3 +76,18 @@ export const useEditorAiSettings = create<EditorAiState>()(
 );
 
 syncAcrossWindows("l8db.ai.editor", () => void useEditorAiSettings.persist.rehydrate());
+
+export const editorAiOn = () => aiEnabled() && useEditorAiSettings.getState().enabled;
+
+export function onEditorAiToggle(listener: () => void): () => void {
+  const offAccess = useAiAccess.subscribe((state, previous) => {
+    if (state.enabled !== previous.enabled) listener();
+  });
+  const offEditor = useEditorAiSettings.subscribe((state, previous) => {
+    if (state.enabled !== previous.enabled) listener();
+  });
+  return () => {
+    offAccess();
+    offEditor();
+  };
+}

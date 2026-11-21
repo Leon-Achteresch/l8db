@@ -67,6 +67,8 @@ const { findRenameProposal, identifierAt, identifiers, isRenameCandidate } = awa
   "@/lib/ai/editor/rename"
 );
 const { useEditorAiSettings } = await import("@/lib/ai/editor/settings");
+const { useAiAccess } = await import("@/lib/ai/access");
+const { AI_PROVIDERS } = await import("@/lib/ai/store");
 const { expandToLines, insertionAfter, resolveTarget, statementBounds } = await import(
   "@/lib/ai/editor/targets"
 );
@@ -145,6 +147,7 @@ beforeEach(() => {
   forgetEditorKnowledge();
   useEditorAiSettings.getState().reset();
   useEditorAiMetrics.getState().reset();
+  useAiAccess.setState({ enabled: true, consent: AI_PROVIDERS.map((entry) => entry.id) });
 });
 
 describe("ghost text", () => {

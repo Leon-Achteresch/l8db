@@ -1,10 +1,11 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { BookOpen, Bug, Play, Sparkles } from "lucide-react";
+import { BookOpen, Bug, MousePointerClick, Play } from "lucide-react";
 import { toast } from "sonner";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
+import { useAiEnabled } from "@/lib/ai/access";
 import { useAiStore } from "@/lib/ai/store";
 import { highlightFeature } from "@/lib/discovery/highlight";
 import { resolveClip } from "@/lib/discovery/video-tooltips/media";
@@ -33,6 +34,7 @@ export function WhatsThisPopover({
   onClose: () => void;
 }) {
   const navigate = useNavigate();
+  const aiOn = useAiEnabled();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const feature = useNewFeatureVisibility<HTMLDivElement>("discover.whats-this");
   const hotkey = useResolvedHotkey(match.hotkey ?? "");
@@ -114,7 +116,7 @@ export function WhatsThisPopover({
           )}
           {entry?.steps?.length ? (
             <Button size="sm" variant="secondary" onClick={showMe}>
-              <Sparkles />
+              <MousePointerClick />
               Zeig's mir
             </Button>
           ) : null}
@@ -131,10 +133,12 @@ export function WhatsThisPopover({
               Doku
             </Button>
           )}
-          <Button size="sm" variant="ghost" onClick={() => void report()}>
-            <Bug />
-            Hier ein Problem melden
-          </Button>
+          {aiOn && (
+            <Button size="sm" variant="ghost" onClick={() => void report()}>
+              <Bug />
+              Hier ein Problem melden
+            </Button>
+          )}
         </div>
       </PopoverContent>
     </Popover>

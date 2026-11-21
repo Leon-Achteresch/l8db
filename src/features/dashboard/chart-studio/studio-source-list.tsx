@@ -1,4 +1,4 @@
-import { EyeIcon, PlusIcon, SearchIcon, SparklesIcon, Table2Icon } from "lucide-react";
+import { EyeIcon, PlusIcon, SearchIcon, Table2Icon, TargetIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Input } from "@/components/ui/input";
@@ -139,7 +139,7 @@ export function StudioSourceList({
         {suggested.length > 0 && (
           <section aria-label="Passende Tabellen">
             <h3 className="mb-1 flex items-center gap-1 px-2 text-[10px] font-semibold tracking-wide text-primary uppercase">
-              <SparklesIcon className="size-3" /> Passt zu deinen Daten
+              <TargetIcon className="size-3" /> Passt zu deinen Daten
             </h3>
             <ul className="space-y-0.5">{suggested.map((s) => row(s, true))}</ul>
           </section>

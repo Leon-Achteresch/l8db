@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { aiEnabled, isAiFeatureId, useAiEnabled } from "@/lib/ai/access";
 import { version as appVersion } from "../../package.json";
 
 export const NEXT_FEATURE_VERSION = "0.19.0";
@@ -127,6 +128,7 @@ export const NEW_FEATURES = {
   "ai.chat.plus.knowledge": "0.10.0",
   "ai.providers.local": "0.10.0",
   "workspace.status.ai-checkpoints": "0.14.0",
+  "settings.general.ki": NEXT_FEATURE_VERSION,
   "settings.editor.ai": "0.14.0",
   "settings.editor.ai-metrics": "0.14.0",
   "ai.chat.context-mentions": "0.14.0",
@@ -357,10 +359,12 @@ export function hasNewFeatures(
   scope: string | undefined,
   seen: ReadonlySet<NewFeatureId>,
   version = appVersion,
+  ai = aiEnabled(),
 ): boolean {
   if (!scope) return false;
   return currentFeatureIds(version).some(
-    (id) => !seen.has(id) && (id === scope || id.startsWith(`${scope}.`)),
+    (id) =>
+      !seen.has(id) && (id === scope || id.startsWith(`${scope}.`)) && (ai || !isAiFeatureId(id)),
   );
 }
 
@@ -466,6 +470,7 @@ export function newFeatureJustSeen(): boolean {
 }
 
 export function useSeenNewFeatures(): ReadonlySet<NewFeatureId> {
+  useAiEnabled();
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
 
@@ -475,5 +480,6 @@ export function useHasNewFeatures(scope: string | undefined): boolean {
 
 export function useHasAnyNewFeatures(): boolean {
   const seen = useSeenNewFeatures();
-  return currentFeatureIds(appVersion).some((id) => !seen.has(id));
+  const ai = aiEnabled();
+  return currentFeatureIds(appVersion).some((id) => !seen.has(id) && (ai || !isAiFeatureId(id)));
 }
