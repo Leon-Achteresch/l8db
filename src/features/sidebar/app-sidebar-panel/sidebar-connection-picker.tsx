@@ -390,7 +390,7 @@ export function SidebarConnectionPicker({
                               <span className="truncate text-xs font-medium">{row.name}</span>
                               {row.connection?.tags?.[0] && (
                                 <span
-                                  className="max-w-16 shrink-0 truncate rounded px-1 font-mono text-[9px] text-white"
+                                  className="max-w-16 shrink-0 truncate rounded px-1 font-mono text-[10px] text-white"
                                   style={{ backgroundColor: row.connection.tags[0].color }}
                                 >
                                   {row.connection.tags[0].name}

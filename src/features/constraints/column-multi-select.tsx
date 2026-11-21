@@ -41,7 +41,7 @@ export function ColumnMultiSelect({
             {selected && (
               <span
                 aria-hidden
-                className="rounded bg-primary/20 px-1 text-[9px] font-semibold tabular-nums"
+                className="rounded bg-primary/20 px-1 text-[10px] font-semibold tabular-nums"
               >
                 {position + 1}
               </span>

@@ -8,6 +8,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { scrollBehavior } from "@/lib/scroll-behavior";
 import { BaasSectionHeader } from "../../baas-section-header";
 import { BaasSidebarItem } from "../../baas-sidebar-item";
 import { BaasSidebarPortal } from "../../baas-sidebar-portal";
@@ -45,7 +46,7 @@ export function SupabaseSettingsSection({ project, capabilities }: SupabaseStudi
               onClick={() =>
                 document
                   .getElementById(part.id)
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  ?.scrollIntoView({ behavior: scrollBehavior(), block: "start" })
               }
             >
               {part.label}

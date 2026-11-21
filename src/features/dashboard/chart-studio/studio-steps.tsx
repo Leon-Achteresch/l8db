@@ -44,7 +44,7 @@ export function StudioSteps({
           >
             <span
               className={cn(
-                "grid size-4 place-items-center rounded-full text-[9px] font-semibold transition-colors",
+                "grid size-4 place-items-center rounded-full text-[10px] font-semibold transition-colors",
                 step.done ? "bg-primary text-primary-foreground" : "bg-muted",
               )}
             >

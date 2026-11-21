@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/context-menu";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useHasNewFeatures } from "@/lib/new-features";
+import { scrollBehavior } from "@/lib/scroll-behavior";
 import { useSettingsStore } from "@/lib/settings";
 import type { TABLE_DETAIL_TABS } from "@/lib/table-detail-tabs";
 
@@ -128,7 +129,7 @@ export function TableDetailTabBar({
   const scrollBy = (direction: -1 | 1) => {
     scrollRef.current?.scrollBy({
       left: direction * Math.max(120, (scrollRef.current?.clientWidth ?? 0) * 0.7),
-      behavior: "smooth",
+      behavior: scrollBehavior(),
     });
   };
 

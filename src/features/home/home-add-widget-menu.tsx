@@ -22,6 +22,7 @@ import {
   useHomeLayoutStore,
 } from "@/lib/home-layout";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
+import { scrollBehavior } from "@/lib/scroll-behavior";
 
 const SINGLE_KINDS = (Object.keys(HOME_WIDGETS) as HomeWidgetKind[]).filter(
   (kind) => HOME_WIDGETS[kind].single,
@@ -51,7 +52,7 @@ export function HomeAddWidgetMenu({ connectionId }: { connectionId: string }) {
     requestAnimationFrame(() =>
       document
         .querySelector(`[data-home-widget="${id}"]`)
-        ?.scrollIntoView({ block: "nearest", behavior: "smooth" }),
+        ?.scrollIntoView({ block: "nearest", behavior: scrollBehavior() }),
     );
   };
 

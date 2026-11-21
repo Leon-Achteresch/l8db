@@ -3,6 +3,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "rea
 import type { AiSession } from "@/lib/ai/store";
 import { aiBranches } from "@/lib/ai/thread";
 import type { AiMessage } from "@/lib/db/ai";
+import { scrollBehavior } from "@/lib/scroll-behavior";
 import { AiAssistantMessage } from "./ai-assistant-message";
 import { AiUserMessage } from "./ai-user-message";
 import { MessageScroller } from "./beui/agents/message-scroller";
@@ -103,7 +104,10 @@ export function AiTranscript({
         <button
           type="button"
           onClick={() =>
-            viewport.current?.scrollTo({ top: viewport.current.scrollHeight, behavior: "smooth" })
+            viewport.current?.scrollTo({
+              top: viewport.current.scrollHeight,
+              behavior: scrollBehavior(),
+            })
           }
           className="absolute bottom-3 left-1/2 flex h-7 -translate-x-1/2 items-center gap-1 rounded-full bg-card px-3 text-xs text-muted-foreground shadow-[0_0_0_1px_color-mix(in_oklab,var(--foreground)_6%,transparent),0_6px_16px_-6px_oklch(0_0_0/25%)] outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >

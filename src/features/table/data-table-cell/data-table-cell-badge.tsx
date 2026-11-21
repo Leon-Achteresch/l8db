@@ -15,7 +15,7 @@ export function DataTableCellBadge({ badge }: { badge: CellBadge }) {
       title={badge.title}
       data-cell-badge={badge.kind}
       className={cn(
-        "mr-1.5 inline-block rounded-sm border px-1 align-[1px] font-sans text-[9px] leading-[13px] font-semibold tracking-wide",
+        "mr-1.5 inline-block rounded-sm border px-1 align-[1px] font-sans text-[10px] leading-[13px] font-semibold tracking-wide",
         BADGE_CLASSES[badge.kind],
       )}
     >

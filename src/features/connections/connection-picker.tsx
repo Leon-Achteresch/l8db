@@ -184,7 +184,7 @@ export function ConnectionPicker({
                       {connection.tags?.map((tag, index) => (
                         <span
                           key={index}
-                          className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[9px] font-medium text-white"
+                          className="inline-flex shrink-0 items-center rounded-full px-1.5 py-px text-[10px] font-medium text-white"
                           style={{ backgroundColor: tag.color }}
                         >
                           {tag.name}
