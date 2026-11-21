@@ -14,13 +14,16 @@ import { SavedTabsMenu } from "@/features/shell/table-tabs/saved-tabs-menu";
 import { SharedTabDialog } from "@/features/shell/table-tabs/shared-tab-dialog";
 import { SplitGroupTab } from "@/features/shell/table-tabs/split-group-tab";
 import { SplitGroupsMenu } from "@/features/shell/table-tabs/split-groups-menu";
+import { TransactionCloseDialog } from "@/features/shell/table-tabs/transaction-close-dialog";
 import { useTabClose } from "@/features/shell/table-tabs/use-tab-close";
 import {
   type TableTabActions,
   TableTabsSortableTab,
 } from "@/features/shell/table-tabs-sortable-tab";
 import { InvestigationsButton } from "@/features/workbench/investigations-button";
+import { useActiveConnection } from "@/lib/connections";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
+import { useConnectionEnvironment } from "@/lib/environments";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
 import { onHotkeyAction } from "@/lib/hotkeys";
@@ -78,6 +81,8 @@ export function TableTabs() {
     hasNewFeatures("split.master-tabs", seenFeatures);
   const activeTab = useActiveWorkspaceTab();
   const pendingTab = useActiveWorkspaceTab(true);
+  const activeConnection = useActiveConnection();
+  const environment = useConnectionEnvironment(activeConnection)?.value ?? null;
   const router = useRouter();
   const navigate = useNavigate();
   const routeKey = activeTab ? tabKey(activeTab) : null;
@@ -119,6 +124,9 @@ export function TableTabs() {
   const hiddenTabs = tabs.filter((tab) => hiddenKeys.includes(tabKey(tab)));
 
   const {
+    pendingTransactions,
+    setPendingTransactions,
+    finishTransactions,
     pendingClose,
     setPendingClose,
     savingClose,
@@ -251,6 +259,8 @@ export function TableTabs() {
                   isActive={!chipActive && latestKey === key}
                   isPending={Boolean(pendingTab && tabKey(pendingTab) === key)}
                   paneCount={hasSplit ? paneCount : 0}
+                  connectionId={activeConnection?.id ?? null}
+                  environment={environment}
                   hasTabsToRight={index < tabs.length - 1}
                   tabsCount={tabs.length}
                   canSplit={!easyMode && paneCount < MAX_SPLIT_PANES}
@@ -355,6 +365,11 @@ export function TableTabs() {
         />
       )}
       <SharedTabDialog />
+      <TransactionCloseDialog
+        pending={pendingTransactions}
+        setPending={setPendingTransactions}
+        finish={finishTransactions}
+      />
       <CloseConfirmDialog
         pendingClose={pendingClose}
         setPendingClose={setPendingClose}

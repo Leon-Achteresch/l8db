@@ -24,6 +24,7 @@ import { useConnectionEnvironment } from "@/lib/environments";
 import { useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
+import { useWriteModeExpiry } from "@/lib/hooks/use-write-mode-expiry";
 import { usePaneSourceKey } from "@/lib/master-detail";
 import { useSettingsStore } from "@/lib/settings";
 import {
@@ -113,8 +114,7 @@ export function WorkspaceLayout() {
   const { ref: motionRef } = useNewFeatureVisibility<HTMLDivElement>("workspace.motion");
   const pathname = useRouterSelect((state) => state.location.pathname);
   const easyMode = useSettingsStore((state) => state.easyMode);
-  const environment = useConnectionEnvironment(useActiveConnection());
-  const productionColor = environment?.value === "production" ? environment.color : null;
+  const activeConnection = useActiveConnection();
   const tool = useRouterSelect((state) => toolIdForPath(state.location.pathname));
   const openToolTab = useTableTabs((state) => state.openToolTab);
 
@@ -130,6 +130,11 @@ export function WorkspaceLayout() {
   const split = useSplitView((state) => state.panes.length > 1);
   const routeKey = activeTab ? tabKey(activeTab) : "";
   const shown = useSplitShown(routeKey || null);
+  const splitActive = !easyMode && shown;
+  const workspaceConnection = splitActive ? null : activeConnection;
+  const environment = useConnectionEnvironment(workspaceConnection);
+  const productionColor = environment?.value === "production" ? environment.color : null;
+  useWriteModeExpiry();
   const hasFkDrawer = useFkDrawerStack((state) => state.stack.length > 0);
   const fkDrawerUsed = useRef(false);
   if (hasFkDrawer) fkDrawerUsed.current = true;
@@ -233,7 +238,7 @@ export function WorkspaceLayout() {
         className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
         style={productionColor ? { boxShadow: `inset 0 0 0 2px ${productionColor}` } : undefined}
       >
-        <EnvironmentBanner />
+        <EnvironmentBanner connection={workspaceConnection} />
         <header
           data-focus-region="tabs"
           className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border/70 bg-primary/[0.035] px-1.5"
@@ -250,7 +255,7 @@ export function WorkspaceLayout() {
             inert={Boolean(switchingTab)}
             className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
           >
-            {!easyMode && shown ? (
+            {splitActive ? (
               <SplitWorkspace />
             ) : (
               <>

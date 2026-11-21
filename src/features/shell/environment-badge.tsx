@@ -1,8 +1,8 @@
-import { useActiveConnection } from "@/lib/connections";
 import { useConnectionEnvironment } from "@/lib/environments";
+import { useFocusedConnection } from "@/lib/hooks/use-focused-connection";
 
 export function EnvironmentBadge() {
-  const environment = useConnectionEnvironment(useActiveConnection());
+  const environment = useConnectionEnvironment(useFocusedConnection());
   if (!environment) return null;
   return (
     <span

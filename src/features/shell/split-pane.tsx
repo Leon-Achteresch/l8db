@@ -6,9 +6,16 @@ import { lazy, Suspense } from "react";
 import { toast } from "sonner";
 import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { EnvironmentBanner } from "@/features/shell/environment-banner";
 import { SplitDropPreview } from "@/features/shell/split-workspace/split-drop-preview";
 import { TabPaneContent } from "@/features/shell/tab-pane-content";
-import { ConnectionScopeContext, useConnectionsStore, usesTunnel } from "@/lib/connections";
+import {
+  ConnectionScopeContext,
+  useActiveConnection,
+  useConnectionsStore,
+  usesTunnel,
+} from "@/lib/connections";
+import { useConnectionEnvironment } from "@/lib/environments";
 import {
   MasterSelectionContext,
   masterDetailKey,
@@ -65,6 +72,10 @@ export function SplitPane({ index, focused }: { index: number; focused: boolean 
   const synced = paneTabs.some((other, pane) => pane !== index && sameTable(tab, other));
   const overrideId = usePaneConnectionId(key);
   const override = connections.find((entry) => entry.id === overrideId) ?? null;
+  const activeConnection = useActiveConnection();
+  const paneConnection = override ?? activeConnection;
+  const environment = useConnectionEnvironment(paneConnection);
+  const productionColor = environment?.value === "production" ? environment.color : null;
   const { ref: dragRef } = useDraggable({
     id: `pane-drag:${index}`,
     type: "pane",
@@ -127,14 +138,18 @@ export function SplitPane({ index, focused }: { index: number; focused: boolean 
           if (!focused && tab && !remote) navigateToTab(navigate, tab);
           focusPane(index);
         }}
+        data-environment={environment?.value}
+        style={productionColor ? { boxShadow: `inset 0 0 0 2px ${productionColor}` } : undefined}
         className={cn(
           "relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background",
-          "after:pointer-events-none after:absolute after:inset-0 after:z-30",
+          "after:pointer-events-none after:absolute after:z-30",
+          productionColor ? "after:inset-[2px]" : "after:inset-0",
           focused
             ? "after:ring-2 after:ring-inset after:ring-primary"
             : "after:ring-1 after:ring-inset after:ring-border/80",
         )}
       >
+        <EnvironmentBanner connection={paneConnection} />
         <div
           className={cn(
             "@container flex h-8 shrink-0 items-center gap-1 border-b border-border/70 bg-muted/40",

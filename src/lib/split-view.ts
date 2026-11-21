@@ -757,18 +757,36 @@ export function useSplitGroups(): SplitGroup[] {
   return useSplitView((state) => state.groups[scope]) ?? NO_GROUPS;
 }
 
+export function paneConnectionId(
+  state: Pick<SplitState, "paneConnections">,
+  key: string | null,
+  activeId: string | null,
+  connections: { id: string }[],
+): string | null {
+  const override = key
+    ? (remoteTab(key)?.connectionId ??
+      state.paneConnections[`${keyForConnection(activeId)}|${key}`] ??
+      null)
+    : null;
+  if (!override || override === activeId) return null;
+  return connections.some((entry) => entry.id === override) ? override : null;
+}
+
+export function focusedConnectionId(
+  state: Pick<SplitState, "panes" | "paneTabs" | "away" | "focusedPane" | "paneConnections">,
+  routeKey: string | null,
+  activeId: string | null,
+  connections: { id: string }[],
+): string | null {
+  if (!isSplitShown(state, routeKey)) return activeId;
+  const key = state.panes[state.focusedPane] ?? `split-detail:${state.focusedPane}`;
+  return paneConnectionId(state, key, activeId, connections) ?? activeId;
+}
+
 export function usePaneConnectionId(key: string | null): string | null {
   const activeId = useConnectionsStore((state) => state.activeId);
   const connections = useConnectionsStore((state) => state.connections);
-  const override = useSplitView((state) =>
-    key
-      ? (remoteTab(key)?.connectionId ??
-        state.paneConnections[`${keyForConnection(activeId)}|${key}`] ??
-        null)
-      : null,
-  );
-  if (!override || override === activeId) return null;
-  return connections.some((entry) => entry.id === override) ? override : null;
+  return useSplitView((state) => paneConnectionId(state, key, activeId, connections));
 }
 
 export function useFocusedPaneScope(): { index: number; connectionId: string } | null {
