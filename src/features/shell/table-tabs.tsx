@@ -280,7 +280,12 @@ export function TableTabs() {
           />
         )}
       </div>
-      <Tooltip content="Neue Abfrage öffnen" side="bottom" wrapperClassName="shrink-0">
+      <Tooltip
+        content="Neue Abfrage öffnen"
+        hotkey="tab.newQuery"
+        side="bottom"
+        wrapperClassName="shrink-0"
+      >
         <button
           type="button"
           data-feature="query.new-tab"
@@ -296,7 +301,12 @@ export function TableTabs() {
       <InvestigationsButton />
 
       {!easyMode && (
-        <Tooltip content="Ansicht teilen" side="bottom" wrapperClassName="shrink-0">
+        <Tooltip
+          content="Ansicht teilen"
+          hotkey="view.split"
+          side="bottom"
+          wrapperClassName="shrink-0"
+        >
           <button
             data-feature="view.split"
             type="button"

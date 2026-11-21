@@ -2,6 +2,7 @@
 
 import { Tooltip as TooltipPrimitive } from "radix-ui";
 import * as React from "react";
+import { HotkeyKbd } from "@/components/hotkey-kbd";
 import { usePortalContainer } from "@/lib/portal-container";
 import { cn } from "@/lib/utils";
 
@@ -9,8 +10,9 @@ export function TooltipContent({
   className,
   sideOffset = 0,
   children,
+  hotkey,
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Content>) {
+}: React.ComponentProps<typeof TooltipPrimitive.Content> & { hotkey?: string }) {
   const portalContainer = usePortalContainer();
   return (
     <TooltipPrimitive.Portal container={portalContainer}>
@@ -24,6 +26,7 @@ export function TooltipContent({
         {...props}
       >
         {children}
+        {hotkey ? <HotkeyKbd command={hotkey} /> : null}
         <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-foreground fill-foreground" />
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>

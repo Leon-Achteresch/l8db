@@ -1,5 +1,5 @@
 import type { Hotkey } from "@tanstack/react-hotkeys";
-import { useMemo } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createSafeJsonStorage } from "@/lib/buffered-storage";
@@ -41,7 +41,8 @@ export function resolveHotkey(id: string, overrides?: Record<string, string>): H
 }
 
 export function useResolvedHotkey(id: string): Hotkey {
-  const override = useHotkeysStore((state) => state.overrides[id]);
+  const read = useCallback(() => useHotkeysStore.getState().overrides[id], [id]);
+  const override = useSyncExternalStore(useHotkeysStore.subscribe, read, read);
   return useMemo(() => {
     const command = commandById(id);
     return (override ?? command?.defaultHotkey ?? "Escape") as Hotkey;

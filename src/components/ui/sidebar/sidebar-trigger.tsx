@@ -1,6 +1,7 @@
 import { PanelLeftIcon } from "lucide-react";
-import * as React from "react";
-import { Button } from "@/components/ui/button";
+import type * as React from "react";
+import { IconButton } from "@/components/icon-button";
+import type { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "./shared";
 
@@ -12,7 +13,8 @@ export function SidebarTrigger({
   const { toggleSidebar } = useSidebar();
 
   return (
-    <Button
+    <IconButton
+      aria-label="Seitenleiste umschalten"
       data-hotkey="sidebar.toggle"
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
@@ -26,7 +28,6 @@ export function SidebarTrigger({
       {...props}
     >
       <PanelLeftIcon />
-      <span className="sr-only">Toggle Sidebar</span>
-    </Button>
+    </IconButton>
   );
 }

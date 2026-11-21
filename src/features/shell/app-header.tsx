@@ -228,7 +228,7 @@ export function AppHeader() {
           </Tooltip>
         )}
         {canRefresh ? (
-          <Tooltip content="Objekte neu laden" side="bottom">
+          <Tooltip content="Objekte neu laden" hotkey="app.refresh" side="bottom">
             <button
               type="button"
               onClick={() => void refresh()}
@@ -287,7 +287,7 @@ export function AppHeader() {
               {versioning.pending > 0 ? (
                 <span
                   data-testid="versioning-badge"
-                  className="absolute -bottom-1 -left-1 flex min-w-3.5 h-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[8px] font-bold tabular-nums text-primary-foreground"
+                  className="absolute -bottom-1 -left-1 flex min-w-4 h-4 items-center justify-center rounded-full bg-primary px-0.5 text-[10px] font-bold tabular-nums text-primary-foreground"
                 >
                   {versioning.pending > 99 ? "99+" : versioning.pending}
                 </span>
@@ -317,7 +317,7 @@ export function AppHeader() {
             >
               <GitBranchIcon className="size-4" strokeWidth={1.75} />
               {txCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex size-3.5 items-center justify-center rounded-full bg-primary text-[8px] font-bold text-primary-foreground">
+                <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
                   {txCount}
                 </span>
               )}
@@ -343,7 +343,7 @@ export function AppHeader() {
         </Tooltip>
 
         {aiEnabled && (
-          <Tooltip content="AI-Arbeitsbereich" side="bottom">
+          <Tooltip content="AI-Arbeitsbereich" hotkey="ai.toggle" side="bottom">
             <button
               data-feature="ai.chat"
               id="ai-workspace-trigger"
@@ -386,7 +386,7 @@ export function AppHeader() {
           </Tooltip>
         )}
 
-        <Tooltip content="Einstellungen" side="bottom">
+        <Tooltip content="Einstellungen" hotkey="settings.open" side="bottom">
           <Link
             to="/settings"
             aria-label={
