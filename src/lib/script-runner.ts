@@ -1028,11 +1028,20 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
           ? bindNames(sql).filter((name) => plus.binds.has(name))
           : [];
       const activeTxId = txId;
-      const limited = applySelectRowLimit(
-        expandSessionViews(sql, sessionViewsFor(connection.id, database), connection.kind),
+      const expanded = expandSessionViews(
+        sql,
+        sessionViewsFor(connection.id, database),
         connection.kind,
-        oracle ? 0 : (request.selectRowLimit ?? 0),
       );
+      const rowLimit = oracle ? 0 : (request.selectRowLimit ?? 0);
+      const limited = applySelectRowLimit(expanded, connection.kind, rowLimit);
+      const mark = (result: QueryResult): QueryResult =>
+        rowLimit > 0 &&
+        limited !== expanded &&
+        result.columns.length > 0 &&
+        result.rows.length >= rowLimit
+          ? { ...result, autoLimit: rowLimit }
+          : result;
       if (used.length) {
         const run = () =>
           executeWithBinds(
@@ -1057,19 +1066,21 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         }
         if (plus.autoprint) printBinds(entry, used, true);
         if (activeTxId) record(activeTxId, entry.sql, bound.result, []);
-        return bound.result;
+        return mark(bound.result);
       }
       const sessionResult = await runSessionViewStatement(connection, database, sql);
       if (sessionResult) return sessionResult;
       if (!activeTxId)
-        return executeQuery(connection.kind, url, limited, database ?? undefined, options);
+        return mark(
+          await executeQuery(connection.kind, url, limited, database ?? undefined, options),
+        );
       const tracked = await runManagedOperation(activeTxId, () =>
         executeWithTransactionChanges(connection, database, activeTxId, sql, () =>
           executeInTransaction(activeTxId, limited, options),
         ),
       );
       record(activeTxId, entry.sql, tracked.result, tracked.changes);
-      return tracked.result;
+      return mark(tracked.result);
     };
     const runStatement = async (item: ScriptItem, entry: ScriptRunEntry) => {
       lastSql = item;
