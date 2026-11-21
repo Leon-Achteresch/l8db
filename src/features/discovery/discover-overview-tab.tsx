@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { DiscoverFeatureCard } from "@/features/discovery/discover-feature-card";
 import { SpotlightOpenButton } from "@/features/discovery/spotlight/spotlight-open-button";
+import { useAiEnabled } from "@/lib/ai/access";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { FEATURE_CATALOG, featureAvailable, newestFeatures } from "@/lib/discovery/catalog";
 import { useFeatureUsage } from "@/lib/discovery/usage";
@@ -11,11 +12,13 @@ import { useSettingsStore } from "@/lib/settings";
 export function DiscoverOverviewTab() {
   const capabilities = useActiveCapabilities();
   const easyMode = useSettingsStore((state) => state.easyMode);
+  const ai = useAiEnabled();
   const usage = useFeatureUsage();
   const { ref, isNew } = useNewFeatureVisibility<HTMLDivElement>("discover.overview");
   const available = useMemo(
-    () => FEATURE_CATALOG.filter((entry) => featureAvailable(entry, { capabilities, easyMode })),
-    [capabilities, easyMode],
+    () =>
+      FEATURE_CATALOG.filter((entry) => featureAvailable(entry, { capabilities, easyMode, ai })),
+    [capabilities, easyMode, ai],
   );
   const newest = useMemo(() => newestFeatures(6, available), [available]);
   const major = useMemo(() => {

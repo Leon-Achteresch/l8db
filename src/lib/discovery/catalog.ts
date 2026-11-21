@@ -1,3 +1,4 @@
+import { aiEnabled, isAiFeatureId } from "@/lib/ai/access";
 import { commandNeedle, scoreNeedle } from "@/lib/command-score";
 import type { Capabilities } from "@/lib/db";
 import { CATALOG_ENTRIES } from "./catalog-entries";
@@ -143,9 +144,14 @@ export function featureAnchorId(entry: FeatureEntry): string {
 
 export function featureAvailable(
   entry: FeatureEntry,
-  { capabilities, easyMode }: Pick<FeatureSearchOptions, "capabilities" | "easyMode">,
+  {
+    capabilities,
+    easyMode,
+    ai = aiEnabled(),
+  }: Pick<FeatureSearchOptions, "capabilities" | "easyMode" | "ai">,
 ): boolean {
   if (easyMode && entry.hiddenInEasyMode) return false;
+  if (!ai && entry.id && isAiFeatureId(entry.id)) return false;
   if (capabilities === undefined || !entry.capability) return true;
   if (!capabilities) return false;
   if (entry.capability === "sql")

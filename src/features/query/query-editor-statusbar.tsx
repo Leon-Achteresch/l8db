@@ -1,6 +1,7 @@
 import { useDeferredValue, useMemo, useSyncExternalStore } from "react";
 
 import { EditorAiCheckpoints } from "@/features/query/editor-ai/editor-ai-checkpoints";
+import { EditorAiConsentChip } from "@/features/query/editor-ai/editor-ai-consent-chip";
 import type { EditorPositionStore } from "@/features/query/query-view/editor-position-store";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { useSettingsStore } from "@/lib/settings";
@@ -48,6 +49,7 @@ export function QueryEditorStatusbar({
       <span className="whitespace-nowrap tabular-nums">{statementCount}</span>
       <div className="ml-auto flex shrink-0 items-center gap-3">
         {editorId && <EditorAiCheckpoints editorId={editorId} />}
+        <EditorAiConsentChip />
         <span className="hidden whitespace-nowrap sm:inline">{dialectLabel}</span>
         <span className="whitespace-nowrap tabular-nums">
           {insertSpaces ? "Leerzeichen" : "Tabulatoren"} {editorTabSize}
