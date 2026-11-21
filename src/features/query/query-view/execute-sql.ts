@@ -9,7 +9,7 @@ import {
 } from "@/lib/db";
 import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-transactions";
 import { withAdapterResultTiming, withoutMeasuredQueryTiming } from "@/lib/query-result-timing";
-import { applySelectRowLimit } from "@/lib/select-row-limit";
+import { applySelectRowLimit, DEFAULT_SELECT_ROW_LIMIT } from "@/lib/select-row-limit";
 import { expandSessionViews, runSessionViewStatement, sessionViewsFor } from "@/lib/session-views";
 import { useSettingsStore } from "@/lib/settings";
 import { analyzedSql, managedQueryIssue } from "@/lib/sql-safety";
@@ -28,6 +28,7 @@ interface ExecuteSqlOptions {
   bound?: ParameterizedQuery;
   transactionsCapable: boolean;
   onJob: (id: string) => void;
+  rowLimit?: number | null;
 }
 
 export async function executeSqlWithTransactions({
@@ -37,22 +38,25 @@ export async function executeSqlWithTransactions({
   bound,
   transactionsCapable,
   onJob,
+  rowLimit = DEFAULT_SELECT_ROW_LIMIT,
 }: ExecuteSqlOptions): Promise<QueryResult> {
   const intercepted = await runSessionViewStatement(connection, database, sql);
   if (intercepted) return withoutMeasuredQueryTiming(intercepted);
   const sessionViews = sessionViewsFor(connection.id, database);
-  sql = applySelectRowLimit(
-    expandSessionViews(sql, sessionViews, connection.kind),
-    connection.kind,
-  );
-  if (bound)
-    bound = {
-      ...bound,
-      sql: applySelectRowLimit(
-        expandSessionViews(bound.sql, sessionViews, connection.kind),
-        connection.kind,
-      ),
-    };
+  let limited = false;
+  const limit = (text: string) => {
+    const expanded = expandSessionViews(text, sessionViews, connection.kind);
+    if (rowLimit === null) return expanded;
+    const next = applySelectRowLimit(expanded, connection.kind, rowLimit);
+    limited ||= next !== expanded;
+    return next;
+  };
+  sql = limit(sql);
+  if (bound) bound = { ...bound, sql: limit(bound.sql) };
+  const mark = (res: QueryResult): QueryResult =>
+    limited && rowLimit && res.columns.length > 0 && res.rows.length >= rowLimit
+      ? { ...res, autoLimit: rowLimit }
+      : res;
   const executionOptions = { onJob, confirmed: true };
   const store = useTransactionStore.getState();
   const existingTx = getQueryTransaction(connection.id, database);
@@ -102,7 +106,7 @@ export async function executeSqlWithTransactions({
       );
       store.setPanelOpen(true);
     }
-    return withAdapterResultTiming(res);
+    return mark(withAdapterResultTiming(res));
   }
   if (
     opensManagedTransaction(classified, connection.kind) &&
@@ -138,7 +142,7 @@ export async function executeSqlWithTransactions({
     }
     await runManagedOperation(txId, () => refreshDatabaseChanges(connection, txId));
     store.setPanelOpen(true);
-    return withAdapterResultTiming(res);
+    return mark(withAdapterResultTiming(res));
   }
   const kind = connection.kind;
   const result = bound
@@ -157,5 +161,5 @@ export async function executeSqlWithTransactions({
         database ?? undefined,
         executionOptions,
       );
-  return withAdapterResultTiming(result, kind);
+  return mark(withAdapterResultTiming(result, kind));
 }

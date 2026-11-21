@@ -1,6 +1,10 @@
 import { useCallback, useState } from "react";
 import { copyText } from "@/lib/clipboard";
-import { fitHeaderColumnWidth, measureHeaderTitleWidth } from "@/lib/column-header-width";
+import {
+  autosizeColumnWidth,
+  fitHeaderColumnWidth,
+  measureHeaderTitleWidth,
+} from "@/lib/column-header-width";
 import type { ForeignKeyInfo } from "@/lib/db";
 import { serializeSelectionCell } from "@/lib/grid-selection";
 import { formatVisibleColumnNames, toggleHiddenColumn } from "@/lib/table-column-prefs";
@@ -15,7 +19,15 @@ type Options = {
   fkByColumn: Map<string, ForeignKeyInfo[]>;
   typeInfoByColumn: Map<string, ReturnType<typeof getColumnTypeInfo>>;
   data: Record<string, unknown>[];
+  totalCount?: number | null;
 };
+
+export function copiedValuesLabel(count: number, total: number | null | undefined): string {
+  const loaded = count.toLocaleString("de-DE");
+  if (total == null) return `${loaded} geladene Werte`;
+  if (total > count) return `${loaded} von ${total.toLocaleString("de-DE")} Werten`;
+  return `${loaded} Werte`;
+}
 
 export function useColumnActions({
   order,
@@ -26,6 +38,7 @@ export function useColumnActions({
   fkByColumn,
   typeInfoByColumn,
   data,
+  totalCount,
 }: Options) {
   const [togglingColumn, setTogglingColumn] = useState<string | null>(null);
 
@@ -38,9 +51,35 @@ export function useColumnActions({
   const copyColumnValues = useCallback(
     (columnId: string) => {
       const text = data.map((row) => serializeSelectionCell(row[columnId])).join("\n");
-      void copyText(text, `Spalte ${columnId} kopiert (${data.length} Werte).`);
+      void copyText(
+        text,
+        `Spalte ${columnId} kopiert (${copiedValuesLabel(data.length, totalCount)}).`,
+      );
     },
-    [data],
+    [data, totalCount],
+  );
+
+  const headerWidth = useCallback(
+    (column: string) =>
+      fitHeaderColumnWidth(
+        measureHeaderTitleWidth(column, typeInfoByColumn.get(column)?.label),
+        fkByColumn.has(column),
+      ),
+    [fkByColumn, typeInfoByColumn],
+  );
+
+  const autosizeColumn = useCallback(
+    (columnId: string) =>
+      setColumnSizing({
+        ...savedColumnSizing,
+        [columnId]: autosizeColumnWidth(
+          data,
+          columnId,
+          headerWidth(columnId),
+          serializeSelectionCell,
+        ),
+      }),
+    [data, headerWidth, savedColumnSizing, setColumnSizing],
   );
 
   const fitHeaderWidths = useCallback(() => {
@@ -48,13 +87,10 @@ export function useColumnActions({
     const next = { ...savedColumnSizing };
     for (const column of order) {
       if (hiddenSet.has(column)) continue;
-      next[column] = fitHeaderColumnWidth(
-        measureHeaderTitleWidth(column, typeInfoByColumn.get(column)?.label),
-        fkByColumn.has(column),
-      );
+      next[column] = headerWidth(column);
     }
     setColumnSizing(next);
-  }, [fkByColumn, typeInfoByColumn, hidden, order, savedColumnSizing, setColumnSizing]);
+  }, [headerWidth, hidden, order, savedColumnSizing, setColumnSizing]);
 
   const handleColumnToggle = useCallback(
     (column: string) => {
@@ -66,5 +102,12 @@ export function useColumnActions({
     [hidden, order, setHidden, togglingColumn],
   );
 
-  return { togglingColumn, copyColumnNames, copyColumnValues, fitHeaderWidths, handleColumnToggle };
+  return {
+    togglingColumn,
+    copyColumnNames,
+    copyColumnValues,
+    fitHeaderWidths,
+    autosizeColumn,
+    handleColumnToggle,
+  };
 }

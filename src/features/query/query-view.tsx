@@ -33,6 +33,7 @@ import { type QueryHistoryHandle, QueryViewDrawers } from "./query-view/query-vi
 import { QueryWorkspacePanels } from "./query-view/query-workspace-panels";
 import { ResultActions } from "./query-view/result-actions";
 import { ResultAskAiButton } from "./query-view/result-ask-ai-button";
+import { ResultRowLimitChip } from "./query-view/result-row-limit-chip";
 import { ResultServerOutputItem } from "./query-view/result-server-output-item";
 import { ResultTabs } from "./query-view/result-tabs";
 import { buildStatusText, runLabelFor } from "./query-view/result-text";
@@ -121,7 +122,6 @@ export function QueryView({ tabId }: QueryViewProps) {
   const historyRef = useRef<QueryHistoryHandle | null>(null);
 
   const exec = useQueryExecutionState(tabId);
-  const exportState = useResultExport(exec.result);
   useLastResultSync(tabId, connection?.id ?? null, exec.executedSql, exec.result);
   const cursor = useEditorCursorState(sql);
   const bookmarks = useQueryTabBookmarks(tabId);
@@ -174,7 +174,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const dmlPreviewWarnThreshold = useSettingsStore((state) => state.dmlPreviewWarnThreshold);
   const blankLines = useSettingsStore((state) => state.editorBlankLineTerminator);
 
-  const { runSql, prepareSql, bind } = useRunSql({
+  const { runSql, prepareSql, bind, unlimited } = useRunSql({
     tabId,
     sql,
     connection,
@@ -189,6 +189,8 @@ export function QueryView({ tabId }: QueryViewProps) {
     confirmPreview: dmlPreview.confirmBeforeRun,
     askVariables: substitution.ask,
   });
+  const rerun = unlimited?.result === exec.result ? unlimited : null;
+  const exportState = useResultExport(exec.result, rerun?.load);
 
   const actions = useRunActions({
     sql,
@@ -257,7 +259,19 @@ export function QueryView({ tabId }: QueryViewProps) {
       )}
     </>
   );
-  const resultActions = <ResultActions result={exec.result} exportState={exportState} />;
+  const resultActions = (
+    <>
+      {exec.result?.autoLimit ? (
+        <ResultRowLimitChip
+          limit={exec.result.autoLimit}
+          disabled={exec.isRunning}
+          exceedsWarnLimit={rerun?.exceedsWarnLimit}
+          onRunUnlimited={rerun?.run}
+        />
+      ) : null}
+      <ResultActions result={exec.result} exportState={exportState} />
+    </>
+  );
 
   const outputTabs =
     connection && caps.server_output ? (

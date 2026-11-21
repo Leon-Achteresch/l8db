@@ -17,6 +17,8 @@ export const NEW_FEATURES = {
   "query.tools.postgres-transaction-context": NEXT_FEATURE_VERSION,
   "ai.chat.plus.knowledge.copy-text": NEXT_FEATURE_VERSION,
   "query.results.numbers": NEXT_FEATURE_VERSION,
+  "query.results.row-limit": NEXT_FEATURE_VERSION,
+  "table.rows.column-autosize": NEXT_FEATURE_VERSION,
   "table.rows.server-output": NEXT_FEATURE_VERSION,
   "table.rows.record-view": NEXT_FEATURE_VERSION,
   "table.rows.date-helpers": NEXT_FEATURE_VERSION,

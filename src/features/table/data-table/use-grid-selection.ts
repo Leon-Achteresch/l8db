@@ -29,6 +29,7 @@ export function useGridSelection(
   setActiveCell: Dispatch<SetStateAction<GridCellRef | null>>,
   visibleColumnIds: string[],
   data: TableRow[],
+  totalCount?: number | null,
 ) {
   const [selectionAnchor, setSelectionAnchor] = useState<GridCellRef | null>(null);
   const [extraCells, setExtraCells] = useState<GridCellRef[]>([]);
@@ -116,10 +117,14 @@ export function useGridSelection(
     if (selectedCount <= 1) return false;
     const tsv = cellsToTsv(data, selectedCells, visibleColumnIds);
     if (tsv === "") return false;
-    void copyText(tsv, `${selectedCount} Zellen als TSV kopiert.`);
-
+    const rows = new Set(selectedCells.map((cell) => cell.rowIndex)).size;
+    const loaded =
+      totalCount != null && totalCount > data.length && rows === data.length
+        ? ` (${data.length.toLocaleString("de-DE")} von ${totalCount.toLocaleString("de-DE")} Zeilen)`
+        : "";
+    void copyText(tsv, `${selectedCount} Zellen als TSV kopiert${loaded}.`);
     return true;
-  }, [selectedCells, selectedCount, data, visibleColumnIds]);
+  }, [selectedCells, selectedCount, data, visibleColumnIds, totalCount]);
 
   return {
     setSelectionAnchor,
