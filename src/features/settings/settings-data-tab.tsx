@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRightLeftIcon } from "lucide-react";
+import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -119,26 +120,12 @@ export function SettingsDataTab() {
         </SettingsRow>
 
         <SettingsRow settingId="collect-cell-edits" featureId="settings.data.collect-cell-edits">
-          <div
-            role="radiogroup"
-            aria-label="Zelländerungen sammeln"
-            className="flex items-center gap-1"
-          >
-            {COLLECT_OPTIONS.map((option) => (
-              <Button
-                key={option.value}
-                type="button"
-                role="radio"
-                aria-checked={collectCellEdits === option.value}
-                size="sm"
-                variant={collectCellEdits === option.value ? "secondary" : "outline"}
-                className="h-8 px-2 text-xs"
-                onClick={() => setCollectCellEdits(option.value)}
-              >
-                {option.label}
-              </Button>
-            ))}
-          </div>
+          <SegmentedControl
+            value={collectCellEdits}
+            onChange={setCollectCellEdits}
+            label="Zelländerungen sammeln"
+            options={COLLECT_OPTIONS}
+          />
         </SettingsRow>
 
         <SettingsRow settingId="destructive-confirm">

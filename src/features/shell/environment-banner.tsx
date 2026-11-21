@@ -25,32 +25,40 @@ export function EnvironmentBanner({ connection }: { connection: SavedConnection 
     <div
       role="status"
       aria-label="Produktionsumgebung"
-      className="flex h-8 shrink-0 items-center gap-2 px-3 text-xs font-medium text-white"
+      className="@container flex h-8 shrink-0 items-center gap-2 px-3 text-xs font-medium whitespace-nowrap text-white"
       style={{ backgroundColor: environment.color }}
     >
-      <ShieldAlert className="size-4" />
+      <ShieldAlert className="size-4 shrink-0" />
       <span className="uppercase tracking-wide">Produktion</span>
-      <span className="truncate opacity-90">{connection.name}</span>
-      <span className="ml-auto flex items-center gap-2">
+      <span className="min-w-0 truncate opacity-90">{connection.name}</span>
+      <span className="ml-auto flex shrink-0 items-center gap-2">
         {productionReadOnly && remaining === null && (
           <>
-            <span className="flex items-center gap-1 opacity-90">
-              <LockKeyhole className="size-3.5" /> Schreibgeschützt
+            <span title="Schreibgeschützt" className="flex items-center gap-1 opacity-90">
+              <LockKeyhole className="size-3.5" />
+              <span className="hidden @xl:inline">Schreibgeschützt</span>
             </span>
             <Button
               size="sm"
               variant="secondary"
               className="h-6 px-2 text-xs"
+              aria-label={`Schreibmodus für ${WRITE_MODE_MINUTES} min aktivieren`}
               onClick={() => useWriteModeStore.getState().unlock(connection.id)}
             >
               <Unlock className="size-3.5" />
-              Schreibmodus für {WRITE_MODE_MINUTES} min aktivieren
+              <span className="hidden @2xl:inline">
+                Schreibmodus für {WRITE_MODE_MINUTES} min aktivieren
+              </span>
+              <span className="@2xl:hidden">{WRITE_MODE_MINUTES} min</span>
             </Button>
           </>
         )}
         {productionReadOnly && remaining !== null && (
           <>
-            <span className="tabular-nums">Schreibmodus aktiv · {formatRemaining(remaining)}</span>
+            <span className="tabular-nums">
+              <span className="hidden @lg:inline">Schreibmodus aktiv · </span>
+              {formatRemaining(remaining)}
+            </span>
             <Button
               size="sm"
               variant="secondary"
