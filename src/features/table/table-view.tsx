@@ -51,6 +51,9 @@ export function TableView(props: TableViewProps) {
     viewTab,
     tableTab,
     tableRows,
+    stagedKey,
+    collecting,
+    collectBlocked,
     masked,
     saveRow,
     addRow,
@@ -124,6 +127,8 @@ export function TableView(props: TableViewProps) {
       stateKey={stateKey}
       caps={caps}
       tableRows={tableRows}
+      stagedKey={stagedKey}
+      collecting={collecting}
       rowOffset={rowOffset}
       rowExtent={rowExtent}
       onVisibleRowsChange={onVisibleRowsChange}
@@ -241,6 +246,8 @@ export function TableView(props: TableViewProps) {
             setDataExportFormat={setDataExportFormat}
             handleExport={handleExport}
             requestAddRow={requestAddRow}
+            stagedKey={stagedKey}
+            collectBlocked={collectBlocked}
             schema={schema}
             table={table}
           />

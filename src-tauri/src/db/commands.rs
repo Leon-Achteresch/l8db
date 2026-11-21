@@ -974,6 +974,45 @@ pub async fn duplicate_row_in_transaction(
 }
 
 #[tauri::command]
+pub async fn apply_row_changes_in_transaction(
+    tx_id: String,
+    schema: String,
+    table: String,
+    changes: Vec<super::transaction::RowChange>,
+    tx_state: tauri::State<'_, TransactionState>,
+) -> Result<super::transaction::RowChangesOutcome, String> {
+    Ok(Box::pin(tx_state.apply_row_changes(&tx_id, &schema, &table, &changes)).await)
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn preview_row_changes(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    changes: Vec<super::transaction::RowChange>,
+    pool_state: tauri::State<'_, PoolState>,
+    tx_state: tauri::State<'_, TransactionState>,
+    options: Option<super::execution::ExecutionOptions>,
+) -> Result<Vec<super::transaction::RowChangeSql>, String> {
+    Box::pin(super::execution::run(options, false, async {
+        super::execution::connect(tx_state.preview_row_changes(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner(),
+            &schema,
+            &table,
+            &changes,
+        ))
+        .await
+    }))
+    .await
+}
+
+#[tauri::command]
 pub async fn delete_row_in_transaction(
     tx_id: String,
     schema: String,

@@ -6490,19 +6490,26 @@ pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
     })
 }
 
-pub fn tx_update_row(
+fn sorted_values(
+    values: &std::collections::HashMap<String, Option<String>>,
+) -> Vec<(&String, &Option<String>)> {
+    let mut entries: Vec<_> = values.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    entries
+}
+
+fn tx_update_sql(
     c: &Connection,
     schema: &str,
     table: &str,
     rowid: &str,
     updates: &std::collections::HashMap<String, Option<String>>,
-) -> Result<String, String> {
-    let rowid = validate_rowid(rowid)?;
+) -> Result<Option<(String, Vec<LongValue>)>, String> {
     let valid = existing_columns(c, schema, table)?;
     let binary = binary_columns(c, schema, table, updates)?;
     let mut set_parts = Vec::new();
     let mut long = Vec::new();
-    for (col, val) in updates {
+    for (col, val) in sorted_values(updates) {
         if !valid.contains(col) {
             return Err(format!("Unbekannte Spalte: {col}"));
         }
@@ -6513,15 +6520,110 @@ pub fn tx_update_row(
         ));
     }
     if set_parts.is_empty() {
-        return Ok(rowid.to_string());
+        return Ok(None);
     }
-    let sql = format!(
-        "UPDATE {}.{} SET {} WHERE ROWID = CHARTOROWID({}) RETURNING ROWIDTOCHAR(ROWID) INTO :l8db_rid",
+    Ok(Some((
+        format!(
+            "UPDATE {}.{} SET {} WHERE ROWID = CHARTOROWID({}) RETURNING ROWIDTOCHAR(ROWID) INTO :l8db_rid",
+            quote(schema),
+            quote(table),
+            set_parts.join(", "),
+            lit(rowid)
+        ),
+        long,
+    )))
+}
+
+fn tx_insert_sql(
+    c: &Connection,
+    schema: &str,
+    table: &str,
+    values: &std::collections::HashMap<String, Option<String>>,
+) -> Result<(String, Vec<LongValue>), String> {
+    let valid = existing_columns(c, schema, table)?;
+    let binary = binary_columns(c, schema, table, values)?;
+    let mut long = Vec::new();
+    let (cols, vals): (Vec<String>, Vec<String>) = if values.is_empty() {
+        let first = valid.first().ok_or("Tabelle hat keine Spalten")?;
+        (vec![quote(first)], vec!["DEFAULT".to_string()])
+    } else {
+        let mut cols = Vec::new();
+        let mut vals = Vec::new();
+        for (col, val) in sorted_values(values) {
+            if !valid.contains(col) {
+                return Err(format!("Unbekannte Spalte: {col}"));
+            }
+            cols.push(quote(col));
+            vals.push(column_value(&binary, col, val, &mut long));
+        }
+        (cols, vals)
+    };
+    Ok((
+        format!(
+            "INSERT INTO {}.{} ({}) VALUES ({}) RETURNING ROWIDTOCHAR(ROWID) INTO :rid",
+            quote(schema),
+            quote(table),
+            cols.join(", "),
+            vals.join(", ")
+        ),
+        long,
+    ))
+}
+
+fn tx_delete_sql(schema: &str, table: &str, rowid: &str) -> String {
+    format!(
+        "DELETE FROM {}.{} WHERE ROWID = CHARTOROWID({})",
         quote(schema),
         quote(table),
-        set_parts.join(", "),
         lit(rowid)
-    );
+    )
+}
+
+fn describe_long(long: &[LongValue]) -> Vec<String> {
+    long_names(long)
+        .into_iter()
+        .zip(long)
+        .map(|(name, value)| match value {
+            LongValue::Text(text) => format!(":{name} = CLOB, {} Zeichen", text.chars().count()),
+            LongValue::Bytes(bytes) => format!(":{name} = BLOB, {} Bytes", bytes.len()),
+        })
+        .collect()
+}
+
+pub fn tx_change_sql(
+    c: &Connection,
+    schema: &str,
+    table: &str,
+    change: &super::transaction::RowChange,
+) -> Result<Option<(String, Vec<String>)>, String> {
+    use super::transaction::RowChange;
+    Ok(match change {
+        RowChange::Update { ctid, updates } => {
+            tx_update_sql(c, schema, table, validate_rowid(ctid)?, updates)?
+                .map(|(sql, long)| (sql, describe_long(&long)))
+        }
+        RowChange::Insert { values } => {
+            let (sql, long) = tx_insert_sql(c, schema, table, values)?;
+            Some((sql, describe_long(&long)))
+        }
+        RowChange::Delete { ctid } => Some((
+            tx_delete_sql(schema, table, validate_rowid(ctid)?),
+            Vec::new(),
+        )),
+    })
+}
+
+pub fn tx_update_row(
+    c: &Connection,
+    schema: &str,
+    table: &str,
+    rowid: &str,
+    updates: &std::collections::HashMap<String, Option<String>>,
+) -> Result<String, String> {
+    let rowid = validate_rowid(rowid)?;
+    let Some((sql, long)) = tx_update_sql(c, schema, table, rowid, updates)? else {
+        return Ok(rowid.to_string());
+    };
     let names = long_names(&long);
     let boxed = long_params(&names, &long);
     let out = OracleType::Varchar2(4000);
@@ -6546,31 +6648,7 @@ pub fn tx_insert_row(
     table: &str,
     values: &std::collections::HashMap<String, Option<String>>,
 ) -> Result<serde_json::Value, String> {
-    let valid = existing_columns(c, schema, table)?;
-    let binary = binary_columns(c, schema, table, values)?;
-    let mut long = Vec::new();
-    let (cols, vals): (Vec<String>, Vec<String>) = if values.is_empty() {
-        let first = valid.first().ok_or("Tabelle hat keine Spalten")?;
-        (vec![quote(first)], vec!["DEFAULT".to_string()])
-    } else {
-        let mut cols = Vec::new();
-        let mut vals = Vec::new();
-        for (col, val) in values {
-            if !valid.contains(col) {
-                return Err(format!("Unbekannte Spalte: {col}"));
-            }
-            cols.push(quote(col));
-            vals.push(column_value(&binary, col, val, &mut long));
-        }
-        (cols, vals)
-    };
-    let sql = format!(
-        "INSERT INTO {}.{} ({}) VALUES ({}) RETURNING ROWIDTOCHAR(ROWID) INTO :rid",
-        quote(schema),
-        quote(table),
-        cols.join(", "),
-        vals.join(", ")
-    );
+    let (sql, long) = tx_insert_sql(c, schema, table, values)?;
     let names = long_names(&long);
     let boxed = long_params(&names, &long);
     let out = OracleType::Varchar2(4000);
@@ -6617,13 +6695,7 @@ pub fn tx_duplicate_row(
 }
 
 pub fn tx_delete_row(c: &Connection, schema: &str, table: &str, rowid: &str) -> Result<(), String> {
-    let rowid = validate_rowid(rowid)?;
-    let sql = format!(
-        "DELETE FROM {}.{} WHERE ROWID = CHARTOROWID({})",
-        quote(schema),
-        quote(table),
-        lit(rowid)
-    );
+    let sql = tx_delete_sql(schema, table, validate_rowid(rowid)?);
     let affected = c
         .execute(&sql, &[])
         .map_err(map_err)

@@ -14,6 +14,7 @@ import type { useTableExtensionActions } from "@/lib/hooks/use-table-extension-a
 import { useHasNewFeatures } from "@/lib/new-features";
 import { supportsBusinessTimestamp } from "@/lib/timestamp-display";
 import { RowWatchContext } from "@/lib/workbench/row-watch-context";
+import { StagedChangesControl } from "./staged-changes-control";
 import { TableActionsMenu, TableExportMenu } from "./table-export-menu";
 import { TableServerOutput } from "./table-server-output";
 import { TableServerOutputMenuItem } from "./table-server-output-menu-item";
@@ -37,6 +38,8 @@ type Props = Pick<
   | "setDataExportFormat"
   | "handleExport"
   | "requestAddRow"
+  | "stagedKey"
+  | "collectBlocked"
 > & {
   schema: string;
   table: string;
@@ -60,6 +63,8 @@ export function TableToolbarActions({
   setDataExportFormat,
   handleExport,
   requestAddRow,
+  stagedKey,
+  collectBlocked,
   schema,
   table,
 }: Props) {
@@ -87,6 +92,13 @@ export function TableToolbarActions({
   const scope = JSON.stringify([connection?.id, database]);
   return (
     <div className="ml-auto flex items-center gap-1">
+      {isData && (
+        <StagedChangesControl
+          stagedKey={stagedKey}
+          collectBlocked={collectBlocked}
+          onCommitted={() => void refetch()}
+        />
+      )}
       <ObjectAdminMenu schema={schema} name={table} objectType="table" />
       {isData && caps.query_language === "redis" && (
         <RedisKeyActions key={`${connection?.id}:${database}`} />
