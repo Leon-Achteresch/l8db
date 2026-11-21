@@ -359,6 +359,19 @@ describe("Other providers", () => {
       "postgresql://u@h/db?options=-c%20default_transaction_read_only%3Don",
     );
   });
+  test("forces read-only sessions for MySQL and SQLite and leaves other families alone", () => {
+    expect(readOnlyConnectionString("mysql://u@h:3306/db", "mysql")).toBe(
+      "mysql://u@h:3306/db?read_only=true",
+    );
+    const mysql = readOnlyConnectionString("mysql://u@h/db?ssl-mode=REQUIRED", "mysql");
+    expect(mysql).toBe("mysql://u@h/db?ssl-mode=REQUIRED&read_only=true");
+    expect(readOnlyConnectionString(mysql, "mysql")).toBe(mysql);
+    expect(readOnlyConnectionString("/data/a?b.db", "sqlite")).toBe("/data/a?b.db?mode=ro");
+    expect(readOnlyConnectionString("sqlite:///data/a.db?cache=shared", "sqlite")).toBe(
+      "sqlite:///data/a.db?cache=shared&mode=ro",
+    );
+    expect(readOnlyConnectionString("sqlserver://u@h/db", "mssql")).toBe("sqlserver://u@h/db");
+  });
   test("connects tunneled MongoDB directly to the forwarded member", () => {
     expect(tunneledConnectionString("mongodb://u@db:27017", 6502, "mongodb")).toBe(
       "mongodb://u@127.0.0.1:6502/?directConnection=true",

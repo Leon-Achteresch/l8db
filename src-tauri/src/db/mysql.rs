@@ -271,6 +271,12 @@ const NO_LOCAL_INFILE: &str = "LOAD DATA LOCAL INFILE wird nicht unterstützt. D
 fn map_err(e: mysql_async::Error) -> String {
     match e {
         mysql_async::Error::Server(err) if err.code == 3948 => NO_LOCAL_INFILE.into(),
+        mysql_async::Error::Server(err) if err.code == 1792 => {
+            format!(
+                "Verbindung ist schreibgeschützt: MySQL 1792: {}",
+                err.message
+            )
+        }
         mysql_async::Error::Server(err) => format!("MySQL {}: {}", err.code, err.message),
         mysql_async::Error::Driver(mysql_async::DriverError::LocalInfile(
             mysql_async::LocalInfileError::NoHandler,
@@ -536,7 +542,10 @@ pub struct MysqlUrl {
     pub root_cert: Option<String>,
     pub identity: Option<String>,
     pub identity_password: Option<String>,
+    pub read_only: bool,
 }
+
+pub const READ_ONLY_SETUP: &str = "SET SESSION TRANSACTION READ ONLY";
 
 pub fn parse_mysql_url(value: &str) -> Result<MysqlUrl, String> {
     let mut url = url::Url::parse(value.trim()).map_err(|_| "Ungültige MySQL-URL".to_string())?;
@@ -548,6 +557,7 @@ pub fn parse_mysql_url(value: &str) -> Result<MysqlUrl, String> {
     let mut root_cert = None;
     let mut identity = None;
     let mut identity_password = None;
+    let mut read_only = false;
     let pairs: Vec<(String, String)> = url
         .query_pairs()
         .map(|(k, v)| (k.into_owned(), v.into_owned()))
@@ -583,6 +593,7 @@ pub fn parse_mysql_url(value: &str) -> Result<MysqlUrl, String> {
             "sslpassword" | "ssl-password" | "clientCertificateKeyStorePassword" => {
                 identity_password = Some(v)
             }
+            "read_only" => read_only = v == "true",
             "abs_conn_ttl"
             | "abs_conn_ttl_jitter"
             | "client_found_rows"
@@ -621,6 +632,7 @@ pub fn parse_mysql_url(value: &str) -> Result<MysqlUrl, String> {
         root_cert,
         identity,
         identity_password,
+        read_only,
     })
 }
 
@@ -658,6 +670,7 @@ impl MysqlAdapter {
             root_cert,
             identity,
             identity_password,
+            read_only,
         } = parse_mysql_url(&resolved)?;
         let opts = Opts::from_url(url.as_str()).map_err(|e| format!("Ungültige MySQL-URL: {e}"))?;
         let mut builder = OptsBuilder::from_opts(opts)
@@ -666,6 +679,9 @@ impl MysqlAdapter {
             .conn_ttl(Some(std::time::Duration::from_secs(60)));
         if let Some(db) = database.filter(|d| !d.is_empty()) {
             builder = builder.db_name(Some(db));
+        }
+        if read_only {
+            builder = builder.setup(vec![READ_ONLY_SETUP]);
         }
         let plain: Opts = builder.clone().ssl_opts(None::<SslOpts>).into();
         let tls = (ssl != SslMode::Disable).then(|| {
@@ -2107,6 +2123,38 @@ mod column_update_tests;
 mod tests {
     use super::*;
     use crate::db::pool::create_pool_state;
+
+    #[test]
+    fn read_only_urls_lock_every_session() {
+        let url = "mysql://app@db:3306/shop?ssl-mode=DISABLED&read_only=true";
+        let parsed = parse_mysql_url(url).unwrap();
+        assert!(parsed.read_only);
+        assert!(!parsed.url.as_str().contains("read_only"));
+        let adapter = MysqlAdapter::new(url, None, create_pool_state(), "ro".into()).unwrap();
+        assert_eq!(adapter.opts.setup(), [READ_ONLY_SETUP]);
+        let writable = MysqlAdapter::new(
+            "mysql://app@db:3306/shop",
+            None,
+            create_pool_state(),
+            "rw".into(),
+        )
+        .unwrap();
+        assert!(writable.opts.setup().is_empty());
+        assert!(
+            !parse_mysql_url("mysql://app@db/shop?read_only=false")
+                .unwrap()
+                .read_only
+        );
+        let error = map_err(mysql_async::Error::Server(mysql_async::ServerError {
+            code: 1792,
+            message: "Cannot execute statement in a READ ONLY transaction.".into(),
+            state: "25006".into(),
+        }));
+        assert!(
+            error.starts_with("Verbindung ist schreibgeschützt"),
+            "{error}"
+        );
+    }
 
     #[test]
     fn filter_errors_hint_dialect_without_internal_sql() {

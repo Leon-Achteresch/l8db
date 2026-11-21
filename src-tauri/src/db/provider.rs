@@ -565,6 +565,7 @@ impl DatabaseKind {
             },
             DatabaseKind::Mysql => Capabilities {
                 server_output: true,
+                read_only_mode: true,
                 live_monitor: true,
                 backup: true,
                 query_stats: true,
@@ -590,6 +591,7 @@ impl DatabaseKind {
             },
             DatabaseKind::Sqlite => Capabilities {
                 backup: true,
+                read_only_mode: true,
                 query_cancel: true,
                 databases: false,
                 ssl: false,
