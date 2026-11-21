@@ -103,9 +103,11 @@ export function PasteRowsDialog({
       const rows = payload.rows.map((row) =>
         Object.fromEntries(payload.columns.map((column, index) => [column, row[index]])),
       );
-      const count = await pasteRows(connection, database, schema, table, rows);
+      const { count, collected } = await pasteRows(connection, database, schema, table, rows);
       toast.success(
-        `${count} Zeilen eingefügt. Jetzt im Transaktionspanel prüfen und committen oder zurückrollen.`,
+        collected
+          ? `${count} Zeilen vorgemerkt.`
+          : `${count} Zeilen eingefügt. Jetzt im Transaktionspanel prüfen und committen oder zurückrollen.`,
       );
       setOpen(false);
       setText("");

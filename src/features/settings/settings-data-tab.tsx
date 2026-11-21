@@ -7,10 +7,15 @@ import { MultiTargetSettingsRow } from "@/features/settings/multi-target-setting
 import { SettingsNumberInput } from "@/features/settings/settings-number-input";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { useQueryHistoryStore } from "@/lib/query-history";
-import { useSettingsStore } from "@/lib/settings";
+import { type CollectCellEdits, useSettingsStore } from "@/lib/settings";
 import { useTransactionStore } from "@/lib/transactions";
 
 const ROW_LIMIT_PRESETS = [50, 100, 500, 1000];
+const COLLECT_OPTIONS: { value: CollectCellEdits; label: string }[] = [
+  { value: "off", label: "Aus" },
+  { value: "production", label: "Nur Produktion" },
+  { value: "always", label: "Immer" },
+];
 
 export function SettingsDataTab() {
   const {
@@ -18,12 +23,14 @@ export function SettingsDataTab() {
     queryTimeout,
     transactionsEnabled,
     transactionsPerTable,
+    collectCellEdits,
     confirmDestructiveQueries,
     highlightNullValues,
     setRowLimit,
     setQueryTimeout,
     setTransactionsEnabled,
     setTransactionsPerTable,
+    setCollectCellEdits,
     setConfirmDestructiveQueries,
     setHighlightNullValues,
   } = useSettingsStore();
@@ -109,6 +116,29 @@ export function SettingsDataTab() {
             disabled={hasTransactions || !transactionsEnabled}
             aria-label="Transaktionen pro Tabelle"
           />
+        </SettingsRow>
+
+        <SettingsRow settingId="collect-cell-edits" featureId="settings.data.collect-cell-edits">
+          <div
+            role="radiogroup"
+            aria-label="Zelländerungen sammeln"
+            className="flex items-center gap-1"
+          >
+            {COLLECT_OPTIONS.map((option) => (
+              <Button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={collectCellEdits === option.value}
+                size="sm"
+                variant={collectCellEdits === option.value ? "secondary" : "outline"}
+                className="h-8 px-2 text-xs"
+                onClick={() => setCollectCellEdits(option.value)}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
         </SettingsRow>
 
         <SettingsRow settingId="destructive-confirm">

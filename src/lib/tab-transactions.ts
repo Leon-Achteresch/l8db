@@ -1,5 +1,6 @@
 import { useConnectionsStore } from "@/lib/connections";
 import { paneConnectionId, useSplitView } from "@/lib/split-view";
+import { type StagedTarget, useStagedEdits } from "@/lib/staged-edits";
 import { remoteTab, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { keyForConnection } from "@/lib/table-tabs/tab-keys";
 import { type ActiveTransaction, useTransactionStore } from "@/lib/transactions";
@@ -49,9 +50,50 @@ export function orphanedTransactions(
   );
 }
 
+export function tabHoldsStagedTable(
+  tab: Tab,
+  connectionId: string | null,
+  entry: StagedTarget,
+): boolean {
+  return (
+    tab.kind === "table" &&
+    connectionId === entry.connectionId &&
+    tab.schema === entry.schema &&
+    tab.table === entry.table
+  );
+}
+
+export function tabHasStagedChanges(
+  tab: Tab,
+  connectionId: string | null,
+  tables: Record<string, StagedTarget>,
+): boolean {
+  for (const key in tables) if (tabHoldsStagedTable(tab, connectionId, tables[key])) return true;
+  return false;
+}
+
 export function transactionsClosedWith(keys: string[]): ActiveTransaction[] {
   const { transactions } = useTransactionStore.getState();
   if (!transactions.length || !keys.length) return [];
+  const { closing, remaining } = closeSets(keys);
+  return orphanedTransactions(closing, remaining, transactions);
+}
+
+export function stagedTablesClosedWith(keys: string[]): string[] {
+  const { tables } = useStagedEdits.getState();
+  const entries = Object.entries(tables);
+  if (!entries.length || !keys.length) return [];
+  const { closing, remaining } = closeSets(keys);
+  return entries
+    .filter(
+      ([, entry]) =>
+        closing.some((item) => tabHoldsStagedTable(item.tab, item.connectionId, entry)) &&
+        !remaining.some((item) => tabHoldsStagedTable(item.tab, item.connectionId, entry)),
+    )
+    .map(([key]) => key);
+}
+
+function closeSets(keys: string[]): { closing: OpenTab[]; remaining: OpenTab[] } {
   const { activeId, connections } = useConnectionsStore.getState();
   const split = useSplitView.getState();
   const { tabs, tabsByConnection } = useTableTabs.getState();
@@ -68,9 +110,8 @@ export function transactionsClosedWith(keys: string[]): ActiveTransaction[] {
   const others = Object.entries(tabsByConnection)
     .filter(([id]) => id !== keyForConnection(activeId))
     .flatMap(([id, list]) => list.map((tab) => ({ key: tabKey(tab), tab, connectionId: id })));
-  return orphanedTransactions(
-    closable.filter((entry) => closingKeys.has(entry.key)),
-    [...closable.filter((entry) => !closingKeys.has(entry.key)), ...others],
-    transactions,
-  );
+  return {
+    closing: closable.filter((entry) => closingKeys.has(entry.key)),
+    remaining: [...closable.filter((entry) => !closingKeys.has(entry.key)), ...others],
+  };
 }

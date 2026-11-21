@@ -9,6 +9,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { useStagedEdits } from "@/lib/staged-edits";
 import { useTransactionStore } from "@/lib/transactions";
 import type { PendingTransactionClose } from "./use-tab-close";
 
@@ -24,8 +25,17 @@ export function TransactionCloseDialog({
   finish,
 }: TransactionCloseDialogProps) {
   const transactions = useTransactionStore((state) => state.transactions);
+  const tables = useStagedEdits((state) => state.tables);
   const held = pending ? transactions.filter((tx) => pending.txIds.includes(tx.txId)) : [];
-  const changes = held.reduce((sum, tx) => sum + tx.changes.length, 0);
+  const staged = (pending?.staged ?? []).flatMap((key) => (tables[key] ? [tables[key]] : []));
+  const changes =
+    held.reduce((sum, tx) => sum + tx.changes.length, 0) +
+    staged.reduce((sum, entry) => sum + entry.changes.length, 0);
+  const onlyStaged = held.length === 0 && staged.length > 0;
+  const names = [
+    ...held.map((tx) => tx.connectionName),
+    ...staged.map((entry) => `${entry.schema}.${entry.table}`),
+  ];
   return (
     <AlertDialog
       open={pending !== null}
@@ -35,9 +45,11 @@ export function TransactionCloseDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Offene Transaktion</AlertDialogTitle>
+          <AlertDialogTitle>
+            {onlyStaged ? "Nicht übernommene Änderungen" : "Offene Transaktion"}
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            {[...new Set(held.map((tx) => tx.connectionName))].join(", ")} · {changes} Änderungen
+            {[...new Set(names)].join(", ")} · {changes} Änderungen
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -48,11 +60,11 @@ export function TransactionCloseDialog({
             onClick={() => void finish(false)}
           >
             <RotateCcwIcon className="size-3.5" />
-            Rollback
+            {onlyStaged ? "Verwerfen" : "Rollback"}
           </Button>
           <Button data-tx-commit onClick={() => void finish(true)}>
             <CheckIcon className="size-3.5" />
-            Commit
+            {onlyStaged ? "Übernehmen" : "Commit"}
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

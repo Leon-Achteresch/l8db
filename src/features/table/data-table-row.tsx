@@ -11,6 +11,7 @@ import { type CSSProperties, type Dispatch, memo, type SetStateAction, useCallba
 import type { ForeignKeyInfo } from "@/lib/db";
 import type { GridCellRef } from "@/lib/grid-selection";
 import type { ColumnWindowItem } from "@/lib/hooks/use-column-window";
+import { stagedMarkOf } from "@/lib/staged-edits";
 import { cn } from "@/lib/utils";
 import { DataTableCell } from "./data-table-cell";
 import type {
@@ -106,9 +107,17 @@ export const DataTableRow = memo(function DataTableRow({
     (element: HTMLTableRowElement | null) => measureElement(element, dynamicHeight),
     [measureElement, dynamicHeight],
   );
+  const staged = stagedMarkOf(row.original);
+  const stagedColor = staged?.failed
+    ? "var(--destructive) 18%"
+    : staged?.type === "insert"
+      ? "var(--color-emerald-500) 9%"
+      : staged?.type === "delete"
+        ? "var(--destructive) 8%"
+        : null;
   const ruleBackground =
-    ruleColor && !isMarked && !isRowEditing
-      ? `color-mix(in oklab, ${ruleColor} 18%, var(--background))`
+    !isMarked && !isRowEditing && (stagedColor || ruleColor)
+      ? `color-mix(in oklab, ${stagedColor ?? `${ruleColor} 18%`}, var(--background))`
       : undefined;
   return (
     <tr
@@ -120,6 +129,7 @@ export const DataTableRow = memo(function DataTableRow({
       data-marked={isMarked || undefined}
       data-context-menu-target={isContextMenuTarget || undefined}
       data-dynamic-height={dynamicHeight || undefined}
+      data-staged={staged?.type}
       style={
         ruleBackground
           ? ({ "--row-bg": ruleBackground, backgroundColor: ruleBackground } as CSSProperties)
@@ -132,6 +142,7 @@ export const DataTableRow = memo(function DataTableRow({
           : isRowEditing
             ? "bg-primary/[0.03]"
             : "bg-background grid-hover:bg-muted/15",
+        staged?.type === "delete" && "[&>td]:line-through [&>td]:opacity-60",
       )}
     >
       {columnWindow.map((item) => {

@@ -203,8 +203,10 @@ pub(crate) fn update_assignments(
         .iter()
         .map(|column| (&column.name, column))
         .collect();
-    updates
-        .iter()
+    let mut entries: Vec<_> = updates.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    entries
+        .into_iter()
         .map(|(name, value)| {
             let column = columns
                 .get(name)

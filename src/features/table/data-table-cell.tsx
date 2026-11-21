@@ -5,6 +5,7 @@ import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
 import { shortUuid } from "@/lib/grid-cell-format";
 import { numberCellText } from "@/lib/number-display";
 import { useQueryQolSettings } from "@/lib/query-qol-settings";
+import { stagedMarkOf } from "@/lib/staged-edits";
 import { cellPreviewLimit, tableCellPreview, truncateCellPreview } from "@/lib/table-cell-preview";
 import { timestampCellText } from "@/lib/timestamp-display";
 import { cn } from "@/lib/utils";
@@ -141,6 +142,9 @@ export const DataTableCell = memo(function DataTableCell({
     );
   }
 
+  const staged = stagedMarkOf(row.original);
+  const stagedCell =
+    staged?.type === "update" && cellIndex > 0 && staged.columns?.has(columnId) === true;
   const isSticky = cellIndex === 0 || pinnedOffset !== null;
   const stickyTint = isActiveMatch
     ? "rgb(251 191 36 / 0.3)"
@@ -199,6 +203,7 @@ export const DataTableCell = memo(function DataTableCell({
       aria-colindex={gridColumn}
       data-row-index={rowIndex}
       data-col={cellIndex > 0 ? columnId : undefined}
+      data-staged={stagedCell || undefined}
       style={
         isSticky
           ? ({
@@ -254,6 +259,7 @@ export const DataTableCell = memo(function DataTableCell({
               ? "bg-[color-mix(in_oklab,var(--primary)_10%,var(--background))]"
               : "bg-[var(--row-bg,var(--background))] row-hover:bg-[color-mix(in_oklab,var(--muted)_15%,var(--row-bg,var(--background)))]",
           ),
+        stagedCell && !isSelected && "bg-amber-400/20",
         !isSticky && isSelected && "bg-primary/10",
         !isSticky && isMatch && "bg-amber-400/15",
         isActiveMatch &&

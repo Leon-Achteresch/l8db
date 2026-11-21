@@ -35,9 +35,10 @@ import { useSettingsStore } from "@/lib/settings";
 import { captureSharedTab, copySharedTabLink } from "@/lib/shared-tab-open";
 import type { SplitEdge } from "@/lib/split-layout";
 import { isBoundToSplit, useSplitView } from "@/lib/split-view";
+import { useStagedEdits } from "@/lib/staged-edits";
 import { underPointer } from "@/lib/tab-drop";
 import { tabLabel } from "@/lib/tab-navigation";
-import { tabHasTransaction } from "@/lib/tab-transactions";
+import { tabHasStagedChanges, tabHasTransaction } from "@/lib/tab-transactions";
 import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
 import { TOOL_TABS } from "@/lib/tool-tabs";
 import { useTransactionStore } from "@/lib/transactions";
@@ -143,6 +144,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
   const transaction = useTransactionStore((state) =>
     tabHasTransaction(tab, connectionId, state.transactions),
   );
+  const staged = useStagedEdits((state) => tabHasStagedChanges(tab, connectionId, state.tables));
   const { Icon, iconColor } = tabVisual(tab);
 
   const label = tabLabel(tab);
@@ -161,7 +163,12 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
         )}
       </span>
       <span className="truncate font-medium">{label}</span>
-      <TabStatusMarkers environment={environment} transaction={transaction} isActive={isActive} />
+      <TabStatusMarkers
+        environment={environment}
+        transaction={transaction}
+        staged={staged}
+        isActive={isActive}
+      />
       {color && (
         <span
           aria-hidden="true"

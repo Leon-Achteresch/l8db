@@ -6,6 +6,7 @@ import { ConnectionScopeContext, useActiveConnection } from "@/lib/connections";
 import { tableColumnList } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { recordFeatureEvent } from "@/lib/discovery/events";
+import { isProduction } from "@/lib/environments";
 import { openScopedTable, useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { useRedisRowEdit } from "@/lib/hooks/use-redis-row-edit";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
@@ -28,12 +29,22 @@ import { approximateRowCount, exactRowCount } from "@/lib/row-count";
 import { ROWS_WINDOW_MAX_EXTENT } from "@/lib/rows-window";
 import { useSettingsStore } from "@/lib/settings";
 import {
+  collectsTableChanges,
+  overlayStagedRows,
+  stageDelete,
+  stagedTableKey,
+  stageInsert,
+  stageUpdate,
+  useStagedEdits,
+} from "@/lib/staged-edits";
+import {
   availableTableDetailTabs,
   resolveTableDetailTab,
   type TableDetailTab,
 } from "@/lib/table-detail-tabs";
 import { useTableTabs } from "@/lib/table-tabs";
 import { detailTabFor, tableViewStateKey, useTableViewStateStore } from "@/lib/table-view-state";
+import { useTransactionStore } from "@/lib/transactions";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 import type { TableViewProps } from "../table-view";
 
@@ -176,9 +187,59 @@ export function useTableViewModel({
       return out;
     };
   }, [caps.query_language, masked, activeMasks, windowColumns]);
-  const tableRows = useMemo(
+  const stagedKey =
+    connection && !isView
+      ? stagedTableKey({ connectionId: connection.id, database: database ?? null, schema, table })
+      : null;
+  const staged = useStagedEdits((state) => (stagedKey ? state.tables[stagedKey] : undefined));
+  const collectMode = useSettingsStore((s) => s.collectCellEdits);
+  const transactions = useTransactionStore((state) => state.transactions);
+  const loadedRows = useMemo(
     () => pages.flatMap((entry) => pageRows(entry.rows, entry.page)),
     [pages, pageRows],
+  );
+  const tableRows = useMemo(
+    () => overlayStagedRows(loadedRows, staged, pages[0]?.page === 0),
+    [loadedRows, staged, pages],
+  );
+  const keyless = loadedRows.length > 0 && !loadedRows.some((row) => row.__ctid__);
+  const collecting = useMemo(
+    () =>
+      Boolean(
+        stagedKey &&
+          connection &&
+          !masked &&
+          (staged ||
+            (!keyless &&
+              collectMode !== "off" &&
+              transactions &&
+              collectsTableChanges(connection, database ?? null, schema, table))),
+      ),
+    [
+      stagedKey,
+      connection,
+      masked,
+      staged,
+      keyless,
+      collectMode,
+      transactions,
+      database,
+      schema,
+      table,
+    ],
+  );
+  const collectBlocked =
+    !collecting &&
+    keyless &&
+    Boolean(connection) &&
+    collectMode !== "off" &&
+    (collectMode === "always" || isProduction(connection));
+  const stagedTarget = useMemo(
+    () =>
+      connection
+        ? { connectionId: connection.id, database: database ?? null, schema, table }
+        : null,
+    [connection, database, schema, table],
   );
   const exportData = useMemo(
     () => (masked && data ? { columns: data.columns, rows: tableRows } : data),
@@ -268,20 +329,28 @@ export function useTableViewModel({
       updates: Record<string, string | null>,
       oldValues: Record<string, unknown>,
     ) => {
+      if (collecting && stagedTarget) {
+        stageUpdate(stagedTarget, ctid, updates, oldValues);
+        return "collected" as const;
+      }
       const staged = connection
         ? stagesTableChanges(connection, database ?? null, schema, table)
         : false;
       await updateRow({ ctid, updates, oldValues });
       return staged ? ("staged" as const) : undefined;
     },
-    [updateRow, connection, database, schema, table],
+    [updateRow, connection, database, schema, table, collecting, stagedTarget],
   );
   const insertRow = insertRowMutation.mutateAsync;
   const addRow = useCallback(
     async (values: Record<string, string | null>) => {
+      if (collecting && stagedTarget) {
+        stageInsert(stagedTarget, values);
+        return "collected" as const;
+      }
       await insertRow(values);
     },
-    [insertRow],
+    [insertRow, collecting, stagedTarget],
   );
 
   const requestAddRow = () => setAddRowSignal((n) => n + 1);
@@ -290,6 +359,10 @@ export function useTableViewModel({
   const handleDeleteRow = useCallback(
     async (ctid: string, oldValues: Record<string, unknown>) => {
       try {
+        if (collecting && stagedTarget) {
+          stageDelete(stagedTarget, ctid, oldValues);
+          return;
+        }
         const staged = connection
           ? stagesTableChanges(connection, database ?? null, schema, table)
           : false;
@@ -299,7 +372,7 @@ export function useTableViewModel({
         toast.error(typeof err === "string" ? err : String(err));
       }
     },
-    [deleteRow, connection, database, schema, table],
+    [deleteRow, connection, database, schema, table, collecting, stagedTarget],
   );
 
   const handleRefresh = refresh;
@@ -386,6 +459,9 @@ export function useTableViewModel({
     viewTab,
     tableTab,
     tableRows,
+    stagedKey,
+    collecting,
+    collectBlocked,
     rowOffset,
     rowExtent,
     onVisibleRowsChange,

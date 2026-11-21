@@ -5,8 +5,9 @@ import { saveQueryTabFile } from "@/lib/hooks/use-query-file";
 import { finishManagedTransaction } from "@/lib/managed-transactions";
 import { noteActiveTab, recentTabKeys } from "@/lib/recent-tabs";
 import { standaloneTabs, tabAfterClose, useSplitView } from "@/lib/split-view";
+import { commitStagedTable, discardStagedTable, isUserCancel } from "@/lib/staged-edits";
 import { navigateToTab } from "@/lib/tab-navigation";
-import { transactionsClosedWith } from "@/lib/tab-transactions";
+import { stagedTablesClosedWith, transactionsClosedWith } from "@/lib/tab-transactions";
 import {
   queryNeedsCloseConfirmation,
   remoteTab,
@@ -17,7 +18,11 @@ import {
 import { useWorkbenchTabs, workbenchTabBusy } from "@/lib/workbench-tabs";
 
 export type PendingClose = { keys: string[]; keep?: string } | null;
-export type PendingTransactionClose = { close: NonNullable<PendingClose>; txIds: string[] } | null;
+export type PendingTransactionClose = {
+  close: NonNullable<PendingClose>;
+  txIds: string[];
+  staged?: string[];
+} | null;
 
 interface UseTabCloseOptions {
   tabs: Tab[];
@@ -124,8 +129,9 @@ export function useTabClose({ tabs, activeTab, navigate, listen = true }: UseTab
       return;
     }
     const held = transactionsClosedWith(pending.keys);
-    if (held.length) {
-      setPendingTransactions({ close: pending, txIds: held.map((tx) => tx.txId) });
+    const staged = stagedTablesClosedWith(pending.keys);
+    if (held.length || staged.length) {
+      setPendingTransactions({ close: pending, txIds: held.map((tx) => tx.txId), staged });
       return;
     }
     confirmUnsaved(pending);
@@ -146,15 +152,21 @@ export function useTabClose({ tabs, activeTab, navigate, listen = true }: UseTab
 
   const finishTransactions = async (commit: boolean) => {
     if (!pendingTransactions) return;
-    const { close, txIds } = pendingTransactions;
+    const { close, txIds, staged = [] } = pendingTransactions;
     setPendingTransactions(null);
     try {
+      for (const key of staged) {
+        if (commit) await commitStagedTable(key);
+        else discardStagedTable(key);
+      }
       for (const txId of txIds) await finishManagedTransaction(txId, commit);
     } catch (error) {
-      toast.error(String(error));
+      if (!isUserCancel(error)) toast.error(error instanceof Error ? error.message : String(error));
       return;
     }
-    toast.success(commit ? "Transaktion committed." : "Transaktion zurückgerollt.");
+    if (txIds.length)
+      toast.success(commit ? "Transaktion committed." : "Transaktion zurückgerollt.");
+    else toast.success(commit ? "Änderungen übernommen." : "Änderungen verworfen.");
     confirmUnsaved(close);
   };
 

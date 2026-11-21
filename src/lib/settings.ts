@@ -31,6 +31,7 @@ export interface PlsqlWarningRules {
 }
 export type SidebarObjectNav = "tabs" | "select";
 export type UpdateChannel = "stable" | "canary";
+export type CollectCellEdits = "off" | "production" | "always";
 export type TableFilterMode = "simple" | "sql";
 
 export type EditorKeymap = "default" | "vim";
@@ -55,6 +56,7 @@ export interface SettingsState {
   sshTrustNewHosts: boolean;
   transactionsEnabled: boolean;
   transactionsPerTable: boolean;
+  collectCellEdits: CollectCellEdits;
   autoFeatureVideos: boolean;
   setAutoFeatureVideos: (value: boolean) => void;
   blogSuggestions: boolean;
@@ -147,6 +149,7 @@ export interface SettingsState {
   setSshTrustNewHosts: (v: boolean) => void;
   setTransactionsEnabled: (v: boolean) => void;
   setTransactionsPerTable: (v: boolean) => void;
+  setCollectCellEdits: (v: CollectCellEdits) => void;
   setAutoUpdateCheck: (v: boolean) => void;
   setAutoUpdateInstall: (v: boolean) => void;
   setUpdateChannel: (v: UpdateChannel) => void;
@@ -268,6 +271,7 @@ export const DEFAULT_SETTINGS = {
   sshTrustNewHosts: false,
   transactionsEnabled: true,
   transactionsPerTable: true,
+  collectCellEdits: "production" as CollectCellEdits,
   autoFeatureVideos: true,
   blogSuggestions: true,
   successToasts: false,
@@ -373,6 +377,7 @@ export const useSettingsStore = create<SettingsState>()(
       setSshTrustNewHosts: (sshTrustNewHosts) => set({ sshTrustNewHosts }),
       setTransactionsEnabled: (transactionsEnabled) => set({ transactionsEnabled }),
       setTransactionsPerTable: (transactionsPerTable) => set({ transactionsPerTable }),
+      setCollectCellEdits: (collectCellEdits) => set({ collectCellEdits }),
       setAutoFeatureVideos: (autoFeatureVideos) => set({ autoFeatureVideos }),
       setBlogSuggestions: (blogSuggestions) => set({ blogSuggestions }),
       setSuccessToasts: (successToasts) => set({ successToasts }),
@@ -525,6 +530,10 @@ export const useSettingsStore = create<SettingsState>()(
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
           dmlPreviewMode: normalizeDmlPreviewMode(saved?.dmlPreviewMode),
           updateChannel: saved?.updateChannel === "canary" ? "canary" : "stable",
+          collectCellEdits:
+            saved?.collectCellEdits === "off" || saved?.collectCellEdits === "always"
+              ? saved.collectCellEdits
+              : "production",
         });
       },
     },

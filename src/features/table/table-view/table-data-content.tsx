@@ -1,6 +1,7 @@
 import { FilterXIcon, RefreshCwIcon } from "lucide-react";
 import { useCallback, useDeferredValue } from "react";
 import { Button } from "@/components/ui/button";
+import { ContextMenuItem } from "@/components/ui/context-menu";
 import { AiFlash } from "@/features/automation/ai-flash";
 import { DataTable } from "@/features/table/data-table";
 import { TableDataError } from "@/features/table/table-data-error";
@@ -8,6 +9,7 @@ import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { TableFilterBar } from "@/features/table/table-filter-bar";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { canEditRedisCell, REDIS_KEY_FILTER_OPERATORS, redisKeyFilter } from "@/lib/redis-commands";
+import { discardStagedChange, stagedMarkOf } from "@/lib/staged-edits";
 import { tableColumnPrefKey, useTableColumnPrefs } from "@/lib/table-column-prefs";
 import { useTableViewStateStore } from "@/lib/table-view-state";
 import type { useTableViewModel } from "./use-table-view-model";
@@ -23,6 +25,8 @@ type Props = Pick<
   | "stateKey"
   | "caps"
   | "tableRows"
+  | "stagedKey"
+  | "collecting"
   | "rowOffset"
   | "rowExtent"
   | "onVisibleRowsChange"
@@ -68,6 +72,8 @@ export function TableDataContent({
   stateKey,
   caps,
   tableRows,
+  stagedKey,
+  collecting,
   rowOffset,
   rowExtent,
   onVisibleRowsChange,
@@ -207,7 +213,25 @@ export function TableDataContent({
                   ? undefined
                   : saveRow
           }
-          canEditCell={caps.query_language === "redis" ? canEditRedisCell : undefined}
+          canEditCell={
+            caps.query_language === "redis"
+              ? canEditRedisCell
+              : collecting
+                ? canEditStagedCell
+                : undefined
+          }
+          rowMenuItems={
+            stagedKey
+              ? (row) => {
+                  const mark = stagedMarkOf(row);
+                  return mark ? (
+                    <ContextMenuItem onSelect={() => discardStagedChange(stagedKey, mark.changeId)}>
+                      Änderung verwerfen
+                    </ContextMenuItem>
+                  ) : null;
+                }
+              : undefined
+          }
           cellEditorKind={caps.query_language === "redis" ? "text" : undefined}
           emptyEditValue={caps.query_language === "redis" ? "" : undefined}
           filterableColumns={redis ? REDIS_KEY_COLUMNS : undefined}
@@ -251,4 +275,5 @@ export function TableDataContent({
 }
 
 const NO_COLUMNS: string[] = [];
+const canEditStagedCell = (row: Record<string, unknown>) => stagedMarkOf(row)?.type !== "delete";
 const REDIS_KEY_COLUMNS = ["key"];

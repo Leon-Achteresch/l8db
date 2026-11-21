@@ -682,6 +682,8 @@ pub fn run() {
             db::commands::insert_row_in_transaction,
             db::commands::duplicate_row_in_transaction,
             db::commands::delete_row_in_transaction,
+            db::commands::apply_row_changes_in_transaction,
+            db::commands::preview_row_changes,
             db::commands::commit_transaction,
             db::commands::rollback_transaction,
             db::commands::list_transactions,

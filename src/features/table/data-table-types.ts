@@ -52,7 +52,7 @@ export type DataTableProps = {
     ctid: string,
     updates: Record<string, string | null>,
     oldValues: Record<string, unknown>,
-  ) => Promise<void | "staged">;
+  ) => Promise<void | "staged" | "collected">;
   canEditCell?: (row: TableRow, column: string) => boolean;
   filterableColumns?: string[];
   compileColumnFilter?: (column: string, operator: string, value: string) => string | null;
@@ -77,7 +77,7 @@ export type DataTableProps = {
   currentSchema?: string;
   currentTable?: string;
   onNavigateToTable?: (schema: string, table: string, filter?: string, inTab?: boolean) => void;
-  onInsertRow?: (values: Record<string, string | null>) => Promise<void>;
+  onInsertRow?: (values: Record<string, string | null>) => Promise<"collected" | undefined>;
   onDeleteRow?: (ctid: string, oldValues: Record<string, unknown>) => void;
   onRefresh?: () => void | Promise<void>;
   columnDetails?: DetailedColumnInfo[];

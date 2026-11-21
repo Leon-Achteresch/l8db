@@ -1019,6 +1019,14 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "transactionsPerTable",
   },
   {
+    id: "collect-cell-edits",
+    tabId: "data",
+    title: "Zelländerungen sammeln",
+    description: "Änderungen im Raster erst lokal vormerken und gesammelt übernehmen.",
+    keywords: ["staging", "vormerken", "übernehmen", "commit", "produktion", "tableplus"],
+    key: "collectCellEdits",
+  },
+  {
     id: "table-tabs",
     tabId: "general",
     title: "Tabbar für Tabellen & Views",
