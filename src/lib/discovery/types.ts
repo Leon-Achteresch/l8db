@@ -54,5 +54,6 @@ export interface FeatureSearchOptions {
   limit?: number;
   capabilities?: Capabilities | null;
   easyMode?: boolean;
+  ai?: boolean;
   areas?: readonly FeatureArea[];
 }

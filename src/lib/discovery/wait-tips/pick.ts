@@ -1,3 +1,4 @@
+import { aiEnabled, isAiFeatureId } from "@/lib/ai/access";
 import type { Capabilities, DatabaseKind } from "@/lib/db";
 import { FEATURE_CATALOG, featureAvailable, featureById } from "../catalog";
 import type { FeatureEntry } from "../types";
@@ -15,6 +16,8 @@ export interface WaitTipFilter {
 
 function tipAvailable(tip: WaitTip, filter: WaitTipFilter): boolean {
   if (tip.families && !tip.families.includes(filter.family as DatabaseKind)) return false;
+  if (!aiEnabled() && (isAiFeatureId(tip.id) || (tip.hotkey && isAiFeatureId(tip.hotkey))))
+    return false;
   const options = { capabilities: filter.capabilities, easyMode: filter.easyMode };
   if (tip.capability && !featureAvailable({ capability: tip.capability } as FeatureEntry, options))
     return false;

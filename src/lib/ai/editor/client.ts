@@ -36,6 +36,20 @@ export function editorAiProfile(): AiProfile {
   return profile;
 }
 
+export function editorAiConsentProfile(): AiProfile | null {
+  if (!aiEnabled()) return null;
+  const settings = useEditorAiSettings.getState();
+  if (!settings.enabled) return null;
+  let profile: AiProfile;
+  try {
+    profile = editorAiProfile();
+  } catch {
+    return null;
+  }
+  if (!(settings.inline && inlineSupported(profile)) && !settings.codeLens) return null;
+  return aiConsentGiven(profile) ? null : profile;
+}
+
 export function isCliProfile(profile: AiProfile): boolean {
   return AI_PROVIDERS.find((entry) => entry.id === profile.provider)?.cli ?? false;
 }

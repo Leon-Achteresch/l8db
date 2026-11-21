@@ -26,14 +26,18 @@ const {
   requestAiConsent,
   useAiAccess,
 } = await import("@/lib/ai/access");
-const { EditorAiUnavailable, runEditorAi } = await import("@/lib/ai/editor/client");
+const { EditorAiUnavailable, editorAiConsentProfile, runEditorAi } = await import(
+  "@/lib/ai/editor/client"
+);
 const { editorAiOn, useEditorAiSettings } = await import("@/lib/ai/editor/settings");
 const { editorAiAvailable } = await import("@/lib/ai/editor/use-editor-ai-available");
 const { useAiStore } = await import("@/lib/ai/store");
 const { aiComplete, aiRun, aiStatus } = await import("@/lib/db/ai");
 const { isHotkeyAvailable } = await import("@/lib/hotkeys");
 const { hasNewFeatures } = await import("@/lib/new-features");
-const { FEATURE_CATALOG } = await import("@/lib/discovery/catalog");
+const { FEATURE_CATALOG, featureAvailable } = await import("@/lib/discovery/catalog");
+const { atlasAvailable } = await import("@/lib/discovery/atlas/atlas");
+const { waitTipsFor } = await import("@/lib/discovery/wait-tips/pick");
 const { buildFeatureItems } = await import("@/features/shell/app-header-search/command-items");
 
 import type { AiProfile } from "@/lib/db/ai";
@@ -227,5 +231,69 @@ describe("provider consent", () => {
     await expect(pending).resolves.toBe(false);
     expect(useAiAccess.getState().pending).toBeNull();
     expect(useAiAccess.getState().consent).toEqual([]);
+  });
+});
+
+describe("AI off in discovery", () => {
+  test("Discover entries and wait tips hide AI features while AI is off", () => {
+    const filter = { family: "postgres", capabilities: null, easyMode: false, usage: {} };
+    const aiTips = () =>
+      waitTipsFor(filter).filter(
+        (tip) =>
+          isAiFeatureId(tip.id) ||
+          (tip.featureId !== undefined && isAiFeatureId(tip.featureId)) ||
+          (tip.hotkey !== undefined && isAiFeatureId(tip.hotkey)),
+      );
+    const aiEntries = () =>
+      FEATURE_CATALOG.filter((entry) => featureAvailable(entry, {}) && isAiFeatureId(entry.id));
+    expect(aiTips().length).toBeGreaterThan(0);
+    expect(aiEntries().length).toBeGreaterThan(0);
+
+    useAiAccess.getState().setEnabled(false);
+    expect(aiTips()).toEqual([]);
+    expect(aiEntries()).toEqual([]);
+    expect(atlasAvailable(FEATURE_CATALOG, {}).some((entry) => isAiFeatureId(entry.id))).toBe(
+      false,
+    );
+    expect(waitTipsFor(filter).length).toBeGreaterThan(0);
+    expect(FEATURE_CATALOG.filter((entry) => featureAvailable(entry, {})).length).toBeGreaterThan(
+      0,
+    );
+  });
+});
+
+describe("editor consent indicator", () => {
+  test("shows only with AI on, editor AI on, a provider configured and no consent", () => {
+    expect(editorAiConsentProfile()?.id).toBe("p1");
+
+    useAiAccess.getState().grant("anthropic");
+    expect(editorAiConsentProfile()).toBeNull();
+    useAiAccess.getState().revoke("anthropic");
+
+    useAiAccess.getState().setEnabled(false);
+    expect(editorAiConsentProfile()).toBeNull();
+    useAiAccess.getState().setEnabled(true);
+
+    useEditorAiSettings.setState({ enabled: false });
+    expect(editorAiConsentProfile()).toBeNull();
+    useEditorAiSettings.setState({ enabled: true, inline: false, codeLens: false });
+    expect(editorAiConsentProfile()).toBeNull();
+    useEditorAiSettings.setState({ inline: true });
+
+    useAiStore.setState({ profiles: [], profileId: "" });
+    expect(editorAiConsentProfile()).toBeNull();
+
+    useAiStore.setState({ profiles: [profile({ provider: "ollama" })], profileId: "p1" });
+    expect(editorAiConsentProfile()).toBeNull();
+  });
+
+  test("clicking the indicator opens the consent dialog for the editor provider", async () => {
+    const target = editorAiConsentProfile();
+    expect(target).not.toBeNull();
+    const answer = requestAiConsent(target as AiProfile);
+    expect(useAiAccess.getState().pending?.provider).toBe("anthropic");
+    answerAiConsent(true);
+    await expect(answer).resolves.toBe(true);
+    expect(editorAiConsentProfile()).toBeNull();
   });
 });
