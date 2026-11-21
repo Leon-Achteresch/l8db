@@ -5,6 +5,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { QueryResult } from "@/lib/db";
@@ -19,7 +21,7 @@ interface ResultActionsProps {
 }
 
 export function ResultActions({ result, exportState }: ResultActionsProps) {
-  const { exporting, setCsvExportOpen, setXlsxExportOpen, setDataExportFormat, handleExportJson } =
+  const { exporting, partial, loadedRows, openCsvExport, openXlsxExport, openDataExport } =
     exportState;
   if (!result || result.columns.length === 0) return null;
   return (
@@ -34,18 +36,22 @@ export function ResultActions({ result, exportState }: ResultActionsProps) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-52">
-        <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
-          Als CSV exportieren…
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
-          Als XLSX exportieren…
-        </DropdownMenuItem>
+        {partial && (
+          <>
+            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+              Geladene Zeilen ({loadedRows.toLocaleString("de-DE")})
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+          </>
+        )}
+        <DropdownMenuItem onClick={openCsvExport}>Als CSV exportieren…</DropdownMenuItem>
+        <DropdownMenuItem onClick={openXlsxExport}>Als XLSX exportieren…</DropdownMenuItem>
         {DATA_EXPORT_FORMATS.map((format) => (
-          <DropdownMenuItem key={format.value} onClick={() => setDataExportFormat(format.value)}>
+          <DropdownMenuItem key={format.value} onClick={() => openDataExport(format.value)}>
             Als {format.label} exportieren…
           </DropdownMenuItem>
         ))}
-        <DropdownMenuItem onClick={() => void handleExportJson()}>
+        <DropdownMenuItem onClick={() => void exportState.handleExportJson()}>
           Als JSON exportieren
         </DropdownMenuItem>
       </DropdownMenuContent>

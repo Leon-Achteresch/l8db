@@ -15,6 +15,7 @@ import {
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
 import { FilterValueInput } from "@/features/filters/filter-value-input";
+import { ColumnAutosizeItem } from "@/features/table/data-table/column-autosize-item";
 import { headerDragPlugins } from "@/features/table/data-table/constants";
 import { useSettingsStore } from "@/lib/settings";
 import { operatorNeedsValue } from "@/lib/sql-filter";
@@ -43,6 +44,7 @@ type DataTableHeaderCellProps = {
   isPinned: boolean;
   onTogglePin: () => void;
   onCopyColumn: () => void;
+  onAutosize: () => void;
 };
 
 export function DataTableHeaderCell({
@@ -68,6 +70,7 @@ export function DataTableHeaderCell({
   isPinned,
   onTogglePin,
   onCopyColumn,
+  onAutosize,
 }: DataTableHeaderCellProps) {
   const { ref, handleRef } = useDraggable({ id: header.id, plugins: headerDragPlugins });
   const pinnedOffset =
@@ -124,7 +127,8 @@ export function DataTableHeaderCell({
           </div>
           {header.column.getCanResize() && (
             <div
-              onDoubleClick={() => header.column.resetSize()}
+              onDoubleClick={onAutosize}
+              title="Doppelklick: An Inhalt anpassen"
               onMouseDown={(event) => {
                 event.stopPropagation();
                 header.getResizeHandler()(event);
@@ -259,6 +263,10 @@ export function DataTableHeaderCell({
           <ContextMenuItem onSelect={onCopyColumn}>Werte</ContextMenuItem>
         </CopyAsMenu>
         <ContextMenuSeparator />
+        <ColumnAutosizeItem onSelect={onAutosize} />
+        <ContextMenuItem onSelect={() => header.column.resetSize()}>
+          Breite zurücksetzen
+        </ContextMenuItem>
         <ContextMenuItem onSelect={onTogglePin}>
           {isPinned ? "Fixierung aufheben" : "Spalte links fixieren"}
         </ContextMenuItem>

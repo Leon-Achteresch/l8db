@@ -1,6 +1,6 @@
 import type { Column } from "@tanstack/react-table";
 import type { Virtualizer } from "@tanstack/react-virtual";
-import { animate } from "motion/react";
+import { animate, useReducedMotion } from "motion/react";
 import {
   type Dispatch,
   type RefObject,
@@ -11,6 +11,45 @@ import {
 } from "react";
 import type { GridCellRef } from "@/lib/grid-selection";
 import type { EditingCell, TableRow } from "../data-table-types";
+
+export function revealColumnScroll(
+  scroller: { scrollLeft: number },
+  target: number,
+  cells: () => Iterable<HTMLElement>,
+  reduceMotion: boolean,
+): () => void {
+  if (reduceMotion) {
+    scroller.scrollLeft = target;
+    const marked = [...cells()];
+    for (const cell of marked) cell.style.outline = "2px solid var(--primary)";
+    const clear = () => {
+      for (const cell of marked) cell.style.outline = "";
+    };
+    const timer = setTimeout(clear, 1200);
+    return () => {
+      clearTimeout(timer);
+      clear();
+    };
+  }
+  const controls = animate(scroller.scrollLeft, target, {
+    duration: 0.45,
+    ease: "easeInOut",
+    onUpdate: (value) => {
+      scroller.scrollLeft = value;
+    },
+    onComplete: () => {
+      const flash = "inset 0 0 0 999px color-mix(in srgb, var(--primary) 30%, transparent)";
+      for (const cell of cells()) {
+        cell.animate([{ boxShadow: flash }, { boxShadow: "inset 0 0 0 999px transparent" }], {
+          duration: 400,
+          iterations: 3,
+          easing: "ease-out",
+        });
+      }
+    },
+  });
+  return () => controls.stop();
+}
 
 type Options = {
   activeCell: GridCellRef | null;
@@ -99,6 +138,9 @@ export function useGridScrolling({
   ]);
 
   const layoutRef = useRef({ visibleColumns, columnWidths, pinnedIndices });
+  const reduceMotion = useReducedMotion();
+  const reduceMotionRef = useRef(reduceMotion);
+  reduceMotionRef.current = reduceMotion;
   layoutRef.current = { visibleColumns, columnWidths, pinnedIndices };
 
   const editingKey =
@@ -132,27 +174,14 @@ export function useGridScrolling({
     const left = columnWidths.slice(0, index).reduce((sum, width) => sum + width, 0);
     const viewport = scroller.clientWidth - pinnedWidth;
     const target = Math.max(0, left - pinnedWidth - (viewport - columnWidths[index]) / 2);
-    const controls = animate(scroller.scrollLeft, target, {
-      duration: 0.45,
-      ease: "easeInOut",
-      onUpdate: (value) => {
-        scroller.scrollLeft = value;
-      },
-      onComplete: () => {
-        const id = CSS.escape(name);
-        const flash = "inset 0 0 0 999px color-mix(in srgb, var(--primary) 30%, transparent)";
-        for (const cell of scroller.querySelectorAll(
-          `th[data-column-id="${id}"], td[data-col="${id}"]`,
-        )) {
-          cell.animate([{ boxShadow: flash }, { boxShadow: "inset 0 0 0 999px transparent" }], {
-            duration: 400,
-            iterations: 3,
-            easing: "ease-out",
-          });
-        }
-      },
-    });
-    return () => controls.stop();
+    const id = CSS.escape(name);
+    return revealColumnScroll(
+      scroller,
+      target,
+      () =>
+        scroller.querySelectorAll<HTMLElement>(`th[data-column-id="${id}"], td[data-col="${id}"]`),
+      Boolean(reduceMotionRef.current),
+    );
   }, []);
 
   useEffect(() => {

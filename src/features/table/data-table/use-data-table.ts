@@ -117,7 +117,7 @@ export function useDataTable(props: DataTableProps) {
     selectionStats,
     focusCell,
     copySelection,
-  } = useGridSelection(activeCell, setActiveCell, visibleDataColumns, data);
+  } = useGridSelection(activeCell, setActiveCell, visibleDataColumns, data, totalCount);
   const databaseKind = connection?.kind;
   const temporalKindOf = useCallback(
     (columnId: string) =>
@@ -221,6 +221,7 @@ export function useDataTable(props: DataTableProps) {
     fkByColumn,
     typeInfoByColumn,
     data,
+    totalCount,
   });
   const navPage = infinite ? visiblePage : page;
   const scrollToPage = useCallback(

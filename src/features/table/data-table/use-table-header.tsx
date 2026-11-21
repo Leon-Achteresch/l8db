@@ -81,8 +81,14 @@ export function useTableHeader({
     renameProfile,
     deleteProfile,
   } = layout;
-  const { togglingColumn, handleColumnToggle, fitHeaderWidths, copyColumnNames, copyColumnValues } =
-    columnActions;
+  const {
+    togglingColumn,
+    handleColumnToggle,
+    fitHeaderWidths,
+    copyColumnNames,
+    copyColumnValues,
+    autosizeColumn,
+  } = columnActions;
   const {
     filterColumn,
     setFilterColumn,
@@ -175,6 +181,7 @@ export function useTableHeader({
                   isPinned={pinnedSet.has(header.id)}
                   onTogglePin={() => setPinned(togglePinnedColumn(order, pinned, header.id))}
                   onCopyColumn={() => copyColumnValues(header.id)}
+                  onAutosize={() => autosizeColumn(header.id)}
                 />
               );
             })}
@@ -200,6 +207,7 @@ export function useTableHeader({
       setPinned,
       copyColumnNames,
       copyColumnValues,
+      autosizeColumn,
       fitHeaderWidths,
       profiles,
       canUseProfiles,
