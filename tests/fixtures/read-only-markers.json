@@ -1,0 +1,30 @@
+{
+  "postgres": [
+    [
+      "postgresql://u@h:5432/db",
+      "postgresql://u@h:5432/db?options=-c%20default_transaction_read_only%3Don"
+    ],
+    [
+      "postgresql://u@h/db?sslmode=require",
+      "postgresql://u@h/db?sslmode=require&options=-c%20default_transaction_read_only%3Don"
+    ]
+  ],
+  "mysql": [
+    ["mysql://u@h:3306/db", "mysql://u@h:3306/db?read_only=true"],
+    ["mysql://u@h/db?ssl-mode=REQUIRED", "mysql://u@h/db?ssl-mode=REQUIRED&read_only=true"]
+  ],
+  "sqlite": [
+    ["/data/app.db", "/data/app.db?mode=ro"],
+    ["sqlite:///data/app.db?cache=shared", "sqlite:///data/app.db?cache=shared&mode=ro"]
+  ],
+  "s3": [
+    [
+      "s3://key:secret@s3.eu-central-1.amazonaws.com/bucket",
+      "s3://key:secret@s3.eu-central-1.amazonaws.com/bucket?read_only=true"
+    ],
+    [
+      "s3://key:secret@127.0.0.1:9000/bucket?path_style=true",
+      "s3://key:secret@127.0.0.1:9000/bucket?path_style=true&read_only=true"
+    ]
+  ]
+}

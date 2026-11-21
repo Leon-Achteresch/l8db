@@ -44,6 +44,8 @@ const { collectUpdateBlockers, describeUpdateBlockers } = await import(
 );
 const { useConnectionsStore } = await import("../src/lib/connections/store");
 const { useSettingsStore } = await import("../src/lib/settings");
+const { POSTGRES_CAPABILITIES, useProvidersStore } = await import("../src/lib/providers");
+const { pasteRows } = await import("../src/lib/paste-rows");
 
 const TABLE_ROWS = 100_000;
 const STAGED = 5_000;
@@ -88,6 +90,8 @@ test("5,000 staged changes over a 100k-row table stay fast, bounded and commit i
       );
     latencies.push(performance.now() - started);
   }
+  const stagedAt = performance.now();
+  expect(guardWrites).toBe(1);
   latencies.sort((left, right) => left - right);
   const staging = {
     medianMs: latencies[Math.floor(latencies.length / 2)],
@@ -131,7 +135,7 @@ test("5,000 staged changes over a 100k-row table stay fast, bounded and commit i
   expect(blockers.staged).toBe(STAGED);
   expect(describeUpdateBlockers(blockers)).toContain(`${STAGED} nicht übernommene Änderungen`);
   expect(requests.every((command) => command === "list_transactions")).toBe(true);
-  expect(guardWrites).toBe(1);
+  expect(guardWrites).toBeLessThanOrEqual(1 + Math.ceil((performance.now() - stagedAt) / 1000));
 
   requests.length = 0;
   const started = performance.now();
@@ -169,4 +173,60 @@ test("5,000 staged changes over a 100k-row table stay fast, bounded and commit i
   expect(guard.p95Ms).toBeLessThan(5);
   expect(commitMs).toBeLessThan(100);
   expect(retainedBytes).toBeLessThan(8 * 1024 * 1024);
+});
+
+test("pasting a 1000×20 block in collect mode stages it in one store update", async () => {
+  staged.useStagedEdits.setState({ tables: {}, committing: [] });
+  useSettingsStore.setState({ collectCellEdits: "always" });
+  useProvidersStore.setState({
+    loaded: true,
+    providers: [
+      {
+        id: "postgres",
+        name: "postgres",
+        group: "test",
+        kind: "postgres",
+        default_port: null,
+        file_based: false,
+        url_schemes: ["postgres"],
+        placeholder: "",
+        hint: "",
+        hosts: [],
+        driver: { type: "builtin" },
+        driver_status: { available: true, detail: "", install: [], install_command: null },
+        capabilities: POSTGRES_CAPABILITIES,
+      },
+    ],
+  });
+  const connection = useConnectionsStore.getState().connections[0];
+  const block = Array.from({ length: 1000 }, (_, row) =>
+    Object.fromEntries(
+      Array.from({ length: 20 }, (_, column) => [`c${column}`, `v${row}-${column}`]),
+    ),
+  );
+  const key = staged.stagedTableKey({
+    connectionId: connection.id,
+    database: null,
+    schema: "public",
+    table: "paste",
+  });
+  let updates = 0;
+  const unsubscribe = staged.useStagedEdits.subscribe(() => updates++);
+  requests.length = 0;
+  let notified = 0;
+  const paste = await measureScenario(async () => {
+    staged.discardStagedTable(key);
+    updates = 0;
+    const result = await pasteRows(connection, null, "public", "paste", block);
+    notified = updates;
+    expect(result).toEqual({ count: 1000, collected: true });
+  }, 15);
+  unsubscribe();
+  expect(notified).toBe(1);
+  expect(staged.useStagedEdits.getState().tables[key].changes).toHaveLength(1000);
+  expect(requests).toHaveLength(0);
+  staged.discardStagedTable(key);
+  reportScenario("staged-paste", { rows: 1000, columns: 20, paste, storeUpdates: notified });
+  expect(paste.medianMs).toBeLessThan(5);
+  expect(paste.p95Ms).toBeLessThan(15);
 });

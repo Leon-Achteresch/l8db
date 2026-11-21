@@ -2,7 +2,7 @@ import type { SavedConnection } from "@/lib/connections";
 import { insertRowInTransaction } from "@/lib/db";
 import { ensureManagedTransaction, runManagedOperation } from "@/lib/managed-transactions";
 import { supports } from "@/lib/providers";
-import { collectsTableChanges, stageInsert } from "@/lib/staged-edits";
+import { collectsTableChanges, stageInserts } from "@/lib/staged-edits";
 import { finishTask, startTask, updateTask } from "@/lib/tasks";
 import { useTransactionStore } from "@/lib/transactions";
 
@@ -21,8 +21,7 @@ export async function pasteRows(
     throw new Error("Einfügen ist für dieses Ziel nicht verfügbar.");
   if (!rows.length || rows.length > 1000) throw new Error("Bitte 1 bis 1000 Zeilen einfügen.");
   if (collectsTableChanges(connection, database, schema, table)) {
-    const target = { connectionId: connection.id, database, schema, table };
-    for (const values of rows) stageInsert(target, values);
+    stageInserts({ connectionId: connection.id, database, schema, table }, rows);
     return { count: rows.length, collected: true };
   }
   const tx = await ensureManagedTransaction(connection, database, { type: "table", schema, table });

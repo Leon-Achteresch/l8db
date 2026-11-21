@@ -1504,6 +1504,40 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_read_only_family_has_a_marker_the_guards_detect() {
+        let markers: std::collections::BTreeMap<String, Vec<(String, String)>> =
+            serde_json::from_str(include_str!(
+                "../../../tests/fixtures/read-only-markers.json"
+            ))
+            .unwrap();
+        let mut families: Vec<String> = DatabaseKind::ALL
+            .into_iter()
+            .filter(|kind| kind.capabilities().read_only_mode)
+            .map(|kind| {
+                serde_json::to_value(kind)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        families.sort();
+        assert_eq!(markers.keys().cloned().collect::<Vec<_>>(), families);
+        for (family, pairs) in &markers {
+            for (input, output) in pairs {
+                assert!(
+                    !super::super::connection_string_is_read_only(input),
+                    "{family}: {input}"
+                );
+                assert!(
+                    super::super::connection_string_is_read_only(output),
+                    "{family}: {output}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn provider_ids_are_unique_and_kinds_covered() {
         let mut ids: Vec<&str> = PROVIDERS.iter().map(|p| p.id).collect();
         ids.sort_unstable();

@@ -13,6 +13,14 @@ import { stagesTableChanges } from "@/lib/managed-transactions";
 import { useActiveMasks } from "@/lib/masking-display";
 import { useDeleteRowMutation, useDetailedColumnsQuery, useUpdateRowMutation } from "@/lib/queries";
 import { applyResultView } from "@/lib/result-grid";
+import {
+  collectsTableChanges,
+  overlayStagedRows,
+  stageDelete,
+  stagedTableKey,
+  stageUpdate,
+  useStagedEdits,
+} from "@/lib/staged-edits";
 
 export function MasterDetailResult({
   source,
@@ -40,6 +48,23 @@ export function MasterDetailResult({
         table &&
         stagesTableChanges(connection, database ?? null, table.schema, table.table),
     );
+  const target =
+    connection && table
+      ? {
+          connectionId: connection.id,
+          database: database ?? null,
+          schema: table.schema,
+          table: table.table,
+        }
+      : null;
+  const stagedKey = target ? stagedTableKey(target) : null;
+  const stagedEntry = useStagedEdits((state) => (stagedKey ? state.tables[stagedKey] : undefined));
+  const collecting = () =>
+    Boolean(
+      connection &&
+        table &&
+        collectsTableChanges(connection, database ?? null, table.schema, table.table),
+    );
   const { active: masks } = useActiveMasks(query.data?.columns ?? []);
   const editable = table && masks.length === 0;
   const updateRow = useUpdateRowMutation(table?.schema ?? "", table?.table ?? "");
@@ -47,7 +72,11 @@ export function MasterDetailResult({
   const { data: columnDetails } = useDetailedColumnsQuery(table?.schema ?? "", table?.table ?? "");
   const [sorting, setSorting] = useState<SortingState>([]);
   const columns = query.data?.columns ?? [];
-  const rows = query.data?.rows ?? [];
+  const loadedRows = query.data?.rows ?? [];
+  const rows = useMemo(
+    () => overlayStagedRows(loadedRows, stagedEntry, false),
+    [loadedRows, stagedEntry],
+  );
   const sortedRows = useMemo(
     () =>
       applyResultView(
@@ -67,6 +96,10 @@ export function MasterDetailResult({
     updates: Record<string, string | null>,
     oldValues: Record<string, unknown>,
   ) => {
+    if (target && collecting()) {
+      stageUpdate(target, ctid, updates, oldValues);
+      return "collected" as const;
+    }
     const pending = staged();
     const { newCtid } = await updateRow.mutateAsync({ ctid, updates, oldValues });
     patchRows((rows) =>
@@ -76,6 +109,10 @@ export function MasterDetailResult({
   };
   const removeRow = async (ctid: string, oldValues: Record<string, unknown>) => {
     try {
+      if (target && collecting()) {
+        stageDelete(target, ctid, oldValues);
+        return;
+      }
       const pending = staged();
       await deleteRow.mutateAsync({ ctid, oldValues });
       patchRows((rows) => rows.filter((row) => row.__ctid__ !== ctid));

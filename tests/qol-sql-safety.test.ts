@@ -168,6 +168,34 @@ describe("UPDATE und DELETE ohne WHERE auf jeder Verbindung", () => {
     ["oracle", "SELECT * FROM t WHERE id = 1 FOR UPDATE NOWAIT"],
     ["oracle", "CREATE OR REPLACE TRIGGER g BEFORE UPDATE ON t BEGIN NULL; END;"],
     ["sqlite", "INSERT INTO t VALUES (1) ON CONFLICT(id) DO UPDATE SET a = 2"],
+    ["mysql", "CREATE DEFINER=`root`@`localhost` PROCEDURE p() BEGIN UPDATE t SET a = 1; END"],
+    [
+      "mysql",
+      "CREATE DEFINER = root@localhost TRIGGER g BEFORE INSERT ON t FOR EACH ROW UPDATE c SET n = n + 1",
+    ],
+    [
+      "mysql",
+      "CREATE DEFINER=CURRENT_USER FUNCTION f() RETURNS INT BEGIN DELETE FROM log; RETURN 1; END",
+    ],
+    ["mysql", "CREATE EVENT e ON SCHEDULE EVERY 1 DAY DO BEGIN DELETE FROM log; END"],
+    ["oracle", "CREATE OR REPLACE EDITIONABLE PROCEDURE p AS BEGIN UPDATE t SET a = 1; END;"],
+    [
+      "oracle",
+      "CREATE NONEDITIONABLE FUNCTION f RETURN NUMBER AS BEGIN DELETE FROM log; RETURN 1; END;",
+    ],
+    [
+      "oracle",
+      "CREATE OR REPLACE PACKAGE BODY pkg AS PROCEDURE p IS BEGIN UPDATE t SET a = 1; END; END;",
+    ],
+    [
+      "oracle",
+      "CREATE OR REPLACE TYPE BODY tp AS MEMBER PROCEDURE p IS BEGIN DELETE FROM log; END; END;",
+    ],
+    [
+      "postgres",
+      "CREATE OR REPLACE FUNCTION f() RETURNS void AS $$ UPDATE t SET a = 1 $$ LANGUAGE sql",
+    ],
+    ["postgres", "CREATE CONSTRAINT TRIGGER g AFTER UPDATE ON t FOR EACH ROW EXECUTE FUNCTION f()"],
   ])("%s ohne Warnung: %s", (dialect, sql) => {
     expect(reasons(sql, dialect)).toEqual([]);
   });

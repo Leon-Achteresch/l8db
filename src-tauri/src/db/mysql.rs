@@ -547,6 +547,39 @@ pub struct MysqlUrl {
 
 pub const READ_ONLY_SETUP: &str = "SET SESSION TRANSACTION READ ONLY";
 
+fn without_setup(opts: &Opts) -> Opts {
+    OptsBuilder::from_opts(opts.clone())
+        .setup(Vec::<String>::new())
+        .into()
+}
+
+async fn read_only_session_supported(opts: Opts, plain: Option<Opts>) -> Result<bool, String> {
+    let mut conn = match Conn::new(without_setup(&opts)).await {
+        Err(mysql_async::Error::Driver(mysql_async::DriverError::NoClientSslFlagFromServer)) => {
+            match plain {
+                Some(plain) => Conn::new(without_setup(&plain))
+                    .await
+                    .map_err(|e| connect_err(&plain, e))?,
+                None => return Err(NO_SERVER_TLS.to_string()),
+            }
+        }
+        other => other.map_err(|e| connect_err(&opts, e))?,
+    };
+    let supported = match conn.query_drop(READ_ONLY_SETUP).await {
+        Ok(()) => true,
+        Err(mysql_async::Error::Server(error)) => {
+            eprintln!(
+                "l8db: Server lehnt {READ_ONLY_SETUP} ab ({} {}); Lesemodus nur clientseitig.",
+                error.code, error.message
+            );
+            false
+        }
+        Err(error) => return Err(map_err(error)),
+    };
+    let _ = conn.disconnect().await;
+    Ok(supported)
+}
+
 pub fn parse_mysql_url(value: &str) -> Result<MysqlUrl, String> {
     let mut url = url::Url::parse(value.trim()).map_err(|_| "Ungültige MySQL-URL".to_string())?;
     let token_auth = super::cloud_auth::has_marker(&url);
@@ -722,18 +755,40 @@ impl MysqlAdapter {
         })
     }
 
+    async fn session_opts(&self) -> Result<(Opts, Option<Opts>), String> {
+        if self.opts.setup().is_empty() {
+            return Ok((self.opts.clone(), self.plain.clone()));
+        }
+        let probe = read_only_session_supported(self.opts.clone(), self.plain.clone());
+        let supported = self
+            .pool_state
+            .shared(&format!("{}#read-only-session", self.key), || {
+                super::execution::connect(probe)
+            })
+            .await?;
+        Ok(if *supported {
+            (self.opts.clone(), self.plain.clone())
+        } else {
+            (
+                without_setup(&self.opts),
+                self.plain.as_ref().map(without_setup),
+            )
+        })
+    }
+
     async fn open_conn(&self) -> Result<Conn, String> {
+        let (opts, plain) = self.session_opts().await?;
         super::execution::connect(async {
-            match Conn::new(self.opts.clone()).await {
+            match Conn::new(opts.clone()).await {
                 Err(mysql_async::Error::Driver(
                     mysql_async::DriverError::NoClientSslFlagFromServer,
-                )) => match &self.plain {
+                )) => match &plain {
                     Some(plain) => Conn::new(plain.clone())
                         .await
                         .map_err(|e| connect_err(plain, e)),
                     None => Err(NO_SERVER_TLS.to_string()),
                 },
-                other => other.map_err(|e| connect_err(&self.opts, e)),
+                other => other.map_err(|e| connect_err(&opts, e)),
             }
         })
         .await
@@ -746,12 +801,13 @@ impl MysqlAdapter {
     }
 
     async fn conn(&self) -> Result<Conn, String> {
-        let pool = self.pool(self.key.clone(), self.opts.clone()).await?;
+        let (opts, plain) = self.session_opts().await?;
+        let pool = self.pool(self.key.clone(), opts.clone()).await?;
         super::execution::connect(async {
             match pool.get_conn().await {
                 Err(mysql_async::Error::Driver(
                     mysql_async::DriverError::NoClientSslFlagFromServer,
-                )) => match &self.plain {
+                )) => match &plain {
                     Some(plain) => self
                         .pool(format!("{}#plain", self.key), plain.clone())
                         .await?
@@ -760,7 +816,7 @@ impl MysqlAdapter {
                         .map_err(|e| connect_err(plain, e)),
                     None => Err(NO_SERVER_TLS.to_string()),
                 },
-                other => other.map_err(|e| connect_err(&self.opts, e)),
+                other => other.map_err(|e| connect_err(&opts, e)),
             }
         })
         .await
@@ -2140,6 +2196,11 @@ mod tests {
         )
         .unwrap();
         assert!(writable.opts.setup().is_empty());
+        assert!(without_setup(&adapter.opts).setup().is_empty());
+        assert_eq!(
+            without_setup(&adapter.opts).ip_or_hostname(),
+            adapter.opts.ip_or_hostname()
+        );
         assert!(
             !parse_mysql_url("mysql://app@db/shop?read_only=false")
                 .unwrap()

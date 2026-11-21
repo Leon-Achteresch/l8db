@@ -120,5 +120,25 @@
       "POST logs/_count",
       "GET a/_search\nGET b/_search"
     ]
+  },
+  "postgres": {
+    "writes": [
+      "SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE",
+      "SET default_transaction_read_only = off",
+      "BEGIN READ WRITE",
+      "START TRANSACTION READ WRITE",
+      "SELECT 1; SET TRANSACTION READ WRITE"
+    ],
+    "reads": ["SELECT 1"]
+  },
+  "mysql": {
+    "writes": [
+      "SET SESSION TRANSACTION READ WRITE",
+      "SET TRANSACTION READ WRITE",
+      "START TRANSACTION READ WRITE",
+      "/* x */ set session transaction_read_only = 0",
+      "SELECT 1; SET TRANSACTION READ WRITE"
+    ],
+    "reads": ["SELECT 1"]
   }
 }
