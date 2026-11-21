@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { DatabaseKind } from "../src/lib/db";
+import readOnlyMarkers from "./fixtures/read-only-markers.json";
 
 const calls: string[] = [];
 let rejectConnection = false;
@@ -371,6 +373,13 @@ describe("Other providers", () => {
       "sqlite:///data/a.db?cache=shared&mode=ro",
     );
     expect(readOnlyConnectionString("sqlserver://u@h/db", "mssql")).toBe("sqlserver://u@h/db");
+  });
+  test("every read-only family gets the marker the Rust guards detect", () => {
+    for (const [kind, pairs] of Object.entries(readOnlyMarkers))
+      for (const [input, output] of pairs) {
+        expect(readOnlyConnectionString(input, kind as DatabaseKind)).toBe(output);
+        expect(readOnlyConnectionString(output, kind as DatabaseKind)).toBe(output);
+      }
   });
   test("connects tunneled MongoDB directly to the forwarded member", () => {
     expect(tunneledConnectionString("mongodb://u@db:27017", 6502, "mongodb")).toBe(

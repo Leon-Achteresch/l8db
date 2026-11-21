@@ -119,7 +119,14 @@ export function stageUpdate(
 }
 
 export function stageInsert(target: StagedTarget, values: Values) {
-  writeChanges(target, (list) => [...list, { id: newId(), type: "insert", values }]);
+  stageInserts(target, [values]);
+}
+
+export function stageInserts(target: StagedTarget, rows: Values[]) {
+  writeChanges(target, (list) => [
+    ...list,
+    ...rows.map((values): StagedChange => ({ id: newId(), type: "insert", values })),
+  ]);
 }
 
 export function stageDelete(

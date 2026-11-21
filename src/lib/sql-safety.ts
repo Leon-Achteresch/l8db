@@ -799,15 +799,38 @@ const IMPLICIT_COMMIT_WORDS: Record<string, Set<string>> = {
   cassandra: new Set(["CREATE", "ALTER", "DROP", "TRUNCATE", "GRANT", "REVOKE"]),
 };
 
-const ROUTINE_WORDS = new Set(["PROC", "PROCEDURE", "TRIGGER", "FUNCTION"]);
+const ROUTINE_WORDS = new Set([
+  "PROC",
+  "PROCEDURE",
+  "TRIGGER",
+  "FUNCTION",
+  "PACKAGE",
+  "TYPE",
+  "EVENT",
+]);
+const ROUTINE_MODIFIERS = new Set([
+  "OR",
+  "REPLACE",
+  "ALTER",
+  "EDITIONABLE",
+  "NONEDITIONABLE",
+  "CONSTRAINT",
+  "AGGREGATE",
+]);
 const GO_LINE = /^[ \t]*GO(?:[ \t]+\d+)?[ \t]*$/im;
 const END_COMMITS = new Set(["postgres", "sqlite", "sqlite_http"]);
 
 function definesRoutine(words: Token[]): boolean {
   const first = words[0]?.word;
   if (first !== "CREATE" && first !== "ALTER") return false;
-  const object = first === "CREATE" && words[1]?.word === "OR" ? words[3] : words[1];
-  return object !== undefined && ROUTINE_WORDS.has(object.word);
+  let definer = false;
+  for (let i = 1; i < Math.min(words.length, 12); i++) {
+    const word = words[i].word;
+    if (ROUTINE_WORDS.has(word)) return true;
+    if (word === "DEFINER") definer = true;
+    else if (!definer && !ROUTINE_MODIFIERS.has(word)) return false;
+  }
+  return false;
 }
 
 function controlsTransaction(words: Token[], dialect: string, managed: boolean): boolean {

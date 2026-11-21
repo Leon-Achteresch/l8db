@@ -13,6 +13,7 @@ export interface UpdateBlockers {
 
 const WINDOW_TASKS_PREFIX = "l8db.window-tasks:";
 const WINDOW_TASKS_REFRESH_MS = 10_000;
+const WINDOW_TASKS_COUNT_MS = 1_000;
 const WINDOW_TASKS_STALE_MS = 120_000;
 
 const windowTasksKey = `${WINDOW_TASKS_PREFIX}${
@@ -25,6 +26,7 @@ let publishedCount = 0;
 let publishedStaged = 0;
 let publishedAt = 0;
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
+let countTimer: ReturnType<typeof setTimeout> | undefined;
 
 function localActiveTaskCount(): number {
   return useTasksStore.getState().tasks.filter(isTaskActive).length;
@@ -47,7 +49,9 @@ function sharedStorage(): Storage | undefined {
 
 function withdrawWindowTasks(): void {
   clearInterval(refreshTimer);
+  clearTimeout(countTimer);
   refreshTimer = undefined;
+  countTimer = undefined;
   publishedCount = 0;
   publishedStaged = 0;
   try {
@@ -63,13 +67,17 @@ function publishWindowTasks(force = false): void {
     return;
   }
   const now = Date.now();
-  if (
-    !force &&
-    count === publishedCount &&
-    staged > 0 === publishedStaged > 0 &&
-    now - publishedAt < WINDOW_TASKS_REFRESH_MS
-  )
-    return;
+  if (!force && count === publishedCount && now - publishedAt < WINDOW_TASKS_REFRESH_MS) {
+    if (staged === publishedStaged) return;
+    const wait = publishedAt + WINDOW_TASKS_COUNT_MS - now;
+    if (staged > 0 === publishedStaged > 0 && wait > 0) {
+      countTimer ??= setTimeout(() => {
+        countTimer = undefined;
+        publishWindowTasks();
+      }, wait);
+      return;
+    }
+  }
   try {
     sharedStorage()?.setItem(windowTasksKey, JSON.stringify({ count, staged, at: now }));
     publishedCount = count;

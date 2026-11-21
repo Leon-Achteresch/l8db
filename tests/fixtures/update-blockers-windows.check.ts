@@ -95,4 +95,21 @@ describe("update blockers across windows", () => {
     for (const [key, value] of published) storage.set(`${key}#other-window`, value);
     expect((await collectUpdateBlockers()).staged).toBeGreaterThan(0);
   });
+
+  test("other windows see the current staged count within a second", async () => {
+    const target = { connectionId: "c2", database: null, schema: "public", table: "items" };
+    const published = () => {
+      const key = [...storage.keys()].find((entry) => entry.startsWith("l8db.window-tasks:"));
+      return key ? JSON.parse(storage.get(key) ?? "{}").staged : undefined;
+    };
+    stageInsert(target, { name: "a" });
+    expect(published()).toBe(1);
+    stageInsert(target, { name: "b" });
+    stageInsert(target, { name: "c" });
+    expect(published()).toBe(1);
+    await Bun.sleep(1100);
+    expect(published()).toBe(3);
+    discardStagedTable(stagedTableKey(target));
+    expect(published()).toBeUndefined();
+  });
 });
