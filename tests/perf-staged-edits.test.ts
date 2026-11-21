@@ -21,10 +21,14 @@ mock.module("@tauri-apps/api/core", () => ({
   },
 }));
 const storage = new Map<string, string>();
+let guardWrites = 0;
 Object.defineProperty(globalThis, "localStorage", {
   value: {
     getItem: (key: string) => storage.get(key) ?? null,
-    setItem: (key: string, value: string) => storage.set(key, value),
+    setItem: (key: string, value: string) => {
+      if (key.startsWith("l8db.window-tasks:")) guardWrites++;
+      storage.set(key, value);
+    },
     removeItem: (key: string) => storage.delete(key),
   },
   configurable: true,
@@ -35,6 +39,9 @@ Object.defineProperty(globalThis, "window", {
 });
 
 const staged = await import("../src/lib/staged-edits");
+const { collectUpdateBlockers, describeUpdateBlockers } = await import(
+  "../src/lib/update-blockers"
+);
 const { useConnectionsStore } = await import("../src/lib/connections/store");
 const { useSettingsStore } = await import("../src/lib/settings");
 
@@ -117,6 +124,16 @@ test("5,000 staged changes over a 100k-row table stay fast, bounded and commit i
   expect(text.split(";\n\n")).toHaveLength(STAGED);
 
   requests.length = 0;
+  let blockers = await collectUpdateBlockers();
+  const guard = await measureScenario(async () => {
+    blockers = await collectUpdateBlockers();
+  }, 21);
+  expect(blockers.staged).toBe(STAGED);
+  expect(describeUpdateBlockers(blockers)).toContain(`${STAGED} nicht übernommene Änderungen`);
+  expect(requests.every((command) => command === "list_transactions")).toBe(true);
+  expect(guardWrites).toBe(1);
+
+  requests.length = 0;
   const started = performance.now();
   expect(await staged.commitStagedTable(key)).toBe(STAGED);
   const commitMs = performance.now() - started;
@@ -139,6 +156,8 @@ test("5,000 staged changes over a 100k-row table stay fast, bounded and commit i
     overlay,
     markedInWindow,
     preview,
+    restartGuard: guard,
+    guardWrites,
     commitMs,
     commitRequests: idle,
     retainedBytes,
@@ -147,6 +166,7 @@ test("5,000 staged changes over a 100k-row table stay fast, bounded and commit i
   expect(staging.p95Ms).toBeLessThan(1);
   expect(overlay.medianMs).toBeLessThan(5);
   expect(preview.medianMs).toBeLessThan(20);
+  expect(guard.p95Ms).toBeLessThan(5);
   expect(commitMs).toBeLessThan(100);
   expect(retainedBytes).toBeLessThan(8 * 1024 * 1024);
 });
