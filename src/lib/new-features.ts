@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { aiEnabled, isAiFeatureId, useAiEnabled } from "@/lib/ai/access";
+import { useSettingsStore } from "@/lib/settings";
 import { version as appVersion } from "../../package.json";
 
 export const NEXT_FEATURE_VERSION = "0.19.0";
@@ -8,6 +9,7 @@ export const NEW_FEATURES = {
   "functions.editor.git-blame": NEXT_FEATURE_VERSION,
   "workspace.tab-status": NEXT_FEATURE_VERSION,
   "settings.data.collect-cell-edits": NEXT_FEATURE_VERSION,
+  "settings.appearance.new-feature-badges": NEXT_FEATURE_VERSION,
   "table.rows.staged-changes": NEXT_FEATURE_VERSION,
   "table.rows.binary.utf8": NEXT_FEATURE_VERSION,
   "monitor.sessions.index-progress": NEXT_FEATURE_VERSION,
@@ -364,13 +366,23 @@ export function hasNewFeatures(
   seen: ReadonlySet<NewFeatureId>,
   version = appVersion,
   ai = aiEnabled(),
+  badges = newFeatureBadgesEnabled(),
 ): boolean {
-  if (!scope) return false;
+  if (!scope || !badges) return false;
   return currentFeatureIds(version).some(
     (id) =>
       !seen.has(id) && (id === scope || id.startsWith(`${scope}.`)) && (ai || !isAiFeatureId(id)),
   );
 }
+
+export const newFeatureBadgesEnabled = () => useSettingsStore.getState().newFeatureBadges;
+
+export const useNewFeatureBadgesEnabled = () =>
+  useSyncExternalStore(
+    useSettingsStore.subscribe,
+    newFeatureBadgesEnabled,
+    newFeatureBadgesEnabled,
+  );
 
 export function createNewFeatureStore(storage: FeatureStorage | null, version = appVersion) {
   const release = releaseOf(version);
@@ -475,6 +487,7 @@ export function newFeatureJustSeen(): boolean {
 
 export function useSeenNewFeatures(): ReadonlySet<NewFeatureId> {
   useAiEnabled();
+  useNewFeatureBadgesEnabled();
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
 
@@ -485,5 +498,6 @@ export function useHasNewFeatures(scope: string | undefined): boolean {
 export function useHasAnyNewFeatures(): boolean {
   const seen = useSeenNewFeatures();
   const ai = aiEnabled();
+  if (!newFeatureBadgesEnabled()) return false;
   return currentFeatureIds(appVersion).some((id) => !seen.has(id) && (ai || !isAiFeatureId(id)));
 }

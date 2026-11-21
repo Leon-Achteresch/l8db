@@ -218,6 +218,14 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "navInHeader",
   },
   {
+    id: "new-feature-badges",
+    tabId: "appearance",
+    title: "NEW-Hinweise",
+    description: "Markiert neue Funktionen mit einem NEW-Badge.",
+    keywords: ["new", "neu", "badge", "hinweis", "neuerungen", "punkt"],
+    key: "newFeatureBadges",
+  },
+  {
     id: "dynamic-island",
     tabId: "appearance",
     title: "Dynamic Island",

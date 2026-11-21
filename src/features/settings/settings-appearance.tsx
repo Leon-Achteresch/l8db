@@ -15,6 +15,7 @@ export function SettingsAppearance({ onboarding = false }: { onboarding?: boolea
     sidebarExtraCompact,
     navInHeader,
     dynamicIsland,
+    newFeatureBadges,
     seasonalAccents,
     fitColumnsToHeader,
     monochromeCells,
@@ -22,6 +23,7 @@ export function SettingsAppearance({ onboarding = false }: { onboarding?: boolea
     setSidebarExtraCompact,
     setNavInHeader,
     setDynamicIsland,
+    setNewFeatureBadges,
     setUiScale,
     setUiDensity,
     resetAppearance,
@@ -106,6 +108,16 @@ export function SettingsAppearance({ onboarding = false }: { onboarding?: boolea
             onCheckedChange={setDynamicIsland}
           />
         </div>
+      </SettingsRow>
+      <SettingsRow
+        settingId="new-feature-badges"
+        featureId="settings.appearance.new-feature-badges"
+      >
+        <Switch
+          aria-label="NEW-Hinweise"
+          checked={newFeatureBadges}
+          onCheckedChange={setNewFeatureBadges}
+        />
       </SettingsRow>
       {onboarding ? null : (
         <>

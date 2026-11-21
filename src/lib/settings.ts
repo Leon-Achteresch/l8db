@@ -132,6 +132,7 @@ export interface SettingsState {
   navInHeader: boolean;
   dynamicIsland: boolean;
   shortcutHints: boolean;
+  newFeatureBadges: boolean;
   seasonalAccents: boolean;
   lightTheme: string;
   darkTheme: string;
@@ -212,6 +213,7 @@ export interface SettingsState {
   setNavInHeader: (value: boolean) => void;
   setDynamicIsland: (value: boolean) => void;
   setShortcutHints: (value: boolean) => void;
+  setNewFeatureBadges: (value: boolean) => void;
   setSeasonalAccents: (value: boolean) => void;
   setLightTheme: (value: string) => void;
   setDarkTheme: (value: string) => void;
@@ -346,6 +348,7 @@ export const DEFAULT_SETTINGS = {
   navInHeader: false,
   dynamicIsland: true,
   shortcutHints: true,
+  newFeatureBadges: true,
   seasonalAccents: true,
   lightTheme: DEFAULT_APP_THEME,
   darkTheme: DEFAULT_APP_THEME,
@@ -466,6 +469,7 @@ export const useSettingsStore = create<SettingsState>()(
       setNavInHeader: (navInHeader) => set({ navInHeader }),
       setDynamicIsland: (dynamicIsland) => set({ dynamicIsland }),
       setShortcutHints: (shortcutHints) => set({ shortcutHints }),
+      setNewFeatureBadges: (newFeatureBadges) => set({ newFeatureBadges }),
       setSeasonalAccents: (seasonalAccents) => set({ seasonalAccents }),
       setLightTheme: (lightTheme) => set({ lightTheme: normalizeAppTheme(lightTheme) }),
       setDarkTheme: (darkTheme) => set({ darkTheme: normalizeAppTheme(darkTheme) }),
@@ -518,6 +522,7 @@ export const useSettingsStore = create<SettingsState>()(
           navInHeader: saved?.navInHeader === true,
           dynamicIsland: saved?.dynamicIsland !== false,
           shortcutHints: saved?.shortcutHints !== false,
+          newFeatureBadges: saved?.newFeatureBadges !== false,
           seasonalAccents: saved?.seasonalAccents !== false,
           lightTheme: normalizeAppTheme(saved?.lightTheme),
           darkTheme: normalizeAppTheme(saved?.darkTheme),

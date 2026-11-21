@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { trackScrolling } from "../src/lib/hooks/use-scrolling-flag";
 import { hasNewFeatures, NEW_FEATURES, NEXT_FEATURE_VERSION } from "../src/lib/new-features";
+import { useSettingsStore } from "../src/lib/settings";
 import { measureScenario, reportScenario } from "./fixtures/usage-performance";
 
 class TrackedTarget extends EventTarget {
@@ -57,6 +58,20 @@ test("20000 badge lookups per run scan only the current release", async () => {
   expect(hasNewFeatures("missing.scope", seen, NEXT_FEATURE_VERSION)).toBe(false);
   expect(hasNewFeatures(undefined, seen, NEXT_FEATURE_VERSION)).toBe(false);
   expect(timing.p95Ms).toBeLessThan(40);
+
+  useSettingsStore.getState().setNewFeatureBadges(false);
+  let hiddenHits = 0;
+  const off = await measureScenario(() => {
+    hiddenHits = 0;
+    for (let index = 0; index < lookups; index++)
+      if (hasNewFeatures(scopes[index % scopes.length], seen, NEXT_FEATURE_VERSION)) hiddenHits++;
+  }, 11);
+  useSettingsStore.getState().setNewFeatureBadges(true);
+  reportScenario("new-feature-lookups-off", { lookups, hits: hiddenHits, ...off });
+  expect(hits).toBeGreaterThan(0);
+  expect(hiddenHits).toBe(0);
+  expect(off.p95Ms).toBeLessThan(5);
+  expect(off.medianMs).toBeLessThanOrEqual(timing.medianMs);
 });
 
 test("10000 scroll events write the scrolling flag once and release everything when idle", async () => {
