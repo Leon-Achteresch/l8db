@@ -12,6 +12,7 @@ import { type RefObject, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { TourAsk } from "@/features/tour/tour-ask";
 import { TourChapterButton } from "@/features/tour/tour-chapter-button";
+import { useAiEnabled } from "@/lib/ai/access";
 import { advanceTour, jumpTourChapter, rewindTour } from "@/lib/hooks/use-app-tour";
 import type { TourLastAnswer, TourTurn } from "@/lib/tour/ask";
 import { TOUR_CHAPTERS, tourProgress } from "@/lib/tour/chapters";
@@ -36,6 +37,7 @@ export function TourStepPanel({ aiReady, history, lastAnswer, onThinking }: Prop
   const waiting = useTourStore((s) => s.waiting);
   const waitHint = useTourStore((s) => s.waitHint);
   const [chaptersOpen, setChaptersOpen] = useState(false);
+  const aiOn = useAiEnabled();
   const chapter = TOUR_CHAPTERS[chapterIndex];
   const step = chapter?.steps[stepIndex];
   const progress = tourProgress(chapterIndex, stepIndex);
@@ -116,7 +118,7 @@ export function TourStepPanel({ aiReady, history, lastAnswer, onThinking }: Prop
             ) : null}
           </motion.div>
         </AnimatePresence>
-        {aiReady ? (
+        {aiReady && aiOn ? (
           <TourAsk
             key={step?.id}
             stepId={step?.id ?? ""}

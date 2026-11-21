@@ -21,6 +21,13 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "easyMode",
   },
   {
+    id: "ki",
+    tabId: "general",
+    title: "KI",
+    description: "Chat, Editor-KI, KI-Filter und alle weiteren KI-Funktionen.",
+    keywords: ["ki", "ai", "assistent", "llm", "chat", "ausschalten", "datenschutz"],
+  },
+  {
     id: "theme",
     tabId: "appearance",
     title: "Erscheinungsbild",

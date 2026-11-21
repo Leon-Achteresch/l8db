@@ -2,6 +2,7 @@ import { Bug, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { SettingsRow } from "@/features/settings/settings-row";
+import { useAiEnabled } from "@/lib/ai/access";
 import { featureById } from "@/lib/discovery/catalog";
 import {
   type FeedbackAnswer,
@@ -22,6 +23,7 @@ async function reportAsIssue(answer: FeedbackAnswer) {
 
 export default function FeedbackSettings() {
   const answers = useFeedbackStore((state) => state.answers);
+  const aiOn = useAiEnabled();
   const remove = useFeedbackStore((state) => state.remove);
 
   return (
@@ -53,15 +55,17 @@ export default function FeedbackSettings() {
                 <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
                   {dateFormat.format(answer.at)}
                 </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 gap-1 px-2 text-xs"
-                  onClick={() => void reportAsIssue(answer)}
-                >
-                  <Bug className="size-3.5" />
-                  Als Issue melden
-                </Button>
+                {aiOn && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 gap-1 px-2 text-xs"
+                    onClick={() => void reportAsIssue(answer)}
+                  >
+                    <Bug className="size-3.5" />
+                    Als Issue melden
+                  </Button>
+                )}
                 <Button
                   size="icon-sm"
                   variant="ghost"

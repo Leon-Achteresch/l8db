@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { IndexAdvisorPanel } from "@/features/explain/index-advisor-panel";
 import { PlanVisualizer } from "@/features/explain/plan-visualizer";
+import { useAiEnabled } from "@/lib/ai/access";
 import { explainPlanPrompt } from "@/lib/ai/editor/chat-prompts";
 import { compactExplain } from "@/lib/ai/editor/compact";
 import { useAiStore } from "@/lib/ai/store";
@@ -57,6 +58,7 @@ export function ExplainPlanView({
   onClose,
 }: ExplainPlanViewProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const aiOn = useAiEnabled();
   const [saving, setSaving] = useState(false);
   const host = useExtensionHost();
   const planActions = useExtensionSnapshot((manager) => {
@@ -130,16 +132,18 @@ export function ExplainPlanView({
             {action.title}
           </Button>
         ))}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="ml-auto h-7 gap-1.5 px-2 text-xs"
-          title="Plan verdichtet an den KI-Chat senden"
-          onClick={() => useAiStore.getState().ask(explainPlanPrompt(sql, compactExplain(plan)))}
-        >
-          <Sparkles className="size-3.5" />
-          Mit KI erklären
-        </Button>
+        {aiOn && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto h-7 gap-1.5 px-2 text-xs"
+            title="Plan verdichtet an den KI-Chat senden"
+            onClick={() => useAiStore.getState().ask(explainPlanPrompt(sql, compactExplain(plan)))}
+          >
+            <Sparkles className="size-3.5" />
+            Mit KI erklären
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"

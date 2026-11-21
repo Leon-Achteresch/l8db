@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { useAiEnabled } from "@/lib/ai/access";
 import { editorAiSupported, inlineSupported } from "@/lib/ai/editor/client";
 import { useEditorAiSettings } from "@/lib/ai/editor/settings";
 import { AI_PROVIDERS, useAiStore } from "@/lib/ai/store";
@@ -33,7 +34,8 @@ export function EditorAiSection({ compact }: { compact: boolean }) {
       : !inlineSupported(effective)
         ? `${name(effective.provider)}: ⌘I und KI-Aktionen aktiv. Ghost-Text braucht einen API- oder lokalen Anbieter.`
         : `${name(effective.provider)}${effective.model ? ` · ${effective.model}` : ""}: alle Editor-Funktionen aktiv.`;
-  const off = !settings.enabled;
+  const master = useAiEnabled();
+  const off = !settings.enabled || !master;
 
   return (
     <Section
@@ -47,6 +49,7 @@ export function EditorAiSection({ compact }: { compact: boolean }) {
       >
         <Switch
           checked={settings.enabled}
+          disabled={!master}
           onCheckedChange={(enabled) => settings.update({ enabled })}
           aria-label="KI im Editor"
         />

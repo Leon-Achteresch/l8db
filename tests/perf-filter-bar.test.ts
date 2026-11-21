@@ -41,6 +41,8 @@ const { FilterConditionTokens } = await import(
 const { FilterRuleTokens } = await import("@/features/table/filter-bar/filter-rule-tokens");
 const { FilterPillBar } = await import("@/features/table/filter-bar/filter-pill-bar");
 const { FALLBACK_PROVIDERS, useProvidersStore } = await import("@/lib/providers");
+const { useAiAccess } = await import("@/lib/ai/access");
+const { AI_PROVIDERS } = await import("@/lib/ai/store");
 const { useConnectionsStore } = await import("@/lib/connections");
 const { useSettingsStore } = await import("@/lib/settings");
 const { useTableViewStateStore } = await import("@/lib/table-view-state");
@@ -50,6 +52,7 @@ import type { FilterAiContext } from "@/lib/filter-ai/types";
 import type { FilterCondition, RowRule } from "@/lib/table-view-state";
 
 useProvidersStore.setState({ providers: FALLBACK_PROVIDERS, loaded: true });
+useAiAccess.setState({ enabled: true, consent: AI_PROVIDERS.map((entry) => entry.id) });
 useConnectionsStore.setState({
   activeId: "perf",
   connections: [

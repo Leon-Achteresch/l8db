@@ -1,3 +1,4 @@
+import { aiConsentGiven, aiEnabled } from "@/lib/ai/access";
 import { useAiStore } from "@/lib/ai/store";
 import { monaco } from "@/lib/monaco";
 import { attached } from "@/lib/monaco-intellisense/context";
@@ -72,7 +73,7 @@ export async function provideGhostText(
 ): Promise<monaco.languages.InlineCompletions> {
   const empty = { items: [] };
   const settings = useEditorAiSettings.getState();
-  if (!attached.has(model) || !settings.enabled || !settings.inline) return empty;
+  if (!attached.has(model) || !settings.enabled || !settings.inline || !aiEnabled()) return empty;
   const lineText = model.getLineContent(position.lineNumber);
   const linePrefix = lineText.slice(0, position.column - 1);
   const lineSuffix = lineText.slice(position.column - 1);
@@ -102,7 +103,7 @@ export async function provideGhostText(
   } catch {
     return empty;
   }
-  if (!inlineSupported(profile)) return empty;
+  if (!inlineSupported(profile) || !aiConsentGiven(profile)) return empty;
   const explicit = context.triggerKind === monaco.languages.InlineCompletionTriggerKind.Explicit;
   if (!explicit && !(await sleep(settings.inlineDelay, token))) {
     ghostCounters.cancelled++;

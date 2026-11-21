@@ -5,6 +5,7 @@ import {
   BellRingIcon,
   DatabaseBackupIcon,
   DatabaseZapIcon,
+  DicesIcon,
   EraserIcon,
   FileArchiveIcon,
   FileInputIcon,
@@ -27,7 +28,6 @@ import {
   TableIcon,
   Trash2Icon,
   VariableIcon,
-  WandSparklesIcon,
   WorkflowIcon,
 } from "lucide-react";
 import type { ActionType } from "@/lib/db/automation";
@@ -84,7 +84,7 @@ export const STEP_CATALOG: Record<ActionType, StepCatalogEntry> = {
     label: "Testdaten erzeugen",
     description: "Tabelle mit realistischen Zufallsdaten füllen",
     group: "Datenbank",
-    icon: WandSparklesIcon,
+    icon: DicesIcon,
     risky: true,
   },
   export: {

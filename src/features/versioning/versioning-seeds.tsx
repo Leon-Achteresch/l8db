@@ -1,4 +1,4 @@
-import { DatabaseIcon, SaveIcon, SproutIcon, WandSparklesIcon } from "lucide-react";
+import { DatabaseIcon, DicesIcon, SaveIcon, SproutIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
@@ -242,7 +242,7 @@ export function VersioningSeeds({ workspace }: { workspace: VersioningWorkspace 
             disabled={!target || !connection || !table || rows < 1 || rows > 1000}
             onClick={() => void run(generate)}
           >
-            <WandSparklesIcon className="size-3.5" />
+            <DicesIcon className="size-3.5" />
             {plan ? "Seed-SQL hinzufügen" : "Generatoren ermitteln"}
           </Button>
           <p className="text-[11px] leading-relaxed text-muted-foreground">

@@ -77,6 +77,7 @@ export async function aiCheck(profile: AiProfile, timeoutMs = 90_000): Promise<s
         else if (event.kind === "approval" || event.kind === "input")
           void aiApprove(runId, String(event.data.id), false).catch(() => undefined);
       },
+      false,
     );
   } catch (failure) {
     error ||= String(failure);

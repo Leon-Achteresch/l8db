@@ -23,6 +23,7 @@ import { ProxyUserSwitch } from "@/features/shell/proxy-user-switch";
 import { ReadOnlyBadge } from "@/features/shell/read-only-badge";
 import { TemporaryConnectionBadge } from "@/features/shell/temporary-connection-badge";
 import { WindowControls } from "@/features/shell/window-controls";
+import { useAiEnabled } from "@/lib/ai/access";
 import { useAiStore } from "@/lib/ai/store";
 import { useCliNeedsAction } from "@/lib/cli-path";
 import { useActiveCapabilities } from "@/lib/db-selection";
@@ -59,6 +60,7 @@ export function AppHeader() {
   const aiPage = useRouterSelect((state) => state.location.pathname === "/ai");
   const aiOpen = useAiStore((state) => state.open);
   const setAiOpen = useAiStore((state) => state.setOpen);
+  const aiEnabled = useAiEnabled();
   const headerRef = useRef<HTMLElement>(null);
   const leadingRef = useRef<HTMLDivElement>(null);
   const actionsRef = useRef<HTMLElement>(null);
@@ -340,31 +342,33 @@ export function AppHeader() {
           </Link>
         </Tooltip>
 
-        <Tooltip content="AI-Arbeitsbereich" side="bottom">
-          <button
-            data-feature="ai.chat"
-            id="ai-workspace-trigger"
-            type="button"
-            aria-label="AI-Arbeitsbereich"
-            aria-expanded={aiOpen || aiPage}
-            aria-controls="ai-workspace"
-            className={cn(
-              "relative inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              (aiOpen || aiPage) && "bg-primary/12 text-foreground",
-            )}
-            onClick={() => {
-              if (aiPage) {
-                setAiOpen(true);
-                void navigate({ to: "/" });
-              } else setAiOpen(!aiOpen);
-            }}
-          >
-            <Sparkles className="size-4" strokeWidth={1.75} />
-            {hasNewAiFeatures && !aiOpen && !aiPage ? (
-              <NewBadge className="absolute -right-2 -top-1.5 px-1 text-[8px]" />
-            ) : null}
-          </button>
-        </Tooltip>
+        {aiEnabled && (
+          <Tooltip content="AI-Arbeitsbereich" side="bottom">
+            <button
+              data-feature="ai.chat"
+              id="ai-workspace-trigger"
+              type="button"
+              aria-label="AI-Arbeitsbereich"
+              aria-expanded={aiOpen || aiPage}
+              aria-controls="ai-workspace"
+              className={cn(
+                "relative inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                (aiOpen || aiPage) && "bg-primary/12 text-foreground",
+              )}
+              onClick={() => {
+                if (aiPage) {
+                  setAiOpen(true);
+                  void navigate({ to: "/" });
+                } else setAiOpen(!aiOpen);
+              }}
+            >
+              <Sparkles className="size-4" strokeWidth={1.75} />
+              {hasNewAiFeatures && !aiOpen && !aiPage ? (
+                <NewBadge className="absolute -right-2 -top-1.5 px-1 text-[8px]" />
+              ) : null}
+            </button>
+          </Tooltip>
+        )}
         {!easyMode && (
           <Tooltip content="MCP" side="bottom">
             <Link

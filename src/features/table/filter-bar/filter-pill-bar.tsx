@@ -80,7 +80,7 @@ export function FilterPillBar(props: FilterBarProps) {
             <XIcon />
           </Button>
         ) : null}
-        <FilterAiPopover ai={ai} model={model} />
+        {ai.enabled && <FilterAiPopover ai={ai} model={model} />}
       </div>
       {model.error ? (
         <p role="alert" className="mt-1.5 text-xs text-destructive">

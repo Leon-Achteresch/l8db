@@ -1,4 +1,4 @@
-import { SparklesIcon } from "lucide-react";
+import { LightbulbIcon } from "lucide-react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
@@ -16,7 +16,7 @@ export function SpotlightOpenButton({ className }: { className?: string }) {
         void import("@/lib/discovery/spotlight/store").then(({ openSpotlight }) => openSpotlight())
       }
     >
-      <SparklesIcon />
+      <LightbulbIcon />
       Highlights
       {isNew && <NewBadge />}
     </Button>

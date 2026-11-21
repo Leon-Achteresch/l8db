@@ -1,4 +1,5 @@
 import {
+  AlignLeftIcon,
   ArrowDownToLineIcon,
   ArrowUpToLineIcon,
   BinaryIcon,
@@ -21,7 +22,6 @@ import {
   SquareStackIcon,
   TerminalIcon,
   TextSearchIcon,
-  WandSparklesIcon,
   WrenchIcon,
 } from "lucide-react";
 import { type RefObject, useRef, useState } from "react";
@@ -249,7 +249,7 @@ export function QueryToolsMenu({
             />
             {isSql && (
               <IconMenuItem
-                icon={<WandSparklesIcon />}
+                icon={<AlignLeftIcon />}
                 label="SQL formatieren"
                 shortcut={shortcutLabel("query.format")}
                 data-hotkey="query.format"
