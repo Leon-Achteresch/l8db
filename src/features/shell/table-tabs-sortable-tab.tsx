@@ -26,6 +26,8 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { AiFlash } from "@/features/automation/ai-flash";
+import { TabStatusMarkers } from "@/features/shell/table-tabs/tab-status-markers";
+import type { ConnectionEnvironment } from "@/lib/connections";
 import { SPRING, SPRING_PRESS } from "@/lib/ease";
 import { focusNeighborTab } from "@/lib/keyboard-nav";
 import { useSavedTabsStore } from "@/lib/saved-tabs";
@@ -35,8 +37,10 @@ import type { SplitEdge } from "@/lib/split-layout";
 import { isBoundToSplit, useSplitView } from "@/lib/split-view";
 import { underPointer } from "@/lib/tab-drop";
 import { tabLabel } from "@/lib/tab-navigation";
+import { tabHasTransaction } from "@/lib/tab-transactions";
 import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
 import { TOOL_TABS } from "@/lib/tool-tabs";
+import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 
 export interface TableTabActions {
@@ -62,6 +66,8 @@ export interface TableTabsSortableTabProps {
   pane?: number | null;
   paneCount?: number;
   color?: string | null;
+  connectionId?: string | null;
+  environment?: ConnectionEnvironment | null;
   canSplit?: boolean;
   hasTabsToRight: boolean;
   tabsCount: number;
@@ -113,6 +119,8 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
   pane = null,
   paneCount = 0,
   color = null,
+  connectionId = null,
+  environment = null,
   canSplit = true,
   hasTabsToRight,
   tabsCount,
@@ -132,6 +140,9 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
     data: { key: tabKey(tab), group, pane },
   });
 
+  const transaction = useTransactionStore((state) =>
+    tabHasTransaction(tab, connectionId, state.transactions),
+  );
   const { Icon, iconColor } = tabVisual(tab);
 
   const label = tabLabel(tab);
@@ -150,6 +161,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
         )}
       </span>
       <span className="truncate font-medium">{label}</span>
+      <TabStatusMarkers environment={environment} transaction={transaction} isActive={isActive} />
       {color && (
         <span
           aria-hidden="true"
