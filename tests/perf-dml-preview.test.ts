@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { measureScenario, reportScenario } from "../scripts/performance-report";
 import type { QueryResult } from "../src/lib/db/types";
 import { deriveDmlPreview, needsDmlPreview, runDmlPreview } from "../src/lib/dml-preview";
+import { destructiveStatements } from "../src/lib/sql-safety";
 
 const DIALECTS = ["postgres", "mysql", "mssql", "sqlite", "oracle"] as const;
 
@@ -121,3 +122,32 @@ test("each preview is one isolated request with a bounded statement sequence", a
     p95BudgetMs: 50,
   });
 });
+
+test("UPDATE/DELETE-ohne-WHERE-Erkennung bleibt bei großen Skripten schnell", async () => {
+  const filler = "x".repeat(320);
+  const statements = Array.from({ length: 5000 }, (_, index) => {
+    const text = statement(index);
+    if (index % 50 === 0) return `UPDATE accounts SET note = '${filler}'`;
+    if (index % 50 === 1) return `DELETE FROM sessions /* ${filler} */`;
+    return `${text} /* ${filler} */`;
+  });
+  const script = statements.map((text) => `${text};`).join("\n");
+  const results: Record<string, unknown> = {};
+  for (const dialect of DIALECTS) {
+    let findings = 0;
+    const scan = await measureScenario(() => {
+      findings = destructiveStatements(script, dialect).length;
+    }, 7);
+    expect(findings).toBe(200);
+    expect(scan.p95Ms).toBeLessThan(300);
+    results[dialect] = scan;
+  }
+  expect(script.length).toBeGreaterThan(2_000_000);
+  await reportScenario("destructive-without-where", {
+    statements: statements.length,
+    scriptCharacters: script.length,
+    findings: 200,
+    budgets: { p95Ms: 300 },
+    dialects: results,
+  });
+}, 120_000);
