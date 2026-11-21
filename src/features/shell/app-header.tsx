@@ -404,7 +404,7 @@ export function AppHeader() {
           >
             <Settings className="size-4" strokeWidth={1.75} />
             {hasNewSettingsFeatures ? (
-              <NewBadge className="absolute -right-2 -top-1.5 px-1 text-[8px]" />
+              <NewBadge className="absolute -right-2 -bottom-1.5 px-1 text-[8px]" />
             ) : null}
             {update ? (
               <span

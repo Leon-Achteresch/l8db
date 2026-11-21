@@ -111,7 +111,7 @@ export const DataTableRow = memo(function DataTableRow({
   const stagedColor = staged?.failed
     ? "var(--destructive) 18%"
     : staged?.type === "insert"
-      ? "var(--color-emerald-500) 9%"
+      ? "var(--color-emerald-500) 18%"
       : staged?.type === "delete"
         ? "var(--destructive) 8%"
         : null;
