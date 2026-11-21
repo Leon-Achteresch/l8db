@@ -31,6 +31,7 @@ mock.module("@tauri-apps/api/core", () => ({
       return result(rowsFor(String(args.sql)));
     }
     if (command === "cancel_execution") return true;
+    if (command.includes("server_output")) return [];
     return null;
   },
 }));
@@ -64,6 +65,7 @@ const { copiedValuesLabel } = await import("../src/features/table/data-table/use
 const { autosizeColumnWidth, AUTOSIZE_MAX } = await import("../src/lib/column-header-width");
 const { revealColumnScroll } = await import("../src/features/table/data-table/use-grid-scrolling");
 const { useSettingsStore } = await import("../src/lib/settings");
+const { runSqlScript } = await import("../src/lib/script-runner");
 
 const connection: SavedConnection = {
   id: "row-limit",
@@ -102,6 +104,20 @@ test("results cut by the automatic SELECT limit are marked with the limit", asyn
 
   rowsFor = () => 1000;
   expect((await run("SELECT * FROM items LIMIT 1000")).autoLimit).toBeUndefined();
+});
+
+test("script runs mark the shown result with the automatic limit", async () => {
+  const script = (sql: string) =>
+    runSqlScript({ connection, database: null, sql, mode: "autocommit", selectRowLimit: 1000 });
+  const limited = await script("SELECT 1;\nSELECT * FROM items;");
+  expect(limited.error).toBeNull();
+  expect(limited.lastResult?.autoLimit).toBe(1000);
+
+  rowsFor = () => 12;
+  expect((await script("SELECT * FROM items;")).lastResult?.autoLimit).toBeUndefined();
+
+  rowsFor = () => 1000;
+  expect((await script("SELECT * FROM items LIMIT 1000;")).lastResult?.autoLimit).toBeUndefined();
 });
 
 test("unlimited re-run sends the statement without an automatic limit", async () => {
