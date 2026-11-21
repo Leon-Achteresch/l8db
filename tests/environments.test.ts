@@ -95,11 +95,12 @@ describe("Umgebungen", () => {
 });
 
 describe("SQL-Sicherheit für Produktion", () => {
-  test("strenger Modus erkennt ALTER, DROP und UPDATE ohne WHERE", () => {
+  test("UPDATE ohne WHERE warnt immer, ALTER nur im strengen Modus", () => {
     const sql =
       "ALTER TABLE t ADD c int; DROP VIEW v; UPDATE t SET a = 1; UPDATE t SET a = 2 WHERE id = 1";
     expect(destructiveStatements(sql, "postgres").map((entry) => entry.reason)).toEqual([
       "View löschen",
+      "UPDATE ohne WHERE",
     ]);
     expect(
       destructiveStatements(sql, "postgres", { strict: true }).map((entry) => entry.reason),

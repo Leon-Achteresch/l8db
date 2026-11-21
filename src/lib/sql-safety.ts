@@ -105,6 +105,15 @@ function withoutWhere(words: Token[], index: number): boolean {
   return true;
 }
 
+const CLAUSE_BEFORE_DML = new Set(["FOR", "KEY", "DO", "ON", "OR", "OF", "BEFORE", "AFTER"]);
+
+function dmlCommand(words: Token[], index: number, routine: boolean): boolean {
+  const first = words[0]?.word;
+  if (routine || first === "MERGE" || (first === "ALTER" && words[1]?.word === "DEFAULT"))
+    return false;
+  return !CLAUSE_BEFORE_DML.has(words[index - 1]?.word) && words[index + 1]?.word !== "STATISTICS";
+}
+
 export interface SafetyOptions {
   strict?: boolean;
 }
@@ -484,6 +493,7 @@ export function destructiveStatements(
     const words = sqlTokens(statement.text, dialect);
     let reason: string | null = null;
     if (["GRANT", "REVOKE"].includes(words[0]?.word)) return [];
+    const routine = definesRoutine(words);
     for (let i = 0; i < words.length; i++) {
       const token = words[i];
       const dropped = token.word === "DROP" ? DROP_REASONS[words[i + 1]?.word] : undefined;
@@ -496,9 +506,12 @@ export function destructiveStatements(
         reason = "Spalte oder Bestandteil löschen";
       else if (options.strict && token.word === "DROP" && i === 0) reason = "Objekt löschen";
       if (token.word === "TRUNCATE") reason = "Tabelle leeren";
-      if (token.word === "DELETE" && withoutWhere(words, i)) reason = "DELETE ohne WHERE";
-      if (options.strict && token.word === "UPDATE" && withoutWhere(words, i))
-        reason = "UPDATE ohne WHERE";
+      if (
+        (token.word === "DELETE" || token.word === "UPDATE") &&
+        dmlCommand(words, i, routine) &&
+        withoutWhere(words, i)
+      )
+        reason = `${token.word} ohne WHERE`;
       if (options.strict && token.word === "ALTER" && i === 0) reason = "Struktur ändern";
       if (dialect === "clickhouse" && words[0]?.word === "ALTER" && token.depth === 0) {
         if (token.word === "DELETE") reason = "Mutation: Zeilen löschen";
