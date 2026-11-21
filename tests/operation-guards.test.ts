@@ -16,6 +16,7 @@ const { useWriteModeStore } = await import("../src/lib/environments");
 const { invoke, READ_ONLY_MESSAGE } = await import("../src/lib/db/core");
 const { effectiveConnectionString } = await import("../src/lib/ssh");
 const { operationContext } = await import("../src/lib/operation-context");
+const { capabilitiesFor, useProvidersStore } = await import("../src/lib/providers");
 
 const LOCKED = "Produktion ist schreibgeschützt";
 
@@ -86,6 +87,38 @@ describe("Produktionssperre bei veralteter Verbindungszeichenfolge", () => {
     ).rejects.toThrow(LOCKED);
     expect(invocations).not.toContain("update_row");
   });
+
+  for (const [kind, url, marker] of [
+    ["postgres", "postgres://app@db.example.com:5432/shop", "default_transaction_read_only"],
+    ["mysql", "mysql://app@db.example.com:3306/shop", "read_only=true"],
+    ["sqlite", "sqlite:///data/shop.db", "mode=ro"],
+  ] as const) {
+    test(`${kind}: Schreibmodus hebt die serverseitige Sperre auf, Sperren setzt sie wieder`, () => {
+      const providers = useProvidersStore.getState();
+      useProvidersStore.setState({
+        loaded: true,
+        providers: [
+          {
+            id: kind,
+            kind,
+            capabilities: { ...capabilitiesFor("postgres"), read_only_mode: true },
+          },
+          ...providers.providers,
+        ] as never,
+      });
+      useSettingsStore.setState({ productionReadOnly: true });
+      const prod = connection("prod", kind, url, { environment: "production" });
+      useConnectionsStore.setState({ connections: [prod] });
+      expect(effectiveConnectionString(prod)).toContain(marker);
+      useWriteModeStore.getState().unlock("prod");
+      expect(effectiveConnectionString(prod)).toBe(url);
+      useWriteModeStore.getState().lock("prod");
+      expect(effectiveConnectionString(prod)).toContain(marker);
+      const dev = connection("dev", kind, url, { readOnly: true });
+      expect(effectiveConnectionString(dev)).toContain(marker);
+      useProvidersStore.setState(providers);
+    });
+  }
 
   test("mysql: Zeichenfolge mit anderem Passwort wird erkannt", async () => {
     useSettingsStore.setState({ productionReadOnly: true });
@@ -213,5 +246,31 @@ describe("EXPLAIN ANALYZE respektiert Schutzmechanismen", () => {
       }),
     ).rejects.toThrow(LOCKED);
     expect(invocations).not.toContain("explain_query");
+  });
+});
+
+describe("Serverseitiger Lesemodus ohne zusätzliche Anfragen", () => {
+  test("je Abfrage bleibt es bei einem execute_query", async () => {
+    const queries = 500;
+    const counts: Record<string, Record<string, number>> = {};
+    for (const readOnly of [false, true]) {
+      const target = connection("c", "postgres", "postgres://app@db.example.com:5432/shop", {
+        readOnly,
+      });
+      useConnectionsStore.setState({ connections: [target], activeId: "c" });
+      const connectionString = effectiveConnectionString(target);
+      expect(connectionString.includes("default_transaction_read_only")).toBe(readOnly);
+      invocations.length = 0;
+      for (let index = 0; index < queries; index++)
+        await invoke("execute_query", { connectionString, kind: "postgres", sql: "SELECT 1" });
+      counts[readOnly ? "readOnly" : "writable"] = Object.fromEntries(
+        [...new Set(invocations)].map((name) => [
+          name,
+          invocations.filter((entry) => entry === name).length,
+        ]),
+      );
+    }
+    expect(counts.writable).toEqual({ execute_query: queries });
+    expect(counts.readOnly).toEqual({ execute_query: queries, validate_read_query: queries });
   });
 });

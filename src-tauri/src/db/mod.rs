@@ -1758,6 +1758,7 @@ fn pg_error_label(code: &str, severity: &str) -> &'static str {
         "23502" => "NOT NULL verletzt",
         "23514" => "CHECK-Bedingung verletzt",
         "428C9" => "Spalte ist GENERATED ALWAYS",
+        "25006" => "Verbindung ist schreibgeschützt",
         "40P01" => "Deadlock",
         "53300" => "Zu viele Verbindungen",
         "57014" => "Abgebrochen",

@@ -129,7 +129,7 @@ fn map_err(e: rusqlite::Error) -> String {
         rusqlite::Error::SqliteFailure(failure, _) => match failure.code {
             ErrorCode::NotADatabase => Some("Datei ist keine SQLite-Datenbank oder verschlüsselt."),
             ErrorCode::DatabaseCorrupt => Some("Datei ist beschädigt."),
-            ErrorCode::ReadOnly => Some("Nur lesend geöffnet (Datei schreibgeschützt oder ?mode=ro)."),
+            ErrorCode::ReadOnly => Some("Verbindung ist schreibgeschützt: Datei nur lesend geöffnet (Lesemodus, Dateirechte oder ?mode=ro)."),
             ErrorCode::DatabaseBusy | ErrorCode::DatabaseLocked => Some(
                 "Datei wird gerade von einem anderen Programm verwendet. Schließen und erneut versuchen.",
             ),
@@ -1228,7 +1228,7 @@ mod tests {
             .execute_query("INSERT INTO t VALUES (2)")
             .await
             .unwrap_err();
-        assert!(err.contains("Nur lesend geöffnet"), "{err}");
+        assert!(err.contains("Verbindung ist schreibgeschützt"), "{err}");
         assert!(db.begin_transaction().await.is_ok());
         let rows = db
             .execute_query("SELECT count(*) AS n FROM t")
