@@ -2,6 +2,7 @@ import { getRouteApi, Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { scrollBehavior } from "@/lib/scroll-behavior";
 import { AppwriteView } from "./appwrite-view";
 import { ConvexView } from "./convex-view";
 import { FirebaseView } from "./firebase-view";
@@ -18,7 +19,7 @@ export function BaasView() {
     const started = Date.now();
     const timer = setInterval(() => {
       const target = document.querySelector(`[data-baas-section~="${section}"]`);
-      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (target) target.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
       if (target || Date.now() - started > 8000) clearInterval(timer);
     }, 200);
     return () => clearInterval(timer);

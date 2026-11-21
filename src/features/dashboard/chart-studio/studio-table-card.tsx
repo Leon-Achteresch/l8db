@@ -148,7 +148,7 @@ export const StudioTableCard = forwardRef<
                     <span className="sr-only">Im Chart verwendet</span>
                   </>
                 )}
-                <GripVerticalIcon className="size-3 shrink-0 text-muted-foreground/0 group-hover:text-muted-foreground" />
+                <GripVerticalIcon className="size-3 shrink-0 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground" />
               </FieldDragButton>
             </li>
           );

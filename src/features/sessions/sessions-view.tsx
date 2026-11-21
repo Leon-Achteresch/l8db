@@ -15,6 +15,7 @@ import { cancelSession, terminateSession } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { useHasNewFeatures } from "@/lib/new-features";
 import { useLocksQuery, useSessionsQuery } from "@/lib/queries";
+import { scrollBehavior } from "@/lib/scroll-behavior";
 import { sessionActionMessage, sessionIdLabel } from "@/lib/session-actions";
 import {
   type BlockingInfo,
@@ -95,7 +96,7 @@ export function SessionsView() {
     window.requestAnimationFrame(() => {
       document
         .getElementById(`session-row-${pid}`)
-        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+        ?.scrollIntoView({ block: "center", behavior: scrollBehavior() });
     });
   };
 

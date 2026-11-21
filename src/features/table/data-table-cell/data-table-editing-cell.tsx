@@ -82,7 +82,7 @@ export function DataTableEditingCell({
             }}
             disabled={isSaving}
             placeholder={redis ? "" : "NULL"}
-            className="w-full min-w-0 h-8 px-3 bg-transparent font-mono text-[13px] text-foreground outline-none border-0 focus:ring-0 placeholder:text-muted-foreground/35 disabled:opacity-60"
+            className="w-full min-w-0 h-8 px-3 bg-transparent font-mono text-[13px] text-foreground outline-none border-0 focus:ring-0 placeholder:text-muted-foreground/60 disabled:opacity-60"
           />
         )}
         {editingCell.temporal ? (

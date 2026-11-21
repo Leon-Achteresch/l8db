@@ -60,6 +60,7 @@ import { IMPORT_FILE_EXTENSIONS } from "@/lib/import-file";
 import { useHasNewFeatures } from "@/lib/new-features";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { queryTabLabel } from "@/lib/query-tab-title";
+import { scrollBehavior } from "@/lib/scroll-behavior";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
@@ -387,7 +388,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       focus: (id: string) => {
         document
           .getElementById(`ai-shelf-${id}`)
-          ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          ?.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" });
         setFocused(id);
         window.clearTimeout(focusTimer.current);
         focusTimer.current = window.setTimeout(() => setFocused(null), 1800);

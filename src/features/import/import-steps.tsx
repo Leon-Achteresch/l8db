@@ -1,5 +1,6 @@
 import { CheckIcon } from "lucide-react";
 import { Fragment } from "react";
+import { scrollBehavior } from "@/lib/scroll-behavior";
 import { cn } from "@/lib/utils";
 import type { CsvImportState } from "./csv-import-panel/use-csv-import";
 
@@ -35,7 +36,7 @@ export function ImportSteps({ csv }: { csv: CsvImportState }) {
               onClick={() =>
                 document
                   .getElementById(`import-step-${step.id}`)
-                  ?.scrollIntoView({ block: "start", behavior: "smooth" })
+                  ?.scrollIntoView({ block: "start", behavior: scrollBehavior() })
               }
             >
               <span

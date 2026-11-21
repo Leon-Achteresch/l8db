@@ -22,6 +22,7 @@ import {
   widgetOptions,
 } from "@/lib/dashboards";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { scrollBehavior } from "@/lib/scroll-behavior";
 import { ChartBuilderPreview } from "../chart-builder-preview";
 import { ChartDataStep } from "../chart-data-step";
 import {
@@ -124,7 +125,7 @@ export function ChartStudio({
     }
     if (nodeKeys.has(`${source.schema}.${source.table}`)) return;
     setPending(source);
-    canvasRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    canvasRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" });
   };
 
   const steps: StudioStep[] = expert
@@ -197,7 +198,7 @@ export function ChartStudio({
                 `[aria-label="${part === "metrics" ? "Kennzahlen" : "Aufteilung"}"]`,
               )
             : null;
-      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.scrollIntoView({ behavior: scrollBehavior(), block: "center" });
       if (target instanceof HTMLElement) {
         target.classList.add("ai-flash");
         setTimeout(() => target.classList.remove("ai-flash"), 1300);

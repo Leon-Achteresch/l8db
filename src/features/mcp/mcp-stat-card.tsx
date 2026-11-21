@@ -27,8 +27,8 @@ export function McpStatCard({
       whileTap={isInteractive ? { scale: 0.99 } : undefined}
       onClick={onClick}
       className={cn(
-        "group relative overflow-hidden rounded-2xl border border-border/80 bg-card/60 p-4 shadow-sm backdrop-blur-sm transition-colors",
-        isInteractive && "cursor-pointer hover:border-primary/40 hover:bg-card/90",
+        "group relative overflow-hidden rounded-2xl border border-border/80 bg-card/95 p-4 shadow-sm backdrop-blur-sm transition-colors",
+        isInteractive && "cursor-pointer hover:border-primary/40 hover:bg-card",
       )}
     >
       <div className="flex items-start justify-between gap-3">

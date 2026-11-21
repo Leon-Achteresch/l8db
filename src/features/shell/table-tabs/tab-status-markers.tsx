@@ -30,7 +30,7 @@ export function TabStatusMarkers({
           aria-label={`Umgebung ${info.label}`}
           title={info.label}
           data-environment={info.value}
-          className="grid h-3.5 place-items-center rounded-sm px-1 text-[9px] font-bold leading-none text-white"
+          className="grid h-4 place-items-center rounded-sm px-1 text-[10px] font-bold leading-none text-white"
           style={{ backgroundColor: info.color }}
         >
           P

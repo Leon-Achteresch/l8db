@@ -52,7 +52,7 @@ export function SessionRow({
       <td className="px-3 py-2 font-mono tabular-nums">
         {session.pid}
         {session.is_self && (
-          <Badge variant="secondary" className="ml-1.5 px-1 py-0 text-[9px]">
+          <Badge variant="secondary" className="ml-1.5 px-1 py-0 text-[10px]">
             ich
           </Badge>
         )}

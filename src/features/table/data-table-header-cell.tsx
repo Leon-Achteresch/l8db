@@ -111,7 +111,7 @@ export function DataTableHeaderCell({
               ref={handleRef}
               aria-label={`${header.id} verschieben`}
               className={cn(
-                "shrink-0 cursor-grab touch-none rounded p-0.5 text-muted-foreground/35 hover:text-muted-foreground active:cursor-grabbing",
+                "shrink-0 cursor-grab touch-none rounded p-0.5 text-muted-foreground/60 hover:text-muted-foreground active:cursor-grabbing",
                 classic
                   ? "-ml-1"
                   : "absolute top-1.5 left-0 z-10 bg-muted opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100",
