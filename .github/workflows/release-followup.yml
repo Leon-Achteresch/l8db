@@ -63,7 +63,7 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release.json"
           gh release download "$RELEASE_TAG" --pattern release-metadata.json --dir "$RUNNER_TEMP/packaging"
           node scripts/update-packaging.mjs --release "$RUNNER_TEMP/release.json" --metadata "$RUNNER_TEMP/packaging/release-metadata.json"
-      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+      - uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1
         with:
           token: ${{ secrets.RELEASE_PR_TOKEN }}
           base: main
