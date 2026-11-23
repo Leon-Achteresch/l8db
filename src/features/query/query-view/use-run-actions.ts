@@ -1,13 +1,11 @@
 import { useCallback } from "react";
-import { toast } from "sonner";
 
-import { validateSql } from "@/lib/db";
 import { resolveQueryRunTarget } from "@/lib/query-run-target";
 import { useSettingsStore } from "@/lib/settings";
 import { locateText } from "@/lib/sql-diagnostics";
 import { statementAtOffset } from "@/lib/sql-statements";
-import { effectiveConnectionString } from "@/lib/ssh";
 
+import { checkSql } from "./check-sql";
 import type { QueryViewConnection, QueryWorkspaceState } from "./types";
 import type { EditorCursorState } from "./use-editor-cursor-state";
 import type { QueryExecutionState } from "./use-query-execution-state";
@@ -28,6 +26,7 @@ interface UseRunActionsParams {
   previewSql: (text: string) => Promise<boolean>;
   prepareSql: (text: string) => Promise<string | null>;
   setEditorFocus: (focus: boolean) => void;
+  setOutputOpen: (open: boolean) => void;
 }
 
 export function useRunActions({
@@ -41,6 +40,7 @@ export function useRunActions({
   previewSql,
   prepareSql,
   setEditorFocus,
+  setOutputOpen,
 }: UseRunActionsParams) {
   const { selectedSql, cursorOffset, editorSqlRef, cursorOffsetRef } = cursor;
   const {
@@ -119,32 +119,30 @@ export function useRunActions({
   ]);
 
   const handleCheck = useCallback(async () => {
-    const target = resolveQueryRunTarget(
-      sql,
-      selectedSql,
-      cursorOffset,
-      workspace.runTarget,
-      connection?.kind,
-      { blankLines, sqlOnly: true },
-    );
-    if (!connection || !target.trim() || isChecking) return;
+    if (isChecking) return;
     setIsChecking(true);
     setStatementError(null);
     try {
-      await validateSql(
-        connection.kind,
-        effectiveConnectionString(connection),
-        target,
-        database ?? undefined,
-      );
-      setError(null);
-      setErrorSource(null);
-      toast.success("Fehlerfrei geprüft — nichts wurde übernommen.");
-    } catch (err) {
-      const message = String(err);
-      setError(message);
-      const base = locateText(editorSqlRef.current, target, cursorOffsetRef.current);
-      setErrorSource(base === null ? null : { text: target, base });
+      const outcome = await checkSql({
+        sql,
+        selectedSql,
+        cursorOffset,
+        runTarget: workspace.runTarget,
+        blankLines,
+        connection,
+        database,
+      });
+      if (outcome.status === "skipped") return;
+      if (outcome.status === "ok") {
+        setError(null);
+        setErrorSource(null);
+        return;
+      }
+      setEditorFocus(false);
+      setOutputOpen(false);
+      setError(outcome.message);
+      const base = locateText(editorSqlRef.current, outcome.target, cursorOffsetRef.current);
+      setErrorSource(base === null ? null : { text: outcome.target, base });
     } finally {
       setIsChecking(false);
     }
@@ -161,6 +159,8 @@ export function useRunActions({
     setStatementError,
     setError,
     setErrorSource,
+    setEditorFocus,
+    setOutputOpen,
     editorSqlRef,
     cursorOffsetRef,
   ]);
