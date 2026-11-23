@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { VimStatusLine } from "@/components/editor/vim-status-line";
 import { useViewStatePersistence } from "@/features/query/query-editor-pane/use-view-state-persistence";
 import { useActiveConnection } from "@/lib/connections";
+import { type ExtensionEditorTarget, useExtensionEditor } from "@/lib/hooks/use-extension-editor";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { addSqlFormatAction, attachPlsqlLint, monaco, showSqlError } from "@/lib/monaco";
 import { attachGitBlame } from "@/lib/monaco/git-blame";
@@ -19,6 +20,7 @@ export interface SqlEditorPaneProps {
   error?: string | null;
   stateKey?: string;
   blame?: Omit<BlameTarget, "kind">;
+  extensionEditor?: ExtensionEditorTarget;
 }
 
 export function SqlEditorPane({
@@ -29,6 +31,7 @@ export function SqlEditorPane({
   error,
   stateKey,
   blame,
+  extensionEditor,
 }: SqlEditorPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const vimStatusRef = useRef<HTMLDivElement | null>(null);
@@ -122,6 +125,7 @@ export function SqlEditorPane({
   }, [value]);
 
   useViewStatePersistence(editorRef, stateKey);
+  useExtensionEditor(editorRef, extensionEditor);
 
   useEffect(() => {
     setBlameFile(null);

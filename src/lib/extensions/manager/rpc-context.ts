@@ -10,6 +10,7 @@ import type {
 import type {
   CommandRegistry,
   ConfigurationRegistry,
+  EditorRegistry,
   EventBus,
   ExtensionRegistry,
   PanelRegistry,
@@ -36,6 +37,7 @@ export type RpcContext = {
   views: ViewRegistry;
   statusBar: StatusBarRegistry;
   panels: PanelRegistry;
+  editors: EditorRegistry;
   events: EventBus<ExtensionEvents>;
   changed: () => void;
   trigger: (event: `onView:${string}`) => Promise<void>;

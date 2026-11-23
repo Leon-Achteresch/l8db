@@ -611,6 +611,27 @@ body[data-onboarding-active]
   font-style: italic;
 }
 
+.extension-hidden-marker {
+  margin-left: 1.5em;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--muted-foreground) 16%, transparent);
+  color: var(--muted-foreground);
+  font-family: var(--font-sans, inherit);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.extension-hidden-marker:hover {
+  background: color-mix(in oklab, var(--primary) 22%, transparent);
+  color: var(--foreground);
+}
+
+.extension-hidden-marker-leading {
+  margin-right: 1.5em;
+  margin-left: 0;
+}
+
 .tour-mascot * {
   transform-box: fill-box;
 }

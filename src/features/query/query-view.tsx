@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 import { useShallow } from "zustand/shallow";
+import { EditorExtensionActions } from "@/features/extensions/editor-extension-actions";
 import { DmlPreviewDialog } from "@/features/query/dml-preview-dialog";
 import { MultiTargetSheet } from "@/features/query/multi-target/multi-target-sheet";
 import { useMultiTargetRun } from "@/features/query/multi-target/use-multi-target-run";
@@ -14,6 +15,7 @@ import { useEditorAiAvailable } from "@/lib/ai/editor/use-editor-ai-available";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import { useExtensionEditorId } from "@/lib/hooks/use-extension-editor";
 import { useCapabilities } from "@/lib/providers";
 import { resolveQueryRunTarget } from "@/lib/query-run-target";
 import { useQueryWorkspace } from "@/lib/query-workspace";
@@ -119,6 +121,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [snippetDialogOpen, setSnippetDialogOpen] = useState(false);
   const editorApiRef = useRef<QueryEditorApi | null>(null);
+  const extensionEditorId = useExtensionEditorId(tabId);
   const historyRef = useRef<QueryHistoryHandle | null>(null);
 
   const exec = useQueryExecutionState(tabId);
@@ -345,6 +348,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 }}
               />
             )}
+            <EditorExtensionActions editorId={extensionEditorId} size="sm" />
           </div>
           <ToolbarViewControls
             isSql={isSql}
@@ -460,6 +464,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           editor={
             <QueryEditorContent
               tabId={tabId}
+              extensionEditorId={extensionEditorId}
               sql={sql}
               caps={caps}
               editorApiRef={editorApiRef}

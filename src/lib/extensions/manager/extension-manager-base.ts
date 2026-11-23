@@ -17,6 +17,7 @@ import { ExtensionLoader } from "../loader";
 import {
   CommandRegistry,
   ConfigurationRegistry,
+  EditorRegistry,
   EventBus,
   ExtensionRegistry,
   PanelRegistry,
@@ -48,6 +49,7 @@ export class ExtensionManagerBase {
   readonly panels = new PanelRegistry();
   readonly events = new EventBus<ExtensionEvents>();
   readonly changes = new EventBus<{ change: null }>();
+  readonly editors = new EditorRegistry(() => this.changed());
   readonly logs: { id: string; level: string; message: string; time: string }[] = [];
   protected readonly loader: ExtensionLoader;
   protected resources = new Map<string, Map<string, Disposable>>();
@@ -261,6 +263,14 @@ export class ExtensionManagerBase {
     this.permissions.require(extension, "database:read");
     return this.executeCommand(id, snapshot as unknown as Json);
   }
+  async executeEditorCommand(id: string, editorId: string) {
+    const owner = this.commands.owner(id);
+    if (!owner || !this.commands.menusFor("editor/toolbar").some((menu) => menu.command === id))
+      throw new ExtensionError("CommandNotFoundError", id);
+    if (!this.registry.get(owner).enabled)
+      throw new ExtensionError("ExtensionDisabledError", owner);
+    return this.executeCommand(id, this.editors.context(editorId) as unknown as Json);
+  }
   protected cleanup(id: string) {
     for (const resource of this.resources.get(id)?.values() ?? []) {
       try {
@@ -274,6 +284,7 @@ export class ExtensionManagerBase {
     this.views.clear(id);
     this.statusBar.clear(id);
     this.panels.clear(id);
+    this.editors.clear(id);
     this.changed();
   }
   protected fail(extension: ExtensionDescriptor, error: unknown) {
@@ -337,6 +348,7 @@ export class ExtensionManagerBase {
       views: this.views,
       statusBar: this.statusBar,
       panels: this.panels,
+      editors: this.editors,
       events: this.events,
       changed: () => this.changed(),
       trigger: (event) => this.trigger(event),
