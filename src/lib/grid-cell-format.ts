@@ -62,9 +62,11 @@ export function timestampDisplay(raw: string, now = new Date()): TimestampDispla
   const date = match ? parseDbTimestamp(raw) : null;
   if (!match || !date) return null;
   const [, year, month, day, hour, minute] = match;
-  const time = hour ? `${hour}:${minute}` : "";
-  if (!hour) return { primary: `${day}.${month}.${year}`, secondary: "" };
-  return { primary: relativeLabel(date, now) ?? `${day}.${month}.${year}`, secondary: time };
+  const primary = `${day}.${month}.${year}`;
+  if (!hour) return { primary, secondary: "" };
+  const relative = relativeLabel(date, now);
+  const time = `${hour}:${minute}`;
+  return { primary, secondary: relative ? `${time} · ${relative}` : time };
 }
 
 export function categoryColorIndex(value: string): number {

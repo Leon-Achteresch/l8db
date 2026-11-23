@@ -69,15 +69,18 @@ test("database timestamps with short offsets parse in every engine format", () =
   expect(parseDbTimestamp("gestern")).toBeNull();
 });
 
-test("recent timestamps read relative, old ones as dates, both keep the stored time", () => {
+test("timestamps always show the stored date and time, recent ones add the relative label", () => {
   expect(timestampDisplay("2026-10-06 14:02:12+02", NOW)).toEqual({
-    primary: "vorgestern",
-    secondary: "14:02",
+    primary: "06.10.2026",
+    secondary: "14:02 · vorgestern",
   });
   expect(timestampDisplay("2026-10-08 09:00:00+02", NOW)).toEqual({
-    primary: "vor 3 Stunden",
-    secondary: "09:00",
+    primary: "08.10.2026",
+    secondary: "09:00 · vor 3 Stunden",
   });
+  const oracleDate = timestampDisplay("2026-10-03 00:00:00", NOW);
+  expect(oracleDate?.primary).toBe("03.10.2026");
+  expect(oracleDate?.secondary).toMatch(/^00:00 · vor [56] Tagen$/);
   expect(timestampDisplay("2025-03-01 08:15:00+01", NOW)).toEqual({
     primary: "01.03.2025",
     secondary: "08:15",
