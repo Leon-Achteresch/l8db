@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { KeyRoundIcon, LayersIcon, PlusIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
-
+import { Illustration } from "@/components/illustration";
 import { NewBadge } from "@/components/new-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,6 @@ import {
   EmptyContent,
   EmptyDescription,
   EmptyHeader,
-  EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
@@ -78,9 +77,7 @@ export function TableIndexesList({ schema, table }: TableIndexesListProps) {
       {!indexes || indexes.length === 0 ? (
         <Empty>
           <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <LayersIcon />
-            </EmptyMedia>
+            <Illustration name="empty" className="w-36" />
             <EmptyTitle>Keine Indizes</EmptyTitle>
             <EmptyDescription>
               Ein Index beschleunigt Abfragen, die nach bestimmten Spalten filtern oder sortieren.

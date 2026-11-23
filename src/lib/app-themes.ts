@@ -7,6 +7,7 @@ export interface ThemeVariant {
   hue: number;
   chroma: number;
   tint: number;
+  surfaceHue?: number;
 }
 
 export interface AppTheme {
@@ -22,8 +23,8 @@ export const APP_THEMES: AppTheme[] = [
   {
     id: "l8db",
     name: "l8db",
-    light: { hue: 248, chroma: 0.045, tint: 1 },
-    dark: { hue: 248, chroma: 0.045, tint: 1 },
+    light: { hue: 248, chroma: 0.07, tint: 2.2, surfaceHue: 78 },
+    dark: { hue: 248, chroma: 0.06, tint: 1.2 },
   },
   {
     id: "graphite",
@@ -79,6 +80,7 @@ export function appThemeCssVars(
 ): Record<string, string> {
   return {
     "--db-hue": String(db ? db.hue : variant.hue),
+    "--surface-hue": String(variant.surfaceHue ?? (db ? db.hue : variant.hue)),
     "--db-chroma": String(db ? Math.min(db.chroma, 0.045) : variant.chroma),
     "--db-glow": String(db ? Math.min(db.glow, 0.05) : Math.min(variant.chroma, 0.05)),
     "--db-tint": String(variant.tint),

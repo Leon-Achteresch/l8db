@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight, House, RefreshCw } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
+import { Illustration } from "@/components/illustration";
 import { Button } from "@/components/ui/button";
 import { copyText } from "@/lib/clipboard";
 import { reportCrash } from "@/lib/crash-reporting";
@@ -55,7 +56,8 @@ export function RouteErrorView({ error, reset }: RouteErrorViewProps) {
         transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
         className="w-full max-w-md"
       >
-        <div className="flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+        <Illustration name="error" className="w-36" />
+        <div className="mt-2 flex items-center gap-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
           <span
             className={cn(
               "size-1.5 rounded-full",

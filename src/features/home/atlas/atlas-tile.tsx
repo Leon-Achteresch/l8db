@@ -6,7 +6,7 @@ import type { AtlasMetric, AtlasTile as Tile } from "./atlas-layout";
 
 const AURORA = [
   "radial-gradient(60% 75% at 0% 0%, var(--chart-1), transparent)",
-  "linear-gradient(135deg, var(--chart-1), var(--chart-2) 55%, var(--chart-3))",
+  "linear-gradient(135deg, var(--chart-1), color-mix(in oklch, var(--chart-1) 45%, var(--card)))",
 ];
 
 export type AtlasTone = "idle" | "active" | "neighbor" | "dim";

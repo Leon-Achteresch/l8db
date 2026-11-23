@@ -4,6 +4,7 @@ import { BookOpen, FolderOpen, Keyboard, Link2, Plus, Route, Upload } from "luci
 import { useState } from "react";
 import { toast } from "sonner";
 import { AppLogo } from "@/components/app-logo";
+import { Illustration } from "@/components/illustration";
 import { pasteText } from "@/lib/clipboard";
 import { resolveOpenFiles } from "@/lib/db";
 import { runOpenFileActions } from "@/lib/file-open";
@@ -82,12 +83,13 @@ export function ConnectionsEmptyState({
       <div className="mx-auto w-full max-w-5xl px-2 pt-8 pb-12 sm:px-6 sm:pt-14 lg:px-10 lg:pt-20">
         <header className="mb-12 flex items-center gap-4">
           <AppLogo alt="" className="size-14 shadow-sm" />
-          <div>
+          <div className="min-w-0 flex-1">
             <h1 className="text-3xl font-semibold tracking-tight">l8db</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Datenbanken verbinden, abfragen und verwalten.
             </p>
           </div>
+          <Illustration name="welcome" className="-my-6 hidden w-40 @min-[44rem]:block" />
         </header>
         <div className="grid gap-12 @min-[44rem]:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] @min-[44rem]:gap-16">
           <div className="min-w-0 space-y-10">

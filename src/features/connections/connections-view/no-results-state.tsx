@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { Illustration } from "@/components/illustration";
 import { Button } from "@/components/ui/button";
 
 export function ConnectionsNoResultsState({
@@ -10,9 +10,7 @@ export function ConnectionsNoResultsState({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-center">
-      <div className="grid size-10 place-items-center rounded-xl bg-muted text-muted-foreground">
-        <Search className="size-5" />
-      </div>
+      <Illustration name="search" className="w-40" />
       <p className="text-sm font-semibold">Keine Treffer</p>
       <p className="max-w-sm text-xs text-muted-foreground">
         Es wurde keine Verbindung für „{query.trim()}“ gefunden.
