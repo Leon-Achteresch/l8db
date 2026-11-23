@@ -1374,3 +1374,7 @@ table[data-grid-layout] > * > tr > th[colspan] {
     animation: none;
   }
 }
+
+[data-radix-popper-content-wrapper]:has(> [data-slot="tooltip-content"]) {
+  pointer-events: none;
+}
