@@ -10,8 +10,10 @@ import { createRoot } from "react-dom/client";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { MonitorView } from "@/features/monitor/monitor-view";
 import { useConnectionsStore } from "@/lib/connections";
+import { useProvidersStore } from "@/lib/providers";
 import "@/index.css";
 
+useProvidersStore.setState({ loaded: true });
 useConnectionsStore.setState({
   activeId: "alpha",
   connections: [
