@@ -145,7 +145,9 @@ run(
       await page.waitForFunction(
         () => (window as Host).extensionEditorFixture.hidden().length === 0,
       );
-      expect(await fixture(page, (host) => host.visible())).toContain("debug: kunde");
+      await page.waitForFunction(() =>
+        (window as Host).extensionEditorFixture.visible().includes("debug: kunde"),
+      );
       expect(await markers(page).count()).toBe(0);
 
       await fixture(page, (host) => host.disable());
