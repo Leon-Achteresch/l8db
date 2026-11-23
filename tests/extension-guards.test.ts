@@ -263,7 +263,7 @@ describe("database.query", () => {
     expect(read?.args.params).toEqual(["42", "false"]);
     expect(String(read?.args.connectionString)).toContain("default_transaction_read_only");
     calls.length = 0;
-    await core.query({ sql: "UPDATE t SET a = 1", write: true });
+    await core.query({ sql: "UPDATE t SET a = 1 WHERE id = 1", write: true });
     const write = calls.find((call) => call.command === "execute_query");
     expect(String(write?.args.connectionString)).not.toContain("default_transaction_read_only");
   });
