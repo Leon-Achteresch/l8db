@@ -12,6 +12,7 @@ import type { RunActions } from "./use-run-actions";
 
 interface QueryEditorContentProps {
   tabId: string;
+  extensionEditorId: string;
   sql: string;
   caps: QueryViewCapabilities;
   editorApiRef: RefObject<QueryEditorApi | null>;
@@ -30,6 +31,7 @@ interface QueryEditorContentProps {
 
 export function QueryEditorContent({
   tabId,
+  extensionEditorId,
   sql,
   caps,
   editorApiRef,
@@ -77,6 +79,7 @@ export function QueryEditorContent({
           onSearchTabs={onSearchTabs}
           stateKey={tabId}
           registry={registry}
+          extensionEditor={{ id: extensionEditorId, kind: "query" }}
         />
       </div>
 

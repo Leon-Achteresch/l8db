@@ -4,6 +4,7 @@ import { ExtensionError } from "../contracts";
 import { rpcConnectionsHandlers } from "./rpc-connections";
 import type { RpcDeps, RpcHandler } from "./rpc-context";
 import { rpcCoreHandlers } from "./rpc-core";
+import { rpcEditorHandlers } from "./rpc-editor";
 import { rpcIoHandlers } from "./rpc-io";
 import { rpcProcessHandlers } from "./rpc-process";
 import { rpcViewsHandlers } from "./rpc-views";
@@ -12,6 +13,7 @@ import { rpcWindowHandlers } from "./rpc-window";
 const RPC_HANDLERS: Record<string, RpcHandler> = {
   ...rpcCoreHandlers,
   ...rpcConnectionsHandlers,
+  ...rpcEditorHandlers,
   ...rpcIoHandlers,
   ...rpcProcessHandlers,
   ...rpcWindowHandlers,
@@ -47,7 +49,9 @@ export async function dispatchRpc(
           ? 300000
           : method === "views.setTree"
             ? 280000
-            : 65536;
+            : method === "editor.setHiddenRanges"
+              ? 600000
+              : 65536;
   if (JSON.stringify(args).length > limit)
     throw new ExtensionError("ProtocolError", "Invalid RPC arguments");
   const text = (index: number, max = 4096) => {

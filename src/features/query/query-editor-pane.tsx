@@ -4,6 +4,7 @@ import { useEffect, useId, useImperativeHandle, useRef, useState } from "react";
 import { VimStatusLine } from "@/components/editor/vim-status-line";
 import { attachEditorAi, type EditorAiController } from "@/lib/ai/editor";
 import { buildEditorOptions } from "@/lib/editor-options";
+import { useExtensionEditor } from "@/lib/hooks/use-extension-editor";
 import { emitHotkeyAction } from "@/lib/hotkeys";
 import {
   addSqlFormatAction,
@@ -60,6 +61,7 @@ export function QueryEditorPane({
   onSearchTabs,
   stateKey,
   registry,
+  extensionEditor,
   className,
   ref,
 }: QueryEditorPaneProps) {
@@ -306,6 +308,7 @@ export function QueryEditorPane({
   }, [value]);
 
   useViewStatePersistence(editorRef, stateKey);
+  useExtensionEditor(editorRef, extensionEditor);
 
   useEffect(() => {
     if (!stateKey || !editorRef.current) return;

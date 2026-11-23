@@ -27,12 +27,12 @@
   const log = (level, message) => {
     void rpc("logger", level, String(message)).catch(() => undefined);
   };
-  const subscribe = (event, listener) => {
+  const subscribe = (event, listener, register = ["events.on", event], key = `event:${event}`) => {
     let callbacks = listeners.get(event);
     if (!callbacks) {
       callbacks = new Set();
       listeners.set(event, callbacks);
-      tracked(rpc("events.on", event));
+      tracked(rpc(...register));
     }
     callbacks.add(listener);
     let disposed = false;
@@ -43,7 +43,7 @@
         callbacks.delete(listener);
         if (!callbacks.size) {
           listeners.delete(event);
-          tracked(rpc("dispose", `event:${event}`));
+          tracked(rpc("dispose", key));
         }
       },
     };
@@ -120,7 +120,7 @@
       if (message.method === "load") {
         context = { ...message.context, subscriptions: [] };
         api = {
-          version: "1.1.0",
+          version: "1.2.0",
           commands: {
             registerCommand: (id, handler) => {
               if (handlers.has(id)) throw new Error(`DuplicateCommandError: ${id}`);
@@ -142,6 +142,8 @@
             },
             executeCommand: (id, payload) => rpc("commands.execute", id, payload ?? null),
             getCommands: () => rpc("commands.list"),
+            setChecked: (commandId, editorId, checked) =>
+              rpc("commands.setChecked", commandId, editorId, checked),
           },
           events: {
             onDatabaseOpened: (listener) => subscribe("databaseOpened", listener),
@@ -195,6 +197,14 @@
             list: () => rpc("connections.list"),
             save: (items) => rpc("connections.save", items),
             remove: (ids) => rpc("connections.remove", ids),
+          },
+          editor: {
+            getText: (editorId) => rpc("editor.getText", editorId),
+            onDidChangeText: (listener) =>
+              subscribe("editorTextChanged", listener, ["editor.onDidChangeText"], "editor:text"),
+            setHiddenRanges: (editorId, version, ranges) =>
+              rpc("editor.setHiddenRanges", editorId, version, ranges),
+            clearHiddenRanges: (editorId) => rpc("editor.clearHiddenRanges", editorId),
           },
           process: {
             run: (command, options) => rpc("process.run", command, options ?? null),

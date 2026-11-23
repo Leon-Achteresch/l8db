@@ -32,6 +32,7 @@ const PERMISSIONS: &[&str] = &[
     "process:execute",
     "connections:read",
     "connections:write",
+    "editor:read",
 ];
 
 fn safe_id(id: &str) -> bool {

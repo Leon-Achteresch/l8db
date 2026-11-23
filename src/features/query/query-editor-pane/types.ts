@@ -1,6 +1,7 @@
 import type { Ref } from "react";
 
 import type { ColumnInfo, TableInfo } from "@/lib/db";
+import type { ExtensionEditorTarget } from "@/lib/hooks/use-extension-editor";
 import type { SqlErrorSource } from "@/lib/monaco";
 import type { BookmarkSlots } from "@/lib/table-tabs";
 
@@ -59,6 +60,7 @@ export interface QueryEditorPaneProps {
   onSearchTabs?: () => void;
   stateKey?: string;
   registry: SchemaRegistry;
+  extensionEditor?: ExtensionEditorTarget;
   ref?: Ref<QueryEditorApi>;
   className?: string;
 }

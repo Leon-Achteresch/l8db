@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DebugButton } from "@/features/debugger/debug-button";
+import { EditorExtensionActions } from "@/features/extensions/editor-extension-actions";
 import { objectError, SqlEditorPane } from "@/features/functions/function-view";
 import { PackageMemberOutline } from "@/features/functions/package-member-outline";
 import { useCompileObject } from "@/features/functions/use-compile-object";
@@ -20,6 +21,7 @@ import {
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { readViewStates } from "@/lib/editor-view-states";
+import { useExtensionEditorId } from "@/lib/hooks/use-extension-editor";
 import { buildInvalidSet, isPackagePartInvalid } from "@/lib/invalid-objects";
 import {
   PACKAGE_OUTLINE_DEFAULT_WIDTH,
@@ -73,6 +75,7 @@ export function PackageView({ schema, name, part, member, highlight, line }: Pac
       () => undefined,
     ),
   );
+  const extensionEditorId = useExtensionEditorId(edit.key);
   const { data: invalidObjects } = useInvalidObjectsQuery();
   const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
   const isInvalid = isPackagePartInvalid(invalidSet, schema, name, activePart);
@@ -158,6 +161,7 @@ export function PackageView({ schema, name, part, member, highlight, line }: Pac
             objectType="package_body"
           />
         ) : null}
+        <EditorExtensionActions editorId={extensionEditorId} />
         <OpenInQueryEditorButton sql={source} title={label} />
         {!edit.editing && capabilities.compile_objects ? (
           <Button
@@ -226,6 +230,10 @@ export function PackageView({ schema, name, part, member, highlight, line }: Pac
               revealLine={compileResult?.line ?? revealLine}
               error={objectError(compileResult?.message, edit.state)}
               stateKey={edit.key}
+              extensionEditor={{
+                id: extensionEditorId,
+                kind: activePart === "spec" ? "package-spec" : "package-body",
+              }}
             />
             {compileResult && compileResult.status !== "VALID" ? (
               <div className="flex flex-col gap-1 border-t bg-destructive/5 px-4 py-2.5">

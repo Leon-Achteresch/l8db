@@ -10,9 +10,9 @@ export class ExtensionError extends Error {
     this.name = code;
   }
 }
-export const permissions: Permission[] = ["database:read", "database:write", "network", "filesystem:extension-storage", "filesystem", "clipboard:read", "clipboard:write", "process:execute", "connections:read", "connections:write"];
+export const permissions: Permission[] = ["database:read", "database:write", "network", "filesystem:extension-storage", "filesystem", "clipboard:read", "clipboard:write", "process:execute", "connections:read", "connections:write", "editor:read"];
 export const extensionIdPattern = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
-export const apiVersions = ["^1.0.0", "^1.1.0"];
+export const apiVersions = ["^1.0.0", "^1.1.0", "^1.2.0"];
 const commandPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 const iconPattern = /^[a-z][a-z0-9-]{0,63}$/;
 const hostPattern = /^(\*\.)?[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*(:[0-9]{1,5})?$/;
@@ -56,7 +56,7 @@ export function validateManifest(value: unknown): ExtensionManifest {
     if (statusBar !== undefined && (!Array.isArray(statusBar) || statusBar.length > 20 || !statusBar.every(s => object(s) && string(s.id) && commandPattern.test(s.id) && (s.alignment === undefined || s.alignment === "left" || s.alignment === "right") && (s.priority === undefined || (typeof s.priority === "number" && Number.isFinite(s.priority)))))) fail("Invalid statusBar");
     if (Array.isArray(statusBar) && new Set(statusBar.map(s => (s as { id: string }).id)).size !== statusBar.length) fail("Duplicate manifest statusBar item");
     const menus = value.contributes.menus;
-    const menuLocations = ["palette", "view/title", "view/item", "statusBar", "explain/toolbar", "editor/plan", "table/toolbar"];
+    const menuLocations = ["palette", "view/title", "view/item", "statusBar", "explain/toolbar", "editor/plan", "table/toolbar", "editor/toolbar"];
     if (menus !== undefined && (!Array.isArray(menus) || menus.length > 100 || !menus.every(m => object(m) && string(m.command) && commandPattern.test(m.command) && menuLocations.includes(String(m.location)) && (m.view === undefined || (string(m.view) && commandPattern.test(m.view))) && (m.group === undefined || string(m.group))))) fail("Invalid menus");
   }
   if (value.capabilities !== undefined) {

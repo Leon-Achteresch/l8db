@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DebugButton } from "@/features/debugger/debug-button";
+import { EditorExtensionActions } from "@/features/extensions/editor-extension-actions";
 import { objectError, SqlEditorPane } from "@/features/functions/function-view";
 import { ProcedureRunDialog } from "@/features/functions/procedure-run-dialog";
 import { useCompileObject } from "@/features/functions/use-compile-object";
@@ -19,6 +20,7 @@ import {
 } from "@/features/functions/use-sql-object-edit";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { useExtensionEditorId } from "@/lib/hooks/use-extension-editor";
 import { buildInvalidSet, isProcedureInvalid } from "@/lib/invalid-objects";
 import { useHasNewFeatures } from "@/lib/new-features";
 import {
@@ -59,6 +61,7 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
         : Promise.resolve(),
     schema,
   );
+  const extensionEditorId = useExtensionEditorId(edit.key);
 
   const [runOpen, setRunOpen] = useState(false);
   const newRunResults = useHasNewFeatures("procedures.run.results");
@@ -159,6 +162,7 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
         {!edit.editing && oid ? (
           <DebugButton oid={oid} schema={schema} name={name} objectType="procedure" />
         ) : null}
+        <EditorExtensionActions editorId={extensionEditorId} />
         <OpenInQueryEditorButton sql={data ?? ""} title={`${schema}.${name}`} />
         <SqlEditActions edit={edit} />
       </div>
@@ -173,6 +177,7 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
         revealLine={revealLine}
         error={objectError(compileResult?.message, edit.state)}
         stateKey={edit.key}
+        extensionEditor={{ id: extensionEditorId, kind: "procedure" }}
       />
 
       <SqlEditFeedback state={edit.state} />
