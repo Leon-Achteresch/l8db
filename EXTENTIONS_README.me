@@ -267,11 +267,11 @@ Transportwerte müssen JSON-kompatibel sein. Verbindungsstrings, Passwörter, in
 
 Ein Menüeintrag mit `"location": "editor/toolbar"` erscheint in der Werkzeugleiste des Query-Editors und der Quelltextansichten von Package Spec, Package Body, Funktionen und Prozeduren. Der Command erhält `{ editorId, editorKind, connectionKind }` mit `editorKind` aus `query`, `package-spec`, `package-body`, `function` und `procedure`; der Text wird nicht mitgegeben. Mit `commands.setChecked` wird der Eintrag zum Umschalter.
 
-- `editorId` gilt, solange dieser Editor offen ist. Wechselt der Tab oder wird er geschlossen, verwirft der Host ausgeblendete Bereiche und Schalterzustand; spätere Aufrufe melden `EditorNotFoundError`.
+- `editorId` gilt, solange dieser Editor offen ist. Wechselt der Tab oder wird er geschlossen, verwirft der Host ausgeblendete Bereiche und Schalterzustand; spätere Aufrufe melden `EditorNotFoundError`, nur `clearHiddenRanges` bleibt dann wirkungslos.
 - Jede Textänderung erhöht `version`. `setHiddenRanges` mit veralteter `version` scheitert mit `StaleEditorVersionError`; dann Text neu lesen und neu rechnen.
 - Ändert sich der Text, verwirft der Host alle ausgeblendeten Bereiche und meldet `onDidChangeText`.
 - Bereiche müssen ganzzahlig sein, im Dokument liegen und mindestens eine Zeile sichtbar lassen; höchstens 10.000 pro Aufruf. Verstöße melden `ProtocolError`.
-- Ausblenden betrifft nur die Ansicht. Ausführen, Kompilieren, Speichern, Kopieren und Formatieren verwenden weiter den vollständigen Text. An jeder Stelle steht eine Marke „⋯ n Zeilen ausgeblendet“, die der Nutzer per Klick aufklappt.
+- Ausblenden betrifft nur die Ansicht. Ausführen, Kompilieren, Speichern, Kopieren und Formatieren verwenden weiter den vollständigen Text. An jeder Stelle steht eine Marke „⋯ n Zeilen ausgeblendet“, die der Nutzer per Klick aufklappt. Ein Bereich, in dem der Cursor steht oder in den er springt (Suche, Fehlerposition), wird sofort eingeblendet; die Extension erfährt davon nichts und blendet nach der nächsten Textänderung neu aus.
 - Wird die Extension deaktiviert, entfernt oder stürzt sie ab, blendet der Host alles wieder ein.
 
 ```ts
