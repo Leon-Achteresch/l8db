@@ -76,6 +76,11 @@ async function open() {
 }
 const edit = async (page: Page, column: string) => {
   await page.getByRole("button", { name: column, exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .evaluate((dialog) =>
+      Promise.all(dialog.getAnimations().map((animation) => animation.finished)),
+    );
   await page.getByRole("button", { name: "Bearbeiten", exact: true }).click();
   return page.getByRole("textbox");
 };
