@@ -98,6 +98,7 @@ export function DefinitionDiffEditor({
       theme: themeFor(resolvedTheme),
       readOnly: readOnlyRef.current,
       renderMarginRevertIcon: !readOnlyRef.current,
+      renderGutterMenu: !readOnlyRef.current,
       originalEditable: false,
       ...initialDiffOptions.current,
       automaticLayout: true,
