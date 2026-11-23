@@ -87,6 +87,7 @@ const select = (page: Page, start: number, end: number) =>
 const calls = (page: Page) => page.evaluate(() => (window as Host).sqlFormatCalls);
 
 async function chooseTool(page: Page, name: string | RegExp) {
+  await page.locator("[role=menu]").first().waitFor({ state: "detached" });
   await page.getByRole("button", { name: "Weitere Werkzeuge", exact: true }).click();
   await page.getByRole("menuitem", { name: "Editor-Werkzeuge" }).press("ArrowRight");
   await page.getByRole("menuitem", { name, exact: true }).click();
