@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { Cloud, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useState } from "react";
+import { Illustration } from "@/components/illustration";
 import { NewBadge } from "@/components/new-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { CLOUD_QUERY_OPTIONS, type CloudAccount, cloudAccounts } from "@/lib/db/cloud-accounts";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { CloudAccountAddDialog } from "./cloud-account-add-dialog";
@@ -58,9 +59,7 @@ export function CloudAccountsView() {
       {accounts.isSuccess && list.length === 0 && (
         <Empty>
           <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Cloud />
-            </EmptyMedia>
+            <Illustration name="connect" className="w-36" />
             <EmptyTitle>Noch kein Cloud-Konto</EmptyTitle>
             <p className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
               {Object.values(PROVIDER_LABEL).join(" · ")}

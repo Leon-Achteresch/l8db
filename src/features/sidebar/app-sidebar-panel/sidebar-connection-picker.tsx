@@ -321,6 +321,7 @@ export function SidebarConnectionPicker({
                   <FeatureEmptyState
                     icon={Unplug}
                     title="Keine Verbindungen gespeichert"
+                    illustration="connect"
                     className="py-5"
                     action={{
                       label: "Verbindung hinzufügen",

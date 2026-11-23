@@ -1,6 +1,7 @@
 import { Check, Copy, RefreshCw, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import type { FallbackProps } from "react-error-boundary";
+import { Illustration } from "@/components/illustration";
 import { Button } from "@/components/ui/button";
 import { copyText } from "@/lib/clipboard";
 import { errorMessageOf, errorStackOf, isChunkFailure } from "@/lib/error-details";
@@ -37,14 +38,13 @@ export function PanelErrorFallback({
       )}
     >
       <div className={cn("flex max-w-sm flex-col items-center", compact ? "gap-1.5" : "gap-3")}>
-        <div
-          className={cn(
-            "grid shrink-0 place-items-center rounded-xl border bg-destructive/10 text-destructive",
-            compact ? "size-7" : "size-10",
-          )}
-        >
-          <TriangleAlert className={compact ? "size-3.5" : "size-5"} />
-        </div>
+        {compact ? (
+          <div className="grid size-7 shrink-0 place-items-center rounded-xl bg-destructive/10 text-destructive">
+            <TriangleAlert className="size-3.5" />
+          </div>
+        ) : (
+          <Illustration name="error" className="w-36" />
+        )}
         <p className={cn("font-medium", compact ? "text-xs" : "text-sm")}>{label} ist abgestürzt</p>
         {!compact && (
           <p className="line-clamp-3 font-mono text-xs break-words text-muted-foreground">
