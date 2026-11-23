@@ -17,6 +17,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { HotkeyKbd } from "@/components/hotkey-kbd";
 import { EASE_OUT } from "@/lib/ease";
 import { useDismiss } from "@/lib/hooks/use-dismiss";
 import { useHoverGesture } from "@/lib/hooks/use-hover-gesture";
@@ -34,6 +35,7 @@ export interface TooltipProps {
   className?: string;
   /** Classes for the outer wrapper span. Use to fix baseline / fill parent. */
   wrapperClassName?: string;
+  hotkey?: string;
 }
 
 // Gap between trigger and tooltip, in px.
@@ -110,6 +112,7 @@ export function Tooltip({
   delay = 120,
   className,
   wrapperClassName,
+  hotkey,
 }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
@@ -277,10 +280,12 @@ export function Tooltip({
                     style={{ transformOrigin: transformOrigin[side] }}
                     className={cn(
                       "block whitespace-nowrap rounded-xl border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground shadow-lg",
+                      hotkey && "flex items-center gap-1.5 pr-1.5",
                       className,
                     )}
                   >
                     {content}
+                    {hotkey ? <HotkeyKbd command={hotkey} /> : null}
                   </motion.span>
                 </span>
               ) : null}

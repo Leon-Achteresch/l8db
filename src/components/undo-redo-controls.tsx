@@ -1,12 +1,7 @@
 import { useHotkeys } from "@tanstack/react-hotkeys";
 import { Redo2Icon, Undo2Icon } from "lucide-react";
 import { IconButton } from "@/components/icon-button";
-import {
-  commandById,
-  formatHotkeyDisplay,
-  useHotkeysStore,
-  useResolvedHotkey,
-} from "@/lib/hotkeys";
+import { commandById, useHotkeysStore, useResolvedHotkey } from "@/lib/hotkeys";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 
 export function UndoRedoControls({
@@ -44,7 +39,7 @@ export function UndoRedoControls({
       <IconButton
         variant="ghost"
         size="icon-sm"
-        aria-label={`Rückgängig (${formatHotkeyDisplay(undoHotkey)})`}
+        aria-label="Rückgängig"
         data-hotkey="edit.undo"
         disabled={!enabled || !canUndo}
         onClick={onUndo}
@@ -54,7 +49,7 @@ export function UndoRedoControls({
       <IconButton
         variant="ghost"
         size="icon-sm"
-        aria-label={`Wiederholen (${formatHotkeyDisplay(redoHotkey)})`}
+        aria-label="Wiederholen"
         data-hotkey="edit.redo"
         disabled={!enabled || !canRedo}
         onClick={onRedo}

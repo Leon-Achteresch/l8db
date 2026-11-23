@@ -241,6 +241,11 @@ describe("Snapshot als Vergleichsseite", () => {
     const state = useSchemaCompareStore.getState();
     expect(state.error).toBeNull();
     expect(state.result?.types).toEqual(["table"]);
+    expect(state.result?.requestedTypes).toEqual(["table", "index"]);
+    expect(state.result?.tableScope).toEqual({ source: null, target: null });
+    expect(state.result?.snapshotTimes?.target).toBe(
+      JSON.parse(files.get("/tmp/prod.json") ?? "{}").created_at,
+    );
     expect(state.result?.targetSchema).toBe("PROD");
     expect(state.result?.targetLabel).toBe("Snapshot prod.json · PROD");
     expect(
@@ -373,6 +378,7 @@ describe("Grenzen alter Snapshots und Tablespaces", () => {
     expect([...new Set(state.result?.items.map((item) => item.parent ?? item.name))]).toEqual([
       "users",
     ]);
+    expect(state.result?.tableScope).toEqual({ source: null, target: ["users"] });
   });
 
   test("prüft Tablespaces des Zielschemas nur über passende Sichten", async () => {

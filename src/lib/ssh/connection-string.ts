@@ -60,7 +60,20 @@ export function tunneledConnectionString(
 
 export const READ_ONLY_OPTION = "-c default_transaction_read_only=on";
 
-export function readOnlyConnectionString(value: string): string {
+const READ_ONLY_PARAMS: Partial<Record<DatabaseKind, string>> = {
+  mysql: "read_only=true",
+  sqlite: "mode=ro",
+  s3: "read_only=true",
+};
+
+export function readOnlyConnectionString(value: string, kind: DatabaseKind = "postgres"): string {
+  const param = READ_ONLY_PARAMS[kind];
+  if (param) {
+    if (value.split(/[?&]/).includes(param)) return value;
+    const params = kind === "sqlite" ? /\?[a-z_]+=[^?]*$/.test(value) : value.includes("?");
+    return `${value}${params ? "&" : "?"}${param}`;
+  }
+  if (kind !== "postgres") return value;
   const query = value.indexOf("?");
   const base = query < 0 ? value : value.slice(0, query);
   const params: string[] = [];
@@ -125,7 +138,10 @@ export function effectiveConnectionString(connection: SavedConnection): string {
     capabilitiesFor(connection.kind).read_only_mode &&
     (isReadOnlyConnection(connection) || isProductionLocked(connection));
   const base = cloudAuthConnectionString(
-    proxyUserConnectionString(serverReadOnly ? readOnlyConnectionString(raw) : raw, connection),
+    proxyUserConnectionString(
+      serverReadOnly ? readOnlyConnectionString(raw, connection.kind) : raw,
+      connection,
+    ),
     connection,
   );
   if (!usesTunnel(connection)) return base;

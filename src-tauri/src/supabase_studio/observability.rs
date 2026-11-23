@@ -306,7 +306,7 @@ const SIZES_SQL: &str = "select json_build_object(\
         pg_total_relation_size(c.oid) as total_bytes, pg_relation_size(c.oid) as table_bytes, \
         pg_indexes_size(c.oid) as index_bytes \
         from pg_class c join pg_namespace n on n.oid = c.relnamespace \
-        where c.relkind in ('r', 'p', 'm') and n.nspname not in ('pg_catalog', 'information_schema') and n.nspname not like 'pg_toast%' \
+        where c.relkind in ('r', 'p', 'm') and n.nspname not in ('pg_catalog', 'information_schema') and n.nspname not like 'pg\\_toast%' \
         order by pg_total_relation_size(c.oid) desc limit 101) t), \
     'indexes', (select coalesce(json_agg(i), '[]'::json) from (\
         select s.schemaname as schema, s.relname as table, s.indexrelname as name, \

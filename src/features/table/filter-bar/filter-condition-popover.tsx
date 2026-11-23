@@ -71,6 +71,7 @@ export function FilterConditionPopover({
           columns={columns}
           columnDetails={columnDetails}
           focusValue={focusValue}
+          filterHints
           onChange={(patch) => {
             setError("");
             setDraft((current) => ({ ...current, ...patch }));

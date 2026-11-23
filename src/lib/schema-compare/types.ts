@@ -87,6 +87,9 @@ export interface CompareResult extends CompareContext {
   items: DiffItem[];
   comparedAt: string;
   omitted?: number;
+  requestedTypes?: SelectableType[];
+  tableScope?: { source: string[] | null; target: string[] | null };
+  snapshotTimes?: { source: string | null; target: string | null };
 }
 
 export const OBJECT_TYPE_META: Record<CatalogObjectType, { label: string; plural: string }> = {

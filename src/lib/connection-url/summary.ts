@@ -1,5 +1,6 @@
 import type { DatabaseKind, ProviderInfo } from "@/lib/db";
 import { allProviders, FALLBACK_PROVIDERS, providerById, providerForKind } from "@/lib/providers";
+import { serverProduct } from "@/lib/server-products";
 import {
   endpointFromTnsDescriptor,
   oracleConnectString,
@@ -11,20 +12,29 @@ import { filePath, kindFromUrl, multiHostUrl } from "./parse";
 import { isProfileConnection, parseProfileConnection } from "./profile-pointer";
 
 function detectObjectStorage(value: string, candidates: ProviderInfo[]): string {
-  let endpoint: URL | null = null;
+  let raw: string | null = null;
   try {
-    const raw = new URL(value.trim()).searchParams.get("endpoint");
-    endpoint = raw ? new URL(raw) : null;
+    raw = new URL(value.trim()).searchParams.get("endpoint");
   } catch {
-    endpoint = null;
+    raw = null;
   }
-  if (!endpoint) return "s3";
+  if (!raw) return "s3";
+  let endpoint: URL;
+  try {
+    endpoint = new URL(raw);
+  } catch {
+    return "s3-compatible";
+  }
   const host = endpoint.hostname.toLowerCase();
+  if (host.endsWith(".amazonaws.com.cn")) return "s3";
   const match = candidates.find((provider) =>
     provider.hosts.some((entry) => (entry.startsWith(".") ? host.endsWith(entry) : host === entry)),
   );
   if (match) return match.id;
-  return host.includes("minio") || endpoint.port === "9000" ? "minio" : "s3-compatible";
+  const localMinio = endpoint.port === "9000" && (host === "localhost" || PRIVATE_IP.test(host));
+  return host.includes("minio") || host.endsWith("min.io") || localMinio
+    ? "minio"
+    : "s3-compatible";
 }
 
 const PRIVATE_SUFFIX = /\.(intern|internal|local|localdomain|lan|corp|home|arpa)$/;
@@ -43,17 +53,39 @@ export function detectProvider(value: string, kind = kindFromUrl(value)): string
   const candidates = allProviders().filter((provider) => provider.kind === (kind ?? "postgres"));
   if (!candidates.length) return "postgres";
   if (kind === "s3") return detectObjectStorage(value, candidates);
+  if (kind === "odbc") {
+    const raw = /(?:^|[;?&])\s*driver\s*=\s*\{?([^};&]+)/i.exec(value)?.[1] ?? "";
+    let driver = raw.replace(/\+/g, " ");
+    try {
+      driver = decodeURIComponent(driver);
+    } catch {}
+    const byDriver = candidates.find(
+      (provider) =>
+        provider.driver.type === "odbc" &&
+        provider.driver.driver !== "" &&
+        provider.driver.driver.toLowerCase() === driver.trim().toLowerCase(),
+    );
+    if (byDriver) return byDriver.id;
+  }
   let host = "";
+  let port = "";
   const oracle = parseOracleKeyValue(value);
   if (oracle) {
     host = oracleEndpointHost(oracle.source).toLowerCase();
   } else {
     try {
-      host = new URL(value.trim()).hostname.toLowerCase();
+      const url = new URL(value.trim());
+      host = url.hostname.toLowerCase();
+      port = url.port;
     } catch {
       host = "";
     }
   }
+  const familyPort = candidates[0].default_port ?? 0;
+  const samePort = candidates.filter(
+    (provider) =>
+      String(provider.default_port) === port && Math.abs(Number(port) - familyPort) > 10,
+  );
   const match = candidates.find((provider) =>
     provider.hosts.some((entry) => (entry.startsWith(".") ? host.endsWith(entry) : host === entry)),
   );
@@ -62,7 +94,10 @@ export function detectProvider(value: string, kind = kindFromUrl(value)): string
     : undefined;
   const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(value.trim())?.[1]?.toLowerCase();
   const byScheme = candidates.find((provider) => provider.id === scheme);
-  return (match ?? cloud ?? byScheme ?? candidates[0]).id;
+  const byPort = samePort.length === 1 ? samePort[0] : undefined;
+  const byDomain = match?.hosts.some((entry) => entry.startsWith(".") && host.endsWith(entry));
+  return ((byDomain ? match : undefined) ?? byPort ?? match ?? cloud ?? byScheme ?? candidates[0])
+    .id;
 }
 
 export function providerFor(connection: {
@@ -70,7 +105,10 @@ export function providerFor(connection: {
   connectionString: string;
 }): ProviderInfo {
   return (
-    providerById(detectProvider(connection.connectionString, connection.kind)) ??
+    providerById(
+      serverProduct(connection.connectionString) ??
+        detectProvider(connection.connectionString, connection.kind),
+    ) ??
     providerForKind(connection.kind) ??
     FALLBACK_PROVIDERS[0]
   );

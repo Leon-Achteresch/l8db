@@ -289,6 +289,7 @@ async fn postgres_old_pg_dump_is_flagged() {
     .await
     .unwrap_err();
     println!("{error}");
+    assert!(error.contains("pg_dump ist zu alt für den Server"));
     assert!(error.contains("version mismatch"));
 }
 
@@ -310,7 +311,16 @@ async fn mysql_backup_restore_round_trips() {
     }
     let probed = probe(DatabaseKind::Mysql, &url, None, &tool_paths(), pool.clone()).await;
     println!("{probed:#?}");
-    assert!(probed.tools.iter().all(|tool| tool.path.is_some()));
+    let missing: Vec<_> = probed
+        .tools
+        .iter()
+        .filter(|tool| tool.path.is_none())
+        .map(|tool| tool.name.clone())
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "fehlende Werkzeuge {missing:?}: mysqldump/mysql bzw. mariadb-dump/mariadb in PATH oder L8DB_BACKUP_TOOL_DIR"
+    );
     assert!(probed.warnings.is_empty());
     let target = out_dir().join("mysql.sql");
     let (emit, lines) = recorder();

@@ -40,14 +40,14 @@ export function SidebarConnectionTriggerContent({
         </span>
         {!isSwitching && activeConnection?.tags?.[0] && (
           <span
-            className="inline-flex max-w-20 shrink-0 truncate rounded px-1.5 py-px text-[9px] font-medium text-white"
+            className="inline-flex max-w-20 shrink-0 truncate rounded px-1.5 py-px text-[10px] font-medium text-white"
             style={{ backgroundColor: activeConnection.tags[0].color }}
           >
             {activeConnection.tags[0].name}
           </span>
         )}
         {!isSwitching && (activeConnection?.tags?.length ?? 0) > 1 && (
-          <span className="shrink-0 font-mono text-[9px] text-muted-foreground">
+          <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
             +{(activeConnection?.tags?.length ?? 0) - 1}
           </span>
         )}

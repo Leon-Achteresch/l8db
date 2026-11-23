@@ -3,13 +3,13 @@ import { CopyIcon, LinkIcon, Maximize2Icon } from "lucide-react";
 import { type CSSProperties, memo, useContext, useMemo } from "react";
 import { isLargeCellValue, valueToUpdateText } from "@/lib/cell-editor";
 import { shortUuid } from "@/lib/grid-cell-format";
+import { numberCellText } from "@/lib/number-display";
 import { useQueryQolSettings } from "@/lib/query-qol-settings";
+import { stagedMarkOf } from "@/lib/staged-edits";
 import { cellPreviewLimit, tableCellPreview, truncateCellPreview } from "@/lib/table-cell-preview";
 import { timestampCellText } from "@/lib/timestamp-display";
-import type { PluginCellState } from "@/lib/ui-plugins/grid";
 import { cn } from "@/lib/utils";
 import { cellValueBadge } from "@/lib/value-viewers/detect";
-import { PluginCell } from "../ui-plugins/plugin-cell";
 import { GridStyleContext } from "./data-table/grid-style-context";
 import { DataTableCellBadge } from "./data-table-cell/data-table-cell-badge";
 import { DataTableEditingCell } from "./data-table-cell/data-table-editing-cell";
@@ -52,7 +52,6 @@ export type DataTableCellProps = Pick<
   isMatch: boolean;
   isActiveMatch: boolean;
   hasOutgoingFk: boolean;
-  plugin?: PluginCellState;
 };
 
 export const DataTableCell = memo(function DataTableCell({
@@ -87,7 +86,6 @@ export const DataTableCell = memo(function DataTableCell({
   isMatch,
   isActiveMatch,
   hasOutgoingFk,
-  plugin,
 }: DataTableCellProps) {
   const cell = useMemo(
     () => (hasCustomContent ? createCell(table, row, column, column.id) : null),
@@ -99,13 +97,22 @@ export const DataTableCell = memo(function DataTableCell({
   const editable = canSave && (!canEditCell || canEditCell(row.original, columnId));
   const value = cellIndex > 0 ? row.getValue(columnId) : undefined;
   const timestamps = useQueryQolSettings((s) => s.timestamps);
-  const timestamp = useMemo(() => timestampCellText(value, timestamps), [value, timestamps]);
   const dataType = column.columnDef.meta?.dataType;
+  const gridStyle = useContext(GridStyleContext);
+  const kind = gridStyle.databaseKind;
+  const timestamp = useMemo(
+    () => timestampCellText(value, timestamps, kind, dataType),
+    [value, timestamps, kind, dataType],
+  );
+  const numbers = useQueryQolSettings((state) => state.numbers);
+  const number = useMemo(
+    () => (cellIndex > 0 && !hasCustomContent ? numberCellText(value, numbers, dataType) : null),
+    [cellIndex, hasCustomContent, value, numbers, dataType],
+  );
   const badge = useMemo(
     () => (cellIndex > 0 && !hasCustomContent ? cellValueBadge(value, dataType) : null),
     [value, dataType, cellIndex, hasCustomContent],
   );
-  const gridStyle = useContext(GridStyleContext);
   const tableStyle = gridStyle.style;
   const columnStyle = cellIndex > 0 ? gridStyle.columns.get(columnId) : undefined;
   const previewLimit =
@@ -116,8 +123,10 @@ export const DataTableCell = memo(function DataTableCell({
     () =>
       badge?.text
         ? { text: truncateCellPreview(badge.text, previewLimit), kind: "text" as const }
-        : tableCellPreview(value, previewLimit),
-    [value, previewLimit, badge],
+        : number !== null
+          ? { text: truncateCellPreview(number, previewLimit), kind: "number" as const }
+          : tableCellPreview(value, previewLimit),
+    [value, previewLimit, badge, number],
   );
   const isCellEditing = !!editingCell;
   if (isCellEditing && editingCell) {
@@ -133,6 +142,9 @@ export const DataTableCell = memo(function DataTableCell({
     );
   }
 
+  const staged = stagedMarkOf(row.original);
+  const stagedCell =
+    staged?.type === "update" && cellIndex > 0 && staged.columns?.has(columnId) === true;
   const isSticky = cellIndex === 0 || pinnedOffset !== null;
   const stickyTint = isActiveMatch
     ? "rgb(251 191 36 / 0.3)"
@@ -191,6 +203,7 @@ export const DataTableCell = memo(function DataTableCell({
       aria-colindex={gridColumn}
       data-row-index={rowIndex}
       data-col={cellIndex > 0 ? columnId : undefined}
+      data-staged={stagedCell || undefined}
       style={
         isSticky
           ? ({
@@ -233,8 +246,6 @@ export const DataTableCell = memo(function DataTableCell({
           "font-sans",
         tableStyle === "semantic" && hasCustomContent && "text-blue-600 dark:text-blue-400",
         tableStyle !== "classic" && columnStyle?.numeric && "text-right tabular-nums",
-        plugin?.align === "end" && "text-right",
-        plugin?.align === "center" && "text-center",
         cellIndex === 0 &&
           "w-12 border-r border-border sticky left-0 z-10 text-center text-muted-foreground select-none",
         cellIndex === 0 && tableStyle !== "classic" && "px-1",
@@ -248,6 +259,7 @@ export const DataTableCell = memo(function DataTableCell({
               ? "bg-[color-mix(in_oklab,var(--primary)_10%,var(--background))]"
               : "bg-[var(--row-bg,var(--background))] row-hover:bg-[color-mix(in_oklab,var(--muted)_15%,var(--row-bg,var(--background)))]",
           ),
+        stagedCell && !isSelected && "bg-amber-400/20",
         !isSticky && isSelected && "bg-primary/10",
         !isSticky && isMatch && "bg-amber-400/15",
         isActiveMatch &&
@@ -260,7 +272,7 @@ export const DataTableCell = memo(function DataTableCell({
             "outline outline-2 outline-inset -outline-offset-2 outline-primary/70 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.1)]",
             !isSticky && "relative z-1 bg-primary/[0.03]",
           ),
-        !isActive && cellIndex > 0 && !isSticky && "hover:bg-muted/10",
+        !isActive && cellIndex > 0 && !isSticky && "grid-hover:bg-muted/10",
       )}
     >
       {cellIndex === 0 ? (
@@ -280,13 +292,6 @@ export const DataTableCell = memo(function DataTableCell({
         >
           {rowIndex + 1 + pageOffset}
         </button>
-      ) : plugin?.output ? (
-        <PluginCell
-          output={plugin.output}
-          align={plugin.align}
-          fallback={preview.text}
-          resetKey={plugin.resetKey}
-        />
       ) : cell ? (
         flexRender(cell.column.columnDef.cell, cell.getContext())
       ) : badge ? (
@@ -294,8 +299,18 @@ export const DataTableCell = memo(function DataTableCell({
           <DataTableCellBadge badge={badge} />
           {preview.text}
         </>
+      ) : number !== null ? (
+        <span title={String(value)}>{preview.text}</span>
       ) : timestamp !== null && !(tableStyle === "semantic" && timestamps.mode === "raw") ? (
-        <span title={String(value)}>{truncateCellPreview(timestamp, previewLimit)}</span>
+        <span
+          title={
+            timestamps.mode === "business" && timestamp !== value
+              ? `${timestamp} · ${timestamps.timeZone}\nOriginal ${String(value)}`
+              : String(value)
+          }
+        >
+          {truncateCellPreview(timestamp, previewLimit)}
+        </span>
       ) : tableStyle === "semantic" ? (
         <SemanticCellValue
           value={value}

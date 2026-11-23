@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { copyText } from "@/lib/clipboard";
+import { errorMessageOf } from "@/lib/error-details";
 import { showCopiedMessage } from "@/lib/workspace-status";
 
 interface TableDataErrorProps {
@@ -23,7 +24,7 @@ export function TableDataError({ title, error, actions, onRetry }: TableDataErro
           role="alert"
           className="text-xs text-muted-foreground font-mono bg-destructive/[0.02] p-2.5 rounded border border-destructive/10 break-all select-text"
         >
-          {String(error)}
+          {errorMessageOf(error)}
         </p>
         {actions ? <div className="flex flex-wrap justify-center gap-2 pt-1">{actions}</div> : null}
         <div className="flex flex-wrap justify-center gap-2">
@@ -36,7 +37,7 @@ export function TableDataError({ title, error, actions, onRetry }: TableDataErro
             size="sm"
             variant="ghost"
             onClick={() =>
-              void copyText(String(error))
+              void copyText(errorMessageOf(error))
                 .then(() => showCopiedMessage("Fehlerdetails kopiert"))
                 .catch((failure) => toast.error(String(failure)))
             }

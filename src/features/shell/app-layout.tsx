@@ -6,6 +6,7 @@ import { ConnectionAuthGuard } from "@/features/connections/connection-auth-guar
 import { DeferredOutlet } from "@/features/shell/deferred-outlet";
 import { TransactionPanel } from "@/features/shell/transaction-panel";
 import { AppSidebar } from "@/features/sidebar/app-sidebar";
+import { useAiEnabled } from "@/lib/ai/access";
 import { useAiStore } from "@/lib/ai/store";
 import { useRouterSelect } from "@/lib/hooks/use-router-select";
 import { useSettingsStore } from "@/lib/settings";
@@ -23,7 +24,8 @@ const VersioningPanel = lazy(() =>
 
 export function AppLayout() {
   const fullAiPage = useRouterSelect((state) => state.location.pathname === "/ai");
-  const aiSplit = useAiStore((state) => state.open) && !fullAiPage;
+  const aiEnabled = useAiEnabled();
+  const aiSplit = useAiStore((state) => state.open) && !fullAiPage && aiEnabled;
   const easyMode = useSettingsStore((state) => state.easyMode);
   const panelWidth = useSidebarPanel((s) => s.width);
   const panelOpen = useTransactionStore((s) => s.panelOpen);

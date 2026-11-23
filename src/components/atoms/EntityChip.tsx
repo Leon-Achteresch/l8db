@@ -10,7 +10,7 @@ export function Monogram({
   return (
     <span
       className={`flex size-4 shrink-0 items-center justify-center rounded-full
-        text-[9px] font-semibold leading-none text-white ${className}`}
+        text-[10px] font-semibold leading-none text-white ${className}`}
       style={{ background: color }}
     >
       {children}

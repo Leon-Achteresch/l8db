@@ -46,34 +46,38 @@ export function QueryAnalysisSheet({
         <SheetHeader className="border-b pr-12">
           <SheetTitle className="text-sm">Analyse</SheetTitle>
           <p className="text-xs text-muted-foreground">
-            Ausführungsplan und Laufzeitmessung der aktuellen Abfrage.
+            {explainSupported
+              ? "Ausführungsplan und Laufzeitmessung der aktuellen Abfrage."
+              : "Laufzeitmessung der aktuellen Abfrage."}
           </p>
         </SheetHeader>
         <ButtonGroup
           aria-label="Analyse ausführen"
           className="shrink-0 px-4 pt-4 [&>button]:flex-1 [&>button]:text-xs"
         >
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!explainSupported || !explainEnabled || planLoading}
-            onClick={() => onExplain(false)}
-            title="Ausführungsplan anzeigen, führt nichts aus"
-          >
-            {planLoading ? (
-              <LoaderIcon className="size-3.5 animate-spin" />
-            ) : (
-              <GaugeIcon className="size-3.5" />
-            )}
-            Plan
-          </Button>
-          {analyzeSupported && (
+          {explainSupported && (
             <Button
               size="sm"
               variant="outline"
-              disabled={!explainSupported || !explainEnabled || planLoading}
+              disabled={!explainEnabled || planLoading}
+              onClick={() => onExplain(false)}
+              title="Ausführungsplan anzeigen, führt nichts aus"
+            >
+              {planLoading ? (
+                <LoaderIcon className="size-3.5 animate-spin" />
+              ) : (
+                <GaugeIcon className="size-3.5" />
+              )}
+              Plan
+            </Button>
+          )}
+          {explainSupported && analyzeSupported && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!explainEnabled || planLoading}
               onClick={() => onExplain(true)}
-              title="Achtung: führt die Query wirklich aus und misst sie; PostgreSQL rollt Änderungen danach zurück"
+              title="Achtung: führt die Query wirklich aus und misst sie"
             >
               <GaugeIcon className="size-3.5" />
               Plan + Messung
@@ -108,23 +112,25 @@ export function QueryAnalysisSheet({
           <Accordion
             type="single"
             collapsible
-            value={section}
+            value={explainSupported ? section : "perf"}
             onValueChange={(value) => onSectionChange(value === "perf" ? "perf" : "plan")}
             className="mt-3 gap-0"
           >
-            <AccordionItem value="plan" className="border-b-0">
-              <AccordionTrigger className="py-2.5 text-xs">
-                Ausführungsplan
-                {plan ? (
-                  <Badge variant="secondary" className="ml-2">
-                    aktiv
-                  </Badge>
-                ) : null}
-              </AccordionTrigger>
-              <AccordionContent className="h-auto pb-2">
-                <div className="flex min-h-0 flex-col gap-2">{plan}</div>
-              </AccordionContent>
-            </AccordionItem>
+            {explainSupported && (
+              <AccordionItem value="plan" className="border-b-0">
+                <AccordionTrigger className="py-2.5 text-xs">
+                  Ausführungsplan
+                  {plan ? (
+                    <Badge variant="secondary" className="ml-2">
+                      aktiv
+                    </Badge>
+                  ) : null}
+                </AccordionTrigger>
+                <AccordionContent className="h-auto pb-2">
+                  <div className="flex min-h-0 flex-col gap-2">{plan}</div>
+                </AccordionContent>
+              </AccordionItem>
+            )}
             <AccordionItem value="perf" className="border-b-0">
               <AccordionTrigger className="py-2.5 text-xs">Performance-Test</AccordionTrigger>
               <AccordionContent className="h-auto pb-2">
@@ -132,7 +138,7 @@ export function QueryAnalysisSheet({
               </AccordionContent>
             </AccordionItem>
           </Accordion>
-          {!plan && section === "plan" && (
+          {explainSupported && !plan && section === "plan" && (
             <p className="px-1 py-3 text-xs text-muted-foreground">
               {analyzeSupported
                 ? "„Plan“ führt nichts aus. „Plan + Messung“ führt die Abfrage aus."

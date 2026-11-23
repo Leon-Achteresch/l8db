@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRightLeftIcon } from "lucide-react";
+import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -7,10 +8,15 @@ import { MultiTargetSettingsRow } from "@/features/settings/multi-target-setting
 import { SettingsNumberInput } from "@/features/settings/settings-number-input";
 import { SettingsRow } from "@/features/settings/settings-row";
 import { useQueryHistoryStore } from "@/lib/query-history";
-import { useSettingsStore } from "@/lib/settings";
+import { type CollectCellEdits, useSettingsStore } from "@/lib/settings";
 import { useTransactionStore } from "@/lib/transactions";
 
 const ROW_LIMIT_PRESETS = [50, 100, 500, 1000];
+const COLLECT_OPTIONS: { value: CollectCellEdits; label: string }[] = [
+  { value: "off", label: "Aus" },
+  { value: "production", label: "Nur Produktion" },
+  { value: "always", label: "Immer" },
+];
 
 export function SettingsDataTab() {
   const {
@@ -18,12 +24,14 @@ export function SettingsDataTab() {
     queryTimeout,
     transactionsEnabled,
     transactionsPerTable,
+    collectCellEdits,
     confirmDestructiveQueries,
     highlightNullValues,
     setRowLimit,
     setQueryTimeout,
     setTransactionsEnabled,
     setTransactionsPerTable,
+    setCollectCellEdits,
     setConfirmDestructiveQueries,
     setHighlightNullValues,
   } = useSettingsStore();
@@ -108,6 +116,15 @@ export function SettingsDataTab() {
             onCheckedChange={setTransactionsPerTable}
             disabled={hasTransactions || !transactionsEnabled}
             aria-label="Transaktionen pro Tabelle"
+          />
+        </SettingsRow>
+
+        <SettingsRow settingId="collect-cell-edits" featureId="settings.data.collect-cell-edits">
+          <SegmentedControl
+            value={collectCellEdits}
+            onChange={setCollectCellEdits}
+            label="Zelländerungen sammeln"
+            options={COLLECT_OPTIONS}
           />
         </SettingsRow>
 

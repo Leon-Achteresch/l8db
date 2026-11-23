@@ -26,6 +26,8 @@ import {
   REDIS_ACTIONS,
   type RedisAction,
   redisActionCommand,
+  redisOverwriteNotice,
+  redisReadableValue,
   redisReadCommand,
 } from "@/lib/redis-commands";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -42,6 +44,7 @@ export function RedisKeyActions() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [overwrite, setOverwrite] = useState<string | null>(null);
   const hasValue = !["get", "delete", "persist"].includes(action);
   const hasField = ["hash", "zset", "stream"].includes(action);
 
@@ -56,7 +59,7 @@ export function RedisKeyActions() {
       const response = await executeQuery(
         connection.kind,
         effectiveConnectionString(connection),
-        redisActionCommand(action, key, value, field),
+        redisActionCommand(action, key, value, field, overwrite !== null),
         database ?? undefined,
       );
       if (action === "get") {
@@ -72,6 +75,12 @@ export function RedisKeyActions() {
         }
       }
       const last = response.rows.at(-1)?.result;
+      const notice = action === "string" && overwrite === null && redisOverwriteNotice(key, last);
+      if (notice) {
+        setOverwrite(notice);
+        return;
+      }
+      setOverwrite(null);
       if (action === "rename" && last === 0)
         throw Error("Der Ziel-Key existiert bereits. Es wurde nichts überschrieben.");
       setResult(
@@ -79,18 +88,19 @@ export function RedisKeyActions() {
           action === "get"
             ? {
                 type: response.rows[0]?.result,
-                ttl: response.rows[1]?.result,
-                value: response.rows[2]?.result ?? null,
+                ttl: response.rows[1]?.result === -1 ? null : response.rows[1]?.result,
+                value: redisReadableValue(
+                  String(response.rows[0]?.result),
+                  response.rows[2]?.result ?? null,
+                ),
               }
             : { result: last },
           null,
           2,
         ),
       );
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["rows", connection.id, database] }),
-        queryClient.invalidateQueries({ queryKey: ["count", connection.id, database] }),
-      ]);
+      void queryClient.invalidateQueries({ queryKey: ["rows", connection.id, database] });
+      void queryClient.invalidateQueries({ queryKey: ["count", connection.id, database] });
     } catch (err) {
       setError(String(err));
     } finally {
@@ -121,7 +131,10 @@ export function RedisKeyActions() {
             <Input
               id="redis-key"
               value={key}
-              onChange={(event) => setKey(event.target.value)}
+              onChange={(event) => {
+                setKey(event.target.value);
+                setOverwrite(null);
+              }}
               placeholder="user:1"
               disabled={busy}
             />
@@ -132,6 +145,7 @@ export function RedisKeyActions() {
               value={action}
               onValueChange={(next) => {
                 setAction(next as RedisAction);
+                setOverwrite(null);
                 setResult(null);
                 setError(null);
               }}
@@ -172,13 +186,21 @@ export function RedisKeyActions() {
               <Textarea
                 id="redis-value"
                 value={value}
-                onChange={(event) => setValue(event.target.value)}
+                onChange={(event) => {
+                  setValue(event.target.value);
+                  setOverwrite(null);
+                }}
                 disabled={busy}
                 className="font-mono"
               />
             </div>
           )}
-          {action === "string" && (
+          {overwrite && (
+            <p role="alert" className="text-sm text-destructive">
+              {overwrite}
+            </p>
+          )}
+          {action === "string" && !overwrite && (
             <p className="text-xs text-muted-foreground">
               Ersetzt den bisherigen Wert. Eine bestehende Ablaufzeit bleibt erhalten.
             </p>
@@ -207,13 +229,15 @@ export function RedisKeyActions() {
           <Button
             onClick={() => void run()}
             disabled={busy}
-            variant={action === "delete" ? "destructive" : "default"}
+            variant={action === "delete" || overwrite ? "destructive" : "default"}
           >
             {busy
               ? "Wird ausgeführt…"
               : action === "delete"
                 ? "Key endgültig löschen"
-                : "Ausführen"}
+                : overwrite
+                  ? "Überschreiben"
+                  : "Ausführen"}
           </Button>
         </DialogFooter>
       </DialogContent>

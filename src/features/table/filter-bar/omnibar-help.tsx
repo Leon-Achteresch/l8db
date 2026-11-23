@@ -1,4 +1,5 @@
 import { Kbd } from "@/components/ui/kbd";
+import { useAiEnabled } from "@/lib/ai/access";
 import { IS_MAC } from "@/lib/platform";
 
 const ROWS = [
@@ -12,9 +13,10 @@ const ROWS = [
 ];
 
 export function OmnibarHelp() {
+  const ai = useAiEnabled();
   return (
     <div className="grid gap-1.5 p-1.5 text-xs">
-      {ROWS.map((row) => (
+      {(ai ? ROWS : ROWS.slice(0, 2)).map((row) => (
         <div key={row.keys} className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-baseline gap-2">
           <Kbd className="justify-self-start">{row.keys}</Kbd>
           <span className="min-w-0">
@@ -24,8 +26,9 @@ export function OmnibarHelp() {
         </div>
       ))}
       <p className="pt-1 text-[11px] text-muted-foreground">
-        Weitere Beispiele: name LIKE '%max%' · id IN (1, 2) · note IS NULL. Die KI sieht
-        Spaltennamen, -typen, deine Anfrage und die aktiven Filter, aber keine Tabellenzeilen.
+        Weitere Beispiele: name LIKE '%max%' · id IN (1, 2) · note IS NULL.
+        {ai &&
+          " Die KI sieht Spaltennamen, -typen, deine Anfrage und die aktiven Filter, aber keine Tabellenzeilen."}
       </p>
     </div>
   );

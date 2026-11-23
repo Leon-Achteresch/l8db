@@ -105,3 +105,104 @@ test("erkennt das Löschen von Datenbanken, Schemas, Spalten und NoSQL-Daten", (
   expect(reasons("DEL a", "redis")).toEqual([]);
   expect(reasons("DEL a", "redis", true)).toEqual(["Schlüssel löschen"]);
 });
+
+describe("UPDATE und DELETE ohne WHERE auf jeder Verbindung", () => {
+  const reasons = (sql: string, dialect: string) =>
+    destructiveStatements(sql, dialect).map((entry) => entry.reason);
+
+  test.each([
+    ["postgres", "update accounts set balance = 0"],
+    ["postgres", "WITH s AS (SELECT id FROM src WHERE ok) UPDATE t SET a = 1"],
+    ["postgres", "UPDATE t SET a = u.a FROM u"],
+    ["postgres", "UPDATE t SET a = (SELECT max(b) FROM u WHERE u.id = 1)"],
+    ["postgres", "UPDATE t SET note = 'WHERE id = 1' -- WHERE id = 1\n"],
+    ["postgres", "UPDATE t SET a = 1 /* WHERE id = 1 */"],
+    ["postgres", "UPDATE t SET a = 1 RETURNING (SELECT 1 WHERE true)"],
+    ["postgres", "WITH d AS (UPDATE t SET a = 1 RETURNING id) SELECT * FROM d"],
+    ["mysql", "UPDATE a JOIN b ON a.id = b.id SET a.x = b.x"],
+    ["mysql", "UPDATE t SET a = 1 # WHERE id = 1"],
+    ["mssql", "UPDATE TOP (10) dbo.t SET a = 1"],
+    ["mssql", "WITH c AS (SELECT * FROM t) UPDATE c SET a = 1"],
+    ["oracle", "UPDATE t SET note = q'[WHERE x]'"],
+    ["oracle", "BEGIN\n  IF x THEN UPDATE t SET a = 1; END IF;\nEND;"],
+    ["sqlite", "UPDATE OR REPLACE t SET a = 1"],
+  ])("%s: %s", (dialect, sql) => {
+    expect(reasons(sql, dialect)).toEqual(["UPDATE ohne WHERE"]);
+  });
+
+  test.each([
+    ["postgres", "DELETE FROM t USING u"],
+    ["postgres", "WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d"],
+    ["mysql", "DELETE a, b FROM a JOIN b ON a.id = b.id"],
+    ["mssql", "DELETE TOP (5) FROM t"],
+    ["oracle", "DELETE t"],
+  ])("%s: %s", (dialect, sql) => {
+    expect(reasons(sql, dialect)).toEqual(["DELETE ohne WHERE"]);
+  });
+
+  test.each([
+    ["postgres", "UPDATE t SET a = 1 WHERE id = 1"],
+    ["postgres", "UPDATE t SET a = u.a FROM u WHERE t.id = u.id"],
+    ["postgres", "UPDATE t SET a = 1 WHERE CURRENT OF c"],
+    ["postgres", "WITH d AS (DELETE FROM t WHERE id = 1 RETURNING *) SELECT * FROM d"],
+    ["postgres", "SELECT 'update t set a = 1' AS x"],
+    ["postgres", 'SELECT update_count, "update" FROM t -- UPDATE t SET a = 1'],
+    ["postgres", "SELECT * FROM t WHERE id = 1 FOR UPDATE SKIP LOCKED"],
+    ["postgres", "SELECT * FROM t FOR NO KEY UPDATE"],
+    ["postgres", "INSERT INTO t VALUES (1) ON CONFLICT (id) DO UPDATE SET a = excluded.a"],
+    [
+      "postgres",
+      "ALTER TABLE t ADD FOREIGN KEY (u) REFERENCES u ON DELETE CASCADE ON UPDATE SET NULL",
+    ],
+    ["postgres", "CREATE POLICY p ON t FOR UPDATE USING (true)"],
+    ["postgres", "CREATE TRIGGER g BEFORE INSERT OR UPDATE ON t FOR EACH ROW EXECUTE FUNCTION f()"],
+    ["postgres", "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = s.a"],
+    ["postgres", "ALTER DEFAULT PRIVILEGES GRANT SELECT, UPDATE ON TABLES TO app"],
+    ["postgres", "GRANT UPDATE ON t TO app"],
+    ["mysql", "INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE a = VALUES(a)"],
+    ["mysql", "UPDATE a JOIN b ON a.id = b.id SET a.x = b.x WHERE b.ok"],
+    ["mysql", "CREATE TRIGGER g AFTER DELETE ON t FOR EACH ROW DELETE FROM log"],
+    ["mssql", "UPDATE STATISTICS dbo.t"],
+    ["mssql", "UPDATE TOP (10) t SET a = 1 OUTPUT inserted.id WHERE a = 0"],
+    ["mssql", "CREATE OR ALTER PROCEDURE p AS UPDATE t SET a = 1"],
+    ["oracle", "SELECT * FROM t WHERE id = 1 FOR UPDATE NOWAIT"],
+    ["oracle", "CREATE OR REPLACE TRIGGER g BEFORE UPDATE ON t BEGIN NULL; END;"],
+    ["sqlite", "INSERT INTO t VALUES (1) ON CONFLICT(id) DO UPDATE SET a = 2"],
+    ["mysql", "CREATE DEFINER=`root`@`localhost` PROCEDURE p() BEGIN UPDATE t SET a = 1; END"],
+    [
+      "mysql",
+      "CREATE DEFINER = root@localhost TRIGGER g BEFORE INSERT ON t FOR EACH ROW UPDATE c SET n = n + 1",
+    ],
+    [
+      "mysql",
+      "CREATE DEFINER=CURRENT_USER FUNCTION f() RETURNS INT BEGIN DELETE FROM log; RETURN 1; END",
+    ],
+    ["mysql", "CREATE EVENT e ON SCHEDULE EVERY 1 DAY DO BEGIN DELETE FROM log; END"],
+    ["oracle", "CREATE OR REPLACE EDITIONABLE PROCEDURE p AS BEGIN UPDATE t SET a = 1; END;"],
+    [
+      "oracle",
+      "CREATE NONEDITIONABLE FUNCTION f RETURN NUMBER AS BEGIN DELETE FROM log; RETURN 1; END;",
+    ],
+    [
+      "oracle",
+      "CREATE OR REPLACE PACKAGE BODY pkg AS PROCEDURE p IS BEGIN UPDATE t SET a = 1; END; END;",
+    ],
+    [
+      "oracle",
+      "CREATE OR REPLACE TYPE BODY tp AS MEMBER PROCEDURE p IS BEGIN DELETE FROM log; END; END;",
+    ],
+    [
+      "postgres",
+      "CREATE OR REPLACE FUNCTION f() RETURNS void AS $$ UPDATE t SET a = 1 $$ LANGUAGE sql",
+    ],
+    ["postgres", "CREATE CONSTRAINT TRIGGER g AFTER UPDATE ON t FOR EACH ROW EXECUTE FUNCTION f()"],
+  ])("%s ohne Warnung: %s", (dialect, sql) => {
+    expect(reasons(sql, dialect)).toEqual([]);
+  });
+
+  test("WHERE in Unterabfragen zählt nicht als WHERE der Anweisung", () => {
+    expect(reasons("DELETE FROM t USING (SELECT id FROM u WHERE ok) s", "postgres")).toEqual([
+      "DELETE ohne WHERE",
+    ]);
+  });
+});

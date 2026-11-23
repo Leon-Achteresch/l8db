@@ -1,5 +1,15 @@
-import { expect, test } from "bun:test";
+import { expect, mock, test } from "bun:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { measureScenario, reportScenario } from "../scripts/performance-report";
+
+const invocations: string[] = [];
+mock.module("@tauri-apps/api/core", () => ({
+  invoke: async (command: string) => {
+    invocations.push(command);
+    return null;
+  },
+}));
 
 const storage = new Map<string, string>();
 Object.defineProperty(globalThis, "window", {
@@ -9,6 +19,8 @@ Object.defineProperty(globalThis, "window", {
       setItem: (key: string, value: string) => storage.set(key, value),
       removeItem: (key: string) => storage.delete(key),
     },
+    addEventListener() {},
+    removeEventListener() {},
   },
   configurable: true,
 });
@@ -18,6 +30,11 @@ const { tabKey, useTableTabs } = await import("../src/lib/table-tabs");
 const { MAX_SPLIT_GROUPS, foreignSplitGroups, openDetached, standaloneTabs, useSplitView } =
   await import("../src/lib/split-view");
 const { resolveDrop } = await import("../src/lib/tab-drop");
+const { focusedConnectionId, paneConnectionId } = await import("../src/lib/split-view");
+const { connectionEnvironment } = await import("../src/lib/environments");
+const { tabHasTransaction, transactionsClosedWith } = await import("../src/lib/tab-transactions");
+const { useTransactionStore } = await import("../src/lib/transactions");
+const { TabStatusMarkers } = await import("../src/features/shell/table-tabs/tab-status-markers");
 
 test("saved split views stay cheap with many tabs and groups", async () => {
   const connection = useConnectionsStore.getState().addConnection({
@@ -195,4 +212,128 @@ test("saved split views stay cheap with many tabs and groups", async () => {
   ).toEqual([]);
   expect(drop.p95Ms / 1_000).toBeLessThan(0.05);
   expect(bytes).toBeLessThan(50 * 4 * 512);
+});
+
+test("tab environment and transaction markers stay cheap with 200 tabs over 20 connections", async () => {
+  const environments = ["development", "test", "staging", "production"] as const;
+  const connections = Array.from({ length: 20 }, (_, index) => ({
+    id: `env${index}`,
+    name: `Umgebung ${index}`,
+    kind: "postgres" as const,
+    sslMode: "prefer" as const,
+    connectionString: `postgresql://app@db-${index % 2 ? "prod" : "dev"}-${index}.example.com/db`,
+    environment: index % 2 ? undefined : environments[(index / 2) % 4],
+  }));
+  const hostGroupRules = [
+    { id: "prod", name: "Prod", pattern: "db-prod-*", environment: "production" as const },
+  ];
+  useConnectionsStore.setState({ connections, hostGroupRules, activeId: "env0" });
+  invocations.length = 0;
+  const local = Array.from({ length: 180 }, (_, index) =>
+    index % 2
+      ? { kind: "query" as const, id: `env-q${index}`, title: `Q${index}`, sql: "SELECT 1" }
+      : { kind: "table" as const, schema: "public", table: `t${index}` },
+  );
+  const remote = Array.from({ length: 20 }, (_, index) => ({
+    kind: "table" as const,
+    schema: "public",
+    table: `t${index * 2}`,
+    connectionId: `env${index}`,
+  }));
+  useTableTabs.setState({ tabs: local, tabsByConnection: {} });
+  const remoteKeys = remote.map(tabKey);
+  const paneTabs = [
+    local.slice(0, 60).map(tabKey),
+    remoteKeys.slice(0, 10),
+    remoteKeys.slice(10),
+    local.slice(60, 80).map(tabKey),
+  ];
+  useSplitView.setState({
+    panes: paneTabs.map((keys) => keys[0]),
+    paneTabs,
+    away: false,
+    focusedPane: 0,
+    paneConnections: {},
+  });
+  useTransactionStore.setState({
+    transactions: Array.from({ length: 20 }, (_, index) => ({
+      txId: `tx${index}`,
+      connectionId: `env${index}`,
+      connectionName: `Umgebung ${index}`,
+      scope:
+        index % 2
+          ? ({ type: "query" } as const)
+          : ({ type: "table", schema: "public", table: `t${index * 2}` } as const),
+      changes: [],
+      startedAt: 0,
+    })),
+  });
+  const all = [...local, ...remote];
+  let markers = 0;
+  const render = await measureScenario(() => {
+    const { activeId } = useConnectionsStore.getState();
+    const split = useSplitView.getState();
+    const { transactions } = useTransactionStore.getState();
+    const byConnection = new Map(
+      connections.map((entry) => [entry.id, connectionEnvironment(entry, hostGroupRules)]),
+    );
+    const html = renderToStaticMarkup(
+      createElement(
+        "div",
+        null,
+        all.map((tab) => {
+          const key = tabKey(tab);
+          const connectionId = paneConnectionId(split, key, activeId, connections) ?? activeId;
+          return createElement(TabStatusMarkers, {
+            key,
+            environment: connectionId ? (byConnection.get(connectionId) ?? null) : null,
+            transaction: tabHasTransaction(tab, connectionId, transactions),
+            isActive: false,
+          });
+        }),
+      ),
+    );
+    markers = (html.match(/data-environment=/g) ?? []).length;
+  });
+  let notifications = 0;
+  const stopConnections = useConnectionsStore.subscribe(() => notifications++);
+  const stopTransactions = useTransactionStore.subscribe(() => notifications++);
+  const focused = new Set<string | null>();
+  let pane = 0;
+  const focus = await measureScenario(() => {
+    for (let index = 0; index < 100; index++) {
+      useSplitView.getState().focusPane(pane++ % 4);
+      const { activeId } = useConnectionsStore.getState();
+      focused.add(
+        focusedConnectionId(useSplitView.getState(), paneTabs[0][0], activeId, connections),
+      );
+    }
+  });
+  stopConnections();
+  stopTransactions();
+  let held = 0;
+  const closeAll = await measureScenario(() => {
+    held = transactionsClosedWith(all.map(tabKey)).length;
+  });
+
+  await reportScenario("split-tab-environment-markers", {
+    tabs: all.length,
+    connections: connections.length,
+    transactions: 20,
+    markers,
+    render,
+    focus,
+    closeAll,
+    held,
+    notifications,
+    requests: invocations.length,
+  });
+  expect(markers).toBe(all.length);
+  expect([...focused].sort()).toEqual(["env0", "env10"]);
+  expect(notifications).toBe(0);
+  expect(invocations).toEqual([]);
+  expect(held).toBe(10);
+  expect(render.p95Ms).toBeLessThan(40);
+  expect(focus.p95Ms / 100).toBeLessThan(0.5);
+  expect(closeAll.p95Ms).toBeLessThan(20);
 });

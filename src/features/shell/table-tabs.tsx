@@ -4,7 +4,7 @@ import { PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import type * as React from "react";
-import { Fragment, useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
@@ -14,15 +14,16 @@ import { SavedTabsMenu } from "@/features/shell/table-tabs/saved-tabs-menu";
 import { SharedTabDialog } from "@/features/shell/table-tabs/shared-tab-dialog";
 import { SplitGroupTab } from "@/features/shell/table-tabs/split-group-tab";
 import { SplitGroupsMenu } from "@/features/shell/table-tabs/split-groups-menu";
-import { TabGroupLabel } from "@/features/shell/table-tabs/tab-group-label";
+import { TransactionCloseDialog } from "@/features/shell/table-tabs/transaction-close-dialog";
 import { useTabClose } from "@/features/shell/table-tabs/use-tab-close";
-import { useTabGroups } from "@/features/shell/table-tabs/use-tab-groups";
 import {
   type TableTabActions,
   TableTabsSortableTab,
 } from "@/features/shell/table-tabs-sortable-tab";
 import { InvestigationsButton } from "@/features/workbench/investigations-button";
+import { useActiveConnection } from "@/lib/connections";
 import { isEasyModeTabVisible } from "@/lib/easy-mode";
+import { useConnectionEnvironment } from "@/lib/environments";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
 import { onHotkeyAction } from "@/lib/hotkeys";
@@ -46,11 +47,8 @@ import { activateConnectionWithToast, useConnectionSwitch } from "@/lib/ssh";
 import { useDropPreview } from "@/lib/tab-drop";
 import { navigateToTab, preloadTab, tabLabel } from "@/lib/tab-navigation";
 import { remoteTab, sameTabBarTabs, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
-import type { TemplateEntry } from "@/lib/ui-plugins/registry";
-import { useSplitLayout } from "@/lib/ui-plugins/split-layout";
-import { openTemplate } from "@/lib/ui-plugins/split-templates";
-import { useUiPluginRegistry } from "@/lib/ui-plugins/store";
 import { useActiveWorkspaceTab } from "@/lib/use-active-workspace-tab";
+import { useSplitLayout } from "@/lib/use-split-layout";
 import { cn } from "@/lib/utils";
 
 export function TableTabs() {
@@ -60,8 +58,6 @@ export function TableTabs() {
     if (!sameTabBarTabs(shownTabs.current, state.tabs)) shownTabs.current = state.tabs;
     return shownTabs.current;
   });
-  const templates = useUiPluginRegistry((registry) => registry.templates);
-  const tabGroups = useTabGroups(allTabs);
   const openQueryTab = useTableTabs((state) => state.openQueryTab);
   const orientation = useSplitView((state) => state.orientation);
   const setOrientation = useSplitView((state) => state.setOrientation);
@@ -85,6 +81,8 @@ export function TableTabs() {
     hasNewFeatures("split.master-tabs", seenFeatures);
   const activeTab = useActiveWorkspaceTab();
   const pendingTab = useActiveWorkspaceTab(true);
+  const activeConnection = useActiveConnection();
+  const environment = useConnectionEnvironment(activeConnection)?.value ?? null;
   const router = useRouter();
   const navigate = useNavigate();
   const routeKey = activeTab ? tabKey(activeTab) : null;
@@ -126,6 +124,9 @@ export function TableTabs() {
   const hiddenTabs = tabs.filter((tab) => hiddenKeys.includes(tabKey(tab)));
 
   const {
+    pendingTransactions,
+    setPendingTransactions,
+    finishTransactions,
     pendingClose,
     setPendingClose,
     savingClose,
@@ -180,11 +181,6 @@ export function TableTabs() {
       return;
     }
     const tab = useSplitView.getState().openGroup(group.id);
-    if (tab) navigateToTab(navigate, tab);
-  };
-
-  const handleOpenTemplate = (entry: TemplateEntry) => {
-    const tab = openTemplate(entry);
     if (tab) navigateToTab(navigate, tab);
   };
 
@@ -254,25 +250,22 @@ export function TableTabs() {
             className="relative flex w-max items-center gap-1 px-1"
           >
             {tabs.map((tab, index) => {
-              const group = tabGroups?.[allTabs.indexOf(tab)];
-              const previous =
-                index > 0 ? tabGroups?.[allTabs.indexOf(tabs[index - 1])] : undefined;
               const key = tabKey(tab);
               return (
-                <Fragment key={key}>
-                  {group && group.id !== previous?.id && <TabGroupLabel group={group} />}
-                  <TableTabsSortableTab
-                    tab={tab}
-                    index={index}
-                    isActive={!chipActive && latestKey === key}
-                    isPending={Boolean(pendingTab && tabKey(pendingTab) === key)}
-                    paneCount={hasSplit ? paneCount : 0}
-                    hasTabsToRight={index < tabs.length - 1}
-                    tabsCount={tabs.length}
-                    canSplit={!easyMode && paneCount < MAX_SPLIT_PANES}
-                    actions={actions}
-                  />
-                </Fragment>
+                <TableTabsSortableTab
+                  key={key}
+                  tab={tab}
+                  index={index}
+                  isActive={!chipActive && latestKey === key}
+                  isPending={Boolean(pendingTab && tabKey(pendingTab) === key)}
+                  paneCount={hasSplit ? paneCount : 0}
+                  connectionId={activeConnection?.id ?? null}
+                  environment={environment}
+                  hasTabsToRight={index < tabs.length - 1}
+                  tabsCount={tabs.length}
+                  canSplit={!easyMode && paneCount < MAX_SPLIT_PANES}
+                  actions={actions}
+                />
               );
             })}
           </div>
@@ -287,7 +280,12 @@ export function TableTabs() {
           />
         )}
       </div>
-      <Tooltip content="Neue Abfrage öffnen" side="bottom" wrapperClassName="shrink-0">
+      <Tooltip
+        content="Neue Abfrage öffnen"
+        hotkey="tab.newQuery"
+        side="bottom"
+        wrapperClassName="shrink-0"
+      >
         <button
           type="button"
           data-feature="query.new-tab"
@@ -303,7 +301,12 @@ export function TableTabs() {
       <InvestigationsButton />
 
       {!easyMode && (
-        <Tooltip content="Ansicht teilen" side="bottom" wrapperClassName="shrink-0">
+        <Tooltip
+          content="Ansicht teilen"
+          hotkey="view.split"
+          side="bottom"
+          wrapperClassName="shrink-0"
+        >
           <button
             data-feature="view.split"
             type="button"
@@ -335,7 +338,7 @@ export function TableTabs() {
           </button>
         </Tooltip>
       )}
-      {!easyMode && (groups.length > 0 || foreignGroups.length > 0 || templates.length > 0) && (
+      {!easyMode && (groups.length > 0 || foreignGroups.length > 0) && (
         <SplitGroupsMenu
           groups={groups}
           foreign={foreignGroups}
@@ -349,8 +352,6 @@ export function TableTabs() {
           }
           onOpen={(group, connectionId) => void handleOpenGroup(group, connectionId)}
           onDelete={(group, connectionId) => deleteGroup(group.id, connectionId)}
-          templates={templates}
-          onOpenTemplate={handleOpenTemplate}
         />
       )}
       {hasSplit && (
@@ -374,6 +375,11 @@ export function TableTabs() {
         />
       )}
       <SharedTabDialog />
+      <TransactionCloseDialog
+        pending={pendingTransactions}
+        setPending={setPendingTransactions}
+        finish={finishTransactions}
+      />
       <CloseConfirmDialog
         pendingClose={pendingClose}
         setPendingClose={setPendingClose}

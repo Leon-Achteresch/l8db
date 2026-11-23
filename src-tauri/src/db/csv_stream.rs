@@ -67,6 +67,77 @@ fn read_sample(path: &str) -> Result<(Vec<u8>, bool), String> {
     Ok((bytes, partial))
 }
 
+pub(crate) fn duckdb_encoding(path: &str) -> Result<(String, Option<&'static str>), String> {
+    let file =
+        File::open(path).map_err(|error| format!("Datei kann nicht gelesen werden: {error}"))?;
+    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let mut sample = Vec::new();
+    file.take(SAMPLE_BYTES)
+        .read_to_end(&mut sample)
+        .map_err(|error| format!("Datei kann nicht gelesen werden: {error}"))?;
+    if sample.starts_with(&[0xfe, 0xff]) || (sample.len() > 1 && sample[0] == 0 && sample[1] != 0) {
+        return Ok((utf8_copy(path, true)?, None));
+    }
+    if sample.starts_with(&[0xff, 0xfe]) || (sample.len() > 1 && sample[0] != 0 && sample[1] == 0) {
+        return Ok((path.to_string(), Some("utf-16")));
+    }
+    if !is_windows_1252(&sample, size > sample.len() as u64) {
+        return Ok((path.to_string(), None));
+    }
+    if sample.iter().any(|byte| (0x80..=0x9f).contains(byte)) {
+        return Ok((utf8_copy(path, false)?, None));
+    }
+    Ok((path.to_string(), Some("latin-1")))
+}
+
+fn utf8_copy(path: &str, utf16_be: bool) -> Result<String, String> {
+    use std::hash::{Hash, Hasher};
+    use std::io::Write;
+    let failed = |error: std::io::Error| format!("Datei kann nicht umkodiert werden: {error}");
+    let meta = std::fs::metadata(path).map_err(failed)?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    (path, meta.len(), meta.modified().ok()).hash(&mut hasher);
+    let target = std::env::temp_dir().join(format!("l8db-utf8-{:016x}.csv", hasher.finish()));
+    let target_text = target.to_string_lossy().into_owned();
+    if target.exists() {
+        return Ok(target_text);
+    }
+    let partial = target.with_extension("part");
+    let mut writer = std::io::BufWriter::new(File::create(&partial).map_err(failed)?);
+    let mut bytes = BufReader::new(File::open(path).map_err(failed)?).bytes();
+    let mut error = None;
+    let mut next = || match bytes.next()? {
+        Ok(byte) => Some(byte),
+        Err(e) => {
+            error = Some(e);
+            None
+        }
+    };
+    let mut buffer = [0u8; 4];
+    let mut write = |ch: char| writer.write_all(ch.encode_utf8(&mut buffer).as_bytes());
+    if utf16_be {
+        let units = std::iter::from_fn(|| Some(u16::from_be_bytes([next()?, next()?])));
+        for (index, unit) in char::decode_utf16(units).enumerate() {
+            let ch = unit.unwrap_or(char::REPLACEMENT_CHARACTER);
+            if index > 0 || ch != '\u{feff}' {
+                write(ch).map_err(failed)?;
+            }
+        }
+    } else {
+        while let Some(byte) = next() {
+            write(cp1252_char(byte)).map_err(failed)?;
+        }
+    }
+    if let Some(e) = error {
+        let _ = std::fs::remove_file(&partial);
+        return Err(failed(e));
+    }
+    writer.flush().map_err(failed)?;
+    drop(writer);
+    std::fs::rename(&partial, &target).map_err(failed)?;
+    Ok(target_text)
+}
+
 pub fn preview(path: &str) -> Result<serde_json::Value, String> {
     let (mut bytes, partial) = read_sample(path)?;
     if is_windows_1252(&bytes, partial) {
@@ -133,10 +204,22 @@ pub struct CsvRows {
     record: usize,
     line: usize,
     done: bool,
+    cancel: tokio_util::sync::CancellationToken,
+    record_line: usize,
 }
 
 impl CsvRows {
     pub fn open(source: &CsvFileSource) -> Result<Self, String> {
+        Self::open_cancellable(source, tokio_util::sync::CancellationToken::new())
+    }
+
+    pub fn open_cancellable(
+        source: &CsvFileSource,
+        cancel: tokio_util::sync::CancellationToken,
+    ) -> Result<Self, String> {
+        if cancel.is_cancelled() {
+            return Err("Dateiprüfung abgebrochen.".into());
+        }
         if source.delimiter.chars().count() != 1
             || source.quote.chars().count() != 1
             || source.delimiter == source.quote
@@ -177,11 +260,21 @@ impl CsvRows {
             record: 0,
             line: 1,
             done: false,
+            cancel,
+            record_line: 1,
         })
     }
 
     fn character(&mut self) -> Result<Option<char>, String> {
+        if self.cancel.is_cancelled() {
+            return Err("Dateiprüfung abgebrochen.".into());
+        }
         self.characters.next().transpose()
+    }
+
+    pub(crate) fn next_record(&mut self) -> Result<Option<(usize, Vec<Option<String>>)>, String> {
+        self.record()
+            .map(|row| row.map(|values| (self.record_line, values)))
     }
 
     fn record(&mut self) -> Result<Option<Vec<Option<String>>>, String> {
@@ -204,6 +297,7 @@ impl CsvRows {
                     return Ok(None);
                 }
                 values.push(self.field(field, quoted));
+                self.record_line = start_line;
                 return Ok(Some(values));
             };
             size += character.len_utf8();
@@ -223,7 +317,9 @@ impl CsvRows {
                     }
                 } else {
                     field.push(character);
-                    if character == '\n' {
+                    if character == '\n'
+                        || (character == '\r' && !matches!(self.characters.peek(), Some(Ok('\n'))))
+                    {
                         self.line += 1;
                     }
                 }
@@ -253,6 +349,7 @@ impl CsvRows {
                     continue;
                 }
                 values.push(self.field(field, quoted));
+                self.record_line = start_line;
                 return Ok(Some(values));
             }
             field.push(character);

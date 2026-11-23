@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/select";
 import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
 import { FilterValueInput } from "@/features/filters/filter-value-input";
+import { ElasticExactFilterHint } from "@/features/table/elastic-exact-filter-hint";
 import type { DetailedColumnInfo } from "@/lib/db";
 import { isDateFilterType, operatorNeedsValue } from "@/lib/sql-filter";
 import type { FilterCondition } from "@/lib/table-view-state";
@@ -16,6 +17,7 @@ export function FilterConditionFields({
   columns,
   columnDetails,
   focusValue,
+  filterHints = false,
   onChange,
   onSubmit,
 }: {
@@ -23,12 +25,12 @@ export function FilterConditionFields({
   columns: string[];
   columnDetails?: DetailedColumnInfo[];
   focusValue?: boolean;
+  filterHints?: boolean;
   onChange: (patch: Partial<FilterCondition>) => void;
   onSubmit: () => void;
 }) {
-  const type =
-    columnDetails?.find((column) => column.name === condition.column)?.data_type ??
-    condition.dataType;
+  const column = columnDetails?.find((column) => column.name === condition.column);
+  const type = column?.data_type ?? condition.dataType;
   const date = isDateFilterType(type);
   return (
     <div className="grid gap-2">
@@ -76,6 +78,7 @@ export function FilterConditionFields({
           className="h-8 w-full"
         />
       ) : null}
+      {filterHints && <ElasticExactFilterHint column={column} operator={condition.operator} />}
     </div>
   );
 }

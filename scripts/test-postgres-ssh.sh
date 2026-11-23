@@ -51,7 +51,7 @@ timing=(env)
 if [ "${L8DB_MEASURE:-0}" = 1 ]; then
   if [ "$(uname)" = Darwin ]; then timing=(/usr/bin/time -l); else timing=(/usr/bin/time -v); fi
 fi
-for suite in postgres_commits_only_selected_table qol_csv_failure_rolls_back_all_rows qol_cancel_isolates_server_output_and_transaction_sessions db::ssh::tests::tunnel_ export_cursor_limits_ csv_conflict_ csv_stream_large_ snapshot_ compare_large_; do
+for suite in postgres_commits_only_selected_table qol_csv_failure_rolls_back_all_rows qol_cancel_isolates_server_output_and_transaction_sessions db::ssh::tests::tunnel_ export_cursor_limits_ csv_conflict_ csv_stream_large_ db::snapshot::tests:: compare_large_; do
   selected=$(cargo test --manifest-path src-tauri/Cargo.toml --locked --lib "$suite" -- --ignored --list)
   if ! printf '%s\n' "$selected" | grep -q ': test$'; then
     printf 'Required integration suite has no tests: %s\n' "$suite" >&2

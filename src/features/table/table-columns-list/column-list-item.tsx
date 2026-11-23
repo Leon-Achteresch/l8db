@@ -1,5 +1,7 @@
 import { CheckCheckIcon, CopyIcon, PencilIcon, SaveIcon, XIcon } from "lucide-react";
 import { motion } from "motion/react";
+import type { Ref } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -7,10 +9,16 @@ import { DataTypeCombobox } from "@/features/alter-table/alter-table-view/data-t
 import { copyText } from "@/lib/clipboard";
 import { columnTypeLabel } from "@/lib/column-type";
 import type { AlterColumnRequest, DatabaseKind, DetailedColumnInfo } from "@/lib/db";
+import { mysqlColumnOnUpdate } from "@/lib/mysql-column-update";
+import { oracleColumnTextLimit } from "@/lib/oracle-column-text-limit";
+import { capabilitiesFor, DEFAULT_TERMS } from "@/lib/providers";
 import { getTypeConfig } from "./column-type-config";
+import { type ColumnUpdateFeature, ColumnUpdateRule } from "./column-update-rule";
 
 export function ColumnListItem({
   column,
+  updateFeature,
+  textLimitFeature,
   copiedColumn,
   setCopiedColumn,
   editable,
@@ -24,6 +32,8 @@ export function ColumnListItem({
   onSaveEdit,
 }: {
   column: DetailedColumnInfo;
+  updateFeature?: ColumnUpdateFeature;
+  textLimitFeature?: { ref: Ref<HTMLSpanElement>; isNew: boolean };
   copiedColumn: string | null;
   setCopiedColumn: (name: string | null) => void;
   editable: boolean;
@@ -43,6 +53,10 @@ export function ColumnListItem({
     ? "Identity"
     : column.column_default;
   const IconComponent = getTypeConfig(column.data_type, column.is_primary_key).icon;
+  const caps = capabilitiesFor(kind);
+  const updateRule = mysqlColumnOnUpdate(column, kind);
+  const textLimit = oracleColumnTextLimit(column, kind);
+  const primaryKey = caps.terms.primary_key;
 
   return (
     <motion.div
@@ -124,8 +138,11 @@ export function ColumnListItem({
               <p className="flex items-center gap-2 text-[13px] font-medium">
                 <span className="truncate">{column.name}</span>
                 {column.is_primary_key && (
-                  <span className="shrink-0 rounded-full bg-amber-500/10 px-1.5 text-[10px] font-medium text-amber-500">
-                    PK
+                  <span
+                    className="shrink-0 rounded-full bg-amber-500/10 px-1.5 text-[10px] font-medium text-amber-500"
+                    title={primaryKey}
+                  >
+                    {primaryKey === DEFAULT_TERMS.primary_key ? "PK" : primaryKey}
                   </span>
                 )}
               </p>
@@ -136,20 +153,45 @@ export function ColumnListItem({
               )}
             </div>
           </div>
-          <span className="truncate font-mono text-xs text-muted-foreground" title={dataType}>
-            {dataType}
-          </span>
-          <span
-            className={`text-xs ${column.is_nullable ? "text-muted-foreground" : "text-foreground/90"}`}
-          >
-            {column.is_nullable ? "Erlaubt" : "Pflicht"}
-          </span>
-          <span
-            className="truncate font-mono text-xs text-muted-foreground"
-            title={column.column_default ?? "Kein Standardwert"}
-          >
-            {columnDefault ?? "—"}
-          </span>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="truncate font-mono text-xs text-muted-foreground" title={dataType}>
+              {dataType}
+            </span>
+            {updateRule ? (
+              <ColumnUpdateRule expression={updateRule} feature={updateFeature} />
+            ) : null}
+            {textLimit && (
+              <span
+                ref={textLimitFeature?.ref}
+                className="flex items-center gap-1 text-[11px] leading-tight text-muted-foreground"
+                title={`Deklarierte Textgrenze: ${textLimit.length} ${textLimit.unit === "BYTE" ? "Byte" : "Zeichen"}`}
+                data-oracle-text-limit
+              >
+                {textLimit.length} {textLimit.unit}
+                {textLimitFeature?.isNew && <NewBadge />}
+              </span>
+            )}
+          </div>
+          {caps.constraints ? (
+            <>
+              <span
+                className={`text-xs ${column.is_nullable ? "text-muted-foreground" : "text-foreground/90"}`}
+              >
+                {column.is_nullable ? "Erlaubt" : "Pflicht"}
+              </span>
+              <span
+                className="truncate font-mono text-xs text-muted-foreground"
+                title={column.column_default ?? "Kein Standardwert"}
+              >
+                {columnDefault ?? "—"}
+              </span>
+            </>
+          ) : (
+            <>
+              <span />
+              <span />
+            </>
+          )}
           <div className="flex items-center justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
             {editable && (
               <Button size="icon" variant="ghost" className="size-7" onClick={onStartEdit}>

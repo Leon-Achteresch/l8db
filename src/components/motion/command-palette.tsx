@@ -159,7 +159,7 @@ export function CommandPalette({
     };
   }, [open, lockDocumentScroll]);
 
-  const { commandsOnly, unusedOnly, search } = parsePaletteQuery(
+  const { commandsOnly, objectsOnly, unusedOnly, search } = parsePaletteQuery(
     query,
     Boolean(commandFeatureId),
     Boolean(queryItems),
@@ -169,11 +169,11 @@ export function CommandPalette({
       unusedOnly
         ? NO_ITEMS
         : withHistory(
-            withoutChildren(paletteSearchItems(items, commandsOnly), search),
+            withoutChildren(paletteSearchItems(items, commandsOnly, objectsOnly), search),
             history,
             search,
           ),
-    [items, commandsOnly, unusedOnly, history, search],
+    [items, commandsOnly, objectsOnly, unusedOnly, history, search],
   );
   const { query: rankedQuery, list: ranked } = useRankedCommands(searchItems, search, maxVisible);
   const searchFeature = useNewFeatureVisibility<HTMLDivElement>(featureId);
@@ -190,12 +190,23 @@ export function CommandPalette({
   const filtered = useMemo(() => {
     const nested = withQueryItems(
       nestUnderParents(ranked, itemsById),
-      queryItems && !commandsOnly ? queryItems(rankedQuery.trim(), unusedOnly) : NO_ITEMS,
+      queryItems && !commandsOnly && !objectsOnly
+        ? queryItems(rankedQuery.trim(), unusedOnly)
+        : NO_ITEMS,
     );
-    return queryItem && !commandsOnly && !unusedOnly && rankedQuery.trim()
+    return queryItem && !commandsOnly && !objectsOnly && !unusedOnly && rankedQuery.trim()
       ? [...nested, queryItem(rankedQuery.trim())]
-      : paletteSearchItems(nested, commandsOnly);
-  }, [queryItem, queryItems, commandsOnly, unusedOnly, rankedQuery, ranked, itemsById]);
+      : paletteSearchItems(nested, commandsOnly, objectsOnly);
+  }, [
+    queryItem,
+    queryItems,
+    commandsOnly,
+    objectsOnly,
+    unusedOnly,
+    rankedQuery,
+    ranked,
+    itemsById,
+  ]);
 
   // Reserve the icon column only when at least one item brings an icon, so
   // icon-less lists don't render a dead gap before every label.
@@ -445,9 +456,11 @@ export function CommandPalette({
                     placeholder={
                       commandsOnly
                         ? "Befehl suchen…"
-                        : unusedOnly
-                          ? "Ungenutzte Funktionen…"
-                          : placeholder
+                        : objectsOnly
+                          ? "Objekt suchen…"
+                          : unusedOnly
+                            ? "Ungenutzte Funktionen…"
+                            : placeholder
                     }
                     role="combobox"
                     // The field only exists while the palette is open.

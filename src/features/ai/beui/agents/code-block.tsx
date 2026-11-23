@@ -136,7 +136,7 @@ export function CodeBlock({
                   )}
                 >
                   {showLineNumbers ? (
-                    <span className="select-none pr-3 text-right tabular-nums text-muted-foreground/35">
+                    <span className="select-none pr-3 text-right tabular-nums text-muted-foreground/60">
                       {lineNumber}
                     </span>
                   ) : null}

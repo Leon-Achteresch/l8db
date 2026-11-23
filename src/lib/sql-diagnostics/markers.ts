@@ -90,7 +90,7 @@ export function sqlErrorMarkers(
   });
   if (markers.length === 0) {
     const position = /Position: (\d+)/.exec(message);
-    const line = /\bat line (\d+)|\(line (\d+)\)/.exec(message);
+    const line = /\bat line (\d+)|\((?:line|Zeile) (\d+)\)/.exec(message);
     if (position) {
       const offset = Math.min(anchor + Number(position[1]) - 1, text.length);
       markers.push({ ...markAt(text, offset), message: summary, severity: "error" });

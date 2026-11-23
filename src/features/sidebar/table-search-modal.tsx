@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TableContentSearch } from "@/features/sidebar/table-content-search";
 import { EntityFilterPanel } from "@/features/sidebar/table-search-modal/entity-filter-panel";
 import { EntityResultList } from "@/features/sidebar/table-search-modal/entity-result-list";
@@ -85,25 +85,23 @@ export function TableSearchModal({ open, onOpenChange }: TableSearchModalProps) 
                 )}
                 autoFocus
               />
-              <TooltipProvider delayDuration={350}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Toggle
-                      size="sm"
-                      variant="outline"
-                      pressed={searchIncludeColumns}
-                      onPressedChange={setSearchIncludeColumns}
-                      aria-label="Spalten in Suche einbeziehen"
-                      className="h-7 shrink-0 px-1.5"
-                    >
-                      <Columns2Icon className="size-3.5" />
-                    </Toggle>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    {searchIncludeColumns ? "Spaltensuche deaktivieren" : "Spaltensuche aktivieren"}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <Tooltip delayDuration={350}>
+                <TooltipTrigger asChild>
+                  <Toggle
+                    size="sm"
+                    variant="outline"
+                    pressed={searchIncludeColumns}
+                    onPressedChange={setSearchIncludeColumns}
+                    aria-label="Spalten in Suche einbeziehen"
+                    className="h-7 shrink-0 px-1.5"
+                  >
+                    <Columns2Icon className="size-3.5" />
+                  </Toggle>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {searchIncludeColumns ? "Spaltensuche deaktivieren" : "Spaltensuche aktivieren"}
+                </TooltipContent>
+              </Tooltip>
               <Toggle
                 size="sm"
                 variant="outline"

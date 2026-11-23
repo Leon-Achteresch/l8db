@@ -32,9 +32,13 @@ function cleanConnectionString(connection: SavedConnection, readOnly: boolean): 
   }
   const raw = stripConnectionSecrets(connection.connectionString);
   let value = raw;
-  if (readOnly && capabilitiesFor(connection.kind).read_only_mode && raw.includes("://")) {
+  if (
+    readOnly &&
+    capabilitiesFor(connection.kind).read_only_mode &&
+    (raw.includes("://") || connection.kind === "sqlite")
+  ) {
     try {
-      value = readOnlyConnectionString(raw);
+      value = readOnlyConnectionString(raw, connection.kind);
     } catch {
       value = raw;
     }

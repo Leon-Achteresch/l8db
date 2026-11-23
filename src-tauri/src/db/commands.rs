@@ -2,11 +2,11 @@
 pub fn configure_execution_defaults(
     query_timeout: u64,
     connection_timeout: u64,
-    plsql_warnings: Option<bool>,
+    plsql_warnings: Option<super::oracle_warnings::PlsqlWarnings>,
 ) {
     super::execution::configure_defaults(query_timeout, connection_timeout);
-    if let Some(enabled) = plsql_warnings {
-        super::oracle::PLSQL_WARNINGS.store(enabled, std::sync::atomic::Ordering::Relaxed);
+    if let Some(warnings) = plsql_warnings {
+        super::oracle_warnings::set(warnings);
     }
 }
 
@@ -17,11 +17,10 @@ use super::{
     AlterSequenceRequest, AvailableExtensionInfo, ColumnInfo, ColumnMatch, CompileErrorInfo,
     CompileResult, ConstraintInfo, CreateMatviewRequest, CreatePolicyRequest,
     CreatePublicationRequest, CreateRoleOptions, CreateSubscriptionRequest, CreateTableRequest,
-    DatabaseKind, DependencyInfo, DetailedColumnInfo, ERSchema, ExtensionInfo, ForeignKeyInfo,
-    FunctionInfo, IndexInfo, InvalidCompileOutcome, InvalidObjectInfo, ObjectGrantInfo,
-    PackageMemberInfo, PrivilegeChange, ProxyUserInfo, QueryResult, RoleInfo, RolePrivileges,
-    SchedulerJobInfo, ScriptStatementResult, SequenceInfo, SourceMatch, SynonymInfo, TableData,
-    TableInfo, TriggerInfo,
+    DatabaseKind, DependencyInfo, ERSchema, ExtensionInfo, ForeignKeyInfo, FunctionInfo,
+    InvalidCompileOutcome, InvalidObjectInfo, ObjectGrantInfo, PackageMemberInfo, PrivilegeChange,
+    ProxyUserInfo, QueryResult, RoleInfo, RolePrivileges, SchedulerJobInfo, ScriptStatementResult,
+    SequenceInfo, SourceMatch, SynonymInfo, TableData, TableInfo, TriggerInfo,
 };
 use super::{ObjectAuditInfo, ObjectDdlRequest};
 
@@ -57,6 +56,9 @@ pub async fn list_providers() -> Vec<super::provider::ProviderInfo> {
 
 #[tauri::command]
 pub async fn driver_status(kind: DatabaseKind) -> super::provider::DriverStatus {
+    if let Ok(diagnosis) = super::driver_repair::diagnose(kind).await {
+        return diagnosis.status;
+    }
     let mut status = super::provider::kind_driver_status(kind);
     if kind == DatabaseKind::Jdbc {
         status.available = super::jdbc::refresh_available().await;
@@ -84,8 +86,25 @@ pub fn oracle_open_tnsnames(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
-    super::provider::install_driver(kind).await
+pub async fn install_driver(
+    kind: DatabaseKind,
+    provider: Option<String>,
+) -> Result<String, String> {
+    super::provider::install_driver(kind, provider.as_deref()).await
+}
+
+#[tauri::command]
+pub async fn diagnose_driver(
+    kind: DatabaseKind,
+) -> Result<super::driver_repair::DriverDiagnosis, String> {
+    super::driver_repair::diagnose(kind).await
+}
+
+#[tauri::command]
+pub async fn repair_driver(
+    kind: DatabaseKind,
+) -> Result<super::driver_repair::DriverRepair, String> {
+    super::driver_repair::repair(kind).await
 }
 
 #[tauri::command]
@@ -115,18 +134,32 @@ pub async fn test_connection_string(
     .await
 }
 
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+pub enum DatabaseListResponse {
+    Names(Vec<String>),
+    Buckets(super::influxdb::BucketCatalog),
+}
+
 #[tauri::command]
 pub async fn list_databases(
     kind: DatabaseKind,
     connection_string: String,
     pool_state: tauri::State<'_, PoolState>,
     options: Option<super::execution::ExecutionOptions>,
-) -> Result<Vec<String>, String> {
+    with_bucket_retention: Option<bool>,
+) -> Result<DatabaseListResponse, String> {
     super::execution::run(
         options,
         matches!(kind, DatabaseKind::Postgres | DatabaseKind::Sqlite),
         async {
             super::execution::connect(async {
+                if kind == DatabaseKind::Influxdb && with_bucket_retention == Some(true) {
+                    return super::influxdb::InfluxAdapter::new(&connection_string, None)?
+                        .database_catalog()
+                        .await
+                        .map(DatabaseListResponse::Buckets);
+                }
                 create_adapter_from_string(
                     kind,
                     &connection_string,
@@ -135,6 +168,7 @@ pub async fn list_databases(
                 )?
                 .list_databases()
                 .await
+                .map(DatabaseListResponse::Names)
             })
             .await
         },
@@ -626,6 +660,26 @@ where
 }
 
 #[tauri::command]
+pub async fn read_duckdb_file_path_context(
+    connection_string: String,
+    database: Option<String>,
+    pool_state: tauri::State<'_, PoolState>,
+) -> Result<super::DuckdbFilePathContext, String> {
+    #[cfg(feature = "duckdb")]
+    return Ok(super::duckdb::file_path_context(
+        pool_state.inner(),
+        &connection_string,
+        database.as_deref(),
+    )
+    .await);
+    #[cfg(not(feature = "duckdb"))]
+    {
+        let _ = (connection_string, database, pool_state);
+        Ok(super::DuckdbFilePathContext::Unknown)
+    }
+}
+
+#[tauri::command]
 pub async fn execute_query(
     kind: DatabaseKind,
     connection_string: String,
@@ -917,6 +971,45 @@ pub async fn duplicate_row_in_transaction(
     tx_state: tauri::State<'_, TransactionState>,
 ) -> Result<serde_json::Value, String> {
     Box::pin(tx_state.duplicate_row(&tx_id, &schema, &table, &ctid)).await
+}
+
+#[tauri::command]
+pub async fn apply_row_changes_in_transaction(
+    tx_id: String,
+    schema: String,
+    table: String,
+    changes: Vec<super::transaction::RowChange>,
+    tx_state: tauri::State<'_, TransactionState>,
+) -> Result<super::transaction::RowChangesOutcome, String> {
+    Ok(Box::pin(tx_state.apply_row_changes(&tx_id, &schema, &table, &changes)).await)
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn preview_row_changes(
+    kind: DatabaseKind,
+    connection_string: String,
+    database: Option<String>,
+    schema: String,
+    table: String,
+    changes: Vec<super::transaction::RowChange>,
+    pool_state: tauri::State<'_, PoolState>,
+    tx_state: tauri::State<'_, TransactionState>,
+    options: Option<super::execution::ExecutionOptions>,
+) -> Result<Vec<super::transaction::RowChangeSql>, String> {
+    Box::pin(super::execution::run(options, false, async {
+        super::execution::connect(tx_state.preview_row_changes(
+            kind,
+            &connection_string,
+            database.as_deref(),
+            pool_state.inner(),
+            &schema,
+            &table,
+            &changes,
+        ))
+        .await
+    }))
+    .await
 }
 
 #[tauri::command]
@@ -1544,16 +1637,27 @@ pub async fn list_table_columns_detailed(
     database: Option<String>,
     schema: String,
     table: String,
+    with_table_context: Option<bool>,
     pool_state: tauri::State<'_, PoolState>,
-) -> Result<Vec<DetailedColumnInfo>, String> {
-    create_adapter_from_string(
+) -> Result<super::column_metadata::ColumnDetailsResponse, String> {
+    use super::column_metadata::ColumnDetailsResponse;
+    let adapter = create_adapter_from_string(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
-    )?
-    .list_table_columns_detailed(&schema, &table)
-    .await
+    )?;
+    if with_table_context == Some(true) {
+        adapter
+            .describe_table_columns(&schema, &table)
+            .await
+            .map(ColumnDetailsResponse::Table)
+    } else {
+        adapter
+            .list_table_column_metadata(&schema, &table)
+            .await
+            .map(ColumnDetailsResponse::Columns)
+    }
 }
 
 #[tauri::command]
@@ -1770,14 +1874,14 @@ pub async fn list_indexes(
     schema: String,
     table: String,
     pool_state: tauri::State<'_, PoolState>,
-) -> Result<Vec<IndexInfo>, String> {
+) -> Result<Vec<super::index_metadata::IndexMetadata>, String> {
     create_adapter_from_string(
         kind,
         &connection_string,
         database.as_deref(),
         pool_state.inner().clone(),
     )?
-    .list_indexes(&schema, &table)
+    .list_index_metadata(&schema, &table)
     .await
 }
 

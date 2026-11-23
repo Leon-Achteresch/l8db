@@ -1,6 +1,8 @@
 import {
+  AlignLeftIcon,
   ArrowDownToLineIcon,
   ArrowUpToLineIcon,
+  BinaryIcon,
   BookmarkCheckIcon,
   BookmarkIcon,
   BookmarkPlusIcon,
@@ -9,18 +11,20 @@ import {
   EraserIcon,
   FileCodeIcon,
   FolderOpenIcon,
+  GitCompareArrowsIcon,
   HistoryIcon,
   LibraryIcon,
   MoreHorizontalIcon,
   PackageSearchIcon,
+  RefreshCwIcon,
   SaveAllIcon,
   SaveIcon,
+  SquareStackIcon,
   TerminalIcon,
   TextSearchIcon,
-  WandSparklesIcon,
   WrenchIcon,
 } from "lucide-react";
-import { type RefObject, useRef } from "react";
+import { type RefObject, useRef, useState } from "react";
 import {
   IconMenu,
   IconMenuContent,
@@ -33,10 +37,39 @@ import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuSub, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
+import { REVIEW_SQL_FORMAT_ACTION } from "@/features/query/query-editor-pane/types";
+import type { SavedConnection } from "@/lib/connections";
+import { readDuckdbFilePathContext } from "@/lib/db/duckdb-path-context";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
-import { useHasNewFeatures } from "@/lib/new-features";
+import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
+import { effectiveConnectionString } from "@/lib/ssh";
 
 import { EDITOR_ACTIONS } from "./constants";
+import { DuckdbFilePathDialog, type DuckdbPathHelp } from "./duckdb-file-path-dialog";
+import { PgvectorReferenceDialog } from "./pgvector-reference-dialog";
+import {
+  PostgresTransactionContextDialog,
+  type PostgresTransactionStatus,
+} from "./postgres-transaction-context-dialog";
+import type { QueryFileEncodingAction } from "./use-query-file-actions";
+
+interface DuckdbPathScope {
+  connection: SavedConnection;
+  database: string | null;
+  transaction: boolean;
+}
+
+async function readPathHelp(scope: DuckdbPathScope): Promise<DuckdbPathHelp> {
+  if (scope.transaction) return { state: "transaction" };
+  try {
+    return await readDuckdbFilePathContext(
+      effectiveConnectionString(scope.connection),
+      scope.database ?? undefined,
+    );
+  } catch {
+    return { state: "unknown" };
+  }
+}
 
 interface QueryToolsMenuProps {
   editorApiRef: RefObject<QueryEditorApi | null>;
@@ -44,9 +77,15 @@ interface QueryToolsMenuProps {
   hasSql: boolean;
   connected: boolean;
   isSql: boolean;
+  pgvectorReferenceAvailable?: boolean;
+  duckdbPathScope?: DuckdbPathScope;
+  postgresTransaction?: PostgresTransactionStatus;
+  hasResult: boolean;
   serverOutput: boolean;
   bookmarkCount: number;
   filePath: string | null;
+  fileBusy: boolean;
+  fileRequiresUtf8Copy: boolean;
   isRunning: boolean;
   onOpenHistory: () => void;
   onOpenOutput: () => void;
@@ -55,6 +94,7 @@ interface QueryToolsMenuProps {
   onOpenTabSearch: () => void;
   onClearBookmarks: () => void;
   onFileOpen: () => void;
+  onChooseFileEncoding: (action: QueryFileEncodingAction) => void;
   onFileSave: (saveAs: boolean) => void;
   onClearEditor: () => void;
 }
@@ -65,9 +105,15 @@ export function QueryToolsMenu({
   hasSql,
   connected,
   isSql,
+  pgvectorReferenceAvailable = false,
+  duckdbPathScope,
+  postgresTransaction,
+  hasResult,
   serverOutput,
   bookmarkCount,
   filePath,
+  fileBusy,
+  fileRequiresUtf8Copy,
   isRunning,
   onOpenHistory,
   onOpenOutput,
@@ -76,16 +122,47 @@ export function QueryToolsMenu({
   onOpenTabSearch,
   onClearBookmarks,
   onFileOpen,
+  onChooseFileEncoding,
   onFileSave,
   onClearEditor,
 }: QueryToolsMenuProps) {
   const packageMembers = useNewFeatureVisibility<HTMLDivElement>("query.tools.package-members");
-  const toolsNew = useHasNewFeatures("query.tools") && isSql;
+  const fileEncoding = useNewFeatureVisibility<HTMLDivElement>("query.tools.file.encoding");
+  const formatReview = useNewFeatureVisibility<HTMLDivElement>("query.tools.format-review");
+  const pgvectorReference = useNewFeatureVisibility<HTMLDivElement>(
+    "query.tools.pgvector-reference",
+  );
+  const duckdbPath = useNewFeatureVisibility<HTMLDivElement>("query.tools.duckdb-file-path");
+  const transactionContext = useNewFeatureVisibility<HTMLDivElement>(
+    "query.tools.postgres-transaction-context",
+  );
+  const trigger = useRef<HTMLButtonElement>(null);
+  const pendingHelp = useRef<"pgvector" | "duckdb" | "postgres-transaction" | null>(null);
+  const [referenceOpen, setReferenceOpen] = useState(false);
+  const [transactionContextOpen, setTransactionContextOpen] = useState(false);
+  const [duckdbHelp, setDuckdbHelp] = useState<{
+    connection: SavedConnection;
+    request: Promise<DuckdbPathHelp>;
+  } | null>(null);
+  const seen = useSeenNewFeatures();
+  const fileNew = hasNewFeatures("query.tools.file", seen);
+  const hiddenNewTools = [
+    ...(pgvectorReference.isNew && !pgvectorReferenceAvailable
+      ? ["query.tools.pgvector-reference" as const]
+      : []),
+    ...(duckdbPath.isNew && !duckdbPathScope ? ["query.tools.duckdb-file-path" as const] : []),
+    ...(transactionContext.isNew && !postgresTransaction
+      ? ["query.tools.postgres-transaction-context" as const]
+      : []),
+  ];
+  const visibleToolsSeen = hiddenNewTools.length ? new Set([...seen, ...hiddenNewTools]) : seen;
+  const toolsNew = hasNewFeatures("query.tools", visibleToolsSeen) && isSql;
   const pendingAction = useRef<string | null>(null);
   return (
     <IconMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
+          ref={trigger}
           data-feature="query.tools"
           size="icon-sm"
           variant="ghost"
@@ -99,6 +176,26 @@ export function QueryToolsMenu({
       </DropdownMenuTrigger>
       <IconMenuContent
         onCloseAutoFocus={(event) => {
+          const help = pendingHelp.current;
+          pendingHelp.current = null;
+          if (help === "pgvector") {
+            event.preventDefault();
+            setReferenceOpen(true);
+            return;
+          }
+          if (help === "duckdb" && duckdbPathScope) {
+            event.preventDefault();
+            setDuckdbHelp({
+              connection: duckdbPathScope.connection,
+              request: readPathHelp(duckdbPathScope),
+            });
+            return;
+          }
+          if (help === "postgres-transaction" && postgresTransaction) {
+            event.preventDefault();
+            setTransactionContextOpen(true);
+            return;
+          }
           const id = pendingAction.current;
           if (!id) return;
           pendingAction.current = null;
@@ -152,13 +249,28 @@ export function QueryToolsMenu({
             />
             {isSql && (
               <IconMenuItem
-                icon={<WandSparklesIcon />}
+                icon={<AlignLeftIcon />}
                 label="SQL formatieren"
                 shortcut={shortcutLabel("query.format")}
                 data-hotkey="query.format"
                 onSelect={() => editorApiRef.current?.format()}
                 disabled={!hasSql}
               />
+            )}
+            {isSql && (
+              <IconMenuItem
+                ref={formatReview.ref}
+                icon={<GitCompareArrowsIcon />}
+                label="Formatierung vergleichen…"
+                onSelect={() => {
+                  pendingAction.current = REVIEW_SQL_FORMAT_ACTION;
+                }}
+                disabled={!hasSql}
+              >
+                {formatReview.isNew && (
+                  <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
+                )}
+              </IconMenuItem>
             )}
             {isSql && (
               <IconMenuItem
@@ -173,6 +285,48 @@ export function QueryToolsMenu({
                 disabled={!hasSql}
               >
                 {packageMembers.isNew && (
+                  <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
+                )}
+              </IconMenuItem>
+            )}
+            {pgvectorReferenceAvailable && (
+              <IconMenuItem
+                ref={pgvectorReference.ref}
+                icon={<BookOpenIcon />}
+                label="pgvector-Referenz…"
+                onSelect={() => {
+                  pendingHelp.current = "pgvector";
+                }}
+              >
+                {pgvectorReference.isNew && (
+                  <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
+                )}
+              </IconMenuItem>
+            )}
+            {duckdbPathScope && (
+              <IconMenuItem
+                ref={duckdbPath.ref}
+                icon={<FolderOpenIcon />}
+                label="DuckDB-Dateipfade…"
+                onSelect={() => {
+                  pendingHelp.current = "duckdb";
+                }}
+              >
+                {duckdbPath.isNew && (
+                  <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
+                )}
+              </IconMenuItem>
+            )}
+            {postgresTransaction && (
+              <IconMenuItem
+                ref={transactionContext.ref}
+                icon={<SquareStackIcon />}
+                label="PostgreSQL-Lesekontext…"
+                onSelect={() => {
+                  pendingHelp.current = "postgres-transaction";
+                }}
+              >
+                {transactionContext.isNew && (
                   <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
                 )}
               </IconMenuItem>
@@ -223,24 +377,53 @@ export function QueryToolsMenu({
           </IconMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSub>
-          <IconMenuSubTrigger icon={<FileCodeIcon />} label="Datei" />
+          <IconMenuSubTrigger icon={<FileCodeIcon />} label="Datei">
+            {fileNew && <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />}
+          </IconMenuSubTrigger>
           <IconMenuSubContent>
             <IconMenuItem
               icon={<FolderOpenIcon />}
               label="SQL-Datei öffnen…"
               onSelect={onFileOpen}
+              disabled={fileBusy}
             />
             <IconMenuItem
-              icon={<SaveIcon />}
-              label={filePath ? "Speichern" : "Speichern unter…"}
-              onSelect={() => onFileSave(false)}
-              disabled={!hasSql && !filePath}
-            />
+              ref={fileEncoding.ref}
+              icon={<BinaryIcon />}
+              label="SQL-Datei mit Kodierung öffnen…"
+              onSelect={() => onChooseFileEncoding("open")}
+              disabled={fileBusy}
+            >
+              {fileEncoding.isNew && (
+                <NewBadge className="absolute -right-1 -top-1 px-1 text-[8px]" />
+              )}
+            </IconMenuItem>
             {filePath && (
+              <IconMenuItem
+                icon={<RefreshCwIcon />}
+                label="Datei mit Kodierung neu laden…"
+                onSelect={() => onChooseFileEncoding("reload")}
+                disabled={fileBusy}
+              />
+            )}
+            <IconMenuItem
+              icon={<SaveIcon />}
+              label={
+                fileRequiresUtf8Copy
+                  ? "UTF-8-Kopie speichern…"
+                  : filePath
+                    ? "Speichern"
+                    : "Speichern unter…"
+              }
+              onSelect={() => onFileSave(false)}
+              disabled={fileBusy || (!hasSql && !filePath)}
+            />
+            {filePath && !fileRequiresUtf8Copy && (
               <IconMenuItem
                 icon={<SaveAllIcon />}
                 label="Speichern unter…"
                 onSelect={() => onFileSave(true)}
+                disabled={fileBusy}
               />
             )}
             <IconMenuItem
@@ -253,6 +436,27 @@ export function QueryToolsMenu({
           </IconMenuSubContent>
         </DropdownMenuSub>
       </IconMenuContent>
+      {pgvectorReferenceAvailable && referenceOpen && (
+        <PgvectorReferenceDialog
+          onClose={() => setReferenceOpen(false)}
+          onRestoreFocus={() => trigger.current?.focus()}
+        />
+      )}
+      {duckdbHelp && duckdbPathScope?.connection === duckdbHelp.connection && (
+        <DuckdbFilePathDialog
+          request={duckdbHelp.request}
+          onClose={() => setDuckdbHelp(null)}
+          onRestoreFocus={() => trigger.current?.focus()}
+        />
+      )}
+      {postgresTransaction && transactionContextOpen && (
+        <PostgresTransactionContextDialog
+          transaction={postgresTransaction}
+          hasResult={hasResult}
+          onClose={() => setTransactionContextOpen(false)}
+          onRestoreFocus={() => trigger.current?.focus()}
+        />
+      )}
     </IconMenu>
   );
 }

@@ -85,6 +85,7 @@ const { getUpdatePromptState, installUpdateAndRelaunch, presentUpdate, setPendin
 const { useTransactionStore } = await import("../src/lib/transactions");
 const { useTasksStore } = await import("../src/lib/tasks");
 const { useTableTabs } = await import("../src/lib/table-tabs");
+const { stageUpdate, useStagedEdits } = await import("../src/lib/staged-edits");
 const { collectUpdateBlockers, describeUpdateBlockers } = await import(
   "../src/lib/update-blockers"
 );
@@ -112,6 +113,7 @@ beforeEach(() => {
   useTransactionStore.setState({ transactions: [] });
   useTasksStore.setState({ tasks: [] });
   useTableTabs.setState({ tabs: [], tabsByConnection: {} });
+  useStagedEdits.setState({ tables: {}, committing: [] });
   useSettingsStore.setState({
     autoUpdateCheck: true,
     autoUpdateInstall: true,
@@ -178,6 +180,21 @@ describe("silent auto-update", () => {
     expect(getUpdatePromptState().open).toBe(true);
   });
 
+  test("does not relaunch while grid edits are staged and not yet committed", async () => {
+    stageUpdate(
+      { connectionId: "c1", database: null, schema: "public", table: "items" },
+      "ctid-1",
+      { name: "b" },
+      { id: 1, name: "a" },
+    );
+    expect((await collectUpdateBlockers()).staged).toBe(1);
+    await runCheck();
+    expect(events).not.toContain("relaunch");
+    expect(events.some((e) => e.startsWith("install"))).toBe(false);
+    expect(events).toContain("toast:Update auf Version 9.9.9 wartet");
+    expect(getUpdatePromptState().open).toBe(true);
+  });
+
   test("stops before installing when work starts during the download", async () => {
     onDownloaded = () => {
       backendTransactions = ["tx-started-mid-download"];
@@ -229,11 +246,14 @@ describe("update blockers", () => {
       ],
     });
     const blockers = await collectUpdateBlockers();
-    expect(blockers).toEqual({ transactions: 2, tasks: 1, files: 2 });
+    expect(blockers).toEqual({ transactions: 2, tasks: 1, files: 2, staged: 0 });
     expect(describeUpdateBlockers(blockers)).toBe(
       "2 offene Transaktionen · 1 laufende Aufgabe · 2 ungespeicherte Dateien",
     );
-    expect(describeUpdateBlockers({ transactions: 0, tasks: 0, files: 0 })).toBeNull();
+    expect(describeUpdateBlockers({ transactions: 0, tasks: 0, files: 0, staged: 0 })).toBeNull();
+    expect(describeUpdateBlockers({ transactions: 0, tasks: 0, files: 0, staged: 3 })).toBe(
+      "3 nicht übernommene Änderungen",
+    );
   });
 });
 

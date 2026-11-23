@@ -19,4 +19,10 @@ export type {
   CsvParseResult,
   ImportTargetColumn,
 } from "./types";
-export { CSV_DELIMITERS, CSV_MAX_BYTES, CSV_MAX_IMPORT_ROWS, CSV_PREVIEW_ROWS } from "./types";
+export {
+  CSV_DELIMITERS,
+  CSV_MAX_BYTES,
+  CSV_MAX_IMPORT_ROWS,
+  CSV_MAX_VALIDATION_ERRORS,
+  CSV_PREVIEW_ROWS,
+} from "./types";

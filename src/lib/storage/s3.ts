@@ -228,7 +228,7 @@ export function emptyLifecycleRule(index: number): LifecycleRule {
     id: `rule-${index + 1}`,
     enabled: true,
     prefix: "",
-    expirationDays: 30,
+    expirationDays: null,
     noncurrentDays: null,
     abortMultipartDays: 7,
     expiredDeleteMarker: false,

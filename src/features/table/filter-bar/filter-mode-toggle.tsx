@@ -1,5 +1,8 @@
 import { Code2Icon, SlidersHorizontalIcon } from "lucide-react";
+import { NewBadge } from "@/components/new-badge";
 import type { FilterMode } from "@/features/table/table-filter-panel/filter-types";
+import { useActiveConnection } from "@/lib/connections";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { cn } from "@/lib/utils";
 
 export function FilterModeToggle({
@@ -11,6 +14,8 @@ export function FilterModeToggle({
   sqlLabel: string;
   onChange: (mode: FilterMode) => void;
 }) {
+  const kind = useActiveConnection()?.kind;
+  const hasNewGrouping = useHasNewFeatures("table.filter.grouping");
   return (
     <fieldset
       aria-label="Filtermodus"
@@ -41,6 +46,11 @@ export function FilterModeToggle({
             <Code2Icon className="size-3" />
           )}
           {value === "simple" ? "Einfach" : sqlLabel}
+          {value === "sql" && mode === "simple" && kind === "postgres" && hasNewGrouping ? (
+            <span aria-hidden="true">
+              <NewBadge />
+            </span>
+          ) : null}
         </button>
       ))}
     </fieldset>

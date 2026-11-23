@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { BaasConnectForm } from "@/features/baas/baas-connect-form";
 import { BAAS_PROVIDERS, type BaasProvider } from "@/features/baas/baas-providers";
 import { serverLabel } from "@/lib/connection-groups";
+import { installsOwnDriver } from "@/lib/drivers";
 import { ConnectionDetailsStep } from "./connection-editor/details-step";
 import { ConnectionProviderStep } from "./connection-editor/provider-step";
 import { ConnectionTestResultStatus } from "./connection-editor/test-result-status";
@@ -144,7 +145,7 @@ export function ConnectionEditor({
             {step === 1 ? (
               <Button
                 type="button"
-                disabled={busy || !info.driver_status.available}
+                disabled={busy || !(info.driver_status.available || installsOwnDriver(info))}
                 disabledReason={
                   busy ? "Vorgang läuft bereits" : "Treiber für diese Datenbank nicht verfügbar"
                 }

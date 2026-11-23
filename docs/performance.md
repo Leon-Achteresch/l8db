@@ -443,3 +443,750 @@ The end-to-end run (`L8DB_CLI_E2E=1 bun test tests/cli-e2e.test.ts`, SQLite, pse
 ### Missing coverage
 
 Windows and Linux were type-checked only (`cargo check --target x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu` on a scratch crate with the TUI modules); the TUI has not run on either. Drivers other than SQLite were not exercised through the TUI. Retained memory was bounded by construction and by the row cap, not measured as process RSS. No throttled-CPU run.
+
+
+## Lokale Importvorprüfung: NULL-Verletzungen
+
+`tests/perf-csv-validation.test.ts` gehört zur Core-Suite und kann einzeln laufen.
+Der synchrone Prüfschritt scannt die geladenen Datensätze, zählt alle Verletzungen
+zugeordneter NOT-NULL-Spalten und hält höchstens zehn Fehlerdetails. Er startet
+keine Datei-/Datenbankzugriffe, Timer oder Hintergrundläufe; ein Abbruch eines
+laufenden Hintergrundjobs ist daher nicht anwendbar. Der Idle-Test prüft, dass
+nach Rückkehr keine weiteren Zellzugriffe stattfinden. Dies ist keine vollständige
+Datei-, Typ-, Unique-, FK- oder Triggerprüfung und kein erfolgreicher Probeimport.
+
+Messung vom 16.11.2026: macOS/Darwin 27.0.0, arm64, Apple M3, 16 GiB RAM,
+Bun 1.3.10. 10.000 Datensätze × 32 NOT-NULL-Spalten, 320.000 Verletzungen,
+15 gemessene Durchläufe nach zwei Warmläufen: Median 1,41 ms, p95 1,48 ms.
+Nach zehn zusätzlichen Durchläufen und GC blieben 29.131 Bytes zusätzliche
+JS-Heapgröße; dies ist eine lokale Heapmessung, kein RSS- oder Native-Heap-Beweis.
+Der Bericht enthält zehn Details und bleibt im Szenario unter 2.000 Zeichen.
+Budgets: Median < 50 ms, p95 < 100 ms, zusätzlicher gehaltener JS-Heap < 4 MiB.
+Keine Browser-/DOM-Leistungsmessung, Windows-/Linux-Messung oder Live-Datenbank
+in diesem Paket; keine CPU-/Heap-Simulation als Plattformabdeckung ausgegeben.
+
+
+## Vollständiger schreibfreier CSV-Dateicheck
+
+Der Import bietet „CSV-Datei prüfen“ über `check_csv_file` an. Der Befehl nimmt
+keine Verbindung oder SQL entgegen und verwendet `import_source::open_csv_records`
+mit dem vorhandenen Streamingparser. Die gewählte Datei muss im Tauri-FS-Scope
+liegen. Parsergrenzen bleiben 1 GiB pro Datei und 1 MiB pro Datensatz; der
+bestehende Encoding-Test liest höchstens 2 MiB zusätzlich. Es werden keine
+Dateiinhalte oder sämtliche Befunde gesammelt: ein Datensatz zur Zeit, exakte
+Anzahl vollständig gelesener Datensätze und höchstens zehn Details ohne Zellwerte.
+Strukturfehler und explizite NULL-Verletzungen werden gezählt, ein nicht mehr
+sicher fortsetzbarer Parserfehler beendet den Lauf als unvollständig.
+
+Ein globaler Slot erlaubt höchstens einen aktiven Dateiscan. Ein wartender Check
+kann abbrechen, bevor er die Datei öffnet; aktive Checks kontrollieren den Token
+je Zeichen. Betriebssystemseitig blockierende Datei-/Metadatenzugriffe sind nicht
+hart unterbrechbar. Fortschritt entsteht ereignisgesteuert statt durch Polling:
+Anfang/Ende und höchstens etwa zehn Zwischenmeldungen je Sekunde. Nach Rückkehr
+bleibt kein Scan oder Hintergrundtimer aktiv.
+
+Der Bericht ist ein Dateistand, kein Probeimport: keine Datentyp-/Wertebereichs-,
+Unique-, FK- oder Triggergarantie. Quell-/Zuordnungs-/Optionswechsel verwerfen den
+Bericht sofort und brechen den alten Lauf ab; späte Antworten werden ignoriert.
+Ein bestätigter Abbruch kann seine tatsächlich gelesene Teilanzahl anzeigen,
+niemals eine vollständige Freigabe. Größen-/Zeitstempeländerungen während des
+Scans und vor späterem Import werden abgeglichen. Das ist kein Hashnachweis oder
+atomarer Dateilock; beliebige Änderungen mit erhaltenem Zeitstempel bzw. zwischen
+letzter Prüfung und Import sind dadurch nicht ausgeschlossen.
+
+Gezielte native Regressionen: `CARGO_BUILD_JOBS=2 cargo test --lib db::csv_ -- --nocapture --test-threads=1`
+im Verzeichnis `src-tauri`. Das deckt den gemeinsamen Parser, späte Struktur-/
+NULL-Befunde, EOF-/Header-/CR-/CRLF-/Multiline-Fälle, Dateiveränderung, Abbruch vor
+und während des Scans, Warteschlange, Fortschrittsbegrenzung und 1-MiB-Grenze ab.
+Der Performancefall liest 100.000 Datensätze mit zwei Pflichtspalten und 200.000
+Befunden: zwei Warmläufe, fünf Messläufe, Medianbudget < 1.500 ms und p95 < 2.500 ms
+im Debug-Testprofil; Bericht < 3.000 Bytes und zehn Details im Szenario. Das sind
+lokale Tempdateien, keine Live-Datenbankzugriffe oder allgemeine Netzwerk-FS-Messung.
+
+Frontend: `tests/csv-file-check*.test.ts(x)` prüft den echten Bridgevertrag,
+Abbruch beim Backend-Start, Listenerbereinigung, verspätete Antworten, erneute
+Prüfung sowie den eingeschränkten UI-Erfolgstext. Der zusätzliche Core-Performancefall
+in `tests/perf-csv-validation.test.ts` misst 1.000 Report-Invalidierungen mit 9
+Messläufen: Median 0,74 ms, p95 1,64 ms, zusätzlicher gehaltener JS-Heap nach GC
+8.579 Bytes; Budgets < 50/< 100 ms und < 4 MiB. Gemessen am 16.11.2026 auf
+macOS/Darwin 27.0.0, arm64, Apple M3, 16 GiB, Bun 1.3.10. Der eingespritzte
+Controllerlauf startet keine nativen Requests. Keine Browser-/DOM-Leistungs- oder
+Windows-/Linux-Abdeckung, kein RSS-/Native-Heap-Nachweis; die native Speichergrenze
+wird hier durch begrenzte Datensatz- und Berichthaltung geprüft, nicht als
+plattformweite Speicherprofilierung ausgegeben.
+
+Native Abschlussmessung dieses Pakets am 16.11.2026 auf demselben Mac im Debug-
+Testprofil: 100.000 Datensätze, zwei Spalten, 200.000 Befunde, Median 67,29 ms,
+p95 68,99 ms, Bericht 996 Bytes. Abbruch im großen Datensatz: 1,81 ms in der
+lokalen Tempdatei, Budget < 1 s. Alle 15 gezielten nativen CSV-Tests bestanden;
+Warteschlangenabbruch öffnet keine Datei und der Scan gibt seinen einen Slot
+wieder frei. Keine Aussage über harte Abbruchlatenz auf blockierenden externen
+Dateisystemen oder andere Plattformen.
+
+
+## SQL-Server-Indexrollen (A37)
+
+Der vorhandene `list_indexes`-Lesebefehl kann optionale `roles` liefern. Die
+Trait-Standardmethode übernimmt andere Adapter ohne Rollenänderung; deren JSON
+enthält weiterhin nur die bisherigen Indexfelder. Der native SQL-Server-Pfad
+liest Schlüsselrang/-richtung, INCLUDE und Filter in einer Katalogabfrage mit
+LEFT JOINs. `ROW_NUMBER` überträgt den Filtertext nur einmal pro Index; die
+Zusammenführung erhält ihn auch bei umgeordneten Zeilen. Treiberzeilen werden
+vor der eigentlichen Gruppierung freigegeben; kein Nachladen je Index oder
+neuer Hintergrund-/Pollingprozess kommt hinzu.
+
+Gewöhnliche Clustered-/Nonclustered-Indizes werden als Schlüssel, INCLUDE und
+sonstige/nicht eingeordnete Indexspalten dargestellt. Rang 0 ist nicht allgemein
+INCLUDE; beispielsweise werden Columnstore-Spalten nicht zu INCLUDE-Schlüsseln
+umgedeutet. Filterzustände sind `none`, `known` mit Prädikat, `unavailable`
+(Filter vorhanden, Text nicht verfügbar) und `unknown`. Fehlender Text erzeugt
+keine unfiltrierte CREATE-Definition. Nur bekannte Zeilenindexrollen erlauben
+die ausdrücklich rekonstruierte Schlüssel-/INCLUDE-/Filterdefinition; das ist
+kein vollständiger SQL-Server-DDL-Roundtrip mit allen Optionen/Dateigruppen.
+Bei unbekannten Rollen oder Sondertypen bleibt die Definition unverfügbar.
+Der bestehende Tabellen-DDL-Weg bricht bei einer solchen benötigten Definition
+explizit ab, statt ein unvollständiges Statement als vollständigen Export zu zeigen.
+
+Katalogfixtures in `src-tauri/src/db/mssql/indexes.fixture.json` sind synthetische
+Beispiele der tatsächlich abgefragten Katalogfelder, keine Produktionsdaten oder
+hier aufgenommenen Live-Serverergebnisse. Tests prüfen Reihenfolge/Richtung,
+INCLUDE, Prädikat, ausgeblendeten Filtertext, NULL-Metadaten, Sondertypen,
+Identifierquoting, umgeordnete Zeilen und kompatibles Legacy-JSON. Gezielter Lauf:
+`CARGO_BUILD_JOBS=2 cargo test --lib db::mssql::indexes::tests -- --nocapture --test-threads=1`
+in `src-tauri`. Der Mapping-Performancefall verwendet 1.000 Indizes und 12.000
+Katalogzeilen, zwei Warmläufe und sieben Messungen. Budgets: Median < 250 ms,
+p95 < 500 ms, serialisierter Ausgabevertrag < 2 MiB im Szenario. Das ist reine
+Zuordnung mit null Datenbankzugriffen; keine gemessene Live-Kataloglatenz.
+
+`tests/index-metadata-transport.test.ts` prüft eine bestehende Bridge-Anfrage
+samt optionalen Rollen ohne Folgeanfrage oder neue Idle-Aktivität. Die bestehende
+Indexansicht zeigt zunächst höchstens acht INCLUDE- und acht sonstige Spalten
+je Index und bietet gezieltes Erweitern; bekannte Schlüssel bleiben in ihrer
+Reihenfolge. `tests/perf-index-roles.test.tsx` rendert 500 Indizes mit je 128
+INCLUDE-Spalten als SSR-Markup: 5.000 anfängliche Spalten-Chips, 1.449.011 Bytes
+Markup, Median 31,70 ms, p95 123,42 ms bei neun Messungen nach zwei Warmläufen.
+Nach fünf weiteren Läufen und GC blieben 728 Bytes zusätzlicher JS-Heap.
+Budgets: Median < 250 ms, p95 < 500 ms, zusätzlicher JS-Heap < 8 MiB,
+Markup < 4 MiB. Gemessen am 16.11.2026 auf macOS/Darwin 27.0.0, arm64,
+Apple M3, 16 GiB, Bun 1.3.10. Dies ist SSR-Ausgabe, keine Browser-Layoutmessung
+oder manuelle visuelle Abnahme. Keine Live-SQL-Server-/Windows-/Linux-Messung,
+keine Simulation als Plattformabdeckung und kein Native-/RSS-Profil behauptet.
+
+Native Abschlussmessung der Katalogzuordnung auf demselben Mac im Debug-Testprofil
+(Rust 1.99.0): Median 19,80 ms, p95 21,58 ms, serialisierter Vertrag 723.001 Bytes
+für 1.000 Indizes/12.000 Zeilen. Diese Zahlen enthalten weder Netzwerk-/Serverzeit
+noch das Tiberius-Decoding; es ist kein Vergleichsbenchmark des alten, semantisch
+unvollständigen Vertrags. 20 gezielte native MSSQL-Tests bestanden, zehn bestehende
+Live-DB-Tests blieben ignoriert. Nach dem Filtertext-/Zusammenführungsfix wurden
+nur die sechs betroffenen Katalogtests erneut geprüft und bestanden. Keine neuen
+Indizes angelegt oder produktiven Datenbanken verändert.
+
+
+## Messumfang der Abfragezeit (A38)
+
+Der vorhandene Ergebnisstatus kennzeichnet direkte PostgreSQL-/MySQL-Ergebnisse
+als „inkl. Ergebnisübernahme“. Die UI speichert den geprüften Messumfang am
+zurückgegebenen Ergebnis; der aufrufende Anbietertyp wird vor dem Request
+festgehalten. Ein späterer Verbindungswechsel etikettiert alte Ergebnisse nicht um.
+Es gibt keine neue Uhr, Serverzeit-Schätzung, Phasenaufteilung oder Zusatzabfrage.
+
+Belegt sind `postgres.rs::run_simple_query`/`SimpleResult::finish`,
+`postgres.rs::run_params_query` und `mysql.rs::read_query`: Der native Timer beginnt
+vor Abfrage beziehungsweise Vorbereitung und endet nach Empfang und Aufbau der
+Ergebnisdaten. Das umfasst Serverarbeit und Ergebnistransport, ist keine reine
+Serverzeit. Verbindungsaufbau, nachfolgende Nacharbeiten (etwa MySQL-Warnungen),
+IPC-Übergabe und Darstellung gehören nicht dazu. Read-only-Wrapper und
+PG-Serverausgabe behalten denselben inneren Timer. Die Anzeige erklärt den Umfang
+per Tastatur- und Hover-Tooltip im bestehenden Status, ohne Zahlen zu verändern.
+
+Andere Anbieter, alte unmarkierte Ergebnisse und Skript-/verwaltete
+Transaktionsergebnisse bleiben ausdrücklich „Messumfang unbekannt“; dort fehlt
+im UI-Vertrag ein geprüfter Messumfang beziehungsweise der tatsächliche Treiber.
+Lokale emulierte Sitzungsview-Schritte werden als „Nicht gemessen“ markiert:
+Ihr bestehender Zeitwert 0 ist ein Platzhalter, kein gemessener DB-Zeitwert.
+Eine eventuell nötige Metadatenprobe wird dadurch nicht als zugriffsfrei erklärt.
+Der native `QueryResult`-Bridge-Vertrag bleibt unverändert; `timingScope` ist
+optionale Ergebnis-Metainformation der UI.
+
+`tests/perf-query-result-timing.test.ts` prüft 10.000 Statusaktualisierungen auf
+einem Ergebnis mit 100.000 Zeilen, zwei Warmläufe und neun Messungen. Jede
+Zell-/Zeilenmaterialisierung löst im Fixture einen Fehler aus. Gemessen am
+16.11.2026: Median 1,350 ms, p95 1,642 ms; nach fünf weiteren Läufen und GC
+1.224 Bytes zusätzlicher JS-Heap. Budgets: Median < 50 ms, p95 < 100 ms,
+zusätzlicher JS-Heap < 4 MiB. Null Zellzugriffe und null DB-Requests; nach Idle
+keine nachträgliche Zeilenarbeit. Kein neuer Hintergrundlauf, daher kein eigener
+Abbruchmechanismus nötig. Das ist ein additiver Statusbenchmark, kein Vergleich
+der nativen Abfragedauer vor/nach einer Optimierung.
+
+Plattform: macOS/Darwin 27.0.0, arm64, Apple M3, 16 GiB RAM, Bun 1.3.10.
+Semantik-/Transportmocktests und SSR prüfen die Kennzeichnung, erhaltene Zahlen,
+Unbekannt-/Null-Platzhalter und tastaturzugängliches Status-Markup. Keine
+Live-Datenbanken, Browser-/Native-App-Abnahme, Windows/Linux, CPU-Simulation
+oder native/RSS-Messung; keine Rust-/Adapteränderungen in diesem Paket.
+
+
+## SQL-Server-Zeilenversionen (A40)
+
+SQL-Server-Spaltenmetadaten verwenden für den nativen Typnamen `timestamp`
+das gleichbedeutende `rowversion`. Das gilt nur im MSSQL-Adapter: einfache
+`ColumnInfo` und detaillierte `DetailedColumnInfo` erhalten denselben kanonischen
+Namen. Es gibt keine neue Bridge-Eigenschaft, Zusatzabfrage oder Wertkonvertierung.
+Der native DDL-Weg behält `timestamp`, wenn der Server diesen Namen liefert;
+Rohwerte bleiben in der bestehenden binären Hexdarstellung. Andere Adapter und
+echte Zeittypen wie `datetime2`, PostgreSQL-/MySQL-`timestamp` bleiben erhalten.
+
+Gemeinsame Verbraucher erkennen `rowversion` als opaken Text-/Binärwert:
+kein Datumstyp aus Zeilensamples, kein Enum-Vermutungswert, kein fiktiver
+Längenparameter `rowversion(8)`. Bestehende Spaltenfilter, Datumsoperatoren,
+Datumsbeispiele und Dashboard-Typprüfung bekommen damit den korrekten Typ.
+Die Korrektur setzt frisch geladene Metadaten voraus; historische, separat
+gespeicherte Typtexte und alte Cache-Snapshots werden nicht migriert.
+
+`tests/fixtures/mssql-rowversion-types.json` ist ein synthetisches gemeinsames
+Katalogfixture für native und TS-Tests: Alias-Großschreibung, beide Namen,
+echte Zeittypen sowie unveränderte Dezimal-/Binärtypen. Native Tests prüfen
+zusätzlich den unveränderten DDL-Ausdruck, die direkte Spaltenprojektion und
+bestehendes binäres Wertdecoding. Verbraucherregressionen prüfen Gridtyp,
+Spaltenfilter/-anzahl, Datumsoperatorauswahl, AI-Beispiele, Dashboardtyp und
+bestehende Zeitformatierung. Es werden keine Datenbanken verbunden oder SQL,
+DDL, Schreibvorgänge oder Migrationen ausgeführt; dies ist eine Fehlerkorrektur
+bestehender Anzeigen, kein neuer Benutzerweg.
+
+Das vorhandene `tests/perf-column-filters.test.ts` ist um 10.000 gemischte
+SQL-Server-Spalten erweitert (5.000 Zeilenversionen, 5.000 echte Zeittypen).
+Zwei Warmläufe, 15 Messungen: Median 5,515 ms, p95 6,188 ms; nach fünf weiteren
+Läufen und GC 0 gemessene zusätzliche JS-Heap-Bytes. Budgets: Median < 40 ms,
+p95 < 80 ms, zusätzlicher JS-Heap < 4 MiB. Der bestehende allgemeine 10.000-
+Spaltenfall bestand ebenfalls (Median 4,275 ms, p95 4,531 ms, 40 Messungen).
+Keine Budgetanhebung; keine Optimierung oder Vorher-/Nachher-Beschleunigung
+behauptet. Beide zählen/klassifizieren lokal mit null DB-Requests.
+
+Gemessen am 16.11.2026 auf macOS/Darwin 27.0.0, arm64, Apple M3, 16 GiB RAM,
+Bun 1.3.10. Die Zuordnung ist synchron und hat keinen neuen Hintergrundlauf,
+Polling oder Abbruchpfad. Keine Native-App-/Browser-Abnahme, Live-SQL-Server-
+oder PostgreSQL-/MySQL-Laufzeitprüfung, Windows/Linux, CPU-Simulation oder
+native/RSS-Allokationsmessung. Vorhandene Opus-UI-Handoffs bleiben offen.
+
+Der native Alias-Mapper prüft separat 10.000 Katalogtypen, zwei Warmläufe und
+sieben Messungen im Rust-Debug-Testprofil: Median 1,257 ms, p95 1,264 ms;
+10.000 Ausgabe-Strings mit zusammen 92.500 Typzeichenbytes. Budgets: Median
+< 50 ms, p95 < 100 ms, exakt begrenzte Ergebnismenge. Das ist keine Messung
+von Server-/Netzwerkzeit oder native/RSS-Speichernutzung. Beide neuen gezielten
+Rust-Tests bestanden; andere MSSQL-/A37- oder Live-Tests wurden nicht wiederholt.
+
+
+## Teilbarer Schemaänderungsbericht (A03)
+
+Schema-Vergleich → Bericht → Kopieren / Speichern erzeugt einen Markdown-Bericht
+aus dem vorhandenen `CompareResult` und dem bereits berechneten `SyncScript`.
+Es gibt keinen weiteren Katalogzugriff, Vergleichslauf, DDL- oder SQL-Aufruf.
+Der Bericht enthält alle behaltenen Vergleichseinträge unabhängig von Suchfilter
+und Skriptauswahl; Angaben zu kritischen Anweisungen beziehen sich ausdrücklich
+nur auf den ausgewählten, nicht ausgeführten SQL-Plan. Quelle ist der gewünschte
+Stand, Ziel der anzugleichende Stand. Mögliche Umbenennungen sind keine zwingenden
+Löschungen. Datenverlustrisiken werden nicht als vollständig geprüft dargestellt.
+
+Vergleiche speichern zusätzlich angefragte Typen, bekannte Snapshot-Tabellenlisten
+und die Zeitpunkte aus den tatsächlich gelesenen Snapshot-Dateien. Die effektiven
+Typen, ignorierte Merkmale, Ausschlussmuster und ausgelassene Unterschiede werden
+im Bericht genannt. Keine Vollständigkeit des Serverkatalogs, aktuelle Live-
+Übereinstimmung oder ausgeführte Migration wird behauptet. Ältere Ergebnisse ohne
+belegte Typauswahl erfordern einen erneuten Vergleich; unbekannte Berichtsfelder
+werden nicht in einen positiven Vollständigkeitsbefund umgedeutet.
+
+Fehlende, laufende, fehlgeschlagene und hinsichtlich Seiten/Optionen/Typen veraltete
+Vergleiche sperren die Aktion. Nach dem nativen Speicherdialog werden Vergleich
+und Skriptauswahl erneut gegen den aktuellen Store geprüft; bei Änderungen wird
+nichts geschrieben. Abbrechen schreibt nichts. IO-Fehler melden keinen Erfolg.
+Berichtserzeugung findet nur auf ausdrückliche Aktion statt; kein Idle-Worker,
+Polling oder zusätzlicher Abbruchprozess. Eine gestartete synchrone Generierung
+ist durch 20.000 Einträge, 4.194.304 Zeichen und 16.384 Zeichen je Textfeld begrenzt;
+Überschreiten schlägt ausdrücklich fehl und erzeugt keinen still gekürzten Bericht.
+
+Namen, Merkmale und Hinweise stehen als JSON-quotierte, einzeilige Markdown-
+Codespannen mit dynamisch längeren Backtick-Begrenzern im Bericht. Steuerzeichen
+und Richtungswechselzeichen können keine neuen Berichtzeilen oder Überschriften
+vortäuschen. DDL, SQL-Anweisungen, Verbindungs-URLs und vollständige Dateipfade
+werden nicht hinzugefügt. Die vorhandene visuelle Sprache und Copy-/Save-Bridges
+bleiben erhalten; die neue Aktion trägt `schema-compare.report` am echten Button.
+
+`tests/perf-schema-report.test.ts`: 5.000 abweichende Spalteneinträge, zwei
+Warmläufe und neun Messungen; Median 31,240 ms, p95 31,630 ms. Ausgabe 1.510.863
+Zeichen; nach fünf weiteren Generierungen und GC 2.982.783 zusätzliche JS-Heap-
+Bytes einschließlich eines behaltenen Berichts. Budgets: Median < 100 ms,
+p95 < 200 ms, zusätzlicher JS-Heap < 8 MiB, Ausgabe unter dem Berichtslimit.
+Null zusätzliche DB-Requests und null Schreibaktionen nach Abbruch/Idle.
+Dies ist ein neuer Berichtsbenchmark, kein Vorher-/Nachher-Optimierungsnachweis.
+
+Gemessen am 16.11.2026 auf macOS/Darwin 27.0.0, arm64, Apple M3, 16 GiB RAM,
+Bun 1.3.10. 38 gezielte Vertrags-/Aktions-/SSR-/Snapshot-/Tab-/Options-Tests sowie
+Typecheck und scoped Biome bestanden. Keine Rust-/Adapteränderung; deshalb kein
+Cargo-Neulauf. Keine Live-Datenbanken, reale Datei-/Clipboard-Dialogprüfung,
+Browser-/Native-App-Abnahme, Windows/Linux, CPU-Simulation oder native/RSS-
+Messung. Der vorhandene CSV-Opus-Handoff bleibt unverändert offen.
+
+
+## Keyword-Mappinggrenzen im Filter (A41)
+
+Der bestehende `list_table_columns_detailed`-Bridge-Aufruf kann ein optionales
+`exact_filter` je Spalte liefern. Ein flacher `ColumnMetadata`-Wrapper erhält die
+bisherigen `DetailedColumnInfo`-Felder und lässt das Zusatzfeld für andere Adapter
+weg; interne DDL-/Import-/Spaltenaufrufe behalten ihren bisherigen Typ. Der
+Elasticsearch-Adapter verwendet denselben vorhandenen Mapping-GET und denselben
+Keyword-Wähler. Keine zusätzliche Settings-, Versions-, Dokument- oder
+Kataloganfrage und keine Änderung des erzeugten Filter-DSL kommen hinzu.
+
+Metadaten nennen das vom Client gewählte Zielfeld (auch ein anders benanntes
+Keyword-Multifeld wie `.raw`), Keyword vs. Match-Phrase und `ignore_above` als
+konfiguriert / nicht deklariert / unbekannt. Auch 0 bleibt eine explizite Zahl;
+fehlende, negative oder nicht ganzzahlige Werte werden nicht als unbegrenzt
+behandelt. Bei mehreren Index-Mappings bleibt die gemeinsame Grenze unbekannt.
+Es gibt keinen Nachweis, dass jeder Alias-Index dieselben Felder besitzt.
+Indexmodus und Wirkung sind ausdrücklich `unverified`: Der Mapping-Abruf belegt
+keine Settings oder Versions-/Indexmodusregeln. Insbesondere wird eine deklarierte
+Zahl nicht pauschal auf alle normalen oder spaltenorientierten Modi übertragen.
+
+Der bestehende Filtereditor zeigt bei =, <>, IN und NOT IN einen kompakten Hinweis
+mit tastaturzugänglichem Tooltip. Alte/fehlende Metadaten bleiben unbekannt;
+Freitext-Kommentare werden nicht zu einem strukturierten Grenznachweis geparst.
+Lokale Zeilenregel-Editoren erhalten diesen Serverhinweis nicht. Zahlen/andere
+nicht unterstützte Feldtypen und andere Provider erhalten keinen Keyword-Hinweis.
+Keine Längenvalidierung oder Blockade verändert den Filterwert: Eine Zahl aus
+`ignore_above` allein beweist weder die wirksame Grenze noch vollständige Abdeckung;
+ein Nichttreffer beweist keinen fehlenden Dokumentinhalt. Nicht-Keyword-Textfilter
+bleiben als analysierte Match-Phrase gekennzeichnet. Feature-ID am tatsächlichen
+Hinweis: `table.filter.keyword-limit`.
+
+Die gemeinsamen synthetischen Mappingfelder in
+`tests/fixtures/elastic-keyword-mapping.json` decken direkte Keywords, `.keyword`,
+`.raw`, fehlende/ungültige Limits, Text ohne Keyword sowie nested/wildcard/numerische
+Felder ab. Native Regressionen erhalten vorhandene Exakt-/Phrase-Filter; der lokale
+HTTP-Mock prüft genau einen Mapping-GET ohne Folgeabfrage oder Idle-Polling.
+Frontendtests prüfen strukturierten Bridge-Transport, alte Daten, sichere Namen,
+Provider-/Operatorgates und die Filterformular-Anbindung. Die Formular-SSR
+verwendet gestubbte Select-/Werteingabe-Primitives; der reale Hinweisknopf und
+Tooltip werden separat gerendert. Das ist keine native oder Browser-UI-Abnahme.
+
+Native Abschlussmessung im Rust-Debug-Testprofil: 2.000 Text-/Keyword-Mappings
+plus `_id`, zwei Warmläufe und sieben Messungen; Median 35,415 ms,
+p95 94,156 ms, serialisierte Ausgabe 741.732 Bytes. Budgets: Median < 250 ms,
+p95 < 500 ms, Ausgabe < 2 MiB im Szenario. Enthalten sind bestehende Mapping-
+Zuordnung, neue Hinweise und JSON-Serialisierung; keine Netzwerk-/Serverlatenz
+oder native/RSS-Allokationsmessung. 17 gezielte Elasticsearch-Adaptertests
+bestanden, einschließlich alter Filter-/Paging-/OpenSearch-Regressionen. Der
+Legacy-Wrapper wird zusätzlich auf exakt gleiche JSON-Felder geprüft.
+
+Frontend: 10.000 Hinweisaktualisierungen, zwei Warmläufe und neun Messungen;
+Median 0,888 ms, p95 0,902 ms, nach fünf weiteren Läufen und GC 0 gemessene
+zusätzliche JS-Heap-Bytes. Budgets: Median < 50 ms, p95 < 100 ms, zusätzlicher
+JS-Heap < 4 MiB. Gemessen während der native Debug-Testbuild noch lief; keine
+CPU-Simulation. Keine neuen DB-Requests, Worker oder Idle-Aktivität; es gibt
+keinen neuen eigenständigen Abbruchpfad. Der bestehende HTTP-Lebenszyklus
+bleibt erhalten, der lokale Mock sieht genau eine Mapping-Anfrage.
+
+Plattform: macOS/Darwin 27.0.0, arm64, Apple M3, 16 GiB, Bun 1.3.10.
+Dies sind neue Semantik-/Übertragungsbenchmarks, kein Vorher-/Nachher-Nachweis
+einer Optimierung. 49 gezielte Frontendtests, Typecheck, Cargo-Check und scoped
+Biome bestanden. Bestehende Tiberius-, Backup-Test- und macOS-Linkerwarnungen
+wurden nicht geändert. Keine produktiven Reads/Writes, echte Elastic-/OpenSearch-
+Versions-/Indexmodusprüfung, Browser-/Native-App-Abnahme, Windows/Linux,
+CPU-/Heap-Simulation oder native/RSS-Messung. Bestehende Opus-Handoffs bleiben offen.
+
+Der zusätzliche Legacy-Wrapper-Test bestand ebenfalls (1/1): Ohne optionalen
+Hinweis entspricht das serialisierte JSON exakt der bisherigen Spaltenform.
+Insgesamt 18 native Prüfungen bestanden. Nicht verglichene Indexsettings,
+externe Mappingänderungen nach dem Lesen und tatsächliche Feldabdeckung bleiben
+unbekannt; es gibt keinen automatischen Aktualisierungs- oder Grenzprüfungsnachweis.
+
+
+## Optionale Herkunft gespeicherter Abfragen
+
+Query speichern → Herkunft merken ist standardmäßig ausgeschaltet. Der bestehende
+Speicherfluss kann zusätzlich eine lokale Verbindungs-ID, den Namen beim Speichern
+und die ausgewählte Datenbank merken. Eine unbekannte Datenbank bleibt unbekannt;
+es wird keine URL ausgewertet oder Verbindung getestet. Der Herkunftsschlüssel
+umfasst alle drei Angaben: Bei einem anderen Kontext gilt eine frühere Checkbox-
+Auswahl nicht für das neue Ziel. Öffnen des Dialogs setzt die Auswahl zurück.
+Ein bewusstes Überschreiben ersetzt SQL und Herkunft; ohne Auswahl wird die Query
+allgemein. Reines Umbenennen in der Bibliothek erhält die bisherige Herkunft.
+Der bestehende direkte Verlauf-Speicherweg bleibt allgemein.
+
+`origin` ist ein optionaler rückwärtskompatibler Zusatz im vorhandenen SavedQuery-
+Store und v1-Query-Export. Speicherung, Rehydrierung, Import und Export projizieren
+nur bekannte Felder. Herkunftstexte sind auf 256 Zeichen pro Feld begrenzt;
+Verbindungs-URLs, erkennbare Credential-Zuweisungen und Steuer-/Richtungszeichen
+werden nicht übernommen. IDs werden nicht als sichtbare Verbindungsnamen benutzt.
+SQL und Queryname bleiben unverändert. Der Exportdialog nennt den optionalen
+Herkunftszusatz; ältere Clients können ihn beim erneuten Export verlieren,
+Name und SQL bleiben mit dem bisherigen Format nutzbar.
+
+Bibliotheks- und Sidebarlisten zeigen Herkunft neben dem Namen, ohne neue
+Bibliothek oder zusätzliche Zeile im virtualisierten Query-Verlauf. Suche kann
+Namen/Datenbank der Herkunft berücksichtigen; ohne Suchtext bleiben alle Queries
+sichtbar, unabhängig von der aktiven Verbindung. Lokale Namen werden über eine
+pro Verbindungsänderung erstellte ID-Map aufgelöst. Abweichende Namen heißen
+„gespeichert als …“, ohne einen tatsächlichen Umbenennungsvorgang zu behaupten.
+Fehlende IDs werden nicht über Namensgleichheit neu zugeordnet; fehlende oder
+unzulässige Namen bleiben erkennbar. Herkunft ist kein Ziel- oder Kompatibilitäts-
+nachweis. Laden übergibt weiterhin nur SQL beziehungsweise ID/Titel/SQL an den
+bestehenden Tabweg, ohne Verbindungswechsel oder Auto-Ausführung.
+
+28 gezielte Tests prüfen den echten Named-Save-/Store-/Persistenz-/Tabfluss,
+Altformat/Leerzustand, Übernahme/Ablehnung nach Kontextwechsel, Umbenennen,
+Entfernen, sichere Projektion, v1-Transfer und Dublettenkopien. SSR prüft den
+ungewählten/fehlenden Kontext und die realen Bibliothekszeilen. Typecheck und
+scoped Biome bestanden. Kein Rust-/Bridge-Code geändert; kein Cargo-Neulauf,
+produktiver DB-Zugriff, Browser-/Native-App-Walkthrough oder Opus-Versuch.
+Die bestehende Fenster-Synchronisierung bleibt am gleichen Store aktiv; ihre
+Rehydrierungsgrenze ist synthetisch geprüft, keine reale Mehrfensterabnahme.
+
+`tests/perf-saved-query-origin.test.ts`: 5.000 Queries (hälftig allgemein und mit
+Herkunft), 250 Verbindungen; je zwei Warmläufe und neun Messungen. Auflösung/Suche:
+Median 1,810 ms, p95 2,178 ms. Ein echter Named-Save inklusive Store-Serialisierung:
+Median 1,214 ms, p95 2,176 ms. Bereinigter Export: Median 1,986 ms, p95 2,013 ms.
+Ausgabe 915.978 Zeichen; zusätzlicher JS-Heap nach fünf weiteren Läufen und GC
+2.065.804 Bytes einschließlich eines Exports und rehydrierter Daten. Budgets je
+Szenario: Median < 100 ms, p95 < 200 ms; zusätzlicher Heap < 8 MiB, Ausgabe < 4 MiB.
+Null DB-Requests, unveränderter Speicherinhalt nach Idle; keine neuen Worker oder
+Abbruchpfade. Diese Zahlen beschreiben den neuen Kontextpfad, keine behauptete
+Beschleunigung des bisherigen Stores. Gemessen am 16.11.2026 auf macOS/Darwin
+27.0.0, arm64, Apple M3, 16 GiB, Bun 1.3.10. Keine Windows-/Linux-/Browserlayout-,
+CPU-Simulations- oder native/RSS-Messung. CSV-Opus-Handoff unverändert offen.
+
+
+## PostgreSQL array editing (A01)
+
+The existing cell dialog uses its text mode for SQL array types (`…[]`), preserving
+numeric lexemes rather than routing edits through the JSON tree's JavaScript numbers.
+The native direct and transactional update paths share one catalog-driven encoder:
+JSON notation supports scalar and enum elements, rectangular arrays up to six
+dimensions, SQL NULL elements, empty text and empty arrays. Existing lower bounds
+are reused per dimension; new dimensions start at one, and empty arrays are canonical.
+JSON/composite/element-domain arrays require explicit PostgreSQL array text. Raw
+array text remains available, including explicit bounds; ordinary JSON columns
+keep their editor and write contract. No extra metadata roundtrip or background
+work is introduced; the existing metadata read is extended. JSON conversion is
+synchronous and bounded to 8 MiB and 100,000 elements, not cancellable mid-codec.
+The surrounding database operation retains its existing cancellation behavior.
+
+Measured once on macOS 27.0.0 arm64, Apple M3, 16 GiB RAM, rustc 1.99.0 debug
+and Bun 1.3.10; two warmups and 21 samples:
+
+| Scoped scenario | Measured result | Gate |
+|---|---|---|
+| Native exact-row decode + update assignment, 12,000 escaped Unicode text elements, 240,891 input bytes | median 23.018 ms / p95 23.226 ms | median <100 ms / p95 <200 ms |
+| Native result capacities | SQL 277,092 bytes; decoded vector/string capacity 1,360,538 bytes | SQL <8× input +1 KiB; decoded <2 MiB |
+| Existing text-editor preparation, 12,000 text elements and 312,001-character exact numeric array | median 0.412 ms / p95 0.647 ms; 0 additional retained heap bytes after 30 repeats and GC | median <100 ms / p95 <200 ms; retained <4 MiB |
+
+Run `cargo test --lib db::postgres::arrays::` for native correctness/performance
+and `bun test tests/perf-postgres-array-editor.test.ts` for the core-registered
+editor budget. Shared fixtures also exercise actual exact-row decoding, cell
+drafts and both mocked update transports, including quotes, backslashes, NULL,
+empty values, numeric scale and unsupported shapes. Codec/editor helpers issue
+no database requests and start no timers/workers; metadata plus the existing
+UPDATE remains the runtime request pattern, established statically here.
+The original measurements did not include a live server. The scoped follow-up
+below adds actual PostgreSQL catalog/type-cast/array-bound execution. Visual/native
+editor acceptance, Windows/Linux, constrained CPU and native peak-RSS remain
+unmeasured. Capacity checks bound retained results, not every temporary allocation.
+
+`bash scripts/test-postgres-arrays-local.sh` provisions an owned ephemeral
+PostgreSQL 17.11 server and executes the real native direct/transactional paths.
+On macOS 27.0.1 arm64, Apple M3, 16 GiB, Rust debug profile: 512 escaped Unicode
+text elements, two warmups and nine update-plus-grid-read samples measured
+median **4.471 ms**, p95 **6.707 ms** (limits <250 / <500ms). This includes the
+existing native metadata/write/readback work, not just codec SQL generation.
+No browser/IPC paint or whole-app RSS is measured. The input row ID is fetched
+before the timed interval; calls are serial with a single explicit writer.
+
+The same run verifies 26 valid direct/transactional value/bounds cases, rollback
+visibility, 16 rejections before any UPDATE and zero retained transaction IDs or
+idle-in-transaction sessions. A nontransactional statement-trigger sequence
+detects an attempted UPDATE even when no row mutation would survive. Total
+network/catalog request counts are not instrumented; no claim of one complete
+roundtrip per edit or a before/after optimization is made. Existing codec work/
+capacity budgets are unchanged. Native editor visual acceptance and other
+providers/platforms remain open; only the owned local cluster is stopped/deleted.
+
+
+## Existing procedure results (A16)
+
+The existing procedure dialog retains the `QueryResult` already returned by
+`executeQuery` and passes that same object to `QueryResultTable`, with the existing
+read-only cell inspector. No additional OUT bindings, cursor fetches or rowset
+requests are added. Empty rowsets, no rowset/affected-row results, errors and the
+backend truncation flag stay distinct. The result grid remains local to the dialog
+without a persisted view key or result history.
+
+One dialog instance accepts one pending call. A repeat clears the previous result
+and gets a fresh result-view identity. Parameter, routine/signature, connection
+or database changes and closing invalidate old responses. Closing does not
+cancel or roll back the server call; reopening waits for the outstanding promise
+before another explicit call is allowed in that mounted dialog. No automatic
+retry or polling is introduced.
+
+Scoped `tests/perf-procedure-run.test.ts` is registered in the core performance
+suite. Measured on macOS 27.0.0 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10, with
+1,000 rows ×100 columns (64-character payloads), two warmups and 21 samples:
+
+| Scenario | Result | Budget |
+|---|---|---|
+| Local reference-based result lifecycle | median 0.002708 ms / p95 0.004667 ms | median <10 ms / p95 <25 ms |
+| Abandoned-context invalidation | median 0.000375 ms / p95 0.000750 ms | p95 <10 ms |
+| Retained heap after 50 result/clear cycles and GC | 23,735 bytes | <2 MiB |
+
+The test starts 74 explicit simulated executions across its measured and retention
+phases, rejects an overlapping call, and starts zero idle requests/notifications
+during a 25 ms observation. Transport fixtures verify one existing SQL execution
+per explicit action; unrelated existing initialization RPCs are not SQL requests.
+These timings measure the local result lifecycle, not database duration or grid
+paint. No new native code: live provider returns, real DOM/focus/virtual scrolling,
+Windows/Linux, constrained CPU and native RSS remain unmeasured. The six SSR
+contracts use actual dialog/result sections with mocked hook/grid dependencies;
+they do not constitute a native-app visual acceptance.
+
+
+## SQL literal-list import into existing IN filters (A11)
+
+The existing list input offers an explicit SQL-list preview/confirm action.
+Recognizable parenthesized SQL-list paste opens that preview without changing
+filter values; ordinary delimiter paste and single-value operators retain their
+existing behavior. Confirmation appends deduplicated string values to the current
+JSON list and uses the unchanged provider/type-aware filter compiler. This is
+value conversion, not execution or preservation of the source expression types.
+No filter-submit/query action is dispatched by the importer.
+
+Supported input is one parenthesized list of standard single-quoted text
+(including doubled quotes and N-prefixed text), decimal number lexemes or boolean
+literals. SQL NULL, empty/blank-only strings, expressions/comments outside text,
+backslash escapes, unsupported literal forms and trailing SQL fail as a whole.
+Existing storage cannot retain blank-only entries, and NULL-in-list semantics
+are not represented as a string. Preview source is invalidated when current
+values/operator change; cancel never changes the current filter.
+
+New import limits: 131,072 UTF-16 code units of source, 1,000 source/combined
+values and 524,288 encoded JSON code units. Existing non-import formats are not
+recapped. The preview renders at most five values, each abbreviated after 120
+code units, plus a remainder count; complete values stay in the encoded list.
+All parsing is synchronous/bounded; a closed preview performs no parsing or
+background work. No native API changes or new polling/cancellation job.
+
+Scoped `tests/perf-sql-filter-list-import.test.tsx` is core-registered. Measured
+once on macOS 27.0.0 arm64, Apple M3, 16 GiB RAM, Bun 1.3.10; two warmups,
+21 parser/rejection samples and nine actual existing-input SSR samples:
+
+| Scenario | Result | Budget |
+|---|---|---|
+| Parse/merge 1,000 literals, 86,891 source code units | median 0.940 ms / p95 1.080 ms | median <20 ms / p95 <40 ms |
+| Existing input SSR after import, 1,000 chips | median 21.166 ms / p95 85.784 ms; 818,610 HTML bytes | median <100 ms / p95 <200 ms; HTML <2 MiB |
+| Oversized input rejection | p95 0.000208 ms | <5 ms |
+| Retained heap after ten prepare/render repeats and GC | 89,328 bytes | <8 MiB |
+
+Functional checks use the actual input/preview callbacks and current compiler,
+including PostgreSQL/MySQL/SQL Server/Oracle/MongoDB output contracts and an
+in-memory SQLite selection fixture. Performance helpers start zero database
+requests or background tasks. SSR/event-harness results do not establish real
+DOM focus/popover/keyboard behavior, native-app paint or provider execution.
+Live databases, Windows/Linux, constrained CPU/heap and native RSS were not tested.
+
+
+## Captured server output after grid writes (A12)
+
+`runTableTransaction` drains the existing transaction-output API once after the
+row operation, including failed operations, before immediate commit/rollback.
+Managed operations remain busy until this drain finishes; staged changes/errors
+and finalization guards are unchanged. Retrieval/delivery failures produce a
+neutral existing toast and cannot replace the write outcome. Unsupported
+providers incur no output request. No polling or new driver capture is added.
+
+The table-data entry opens the existing ServerOutputPanel for the captured
+connection/database. Copy and clear affect only that database; the query panel
+keeps its existing connection-wide behavior when no database is supplied. Output
+can include other work in that connection/database, including rolled-back work:
+it is neither current-table attribution nor a commit receipt. Native paths that
+do not already buffer notices are not fixed by this frontend drain. Oracle's
+existing transaction DBMS_OUTPUT retrieval is reused; commit-generated output
+after finalization is not newly captured.
+
+Scoped core-registered `tests/perf-table-server-output.test.ts`, macOS 27.0.0
+arm64, Apple M3, 16 GiB RAM, Bun 1.3.10; two warmups and 11 samples:
+
+| Workload | Result | Budget |
+|---|---|---|
+| One existing output drain of 2,000 messages against a 100,000-entry history | median 1.959 ms / p95 3.099 ms | median <50 ms / p95 <100 ms |
+| Database selection over the retained history | median 0.471 ms / p95 0.620 ms | p95 <25 ms |
+| Retained heap delta after GC | 0 bytes; history remains capped at 100,000 | <32 MiB additional heap |
+
+The measured workload performs exactly 13 mocked output reads, one per explicit
+operation, and zero idle requests over 25 ms. This measures the local delivery
+and bounded existing store, not server/network latency or peak RSS. Failure,
+rollback, staged/busy and late-scope regressions use the actual managed operation
+API with synthetic transport; two UI SSR cases use mocked dialog/panel boundaries
+and a current-store selector (SSR normally uses Zustand's initial snapshot).
+No live provider/trigger, native capture, browser/focus/dialog or actual log
+virtualization acceptance; no Windows/Linux or constrained CPU/heap run.
+
+The subsequent A12 browser acceptance used macOS arm64, Apple M3, 16 GiB RAM,
+Chrome and Bun 1.3.10. The 380 × 420 px dialog rendered 31 rows at the end of a
+2,000-message history. Keyboard scrolling reached both ends with fewer than 100
+mounted log rows and no IPC during the 100 ms idle interval. The existing
+100,000-entry delivery fixture measured 3.085 ms median and 57.057 ms p95.
+Scoped selection measured 1.867 ms median and 4.795 ms p95. The test passed with
+476,762 bytes of retained heap, 13 synthetic output reads and zero idle reads.
+
+The unchanged older benchmarks were rerun in isolation after initial budget
+misses during concurrent checks. Retaining 100,000 of 120,000 messages passed at
+32.631 ms p95. Streaming 2,000 ten-line batches with an output watcher remained
+above its 150 ms gate at 196.689 ms p95. This test exercises the existing output
+store without mounting the dialog. The acceptance patch leaves the store and
+both budgets intact. Timing of native rendering, real provider capture and
+system clipboard delivery remains outside the browser check.
+
+## Exact numeric display (A15)
+
+The existing display menu now offers opt-in digit grouping and minimum fraction
+digits (0, 2 or 4). The default remains original. Known numeric table columns
+format exact strings by copying digits, without Number conversion or rounding;
+existing fraction digits and exponent notation remain intact. Missing query
+type metadata leaves numeric-looking strings unchanged. Native finite JavaScript
+numbers can be formatted, but precision already lost upstream cannot be recovered.
+Raw copy, CSV export, sort, filter and edit contracts remain independent of display.
+
+Formatting accepts at most 4,096 input characters and never expands exponents;
+longer or unsupported values use the existing bounded raw preview. No numeric
+cache, timer, background task or database request is introduced. Existing width
+sampling/caps are reused and consider formatted text lazily. There is no
+asynchronous formatting to cancel or retain after a view is abandoned.
+
+Core-registered `tests/perf-number-display.test.ts`, macOS 27.0.1 arm64,
+Apple M3, 16 GiB RAM, Bun 1.3.10; two warmups and 11 measured samples:
+
+| Workload | Result | Budget |
+|---|---|---|
+| Format/check 20,000 exact long integer/decimal strings | median 12.180 ms / p95 12.727 ms | median <75 ms / p95 <150 ms |
+| Format 200 maximum-size strings of 4,096 characters | median 3.506 ms / p95 3.767 ms | p95 <100 ms; output <8,200 characters |
+| Reject a 1,000,000-character value into raw-preview fallback | p95 0.003209 ms | p95 <5 ms |
+| Retained heap delta after five additional batches and GC | 0 bytes | <8 MiB |
+
+These are formatter/validation timings, not browser frame or total grid-render
+latency. Actual table/result cells and menu callbacks have separate SSR/event
+regressions with a synthetic current-store selector; all four table styles,
+raw copy/edit/inspect callbacks, persistence merge and width paths are covered.
+The menu remains shared across views rather than a per-column format setting.
+The original formatter package omitted browser and native acceptance.
+
+The isolated A15 Chrome acceptance exercised the existing menus and both grids
+in wide light and 365 px dark layouts, including local setting persistence.
+Format changes sent zero IPC requests. The only recorded IPC on the compact
+path was one synthetic clipboard write. The formatter recheck on the same
+macOS/arm64/Bun configuration stayed within the original budgets: 20,000 exact
+strings took median 12.156 and p95 12.585 ms, 200 maximum-size strings took p95
+3.655 ms, fallback took p95 0.002875 ms and retained heap delta was 0 bytes.
+Browser frame times, native WebView, live provider data, constrained CPU/heap,
+Windows/Linux and native RSS remain outside this check.
+
+## CSV check inline progress and cancellation integration
+
+The existing runner forwards only matching job-ID events with nonnegative safe
+integer counts. The controller retains one monotone count, initially unknown;
+duplicate/regressing, aborted, invalidated and disposed-run events do not notify
+the view. A single native cancellation promise is reused, including task-dialog
+cancellation and registration races. There is no polling, percentage, inferred
+total or additional file/database request. End results remain authoritative;
+cancelled/error/changed/incomplete checks cannot clear the import blocker.
+
+`tests/perf-csv-validation.test.ts` adds 100,000 progressing counts plus 100,000
+duplicates, 10,000 post-cancel events and one post-disposal event. Two warmups and
+11 samples on macOS27.0.1 / Darwin27.0.0 arm64, Apple M3, 16GiB, Bun1.3.10:
+median **5.288ms**, p95 **8.964ms** (budgets <50 / <100ms). One counter retained;
+heap delta after two additional batches and GC **0 bytes**, budget <4MiB.
+There are exactly100,003 notifications per batch (start, distinct progress,
+cancel request, terminal), one synthetic runner invocation, no post-cancel/idle
+notifications, no polling and no database requests. This is controller/event
+cost, not native parsing throughput, browser frame latency or process RSS.
+
+Real controller/runner/bridge/task-store regressions additionally cover both
+cancel controls, delayed readiness, restart, stale successes/errors/events and
+scope/unmount invalidation; only the native transport is synthetic. Existing
+import actions consume the shared unsuccessful-check blocker. No write import
+or productive connection is exercised.
+
+The registered browser runner supports a scoped existing scenario and an explicit
+installed Chrome channel, without copying tests or downloading a browser:
+
+```sh
+L8DB_BROWSER_CHANNEL=chrome bun scripts/test-browser.ts csv-file-check
+```
+
+System Chrome157.0.8103.79 checks the actual hook/menu status components through
+synthetic IPC, including keyboard cancel/restart, unknown/live row counts, late
+events/errors after source/mapping/options/scope/unmount, all terminal states and
+380px light layout. The shared T3 preview also checked inline counts and narrow
+layout; hot refresh during fixture edits produced a duplicate-root diagnostic,
+so its accumulated transport-call counts are not used as request-count proof.
+The fresh registered browser tests disable HMR. Native Tauri file-dialog/IPC/event
+acceptance remains open: the available03:58 debug binary uses compiled context;
+the separate AI-workspace config is not a verified fresh isolated runtime. The
+normal profile initializes connection secrets/services. Neither profile's private
+data was opened or altered, and no app or database was started for this check.
+WebKit, Windows/Linux, constrained CPU/heap and native RSS remain untested.
+
+### Isolated CSV development entry
+
+`tests/perf-csv-development.test.ts` measures 10,000 release-gate rejections plus
+10,000 explicit development decisions per sample, two warmups and 11 samples.
+On macOS 27.0.1 / Darwin 27.0.0 arm64, Apple M3, 16 GiB, Bun 1.3.10: median 2.458 ms,
+p95 3.111 ms (limits <50 / <100ms), 22 bytes retained heap after five additional
+batches and GC (limit <4MiB). The gate retains no state and starts no native/DB
+requests, timers or background work. Production-entry compilation removes the
+debug loader; the ordinary bootstrap remains. These are selector microbenchmarks,
+not desktop boot, native parser throughput, constrained CPU/heap or RSS results.
+
+Native functional acceptance now uses the real incognito debug WebView and
+existing parser, with no regular connection/secret/service initialization or
+registered SQL/import-write commands. It verified dialog grants, clean/findings/
+parser-error/cancel/changed states and cleanup of two fresh session directories.
+The larger owned fixture was 1,048,576 records / 254,803,976 bytes; native cancel
+returned 4,318 records, while the changed-file run discarded its result. No native
+latency/peak-memory comparison is claimed. See `docs/csv-check-development.md`
+for the reproducible explicit entry and the separate desktop-tool limitations.
+
+### A01 isolated editor development harness
+
+The scoped gate regression in `tests/perf-array-editor-development.test.ts` measures30,000 decisions per sample (11 samples,2 warmups), including a1MB query rejected before parsing. Budgets: median<50ms, p95<100ms and retained JSC heap<4MiB; no requests, timers or background work. The browser scenario uses the existing cell dialog with512 text elements over9 measured edits after2 warmups: median<1000ms, p95<2000ms, DOM<1500 nodes, exactly1 handshake plus2 IPC calls per successful edit and zero extra calls during an idle interval. Its transport is synthetic, not a database latency result.
+
+The real `--editor-test` fixture scenario uses512 elements,9 samples after2 warmups, serial provider writes and fixed readback; budgets median<250ms, p95<500ms and serialized snapshot<64KiB. Initial local measurement: median7.915ms/p958.236ms on macOS27/arm64 Apple M3,16GiB, PostgreSQL17.11, debug Rust with2 build jobs. Final browser measurement on installed system Chrome: median983.201ms/p95986.088ms,27 DOM nodes before the subsequent static reread-button exposure,23 calls for11 edits and no idle calls. The final gate scenario measured median2.739ms/p953.556ms and99 bytes retained JSC heap. Native keyboard/IPC correctness subsequently passed; native editor paint latency was not benchmarked. Total native network request counts/peak RSS, physical low-resource hardware, other platforms and native editor paint were not measured. Existing codec/provider budgets and supported array forms are unchanged.
+
+### A16 isolated routine result
+
+The local PostgreSQL 17.11 fixture returns a single OUT row with 57,351 UTF-8 bytes of text and a SQL NULL. With the debug build on macOS 27.0.1, Apple M3 arm64 and 16 GiB RAM, nine sequential calls after two warmups took 4.431 ms median and 4.815 ms p95. Limits are 150 ms median, 300 ms p95 and less than 64 KiB per serialized result. One overlapping request was rejected during the six-second call. The fixture uses no polling.
+
+The existing 1,000-row by 100-column controller test retained 39,829 bytes on Bun 1.3.10. Result lifecycle timing was 0.007 ms median and 0.523 ms p95, with one maximum concurrent execution and no idle requests. The earlier controller run measured 0.003 ms median and 0.005 ms p95. These runs measure controller overhead on separate invocations. No new controller algorithm was introduced. The browser regression verifies one truncated cell preview and the full read-only value after opening the inspector. Native rendering latency and peak process memory were outside these measurements.
+
+The A11 popover acceptance repeated the same workload on macOS 27.0.1 arm64 (Apple M3, 16 GiB, Bun 1.3.10). The parser measured 1.174 ms median and 2.799 ms p95 for 1,000 values. SSR measured 28.839 ms median and 47.592 ms p95, with 818,610 HTML bytes and no measured retained heap growth in the 10-cycle test. The size and timing budgets above still apply. The browser fixture additionally verifies the five bounded preview nodes and counts zero query IPC calls. Browser interactions and native paint latency are outside the SSR timing.
+
+## Low-end devices: reduced motion, grid scrolling and tab switches (2026-11-19)
+
+Reported on a weak Windows PC: tables and tab switches lag. `bun scripts/perf-profile-probe.ts` opens three table tabs (500 rows × 24 columns, 3,000 tables) in the production build with the mocked transport, then traces 18 tab switches and 120 wheel steps (400 px vertically, partly 300 px horizontally) with `devtools.timeline` plus a 200 µs CPU profile. `PROBE_REDUCED=1` emulates `prefers-reduced-motion: reduce`, `PROBE_DIST` selects another build, `PROBE_WAIT` the settle time per switch and `PROBE_INCLUSIVE=<n>` prints inclusive function times. Use an unminified build for readable names.
+
+Findings and changes:
+
+- The global reduced-motion rule set `transition-duration: 0.01ms` on every element. With the default `transition-property: all`, every style change on every element then started a transition: 120 wheel steps dispatched about 5,000 `transitionrun`/`start`/`end`/`cancel` events, which React's root listener received about 20,000 times, and each one cost extra style and paint frames. Windows reports reduced motion when its animation effects are off, which is common on weak PCs, so this mode was slower than full motion. The rule now sets `transition-duration: 0s` and `transition-delay: 0s`, so no transition starts; animations keep `0.01ms` so `animationend` still fires. `Collapse` already unmounts without `transitionend` in this mode.
+- Rows moving under a resting pointer changed their hover background on every step, which repainted and re-layerized rows. `trackScrolling` (`src/lib/hooks/use-scrolling-flag.ts`) sets `data-scrolling` on the grid scroller with one attribute write per scroll burst and removes it 140 ms after the last event; the `grid-hover` and `row-hover` variants skip their style while it is set. Pointer events stay enabled, so clicks, selection and `elementFromPoint` are unchanged. The flag is not set while a pointer button is down.
+- `hasNewFeatures` built 316 entry tuples and ran one regular expression per feature on every call, and tab strips, layouts and menus call it on every render. It now scans a cached list of the current release's IDs.
+- `animateChange` uses the brief opacity feedback instead of the 420 ms travel when `navigator.hardwareConcurrency` is at most 4.
+
+Measured on macOS 27.0, arm64, Apple M3 (8 cores), 16 GiB RAM, Bun 1.4.3, Playwright Chromium, no CPU throttling. Values are main-thread totals for the whole run.
+
+| 120 wheel steps | Script | Style | Layout | Paint | Layerize | Sum incl. pre-paint and hit tests |
+| --- | --- | --- | --- | --- | --- | --- |
+| Full motion, before | 471 ms | 112 ms | 58 ms | 295 ms | 386 ms | 1,454 ms |
+| Full motion, after | 455 ms | 111 ms | 59 ms | 188 ms | 207 ms | 1,140 ms |
+| Reduced motion, before | 1,196 ms | 449 ms | 156 ms | 703 ms | 691 ms | 3,450 ms |
+| Reduced motion, after | 496 ms | 155 ms | 58 ms | 183 ms | 205 ms | 1,219 ms |
+
+18 tab switches under reduced motion went from 831 ms script / 280 ms style to 738 / 220 ms. The existing gates passed once: workspace table scroll 5,000 × 120 at 60.0 fps, frame p95 18.2 ms (previously confirmed red at 21.2–22.5 ms against < 21 ms), infinite scroll frame p95 18.3 ms, and all eight `tests/perf-browser.test.ts` grid scenarios. `tests/perf-low-end.test.ts` measured 20,000 badge lookups over 316 features at median 9.0 ms / p95 9.3 ms (before: 180.5 / 195.2 ms; gate 40 ms p95) and 10,000 scroll events in 1.9 ms with one attribute write, no flag while a button is pressed, and no listeners, timer or writes left after disposal. None of this starts database work.
+
+Open: a tab switch still unmounts one view and mounts the next, about 34 ms of React work, 12 ms style and 13 ms paint/layerize per switch on this machine. Within that, the grid's `DragDropProvider` teardown takes about 2.7 ms and motion's layout projection about 1.7 ms. Sticky row-number cells are one compositor layer each (31 of 65 layers); without them Layerize dropped a further 40 % in an experiment. Keeping recent tabs mounted would remove most of the switch cost and is not implemented.
+
+Not covered: no Windows machine, WebView2 build, weak GPU or CPU throttling was measured; the throttled suites do not run on this Mac. The mocked transport excludes database time. The core-count heuristic was verified only in `tests/change-animation.test.ts`; `tests/perf-workspace-motion.test.ts` pins eight cores and was not run.

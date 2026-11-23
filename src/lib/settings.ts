@@ -21,8 +21,18 @@ export type EditorWhitespace = "none" | "boundary" | "selection" | "trailing" | 
 export type EditorWrappingIndent = "same" | "indent" | "deepIndent";
 export type EditorAcceptSuggestionOnEnter = "on" | "smart" | "off";
 export type EditorTabCompletion = "on" | "off" | "onlySnippets";
+export type PlsqlWarningLevel = "enable" | "disable" | "error";
+export interface PlsqlWarningRules {
+  severe: PlsqlWarningLevel;
+  performance: PlsqlWarningLevel;
+  informational: PlsqlWarningLevel;
+  ignore: number[];
+  error: number[];
+}
 export type SidebarObjectNav = "tabs" | "select";
 export type UpdateChannel = "stable" | "canary";
+export type CollectCellEdits = "off" | "production" | "always";
+export type TableFilterMode = "simple" | "sql";
 
 export type EditorKeymap = "default" | "vim";
 export type EditorFontFamily =
@@ -46,10 +56,13 @@ export interface SettingsState {
   sshTrustNewHosts: boolean;
   transactionsEnabled: boolean;
   transactionsPerTable: boolean;
+  collectCellEdits: CollectCellEdits;
   autoFeatureVideos: boolean;
   setAutoFeatureVideos: (value: boolean) => void;
   blogSuggestions: boolean;
   setBlogSuggestions: (value: boolean) => void;
+  successToasts: boolean;
+  setSuccessToasts: (value: boolean) => void;
   discovery: DiscoverySettings;
   setDiscovery: (value: Partial<DiscoverySettings>) => void;
   autoUpdateCheck: boolean;
@@ -87,6 +100,7 @@ export interface SettingsState {
   editorTabCompletion: EditorTabCompletion;
   editorParameterHints: boolean;
   oraclePlsqlWarnings: boolean;
+  oraclePlsqlWarningRules: PlsqlWarningRules;
   editorFormatOnPaste: boolean;
   editorFormatOnType: boolean;
   editorFormatDenseOperators: boolean;
@@ -118,6 +132,7 @@ export interface SettingsState {
   navInHeader: boolean;
   dynamicIsland: boolean;
   shortcutHints: boolean;
+  newFeatureBadges: boolean;
   seasonalAccents: boolean;
   lightTheme: string;
   darkTheme: string;
@@ -126,6 +141,7 @@ export interface SettingsState {
   monochromeCells: boolean;
   tableStyle: TableStyle;
   filterBarStyle: FilterBarStyle;
+  tableFilterMode: TableFilterMode;
   connectionTimeout: number;
   sslDefaultMode: SslDefaultMode;
   setRowLimit: (v: number) => void;
@@ -134,6 +150,7 @@ export interface SettingsState {
   setSshTrustNewHosts: (v: boolean) => void;
   setTransactionsEnabled: (v: boolean) => void;
   setTransactionsPerTable: (v: boolean) => void;
+  setCollectCellEdits: (v: CollectCellEdits) => void;
   setAutoUpdateCheck: (v: boolean) => void;
   setAutoUpdateInstall: (v: boolean) => void;
   setUpdateChannel: (v: UpdateChannel) => void;
@@ -163,6 +180,7 @@ export interface SettingsState {
   setEditorTabCompletion: (v: EditorTabCompletion) => void;
   setEditorParameterHints: (v: boolean) => void;
   setOraclePlsqlWarnings: (v: boolean) => void;
+  setOraclePlsqlWarningRules: (v: PlsqlWarningRules) => void;
   setEditorFormatOnPaste: (v: boolean) => void;
   setEditorFormatOnType: (v: boolean) => void;
   setEditorFormatDenseOperators: (v: boolean) => void;
@@ -195,6 +213,7 @@ export interface SettingsState {
   setNavInHeader: (value: boolean) => void;
   setDynamicIsland: (value: boolean) => void;
   setShortcutHints: (value: boolean) => void;
+  setNewFeatureBadges: (value: boolean) => void;
   setSeasonalAccents: (value: boolean) => void;
   setLightTheme: (value: string) => void;
   setDarkTheme: (value: string) => void;
@@ -203,6 +222,7 @@ export interface SettingsState {
   setMonochromeCells: (value: boolean) => void;
   setTableStyle: (value: TableStyle) => void;
   setFilterBarStyle: (value: FilterBarStyle) => void;
+  setTableFilterMode: (value: TableFilterMode) => void;
   setConnectionTimeout: (v: number) => void;
   setSslDefaultMode: (v: SslDefaultMode) => void;
   resetToDefaults: () => void;
@@ -225,6 +245,7 @@ export const TABLE_APPEARANCE_DEFAULTS = {
   monochromeCells: true,
   tableStyle: "classic",
   filterBarStyle: "classic",
+  tableFilterMode: "simple",
 } satisfies Partial<SettingsState>;
 
 export const UI_SCALE_MIN = 80;
@@ -252,8 +273,10 @@ export const DEFAULT_SETTINGS = {
   sshTrustNewHosts: false,
   transactionsEnabled: true,
   transactionsPerTable: true,
+  collectCellEdits: "production" as CollectCellEdits,
   autoFeatureVideos: true,
   blogSuggestions: true,
+  successToasts: false,
   discovery: DEFAULT_DISCOVERY_SETTINGS,
   autoUpdateCheck: true,
   crashReports: false,
@@ -287,6 +310,13 @@ export const DEFAULT_SETTINGS = {
   editorTabCompletion: "off" as EditorTabCompletion,
   editorParameterHints: true,
   oraclePlsqlWarnings: false,
+  oraclePlsqlWarningRules: {
+    severe: "enable",
+    performance: "enable",
+    informational: "enable",
+    ignore: [],
+    error: [],
+  } as PlsqlWarningRules,
   editorFormatOnPaste: false,
   editorFormatOnType: false,
   editorFormatDenseOperators: false,
@@ -318,6 +348,7 @@ export const DEFAULT_SETTINGS = {
   navInHeader: false,
   dynamicIsland: true,
   shortcutHints: true,
+  newFeatureBadges: true,
   seasonalAccents: true,
   lightTheme: DEFAULT_APP_THEME,
   darkTheme: DEFAULT_APP_THEME,
@@ -326,6 +357,7 @@ export const DEFAULT_SETTINGS = {
   monochromeCells: true,
   tableStyle: "classic" as TableStyle,
   filterBarStyle: "classic" as FilterBarStyle,
+  tableFilterMode: "simple" as TableFilterMode,
   connectionTimeout: 15,
   sslDefaultMode: "prefer" as SslDefaultMode,
 };
@@ -348,8 +380,10 @@ export const useSettingsStore = create<SettingsState>()(
       setSshTrustNewHosts: (sshTrustNewHosts) => set({ sshTrustNewHosts }),
       setTransactionsEnabled: (transactionsEnabled) => set({ transactionsEnabled }),
       setTransactionsPerTable: (transactionsPerTable) => set({ transactionsPerTable }),
+      setCollectCellEdits: (collectCellEdits) => set({ collectCellEdits }),
       setAutoFeatureVideos: (autoFeatureVideos) => set({ autoFeatureVideos }),
       setBlogSuggestions: (blogSuggestions) => set({ blogSuggestions }),
+      setSuccessToasts: (successToasts) => set({ successToasts }),
       setDiscovery: (value) =>
         set((state) => ({
           discovery: normalizeDiscoverySettings({ ...state.discovery, ...value }),
@@ -393,6 +427,7 @@ export const useSettingsStore = create<SettingsState>()(
       setEditorTabCompletion: (editorTabCompletion) => set({ editorTabCompletion }),
       setEditorParameterHints: (editorParameterHints) => set({ editorParameterHints }),
       setOraclePlsqlWarnings: (oraclePlsqlWarnings) => set({ oraclePlsqlWarnings }),
+      setOraclePlsqlWarningRules: (oraclePlsqlWarningRules) => set({ oraclePlsqlWarningRules }),
       setEditorFormatOnPaste: (editorFormatOnPaste) => set({ editorFormatOnPaste }),
       setEditorFormatOnType: (editorFormatOnType) => set({ editorFormatOnType }),
       setEditorFormatDenseOperators: (editorFormatDenseOperators) =>
@@ -434,6 +469,7 @@ export const useSettingsStore = create<SettingsState>()(
       setNavInHeader: (navInHeader) => set({ navInHeader }),
       setDynamicIsland: (dynamicIsland) => set({ dynamicIsland }),
       setShortcutHints: (shortcutHints) => set({ shortcutHints }),
+      setNewFeatureBadges: (newFeatureBadges) => set({ newFeatureBadges }),
       setSeasonalAccents: (seasonalAccents) => set({ seasonalAccents }),
       setLightTheme: (lightTheme) => set({ lightTheme: normalizeAppTheme(lightTheme) }),
       setDarkTheme: (darkTheme) => set({ darkTheme: normalizeAppTheme(darkTheme) }),
@@ -443,6 +479,8 @@ export const useSettingsStore = create<SettingsState>()(
       setTableStyle: (tableStyle) => set({ tableStyle: normalizeTableStyle(tableStyle) }),
       setFilterBarStyle: (filterBarStyle) =>
         set({ filterBarStyle: normalizeFilterBarStyle(filterBarStyle) }),
+      setTableFilterMode: (tableFilterMode) =>
+        set({ tableFilterMode: tableFilterMode === "sql" ? "sql" : "simple" }),
       resetAppearance: () => set({ ...LAYOUT_APPEARANCE_DEFAULTS, ...TABLE_APPEARANCE_DEFAULTS }),
       setConnectionTimeout: (connectionTimeout) => set({ connectionTimeout }),
       setSslDefaultMode: (sslDefaultMode) => set({ sslDefaultMode }),
@@ -470,6 +508,7 @@ export const useSettingsStore = create<SettingsState>()(
           easyMode: saved?.easyMode === true,
           autoFeatureVideos: saved?.autoFeatureVideos !== false,
           blogSuggestions: saved?.blogSuggestions !== false,
+          successToasts: saved?.successToasts === true,
           discovery: normalizeDiscoverySettings(saved?.discovery),
           onboardingDone: saved?.onboardingDone === true,
           crashReports: saved?.crashReports === true,
@@ -483,6 +522,7 @@ export const useSettingsStore = create<SettingsState>()(
           navInHeader: saved?.navInHeader === true,
           dynamicIsland: saved?.dynamicIsland !== false,
           shortcutHints: saved?.shortcutHints !== false,
+          newFeatureBadges: saved?.newFeatureBadges !== false,
           seasonalAccents: saved?.seasonalAccents !== false,
           lightTheme: normalizeAppTheme(saved?.lightTheme),
           darkTheme: normalizeAppTheme(saved?.darkTheme),
@@ -491,9 +531,14 @@ export const useSettingsStore = create<SettingsState>()(
           monochromeCells: saved?.monochromeCells !== false,
           tableStyle: normalizeTableStyle(saved?.tableStyle),
           filterBarStyle: normalizeFilterBarStyle(saved?.filterBarStyle),
+          tableFilterMode: saved?.tableFilterMode === "sql" ? "sql" : "simple",
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
           dmlPreviewMode: normalizeDmlPreviewMode(saved?.dmlPreviewMode),
           updateChannel: saved?.updateChannel === "canary" ? "canary" : "stable",
+          collectCellEdits:
+            saved?.collectCellEdits === "off" || saved?.collectCellEdits === "always"
+              ? saved.collectCellEdits
+              : "production",
         });
       },
     },

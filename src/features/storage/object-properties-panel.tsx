@@ -11,7 +11,9 @@ import {
   s3HeadObject,
   s3UpdateObjectProperties,
 } from "@/lib/db";
+import { ConfirmActionDialog } from "./confirm-action-dialog";
 import { ObjectPropertiesFields } from "./object-properties-fields";
+import { ARCHIVE_CLASSES, storageClassLabel } from "./storage-risks";
 import { errorText, formatDate, useStorageConnection } from "./use-storage-connection";
 
 function toProperties(head: ObjectHead): ObjectProperties {
@@ -48,6 +50,7 @@ export function ObjectPropertiesPanel({
   });
   const [draft, setDraft] = useState<ObjectProperties | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     if (head.data) setDraft(toProperties(head.data));
@@ -63,13 +66,15 @@ export function ObjectPropertiesPanel({
     );
   }
   const data = head.data!;
+  const archiving =
+    ARCHIVE_CLASSES.has(draft.storage_class ?? "") && draft.storage_class !== data.storage_class;
   const facts: [string, string][] = [
     ["Schlüssel", data.key],
     ["Größe", `${formatBytes(data.size)} (${data.size.toLocaleString("de-DE")} Bytes)`],
     ["Geändert", formatDate(data.last_modified)],
-    ["ETag", data.etag ?? "–"],
+    ["Prüfsumme (ETag)", data.etag ?? "–"],
     ["Version", data.version_id ?? "–"],
-    ["Speicherklasse", data.storage_class],
+    ["Speicherklasse", storageClassLabel(data.storage_class)],
     ["Verschlüsselung", data.server_side_encryption ?? "keine"],
     ["Tags", String(data.tag_count)],
   ];
@@ -108,15 +113,27 @@ export function ObjectPropertiesPanel({
       <ObjectPropertiesFields value={draft} onChange={setDraft} disabled={readOnly} />
       {!readOnly && (
         <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => void save()} disabled={busy}>
+          <Button
+            size="sm"
+            onClick={() => (archiving ? setConfirming(true) : void save())}
+            disabled={busy}
+          >
             {busy ? <Spinner className="size-4" /> : null}
             Speichern
           </Button>
           <span className="text-[11px] text-muted-foreground">
-            Kopiert das Objekt auf sich selbst (Metadaten ersetzen).
+            Schreibt das Objekt neu, bei Versionierung als neue Version.
           </span>
         </div>
       )}
+      <ConfirmActionDialog
+        open={confirming}
+        title="Objekt archivieren?"
+        description={`„${data.key}“ ist danach erst nach einer Wiederherstellung lesbar.`}
+        confirmLabel="Archivieren"
+        onOpenChange={setConfirming}
+        onConfirm={save}
+      />
       <details className="text-xs">
         <summary className="cursor-pointer text-muted-foreground">Alle Antwort-Header</summary>
         <dl className="mt-2 grid grid-cols-[9rem_1fr] gap-x-2 gap-y-0.5">

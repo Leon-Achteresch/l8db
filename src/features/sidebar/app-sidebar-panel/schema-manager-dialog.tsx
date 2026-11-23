@@ -70,7 +70,7 @@ export function SchemaManagerDialog({
         activeDatabase ?? undefined,
       );
       toast.success(`Schema "${activeSchema}" gelöscht.`);
-      setSchema(activeConnection.id, "public");
+      setSchema(activeConnection.id, "");
       setCascade(false);
       refreshSchemas();
       onOpenChange(false);

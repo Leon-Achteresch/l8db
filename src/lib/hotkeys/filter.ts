@@ -1,14 +1,26 @@
+import { aiEnabled } from "@/lib/ai/access";
+import type { Capabilities } from "@/lib/db/providers";
 import { commandById, HOTKEY_COMMANDS } from "./commands";
 import { HOTKEY_AREAS } from "./constants";
 import { formatHotkeyDisplay } from "./display";
 import type { HotkeyArea, HotkeyCommand } from "./types";
 import { resolveHotkey } from "./use-hotkeys-store";
 
-export function isHotkeyAvailable(id: string, context: { hasConnection: boolean }): boolean {
+const AI_COMMANDS = new Set(["ai.toggle", "query.aiEdit", "query.aiAsk"]);
+
+export function isHotkeyAvailable(
+  id: string,
+  context: { hasConnection: boolean; capabilities?: Capabilities | null },
+): boolean {
   const command = commandById(id);
   if (!command) return false;
-  if (command.requiresConnection) return context.hasConnection;
-  return true;
+  if (AI_COMMANDS.has(id) && !aiEnabled()) return false;
+  if (command.requiresConnection && !context.hasConnection) return false;
+  const caps = context.capabilities;
+  if (!command.capability || caps === undefined) return true;
+  if (!caps) return false;
+  if (command.capability === "sql") return caps.query_language === "sql" && !caps.object_storage;
+  return caps[command.capability] === true;
 }
 
 export function isCommandVisibleInRoute(command: HotkeyCommand, pathname: string): boolean {

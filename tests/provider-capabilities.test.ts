@@ -26,7 +26,12 @@ test("fallback providers do not inherit PostgreSQL-only tools", () => {
     "materialized_views",
   ] as const;
   for (const id of ["mysql", "mariadb", "mongodb", "sqlite"])
-    for (const capability of postgresOnly) expect(fallback(id)[capability]).toBe(false);
+    for (const capability of postgresOnly)
+      if (id !== "mariadb" || capability !== "sequences")
+        expect(fallback(id)[capability]).toBe(false);
+  expect(fallback("mariadb").sequences).toBe(true);
+  expect(fallback("postgres").query_builder).toBe(true);
+  expect(fallback("mongodb").query_builder).toBe(false);
   expect(fallback("mongodb").sessions).toBe(false);
   expect(fallback("mongodb").live_monitor).toBe(false);
   expect(fallback("mongodb").query_language).toBe("json");

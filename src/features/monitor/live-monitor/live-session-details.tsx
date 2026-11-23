@@ -15,6 +15,7 @@ import { LocksTable } from "@/features/sessions/sessions-view/locks-table";
 import { copyWithToast } from "@/lib/clipboard";
 import type { SessionInfo } from "@/lib/db";
 import { cn } from "@/lib/utils";
+import { LiveIndexBuildProgress } from "./live-index-build-progress";
 import { LiveQueryCard } from "./live-query-card";
 import { clientAddress, sessionDotClass, sessionStateLabel } from "./session-state";
 import { type LiveMonitorState, sessionRuntime } from "./use-live-monitor";
@@ -113,6 +114,9 @@ export function LiveSessionDetails({ m, session }: { m: LiveMonitorState; sessio
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        {m.connection?.kind === "postgres" && session.index_progress && (
+          <LiveIndexBuildProgress progress={session.index_progress} />
+        )}
         <Tabs defaultValue="details">
           <TabsList variant="line" className="h-8">
             <TabsTrigger value="details" className="text-xs">

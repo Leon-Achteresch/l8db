@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { lazy, Suspense } from "react";
+import { Illustration, type IllustrationName } from "@/components/illustration";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -20,9 +21,11 @@ export function FeatureEmptyState({
   title,
   action,
   featureId,
+  illustration = "empty",
   className,
 }: {
   icon: LucideIcon;
+  illustration?: IllustrationName;
   title: string;
   action?: FeatureEmptyStateAction;
   featureId?: string;
@@ -39,9 +42,13 @@ export function FeatureEmptyState({
           <FeatureEmptyStateClip featureId={featureId} />
         </Suspense>
       )}
-      <span className="grid size-9 place-items-center rounded-xl bg-muted text-muted-foreground">
-        <Icon aria-hidden className="size-4" />
-      </span>
+      {featureId ? (
+        <span className="grid size-9 place-items-center rounded-xl bg-muted text-muted-foreground">
+          <Icon aria-hidden className="size-4" />
+        </span>
+      ) : (
+        <Illustration name={illustration} className="w-36" />
+      )}
       <p className="text-sm font-medium">{title}</p>
       {(action || featureId) && (
         <div className="flex flex-wrap justify-center gap-2">

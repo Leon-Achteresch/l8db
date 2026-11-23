@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DebugButton } from "@/features/debugger/debug-button";
+import { EditorExtensionActions } from "@/features/extensions/editor-extension-actions";
 import { useCompileObject } from "@/features/functions/use-compile-object";
 import {
   OpenInQueryEditorButton,
@@ -17,10 +18,12 @@ import {
 } from "@/features/functions/use-sql-object-edit";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { useExtensionEditorId } from "@/lib/hooks/use-extension-editor";
 import { buildInvalidSet, isFunctionInvalid } from "@/lib/invalid-objects";
 import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { ROUTINE_TYPES } from "@/lib/versioning/blame";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 import { SqlEditorPane } from "./function-view/sql-editor-pane";
 
@@ -49,6 +52,7 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
       oid ? compile(oid, "function", `${schema}.${name}`).then(() => undefined) : Promise.resolve(),
     schema,
   );
+  const extensionEditorId = useExtensionEditorId(edit.key);
 
   useEffect(() => {
     if (oid && !pane) {
@@ -123,6 +127,7 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
         {!edit.editing && oid && capabilities.debugger ? (
           <DebugButton oid={oid} schema={schema} name={name} objectType="function" />
         ) : null}
+        <EditorExtensionActions editorId={extensionEditorId} />
         <OpenInQueryEditorButton sql={data ?? ""} title={`${schema}.${name}`} />
         <SqlEditActions edit={edit} />
       </div>
@@ -130,12 +135,14 @@ export function FunctionView({ schema, name, oid, line }: FunctionViewProps) {
       {edit.editing ? <SqlEditHint /> : null}
 
       <SqlEditorPane
+        blame={{ schema, name, types: ROUTINE_TYPES }}
         value={edit.editing ? edit.sql : (data ?? "")}
         readOnly={!edit.editing}
         onChange={edit.editing ? edit.setSql : undefined}
         revealLine={compileResult?.line ?? line}
         error={objectError(compileResult?.message, edit.state)}
         stateKey={edit.key}
+        extensionEditor={{ id: extensionEditorId, kind: "function" }}
       />
 
       {compileResult && compileResult.status !== "VALID" ? (

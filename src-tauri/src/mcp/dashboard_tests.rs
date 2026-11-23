@@ -1,7 +1,6 @@
 use super::*;
 use crate::db::{self, DatabaseKind};
 use crate::mcp::TEST_ENV_LOCK;
-use std::collections::HashMap;
 use std::sync::MutexGuard;
 
 struct Lab {
@@ -84,7 +83,7 @@ fn lab() -> Lab {
         dir,
         server: Server {
             pool: db::pool::create_pool_state(),
-            columns: HashMap::new(),
+            columns: Default::default(),
         },
         runtime: tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -376,6 +375,19 @@ fn creates_dashboard_with_many_chart_types() {
 }
 
 #[test]
+fn custom_periods_are_strict_date_ranges() {
+    assert!(valid_period("30d"));
+    assert!(valid_period("2026-01-01..2026-01-31"));
+    assert!(valid_period("2024-02-29..2024-02-29"));
+    assert!(!valid_period("2026-01-31..2026-01-01"));
+    assert!(!valid_period("2025-02-29..2025-03-01"));
+    assert!(!valid_period("2026-1-1..2026-1-31"));
+    assert!(!valid_period("2026-01-01..2026-01-31..2026-02-01"));
+    assert!(!valid_period("2026-01-01..2026-01-31' OR 1=1"));
+    assert!(!valid_period(".."));
+}
+
+#[test]
 fn rejects_invalid_charts_without_touching_the_file() {
     let mut lab = lab();
     lab.create_sales();
@@ -412,6 +424,14 @@ fn rejects_invalid_charts_without_touching_the_file() {
         (
             base(json!({"period": "decade"})),
             "period 'decade' unbekannt",
+        ),
+        (
+            base(json!({"period": "2026-01-31..2026-01-01"})),
+            "unbekannt",
+        ),
+        (
+            base(json!({"period": "2026-02-30..2026-03-01"})),
+            "unbekannt",
         ),
         (base(json!({"sql": "DELETE FROM orders"})), "read-only"),
         (
@@ -2351,4 +2371,58 @@ fn image_blocks_keep_alt_text_and_limits_match_the_frontend() {
     assert!(check_href(&json!("https://example.com/<x>")).is_err());
     assert!(check_href(&json!("HTTPS://example.com/")).is_ok());
     assert!(check_href(&json!("http://example.com/")).is_err());
+}
+
+#[test]
+fn multi_value_and_column_filters_match_the_app() {
+    let variables = builder::parse_variables(&json!([
+        {"name": "kunde", "type": "select", "multiple": true, "options": ["A"]},
+        {"name": "art", "type": "select", "multiple": true, "column": {"schema": "wms", "table": "artikel", "column": "art", "dataType": "text"}},
+        {"name": "lager", "type": "select", "column": {"schema": "wms", "table": "lager", "column": "name"}}
+    ]))
+    .unwrap();
+    assert_eq!(variables[1]["column"]["table"], "artikel");
+    assert_eq!(variables[1]["multiple"], true);
+    assert!(variables[2].get("multiple").is_none());
+    assert!(builder::parse_variables(
+        &json!([{"name": "x", "type": "select", "column": {"table": "t"}}])
+    )
+    .is_err());
+    let mut values = Map::new();
+    values.insert("kunde".into(), json!("[\"A\",\"O'B\",\"A\",\" \"]"));
+    values.insert("art".into(), json!("[\"Pro\",\"Team\"]"));
+    values.insert("lager".into(), json!("Nord"));
+    assert_eq!(
+        builder::substitute(
+            "x IN ({{kunde}}) AND y = '{{kunde}}'",
+            &variables,
+            &values,
+            DatabaseKind::Postgres
+        ),
+        "x IN ('A', 'O''B') AND y = '{{kunde}}'"
+    );
+    let simple = builder::parse_builder(&json!({
+        "table": "wms.bestand",
+        "joins": [{"table": "artikel", "on": [["artikel_id", "id"]]}],
+        "metrics": ["count"],
+        "filters": [
+            {"field": "mandant", "op": "eq", "value": "{{kunde}}"},
+            {"field": "notiz", "op": "contains", "value": "{{kunde}}"}
+        ],
+        "limit": 10
+    }))
+    .unwrap();
+    let sql = builder::builder_sql(&simple, DatabaseKind::Postgres, &variables, &values);
+    assert!(sql.contains("t1.\"mandant\" IN ('A', 'O''B')"), "{sql}");
+    assert!(
+        sql.contains(
+            "(LOWER(t1.\"notiz\") LIKE LOWER('%A%') OR LOWER(t1.\"notiz\") LIKE LOWER('%O''B%'))"
+        ),
+        "{sql}"
+    );
+    assert!(sql.contains("t2.\"art\" IN ('Pro', 'Team')"), "{sql}");
+    assert!(!sql.contains("Nord"), "{sql}");
+    values.insert("art".into(), json!("[]"));
+    let all = builder::builder_sql(&simple, DatabaseKind::Postgres, &variables, &values);
+    assert!(!all.contains("\"art\""), "{all}");
 }

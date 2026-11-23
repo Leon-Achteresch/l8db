@@ -5,6 +5,7 @@ import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { DiscoverFeatureCard } from "@/features/discovery/discover-feature-card";
+import { useAiEnabled } from "@/lib/ai/access";
 import type { DatabaseKind } from "@/lib/db";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { FEATURE_CATALOG, featureAvailable } from "@/lib/discovery/catalog";
@@ -24,6 +25,7 @@ export function DiscoverRecapTab() {
   const enabled = useSettingsStore((state) => state.localUsageStats);
   const setEnabled = useSettingsStore((state) => state.setLocalUsageStats);
   const easyMode = useSettingsStore((state) => state.easyMode);
+  const ai = useAiEnabled();
   const capabilities = useActiveCapabilities();
   const statistics = useSyncExternalStore(
     usageStatisticsStore.subscribe,
@@ -46,10 +48,10 @@ export function DiscoverRecapTab() {
         days,
         longestMs: longest.year === year ? longest.ms : 0,
         catalog: FEATURE_CATALOG.filter((entry) =>
-          featureAvailable(entry, { capabilities, easyMode }),
+          featureAvailable(entry, { capabilities, easyMode, ai }),
         ),
       }),
-    [year, statistics, usage, days, longest, capabilities, easyMode],
+    [year, statistics, usage, days, longest, capabilities, easyMode, ai],
   );
 
   const save = async () => {

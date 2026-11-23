@@ -276,6 +276,29 @@ test.skipIf(!process.env.L8DB_MASTER_DETAIL_BROWSER_URL)(
       });
       expect((await md()).executes).toBe(0);
 
+      const readsBeforeSort = (await md()).fetches.length;
+      const noteHeader = detail.locator("thead button", { hasText: "note" }).first();
+      const firstNote = () => detail.locator('tbody tr td[data-col="note"]').first().textContent();
+      await noteHeader.click();
+      await noteHeader.click();
+      await page.waitForFunction(
+        () =>
+          document.querySelector('#split-1 tbody tr td[data-col="note"]')?.textContent ===
+          "item 1-2",
+      );
+      expect(await firstNote()).toBe("item 1-2");
+      const sortStarted = performance.now();
+      await noteHeader.click();
+      await page.waitForFunction(
+        () =>
+          document.querySelector('#split-1 tbody tr td[data-col="note"]')?.textContent ===
+          "item 1-0",
+      );
+      console.log(
+        `master-detail sort toggle→render ms: ${Math.round(performance.now() - sortStarted)}`,
+      );
+      expect((await md()).fetches.length).toBe(readsBeforeSort);
+
       const cell = (note: string) =>
         detail.locator("tbody tr").filter({ hasText: note }).locator('td[data-col="note"]');
       await cell("item 1-1").dblclick();

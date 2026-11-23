@@ -129,6 +129,12 @@ pub struct Global {
         hide_possible_values = true
     )]
     output: Option<Format>,
+    #[arg(
+        long,
+        global = true,
+        help = "Nur lesen: schreibende Befehle ablehnen (auch $L8DB_READ_ONLY=1)"
+    )]
+    read_only: bool,
     #[arg(short = 'h', long, global = true, action = ArgAction::Help, help = "Hilfe anzeigen")]
     help: Option<bool>,
 }
@@ -179,7 +185,7 @@ enum Command {
         alias = "q",
         help_template = SUB_HELP,
         override_usage = "l8db query [ABFRAGE] [-f DATEI] [-c NAME] [-o FORMAT]",
-        after_help = "Die Abfrage kommt als Argument, mit -f aus einer Datei oder über die Standardeingabe.\nMehrere Anweisungen werden nacheinander ausgeführt; beim ersten Fehler stoppt l8db.\n\nBeispiele:\n  l8db q \"select * from users limit 5\"\n  l8db query -f migration.sql --yes\n  cat bericht.sql | l8db query -o csv > bericht.csv\n  l8db query --all -o ndjson \"select * from events\" | jq .id"
+        after_help = "Die Abfrage kommt als Argument, mit -f aus einer Datei oder über die Standardeingabe.\nMehrere Anweisungen werden nacheinander ausgeführt; beim ersten Fehler stoppt l8db.\nBindvariablen (:name) setzt die CLI nicht: Werte direkt ins SQL schreiben.\n\nBeispiele:\n  l8db q \"select * from users limit 5\"\n  l8db query -f migration.sql --yes\n  cat bericht.sql | l8db query -o csv > bericht.csv\n  l8db query --all -o ndjson \"select * from events\" | jq .id\n  l8db q \"HGETALL user:1\"  (Redis)"
     )]
     Query(QueryArgs),
     #[command(
@@ -205,7 +211,7 @@ enum Command {
         alias = "tables",
         help_template = SUB_HELP,
         override_usage = "l8db table <befehl>",
-        after_help = "Tabellen gibst du als name oder schema.name an.\n\nBeispiele:\n  l8db table list -s public\n  l8db table describe public.users\n  l8db table rows users --where \"created_at > now() - interval '1 day'\" --order-by id --desc\n  l8db table count orders --where \"status = 'open'\"\n  l8db table rows orders --where '{\"status\":\"open\"}'  (MongoDB)"
+        after_help = "Tabellen (MongoDB: Collections) gibst du als name oder schema.name an.\n\nBeispiele:\n  l8db table list -s public\n  l8db table describe public.users\n  l8db table rows users --where \"created_at > now() - interval '1 day'\" --order-by id --desc\n  l8db table count orders --where \"status = 'open'\"\n  l8db table rows orders --where '{\"status\":\"open\"}'  (MongoDB)\n  l8db table rows keys --where 'user:*'  (Redis)"
     )]
     Table {
         #[command(subcommand)]
@@ -396,7 +402,7 @@ impl Limit {
 #[derive(Subcommand, Debug)]
 enum TableCommand {
     #[command(
-        about = "Tabellen und Views auflisten (kurz: ls)",
+        about = "Tabellen, Views und Collections auflisten (kurz: ls)",
         alias = "ls",
         override_usage = "l8db table list [-s SCHEMA]"
     )]
@@ -410,25 +416,35 @@ enum TableCommand {
         override_usage = "l8db table describe <TABELLE>"
     )]
     Describe {
-        #[arg(value_name = "TABELLE", help = "Name oder schema.name")]
+        #[arg(
+            value_name = "TABELLE",
+            help = "Name oder schema.name (MongoDB: Collection, S3: Bucket)"
+        )]
         table: String,
     },
     #[command(
-        about = "Zeilen einer Tabelle anzeigen (auch: show)",
+        about = "Zeilen einer Tabelle oder Dokumente einer Collection anzeigen (auch: show; Abbruch: Tabellensuche nach 60 s, Zeilen nach 300 s)",
         alias = "show",
         override_usage = "l8db table rows <TABELLE> [--where AUSDRUCK] [--order-by SPALTE] [--desc] [-n ANZAHL]"
     )]
     Rows {
-        #[arg(value_name = "TABELLE", help = "Name oder schema.name")]
+        #[arg(
+            value_name = "TABELLE",
+            help = "Name oder schema.name (MongoDB: Collection, S3: Bucket)"
+        )]
         table: String,
         #[arg(
             short = 'w',
             long = "where",
             value_name = "AUSDRUCK",
-            help = "SQL-Filter, z. B. \"id > 10\"; MongoDB: JSON wie '{\"status\":\"open\"}', Redis: Key-Muster wie 'user:*'"
+            help = "Filter, SQL z. B. \"id > 10\"; MongoDB: JSON wie '{\"status\":\"open\"}', Redis: Key-Muster wie 'user:*', S3: Schlüssel-Präfix wie 'logs/2026/'"
         )]
         filter: Option<String>,
-        #[arg(long, value_name = "SPALTE", help = "Sortieren nach Spalte")]
+        #[arg(
+            long,
+            value_name = "SPALTE",
+            help = "Sortieren nach Spalte (MongoDB: Feld, auch a.b)"
+        )]
         order_by: Option<String>,
         #[arg(long, requires = "order_by", help = "Absteigend sortieren")]
         desc: bool,
@@ -457,13 +473,16 @@ enum TableCommand {
         override_usage = "l8db table count <TABELLE> [--where AUSDRUCK]"
     )]
     Count {
-        #[arg(value_name = "TABELLE", help = "Name oder schema.name")]
+        #[arg(
+            value_name = "TABELLE",
+            help = "Name oder schema.name (MongoDB: Collection, S3: Bucket)"
+        )]
         table: String,
         #[arg(
             short = 'w',
             long = "where",
             value_name = "AUSDRUCK",
-            help = "SQL-Filter, z. B. \"id > 10\"; MongoDB: JSON wie '{\"status\":\"open\"}', Redis: Key-Muster wie 'user:*'"
+            help = "Filter, SQL z. B. \"id > 10\"; MongoDB: JSON wie '{\"status\":\"open\"}', Redis: Key-Muster wie 'user:*', S3: Schlüssel-Präfix wie 'logs/2026/'"
         )]
         filter: Option<String>,
     },
@@ -529,7 +548,13 @@ const COMMANDS: &[&str] = &[
     "-d",
     "-o",
 ];
-const GLOBAL_FLAGS: &[&str] = &["--connection", "--url", "--database", "--output"];
+const GLOBAL_FLAGS: &[&str] = &[
+    "--connection",
+    "--url",
+    "--database",
+    "--output",
+    "--read-only",
+];
 
 fn timeout_seconds(value: &str) -> Result<u64, String> {
     match value.parse::<u64>() {
@@ -613,9 +638,23 @@ fn localize(command: clap::Command) -> clap::Command {
     command
 }
 
+pub(crate) fn sql_comment_arg(arg: &str) -> String {
+    match arg.strip_prefix("--") {
+        Some(rest)
+            if rest.starts_with(char::is_whitespace)
+                || rest
+                    .split_once('\n')
+                    .is_some_and(|(line, _)| !line.contains('=')) =>
+        {
+            format!(" {arg}")
+        }
+        _ => arg.to_string(),
+    }
+}
+
 pub fn main(args: &[String]) -> i32 {
     attach_console();
-    let argv = std::iter::once("l8db".to_string()).chain(args.iter().cloned());
+    let argv = std::iter::once("l8db".to_string()).chain(args.iter().map(|a| sql_comment_arg(a)));
     let matches = match command().try_get_matches_from(argv) {
         Ok(matches) => matches,
         Err(error) => return report(error),
@@ -708,7 +747,11 @@ fn german(error: &clap::Error) -> String {
         }
         ErrorKind::ArgumentConflict => {
             let other = value(ContextKind::PriorArg).unwrap_or_default();
-            format!("{invalid} und {other} schließen sich aus.")
+            if other == invalid {
+                format!("{invalid} ist mehrfach angegeben (Kurz- und Langform zählen gleich).")
+            } else {
+                format!("{invalid} und {other} schließen sich aus.")
+            }
         }
         ErrorKind::TooManyValues | ErrorKind::NoEquals => {
             format!("Unerwartetes Argument „{invalid}“.")

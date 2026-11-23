@@ -3,8 +3,10 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { s3DeleteObjects, s3DeletePrefix } from "@/lib/db";
+import { parseVersioning } from "@/lib/storage/s3";
 import { runStorageJob } from "@/lib/storage/transfers";
 import { ConfirmActionDialog } from "./confirm-action-dialog";
+import { useBucketConfig } from "./use-bucket-config";
 import type { BrowserRow } from "./use-object-listing";
 import { useStorageConnection } from "./use-storage-connection";
 
@@ -35,6 +37,10 @@ export function DeleteObjectsDialog({
   const objects = rows?.filter((row) => row.kind === "object") ?? [];
   const specificVersions = objects.some((row) => row.versionId);
   const permanentFolders = folders.length > 0 && (allVersions || versionsMode);
+  const versioning = useBucketConfig(bucket, "versioning");
+  const unversioned =
+    !versioning.loading && !versioning.error && parseVersioning(versioning.data) !== "Enabled";
+  const permanent = permanentFolders || specificVersions || unversioned;
 
   return (
     <ConfirmActionDialog
@@ -48,15 +54,17 @@ export function DeleteObjectsDialog({
         <>
           {folders.length ? `${folders.length} Ordner inklusive Inhalt` : ""}
           {folders.length && objects.length ? " und " : ""}
-          {objects.length ? `${objects.length} Objekt(e)` : ""}
+          {objects.length ? `${objects.length} ${objects.length === 1 ? "Objekt" : "Objekte"}` : ""}
           {permanentFolders
-            ? " werden mit allen Versionen endgültig gelöscht. Das lässt sich nicht rückgängig machen."
+            ? " werden mit allen Versionen endgültig gelöscht. Nicht wiederherstellbar."
             : specificVersions
               ? " – die gewählten Versionen werden endgültig entfernt."
-              : " werden gelöscht. In versionierten Buckets entsteht ein Delete-Marker."}
+              : unversioned
+                ? " werden endgültig gelöscht. Nicht wiederherstellbar."
+                : " werden gelöscht. Die bisherigen Versionen bleiben erhalten."}
         </>
       }
-      confirmLabel={permanentFolders || specificVersions ? "Endgültig löschen" : "Löschen"}
+      confirmLabel={permanent ? "Endgültig löschen" : "Löschen"}
       onOpenChange={(open) => !open && onClose()}
       onConfirm={async () => {
         if (!rows) return;
@@ -93,7 +101,7 @@ export function DeleteObjectsDialog({
           throw new Error(
             `${deleted} gelöscht, ${errors.length} Fehler:\n${errors.slice(0, 5).join("\n")}`,
           );
-        toast.success(`${deleted} Objekt(e) gelöscht`);
+        toast.success(`${deleted} ${deleted === 1 ? "Objekt" : "Objekte"} gelöscht`);
       }}
     >
       {!specificVersions && folders.length > 0 && !versionsMode && (
@@ -106,11 +114,13 @@ export function DeleteObjectsDialog({
           />
         </label>
       )}
-      <label className="flex items-center justify-between gap-3 text-sm">
+      <label
+        className={`flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm ${bypass ? "bg-destructive/10 text-destructive" : ""}`}
+      >
         <span className="flex flex-col gap-0.5">
-          Governance-Sperre umgehen
-          <span className="text-xs text-muted-foreground">
-            Benötigt s3:BypassGovernanceRetention.
+          Auch gesperrte Objekte löschen
+          <span className={`text-xs ${bypass ? "" : "text-muted-foreground"}`}>
+            Umgeht die Governance-Aufbewahrung (s3:BypassGovernanceRetention).
           </span>
         </span>
         <Switch checked={bypass} onCheckedChange={setBypass} aria-label="Governance umgehen" />

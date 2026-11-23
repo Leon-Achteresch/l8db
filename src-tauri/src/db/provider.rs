@@ -99,8 +99,10 @@ pub struct Capabilities {
     pub explain_analyze: bool,
     pub packages: bool,
     pub insert_sql: bool,
+    pub query_builder: bool,
     pub database_is_schema: bool,
     pub query_language: &'static str,
+    pub sort: &'static str,
     pub query_label: &'static str,
     pub filter_hint: &'static str,
     pub table_template: TableTemplate,
@@ -126,6 +128,7 @@ pub struct Terms {
     pub rows: &'static str,
     pub column: &'static str,
     pub columns: &'static str,
+    pub primary_key: &'static str,
 }
 
 const TERMS: Terms = Terms {
@@ -137,6 +140,7 @@ const TERMS: Terms = Terms {
     rows: "Zeilen",
     column: "Spalte",
     columns: "Spalten",
+    primary_key: "Primärschlüssel",
 };
 
 const NO_TEMPLATE: TableTemplate = TableTemplate {
@@ -420,8 +424,10 @@ const NONE: Capabilities = Capabilities {
     explain_analyze: false,
     packages: false,
     insert_sql: false,
+    query_builder: false,
     database_is_schema: false,
     query_language: "sql",
+    sort: "columns",
     query_label: "SQL",
     filter_hint: "z. B. status = 'active' AND created_at > '2024-01-01'",
     table_template: NO_TEMPLATE,
@@ -448,6 +454,7 @@ const SQL_COMMON: Capabilities = Capabilities {
     dml_preview: true,
     multi_target_query: true,
     insert_sql: true,
+    query_builder: true,
     ..NONE
 };
 
@@ -481,6 +488,7 @@ impl DatabaseKind {
     pub fn capabilities(self) -> Capabilities {
         match self {
             DatabaseKind::Jdbc => Capabilities {
+                query_builder: true,
                 databases: false,
                 schemas: true,
                 views: true,
@@ -493,6 +501,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Workspace => Capabilities {
+                query_builder: true,
                 databases: false,
                 schemas: true,
                 read_only_mode: false,
@@ -502,6 +511,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Spacetimedb => Capabilities {
+                query_builder: true,
                 databases: false,
                 schemas: false,
                 read_only_mode: false,
@@ -555,6 +565,7 @@ impl DatabaseKind {
             },
             DatabaseKind::Mysql => Capabilities {
                 server_output: true,
+                read_only_mode: true,
                 live_monitor: true,
                 backup: true,
                 query_stats: true,
@@ -566,6 +577,11 @@ impl DatabaseKind {
                 schema_snapshot: true,
                 explain_analyze: true,
                 database_is_schema: true,
+                locks: true,
+                partitions: true,
+                column_search: true,
+                source_search: true,
+                scheduler_jobs: true,
                 table_template: MYSQL_TEMPLATE,
                 terms: Terms {
                     schema: "Datenbank",
@@ -575,6 +591,7 @@ impl DatabaseKind {
             },
             DatabaseKind::Sqlite => Capabilities {
                 backup: true,
+                read_only_mode: true,
                 query_cancel: true,
                 databases: false,
                 ssl: false,
@@ -590,6 +607,9 @@ impl DatabaseKind {
             },
             DatabaseKind::Duckdb => Capabilities {
                 test_data: false,
+                sequences: true,
+                transactions: true,
+                row_edit: true,
                 databases: false,
                 ssl: false,
                 ssh: false,
@@ -611,10 +631,13 @@ impl DatabaseKind {
                 row_edit: true,
                 data_compare: true,
                 schema_snapshot: true,
+                synonyms: true,
+                locks: true,
                 table_template: MSSQL_TEMPLATE,
                 ..SQL_COMMON
             },
             DatabaseKind::Clickhouse => Capabilities {
+                query_builder: true,
                 multi_target_query: true,
                 query_cancel: true,
                 dashboard_parallelism: 2,
@@ -634,6 +657,10 @@ impl DatabaseKind {
                 insert_sql: true,
                 database_is_schema: true,
                 table_template: CLICKHOUSE_TEMPLATE,
+                terms: Terms {
+                    primary_key: "Sortierschlüssel",
+                    ..TERMS
+                },
                 ..NONE
             },
             DatabaseKind::Oracle => Capabilities {
@@ -688,6 +715,7 @@ impl DatabaseKind {
             },
             DatabaseKind::Mongodb => Capabilities {
                 csv_import: true,
+                full_table_export: true,
                 import_conflicts: true,
                 test_data: true,
                 backup: true,
@@ -723,12 +751,14 @@ impl DatabaseKind {
                     rows: "Keys",
                     column: "Feld",
                     columns: "Felder",
+                    primary_key: "eindeutig",
                     ..TERMS
                 },
                 filter_hint: "Key-Pattern, z. B. user:*",
                 ..NONE
             },
             DatabaseKind::Odbc => Capabilities {
+                query_builder: true,
                 server_output: true,
                 databases: false,
                 views: true,
@@ -739,9 +769,11 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Elasticsearch => Capabilities {
+                query_builder: true,
                 server_output: true,
                 databases: false,
                 query_label: "Elasticsearch",
+                sort: "keyword",
                 terms: Terms {
                     database: "Cluster",
                     schema: "Art",
@@ -751,6 +783,7 @@ impl DatabaseKind {
                     rows: "Dokumente",
                     column: "Feld",
                     columns: "Felder",
+                    primary_key: "Primärschlüssel",
                 },
                 filter_hint: "SQL-Bedingung, Lucene-Query (status:active AND age:>21) oder Query-DSL als JSON",
                 ..NONE
@@ -768,6 +801,7 @@ impl DatabaseKind {
                     rows: "Punkte",
                     column: "Feld",
                     columns: "Felder",
+                    primary_key: "Primärschlüssel",
                 },
                 filter_hint: "SQL-Bedingung auf Tags und Felder, z. B. \"host\" = 'a' AND \"usage\" > 50",
                 ..NONE
@@ -777,7 +811,6 @@ impl DatabaseKind {
                 ssh: false,
                 view_editor: false,
                 functions: false,
-                alter_columns: false,
                 constraints: false,
                 overview: false,
                 row_edit: true,
@@ -817,6 +850,7 @@ impl DatabaseKind {
                 transactions: true,
                 row_edit: true,
                 query_label: "PartiQL",
+                sort: "none",
                 terms: Terms {
                     database: "Region",
                     schema: "Region",
@@ -830,6 +864,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Athena => Capabilities {
+                query_builder: true,
                 ssl: false,
                 ssh: false,
                 query_cancel: true,
@@ -844,6 +879,7 @@ impl DatabaseKind {
                 ..NONE
             },
             DatabaseKind::Bigquery | DatabaseKind::Snowflake => Capabilities {
+                query_builder: true,
                 databases: self == DatabaseKind::Snowflake,
                 proxy_user: self == DatabaseKind::Snowflake,
                 server_output: self == DatabaseKind::Bigquery,
@@ -1023,9 +1059,9 @@ const PROVIDERS: &[Provider] = &[
     pg("postgres", "PostgreSQL", 5432, "postgresql://postgres:password@localhost:5432/postgres", "Lokaler Server oder eigener Host. Alle Funktionen des SQL-Arbeitsplatzes verfügbar.", &["localhost", "127.0.0.1"]),
     pg("supabase", "Supabase", 5432, "postgresql://postgres:password@db.project.supabase.co:5432/postgres", "Direkte URL aus Connect. In IPv4-Netzen eignet sich der Session Pooler auf Port 5432.", &[".supabase.co", ".supabase.com"]),
     pg("neon", "Neon", 5432, "postgresql://user:password@ep-project.eu-central-1.aws.neon.tech/neondb?sslmode=require", "URL aus dem Connect-Dialog des Branches. SSL und URL-Parameter bleiben erhalten.", &[".neon.tech"]),
-    pg("cockroachdb", "CockroachDB", 26257, "postgresql://root@localhost:26257/defaultdb?sslmode=disable", "PostgreSQL-Wire-Protokoll. Rollen, Extensions und Replikation weichen von PostgreSQL ab.", &[".cockroachlabs.cloud"]),
+    pg("cockroachdb", "CockroachDB", 26257, "postgresql://root@localhost:26257/defaultdb?sslmode=disable", "PostgreSQL-Wire-Protokoll. Ohne Publikationen, Proxy-Benutzer, Extensions und Zeilenbearbeitung.", &[".cockroachlabs.cloud"]),
     pg("redshift", "Amazon Redshift", 5439, "postgresql://awsuser:password@cluster.region.redshift.amazonaws.com:5439/dev", "Redshift spricht PostgreSQL 8.x. Einige Katalogabfragen liefern reduzierte Daten.", &[".redshift.amazonaws.com"]),
-    pg("timescale", "TimescaleDB", 5432, "postgresql://tsdbadmin:password@service.tsdb.cloud.timescale.com:5432/tsdb?sslmode=require", "Vollständig PostgreSQL-kompatibel inklusive Hypertables als normale Tabellen.", &[".timescale.com"]),
+    pg("timescale", "TimescaleDB", 5432, "postgresql://tsdbadmin:password@service.tsdb.cloud.timescale.com:5432/tsdb?sslmode=require", "PostgreSQL mit Hypertables als Tabellen. Komprimierte Chunks sind nur lesbar.", &[".timescale.com"]),
     pg("yugabyte", "YugabyteDB", 5433, "postgresql://yugabyte:yugabyte@localhost:5433/yugabyte", "YSQL-API über das PostgreSQL-Protokoll.", &[".yugabyte.cloud"]),
     pg("alloydb", "AlloyDB", 5432, "postgresql://postgres:password@10.0.0.2:5432/postgres", "Google AlloyDB über den Auth Proxy oder eine private IP.", &[]),
     pg("materialize", "Materialize", 6875, "postgresql://materialize@localhost:6875/materialize", "Streaming-SQL über das PostgreSQL-Protokoll.", &[".materialize.cloud"]),
@@ -1051,7 +1087,7 @@ const PROVIDERS: &[Provider] = &[
     Provider { id: "azure-sql", name: "Azure SQL", group: "Microsoft", kind: DatabaseKind::Mssql, port: Some(1433), placeholder: "mssql://user:password@server.database.windows.net:1433/db?encrypt=true", hint: "Azure erfordert Verschlüsselung. Login im Format user oder user@server.", hosts: &[".database.windows.net"], driver: Driver::Builtin },
     Provider { id: "clickhouse", name: "ClickHouse", group: "Analytisch", kind: DatabaseKind::Clickhouse, port: Some(8123), placeholder: "clickhouse://default:password@localhost:8123/default", hint: "HTTP-Schnittstelle auf Port 8123 (8443 mit ?secure=1).", hosts: &[".clickhouse.cloud"], driver: Driver::Builtin },
     Provider { id: "influxdb", name: "InfluxDB", group: "Analytisch", kind: DatabaseKind::Influxdb, port: Some(8086), placeholder: "influxdb://token:API_TOKEN@localhost:8086/bucket?org=meine-org", hint: "Token als Passwort. v2 (Flux/InfluxQL, Port 8086) und v3 (SQL/InfluxQL, Port 8181) werden erkannt, ?version=2|3 erzwingt. Zeitraum der Tabellenansicht mit ?range=7d (Standard 1h, all für alles).", hosts: &[".influxdata.com"], driver: Driver::Builtin },
-    Provider { id: "elasticsearch", name: "Elasticsearch", group: "Suche", kind: DatabaseKind::Elasticsearch, port: Some(9200), placeholder: "elasticsearch://elastic:password@localhost:9200", hint: "Indizes erscheinen als Tabellen. Basic-Auth, API-Key (Benutzer apikey) oder ohne Anmeldung. Queries als SQL oder Dev-Tools-Request, z. B. GET index/_search {…}.", hosts: &[".elastic-cloud.com", ".found.io", ".elastic.cloud"], driver: Driver::Builtin },
+    Provider { id: "elasticsearch", name: "Elasticsearch", group: "Suche", kind: DatabaseKind::Elasticsearch, port: Some(9200), placeholder: "elasticsearch://elastic:password@localhost:9200", hint: "Indizes erscheinen als Tabellen. Basic-Auth, API-Key (Benutzer apikey) oder ohne Anmeldung. Queries als SQL oder Dev-Tools-Request, z. B. GET index/_search {…}. HTTPS mit ?tls=true.", hosts: &[".elastic-cloud.com", ".found.io", ".elastic.cloud"], driver: Driver::Builtin },
     Provider { id: "opensearch", name: "OpenSearch", group: "Suche", kind: DatabaseKind::Elasticsearch, port: Some(9200), placeholder: "opensearch://admin:password@localhost:9200?sslmode=require", hint: "OpenSearch mit SQL-Plugin oder Dev-Tools-Requests. sslmode=require akzeptiert selbstsignierte Zertifikate.", hosts: &[".es.amazonaws.com", ".aoss.amazonaws.com"], driver: Driver::Builtin },
     Provider { id: "bigquery", name: "Google BigQuery", group: "Analytisch", kind: DatabaseKind::Bigquery, port: None, placeholder: "bigquery://my-project/my_dataset?location=EU", hint: "REST API v2. Anmeldung per Application Default Credentials (gcloud auth application-default login), Service-Account-JSON oder Zugriffstoken. Datasets erscheinen als Schemas.", hosts: &[], driver: Driver::Builtin },
     Provider { id: "snowflake", name: "Snowflake", group: "Analytisch", kind: DatabaseKind::Snowflake, port: None, placeholder: "snowflake://USER@myorg-account/DB/PUBLIC?warehouse=COMPUTE_WH&role=ANALYST", hint: "SQL API v2 mit Key-Pair (JWT), Programmatic Access Token oder OAuth. Rolle und Warehouse lassen sich wechseln.", hosts: &[".snowflakecomputing.com"], driver: Driver::Builtin },
@@ -1070,7 +1106,7 @@ const PROVIDERS: &[Provider] = &[
     Provider { id: "dynamodb", name: "Amazon DynamoDB", group: "AWS", kind: DatabaseKind::Dynamodb, port: None, placeholder: "dynamodb://eu-central-1?profile=default", hint: "Host ist die Region. Zugang über Access Key (Benutzer/Passwort), AWS-Profil (?profile=) oder Umgebung. Tabellen per Scan, Queries in PartiQL.", hosts: &[], driver: Driver::Builtin },
     Provider { id: "dynamodb-local", name: "DynamoDB Local / LocalStack", group: "AWS", kind: DatabaseKind::Dynamodb, port: None, placeholder: "dynamodb://local:local@us-east-1?endpoint=http%3A%2F%2Flocalhost%3A8000", hint: "Eigener Endpunkt über ?endpoint=. Beliebige Schlüssel genügen.", hosts: &[], driver: Driver::Builtin },
     Provider { id: "minio", name: "MinIO", group: "Objektspeicher", kind: DatabaseKind::S3, port: None, placeholder: "s3://minioadmin:minioadmin@us-east-1?endpoint=http%3A%2F%2Flocalhost%3A9000", hint: "S3-API von MinIO (Path-Style). Access Key als Benutzer, Secret Key als Passwort, Endpunkt über ?endpoint=. Buckets erscheinen in der Seitenleiste.", hosts: &[], driver: Driver::Builtin },
-    Provider { id: "s3", name: "Amazon S3", group: "Objektspeicher", kind: DatabaseKind::S3, port: None, placeholder: "s3://eu-central-1?profile=default", hint: "Host ist die Region. Zugang über Access Key, AWS-Profil (?profile=) oder Umgebung. Optional Pfad = fester Bucket, ?path_style=true für Path-Style.", hosts: &[".amazonaws.com"], driver: Driver::Builtin },
+    Provider { id: "s3", name: "Amazon S3", group: "Objektspeicher", kind: DatabaseKind::S3, port: None, placeholder: "s3://eu-central-1?profile=default", hint: "Host ist die Region. Zugang über Access Key (s3://KEY:SECRET@region, mit Session-Token s3://KEY:SECRET:TOKEN@region), AWS-Profil (?profile=) oder Umgebung. Optional Pfad = fester Bucket, ?path_style=true für Path-Style.", hosts: &[".amazonaws.com"], driver: Driver::Builtin },
     Provider { id: "r2", name: "Cloudflare R2", group: "Objektspeicher", kind: DatabaseKind::S3, port: None, placeholder: "s3://ACCESS_KEY:SECRET_KEY@us-east-1?endpoint=https%3A%2F%2FACCOUNT_ID.r2.cloudflarestorage.com", hint: "S3-kompatible API von R2 (Region us-east-1 entspricht auto).", hosts: &[".r2.cloudflarestorage.com"], driver: Driver::Builtin },
     Provider { id: "gcs-s3", name: "Google Cloud Storage (S3)", group: "Objektspeicher", kind: DatabaseKind::S3, port: None, placeholder: "s3://HMAC_KEY:HMAC_SECRET@us-east-1?endpoint=https%3A%2F%2Fstorage.googleapis.com", hint: "XML-API mit HMAC-Schlüsseln (Interoperabilität).", hosts: &["storage.googleapis.com"], driver: Driver::Builtin },
     Provider { id: "b2", name: "Backblaze B2", group: "Objektspeicher", kind: DatabaseKind::S3, port: None, placeholder: "s3://KEY_ID:APP_KEY@us-west-004?endpoint=https%3A%2F%2Fs3.us-west-004.backblazeb2.com", hint: "S3-kompatible API von B2.", hosts: &[".backblazeb2.com"], driver: Driver::Builtin },
@@ -1079,6 +1115,7 @@ const PROVIDERS: &[Provider] = &[
     Provider { id: "athena", name: "Amazon Athena", group: "AWS", kind: DatabaseKind::Athena, port: None, placeholder: "athena://eu-central-1/AwsDataCatalog?profile=default&workgroup=primary", hint: "Nativ über die Athena-API. Host ist die Region, Pfad der Katalog. Optional ?output=s3://bucket/pfad/ und ?schema=default.", hosts: &[], driver: Driver::Builtin },
     odbc("odbc", "ODBC (generisch)", None, "", "odbc://?Driver=Name&Server=host&Database=db&UID=user&PWD=pass", "Beliebiger installierter ODBC-Treiber. Die Query-Parameter bilden den Connection String."),
     odbc("db2", "IBM Db2", Some(50000), "IBM DB2 ODBC DRIVER", "odbc://db2inst1:password@localhost:50000/SAMPLE?Driver=IBM%20DB2%20ODBC%20DRIVER", "Benötigt den IBM Data Server Driver (ODBC)."),
+    odbc("ibmi", "IBM i (AS/400)", None, IBMI_DRIVER, "odbc://USER:password@as400.example.com/?Driver=IBM%20i%20Access%20ODBC%20Driver", "Db2 for i über den IBM i Access ODBC Driver. Der Host ist der Systemname, Bibliotheken über ?DBQ=LIB1,LIB2."),
     odbc("firebird", "Firebird", Some(3050), "Firebird/InterBase(r) driver", "odbc://SYSDBA:masterkey@localhost:3050/%2Fdata%2Fdb.fdb?Driver=Firebird%2FInterBase(r)%20driver", "Benötigt den Firebird ODBC-Treiber."),
     odbc("informix", "IBM Informix", Some(9088), "IBM INFORMIX ODBC DRIVER", "odbc://informix:password@localhost:9088/stores?Driver=IBM%20INFORMIX%20ODBC%20DRIVER&Server=ol_informix", "Benötigt das Informix Client SDK."),
     odbc("sybase", "SAP ASE (Sybase)", Some(5000), "Adaptive Server Enterprise", "odbc://sa:password@localhost:5000/master?Driver=Adaptive%20Server%20Enterprise", "Benötigt den SAP ASE ODBC-Treiber."),
@@ -1119,6 +1156,7 @@ fn unixodbc_hints() -> Vec<InstallHint> {
 fn odbc_driver_hints(driver: &'static str) -> Vec<InstallHint> {
     let url = match driver {
         "IBM DB2 ODBC DRIVER" => "https://www.ibm.com/support/pages/db2-odbc-cli-driver-download-and-installation-information",
+        IBMI_DRIVER => "https://www.ibm.com/support/pages/ibm-i-access-client-solutions",
         "Firebird/InterBase(r) driver" => "https://firebirdsql.org/en/odbc-driver/",
         "IBM INFORMIX ODBC DRIVER" => "https://www.ibm.com/products/informix/client-sdk",
         "Adaptive Server Enterprise" => "https://help.sap.com/docs/SAP_ASE",
@@ -1145,6 +1183,23 @@ fn odbc_driver_hints(driver: &'static str) -> Vec<InstallHint> {
     hints
 }
 
+pub const IBMI_DRIVER: &str = "IBM i Access ODBC Driver";
+
+const IBMI_MACOS_INSTALL: &str = r#"brew install unixodbc && brew tap ibm/iaccess https://public.dhe.ibm.com/software/ibmi/products/odbc/macos/tap/ && { brew trust --cask ibm/iaccess/ibm-iaccess >/dev/null 2>&1 || true; } && brew fetch --cask ibm-iaccess && osascript -e 'on run argv' -e 'do shell script "/usr/sbin/installer -pkg " & quoted form of (item 1 of argv) & " -target /" with prompt "l8db installiert den IBM i Access ODBC Driver." with administrator privileges' -e 'end run' "$(brew --cache --cask ibm-iaccess)""#;
+
+const IBMI_LINUX_INSTALL: &str = "if command -v apt-get >/dev/null; then sudo -n curl -fsSL -o /etc/apt/sources.list.d/ibmi-acs-1.1.0.list https://public.dhe.ibm.com/software/ibmi/products/odbc/debs/dists/1.1.0/ibmi-acs-1.1.0.list && sudo -n apt-get update && sudo -n apt-get install -y ibm-iaccess; elif command -v dnf >/dev/null; then sudo -n curl -fsSL -o /etc/yum.repos.d/ibmi-acs.repo https://public.dhe.ibm.com/software/ibmi/products/odbc/rpms/ibmi-acs.repo && sudo -n dnf install -y --refresh ibm-iaccess; elif command -v zypper >/dev/null; then sudo -n curl -fsSL -o /etc/zypp/repos.d/ibmi-acs.repo https://public.dhe.ibm.com/software/ibmi/products/odbc/rpms/ibmi-acs.repo && sudo -n zypper --non-interactive install ibm-iaccess; else echo 'Kein unterstützter Paketmanager (apt, dnf, zypper) gefunden.' >&2; exit 1; fi";
+
+fn product_install_command(id: &str) -> Option<&'static str> {
+    if !cfg!(feature = "odbc") {
+        return None;
+    }
+    match (id, std::env::consts::OS) {
+        ("ibmi", "macos") => Some(IBMI_MACOS_INSTALL),
+        ("ibmi", "linux") if std::env::consts::ARCH == "x86_64" => Some(IBMI_LINUX_INSTALL),
+        _ => None,
+    }
+}
+
 const ORACLE_MACOS_INTEL_INSTALL: &str = "brew tap InstantClientTap/instantclient && brew trust instantclienttap/instantclient && brew install instantclient-basic";
 
 const ORACLE_MACOS_ARM64_INSTALL: &str = "mkdir -p /tmp/l8db-ic && curl -fL -H \"Cookie: oraclelicense=accept-securebackup-cookie\" -o /tmp/l8db-ic/ic.dmg \"https://download.oracle.com/otn_software/mac/instantclient/instantclient-basic-macos-arm64.dmg\" && hdiutil attach -nobrowse -mountpoint /tmp/l8db-ic/mnt /tmp/l8db-ic/ic.dmg && lib=$(ls /tmp/l8db-ic/mnt/libclntsh.dylib /tmp/l8db-ic/mnt/*/libclntsh.dylib 2>/dev/null | head -1) && [ -n \"$lib\" ] && rm -rf \"$HOME/instantclient_macos_arm64\" && cp -R \"$(dirname \"$lib\")/\" \"$HOME/instantclient_macos_arm64\" && { find \"$HOME/lib\" -maxdepth 1 -type l -lname \"$HOME/Downloads/instantclient_*\" -delete 2>/dev/null || true; } && hdiutil detach /tmp/l8db-ic/mnt && rm -rf /tmp/l8db-ic";
@@ -1161,7 +1216,7 @@ fn oracle_macos_command() -> &'static str {
     }
 }
 
-fn oracle_hints() -> Vec<InstallHint> {
+pub(super) fn oracle_hints() -> Vec<InstallHint> {
     vec![
         InstallHint { os: "macos", command: oracle_macos_command(), url: "https://www.oracle.com/database/technologies/instant-client/macos-arm64-downloads.html" },
         InstallHint { os: "linux", command: ORACLE_LINUX_INSTALL, url: "https://www.oracle.com/database/technologies/instant-client/linux-x86-64-downloads.html" },
@@ -1169,7 +1224,7 @@ fn oracle_hints() -> Vec<InstallHint> {
     ]
 }
 
-fn driver_status(kind: DatabaseKind, driver: Driver) -> DriverStatus {
+fn driver_status(id: &str, kind: DatabaseKind, driver: Driver) -> DriverStatus {
     if kind == DatabaseKind::Jdbc {
         return DriverStatus {
             available: false,
@@ -1202,6 +1257,11 @@ fn driver_status(kind: DatabaseKind, driver: Driver) -> DriverStatus {
             },
         },
         Driver::Odbc { driver } => {
+            let install_command = if driver.is_empty() {
+                install_command
+            } else {
+                product_install_command(id).map(str::to_string)
+            };
             let status = odbc_environment_status();
             let mut install = odbc_driver_hints(driver);
             match status {
@@ -1287,6 +1347,20 @@ fn odbc_environment_status() -> Result<Vec<String>, String> {
     Err("ODBC ist in diesem Build nicht enthalten (mit --no-default-features gebaut). Build mit: cargo tauri build --features odbc".to_string())
 }
 
+fn product_capabilities(id: &str, mut caps: Capabilities) -> Capabilities {
+    if id == "mariadb" {
+        caps.sequences = true;
+    }
+    if id == "cockroachdb" {
+        caps.replication = false;
+        caps.proxy_user = false;
+        caps.extensions = false;
+        caps.query_stats = false;
+        caps.row_edit = false;
+    }
+    caps
+}
+
 pub fn list_providers() -> Vec<ProviderInfo> {
     PROVIDERS
         .iter()
@@ -1302,19 +1376,22 @@ pub fn list_providers() -> Vec<ProviderInfo> {
             hint: p.hint,
             hosts: p.hosts,
             driver: p.driver,
-            capabilities: p.kind.capabilities(),
-            driver_status: driver_status(p.kind, p.driver),
+            capabilities: product_capabilities(p.id, p.kind.capabilities()),
+            driver_status: driver_status(p.id, p.kind, p.driver),
         })
         .collect()
 }
 
 pub fn kind_driver_status(kind: DatabaseKind) -> DriverStatus {
-    let driver = PROVIDERS
+    PROVIDERS
         .iter()
         .find(|p| p.kind == kind)
-        .map(|p| p.driver)
-        .unwrap_or(Driver::Builtin);
-    driver_status(kind, driver)
+        .map(product_status)
+        .unwrap_or_else(|| driver_status("", kind, Driver::Builtin))
+}
+
+fn product_status(provider: &Provider) -> DriverStatus {
+    driver_status(provider.id, provider.kind, provider.driver)
 }
 
 pub fn install_command(kind: DatabaseKind) -> Result<&'static str, String> {
@@ -1359,8 +1436,12 @@ fn shell(command: &str) -> tokio::process::Command {
     }
 }
 
-pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
-    let command = install_command(kind)?;
+pub async fn install_driver(kind: DatabaseKind, provider: Option<&str>) -> Result<String, String> {
+    let product = provider.and_then(|id| PROVIDERS.iter().find(|p| p.id == id && p.kind == kind));
+    let command = match product.and_then(|p| product_install_command(p.id)) {
+        Some(command) => command,
+        None => install_command(kind)?,
+    };
     if std::env::consts::OS == "macos" && command.contains("brew ") {
         let brew = crate::process::command("sh")
             .arg("-c")
@@ -1398,7 +1479,10 @@ pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
     let short = trimmed[start..].to_string();
     if output.status.success() {
         let mut result = short;
-        let still_missing = !kind_driver_status(kind).available
+        let status = product
+            .map(product_status)
+            .unwrap_or_else(|| kind_driver_status(kind));
+        let still_missing = !status.available
             && (kind == DatabaseKind::Oracle
                 || (kind == DatabaseKind::Odbc && cfg!(feature = "odbc")));
         if still_missing {
@@ -1418,6 +1502,40 @@ pub async fn install_driver(kind: DatabaseKind) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_read_only_family_has_a_marker_the_guards_detect() {
+        let markers: std::collections::BTreeMap<String, Vec<(String, String)>> =
+            serde_json::from_str(include_str!(
+                "../../../tests/fixtures/read-only-markers.json"
+            ))
+            .unwrap();
+        let mut families: Vec<String> = DatabaseKind::ALL
+            .into_iter()
+            .filter(|kind| kind.capabilities().read_only_mode)
+            .map(|kind| {
+                serde_json::to_value(kind)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        families.sort();
+        assert_eq!(markers.keys().cloned().collect::<Vec<_>>(), families);
+        for (family, pairs) in &markers {
+            for (input, output) in pairs {
+                assert!(
+                    !super::super::connection_string_is_read_only(input),
+                    "{family}: {input}"
+                );
+                assert!(
+                    super::super::connection_string_is_read_only(output),
+                    "{family}: {output}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn provider_ids_are_unique_and_kinds_covered() {
@@ -1486,6 +1604,18 @@ mod tests {
             }
         }
         assert!(!DatabaseKind::SqliteHttp.capabilities().table_copy);
+    }
+
+    #[test]
+    fn cockroachdb_hides_what_its_server_lacks() {
+        let providers = list_providers();
+        let caps = |id: &str| providers.iter().find(|p| p.id == id).unwrap().capabilities;
+        let (postgres, cockroach) = (caps("postgres"), caps("cockroachdb"));
+        assert!(postgres.replication && postgres.proxy_user && postgres.row_edit);
+        assert!(!cockroach.replication && !cockroach.proxy_user && !cockroach.extensions);
+        assert!(!cockroach.query_stats && !cockroach.row_edit);
+        assert!(cockroach.sessions && cockroach.live_monitor && cockroach.explain);
+        assert_eq!(caps("timescale").row_edit, postgres.row_edit);
     }
 
     #[test]
@@ -1565,6 +1695,35 @@ mod tests {
         }
         assert!(!DatabaseKind::Mongodb.capabilities().dml_preview);
         assert!(!DatabaseKind::Clickhouse.capabilities().dml_preview);
+    }
+
+    #[test]
+    fn query_builder_and_sequences_follow_the_query_model() {
+        for kind in DatabaseKind::ALL {
+            let caps = kind.capabilities();
+            if caps.query_builder {
+                assert_eq!(caps.query_language, "sql", "{kind:?}");
+                assert!(!caps.object_storage, "{kind:?}");
+            }
+        }
+        for kind in [
+            DatabaseKind::Influxdb,
+            DatabaseKind::Dynamodb,
+            DatabaseKind::S3,
+        ] {
+            assert!(!kind.capabilities().query_builder, "{kind:?}");
+        }
+        assert!(DatabaseKind::Postgres.capabilities().query_builder);
+        assert!(DatabaseKind::Clickhouse.capabilities().query_builder);
+        let product = |id: &str| {
+            list_providers()
+                .into_iter()
+                .find(|p| p.id == id)
+                .unwrap()
+                .capabilities
+        };
+        assert!(!product("mysql").sequences);
+        assert!(product("mariadb").sequences);
     }
 
     #[test]
@@ -1669,6 +1828,30 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "ok");
+    }
+
+    #[cfg(feature = "odbc")]
+    #[test]
+    fn ibmi_installs_its_own_driver_and_other_odbc_products_do_not() {
+        let command = |id: &str| {
+            list_providers()
+                .into_iter()
+                .find(|p| p.id == id)
+                .unwrap()
+                .driver_status
+                .install_command
+        };
+        match std::env::consts::OS {
+            "macos" => assert!(command("ibmi")
+                .unwrap()
+                .contains("brew fetch --cask ibm-iaccess")),
+            "linux" if std::env::consts::ARCH == "x86_64" => assert!(command("ibmi")
+                .unwrap()
+                .contains("apt-get install -y ibm-iaccess")),
+            _ => assert!(command("ibmi").is_none()),
+        }
+        assert!(command("firebird").is_none());
+        assert!(product_install_command("odbc").is_none());
     }
 
     #[cfg(target_os = "macos")]

@@ -114,8 +114,13 @@ async function runScript(page: Page, sql: string, statements: number) {
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.insertText(sql);
   await page.getByRole("button", { name: "Weitere Ausführungsarten" }).click();
-  await page.getByRole("menuitem", { name: "Skript mit Einzelergebnissen" }).click();
-  await page.getByText(`${statements} Statements werden nacheinander`, { exact: false }).waitFor();
+  await page.getByRole("menuitem", { name: "Alle Statements ausführen" }).click();
+  const description = page.getByText("nacheinander in der Reihenfolge", { exact: false });
+  await description.waitFor();
+  const counts = [
+    ...(await description.innerText()).matchAll(/(\d+) (?:Statement|SQL\*Plus-Befehl)/g),
+  ].reduce((sum, match) => sum + Number(match[1]), 0);
+  expect(counts).toBe(statements);
 }
 
 beforeAll(async () => {

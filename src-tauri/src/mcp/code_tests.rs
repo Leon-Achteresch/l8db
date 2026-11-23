@@ -4,7 +4,6 @@ use super::config::{McpConfig, McpConnection, RedactRule};
 use super::server::{cache_key, Server};
 use crate::db::{self, ColumnInfo, DatabaseKind};
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, MutexGuard};
 use std::time::{Duration, Instant};
@@ -103,7 +102,7 @@ fn fixture() -> Fixture {
     Fixture {
         server: Server {
             pool: db::pool::create_pool_state(),
-            columns: HashMap::new(),
+            columns: Default::default(),
         },
         config,
         runtime: tokio::runtime::Builder::new_current_thread()

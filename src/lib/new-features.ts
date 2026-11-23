@@ -1,58 +1,96 @@
 import { useSyncExternalStore } from "react";
+import { aiEnabled, isAiFeatureId, useAiEnabled } from "@/lib/ai/access";
+import { useSettingsStore } from "@/lib/settings";
 import { version as appVersion } from "../../package.json";
 
-export const NEXT_FEATURE_VERSION = "0.18.0";
+export const NEXT_FEATURE_VERSION = "0.19.0";
 
 export const NEW_FEATURES = {
-  "sidebar.roles.principals": NEXT_FEATURE_VERSION,
-  "query.results.output-tab": NEXT_FEATURE_VERSION,
-  "workspace.motion": NEXT_FEATURE_VERSION,
-  "settings.storage.overview": NEXT_FEATURE_VERSION,
-  "table.rows.insert-script": NEXT_FEATURE_VERSION,
-  "discover.overview": NEXT_FEATURE_VERSION,
-  "discover.labs": NEXT_FEATURE_VERSION,
-  "discover.roadmap": NEXT_FEATURE_VERSION,
-  "discover.team-tips": NEXT_FEATURE_VERSION,
-  "discover.recap": NEXT_FEATURE_VERSION,
-  "discover.achievements": NEXT_FEATURE_VERSION,
-  "discover.atlas": NEXT_FEATURE_VERSION,
-  "discover.lessons": NEXT_FEATURE_VERSION,
-  "discover.guide": NEXT_FEATURE_VERSION,
-  "ai.chat.feature-search": NEXT_FEATURE_VERSION,
-  "ai.chat.companion": NEXT_FEATURE_VERSION,
-  "discover.spotlight": NEXT_FEATURE_VERSION,
-  "discover.welcome-back": NEXT_FEATURE_VERSION,
-  "discover.hotspots": NEXT_FEATURE_VERSION,
-  "discover.video-tooltips": NEXT_FEATURE_VERSION,
-  "discover.promoter": NEXT_FEATURE_VERSION,
-  "discover.wait-tips": NEXT_FEATURE_VERSION,
-  "discover.feedback": NEXT_FEATURE_VERSION,
-  "discover.related": NEXT_FEATURE_VERSION,
-  "discover.modifier-overlay": NEXT_FEATURE_VERSION,
-  "settings.general.tour": NEXT_FEATURE_VERSION,
-  "discover.cheatsheet": NEXT_FEATURE_VERSION,
-  "discover.whats-this": NEXT_FEATURE_VERSION,
-  "discover.palette-features": NEXT_FEATURE_VERSION,
-  "settings.discovery": NEXT_FEATURE_VERSION,
-  "settings.hotkeys.focus-regions": NEXT_FEATURE_VERSION,
+  "functions.editor.git-blame": NEXT_FEATURE_VERSION,
+  "workspace.tab-status": NEXT_FEATURE_VERSION,
+  "settings.data.collect-cell-edits": NEXT_FEATURE_VERSION,
+  "settings.appearance.new-feature-badges": NEXT_FEATURE_VERSION,
+  "table.rows.staged-changes": NEXT_FEATURE_VERSION,
+  "table.rows.binary.utf8": NEXT_FEATURE_VERSION,
+  "monitor.sessions.index-progress": NEXT_FEATURE_VERSION,
+  "connections.editor.metadata-prefetch": NEXT_FEATURE_VERSION,
+  "query.tools.file.encoding": NEXT_FEATURE_VERSION,
+  "query.tools.format-review": NEXT_FEATURE_VERSION,
+  "query.tools.pgvector-reference": NEXT_FEATURE_VERSION,
+  "query.tools.duckdb-file-path": NEXT_FEATURE_VERSION,
+  "query.tools.postgres-transaction-context": NEXT_FEATURE_VERSION,
+  "ai.chat.plus.knowledge.copy-text": NEXT_FEATURE_VERSION,
+  "query.results.numbers": NEXT_FEATURE_VERSION,
+  "query.results.row-limit": NEXT_FEATURE_VERSION,
+  "table.rows.column-autosize": NEXT_FEATURE_VERSION,
+  "table.rows.server-output": NEXT_FEATURE_VERSION,
+  "table.rows.record-view": NEXT_FEATURE_VERSION,
+  "table.rows.date-helpers": NEXT_FEATURE_VERSION,
+  "table.filter.sql-list": NEXT_FEATURE_VERSION,
+  "table.filter.grouping": NEXT_FEATURE_VERSION,
+  "procedures.run.results": NEXT_FEATURE_VERSION,
+  "query.saved.origin": NEXT_FEATURE_VERSION,
+  "table.filter.keyword-limit": NEXT_FEATURE_VERSION,
+  "schema-compare.report": NEXT_FEATURE_VERSION,
+  "query.results.timing-scope": NEXT_FEATURE_VERSION,
+  "table.structure.indexes.roles": NEXT_FEATURE_VERSION,
+  "table.structure.unlogged": NEXT_FEATURE_VERSION,
+  "table.structure.clickhouse-merge-engine": NEXT_FEATURE_VERSION,
+  "sidebar.scope.bucket-retention": NEXT_FEATURE_VERSION,
+  "table.structure.columns.on-update": NEXT_FEATURE_VERSION,
+  "table.structure.columns.oracle-text-limit": NEXT_FEATURE_VERSION,
+  "table.structure.indexes.mongo-form": NEXT_FEATURE_VERSION,
+  "import.csv.file-check": NEXT_FEATURE_VERSION,
+  "import.csv.null-preflight": NEXT_FEATURE_VERSION,
+  "sidebar.roles.principals": "0.18.0",
+  "drivers.repair": NEXT_FEATURE_VERSION,
+  "drivers.ibmi": NEXT_FEATURE_VERSION,
+  "query.results.output-tab": "0.18.0",
+  "workspace.motion": "0.18.0",
+  "settings.storage.overview": "0.18.0",
+  "table.rows.insert-script": "0.18.0",
+  "discover.overview": "0.18.0",
+  "discover.labs": "0.18.0",
+  "discover.roadmap": "0.18.0",
+  "discover.team-tips": "0.18.0",
+  "discover.recap": "0.18.0",
+  "discover.achievements": "0.18.0",
+  "discover.atlas": "0.18.0",
+  "discover.lessons": "0.18.0",
+  "discover.guide": "0.18.0",
+  "ai.chat.feature-search": "0.18.0",
+  "ai.chat.companion": "0.18.0",
+  "discover.spotlight": "0.18.0",
+  "discover.welcome-back": "0.18.0",
+  "discover.hotspots": "0.18.0",
+  "discover.video-tooltips": "0.18.0",
+  "discover.promoter": "0.18.0",
+  "discover.wait-tips": "0.18.0",
+  "discover.feedback": "0.18.0",
+  "discover.related": "0.18.0",
+  "discover.modifier-overlay": "0.18.0",
+  "settings.general.tour": "0.18.0",
+  "discover.cheatsheet": "0.18.0",
+  "discover.whats-this": "0.18.0",
+  "discover.palette-features": "0.18.0",
+  "settings.discovery": "0.18.0",
+  "settings.hotkeys.focus-regions": "0.18.0",
   "settings.general.workspaces": "0.17.0",
   "connections.cloud-accounts": "0.17.0",
   "drivers.jdbc": "0.17.0",
   "baas.supabase.studio.payments": "0.17.0",
   "settings.extensions.management": "0.17.0",
-  "settings.extensions.ui-plugins.bundle": "0.17.0",
-  "ai.chat.ui-plugins": "0.17.0",
-  "table.filter.ui-plugins": "0.17.0",
   "query.editor.checkpoints": "0.17.0",
   "query.editor.last-success": "0.17.0",
   "query.editor.variants": "0.17.0",
   "query.parameters.sets": "0.17.0",
   "workspace.investigations": "0.17.0",
   "workspace.saved-tabs": "0.17.0",
-  "workspace.saved-tabs.paste-link": NEXT_FEATURE_VERSION,
+  "workspace.saved-tabs.paste-link": "0.18.0",
   "table.rows.watch": "0.17.0",
   "query.results.keep-on-error": "0.17.0",
   "query.results.timestamps": "0.17.0",
+  "query.results.timestamps.business-zone": NEXT_FEATURE_VERSION,
   "query.results.content-width": "0.17.0",
   "query.results.snapshots": "0.17.0",
   "query.notifications": "0.17.0",
@@ -64,8 +102,8 @@ export const NEW_FEATURES = {
   "onboarding.team-workflow": "0.17.0",
   "settings.cli.doctor": "0.17.0",
   "settings.statistics.overview": "0.14.0",
-  "settings.cli.install": NEXT_FEATURE_VERSION,
-  "settings.cli.tui": NEXT_FEATURE_VERSION,
+  "settings.cli.install": "0.18.0",
+  "settings.cli.tui": "0.18.0",
   "workspace.inline-tabs": "0.9.1",
   "workspace.status.branch": "0.9.1",
   "workspace.status.query": "0.9.1",
@@ -76,6 +114,7 @@ export const NEW_FEATURES = {
   "search.commands": "0.9.1",
   "search.commands.new-compare": "0.14.0",
   "search.package-members": "0.16.0",
+  "search.objects.comments": NEXT_FEATURE_VERSION,
   "ai.workspace": "0.8.0",
   "ai.chat": "0.8.0",
   "ai.chat.approval": "0.8.0",
@@ -86,7 +125,7 @@ export const NEW_FEATURES = {
   "ai.context.mcp": "0.8.0",
   "ai.history": "0.8.0",
   "ai.usage": "0.8.0",
-  "ai.usage.context-map": NEXT_FEATURE_VERSION,
+  "ai.usage.context-map": "0.18.0",
   "ai.onboarding": "0.10.0",
   "ai.ask": "0.10.0",
   "ai.chat.charts": "0.10.0",
@@ -95,6 +134,7 @@ export const NEW_FEATURES = {
   "ai.chat.plus.knowledge": "0.10.0",
   "ai.providers.local": "0.10.0",
   "workspace.status.ai-checkpoints": "0.14.0",
+  "settings.general.ki": NEXT_FEATURE_VERSION,
   "settings.editor.ai": "0.14.0",
   "settings.editor.ai-metrics": "0.14.0",
   "ai.chat.context-mentions": "0.14.0",
@@ -117,6 +157,7 @@ export const NEW_FEATURES = {
   "mcp.workflows": "0.10.0",
   "mcp.scripts": "0.14.0",
   "health.advisor": "0.10.0",
+  "health.advisor.index-observation": NEXT_FEATURE_VERSION,
   "monitor.live": "0.14.0",
   "home.customize": "0.8.0",
   "home.activity": "0.16.0",
@@ -136,6 +177,10 @@ export const NEW_FEATURES = {
   "dashboard.design.theme": "0.14.0",
   "dashboard.studio.pivot": "0.14.0",
   "dashboard.studio.interactions": "0.14.0",
+  "dashboard.studio.source-width": NEXT_FEATURE_VERSION,
+  "dashboard.period-range": NEXT_FEATURE_VERSION,
+  "dashboard.filters.column": NEXT_FEATURE_VERSION,
+  "dashboard.filters.multiple": NEXT_FEATURE_VERSION,
   "er-diagram.clusters": "0.8.0",
   "er-diagram.text-export": "0.10.0",
   "versioning.branches.swimlanes": "0.8.0",
@@ -185,7 +230,7 @@ export const NEW_FEATURES = {
   "settings.about.usage-metrics": "0.7.0",
   "settings.about.open-source-licenses": "0.8.0",
   "settings.about.update-channel": "0.14.0",
-  "settings.about.version-history": NEXT_FEATURE_VERSION,
+  "settings.about.version-history": "0.18.0",
   "settings.about.blog-suggestions": "0.16.0",
   "connections.baas": "0.7.0",
   "connections.welcome": "0.14.0",
@@ -237,6 +282,7 @@ export const NEW_FEATURES = {
   "baas.convex.self-hosted": "0.16.0",
   "baas.convex.studio": "0.16.0",
   "baas.convex.studio.overview": "0.16.0",
+  "baas.convex.studio.overview.insights": "0.18.0",
   "baas.convex.studio.data": "0.16.0",
   "baas.convex.studio.data.grid": "0.17.0",
   "baas.convex.studio.functions": "0.16.0",
@@ -256,6 +302,7 @@ export const NEW_FEATURES = {
   "settings.general.sidebar-object-nav": "0.10.0",
   "settings.appearance.table-style": "0.14.0",
   "settings.appearance.filter-bar": "0.16.0",
+  "settings.appearance.filter-mode": NEXT_FEATURE_VERSION,
   "settings.appearance.seasonal": "0.15.0",
   "settings.appearance.themes": "0.17.0",
   "settings.appearance.db-themes": "0.17.0",
@@ -263,6 +310,7 @@ export const NEW_FEATURES = {
   "query.transaction.database-diff": "0.14.0",
   "settings.editor.parameter-hints": "0.14.0",
   "settings.editor.plsql-warnings": "0.16.0",
+  "settings.editor.plsql-warning-rules": "0.19.0",
   "sessions.server-info": "0.16.0",
   "tasks.sql-log": "0.16.0",
   "settings.editor.blank-line-terminator": "0.16.0",
@@ -299,25 +347,42 @@ function releaseOf(version: string): string {
   return version.replace(/-.*$/, "");
 }
 
+const featureIdsByVersion = new Map<string, NewFeatureId[]>();
+
 function currentFeatureIds(version: string): NewFeatureId[] {
-  return (Object.keys(NEW_FEATURES) as NewFeatureId[]).filter(
-    (id) => NEW_FEATURES[id] === releaseOf(version),
-  );
+  let ids = featureIdsByVersion.get(version);
+  if (!ids) {
+    const release = releaseOf(version);
+    ids = (Object.keys(NEW_FEATURES) as NewFeatureId[]).filter(
+      (id) => NEW_FEATURES[id] === release,
+    );
+    featureIdsByVersion.set(version, ids);
+  }
+  return ids;
 }
 
 export function hasNewFeatures(
   scope: string | undefined,
   seen: ReadonlySet<NewFeatureId>,
   version = appVersion,
+  ai = aiEnabled(),
+  badges = newFeatureBadgesEnabled(),
 ): boolean {
-  if (!scope) return false;
-  return (Object.entries(NEW_FEATURES) as [NewFeatureId, string][]).some(
-    ([id, introducedIn]) =>
-      introducedIn === releaseOf(version) &&
-      !seen.has(id) &&
-      (id === scope || id.startsWith(`${scope}.`)),
+  if (!scope || !badges) return false;
+  return currentFeatureIds(version).some(
+    (id) =>
+      !seen.has(id) && (id === scope || id.startsWith(`${scope}.`)) && (ai || !isAiFeatureId(id)),
   );
 }
+
+export const newFeatureBadgesEnabled = () => useSettingsStore.getState().newFeatureBadges;
+
+export const useNewFeatureBadgesEnabled = () =>
+  useSyncExternalStore(
+    useSettingsStore.subscribe,
+    newFeatureBadgesEnabled,
+    newFeatureBadgesEnabled,
+  );
 
 export function createNewFeatureStore(storage: FeatureStorage | null, version = appVersion) {
   const release = releaseOf(version);
@@ -421,6 +486,8 @@ export function newFeatureJustSeen(): boolean {
 }
 
 export function useSeenNewFeatures(): ReadonlySet<NewFeatureId> {
+  useAiEnabled();
+  useNewFeatureBadgesEnabled();
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
 
@@ -430,5 +497,7 @@ export function useHasNewFeatures(scope: string | undefined): boolean {
 
 export function useHasAnyNewFeatures(): boolean {
   const seen = useSeenNewFeatures();
-  return currentFeatureIds(appVersion).some((id) => !seen.has(id));
+  const ai = aiEnabled();
+  if (!newFeatureBadgesEnabled()) return false;
+  return currentFeatureIds(appVersion).some((id) => !seen.has(id) && (ai || !isAiFeatureId(id)));
 }

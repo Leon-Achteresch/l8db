@@ -10,6 +10,7 @@ import {
   useNotebookStore,
 } from "@/lib/notebook";
 import { saveNotebook } from "@/lib/notebook/actions";
+import { scrollBehavior } from "@/lib/scroll-behavior";
 import { MarkdownCell } from "./markdown-cell";
 import { NotebookAddCell } from "./notebook-add-cell";
 import { NotebookBook } from "./notebook-book";
@@ -57,7 +58,7 @@ export function NotebookView() {
     }
     scrollRef.current
       ?.querySelector(`[data-cell-id="${focusId}"]`)
-      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      ?.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
     setFocusId(null);
   }, [focusId, book]);
 
@@ -85,7 +86,7 @@ export function NotebookView() {
       direction > 0
         ? starts.find((start) => start > current + 4)
         : [...starts].reverse().find((start) => start < current - 4);
-    if (next !== undefined) root.scrollTo({ top: next, behavior: "smooth" });
+    if (next !== undefined) root.scrollTo({ top: next, behavior: scrollBehavior() });
   };
 
   const renderCell = (cell: NotebookCell) => {

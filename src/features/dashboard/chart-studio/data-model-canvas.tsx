@@ -13,7 +13,8 @@ import {
 } from "@/lib/dashboards";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
-import { CHART_FIELD_MIME } from "../chart-visual-builder-model";
+import { useFieldDrop } from "../field-dnd";
+import { FieldDragButton } from "../field-drag-button";
 import { type DatasetColumn, useTablesColumns } from "../use-dataset-query";
 import { CalcFieldEditor } from "./calc-field-editor";
 import { JoinPill } from "./join-pill";
@@ -24,7 +25,6 @@ import {
   nodeColumns,
   nodeDepth,
   removeJoin,
-  SOURCE_TABLE_MIME,
   type StudioNode,
   studioNodes,
   updateJoin,
@@ -67,7 +67,12 @@ export function DataModelCanvas({
   const cards = useRef(new Map<string, HTMLDivElement>());
   const [links, setLinks] = useState<Link[]>([]);
   const [size, setSize] = useState({ w: 0, h: 0 });
-  const [over, setOver] = useState(false);
+  const dropZone = useFieldDrop(
+    "data-model",
+    (data) => Boolean(data.source),
+    (data) => data.source && onPickSource(data.source),
+  );
+  const over = dropZone.isDropTarget;
   const [calcOpen, setCalcOpen] = useState<string | null>(null);
   const formulas = useNewFeatureVisibility<HTMLDivElement>("dashboard.studio.formulas");
   const joinsFeature = useNewFeatureVisibility<HTMLDivElement>("dashboard.studio.joins");
@@ -220,21 +225,7 @@ export function DataModelCanvas({
   return (
     <section
       aria-label="Datenmodell"
-      onDragOver={(event) => {
-        if (!event.dataTransfer.types.includes(SOURCE_TABLE_MIME)) return;
-        event.preventDefault();
-        setOver(true);
-      }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(false);
-      }}
-      onDrop={(event) => {
-        const raw = event.dataTransfer.getData(SOURCE_TABLE_MIME);
-        setOver(false);
-        if (!raw) return;
-        event.preventDefault();
-        onPickSource(JSON.parse(raw) as SourceTable);
-      }}
+      ref={dropZone.ref}
       className={cn(
         "relative rounded-2xl border bg-[radial-gradient(circle,var(--color-border)_1px,transparent_1px)] [background-size:16px_16px] transition-colors",
         over && "border-primary bg-primary/5",
@@ -334,13 +325,9 @@ export function DataModelCanvas({
                             onOpenChange={(open) => setCalcOpen(open ? field.id : null)}
                           >
                             <PopoverTrigger asChild>
-                              <button
-                                type="button"
-                                draggable
-                                onDragStart={(event) => {
-                                  event.dataTransfer.setData(CHART_FIELD_MIME, calcRef(field.id));
-                                  event.dataTransfer.effectAllowed = "copy";
-                                }}
+                              <FieldDragButton
+                                dragId={`calc:${field.id}`}
+                                drag={{ ref: calcRef(field.id) }}
                                 className={cn(
                                   "flex w-full cursor-grab items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring",
                                   used.has(calcRef(field.id)) && "font-medium text-primary",
@@ -348,7 +335,7 @@ export function DataModelCanvas({
                               >
                                 <span className="font-mono text-[10px] text-primary">ƒx</span>
                                 <span className="min-w-0 flex-1 truncate">{field.label}</span>
-                              </button>
+                              </FieldDragButton>
                             </PopoverTrigger>
                             <PopoverContent className="w-[28rem]" side="right" align="start">
                               <CalcFieldEditor

@@ -3,7 +3,7 @@ import { SplitPane } from "@/features/shell/split-pane";
 import { MasterDetailLinks } from "@/features/shell/split-workspace/master-detail-links";
 import type { SplitTree } from "@/lib/split-layout";
 import { useSplitView } from "@/lib/split-view";
-import { useSplitLayout } from "@/lib/ui-plugins/split-layout";
+import { useSplitLayout } from "@/lib/use-split-layout";
 
 export function SplitWorkspace() {
   const focusedPane = useSplitView((state) => state.focusedPane);

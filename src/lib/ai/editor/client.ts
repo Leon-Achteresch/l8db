@@ -1,3 +1,4 @@
+import { aiConsentGiven, aiEnabled, requestAiConsent, useAiAccess } from "@/lib/ai/access";
 import { AI_PROVIDERS, useAiStore } from "@/lib/ai/store";
 import { mergeAiUsage, summarizeAiUsage } from "@/lib/ai/usage";
 import { type AiProfile, aiComplete, aiCompleteCancel } from "@/lib/db/ai";
@@ -17,6 +18,13 @@ const FAST_ACTIONS = new Set<EditorAiAction>([
 
 export class EditorAiUnavailable extends Error {}
 
+const running = new Set<string>();
+
+useAiAccess.subscribe((state, previous) => {
+  if (!previous.enabled || state.enabled) return;
+  for (const runId of running) void aiCompleteCancel(runId).catch(() => undefined);
+});
+
 export function editorAiProfile(): AiProfile {
   const ai = useAiStore.getState();
   const { profileId } = useEditorAiSettings.getState();
@@ -26,6 +34,20 @@ export function editorAiProfile(): AiProfile {
     ai.profiles[0];
   if (!profile) throw new EditorAiUnavailable("Kein KI-Anbieter eingerichtet.");
   return profile;
+}
+
+export function editorAiConsentProfile(): AiProfile | null {
+  if (!aiEnabled()) return null;
+  const settings = useEditorAiSettings.getState();
+  if (!settings.enabled) return null;
+  let profile: AiProfile;
+  try {
+    profile = editorAiProfile();
+  } catch {
+    return null;
+  }
+  if (!(settings.inline && inlineSupported(profile)) && !settings.codeLens) return null;
+  return aiConsentGiven(profile) ? null : profile;
 }
 
 export function isCliProfile(profile: AiProfile): boolean {
@@ -86,6 +108,11 @@ export async function runEditorAi(request: EditorAiRequest): Promise<EditorAiRes
     throw new EditorAiUnavailable(
       "Editor-KI braucht Claude Code, Codex oder einen API- bzw. lokalen Anbieter.",
     );
+  if (!aiEnabled()) throw new EditorAiUnavailable("KI ist ausgeschaltet.");
+  if (request.action === "inline") {
+    if (!aiConsentGiven(base)) throw new EditorAiUnavailable("KI-Anbieter nicht freigegeben.");
+  } else if (!(await requestAiConsent(base)))
+    throw new EditorAiUnavailable("KI-Anbieter nicht freigegeben.");
   if (request.signal?.aborted) throw new DOMException("Abgebrochen", "AbortError");
   const profile = routedProfile(base, request.action);
   const runId = crypto.randomUUID();
@@ -95,6 +122,7 @@ export async function runEditorAi(request: EditorAiRequest): Promise<EditorAiRes
   let model = profile.model;
   const abort = () => void aiCompleteCancel(runId).catch(() => undefined);
   request.signal?.addEventListener("abort", abort, { once: true });
+  running.add(runId);
   const metrics = useEditorAiMetrics.getState();
   try {
     const result = await aiComplete(
@@ -143,6 +171,7 @@ export async function runEditorAi(request: EditorAiRequest): Promise<EditorAiRes
     if (cancelled) throw new DOMException("Abgebrochen", "AbortError");
     throw error instanceof Error ? error : new Error(String(error));
   } finally {
+    running.delete(runId);
     request.signal?.removeEventListener("abort", abort);
   }
 }

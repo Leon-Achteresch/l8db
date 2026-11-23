@@ -1,10 +1,11 @@
 import { useDeferredValue, useMemo, useSyncExternalStore } from "react";
 
 import { EditorAiCheckpoints } from "@/features/query/editor-ai/editor-ai-checkpoints";
+import { EditorAiConsentChip } from "@/features/query/editor-ai/editor-ai-consent-chip";
 import type { EditorPositionStore } from "@/features/query/query-view/editor-position-store";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { useSettingsStore } from "@/lib/settings";
-import { splitSqlStatements } from "@/lib/sql-statements";
+import { splitSqlStatements, statementCountLabel } from "@/lib/sql-statements";
 import { cn } from "@/lib/utils";
 
 interface QueryEditorStatusbarProps {
@@ -27,7 +28,7 @@ export function QueryEditorStatusbar({
   const deferredSql = useDeferredValue(sql);
   const statementCount = useMemo(() => {
     const split = splitSqlStatements(deferredSql, dialect, { slashRuns: dialect === "oracle" });
-    return split.statements.length + split.commands.length;
+    return statementCountLabel(split.statements.length, split.commands.length);
   }, [deferredSql, dialect]);
   const position = useSyncExternalStore(positionStore.subscribe, positionStore.get);
   const insertSpaces = useQueryWorkspace((s) => s.insertSpaces);
@@ -45,11 +46,10 @@ export function QueryEditorStatusbar({
           {selectionLength} ausgewählt
         </span>
       )}
-      <span className="whitespace-nowrap tabular-nums">
-        {statementCount} Statement{statementCount === 1 ? "" : "s"}
-      </span>
+      <span className="whitespace-nowrap tabular-nums">{statementCount}</span>
       <div className="ml-auto flex shrink-0 items-center gap-3">
         {editorId && <EditorAiCheckpoints editorId={editorId} />}
+        <EditorAiConsentChip />
         <span className="hidden whitespace-nowrap sm:inline">{dialectLabel}</span>
         <span className="whitespace-nowrap tabular-nums">
           {insertSpaces ? "Leerzeichen" : "Tabulatoren"} {editorTabSize}

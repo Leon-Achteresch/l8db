@@ -13,6 +13,16 @@ export const GRID_COMMANDS: HotkeyCommand[] = [
     reference: "VS Code/Chrome: Strg+F",
   },
   {
+    id: "grid.filter",
+    routeScope: "data",
+    label: "Filter fokussieren",
+    description: "Blendet den Tabellenfilter ein und setzt den Cursor hinein",
+    area: "Datengitter",
+    defaultHotkey: "Mod+G",
+    requiresConnection: true,
+    origin: "l8db",
+  },
+  {
     id: "grid.copy",
     routeScope: "data",
     label: "Auswahl kopieren",

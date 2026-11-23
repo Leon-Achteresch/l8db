@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { buildEmptyPrefill } from "@/lib/row-duplicate";
+import { temporalKind } from "@/lib/temporal-helpers";
 import type { DataTableProps } from "../data-table-types";
 import { useAutoRefresh } from "./use-auto-refresh";
 import { useCellEditing } from "./use-cell-editing";
@@ -116,7 +117,13 @@ export function useDataTable(props: DataTableProps) {
     selectionStats,
     focusCell,
     copySelection,
-  } = useGridSelection(activeCell, setActiveCell, visibleDataColumns, data);
+  } = useGridSelection(activeCell, setActiveCell, visibleDataColumns, data, totalCount);
+  const databaseKind = connection?.kind;
+  const temporalKindOf = useCallback(
+    (columnId: string) =>
+      temporalKind(table.getColumn(columnId)?.columnDef.meta?.dataType, databaseKind),
+    [table, databaseKind],
+  );
   const {
     editingCell,
     setEditingCell,
@@ -132,6 +139,7 @@ export function useDataTable(props: DataTableProps) {
     canEditCell,
     setActiveCell,
     setInspectCell,
+    temporalKindOf,
   });
   const windowOffset = infinite ? rowOffset : 0;
   const [shiftedOffset, setShiftedOffset] = useState(windowOffset);
@@ -213,6 +221,7 @@ export function useDataTable(props: DataTableProps) {
     fkByColumn,
     typeInfoByColumn,
     data,
+    totalCount,
   });
   const navPage = infinite ? visiblePage : page;
   const scrollToPage = useCallback(

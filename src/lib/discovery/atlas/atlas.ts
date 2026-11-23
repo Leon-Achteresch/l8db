@@ -21,7 +21,7 @@ export interface AtlasProgress {
 
 export function atlasAvailable(
   entries: readonly FeatureEntry[],
-  options: Pick<FeatureSearchOptions, "capabilities" | "easyMode">,
+  options: Pick<FeatureSearchOptions, "capabilities" | "easyMode" | "ai">,
 ): FeatureEntry[] {
   return entries.filter((entry) => featureAvailable(entry, options));
 }

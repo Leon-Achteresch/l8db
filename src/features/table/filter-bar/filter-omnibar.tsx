@@ -20,6 +20,7 @@ import { OmnibarHelp } from "./omnibar-help";
 import { type OmnibarItem, OmnibarMenu } from "./omnibar-menu";
 import { useFilterAi } from "./use-filter-ai";
 import { type FilterBarProps, useFilterBarModel } from "./use-filter-bar-model";
+import { useFilterFocusHotkey } from "./use-filter-focus-hotkey";
 
 export function FilterOmnibar(props: FilterBarProps) {
   const model = useFilterBarModel(props);
@@ -28,6 +29,8 @@ export function FilterOmnibar(props: FilterBarProps) {
   const listId = useId();
   const barRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useFilterFocusHotkey(rootRef);
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
   const [help, setHelp] = useState(false);
@@ -53,7 +56,7 @@ export function FilterOmnibar(props: FilterBarProps) {
               { id: "rule" as const, kind: "rule" as const },
             ]
           : []),
-        ...(trimmed ? [{ id: "ai" as const, kind: "ai" as const }] : []),
+        ...(trimmed && ai.enabled ? [{ id: "ai" as const, kind: "ai" as const }] : []),
       ]
     : [];
   const preferred = analysis.parsed
@@ -89,6 +92,7 @@ export function FilterOmnibar(props: FilterBarProps) {
   const parsedConditions = () =>
     analysis.parsed?.conditions.map((condition) => ({ ...condition, id: createId() })) ?? [];
   const askAi = (prompt: string) => {
+    if (!ai.enabled) return;
     if (prompt.trim()) {
       void ai.run(prompt);
     } else if (simple) {
@@ -195,7 +199,7 @@ export function FilterOmnibar(props: FilterBarProps) {
   };
 
   return (
-    <div className="shrink-0 border-b bg-muted/30 px-3 py-2">
+    <div ref={rootRef} className="shrink-0 border-b bg-muted/30 px-3 py-2">
       <Popover
         open={menuOpen}
         onOpenChange={(open) => {
@@ -229,6 +233,7 @@ export function FilterOmnibar(props: FilterBarProps) {
                   />
                   <input
                     data-feature="table.filter-bar"
+                    data-filter-focus
                     ref={inputRef}
                     value={text}
                     role="combobox"
@@ -259,6 +264,7 @@ export function FilterOmnibar(props: FilterBarProps) {
                 </>
               ) : (
                 <FilterSqlField
+                  stateKey={props.stateKey}
                   value={model.sql}
                   json={model.json}
                   columns={model.columns}
@@ -269,7 +275,7 @@ export function FilterOmnibar(props: FilterBarProps) {
                     model.setError("");
                   }}
                   onSubmit={submitSql}
-                  onAi={() => askAi(model.sql)}
+                  onAi={ai.enabled ? () => askAi(model.sql) : undefined}
                 />
               )}
               <FilterRuleTokens model={model} variant="chip" showLabel={false} />
@@ -279,21 +285,23 @@ export function FilterOmnibar(props: FilterBarProps) {
                   <Kbd>⇧↵</Kbd>Farbe
                 </span>
               ) : null}
-              <Button
-                ref={feature.ref}
-                type="button"
-                variant="ghost"
-                size="xs"
-                className="relative shrink-0 text-violet-600 dark:text-violet-300"
-                title={`In eigenen Worten filtern (${IS_MAC ? "⌘↵" : "Strg+↵"})`}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => askAi(simple ? text : model.sql)}
-              >
-                <SparklesIcon />
-                KI
-                <Kbd className="hidden md:inline-flex">{IS_MAC ? "⌘↵" : "Strg+↵"}</Kbd>
-                {feature.isNew ? <NewBadge className="absolute -top-1.5 -right-2" /> : null}
-              </Button>
+              {ai.enabled && (
+                <Button
+                  ref={feature.ref}
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  className="relative shrink-0 text-violet-600 dark:text-violet-300"
+                  title={`In eigenen Worten filtern (${IS_MAC ? "⌘↵" : "Strg+↵"})`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => askAi(simple ? text : model.sql)}
+                >
+                  <SparklesIcon />
+                  KI
+                  <Kbd className="hidden md:inline-flex">{IS_MAC ? "⌘↵" : "Strg+↵"}</Kbd>
+                  {feature.isNew ? <NewBadge className="absolute -top-1.5 -right-2" /> : null}
+                </Button>
+              )}
               {model.hasFilter ? (
                 <Button
                   type="button"

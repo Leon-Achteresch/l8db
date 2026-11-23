@@ -307,7 +307,7 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
     summary: "Tabellen ohne SQL filtern, mit Vorschlägen für Spalten und Werte.",
     area: "Daten & Tabellen",
     keywords: ["filtern", "filter", "where", "suchen", "eingrenzen", "bedingung"],
-    hotkey: "grid.search",
+    hotkey: "grid.filter",
     related: ["table.filter.ai", "table.filter.rules"],
     steps: [
       { anchor: "table.filter-bar", title: "Filter eingeben" },
@@ -412,6 +412,7 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
     area: "Daten & Tabellen",
     keywords: ["import", "csv", "laden", "hochladen", "einlesen", "skript"],
     route: "/import",
+    capability: "import",
     related: ["transfer", "connections.file-open"],
   },
   {
@@ -421,6 +422,7 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
     area: "Daten & Tabellen",
     keywords: ["transfer", "kopieren", "migrieren", "übertragen", "zwischen datenbanken", "umzug"],
     route: "/transfer",
+    capability: "table_copy",
     anchor: "transfer.start",
     size: "major",
     related: ["table.copy", "backup", "schema-compare"],
@@ -529,7 +531,7 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
     area: "Schema & Struktur",
     keywords: ["builder", "klicken", "ohne sql", "join", "zusammenstellen", "visuell"],
     route: "/query-builder",
-    capability: "sql",
+    capability: "query_builder",
     related: ["query.workspace", "er-diagram"],
   },
   {
@@ -1135,7 +1137,7 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
   {
     id: "settings.extensions",
     title: "Erweiterungen",
-    summary: "l8db mit offiziellen Erweiterungen und UI-Plugins ergänzen.",
+    summary: "l8db mit offiziellen Erweiterungen ergänzen.",
     area: "Einstellungen & App",
     keywords: ["erweiterung", "extension", "plugin", "markt", "addon", "installieren"],
     route: "/settings?tab=extensions",

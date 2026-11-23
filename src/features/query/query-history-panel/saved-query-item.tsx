@@ -3,10 +3,13 @@ import { memo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { firstLine } from "@/features/query/query-history-panel/format";
+import { SavedQueryOriginLabel } from "@/features/query/saved-query-origin-label";
 import type { SavedQuery } from "@/lib/saved-queries";
+import type { SavedQueryOriginInfo } from "@/lib/saved-query-origin";
 
 interface SavedQueryItemProps {
   entry: SavedQuery;
+  originInfo: SavedQueryOriginInfo;
   onLoad: (sql: string, mode?: "new" | "replace") => void;
   onDelete: (id: string) => void;
   onRename: (id: string, name: string) => void;
@@ -14,6 +17,7 @@ interface SavedQueryItemProps {
 
 export const SavedQueryItem = memo(function SavedQueryItem({
   entry,
+  originInfo,
   onLoad,
   onDelete,
   onRename,
@@ -57,7 +61,10 @@ export const SavedQueryItem = memo(function SavedQueryItem({
         onClick={() => onLoad(entry.sql, "new")}
         title="In neuem SQL-Tab öffnen"
       >
-        {!renaming && <p className="truncate text-xs font-medium">{entry.name}</p>}
+        <div className="flex min-w-0 items-center gap-2">
+          {!renaming && <p className="min-w-0 flex-1 truncate text-xs font-medium">{entry.name}</p>}
+          <SavedQueryOriginLabel info={originInfo} />
+        </div>
         <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
           {firstLine(entry.sql)}
         </p>

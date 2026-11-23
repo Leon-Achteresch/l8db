@@ -1,4 +1,7 @@
-use super::run::{address, rollback_note, split_table, statements, writes};
+use super::run::{
+    address, allow_write, catalog_timeout, changed, read_only, read_timeout, rollback_note,
+    split_table, statement_lines, statements, writes, Approval,
+};
 use super::*;
 use crate::db::DatabaseKind;
 
@@ -163,6 +166,7 @@ fn routes_cli_words_and_keeps_app_arguments() {
         "-c prod q x",
         "--connection=prod q x",
         "--url postgres://x/y q x",
+        "--read-only table list",
         "quer",
         "tabel list",
         "-cprod conn list",
@@ -307,6 +311,10 @@ fn scripts_are_split_per_family() {
     let body = "create function f() returns int as $$ begin return 1; end $$ language plpgsql;\nselect f();";
     assert_eq!(statements(DatabaseKind::Postgres, body).unwrap().len(), 2);
     assert_eq!(statements(DatabaseKind::Redis, "SET a 1").unwrap().len(), 1);
+    assert_eq!(
+        statements(DatabaseKind::Elasticsearch, "GET a/_search\nGET b/_search").unwrap(),
+        ["GET a/_search", "GET b/_search"]
+    );
     assert!(statements(DatabaseKind::Postgres, " ;\n ; ")
         .unwrap()
         .is_empty());
@@ -353,6 +361,7 @@ fn write_detection_is_conservative() {
             DatabaseKind::Mongodb,
             r#"{"mapReduce":"src","map":"function(){}","reduce":"function(){}","out":"copy"}"#,
         ),
+        (DatabaseKind::S3, "DELETE FROM demo"),
     ] {
         assert!(writes(kind, sql), "{sql} schreibt");
     }
@@ -368,6 +377,10 @@ fn write_detection_is_conservative() {
             DatabaseKind::Mongodb,
             r#"db.src.aggregate([{$match:{status:"$out"}},{$count:"n"}])"#,
         ),
+        (DatabaseKind::S3, "SELECT * FROM s3://demo/a.csv"),
+        (DatabaseKind::S3, "SELECT * FROM 'data/a.csv'"),
+        (DatabaseKind::S3, "LIST s3://demo/"),
+        (DatabaseKind::S3, "SHOW BUCKETS"),
     ] {
         assert!(!writes(kind, sql), "{sql} liest nur");
     }
@@ -464,24 +477,54 @@ fn task_subcommands_map_to_the_automation_cli() {
         super::run::task_args(command, &cli.global),
         ["--list-tasks", "--json"]
     );
+    for (line, expected) in [
+        (
+            "l8db --read-only task run Bericht",
+            vec!["--run-task", "Bericht", "--read-only"],
+        ),
+        (
+            "l8db task tick --read-only",
+            vec!["--automation-tick", "--read-only"],
+        ),
+        ("l8db --read-only task list", vec!["--list-tasks"]),
+    ] {
+        let cli = parse(line).unwrap();
+        let Command::Task { command } = cli.command else {
+            panic!("kein task");
+        };
+        assert_eq!(
+            super::run::task_args(command, &cli.global),
+            expected,
+            "{line}"
+        );
+    }
 }
 
 #[test]
 fn rollback_message_only_promises_what_the_database_keeps() {
     let ran = |sql: &[&str]| sql.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     let clean = ran(&["insert into t values (1)", "update t set a = 2"]);
-    assert!(rollback_note(DatabaseKind::Postgres, &clean).contains("Nichts geändert"));
-    assert!(rollback_note(DatabaseKind::Mysql, &clean).contains("Nichts geändert"));
+    assert!(rollback_note(DatabaseKind::Postgres, &clean, true).contains("Nichts geändert"));
+    assert!(rollback_note(DatabaseKind::Mysql, &clean, true).contains("Nichts geändert"));
     let ddl = ran(&["create table t(a int)", "insert into t values ('x')"]);
-    assert!(rollback_note(DatabaseKind::Postgres, &ddl).contains("Nichts geändert"));
-    assert!(rollback_note(DatabaseKind::Mysql, &ddl).contains("sofort fest"));
-    assert!(rollback_note(DatabaseKind::Oracle, &ddl).contains("sofort fest"));
+    assert!(rollback_note(DatabaseKind::Postgres, &ddl, true).contains("Nichts geändert"));
+    assert!(rollback_note(DatabaseKind::Mysql, &ddl, true).contains("sofort fest"));
+    assert!(rollback_note(DatabaseKind::Oracle, &ddl, true).contains("sofort fest"));
     let own = ran(&[
         "insert into t values (1)",
         "commit",
         "insert into t values (2)",
     ]);
-    assert!(rollback_note(DatabaseKind::Postgres, &own).contains("BEGIN/COMMIT"));
+    assert!(rollback_note(DatabaseKind::Postgres, &own, true).contains("BEGIN/COMMIT"));
+    assert!(rollback_note(DatabaseKind::Mssql, &own, true).contains("BEGIN/COMMIT"));
+    let nested = ran(&[
+        "BEGIN TRAN",
+        "insert into t values (1)",
+        "COMMIT",
+        "insert into t values (1)",
+    ]);
+    assert!(rollback_note(DatabaseKind::Mssql, &nested, true).contains("Nichts geändert"));
+    assert!(rollback_note(DatabaseKind::Postgres, &nested, true).contains("BEGIN/COMMIT"));
 }
 
 #[test]
@@ -493,7 +536,7 @@ fn open_transactions_and_rollback_notes_follow_each_family() {
         "select count(*) from t",
     ]);
     assert!(super::run::open_at_end(DatabaseKind::Postgres, &open));
-    assert!(rollback_note(DatabaseKind::Postgres, &open).contains("Nichts geändert"));
+    assert!(rollback_note(DatabaseKind::Postgres, &open, false).contains("Nichts geändert"));
     let closed = ran(&["begin", "insert into t values (1)", "commit"]);
     assert!(!super::run::open_at_end(DatabaseKind::Postgres, &closed));
     let reopened = ran(&[
@@ -504,12 +547,12 @@ fn open_transactions_and_rollback_notes_follow_each_family() {
         "select 1",
     ]);
     assert!(super::run::open_at_end(DatabaseKind::Postgres, &reopened));
-    assert!(rollback_note(DatabaseKind::Postgres, &reopened).contains("BEGIN/COMMIT"));
+    assert!(rollback_note(DatabaseKind::Postgres, &reopened, false).contains("BEGIN/COMMIT"));
     let savepoint = ran(&["begin", "savepoint a", "rollback to savepoint a"]);
     assert!(super::run::open_at_end(DatabaseKind::Postgres, &savepoint));
     let plsql = ran(&["begin null; end;", "insert into t values (1)"]);
     assert!(!super::run::open_at_end(DatabaseKind::Oracle, &plsql));
-    assert!(rollback_note(DatabaseKind::Oracle, &plsql).contains("Nichts geändert"));
+    assert!(rollback_note(DatabaseKind::Oracle, &plsql, true).contains("Nichts geändert"));
     let block = ran(&["begin print 1 end", "insert into t values (1)"]);
     assert!(!super::run::open_at_end(DatabaseKind::Mssql, &block));
     assert!(super::run::open_at_end(
@@ -521,7 +564,102 @@ fn open_transactions_and_rollback_notes_follow_each_family() {
         "begin",
         "insert into t values (2)",
     ]);
-    assert!(rollback_note(DatabaseKind::Mysql, &mysql).contains("BEGIN/COMMIT"));
+    assert!(rollback_note(DatabaseKind::Mysql, &mysql, true).contains("BEGIN/COMMIT"));
+}
+
+#[test]
+fn changed_uses_the_family_terms() {
+    let result = |n| crate::db::QueryResult {
+        columns: Vec::new(),
+        rows: Vec::new(),
+        rows_affected: Some(n),
+        execution_time_ms: 0,
+        truncated: false,
+    };
+    assert_eq!(
+        changed(DatabaseKind::Postgres, &result(1)),
+        "1 Zeile geändert"
+    );
+    assert_eq!(
+        changed(DatabaseKind::Mongodb, &result(3)),
+        "3 Dokumente geändert"
+    );
+    assert_eq!(
+        changed(DatabaseKind::Influxdb, &result(2)),
+        "2 Punkte geschrieben"
+    );
+}
+
+#[test]
+fn repeated_statements_get_their_own_line() {
+    let sql = "select 1;\nselect 1;\n\nselect 1;";
+    let parts = statements(DatabaseKind::Postgres, sql).unwrap();
+    assert_eq!(statement_lines(sql, &parts), vec![0, 1, 3]);
+}
+
+#[test]
+fn rollback_note_names_statements_that_ddl_already_committed() {
+    let ran = |sql: &[&str]| sql.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let mid = ran(&[
+        "insert into p values (52)",
+        "create table d (id int)",
+        "insert into p values (52)",
+    ]);
+    for kind in [DatabaseKind::Mysql, DatabaseKind::Oracle] {
+        let note = rollback_note(kind, &mid, true);
+        assert!(
+            note.contains("Anweisungen 1 bis 2 bleiben bestehen"),
+            "{note}"
+        );
+        assert!(!note.contains("Nichts geändert"), "{note}");
+    }
+    let failed_ddl = ran(&["insert into p values (1)", "create table p (id int)"]);
+    assert!(rollback_note(DatabaseKind::Mysql, &failed_ddl, true).contains("Anweisung 1 bleibt"));
+    assert!(rollback_note(DatabaseKind::Mysql, &failed_ddl, false).contains("1 bis 2"));
+    assert!(rollback_note(
+        DatabaseKind::Mysql,
+        &ran(&["create table p (id int)", "x"]),
+        true
+    )
+    .contains("Anweisung 1 bleibt"));
+    assert!(rollback_note(
+        DatabaseKind::Mysql,
+        &ran(&["create table p (id int)"]),
+        true
+    )
+    .contains("Nichts geändert"));
+    for kind in [
+        DatabaseKind::Postgres,
+        DatabaseKind::Sqlite,
+        DatabaseKind::Mssql,
+        DatabaseKind::SqliteHttp,
+    ] {
+        assert!(
+            rollback_note(kind, &mid, true).contains("Nichts geändert"),
+            "{kind:?}"
+        );
+    }
+}
+
+#[test]
+fn mssql_scripts_keep_variables_in_one_batch() {
+    assert_eq!(
+        statements(DatabaseKind::Mssql, "DECLARE @x INT = 5; SELECT @x AS v").unwrap(),
+        ["DECLARE @x INT = 5; SELECT @x AS v"]
+    );
+    let open = statements(DatabaseKind::Mssql, "BEGIN TRAN; INSERT INTO t VALUES (1);").unwrap();
+    assert_eq!(open.len(), 2);
+    assert!(super::run::open_at_end(DatabaseKind::Mssql, &open));
+    assert!(writes(
+        DatabaseKind::Mssql,
+        "DECLARE @x INT = 1; INSERT INTO t VALUES (@x)"
+    ));
+    let line = super::run::script_line;
+    assert_eq!(
+        line("SQL Server 8134: Divide by zero (Zeile 1)".into(), 2),
+        "SQL Server 8134: Divide by zero (Zeile 3)"
+    );
+    assert_eq!(line("ohne Zeile".into(), 2), "ohne Zeile");
 }
 
 #[test]
@@ -539,4 +677,214 @@ fn cursor_errors_point_into_the_typed_statement() {
     assert_eq!(super::run::unquoted_column("\"into\"".into()), "into");
     assert_eq!(super::run::unquoted_column("\"a\"\"b\"".into()), "a\"b");
     assert_eq!(super::run::unquoted_column("plain".into()), "plain");
+}
+
+#[test]
+fn sql_starting_with_a_comment_is_not_an_option() {
+    let sql = super::sql_comment_arg("-- Kommentar\nselect 1 as x");
+    assert_eq!(sql, " -- Kommentar\nselect 1 as x");
+    assert_eq!(super::sql_comment_arg("--limit"), "--limit");
+    assert_eq!(
+        super::sql_comment_arg("--x\nselect 6 as v"),
+        " --x\nselect 6 as v"
+    );
+    assert_eq!(
+        super::sql_comment_arg("--where=a = 1\nAND b = 2"),
+        "--where=a = 1\nAND b = 2"
+    );
+    assert_eq!(super::sql_comment_arg("--"), "--");
+    let argv = [
+        "l8db",
+        "--url",
+        "a.sqlite",
+        "query",
+        sql.as_str(),
+        "-o",
+        "json",
+    ];
+    let matches = super::command().try_get_matches_from(argv).unwrap();
+    assert!(<super::Cli as clap::FromArgMatches>::from_arg_matches(&matches).is_ok());
+}
+
+#[tokio::test]
+async fn read_only_flag_names_itself_on_saved_connections() {
+    let target = |read_only, read_only_flag| connect::Target {
+        id: "c1".into(),
+        name: "Prod".into(),
+        kind: DatabaseKind::Postgres,
+        read_only,
+        read_only_flag,
+        production: false,
+    };
+    let flagged = allow_write(&target(true, true), &Approval::Flag(true))
+        .await
+        .unwrap_err();
+    assert!(flagged.starts_with("--read-only"), "{flagged}");
+    let saved = allow_write(&target(true, false), &Approval::Flag(true))
+        .await
+        .unwrap_err();
+    assert!(saved.contains("nur in der App"), "{saved}");
+}
+
+#[tokio::test]
+async fn read_only_names_unknown_redis_commands() {
+    let target = connect::Target {
+        id: String::new(),
+        name: "redis".into(),
+        kind: DatabaseKind::Redis,
+        read_only: true,
+        read_only_flag: true,
+        production: false,
+    };
+    let reject = |sql: &'static str| {
+        let target = &target;
+        async move {
+            match super::run::prepare(target, sql, Approval::Flag(false), &mut |_| {}).await {
+                Err(error) => error,
+                Ok(_) => panic!("{sql} darf nicht laufen"),
+            }
+        }
+    };
+    let unknown = reject("FOOBAR x").await;
+    assert!(unknown.contains("„FOOBAR“ ist l8db unbekannt"), "{unknown}");
+    let known = reject("FLUSHDB").await;
+    assert_eq!(known, "--read-only: die Anweisung würde schreiben.");
+}
+
+#[test]
+fn read_only_flag_protects_ad_hoc_urls() {
+    let flagged = parse("l8db --url postgres://u@h/db --read-only query \"select 1\"").unwrap();
+    let plain = parse("l8db --url postgres://u@h/db query \"select 1\"").unwrap();
+    let url = || connect::ad_hoc("postgres://u@h/db").unwrap();
+    assert!(read_only(&flagged.global, url()).target().read_only);
+    assert!(!read_only(&plain.global, url()).target().read_only);
+    assert_eq!(
+        read_timeout(
+            "Query-Timeout nach 300 Sekunden. Der Serverabschluss ist nicht bestätigt.".into()
+        ),
+        "Query-Timeout nach 300 Sekunden. Es wurde nur gelesen; Filter enger setzen."
+    );
+    assert_eq!(read_timeout("anderer Fehler".into()), "anderer Fehler");
+    assert_eq!(
+        read_timeout("BigQuery: keine Antwort von http://127.0.0.1:9 nach 5 Sekunden. Der Serverabschluss ist nicht bestätigt.".into()),
+        "BigQuery: keine Antwort von http://127.0.0.1:9 nach 5 Sekunden. Es wurde nur gelesen; Filter enger setzen."
+    );
+    assert_eq!(
+        catalog_timeout(
+            "Query-Timeout nach 60 Sekunden. Der Serverabschluss ist nicht bestätigt.".into()
+        ),
+        "Query-Timeout nach 60 Sekunden beim Lesen der Tabellenliste. Es wurde nur gelesen."
+    );
+}
+
+#[test]
+fn shared_write_cases_match_the_app() {
+    let cases: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/write-detection-cases.json"
+    ))
+    .unwrap();
+    for (family, lists) in cases.as_object().unwrap() {
+        let kind: DatabaseKind =
+            serde_json::from_value(serde_json::Value::String(family.clone())).unwrap();
+        for (list, expected) in [("writes", true), ("reads", false)] {
+            for sql in lists[list].as_array().unwrap() {
+                let sql = sql.as_str().unwrap();
+                assert_eq!(writes(kind, sql), expected, "{family}: {sql}");
+            }
+        }
+    }
+}
+
+#[test]
+fn begin_options_carry_into_the_script_transaction() {
+    let ran = |sql: &[&str]| sql.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let carried = |kind, sql: &[&str]| super::run::carried_begin(kind, &ran(sql));
+    let pg = DatabaseKind::Postgres;
+    assert_eq!(
+        carried(
+            pg,
+            &[
+                "BEGIN ISOLATION LEVEL SERIALIZABLE",
+                "update t set a = 1",
+                "COMMIT"
+            ]
+        )
+        .as_deref(),
+        Some("BEGIN ISOLATION LEVEL SERIALIZABLE\n")
+    );
+    assert_eq!(
+        carried(
+            pg,
+            &[
+                "set search_path = s",
+                "START TRANSACTION READ ONLY -- ro",
+                "update t set a = 1"
+            ]
+        )
+        .as_deref(),
+        Some("START TRANSACTION READ ONLY -- ro\n")
+    );
+    for bare in [
+        "BEGIN",
+        "begin work",
+        "BEGIN TRANSACTION",
+        "start transaction",
+    ] {
+        assert_eq!(
+            carried(pg, &[bare, "update t set a = 1", "commit"]),
+            None,
+            "{bare}"
+        );
+    }
+    assert_eq!(
+        carried(pg, &["update t set a = 1", "commit", "begin read only"]),
+        None
+    );
+    assert_eq!(
+        carried(
+            DatabaseKind::Mysql,
+            &["start transaction read only", "select 1"]
+        ),
+        None
+    );
+}
+
+#[test]
+fn rollback_inside_a_script_is_not_reported_as_one_transaction() {
+    let ran = |sql: &[&str]| sql.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let split = |kind, sql: &[&str]| super::run::split_by_script(kind, &ran(sql));
+    for kind in [DatabaseKind::Postgres, DatabaseKind::Mysql] {
+        assert!(split(
+            kind,
+            &[
+                "insert into t values ('a')",
+                "rollback",
+                "insert into t values ('b')",
+                "commit"
+            ]
+        ));
+        assert!(split(
+            kind,
+            &[
+                "insert into t values ('a')",
+                "commit",
+                "insert into t values ('b')"
+            ]
+        ));
+        assert!(!split(
+            kind,
+            &["begin", "insert into t values ('a')", "commit"]
+        ));
+        assert!(!split(
+            kind,
+            &["begin", "savepoint a", "rollback to savepoint a", "commit"]
+        ));
+    }
+    let mid = ran(&[
+        "insert into t values ('a')",
+        "rollback",
+        "insert into t values ('b')",
+        "insert into t values (x)",
+    ]);
+    assert!(rollback_note(DatabaseKind::Postgres, &mid, true).contains("bereits festgeschriebene"));
 }

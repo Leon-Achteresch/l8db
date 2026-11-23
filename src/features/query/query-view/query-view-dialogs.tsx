@@ -15,7 +15,8 @@ import { SubstitutionDialog } from "@/features/query/substitution-dialog";
 import { TabSearchDialog } from "@/features/query/tab-search-dialog";
 import type { QueryResult } from "@/lib/db";
 import { queueQuerySnippet } from "@/lib/pending-query-snippets";
-import { useSavedQueriesStore } from "@/lib/saved-queries";
+import { saveNamedQuery, useSavedQueriesStore } from "@/lib/saved-queries";
+import { captureSavedQueryOrigin } from "@/lib/saved-query-origin";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 import type { AnalysisSection, QueryViewCapabilities, QueryViewConnection } from "./types";
@@ -75,19 +76,16 @@ export function QueryViewDialogs({
   substitution,
 }: QueryViewDialogsProps) {
   const navigate = useNavigate();
-  const { queries: savedQueries, saveQuery, updateQuery } = useSavedQueriesStore();
+  const savedQueries = useSavedQueriesStore((state) => state.queries);
   return (
     <>
       <SaveQueryDialog
         open={saveDialog.open}
         onOpenChange={saveDialog.onOpenChange}
         existingNames={savedQueries.map((query) => query.name)}
-        onSave={(name) => {
-          const existing = savedQueries.find(
-            (query) => query.name.toLowerCase() === name.toLowerCase(),
-          );
-          if (existing) updateQuery(existing.id, name, sql);
-          else saveQuery(name, sql);
+        origin={captureSavedQueryOrigin(connection, database)}
+        onSave={(name, origin) => {
+          saveNamedQuery(name, sql, origin);
         }}
       />
 
@@ -117,7 +115,8 @@ export function QueryViewDialogs({
       <ScriptRunDialog
         open={script.scriptDialogOpen}
         onOpenChange={script.setScriptDialogOpen}
-        statementCount={script.scriptSplit.statements.length + script.scriptSplit.commands.length}
+        statementCount={script.scriptSplit.statements.length}
+        commandCount={script.scriptSplit.commands.length}
         mode={script.scriptMode}
         unterminated={script.scriptSplit.unterminated}
         transactions={caps.transactions}

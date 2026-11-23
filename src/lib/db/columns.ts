@@ -2,6 +2,17 @@ import type { MaskMode } from "@/lib/masking";
 import { invoke, type QueryExecutionOptions } from "./core";
 import type { DatabaseKind } from "./providers";
 
+export interface ExactFilterMetadata {
+  target: string;
+  strategy: "keyword" | "match_phrase";
+  ignore_above:
+    | { state: "configured"; value: number }
+    | { state: "not_declared" }
+    | { state: "unknown" };
+  scope: "single_index" | "multiple_indices";
+  index_mode: "unverified";
+}
+
 export interface DetailedColumnInfo {
   name: string;
   data_type: string;
@@ -11,6 +22,21 @@ export interface DetailedColumnInfo {
   ordinal_position: number;
   character_maximum_length: number | null;
   comment?: string | null;
+  exact_filter?: ExactFilterMetadata;
+  on_update?: string;
+  oracle_text_limit?: { length: number; unit: "BYTE" | "CHAR" };
+}
+
+export interface TableColumnDetails {
+  columns: DetailedColumnInfo[];
+  unlogged?: boolean;
+  clickhouse_engine?: string;
+}
+
+export type TableColumnMetadata = DetailedColumnInfo[] | TableColumnDetails;
+
+export function tableColumnList(data: TableColumnMetadata): DetailedColumnInfo[] {
+  return Array.isArray(data) ? data : data.columns;
 }
 
 export interface ImportColumnInfo {
@@ -161,6 +187,25 @@ export async function listTableColumnsDetailed(
     database,
     schema,
     table,
+  });
+}
+
+export async function describeTableColumns(
+  kind: DatabaseKind,
+  connectionString: string,
+  schema: string,
+  table: string,
+  database?: string,
+): Promise<TableColumnMetadata> {
+  if (kind !== "postgres" && kind !== "clickhouse")
+    return listTableColumnsDetailed(kind, connectionString, schema, table, database);
+  return invoke("list_table_columns_detailed", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+    withTableContext: true,
   });
 }
 

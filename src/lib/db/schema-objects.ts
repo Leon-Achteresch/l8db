@@ -1,6 +1,14 @@
 import { invoke, type QueryExecutionOptions } from "./core";
 import type { DatabaseKind } from "./providers";
 
+export interface IndexRoles {
+  keys: { name: string; position: number; descending: boolean | null }[];
+  included: string[];
+  other: string[];
+  filter: { state: "none" | "unavailable" | "unknown" } | { state: "known"; predicate: string };
+  definition_status: "reconstructed" | "unavailable";
+}
+
 export interface IndexInfo {
   name: string;
   is_unique: boolean;
@@ -8,6 +16,7 @@ export interface IndexInfo {
   columns: string[];
   index_type: string;
   definition: string;
+  roles?: IndexRoles;
 }
 
 export async function listIndexes(

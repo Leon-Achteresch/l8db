@@ -1,4 +1,6 @@
+import { Navigate } from "@tanstack/react-router";
 import { useLayoutEffect } from "react";
+import { useAiEnabled } from "@/lib/ai/access";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
 export function AiWorkspaceView() {
@@ -6,6 +8,7 @@ export function AiWorkspaceView() {
     window.dispatchEvent(new Event("ai-workspace-surface-ready"));
   }, []);
   const feature = useNewFeatureVisibility<HTMLDivElement>("ai.workspace");
+  if (!useAiEnabled()) return <Navigate to="/" />;
   return (
     <div
       ref={feature.ref}

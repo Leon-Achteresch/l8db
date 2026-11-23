@@ -1,100 +1,60 @@
 import { Download, Loader } from "lucide";
-import { TerminalIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
-import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { QueryResult } from "@/lib/db";
 import { DATA_EXPORT_FORMATS } from "@/lib/export-formats";
-import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
 
-import { ResultAskAiButton } from "./result-ask-ai-button";
 import type { ResultExportState } from "./use-result-export";
 
 interface ResultActionsProps {
   result: QueryResult | null;
-  serverOutput: boolean;
-  outputOpen: boolean;
-  connected: boolean;
-  onToggleOutput: () => void;
   exportState: ResultExportState;
-  sql?: string;
 }
 
-export function ResultActions({
-  result,
-  serverOutput,
-  outputOpen,
-  connected,
-  onToggleOutput,
-  exportState,
-  sql,
-}: ResultActionsProps) {
-  const { exporting, setCsvExportOpen, setXlsxExportOpen, setDataExportFormat, handleExportJson } =
+export function ResultActions({ result, exportState }: ResultActionsProps) {
+  const { exporting, partial, loadedRows, openCsvExport, openXlsxExport, openDataExport } =
     exportState;
-  const outputFeature = useNewFeatureVisibility<HTMLButtonElement>("query.server-output");
+  if (!result || result.columns.length === 0) return null;
   return (
-    <>
-      {serverOutput && (
-        <Button
-          ref={outputFeature.ref}
-          size={outputFeature.isNew ? "sm" : "icon-sm"}
-          variant={outputOpen ? "secondary" : "ghost"}
-          className={outputFeature.isNew ? "h-7 gap-1 px-1.5" : undefined}
-          aria-label="Server-Ausgabe umschalten"
-          aria-pressed={outputOpen}
-          title="Server-Ausgabe öffnen"
-          disabled={!connected}
-          onClick={onToggleOutput}
-        >
-          <TerminalIcon className="size-3.5" />
-          {outputFeature.isNew && <NewBadge />}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant="ghost" className="h-7 gap-1.5 px-2 text-xs" disabled={exporting}>
+          <MorphIcon
+            icon={exporting ? Loader : Download}
+            className={cn("size-3", exporting && "animate-spin")}
+          />
+          <span className="hidden sm:inline">Export</span>
         </Button>
-      )}
-      {result && result.columns.length > 0 && <ResultAskAiButton result={result} sql={sql} />}
-      {result && result.columns.length > 0 && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 gap-1.5 px-2 text-xs"
-              disabled={exporting}
-            >
-              <MorphIcon
-                icon={exporting ? Loader : Download}
-                className={cn("size-3", exporting && "animate-spin")}
-              />
-              <span className="hidden sm:inline">Export</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-52">
-            <DropdownMenuItem onClick={() => setCsvExportOpen(true)}>
-              Als CSV exportieren…
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setXlsxExportOpen(true)}>
-              Als XLSX exportieren…
-            </DropdownMenuItem>
-            {DATA_EXPORT_FORMATS.map((format) => (
-              <DropdownMenuItem
-                key={format.value}
-                onClick={() => setDataExportFormat(format.value)}
-              >
-                Als {format.label} exportieren…
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuItem onClick={() => void handleExportJson()}>
-              Als JSON exportieren
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-52">
+        {partial && (
+          <>
+            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+              Geladene Zeilen ({loadedRows.toLocaleString("de-DE")})
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+          </>
+        )}
+        <DropdownMenuItem onClick={openCsvExport}>Als CSV exportieren…</DropdownMenuItem>
+        <DropdownMenuItem onClick={openXlsxExport}>Als XLSX exportieren…</DropdownMenuItem>
+        {DATA_EXPORT_FORMATS.map((format) => (
+          <DropdownMenuItem key={format.value} onClick={() => openDataExport(format.value)}>
+            Als {format.label} exportieren…
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuItem onClick={() => void exportState.handleExportJson()}>
+          Als JSON exportieren
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

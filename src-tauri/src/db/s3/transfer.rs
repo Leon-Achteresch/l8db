@@ -202,7 +202,8 @@ pub fn safe_join(base: &Path, relative: &str) -> Result<PathBuf, String> {
                 let clean: String = s
                     .chars()
                     .map(|c| {
-                        if matches!(c, '<' | '>' | ':' | '"' | '\\' | '|' | '?' | '*')
+                        if (cfg!(windows)
+                            && matches!(c, '<' | '>' | ':' | '"' | '\\' | '|' | '?' | '*'))
                             || c.is_control()
                         {
                             '_'
@@ -673,7 +674,13 @@ mod tests {
         assert!(safe_join(base, "../etc/passwd").is_err());
         assert!(safe_join(base, "a/../../x").is_err());
         assert!(safe_join(base, "//").is_err());
-        assert_eq!(safe_join(base, "a:b?.txt").unwrap(), base.join("a_b_.txt"));
+        let expected = if cfg!(windows) {
+            "a_b_.txt"
+        } else {
+            "a:b?.txt"
+        };
+        assert_eq!(safe_join(base, "a:b?.txt").unwrap(), base.join(expected));
+        assert_eq!(safe_join(base, "a\tb").unwrap(), base.join("a_b"));
     }
 
     #[test]

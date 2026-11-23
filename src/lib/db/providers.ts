@@ -95,8 +95,10 @@ export interface Capabilities {
   explain_analyze: boolean;
   packages: boolean;
   insert_sql: boolean;
+  query_builder: boolean;
   database_is_schema: boolean;
   query_language: "sql" | "cql" | "json" | "redis";
+  sort: "columns" | "none" | "keyword";
   query_label: string;
   filter_hint: string;
   table_template: TableTemplate;
@@ -120,6 +122,7 @@ export interface Terms {
   rows: string;
   column: string;
   columns: string;
+  primary_key: string;
 }
 
 export type Driver =
@@ -178,8 +181,34 @@ export function openTnsNames(): Promise<void> {
   return invoke("oracle_open_tnsnames");
 }
 
-export async function installDriver(kind: DatabaseKind): Promise<string> {
-  return invoke("install_driver", { kind });
+export async function installDriver(kind: DatabaseKind, provider?: string): Promise<string> {
+  return invoke("install_driver", provider ? { kind, provider } : { kind });
+}
+
+export interface DriverFinding {
+  level: "ok" | "warn" | "error";
+  title: string;
+  detail: string;
+}
+
+export interface DriverDiagnosis {
+  status: DriverStatus;
+  findings: DriverFinding[];
+  steps: string[];
+  manual: string | null;
+}
+
+export interface DriverRepair {
+  log: string;
+  diagnosis: DriverDiagnosis;
+}
+
+export function diagnoseDriver(kind: DatabaseKind): Promise<DriverDiagnosis> {
+  return invoke("diagnose_driver", { kind });
+}
+
+export function repairDriver(kind: DatabaseKind): Promise<DriverRepair> {
+  return invoke("repair_driver", { kind });
 }
 
 export type SslMode = "disable" | "prefer" | "require" | "verify-ca" | "verify-full";

@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { QueryEditorSettingsPopover } from "@/features/query/query-editor-settings-popover";
 import { afterPaint } from "@/lib/after-paint";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 
 interface ToolbarViewControlsProps {
@@ -30,6 +31,7 @@ export function ToolbarViewControls({
   toolsMenu,
 }: ToolbarViewControlsProps) {
   const navigatorVisible = useQueryWorkspace((state) => state.navigatorVisible);
+  const redis = useActiveCapabilities().query_language === "redis";
   return (
     <div className="flex shrink-0 items-center gap-1">
       {isSql && (
@@ -49,18 +51,20 @@ export function ToolbarViewControls({
           <PanelLeftIcon className="size-3.5" />
         </Button>
       )}
-      <Button
-        data-feature="explain"
-        size="sm"
-        variant={analysisOpen ? "secondary" : "ghost"}
-        className="h-7 gap-1.5 px-2 text-xs @min-[62rem]/qtb:px-3"
-        aria-pressed={analysisOpen}
-        onClick={onOpenAnalysis}
-        title="Explain und Performance-Test"
-      >
-        <GaugeIcon className="size-3.5" />
-        <span className="sr-only @min-[62rem]/qtb:not-sr-only">Analyse</span>
-      </Button>
+      {!redis && (
+        <Button
+          data-feature="explain"
+          size="sm"
+          variant={analysisOpen ? "secondary" : "ghost"}
+          className="h-7 gap-1.5 px-2 text-xs @min-[62rem]/qtb:px-3"
+          aria-pressed={analysisOpen}
+          onClick={onOpenAnalysis}
+          title="Explain und Performance-Test"
+        >
+          <GaugeIcon className="size-3.5" />
+          <span className="sr-only @min-[62rem]/qtb:not-sr-only">Analyse</span>
+        </Button>
+      )}
       <Button
         size="icon-sm"
         variant={editorFocus ? "secondary" : "ghost"}

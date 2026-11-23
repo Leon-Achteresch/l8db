@@ -246,6 +246,40 @@ describe("PostgreSQL-Probelauf", () => {
   });
 });
 
+describe("PostgreSQL-Datenprüfung vor Typänderungen", () => {
+  const cast = statement(
+    `ALTER TABLE "app"."c" ALTER COLUMN "code" TYPE integer USING "code"::integer`,
+    13,
+    [
+      {
+        sql: `SELECT COUNT(*) FROM "app"."c" WHERE "code" IS NOT NULL AND NOT pg_input_is_valid("code"::text, 'integer')`,
+        message: "Werte nicht in integer umwandelbar",
+      },
+    ],
+  );
+
+  test("startet die Ausführung bei nicht umwandelbaren Werten nicht", async () => {
+    handler = (command) => {
+      if (command === "execute_query") return { columns: ["count"], rows: [{ count: 2 }] };
+      if (command === "begin_transaction") return "tx";
+    };
+    const { summary, messages } = await execute(PG, [cast], false);
+    expect(messages[0].message).toContain("Werte nicht in integer umwandelbar (2 Zeilen)");
+    expect(sent().some((line) => line === "begin_transaction")).toBe(false);
+    expect(summary).toMatchObject({ blocked: true, failed: 1 });
+  });
+
+  test("läuft weiter, wenn die Prüfabfrage auf älteren Servern fehlt", async () => {
+    handler = (command) => {
+      if (command === "execute_query") throw new Error("function pg_input_is_valid does not exist");
+      if (command === "begin_transaction") return "tx";
+    };
+    const { summary } = await execute(PG, [cast], false);
+    expect(summary.blocked).toBe(false);
+    expect(sent()).toContain("begin_transaction");
+  });
+});
+
 describe("Oracle-Datenprüfung", () => {
   const checked = statement(`ALTER TABLE "APP"."T" ADD CONSTRAINT "C" CHECK (A > 0)`, 14, [
     { sql: `SELECT COUNT(*) FROM "APP"."T" WHERE NOT (A > 0)`, message: "Prüfbedingung verletzt" },

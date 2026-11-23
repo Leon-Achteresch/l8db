@@ -1,4 +1,5 @@
 import { PlusIcon, XIcon } from "lucide-react";
+import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { FilterAiPopover } from "./filter-ai-popover";
 import { FilterConditionPopover } from "./filter-condition-popover";
@@ -8,13 +9,16 @@ import { FilterRuleTokens } from "./filter-rule-tokens";
 import { FilterSqlField } from "./filter-sql-field";
 import { useFilterAi } from "./use-filter-ai";
 import { type FilterBarProps, useFilterBarModel } from "./use-filter-bar-model";
+import { useFilterFocusHotkey } from "./use-filter-focus-hotkey";
 
 export function FilterPillBar(props: FilterBarProps) {
   const model = useFilterBarModel(props);
   const ai = useFilterAi(model);
   const simple = model.mode === "simple";
+  const rootRef = useRef<HTMLDivElement>(null);
+  useFilterFocusHotkey(rootRef);
   return (
-    <div className="shrink-0 border-b bg-muted/30 px-3 py-1">
+    <div ref={rootRef} className="shrink-0 border-b bg-muted/30 px-3 py-1">
       <div className="flex min-h-7 flex-wrap items-center gap-1.5">
         {props.leading}
         <FilterModeToggle mode={model.mode} sqlLabel={model.sqlLabel} onChange={model.switchMode} />
@@ -34,6 +38,7 @@ export function FilterPillBar(props: FilterBarProps) {
                   size={model.conditions.length ? "icon-xs" : "xs"}
                   className="shrink-0 border-dashed text-muted-foreground"
                   aria-label="Filter hinzufügen"
+                  data-filter-focus="click"
                   title="Filter hinzufügen"
                   onClick={() => open("column")}
                 >
@@ -46,6 +51,7 @@ export function FilterPillBar(props: FilterBarProps) {
         ) : (
           <div className="flex h-7 min-w-48 flex-1 items-center rounded-md border border-input bg-background/60 pl-1 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30">
             <FilterSqlField
+              stateKey={props.stateKey}
               value={model.sql}
               json={model.json}
               columns={model.columns}
@@ -74,7 +80,7 @@ export function FilterPillBar(props: FilterBarProps) {
             <XIcon />
           </Button>
         ) : null}
-        <FilterAiPopover ai={ai} model={model} />
+        {ai.enabled && <FilterAiPopover ai={ai} model={model} />}
       </div>
       {model.error ? (
         <p role="alert" className="mt-1.5 text-xs text-destructive">

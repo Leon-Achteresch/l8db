@@ -39,14 +39,14 @@ export function SpotlightDialog({ content }: { content: SpotlightContent }) {
           <div className="absolute -right-10 -bottom-32 -z-10 size-96 rounded-full bg-(--discovery-2)/45 blur-3xl" />
           <div className="absolute top-6 right-1/3 -z-10 size-48 rounded-full bg-(--discovery-3)/35 blur-3xl" />
           <div className="discovery-grain absolute inset-0 -z-10 opacity-50 mix-blend-overlay" />
-          <p className="font-mono text-[10px] tracking-widest text-white/60 uppercase">
+          <p className="font-mono text-[10px] tracking-widest text-white/80 uppercase">
             {welcome ? "Willkommen zurück" : `Release ${content.label}`}
           </p>
           <DialogTitle className="mt-2 flex items-center gap-2 text-4xl font-semibold tracking-[-0.03em]">
             {welcome ? `Seit ${content.label} neu` : `Neu in ${content.label}`}
             {isNew && <NewBadge />}
           </DialogTitle>
-          <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-white/80 tabular-nums backdrop-blur">
+          <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-black/40 px-3 py-1 text-xs text-white tabular-nums backdrop-blur">
             <span className="size-1.5 rounded-full bg-white" />
             {total} Neuerungen
           </p>

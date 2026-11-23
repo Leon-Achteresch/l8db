@@ -1,5 +1,3 @@
-import { useCallback, useMemo, useState } from "react";
-
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,11 +9,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useActiveConnection } from "@/lib/connections";
-import { executeQuery } from "@/lib/db";
-import { useActiveDatabase } from "@/lib/db-selection";
-import { buildProcedureCall, parseProcedureParams } from "@/lib/procedure-params";
-import { effectiveConnectionString } from "@/lib/ssh";
+import { ProcedureRunResult } from "./procedure-run-result";
+import { type ProcedureExecution, useProcedureRun } from "./use-procedure-run";
 
 interface ProcedureRunDialogProps {
   open: boolean;
@@ -23,13 +18,8 @@ interface ProcedureRunDialogProps {
   schema: string;
   name: string;
   identityArgs: string;
+  execution?: ProcedureExecution;
 }
-
-type RunState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "success"; time: number; rows: number }
-  | { status: "error"; message: string };
 
 export function ProcedureRunDialog({
   open,
@@ -37,49 +27,16 @@ export function ProcedureRunDialog({
   schema,
   name,
   identityArgs,
+  execution,
 }: ProcedureRunDialogProps) {
-  const connection = useActiveConnection();
-  const database = useActiveDatabase();
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [state, setState] = useState<RunState>({ status: "idle" });
-
-  const params = useMemo(() => parseProcedureParams(identityArgs), [identityArgs]);
-  const inputs = params.filter((param) => param.mode !== "OUT");
-
-  const statement = useMemo(() => {
-    if (!connection) return "";
-    return buildProcedureCall(
-      connection.kind === "oracle" ? "oracle" : "postgres",
-      schema,
-      name,
-      params,
-      values,
-    );
-  }, [connection, schema, name, params, values]);
-
-  const handleRun = useCallback(async () => {
-    if (!connection) return;
-    setState({ status: "loading" });
-    try {
-      const result = await executeQuery(
-        connection.kind,
-        effectiveConnectionString(connection),
-        statement,
-        database ?? undefined,
-      );
-      setState({
-        status: "success",
-        time: result.execution_time_ms,
-        rows: result.rows.length,
-      });
-    } catch (e) {
-      setState({ status: "error", message: String(e) });
-    }
-  }, [connection, database, statement]);
+  const { connection, values, setValue, inputs, statement, state, pending, handleRun } =
+    useProcedureRun(open, schema, name, identityArgs, execution);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent
+        className={`flex max-h-[85vh] flex-col ${state.status === "success" && state.result.columns.length ? "sm:max-w-3xl" : "sm:max-w-lg"}`}
+      >
         <DialogHeader>
           <DialogTitle>
             {schema}.{name} ausführen
@@ -90,7 +47,7 @@ export function ProcedureRunDialog({
               : "Parameter typgerecht ausfüllen. Leere Felder werden als NULL übergeben."}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-3">
+        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
           {inputs.map((param, index) => {
             const key = param.name || `p${index + 1}`;
             return (
@@ -105,9 +62,8 @@ export function ProcedureRunDialog({
                   id={`param-${key}`}
                   value={values[key] ?? ""}
                   placeholder={param.type}
-                  onChange={(event) =>
-                    setValues((prev) => ({ ...prev, [key]: event.target.value }))
-                  }
+                  disabled={pending}
+                  onChange={(event) => setValue(key, event.target.value)}
                 />
               </div>
             );
@@ -115,13 +71,19 @@ export function ProcedureRunDialog({
           <code className="rounded bg-muted px-2 py-1.5 font-mono text-xs break-all select-text">
             {statement}
           </code>
-          {state.status === "success" ? (
-            <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-              Ausgeführt in {state.time} ms · {state.rows} Ergebniszeilen
+          {state.status === "success" && connection ? (
+            <ProcedureRunResult key={state.runId} result={state.result} kind={connection.kind} />
+          ) : null}
+          {pending ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              {state.status === "loading" ? "Wird ausgeführt…" : "Vorheriger Aufruf läuft…"}
             </p>
           ) : null}
           {state.status === "error" ? (
-            <pre className="whitespace-pre-wrap break-all font-mono text-xs text-destructive select-text">
+            <pre
+              role="alert"
+              className="whitespace-pre-wrap break-all font-mono text-xs text-destructive select-text"
+            >
               {state.message}
             </pre>
           ) : null}
@@ -130,7 +92,7 @@ export function ProcedureRunDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Schließen
           </Button>
-          <Button onClick={handleRun} disabled={state.status === "loading" || !connection}>
+          <Button onClick={handleRun} disabled={pending || !connection}>
             Ausführen
           </Button>
         </DialogFooter>

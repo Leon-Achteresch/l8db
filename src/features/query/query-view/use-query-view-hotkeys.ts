@@ -2,9 +2,11 @@ import { useHotkeys } from "@tanstack/react-hotkeys";
 import { type RefObject, useEffect } from "react";
 
 import type { QueryEditorApi } from "@/features/query/query-editor-pane";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import {
   commandById,
   formatHotkeyDisplay,
+  isHotkeyAvailable,
   onHotkeyAction,
   resolveHotkey,
   useHotkeysStore,
@@ -35,6 +37,7 @@ export function useQueryViewHotkeys({
   openCsvExport,
 }: UseQueryViewHotkeysParams) {
   const { handleRun, handleRunSelection, handleRunStatement, handleCheck, handlePreview } = actions;
+  const capabilities = useActiveCapabilities();
   const hotkeyOverrides = useHotkeysStore((state) => state.overrides);
   const shortcutLabel = (id: string) => formatHotkeyDisplay(resolveHotkey(id, hotkeyOverrides));
   const hotkeyFor = (id: string, fallback: string) =>
@@ -51,7 +54,7 @@ export function useQueryViewHotkeys({
       ] as const
     ).flatMap((id) => {
       const command = commandById(id);
-      if (!command) return [];
+      if (!command || !isHotkeyAvailable(id, { hasConnection: true, capabilities })) return [];
       const runAction =
         id === "query.run"
           ? handleRun

@@ -51,7 +51,7 @@
           "description": "npm semver range"
         },
         "api": {
-          "enum": ["^1.0.0", "^1.1.0"],
+          "enum": ["^1.0.0", "^1.1.0", "^1.2.0"],
           "default": "^1.0.0"
         }
       }
@@ -77,7 +77,8 @@
           "clipboard:write",
           "process:execute",
           "connections:read",
-          "connections:write"
+          "connections:write",
+          "editor:read"
         ]
       }
     },
@@ -280,7 +281,7 @@
             "required": ["command", "location"],
             "properties": {
               "command": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$" },
-              "location": { "enum": ["palette", "view/title", "view/item", "statusBar", "explain/toolbar", "editor/plan", "table/toolbar"] },
+              "location": { "enum": ["palette", "view/title", "view/item", "statusBar", "explain/toolbar", "editor/plan", "table/toolbar", "editor/toolbar"] },
               "view": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$" },
               "group": { "type": "string", "minLength": 1, "maxLength": 4096 }
             }

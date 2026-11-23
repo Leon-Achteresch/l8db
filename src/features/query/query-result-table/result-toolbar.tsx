@@ -33,6 +33,7 @@ export function ResultToolbar({
   onReset,
 }: ResultToolbarProps) {
   const timeNew = useHasNewFeatures("query.results.timestamps");
+  const numbersNew = useHasNewFeatures("query.results.numbers");
   const feature = useNewFeatureVisibility<HTMLButtonElement>("query.results.content-width");
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/30 px-3 py-1.5">
@@ -44,7 +45,7 @@ export function ResultToolbar({
       </span>
       <div className="ml-auto flex flex-wrap items-center gap-1">
         {timestampMenu && (
-          <TableActionsMenu isNew={timeNew}>
+          <TableActionsMenu isNew={timeNew || numbersNew}>
             <TimestampDisplayMenu />
           </TableActionsMenu>
         )}

@@ -30,7 +30,7 @@ export function getTypeConfig(dataType: string, isPrimaryKey: boolean) {
     return {
       icon: KeyRoundIcon,
       color: "text-amber-500 bg-amber-500/10 border-amber-500/20",
-      label: "Primary Key",
+      label: "Primärschlüssel",
       badgeColor: "bg-amber-500/10 text-amber-500 border-amber-500/20",
     };
   }
@@ -168,10 +168,15 @@ const COLUMN_FILTERS = [
   { id: "json", label: "JSON", always: false },
 ];
 
-export function columnFilterCounts(columns: DetailedColumnInfo[], constraints = true) {
+export function columnFilterCounts(
+  columns: DetailedColumnInfo[],
+  constraints = true,
+  primaryKey = "Primärschlüssel",
+) {
   return COLUMN_FILTERS.filter((filter) => constraints || !CONSTRAINT_FILTERS.has(filter.id))
     .map((filter) => ({
       ...filter,
+      label: filter.id === "pk" ? primaryKey : filter.label,
       count: columns.filter((column) => matchesColumnFilter(column, "", filter.id)).length,
     }))
     .filter((filter) => filter.always || filter.count > 0);

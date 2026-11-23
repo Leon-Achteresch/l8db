@@ -92,7 +92,9 @@ export function PrivilegesPanel({ roleName }: { roleName: string }) {
 
   return (
     <section className="space-y-4">
-      <h3 className="text-sm font-semibold">Rechte</h3>
+      <h3 className="text-sm font-semibold" title="Ohne Rechte über Gruppen und PUBLIC">
+        Direkte Rechte
+      </h3>
 
       <div className="space-y-3">
         <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">

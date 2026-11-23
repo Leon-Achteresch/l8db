@@ -52,7 +52,7 @@ export function SessionRow({
       <td className="px-3 py-2 font-mono tabular-nums">
         {session.pid}
         {session.is_self && (
-          <Badge variant="secondary" className="ml-1.5 px-1 py-0 text-[9px]">
+          <Badge variant="secondary" className="ml-1.5 px-1 py-0 text-[10px]">
             ich
           </Badge>
         )}
@@ -139,7 +139,8 @@ export function SessionRow({
           variant="ghost"
           size="sm"
           className="h-7 gap-1 px-2 text-[11px]"
-          disabled={acting}
+          disabled={acting || /^(idle|sleep)/i.test(session.state ?? "")}
+          disabledReason="Keine laufende Abfrage. Sperren löst nur „Beenden“."
           onClick={() => onCancel(session.pid)}
           title="Laufende Abfrage abbrechen (Verbindung bleibt)"
         >

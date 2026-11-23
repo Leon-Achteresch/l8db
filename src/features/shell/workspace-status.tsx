@@ -2,9 +2,9 @@ import { useIsFetching } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Database, LockKeyhole } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ConnectionStatusIndicator } from "@/components/connection-status-indicator";
 import { NewBadge } from "@/components/new-badge";
 import { ExtensionStatusBarItems } from "@/features/extensions/extension-status-bar-items";
-import { ConnectionColorBadge } from "@/features/shell/connection-color-badge";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities, useActiveDatabase, useActiveSchema } from "@/lib/db-selection";
 import { useHasNewFeatures } from "@/lib/new-features";
@@ -39,7 +39,10 @@ export function WorkspaceStatus() {
         >
           <Database className="size-3 shrink-0" />
           {connection ? (
-            <ConnectionColorBadge />
+            <>
+              <ConnectionStatusIndicator connectionId={connection.id} />
+              <span className="max-w-40 truncate">{connection.name}</span>
+            </>
           ) : (
             <span className="max-w-40 truncate">Keine Verbindung</span>
           )}

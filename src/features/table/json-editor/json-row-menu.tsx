@@ -62,7 +62,7 @@ export function JsonRowMenu({ row, readOnly, actions, open, onOpenChange }: Prop
             "ml-1 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground",
             open
               ? "opacity-100"
-              : "opacity-0 group-hover/row:opacity-100 group-data-[selected=true]/row:opacity-100",
+              : "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 focus-visible:opacity-100 group-data-[selected=true]/row:opacity-100",
           )}
           aria-label="Aktionen"
           title={`Aktionen für ${isRoot ? "Wurzel" : String(row.key)} (${JSON_KIND_META[row.kind].label})`}

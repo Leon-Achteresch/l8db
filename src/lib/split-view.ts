@@ -31,7 +31,6 @@ import {
 } from "@/lib/split-panes";
 import { remoteTab, sameTabBarTabs, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { storeFor } from "@/lib/table-tabs/helpers";
-import { uiPluginRegistry } from "@/lib/ui-plugins/store";
 import { syncAcrossWindows } from "@/lib/window-sync";
 
 export type { SplitOrientation };
@@ -146,10 +145,6 @@ function placeable(ws: PaneWorkspace, key: string): boolean {
   return paneOf(ws, key) !== -1 || openKeys().includes(key);
 }
 
-function pluginLayout(count: number, orientation: SplitOrientation): SplitTree {
-  return autoLayout(count, orientation, uiPluginRegistry().splitLayout);
-}
-
 function storedLayout(layout: unknown, count: number): SplitTree {
   return layout && isSplitTree(layout) && leafCount(layout) === count ? layout : null;
 }
@@ -199,8 +194,6 @@ function ensureGroup(
     (group) => group.tabs.map((tab) => (tab ? tabKey(tab) : "")).join("\0") === keys,
   );
   if (same) return { groups: state.groups, activeGroup: same.id, adopted: same };
-  if (!uiPluginRegistry().autoSaveGroups)
-    return { groups: state.groups, activeGroup: null, adopted: null };
   const stale =
     existing.length >= MAX_SPLIT_GROUPS
       ? existing.find((group) => DEFAULT_GROUP_NAME.test(group.name))
@@ -285,7 +278,7 @@ function restore(
             ) ?? [],
         };
   const ws = current
-    ? normalizeWorkspace(current, openKeys(), keepKey, (count) => pluginLayout(count, orientation))
+    ? normalizeWorkspace(current, openKeys(), keepKey, (count) => autoLayout(count, orientation))
     : null;
   if (!ws) return { ...SINGLE, orientation, activeGroup: null, away: true };
   return {
@@ -302,7 +295,7 @@ function workspace(state: SplitState): PaneWorkspace {
     panes: state.panes,
     paneTabs: state.paneTabs,
     masters: state.masters,
-    layout: state.layout ?? pluginLayout(state.panes.length, state.orientation),
+    layout: state.layout ?? autoLayout(state.panes.length, state.orientation),
     focusedPane: state.focusedPane,
   };
 }
@@ -394,7 +387,7 @@ export const useSplitView = create<SplitState>()(
             },
             openKeys(),
             keepKey,
-            (count) => pluginLayout(count, group.orientation),
+            (count) => autoLayout(count, group.orientation),
           );
           if (!ws) return null;
           set((current) => ({
@@ -506,7 +499,7 @@ export const useSplitView = create<SplitState>()(
             target: single ? 0 : (target ?? state.focusedPane),
             edge: edge ?? "right",
             recent: recentTabKeys(),
-            layout: auto ? (count) => pluginLayout(count, orientation) : undefined,
+            layout: auto ? (count) => autoLayout(count, orientation) : undefined,
           });
           if (next === ws || next.panes.length < 2) return;
           apply(next, { explicit: !auto, orientation });
@@ -601,7 +594,7 @@ export const useSplitView = create<SplitState>()(
               ? removeTabs(ws, gone, recentTabKeys())
               : ws;
             if (get().away || detaching) return kept;
-            return addTabs(kept, added, uiPluginRegistry().newTabPosition === "afterActive");
+            return addTabs(kept, added);
           }),
 
         clearForConnection: (connectionId) =>
@@ -764,18 +757,36 @@ export function useSplitGroups(): SplitGroup[] {
   return useSplitView((state) => state.groups[scope]) ?? NO_GROUPS;
 }
 
+export function paneConnectionId(
+  state: Pick<SplitState, "paneConnections">,
+  key: string | null,
+  activeId: string | null,
+  connections: { id: string }[],
+): string | null {
+  const override = key
+    ? (remoteTab(key)?.connectionId ??
+      state.paneConnections[`${keyForConnection(activeId)}|${key}`] ??
+      null)
+    : null;
+  if (!override || override === activeId) return null;
+  return connections.some((entry) => entry.id === override) ? override : null;
+}
+
+export function focusedConnectionId(
+  state: Pick<SplitState, "panes" | "paneTabs" | "away" | "focusedPane" | "paneConnections">,
+  routeKey: string | null,
+  activeId: string | null,
+  connections: { id: string }[],
+): string | null {
+  if (!isSplitShown(state, routeKey)) return activeId;
+  const key = state.panes[state.focusedPane] ?? `split-detail:${state.focusedPane}`;
+  return paneConnectionId(state, key, activeId, connections) ?? activeId;
+}
+
 export function usePaneConnectionId(key: string | null): string | null {
   const activeId = useConnectionsStore((state) => state.activeId);
   const connections = useConnectionsStore((state) => state.connections);
-  const override = useSplitView((state) =>
-    key
-      ? (remoteTab(key)?.connectionId ??
-        state.paneConnections[`${keyForConnection(activeId)}|${key}`] ??
-        null)
-      : null,
-  );
-  if (!override || override === activeId) return null;
-  return connections.some((entry) => entry.id === override) ? override : null;
+  return useSplitView((state) => paneConnectionId(state, key, activeId, connections));
 }
 
 export function useFocusedPaneScope(): { index: number; connectionId: string } | null {

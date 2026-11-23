@@ -1,4 +1,5 @@
 import { listTransactions } from "@/lib/db";
+import { useStagedEdits } from "@/lib/staged-edits";
 import { isQueryTabDirty, useTableTabs } from "@/lib/table-tabs";
 import { isTaskActive, useTasksStore } from "@/lib/tasks";
 import { useTransactionStore } from "@/lib/transactions";
@@ -7,10 +8,12 @@ export interface UpdateBlockers {
   transactions: number;
   tasks: number;
   files: number;
+  staged: number;
 }
 
 const WINDOW_TASKS_PREFIX = "l8db.window-tasks:";
 const WINDOW_TASKS_REFRESH_MS = 10_000;
+const WINDOW_TASKS_COUNT_MS = 1_000;
 const WINDOW_TASKS_STALE_MS = 120_000;
 
 const windowTasksKey = `${WINDOW_TASKS_PREFIX}${
@@ -20,11 +23,20 @@ const windowTasksKey = `${WINDOW_TASKS_PREFIX}${
 }`;
 
 let publishedCount = 0;
+let publishedStaged = 0;
 let publishedAt = 0;
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
+let countTimer: ReturnType<typeof setTimeout> | undefined;
 
 function localActiveTaskCount(): number {
   return useTasksStore.getState().tasks.filter(isTaskActive).length;
+}
+
+function stagedChangeCount(): number {
+  let count = 0;
+  for (const entry of Object.values(useStagedEdits.getState().tables))
+    count += entry.changes.length;
+  return count;
 }
 
 function sharedStorage(): Storage | undefined {
@@ -37,8 +49,11 @@ function sharedStorage(): Storage | undefined {
 
 function withdrawWindowTasks(): void {
   clearInterval(refreshTimer);
+  clearTimeout(countTimer);
   refreshTimer = undefined;
+  countTimer = undefined;
   publishedCount = 0;
+  publishedStaged = 0;
   try {
     sharedStorage()?.removeItem(windowTasksKey);
   } catch {}
@@ -46,15 +61,27 @@ function withdrawWindowTasks(): void {
 
 function publishWindowTasks(force = false): void {
   const count = localActiveTaskCount();
-  if (count === 0) {
-    if (publishedCount !== 0 || refreshTimer) withdrawWindowTasks();
+  const staged = stagedChangeCount();
+  if (count === 0 && staged === 0) {
+    if (publishedCount !== 0 || publishedStaged !== 0 || refreshTimer) withdrawWindowTasks();
     return;
   }
   const now = Date.now();
-  if (!force && count === publishedCount && now - publishedAt < WINDOW_TASKS_REFRESH_MS) return;
+  if (!force && count === publishedCount && now - publishedAt < WINDOW_TASKS_REFRESH_MS) {
+    if (staged === publishedStaged) return;
+    const wait = publishedAt + WINDOW_TASKS_COUNT_MS - now;
+    if (staged > 0 === publishedStaged > 0 && wait > 0) {
+      countTimer ??= setTimeout(() => {
+        countTimer = undefined;
+        publishWindowTasks();
+      }, wait);
+      return;
+    }
+  }
   try {
-    sharedStorage()?.setItem(windowTasksKey, JSON.stringify({ count, at: now }));
+    sharedStorage()?.setItem(windowTasksKey, JSON.stringify({ count, staged, at: now }));
     publishedCount = count;
+    publishedStaged = staged;
     publishedAt = now;
   } catch {
     return;
@@ -62,25 +89,28 @@ function publishWindowTasks(force = false): void {
   refreshTimer ??= setInterval(() => publishWindowTasks(true), WINDOW_TASKS_REFRESH_MS);
 }
 
-function otherWindowTaskCount(): number {
+function otherWindowBlockers(): { tasks: number; staged: number } {
+  const total = { tasks: 0, staged: 0 };
   const storage = sharedStorage();
-  if (!storage || typeof storage.key !== "function") return 0;
+  if (!storage || typeof storage.key !== "function") return total;
   const now = Date.now();
-  let total = 0;
   for (let index = 0; index < storage.length; index++) {
     const key = storage.key(index);
     if (!key?.startsWith(WINDOW_TASKS_PREFIX) || key === windowTasksKey) continue;
     try {
       const entry = JSON.parse(storage.getItem(key) ?? "null") as {
         count?: unknown;
+        staged?: unknown;
         at?: unknown;
       } | null;
       if (
         typeof entry?.count === "number" &&
         typeof entry.at === "number" &&
         now - entry.at < WINDOW_TASKS_STALE_MS
-      )
-        total += entry.count;
+      ) {
+        total.tasks += entry.count;
+        if (typeof entry.staged === "number") total.staged += entry.staged;
+      }
     } catch {}
   }
   return total;
@@ -88,6 +118,7 @@ function otherWindowTaskCount(): number {
 
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   useTasksStore.subscribe(() => publishWindowTasks());
+  useStagedEdits.subscribe(() => publishWindowTasks());
   window.addEventListener("pagehide", withdrawWindowTasks);
   window.addEventListener("beforeunload", withdrawWindowTasks);
 }
@@ -109,10 +140,12 @@ function dirtyFileCount(): number {
 }
 
 export async function collectUpdateBlockers(): Promise<UpdateBlockers> {
+  const others = otherWindowBlockers();
   return {
     transactions: await openTransactionCount(),
-    tasks: localActiveTaskCount() + otherWindowTaskCount(),
+    tasks: localActiveTaskCount() + others.tasks,
     files: dirtyFileCount(),
+    staged: stagedChangeCount() + others.staged,
   };
 }
 
@@ -132,6 +165,11 @@ export function describeUpdateBlockers(blockers: UpdateBlockers): string | null 
       ? "1 ungespeicherte Datei"
       : blockers.files > 1
         ? `${blockers.files} ungespeicherte Dateien`
+        : null,
+    blockers.staged === 1
+      ? "1 nicht übernommene Änderung"
+      : blockers.staged > 1
+        ? `${blockers.staged} nicht übernommene Änderungen`
         : null,
   ].filter((part): part is string => part !== null);
   return parts.length ? parts.join(" · ") : null;

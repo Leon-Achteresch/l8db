@@ -5,6 +5,8 @@ import { DataExportDialog } from "@/features/export/data-export-dialog";
 import { XlsxExportDialog } from "@/features/export/xlsx-export-dialog";
 import { QueryResultTable } from "@/features/query/query-result-table";
 import { ResultActions } from "@/features/query/query-view/result-actions";
+import { ResultAskAiButton } from "@/features/query/query-view/result-ask-ai-button";
+import { ResultMoreMenu } from "@/features/query/query-view/result-more-menu";
 import { useResultExport } from "@/features/query/query-view/use-result-export";
 import type { DatabaseKind } from "@/lib/db";
 import { mergeResults, type TargetRun } from "@/lib/multi-target";
@@ -57,15 +59,10 @@ export function MultiTargetMergedView({
           {merged.result.rows.length.toLocaleString("de-DE")} Zeilen aus {merged.targets} Zielen,
           Spalte __target nennt das Ziel.
         </span>
-        <ResultActions
-          result={merged.result}
-          serverOutput={false}
-          outputOpen={false}
-          connected
-          onToggleOutput={() => undefined}
-          exportState={exportState}
-          sql={sql ?? undefined}
-        />
+        <ResultMoreMenu>
+          <ResultAskAiButton result={merged.result} sql={sql ?? undefined} />
+        </ResultMoreMenu>
+        <ResultActions result={merged.result} exportState={exportState} />
       </div>
       <div className="min-h-0 flex-1" data-multi-target-grid>
         <QueryResultTable result={merged.result} isLoading={false} error={null} kind={kind} />

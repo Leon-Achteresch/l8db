@@ -7,20 +7,22 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use chrono::Timelike;
-use futures_util::FutureExt;
-use tiberius::{AuthMethod, Client, ColumnData, Config, EncryptionLevel, FromSql, Row};
+use futures_util::{FutureExt, TryStreamExt};
+use tiberius::{AuthMethod, Client, ColumnData, Config, EncryptionLevel, FromSql, QueryItem, Row};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 use super::pool::PoolState;
 use super::server_output::ServerMessage;
 use super::{
-    attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, timed, unsupported, where_clause,
+    attach_row_keys, create_table_ddl, rows_to_objects, timed, unsupported, where_clause,
     AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
     ProxyUserInfo, QueryResult, SchemaSize, SequenceInfo, SessionInfo, SslMode, TableData,
     TableInfo, TriggerInfo, TxSession,
 };
+
+mod indexes;
 
 type MsClient = Client<Compat<TcpStream>>;
 type IdleClients = Mutex<Vec<(MsClient, Instant)>>;
@@ -33,6 +35,8 @@ const SESSION_MAX: usize = 8;
 
 pub struct MssqlAdapter {
     config: Config,
+    browse: bool,
+    pinned_instance: Option<String>,
     proxy_user: Option<String>,
     pool_state: PoolState,
     key: String,
@@ -94,14 +98,24 @@ fn map_err(e: tiberius::error::Error) -> String {
     match e {
         tiberius::error::Error::Server(token) => {
             format!(
-                "SQL Server {}: {} (line {})",
+                "SQL Server {}: {} (Zeile {})",
                 token.code(),
                 token.message(),
                 token.line()
             )
         }
+        tiberius::error::Error::Tls(message) => tls_message(&message),
         other => format!("SQL Server: {other}"),
     }
+}
+
+fn tls_message(message: &str) -> String {
+    let hint = if message.contains("closed via error") {
+        "Der Server bricht den TLS-Handshake ab. Ohne Verschlüsselung verbinden: encrypt=false"
+    } else {
+        "Serverzertifikat nicht prüfbar. Zertifikat vertrauen: trust_server_certificate=true, oder ohne Verschlüsselung: encrypt=false"
+    };
+    format!("SQL Server: TLS-Verbindung fehlgeschlagen ({message}).\n  {hint}")
 }
 
 const UNREADABLE_TYPE: &str = "SQL Server: Das Ergebnis enthält eine Spalte, deren Datentyp der Treiber nicht lesen kann (geography, geometry, hierarchyid, sql_variant oder ein CLR-Typ). Spalte umwandeln, z. B. CAST(spalte AS NVARCHAR(MAX)) oder spalte.ToString().";
@@ -149,11 +163,17 @@ async fn guarded<T>(future: impl Future<Output = Result<T, String>>) -> Result<T
 
 fn select_expression(name: &str, data_type: &str) -> String {
     let column = quote(name);
-    let data_type = data_type.to_ascii_lowercase();
+    let data_type = data_type
+        .split('(')
+        .next()
+        .unwrap_or(data_type)
+        .to_ascii_lowercase();
     match data_type.as_str() {
         "geography" | "geometry" => format!("{column}.STAsText() AS {column}"),
         "hierarchyid" => format!("{column}.ToString() AS {column}"),
-        "sql_variant" => format!("CAST({column} AS NVARCHAR(4000)) AS {column}"),
+        "sql_variant" => format!(
+            "CASE WHEN SQL_VARIANT_PROPERTY({column}, 'BaseType') IN ('binary', 'varbinary') THEN CONVERT(NVARCHAR(4000), CAST({column} AS VARBINARY(8000)), 1) ELSE CAST({column} AS NVARCHAR(4000)) END AS {column}"
+        ),
         "json" | "vector" => format!("CAST({column} AS NVARCHAR(MAX)) AS {column}"),
         "money" | "smallmoney" => format!("CAST({column} AS DECIMAL(19,4)) AS {column}"),
         _ if BUILTIN_TYPES.contains(&data_type.as_str()) => column,
@@ -208,7 +228,7 @@ fn value_to_json(data: &ColumnData<'static>) -> serde_json::Value {
             .unwrap_or(serde_json::Value::Null),
         ColumnData::Binary(v) => v
             .as_ref()
-            .map(|b| serde_json::Value::String(hex_blob(b)))
+            .map(|b| serde_json::Value::String(super::hex_0x(b)))
             .unwrap_or(serde_json::Value::Null),
         ColumnData::Numeric(v) => v
             .map(|n| serde_json::Value::String(numeric_text(n.value(), n.scale())))
@@ -337,7 +357,7 @@ fn int(row: &Row, index: usize) -> i64 {
     }
 }
 
-fn code_words(sql: &str) -> Vec<String> {
+pub(super) fn code_words(sql: &str) -> Vec<String> {
     let chars: Vec<char> = sql.chars().collect();
     let mut words = Vec::new();
     let mut word = String::new();
@@ -403,63 +423,6 @@ fn code_words(sql: &str) -> Vec<String> {
     words
 }
 
-fn is_result_statement(sql: &str) -> bool {
-    let words = code_words(sql);
-    if words.iter().any(|w| w == "OUTPUT") {
-        return true;
-    }
-    let Some(first) = words.first() else {
-        return false;
-    };
-    if first.is_empty() {
-        return true;
-    }
-    !matches!(
-        first.as_str(),
-        "INSERT"
-            | "UPDATE"
-            | "DELETE"
-            | "MERGE"
-            | "TRUNCATE"
-            | "CREATE"
-            | "ALTER"
-            | "DROP"
-            | "GRANT"
-            | "REVOKE"
-            | "DENY"
-            | "USE"
-            | "BEGIN"
-            | "END"
-            | "IF"
-            | "WHILE"
-            | "BACKUP"
-            | "BULK"
-            | "KILL"
-            | "RAISERROR"
-            | "THROW"
-            | "CHECKPOINT"
-            | "RECONFIGURE"
-            | "OPEN"
-            | "CLOSE"
-            | "DEALLOCATE"
-            | "UPDATETEXT"
-            | "WRITETEXT"
-            | "ENABLE"
-            | "DISABLE"
-            | "ADD"
-            | "RETURN"
-            | "GOTO"
-            | "BREAK"
-            | "CONTINUE"
-            | "REVERT"
-            | "SHUTDOWN"
-            | "SETUSER"
-            | "COMMIT"
-            | "ROLLBACK"
-            | "SAVE"
-    )
-}
-
 #[cfg(windows)]
 fn windows_auth(user: &str, password: &str) -> Result<AuthMethod, String> {
     if user.is_empty() {
@@ -507,6 +470,7 @@ pub fn parse_mssql_url(value: &str) -> Result<MssqlUrl, String> {
     let mut ca = None;
     let mut application_name = None;
     let mut instance = None;
+    let mut authentication = String::new();
     for (key, value) in url.query_pairs() {
         match key.to_ascii_lowercase().as_str() {
             "sslmode" => {
@@ -535,10 +499,20 @@ pub fn parse_mssql_url(value: &str) -> Result<MssqlUrl, String> {
                 trust = matches!(value.to_lowercase().as_str(), "true" | "yes" | "1")
             }
             "application_name" | "app" => application_name = Some(value.into_owned()),
-            "instance" => instance = Some(value.into_owned()),
+            "instance" | "instancename" if !value.is_empty() => instance = Some(value.into_owned()),
             super::cloud_auth::ACCESS_TOKEN_PARAM => access_token = Some(value.into_owned()),
+            "authentication" => authentication = value.into_owned(),
             _ => {}
         }
+    }
+    let mode = authentication.to_ascii_lowercase();
+    if !matches!(mode.as_str(), "" | "sqlpassword")
+        && (access_token.is_none() || !mode.starts_with("activedirectory"))
+    {
+        return Err(format!(
+            "authentication={authentication} wird nicht unterstützt. SQL-Login oder Entra-Zugriffstoken ({}) verwenden.",
+            super::cloud_auth::ACCESS_TOKEN_PARAM
+        ));
     }
     Ok(MssqlUrl {
         url,
@@ -595,7 +569,10 @@ impl MssqlAdapter {
         let parsed = parse_mssql_url(&resolved)?;
         let mut config = Config::new();
         config.host(&parsed.host);
-        config.port(parsed.port);
+        let browse = parsed.instance.is_some() && parsed.url.port().is_none();
+        if !browse {
+            config.port(parsed.port);
+        }
         if !parsed.user.is_empty() {
             config.authentication(AuthMethod::sql_server(&parsed.user, &parsed.password));
         }
@@ -609,7 +586,7 @@ impl MssqlAdapter {
         if let Some(name) = &parsed.application_name {
             config.application_name(name.clone());
         }
-        if let Some(instance) = &parsed.instance {
+        if let Some(instance) = parsed.instance.as_ref().filter(|_| browse) {
             config.instance_name(instance.clone());
         }
         let mut ssl = parsed.ssl;
@@ -633,6 +610,8 @@ impl MssqlAdapter {
         let url = parsed.url;
         Ok(Self {
             config,
+            browse,
+            pinned_instance: parsed.instance.filter(|_| !browse),
             proxy_user: super::connection::proxy_user(&url),
             pool_state,
             key,
@@ -655,13 +634,22 @@ impl MssqlAdapter {
             Some(client) => client,
             None => {
                 super::execution::connect(async {
-                    let tcp = TcpStream::connect(self.config.get_addr())
-                        .await
-                        .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))?;
+                    let tcp = if self.browse {
+                        <TcpStream as tiberius::SqlBrowser>::connect_named(&self.config)
+                            .await
+                            .map_err(|e| browser_error(&self.config, e))?
+                    } else {
+                        TcpStream::connect(self.config.get_addr())
+                            .await
+                            .map_err(|e| format!("Verbindung fehlgeschlagen: {e}"))?
+                    };
                     tcp.set_nodelay(true).ok();
                     let mut client = Client::connect(self.config.clone(), tcp.compat_write())
                         .await
                         .map_err(map_err)?;
+                    if let Some(instance) = &self.pinned_instance {
+                        check_instance(&mut client, instance).await?;
+                    }
                     if let Some(user) = &self.proxy_user {
                         impersonate(&mut client, user).await?;
                     }
@@ -764,6 +752,41 @@ impl MssqlAdapter {
     }
 }
 
+fn browser_error(config: &Config, e: tiberius::error::Error) -> String {
+    let text = e.to_string();
+    if !text.contains("SQL browser") {
+        return format!("Verbindung fehlgeschlagen: {}", map_err(e));
+    }
+    let detail = text.trim_start_matches("Conversion error: ");
+    format!(
+        "Verbindung fehlgeschlagen: SQL Server Browser (UDP 1434) auf {} antwortet nicht. Port angeben (host:port) oder den Browser-Dienst starten.\n  {detail}",
+        config.get_addr().trim_end_matches(":1434")
+    )
+}
+
+async fn check_instance(client: &mut MsClient, wanted: &str) -> Result<(), String> {
+    let row = client
+        .simple_query(
+            "SELECT CAST(ISNULL(SERVERPROPERTY('InstanceName'), 'MSSQLSERVER') AS NVARCHAR(128))",
+        )
+        .await
+        .map_err(map_err)?
+        .into_row()
+        .await
+        .map_err(map_err)?;
+    let actual = row
+        .as_ref()
+        .and_then(|r| r.get::<&str, _>(0))
+        .unwrap_or("MSSQLSERVER")
+        .to_string();
+    if actual.eq_ignore_ascii_case(wanted) {
+        return Ok(());
+    }
+    Err(format!(
+        "SQL Server: Instanz „{wanted}“ läuft nicht auf diesem Port (dort: {actual}). Port oder instance= anpassen."
+    ))
+}
+
 async fn impersonate(client: &mut MsClient, user: &str) -> Result<(), String> {
     let login = format!("EXECUTE AS LOGIN = {}", lit(user));
     if client.execute(login, &[]).await.is_ok() {
@@ -788,11 +811,43 @@ fn percent_decode(value: &str) -> String {
         .unwrap_or_else(|| value.to_string())
 }
 
-fn is_tx_control(sql: &str) -> bool {
-    let mut words = code_words(sql).into_iter();
-    let first = words.next().unwrap_or_default();
-    matches!(first.as_str(), "COMMIT" | "ROLLBACK" | "SAVE")
-        || (first == "BEGIN" && words.next().is_some_and(|w| w.starts_with("TRAN")))
+const OPEN_TRANSACTION: &str =
+    "Das SQL endet mit BEGIN TRAN ohne COMMIT.\n  Die offene Transaktion wurde zurückgerollt.";
+
+async fn open_transactions(client: &mut MsClient) -> i64 {
+    match run_query(client, "SELECT @@TRANCOUNT AS n").await {
+        Ok(result) => result
+            .rows
+            .first()
+            .and_then(|row| row["n"].as_i64())
+            .unwrap_or(-1),
+        Err(_) => -1,
+    }
+}
+
+fn controls_transaction(sql: &str) -> bool {
+    opens_transaction(sql)
+        || code_words(sql)
+            .iter()
+            .any(|word| word == "COMMIT" || word == "ROLLBACK")
+}
+
+fn report_open_transaction(results: &mut [super::ScriptStatementResult]) {
+    if let Some(last) = results.last_mut().filter(|result| result.success) {
+        last.success = false;
+        last.error = Some(OPEN_TRANSACTION.into());
+    }
+}
+
+fn opens_transaction(sql: &str) -> bool {
+    let words = code_words(sql);
+    words.iter().enumerate().any(|(i, word)| {
+        word == "IMPLICIT_TRANSACTIONS"
+            || (word == "BEGIN"
+                && words
+                    .get(i + 1)
+                    .is_some_and(|next| next.starts_with("TRAN") || next == "DISTRIBUTED"))
+    })
 }
 
 fn type_sql(type_name: &str, max_length: i64, precision: i64, scale: i64) -> String {
@@ -811,6 +866,22 @@ fn type_sql(type_name: &str, max_length: i64, precision: i64, scale: i64) -> Str
         "decimal" | "numeric" => format!("{type_name}({precision}, {scale})"),
         "datetime2" | "time" | "datetimeoffset" => format!("{type_name}({scale})"),
         _ => type_name.to_string(),
+    }
+}
+
+fn metadata_type(type_name: String) -> String {
+    if type_name.eq_ignore_ascii_case("timestamp") || type_name.eq_ignore_ascii_case("rowversion") {
+        "rowversion".to_string()
+    } else {
+        type_name
+    }
+}
+
+fn sized_type(type_name: &str, precision: i64, scale: i64, fraction: i64) -> String {
+    match type_name {
+        "decimal" | "numeric" => format!("{type_name}({precision},{scale})"),
+        "datetime2" | "time" | "datetimeoffset" => format!("{type_name}({fraction})"),
+        _ => metadata_type(type_name.to_string()),
     }
 }
 
@@ -997,7 +1068,7 @@ fn may_change_session(sql: &str) -> bool {
     })
 }
 
-fn starts_batch(sql: &str) -> bool {
+pub(super) fn starts_batch(sql: &str) -> bool {
     let words: Vec<String> = code_words(sql).into_iter().take(4).collect();
     let object = match words.first().map(String::as_str) {
         Some("CREATE") if words.get(1).map(String::as_str) == Some("OR") => words.get(3),
@@ -1047,57 +1118,54 @@ fn info_message(info: tiberius::TokenInfo) -> ServerMessage {
 async fn run_statement(client: &mut MsClient, sql: &str) -> Result<QueryResult, String> {
     let start = std::time::Instant::now();
     guarded(timed(async {
-        if is_tx_control(sql) || starts_batch(sql) {
-            client
-                .simple_query(sql)
-                .await
-                .map_err(map_err)?
-                .into_results()
-                .await
-                .map_err(map_err)?;
-            return Ok(QueryResult {
-                columns: vec![],
-                rows: vec![],
-                rows_affected: None,
-                execution_time_ms: start.elapsed().as_millis() as u64,
-                truncated: false,
+        let limit = super::execution::row_limit();
+        let mut stream = client.simple_query(sql).await.map_err(map_err)?;
+        let mut columns: Option<Vec<String>> = None;
+        let mut data: Vec<Vec<serde_json::Value>> = Vec::new();
+        let (mut truncated, mut extra) = (false, 0usize);
+        while let Some(item) = stream.try_next().await.map_err(map_err)? {
+            match item {
+                QueryItem::Metadata(meta) if columns.is_none() => {
+                    columns = Some(super::unique_column_names(
+                        meta.columns()
+                            .iter()
+                            .map(|c| c.name().to_string())
+                            .collect(),
+                    ));
+                }
+                QueryItem::Metadata(_) => extra += 1,
+                QueryItem::Row(row) if extra == 0 => {
+                    if data.len() < limit {
+                        data.push(row.cells().map(|(_, d)| value_to_json(d)).collect());
+                    } else {
+                        truncated = true;
+                    }
+                }
+                QueryItem::Row(_) => {}
+            }
+        }
+        let rows_affected = stream.rows_affected();
+        if extra > 0 {
+            super::server_output::emit(ServerMessage {
+                level: "INFO".into(),
+                message: match extra {
+                    1 => "1 weitere Ergebnismenge wird nicht angezeigt.".into(),
+                    n => format!("{n} weitere Ergebnismengen werden nicht angezeigt."),
+                },
+                detail: None,
             });
         }
-        if !is_result_statement(sql) {
-            let affected = client.execute(sql, &[]).await.map_err(map_err)?.total();
-            return Ok(QueryResult {
-                columns: vec![],
-                rows: vec![],
-                rows_affected: Some(affected),
-                execution_time_ms: start.elapsed().as_millis() as u64,
-                truncated: false,
-            });
-        }
-        let rows = client
-            .simple_query(sql)
-            .await
-            .map_err(map_err)?
-            .into_first_result()
-            .await
-            .map_err(map_err)?;
-        let columns: Vec<String> = rows
-            .first()
-            .map(|r| {
-                super::unique_column_names(
-                    r.columns().iter().map(|c| c.name().to_string()).collect(),
-                )
-            })
-            .unwrap_or_default();
-        let data: Vec<Vec<serde_json::Value>> = rows
-            .iter()
-            .map(|r| r.cells().map(|(_, d)| value_to_json(d)).collect())
-            .collect();
+        let columns = columns.unwrap_or_default();
         Ok(QueryResult {
             rows: rows_to_objects(&columns, data),
+            rows_affected: if columns.is_empty() {
+                rows_affected
+            } else {
+                None
+            },
             columns,
-            rows_affected: None,
             execution_time_ms: start.elapsed().as_millis() as u64,
-            truncated: false,
+            truncated,
         })
     }))
     .await
@@ -1116,7 +1184,9 @@ impl TxSession for MssqlTx {
         run_query(&mut self.client, "COMMIT").await.map(|_| ())
     }
     async fn rollback(&mut self) -> Result<(), String> {
-        run_query(&mut self.client, "ROLLBACK").await.map(|_| ())
+        run_query(&mut self.client, "IF @@TRANCOUNT > 0 ROLLBACK")
+            .await
+            .map(|_| ())
     }
 }
 
@@ -1215,7 +1285,7 @@ impl DatabaseAdapter for MssqlAdapter {
                 schema: text(r, 0),
                 table: text(r, 1),
                 name: text(r, 2),
-                data_type: text(r, 3),
+                data_type: metadata_type(text(r, 3)),
             })
             .collect())
     }
@@ -1310,7 +1380,11 @@ impl DatabaseAdapter for MssqlAdapter {
             return self.execute_in_session(&session, sql).await;
         }
         let mut client = self.connect().await?;
-        let result = run_query(&mut client, sql).await;
+        let mut result = run_query(&mut client, sql).await;
+        if result.is_ok() && opens_transaction(sql) && open_transactions(&mut client).await != 0 {
+            let _ = run_query(&mut client, "IF @@TRANCOUNT > 0 ROLLBACK").await;
+            result = Err(OPEN_TRANSACTION.into());
+        }
         if result.is_err() || may_change_session(sql) {
             client.discard();
         }
@@ -1319,8 +1393,15 @@ impl DatabaseAdapter for MssqlAdapter {
 
     async fn execute_script(&self, sql: &str) -> Result<Vec<super::ScriptStatementResult>, String> {
         let mut results = Vec::new();
+        let mut client = match super::execution::session_id() {
+            Some(_) => None,
+            None => Some(self.dedicated().await?),
+        };
         for statement in super::sql_script::split_mssql(sql) {
-            let result = self.execute_query(&statement).await;
+            let result = match client.as_mut() {
+                Some(client) => run_query(client, &statement).await,
+                None => self.execute_query(&statement).await,
+            };
             let failed = result.is_err();
             results.push(super::ScriptStatementResult {
                 statement,
@@ -1332,7 +1413,42 @@ impl DatabaseAdapter for MssqlAdapter {
                 break;
             }
         }
+        if let Some(client) = client.as_mut() {
+            if results.iter().any(|r| opens_transaction(&r.statement))
+                && open_transactions(client).await > 0
+            {
+                let _ = run_query(client, "IF @@TRANCOUNT > 0 ROLLBACK").await;
+                report_open_transaction(&mut results);
+            }
+        }
         Ok(results)
+    }
+
+    async fn list_synonyms(&self, schema: Option<&str>) -> Result<Vec<super::SynonymInfo>, String> {
+        let filter = schema
+            .map(|s| format!(" WHERE s.name = {}", lit(s)))
+            .unwrap_or_default();
+        let sql = format!(
+            "SELECT s.name, y.name, COALESCE(PARSENAME(y.base_object_name, 2), s.name), PARSENAME(y.base_object_name, 1), \
+             CASE OBJECTPROPERTYEX(OBJECT_ID(y.base_object_name), 'BaseType') WHEN 'U' THEN 'table' WHEN 'V' THEN 'view' WHEN 'P' THEN 'procedure' WHEN 'FN' THEN 'function' WHEN 'IF' THEN 'function' WHEN 'TF' THEN 'function' ELSE '' END, \
+             CASE WHEN PARSENAME(y.base_object_name, 4) IS NOT NULL OR PARSENAME(y.base_object_name, 3) <> DB_NAME() THEN COALESCE(PARSENAME(y.base_object_name, 4) + N'.', N'') + PARSENAME(y.base_object_name, 3) END, \
+             CASE WHEN OBJECT_ID(y.base_object_name) IS NULL THEN 'INVALID' ELSE 'VALID' END \
+             FROM sys.synonyms y JOIN sys.schemas s ON s.schema_id = y.schema_id{filter} ORDER BY s.name, y.name"
+        );
+        Ok(self
+            .rows(&sql)
+            .await?
+            .iter()
+            .map(|r| super::SynonymInfo {
+                owner: text(r, 0),
+                name: text(r, 1),
+                target_owner: text(r, 2),
+                target_name: text(r, 3),
+                target_type: text(r, 4),
+                db_link: text_opt(r, 5),
+                status: text(r, 6),
+            })
+            .collect())
     }
 
     async fn list_views(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
@@ -1437,6 +1553,12 @@ impl DatabaseAdapter for MssqlAdapter {
             if index.is_primary || constraints.iter().any(|c| c.name == index.name) {
                 continue;
             }
+            if index.definition.is_empty() {
+                return Err(format!(
+                    "Indexdefinition für {} ist nicht vollständig verfügbar.",
+                    index.name
+                ));
+            }
             ddl.push_str(&format!("\n{};\n", index.definition));
         }
         Ok(ddl)
@@ -1529,6 +1651,7 @@ impl DatabaseAdapter for MssqlAdapter {
             "SELECT c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.ORDINAL_POSITION, c.CHARACTER_MAXIMUM_LENGTH, \
              CASE WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE k ON k.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND k.TABLE_SCHEMA = tc.TABLE_SCHEMA WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY' AND k.TABLE_SCHEMA = c.TABLE_SCHEMA AND k.TABLE_NAME = c.TABLE_NAME AND k.COLUMN_NAME = c.COLUMN_NAME) THEN 1 ELSE 0 END, \
              (SELECT CAST(ep.value AS NVARCHAR(MAX)) FROM sys.extended_properties ep WHERE ep.class = 1 AND ep.name = 'MS_Description' AND ep.major_id = OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME)) AND ep.minor_id = COLUMNPROPERTY(ep.major_id, c.COLUMN_NAME, 'ColumnId')) \
+             , c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.DATETIME_PRECISION \
              FROM INFORMATION_SCHEMA.COLUMNS c WHERE c.TABLE_SCHEMA = {} AND c.TABLE_NAME = {} ORDER BY c.ORDINAL_POSITION",
             lit(schema),
             lit(table)
@@ -1539,7 +1662,7 @@ impl DatabaseAdapter for MssqlAdapter {
             .iter()
             .map(|r| DetailedColumnInfo {
                 name: text(r, 0),
-                data_type: text(r, 1),
+                data_type: sized_type(&text(r, 1), int(r, 8), int(r, 9), int(r, 10)),
                 is_nullable: text(r, 2) == "YES",
                 column_default: text_opt(r, 3),
                 ordinal_position: int(r, 4) as i32,
@@ -1778,45 +1901,26 @@ impl DatabaseAdapter for MssqlAdapter {
     }
 
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
-        let sql = format!(
-            "SELECT i.name, i.is_unique, i.is_primary_key, i.type_desc, c.name FROM sys.indexes i \
-             JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id \
-             JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id \
-             WHERE i.object_id = OBJECT_ID({}) AND i.name IS NOT NULL ORDER BY i.name, ic.key_ordinal",
-            lit(&Self::object(schema, table))
-        );
-        let mut out: Vec<IndexInfo> = Vec::new();
-        for r in self.rows(&sql).await? {
-            let name = text(&r, 0);
-            let column = text(&r, 4);
-            if let Some(existing) = out.iter_mut().find(|i| i.name == name) {
-                existing.columns.push(column);
-                continue;
-            }
-            out.push(IndexInfo {
-                is_unique: int(&r, 1) == 1,
-                is_primary: int(&r, 2) == 1,
-                index_type: text(&r, 3).to_lowercase(),
-                columns: vec![column],
-                definition: String::new(),
-                name,
-            });
-        }
-        for idx in &mut out {
-            idx.definition = format!(
-                "CREATE {}{} INDEX {} ON {} ({})",
-                if idx.is_unique { "UNIQUE " } else { "" },
-                idx.index_type.to_uppercase(),
-                quote(&idx.name),
-                Self::object(schema, table),
-                idx.columns
-                    .iter()
-                    .map(|c| quote(c))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
-        Ok(out)
+        Ok(self
+            .list_index_metadata(schema, table)
+            .await?
+            .into_iter()
+            .map(|entry| entry.index)
+            .collect())
+    }
+
+    async fn list_index_metadata(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<super::index_metadata::IndexMetadata>, String> {
+        let rows = self.rows(&indexes::query(schema, table)).await?;
+        let catalog = rows
+            .iter()
+            .map(indexes::CatalogRow::read)
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(rows);
+        Ok(indexes::map_catalog(schema, table, catalog))
     }
 
     async fn list_constraints(
@@ -1885,8 +1989,53 @@ impl DatabaseAdapter for MssqlAdapter {
         self.exec(&sql).await.map(|_| ())
     }
 
-    async fn explain_query(&self, sql: &str, _analyze: bool) -> Result<serde_json::Value, String> {
+    async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
+        if analyze && controls_transaction(sql) {
+            return Err(
+                "Analyse ohne BEGIN TRAN, COMMIT oder ROLLBACK ausführen: Sie wird zurückgerollt."
+                    .into(),
+            );
+        }
         let mut client = self.dedicated().await?;
+        if analyze {
+            return timed(async {
+                let batch = format!(
+                    "SET XACT_ABORT ON; BEGIN TRANSACTION; SET STATISTICS PROFILE ON;\n{}\n;SET STATISTICS PROFILE OFF",
+                    sql.trim().trim_end_matches(';')
+                );
+                let sets = client
+                    .simple_query(batch)
+                    .await
+                    .map_err(map_err)?
+                    .into_results()
+                    .await
+                    .map_err(map_err);
+                let _ = client
+                    .simple_query("IF @@TRANCOUNT > 0 ROLLBACK")
+                    .await
+                    .map(|s| s.into_results());
+                let profile: Vec<Row> = sets?
+                    .into_iter()
+                    .filter(|rows| {
+                        rows.first().is_some_and(|row| {
+                            let names: Vec<&str> = row.columns().iter().map(|c| c.name()).collect();
+                            names.contains(&"Executes") && names.contains(&"StmtText")
+                        })
+                    })
+                    .flatten()
+                    .collect();
+                let columns: Vec<String> = profile
+                    .first()
+                    .map(|r| r.columns().iter().map(|c| c.name().to_string()).collect())
+                    .unwrap_or_default();
+                let data = profile
+                    .iter()
+                    .map(|r| r.cells().map(|(_, d)| value_to_json(d)).collect())
+                    .collect();
+                Ok(serde_json::Value::Array(rows_to_objects(&columns, data)))
+            })
+            .await;
+        }
         timed(async {
             client
                 .simple_query("SET SHOWPLAN_ALL ON")
@@ -1919,6 +2068,27 @@ impl DatabaseAdapter for MssqlAdapter {
             Ok(serde_json::Value::Array(rows_to_objects(&columns, data)))
         })
         .await
+    }
+
+    async fn list_locks(&self) -> Result<Vec<super::LockInfo>, String> {
+        let sql = "SELECT TOP 5000 l.request_session_id, l.resource_type, \
+                   CASE WHEN l.resource_type = 'OBJECT' THEN OBJECT_SCHEMA_NAME(l.resource_associated_entity_id, l.resource_database_id) + N'.' + OBJECT_NAME(l.resource_associated_entity_id, l.resource_database_id) \
+                        WHEN l.resource_type IN ('KEY', 'PAGE', 'RID', 'HOBT') AND l.resource_database_id = DB_ID() THEN (SELECT OBJECT_SCHEMA_NAME(p.object_id) + N'.' + OBJECT_NAME(p.object_id) FROM sys.partitions p WHERE p.hobt_id = l.resource_associated_entity_id) \
+                        WHEN l.resource_type = 'DATABASE' THEN DB_NAME(l.resource_database_id) END, \
+                   l.request_mode, CASE WHEN l.request_status = 'GRANT' THEN 1 ELSE 0 END \
+                   FROM sys.dm_tran_locks l ORDER BY l.request_session_id, CASE WHEN l.request_status = 'GRANT' THEN 0 ELSE 1 END";
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| super::LockInfo {
+                pid: int(r, 0) as i32,
+                lock_type: text(r, 1),
+                relation: text_opt(r, 2),
+                mode: text(r, 3),
+                granted: int(r, 4) == 1,
+            })
+            .collect())
     }
 
     async fn list_sessions(&self) -> Result<Vec<SessionInfo>, String> {
@@ -2045,6 +2215,65 @@ mod tests {
     use super::*;
 
     #[test]
+    fn rowversion_metadata_preserves_binary_semantics() {
+        let cases: Vec<serde_json::Value> = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/mssql-rowversion-types.json"
+        ))
+        .unwrap();
+        for case in cases {
+            let raw = case["catalog_type"].as_str().unwrap();
+            assert_eq!(
+                metadata_type(raw.to_string()),
+                case["basic_type"].as_str().unwrap()
+            );
+            assert_eq!(
+                sized_type(raw, 19, 4, 7),
+                case["detailed_type"].as_str().unwrap()
+            );
+        }
+        assert_eq!(type_sql("timestamp", 8, 0, 0), "timestamp");
+        assert_eq!(type_sql("rowversion", 8, 0, 0), "rowversion");
+        assert_eq!(select_expression("version", "timestamp"), "[version]");
+        assert_eq!(select_expression("version", "rowversion"), "[version]");
+        let bytes = vec![0, 0, 0, 0, 0, 0, 7, 211];
+        assert_eq!(
+            value_to_json(&ColumnData::Binary(Some(std::borrow::Cow::Owned(bytes)))),
+            serde_json::json!("0x00000000000007D3")
+        );
+    }
+
+    #[test]
+    fn rowversion_metadata_remains_bounded_on_large_catalogs() {
+        let input: Vec<String> = ["timestamp", "datetime2", "rowversion", "nvarchar"]
+            .into_iter()
+            .cycle()
+            .take(10_000)
+            .map(str::to_string)
+            .collect();
+        let run = || {
+            let output: Vec<_> = input.iter().cloned().map(metadata_type).collect();
+            assert_eq!(output.len(), 10_000);
+            assert_eq!(
+                output.iter().filter(|kind| *kind == "rowversion").count(),
+                5_000
+            );
+            assert_eq!(output.iter().map(String::len).sum::<usize>(), 92_500);
+        };
+        run();
+        run();
+        let mut durations = Vec::new();
+        for _ in 0..7 {
+            let start = Instant::now();
+            run();
+            durations.push(start.elapsed().as_secs_f64() * 1000.0);
+        }
+        durations.sort_by(f64::total_cmp);
+        eprintln!("rowversion metadata: 10000 columns, median={:.3}ms p95={:.3}ms output=92500 type bytes, db_requests=0", durations[3], durations[6]);
+        assert!(durations[3] < 50.0);
+        assert!(durations[6] < 100.0);
+    }
+
+    #[test]
     fn column_changes_run_in_one_transaction() {
         assert_eq!(super::atomic_batch(&[]), None);
         assert_eq!(
@@ -2056,6 +2285,7 @@ mod tests {
     #[test]
     fn unreadable_types_are_converted_for_browsing() {
         assert_eq!(select_expression("id", "int"), "[id]");
+        assert_eq!(select_expression("d", "decimal(38,10)"), "[d]");
         assert_eq!(
             select_expression("Shape", "geography"),
             "[Shape].STAsText() AS [Shape]"
@@ -2066,7 +2296,7 @@ mod tests {
         );
         assert_eq!(
             select_expression("v", "sql_variant"),
-            "CAST([v] AS NVARCHAR(4000)) AS [v]"
+            "CASE WHEN SQL_VARIANT_PROPERTY([v], 'BaseType') IN ('binary', 'varbinary') THEN CONVERT(NVARCHAR(4000), CAST([v] AS VARBINARY(8000)), 1) ELSE CAST([v] AS NVARCHAR(4000)) END AS [v]"
         );
         assert_eq!(select_expression("p", "Point"), "[p].ToString() AS [p]");
         let parsed =
@@ -2122,9 +2352,8 @@ mod tests {
     #[ignore]
     async fn live_info_messages_are_captured_per_statement() {
         use crate::db::server_output::{capture, Messages};
-        let Ok(url) = std::env::var("L8DB_SMOKE_MSSQL_URL") else {
-            return;
-        };
+        let url = std::env::var("L8DB_SMOKE_MSSQL_URL")
+            .expect("Lab fehlt: L8DB_SMOKE_MSSQL_URL ist nicht gesetzt");
         let pool = crate::db::pool::create_pool_state();
         let adapter = MssqlAdapter::new(&url, None, pool.clone(), "output".into()).unwrap();
         let sink = Messages::default();
@@ -2214,9 +2443,8 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_unreadable_types_do_not_crash() {
-        let Ok(url) = std::env::var("L8DB_SMOKE_MSSQL_URL") else {
-            return;
-        };
+        let url = std::env::var("L8DB_SMOKE_MSSQL_URL")
+            .expect("Lab fehlt: L8DB_SMOKE_MSSQL_URL ist nicht gesetzt");
         let pool = crate::db::pool::create_pool_state();
         let adapter =
             MssqlAdapter::new(&url, Some("master"), pool.clone(), "variant".into()).unwrap();
@@ -2228,11 +2456,14 @@ mod tests {
         ] {
             adapter.rows(sql).await.expect(sql);
         }
-        let error = adapter
-            .execute_query("SELECT * FROM dbo.l8db_variant")
+        let read = adapter
+            .execute_query("SELECT v FROM dbo.l8db_variant ORDER BY id")
             .await
-            .unwrap_err();
-        assert_eq!(error, UNREADABLE_TYPE);
+            .unwrap();
+        assert_eq!(
+            (read.rows[0]["v"].clone(), read.rows[1]["v"].clone()),
+            (serde_json::json!(42), serde_json::json!("text"))
+        );
         let data = adapter
             .fetch_rows(
                 "dbo",
@@ -2432,10 +2663,42 @@ mod tests {
     }
 
     #[test]
+    fn tls_errors_name_the_fix() {
+        let validity = map_err(tiberius::error::Error::Tls(
+            "The validity period in the certificate exceeds the maximum allowed.".into(),
+        ));
+        assert!(
+            validity.contains("trust_server_certificate=true"),
+            "{validity}"
+        );
+        let closed = map_err(tiberius::error::Error::Tls(
+            "connection closed via error".into(),
+        ));
+        assert!(
+            closed.contains("encrypt=false") && !closed.contains("vertrauen"),
+            "{closed}"
+        );
+    }
+
+    #[test]
     fn parses_url_options() {
         let pool = crate::db::pool::create_pool_state();
         let adapter = MssqlAdapter::new("mssql://sa:P%40ss@db.example.com:1434/master?encrypt=true&trust_server_certificate=true", Some("other"), pool.clone(), "k".into()).unwrap();
         assert_eq!(adapter.config.get_addr(), "db.example.com:1434");
+        let entra = "mssql://sa:x@srv/master?authentication=ActiveDirectoryPassword";
+        assert!(MssqlAdapter::new(entra, None, pool.clone(), "k".into())
+            .err()
+            .is_some_and(|e| e.contains("nicht unterstützt")));
+        assert!(parse_mssql_url("mssql://sa:x@srv/master?authentication=SqlPassword").is_ok());
+        let named = |url: &str| MssqlAdapter::new(url, None, pool.clone(), "k".into()).unwrap();
+        let browsed = named("mssql://sa:x@srv/master?instance=SQLEXPRESS");
+        assert!(browsed.browse);
+        assert_eq!(browsed.config.get_addr(), "srv:1434");
+        let fixed = named("mssql://sa:x@srv:14333/master?instanceName=SQLEXPRESS");
+        assert!(!fixed.browse);
+        assert_eq!(fixed.config.get_addr(), "srv:14333");
+        assert_eq!(fixed.pinned_instance.as_deref(), Some("SQLEXPRESS"));
+        assert!(browsed.pinned_instance.is_none());
         assert!(MssqlAdapter::new("mysql://x@y/z", None, pool.clone(), "k".into()).is_err());
         let trusted = MssqlAdapter::new(
             "mssql://srv/master?trusted_connection=true",
@@ -2444,16 +2707,55 @@ mod tests {
             "k".into(),
         );
         assert_eq!(trusted.is_ok(), cfg!(windows));
-        assert!(is_result_statement("  select 1"));
-        assert!(!is_result_statement("UPDATE t SET a = 1"));
-        assert!(is_result_statement(
-            "INSERT INTO t OUTPUT INSERTED.* DEFAULT VALUES"
-        ));
-        assert!(is_tx_control("begin tran"));
-        assert!(is_tx_control("-- finish\nCOMMIT"));
+        assert!(opens_transaction("INSERT INTO t VALUES (1); begin tran"));
+        assert!(opens_transaction("SET IMPLICIT_TRANSACTIONS ON"));
         assert!(starts_batch("/* v2 */ CREATE OR ALTER VIEW v AS SELECT 1"));
-        assert!(is_tx_control("ROLLBACK"));
-        assert!(!is_tx_control("BEGIN SELECT 1 END"));
+        assert!(!opens_transaction("COMMIT"));
+        assert!(!opens_transaction("BEGIN SELECT 'BEGIN TRAN' END"));
+    }
+
+    #[test]
+    fn analyze_refuses_sql_that_ends_its_rollback_transaction() {
+        assert!(controls_transaction("UPDATE t SET x=0; COMMIT"));
+        assert!(controls_transaction("update t set x = 0\nrollback tran"));
+        assert!(controls_transaction("BEGIN TRAN; UPDATE t SET x = 0"));
+        assert!(!controls_transaction(
+            "UPDATE t SET note = 'COMMIT' -- ROLLBACK"
+        ));
+        assert!(!controls_transaction("SELECT * FROM t"));
+    }
+
+    #[tokio::test]
+    async fn scripts_with_a_dangling_begin_tran_report_the_rollback() {
+        let pool = crate::db::pool::create_pool_state();
+        let adapter =
+            MssqlAdapter::new("mssql://sa:x@127.0.0.1:1/master", None, pool, "k".into()).unwrap();
+        let error = adapter
+            .explain_query("UPDATE t SET x=0; COMMIT", true)
+            .await
+            .unwrap_err();
+        assert!(error.contains("COMMIT"), "{error}");
+        let ok = |statement: &str| super::super::ScriptStatementResult {
+            statement: statement.into(),
+            success: true,
+            rows_affected: Some(1),
+            error: None,
+        };
+        let mut results = vec![ok("BEGIN TRAN"), ok("UPDATE t SET x=1")];
+        report_open_transaction(&mut results);
+        assert!(results[0].success);
+        assert!(!results[1].success);
+        assert_eq!(results[1].error.as_deref(), Some(OPEN_TRANSACTION));
+        let mut failed = vec![
+            ok("BEGIN TRAN"),
+            super::super::ScriptStatementResult {
+                success: false,
+                error: Some("x".into()),
+                ..ok("bad")
+            },
+        ];
+        report_open_transaction(&mut failed);
+        assert_eq!(failed[1].error.as_deref(), Some("x"));
     }
 
     #[test]
@@ -2521,46 +2823,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn classifies_result_statements_behind_comments_and_procedure_calls() {
-        for sql in [
-            "-- top customers\nSELECT * FROM c",
-            "/* report */ SELECT 1",
-            "/* outer /* nested */ still comment */\nWITH x AS (SELECT 1 AS a) SELECT a FROM x",
-            "(SELECT 1) UNION ALL (SELECT 2)",
-            "sp_who2",
-            "dbo.usp_report 1, 'x'",
-            "[dbo].[usp_report]",
-            "UPDATE t SET a = 1\nOUTPUT inserted.*",
-            "DELETE FROM t\tOUTPUT deleted.id WHERE id = 1",
-            "MERGE t USING s ON t.id = s.id WHEN MATCHED THEN DELETE OUTPUT $action, deleted.*;",
-            "FETCH NEXT FROM c",
-            "RESTORE HEADERONLY FROM DISK = N'/tmp/x.bak'",
-        ] {
-            assert!(is_result_statement(sql), "{sql}");
-        }
-        for sql in [
-            "UPDATE t SET a = 1",
-            "-- bump\nUPDATE t SET note = N'OUTPUT x' WHERE id = 1",
-            "INSERT INTO t (note) VALUES ('a -- b /* c')",
-            "DELETE FROM [OUTPUT] WHERE id = 1",
-            "update t set [select] = 1",
-            "MERGE t USING s ON t.id = s.id WHEN MATCHED THEN DELETE;",
-            "TRUNCATE TABLE t",
-            "CREATE TABLE t (id int)",
-            "DROP TABLE t",
-            "IF 1 = 1 UPDATE t SET a = 1",
-        ] {
-            assert!(!is_result_statement(sql), "{sql}");
-        }
-    }
-
     #[tokio::test]
     #[ignore]
     async fn live_tls_modes() {
-        let Ok(base) = std::env::var("L8DB_E2E_MSSQL_TLS_URL") else {
-            return;
-        };
+        let base = std::env::var("L8DB_E2E_MSSQL_TLS_URL")
+            .expect("Lab fehlt: L8DB_E2E_MSSQL_TLS_URL ist nicht gesetzt");
         let connect = |query: &str| {
             let url = format!("{base}{query}");
             async move {
@@ -2593,9 +2860,8 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_proxy_user_sees_rows_through_security_policy() {
-        let Ok(url) = std::env::var("L8DB_SMOKE_MSSQL_URL") else {
-            return;
-        };
+        let url = std::env::var("L8DB_SMOKE_MSSQL_URL")
+            .expect("Lab fehlt: L8DB_SMOKE_MSSQL_URL ist nicht gesetzt");
         let pool = crate::db::pool::create_pool_state();
         let server =
             MssqlAdapter::new(&url, Some("master"), pool.clone(), "px-master".into()).unwrap();
@@ -2675,8 +2941,9 @@ mod tests {
             .expect("cleanup");
     }
 
-    fn live_url() -> Option<String> {
-        std::env::var("L8DB_SMOKE_MSSQL_URL").ok()
+    fn live_url() -> String {
+        std::env::var("L8DB_SMOKE_MSSQL_URL")
+            .expect("Lab fehlt: L8DB_SMOKE_MSSQL_URL ist nicht gesetzt")
     }
 
     async fn column_types(adapter: &MssqlAdapter, table: &str) -> Vec<(String, String, String)> {
@@ -2694,10 +2961,90 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    async fn live_batches_plans_locks_and_synonyms() {
+        let url = live_url();
+        let pool = crate::db::pool::create_pool_state();
+        let adapter = MssqlAdapter::new(&url, None, pool, "live-batch".into()).unwrap();
+        let _ = adapter
+            .execute_query("DROP SYNONYM IF EXISTS dbo.l8ms_syn; DROP TABLE IF EXISTS dbo.l8ms_t")
+            .await;
+        adapter
+            .execute_query("CREATE TABLE dbo.l8ms_t (id INT PRIMARY KEY, v SQL_VARIANT)")
+            .await
+            .unwrap();
+        let inserted = adapter
+            .execute_query(
+                "INSERT INTO dbo.l8ms_t VALUES (1, CAST(0x4142 AS VARBINARY(2))); INSERT INTO dbo.l8ms_t VALUES (2, 42)",
+            )
+            .await
+            .unwrap();
+        assert_eq!(inserted.rows_affected, Some(2));
+        let variant = adapter
+            .execute_query("SELECT v FROM dbo.l8ms_t ORDER BY id")
+            .await
+            .unwrap();
+        assert_eq!(variant.rows[0]["v"], "0x4142");
+        assert_eq!(variant.rows[1]["v"], 42);
+        let script = adapter
+            .execute_script("DECLARE @x INT = 5; SELECT @x AS v\nGO\nCREATE TABLE #l8 (x INT); INSERT INTO #l8 VALUES (1)")
+            .await
+            .unwrap();
+        assert!(script.iter().all(|r| r.success), "{script:?}");
+        let open = adapter
+            .execute_query("BEGIN TRAN; INSERT INTO dbo.l8ms_t VALUES (3, 1)")
+            .await;
+        assert!(open.unwrap_err().contains("ohne COMMIT"));
+        let plan = adapter
+            .explain_query("DELETE FROM dbo.l8ms_t WHERE id = 2", true)
+            .await
+            .unwrap();
+        let rows = plan.as_array().unwrap();
+        assert!(
+            rows.iter().any(|row| row["Executes"].as_i64() >= Some(1)),
+            "{plan}"
+        );
+        let count = adapter
+            .execute_query("SELECT COUNT(*) AS n FROM dbo.l8ms_t")
+            .await
+            .unwrap();
+        assert_eq!(count.rows[0]["n"], 2);
+        adapter
+            .execute_query("CREATE SYNONYM dbo.l8ms_syn FOR dbo.l8ms_t")
+            .await
+            .unwrap();
+        let synonyms = adapter.list_synonyms(Some("dbo")).await.unwrap();
+        let syn = synonyms.iter().find(|s| s.name == "l8ms_syn").unwrap();
+        assert_eq!(
+            (
+                syn.target_owner.as_str(),
+                syn.target_name.as_str(),
+                syn.target_type.as_str()
+            ),
+            ("dbo", "l8ms_t", "table")
+        );
+        let mut tx = adapter.begin_transaction().await.unwrap();
+        tx.execute("UPDATE dbo.l8ms_t SET v = 7 WHERE id = 1")
+            .await
+            .unwrap();
+        let locks = adapter.list_locks().await.unwrap();
+        assert!(locks.len() <= 5000);
+        assert!(
+            locks
+                .iter()
+                .any(|l| l.relation.as_deref() == Some("dbo.l8ms_t") && l.granted),
+            "{locks:?}"
+        );
+        tx.rollback().await.unwrap();
+        adapter
+            .execute_query("DROP SYNONYM dbo.l8ms_syn; DROP TABLE dbo.l8ms_t")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn live_alter_column_keeps_xml_schema_sparse_and_mask() {
-        let Some(url) = live_url() else {
-            return;
-        };
+        let url = live_url();
         let pool = crate::db::pool::create_pool_state();
         let adapter = MssqlAdapter::new(&url, Some("master"), pool, "alter-attrs".into()).unwrap();
         for sql in [
@@ -2763,9 +3110,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_alter_column_nullability_keeps_type_and_collation() {
-        let Some(url) = live_url() else {
-            return;
-        };
+        let url = live_url();
         let pool = crate::db::pool::create_pool_state();
         let adapter = MssqlAdapter::new(&url, Some("master"), pool, "alter-keep".into()).unwrap();
         for sql in [
@@ -2852,9 +3197,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_temporal_keys_and_commented_queries_round_trip() {
-        let Some(url) = live_url() else {
-            return;
-        };
+        let url = live_url();
         let pool = crate::db::pool::create_pool_state();
         let adapter =
             MssqlAdapter::new(&url, Some("master"), pool, "temporal-keys".into()).unwrap();
@@ -2910,9 +3253,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_script_sessions_keep_state_between_statements() {
-        let Some(url) = live_url() else {
-            return;
-        };
+        let url = live_url();
         let pool = crate::db::pool::create_pool_state();
         let adapter =
             MssqlAdapter::new(&url, Some("master"), pool, "script-session".into()).unwrap();
@@ -2966,9 +3307,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn live_pooled_clients_do_not_leak_session_state() {
-        let Some(url) = live_url() else {
-            return;
-        };
+        let url = live_url();
         let pool = crate::db::pool::create_pool_state();
         let server =
             MssqlAdapter::new(&url, Some("master"), pool.clone(), "leak-master".into()).unwrap();
@@ -2999,7 +3338,12 @@ mod tests {
             "SET LOCK_TIMEOUT 5",
             "DECLARE @x int; BEGIN TRANSACTION",
         ] {
-            adapter.execute_query(sql).await.expect(sql);
+            let result = adapter.execute_query(sql).await;
+            if sql.contains("BEGIN") {
+                assert_eq!(result.unwrap_err(), OPEN_TRANSACTION);
+            } else {
+                result.expect(sql);
+            }
             assert_eq!(state().await, baseline, "{sql}");
         }
         adapter

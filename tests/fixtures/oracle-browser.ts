@@ -75,7 +75,7 @@ export async function openOracleApp(page: Page, path = "/", activeId = "oracle-l
         metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
         invoke: async (command: string, args: Record<string, unknown> = {}) => {
           if (
-            /^(mcp_|automation_|team_|ui_plugin_)/.test(command) ||
+            /^(mcp_|automation_|team_)/.test(command) ||
             ["organization_policy", "report_startup"].includes(command)
           )
             return Promise.reject("not available");

@@ -7,6 +7,7 @@ import {
   splitSqlStatements,
   sqlToRun,
   statementAtOffset,
+  statementCountLabel,
 } from "../src/lib/sql-statements";
 
 describe("splitSqlStatements", () => {
@@ -354,6 +355,20 @@ test("nur Datenänderungen öffnen eine verwaltete Transaktion", () => {
     true,
   );
   expect(opensManagedTransaction("BEGIN pkg.run; END;", "oracle")).toBe(true);
+  expect(opensManagedTransaction("BEGIN DBMS_OUTPUT.PUT_LINE('Hallo Audit'); END;", "oracle")).toBe(
+    false,
+  );
+  expect(
+    opensManagedTransaction(
+      "begin\n  dbms_output.put_line('a; (b)'' c');\n  dbms_output.new_line;\n  null;\nend;\n/",
+      "oracle",
+    ),
+  ).toBe(false);
+  expect(opensManagedTransaction("BEGIN DBMS_OUTPUT.PUT_LINE(f()); END;", "oracle")).toBe(true);
+  expect(
+    opensManagedTransaction("BEGIN DBMS_OUTPUT.PUT_LINE('x'); DELETE FROM t; END;", "oracle"),
+  ).toBe(true);
+  expect(opensManagedTransaction("DECLARE n NUMBER; BEGIN NULL; END;", "oracle")).toBe(true);
   expect(isTransactionalStatement("ALTER TABLE t ADD b int", "postgres")).toBe(true);
 });
 
@@ -411,7 +426,8 @@ describe("runsOneStatementPerCall", () => {
   test("PostgreSQL führt mehrere Statements einzeln aus, damit jedes Ergebnis erscheint", () => {
     expect(runsOneStatementPerCall("postgres")).toBe(true);
     expect(runsOneStatementPerCall("oracle")).toBe(true);
-    expect(runsOneStatementPerCall("mssql")).toBe(false);
+    expect(runsOneStatementPerCall("mysql")).toBe(true);
+    expect(runsOneStatementPerCall("mssql")).toBe(true);
     const { statements } = splitSqlStatements(
       "select 1 as eins; select 2 as zwei; do $$ begin perform 1; end $$;",
       "postgres",
@@ -421,5 +437,20 @@ describe("runsOneStatementPerCall", () => {
       "select 2 as zwei;",
       "do $$ begin perform 1; end $$;",
     ]);
+    const mysql = splitSqlStatements(
+      "select 1 as eins; DELIMITER $$\nCREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END$$\nDELIMITER ;\nselect 2 as zwei;",
+      "mysql",
+    );
+    expect(mysql.statements.map((s) => s.text.trim())).toEqual([
+      "select 1 as eins;",
+      "CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END",
+      "select 2 as zwei;",
+    ]);
   });
+});
+
+test("SQL*Plus-Befehle werden getrennt von Statements gezählt", () => {
+  expect(statementCountLabel(1)).toBe("1 Statement");
+  expect(statementCountLabel(3, 4)).toBe("3 Statements · 4 SQL*Plus-Befehle");
+  expect(statementCountLabel(2, 1)).toBe("2 Statements · 1 SQL*Plus-Befehl");
 });

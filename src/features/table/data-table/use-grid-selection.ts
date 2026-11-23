@@ -1,4 +1,13 @@
-import { type Dispatch, type SetStateAction, useCallback, useMemo, useRef, useState } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { copyText } from "@/lib/clipboard";
 import {
   cellKey,
@@ -9,6 +18,7 @@ import {
   selectionRange,
   summarizeCells,
 } from "@/lib/grid-selection";
+import { MasterSelectionContext, useMasterDetail } from "@/lib/master-detail";
 import type { TableRow } from "../data-table-types";
 import { INDEX_COLUMN } from "./constants";
 
@@ -19,6 +29,7 @@ export function useGridSelection(
   setActiveCell: Dispatch<SetStateAction<GridCellRef | null>>,
   visibleColumnIds: string[],
   data: TableRow[],
+  totalCount?: number | null,
 ) {
   const [selectionAnchor, setSelectionAnchor] = useState<GridCellRef | null>(null);
   const [extraCells, setExtraCells] = useState<GridCellRef[]>([]);
@@ -51,6 +62,30 @@ export function useGridSelection(
     [selectedCount, data, selectedCells],
   );
 
+  const selectionKey = useContext(MasterSelectionContext);
+  const masterRows = useMemo(() => {
+    if (selectedByRow.size < 2) return undefined;
+    return [...selectedByRow.keys()]
+      .sort((a, b) => a - b)
+      .flatMap((index) => (data[index] ? [data[index]] : []));
+  }, [selectedByRow, data]);
+  useEffect(() => {
+    if (!selectionKey) return;
+    const row = activeCell ? data[activeCell.rowIndex] : undefined;
+    useMasterDetail.getState().selectCell(
+      selectionKey,
+      activeCell && row && Object.hasOwn(row, activeCell.columnId)
+        ? {
+            column: activeCell.columnId,
+            rowIndex: activeCell.rowIndex,
+            value: row[activeCell.columnId],
+            row,
+            rows: masterRows,
+          }
+        : null,
+    );
+  }, [selectionKey, activeCell, data, masterRows]);
+
   const committedRef = useRef({ selectedRange, extraCells });
   committedRef.current = { selectedRange, extraCells };
   const focusCell = useCallback(
@@ -82,10 +117,14 @@ export function useGridSelection(
     if (selectedCount <= 1) return false;
     const tsv = cellsToTsv(data, selectedCells, visibleColumnIds);
     if (tsv === "") return false;
-    void copyText(tsv, `${selectedCount} Zellen als TSV kopiert.`);
-
+    const rows = new Set(selectedCells.map((cell) => cell.rowIndex)).size;
+    const loaded =
+      totalCount != null && totalCount > data.length && rows === data.length
+        ? ` (${data.length.toLocaleString("de-DE")} von ${totalCount.toLocaleString("de-DE")} Zeilen)`
+        : "";
+    void copyText(tsv, `${selectedCount} Zellen als TSV kopiert${loaded}.`);
     return true;
-  }, [selectedCells, selectedCount, data, visibleColumnIds]);
+  }, [selectedCells, selectedCount, data, visibleColumnIds, totalCount]);
 
   return {
     setSelectionAnchor,

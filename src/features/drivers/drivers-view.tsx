@@ -1,5 +1,5 @@
 import { CircleCheck, PlugZap, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ProviderLogo } from "@/components/provider-logo";
@@ -7,33 +7,84 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { DriverHealthBar } from "@/features/drivers/driver-health-bar";
 import { DriverMissingCard } from "@/features/drivers/driver-missing-card";
-import { type DatabaseKind, installDriver } from "@/lib/db";
-import { summarizeDrivers } from "@/lib/drivers";
-import { loadProviders, refreshDriverStatus, useProvidersStore } from "@/lib/providers";
+import {
+  type DatabaseKind,
+  type DriverDiagnosis,
+  diagnoseDriver,
+  installDriver,
+  repairDriver,
+} from "@/lib/db";
+import { type DriverSummary, diagnosableKinds, summarizeDrivers } from "@/lib/drivers";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import {
+  loadProviders,
+  refreshDriverStatus,
+  setDriverStatus,
+  useProvidersStore,
+} from "@/lib/providers";
 import { cn } from "@/lib/utils";
 import { JdbcManager } from "./jdbc-manager";
 
 export function DriversView() {
   const providers = useProvidersStore((state) => state.providers);
   const loaded = useProvidersStore((state) => state.loaded);
-  const [installing, setInstalling] = useState<DatabaseKind | null>(null);
+  const [installing, setInstalling] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [logs, setLogs] = useState<Partial<Record<DatabaseKind, string>>>({});
+  const [logs, setLogs] = useState<Record<string, string>>({});
+  const [diagnoses, setDiagnoses] = useState<Partial<Record<DatabaseKind, DriverDiagnosis>>>({});
+  const [analyzing, setAnalyzing] = useState<DatabaseKind | null>(null);
+  const diagnosed = useRef(false);
+  const badge = useNewFeatureVisibility<HTMLDivElement>("drivers.ibmi");
 
-  const summaries = useMemo(() => summarizeDrivers(providers), [providers]);
+  const summaries = useMemo(
+    () =>
+      summarizeDrivers(
+        providers.map((provider) => {
+          const status = diagnoses[provider.kind]?.status;
+          return status ? { ...provider, driver_status: status } : provider;
+        }),
+      ),
+    [providers, diagnoses],
+  );
   const missing = summaries.filter((summary) => !summary.status.available);
   const ready = summaries.filter((summary) => summary.status.available);
-  const busy = installing !== null || refreshing;
+  const busy = installing !== null || refreshing || analyzing !== null;
+
+  const applyDiagnosis = useCallback((kind: DatabaseKind, diagnosis: DriverDiagnosis) => {
+    setDriverStatus(kind, diagnosis.status);
+    setDiagnoses((prev) => ({ ...prev, [kind]: diagnosis }));
+  }, []);
+
+  const diagnose = useCallback(
+    async (kind: DatabaseKind) => {
+      setAnalyzing(kind);
+      try {
+        applyDiagnosis(kind, await diagnoseDriver(kind));
+      } catch (error) {
+        toast.error(`Treiber konnte nicht analysiert werden: ${String(error)}`);
+      } finally {
+        setAnalyzing(null);
+      }
+    },
+    [applyDiagnosis],
+  );
 
   useEffect(() => {
     if (!loaded) void loadProviders();
   }, [loaded]);
+
+  useEffect(() => {
+    if (!loaded || diagnosed.current) return;
+    diagnosed.current = true;
+    for (const kind of diagnosableKinds(providers)) void diagnose(kind);
+  }, [loaded, providers, diagnose]);
 
   const refreshAll = async () => {
     setRefreshing(true);
     try {
       await loadProviders();
       await refreshDriverStatus("jdbc");
+      await Promise.all(diagnosableKinds(useProvidersStore.getState().providers).map(diagnose));
     } catch (error) {
       toast.error(`Treiberstatus konnte nicht geprüft werden: ${String(error)}`);
     } finally {
@@ -41,13 +92,30 @@ export function DriversView() {
     }
   };
 
-  const handleInstall = async (kind: DatabaseKind, title: string) => {
-    setInstalling(kind);
+  const handleInstall = async ({ id, kind, providerId, title }: DriverSummary) => {
+    setInstalling(id);
     try {
-      const log = await installDriver(kind);
-      setLogs((prev) => ({ ...prev, [kind]: log || "Installation abgeschlossen." }));
+      const log = await installDriver(kind, providerId);
+      setLogs((prev) => ({ ...prev, [id]: log || "Installation abgeschlossen." }));
       await loadProviders();
       toast.success(`„${title}" installiert.`);
+    } catch (err) {
+      const message = typeof err === "string" ? err : String(err);
+      setLogs((prev) => ({ ...prev, [id]: message }));
+      toast.error(message);
+    } finally {
+      setInstalling(null);
+    }
+  };
+
+  const handleRepair = async (kind: DatabaseKind, title: string) => {
+    setInstalling(kind);
+    try {
+      const { log, diagnosis } = await repairDriver(kind);
+      setLogs((prev) => ({ ...prev, [kind]: log }));
+      applyDiagnosis(kind, diagnosis);
+      if (diagnosis.status.available) toast.success(`„${title}" repariert.`);
+      else toast.error(`„${title}" ist noch nicht einsatzbereit.`);
     } catch (err) {
       const message = typeof err === "string" ? err : String(err);
       setLogs((prev) => ({ ...prev, [kind]: message }));
@@ -58,6 +126,7 @@ export function DriversView() {
   };
 
   const handleRecheck = async (kind: DatabaseKind) => {
+    if (diagnosableKinds(providers).includes(kind)) return diagnose(kind);
     try {
       await refreshDriverStatus(kind);
     } catch (error) {
@@ -93,7 +162,7 @@ export function DriversView() {
             Treiberstatus wird geladen …
           </div>
         ) : (
-          <div className="mt-7 space-y-8">
+          <div ref={badge.ref} className="mt-7 space-y-8">
             <DriverHealthBar summaries={summaries} />
 
             {missing.length > 0 ? (
@@ -104,12 +173,15 @@ export function DriversView() {
                 <div className="grid gap-3 lg:grid-cols-2">
                   {missing.map((summary) => (
                     <DriverMissingCard
-                      key={summary.kind}
+                      key={summary.id}
                       summary={summary}
-                      installing={installing === summary.kind}
+                      installing={installing === summary.id}
                       busy={busy}
-                      log={logs[summary.kind]}
-                      onInstall={() => void handleInstall(summary.kind, summary.title)}
+                      analyzing={analyzing === summary.kind}
+                      diagnosis={diagnoses[summary.kind]}
+                      log={logs[summary.id]}
+                      onInstall={() => void handleInstall(summary)}
+                      onRepair={() => void handleRepair(summary.kind, summary.title)}
                       onRecheck={() => void handleRecheck(summary.kind)}
                     />
                   ))}
@@ -130,11 +202,15 @@ export function DriversView() {
                 <ul className="flex flex-wrap gap-1.5">
                   {ready.map((summary) => (
                     <li
-                      key={summary.kind}
+                      key={summary.id}
                       title={`${summary.typeLabel}: ${summary.providers.map((provider) => provider.name).join(", ")}`}
                       className="inline-flex h-8 items-center gap-2 rounded-full bg-card pr-3 pl-2 text-xs ring-1 ring-border"
                     >
-                      <ProviderLogo kind={summary.kind} className="size-4" />
+                      <ProviderLogo
+                        kind={summary.kind}
+                        providerId={summary.providerId}
+                        className="size-4"
+                      />
                       {summary.title}
                       <span className="tabular-nums text-muted-foreground">
                         {summary.providers.length}

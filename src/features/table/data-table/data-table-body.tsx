@@ -1,4 +1,4 @@
-import { useContext, useMemo } from "react";
+import { useContext, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { useActiveConnection } from "@/lib/connections";
@@ -7,13 +7,12 @@ import { useTableViewState } from "@/lib/hooks/use-table-view-state";
 import { buildDuplicatePrefill } from "@/lib/row-duplicate";
 import { rowRuleColor } from "@/lib/row-rules";
 import { useSettingsStore } from "@/lib/settings";
-import { UiPluginGridContext } from "@/lib/ui-plugins/grid";
 import { RowWatchContext } from "@/lib/workbench/row-watch-context";
 import { saveRowWatch } from "@/lib/workbench/row-watches";
 import { DataTableRow } from "../data-table-row";
 import type { DataTableProps } from "../data-table-types";
 import { copyCellValue } from "./copy-cell-value";
-import { DataTableRowMenu } from "./data-table-row-menu";
+import { DataTableRowMenu, type MenuRow } from "./data-table-row-menu";
 import type { useDataTable } from "./use-data-table";
 
 type Props = Pick<
@@ -77,6 +76,7 @@ type Props = Pick<
     columnNames: string[];
     stateKey?: string;
     rowOffset: number;
+    onInspectRecord?: (row: MenuRow, origin: HTMLElement | null) => boolean;
   };
 
 export function DataTableBody({
@@ -135,6 +135,7 @@ export function DataTableBody({
   watchScope,
   currentSchema,
   currentTable,
+  onInspectRecord,
 }: Props) {
   const connection = useActiveConnection();
   const caps = useActiveCapabilities();
@@ -146,7 +147,7 @@ export function DataTableBody({
       (columnDetails ?? []).filter((column) => column.is_primary_key).map((column) => column.name),
     [columnDetails],
   );
-  const pluginGrid = useContext(UiPluginGridContext);
+  const menuOrigin = useRef<HTMLElement | null>(null);
 
   return (
     <ContextMenu eager onOpenChange={(open) => !open && setMenuRow(null)}>
@@ -155,13 +156,23 @@ export function DataTableBody({
           ref={tbodyRef}
           role={columnWindow.enabled ? "rowgroup" : undefined}
           onContextMenuCapture={(event) => {
-            const tr = (event.target as HTMLElement).closest<HTMLTableRowElement>("tr[data-ctid]");
+            const tr = (event.target as HTMLElement).closest<HTMLTableRowElement>(
+              "tr[data-row-index]",
+            );
+            const row = tr && rows[Number(tr.dataset.rowIndex)];
             const ctid = tr?.dataset.ctid;
-            const row = ctid ? rows[Number(tr?.dataset.rowIndex)] : undefined;
-            if (!ctid || !row || (!hasRowActions && !watchScope && !currentTable)) {
+            if (
+              !row ||
+              (!onInspectRecord && (!ctid || (!hasRowActions && !watchScope && !currentTable)))
+            ) {
               event.stopPropagation();
               return;
             }
+            const focused = document.activeElement;
+            menuOrigin.current =
+              focused instanceof HTMLElement && scrollRef.current?.contains(focused)
+                ? focused
+                : null;
             setMenuRow({ ctid, rowIndex: row.index, original: row.original });
           }}
         >
@@ -196,10 +207,9 @@ export function DataTableBody({
                     isMarked={markedRows.has(row.original)}
                     ruleColor={
                       (rules.length ? rowRuleColor(row.original, rules) : undefined) ??
-                      pluginGrid?.rowColor?.(row.original) ??
                       (changedRows.has(row.original) ? "var(--primary)" : undefined)
                     }
-                    isContextMenuTarget={!!menuRow && menuRow.ctid === rowCtid}
+                    isContextMenuTarget={menuRow?.original === row.original}
                     toggleRowMarker={toggleRowMarker}
                     columnWindow={columnWindow.items}
                     gridLayout={columnWindow.enabled}
@@ -272,7 +282,10 @@ export function DataTableBody({
             scrollRef.current?.scrollTo({ top: 0, left: 0 });
           }}
           onDeleteRow={onDeleteRow}
-          extraItems={rowMenuItems?.(menuRow.original)}
+          onInspectRecord={
+            onInspectRecord ? () => onInspectRecord(menuRow, menuOrigin.current) : undefined
+          }
+          extraItems={menuRow.ctid ? rowMenuItems?.(menuRow.original) : undefined}
           onWatch={
             watchScope && primaryKeys.length
               ? () => {

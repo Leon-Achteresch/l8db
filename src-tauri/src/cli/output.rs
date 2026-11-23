@@ -31,6 +31,11 @@ pub fn cell(row: &Value, column: &str, index: usize) -> Value {
     }
 }
 
+fn missing(row: &Value, column: &str) -> bool {
+    row.as_object()
+        .is_some_and(|fields| !fields.contains_key(column))
+}
+
 fn plain(value: &Value) -> Option<String> {
     match value {
         Value::Null => None,
@@ -87,7 +92,13 @@ fn write_table(
             columns
                 .iter()
                 .enumerate()
-                .map(|(index, column)| table_text(&cell(row, column, index)))
+                .map(|(index, column)| {
+                    if missing(row, column) {
+                        "—".into()
+                    } else {
+                        table_text(&cell(row, column, index))
+                    }
+                })
                 .collect()
         })
         .collect();
@@ -170,9 +181,13 @@ pub fn write_rows(
                     .iter()
                     .enumerate()
                     .map(|(index, column)| {
-                        plain(&cell(row, column, index))
-                            .map(|text| field(&text))
-                            .unwrap_or_else(|| null.to_string())
+                        if missing(row, column) {
+                            String::new()
+                        } else {
+                            plain(&cell(row, column, index))
+                                .map(|text| field(&text))
+                                .unwrap_or_else(|| null.to_string())
+                        }
                     })
                     .collect();
                 writeln!(out, "{}", line.join(separator))?;
@@ -185,6 +200,9 @@ pub fn write_rows(
 fn object(columns: &[String], row: &Value) -> Value {
     let mut map = serde_json::Map::new();
     for (index, column) in columns.iter().enumerate() {
+        if missing(row, column) {
+            continue;
+        }
         let mut key = column.clone();
         let mut n = 1;
         while map.contains_key(&key) {
@@ -248,6 +266,25 @@ mod tests {
         assert_eq!(text, "{\"b\":true,\"a\":null}\n");
         let text = render(Format::Ndjson, &["id", "id", "id_2"], &[json!([1, 2, 3])]);
         assert_eq!(text, "{\"id\":1,\"id_2\":2,\"id_2_2\":3}\n");
+    }
+
+    #[test]
+    fn json_keeps_missing_document_fields_missing() {
+        let rows = [json!({"_id": 2, "tags": ["x"], "name": null})];
+        let columns = ["_id", "email", "name", "tags"];
+        let text = render(Format::Ndjson, &columns, &rows);
+        assert_eq!(text, "{\"_id\":2,\"name\":null,\"tags\":[\"x\"]}\n");
+        let text = render(Format::Json, &columns, &rows);
+        assert!(!text.contains("email"));
+        let text = render(Format::Csv, &columns, &rows);
+        assert_eq!(text, "_id,email,name,tags\n2,,,\"[\"\"x\"\"]\"\n");
+        let text = render(Format::Tsv, &columns, &rows);
+        assert_eq!(text, "_id\temail\tname\ttags\n2\t\t\\N\t[\"x\"]\n");
+        let text = render(Format::Table, &["email", "name"], &rows);
+        assert_eq!(text.matches("NULL").count(), 1, "{text}");
+        assert_eq!(text.matches('—').count(), 1, "{text}");
+        let text = render(Format::Table, &["email"], &[json!({"email": ""})]);
+        assert!(!text.contains('—'), "{text}");
     }
 
     #[test]

@@ -11,7 +11,7 @@ import {
   type Period,
   type SimpleDataset,
 } from "@/lib/dashboards";
-import { cancelExecution, executeQuery, listTableColumnsDetailed } from "@/lib/db";
+import { cancelExecution, describeTableColumns, executeQuery, tableColumnList } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useCapabilities } from "@/lib/providers";
 import { useErSchemaQuery, useForeignKeysQuery } from "@/lib/queries";
@@ -82,7 +82,7 @@ export function useTablesColumns(tables: { schema: string; table: string }[]) {
       queryKey: ["columns-detailed", connection?.id, database, t.schema, t.table],
       queryFn: () => {
         if (!connection) throw new Error("Keine Verbindung");
-        return listTableColumnsDetailed(
+        return describeTableColumns(
           connection.kind,
           effectiveConnectionString(connection),
           t.schema,
@@ -92,6 +92,7 @@ export function useTablesColumns(tables: { schema: string; table: string }[]) {
       },
       enabled: Boolean(connection && t.table),
       staleTime: 5 * 60 * 1000,
+      select: tableColumnList,
     })),
   });
 }

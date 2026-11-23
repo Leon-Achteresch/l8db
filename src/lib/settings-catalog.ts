@@ -21,6 +21,13 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "easyMode",
   },
   {
+    id: "ki",
+    tabId: "general",
+    title: "KI",
+    description: "Chat, Editor-KI, KI-Filter und alle weiteren KI-Funktionen.",
+    keywords: ["ki", "ai", "assistent", "llm", "chat", "ausschalten", "datenschutz"],
+  },
+  {
     id: "theme",
     tabId: "appearance",
     title: "Erscheinungsbild",
@@ -53,6 +60,14 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
       "Färbt die Oberfläche passend zur aktiven Datenbank ein. Ausgeschaltet gilt nur das gewählte Theme.",
     keywords: ["datenbank", "farbe", "akzent", "postgres", "mysql", "theme"],
     key: "dbThemes",
+  },
+  {
+    id: "success-toasts",
+    tabId: "general",
+    title: "Erfolgsmeldungen",
+    description: "Bestätigungen wie „Kopiert“ zeigen. Fehler erscheinen immer.",
+    keywords: ["toast", "meldung", "benachrichtigung", "popup", "erfolg", "bestätigung"],
+    key: "successToasts",
   },
   {
     id: "filter-operators",
@@ -203,6 +218,14 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "navInHeader",
   },
   {
+    id: "new-feature-badges",
+    tabId: "appearance",
+    title: "NEW-Hinweise",
+    description: "Markiert neue Funktionen mit einem NEW-Badge.",
+    keywords: ["new", "neu", "badge", "hinweis", "neuerungen", "punkt"],
+    key: "newFeatureBadges",
+  },
+  {
     id: "dynamic-island",
     tabId: "appearance",
     title: "Dynamic Island",
@@ -304,6 +327,15 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
       "sql",
     ],
     key: "filterBarStyle",
+  },
+  {
+    id: "table-filter-mode",
+    tabId: "appearance",
+    title: "Standardmodus für Tabellenfilter",
+    description:
+      "Ob neue Tabellenfilter im Modus Einfach oder SQL starten. Ein für eine Tabelle gewählter Modus bleibt erhalten.",
+    keywords: ["filter", "sql", "einfach", "simple", "where", "modus", "standard"],
+    key: "tableFilterMode",
   },
   {
     id: "reset-appearance",
@@ -689,9 +721,33 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     tabId: "editor",
     title: "PL/SQL-Warnungen (Oracle)",
     description:
-      "Beim Kompilieren und bei CREATE OR REPLACE im Editor alle PL/SQL-Warnungen (PLW) melden. Setzt PLSQL_WARNINGS auf ENABLE:ALL.",
-    keywords: ["oracle", "plsql", "warnung", "plw", "kompilieren"],
+      "Beim Kompilieren und bei CREATE OR REPLACE im Editor PL/SQL-Warnungen (PLW) melden. Wird über DBMS_WARNING für die Sitzung gesetzt.",
+    keywords: ["oracle", "plsql", "warnung", "plw", "kompilieren", "dbms_warning"],
     key: "oraclePlsqlWarnings",
+  },
+  {
+    id: "editor-plsql-warning-levels",
+    tabId: "editor",
+    title: "Warnungsstufen",
+    description: "Pro Kategorie melden, als Fehler behandeln oder ausblenden.",
+    keywords: ["oracle", "plsql", "dbms_warning", "severe", "performance", "informational"],
+    key: "oraclePlsqlWarningRules",
+  },
+  {
+    id: "editor-plsql-warning-ignore",
+    tabId: "editor",
+    title: "Ignorierte Warnungen",
+    description: "PLW-Nummern, die nie gemeldet werden, z. B. 7203.",
+    keywords: ["oracle", "plsql", "dbms_warning", "plw", "ignorieren"],
+    key: "oraclePlsqlWarningRules",
+  },
+  {
+    id: "editor-plsql-warning-errors",
+    tabId: "editor",
+    title: "Warnungen als Fehler",
+    description: "PLW-Nummern, bei denen das Kompilieren fehlschlägt, z. B. 6009.",
+    keywords: ["oracle", "plsql", "dbms_warning", "plw", "fehler"],
+    key: "oraclePlsqlWarningRules",
   },
   {
     id: "rulers",
@@ -971,6 +1027,14 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "transactionsPerTable",
   },
   {
+    id: "collect-cell-edits",
+    tabId: "data",
+    title: "Zelländerungen sammeln",
+    description: "Änderungen im Raster erst lokal vormerken und gesammelt übernehmen.",
+    keywords: ["staging", "vormerken", "übernehmen", "commit", "produktion", "tableplus"],
+    key: "collectCellEdits",
+  },
+  {
     id: "table-tabs",
     tabId: "general",
     title: "Tabbar für Tabellen & Views",
@@ -1075,27 +1139,7 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
       "zugangsdaten",
     ],
   },
-  {
-    id: "ui-plugins",
-    tabId: "extensions",
-    title: "UI-Plugins",
-    description:
-      "Tabellen, Tab-Leiste und geteilte Ansichten mit eigenen React-Plugins umbauen, auch per KI.",
-    keywords: [
-      "ui-plugin",
-      "build your own ui",
-      "oberfläche",
-      "anpassen",
-      "react",
-      "tabelle",
-      "zelle",
-      "tab-leiste",
-      "split",
-      "kanban",
-      "ki",
-      "galerie",
-    ],
-  },
+
   {
     id: "hotkeys",
     tabId: "hotkeys",

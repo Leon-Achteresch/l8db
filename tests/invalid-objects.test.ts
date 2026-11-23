@@ -8,6 +8,7 @@ import {
   filterInvalidByTypes,
   filterInvalidProblems,
   INVALID_GROUP_TYPES,
+  invalidOpenTarget,
   invalidTypeLabel,
   invalidTypeLabels,
   isFollowUpError,
@@ -162,4 +163,33 @@ test("parseCompileMessage splits Oracle error codes from the message", () => {
   });
   expect(invalidTypeLabel("materialized view")).toBe("Mat. View");
   expect(invalidTypeLabel("JAVA CLASS")).toBe("JAVA CLASS");
+});
+
+test("invalidOpenTarget routes each Oracle type to its editor at the error line", () => {
+  const item = (object_type: string): InvalidObjectInfo => ({
+    schema: "APP",
+    name: "OBJ",
+    object_type,
+    status: "INVALID",
+    oid: "7",
+  });
+  expect(invalidOpenTarget(item("PACKAGE BODY"), 42)).toEqual({
+    kind: "package",
+    schema: "APP",
+    name: "OBJ",
+    part: "body",
+    line: 42,
+  });
+  expect(invalidOpenTarget(item("package"), 3)).toMatchObject({ kind: "package", part: "spec" });
+  expect(invalidOpenTarget(item("TRIGGER"), 5)).toMatchObject({
+    kind: "function",
+    oid: "7",
+    line: 5,
+  });
+  expect(invalidOpenTarget(item("PROCEDURE"), 0)).toMatchObject({
+    kind: "procedure",
+    line: undefined,
+  });
+  expect(invalidOpenTarget(item("VIEW"), 9)).toEqual({ kind: "view", schema: "APP", name: "OBJ" });
+  expect(invalidOpenTarget(item("SYNONYM"), 1)).toBeNull();
 });

@@ -2,8 +2,12 @@ import type { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { saveQueryTabFile } from "@/lib/hooks/use-query-file";
+import { finishManagedTransaction } from "@/lib/managed-transactions";
+import { noteActiveTab, recentTabKeys } from "@/lib/recent-tabs";
 import { standaloneTabs, tabAfterClose, useSplitView } from "@/lib/split-view";
+import { commitStagedTable, discardStagedTable, isUserCancel } from "@/lib/staged-edits";
 import { navigateToTab } from "@/lib/tab-navigation";
+import { stagedTablesClosedWith, transactionsClosedWith } from "@/lib/tab-transactions";
 import {
   queryNeedsCloseConfirmation,
   remoteTab,
@@ -11,10 +15,14 @@ import {
   tabKey,
   useTableTabs,
 } from "@/lib/table-tabs";
-import { noteActiveTab, recentTabKeys } from "@/lib/ui-plugins/tabs-policy";
 import { useWorkbenchTabs, workbenchTabBusy } from "@/lib/workbench-tabs";
 
 export type PendingClose = { keys: string[]; keep?: string } | null;
+export type PendingTransactionClose = {
+  close: NonNullable<PendingClose>;
+  txIds: string[];
+  staged?: string[];
+} | null;
 
 interface UseTabCloseOptions {
   tabs: Tab[];
@@ -40,6 +48,7 @@ function nextInList(tabs: Tab[], route: string, closing: Set<string>): Tab | und
 export function useTabClose({ tabs, activeTab, navigate, listen = true }: UseTabCloseOptions) {
   const [pendingClose, setPendingClose] = useState<PendingClose>(null);
   const [savingClose, setSavingClose] = useState(false);
+  const [pendingTransactions, setPendingTransactions] = useState<PendingTransactionClose>(null);
 
   useEffect(() => {
     if (listen && activeTab) noteActiveTab(tabKey(activeTab));
@@ -119,11 +128,46 @@ export function useTabClose({ tabs, activeTab, navigate, listen = true }: UseTab
       toast.info("Die Aktion läuft noch. Warte, bis sie abgeschlossen ist.");
       return;
     }
-    if (closing.some((tab) => tab.kind === "query" && queryNeedsCloseConfirmation(tab))) {
-      setPendingClose(pending);
+    const held = transactionsClosedWith(pending.keys);
+    const staged = stagedTablesClosedWith(pending.keys);
+    if (held.length || staged.length) {
+      setPendingTransactions({ close: pending, txIds: held.map((tx) => tx.txId), staged });
       return;
     }
-    executeClose(pending);
+    confirmUnsaved(pending);
+  };
+
+  const confirmUnsaved = (pending: NonNullable<PendingClose>) => {
+    const dirty = useTableTabs
+      .getState()
+      .tabs.some(
+        (tab) =>
+          pending.keys.includes(tabKey(tab)) &&
+          tab.kind === "query" &&
+          queryNeedsCloseConfirmation(tab),
+      );
+    if (dirty) setPendingClose(pending);
+    else executeClose(pending);
+  };
+
+  const finishTransactions = async (commit: boolean) => {
+    if (!pendingTransactions) return;
+    const { close, txIds, staged = [] } = pendingTransactions;
+    setPendingTransactions(null);
+    try {
+      for (const key of staged) {
+        if (commit) await commitStagedTable(key);
+        else discardStagedTable(key);
+      }
+      for (const txId of txIds) await finishManagedTransaction(txId, commit);
+    } catch (error) {
+      if (!isUserCancel(error)) toast.error(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    if (txIds.length)
+      toast.success(commit ? "Transaktion committed." : "Transaktion zurückgerollt.");
+    else toast.success(commit ? "Änderungen übernommen." : "Änderungen verworfen.");
+    confirmUnsaved(close);
   };
 
   const keysOf = (list: Tab[]) => list.map(tabKey);
@@ -157,6 +201,9 @@ export function useTabClose({ tabs, activeTab, navigate, listen = true }: UseTab
   });
 
   return {
+    pendingTransactions,
+    setPendingTransactions,
+    finishTransactions,
     pendingClose,
     setPendingClose,
     savingClose,

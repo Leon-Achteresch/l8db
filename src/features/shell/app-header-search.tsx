@@ -8,6 +8,7 @@ import {
   Plug,
   Puzzle,
   Search,
+  Signpost,
   Sparkles,
   TextSearch,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import { toast } from "sonner";
 import type { CommandItem } from "@/components/motion/command-palette";
 import { NewBadge } from "@/components/new-badge";
 import { DynamicIsland } from "@/features/shell/dynamic-island";
+import { useAiEnabled } from "@/lib/ai/access";
 import { useAiStore } from "@/lib/ai/store";
 import { useActiveConnection, useConnectionsStore } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
@@ -82,8 +84,8 @@ export function AppHeaderSearch() {
   const [initialQuery, setInitialQuery] = useState("");
   const paletteHistory = usePaletteHistoryStore((state) => state.history);
   const recordPaletteUse = usePaletteHistoryStore((state) => state.record);
-  const openSearch = useCallback((commandsOnly = false) => {
-    setInitialQuery(commandsOnly ? "> " : "");
+  const openSearch = useCallback((prefix = "") => {
+    setInitialQuery(prefix);
     setOpen(true);
   }, []);
   const pathname = useRouterState({ select: (state) => (open ? state.location.pathname : "") });
@@ -176,7 +178,7 @@ export function AppHeaderSearch() {
 
   useHotkey(
     (commandById("palette.open")?.aliases?.[0] ?? "Mod+Shift+P") as never,
-    () => openSearch(true),
+    () => openSearch("> "),
     { ignoreInputs: false, preventDefault: true, stopPropagation: true },
   );
 
@@ -210,7 +212,9 @@ export function AppHeaderSearch() {
   }, [extensionHost, extensionVersion]);
 
   const askNew = useHasNewFeatures("ai.ask");
+  const aiOn = useAiEnabled();
   const searchNew = useHasNewFeatures("search");
+  const objectCommentsNew = useHasNewFeatures("search.objects.comments");
   const capabilities = useActiveCapabilities();
   const featureItems = useCallback(
     (query: string, unusedOnly: boolean) =>
@@ -306,7 +310,19 @@ export function AppHeaderSearch() {
               kind: "command",
               group: "Befehle",
               icon: TextSearch,
-              keywords: ["spalte", "column", "quelltext", "source", "suche"],
+              badge:
+                activeConnection?.kind === "postgres" && objectCommentsNew ? (
+                  <NewBadge />
+                ) : undefined,
+              keywords: [
+                "spalte",
+                "column",
+                "quelltext",
+                "source",
+                "suche",
+                "objektsuche",
+                "kommentare",
+              ],
               onSelect: () => {
                 setOpen(false);
                 setObjectSearchOpen(true);
@@ -319,7 +335,7 @@ export function AppHeaderSearch() {
       label: "Produkttour von vorn",
       kind: "command",
       group: "Hilfe",
-      icon: Sparkles,
+      icon: Signpost,
       keywords: ["tour", "hilfe", "onboarding", "guide"],
       onSelect: () => {
         setOpen(false);
@@ -370,12 +386,18 @@ export function AppHeaderSearch() {
       setOpen,
       setShortcutsOpen,
       easyMode,
+      capabilities,
     );
     const diagramExportItems = builders.buildDiagramExportItems(
       pathname,
       activeConnection !== null,
     );
-    const compareItems = builders.buildCompareItems(activeConnection !== null, setOpen, navigate);
+    const compareItems = builders.buildCompareItems(
+      activeConnection !== null,
+      setOpen,
+      navigate,
+      capabilities.data_compare,
+    );
     return [
       ...connectionItems,
       connectionManagerItem,
@@ -395,8 +417,7 @@ export function AppHeaderSearch() {
   }, [
     activeConnection?.id,
     activeConnection,
-    capabilities.query_language,
-    capabilities.object_storage,
+    capabilities,
     canSearchColumns,
     canSearchSource,
     connections,
@@ -404,6 +425,7 @@ export function AppHeaderSearch() {
     navigate,
     recentNotebooks,
     objectItems,
+    objectCommentsNew,
     packageMemberItems,
     studio,
     studioItems,
@@ -473,7 +495,7 @@ export function AppHeaderSearch() {
             emptyMessage={builders ? "Keine Treffer" : "Suchbefehle laden…"}
             maxVisible={MAX_VISIBLE_RESULTS}
             featureId="search.fuzzy"
-            queryItem={askAiItem}
+            queryItem={aiOn ? askAiItem : undefined}
             queryItems={featureItems}
             initialQuery={initialQuery}
             commandFeatureId="search.commands"

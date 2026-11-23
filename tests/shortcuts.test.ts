@@ -23,9 +23,7 @@ describe("shortcut platform", () => {
   });
 
   it("formatiert Zusatzmodifikatoren plattformgerecht", () => {
-    expect(formatShortcut({ mod: true, shift: true, key: "Enter" }, "mac")).toBe(
-      "Cmd+Shift+Enter",
-    );
+    expect(formatShortcut({ mod: true, shift: true, key: "Enter" }, "mac")).toBe("Cmd+Shift+Enter");
     expect(formatShortcut({ mod: true, alt: true, key: "Enter" }, "other")).toBe("Ctrl+Alt+Enter");
     expect(formatShortcut({ shift: true, alt: true, key: "F" }, "mac")).toBe("Shift+Option+F");
   });
@@ -47,6 +45,7 @@ describe("filterShortcuts", () => {
     expect(result.map((entry) => entry.id).sort()).toEqual([
       "grid.copy",
       "grid.export",
+      "grid.filter",
       "grid.firstPage",
       "grid.lastPage",
       "grid.nextPage",

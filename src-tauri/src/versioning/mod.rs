@@ -363,6 +363,19 @@ pub async fn handle(request: Request) -> Result<Value, String> {
                 Ok(json!(read(&file)?))
             }
         }
+        "blame" => {
+            safe_file(&root, path)?;
+            if revision(&root, "HEAD").await.is_err()
+                || git(&root, &["ls-files", "-z", "--", path])
+                    .await?
+                    .is_empty()
+            {
+                return Ok(Value::Null);
+            }
+            Ok(json!(
+                git(&root, &["blame", "--porcelain", "--", path]).await?
+            ))
+        }
         "read-many" => {
             let paths = request.paths.ok_or("Dateiliste fehlt")?;
             if paths.len() > 20_000 {

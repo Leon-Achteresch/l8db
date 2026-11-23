@@ -11,7 +11,7 @@ use crate::automation::runtime::{AutomationEvent, RunRequest, Services, Sink, St
 use crate::automation::scheduler;
 use crate::automation::store::Store;
 
-const USAGE: &str = "Aufruf:\n  l8db --run-task <id|name> [--var NAME=WERT]... [--env NAME] [--from-step <id|nummer>] [--json] [--quiet]\n  l8db --list-tasks [--json]\n  l8db --automation-tick [--json]";
+const USAGE: &str = "Aufruf:\n  l8db --run-task <id|name> [--var NAME=WERT]... [--env NAME] [--from-step <id|nummer>] [--json] [--quiet] [--read-only]\n  l8db --list-tasks [--json]\n  l8db --automation-tick [--json] [--read-only]";
 const CANCEL_GRACE: Duration = Duration::from_secs(10);
 
 static INTERRUPTED: AtomicBool = AtomicBool::new(false);
@@ -24,13 +24,14 @@ struct RunArgs {
     from_step: Option<String>,
     json: bool,
     quiet: bool,
+    read_only: bool,
 }
 
 #[derive(Debug, PartialEq)]
 enum Command {
     Run(RunArgs),
     List { json: bool },
-    Tick { json: bool },
+    Tick { json: bool, read_only: bool },
 }
 
 fn value<'a>(args: &mut impl Iterator<Item = &'a String>, name: &str) -> Result<String, String> {
@@ -75,6 +76,7 @@ fn parse(args: &[String]) -> Result<Command, String> {
                 run_only.get_or_insert("--quiet");
             }
             "--json" => run.json = true,
+            "--read-only" => run.read_only = true,
             other => return Err(format!("Unbekanntes Argument „{other}“.")),
         }
     }
@@ -84,7 +86,10 @@ fn parse(args: &[String]) -> Result<Command, String> {
         [mode] => match run_only {
             Some(flag) => Err(format!("{flag} gilt nur für --run-task.")),
             None if *mode == "--list-tasks" => Ok(Command::List { json: run.json }),
-            None => Ok(Command::Tick { json: run.json }),
+            None => Ok(Command::Tick {
+                json: run.json,
+                read_only: run.read_only,
+            }),
         },
         _ => Err("Bitte genau eine Aktion angeben.".into()),
     }
@@ -287,7 +292,8 @@ async fn run_task(store: Store, args: RunArgs) -> i32 {
         }
     };
     let sink = progress_sink(progress, task.id.clone(), run_id.clone());
-    let services = Services::new(store, sink, true);
+    let mut services = Services::new(store, sink, true);
+    services.read_only = args.read_only;
     if let Err(error) = check_vars(&task, &args.vars) {
         eprintln!("{error}");
         return 2;
@@ -453,9 +459,11 @@ async fn list_tasks(store: Store, json: bool) -> i32 {
     0
 }
 
-async fn tick(store: Store, json: bool) -> i32 {
+async fn tick(store: Store, json: bool, read_only: bool) -> i32 {
     let sink = progress_sink(!json, String::new(), Arc::default());
-    let report = scheduler::tick(Services::new(store, sink, true)).await;
+    let mut services = Services::new(store, sink, true);
+    services.read_only = read_only;
+    let report = scheduler::tick(services).await;
     if json {
         println!("{}", serde_json::to_string(&report).unwrap_or_default());
     } else if report.app_running {
@@ -504,7 +512,7 @@ pub fn cli(args: &[String]) -> i32 {
         match command {
             Command::Run(args) => run_task(store, args).await,
             Command::List { json } => list_tasks(store, json).await,
-            Command::Tick { json } => tick(store, json).await,
+            Command::Tick { json, read_only } => tick(store, json, read_only).await,
         }
     })
 }
@@ -535,6 +543,7 @@ mod tests {
                 from_step: Some("2".into()),
                 json: true,
                 quiet: true,
+                read_only: false,
             })
         );
         assert_eq!(
@@ -547,7 +556,25 @@ mod tests {
         );
         assert_eq!(
             parse(&args("--automation-tick")).unwrap(),
-            Command::Tick { json: false }
+            Command::Tick {
+                json: false,
+                read_only: false
+            }
+        );
+        assert_eq!(
+            parse(&args("--automation-tick --read-only")).unwrap(),
+            Command::Tick {
+                json: false,
+                read_only: true
+            }
+        );
+        assert_eq!(
+            parse(&args("--run-task x --read-only")).unwrap(),
+            Command::Run(RunArgs {
+                task: "x".into(),
+                read_only: true,
+                ..RunArgs::default()
+            })
         );
         assert_eq!(
             parse(&args("--run-task x --var leer=")).unwrap(),

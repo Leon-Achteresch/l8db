@@ -586,6 +586,27 @@ test("compilation errors are warnings and do not trigger WHENEVER SQLERROR, SHOW
   expect(outcome.error).toBeNull();
 });
 
+test("FORCE VIEW with compilation errors is a warning with ALL_ERRORS details", async () => {
+  handle = (command, args) => {
+    if (command === "execute_query" && String(args.sql ?? "").includes("v_bad"))
+      return new Error(
+        "Oracle: ORA-24344: VIEW V_BAD wurde mit Kompilierfehlern erstellt\nZeile 0/0: ORA-00942: Tabelle oder View nicht vorhanden",
+      );
+    return undefined;
+  };
+  const outcome = await runSqlScript({
+    connection,
+    database: null,
+    sql: "CREATE OR REPLACE FORCE EDITIONABLE VIEW v_bad AS SELECT x FROM missing;\nSELECT 1 FROM dual;",
+    mode: "autocommit",
+  });
+  expect(outcome.entries.map((entry) => entry.status)).toEqual(["warning", "success"]);
+  expect(outcome.entries[0].feedback).toBe(
+    "Warnung: View wurde mit Kompilierungsfehlern erstellt.",
+  );
+  expect(outcome.entries[0].output?.[0].message).toContain("ORA-00942");
+});
+
 test("VARIABLE, EXEC with binds, PRINT and REFCURSOR work like SQL*Plus", async () => {
   handle = (command, args) => {
     if (command !== "execute_with_binds") return undefined;

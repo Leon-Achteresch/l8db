@@ -117,6 +117,7 @@ const NAME_TO_TECH: Record<string, string> = {
   sap: "sap",
   hana: "sap",
   db2: "ibm",
+  ibmi: "ibm",
   informix: "ibm",
   netezza: "ibm",
   doris: "apache-doris",

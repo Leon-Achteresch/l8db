@@ -15,6 +15,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { type ConfigTarget, s3GetConfig, s3PutConfig } from "@/lib/db";
 import { legalHoldXml, parseLegalHold, parseRetention, retentionXml } from "@/lib/storage/s3";
+import { ConfirmActionDialog } from "./confirm-action-dialog";
 import { errorText, formatDate, useStorageConnection } from "./use-storage-connection";
 
 function localInput(date: Date): string {
@@ -60,6 +61,7 @@ export function ObjectLockPanel({
   const [until, setUntil] = useState(localInput(new Date(Date.now() + 7 * 86400000)));
   const [bypass, setBypass] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     if (current.mode) setMode(current.mode);
@@ -70,6 +72,16 @@ export function ObjectLockPanel({
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Spinner /> Prüfe Object Lock…
+      </div>
+    );
+  }
+  if (bucketLock.isError) {
+    return (
+      <div className="grid justify-items-start gap-2 text-sm">
+        <p className="break-words text-destructive">{errorText(bucketLock.error)}</p>
+        <Button size="sm" variant="outline" onClick={() => void bucketLock.refetch()}>
+          Erneut versuchen
+        </Button>
       </div>
     );
   }
@@ -96,6 +108,11 @@ export function ObjectLockPanel({
   }
 
   const legalHold = parseLegalHold(hold.data ?? null);
+  const saveRetention = () =>
+    run(
+      () => s3PutConfig(url, target, "retention", retentionXml(mode, new Date(until)), bypass),
+      "Aufbewahrung gesetzt",
+    );
 
   return (
     <div className="grid gap-5 text-sm">
@@ -119,8 +136,12 @@ export function ObjectLockPanel({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="GOVERNANCE">Governance</SelectItem>
-                    <SelectItem value="COMPLIANCE">Compliance</SelectItem>
+                    <SelectItem value="GOVERNANCE" title="Mit Sonderrecht verkürzbar">
+                      Governance
+                    </SelectItem>
+                    <SelectItem value="COMPLIANCE" title="Von niemandem verkürzbar">
+                      Compliance
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -145,19 +166,7 @@ export function ObjectLockPanel({
               size="sm"
               className="justify-self-start"
               disabled={busy || !until}
-              onClick={() =>
-                void run(
-                  () =>
-                    s3PutConfig(
-                      url,
-                      target,
-                      "retention",
-                      retentionXml(mode, new Date(until)),
-                      bypass,
-                    ),
-                  "Aufbewahrung gesetzt",
-                )
-              }
+              onClick={() => (mode === "COMPLIANCE" ? setConfirming(true) : void saveRetention())}
             >
               Aufbewahrung speichern
             </Button>
@@ -170,7 +179,9 @@ export function ObjectLockPanel({
         )}
       </section>
       <section className="grid gap-2">
-        <h3 className="font-medium">Legal Hold</h3>
+        <h3 className="font-medium" title="Sperrt das Objekt ohne Ablaufdatum">
+          Rechtliche Sperre (Legal Hold)
+        </h3>
         <label className="flex items-center gap-2 text-xs">
           <Switch
             checked={legalHold}
@@ -185,6 +196,14 @@ export function ObjectLockPanel({
           {legalHold ? "Aktiv – Objekt kann nicht gelöscht werden" : "Inaktiv"}
         </label>
       </section>
+      <ConfirmActionDialog
+        open={confirming}
+        title="Compliance-Sperre setzen?"
+        description={`„${objectKey}“ ist bis ${formatDate(until)} nicht löschbar. Nicht rückgängig zu machen.`}
+        confirmLabel="Sperre setzen"
+        onOpenChange={setConfirming}
+        onConfirm={saveRetention}
+      />
     </div>
   );
 }

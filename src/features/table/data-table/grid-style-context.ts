@@ -1,9 +1,11 @@
 import { createContext } from "react";
 import type { ColumnProfile } from "@/lib/column-profile";
+import type { DatabaseKind } from "@/lib/db";
 import type { GridColumnKind } from "@/lib/grid-cell-format";
 import type { TableStyle } from "@/lib/table-style";
 
 export type GridColumnStyle = {
+  dataType?: string;
   kind: GridColumnKind;
   numeric: boolean;
   primaryKey: boolean;
@@ -13,6 +15,7 @@ export type GridColumnStyle = {
 };
 
 export type GridStyle = {
+  databaseKind?: DatabaseKind;
   style: TableStyle;
   columns: ReadonlyMap<string, GridColumnStyle>;
   now: Date;

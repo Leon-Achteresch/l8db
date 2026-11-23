@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ListIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { Illustration } from "@/components/illustration";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,7 +19,6 @@ import {
   EmptyContent,
   EmptyDescription,
   EmptyHeader,
-  EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
 import { useActiveConnection } from "@/lib/connections";
@@ -89,9 +89,7 @@ export function EnumsView() {
         ) : (enums?.length ?? 0) === 0 ? (
           <Empty>
             <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <ListIcon />
-              </EmptyMedia>
+              <Illustration name="empty" className="w-36" />
               <EmptyTitle>Keine Enum-Typen</EmptyTitle>
               <EmptyDescription>
                 Enums beschränken eine Spalte auf eine feste Liste von Werten, etwa Status oder

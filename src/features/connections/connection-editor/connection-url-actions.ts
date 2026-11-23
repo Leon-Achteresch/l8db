@@ -140,6 +140,8 @@ export function createConnectionUrlActions(ctx: ConnectionUrlActionsContext) {
       throw new Error("Der Host enthält ungültige Zeichen, z. B. Leerzeichen.");
     }
     url.search = extraParams;
+    if (info.driver.type === "odbc" && info.driver.driver && !/[?&]driver=/i.test(url.search))
+      url.searchParams.set("Driver", info.driver.driver);
     if (windowsAuth) url.searchParams.set("trusted_connection", "true");
     return withSsl(parseConnectionUrl(url.toString(), kind).toString());
   }

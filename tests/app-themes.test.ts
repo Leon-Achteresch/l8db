@@ -29,6 +29,10 @@ describe("app themes", () => {
     expect(appThemeCssVars(grove, null)["--db-hue"]).toBe(String(grove.hue));
     expect(appThemeCssVars(grove, db)["--db-hue"]).toBe(String(db.hue));
     expect(appThemeCssVars(grove, db)["--db-tint"]).toBe(String(grove.tint));
+    expect(appThemeCssVars(grove, db)["--surface-hue"]).toBe(String(db.hue));
+    const paper = appTheme(DEFAULT_APP_THEME).light;
+    expect(appThemeCssVars(paper, db)["--surface-hue"]).toBe(String(paper.surfaceHue));
+    expect(appThemeCssVars(paper, db)["--db-hue"]).toBe(String(db.hue));
   });
 
   test("chosen theme is independent of the database kind by default", () => {

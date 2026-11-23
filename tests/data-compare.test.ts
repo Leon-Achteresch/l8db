@@ -355,6 +355,25 @@ describe("Sync-Skript je Datenbank", () => {
     expect(script.deleteCount).toBe(1);
   });
 
+  test("0x-Binärwerte aus MySQL und SQL Server bleiben Bytes", () => {
+    const script = buildSyncScript({
+      rows: compareTableData({
+        keyColumns: ["id"],
+        compareColumns: ["data"],
+        left: [{ id: 7, data: "0x00FF" }],
+        right: [],
+      }).rows,
+      direction: "left_to_right",
+      target: { schema: "app", table: "t" },
+      keyColumns: ["id"],
+      compareColumns: ["data"],
+      kind: "mysql",
+      columnTypes,
+      includeDeletes: false,
+    });
+    expect(script.sql).toContain("VALUES (7, X'00FF');");
+  });
+
   test("SQL Server nutzt N-Literale, 0x-Binärwerte und IDENTITY_INSERT", () => {
     const script = build("mssql");
     expect(script.sql).toContain("SET IDENTITY_INSERT [app].[t] ON\nINSERT INTO [app].[t]");

@@ -166,6 +166,7 @@ export class PermissionManager {
     "process:execute",
     "connections:read",
     "connections:write",
+    "editor:read",
   ];
   validate(manifest: ExtensionManifest, grants: Permission[]) {
     for (const grant of grants)

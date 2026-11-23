@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { AtlasView } from "@/features/discovery/atlas/atlas-view";
+import { useAiEnabled } from "@/lib/ai/access";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { atlasAvailable } from "@/lib/discovery/atlas/atlas";
@@ -14,11 +15,12 @@ export function AtlasTab() {
   const activeCapabilities = useActiveCapabilities();
   const capabilities = connected ? activeCapabilities : undefined;
   const easyMode = useSettingsStore((state) => state.easyMode);
+  const ai = useAiEnabled();
   const usage = useFeatureUsage();
   const { ref, isNew } = useNewFeatureVisibility<HTMLDivElement>("discover.atlas");
   const available = useMemo(
-    () => atlasAvailable(FEATURE_CATALOG, { capabilities, easyMode }),
-    [capabilities, easyMode],
+    () => atlasAvailable(FEATURE_CATALOG, { capabilities, easyMode, ai }),
+    [capabilities, easyMode, ai],
   );
 
   return (

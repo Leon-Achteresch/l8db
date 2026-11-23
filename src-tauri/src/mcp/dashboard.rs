@@ -8,7 +8,7 @@ use std::time::Instant;
 use super::config::{self, McpConfig, McpConnection};
 use super::dashboard_builder as builder;
 use super::redact::{self, Redactor};
-use super::server::{self, Server, SQL_KINDS};
+use super::server::{self, Server};
 use crate::db::QueryResult;
 
 const GRID_COLS: i64 = 12;
@@ -19,6 +19,21 @@ const MAX_SQL_CHARS: usize = 20_000;
 const MAX_CSS_BYTES: usize = 256 * 1024;
 const MAX_NAME_CHARS: usize = 120;
 const PERIODS: &[&str] = &["all", "7d", "30d", "90d", "quarter", "year", "12m"];
+
+fn valid_period(period: &str) -> bool {
+    if PERIODS.contains(&period) {
+        return true;
+    }
+    let day = |text: &str| {
+        (text.len() == 10 && !text.starts_with('0'))
+            .then(|| chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d").ok())
+            .flatten()
+    };
+    match period.split_once("..") {
+        Some((start, end)) => matches!((day(start), day(end)), (Some(a), Some(b)) if a <= b),
+        None => false,
+    }
+}
 const REFRESH_HINT: &str = "refreshSec muss 0 (aus) oder 10 bis 86400 sein";
 const SERIES_KINDS: &[&str] = &[
     "column", "line", "area", "radar", "sankey", "heatmap", "pivot",
@@ -762,7 +777,7 @@ pub fn tool_definition() -> Value {
             "dimension2": nullable("Second category column: series split (column, line, area, radar), target (sankey), columns (heatmap)"),
             "metrics": {"type": "array", "items": {"type": "string"}, "description": "Numeric result columns"},
             "dateColumn": nullable("Date result column; enables the period filter"),
-            "period": {"type": "string", "enum": PERIODS},
+            "period": {"anyOf": [{"type": "string", "enum": PERIODS}, {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}\\.\\.\\d{4}-\\d{2}-\\d{2}$"}], "description": "Preset or custom inclusive range YYYY-MM-DD..YYYY-MM-DD"},
             "options": {
                 "type": "object",
                 "description": "Display options per type, see chart_types. null removes an option.",
@@ -819,7 +834,7 @@ pub fn tool_definition() -> Value {
                 }},
                 "chart": {"type": "string"},
                 "limit": {"type": "integer", "minimum": 1},
-                "variables": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "label": {"type": "string"}, "type": {"type": "string", "enum": ["select", "text", "number", "date"]}, "default": {"type": ["string", "number"]}, "options": {"type": "array", "items": {"type": "string"}}, "optionsSql": {"type": "string"}}, "required": ["name"]}, "description": "Filters (create, update replaces the list). Empty value means no filter: builder filters bound to it are skipped, in SQL it becomes NULL."},
+                "variables": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "label": {"type": "string"}, "type": {"type": "string", "enum": ["select", "text", "number", "date"]}, "default": {"type": ["string", "number"]}, "options": {"type": "array", "items": {"type": "string"}}, "optionsSql": {"type": "string"}, "multiple": {"type": "boolean", "description": "select only: several values, value is a JSON array, {{name}} expands to a quoted list for IN ({{name}})"}, "column": {"type": "object", "properties": {"schema": {"type": "string"}, "table": {"type": "string"}, "column": {"type": "string"}, "dataType": {"type": "string"}}, "required": ["table", "column"], "description": "select only: values come from this column and the filter applies to every builder chart whose base table or a join is exactly this table"}}, "required": ["name"]}, "description": "Filters (create, update replaces the list). Empty value means no filter: builder filters bound to it are skipped, in SQL it becomes NULL."},
                 "table": {"type": "string", "description": "joins: schema.table"},
                 "tables": {"type": "array", "items": {"type": "string"}},
                 "values": {"type": "object"},
@@ -1103,7 +1118,7 @@ fn dashboard_connection<'a>(config: &'a McpConfig, value: &Value) -> Option<&'a 
 
 fn sql_connection<'a>(config: &'a McpConfig, target: &str) -> Result<&'a McpConnection, String> {
     let connection = server::find_connection(config, target)?;
-    if !SQL_KINDS.contains(&connection.kind) {
+    if !server::sql_family(connection.kind) {
         return Err(format!(
             "Dashboards brauchen eine SQL-Verbindung, '{}' ist keine.",
             connection.name
@@ -2216,9 +2231,9 @@ impl Server {
                 .to_string(),
             Some(_) => optional_text(spec, "period")?.unwrap_or_else(|| "all".into()),
         };
-        if !PERIODS.contains(&period.as_str()) {
+        if !valid_period(&period) {
             return Err(format!(
-                "period '{period}' unbekannt. Möglich: {}",
+                "period '{period}' unbekannt. Möglich: {} oder JJJJ-MM-TT..JJJJ-MM-TT",
                 PERIODS.join(", ")
             ));
         }

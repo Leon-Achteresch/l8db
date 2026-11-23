@@ -1,8 +1,8 @@
 use super::{map_pg_err, ora, oracle, quote, DatabaseKind, TransactionEntry, TransactionManager};
 use crate::db::execution::guarded;
 use crate::db::postgres::{
-    capped_count, capped_count_sql, primary_key_columns, relation_name, table_page_sql,
-    RELATION_COLUMNS_SQL,
+    capped_count, capped_count_sql, has_row_ids, primary_key_columns, relation_name,
+    table_page_sql, PgServer,
 };
 use crate::db::{attach_row_keys, quote_ident, where_clause, DatabaseAdapter, RowCount, TableData};
 
@@ -108,23 +108,27 @@ impl TransactionManager {
             TransactionEntry::Pg(c, ssl) => {
                 let conn = c.lock().await?;
                 pg_read(&conn, ssl, async {
+                    let server = PgServer::detect(&conn).await.unwrap_or_default();
                     let column_rows = conn
-                        .query(RELATION_COLUMNS_SQL, &[&request.schema, &request.table])
+                        .query(
+                            &server.columns_sql(request.order_by.is_some()),
+                            &[&request.schema, &request.table],
+                        )
                         .await
                         .map_err(map_pg_err)?;
                     let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
-                    let primary_key = primary_key_columns(&column_rows);
                     let order = request
                         .order_by
                         .as_deref()
                         .filter(|column| columns.iter().any(|name| name == column))
                         .map(|column| (column, request.order_desc));
+                    let primary_key = primary_key_columns(&column_rows, order.is_some());
                     let sql = table_page_sql(
                         &request.schema,
                         &request.table,
                         &where_sql,
                         order,
-                        !request.is_view,
+                        !request.is_view && has_row_ids(&column_rows),
                         &primary_key,
                     );
                     let data = conn
@@ -133,7 +137,10 @@ impl TransactionManager {
                         .map_err(map_pg_err)?;
                     Ok(TableData {
                         columns,
-                        rows: data.iter().map(|row| row.get(0)).collect(),
+                        rows: data
+                            .iter()
+                            .map(|row| row.get::<_, crate::db::exact_number::ExactJson>(0).0)
+                            .collect(),
                     })
                 })
                 .await

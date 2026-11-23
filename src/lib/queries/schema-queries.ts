@@ -1,13 +1,14 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import { useCallback, useState } from "react";
-import { useActiveConnection, visibleSchemas } from "@/lib/connections";
+import { type SavedConnection, useActiveConnection, visibleSchemas } from "@/lib/connections";
 import {
   cancelExecution,
+  type DatabaseCatalog,
   getSchemaMap,
   getViewDefinition,
   listAllColumns,
-  listDatabases,
+  listDatabaseCatalog,
   listFunctions,
   listProcedures,
   listSchemas,
@@ -56,16 +57,42 @@ export function sortingToRowSort(sorting: SortingState): TableRowSort | undefine
   return { column: active.id, desc: Boolean(active.desc) };
 }
 
-export function useDatabasesQuery() {
+const influxCatalogScopes = new WeakMap<SavedConnection, number>();
+let nextInfluxCatalogScope = 0;
+
+function influxCatalogScope(connection: SavedConnection): number {
+  const current = influxCatalogScopes.get(connection);
+  if (current !== undefined) return current;
+  const revision = ++nextInfluxCatalogScope;
+  influxCatalogScopes.set(connection, revision);
+  return revision;
+}
+
+function useDatabaseCatalogOptions() {
   const connection = useActiveConnection();
-  return useQuery({
-    queryKey: ["databases", connection?.id],
-    queryFn: () => listDatabases(connection!.kind, effectiveConnectionString(connection!)),
+  const scope = connection?.kind === "influxdb" ? influxCatalogScope(connection) : undefined;
+  return queryOptions({
+    queryKey:
+      scope === undefined ? ["databases", connection?.id] : ["databases", connection?.id, scope],
+    queryFn: connection
+      ? () => listDatabaseCatalog(connection.kind, effectiveConnectionString(connection))
+      : skipToken,
     enabled: supports(connection, "databases"),
   });
 }
 
-export function useSchemasQuery() {
+export function useDatabaseCatalogQuery() {
+  return useQuery(useDatabaseCatalogOptions());
+}
+
+const databaseNames = (catalog: DatabaseCatalog | string[]) =>
+  Array.isArray(catalog) ? catalog : catalog.databases;
+
+export function useDatabasesQuery() {
+  return useQuery({ ...useDatabaseCatalogOptions(), select: databaseNames });
+}
+
+export function useSchemasQuery(enabled = true) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   return useQuery({
@@ -73,7 +100,7 @@ export function useSchemasQuery() {
     queryFn: () =>
       listSchemas(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
     select: (schemas) => visibleSchemas(connection, schemas),
-    enabled: supports(connection, "schemas"),
+    enabled: enabled && supports(connection, "schemas"),
   });
 }
 
@@ -128,7 +155,10 @@ export function useViewsQuery(enabled = true) {
   });
 }
 
-export function useAllSchemaObjectsQuery(enabled = true) {
+export function useAllSchemaObjectsQuery(
+  enabled: boolean | (() => boolean) = true,
+  observeCache = false,
+) {
   const connection = useActiveConnection();
   const database = useActiveDatabase();
   const client = useQueryClient();
@@ -194,8 +224,8 @@ export function useAllSchemaObjectsQuery(enabled = true) {
         },
       });
     },
-    enabled: enabled && Boolean(connection),
-    subscribed: enabled && Boolean(connection),
+    enabled: () => Boolean(connection) && (typeof enabled === "function" ? enabled() : enabled),
+    subscribed: (enabled !== false || observeCache) && Boolean(connection),
     staleTime: 60 * 1000,
   });
 }

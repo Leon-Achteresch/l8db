@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DebugButton } from "@/features/debugger/debug-button";
+import { EditorExtensionActions } from "@/features/extensions/editor-extension-actions";
 import { objectError, SqlEditorPane } from "@/features/functions/function-view";
 import { PackageMemberOutline } from "@/features/functions/package-member-outline";
 import { useCompileObject } from "@/features/functions/use-compile-object";
@@ -20,6 +21,7 @@ import {
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { readViewStates } from "@/lib/editor-view-states";
+import { useExtensionEditorId } from "@/lib/hooks/use-extension-editor";
 import { buildInvalidSet, isPackagePartInvalid } from "@/lib/invalid-objects";
 import {
   PACKAGE_OUTLINE_DEFAULT_WIDTH,
@@ -31,6 +33,7 @@ import { useFunctionDefinitionQuery, useInvalidObjectsQuery } from "@/lib/querie
 import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { PACKAGE_TYPES } from "@/lib/versioning/blame";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 
 export interface PackageViewProps {
@@ -39,6 +42,7 @@ export interface PackageViewProps {
   part?: PackagePart;
   member?: string;
   highlight?: string;
+  line?: number;
 }
 
 function findSourceLine(source: string, needle: string): number | undefined {
@@ -47,7 +51,7 @@ function findSourceLine(source: string, needle: string): number | undefined {
   return index >= 0 ? index + 1 : undefined;
 }
 
-export function PackageView({ schema, name, part, member, highlight }: PackageViewProps) {
+export function PackageView({ schema, name, part, member, highlight, line }: PackageViewProps) {
   const connection = useActiveConnection();
   const openPackageTab = useTableTabs((state) => state.openPackageTab);
   const pane = useWorkspacePane();
@@ -71,6 +75,7 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
       () => undefined,
     ),
   );
+  const extensionEditorId = useExtensionEditorId(edit.key);
   const { data: invalidObjects } = useInvalidObjectsQuery();
   const invalidSet = useMemo(() => buildInvalidSet(invalidObjects), [invalidObjects]);
   const isInvalid = isPackagePartInvalid(invalidSet, schema, name, activePart);
@@ -83,9 +88,9 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
   const memberLine =
     activeLine ?? (activeMember ? members.find((m) => m.name === activeMember)?.line : undefined);
   const restored = useMemo(() => readViewStates()[edit.key] !== undefined, [edit.key]);
-  const revealLine = activeMember
-    ? memberLine
-    : (highlightLine ?? (restored ? undefined : members[0]?.line));
+  const revealLine =
+    activeLine ??
+    (activeMember ? memberLine : (highlightLine ?? (restored ? undefined : members[0]?.line)));
   const outlineWidth = usePackageViewPrefs(
     (state) => state.widths[outlineKey] ?? PACKAGE_OUTLINE_DEFAULT_WIDTH,
   );
@@ -98,8 +103,8 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
   useEffect(() => {
     if (part) setActivePart(part);
     setActiveMember(member?.toUpperCase());
-    setActiveLine(undefined);
-  }, [part, member, setActivePart]);
+    setActiveLine(line);
+  }, [part, member, line, setActivePart]);
 
   useEffect(() => {
     resetCompile();
@@ -156,6 +161,7 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
             objectType="package_body"
           />
         ) : null}
+        <EditorExtensionActions editorId={extensionEditorId} />
         <OpenInQueryEditorButton sql={source} title={label} />
         {!edit.editing && capabilities.compile_objects ? (
           <Button
@@ -217,12 +223,17 @@ export function PackageView({ schema, name, part, member, highlight }: PackageVi
           ) : null}
           <div className="flex min-h-0 flex-1 flex-col">
             <SqlEditorPane
+              blame={{ schema, name, types: PACKAGE_TYPES, part: activePart }}
               value={edit.editing ? edit.sql : source}
               readOnly={!edit.editing}
               onChange={edit.editing ? edit.setSql : undefined}
               revealLine={compileResult?.line ?? revealLine}
               error={objectError(compileResult?.message, edit.state)}
               stateKey={edit.key}
+              extensionEditor={{
+                id: extensionEditorId,
+                kind: activePart === "spec" ? "package-spec" : "package-body",
+              }}
             />
             {compileResult && compileResult.status !== "VALID" ? (
               <div className="flex flex-col gap-1 border-t bg-destructive/5 px-4 py-2.5">

@@ -1,5 +1,10 @@
 import "./index.css";
 import { initAppStorage, STORAGE_FALLBACK_KEY } from "@/lib/app-storage";
+import {
+  arrayEditorDevelopmentSelected,
+  csvCheckDevelopmentSelected,
+  routineResultDevelopmentSelected,
+} from "@/lib/development-entry";
 
 function showStorageFailure() {
   const root = document.getElementById("root");
@@ -20,8 +25,30 @@ function showStorageFailure() {
   });
 }
 
-void initAppStorage().then((mode) => {
-  performance.mark("l8db.storage");
-  if (mode === "failed") showStorageFailure();
-  else void import("./bootstrap");
-});
+if (import.meta.env.DEV && csvCheckDevelopmentSelected(true, location.search)) {
+  void import("./development/csv-check-bootstrap")
+    .then((entry) => entry.startCsvCheckDevelopment())
+    .catch((error) => {
+      const root = document.getElementById("root");
+      if (root) root.textContent = `Isolierte CSV-Prüfung nicht verfügbar: ${String(error)}`;
+    });
+} else if (import.meta.env.DEV && arrayEditorDevelopmentSelected(true, location.search)) {
+  void import("./development/array-editor-bootstrap")
+    .then((entry) => entry.startArrayEditorDevelopment())
+    .catch((error) => {
+      const root = document.getElementById("root");
+      if (root) root.textContent = `Isolierter Arrayeditor nicht verfügbar: ${String(error)}`;
+    });
+} else if (import.meta.env.DEV && routineResultDevelopmentSelected(true, location.search)) {
+  void import("./development/routine-result-bootstrap")
+    .then((entry) => entry.startRoutineResultDevelopment())
+    .catch((error) => {
+      const root = document.getElementById("root");
+      if (root) root.textContent = `Isoliertes Routinenfenster nicht verfügbar: ${String(error)}`;
+    });
+} else
+  void initAppStorage().then((mode) => {
+    performance.mark("l8db.storage");
+    if (mode === "failed") showStorageFailure();
+    else void import("./bootstrap");
+  });

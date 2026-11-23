@@ -1,4 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { assertAiAllowed } from "@/lib/ai/access";
 import type { AiRichBlock } from "@/lib/ai/rich";
 import type { DatabaseKind } from "@/lib/db";
 import type { MaskRule } from "@/lib/masking";
@@ -138,16 +139,29 @@ export interface AiStatus {
   keyStored: boolean;
 }
 export const aiEnvironment = () => invoke<{ cwd: string }>("ai_environment");
-export const aiStatus = (profile: AiProfile) => invoke<AiStatus>("ai_status", { profile });
+function guarded<T>(profile: AiProfile, consent: boolean, run: () => Promise<T>): Promise<T> {
+  try {
+    assertAiAllowed(profile, consent);
+  } catch (error) {
+    return Promise.reject(error);
+  }
+  return run();
+}
+export const aiStatus = (profile: AiProfile) =>
+  guarded(profile, false, () => invoke<AiStatus>("ai_status", { profile }));
 export const aiSetKey = (id: string, key: string) => invoke<void>("ai_set_key", { id, key });
 export const aiModels = (profile: AiProfile, cwd?: string) =>
-  invoke<AiModels>("ai_models", { profile, cwd });
+  guarded(profile, false, () => invoke<AiModels>("ai_models", { profile, cwd }));
 export const aiSkills = (cwd: string, profile: AiProfile) =>
-  invoke<{ name: string; path: string }[]>("ai_skills", { cwd, profile });
-export function aiRun(request: AiRunRequest, onEvent: (event: AiEvent) => void) {
-  const events = new Channel<AiEvent>();
-  events.onmessage = onEvent;
-  return invoke<void>("ai_run", { request, events });
+  guarded(profile, false, () =>
+    invoke<{ name: string; path: string }[]>("ai_skills", { cwd, profile }),
+  );
+export function aiRun(request: AiRunRequest, onEvent: (event: AiEvent) => void, consent = true) {
+  return guarded(request.profile, consent, () => {
+    const events = new Channel<AiEvent>();
+    events.onmessage = onEvent;
+    return invoke<void>("ai_run", { request, events });
+  });
 }
 export const aiCancel = (runId: string) => invoke<void>("ai_cancel", { runId });
 export const aiApprove = (runId: string, approvalId: string, allow: boolean) =>
@@ -174,8 +188,10 @@ export interface AiCompleteResult {
   model: string;
 }
 export function aiComplete(request: AiCompleteRequest, onEvent: (event: AiEvent) => void) {
-  const events = new Channel<AiEvent>();
-  events.onmessage = onEvent;
-  return invoke<AiCompleteResult>("ai_complete", { request, events });
+  return guarded(request.profile, true, () => {
+    const events = new Channel<AiEvent>();
+    events.onmessage = onEvent;
+    return invoke<AiCompleteResult>("ai_complete", { request, events });
+  });
 }
 export const aiCompleteCancel = (runId: string) => invoke<void>("ai_complete_cancel", { runId });

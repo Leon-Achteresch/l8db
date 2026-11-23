@@ -1,12 +1,14 @@
-import { useContext } from "react";
+import { useContext, useMemo } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createSafeJsonStorage } from "@/lib/buffered-storage";
+import { detectProvider } from "@/lib/connection-url";
 import { type SavedConnection, useActiveConnection } from "@/lib/connections";
 import type { Capabilities } from "@/lib/db";
-import { useCapabilities } from "@/lib/providers";
+import { useCapabilities, useProvidersStore } from "@/lib/providers";
 import { useSchemasQuery } from "@/lib/queries";
 import { oracleLoginSchema } from "@/lib/schema-selection";
+import { useServerProducts } from "@/lib/server-products";
 import { WorkbenchDatabaseContext } from "@/lib/workbench-context";
 
 interface DbSelectionState {
@@ -114,5 +116,22 @@ export function defaultSchema(
 
 export function useActiveCapabilities(): Capabilities {
   const connection = useActiveConnection();
-  return useCapabilities(connection?.kind);
+  const fallback = useCapabilities(connection?.kind);
+  const product = useServerProducts((state) =>
+    connection ? state.products[connection.connectionString] : undefined,
+  );
+  const url = connection?.connectionString;
+  const kind = connection?.kind;
+  const detected = useMemo(
+    () => (url && kind ? detectProvider(url, kind) : undefined),
+    [url, kind],
+  );
+  const id = product ?? detected;
+  return (
+    useProvidersStore(
+      (state) =>
+        state.providers.find((provider) => provider.id === id && provider.kind === kind)
+          ?.capabilities,
+    ) ?? fallback
+  );
 }

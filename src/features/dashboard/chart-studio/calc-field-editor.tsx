@@ -1,4 +1,4 @@
-import { CircleAlertIcon, SigmaIcon, Trash2Icon, WandSparklesIcon } from "lucide-react";
+import { CircleAlertIcon, LayoutTemplateIcon, SigmaIcon, Trash2Icon } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -178,7 +178,7 @@ export function CalcFieldEditor({
       </label>
       <div className="space-y-1.5">
         <p className="flex items-center gap-1 text-xs font-medium">
-          <WandSparklesIcon className="size-3.5 text-primary" /> Vorlage einsetzen
+          <LayoutTemplateIcon className="size-3.5 text-primary" /> Vorlage einsetzen
         </p>
         <div className="flex flex-wrap gap-1">
           {templates(kind).map((t) => (

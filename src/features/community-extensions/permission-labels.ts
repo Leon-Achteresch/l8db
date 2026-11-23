@@ -11,4 +11,5 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   "process:execute": "Kommandozeilen-Programme ausführen",
   "connections:read": "Gespeicherte Verbindungen samt Passwörtern lesen",
   "connections:write": "Verbindungen anlegen und aktualisieren",
+  "editor:read": "Editortext lesen (kann Passwörter enthalten) und Zeilen ausblenden",
 };

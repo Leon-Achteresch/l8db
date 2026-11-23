@@ -59,6 +59,7 @@ export interface ConnectionOperationsContext {
   queryClient: QueryClient;
   ssl: SslMode;
   readOnly: boolean;
+  editorMetadataPrefetch: boolean;
   schemaFilter: string[];
   showSingleSchemaSwitcher: boolean;
   color: string | null;
@@ -132,6 +133,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
     queryClient,
     ssl,
     readOnly,
+    editorMetadataPrefetch,
     schemaFilter,
     showSingleSchemaSwitcher,
     color,
@@ -263,9 +265,7 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
           await deleteSecret(account).catch(() => undefined);
         }
       }
-      if (keepConnected)
-        void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[1] === id });
-      else {
+      if (!keepConnected) {
         if (usesTunnel(connection)) await closeUnsharedTunnel(id);
         queryClient.removeQueries({ predicate: (query) => query.queryKey[1] === id });
       }
@@ -280,6 +280,10 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
         tunnelPort: keepConnected ? (connection?.tunnelPort ?? null) : null,
         favorite: connection?.favorite ?? false,
         readOnly: savedReadOnly,
+        editorMetadataPrefetch:
+          configInfo.capabilities.query_language === "sql"
+            ? editorMetadataPrefetch
+            : connection?.editorMetadataPrefetch,
         cloudAuth,
         schemas: configInfo.capabilities.schemas && schemaFilter.length ? schemaFilter : null,
         showSingleSchemaSwitcher,
@@ -304,6 +308,8 @@ export function createConnectionOperations(ctx: ConnectionOperationsContext) {
         useConnectionsStore.setState((state) => ({
           connections: [...state.connections, { ...input, id }],
         }));
+      if (keepConnected)
+        void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[1] === id });
       toast.success("Verbindung gespeichert");
       if (reconnect) void activateConnectionWithToast(id);
       if (vault && !profileConnection) {

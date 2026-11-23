@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight } from "lucide";
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import { useMemo } from "react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TABLE_PRIV_SHORT, TABLE_PRIVS } from "@/features/users/users-view/constants";
 import { PrivBar } from "@/features/users/users-view/priv-bar";
 import { applicablePrivs, privKey } from "@/features/users/users-view/priv-key";
@@ -68,18 +68,16 @@ export function SchemaTableGroup({
                 <th className="px-3 py-1.5 text-left font-medium text-xs min-w-[180px]">Objekt</th>
                 <th className="px-2 py-1.5 text-left font-medium text-xs w-16">Typ</th>
                 {TABLE_PRIVS.map((p) => (
-                  <TooltipProvider key={p} delayDuration={200}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <th className="w-12 px-1 py-1.5 text-center font-medium text-xs cursor-help">
-                          {TABLE_PRIV_SHORT[p]}
-                        </th>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        <p className="text-xs">{p}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <Tooltip key={p} delayDuration={200}>
+                    <TooltipTrigger asChild>
+                      <th className="w-12 px-1 py-1.5 text-center font-medium text-xs cursor-help">
+                        {TABLE_PRIV_SHORT[p]}
+                      </th>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      <p className="text-xs">{p}</p>
+                    </TooltipContent>
+                  </Tooltip>
                 ))}
                 <th className="w-12 px-1 py-1.5 text-center font-medium text-xs">ALL</th>
               </tr>

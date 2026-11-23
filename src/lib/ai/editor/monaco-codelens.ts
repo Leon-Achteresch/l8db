@@ -3,7 +3,7 @@ import { attached } from "@/lib/monaco-intellisense/context";
 import { splitSqlStatements } from "@/lib/sql-statements";
 import { controllerForModel, editorAiController } from "./controller";
 import { currentEditorAiEnvironment } from "./environment";
-import { useEditorAiSettings } from "./settings";
+import { editorAiOn, onEditorAiToggle, useEditorAiSettings } from "./settings";
 
 export const MAX_LENS_STATEMENTS = 300;
 const COMMAND = "l8db.ai.lens";
@@ -32,9 +32,9 @@ const cache = new WeakMap<monaco.editor.ITextModel, { version: number; offsets: 
 const changed = new monaco.Emitter<monaco.languages.CodeLensProvider>();
 
 useEditorAiSettings.subscribe((state, previous) => {
-  if (state.codeLens !== previous.codeLens || state.enabled !== previous.enabled)
-    changed.fire(provider);
+  if (state.codeLens !== previous.codeLens) changed.fire(provider);
 });
+onEditorAiToggle(() => changed.fire(provider));
 
 monaco.editor.registerCommand(
   COMMAND,
@@ -48,7 +48,7 @@ const provider: monaco.languages.CodeLensProvider = {
   provideCodeLenses(model) {
     const settings = useEditorAiSettings.getState();
     const controller = controllerForModel(model);
-    if (!attached.has(model) || !controller || !settings.enabled || !settings.codeLens)
+    if (!attached.has(model) || !controller || !editorAiOn() || !settings.codeLens)
       return { lenses: [], dispose() {} };
     const version = model.getVersionId();
     let entry = cache.get(model);

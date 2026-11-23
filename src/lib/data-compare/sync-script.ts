@@ -121,7 +121,11 @@ export function dialectLiteral(
     );
   if (/json/i.test(type)) return quoteSqlString(JSON.stringify(value), kind);
   if (typeof value === "boolean") return value ? "1" : "0";
-  if (typeof value === "string" && BINARY_TYPE.test(type) && /^\\x([0-9a-f]{2})*$/i.test(value)) {
+  if (
+    typeof value === "string" &&
+    BINARY_TYPE.test(type) &&
+    /^(?:\\x|0x)([0-9a-f]{2})*$/i.test(value)
+  ) {
     const hex = value.slice(2).toUpperCase();
     if (kind === "mssql") return hex ? `0x${hex}` : "0x";
     if (kind === "oracle" && hex.length > 4000)

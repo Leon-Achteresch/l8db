@@ -5,7 +5,7 @@ use super::config::{McpConfig, McpConnection};
 use super::discovery::{mask_hidden, Notes, View};
 use super::insight::{bulk_query, edges_from, keys_from, keys_query, number, text_cell};
 use super::redact::Redactor;
-use super::server::{adapter, arg_str, run, Server};
+use super::server::{adapter, arg_str, cache_key, run, Server};
 use crate::db::{DatabaseAdapter, DatabaseKind, QueryResult};
 use serde_json::Value;
 use std::collections::{BTreeSet, HashMap};
@@ -114,11 +114,12 @@ fn relations_sql(kind: DatabaseKind, schemas: &[String], allowlist: &[String]) -
             let owners = oracle_owners(schemas)?;
             format!(
                 "SELECT * FROM (SELECT owner AS a, table_name AS b, 'TABLE' AS c, num_rows AS d, blocks * 8192 AS e, \
-                 (SELECT comments FROM all_tab_comments m WHERE m.owner = t.owner AND m.table_name = t.table_name) AS f \
-                 FROM all_tables t WHERE owner IN ({owners}) \
+                 (SELECT comments FROM all_tab_comments m WHERE m.owner = all_tables.owner AND m.table_name = all_tables.table_name) AS f \
+                 FROM all_tables WHERE owner IN ({owners}) AND {} \
                  UNION ALL SELECT owner, view_name, 'VIEW', NULL, NULL, NULL FROM all_views WHERE owner IN ({owners}) \
                  UNION ALL SELECT owner, mview_name, 'MVIEW', NULL, NULL, NULL FROM all_mviews WHERE owner IN ({owners})) \
-                 WHERE ROWNUM <= {MAX_RELATIONS}"
+                 WHERE ROWNUM <= {MAX_RELATIONS}",
+                crate::db::oracle::USER_TABLES
             )
         }
         DatabaseKind::Clickhouse => format!(
@@ -127,7 +128,7 @@ fn relations_sql(kind: DatabaseKind, schemas: &[String], allowlist: &[String]) -
             within("database", allowlist)
         ),
         DatabaseKind::Sqlite => "SELECT 'main' AS a, name AS b, type AS c, NULL AS d, NULL AS e, NULL AS f FROM sqlite_master \
-             WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY 2"
+             WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY 2"
             .to_string(),
         DatabaseKind::Duckdb => "SELECT schema_name AS a, table_name AS b, 'table' AS c, estimated_size AS d, NULL AS e, comment AS f FROM duckdb_tables() WHERE NOT internal \
              UNION ALL SELECT schema_name, view_name, 'view', NULL, NULL, comment FROM duckdb_views() WHERE NOT internal ORDER BY 1, 2"
@@ -238,8 +239,16 @@ async fn routines(
                     } else {
                         Kind::Function
                     },
-                    args: row[3].clone(),
-                    returns: row[4].clone(),
+                    args: if kind == DatabaseKind::Mysql {
+                        crate::db::mysql_type_text(&row[3])
+                    } else {
+                        row[3].clone()
+                    },
+                    returns: if kind == DatabaseKind::Mysql {
+                        crate::db::mysql_type_text(&row[4])
+                    } else {
+                        row[4].clone()
+                    },
                     language: row[5].clone(),
                     lines: int(&row[7]).map(|lines| lines as u32),
                 }
@@ -429,7 +438,7 @@ pub(super) async fn load(
         taken: now(),
         ..Objects::default()
     };
-    if !super::server::SQL_KINDS.contains(&kind) {
+    if !super::server::sql_family(kind) {
         return objects;
     }
     match relations_sql(kind, schemas, allowlist) {
@@ -970,9 +979,13 @@ impl Server {
         connection: &McpConnection,
         catalog: &Catalog,
     ) -> Option<Arc<Objects>> {
-        if !super::server::SQL_KINDS.contains(&connection.kind) {
+        if !super::server::sql_family(connection.kind) {
             return None;
         }
+        if let Some(objects) = catalog.objects().filter(|objects| objects.fresh()) {
+            return Some(objects);
+        }
+        let _listing = self.columns.listing(&cache_key(connection)).await;
         if let Some(objects) = catalog.objects().filter(|objects| objects.fresh()) {
             return Some(objects);
         }
@@ -1018,6 +1031,10 @@ impl Server {
             return Some(keys);
         }
         let sql = bulk_query(connection.kind)?;
+        let _listing = self.columns.listing(&cache_key(connection)).await;
+        if let Some(keys) = catalog.keys().filter(|keys| fresh(keys.taken, keys.ms)) {
+            return Some(keys);
+        }
         let adapter = adapter(connection, &self.pool).ok()?;
         let started = Instant::now();
         count();
@@ -1040,6 +1057,10 @@ impl Server {
         catalog: &Catalog,
     ) {
         if connection.allowed_schemas().is_empty() || catalog.listed().is_some() {
+            return;
+        }
+        let _listing = self.columns.listing(&cache_key(connection)).await;
+        if catalog.listed().is_some() {
             return;
         }
         let listed = match adapter(connection, &self.pool) {
@@ -1173,6 +1194,22 @@ impl Server {
 mod tests {
     use super::*;
     use crate::db::DatabaseKind;
+
+    #[test]
+    fn non_sql_dialects_build_no_catalog_sql() {
+        for kind in [
+            DatabaseKind::Cassandra,
+            DatabaseKind::Elasticsearch,
+            DatabaseKind::Influxdb,
+            DatabaseKind::Dynamodb,
+        ] {
+            assert!(
+                relations_sql(kind, &["s".into()], &[]).is_none(),
+                "{kind:?}"
+            );
+            assert!(own_segments_sql(kind, "s").is_none(), "{kind:?}");
+        }
+    }
 
     fn names() -> Names {
         let entry = |schema: &str, name: &str| (schema.to_string(), name.to_string());
@@ -2034,6 +2071,18 @@ mod tests {
             "VALUES ROW(1, 2.5)".to_string(),
             "SELECT @@version".to_string(),
         ];
+        let mariadb = runtime
+            .block_on(admin.execute_query("SELECT VERSION() AS v"))
+            .unwrap()
+            .rows[0]["v"]
+            .as_str()
+            .is_some_and(|v| v.contains("MariaDB"));
+        let legit: Vec<String> = legit
+            .into_iter()
+            .filter(|sql| {
+                !(mariadb && (sql.starts_with("TABLE ") || sql.starts_with("VALUES ROW")))
+            })
+            .collect();
         let leaks = [
             format!("SELECT 1 --1, email AS p FROM {db}.customers"),
             format!("SELECT 1 /* /* */ , email AS p FROM {db}.customers -- */"),
@@ -2073,6 +2122,10 @@ mod tests {
             "SELECT GET_LOCK('l8db', 10)".to_string(),
             "SELECT RELEASE_ALL_LOCKS()".to_string(),
         ];
+        let (leaks, mysql_only): (Vec<String>, Vec<String>) = leaks
+            .into_iter()
+            .partition(|sql| !(mariadb && sql.contains("/*!80000")));
+        let blocked: Vec<String> = blocked.into_iter().chain(mysql_only).collect();
         reads(
             &runtime,
             admin.as_ref(),
@@ -2184,7 +2237,10 @@ mod tests {
         );
         println!("overview ({} queries):\n{text}", calls() - before);
         assert!(
-            !error && text.contains(&db) && text.contains("3 tables in 1 schemas"),
+            !error
+                && text.contains(&db)
+                && text.contains("2 tables in 1 schemas")
+                && text.contains("1 materialized views"),
             "{text}"
         );
         assert!(

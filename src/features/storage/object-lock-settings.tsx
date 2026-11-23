@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { type ObjectLockConfig, objectLockXml, parseObjectLock } from "@/lib/storage/s3";
+import { ConfirmActionDialog } from "./confirm-action-dialog";
 import { SettingsCard } from "./settings-card";
 import { useBucketConfig } from "./use-bucket-config";
 
@@ -21,13 +22,16 @@ export function ObjectLockSettings({ bucket }: { bucket: string }) {
     years: null,
   });
 
+  const [confirming, setConfirming] = useState(false);
+  const save = () => config.save(objectLockXml(draft), "Objektsperre gespeichert");
+
   useEffect(() => {
     setDraft(parseObjectLock(config.data));
   }, [config.data]);
 
   return (
     <SettingsCard
-      title="Object Lock (WORM)"
+      title="Objektsperre (Object Lock)"
       description={
         draft.enabled
           ? "Aktiv. Standard-Aufbewahrung gilt für neue Objekte."
@@ -77,13 +81,23 @@ export function ObjectLockSettings({ bucket }: { bucket: string }) {
             <Button
               size="sm"
               disabled={config.busy}
-              onClick={() => void config.save(objectLockXml(draft), "Object Lock gespeichert")}
+              onClick={() => (draft.mode === "COMPLIANCE" ? setConfirming(true) : void save())}
             >
               Speichern
             </Button>
           )}
         </div>
       )}
+      <ConfirmActionDialog
+        open={confirming}
+        title="Compliance als Standard?"
+        description={`Neue Objekte in „${bucket}“ sind ${draft.days ?? draft.years ?? "–"} ${draft.days ? "Tage" : "Jahre"} lang nicht löschbar, auch nicht für Admins.`}
+        confirmLabel="Speichern"
+        onOpenChange={setConfirming}
+        onConfirm={async () => {
+          await save();
+        }}
+      />
     </SettingsCard>
   );
 }

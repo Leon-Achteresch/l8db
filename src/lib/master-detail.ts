@@ -15,7 +15,10 @@ export type MasterCell = {
   rowIndex: number;
   value: unknown;
   row?: Record<string, unknown>;
+  rows?: Record<string, unknown>[];
 };
+export type MasterRow = { value: unknown; row?: Record<string, unknown> };
+export const MAX_MASTER_VALUES = 1000;
 export const MasterSelectionContext = createContext<string | null>(null);
 
 export type SavedMasterDetail = { master: string; detail: string; sql: string; column?: string };
@@ -91,34 +94,64 @@ export function masterDetailScriptError(sql: string): string | null {
   }
 }
 
+const COMPARISON = /(?:(?<![<>!:=])=|<>|!=)\s*$/;
+const CAST = /^::[\p{L}_][\p{L}\p{N}_$]*(?:\s*\(\s*\d+(?:\s*,\s*\d+)?\s*\))?(?:\[\])*/u;
+
+function serializeMaster(entry: unknown): string | null {
+  return entry == null ? null : typeof entry === "object" ? JSON.stringify(entry) : String(entry);
+}
+
 export function bindMasterDetail(
   sql: string,
   value: unknown,
   row?: Record<string, unknown>,
   literal?: (value: unknown) => string,
+  many?: MasterRow[],
 ) {
   const error = masterDetailScriptError(sql);
   if (error) throw new Error(error);
-  const indexes = new Map<string | undefined, number>();
+  const occurrences = masterParams(sql);
+  const multi =
+    !!many &&
+    many.length > 1 &&
+    occurrences.every((param) => COMPARISON.test(sql.slice(0, param.start)));
+  const sets = multi && many ? many : [{ value, row }];
+  const indexes = new Map<string | undefined, number[]>();
   const params: (string | null)[] = [];
   const values: unknown[] = [];
-  const occurrences = masterParams(sql).map((param) => {
-    if (!indexes.has(param.column)) {
-      if (param.column !== undefined && (!row || !Object.hasOwn(row, param.column)))
+  for (const param of occurrences) {
+    if (indexes.has(param.column)) continue;
+    const seen = new Map<string | null, number>();
+    for (const set of sets) {
+      if (param.column !== undefined && (!set.row || !Object.hasOwn(set.row, param.column)))
         throw new Error(`Die Spalte „${param.column}“ fehlt in der ausgewählten Master-Zeile.`);
-      const entry = param.column === undefined ? value : row?.[param.column];
+      const entry = param.column === undefined ? set.value : set.row?.[param.column];
+      const serialized = serializeMaster(entry);
+      if (seen.has(serialized)) continue;
+      if (seen.size >= MAX_MASTER_VALUES)
+        throw new Error(`Höchstens ${MAX_MASTER_VALUES} Master-Werte gleichzeitig auswählen.`);
       values.push(entry);
-      params.push(
-        entry == null ? null : typeof entry === "object" ? JSON.stringify(entry) : String(entry),
-      );
-      indexes.set(param.column, params.length);
+      params.push(serialized);
+      seen.set(serialized, params.length);
     }
-    return { ...param, index: indexes.get(param.column) };
-  });
+    indexes.set(param.column, [...seen.values()]);
+  }
   let boundSql = sql;
-  for (const param of occurrences.reverse()) {
-    const placeholder = literal ? literal(values[(param.index ?? 1) - 1]) : `$${param.index}`;
-    boundSql = `${boundSql.slice(0, param.start)}${placeholder}${boundSql.slice(param.end)}`;
+  for (const param of [...occurrences].reverse()) {
+    const placeholders = (indexes.get(param.column) ?? []).map((index) =>
+      literal ? literal(values[index - 1]) : `$${index}`,
+    );
+    let head = boundSql.slice(0, param.start);
+    let placeholder = placeholders[0];
+    let end = param.end;
+    if (multi) {
+      const operator = head.match(COMPARISON)?.[0] ?? "";
+      const cast = boundSql.slice(end).match(CAST)?.[0] ?? "";
+      end += cast.length;
+      head = `${head.slice(0, head.length - operator.length).trimEnd()} ${operator.trim() === "=" ? "IN" : "NOT IN"} `;
+      placeholder = `(${placeholders.map((entry) => `${entry}${cast}`).join(", ")})`;
+    }
+    boundSql = `${head}${placeholder}${boundSql.slice(end)}`;
   }
   return { sql: boundSql, params };
 }
@@ -200,7 +233,8 @@ export const useMasterDetail = create<MasterDetailState>()(
             previous?.column === cell?.column &&
             previous?.rowIndex === cell?.rowIndex &&
             Object.is(previous?.value, cell?.value) &&
-            previous?.row === cell?.row
+            previous?.row === cell?.row &&
+            previous?.rows === cell?.rows
           )
             return state;
           const selections = { ...state.selections };

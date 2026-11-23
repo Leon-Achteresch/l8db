@@ -121,6 +121,10 @@ pub(super) fn prepare(sql: &str) -> String {
     statement
 }
 
+pub(super) fn is_block(sql: &str) -> bool {
+    unit_kind(sql, &tokens(sql)) == Some(UnitKind::Block)
+}
+
 #[derive(PartialEq)]
 enum UnitKind {
     Block,
@@ -304,8 +308,9 @@ const SQLPLUS_COMMANDS: &[(&str, usize)] = &[
 fn sqlplus_line_end(sql: &str, token: &Range<usize>, next: Option<&str>) -> Option<usize> {
     let word = sql[token.clone()].to_ascii_uppercase();
     let line_start = sql[..token.start].rfind('\n').map_or(0, |n| n + 1);
+    let before = sql[line_start..token.start].trim();
     if !(word == "@" || crate::db::sql_script::abbreviates(&word, SQLPLUS_COMMANDS))
-        || !sql[line_start..token.start].trim().is_empty()
+        || !(before.is_empty() || before.ends_with(';'))
     {
         return None;
     }
@@ -502,16 +507,24 @@ pub(super) fn created_object(sql: &str) -> Option<(Option<String>, String, Strin
         return None;
     }
     let mut i = 1;
-    while ["OR", "REPLACE", "EDITIONABLE", "NONEDITIONABLE"]
-        .iter()
-        .any(|w| is(i, w))
+    while [
+        "OR",
+        "REPLACE",
+        "NO",
+        "FORCE",
+        "EDITIONABLE",
+        "EDITIONING",
+        "NONEDITIONABLE",
+    ]
+    .iter()
+    .any(|w| is(i, w))
     {
         i += 1;
     }
     let mut kind = words.get(i)?.to_ascii_uppercase();
     if !matches!(
         kind.as_str(),
-        "FUNCTION" | "PROCEDURE" | "PACKAGE" | "TRIGGER" | "TYPE"
+        "FUNCTION" | "PROCEDURE" | "PACKAGE" | "TRIGGER" | "TYPE" | "VIEW"
     ) {
         return None;
     }
@@ -913,6 +926,18 @@ mod tests {
             created_object("create procedure p is begin null; end;"),
             Some((None, "P".into(), "PROCEDURE".into()))
         );
+        assert_eq!(
+            created_object("CREATE OR REPLACE NO FORCE EDITIONING VIEW v AS SELECT 1 FROM dual"),
+            Some((None, "V".into(), "VIEW".into()))
+        );
+        assert_eq!(
+            created_object("create or replace force view hr.v as select x from missing"),
+            Some((Some("HR".into()), "V".into(), "VIEW".into()))
+        );
+        assert_eq!(
+            created_object("CREATE MATERIALIZED VIEW m AS SELECT 1 FROM dual"),
+            None
+        );
         assert_eq!(created_object("CREATE TABLE t (id NUMBER)"), None);
     }
 
@@ -1060,6 +1085,24 @@ mod tests {
                 (false, "BEGIN q(1, \n  2); END;".to_string()),
                 (false, "BEGIN pkg.run('a;b'); END;".to_string()),
                 (false, "SELECT 1 FROM dual;".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn sqlplus_command_after_a_semicolon_on_the_same_line_is_skipped() {
+        assert_eq!(
+            split_items("select 'erste' v from dual; SET PAGESIZE 100"),
+            vec![
+                (false, "select 'erste' v from dual;".to_string()),
+                (true, "SET PAGESIZE 100".to_string()),
+            ]
+        );
+        assert_eq!(
+            split_items("update t set a = 1; SET TRANSACTION READ ONLY"),
+            vec![
+                (false, "update t set a = 1;".to_string()),
+                (false, "SET TRANSACTION READ ONLY".to_string()),
             ]
         );
     }

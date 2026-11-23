@@ -360,7 +360,7 @@ async function graphFlow(theme: "light" | "dark") {
     await link.click();
     const row = page.locator(`[data-task-row="${BACKUP_TASK.id}"]`);
     await row.waitFor({ timeout: 10000 });
-    await page.getByRole("button", { name: "Toggle Sidebar" }).first().click();
+    await page.getByRole("button", { name: "Seitenleiste umschalten" }).first().click();
     await row.click();
 
     const graph = page.getByTestId("automation-step-graph");

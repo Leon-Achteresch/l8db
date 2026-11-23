@@ -1,5 +1,5 @@
 import { EyeIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 import { Collapse } from "@/components/motion/collapse";
 import { Button } from "@/components/ui/button";
@@ -8,12 +8,15 @@ import { QueryResultView } from "@/features/query/query-result-view/query-result
 import { QueryResultWorkbench } from "@/features/query/query-result-workbench";
 import type { ResultChartBinding } from "@/features/query/result-chart/types";
 import { ResultCompareView } from "@/features/query/result-compare/result-compare-view";
-import { ResultSnapshotsButton } from "@/features/query/result-snapshots-button";
+import { ResultSnapshots } from "@/features/query/result-snapshots";
+import { ResultSnapshotsItem } from "@/features/query/result-snapshots-item";
 import type { DatabaseKind, TableInfo } from "@/lib/db";
+import { queryTimingDescription } from "@/lib/query-result-timing";
 import type { SqlMarker } from "@/lib/sql-diagnostics";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
 import { PreviousResultNotice } from "./previous-result-notice";
 import { ResultHeader } from "./result-header";
+import { ResultMoreMenu } from "./result-more-menu";
 import type { QueryExecutionState } from "./use-query-execution-state";
 
 interface QueryResultsContentProps {
@@ -21,6 +24,7 @@ interface QueryResultsContentProps {
   kind: DatabaseKind | undefined;
   statusText: string | null;
   actions: ReactNode;
+  menuItems?: ReactNode;
   onRevealError: (marker: SqlMarker) => void;
   onReplaceSql?: (start: number, end: number, text: string) => void;
   onFixWithAi?: () => void;
@@ -42,6 +46,7 @@ export function QueryResultsContent({
   kind,
   statusText,
   actions,
+  menuItems,
   onRevealError,
   onReplaceSql,
   onFixWithAi,
@@ -58,13 +63,15 @@ export function QueryResultsContent({
   outputPanel,
 }: QueryResultsContentProps) {
   const { result, isRunning, error, statementError, viewSource, scriptEntries } = exec;
+  const statusDetails = result ? queryTimingDescription(result) : undefined;
   const [classic, setClassic] = useTabState(tabStateKey(exec.scope, "classic"), false);
   const [snapshotCompare, setSnapshotCompare] = useTabState<string | null>(
     tabStateKey(exec.scope, "snapshotCompare"),
     null,
   );
+  const [snapshotsOpen, setSnapshotsOpen] = useState(false);
   const viewable =
-    viewSource !== null && !scriptEntries && !error && result !== null && result.columns.length > 0;
+    viewSource !== null && !scriptEntries && result !== null && result.columns.length > 0;
   const showView = viewable && !classic && !isRunning;
   const showCompare =
     (compareOpen || snapshotCompare) &&
@@ -80,9 +87,26 @@ export function QueryResultsContent({
     exec.resultOrigin.database === database
       ? { ...exec.resultOrigin, result }
       : null;
+  const moreItems = (
+    <>
+      <ResultSnapshotsItem onSelect={() => setSnapshotsOpen(true)} />
+      {menuItems}
+    </>
+  );
   const resultActions = (
     <>
-      <ResultSnapshotsButton
+      <ResultMoreMenu>{moreItems}</ResultMoreMenu>
+      {actions}
+    </>
+  );
+  const previousResult = Boolean(error && result?.columns.length);
+  const showResultHeader = !result || isRunning || result.columns.length === 0;
+  if (outputPanel) return outputPanel;
+  return (
+    <>
+      <ResultSnapshots
+        open={snapshotsOpen}
+        onOpenChange={setSnapshotsOpen}
         run={snapshotRun}
         connectionId={connectionId}
         database={database}
@@ -92,14 +116,6 @@ export function QueryResultsContent({
           setSnapshotCompare(name);
         }}
       />
-      {actions}
-    </>
-  );
-  const previousResult = Boolean(error && result?.columns.length);
-  const showResultHeader = !result || isRunning || result.columns.length === 0;
-  if (outputPanel) return outputPanel;
-  return (
-    <>
       <div className="shrink-0 bg-muted/20 px-2 empty:hidden">{outputTabs}</div>
       {showResultHeader && (
         <ResultHeader
@@ -107,6 +123,7 @@ export function QueryResultsContent({
           error={error}
           result={result}
           statusText={statusText}
+          statusDetails={statusDetails}
           actions={resultActions}
         />
       )}
@@ -181,6 +198,7 @@ export function QueryResultsContent({
             result={result}
             tables={tables}
             statusText={statusText}
+            statusDetails={statusDetails}
             actions={resultActions}
             maximized={maximized}
             onToggleMaximized={onToggleMaximized}
@@ -195,6 +213,7 @@ export function QueryResultsContent({
             error={previousResult ? null : error}
             kind={kind}
             statusText={statusText}
+            statusDetails={statusDetails}
             actions={
               viewable && !isRunning ? (
                 <>
@@ -208,12 +227,13 @@ export function QueryResultsContent({
                     <EyeIcon className="size-3.5" />
                     Als View
                   </Button>
-                  {resultActions}
+                  {actions}
                 </>
               ) : (
-                resultActions
+                actions
               )
             }
+            menuItems={moreItems}
             chart={previousResult ? undefined : chart}
             previous={previousResult}
           />

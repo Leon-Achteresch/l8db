@@ -5,6 +5,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { TableDataError } from "@/features/table/table-data-error";
 import { s3CreateFolder, s3RenameObject } from "@/lib/db";
 import { useTableScrollState } from "@/lib/hooks/use-table-scroll-state";
+import { IS_MAC } from "@/lib/platform";
 import { setBucketDropHandler } from "@/lib/storage/drop-target";
 import { basename, parentPrefix } from "@/lib/storage/s3";
 import { runStorageJob, withOverwritePrompt } from "@/lib/storage/transfers";
@@ -118,6 +119,8 @@ export function ObjectBrowser({
     setDetailsId(row.kind === "object" ? row.id : null);
   }
 
+  const folderCount = rows.filter((row) => row.kind === "folder").length;
+
   function activate(row: BrowserRow) {
     if (row.kind === "folder") navigateTo(row.key);
     else setDetailsId(row.id);
@@ -127,13 +130,14 @@ export function ObjectBrowser({
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
       return;
     if (
-      (event.key === "Delete" || (event.key === "Backspace" && event.metaKey)) &&
+      event.key === "Backspace" &&
+      (IS_MAC ? event.metaKey : event.ctrlKey) &&
       selectedRows.length &&
       !actions.readOnly
     ) {
       event.preventDefault();
       setDeleteRows(selectedRows);
-    } else if (event.key === "Backspace" && prefix && !search) {
+    } else if (event.key === "Backspace" && !event.metaKey && !event.ctrlKey && prefix && !search) {
       event.preventDefault();
       navigateTo(parentPrefix(prefix));
     } else if (event.key === "a" && (event.metaKey || event.ctrlKey)) {
@@ -224,9 +228,10 @@ export function ObjectBrowser({
         </div>
         <footer className="flex shrink-0 items-center gap-3 border-t px-3 py-1.5 text-xs text-muted-foreground">
           <span>
-            {rows.length} Einträge
+            {folderCount ? `${folderCount} Ordner · ` : ""}
+            {rows.length - folderCount} {rows.length - folderCount === 1 ? "Objekt" : "Objekte"}
             {selectedRows.length ? ` · ${selectedRows.length} ausgewählt` : ""}
-            {mode === "search" && truncated ? " · Suche gekappt" : ""}
+            {mode === "search" && truncated ? " · Suche begrenzt" : ""}
           </span>
           {listing.hasNextPage ? (
             <Button
@@ -260,7 +265,7 @@ export function ObjectBrowser({
       <TextPromptDialog
         open={newFolderOpen}
         title="Neuer Ordner"
-        description={`Wird unter ${prefix || "/"} angelegt.`}
+        description={`Wird unter ${prefix || "der obersten Ebene"} angelegt.`}
         label="Ordnername"
         placeholder="berichte/2026"
         confirmLabel="Anlegen"
@@ -268,13 +273,14 @@ export function ObjectBrowser({
         onSubmit={async (name) => {
           await s3CreateFolder(actions.url, bucket, `${prefix}${name.trim().replace(/^\/+/, "")}`);
           await actions.refresh();
+          toast.success("Ordner angelegt");
         }}
       />
       <TextPromptDialog
         open={renameRow !== null}
         title={renameRow?.kind === "folder" ? "Ordner umbenennen" : "Objekt umbenennen"}
-        description="Voller Schlüssel. S3 kopiert dafür die Objekte und löscht die Originale."
-        label="Neuer Schlüssel"
+        description="Kopiert auf dem Server und löscht danach die Originale. Ordner mit Inhalt."
+        label="Neuer Pfad"
         initial={renameRow?.key ?? ""}
         confirmLabel="Umbenennen"
         onOpenChange={(open) => !open && setRenameRow(null)}

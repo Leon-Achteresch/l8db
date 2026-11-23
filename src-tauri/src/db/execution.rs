@@ -42,6 +42,21 @@ tokio::task_local! {
     static DEADLINE: Duration;
     static UNCLAMPED: ();
     static ROW_LIMIT: usize;
+    static PARALLEL_READS: ();
+}
+
+static PARALLEL_READS_ENABLED: AtomicBool = AtomicBool::new(false);
+
+pub fn enable_parallel_reads() {
+    PARALLEL_READS_ENABLED.store(true, Ordering::Relaxed);
+}
+
+pub fn parallel_reads() -> bool {
+    PARALLEL_READS_ENABLED.load(Ordering::Relaxed) && PARALLEL_READS.try_with(|_| ()).is_ok()
+}
+
+pub async fn with_parallel_reads<T>(future: impl Future<Output = T>) -> T {
+    PARALLEL_READS.scope((), future).await
 }
 
 type Registry = HashMap<String, (CancellationToken, bool)>;
@@ -188,9 +203,11 @@ pub fn connection_duration() -> Duration {
     )
 }
 
+const ADAPTER_GRACE: Duration = Duration::from_millis(500);
+
 pub fn timeout_message() -> String {
     format!(
-        "Query-Timeout nach {} Sekunden. Der Serverabschluss ist nicht bestätigt; vor erneutem Schreiben den Zustand prüfen.",
+        "Query-Timeout nach {} Sekunden. Der Serverabschluss ist nicht bestätigt.",
         query_duration().as_secs()
     )
 }
@@ -261,7 +278,7 @@ where
             DEADLINE.scope(query_duration(), future).await
         } else {
             let deadline = query_duration();
-            tokio::time::timeout(deadline, DEADLINE.scope(deadline, future))
+            tokio::time::timeout(deadline + ADAPTER_GRACE, DEADLINE.scope(deadline, future))
                 .await
                 .map_err(|_| timeout_message())?
         }
@@ -492,6 +509,33 @@ mod tests {
         )
         .await;
         assert_eq!(zero.unwrap(), 5);
+    }
+
+    #[tokio::test]
+    async fn adapter_timeouts_reach_the_caller() {
+        let options = || {
+            Some(ExecutionOptions {
+                query_timeout: Some(5),
+                ..Default::default()
+            })
+        };
+        let inner: Result<(), String> = run_query(options(), false, async {
+            tokio::time::sleep(query_duration()).await;
+            Err("Redis-Hinweis".into())
+        })
+        .await;
+        assert_eq!(inner.unwrap_err(), "Redis-Hinweis");
+        let started = std::time::Instant::now();
+        let outer: Result<(), String> = run_query(options(), false, async {
+            tokio::time::sleep(Duration::from_secs(8)).await;
+            Ok(())
+        })
+        .await;
+        assert_eq!(
+            outer.unwrap_err(),
+            "Query-Timeout nach 5 Sekunden. Der Serverabschluss ist nicht bestätigt."
+        );
+        assert!(started.elapsed() < Duration::from_secs(7));
     }
 
     #[tokio::test]

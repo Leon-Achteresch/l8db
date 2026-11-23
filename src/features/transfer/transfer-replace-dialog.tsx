@@ -43,7 +43,9 @@ export function TransferReplaceDialog({
             und durch die Quelle ersetzt.
             {plan.atomic
               ? " Schlägt die Übertragung fehl, wird alles zurückgerollt."
-              : " Schlägt die Übertragung fehl, bleibt das Ziel unvollständig."}
+              : plan.secured
+                ? " Schlägt die Übertragung fehl, wird der alte Stand wiederhergestellt."
+                : " Schlägt die Übertragung fehl, bleibt das Ziel unvollständig."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="space-y-2">

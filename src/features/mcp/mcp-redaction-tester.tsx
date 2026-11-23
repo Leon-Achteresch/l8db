@@ -1,4 +1,4 @@
-import { Eye, Sparkles } from "lucide-react";
+import { Eye, FlaskConical } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -31,7 +31,7 @@ export function McpRedactionTester({ config }: McpRedactionTesterProps) {
     <div className="space-y-4 rounded-2xl border border-border/80 bg-card/60 p-4 shadow-2xs">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Sparkles className="size-4 text-primary" />
+          <FlaskConical className="size-4 text-primary" />
           <h3 className="text-sm font-semibold text-foreground">Regeln live testen</h3>
           {hasChanged ? (
             <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px]">

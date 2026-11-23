@@ -9,14 +9,14 @@ use super::http_api::{self, text};
 use super::sqlite::quote;
 use super::{
     create_table_ddl, rows_to_objects, split_statements, where_clause, AddColumnRequest,
-    ColumnInfo, CreateTableRequest, DatabaseAdapter, DetailedColumnInfo, ForeignKeyInfo, IndexInfo,
-    QueryResult, TableData, TableInfo, TriggerInfo, TxSession,
+    AlterColumnRequest, ColumnInfo, CreateTableRequest, DatabaseAdapter, DetailedColumnInfo,
+    ForeignKeyInfo, IndexInfo, QueryResult, TableData, TableInfo, TriggerInfo, TxSession,
 };
 
 fn visible(alias: &str) -> String {
-    ["sqlite_%", "_cf_%", "libsql_%"]
+    ["sqlite\\_%", "\\_cf\\_%", "libsql\\_%"]
         .iter()
-        .map(|p| format!("{alias}name NOT LIKE '{p}'"))
+        .map(|p| format!("{alias}name NOT LIKE '{p}' ESCAPE '\\'"))
         .collect::<Vec<_>>()
         .join(" AND ")
 }
@@ -141,6 +141,10 @@ fn d1_outcome(result: &Value) -> Outcome {
 }
 
 fn pipeline_body(statements: &[String]) -> Value {
+    stream_body(statements, None, true)
+}
+
+fn stream_body(statements: &[String], baton: Option<&str>, close: bool) -> Value {
     let steps: Vec<Value> = statements
         .iter()
         .enumerate()
@@ -152,10 +156,62 @@ fn pipeline_body(statements: &[String]) -> Value {
             step
         })
         .collect();
-    json!({"requests": [
-        {"type": "batch", "batch": {"steps": steps}},
-        {"type": "close"}
-    ]})
+    let mut requests = Vec::new();
+    if !steps.is_empty() {
+        requests.push(json!({"type": "batch", "batch": {"steps": steps}}));
+    }
+    if close {
+        requests.push(json!({"type": "close"}));
+    }
+    json!({"baton": baton, "requests": requests})
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Control {
+    Open,
+    Close,
+}
+
+fn control(statement: &str) -> Option<Control> {
+    let mut words = statement
+        .split(|c: char| c.is_whitespace() || c == ';')
+        .filter(|w| !w.is_empty())
+        .map(str::to_ascii_lowercase);
+    match (words.next()?.as_str(), words.next().as_deref()) {
+        ("begin", _) => Some(Control::Open),
+        ("rollback", Some("to")) => None,
+        ("commit" | "end" | "rollback", _) => Some(Control::Close),
+        _ => None,
+    }
+}
+
+fn unbalanced(statements: &[String]) -> bool {
+    let mut open = false;
+    for statement in statements {
+        match control(statement) {
+            Some(Control::Open) => open = true,
+            Some(Control::Close) if !open => return true,
+            Some(Control::Close) => open = false,
+            None => {}
+        }
+    }
+    open
+}
+
+fn is_dml(statement: &str) -> bool {
+    let words: Vec<String> = statement
+        .split(|c: char| c.is_whitespace() || c == '(')
+        .filter(|w| !w.is_empty())
+        .take(1)
+        .map(str::to_ascii_lowercase)
+        .collect();
+    matches!(
+        words.first().map(String::as_str),
+        Some("insert" | "update" | "delete" | "replace" | "upsert")
+    ) || (words.first().map(String::as_str) == Some("with")
+        && ["insert", "update", "delete", "replace"]
+            .iter()
+            .any(|w| statement.to_ascii_lowercase().contains(w)))
 }
 
 fn pipeline_outcomes(value: &Value) -> Result<Vec<Outcome>, String> {
@@ -354,6 +410,12 @@ impl SqliteHttpAdapter {
                 if statements.is_empty() {
                     return Ok(vec![]);
                 }
+                if unbalanced(&statements) {
+                    return Err(
+                        "libSQL: BEGIN und COMMIT/ROLLBACK müssen in derselben Eingabe stehen; jede Anfrage läuft in einer eigenen Sitzung. Skripte mit Schreibzugriff führt l8db ohne --no-transaction selbst in einer Transaktion aus."
+                            .into(),
+                    );
+                }
                 let value = self
                     .call(
                         self.request(reqwest::Method::POST, format!("{base}/v2/pipeline"))
@@ -366,16 +428,19 @@ impl SqliteHttpAdapter {
     }
 
     async fn query(&self, sql: &str) -> Result<Outcome, String> {
-        let mut outcomes = self.run(sql).await?;
+        Ok(Self::merge(self.run(sql).await?))
+    }
+
+    fn merge(mut outcomes: Vec<Outcome>) -> Outcome {
         let changes = outcomes.iter().filter_map(|o| o.changes).sum::<u64>();
         let position = outcomes.iter().rposition(|o| !o.columns.is_empty());
-        Ok(match position {
+        match position {
             Some(i) => outcomes.swap_remove(i),
             None => Outcome {
                 changes: Some(changes),
                 ..Default::default()
             },
-        })
+        }
     }
 
     async fn rows(&self, sql: &str) -> Result<Vec<Vec<Value>>, String> {
@@ -397,9 +462,10 @@ impl SqliteHttpAdapter {
 
     async fn table_info(&self, table: &str) -> Result<Vec<DetailedColumnInfo>, String> {
         Ok(self
-            .rows(&format!("PRAGMA table_info({})", quote(table)))
+            .rows(&format!("PRAGMA table_xinfo({})", quote(table)))
             .await?
             .iter()
+            .filter(|r| r.get(6).and_then(|v| v.as_i64()) != Some(1))
             .map(|r| DetailedColumnInfo {
                 name: text(&r[1]),
                 data_type: text(&r[2]),
@@ -408,7 +474,11 @@ impl SqliteHttpAdapter {
                 is_primary_key: truthy(&r[5]),
                 ordinal_position: r[0].as_i64().unwrap_or(0) as i32 + 1,
                 character_maximum_length: None,
-                comment: None,
+                comment: match r.get(6).and_then(|v| v.as_i64()) {
+                    Some(2) => Some("Generiert (VIRTUAL)".to_string()),
+                    Some(3) => Some("Generiert (STORED)".to_string()),
+                    _ => None,
+                },
             })
             .collect())
     }
@@ -441,12 +511,158 @@ impl TxSession for AutoCommit {
     }
 }
 
+struct HranaTx {
+    adapter: SqliteHttpAdapter,
+    url: String,
+    baton: Option<String>,
+    begun: bool,
+    active: bool,
+}
+
+impl HranaTx {
+    async fn send(&mut self, statements: &[String], close: bool) -> Result<Value, String> {
+        let body = stream_body(statements, self.baton.as_deref(), close);
+        let value = match self
+            .adapter
+            .call(
+                self.adapter
+                    .request(reqwest::Method::POST, self.url.clone())
+                    .json(&body),
+            )
+            .await
+        {
+            Ok(value) => value,
+            Err(error) => {
+                self.baton = None;
+                self.active = false;
+                return Err(if error.contains("tream") && error.contains("xpired") {
+                    "libSQL hat die Transaktion nach Leerlauf beendet und zurückgerollt.".into()
+                } else {
+                    error
+                });
+            }
+        };
+        self.baton = value["baton"].as_str().map(str::to_string);
+        if let Some(base) = value["base_url"].as_str().filter(|b| !b.is_empty()) {
+            self.url = format!("{}/v2/pipeline", base.trim_end_matches('/'));
+        }
+        Ok(value)
+    }
+
+    async fn finish(&mut self, statement: &str) -> Result<(), String> {
+        if self.baton.is_none() && !self.active {
+            return Ok(());
+        }
+        let statements: Vec<String> = if self.active {
+            vec![statement.to_string()]
+        } else {
+            vec![]
+        };
+        let value = self.send(&statements, true).await?;
+        self.active = false;
+        self.baton = None;
+        pipeline_outcomes(&value).map(|_| ())
+    }
+}
+
+#[async_trait]
+impl TxSession for HranaTx {
+    async fn execute(&mut self, sql: &str) -> Result<QueryResult, String> {
+        let start = std::time::Instant::now();
+        let mut statements = split_statements(sql.trim());
+        let own = !self.begun && statements.iter().find_map(|s| control(s)) != Some(Control::Open);
+        self.begun = true;
+        if own {
+            statements.insert(0, "BEGIN".to_string());
+        }
+        if statements.is_empty() {
+            return Ok(outcome_result(Outcome::default(), false, start));
+        }
+        let value = self.send(&statements, false).await?;
+        let errors = value.pointer("/results/0/response/result/step_errors");
+        let failed = errors
+            .and_then(Value::as_array)
+            .and_then(|e| e.iter().position(|e| !e.is_null()));
+        for statement in statements.iter().take(failed.unwrap_or(statements.len())) {
+            match control(statement) {
+                Some(Control::Open) => self.active = true,
+                Some(Control::Close) => self.active = false,
+                None => {}
+            }
+        }
+        let mut outcomes = pipeline_outcomes(&value)?;
+        if own && !outcomes.is_empty() {
+            outcomes.remove(0);
+        }
+        let dml = statements.iter().any(|s| is_dml(s));
+        Ok(outcome_result(
+            SqliteHttpAdapter::merge(outcomes),
+            dml,
+            start,
+        ))
+    }
+
+    async fn commit(&mut self) -> Result<(), String> {
+        self.finish("COMMIT").await
+    }
+
+    async fn rollback(&mut self) -> Result<(), String> {
+        self.finish("ROLLBACK").await
+    }
+}
+
+fn outcome_result(outcome: Outcome, dml: bool, start: std::time::Instant) -> QueryResult {
+    let columns = super::unique_column_names(outcome.columns);
+    QueryResult {
+        rows_affected: if columns.is_empty() && dml {
+            outcome.changes
+        } else {
+            None
+        },
+        rows: rows_to_objects(&columns, outcome.rows),
+        columns,
+        execution_time_ms: start.elapsed().as_millis() as u64,
+        truncated: false,
+    }
+}
+
+fn rename_column_sql(table: &str, changes: &AlterColumnRequest) -> Result<Option<String>, String> {
+    if changes.data_type.is_some()
+        || changes.set_not_null.is_some()
+        || changes.new_default.is_some()
+        || changes.drop_default
+    {
+        return Err("SQLite unterstützt nur das Umbenennen von Spalten. Typ, NULL und Default erfordern eine neue Tabelle.".to_string());
+    }
+    Ok(changes
+        .new_name
+        .as_deref()
+        .filter(|n| !n.is_empty())
+        .map(|new_name| {
+            format!(
+                "ALTER TABLE {} RENAME COLUMN {} TO {}",
+                quote(table),
+                quote(&changes.old_name),
+                quote(new_name)
+            )
+        }))
+}
+
 #[async_trait]
 impl DatabaseAdapter for SqliteHttpAdapter {
     async fn begin_transaction(&self) -> Result<Box<dyn TxSession>, String> {
-        Ok(Box::new(AutoCommit {
-            adapter: self.clone(),
-        }))
+        Ok(match &self.backend {
+            Backend::Libsql { base } => Box::new(HranaTx {
+                adapter: self.clone(),
+                url: format!("{base}/v2/pipeline"),
+                baton: None,
+                begun: false,
+                active: false,
+            }),
+            Backend::D1 { .. } => Box::new(AutoCommit {
+                adapter: self.clone(),
+            }),
+        })
     }
 
     async fn test_connection(&self) -> Result<(), String> {
@@ -456,12 +672,21 @@ impl DatabaseAdapter for SqliteHttpAdapter {
     async fn list_databases(&self) -> Result<Vec<String>, String> {
         match &self.backend {
             Backend::D1 { .. } => Ok(self.d1_list().await?.into_iter().map(|(n, _)| n).collect()),
-            Backend::Libsql { .. } => Ok(vec!["main".to_string()]),
+            Backend::Libsql { .. } => {
+                self.names("SELECT name FROM pragma_database_list WHERE name = 'main'")
+                    .await
+            }
         }
     }
 
     async fn list_schemas(&self) -> Result<Vec<String>, String> {
-        Ok(vec!["main".to_string()])
+        match &self.backend {
+            Backend::D1 { .. } => Ok(vec!["main".to_string()]),
+            Backend::Libsql { .. } => {
+                self.names("SELECT name FROM pragma_database_list WHERE name = 'main'")
+                    .await
+            }
+        }
     }
 
     async fn list_tables(&self, _schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
@@ -501,7 +726,7 @@ impl DatabaseAdapter for SqliteHttpAdapter {
                 .collect());
         }
         let joined = format!(
-            "SELECT m.name, p.name, p.type FROM sqlite_master m JOIN pragma_table_info(m.name) p WHERE m.type = '{kind}' AND {} ORDER BY m.name, p.cid",
+            "SELECT m.name, p.name, p.type FROM sqlite_master m JOIN pragma_table_xinfo(m.name) p WHERE m.type = '{kind}' AND p.hidden <> 1 AND {} ORDER BY m.name, p.cid",
             visible("m.")
         );
         match self.rows(&joined).await {
@@ -606,18 +831,8 @@ impl DatabaseAdapter for SqliteHttpAdapter {
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
         let outcome = self.query(sql.trim()).await?;
-        let columns = super::unique_column_names(outcome.columns);
-        Ok(QueryResult {
-            rows_affected: if columns.is_empty() {
-                outcome.changes
-            } else {
-                None
-            },
-            rows: rows_to_objects(&columns, outcome.rows),
-            columns,
-            execution_time_ms: start.elapsed().as_millis() as u64,
-            truncated: false,
-        })
+        let dml = split_statements(sql).iter().any(|s| is_dml(s));
+        Ok(outcome_result(outcome, dml, start))
     }
 
     async fn list_views(&self, _schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
@@ -695,6 +910,18 @@ impl DatabaseAdapter for SqliteHttpAdapter {
             sql.push_str(&format!(" DEFAULT {d}"));
         }
         self.exec(&sql).await
+    }
+
+    async fn alter_column(
+        &self,
+        _schema: &str,
+        table: &str,
+        changes: &AlterColumnRequest,
+    ) -> Result<(), String> {
+        match rename_column_sql(table, changes)? {
+            Some(sql) => self.exec(&sql).await,
+            None => Ok(()),
+        }
     }
 
     async fn drop_column(&self, _schema: &str, table: &str, column: &str) -> Result<(), String> {
@@ -836,6 +1063,57 @@ mod tests {
     use crate::db::http_api::mock;
 
     #[test]
+    fn alter_column_only_renames() {
+        let request = |new_name: Option<&str>, data_type: Option<&str>| AlterColumnRequest {
+            old_name: "a\"b".into(),
+            new_name: new_name.map(Into::into),
+            data_type: data_type.map(Into::into),
+            set_not_null: None,
+            new_default: None,
+            drop_default: false,
+            using: None,
+        };
+        assert_eq!(
+            rename_column_sql("t", &request(Some("c"), None))
+                .unwrap()
+                .as_deref(),
+            Some("ALTER TABLE \"t\" RENAME COLUMN \"a\"\"b\" TO \"c\"")
+        );
+        assert_eq!(rename_column_sql("t", &request(None, None)).unwrap(), None);
+        assert!(rename_column_sql("t", &request(Some("c"), Some("TEXT")))
+            .unwrap_err()
+            .contains("nur das Umbenennen"));
+    }
+
+    #[test]
+    fn system_prefixes_hide_only_real_system_tables() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        for name in [
+            "sqliteinfo",
+            "_cf_KV",
+            "xcf_a",
+            "libsqlx",
+            "libsql_wasm",
+            "shop",
+        ] {
+            conn.execute(&format!("CREATE TABLE \"{name}\" (a)"), [])
+                .unwrap();
+        }
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND {} ORDER BY name",
+                visible("")
+            ))
+            .unwrap();
+        let names: Vec<String> = stmt
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(names, ["libsqlx", "shop", "sqliteinfo", "xcf_a"]);
+    }
+
+    #[test]
     fn parses_d1_and_libsql_urls() {
         let d1 =
             SqliteHttpAdapter::new("d1://acc123:tok%2Fen@api.cloudflare.com/shop", None).unwrap();
@@ -926,12 +1204,12 @@ mod tests {
             if sql.contains("broken") {
                 return (400, json!({"success": false, "errors": [{"code": 7500, "message": "near \"broken\": syntax error"}], "result": []}).to_string());
             }
-            if sql.starts_with("PRAGMA table_info") {
+            if sql.starts_with("PRAGMA table_xinfo") {
                 return (
                     200,
                     json!({"success": true, "errors": [], "result": [{"results": {
-                    "columns": ["cid", "name", "type", "notnull", "dflt_value", "pk"],
-                    "rows": [[0, "id", "INTEGER", 0, null, 1], [1, "name", "TEXT", 1, null, 0]]
+                    "columns": ["cid", "name", "type", "notnull", "dflt_value", "pk", "hidden"],
+                    "rows": [[0, "id", "INTEGER", 0, null, 1, 0], [1, "name", "TEXT", 1, null, 0, 0], [2, "shadow", "TEXT", 0, null, 0, 1]]
                 }, "success": true, "meta": {"changes": 0}}]})
                     .to_string(),
                 );
@@ -1051,5 +1329,140 @@ mod tests {
                 .len(),
             2
         );
+    }
+
+    fn hrana_handler(request: &mock::Request) -> (u16, String) {
+        let body = request.json();
+        let steps = body["requests"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|r| r["type"] == "batch")
+            .flat_map(|r| r["batch"]["steps"].as_array().cloned().unwrap_or_default())
+            .collect::<Vec<_>>();
+        let close = body["requests"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|r| r["type"] == "close");
+        let sqls: Vec<String> = steps.iter().map(|s| text(&s["stmt"]["sql"])).collect();
+        let results: Vec<Value> = sqls
+            .iter()
+            .map(|sql| {
+                if sql.starts_with("SELECT") {
+                    json!({"cols": [{"name": "name"}], "rows": [[{"type": "text", "value": "main"}]], "affected_row_count": 0})
+                } else {
+                    json!({"cols": [], "rows": [], "affected_row_count": 1})
+                }
+            })
+            .collect();
+        let errors: Vec<Value> = sqls
+            .iter()
+            .map(|sql| {
+                if sql.contains("missing") {
+                    json!({"message": "SQLite error: no such table: missing"})
+                } else {
+                    Value::Null
+                }
+            })
+            .collect();
+        let mut results_list = vec![
+            json!({"type": "ok", "response": {"type": "batch", "result": {"step_results": results, "step_errors": errors}}}),
+        ];
+        if close {
+            results_list.push(json!({"type": "ok", "response": {"type": "close"}}));
+        }
+        (
+            200,
+            json!({"baton": if close { Value::Null } else { json!("b1") }, "base_url": null, "results": results_list}).to_string(),
+        )
+    }
+
+    fn sent(
+        log: &std::sync::Arc<std::sync::Mutex<Vec<mock::Request>>>,
+    ) -> Vec<(Value, Vec<String>, bool)> {
+        log.lock()
+            .unwrap()
+            .iter()
+            .map(|r| {
+                let body = r.json();
+                let sqls = body["requests"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .flat_map(|r| r["batch"]["steps"].as_array().cloned().unwrap_or_default())
+                    .map(|s| text(&s["stmt"]["sql"]))
+                    .collect();
+                let close = body["requests"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .any(|r| r["type"] == "close");
+                (body["baton"].clone(), sqls, close)
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn libsql_transactions_share_one_stream() {
+        let (addr, log) = mock::serve(hrana_handler).await;
+        let adapter = SqliteHttpAdapter::new(&format!("libsql://{addr}?tls=false"), None).unwrap();
+        let mut tx = adapter.begin_transaction().await.unwrap();
+        let inserted = tx.execute("INSERT INTO t VALUES (1)").await.unwrap();
+        assert_eq!(inserted.rows_affected, Some(1));
+        assert!(tx.execute("SELECT * FROM missing").await.is_err());
+        tx.rollback().await.unwrap();
+        assert_eq!(
+            sent(&log),
+            vec![
+                (
+                    Value::Null,
+                    vec!["BEGIN".to_string(), "INSERT INTO t VALUES (1)".to_string()],
+                    false
+                ),
+                (
+                    json!("b1"),
+                    vec!["SELECT * FROM missing".to_string()],
+                    false
+                ),
+                (json!("b1"), vec!["ROLLBACK".to_string()], true),
+            ]
+        );
+        log.lock().unwrap().clear();
+        let mut own = adapter.begin_transaction().await.unwrap();
+        for statement in ["BEGIN", "DELETE FROM t WHERE id = 1", "ROLLBACK"] {
+            own.execute(statement).await.unwrap();
+        }
+        own.commit().await.unwrap();
+        let calls = sent(&log);
+        assert_eq!(calls.len(), 4);
+        assert_eq!(calls[0], (Value::Null, vec!["BEGIN".to_string()], false));
+        assert_eq!(calls[3], (json!("b1"), vec![], true));
+        log.lock().unwrap().clear();
+        for script in [
+            "BEGIN",
+            "ROLLBACK",
+            "COMMIT; SELECT 1",
+            "BEGIN; DELETE FROM t",
+        ] {
+            let error = adapter.execute_query(script).await.unwrap_err();
+            assert!(
+                error.contains("BEGIN und COMMIT/ROLLBACK"),
+                "{script}: {error}"
+            );
+        }
+        assert!(log.lock().unwrap().is_empty());
+        let balanced = adapter
+            .execute_query("BEGIN; DELETE FROM t; ROLLBACK")
+            .await
+            .unwrap();
+        assert_eq!(balanced.rows_affected, Some(3));
+        let created = adapter.execute_query("CREATE TABLE x (a)").await.unwrap();
+        assert_eq!(created.rows_affected, None);
+        assert_eq!(adapter.list_databases().await.unwrap(), ["main"]);
+        assert_eq!(adapter.list_schemas().await.unwrap(), ["main"]);
+        let unreachable = SqliteHttpAdapter::new("libsql://127.0.0.1:9?tls=false", None).unwrap();
+        assert!(unreachable.list_databases().await.is_err());
+        assert!(unreachable.list_schemas().await.is_err());
     }
 }

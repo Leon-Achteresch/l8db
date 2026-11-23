@@ -2,9 +2,11 @@ import {
   type CompareMode,
   PERIOD_LABEL,
   type Period,
+  type PresetPeriod,
   type TimeBucket,
   type WidgetOptions,
 } from "./model";
+import { isPresetPeriod, parseCustomPeriod } from "./sql";
 
 type ValueFormat = Pick<WidgetOptions, "unit" | "decimals">;
 
@@ -149,7 +151,21 @@ export function fmtDimLong(value: string, kind: DimKind): string {
   }
 }
 
-const PREVIOUS_LABEL: Record<Exclude<Period, "all">, string> = {
+function germanDay(iso: string): string {
+  const [year, month, day] = iso.split("-");
+  return `${day}.${month}.${year}`;
+}
+
+export function periodLabel(period: Period): string {
+  if (isPresetPeriod(period)) return PERIOD_LABEL[period];
+  const custom = parseCustomPeriod(period);
+  if (!custom) return PERIOD_LABEL.all;
+  return custom.start === custom.end
+    ? germanDay(custom.start)
+    : `${germanDay(custom.start)} – ${germanDay(custom.end)}`;
+}
+
+const PREVIOUS_LABEL: Record<Exclude<PresetPeriod, "all">, string> = {
   "7d": "ggü. Vorwoche",
   "30d": "ggü. vorherigen 30 Tagen",
   "90d": "ggü. vorherigen 90 Tagen",
@@ -158,7 +174,7 @@ const PREVIOUS_LABEL: Record<Exclude<Period, "all">, string> = {
   year: "ggü. Vorjahr",
 };
 
-const PREVIOUS_SHORT: Record<Exclude<Period, "all">, string> = {
+const PREVIOUS_SHORT: Record<Exclude<PresetPeriod, "all">, string> = {
   "7d": "Vorwoche",
   "30d": "Vorperiode",
   "90d": "Vorperiode",
@@ -168,11 +184,13 @@ const PREVIOUS_SHORT: Record<Exclude<Period, "all">, string> = {
 };
 
 export function compareLabel(period: Exclude<Period, "all">, compare: CompareMode): string {
-  return compare === "year" ? "ggü. Vorjahr" : PREVIOUS_LABEL[period];
+  if (compare === "year") return "ggü. Vorjahr";
+  return isPresetPeriod(period) ? PREVIOUS_LABEL[period] : "ggü. Vorperiode";
 }
 
 export function compareShortLabel(period: Exclude<Period, "all">, compare: CompareMode): string {
-  return compare === "year" ? "Vorjahr" : PREVIOUS_SHORT[period];
+  if (compare === "year") return "Vorjahr";
+  return isPresetPeriod(period) ? PREVIOUS_SHORT[period] : "Vorperiode";
 }
 
 const STEP_LABEL: Record<DimKind, string> = {
@@ -203,7 +221,7 @@ export function autoSubtitle(
 ): string {
   return [
     bucket && bucket !== "none" ? BUCKET_ADVERB[bucket] : "",
-    period && period !== "all" ? PERIOD_LABEL[period] : "",
+    period && period !== "all" ? periodLabel(period) : "",
     unit ? `in ${unit}` : "",
   ]
     .filter(Boolean)

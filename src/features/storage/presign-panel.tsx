@@ -17,9 +17,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { copyText } from "@/lib/clipboard";
 import { s3Presign } from "@/lib/db";
 import { basename } from "@/lib/storage/s3";
-import { showCopiedMessage } from "@/lib/workspace-status";
 import type { BrowserRow } from "./use-object-listing";
-import { errorText, useStorageConnection } from "./use-storage-connection";
+import { errorText, formatDate, useStorageConnection } from "./use-storage-connection";
 
 const EXPIRY = [
   ["300", "5 Minuten"],
@@ -42,6 +41,7 @@ export function PresignPanel({
   const [expires, setExpires] = useState("3600");
   const [attachment, setAttachment] = useState(false);
   const [link, setLink] = useState("");
+  const [validUntil, setValidUntil] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function generate() {
@@ -55,8 +55,7 @@ export function PresignPanel({
         downloadName: method === "GET" && attachment ? basename(row.key) : undefined,
       });
       setLink(value);
-      await copyText(value);
-      showCopiedMessage("URL kopiert");
+      setValidUntil(new Date(Date.now() + Number(expires) * 1000).toISOString());
     } catch (error) {
       toast.error(errorText(error));
     } finally {
@@ -140,8 +139,17 @@ export function PresignPanel({
             className="min-h-24 font-mono text-[11px]"
             value={link}
           />
+          <p className="text-[11px] text-muted-foreground">
+            {method === "PUT" ? "Hochladen" : "Lesen"} für jeden mit der URL, gültig bis{" "}
+            {formatDate(validUntil)}
+          </p>
+          {method === "PUT" && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400">
+              Überschreibt „{basename(row.key)}“ ohne Rückfrage.
+            </p>
+          )}
           <div className="flex gap-1.5">
-            <Button size="xs" variant="outline" onClick={() => void copyText(link)}>
+            <Button size="xs" variant="outline" onClick={() => void copyText(link, "URL kopiert")}>
               <CopyIcon /> Kopieren
             </Button>
             {method === "GET" && (

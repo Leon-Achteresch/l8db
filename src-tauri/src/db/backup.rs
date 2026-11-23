@@ -827,10 +827,7 @@ pub async fn run_process(
             .code()
             .map(|code| code.to_string())
             .unwrap_or_else(|| "Signal".into());
-        return Err(format!(
-            "{name} ist mit Code {code} fehlgeschlagen.\n{}",
-            excerpt.join("\n")
-        ));
+        return Err(tool_failure(&name, &code, &excerpt));
     }
     if let Some(error) = feed_error {
         return Err(format!(
@@ -1483,9 +1480,34 @@ pub async fn restore(
     })
 }
 
+fn tool_failure(name: &str, code: &str, excerpt: &[&str]) -> String {
+    let detail = excerpt.join("\n");
+    if detail.contains("server version mismatch") {
+        return format!(
+            "{name} ist zu alt für den Server. {name} in der Version des Servers oder neuer auswählen.\n{detail}"
+        );
+    }
+    format!("{name} ist mit Code {code} fehlgeschlagen.\n{detail}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn version_mismatch_names_the_cause() {
+        let excerpt = [
+            "pg_dump: error: aborting because of server version mismatch",
+            "pg_dump: detail: server version: 18.6; pg_dump version: 17.11",
+        ];
+        let message = super::tool_failure("pg_dump", "1", &excerpt);
+        assert!(
+            message.starts_with("pg_dump ist zu alt für den Server."),
+            "{message}"
+        );
+        assert!(message.contains("server version: 18.6"));
+        assert!(super::tool_failure("pg_dump", "1", &["x"]).starts_with("pg_dump ist mit Code 1"));
+    }
 
     fn options() -> BackupOptions {
         BackupOptions::default()

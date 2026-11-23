@@ -360,7 +360,12 @@ async fn s3_live_bucket_configuration() {
     s3.put_bytes(&bucket, "public/hi.txt", b"hi".to_vec(), &[])
         .await
         .unwrap();
-    let anonymous = reqwest::get(format!("http://127.0.0.1:9000/{bucket}/public/hi.txt"))
+    let endpoint = crate::db::aws::parse_target(&url(), "s3")
+        .unwrap()
+        .endpoint
+        .map(|e| e.to_string())
+        .unwrap_or_else(|| "http://127.0.0.1:9000/".into());
+    let anonymous = reqwest::get(format!("{endpoint}{bucket}/public/hi.txt"))
         .await
         .unwrap();
     assert!(anonymous.status().is_success());

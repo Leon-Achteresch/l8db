@@ -71,6 +71,7 @@ export function useScriptRun({
     setResultState,
     setExecutedSql,
     setResultOrigin,
+    setViewSource,
   } = exec;
 
   const scriptSplit = useMemo(
@@ -123,6 +124,7 @@ export function useScriptRun({
       setStatementError(null);
       setStatementRange(null);
       setError(null);
+      setViewSource(null);
       setEditorFocus(false);
       const base = locateText(sql, text, cursorOffsetRef.current) ?? 0;
       const shift = (items: ScriptRunEntry[]) =>
@@ -233,6 +235,7 @@ export function useScriptRun({
       setResultState,
       setExecutedSql,
       setResultOrigin,
+      setViewSource,
       setEditorFocus,
       cursorOffsetRef,
     ],

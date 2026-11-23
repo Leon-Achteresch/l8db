@@ -43,6 +43,8 @@ const { schemaContextStats } = await import("@/lib/ai/editor/schema-context");
 const { resolveTarget, statementBounds } = await import("@/lib/ai/editor/targets");
 const { setLastResult } = await import("@/lib/ai/last-result");
 const { FALLBACK_PROVIDERS, useProvidersStore } = await import("@/lib/providers");
+const { aiConsentGiven, aiEnabled, useAiAccess } = await import("@/lib/ai/access");
+const { runEditorAi } = await import("@/lib/ai/editor/client");
 
 import type { ChatContextItem } from "@/lib/ai/chat-context";
 import type { SavedConnection } from "@/lib/connections";
@@ -239,6 +241,54 @@ test("ghost text cleanup and request gating sustain high throughput", async () =
   expect(clean.medianMs).toBeLessThan(40);
   expect(clean.p95Ms).toBeLessThan(120);
   expect(gate.medianMs).toBeLessThan(15);
+});
+
+test("AI access gate adds no per-keystroke cost and sends nothing when off or unconsented", async () => {
+  const cloud = {
+    id: "gate",
+    provider: "anthropic" as const,
+    binary: "",
+    home: "",
+    endpoint: "",
+    model: "m",
+    effort: "",
+    mode: "",
+  };
+  const local = { ...cloud, provider: "ollama" as const };
+  useAiAccess.setState({ enabled: true, consent: [] });
+  let allowed = 0;
+  const gate = measure(() => {
+    for (let index = 0; index < 1000; index++)
+      if (aiEnabled() && aiConsentGiven(index % 2 ? cloud : local)) allowed++;
+  }, 40);
+  const before = invokeCalls.filter((command) => command.startsWith("ai_")).length;
+  const request = () =>
+    runEditorAi({ action: "inline", cached: "schema", messages: [], maxTokens: 1, profile: cloud });
+  let rejected = 0;
+  const blocked = await measureAsync(async () => {
+    for (let index = 0; index < 200; index++) await request().catch(() => rejected++);
+  }, 20);
+  useAiAccess.setState({ enabled: false });
+  const off = await measureAsync(async () => {
+    for (let index = 0; index < 200; index++) await request().catch(() => rejected++);
+  }, 20);
+  useAiAccess.setState({ enabled: true });
+  const sent = invokeCalls.filter((command) => command.startsWith("ai_")).length - before;
+  await reportScenario("ai-access-gate", {
+    gateCallsPerRun: 1000,
+    blockedRequestsPerRun: 200,
+    gate,
+    blocked,
+    off,
+    sent,
+  });
+  expect(allowed).toBe(41 * 500);
+  expect(rejected).toBe(21 * 200 * 2);
+  expect(sent).toBe(0);
+  expect(gate.medianMs).toBeLessThan(2);
+  expect(gate.p95Ms).toBeLessThan(5);
+  expect(blocked.medianMs).toBeLessThan(20);
+  expect(off.medianMs).toBeLessThan(20);
 });
 
 test("checkpoints stay within 8M chars over 1000 adds of 420 KB texts", async () => {

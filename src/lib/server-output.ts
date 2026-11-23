@@ -45,16 +45,43 @@ export const useServerOutputStore = create<ServerOutputState>()((set) => ({
         detail: message.detail ?? null,
         at,
       }));
-      const next = [...(state.entries[connectionId] ?? []), ...added];
+      const previous = state.entries[connectionId] ?? [];
+      const roomForPrevious = MAX_SERVER_OUTPUT_ENTRIES - added.length;
+      let next = added;
+      if (roomForPrevious < 0) {
+        next = added.slice(-MAX_SERVER_OUTPUT_ENTRIES);
+      } else if (roomForPrevious > 0 && previous.length > 0) {
+        const retained =
+          previous.length > roomForPrevious ? previous.slice(-roomForPrevious) : previous;
+        next = retained.concat(added);
+      }
       return {
         entries: {
           ...state.entries,
-          [connectionId]: next.slice(Math.max(0, next.length - MAX_SERVER_OUTPUT_ENTRIES)),
+          [connectionId]: next,
         },
       };
     }),
   clear: (connectionId) => set((state) => ({ entries: { ...state.entries, [connectionId]: [] } })),
 }));
+
+export function serverOutputForDatabase(entries: ServerOutputEntry[], database?: string | null) {
+  return database === undefined
+    ? entries
+    : entries.filter((entry) => (entry.database ?? null) === database);
+}
+
+export function clearServerOutputDatabase(connectionId: string, database?: string | null) {
+  if (database === undefined) return useServerOutputStore.getState().clear(connectionId);
+  useServerOutputStore.setState((state) => ({
+    entries: {
+      ...state.entries,
+      [connectionId]: (state.entries[connectionId] ?? []).filter(
+        (entry) => (entry.database ?? null) !== database,
+      ),
+    },
+  }));
+}
 
 export function onNextServerOutput(connectionId: string, onOutput: () => void): () => void {
   const last = () => useServerOutputStore.getState().entries[connectionId]?.at(-1)?.id;

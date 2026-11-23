@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useAiEnabled } from "@/lib/ai/access";
 import { isAbort } from "@/lib/ai/editor/client";
 import { useEditorAiMetrics } from "@/lib/ai/editor/metrics";
 import { filterAiChanges, filterAiContextKey, filterAiHasChanges } from "@/lib/filter-ai/changes";
@@ -25,6 +26,7 @@ function errorMessage(error: unknown): string {
 }
 
 export function useFilterAi(model: FilterBarModel) {
+  const enabled = useAiEnabled();
   const [state, setState] = useState<FilterAiState>({ phase: "idle" });
   const controller = useRef<AbortController | null>(null);
 
@@ -90,7 +92,7 @@ export function useFilterAi(model: FilterBarModel) {
     return true;
   };
 
-  return { state, run, cancel, accept };
+  return { enabled, state, run, cancel, accept };
 }
 
 export type FilterAi = ReturnType<typeof useFilterAi>;

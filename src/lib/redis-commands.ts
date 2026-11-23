@@ -27,6 +27,7 @@ export function redisActionCommand(
   key: string,
   value: string,
   field: string,
+  overwrite = false,
 ): string {
   const k = quoteRedisArgument(key);
   const v = quoteRedisArgument(value);
@@ -35,7 +36,9 @@ export function redisActionCommand(
     case "get":
       return `TYPE ${k}\nTTL ${k}`;
     case "string":
-      return `SET ${k} ${v} KEEPTTL`;
+      return overwrite
+        ? `SET ${k} ${v} KEEPTTL`
+        : `EVAL ${quoteRedisArgument(GUARDED_SET)} 1 ${k} ${v}`;
     case "hash":
       return `HSET ${k} ${f} ${v}`;
     case "list":
@@ -59,6 +62,41 @@ export function redisActionCommand(
     case "delete":
       return `UNLINK ${k}`;
   }
+}
+
+const GUARDED_SET =
+  "local t=redis.call('TYPE',KEYS[1]).ok if t=='string' or t=='none' then return redis.call('SET',KEYS[1],ARGV[1],'KEEPTTL') end local c=({hash='HLEN',list='LLEN',set='SCARD',zset='ZCARD',stream='XLEN'})[t] return {t,c and redis.call(c,KEYS[1]) or -1}";
+
+const REDIS_TYPE_SIZES: Record<string, [string, string]> = {
+  hash: ["ein Hash", "Feldern"],
+  list: ["eine Liste", "Einträgen"],
+  set: ["ein Set", "Mitgliedern"],
+  zset: ["ein Sorted Set", "Mitgliedern"],
+  stream: ["ein Stream", "Einträgen"],
+};
+
+export function redisOverwriteNotice(key: string, result: unknown): string | null {
+  if (!Array.isArray(result)) return null;
+  const [type, size] = result;
+  const known = REDIS_TYPE_SIZES[String(type)];
+  const what = known ? `${known[0]} mit ${size} ${known[1]}` : `vom Typ ${type}`;
+  return `${key} ist ${what}. Überschreiben ersetzt ihn durch einen String.`;
+}
+
+function redisPairs(value: unknown[]): [unknown, unknown][] {
+  if (value.every(Array.isArray)) return value as [unknown, unknown][];
+  const pairs: [unknown, unknown][] = [];
+  for (let index = 0; index + 1 < value.length; index += 2)
+    pairs.push([value[index], value[index + 1]]);
+  return pairs;
+}
+
+export function redisReadableValue(type: string, value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  if (type === "hash") return Object.fromEntries(redisPairs(value).map(([f, v]) => [String(f), v]));
+  if (type === "zset")
+    return redisPairs(value).map(([member, score]) => ({ member, score: Number(score) }));
+  return value;
 }
 
 export function redisReadCommand(key: string, type: string): string | null {

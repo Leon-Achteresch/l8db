@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import { newFeatureJustSeen } from "@/lib/new-features";
+import { newFeatureJustSeen, useNewFeatureBadgesEnabled } from "@/lib/new-features";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -46,6 +46,7 @@ function tumbleAway(badge: HTMLElement) {
 }
 
 export function NewBadge({ className }: Props) {
+  const enabled = useNewFeatureBadgesEnabled();
   const ref = useRef<HTMLSpanElement>(null);
 
   useLayoutEffect(() => {
@@ -54,6 +55,8 @@ export function NewBadge({ className }: Props) {
       if (badge && newFeatureJustSeen()) tumbleAway(badge);
     };
   }, []);
+
+  if (!enabled) return null;
 
   return (
     <span

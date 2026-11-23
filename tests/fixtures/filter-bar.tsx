@@ -18,6 +18,7 @@ import "../../src/index.css";
 const params = new URLSearchParams(location.search);
 const kind = (params.get("kind") ?? "postgres") as DatabaseKind;
 useSettingsStore.getState().setFilterBarStyle(normalizeFilterBarStyle(params.get("style")));
+if (params.get("filterMode") === "sql") useSettingsStore.getState().setTableFilterMode("sql");
 document.documentElement.classList.toggle("dark", params.get("theme") !== "light");
 
 const columns = ["id", "message_id", "status", "tokens", "created_at"];
@@ -68,6 +69,7 @@ const data = [
 ];
 
 useProvidersStore.setState({
+  loaded: true,
   providers: [
     {
       ...FALLBACK_PROVIDERS[0],
@@ -109,8 +111,16 @@ if (late)
     filterConditions: [lateCondition],
     filterCombinator: "AND",
   });
+if (params.has("grouping")) {
+  useTableViewStateStore.getState().patch("filter-bar-other", {
+    filterOpen: true,
+    filterMode: "sql",
+    filterSql: "tokens > 17 OR id < 0",
+  });
+}
 
 function App() {
+  const [stateKey, setStateKey] = useState("filter-bar");
   const [activeFilter, setActiveFilter] = useState(() =>
     late ? compileFilterConditions([lateCondition], "AND", kind, columnDetails) : "",
   );
@@ -134,7 +144,7 @@ function App() {
         </div>
       ) : null}
       <TableFilterBar
-        stateKey="filter-bar"
+        stateKey={stateKey}
         columns={ready ? columns : []}
         columnDetails={ready ? columnDetails : undefined}
         activeFilter={activeFilter}
@@ -147,6 +157,11 @@ function App() {
         <button type="button" onClick={() => apply("", false)}>
           Extern zurücksetzen
         </button>
+        {params.has("grouping") ? (
+          <button type="button" onClick={() => setStateKey("filter-bar-other")}>
+            Tabelle wechseln
+          </button>
+        ) : null}
       </div>
       <DataTable
         stateKey="filter-bar"

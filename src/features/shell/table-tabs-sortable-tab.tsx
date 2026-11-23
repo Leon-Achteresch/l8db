@@ -26,7 +26,8 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { AiFlash } from "@/features/automation/ai-flash";
-import { PluginTabItem } from "@/features/shell/table-tabs/plugin-tab-item";
+import { TabStatusMarkers } from "@/features/shell/table-tabs/tab-status-markers";
+import type { ConnectionEnvironment } from "@/lib/connections";
 import { SPRING, SPRING_PRESS } from "@/lib/ease";
 import { focusNeighborTab } from "@/lib/keyboard-nav";
 import { useSavedTabsStore } from "@/lib/saved-tabs";
@@ -34,11 +35,13 @@ import { useSettingsStore } from "@/lib/settings";
 import { captureSharedTab, copySharedTabLink } from "@/lib/shared-tab-open";
 import type { SplitEdge } from "@/lib/split-layout";
 import { isBoundToSplit, useSplitView } from "@/lib/split-view";
+import { useStagedEdits } from "@/lib/staged-edits";
 import { underPointer } from "@/lib/tab-drop";
 import { tabLabel } from "@/lib/tab-navigation";
+import { tabHasStagedChanges, tabHasTransaction } from "@/lib/tab-transactions";
 import { isQueryTabDirty, type Tab, tabKey } from "@/lib/table-tabs";
 import { TOOL_TABS } from "@/lib/tool-tabs";
-import { useUiPluginRegistry } from "@/lib/ui-plugins/store";
+import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 
 export interface TableTabActions {
@@ -64,6 +67,8 @@ export interface TableTabsSortableTabProps {
   pane?: number | null;
   paneCount?: number;
   color?: string | null;
+  connectionId?: string | null;
+  environment?: ConnectionEnvironment | null;
   canSplit?: boolean;
   hasTabsToRight: boolean;
   tabsCount: number;
@@ -115,6 +120,8 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
   pane = null,
   paneCount = 0,
   color = null,
+  connectionId = null,
+  environment = null,
   canSplit = true,
   hasTabsToRight,
   tabsCount,
@@ -122,8 +129,6 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
 }: TableTabsSortableTabProps) {
   const reduceMotion = useReducedMotion();
   const easyMode = useSettingsStore((state) => state.easyMode);
-  const closeButton = useUiPluginRegistry((registry) => registry.closeButton);
-  const tabItem = useUiPluginRegistry((registry) => registry.tabItem);
   const detachable = useSplitView((state) => pane !== null && !isBoundToSplit(state, tabKey(tab)));
   const { ref, handleRef, isDragging } = useSortable({
     id: `${group}:${tabKey(tab)}`,
@@ -136,6 +141,10 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
     data: { key: tabKey(tab), group, pane },
   });
 
+  const transaction = useTransactionStore((state) =>
+    tabHasTransaction(tab, connectionId, state.transactions),
+  );
+  const staged = useStagedEdits((state) => tabHasStagedChanges(tab, connectionId, state.tables));
   const { Icon, iconColor } = tabVisual(tab);
 
   const label = tabLabel(tab);
@@ -154,6 +163,12 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
         )}
       </span>
       <span className="truncate font-medium">{label}</span>
+      <TabStatusMarkers
+        environment={environment}
+        transaction={transaction}
+        staged={staged}
+        isActive={isActive}
+      />
       {color && (
         <span
           aria-hidden="true"
@@ -227,13 +242,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
             aria-current={isActive ? (dimmed ? "true" : "page") : undefined}
             className="flex h-full min-w-0 max-w-44 items-center gap-1.5 rounded-full pr-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
-            {tabItem ? (
-              <PluginTabItem tab={tab} active={isActive} tabItem={tabItem}>
-                {defaultContent}
-              </PluginTabItem>
-            ) : (
-              defaultContent
-            )}
+            {defaultContent}
             {tab.kind === "query" && tab.externalChange && (
               <span className="shrink-0 text-amber-500" title="Datei extern geändert">
                 !
@@ -245,23 +254,21 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
               </span>
             )}
           </motion.button>
-          {closeButton !== "never" && (
-            <button
-              type="button"
-              onClick={onClose}
-              tabIndex={-1}
-              aria-label={`${label} schließen`}
-              data-hotkey={isActive ? "tab.close" : undefined}
-              className={cn(
-                "grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-[background-color,color,opacity,transform] duration-200 hover:bg-foreground/10 hover:text-foreground motion-safe:active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                closeButton === "always" || (closeButton === "auto" && isActive)
-                  ? "opacity-100"
-                  : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
-              )}
-            >
-              <XIcon className="size-3" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={onClose}
+            tabIndex={-1}
+            aria-label={`${label} schließen`}
+            data-hotkey={isActive ? "tab.close" : undefined}
+            className={cn(
+              "grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-[background-color,color,opacity,transform] duration-200 hover:bg-foreground/10 hover:text-foreground motion-safe:active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              isActive
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+            )}
+          >
+            <XIcon className="size-3" />
+          </button>
         </motion.div>
       </ContextMenuTrigger>
       <ContextMenuContent>

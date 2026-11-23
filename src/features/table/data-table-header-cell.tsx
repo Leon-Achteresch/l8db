@@ -15,6 +15,7 @@ import {
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
 import { FilterValueInput } from "@/features/filters/filter-value-input";
+import { ColumnAutosizeItem } from "@/features/table/data-table/column-autosize-item";
 import { headerDragPlugins } from "@/features/table/data-table/constants";
 import { useSettingsStore } from "@/lib/settings";
 import { operatorNeedsValue } from "@/lib/sql-filter";
@@ -43,6 +44,7 @@ type DataTableHeaderCellProps = {
   isPinned: boolean;
   onTogglePin: () => void;
   onCopyColumn: () => void;
+  onAutosize: () => void;
 };
 
 export function DataTableHeaderCell({
@@ -68,6 +70,7 @@ export function DataTableHeaderCell({
   isPinned,
   onTogglePin,
   onCopyColumn,
+  onAutosize,
 }: DataTableHeaderCellProps) {
   const { ref, handleRef } = useDraggable({ id: header.id, plugins: headerDragPlugins });
   const pinnedOffset =
@@ -108,7 +111,7 @@ export function DataTableHeaderCell({
               ref={handleRef}
               aria-label={`${header.id} verschieben`}
               className={cn(
-                "shrink-0 cursor-grab touch-none rounded p-0.5 text-muted-foreground/35 hover:text-muted-foreground active:cursor-grabbing",
+                "shrink-0 cursor-grab touch-none rounded p-0.5 text-muted-foreground/60 hover:text-muted-foreground active:cursor-grabbing",
                 classic
                   ? "-ml-1"
                   : "absolute top-1.5 left-0 z-10 bg-muted opacity-0 group-hover/th:opacity-100 focus-visible:opacity-100",
@@ -124,7 +127,8 @@ export function DataTableHeaderCell({
           </div>
           {header.column.getCanResize() && (
             <div
-              onDoubleClick={() => header.column.resetSize()}
+              onDoubleClick={onAutosize}
+              title="Doppelklick: An Inhalt anpassen"
               onMouseDown={(event) => {
                 event.stopPropagation();
                 header.getResizeHandler()(event);
@@ -147,7 +151,7 @@ export function DataTableHeaderCell({
           <PopoverContent
             align="start"
             sideOffset={4}
-            className="w-80 p-0 gap-0"
+            className="w-[min(20rem,calc(100vw-1rem))] p-0 gap-0"
             onFocusOutside={(event) => event.preventDefault()}
           >
             <div className="flex items-center gap-2 border-b px-3 py-2">
@@ -259,6 +263,10 @@ export function DataTableHeaderCell({
           <ContextMenuItem onSelect={onCopyColumn}>Werte</ContextMenuItem>
         </CopyAsMenu>
         <ContextMenuSeparator />
+        <ColumnAutosizeItem onSelect={onAutosize} />
+        <ContextMenuItem onSelect={() => header.column.resetSize()}>
+          Breite zurücksetzen
+        </ContextMenuItem>
         <ContextMenuItem onSelect={onTogglePin}>
           {isPinned ? "Fixierung aufheben" : "Spalte links fixieren"}
         </ContextMenuItem>

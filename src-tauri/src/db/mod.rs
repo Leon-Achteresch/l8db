@@ -6,16 +6,19 @@ mod bigquery;
 mod cassandra;
 mod clickhouse;
 mod cloud_auth;
+pub mod column_metadata;
 pub mod commands;
 pub(crate) mod connection;
 pub(crate) use connection::connection_string_is_read_only;
 pub mod constraints;
+pub mod csv_check;
 pub mod csv_stream;
 pub mod data_compare;
 pub mod datagen;
 mod datagen_data;
 pub mod debugger;
 pub mod dml_preview;
+pub mod driver_repair;
 #[cfg(feature = "duckdb")]
 mod duckdb;
 mod dynamodb;
@@ -31,6 +34,7 @@ mod http_api;
 pub(crate) mod http_mock;
 pub mod import;
 pub mod import_source;
+pub mod index_metadata;
 pub(crate) mod influxdb;
 pub mod jdbc;
 pub mod masking;
@@ -45,9 +49,12 @@ pub mod s3;
 #[cfg(feature = "odbc")]
 pub use odbc::configure_system_ini as configure_odbc;
 pub(crate) mod oracle;
+mod oracle_text_limit;
+pub(crate) mod oracle_warnings;
 pub mod pool;
 mod postgres;
 pub mod principals;
+pub(crate) use mysql::strip_int_widths as mysql_type_text;
 pub(crate) use postgres::run_simple_query as run_postgres_simple_query;
 pub mod postgres_health;
 pub mod provider;
@@ -145,6 +152,21 @@ impl RowCount {
 }
 
 pub const MAX_ROW_COUNT_CAP: i64 = 10_000_000;
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum DuckdbFilePathContext {
+    #[cfg(feature = "duckdb")]
+    Snapshot {
+        file_search_path: Option<String>,
+        working_directory: Option<String>,
+    },
+    #[cfg(feature = "duckdb")]
+    NoSession,
+    #[cfg(feature = "duckdb")]
+    Busy,
+    Unknown,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DetailedColumnInfo {
@@ -476,6 +498,7 @@ pub struct TablePrivileges {
     pub truncate: bool,
     pub references: bool,
     pub trigger: bool,
+    pub column_privileges: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -526,6 +549,9 @@ pub trait DatabaseAdapter: Send + Sync {
         table: Option<&str>,
         table_type: Option<&str>,
     ) -> Result<Vec<ColumnInfo>, String>;
+    async fn catalog_fingerprint(&self) -> Result<Option<String>, String> {
+        Ok(None)
+    }
     async fn fetch_rows(
         &self,
         schema: &str,
@@ -785,6 +811,29 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = table;
         Err(unsupported("Spaltendetails"))
     }
+    async fn list_table_column_metadata(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<column_metadata::ColumnMetadata>, String> {
+        Ok(self
+            .list_table_columns_detailed(schema, table)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+    async fn describe_table_columns(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<column_metadata::TableColumnDetails, String> {
+        Ok(column_metadata::TableColumnDetails {
+            columns: self.list_table_column_metadata(schema, table).await?,
+            unlogged: false,
+            clickhouse_engine: None,
+        })
+    }
     async fn list_import_columns(
         &self,
         schema: &str,
@@ -931,6 +980,18 @@ pub trait DatabaseAdapter: Send + Sync {
         let _ = schema;
         let _ = table;
         Err(unsupported("Indizes"))
+    }
+    async fn list_index_metadata(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<index_metadata::IndexMetadata>, String> {
+        Ok(self
+            .list_indexes(schema, table)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
     }
     async fn list_constraints(
         &self,
@@ -1513,6 +1574,30 @@ pub struct CreateSubscriptionRequest {
     pub connect: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IndexProgressUnit {
+    Blocks,
+    Tuples,
+    Lockers,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IndexPhaseCounter {
+    pub unit: IndexProgressUnit,
+    pub done: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IndexBuildProgress {
+    pub phase: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    pub counters: Vec<IndexPhaseCounter>,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct SessionInfo {
     pub pid: i32,
@@ -1533,6 +1618,8 @@ pub struct SessionInfo {
     pub backend_xid: Option<String>,
     pub wait_event_type: Option<String>,
     pub backend_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_progress: Option<IndexBuildProgress>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -1639,6 +1726,7 @@ pub struct PartitionInfo {
     pub strategy: Option<String>,
     pub partition_key: Option<String>,
     pub partitions: Vec<PartitionChild>,
+    pub read_only: bool,
 }
 
 pub(crate) fn quote_ident(ident: &str) -> String {
@@ -1669,6 +1757,8 @@ fn pg_error_label(code: &str, severity: &str) -> &'static str {
         "23503" => "Fremdschlüssel verletzt",
         "23502" => "NOT NULL verletzt",
         "23514" => "CHECK-Bedingung verletzt",
+        "428C9" => "Spalte ist GENERATED ALWAYS",
+        "25006" => "Verbindung ist schreibgeschützt",
         "40P01" => "Deadlock",
         "53300" => "Zu viele Verbindungen",
         "57014" => "Abgebrochen",
@@ -1705,6 +1795,12 @@ pub(crate) fn map_pg_err(e: tokio_postgres::Error) -> String {
             msg.push_str("\nSQLSTATE 55P04");
         } else if code == &tokio_postgres::error::SqlState::READ_ONLY_SQL_TRANSACTION {
             msg.push_str("\nSQLSTATE 25006");
+        }
+        if db_err
+            .message()
+            .contains("parameter \"role\" cannot be changed")
+        {
+            return format!("Proxy-Benutzer nicht möglich: Dieser Server (z. B. CockroachDB) erlaubt keinen Rollenwechsel beim Verbinden. proxy_user aus der URL entfernen.\n  {msg}");
         }
         msg
     } else {
@@ -2029,6 +2125,17 @@ pub(crate) fn hex_blob(bytes: &[u8]) -> String {
     out
 }
 
+pub(crate) fn hex_0x(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(2 + bytes.len() * 2);
+    out.push_str("0x");
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    for b in bytes {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0x0f) as usize] as char);
+    }
+    out
+}
+
 pub(crate) fn hex_blob_body(value: &str) -> Option<&str> {
     let hex = value.strip_prefix("\\x")?;
     (hex.len() % 2 == 0 && hex.bytes().all(|b| b.is_ascii_hexdigit())).then_some(hex)
@@ -2090,7 +2197,7 @@ pub(crate) fn where_clause_in(
     match filter.map(str::trim).filter(|f| !f.is_empty()) {
         Some(expression) => {
             if allow_raw {
-                return Ok(format!(" WHERE {expression}"));
+                return Ok(format!(" WHERE {expression}\n"));
             }
             validate_table_filter_in(expression, hash_comments)?;
             Ok(format!(" WHERE ({expression})"))
@@ -2179,6 +2286,7 @@ pub fn create_adapter_from_string(
         )?),
         DatabaseKind::Cassandra => Box::new(cassandra::CassandraAdapter::new(
             connection_string,
+            database,
             pool_state,
             key,
         )?),
@@ -2209,7 +2317,11 @@ pub fn create_adapter_from_string(
             connection_string,
             database,
         )?),
-        DatabaseKind::Dynamodb => Box::new(dynamodb::DynamoAdapter::new(connection_string, key)?),
+        DatabaseKind::Dynamodb => Box::new(dynamodb::DynamoAdapter::new(
+            connection_string,
+            database,
+            key,
+        )?),
         DatabaseKind::S3 => Box::new(s3::S3Adapter::new(connection_string)?),
         DatabaseKind::Athena => Box::new(athena::AthenaAdapter::new(
             connection_string,
@@ -2695,7 +2807,11 @@ mod tests {
         );
         assert_eq!(
             super::where_clause(Some("a = 1 ORDER BY b"), true).unwrap(),
-            " WHERE a = 1 ORDER BY b"
+            " WHERE a = 1 ORDER BY b\n"
+        );
+        assert_eq!(
+            super::where_clause(Some("a = 1 -- b"), true).unwrap(),
+            " WHERE a = 1 -- b\n"
         );
         assert_eq!(super::where_clause(Some("  "), false).unwrap(), "");
     }
@@ -2733,6 +2849,16 @@ mod tests {
         assert!(super::validate_table_filter_in(filter, false).is_ok());
         assert!(validate_table_filter(filter).is_err());
         assert!(super::validate_table_filter_in("1=1 #> '{a}'; DROP TABLE t", false).is_err());
+        for remote in [
+            "EXISTS (SELECT 1 FROM OPENQUERY(srv, 'SELECT 1') AS r)",
+            "EXISTS (SELECT 1 FROM openrowset('MSDASQL', 'x', 'SELECT 1') r)",
+            "a IN (SELECT a FROM OpenDataSource('SQLNCLI', 'x').db.dbo.t)",
+        ] {
+            assert!(validate_table_filter(remote).is_err(), "{remote}");
+        }
+        assert!(validate_table_filter("[openquery] = 1 AND note = 'openrowset'").is_ok());
+        assert!(validate_table_filter("[returning] = 2 AND [call] = 1").is_ok());
+        assert!(validate_table_filter("returning = 2").is_err());
         assert_eq!(
             super::where_clause_in(Some("\"j\" #>> '{b}' = '1'"), false, false).unwrap(),
             " WHERE (\"j\" #>> '{b}' = '1')"
@@ -2941,9 +3067,28 @@ fn filter_outside_literals(input: &str, mode: FilterLexMode) -> String {
     out
 }
 
-const FILTER_STATEMENT_WORDS: [&str; 18] = [
-    "insert", "update", "delete", "merge", "drop", "create", "alter", "truncate", "exec",
-    "execute", "call", "declare", "grant", "revoke", "waitfor", "shutdown", "dbcc", "bulk",
+const FILTER_STATEMENT_WORDS: [&str; 21] = [
+    "insert",
+    "update",
+    "delete",
+    "merge",
+    "drop",
+    "create",
+    "alter",
+    "truncate",
+    "exec",
+    "execute",
+    "call",
+    "declare",
+    "grant",
+    "revoke",
+    "waitfor",
+    "shutdown",
+    "dbcc",
+    "bulk",
+    "openquery",
+    "openrowset",
+    "opendatasource",
 ];
 
 fn strip_quoted_identifiers(text: &str) -> String {
@@ -3049,13 +3194,13 @@ pub fn validate_table_filter_in(filter: &str, hash_comments: bool) -> Result<(),
         if !parentheses_balanced(&stripped) {
             return reject("eine nicht geschlossene Klammer");
         }
-        for word in ["union", "returning", "into"] {
+        for word in ["union", "into"] {
             if contains_word(&stripped, word) {
                 return reject(word);
             }
         }
         let unquoted = strip_quoted_identifiers(&stripped);
-        for word in FILTER_STATEMENT_WORDS {
+        for word in FILTER_STATEMENT_WORDS.iter().chain(&["returning"]) {
             if contains_word(&unquoted, word) {
                 return reject(word);
             }

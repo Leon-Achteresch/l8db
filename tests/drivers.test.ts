@@ -91,18 +91,46 @@ const PROVIDERS = [
   ),
 ];
 
+const DIAGNOSIS = {
+  status: {
+    available: false,
+    detail: "Verweis zeigt auf fehlenden Ordner",
+    install: ORACLE_HINTS,
+    install_command: ORACLE_HINTS[0]?.command ?? null,
+  },
+  findings: [
+    {
+      level: "error",
+      title: "Verweis zeigt auf fehlenden Ordner",
+      detail: "~/lib/libclntsh.dylib → ~/Downloads/instantclient_23_3",
+    },
+  ],
+  steps: ["Tote Verweise entfernen (3)", "Instant Client installieren"],
+  manual: null,
+};
+
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: unknown) => {
     calls.push({ command, args });
     if (command === "list_providers") return PROVIDERS;
     if (command === "install_driver") return "Installation abgeschlossen.";
+    if (command === "diagnose_driver") return DIAGNOSIS;
+    if (command === "repair_driver")
+      return { log: "3 von 3 toten Verweisen entfernt.", diagnosis: DIAGNOSIS };
     throw new Error(`unexpected command ${command}`);
   },
 }));
 
-const { summarizeDrivers, missingDrivers, hintForPlatform, driverTypeLabel, platformOs } =
-  await import("../src/lib/drivers");
-const { installDriver } = await import("../src/lib/db");
+const {
+  summarizeDrivers,
+  missingDrivers,
+  hintForPlatform,
+  driverTypeLabel,
+  platformOs,
+  diagnosableKinds,
+  installsOwnDriver,
+} = await import("../src/lib/drivers");
+const { installDriver, diagnoseDriver, repairDriver } = await import("../src/lib/db");
 
 describe("drivers", () => {
   test("shows missing ODBC manufacturer drivers even when the manager is ready", () => {
@@ -178,9 +206,109 @@ describe("drivers", () => {
     expect(platformOs("SomethingElse")).toBe("all");
   });
 
+  test("only runtime libraries are analysed, once per family, within budget", () => {
+    const jdbc = provider(
+      "jdbc",
+      "jdbc",
+      { type: "runtime_library", library: "JDK" },
+      { available: true, detail: "", install: [], install_command: null },
+    );
+    expect(diagnosableKinds([...PROVIDERS, jdbc] as never)).toEqual(["oracle"]);
+    const many = Array.from({ length: 5000 }, (_, index) =>
+      provider(
+        `p${index}`,
+        index % 2 ? "oracle" : "postgres",
+        { type: "builtin" },
+        { available: true, detail: "", install: [], install_command: null },
+      ),
+    );
+    const samples: number[] = [];
+    for (let run = 0; run < 15; run += 1) {
+      const started = performance.now();
+      expect(diagnosableKinds(many as never)).toEqual(["oracle"]);
+      samples.push(performance.now() - started);
+    }
+    samples.sort((a, b) => a - b);
+    expect(samples[7]).toBeLessThan(5);
+    expect(samples[14]).toBeLessThan(20);
+  });
+
+  test("analysis and repair each cost exactly one backend request", async () => {
+    calls.length = 0;
+    const diagnosis = await diagnoseDriver("oracle");
+    expect(diagnosis.steps).toHaveLength(2);
+    const repair = await repairDriver("oracle");
+    expect(repair.diagnosis.findings[0]?.title).toBe("Verweis zeigt auf fehlenden Ordner");
+    expect(calls).toEqual([
+      { command: "diagnose_driver", args: { kind: "oracle" } },
+      { command: "repair_driver", args: { kind: "oracle" } },
+    ]);
+  });
+
   test("installDriver invokes the backend command", async () => {
     calls.length = 0;
     await expect(installDriver("oracle")).resolves.toBe("Installation abgeschlossen.");
-    expect(calls).toEqual([{ command: "install_driver", args: { kind: "oracle" } }]);
+    await installDriver("odbc", "ibmi");
+    expect(calls).toEqual([
+      { command: "install_driver", args: { kind: "oracle" } },
+      { command: "install_driver", args: { kind: "odbc", provider: "ibmi" } },
+    ]);
+  });
+
+  test("ODBC rechecks reload every product and URLs resolve by driver name", async () => {
+    const { refreshDriverStatus, useProvidersStore } = await import("../src/lib/providers");
+    const { detectProvider } = await import("../src/lib/connection-url");
+    calls.length = 0;
+    await refreshDriverStatus("odbc");
+    expect(calls.map((call) => call.command)).toEqual(["list_providers"]);
+    const status = { available: false, detail: "", install: [], install_command: null };
+    useProvidersStore.setState({
+      providers: [
+        provider("odbc", "odbc", { type: "odbc", driver: "" }, status),
+        provider("db2", "odbc", { type: "odbc", driver: "IBM DB2 ODBC DRIVER" }, status),
+        provider("ibmi", "odbc", { type: "odbc", driver: "IBM i Access ODBC Driver" }, status),
+      ] as never,
+      loaded: true,
+    });
+    expect(detectProvider("odbc://u@as400/?Driver=IBM+i+Access+ODBC+Driver", "odbc")).toBe("ibmi");
+    expect(detectProvider("odbc://u@h:50000/DB?driver=IBM%20DB2%20ODBC%20DRIVER", "odbc")).toBe(
+      "db2",
+    );
+    expect(detectProvider("odbc://u@h/?Driver=Unbekannt", "odbc")).toBe("odbc");
+  });
+
+  test("an ODBC product with its own installer gets its own entry, within budget", () => {
+    const odbc = (id: string, driver: string, available: boolean, command: string | null) =>
+      provider(
+        id,
+        "odbc",
+        { type: "odbc", driver },
+        { available, detail: "", install: [], install_command: command },
+      );
+    const providers = [
+      odbc("odbc", "", true, null),
+      odbc("db2", "IBM DB2 ODBC DRIVER", false, null),
+      odbc("ibmi", "IBM i Access ODBC Driver", false, "brew install --cask ibm-iaccess"),
+    ];
+    const summaries = summarizeDrivers(providers as never, "macos");
+    expect(summaries.map((entry) => [entry.id, entry.providerId, entry.installable])).toEqual([
+      ["odbc", undefined, false],
+      ["ibmi", "ibmi", true],
+    ]);
+    expect(summaries[1]?.title).toBe("ibmi");
+    expect(installsOwnDriver(providers[1] as never)).toBe(false);
+
+    const many = Array.from({ length: 5000 }, (_, index) =>
+      odbc(`p${index}`, "x", false, index % 50 ? null : "install"),
+    );
+    const samples: number[] = [];
+    for (let run = 0; run < 15; run += 1) {
+      const started = performance.now();
+      expect(summarizeDrivers(many as never, "macos")).toHaveLength(101);
+      samples.push(performance.now() - started);
+    }
+    samples.sort((a, b) => a - b);
+    expect(samples[7]).toBeLessThan(15);
+    expect(samples[14]).toBeLessThan(60);
   });
 });

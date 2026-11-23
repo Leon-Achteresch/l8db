@@ -2,7 +2,7 @@ import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 import { IconMenuTip } from "./icon-menu-tip";
-import { ICON_MENU_SURFACE, IconMenuAimContext } from "./shared";
+import { ICON_MENU_SUB_BELOW, ICON_MENU_SURFACE, IconMenuAimContext } from "./shared";
 import { useIconMenuSurface } from "./use-icon-menu-surface";
 
 export function IconMenuSubContent({
@@ -28,9 +28,7 @@ export function IconMenuSubContent({
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.SubContent
         data-icon-menu=""
-        data-side="bottom"
-        sideOffset={-32}
-        alignOffset={42}
+        {...ICON_MENU_SUB_BELOW}
         loop
         className={cn(ICON_MENU_SURFACE, "max-w-none flex-nowrap", className)}
         {...props}

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { formatMenuShortcut, MENU_KEYS } from "@/lib/hotkeys";
 import { breadcrumbs } from "@/lib/storage/s3";
 import { cn } from "@/lib/utils";
 
@@ -185,7 +186,7 @@ export function ObjectToolbar({
                     size="icon-sm"
                     variant="ghost"
                     className="text-destructive hover:text-destructive"
-                    aria-label="Löschen"
+                    aria-label={`Löschen (${formatMenuShortcut(MENU_KEYS.drop)})`}
                     onClick={onDelete}
                   >
                     <TrashIcon />

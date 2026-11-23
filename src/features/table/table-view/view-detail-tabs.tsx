@@ -11,11 +11,10 @@ import { TableExtensionActions } from "@/features/table/table-extension-actions"
 import { TableGrantsPanel } from "@/features/table/table-grants-panel";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import { TimestampDisplayMenu } from "@/features/table/timestamp-display-menu";
-import { PluginDetailTabsContent } from "@/features/ui-plugins/plugin-detail-tabs-content";
-import { PluginToolbar } from "@/features/ui-plugins/plugin-toolbar";
 import type { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
 import { useHasNewFeatures } from "@/lib/new-features";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
+import { supportsBusinessTimestamp } from "@/lib/timestamp-display";
 import { RowWatchContext } from "@/lib/workbench/row-watch-context";
 import { TablePerfPanel, ViewDefinitionPanel } from "./lazy-panels";
 import { TableExportDialogs } from "./table-export-dialogs";
@@ -25,15 +24,11 @@ import type { useTableViewModel } from "./use-table-view-model";
 type Props = Pick<
   ReturnType<typeof useTableViewModel>,
   | "caps"
+  | "connection"
   | "availableTabs"
-  | "pluginTable"
-  | "pluginTabs"
-  | "stateKey"
   | "columnDetails"
-  | "refetch"
   | "viewTab"
   | "data"
-  | "tableRows"
   | "exporting"
   | "csvExportOpen"
   | "setCsvExportOpen"
@@ -57,15 +52,11 @@ type Props = Pick<
 export function ViewDetailTabs({
   extensionActions,
   caps,
+  connection,
   availableTabs,
-  pluginTable,
-  pluginTabs,
-  stateKey,
   columnDetails,
-  refetch,
   viewTab,
   data,
-  tableRows,
   exporting,
   csvExportOpen,
   setCsvExportOpen,
@@ -86,6 +77,11 @@ export function ViewDetailTabs({
   const { scope: watchScope } = useContext(RowWatchContext);
   const watchNew = useHasNewFeatures("table.rows.watch") && Boolean(watchScope);
   const timeNew = useHasNewFeatures("query.results.timestamps");
+  const zoneNew = useHasNewFeatures("query.results.timestamps.business-zone");
+  const canChooseZone = (columnDetails ?? []).some((column) =>
+    supportsBusinessTimestamp(connection?.kind, column.data_type),
+  );
+  const numbersNew = useHasNewFeatures("query.results.numbers");
   return (
     <Tabs
       value={viewTab}
@@ -98,17 +94,18 @@ export function ViewDetailTabs({
       >
         <TableDetailTabBar tabs={availableTabs} activeTab={viewTab} />
         <div className="ml-auto flex items-center gap-1">
-          <PluginToolbar
-            info={pluginTable}
-            stateKey={stateKey}
-            rows={tableRows}
-            columnNames={data?.columns}
-            columnDetails={columnDetails}
-            refresh={() => void refetch()}
-          />
           <ObjectAdminMenu schema={schema} name={table} objectType="view" showAlter={false} />
           {viewTab === "data" && (
-            <TableActionsMenu isNew={extensionActions.isNew || watchNew || timeNew}>
+            <TableActionsMenu
+              businessTimeZone={canChooseZone}
+              isNew={
+                extensionActions.isNew ||
+                watchNew ||
+                timeNew ||
+                numbersNew ||
+                (canChooseZone && zoneNew)
+              }
+            >
               <RowWatchMenuItem />
               <TimestampDisplayMenu />
               <TableExtensionActions {...extensionActions} />
@@ -116,7 +113,7 @@ export function ViewDetailTabs({
               {data && (
                 <TableExportMenu
                   exporting={exporting}
-                  showSql={true}
+                  showSql={caps.insert_sql}
                   onCsv={() => setCsvExportOpen(true)}
                   onXlsx={() => setXlsxExportOpen(true)}
                   onFormat={setDataExportFormat}
@@ -171,15 +168,6 @@ export function ViewDetailTabs({
       <TabsContent value="audit" className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {caps.object_admin && <ObjectAuditPanel schema={schema} name={table} objectType="view" />}
       </TabsContent>
-
-      <PluginDetailTabsContent
-        entries={pluginTabs}
-        info={pluginTable}
-        stateKey={stateKey}
-        rows={tableRows}
-        columnNames={data?.columns}
-        columnDetails={columnDetails}
-      />
 
       <TableExportDialogs
         table={table}

@@ -17,7 +17,7 @@ import { useExtensionHost } from "@/lib/extensions/react-context";
 import { CommunityExtensionCard } from "./community-extension-card";
 import { errorText } from "./password-manager";
 
-export function CommunityExtensionsSection({ controlsOnly = false }: { controlsOnly?: boolean }) {
+export function CommunityExtensionsSection() {
   const host = useExtensionHost();
   const [, refresh] = useReducer((value) => value + 1, 0);
   const [pending, setPending] = useState(false);
@@ -83,18 +83,16 @@ export function CommunityExtensionsSection({ controlsOnly = false }: { controlsO
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {!controlsOnly && (
-        <fieldset disabled={pending} className="min-w-0 space-y-3">
-          {extensions.map((extension) => (
-            <CommunityExtensionCard
-              key={extension.archive.manifest.id}
-              extension={extension}
-              run={run}
-            />
-          ))}
-        </fieldset>
-      )}
-      {!controlsOnly && !extensions.length && (
+      <fieldset disabled={pending} className="min-w-0 space-y-3">
+        {extensions.map((extension) => (
+          <CommunityExtensionCard
+            key={extension.archive.manifest.id}
+            extension={extension}
+            run={run}
+          />
+        ))}
+      </fieldset>
+      {!extensions.length && (
         <p className="rounded-2xl border border-dashed px-4 py-6 text-center text-xs text-muted-foreground">
           Noch keine Erweiterungen installiert. Unter „Entdecken“ findest du offizielle
           Erweiterungen.

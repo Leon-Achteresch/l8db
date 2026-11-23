@@ -366,9 +366,10 @@ export async function runSyncStatements(
     for (let index = from; index < statements.length; index++)
       options.onStep(index, { status: "skipped", message: text });
   };
-  if (mode === "precheck") {
+  if (mode === "precheck" || statements.some((statement) => statement.checks?.length)) {
     await precheck(connection, url, database, statements, options.onStep, summary, execute);
-    if (summary.failed > 0 || (summary.unchecked > 0 && !options.allowUnchecked)) {
+    const strict = mode === "precheck";
+    if (summary.failed > 0 || (strict && summary.unchecked > 0 && !options.allowUnchecked)) {
       summary.blocked = true;
       statements.forEach((statement, index) => {
         if (!statement.checks?.length)

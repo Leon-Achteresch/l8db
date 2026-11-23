@@ -194,7 +194,7 @@ export function CompareSidePicker({
               {availableTypes.map((type) => (
                 <SelectItem key={type} value={type} className="text-xs">
                   <CompareObjectIcon type={type} />
-                  {COMPARE_OBJECT_LABELS[type]}
+                  {type === "table" ? capabilities.terms.table : COMPARE_OBJECT_LABELS[type]}
                 </SelectItem>
               ))}
             </SelectContent>

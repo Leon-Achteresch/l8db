@@ -34,6 +34,7 @@ pub(super) const BUDGET: &[(&str, usize)] = &[
     ("byok start catalog", 10_622),
     ("shop.revenue_per_customer", 1_450),
     ("shop.overview", 1_000),
+    ("shop.map", 1_200),
     ("huge.overview", 900),
     ("huge.tenant_id_tables", 2_200),
     ("huge.wide_table_column", 160),
@@ -551,6 +552,19 @@ pub(super) fn tasks() -> Vec<Task> {
                     &["customer_id", "orders_customer"],
                 ),
             ],
+        },
+        Task {
+            id: "shop.map",
+            steps: vec![step(
+                "overview",
+                json!({"connection": "Shop"}),
+                &[
+                    "14 tables",
+                    "main.order_items: id, order_id→orders.id, product_id→products.id, quantity, unit_price",
+                    "main.audit_log: id, table_name, action, at",
+                    "next: query with these names",
+                ],
+            )],
         },
         Task {
             id: "huge.overview",
@@ -1167,9 +1181,9 @@ pub(super) fn lab(huge: Arc<Vec<ColumnInfo>>) -> Lab {
         DatabaseKind::Postgres,
         "postgres://bench@127.0.0.1:1/huge",
     );
-    let mut server = Server {
+    let server = Server {
         pool: db::pool::create_pool_state(),
-        columns: HashMap::new(),
+        columns: Default::default(),
     };
     let catalog = Arc::new(Catalog::new(huge));
     let synthetic = synthetic(&catalog);
@@ -1301,7 +1315,11 @@ fn token_benchmark_reports_surface_and_task_bytes() {
     );
     drop(tables);
     let mut lab = lab(catalog);
-    let huge = lab.server.columns[&cache_key(&lab.config.connections[1])].clone();
+    let huge = lab
+        .server
+        .columns
+        .at(&cache_key(&lab.config.connections[1]))
+        .clone();
     let (sources, _) = huge.sources();
     let modeled = modeled(&huge.objects().unwrap(), &sources, &lab.config);
     drop(sources);
@@ -1428,7 +1446,7 @@ fn huge_catalog_search_and_query_checks_stay_fast_shared_and_cached() {
     let mut lab = lab(columns.clone());
     let huge = lab.config.connections[1].clone();
     let key = cache_key(&huge);
-    let cached = lab.server.columns[&key].clone();
+    let cached = lab.server.columns.at(&key).clone();
     assert!(Arc::ptr_eq(&cached.columns, &columns));
     let search = |lab: &mut Lab, args: Value| -> (Duration, String) {
         let started = Instant::now();
@@ -1488,7 +1506,7 @@ fn huge_catalog_search_and_query_checks_stay_fast_shared_and_cached() {
         server::check_read_sql(sql, &huge, &index).unwrap();
         checks.push(started.elapsed());
     }
-    let catalog = lab.server.columns[&key].clone();
+    let catalog = lab.server.columns.at(&key).clone();
     assert!(Arc::ptr_eq(&catalog, &cached), "catalog was reloaded");
     assert!(Arc::ptr_eq(&catalog.columns, &columns));
     let derived = catalog.retained_bytes();
@@ -1521,7 +1539,7 @@ fn huge_catalog_search_and_query_checks_stay_fast_shared_and_cached() {
 fn catalog_stages_overview_search_and_persistence_stay_fast_bounded_and_cached() {
     let mut lab = lab(HUGE.clone());
     let huge = lab.config.connections[1].clone();
-    let catalog = lab.server.columns[&cache_key(&huge)].clone();
+    let catalog = lab.server.columns.at(&cache_key(&huge)).clone();
     let objects = catalog.objects().unwrap();
     let edges = catalog.keys().unwrap().edges.len();
     let (sources, _) = catalog.sources();

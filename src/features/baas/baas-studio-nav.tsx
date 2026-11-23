@@ -3,8 +3,9 @@ import { NewBadge } from "@/components/new-badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { SidebarObjectTab } from "@/features/sidebar/sidebar-object-tabs";
 import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
+import { cn } from "@/lib/utils";
 
-export type BaasStudioTab = SidebarObjectTab & { group?: string };
+export type BaasStudioTab = SidebarObjectTab & { status?: { healthy: boolean; label: string } };
 
 export function BaasStudioNav({
   tabs,
@@ -17,15 +18,10 @@ export function BaasStudioNav({
 }) {
   const [shown, setShown] = useOptimistic(value);
   const seen = useSeenNewFeatures();
-  const groups: { name?: string; tabs: BaasStudioTab[] }[] = [];
-  for (const tab of tabs) {
-    const last = groups.at(-1);
-    if (last && last.name === tab.group) last.tabs.push(tab);
-    else groups.push({ name: tab.group, tabs: [tab] });
-  }
 
   return (
     <Tabs
+      orientation="vertical"
       value={shown}
       onValueChange={(next) =>
         startTransition(async () => {
@@ -33,49 +29,37 @@ export function BaasStudioNav({
           await onValueChange(next);
         })
       }
+      className="@container"
     >
-      <TabsList
-        variant="line"
-        className="h-auto! w-full items-stretch justify-start gap-0 overflow-x-auto overflow-y-hidden p-0 [scrollbar-width:none]"
-      >
-        {groups.map((group, index) => (
-          <div
-            key={group.name ?? index}
+      <TabsList className="block h-auto w-full columns-1 gap-1 bg-transparent p-0 @[15rem]:columns-2">
+        {tabs.map((tab) => (
+          <span
+            key={tab.value}
             role="presentation"
-            className="flex shrink-0 flex-col justify-end border-l border-border/60 px-1 pt-2 first:border-l-0 [&:not(:has(>span))]:pt-0 first:pl-0"
+            title={tab.disabledReason ?? tab.status?.label}
+            className="block break-inside-avoid"
           >
-            {group.name && (
-              <span
-                aria-hidden="true"
-                className="mb-0.5 h-3 px-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
-              >
-                {group.name}
-              </span>
-            )}
-            <div role="presentation" className="flex">
-              {group.tabs.map((tab) => (
+            <TabsTrigger
+              value={tab.value}
+              disabled={Boolean(tab.disabledReason)}
+              className="flex h-7 w-full flex-none justify-start gap-2 rounded-lg px-2 text-xs font-medium transition-colors hover:bg-foreground/5 [&_svg]:size-3.5! data-active:[&_svg]:text-primary"
+            >
+              <tab.icon />
+              <span className="min-w-0 flex-1 truncate text-left">{tab.label}</span>
+              {hasNewFeatures(tab.featureScope, seen) && (
+                <NewBadge className="-mr-1 px-1 text-[8px]" />
+              )}
+              {tab.status && (
                 <span
-                  key={tab.value}
-                  role="presentation"
-                  title={tab.disabledReason ?? undefined}
-                  className="flex"
-                >
-                  <TabsTrigger
-                    value={tab.value}
-                    disabled={Boolean(tab.disabledReason)}
-                    title={tab.disabledReason ?? undefined}
-                    className="my-1 h-8 flex-none gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors after:inset-x-2.5! after:-bottom-[5px]! hover:bg-foreground/5 data-active:text-foreground [&_svg]:size-3.5! data-active:[&_svg]:text-primary"
-                  >
-                    <tab.icon />
-                    {tab.label}
-                    {hasNewFeatures(tab.featureScope, seen) && (
-                      <NewBadge className="-mr-1 px-1 text-[8px]" />
-                    )}
-                  </TabsTrigger>
-                </span>
-              ))}
-            </div>
-          </div>
+                  aria-hidden="true"
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    tab.status.healthy ? "bg-emerald-500" : "bg-amber-500",
+                  )}
+                />
+              )}
+            </TabsTrigger>
+          </span>
         ))}
       </TabsList>
     </Tabs>

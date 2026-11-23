@@ -10,11 +10,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SavedQueryOriginChoice } from "@/features/query/saved-query-origin-choice";
+import {
+  type SavedQueryOrigin,
+  savedQueryOriginForSave,
+  savedQueryOriginKey,
+} from "@/lib/saved-query-origin";
 
 interface SaveQueryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (name: string) => void;
+  onSave: (name: string, origin: SavedQueryOrigin | null) => void;
+  origin?: SavedQueryOrigin;
   existingNames?: string[];
 }
 
@@ -23,13 +30,18 @@ export function SaveQueryDialog({
   onOpenChange,
   onSave,
   existingNames = [],
+  origin,
 }: SaveQueryDialogProps) {
   const [name, setName] = useState("");
+  const [originKey, setOriginKey] = useState<string | null>(null);
+  const currentOriginKey = savedQueryOriginKey(origin);
+  const rememberOrigin = currentOriginKey !== null && originKey === currentOriginKey;
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
       setName("");
+      setOriginKey(null);
       setTimeout(() => inputRef.current?.focus(), 0);
     }
   }, [open]);
@@ -41,7 +53,7 @@ export function SaveQueryDialog({
   const handleSave = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    onSave(trimmed);
+    onSave(trimmed, savedQueryOriginForSave(origin, originKey));
     onOpenChange(false);
   };
 
@@ -65,10 +77,15 @@ export function SaveQueryDialog({
           />
           {overwrite && (
             <p className="text-xs text-muted-foreground">
-              Eine gespeicherte Query mit diesem Namen wird überschrieben.
+              Name vorhanden: SQL und Herkunft werden ersetzt.
             </p>
           )}
         </div>
+        <SavedQueryOriginChoice
+          origin={origin}
+          checked={rememberOrigin}
+          onCheckedChange={(checked) => setOriginKey(checked ? currentOriginKey : null)}
+        />
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             Abbrechen

@@ -93,6 +93,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       title: "Monitor",
       url: "/monitor",
       feature: "monitor",
+      available: (caps) => caps.query_language !== "redis",
       icon: Activity,
       activeIcon: ChartSpline,
       group: 2,
@@ -114,7 +115,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       group: 1,
       icon: Blocks,
       activeIcon: Grid2x2Plus,
-      available: (caps) => caps.query_language === "sql" && !caps.object_storage,
+      available: (caps) => caps.query_builder,
     },
     {
       title: "ER-Diagramm",
@@ -134,6 +135,7 @@ export const appSidebarData: { navMain: AppSidebarNavItem[] } = {
       icon: Diff,
       activeIcon: FileDiff,
       featureScope: "compare",
+      available: (caps) => caps.data_compare,
     },
     {
       title: "Schema-Vergleich",
