@@ -203,6 +203,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     previewSql: dmlPreview.preview,
     prepareSql,
     setEditorFocus,
+    setOutputOpen: output.setOutputOpen,
   });
 
   const hasSelection = cursor.selectedSql.trim().length > 0;
