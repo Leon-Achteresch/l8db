@@ -1,8 +1,11 @@
 import type { Ref } from "react";
 
 import type { ColumnInfo, TableInfo } from "@/lib/db";
+import type { ExtensionEditorTarget } from "@/lib/hooks/use-extension-editor";
 import type { SqlErrorSource } from "@/lib/monaco";
 import type { BookmarkSlots } from "@/lib/table-tabs";
+
+export const REVIEW_SQL_FORMAT_ACTION = "l8db.review-format-sql";
 
 export interface QueryEditorApi {
   insertSnippet: (body: string) => void;
@@ -37,7 +40,7 @@ export interface EditorHighlight {
 
 export interface QueryEditorPaneProps {
   value: string;
-  language?: "sql" | "json" | "redis";
+  language?: "sql" | "json" | "mongodb" | "redis";
   onChange: (value: string) => void;
   onRun: () => void;
   onSave?: () => void;
@@ -57,6 +60,7 @@ export interface QueryEditorPaneProps {
   onSearchTabs?: () => void;
   stateKey?: string;
   registry: SchemaRegistry;
+  extensionEditor?: ExtensionEditorTarget;
   ref?: Ref<QueryEditorApi>;
   className?: string;
 }

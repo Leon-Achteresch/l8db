@@ -49,6 +49,7 @@ const connectionQueryRoots = new Set<string>([
   "sessions",
   "locks",
   "overview",
+  "table-comment",
   "scheduler-jobs",
   "column-search",
   "source-search",
@@ -81,6 +82,23 @@ export function invalidateConnectionQueries(client: QueryClient, connectionId: s
   });
 }
 
+export function forgetTableCommentMetadata(
+  client: QueryClient,
+  connectionId: string,
+  database: string | null,
+  schema: string,
+  ...tables: string[]
+) {
+  for (const table of tables) {
+    for (const root of ["table-comment", "columns-detailed"]) {
+      client.removeQueries({
+        queryKey: [root, connectionId, database, schema, table],
+        exact: true,
+      });
+    }
+  }
+}
+
 export function invalidateAfterSql(
   client: QueryClient,
   connectionId: string,
@@ -105,13 +123,18 @@ export function invalidateTableReads(
   });
 }
 
+const INVALID_INPUT = /muss gültiges JSON sein|muss ein JSON-Objekt sein|Filter abgelehnt/;
+
 export function createAppQueryClient() {
   const client = new QueryClient({
     defaultOptions: {
       queries: {
         refetchOnWindowFocus: false,
         retry: (failureCount, error) =>
-          !isAuthFailure(error) && !isInterruptedQuery(error) && failureCount < 3,
+          !isAuthFailure(error) &&
+          !isInterruptedQuery(error) &&
+          !INVALID_INPUT.test(String(error)) &&
+          failureCount < 3,
       },
     },
   });

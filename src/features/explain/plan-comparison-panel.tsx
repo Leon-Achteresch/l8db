@@ -81,34 +81,36 @@ export function PlanComparisonPanel({
             </tr>
           </thead>
           <tbody>
-            {comparison.metrics.map((row) => (
-              <tr key={row.key} className="border-t">
-                <td className="px-3 py-1.5">{row.label}</td>
-                <td
-                  className={`px-3 py-1.5 text-right tabular-nums ${row.left === null ? "text-muted-foreground italic" : ""}`}
-                >
-                  {formatMetric(row.left, row.unit)}
-                </td>
-                <td
-                  className={`px-3 py-1.5 text-right tabular-nums ${row.right === null ? "text-muted-foreground italic" : ""}`}
-                >
-                  {formatMetric(row.right, row.unit)}
-                </td>
-                <td
-                  className={`px-3 py-1.5 text-right tabular-nums ${
-                    !row.measured
-                      ? "text-muted-foreground"
-                      : row.delta === 0
-                        ? ""
-                        : (row.delta ?? 0) < 0
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : "text-destructive"
-                  }`}
-                >
-                  {formatDelta(row)}
-                </td>
-              </tr>
-            ))}
+            {comparison.metrics
+              .filter((row) => row.left !== null || row.right !== null)
+              .map((row) => (
+                <tr key={row.key} className="border-t">
+                  <td className="px-3 py-1.5">{row.label}</td>
+                  <td
+                    className={`px-3 py-1.5 text-right tabular-nums ${row.left === null ? "text-muted-foreground italic" : ""}`}
+                  >
+                    {formatMetric(row.left, row.unit)}
+                  </td>
+                  <td
+                    className={`px-3 py-1.5 text-right tabular-nums ${row.right === null ? "text-muted-foreground italic" : ""}`}
+                  >
+                    {formatMetric(row.right, row.unit)}
+                  </td>
+                  <td
+                    className={`px-3 py-1.5 text-right tabular-nums ${
+                      !row.measured
+                        ? "text-muted-foreground"
+                        : row.delta === 0
+                          ? ""
+                          : (row.delta ?? 0) < 0
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-destructive"
+                    }`}
+                  >
+                    {formatDelta(row)}
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>

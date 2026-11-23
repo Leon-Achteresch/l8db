@@ -9,7 +9,9 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { type PolicyPreset, policyPreset } from "@/lib/storage/s3";
+import { ConfirmActionDialog } from "./confirm-action-dialog";
 import { SettingsCard } from "./settings-card";
+import { isPublicPolicy } from "./storage-risks";
 import { useBucketConfig } from "./use-bucket-config";
 
 const PRESETS: [PolicyPreset, string][] = [
@@ -32,6 +34,8 @@ export function PolicySettings({ bucket }: { bucket: string }) {
   const config = useBucketConfig(bucket, "policy");
   const [draft, setDraft] = useState("");
   const [invalid, setInvalid] = useState<string | null>(null);
+  const [pending, setPending] = useState<"public" | "remove" | null>(null);
+  const writable = /PutObject|DeleteObject|"s3:\*"|"Action"\s*:\s*\[?\s*"\*"/.test(draft);
 
   useEffect(() => {
     setDraft(pretty(config.data));
@@ -39,16 +43,18 @@ export function PolicySettings({ bucket }: { bucket: string }) {
 
   function save() {
     if (!draft.trim()) {
-      void config.remove("Policy entfernt");
+      setPending("remove");
       return;
     }
     try {
       JSON.parse(draft);
       setInvalid(null);
-      void config.save(draft, "Policy gespeichert");
     } catch (error) {
       setInvalid(error instanceof Error ? error.message : String(error));
+      return;
     }
+    if (isPublicPolicy(draft)) setPending("public");
+    else void config.save(draft, "Policy gespeichert");
   }
 
   return (
@@ -66,7 +72,7 @@ export function PolicySettings({ bucket }: { bucket: string }) {
             value=""
             onValueChange={(value) => {
               const preset = policyPreset(bucket, value as PolicyPreset);
-              if (preset === null) void config.remove("Policy entfernt");
+              if (preset === null) setPending("remove");
               else setDraft(preset);
             }}
           >
@@ -92,7 +98,11 @@ export function PolicySettings({ bucket }: { bucket: string }) {
         placeholder='{ "Version": "2012-10-17", "Statement": [] }'
         onChange={(event) => setDraft(event.target.value)}
       />
-      {invalid && <p className="text-xs text-destructive">Ungültiges JSON: {invalid}</p>}
+      {invalid && (
+        <p className="text-xs text-destructive" title={invalid}>
+          Kein gültiges JSON.
+        </p>
+      )}
       {!config.readOnly && (
         <div className="flex gap-2">
           <Button size="sm" onClick={save} disabled={config.busy}>
@@ -102,7 +112,7 @@ export function PolicySettings({ bucket }: { bucket: string }) {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => void config.remove("Policy entfernt")}
+              onClick={() => setPending("remove")}
               disabled={config.busy}
             >
               Entfernen
@@ -110,6 +120,23 @@ export function PolicySettings({ bucket }: { bucket: string }) {
           )}
         </div>
       )}
+      <ConfirmActionDialog
+        open={pending !== null}
+        title={pending === "public" ? "Bucket öffentlich machen?" : "Policy entfernen?"}
+        description={
+          pending === "public"
+            ? writable
+              ? `Jeder im Internet kann Objekte in „${bucket}“ lesen, hochladen und löschen.`
+              : `Jeder im Internet kann Objekte in „${bucket}“ lesen.`
+            : "Zugriffe, die nur die Policy erlaubt, schlagen danach fehl."
+        }
+        confirmLabel={pending === "public" ? "Öffentlich speichern" : "Entfernen"}
+        onOpenChange={(open) => !open && setPending(null)}
+        onConfirm={async () => {
+          if (pending === "public") await config.save(draft, "Policy gespeichert");
+          else await config.remove("Policy entfernt");
+        }}
+      />
     </SettingsCard>
   );
 }

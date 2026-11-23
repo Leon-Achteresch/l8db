@@ -17,13 +17,16 @@ pub fn options_are_read_only(options: Option<&str>) -> bool {
 }
 
 pub fn connection_string_is_read_only(value: &str) -> bool {
-    url::Url::parse(value)
-        .ok()
-        .map(|url| {
-            url.query_pairs()
-                .any(|(key, val)| key == "options" && options_are_read_only(Some(val.as_ref())))
-        })
-        .unwrap_or(false)
+    super::sqlite::opens_read_only(value)
+        || url::Url::parse(value)
+            .ok()
+            .map(|url| {
+                url.query_pairs().any(|(key, val)| {
+                    (key == "options" && options_are_read_only(Some(val.as_ref())))
+                        || (key == "read_only" && val == "true")
+                })
+            })
+            .unwrap_or(false)
 }
 
 pub const PROXY_USER_PARAM: &str = "proxy_user";
@@ -323,6 +326,17 @@ mod tests {
         assert!(!connection_string_is_read_only(
             "postgres://user@localhost/app"
         ));
+        assert!(connection_string_is_read_only(
+            "mysql://u@db:3306/shop?read_only=true"
+        ));
+        assert!(!connection_string_is_read_only(
+            "mysql://u@db:3306/shop?read_only=false"
+        ));
+        assert!(connection_string_is_read_only(
+            "sqlite:///data/shop.db?mode=ro"
+        ));
+        assert!(connection_string_is_read_only("/data/shop.db?mode=ro"));
+        assert!(!connection_string_is_read_only("/data/shop.db?mode=rwc"));
         let (config, _) = parse_connection(url, None).unwrap();
         assert!(options_are_read_only(config.get_options()));
     }
@@ -543,5 +557,52 @@ mod tests {
         assert!(parse_connection("https://example.com", None).is_err());
         assert!(parse_connection("postgres://user@host/app?sslmode=invalid", None).is_err());
         assert!(serde_json::from_str::<SslMode>("\"require\"").is_ok());
+    }
+
+    #[tokio::test]
+    #[ignore = "needs the Postgres lab (L8DB_E2E_PG_URL)"]
+    async fn read_only_session_blocks_writing_functions_until_lifted() {
+        use crate::db::{create_adapter_from_string, pool::create_pool_state, DatabaseKind};
+        let url = std::env::var("L8DB_E2E_PG_URL")
+            .unwrap_or_else(|_| "postgresql://postgres:testpw@127.0.0.1:5433/testdb".to_string());
+        let separator = if url.contains('?') { '&' } else { '?' };
+        let locked = format!("{url}{separator}options=-c%20default_transaction_read_only%3Don");
+        assert!(connection_string_is_read_only(&locked));
+        let pool = create_pool_state();
+        let adapter = |value: &str| {
+            create_adapter_from_string(DatabaseKind::Postgres, value, None, pool.clone()).unwrap()
+        };
+        for sql in [
+            "DROP TABLE IF EXISTS l8db_ro_probe CASCADE",
+            "CREATE TABLE l8db_ro_probe (id int)",
+            "CREATE OR REPLACE FUNCTION l8db_ro_write() RETURNS int LANGUAGE sql AS 'INSERT INTO l8db_ro_probe VALUES (1) RETURNING id'",
+        ] {
+            adapter(&url).execute_query(sql).await.unwrap();
+        }
+        let error = adapter(&locked)
+            .execute_query("SELECT l8db_ro_write()")
+            .await
+            .unwrap_err();
+        assert!(
+            error.starts_with("Verbindung ist schreibgeschützt"),
+            "{error}"
+        );
+        assert!(error.contains("SQLSTATE 25006"), "{error}");
+        adapter(&url)
+            .execute_query("SELECT l8db_ro_write()")
+            .await
+            .unwrap();
+        assert!(adapter(&locked)
+            .execute_query("SELECT l8db_ro_write()")
+            .await
+            .is_err());
+        let count = adapter(&url)
+            .execute_query("SELECT count(*)::int AS n FROM l8db_ro_probe")
+            .await
+            .unwrap();
+        assert_eq!(count.rows[0]["n"].to_string().trim_matches('"'), "1");
+        for sql in ["DROP FUNCTION l8db_ro_write()", "DROP TABLE l8db_ro_probe"] {
+            adapter(&url).execute_query(sql).await.unwrap();
+        }
     }
 }

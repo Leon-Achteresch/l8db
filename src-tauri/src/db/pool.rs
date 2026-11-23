@@ -129,6 +129,21 @@ impl PoolManager {
         .map_err(|_| "Shared State hat einen anderen Typ".to_string())
     }
 
+    #[cfg(feature = "duckdb")]
+    pub(super) async fn ready_shared<T: Send + Sync + 'static>(
+        &self,
+        connection_key: &str,
+    ) -> Option<Arc<T>> {
+        self.shared
+            .lock()
+            .await
+            .get(connection_key)?
+            .get()?
+            .clone()
+            .downcast()
+            .ok()
+    }
+
     pub async fn remove_pool(&self, connection_key: &str) {
         self.pools
             .lock()

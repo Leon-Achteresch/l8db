@@ -1,5 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
+import type { SortingState } from "@tanstack/react-table";
 import { RefreshCwIcon } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/features/table/data-table";
@@ -10,6 +12,15 @@ import { useMasterDetailQuery } from "@/lib/hooks/use-master-detail-query";
 import { stagesTableChanges } from "@/lib/managed-transactions";
 import { useActiveMasks } from "@/lib/masking-display";
 import { useDeleteRowMutation, useDetailedColumnsQuery, useUpdateRowMutation } from "@/lib/queries";
+import { applyResultView } from "@/lib/result-grid";
+import {
+  collectsTableChanges,
+  overlayStagedRows,
+  stageDelete,
+  stagedTableKey,
+  stageUpdate,
+  useStagedEdits,
+} from "@/lib/staged-edits";
 
 export function MasterDetailResult({
   source,
@@ -37,11 +48,45 @@ export function MasterDetailResult({
         table &&
         stagesTableChanges(connection, database ?? null, table.schema, table.table),
     );
+  const target =
+    connection && table
+      ? {
+          connectionId: connection.id,
+          database: database ?? null,
+          schema: table.schema,
+          table: table.table,
+        }
+      : null;
+  const stagedKey = target ? stagedTableKey(target) : null;
+  const stagedEntry = useStagedEdits((state) => (stagedKey ? state.tables[stagedKey] : undefined));
+  const collecting = () =>
+    Boolean(
+      connection &&
+        table &&
+        collectsTableChanges(connection, database ?? null, table.schema, table.table),
+    );
   const { active: masks } = useActiveMasks(query.data?.columns ?? []);
   const editable = table && masks.length === 0;
   const updateRow = useUpdateRowMutation(table?.schema ?? "", table?.table ?? "");
   const deleteRow = useDeleteRowMutation(table?.schema ?? "", table?.table ?? "");
   const { data: columnDetails } = useDetailedColumnsQuery(table?.schema ?? "", table?.table ?? "");
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const columns = query.data?.columns ?? [];
+  const loadedRows = query.data?.rows ?? [];
+  const rows = useMemo(
+    () => overlayStagedRows(loadedRows, stagedEntry, false),
+    [loadedRows, stagedEntry],
+  );
+  const sortedRows = useMemo(
+    () =>
+      applyResultView(
+        rows,
+        columns,
+        sorting.map((sort) => ({ column: sort.id, direction: sort.desc ? "desc" : "asc" })),
+        {},
+      ),
+    [rows, columns, sorting],
+  );
   const patchRows = (change: (rows: TableData["rows"]) => TableData["rows"]) =>
     queryClient.setQueriesData<TableData>({ queryKey }, (old) =>
       old ? { ...old, rows: change(old.rows) } : old,
@@ -51,6 +96,10 @@ export function MasterDetailResult({
     updates: Record<string, string | null>,
     oldValues: Record<string, unknown>,
   ) => {
+    if (target && collecting()) {
+      stageUpdate(target, ctid, updates, oldValues);
+      return "collected" as const;
+    }
     const pending = staged();
     const { newCtid } = await updateRow.mutateAsync({ ctid, updates, oldValues });
     patchRows((rows) =>
@@ -60,6 +109,10 @@ export function MasterDetailResult({
   };
   const removeRow = async (ctid: string, oldValues: Record<string, unknown>) => {
     try {
+      if (target && collecting()) {
+        stageDelete(target, ctid, oldValues);
+        return;
+      }
       const pending = staged();
       await deleteRow.mutateAsync({ ctid, oldValues });
       patchRows((rows) => rows.filter((row) => row.__ctid__ !== ctid));
@@ -107,7 +160,9 @@ export function MasterDetailResult({
       <div className="flex shrink-0 items-center gap-2 border-b bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1">
           {preview ? "Vorschau" : "Details"} · {count} {count === 1 ? "Datensatz" : "Datensätze"} ·
-          Master-Zeile {selection.rowIndex + 1}
+          {selection.rows
+            ? `${selection.rows.length} Master-Zeilen`
+            : `Master-Zeile ${selection.rowIndex + 1}`}
         </span>
         <Button
           variant="ghost"
@@ -121,12 +176,11 @@ export function MasterDetailResult({
       </div>
       <DataTable
         layoutKey={`master-detail:${source}:${column ?? ""}:${sql}`}
-        columns={query.data?.columns ?? []}
-        data={query.data?.rows ?? []}
+        columns={columns}
+        data={sortedRows}
         emptyMessage="Keine passenden Details für diese Master-Zeile."
-        sorting={[]}
-        sortableColumns={[]}
-        onSortingChange={() => {}}
+        sorting={sorting}
+        onSortingChange={setSorting}
         isFetching={query.isFetching}
         autoSelectFirstCell={!preview}
         onSaveRow={editable ? saveRow : undefined}

@@ -1,19 +1,17 @@
 import { FilterXIcon, RefreshCwIcon } from "lucide-react";
 import { useCallback, useDeferredValue } from "react";
 import { Button } from "@/components/ui/button";
+import { ContextMenuItem } from "@/components/ui/context-menu";
 import { AiFlash } from "@/features/automation/ai-flash";
 import { DataTable } from "@/features/table/data-table";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { TableFilterBar } from "@/features/table/table-filter-bar";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
-import { PluginToolbar } from "@/features/ui-plugins/plugin-toolbar";
 import { canEditRedisCell, REDIS_KEY_FILTER_OPERATORS, redisKeyFilter } from "@/lib/redis-commands";
+import { discardStagedChange, stagedMarkOf } from "@/lib/staged-edits";
 import { tableColumnPrefKey, useTableColumnPrefs } from "@/lib/table-column-prefs";
 import { useTableViewStateStore } from "@/lib/table-view-state";
-import { UiPluginGridContext, usePluginGrid } from "@/lib/ui-plugins/grid";
-import { usePluginTableInfo } from "@/lib/ui-plugins/table-slots";
-
 import type { useTableViewModel } from "./use-table-view-model";
 
 type Props = Pick<
@@ -27,6 +25,8 @@ type Props = Pick<
   | "stateKey"
   | "caps"
   | "tableRows"
+  | "stagedKey"
+  | "collecting"
   | "rowOffset"
   | "rowExtent"
   | "onVisibleRowsChange"
@@ -51,6 +51,7 @@ type Props = Pick<
   | "filter"
   | "filterRaw"
   | "sorting"
+  | "sortableColumns"
   | "setSorting"
   | "revealColumn"
   | "setPage"
@@ -71,6 +72,8 @@ export function TableDataContent({
   stateKey,
   caps,
   tableRows,
+  stagedKey,
+  collecting,
   rowOffset,
   rowExtent,
   onVisibleRowsChange,
@@ -96,6 +99,7 @@ export function TableDataContent({
   filterRaw,
   sorting,
   setSorting,
+  sortableColumns,
   revealColumn,
   setPage,
   addRowSignal,
@@ -103,18 +107,7 @@ export function TableDataContent({
   table,
   emptyMessage,
 }: Props) {
-  const pluginTable = usePluginTableInfo(connection, database, schema, table, isView);
   const gridReady = useDeferredValue(!isLoading, false);
-  const pluginGrid = usePluginGrid(
-    connection,
-    database,
-    schema,
-    table,
-    isView,
-    data?.columns ?? NO_COLUMNS,
-    columnDetails,
-    tableRows,
-  );
   const redis = caps.query_language === "redis";
   const handleSortingChange = useCallback<typeof setSorting>(
     (update) => {
@@ -137,40 +130,29 @@ export function TableDataContent({
       >
         <TableFilterBar
           leading={
-            <>
-              <PluginToolbar
-                placement="beforeFilter"
-                info={pluginTable}
-                stateKey={stateKey}
-                rows={tableRows}
-                columnNames={data?.columns}
-                columnDetails={columnDetails}
-                refresh={() => void refetch()}
-              />
-              <TableViewsPanel
-                schema={schema}
-                table={table}
-                activeFilter={filter}
-                filterRaw={filterRaw}
-                onSelectView={(nextFilter, raw, saved) => {
-                  handleFilterChange(nextFilter, raw);
-                  if (stateKey && saved?.state)
-                    useTableViewStateStore.getState().patch(stateKey, {
-                      ...saved.state,
-                      filter: nextFilter,
-                      filterRaw: raw ?? false,
-                      page: 0,
-                    });
-                  if (connection && saved?.layout)
-                    useTableColumnPrefs
-                      .getState()
-                      .setPref(
-                        tableColumnPrefKey(connection.id, schema, table, database),
-                        saved.layout,
-                      );
-                }}
-              />
-            </>
+            <TableViewsPanel
+              schema={schema}
+              table={table}
+              activeFilter={filter}
+              filterRaw={filterRaw}
+              onSelectView={(nextFilter, raw, saved) => {
+                handleFilterChange(nextFilter, raw);
+                if (stateKey && saved?.state)
+                  useTableViewStateStore.getState().patch(stateKey, {
+                    ...saved.state,
+                    filter: nextFilter,
+                    filterRaw: raw ?? false,
+                    page: 0,
+                  });
+                if (connection && saved?.layout)
+                  useTableColumnPrefs
+                    .getState()
+                    .setPref(
+                      tableColumnPrefKey(connection.id, schema, table, database),
+                      saved.layout,
+                    );
+              }}
+            />
           }
           key={stateKey}
           stateKey={stateKey}
@@ -209,75 +191,89 @@ export function TableDataContent({
           }
         />
       ) : (
-        <UiPluginGridContext.Provider value={pluginGrid}>
-          <DataTable
-            key={stateKey}
-            stateKey={stateKey}
-            watchScope={watchScope}
-            scrollIdentity={JSON.stringify([filter, filterRaw, sorting, rowLimit])}
-            className="h-full min-h-0 flex-1"
-            columns={data?.columns ?? NO_COLUMNS}
-            data={tableRows}
-            emptyMessage={emptyMessage}
-            sorting={sorting}
-            sortableColumns={redis ? REDIS_KEY_COLUMNS : undefined}
-            onSortingChange={handleSortingChange}
-            isFetching={isFetching}
-            onSaveRow={
-              masked || connection?.readOnly
-                ? undefined
-                : caps.query_language === "redis"
-                  ? saveRedisRow
-                  : isView || !caps.row_edit
-                    ? undefined
-                    : saveRow
-            }
-            canEditCell={caps.query_language === "redis" ? canEditRedisCell : undefined}
-            cellEditorKind={caps.query_language === "redis" ? "text" : undefined}
-            emptyEditValue={caps.query_language === "redis" ? "" : undefined}
-            filterableColumns={redis ? REDIS_KEY_COLUMNS : undefined}
-            compileColumnFilter={caps.query_language === "redis" ? redisKeyFilter : undefined}
-            filterOperators={
-              caps.query_language === "redis" ? REDIS_KEY_FILTER_OPERATORS : undefined
-            }
-            filterPrefix={
-              caps.query_language === "redis"
-                ? "MATCH"
-                : caps.query_language === "json"
-                  ? "JSON"
-                  : undefined
-            }
-            onApplyFilter={handleFilterChange}
-            revealColumn={revealColumn}
-            rowOffset={rowOffset}
-            rowExtent={rowExtent}
-            onVisibleRowsChange={onVisibleRowsChange}
-            totalCount={totalCount ?? undefined}
-            countLabel={countLabel}
-            onExactCount={handleExactCount}
-            pageSize={rowLimit}
-            foreignKeys={foreignKeys}
-            currentSchema={schema}
-            currentTable={table}
-            onNavigateToTable={handleNavigateToTable}
-            onInsertRow={
-              masked || isView || !caps.row_edit || connection?.readOnly ? undefined : addRow
-            }
-            onDeleteRow={
-              masked || isView || !caps.row_edit || connection?.readOnly
-                ? undefined
-                : handleDeleteRow
-            }
-            columnDetails={columnDetails}
-            onRefresh={handleRefresh}
-            searchRequiresFocus={inDrawer}
-            addRowSignal={addRowSignal}
-          />
-        </UiPluginGridContext.Provider>
+        <DataTable
+          key={stateKey}
+          stateKey={stateKey}
+          watchScope={watchScope}
+          scrollIdentity={JSON.stringify([filter, filterRaw, sorting, rowLimit])}
+          className="h-full min-h-0 flex-1"
+          columns={data?.columns ?? NO_COLUMNS}
+          data={tableRows}
+          emptyMessage={emptyMessage}
+          sorting={sorting}
+          sortableColumns={redis ? REDIS_KEY_COLUMNS : sortableColumns}
+          onSortingChange={handleSortingChange}
+          isFetching={isFetching}
+          onSaveRow={
+            masked || connection?.readOnly
+              ? undefined
+              : caps.query_language === "redis"
+                ? saveRedisRow
+                : isView || !caps.row_edit
+                  ? undefined
+                  : saveRow
+          }
+          canEditCell={
+            caps.query_language === "redis"
+              ? canEditRedisCell
+              : collecting
+                ? canEditStagedCell
+                : undefined
+          }
+          rowMenuItems={
+            stagedKey
+              ? (row) => {
+                  const mark = stagedMarkOf(row);
+                  return mark ? (
+                    <ContextMenuItem onSelect={() => discardStagedChange(stagedKey, mark.changeId)}>
+                      Änderung verwerfen
+                    </ContextMenuItem>
+                  ) : null;
+                }
+              : undefined
+          }
+          cellEditorKind={caps.query_language === "redis" ? "text" : undefined}
+          emptyEditValue={caps.query_language === "redis" ? "" : undefined}
+          filterableColumns={redis ? REDIS_KEY_COLUMNS : undefined}
+          compileColumnFilter={caps.query_language === "redis" ? redisKeyFilter : undefined}
+          filterOperators={caps.query_language === "redis" ? REDIS_KEY_FILTER_OPERATORS : undefined}
+          filterPrefix={
+            caps.query_language === "redis"
+              ? "MATCH"
+              : caps.query_language === "json"
+                ? "JSON"
+                : undefined
+          }
+          onApplyFilter={handleFilterChange}
+          revealColumn={revealColumn}
+          rowOffset={rowOffset}
+          rowExtent={rowExtent}
+          onVisibleRowsChange={onVisibleRowsChange}
+          totalCount={totalCount ?? undefined}
+          countLabel={countLabel}
+          onExactCount={handleExactCount}
+          pageSize={rowLimit}
+          foreignKeys={foreignKeys}
+          currentSchema={schema}
+          currentTable={table}
+          recordView
+          onNavigateToTable={handleNavigateToTable}
+          onInsertRow={
+            masked || isView || !caps.row_edit || connection?.readOnly ? undefined : addRow
+          }
+          onDeleteRow={
+            masked || isView || !caps.row_edit || connection?.readOnly ? undefined : handleDeleteRow
+          }
+          columnDetails={columnDetails}
+          onRefresh={handleRefresh}
+          searchRequiresFocus={inDrawer}
+          addRowSignal={addRowSignal}
+        />
       )}
     </div>
   );
 }
 
 const NO_COLUMNS: string[] = [];
+const canEditStagedCell = (row: Record<string, unknown>) => stagedMarkOf(row)?.type !== "delete";
 const REDIS_KEY_COLUMNS = ["key"];

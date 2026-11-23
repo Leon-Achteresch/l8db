@@ -1,21 +1,25 @@
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { clickhouseMergeContext } from "@/lib/clickhouse-merge-engine";
 import { ConnectionScopeContext, useActiveConnection } from "@/lib/connections";
+import { tableColumnList } from "@/lib/db";
 import { useActiveCapabilities, useActiveDatabase } from "@/lib/db-selection";
 import { recordFeatureEvent } from "@/lib/discovery/events";
+import { isProduction } from "@/lib/environments";
 import { openScopedTable, useFkDrawerStack } from "@/lib/fk-drawer-stack";
 import { useRedisRowEdit } from "@/lib/hooks/use-redis-row-edit";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
+import { jsonFilterError } from "@/lib/json-filter";
 import { stagesTableChanges } from "@/lib/managed-transactions";
 import { applyMasks } from "@/lib/masking";
 import { useActiveMasks } from "@/lib/masking-display";
 import {
   useDeleteRowMutation,
-  useDetailedColumnsQuery,
   useExactRowCountMutation,
   useForeignKeysQuery,
   useInsertRowMutation,
+  useTableColumnDetailsQuery,
   useTableRowCountQuery,
   useTableRowsWindow,
   useUpdateRowMutation,
@@ -25,16 +29,26 @@ import { approximateRowCount, exactRowCount } from "@/lib/row-count";
 import { ROWS_WINDOW_MAX_EXTENT } from "@/lib/rows-window";
 import { useSettingsStore } from "@/lib/settings";
 import {
+  collectsTableChanges,
+  overlayStagedRows,
+  stageDelete,
+  stagedTableKey,
+  stageInsert,
+  stageUpdate,
+  useStagedEdits,
+} from "@/lib/staged-edits";
+import {
   availableTableDetailTabs,
   resolveTableDetailTab,
   type TableDetailTab,
 } from "@/lib/table-detail-tabs";
 import { useTableTabs } from "@/lib/table-tabs";
 import { detailTabFor, tableViewStateKey, useTableViewStateStore } from "@/lib/table-view-state";
-import { usePluginDetailTabs, usePluginTableInfo } from "@/lib/ui-plugins/table-slots";
+import { useTransactionStore } from "@/lib/transactions";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 import type { TableViewProps } from "../table-view";
 
+import { applicableSorting, sortableColumnNames } from "./sortable-columns";
 import { useTableExport } from "./use-table-export";
 
 const routeApi = getRouteApi("/_app/_workspace/tables/$schema/$table");
@@ -104,19 +118,37 @@ export function useTableViewModel({
   const caps = useActiveCapabilities();
   const hiddenTabs = useSettingsStore((s) => s.hiddenTableDetailTabs);
   const easyMode = useSettingsStore((s) => s.easyMode);
-  const pluginTable = usePluginTableInfo(connection, database, schema, table, isView);
-  const pluginTabs = usePluginDetailTabs(easyMode ? null : pluginTable);
-  const availableTabs = [
-    ...availableTableDetailTabs(isView, caps, easyMode),
-    ...pluginTabs.map((entry) => ({ id: entry.key, label: entry.tab.label })),
-  ];
+  const availableTabs = availableTableDetailTabs(isView, caps, easyMode);
   const visibleTabs = availableTabs.filter((tab) => !hiddenTabs.includes(tab.id));
   const viewTab = resolveTableDetailTab(selectedTab, visibleTabs);
   const tableTab = resolveTableDetailTab(selectedTab, visibleTabs);
 
   const [filter, setFilter] = useTableViewState(stateKey, "filter", "");
   const [filterRaw, setFilterRaw] = useTableViewState(stateKey, "filterRaw", false);
-  const [sorting, setSorting] = useTableViewState(stateKey, "sorting", []);
+  const [storedSorting, setSorting] = useTableViewState(stateKey, "sorting", []);
+  const tableDetails = useTableColumnDetailsQuery(schema, table);
+  const columnDetails = tableDetails.data ? tableColumnList(tableDetails.data) : undefined;
+  const tableContext =
+    !isView &&
+    tableDetails.isSuccess &&
+    !tableDetails.isPlaceholderData &&
+    tableDetails.fetchStatus === "idle" &&
+    !Array.isArray(tableDetails.data)
+      ? tableDetails.data
+      : undefined;
+  const unlogged = connection?.kind === "postgres" && tableContext?.unlogged === true;
+  const mergeEngine =
+    connection?.kind === "clickhouse" && (!database || database === schema)
+      ? clickhouseMergeContext(tableContext?.clickhouse_engine)
+      : undefined;
+  const sortableColumns = useMemo(
+    () => sortableColumnNames(caps.sort, columnDetails),
+    [caps.sort, columnDetails],
+  );
+  const sorting = useMemo(
+    () => applicableSorting(storedSorting, sortableColumns),
+    [storedSorting, sortableColumns],
+  );
   const [revealColumn, setRevealColumn] = useState<{ name: string; nonce: number } | null>(null);
   const [page, setPage] = useTableViewState(stateKey, "page", 0);
   const [addRowSignal, setAddRowSignal] = useState(0);
@@ -155,9 +187,59 @@ export function useTableViewModel({
       return out;
     };
   }, [caps.query_language, masked, activeMasks, windowColumns]);
-  const tableRows = useMemo(
+  const stagedKey =
+    connection && !isView
+      ? stagedTableKey({ connectionId: connection.id, database: database ?? null, schema, table })
+      : null;
+  const staged = useStagedEdits((state) => (stagedKey ? state.tables[stagedKey] : undefined));
+  const collectMode = useSettingsStore((s) => s.collectCellEdits);
+  const transactions = useTransactionStore((state) => state.transactions);
+  const loadedRows = useMemo(
     () => pages.flatMap((entry) => pageRows(entry.rows, entry.page)),
     [pages, pageRows],
+  );
+  const tableRows = useMemo(
+    () => overlayStagedRows(loadedRows, staged, pages[0]?.page === 0),
+    [loadedRows, staged, pages],
+  );
+  const keyless = loadedRows.length > 0 && !loadedRows.some((row) => row.__ctid__);
+  const collecting = useMemo(
+    () =>
+      Boolean(
+        stagedKey &&
+          connection &&
+          !masked &&
+          (staged ||
+            (!keyless &&
+              collectMode !== "off" &&
+              transactions &&
+              collectsTableChanges(connection, database ?? null, schema, table))),
+      ),
+    [
+      stagedKey,
+      connection,
+      masked,
+      staged,
+      keyless,
+      collectMode,
+      transactions,
+      database,
+      schema,
+      table,
+    ],
+  );
+  const collectBlocked =
+    !collecting &&
+    keyless &&
+    Boolean(connection) &&
+    collectMode !== "off" &&
+    (collectMode === "always" || isProduction(connection));
+  const stagedTarget = useMemo(
+    () =>
+      connection
+        ? { connectionId: connection.id, database: database ?? null, schema, table }
+        : null,
+    [connection, database, schema, table],
   );
   const exportData = useMemo(
     () => (masked && data ? { columns: data.columns, rows: tableRows } : data),
@@ -199,7 +281,6 @@ export function useTableViewModel({
     const lastPage = Math.max(0, Math.ceil(totalCount / rowLimit) - 1);
     if (page > lastPage) setPage(lastPage);
   }, [totalCount, isFetching, rowLimit, page, setPage]);
-  const { data: columnDetails } = useDetailedColumnsQuery(schema, table);
   const {
     exporting,
     csvExportOpen,
@@ -229,12 +310,17 @@ export function useTableViewModel({
 
   const handleFilterChange = useCallback(
     (newFilter: string, raw = true) => {
+      const invalid = caps.query_language === "json" ? jsonFilterError(newFilter) : null;
+      if (invalid) {
+        toast.error(invalid);
+        return;
+      }
       if (newFilter.trim()) recordFeatureEvent("table.filtered", { mode: raw ? "sql" : "simple" });
       setFilter(newFilter);
       setFilterRaw(raw);
       setPage(0);
     },
-    [setFilter, setFilterRaw, setPage],
+    [caps.query_language, setFilter, setFilterRaw, setPage],
   );
   const updateRow = updateRowMutation.mutateAsync;
   const saveRow = useCallback(
@@ -243,20 +329,28 @@ export function useTableViewModel({
       updates: Record<string, string | null>,
       oldValues: Record<string, unknown>,
     ) => {
+      if (collecting && stagedTarget) {
+        stageUpdate(stagedTarget, ctid, updates, oldValues);
+        return "collected" as const;
+      }
       const staged = connection
         ? stagesTableChanges(connection, database ?? null, schema, table)
         : false;
       await updateRow({ ctid, updates, oldValues });
       return staged ? ("staged" as const) : undefined;
     },
-    [updateRow, connection, database, schema, table],
+    [updateRow, connection, database, schema, table, collecting, stagedTarget],
   );
   const insertRow = insertRowMutation.mutateAsync;
   const addRow = useCallback(
     async (values: Record<string, string | null>) => {
+      if (collecting && stagedTarget) {
+        stageInsert(stagedTarget, values);
+        return "collected" as const;
+      }
       await insertRow(values);
     },
-    [insertRow],
+    [insertRow, collecting, stagedTarget],
   );
 
   const requestAddRow = () => setAddRowSignal((n) => n + 1);
@@ -265,6 +359,10 @@ export function useTableViewModel({
   const handleDeleteRow = useCallback(
     async (ctid: string, oldValues: Record<string, unknown>) => {
       try {
+        if (collecting && stagedTarget) {
+          stageDelete(stagedTarget, ctid, oldValues);
+          return;
+        }
         const staged = connection
           ? stagesTableChanges(connection, database ?? null, schema, table)
           : false;
@@ -274,7 +372,7 @@ export function useTableViewModel({
         toast.error(typeof err === "string" ? err : String(err));
       }
     },
-    [deleteRow, connection, database, schema, table],
+    [deleteRow, connection, database, schema, table, collecting, stagedTarget],
   );
 
   const handleRefresh = refresh;
@@ -347,6 +445,8 @@ export function useTableViewModel({
   }, [column, isLoading]);
 
   return {
+    unlogged,
+    mergeEngine,
     inDrawer,
     isView,
     connection,
@@ -356,11 +456,12 @@ export function useTableViewModel({
     stateKey,
     caps,
     availableTabs,
-    pluginTable,
-    pluginTabs,
     viewTab,
     tableTab,
     tableRows,
+    stagedKey,
+    collecting,
+    collectBlocked,
     rowOffset,
     rowExtent,
     onVisibleRowsChange,
@@ -400,6 +501,7 @@ export function useTableViewModel({
     filterRaw,
     sorting,
     setSorting,
+    sortableColumns,
     revealColumn,
     page,
     setPage,

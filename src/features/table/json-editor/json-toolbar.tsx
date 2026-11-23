@@ -1,4 +1,5 @@
 import {
+  AlignLeftIcon,
   ArrowDownAZIcon,
   ChevronDownIcon,
   ChevronsDownUpIcon,
@@ -13,7 +14,6 @@ import {
   SearchIcon,
   Table2Icon,
   Undo2Icon,
-  WandSparklesIcon,
   XIcon,
 } from "lucide-react";
 import type { RefObject } from "react";
@@ -184,7 +184,7 @@ export function JsonToolbar({
                 disabled={!valid}
                 onClick={onFormat}
               >
-                <WandSparklesIcon />
+                <AlignLeftIcon />
               </ToolButton>
               <ToolButton label="Minifizieren" disabled={!valid} onClick={onMinify}>
                 <Minimize2Icon />

@@ -15,6 +15,7 @@ import {
   previewObjectDdl,
 } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
+import { forgetTableCommentMetadata } from "@/lib/query-client";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 interface ObjectDropDialogProps {
@@ -86,6 +87,8 @@ export function ObjectDropDialog({
     setIsPending(true);
     try {
       await executeObjectDdl(kind, connectionString, request, database ?? undefined);
+      if (objectType === "table" && kind === "postgres" && connection)
+        forgetTableCommentMetadata(queryClient, connection.id, database, schema, name);
       await Promise.all(
         ["tables", "views", "matviews", "columns", "er-schema"].map((key) =>
           queryClient.invalidateQueries({ queryKey: [key] }),

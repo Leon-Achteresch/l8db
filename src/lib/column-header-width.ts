@@ -25,11 +25,7 @@ const measured = new Map<string, number>();
 
 const ASCII = /^[\x20-\x7e]*$/;
 
-function textWidth(text: string, font: string, fallback: number): number {
-  if (ASCII.test(text)) return fallback;
-  const key = `${font}|${text}`;
-  const cached = measured.get(key);
-  if (cached !== undefined) return cached;
+function measure(text: string, font: string, fallback: number): number {
   if (measureContext === undefined)
     measureContext =
       typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
@@ -38,7 +34,15 @@ function textWidth(text: string, font: string, fallback: number): number {
     measureContext.font = font;
     measureFont = font;
   }
-  const width = measureContext.measureText(text).width;
+  return measureContext.measureText(text).width;
+}
+
+function textWidth(text: string, font: string, fallback: number): number {
+  if (ASCII.test(text)) return fallback;
+  const key = `${font}|${text}`;
+  const cached = measured.get(key);
+  if (cached !== undefined) return cached;
+  const width = measure(text, font, fallback);
   measured.set(key, width);
   return width;
 }
@@ -50,4 +54,26 @@ export function measureHeaderTitleWidth(title: string, typeLabel = ""): number {
     textWidth(typeLabel.toUpperCase(), TYPE_FONT, typeLabel.length * 5.9) +
     badge
   );
+}
+
+export const AUTOSIZE_MAX = 600;
+export const AUTOSIZE_SAMPLE = 500;
+const CELL_FONT = `400 12px ${MONO_FONT}`;
+const CELL_CHROME = 26;
+const CELL_TEXT_MAX = 100;
+
+export function autosizeColumnWidth(
+  rows: Record<string, unknown>[],
+  columnId: string,
+  headerWidth: number,
+  format: (value: unknown) => string,
+): number {
+  const step = Math.max(1, Math.ceil(rows.length / AUTOSIZE_SAMPLE));
+  let widest = 0;
+  for (let index = 0; index < rows.length; index += step) {
+    const text = format(rows[index]?.[columnId]).split("\n", 1)[0].slice(0, CELL_TEXT_MAX);
+    const fallback = text.length * 7.22;
+    widest = Math.max(widest, ASCII.test(text) ? fallback : measure(text, CELL_FONT, fallback));
+  }
+  return Math.max(headerWidth, Math.min(AUTOSIZE_MAX, Math.ceil(widest + CELL_CHROME)));
 }

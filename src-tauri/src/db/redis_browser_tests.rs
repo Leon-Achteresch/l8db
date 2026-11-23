@@ -14,11 +14,17 @@ async fn dispatch(
     }
     let requested_uri = args["connectionString"].as_str().unwrap_or(uri);
     let address = url::Url::parse(requested_uri).map_err(|e| e.to_string())?;
+    let lab_port = url::Url::parse(uri)
+        .ok()
+        .and_then(|lab| lab.port())
+        .unwrap_or(6381);
     if address.host_str() != Some("127.0.0.1")
-        || address.port() != Some(6381)
+        || address.port() != Some(lab_port)
         || !matches!(address.scheme(), "redis" | "valkey")
     {
-        return Err("Browser lab only accepts redis://127.0.0.1:6381".into());
+        return Err(format!(
+            "Browser lab only accepts redis://127.0.0.1:{lab_port}"
+        ));
     }
     let adapter = create_adapter_from_string(
         DatabaseKind::Redis,

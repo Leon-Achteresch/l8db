@@ -11,9 +11,9 @@ import { forwardRef, type ReactNode, useState } from "react";
 import { IconButton } from "@/components/icon-button";
 import { isDateType, isNumericType, PALETTE } from "@/lib/dashboards";
 import { cn } from "@/lib/utils";
-import { CHART_FIELD_MIME } from "../chart-visual-builder-model";
+import { FieldDragButton } from "../field-drag-button";
 import type { DatasetColumn } from "../use-dataset-query";
-import { JOIN_COLUMN_MIME, type JoinColumnDrag } from "./studio-model";
+import type { JoinColumnDrag } from "./studio-model";
 
 const KEYISH = /(?:^id$|_?(?:id|nr|no|key|code|uuid)$)/i;
 
@@ -53,7 +53,6 @@ export const StudioTableCard = forwardRef<
   ref,
 ) {
   const [search, setSearch] = useState("");
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const found = columns.filter((c) =>
     (c.column ?? c.label).toLowerCase().includes(search.toLowerCase()),
   );
@@ -116,44 +115,19 @@ export const StudioTableCard = forwardRef<
           const isUsed = used.has(field.ref);
           return (
             <li key={field.ref}>
-              <button
-                type="button"
-                draggable
+              <FieldDragButton
+                dragId={`column:${nodeId}:${field.ref}`}
+                drag={{ ref: field.ref, join: { node: nodeId, column: name } }}
+                dropAccepts={(data) => Boolean(data.join && data.join.node !== nodeId)}
+                onFieldDrop={
+                  onJoinDrop ? (data) => data.join && onJoinDrop(data.join, name) : undefined
+                }
                 aria-pressed={selected === field.ref}
                 title={`${name} · ${field.type}${pending ? "" : " · ziehen oder klicken"}`}
-                onDragStart={(event) => {
-                  event.dataTransfer.setData(CHART_FIELD_MIME, field.ref);
-                  event.dataTransfer.setData(
-                    JOIN_COLUMN_MIME,
-                    JSON.stringify({ node: nodeId, column: name } satisfies JoinColumnDrag),
-                  );
-                  event.dataTransfer.effectAllowed = "copyLink";
-                }}
-                onDragOver={(event) => {
-                  if (!onJoinDrop || !event.dataTransfer.types.includes(JOIN_COLUMN_MIME)) return;
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "link";
-                  setDropTarget(name);
-                }}
-                onDragLeave={() => setDropTarget(null)}
-                onDrop={(event) => {
-                  if (!onJoinDrop) return;
-                  event.preventDefault();
-                  setDropTarget(null);
-                  try {
-                    const drag = JSON.parse(
-                      event.dataTransfer.getData(JOIN_COLUMN_MIME),
-                    ) as JoinColumnDrag;
-                    if (drag.node !== nodeId) onJoinDrop(drag, name);
-                  } catch {
-                    return;
-                  }
-                }}
                 onClick={() => onSelect(selected === field.ref ? null : field.ref)}
                 className={cn(
-                  "group flex w-full cursor-grab items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring active:cursor-grabbing",
+                  "group flex w-full cursor-grab items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring active:cursor-grabbing data-[drop-target]:bg-primary/15 data-[drop-target]:ring-2 data-[drop-target]:ring-primary",
                   selected === field.ref && "bg-primary/10 text-primary",
-                  dropTarget === name && "bg-primary/15 ring-2 ring-primary",
                 )}
               >
                 <Icon className="size-3 shrink-0 text-muted-foreground" />
@@ -174,8 +148,8 @@ export const StudioTableCard = forwardRef<
                     <span className="sr-only">Im Chart verwendet</span>
                   </>
                 )}
-                <GripVerticalIcon className="size-3 shrink-0 text-muted-foreground/0 group-hover:text-muted-foreground" />
-              </button>
+                <GripVerticalIcon className="size-3 shrink-0 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground" />
+              </FieldDragButton>
             </li>
           );
         })}

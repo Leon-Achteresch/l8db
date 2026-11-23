@@ -9,12 +9,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { type EncryptionConfig, encryptionXml, parseEncryption } from "@/lib/storage/s3";
+import { ConfirmActionDialog } from "./confirm-action-dialog";
 import { SettingsCard } from "./settings-card";
 import { useBucketConfig } from "./use-bucket-config";
 
 export function EncryptionSettings({ bucket }: { bucket: string }) {
   const config = useBucketConfig(bucket, "encryption");
   const [draft, setDraft] = useState<EncryptionConfig>({ algorithm: "", kmsKeyId: "" });
+  const [confirming, setConfirming] = useState(false);
+  const removing = !draft.algorithm && !!config.data;
 
   useEffect(() => {
     setDraft(parseEncryption(config.data));
@@ -63,15 +66,27 @@ export function EncryptionSettings({ bucket }: { bucket: string }) {
             size="sm"
             disabled={config.busy}
             onClick={() =>
-              void (draft.algorithm
-                ? config.save(encryptionXml(draft), "Verschlüsselung gespeichert")
-                : config.remove("Verschlüsselung entfernt"))
+              removing
+                ? setConfirming(true)
+                : void (draft.algorithm
+                    ? config.save(encryptionXml(draft), "Verschlüsselung gespeichert")
+                    : config.remove("Verschlüsselung entfernt"))
             }
           >
-            Speichern
+            {removing ? "Verschlüsselung entfernen" : "Speichern"}
           </Button>
         )}
       </div>
+      <ConfirmActionDialog
+        open={confirming}
+        title="Verschlüsselung entfernen?"
+        description={`Neue Objekte in „${bucket}“ werden danach unverschlüsselt gespeichert.`}
+        confirmLabel="Entfernen"
+        onOpenChange={setConfirming}
+        onConfirm={async () => {
+          await config.remove("Verschlüsselung entfernt");
+        }}
+      />
     </SettingsCard>
   );
 }

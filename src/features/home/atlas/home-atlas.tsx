@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Plus, Search, Table2 } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import { Illustration } from "@/components/illustration";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +31,7 @@ import { useAtlasTrail } from "./use-atlas-trail";
 const NO_NEIGHBORS: AtlasNeighbors = { outgoing: [], incoming: [] };
 
 const ATLAS_GROUND =
-  "linear-gradient(140deg, color-mix(in oklch, var(--chart-2) 34%, var(--border)), color-mix(in oklch, var(--border) 75%, var(--background)) 48%, color-mix(in oklch, var(--chart-1) 42%, var(--border)))";
+  "linear-gradient(color-mix(in oklch, var(--border) 70%, var(--background)), color-mix(in oklch, var(--border) 70%, var(--background)))";
 
 export function HomeAtlas({ connection }: { connection: SavedConnection }) {
   const database = useActiveDatabase();
@@ -120,14 +121,16 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
       </div>
     ) : !atlasTables.length ? (
       <div className="grid h-full place-content-center gap-3 p-6 text-center">
-        <Table2 className="mx-auto size-6 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">Dieses Schema enthält noch keine Tabellen.</p>
-        <Button variant="outline" size="sm" className="mx-auto" asChild>
-          <Link to="/create-table">
-            <Plus className="size-3" />
-            Tabelle erstellen
-          </Link>
-        </Button>
+        <Illustration name="empty" className="mx-auto w-36" />
+        <p className="text-sm text-muted-foreground">Noch keine {caps.terms.tables}.</p>
+        {caps.ddl && (
+          <Button variant="outline" size="sm" className="mx-auto" asChild>
+            <Link to="/create-table">
+              <Plus className="size-3" />
+              {caps.terms.table} erstellen
+            </Link>
+          </Button>
+        )}
       </div>
     ) : summary.matching === 0 ? (
       <div className="grid h-full place-content-center p-6 text-center text-sm text-muted-foreground">
@@ -164,7 +167,11 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
               type="search"
               className="h-8 w-56 rounded-lg pl-8 text-xs"
               aria-label={`Tabellen in ${schema} finden`}
-              placeholder={`Tabelle in ${schema} finden…`}
+              placeholder={
+                caps.schemas
+                  ? `${caps.terms.table} in ${schema} finden…`
+                  : `${caps.terms.table} finden…`
+              }
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
@@ -192,7 +199,7 @@ export function HomeAtlas({ connection }: { connection: SavedConnection }) {
         </div>
         <div
           ref={mapRef}
-          className="h-[clamp(320px,calc(100vh-430px),640px)] overflow-hidden rounded-xl p-0.5 shadow-[0_30px_70px_-42px_color-mix(in_oklch,var(--chart-1)_70%,transparent)]"
+          className="h-[clamp(320px,calc(100vh-430px),640px)] overflow-hidden rounded-xl p-0.5"
           style={{ backgroundImage: ATLAS_GROUND }}
         >
           {body}

@@ -1,6 +1,6 @@
 import { PencilIcon } from "lucide-react";
 import { memo } from "react";
-import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/icon-button";
 import type { SequenceInfo } from "@/lib/db";
 
 interface SequenceRowProps {
@@ -29,14 +29,15 @@ export const SequenceRow = memo(function SequenceRow({ seq, editable, onEdit }: 
       </td>
       <td className="px-4 py-2 text-right">
         {editable && (
-          <Button
+          <IconButton
             variant="ghost"
             size="icon"
-            className="size-6 opacity-0 group-hover:opacity-100 transition-opacity"
+            aria-label={`${seq.name} bearbeiten`}
+            className="size-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
             onClick={() => onEdit(seq)}
           >
             <PencilIcon className="size-3.5" />
-          </Button>
+          </IconButton>
         )}
       </td>
     </tr>

@@ -182,6 +182,15 @@ fn keyword_positions(text: &str, keyword: &str) -> Vec<usize> {
     found
 }
 
+pub(super) fn where_condition(sql: &str) -> Option<String> {
+    let position = *keyword_positions(sql, "WHERE").last()?;
+    let condition = sql[position + "WHERE".len()..]
+        .trim()
+        .trim_end_matches(';')
+        .trim();
+    (!condition.is_empty()).then(|| condition.to_string())
+}
+
 pub(super) fn check_clauses(part: &str) -> Vec<(Option<String>, String)> {
     let mut out = Vec::new();
     for position in keyword_positions(part, "CHECK") {

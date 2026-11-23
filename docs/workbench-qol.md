@@ -86,7 +86,6 @@ Die verbleibenden Fehlerdateien:
 - `tests/perf-invalid-objects.test.ts`
 - `tests/perf-split-groups.test.ts`
 - `tests/perf-sql-intellisense.test.ts`
-- `tests/perf-ui-plugins.test.ts`
 - `tests/perf-versioning-pipeline.test.ts`
 - `tests/perf-versioning-review.test.ts`
 - `tests/sql-signature-help.test.ts`

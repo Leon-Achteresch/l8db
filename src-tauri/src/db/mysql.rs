@@ -5,14 +5,19 @@ use mysql_async::{Column, Conn, Opts, OptsBuilder, Pool, Row, SslOpts, Value};
 
 use super::pool::PoolState;
 use super::{
-    attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, timed, where_clause,
-    AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
-    DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo,
-    QueryResult, SchemaSize, SessionInfo, SslMode, TableData, TableInfo, TriggerInfo, TxSession,
+    attach_row_keys, create_table_ddl, rows_to_objects, timed, where_clause, AddColumnRequest,
+    AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest, DatabaseAdapter,
+    DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, FunctionInfo, IndexInfo, QueryResult,
+    SchemaSize, SessionInfo, SslMode, TableData, TableInfo, TriggerInfo, TxSession,
 };
 
 const NO_SERVER_TLS: &str =
     "Der MySQL-Server unterstützt kein TLS. SSL-Modus „Bevorzugen“ oder „Deaktiviert“ wählen.";
+
+type SessionConns = std::sync::Mutex<std::collections::HashMap<String, (Conn, std::time::Instant)>>;
+
+const SESSION_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+const SESSION_MAX: usize = 8;
 
 pub struct MysqlAdapter {
     opts: Opts,
@@ -52,8 +57,26 @@ struct ColumnDefinition {
     legacy_mysql: bool,
 }
 
+const MARIADB_ANALYZE_READ_ONLY: &str =
+    "ANALYZE führt die Anweisung aus. Auf MariaDB nur für SELECT.";
+
 const MULTI_STATEMENT_EXPLAIN: &str =
     "EXPLAIN unterstützt nur eine einzelne Anweisung. Bitte die gewünschte Anweisung markieren.";
+
+fn extra_results_note(extra: usize) -> String {
+    match extra {
+        1 => "1 weitere Ergebnismenge wird nicht angezeigt.".into(),
+        n => format!("{n} weitere Ergebnismengen werden nicht angezeigt."),
+    }
+}
+
+const SYSTEM_SCHEMAS: &str = "('information_schema','performance_schema','mysql','sys')";
+
+const MYSQL_LOCKS: &str = "SELECT COALESCE(t.PROCESSLIST_ID, 0), l.LOCK_TYPE, CONCAT_WS('.', l.OBJECT_SCHEMA, l.OBJECT_NAME), CONCAT_WS(' · ', l.LOCK_MODE, l.INDEX_NAME), l.LOCK_STATUS = 'GRANTED' FROM performance_schema.data_locks l LEFT JOIN performance_schema.threads t ON t.THREAD_ID = l.THREAD_ID UNION ALL SELECT COALESCE(t.PROCESSLIST_ID, 0), 'METADATA', CONCAT_WS('.', m.OBJECT_SCHEMA, m.OBJECT_NAME), m.LOCK_TYPE, m.LOCK_STATUS = 'GRANTED' FROM performance_schema.metadata_locks m LEFT JOIN performance_schema.threads t ON t.THREAD_ID = m.OWNER_THREAD_ID WHERE m.OBJECT_TYPE = 'TABLE' AND m.OBJECT_SCHEMA NOT IN ('information_schema','performance_schema','mysql','sys') AND COALESCE(t.PROCESSLIST_ID, 0) <> CONNECTION_ID() ORDER BY 1, 5 DESC LIMIT 1000";
+
+const MARIADB_LOCKS: &str = "SELECT COALESCE(x.trx_mysql_thread_id, 0), l.lock_type, l.lock_table, CONCAT_WS(' · ', l.lock_mode, l.lock_index), w.requesting_trx_id IS NULL FROM information_schema.INNODB_LOCKS l LEFT JOIN information_schema.INNODB_TRX x ON x.trx_id = l.lock_trx_id LEFT JOIN information_schema.INNODB_LOCK_WAITS w ON w.requested_lock_id = l.lock_id ORDER BY 1, 5 DESC LIMIT 1000";
+
+const TABLE_TYPES: &str = "('BASE TABLE','SYSTEM VERSIONED')";
 
 fn has_flag(extra: &str, flag: &str) -> bool {
     extra
@@ -67,6 +90,21 @@ fn on_update_clause(extra: &str) -> Option<String> {
         (w[0].eq_ignore_ascii_case("on") && w[1].eq_ignore_ascii_case("update"))
             .then(|| w[2].to_string())
     })
+}
+
+fn timestamp_on_update(data_type: &str, extra: &str) -> Option<String> {
+    let base = data_type.split('(').next().unwrap_or_default();
+    if !(base.eq_ignore_ascii_case("timestamp") || base.eq_ignore_ascii_case("datetime"))
+        || has_flag(extra, "generated")
+    {
+        return None;
+    }
+    let rule = on_update_clause(extra)?.to_ascii_uppercase();
+    let valid_precision = rule
+        .strip_prefix("CURRENT_TIMESTAMP(")
+        .and_then(|suffix| suffix.strip_suffix(')'))
+        .is_some_and(|digits| matches!(digits.as_bytes(), [b'0'..=b'6']));
+    (rule == "CURRENT_TIMESTAMP" || valid_precision).then_some(rule)
 }
 
 fn unescape_info_expr(value: &str) -> String {
@@ -184,12 +222,10 @@ fn change_column_sql(
         };
         sql.push_str(&format!(" GENERATED ALWAYS AS ({expr}) {kind}"));
     }
-    if changes.set_not_null.is_some() || !(current.mariadb && generation.is_some()) {
-        if changes.set_not_null.unwrap_or(!current.nullable) {
-            sql.push_str(" NOT NULL");
-        } else {
-            sql.push_str(" NULL");
-        }
+    if changes.set_not_null.unwrap_or(!current.nullable) {
+        sql.push_str(" NOT NULL");
+    } else if !(current.mariadb && generation.is_some()) {
+        sql.push_str(" NULL");
     }
     let default = if changes.drop_default {
         None
@@ -230,11 +266,72 @@ fn change_column_sql(
     sql
 }
 
+const NO_LOCAL_INFILE: &str = "LOAD DATA LOCAL INFILE wird nicht unterstützt. Datei auf den Server legen (LOAD DATA INFILE) oder den CSV-Import nutzen.";
+
 fn map_err(e: mysql_async::Error) -> String {
     match e {
+        mysql_async::Error::Server(err) if err.code == 3948 => NO_LOCAL_INFILE.into(),
+        mysql_async::Error::Server(err) if err.code == 1792 => {
+            format!(
+                "Verbindung ist schreibgeschützt: MySQL 1792: {}",
+                err.message
+            )
+        }
         mysql_async::Error::Server(err) => format!("MySQL {}: {}", err.code, err.message),
+        mysql_async::Error::Driver(mysql_async::DriverError::LocalInfile(
+            mysql_async::LocalInfileError::NoHandler,
+        )) => NO_LOCAL_INFILE.into(),
+        mysql_async::Error::Io(mysql_async::IoError::Io(err)) => format!("MySQL: {err}"),
+        mysql_async::Error::Io(mysql_async::IoError::Tls(err)) => {
+            format!("MySQL: TLS-Fehler: {err}")
+        }
         other => format!("MySQL: {other}"),
     }
+}
+
+fn connect_err(opts: &Opts, e: mysql_async::Error) -> String {
+    let address = format!("{}:{}", opts.ip_or_hostname(), opts.tcp_port());
+    match &e {
+        mysql_async::Error::Io(mysql_async::IoError::Io(err)) => match err.kind() {
+            std::io::ErrorKind::ConnectionRefused => {
+                format!("Verbindung zu {address} abgelehnt. Läuft der Server und stimmt der Port?")
+            }
+            std::io::ErrorKind::TimedOut => {
+                format!("Zeitüberschreitung beim Verbinden mit {address}.")
+            }
+            _ => format!("Verbindung zu {address} fehlgeschlagen: {err}"),
+        },
+        _ => map_err(e),
+    }
+}
+
+fn is_mariadb(conn: &Conn) -> bool {
+    conn.server_version().0 >= 10
+}
+
+fn flavored(mariadb: bool, message: String) -> String {
+    match message.strip_prefix("MySQL") {
+        Some(rest) if mariadb => format!("MariaDB{rest}"),
+        _ => message,
+    }
+}
+
+fn filter_error(filter: Option<&str>, message: String) -> String {
+    let Some(filter) = filter.filter(|_| message.contains(" 1064:")) else {
+        return message;
+    };
+    let upper = filter.to_ascii_uppercase();
+    let hint = if upper.contains("ILIKE") {
+        "ILIKE gibt es hier nicht, LIKE verwenden."
+    } else if filter.contains("::") {
+        "„::“ gibt es hier nicht, CAST(… AS …) verwenden."
+    } else {
+        "Filter hat einen Syntaxfehler."
+    };
+    let server = message
+        .find(" near '")
+        .map_or(message.as_str(), |end| &message[..end]);
+    format!("{hint}\n  {server}")
 }
 
 fn is_numeric(column: &Column) -> bool {
@@ -278,7 +375,7 @@ fn value_to_json(value: Value, column: &Column) -> serde_json::Value {
                 );
             }
             if is_binary(column) {
-                return serde_json::Value::String(hex_blob(&bytes));
+                return serde_json::Value::String(super::hex_0x(&bytes));
             }
             let text = String::from_utf8_lossy(&bytes).into_owned();
             if is_numeric(column) {
@@ -340,6 +437,47 @@ fn value_to_json(value: Value, column: &Column) -> serde_json::Value {
             }
         )),
     }
+}
+
+fn plan_text(rows: &[Row]) -> String {
+    let Some(first) = rows.first().filter(|r| r.columns_ref().len() > 1) else {
+        return rows
+            .iter()
+            .map(|r| cell(r, 0))
+            .collect::<Vec<_>>()
+            .join("\n");
+    };
+    let header: Vec<String> = first
+        .columns_ref()
+        .iter()
+        .map(|c| c.name_str().into_owned())
+        .collect();
+    let body: Vec<Vec<String>> = rows
+        .iter()
+        .map(|r| (0..header.len()).map(|i| cell(r, i)).collect())
+        .collect();
+    let widths: Vec<usize> = (0..header.len())
+        .map(|i| {
+            body.iter()
+                .map(|line| line[i].chars().count())
+                .chain([header[i].chars().count()])
+                .max()
+                .unwrap_or(0)
+        })
+        .collect();
+    std::iter::once(&header)
+        .chain(body.iter())
+        .map(|line| {
+            line.iter()
+                .zip(&widths)
+                .map(|(value, width)| format!("{value:<width$}"))
+                .collect::<Vec<_>>()
+                .join("  ")
+                .trim_end()
+                .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn replace_view_sql(create: &str, check: &str, schema: &str, view: &str, body: &str) -> String {
@@ -404,6 +542,42 @@ pub struct MysqlUrl {
     pub root_cert: Option<String>,
     pub identity: Option<String>,
     pub identity_password: Option<String>,
+    pub read_only: bool,
+}
+
+pub const READ_ONLY_SETUP: &str = "SET SESSION TRANSACTION READ ONLY";
+
+fn without_setup(opts: &Opts) -> Opts {
+    OptsBuilder::from_opts(opts.clone())
+        .setup(Vec::<String>::new())
+        .into()
+}
+
+async fn read_only_session_supported(opts: Opts, plain: Option<Opts>) -> Result<bool, String> {
+    let mut conn = match Conn::new(without_setup(&opts)).await {
+        Err(mysql_async::Error::Driver(mysql_async::DriverError::NoClientSslFlagFromServer)) => {
+            match plain {
+                Some(plain) => Conn::new(without_setup(&plain))
+                    .await
+                    .map_err(|e| connect_err(&plain, e))?,
+                None => return Err(NO_SERVER_TLS.to_string()),
+            }
+        }
+        other => other.map_err(|e| connect_err(&opts, e))?,
+    };
+    let supported = match conn.query_drop(READ_ONLY_SETUP).await {
+        Ok(()) => true,
+        Err(mysql_async::Error::Server(error)) => {
+            eprintln!(
+                "l8db: Server lehnt {READ_ONLY_SETUP} ab ({} {}); Lesemodus nur clientseitig.",
+                error.code, error.message
+            );
+            false
+        }
+        Err(error) => return Err(map_err(error)),
+    };
+    let _ = conn.disconnect().await;
+    Ok(supported)
 }
 
 pub fn parse_mysql_url(value: &str) -> Result<MysqlUrl, String> {
@@ -416,6 +590,7 @@ pub fn parse_mysql_url(value: &str) -> Result<MysqlUrl, String> {
     let mut root_cert = None;
     let mut identity = None;
     let mut identity_password = None;
+    let mut read_only = false;
     let pairs: Vec<(String, String)> = url
         .query_pairs()
         .map(|(k, v)| (k.into_owned(), v.into_owned()))
@@ -451,6 +626,7 @@ pub fn parse_mysql_url(value: &str) -> Result<MysqlUrl, String> {
             "sslpassword" | "ssl-password" | "clientCertificateKeyStorePassword" => {
                 identity_password = Some(v)
             }
+            "read_only" => read_only = v == "true",
             "abs_conn_ttl"
             | "abs_conn_ttl_jitter"
             | "client_found_rows"
@@ -489,6 +665,7 @@ pub fn parse_mysql_url(value: &str) -> Result<MysqlUrl, String> {
         root_cert,
         identity,
         identity_password,
+        read_only,
     })
 }
 
@@ -526,6 +703,7 @@ impl MysqlAdapter {
             root_cert,
             identity,
             identity_password,
+            read_only,
         } = parse_mysql_url(&resolved)?;
         let opts = Opts::from_url(url.as_str()).map_err(|e| format!("Ungültige MySQL-URL: {e}"))?;
         let mut builder = OptsBuilder::from_opts(opts)
@@ -534,6 +712,9 @@ impl MysqlAdapter {
             .conn_ttl(Some(std::time::Duration::from_secs(60)));
         if let Some(db) = database.filter(|d| !d.is_empty()) {
             builder = builder.db_name(Some(db));
+        }
+        if read_only {
+            builder = builder.setup(vec![READ_ONLY_SETUP]);
         }
         let plain: Opts = builder.clone().ssl_opts(None::<SslOpts>).into();
         let tls = (ssl != SslMode::Disable).then(|| {
@@ -574,16 +755,40 @@ impl MysqlAdapter {
         })
     }
 
+    async fn session_opts(&self) -> Result<(Opts, Option<Opts>), String> {
+        if self.opts.setup().is_empty() {
+            return Ok((self.opts.clone(), self.plain.clone()));
+        }
+        let probe = read_only_session_supported(self.opts.clone(), self.plain.clone());
+        let supported = self
+            .pool_state
+            .shared(&format!("{}#read-only-session", self.key), || {
+                super::execution::connect(probe)
+            })
+            .await?;
+        Ok(if *supported {
+            (self.opts.clone(), self.plain.clone())
+        } else {
+            (
+                without_setup(&self.opts),
+                self.plain.as_ref().map(without_setup),
+            )
+        })
+    }
+
     async fn open_conn(&self) -> Result<Conn, String> {
+        let (opts, plain) = self.session_opts().await?;
         super::execution::connect(async {
-            match Conn::new(self.opts.clone()).await {
+            match Conn::new(opts.clone()).await {
                 Err(mysql_async::Error::Driver(
                     mysql_async::DriverError::NoClientSslFlagFromServer,
-                )) => match &self.plain {
-                    Some(plain) => Conn::new(plain.clone()).await.map_err(map_err),
+                )) => match &plain {
+                    Some(plain) => Conn::new(plain.clone())
+                        .await
+                        .map_err(|e| connect_err(plain, e)),
                     None => Err(NO_SERVER_TLS.to_string()),
                 },
-                other => other.map_err(map_err),
+                other => other.map_err(|e| connect_err(&opts, e)),
             }
         })
         .await
@@ -596,34 +801,115 @@ impl MysqlAdapter {
     }
 
     async fn conn(&self) -> Result<Conn, String> {
-        let pool = self.pool(self.key.clone(), self.opts.clone()).await?;
+        let (opts, plain) = self.session_opts().await?;
+        let pool = self.pool(self.key.clone(), opts.clone()).await?;
         super::execution::connect(async {
             match pool.get_conn().await {
                 Err(mysql_async::Error::Driver(
                     mysql_async::DriverError::NoClientSslFlagFromServer,
-                )) => match &self.plain {
+                )) => match &plain {
                     Some(plain) => self
                         .pool(format!("{}#plain", self.key), plain.clone())
                         .await?
                         .get_conn()
                         .await
-                        .map_err(map_err),
+                        .map_err(|e| connect_err(plain, e)),
                     None => Err(NO_SERVER_TLS.to_string()),
                 },
-                other => other.map_err(map_err),
+                other => other.map_err(|e| connect_err(&opts, e)),
             }
         })
         .await
     }
 
+    async fn execute_in_session(&self, session: &str, sql: &str) -> Result<QueryResult, String> {
+        let sessions = self
+            .pool_state
+            .shared(&format!("{}#script-sessions", self.key), || async {
+                Ok::<SessionConns, String>(std::sync::Mutex::new(Default::default()))
+            })
+            .await?;
+        let parked = {
+            let mut map = sessions.lock().unwrap_or_else(|e| e.into_inner());
+            map.retain(|_, (_, since)| since.elapsed() < SESSION_TTL);
+            map.remove(session).map(|(conn, _)| conn)
+        };
+        let mut conn = match parked {
+            Some(conn) => conn,
+            None => self.open_conn().await?,
+        };
+        let result = run_query(&mut conn, sql).await;
+        if result.is_ok() || conn.ping().await.is_ok() {
+            let mut map = sessions.lock().unwrap_or_else(|e| e.into_inner());
+            if map.len() < SESSION_MAX || map.contains_key(session) {
+                map.insert(session.to_string(), (conn, std::time::Instant::now()));
+            }
+        }
+        result
+    }
+
     async fn rows(&self, sql: &str) -> Result<Vec<Row>, String> {
         let mut conn = self.conn().await?;
-        timed(async { conn.query(sql).await.map_err(map_err) }).await
+        let mariadb = is_mariadb(&conn);
+        timed(async { conn.query(sql).await.map_err(map_err) })
+            .await
+            .map_err(|e| flavored(mariadb, e))
+    }
+
+    async fn detailed_column_metadata(
+        &self,
+        schema: &str,
+        table: &str,
+        include_update: bool,
+    ) -> Result<Vec<super::column_metadata::ColumnMetadata>, String> {
+        let mut conn = self.conn().await?;
+        let mysql8 = include_update && conn.server_version().0 == 8;
+        let update_fields = if mysql8 {
+            ", extra, table_schema, table_name"
+        } else {
+            ""
+        };
+        let sql = format!(
+            "SELECT column_name, column_type, is_nullable, column_default, column_key, ordinal_position, character_maximum_length, column_comment{update_fields} FROM information_schema.columns WHERE table_schema = {} AND table_name = {} ORDER BY ordinal_position",
+            lit(schema),
+            lit(table)
+        );
+        let mariadb = is_mariadb(&conn);
+        let rows: Vec<Row> = timed(async { conn.query(sql).await.map_err(map_err) })
+            .await
+            .map_err(|e| flavored(mariadb, e))?;
+        Ok(rows
+            .iter()
+            .map(|r| {
+                let data_type = catalog::normalize_type(&cell(r, 1));
+                let on_update = if mysql8 && cell(r, 9) == schema && cell(r, 10) == table {
+                    timestamp_on_update(&data_type, &cell(r, 8))
+                } else {
+                    None
+                };
+                let mut metadata =
+                    super::column_metadata::ColumnMetadata::from(DetailedColumnInfo {
+                        name: cell(r, 0),
+                        data_type,
+                        is_nullable: cell(r, 2) == "YES",
+                        column_default: cell_opt(r, 3),
+                        is_primary_key: cell(r, 4) == "PRI",
+                        ordinal_position: cell_i64(r, 5) as i32,
+                        character_maximum_length: cell_opt(r, 6).and_then(|v| v.parse().ok()),
+                        comment: cell_opt(r, 7).filter(|c| !c.is_empty()),
+                    });
+                metadata.on_update = on_update;
+                metadata
+            })
+            .collect())
     }
 
     async fn exec(&self, sql: &str) -> Result<(), String> {
         let mut conn = self.conn().await?;
-        timed(async { conn.query_drop(sql).await.map_err(map_err) }).await
+        let mariadb = is_mariadb(&conn);
+        timed(async { conn.query_drop(sql).await.map_err(map_err) })
+            .await
+            .map_err(|e| flavored(mariadb, e))
     }
 
     async fn current_database(&self, conn: &mut Conn) -> Result<String, String> {
@@ -696,7 +982,7 @@ async fn run_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, String> {
     if let (Some(failed), true) = (failed, super::server_output::sink().is_some()) {
         let _ = timed(emit_warnings(conn, failed)).await;
     }
-    outcome.map_err(map_err)
+    outcome.map_err(|e| flavored(is_mariadb(conn), map_err(e)))
 }
 
 async fn emit_warnings(conn: &mut Conn, failed: Option<u16>) -> Result<(), String> {
@@ -736,7 +1022,19 @@ async fn read_query(conn: &mut Conn, sql: &str) -> Result<QueryResult, mysql_asy
         } else {
             None
         };
+        let mut extra = 0usize;
+        while let Some(more) = result.columns() {
+            extra += usize::from(!more.is_empty());
+            while result.next().await?.is_some() {}
+        }
         result.drop_result().await?;
+        if extra > 0 {
+            super::server_output::emit(super::server_output::ServerMessage {
+                level: "INFO".into(),
+                message: extra_results_note(extra),
+                detail: None,
+            });
+        }
         let data: Vec<Vec<serde_json::Value>> = rows
             .into_iter()
             .map(|row| {
@@ -822,7 +1120,7 @@ impl DatabaseAdapter for MysqlAdapter {
 
     async fn list_schemas(&self) -> Result<Vec<String>, String> {
         Ok(self
-            .rows("SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema','performance_schema','mysql','sys') ORDER BY schema_name")
+            .rows(&format!("SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN {SYSTEM_SCHEMAS} ORDER BY schema_name"))
             .await?
             .iter()
             .map(|r| cell(r, 0))
@@ -834,7 +1132,7 @@ impl DatabaseAdapter for MysqlAdapter {
             Some(s) => format!(" AND table_schema = {}", lit(s)),
             None => " AND table_schema = DATABASE()".to_string(),
         };
-        let sql = format!("SELECT table_schema, table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE'{filter} ORDER BY table_schema, table_name");
+        let sql = format!("SELECT table_schema, table_name FROM information_schema.tables WHERE table_type IN {TABLE_TYPES}{filter} ORDER BY table_schema, table_name");
         Ok(self
             .rows(&sql)
             .await?
@@ -853,11 +1151,11 @@ impl DatabaseAdapter for MysqlAdapter {
         table_type: Option<&str>,
     ) -> Result<Vec<ColumnInfo>, String> {
         let kind = if table_type.is_some_and(|t| t.eq_ignore_ascii_case("view")) {
-            "VIEW"
+            "('VIEW')"
         } else {
-            "BASE TABLE"
+            TABLE_TYPES
         };
-        let mut sql = format!("SELECT c.table_schema, c.table_name, c.column_name, c.column_type FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name WHERE t.table_type = '{kind}'");
+        let mut sql = format!("SELECT c.table_schema, c.table_name, c.column_name, c.column_type FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name WHERE t.table_type IN {kind}");
         match schema {
             Some(s) => sql.push_str(&format!(" AND c.table_schema = {}", lit(s))),
             None => sql.push_str(" AND c.table_schema = DATABASE()"),
@@ -874,7 +1172,7 @@ impl DatabaseAdapter for MysqlAdapter {
                 schema: cell(r, 0),
                 table: cell(r, 1),
                 name: cell(r, 2),
-                data_type: cell(r, 3),
+                data_type: catalog::normalize_type(&cell(r, 3)),
             })
             .collect())
     }
@@ -917,7 +1215,10 @@ impl DatabaseAdapter for MysqlAdapter {
             limit.max(0),
             offset.max(0)
         );
-        let mut result = self.execute_query(&sql).await?;
+        let mut result = self
+            .execute_query(&sql)
+            .await
+            .map_err(|e| filter_error(filter, e))?;
         attach_row_keys(&mut result.rows, &pk);
         Ok(TableData {
             columns: if columns.is_empty() {
@@ -944,7 +1245,8 @@ impl DatabaseAdapter for MysqlAdapter {
         );
         Ok(self
             .rows(&sql)
-            .await?
+            .await
+            .map_err(|e| filter_error(filter, e))?
             .first()
             .map(|r| cell_i64(r, 0))
             .unwrap_or(0))
@@ -959,6 +1261,9 @@ impl DatabaseAdapter for MysqlAdapter {
     }
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
+        if let Some(session) = super::execution::session_id() {
+            return self.execute_in_session(&session, sql).await;
+        }
         let mut conn = self.conn().await?;
         run_query(&mut conn, sql).await
     }
@@ -1104,26 +1409,20 @@ impl DatabaseAdapter for MysqlAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
-        let sql = format!(
-            "SELECT column_name, column_type, is_nullable, column_default, column_key, ordinal_position, character_maximum_length, column_comment FROM information_schema.columns WHERE table_schema = {} AND table_name = {} ORDER BY ordinal_position",
-            lit(schema),
-            lit(table)
-        );
         Ok(self
-            .rows(&sql)
+            .detailed_column_metadata(schema, table, false)
             .await?
-            .iter()
-            .map(|r| DetailedColumnInfo {
-                name: cell(r, 0),
-                data_type: cell(r, 1),
-                is_nullable: cell(r, 2) == "YES",
-                column_default: cell_opt(r, 3),
-                is_primary_key: cell(r, 4) == "PRI",
-                ordinal_position: cell_i64(r, 5) as i32,
-                character_maximum_length: cell_opt(r, 6).and_then(|v| v.parse().ok()),
-                comment: cell_opt(r, 7).filter(|c| !c.is_empty()),
-            })
+            .into_iter()
+            .map(|metadata| metadata.column)
             .collect())
+    }
+
+    async fn list_table_column_metadata(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<super::column_metadata::ColumnMetadata>, String> {
+        self.detailed_column_metadata(schema, table, true).await
     }
 
     async fn add_column(
@@ -1338,23 +1637,37 @@ impl DatabaseAdapter for MysqlAdapter {
     }
 
     async fn explain_query(&self, sql: &str, analyze: bool) -> Result<serde_json::Value, String> {
-        let statement = format!(
-            "EXPLAIN {} {}",
-            if analyze { "ANALYZE" } else { "FORMAT=JSON" },
-            sql.trim()
-        );
         let mut conn = self.conn().await?;
+        let mariadb = is_mariadb(&conn);
+        let statement = if analyze && mariadb {
+            let first = sql
+                .trim_start()
+                .split(|c: char| c.is_whitespace() || c == '(')
+                .next()
+                .unwrap_or("")
+                .to_ascii_uppercase();
+            if !matches!(first.as_str(), "SELECT" | "WITH" | "VALUES" | "TABLE") {
+                return Err(MARIADB_ANALYZE_READ_ONLY.into());
+            }
+            format!("ANALYZE {}", sql.trim())
+        } else {
+            format!(
+                "EXPLAIN {} {}",
+                if analyze { "ANALYZE" } else { "FORMAT=JSON" },
+                sql.trim()
+            )
+        };
         let rows: Vec<Row> =
             match timed(async { conn.exec(statement.as_str(), ()).await.map_err(map_err) }).await {
                 Ok(rows) => rows,
                 Err(e) if super::split_statements(sql).len() > 1 => {
                     return Err(format!("{MULTI_STATEMENT_EXPLAIN} ({e})"))
                 }
-                Err(e) => return Err(e),
+                Err(e) => return Err(flavored(mariadb, e)),
             };
         let text: Vec<String> = rows.iter().map(|r| cell(r, 0)).collect();
         if analyze {
-            return Ok(serde_json::Value::String(text.join("\n")));
+            return Ok(serde_json::Value::String(plan_text(&rows)));
         }
         serde_json::from_str(text.first().map(String::as_str).unwrap_or("{}"))
             .map_err(|e| format!("EXPLAIN konnte nicht gelesen werden: {e}"))
@@ -1403,6 +1716,271 @@ impl DatabaseAdapter for MysqlAdapter {
         self.exec(&kill_statement("CONNECTION", pid)?)
             .await
             .map(|_| true)
+    }
+
+    async fn list_locks(&self) -> Result<Vec<super::LockInfo>, String> {
+        let mut conn = self.conn().await?;
+        let mariadb = is_mariadb(&conn);
+        let sql = if mariadb { MARIADB_LOCKS } else { MYSQL_LOCKS };
+        let rows: Vec<Row> = timed(async { conn.query(sql).await.map_err(map_err) })
+            .await
+            .map_err(|e| flavored(mariadb, e))?;
+        Ok(rows
+            .iter()
+            .map(|r| super::LockInfo {
+                pid: session_pid(cell_i64(r, 0)),
+                lock_type: cell(r, 1),
+                relation: cell_opt(r, 2).filter(|v| !v.is_empty()),
+                mode: cell(r, 3),
+                granted: cell(r, 4) == "1",
+            })
+            .collect())
+    }
+
+    async fn search_columns(
+        &self,
+        schema: Option<&str>,
+        term: &str,
+        limit: i64,
+    ) -> Result<Vec<super::ColumnMatch>, String> {
+        let sql = format!(
+            "SELECT c.table_schema, c.table_name, c.column_name, c.column_type, t.table_type FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name WHERE c.table_schema NOT IN {SYSTEM_SCHEMAS}{} AND c.column_name LIKE {} ORDER BY c.table_schema, c.table_name, c.ordinal_position LIMIT {}",
+            schema.map_or(String::new(), |s| format!(" AND c.table_schema = {}", lit(s))),
+            lit(&super::postgres::like_pattern(term)),
+            limit.max(0)
+        );
+        Ok(self
+            .rows(&sql)
+            .await?
+            .iter()
+            .map(|r| super::ColumnMatch {
+                schema: cell(r, 0),
+                table: cell(r, 1),
+                column: cell(r, 2),
+                data_type: catalog::normalize_type(&cell(r, 3)),
+                object_type: cell(r, 4),
+            })
+            .collect())
+    }
+
+    async fn search_source(
+        &self,
+        schema: Option<&str>,
+        term: &str,
+        limit: i64,
+    ) -> Result<Vec<super::SourceMatch>, String> {
+        let pattern = lit(&super::postgres::like_pattern(term));
+        let only =
+            |column: &str| schema.map_or(String::new(), |s| format!(" AND {column} = {}", lit(s)));
+        let sql = format!(
+            "SELECT routine_schema, routine_name, routine_type, routine_definition FROM information_schema.routines WHERE routine_schema NOT IN {SYSTEM_SCHEMAS}{} AND routine_definition LIKE {pattern} UNION ALL SELECT table_schema, table_name, 'VIEW', view_definition FROM information_schema.views WHERE table_schema NOT IN {SYSTEM_SCHEMAS}{} AND view_definition LIKE {pattern} ORDER BY 1, 2 LIMIT {}",
+            only("routine_schema"),
+            only("table_schema"),
+            limit.max(0)
+        );
+        Ok(self
+            .rows(&sql)
+            .await?
+            .iter()
+            .filter_map(|r| {
+                let (schema, name, kind) = (cell(r, 0), cell(r, 1), cell(r, 2));
+                let (line, snippet, occurrences) =
+                    super::postgres::source_snippet(&cell(r, 3), term)?;
+                let view = kind == "VIEW";
+                Some(super::SourceMatch {
+                    oid: if view {
+                        format!("{schema}.{name}")
+                    } else {
+                        Self::function_oid(&schema, &name, &kind)
+                    },
+                    identity: String::new(),
+                    object_type: if view { "view" } else { "routine" }.into(),
+                    schema,
+                    name,
+                    line,
+                    snippet,
+                    occurrences,
+                })
+            })
+            .collect())
+    }
+
+    async fn list_scheduler_jobs(&self) -> Result<Vec<super::SchedulerJobInfo>, String> {
+        let rows = self
+            .rows("SELECT event_schema, event_name, definer, status, event_type, interval_value, interval_field, execute_at, starts, ends, event_definition, last_executed, @@event_scheduler FROM information_schema.events WHERE event_schema = DATABASE() ORDER BY event_name")
+            .await?;
+        Ok(rows
+            .iter()
+            .map(|r| {
+                let (schema, name, status) = (cell(r, 0), cell(r, 1), cell(r, 3));
+                let schedule = if cell(r, 4) == "ONE TIME" {
+                    format!("AT {}", cell(r, 7))
+                } else {
+                    let mut text = format!("EVERY {} {}", cell(r, 5), cell(r, 6));
+                    if let Some(starts) = cell_opt(r, 8) {
+                        text.push_str(&format!(" STARTS {starts}"));
+                    }
+                    if let Some(ends) = cell_opt(r, 9) {
+                        text.push_str(&format!(" ENDS {ends}"));
+                    }
+                    text
+                };
+                super::SchedulerJobInfo {
+                    id: format!("{schema}\u{1f}{name}"),
+                    owner: cell(r, 2),
+                    enabled: status == "ENABLED",
+                    state: if cell(r, 12).eq_ignore_ascii_case("ON") {
+                        status
+                    } else {
+                        format!("{status} · Scheduler aus")
+                    },
+                    schedule,
+                    command: cell(r, 10),
+                    last_run: cell_opt(r, 11),
+                    last_status: None,
+                    last_error: None,
+                    next_run: None,
+                    name,
+                }
+            })
+            .collect())
+    }
+
+    async fn set_scheduler_job_enabled(&self, job_id: &str, enabled: bool) -> Result<(), String> {
+        let (schema, name) = job_id
+            .split_once('\u{1f}')
+            .ok_or_else(|| "Ungültige Event-ID.".to_string())?;
+        self.exec(&format!(
+            "ALTER EVENT {}.{} {}",
+            quote(schema),
+            quote(name),
+            if enabled { "ENABLE" } else { "DISABLE" }
+        ))
+        .await
+    }
+
+    async fn run_scheduler_job(&self, job_id: &str) -> Result<(), String> {
+        let _ = job_id;
+        Err("MySQL-Events lassen sich nicht manuell starten.".into())
+    }
+
+    async fn get_partition_info(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<super::PartitionInfo, String> {
+        let rows = self
+            .rows(&format!(
+                "SELECT DISTINCT partition_name, partition_method, partition_expression, partition_ordinal_position FROM information_schema.partitions WHERE table_schema = {} AND table_name = {} AND partition_name IS NOT NULL ORDER BY partition_ordinal_position LIMIT 10000",
+                lit(schema),
+                lit(table)
+            ))
+            .await?;
+        Ok(super::PartitionInfo {
+            is_partitioned: !rows.is_empty(),
+            strategy: rows.first().map(|r| cell(r, 1)),
+            partition_key: rows.first().and_then(|r| cell_opt(r, 2)),
+            partitions: rows
+                .iter()
+                .map(|r| super::PartitionChild {
+                    schema: table.to_string(),
+                    name: cell(r, 0),
+                })
+                .collect(),
+            read_only: true,
+        })
+    }
+
+    async fn list_sequences(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<super::SequenceInfo>, String> {
+        let filter = schema.map_or_else(|| "DATABASE()".to_string(), lit);
+        let names = self
+            .rows(&format!("SELECT table_schema, table_name FROM information_schema.tables WHERE table_type = 'SEQUENCE' AND table_schema = {filter} ORDER BY table_name LIMIT 1000"))
+            .await?;
+        if names.is_empty() {
+            return Ok(Vec::new());
+        }
+        let sql = names
+            .iter()
+            .map(|r| {
+                let (schema, name) = (cell(r, 0), cell(r, 1));
+                format!(
+                    "SELECT {}, {}, start_value, minimum_value, maximum_value, increment, cycle_option FROM {}.{}",
+                    lit(&schema),
+                    lit(&name),
+                    quote(&schema),
+                    quote(&name)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" UNION ALL ");
+        Ok(self
+            .rows(&sql)
+            .await?
+            .iter()
+            .map(|r| super::SequenceInfo {
+                schema: cell(r, 0),
+                name: cell(r, 1),
+                data_type: "bigint".into(),
+                start_value: cell(r, 2),
+                min_value: cell(r, 3),
+                max_value: cell(r, 4),
+                increment_by: cell(r, 5),
+                cycle: cell(r, 6) == "1",
+                last_value: None,
+            })
+            .collect())
+    }
+
+    async fn alter_sequence(
+        &self,
+        schema: &str,
+        name: &str,
+        changes: &super::AlterSequenceRequest,
+    ) -> Result<(), String> {
+        let number = |value: &str| -> Result<String, String> {
+            let value = value.trim();
+            value
+                .parse::<i128>()
+                .map(|_| value.to_string())
+                .map_err(|_| format!("„{value}“ ist keine ganze Zahl."))
+        };
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(inc) = changes.increment_by.as_deref() {
+            parts.push(format!("INCREMENT BY {}", number(inc)?));
+        }
+        for (value, keyword) in [
+            (&changes.min_value, "MINVALUE"),
+            (&changes.max_value, "MAXVALUE"),
+        ] {
+            match value.as_deref().map(str::trim) {
+                Some("") => parts.push(format!("NO {keyword}")),
+                Some(v) => parts.push(format!("{keyword} {}", number(v)?)),
+                None => {}
+            }
+        }
+        if let Some(cycle) = changes.cycle {
+            parts.push(if cycle { "CYCLE" } else { "NOCYCLE" }.into());
+        }
+        if let Some(restart) = changes
+            .restart_with
+            .as_deref()
+            .filter(|v| !v.trim().is_empty())
+        {
+            parts.push(format!("RESTART WITH {}", number(restart)?));
+        }
+        if parts.is_empty() {
+            return Ok(());
+        }
+        self.exec(&format!(
+            "ALTER SEQUENCE {}.{} {}",
+            quote(schema),
+            quote(name),
+            parts.join(" ")
+        ))
+        .await
     }
 
     async fn create_schema(&self, name: &str) -> Result<(), String> {
@@ -1591,10 +2169,371 @@ impl DatabaseAdapter for MysqlAdapter {
 #[path = "mysql_catalog.rs"]
 mod catalog;
 
+pub(crate) use catalog::strip_int_widths;
+
+#[cfg(test)]
+#[path = "mysql_column_update_tests.rs"]
+mod column_update_tests;
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::pool::create_pool_state;
+
+    #[test]
+    fn read_only_urls_lock_every_session() {
+        let url = "mysql://app@db:3306/shop?ssl-mode=DISABLED&read_only=true";
+        let parsed = parse_mysql_url(url).unwrap();
+        assert!(parsed.read_only);
+        assert!(!parsed.url.as_str().contains("read_only"));
+        let adapter = MysqlAdapter::new(url, None, create_pool_state(), "ro".into()).unwrap();
+        assert_eq!(adapter.opts.setup(), [READ_ONLY_SETUP]);
+        let writable = MysqlAdapter::new(
+            "mysql://app@db:3306/shop",
+            None,
+            create_pool_state(),
+            "rw".into(),
+        )
+        .unwrap();
+        assert!(writable.opts.setup().is_empty());
+        assert!(without_setup(&adapter.opts).setup().is_empty());
+        assert_eq!(
+            without_setup(&adapter.opts).ip_or_hostname(),
+            adapter.opts.ip_or_hostname()
+        );
+        assert!(
+            !parse_mysql_url("mysql://app@db/shop?read_only=false")
+                .unwrap()
+                .read_only
+        );
+        let error = map_err(mysql_async::Error::Server(mysql_async::ServerError {
+            code: 1792,
+            message: "Cannot execute statement in a READ ONLY transaction.".into(),
+            state: "25006".into(),
+        }));
+        assert!(
+            error.starts_with("Verbindung ist schreibgeschützt"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn filter_errors_hint_dialect_without_internal_sql() {
+        let server = "MySQL 1064: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'ILIKE 'n%') ORDER BY `id` LIMIT 3 OFFSET 0' at line 1".to_string();
+        let text = filter_error(Some("name ILIKE 'n%'"), server.clone());
+        assert!(
+            text.starts_with("ILIKE gibt es hier nicht, LIKE verwenden."),
+            "{text}"
+        );
+        assert!(!text.contains("LIMIT 3"), "{text}");
+        assert!(text.contains("MySQL 1064"), "{text}");
+        assert!(filter_error(Some("d::date = '2020-01-01'"), server.clone()).starts_with("„::“"));
+        assert_eq!(filter_error(None, server.clone()), server);
+        let other = "MySQL 1054: Unknown column 'x'".to_string();
+        assert_eq!(filter_error(Some("x = 1"), other.clone()), other);
+        assert_eq!(
+            flavored(true, server.clone())[..12].to_string(),
+            "MariaDB 1064"
+        );
+        assert_eq!(flavored(false, other.clone()), other);
+        assert_eq!(
+            extra_results_note(1),
+            "1 weitere Ergebnismenge wird nicht angezeigt."
+        );
+        assert_eq!(
+            extra_results_note(3),
+            "3 weitere Ergebnismengen werden nicht angezeigt."
+        );
+    }
+
+    #[tokio::test]
+    async fn refused_connection_names_host_and_port() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let url = format!("mysql://root:x@127.0.0.1:{port}/db?sslmode=disable");
+        let adapter = MysqlAdapter::new(&url, None, create_pool_state(), url.clone()).unwrap();
+        let error = adapter.test_connection().await.unwrap_err();
+        assert_eq!(
+            error,
+            format!(
+                "Verbindung zu 127.0.0.1:{port} abgelehnt. Läuft der Server und stimmt der Port?"
+            )
+        );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_partitions_are_listed_read_only() {
+        if live_urls().is_empty() {
+            eprintln!("übersprungen: L8DB_SMOKE_MYSQL_URL und L8DB_SMOKE_MARIADB_URL fehlen");
+        }
+        for url in live_urls() {
+            let adapter = MysqlAdapter::new(&url, None, create_pool_state(), url.clone()).unwrap();
+            let schema = live_scalar(&adapter, "SELECT DATABASE()").await;
+            adapter
+                .execute_query("DROP TABLE IF EXISTS l8db_fix_part, l8db_fix_plain")
+                .await
+                .unwrap();
+            adapter
+                .execute_query("CREATE TABLE l8db_fix_part (id INT, d DATE) PARTITION BY RANGE COLUMNS(d) (PARTITION p2022 VALUES LESS THAN ('2023-01-01'), PARTITION p2023 VALUES LESS THAN ('2024-01-01'), PARTITION pmax VALUES LESS THAN (MAXVALUE))")
+                .await
+                .unwrap();
+            adapter
+                .execute_query("CREATE TABLE l8db_fix_plain (id INT)")
+                .await
+                .unwrap();
+            let info = adapter
+                .get_partition_info(&schema, "l8db_fix_part")
+                .await
+                .unwrap();
+            assert!(info.is_partitioned && info.read_only);
+            assert_eq!(info.strategy.as_deref(), Some("RANGE COLUMNS"));
+            assert_eq!(info.partition_key.as_deref(), Some("`d`"));
+            let names: Vec<_> = info.partitions.iter().map(|p| p.name.as_str()).collect();
+            assert_eq!(names, ["p2022", "p2023", "pmax"]);
+            let plain = adapter
+                .get_partition_info(&schema, "l8db_fix_plain")
+                .await
+                .unwrap();
+            assert!(!plain.is_partitioned && plain.partitions.is_empty());
+            adapter
+                .execute_query("DROP TABLE l8db_fix_part, l8db_fix_plain")
+                .await
+                .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_objects_results_and_messages() {
+        use crate::db::server_output::{capture, Messages};
+        for url in live_urls() {
+            let adapter = MysqlAdapter::new(&url, None, create_pool_state(), url.clone()).unwrap();
+            let mariadb = live_scalar(&adapter, "SELECT VERSION()")
+                .await
+                .contains("MariaDB");
+            let schema = live_scalar(&adapter, "SELECT DATABASE()").await;
+            for sql in [
+                "DROP PROCEDURE IF EXISTS l8db_fix_two",
+                "DROP TABLE IF EXISTS l8db_fix_ver, l8db_fix_t",
+                "DROP EVENT IF EXISTS l8db_fix_ev",
+                "CREATE TABLE l8db_fix_t (id INT PRIMARY KEY, l8db_fix_col INT, g INT(11))",
+                "INSERT INTO l8db_fix_t VALUES (1, 1, 1), (2, 2, 2)",
+                "CREATE PROCEDURE l8db_fix_two() BEGIN SELECT id FROM l8db_fix_t; SELECT COUNT(*) AS l8db_fix_marker FROM l8db_fix_t; SELECT 3; END",
+                "CREATE EVENT l8db_fix_ev ON SCHEDULE EVERY 1 DAY DISABLE DO SELECT 1",
+            ] {
+                adapter.exec(sql).await.unwrap();
+            }
+            let sink = Messages::default();
+            let result = capture(sink.clone(), adapter.execute_query("CALL l8db_fix_two()"))
+                .await
+                .unwrap();
+            assert_eq!(result.rows.len(), 2, "{url}");
+            let notes: Vec<String> = sink.take().into_iter().map(|m| m.message).collect();
+            assert!(
+                notes.contains(&"2 weitere Ergebnismengen werden nicht angezeigt.".to_string()),
+                "{url}: {notes:?}"
+            );
+            let error = adapter
+                .fetch_rows(
+                    &schema,
+                    "l8db_fix_t",
+                    Some("id ILIKE '1'"),
+                    3,
+                    0,
+                    None,
+                    false,
+                    false,
+                    false,
+                )
+                .await
+                .unwrap_err();
+            assert!(
+                error.starts_with("ILIKE gibt es hier nicht"),
+                "{url}: {error}"
+            );
+            assert!(!error.contains("LIMIT 3"), "{url}: {error}");
+            assert!(
+                error.contains(if mariadb {
+                    "MariaDB 1064"
+                } else {
+                    "MySQL 1064"
+                }),
+                "{url}: {error}"
+            );
+            let types = adapter
+                .list_table_columns_detailed(&schema, "l8db_fix_t")
+                .await
+                .unwrap();
+            assert_eq!(types[2].data_type, "int", "{url}");
+            let columns = adapter
+                .search_columns(Some(&schema), "l8db_fix_c", 5)
+                .await
+                .unwrap();
+            assert_eq!(columns.len(), 1, "{url}: {columns:?}");
+            assert_eq!(columns[0].table, "l8db_fix_t");
+            let limited = adapter.search_columns(None, "", 1).await.unwrap();
+            assert!(limited.len() <= 1, "{url}");
+            let source = adapter
+                .search_source(Some(&schema), "l8db_fix_marker", 5)
+                .await
+                .unwrap();
+            assert_eq!(source.len(), 1, "{url}: {source:?}");
+            assert_eq!(source[0].object_type, "routine");
+            assert_eq!(
+                source[0].oid,
+                MysqlAdapter::function_oid(&schema, "l8db_fix_two", "PROCEDURE")
+            );
+            let event = adapter
+                .list_scheduler_jobs()
+                .await
+                .unwrap()
+                .into_iter()
+                .find(|job| job.name == "l8db_fix_ev")
+                .unwrap();
+            assert!(!event.enabled, "{url}");
+            assert!(
+                event.schedule.starts_with("EVERY 1 DAY"),
+                "{url}: {}",
+                event.schedule
+            );
+            adapter
+                .set_scheduler_job_enabled(&event.id, true)
+                .await
+                .unwrap();
+            assert_eq!(
+                live_scalar(
+                    &adapter,
+                    "SELECT status FROM information_schema.events WHERE event_name = 'l8db_fix_ev'"
+                )
+                .await,
+                "ENABLED"
+            );
+            assert!(adapter.run_scheduler_job(&event.id).await.is_err());
+            let mut holder = adapter.open_conn().await.unwrap();
+            holder.query_drop("START TRANSACTION").await.unwrap();
+            holder
+                .query_drop("SELECT * FROM l8db_fix_t WHERE id = 1 FOR UPDATE")
+                .await
+                .unwrap();
+            let mut waiter = adapter.open_conn().await.unwrap();
+            let waiting = tokio::spawn(async move {
+                waiter
+                    .query_drop("SET SESSION innodb_lock_wait_timeout = 10")
+                    .await
+                    .unwrap();
+                waiter.query_drop("START TRANSACTION").await.unwrap();
+                let outcome = waiter
+                    .query_drop("SELECT * FROM l8db_fix_t WHERE id = 1 FOR UPDATE")
+                    .await;
+                waiter.query_drop("ROLLBACK").await.unwrap();
+                outcome
+            });
+            let mut locks = Vec::new();
+            for _ in 0..50 {
+                locks = adapter.list_locks().await.unwrap();
+                if locks.iter().any(|l| !l.granted) {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            assert!(
+                locks.iter().any(|l| !l.granted
+                    && l.relation
+                        .as_deref()
+                        .is_some_and(|r| r.contains("l8db_fix_t"))),
+                "{url}: {locks:?}"
+            );
+            assert!(
+                locks.iter().any(|l| l.granted && l.pid > 0),
+                "{url}: {locks:?}"
+            );
+            assert!(locks.len() <= 1000);
+            holder.query_drop("ROLLBACK").await.unwrap();
+            waiting.await.unwrap().unwrap();
+            drop(holder);
+            if mariadb {
+                for sql in [
+                    "DROP SEQUENCE IF EXISTS l8db_fix_seq",
+                    "CREATE TABLE l8db_fix_ver (id INT PRIMARY KEY) WITH SYSTEM VERSIONING",
+                    "CREATE SEQUENCE l8db_fix_seq START WITH 100 INCREMENT BY 5",
+                ] {
+                    adapter.exec(sql).await.unwrap();
+                }
+                let tables = adapter.list_tables(Some(&schema)).await.unwrap();
+                assert!(tables.iter().any(|t| t.name == "l8db_fix_ver"), "{url}");
+                assert_eq!(
+                    adapter
+                        .count_rows(&schema, "l8db_fix_ver", None, false)
+                        .await
+                        .unwrap(),
+                    0
+                );
+                let sequences = adapter.list_sequences(Some(&schema)).await.unwrap();
+                let seq = sequences.iter().find(|s| s.name == "l8db_fix_seq").unwrap();
+                assert_eq!(
+                    (seq.start_value.as_str(), seq.increment_by.as_str()),
+                    ("100", "5")
+                );
+                adapter
+                    .alter_sequence(
+                        &schema,
+                        "l8db_fix_seq",
+                        &crate::db::AlterSequenceRequest {
+                            increment_by: Some("7".into()),
+                            min_value: None,
+                            max_value: Some("".into()),
+                            cycle: Some(false),
+                            restart_with: Some("200".into()),
+                        },
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    live_scalar(&adapter, "SELECT NEXTVAL(l8db_fix_seq)").await,
+                    "200"
+                );
+                assert!(adapter
+                    .alter_sequence(
+                        &schema,
+                        "l8db_fix_seq",
+                        &crate::db::AlterSequenceRequest {
+                            increment_by: Some("1; DROP TABLE x".into()),
+                            min_value: None,
+                            max_value: None,
+                            cycle: None,
+                            restart_with: None,
+                        },
+                    )
+                    .await
+                    .is_err());
+                let catalog = adapter
+                    .schema_catalog(&schema, &["table".to_string()])
+                    .await
+                    .unwrap();
+                assert!(catalog
+                    .iter()
+                    .any(|o| o.ddl.contains("l8db_fix_ver")
+                        && o.ddl.ends_with("WITH SYSTEM VERSIONING")));
+                adapter.exec("DROP SEQUENCE l8db_fix_seq").await.unwrap();
+                adapter.exec("DROP TABLE l8db_fix_ver").await.unwrap();
+            } else {
+                assert!(adapter
+                    .list_sequences(Some(&schema))
+                    .await
+                    .unwrap()
+                    .is_empty());
+            }
+            for sql in [
+                "DROP EVENT l8db_fix_ev",
+                "DROP PROCEDURE l8db_fix_two",
+                "DROP TABLE l8db_fix_t",
+            ] {
+                adapter.exec(sql).await.unwrap();
+            }
+        }
+    }
 
     #[test]
     fn value_literals_do_not_depend_on_backslash_escapes() {
@@ -1919,6 +2858,16 @@ mod tests {
             change(&generated, &rename("v", "v")),
             r"`v` `v` varchar(40) GENERATED ALWAYS AS (concat(`s`,'x\'y')) VIRTUAL"
         );
+        assert_eq!(
+            change(
+                &generated,
+                &AlterColumnRequest {
+                    set_not_null: Some(false),
+                    ..rename("v", "v")
+                }
+            ),
+            r"`v` `v` varchar(40) GENERATED ALWAYS AS (concat(`s`,'x\'y')) VIRTUAL"
+        );
     }
 
     fn live_urls() -> Vec<String> {
@@ -2094,13 +3043,19 @@ mod tests {
                     "{url}: {sql}"
                 );
             }
-            if !mariadb {
-                let plan = adapter
-                    .explain_query("SELECT * FROM l8db_explain_analyze WHERE id = 1", true)
-                    .await
-                    .unwrap();
-                assert!(plan.is_string(), "{url}: {plan}");
-            }
+            let plan = adapter
+                .explain_query("SELECT * FROM l8db_explain_analyze WHERE id = 1", true)
+                .await
+                .unwrap();
+            let text = plan.as_str().unwrap_or_default();
+            assert!(
+                if mariadb {
+                    text.contains("select_type") && text.contains("l8db_explain_analyze")
+                } else {
+                    text.contains("actual time")
+                },
+                "{url}: {plan}"
+            );
             assert_eq!(
                 live_scalar(&adapter, "SELECT @@autocommit").await,
                 "1",
@@ -2371,5 +3326,64 @@ mod tests {
         assert!(
             MysqlAdapter::new("postgres://x@y/z", None, create_pool_state(), "k".into()).is_err()
         );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_script_sessions_keep_state_between_statements() {
+        for url in live_urls() {
+            let pool = create_pool_state();
+            let adapter = MysqlAdapter::new(&url, None, pool, "script-session".into()).unwrap();
+            for sql in [
+                "DROP DATABASE IF EXISTS l8db_rv2_a",
+                "DROP DATABASE IF EXISTS l8db_rv2_b",
+                "CREATE DATABASE l8db_rv2_a",
+                "CREATE DATABASE l8db_rv2_b",
+                "CREATE TABLE l8db_rv2_a.t (id int)",
+                "CREATE TABLE l8db_rv2_b.t (id int)",
+                "INSERT INTO l8db_rv2_a.t VALUES (1)",
+                "INSERT INTO l8db_rv2_b.t VALUES (2)",
+            ] {
+                adapter.execute_query(sql).await.expect(sql);
+            }
+            let step = |sql: &'static str| {
+                crate::db::execution::with_session(
+                    Some("script-a".into()),
+                    adapter.execute_query(sql),
+                )
+            };
+            step("USE l8db_rv2_a").await.unwrap();
+            let busy = adapter.conn().await.unwrap();
+            step("SET @x = 41").await.unwrap();
+            step("CREATE TEMPORARY TABLE l8db_rv2_tmp (n int)")
+                .await
+                .unwrap();
+            step("USE l8db_rv2_b").await.unwrap();
+            step("TRUNCATE t").await.unwrap();
+            assert!(step("SELECT * FROM missing_table").await.is_err());
+            let x = step("SELECT @x + 1 AS x, DATABASE() AS db FROM l8db_rv2_a.l8db_rv2_tmp RIGHT JOIN (SELECT 1) one ON 1=1")
+                .await
+                .unwrap();
+            drop(busy);
+            assert_eq!(x.rows[0]["x"], 42);
+            assert_eq!(x.rows[0]["db"], "l8db_rv2_b");
+            assert_eq!(
+                live_scalar(&adapter, "SELECT COUNT(*) FROM l8db_rv2_a.t").await,
+                "1"
+            );
+            assert_eq!(
+                live_scalar(&adapter, "SELECT COUNT(*) FROM l8db_rv2_b.t").await,
+                "0"
+            );
+            assert!(adapter.execute_query("SELECT @x").await.unwrap().rows[0]["@x"].is_null());
+            adapter
+                .execute_query("DROP DATABASE l8db_rv2_a")
+                .await
+                .unwrap();
+            adapter
+                .execute_query("DROP DATABASE l8db_rv2_b")
+                .await
+                .unwrap();
+        }
     }
 }

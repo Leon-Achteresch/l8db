@@ -333,7 +333,8 @@ export async function runSchemaCompare(
     const kind = left.snapshot?.kind ?? left.connection?.kind;
     if (!kind || kind !== (right.snapshot?.kind ?? right.connection?.kind))
       throw new Error("Quelle und Ziel müssen dieselbe Datenbankart verwenden.");
-    const types = activeTypes(state, kind).filter(
+    const requestedTypes = activeTypes(state, kind);
+    const types = requestedTypes.filter(
       (type) =>
         (!left.snapshot || left.snapshot.types.includes(type)) &&
         (!right.snapshot || right.snapshot.types.includes(type)),
@@ -398,6 +399,15 @@ export async function runSchemaCompare(
         sourceLabel: sideLabel(source),
         targetLabel: sideLabel(target),
         types,
+        requestedTypes,
+        tableScope: {
+          source: left.snapshot?.tables ?? null,
+          target: right.snapshot?.tables ?? null,
+        },
+        snapshotTimes: {
+          source: left.snapshot?.created_at ?? null,
+          target: right.snapshot?.created_at ?? null,
+        },
         items: limited.items,
         comparedAt: new Date().toISOString(),
         omitted: limited.omitted,

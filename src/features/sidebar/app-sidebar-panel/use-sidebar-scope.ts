@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import { connectionUser, siblingConnections } from "@/lib/connection-groups";
 import type { SavedConnection } from "@/lib/connections";
 import { useActiveDatabase, useActiveSchema, useDbSelectionStore } from "@/lib/db-selection";
-import { useDatabasesQuery, useSchemasQuery } from "@/lib/queries";
+import { useDatabaseCatalogQuery, useSchemasQuery } from "@/lib/queries";
 
 export function useSidebarScope(
   connections: SavedConnection[],
@@ -12,7 +12,13 @@ export function useSidebarScope(
   const setSchema = useDbSelectionStore((state) => state.setSchema);
   const activeDatabase = useActiveDatabase();
   const activeSchema = useActiveSchema();
-  const { data: databases, isLoading: databasesLoading } = useDatabasesQuery();
+  const catalog = useDatabaseCatalogQuery();
+  const databases = Array.isArray(catalog.data) ? catalog.data : catalog.data?.databases;
+  const retentionByBucket = catalog.isError ? undefined : catalog.data?.bucket_retention;
+  const bucketRetention =
+    activeDatabase && retentionByBucket && Object.hasOwn(retentionByBucket, activeDatabase)
+      ? retentionByBucket[activeDatabase]
+      : undefined;
   const { data: schemas, isLoading: schemasLoading } = useSchemasQuery();
   const activeId = activeConnection?.id;
   const remembered = useDbSelectionStore((state) =>
@@ -33,7 +39,8 @@ export function useSidebarScope(
     activeDatabase,
     activeSchema,
     databases,
-    databasesLoading,
+    databasesLoading: catalog.isLoading,
+    bucketRetention,
     schemas,
     schemasLoading,
     siblings,

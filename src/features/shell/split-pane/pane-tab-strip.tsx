@@ -1,22 +1,22 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { PlusIcon } from "lucide-react";
 import type * as React from "react";
-import { Fragment, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { HiddenTabsMenu } from "@/features/shell/table-tabs/hidden-tabs-menu";
-import { TabGroupLabel } from "@/features/shell/table-tabs/tab-group-label";
+import { TransactionCloseDialog } from "@/features/shell/table-tabs/transaction-close-dialog";
 import { useTabClose } from "@/features/shell/table-tabs/use-tab-close";
-import { useTabGroups } from "@/features/shell/table-tabs/use-tab-groups";
 import {
   type TableTabActions,
   TableTabsSortableTab,
 } from "@/features/shell/table-tabs-sortable-tab";
 import { useConnectionsStore } from "@/lib/connections";
+import { connectionEnvironment } from "@/lib/environments";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useTabOverflow } from "@/lib/hooks/use-tab-overflow";
-import { MAX_SPLIT_PANES, usePaneTabList, useSplitView } from "@/lib/split-view";
+import { MAX_SPLIT_PANES, paneConnectionId, usePaneTabList, useSplitView } from "@/lib/split-view";
 import { useDropPreview } from "@/lib/tab-drop";
 import { navigateToTab, preloadTab } from "@/lib/tab-navigation";
 import { remoteTab, type Tab, tabKey, useTableTabs } from "@/lib/table-tabs";
@@ -28,11 +28,18 @@ export function PaneTabStrip({ index, focused }: { index: number; focused: boole
   const active = useSplitView((state) => state.panes[index] ?? null);
   const paneCount = useSplitView((state) => state.panes.length);
   const connections = useConnectionsStore((state) => state.connections);
+  const activeId = useConnectionsStore((state) => state.activeId);
+  const hostGroupRules = useConnectionsStore((state) => state.hostGroupRules);
+  const paneConnections = useSplitView((state) => state.paneConnections);
+  const environments = useMemo(
+    () =>
+      new Map(connections.map((entry) => [entry.id, connectionEnvironment(entry, hostGroupRules)])),
+    [connections, hostGroupRules],
+  );
   const routeTab = useActiveWorkspaceTab();
   const pendingTab = useActiveWorkspaceTab(true);
   const navigate = useNavigate();
   const router = useRouter();
-  const groups = useTabGroups(tabs);
   const group = `pane-${index}`;
   const keys = tabs.map(tabKey);
   const { containerRef, navRef, trackRef, overflow, hiddenKeys, revealTab } = useTabOverflow(
@@ -143,28 +150,28 @@ export function PaneTabStrip({ index, focused }: { index: number; focused: boole
         >
           <div ref={trackRef} className="relative flex w-max items-center gap-0.5 px-0.5">
             {tabs.map((tab, position) => {
-              const label = groups?.[position];
-              const previous = position > 0 ? groups?.[position - 1] : undefined;
               const key = tabKey(tab);
+              const connectionId =
+                paneConnectionId({ paneConnections }, key, activeId, connections) ?? activeId;
               return (
-                <Fragment key={key}>
-                  {label && label.id !== previous?.id && <TabGroupLabel group={label} />}
-                  <TableTabsSortableTab
-                    tab={tab}
-                    index={position}
-                    group={group}
-                    pane={index}
-                    paneCount={paneCount}
-                    isActive={key === active}
-                    dimmed={!focused}
-                    isPending={Boolean(pendingTab && tabKey(pendingTab) === key)}
-                    color={colorOf(tab)}
-                    hasTabsToRight={position < tabs.length - 1}
-                    tabsCount={tabs.length}
-                    canSplit={paneCount < MAX_SPLIT_PANES}
-                    actions={actions}
-                  />
-                </Fragment>
+                <TableTabsSortableTab
+                  key={key}
+                  tab={tab}
+                  index={position}
+                  group={group}
+                  pane={index}
+                  paneCount={paneCount}
+                  isActive={key === active}
+                  dimmed={!focused}
+                  isPending={Boolean(pendingTab && tabKey(pendingTab) === key)}
+                  color={colorOf(tab)}
+                  connectionId={connectionId}
+                  environment={connectionId ? (environments.get(connectionId) ?? null) : null}
+                  hasTabsToRight={position < tabs.length - 1}
+                  tabsCount={tabs.length}
+                  canSplit={paneCount < MAX_SPLIT_PANES}
+                  actions={actions}
+                />
               );
             })}
           </div>
@@ -198,6 +205,11 @@ export function PaneTabStrip({ index, focused }: { index: number; focused: boole
           style={{ left: caret }}
         />
       )}
+      <TransactionCloseDialog
+        pending={close.pendingTransactions}
+        setPending={close.setPendingTransactions}
+        finish={close.finishTransactions}
+      />
       <CloseConfirmDialog
         pendingClose={close.pendingClose}
         setPendingClose={close.setPendingClose}

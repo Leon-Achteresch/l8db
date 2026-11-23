@@ -20,22 +20,31 @@ describe("Befehlsmodus der Palette", () => {
   test("erkennt > mit und ohne Leerzeichen und entfernt nur das Präfix", () => {
     expect(parsePaletteQuery(">expo")).toEqual({
       commandsOnly: true,
+      objectsOnly: false,
       unusedOnly: false,
       search: "expo",
     });
     expect(parsePaletteQuery("  >  expo")).toEqual({
       commandsOnly: true,
+      objectsOnly: false,
       unusedOnly: false,
       search: "expo",
     });
-    expect(parsePaletteQuery("> ")).toEqual({ commandsOnly: true, unusedOnly: false, search: "" });
+    expect(parsePaletteQuery("> ")).toEqual({
+      commandsOnly: true,
+      objectsOnly: false,
+      unusedOnly: false,
+      search: "",
+    });
     expect(parsePaletteQuery("price > 10")).toEqual({
       commandsOnly: false,
+      objectsOnly: false,
       unusedOnly: false,
       search: "price > 10",
     });
     expect(parsePaletteQuery(">expo", false)).toEqual({
       commandsOnly: false,
+      objectsOnly: false,
       unusedOnly: false,
       search: ">expo",
     });
@@ -46,6 +55,13 @@ describe("Befehlsmodus der Palette", () => {
     const results = rankCommands(paletteSearchItems(items, query.commandsOnly), query.search);
     expect(results.map((item) => item.id)).toEqual(["settings", "export"]);
     expect(paletteSearchItems(items, false)).toBe(items);
+  });
+
+  test("@ sucht nur Datenbankobjekte", () => {
+    const query = parsePaletteQuery("@ expo");
+    expect(query).toMatchObject({ objectsOnly: true, commandsOnly: false, search: "expo" });
+    expect(paletteSearchItems(items, false, true).map((item) => item.id)).toEqual(["table"]);
+    expect(parsePaletteQuery("@x", false).objectsOnly).toBe(false);
   });
 
   test("zeigt ohne Eingabe zuletzt und häufig genutzte Einträge einmalig", () => {

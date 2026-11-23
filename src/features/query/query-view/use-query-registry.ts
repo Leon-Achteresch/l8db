@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { listAllColumns, listMaterializedViews, listTables, listViews } from "@/lib/db";
-import { useSchemasQuery } from "@/lib/queries";
+import { useAllSchemaObjectsQuery, useSchemasQuery } from "@/lib/queries";
+import { editorMetadataEnabled } from "@/lib/queries/editor-metadata";
 import { useSessionViews } from "@/lib/session-views";
 import { DEFAULT_SQL_DIALECT, sqlDialectForKind, sqlDialectLabel } from "@/lib/sql-format-options";
 import { effectiveConnectionString } from "@/lib/ssh";
@@ -16,6 +17,10 @@ export function useQueryRegistry(
 ) {
   const { data: schemas } = useSchemasQuery();
   const sessionViews = useSessionViews(connection?.id, database);
+  const sqlEditor = caps.query_language === "sql";
+  const onDemand = sqlEditor && connection?.editorMetadataPrefetch === false;
+  const enabled = () => editorMetadataEnabled(connection, sqlEditor);
+  const objects = useAllSchemaObjectsQuery(false, onDemand);
 
   const {
     data: tables,
@@ -26,7 +31,7 @@ export function useQueryRegistry(
     queryKey: ["all-tables", connection?.id, database],
     queryFn: () =>
       listTables(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
-    enabled: Boolean(connection),
+    enabled,
   });
 
   const {
@@ -42,18 +47,18 @@ export function useQueryRegistry(
         effectiveConnectionString(connection!),
         database ?? undefined,
       ),
-    enabled: Boolean(connection),
+    enabled,
     staleTime: 60_000,
   });
 
-  const { data: views } = useQuery({
+  const views = useQuery({
     queryKey: ["all-views", connection?.id, database],
     queryFn: () =>
       listViews(connection!.kind, effectiveConnectionString(connection!), database ?? undefined),
-    enabled: Boolean(connection) && caps.views,
+    enabled: () => caps.views && enabled(),
   });
 
-  const { data: matviews } = useQuery({
+  const matviews = useQuery({
     queryKey: ["all-matviews", connection?.id, database],
     queryFn: () =>
       listMaterializedViews(
@@ -61,7 +66,7 @@ export function useQueryRegistry(
         effectiveConnectionString(connection!),
         database ?? undefined,
       ),
-    enabled: Boolean(connection) && caps.materialized_views,
+    enabled: () => caps.materialized_views && enabled(),
   });
 
   const registry = useMemo(
@@ -69,8 +74,8 @@ export function useQueryRegistry(
       schemas: schemas ?? [],
       tables: [
         ...(tables ?? []),
-        ...(views ?? []),
-        ...(matviews ?? []).map(({ schema, name }) => ({ schema, name })),
+        ...(views.data ?? []),
+        ...(matviews.data ?? []).map(({ schema, name }) => ({ schema, name })),
         ...sessionViews.map(({ name }) => ({ schema: "", name })),
       ],
       columns: [
@@ -80,7 +85,7 @@ export function useQueryRegistry(
         ),
       ],
     }),
-    [schemas, tables, views, matviews, columns, sessionViews],
+    [schemas, tables, views.data, matviews.data, columns, sessionViews],
   );
 
   const dialectLabel = useMemo(() => {
@@ -91,11 +96,25 @@ export function useQueryRegistry(
   return {
     registry,
     dialectLabel,
-    loading: tablesLoading || columnsLoading,
-    error: tablesError || columnsError,
+    loading:
+      tablesLoading ||
+      columnsLoading ||
+      (onDemand && (views.isFetching || matviews.isFetching || objects.isFetching)),
+    error:
+      tablesError ||
+      columnsError ||
+      (onDemand && (views.isError || matviews.isError || objects.isError)),
+    waitingForMetadata: onDemand && (tables === undefined || columns === undefined),
     refresh: () => {
-      void refreshTables();
-      void refreshColumns();
+      if (!connection) return;
+      const options = { cancelRefetch: false };
+      void refreshTables(options);
+      void refreshColumns(options);
+      if (onDemand) {
+        if (caps.views) void views.refetch(options);
+        if (caps.materialized_views) void matviews.refetch(options);
+        void objects.refetch(options);
+      }
     },
   };
 }

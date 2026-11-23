@@ -9,8 +9,9 @@ import {
   SlidersHorizontalIcon,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { lazy, type ReactNode, Suspense, useMemo, useState } from "react";
+import { lazy, type ReactNode, Suspense, useMemo, useRef, useState } from "react";
 import { Collapse } from "@/components/motion/collapse";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -25,9 +26,13 @@ import {
 } from "@/lib/filter-parser";
 import { useListAnimation } from "@/lib/hooks/use-list-animation";
 import { useTableViewState } from "@/lib/hooks/use-table-view-state";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { activeRuleConditions, describeRule } from "@/lib/row-rules";
+import { useSettingsStore } from "@/lib/settings";
 import { compileFilterConditions } from "@/lib/sql-filter";
 import type { FilterCondition as Condition } from "@/lib/table-view-state";
+import { FilterGroupingPreview } from "./filter-bar/filter-grouping-preview";
+import { useFilterFocusHotkey } from "./filter-bar/use-filter-focus-hotkey";
 import { ActiveFilterBadge } from "./table-filter-panel/active-filter-badge";
 import { FilterConditionRow } from "./table-filter-panel/filter-condition-row";
 import { createId, emptyCondition } from "./table-filter-panel/filter-conditions";
@@ -59,11 +64,16 @@ export function TableFilterPanel({
   const listRef = useListAnimation<HTMLDivElement>();
   const caps = useActiveCapabilities();
   const kind = useActiveConnection()?.kind;
+  const hasNewGrouping = useHasNewFeatures("table.filter.grouping") && kind === "postgres";
   const json = caps.query_language === "json";
   const redis = caps.query_language === "redis";
   const native = redis;
   const [open, setOpen] = useTableViewState(stateKey, "filterOpen", false);
-  const [mode, setMode] = useTableViewState(stateKey, "filterMode", "simple");
+  const [mode, setMode] = useTableViewState(
+    stateKey,
+    "filterMode",
+    useSettingsStore.getState().tableFilterMode,
+  );
   const [filterConditions, setFilterConditions] = useTableViewState(
     stateKey,
     "filterConditions",
@@ -76,6 +86,15 @@ export function TableFilterPanel({
   );
   const [rules, setRules] = useTableViewState(stateKey, "rowRules", []);
   const [ruleMode, setRuleMode] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useFilterFocusHotkey(
+    rootRef,
+    () => {
+      setRuleMode(false);
+      setOpen(true);
+    },
+    open ? () => setOpen(false) : undefined,
+  );
   const [ruleColor, setRuleColor] = useState("#3b82f6");
   const [ruleConditions, setRuleConditions] = useState(() => [emptyCondition()]);
   const [ruleCombinator, setRuleCombinator] = useState<Combinator>("AND");
@@ -176,7 +195,7 @@ export function TableFilterPanel({
   };
 
   return (
-    <div className="flex min-h-0 max-h-full flex-col border-b bg-muted/30">
+    <div ref={rootRef} className="flex min-h-0 max-h-full flex-col border-b bg-muted/30">
       <div className="flex h-9 shrink-0 items-center gap-2 px-3">
         {leading}
         <button
@@ -186,6 +205,11 @@ export function TableFilterPanel({
         >
           <FilterIcon className="size-4 text-muted-foreground" />
           Filter
+          {!open && hasNewGrouping ? (
+            <span aria-hidden="true">
+              <NewBadge />
+            </span>
+          ) : null}
           <motion.span
             animate={{ rotate: open ? 180 : 0 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
@@ -237,18 +261,28 @@ export function TableFilterPanel({
       <Collapse open={open} durationMs={260}>
         <div className="min-h-0 max-h-[min(22rem,calc(55vh-7rem))] space-y-3 overflow-y-auto px-3 pb-3">
           {!native && !ruleMode && (
-            <Tabs value={mode} onValueChange={(value) => switchMode(value as FilterMode)}>
-              <TabsList>
-                <TabsTrigger value="simple">
-                  <SlidersHorizontalIcon />
-                  Einfach
-                </TabsTrigger>
-                <TabsTrigger value="sql">
-                  <Code2Icon />
-                  {json ? "JSON" : caps.query_label}
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <div className="flex flex-wrap items-center justify-between gap-1">
+              <Tabs value={mode} onValueChange={(value) => switchMode(value as FilterMode)}>
+                <TabsList>
+                  <TabsTrigger value="simple">
+                    <SlidersHorizontalIcon />
+                    Einfach
+                  </TabsTrigger>
+                  <TabsTrigger value="sql">
+                    <Code2Icon />
+                    {json ? "JSON" : caps.query_label}
+                    {mode === "simple" && hasNewGrouping ? (
+                      <span aria-hidden="true">
+                        <NewBadge />
+                      </span>
+                    ) : null}
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              {!json && mode === "sql" && open ? (
+                <FilterGroupingPreview sql={sql} columns={columns} stateKey={stateKey} />
+              ) : null}
+            </div>
           )}
 
           {parseError && (
@@ -259,6 +293,7 @@ export function TableFilterPanel({
 
           {redis ? (
             <Input
+              data-filter-focus
               aria-label="Redis-Key-Pattern"
               value={sql}
               onChange={(event) => setSql(event.target.value)}
@@ -270,6 +305,7 @@ export function TableFilterPanel({
             />
           ) : json && mode === "sql" && !ruleMode ? (
             <Textarea
+              data-filter-focus
               aria-label="MongoDB-Filter"
               value={sql}
               onChange={(event) => setSql(event.target.value)}
@@ -277,7 +313,7 @@ export function TableFilterPanel({
               className="h-36 font-mono text-xs"
             />
           ) : mode === "simple" || ruleMode ? (
-            <div ref={listRef} className="space-y-2">
+            <div ref={listRef} className="space-y-2" data-filter-focus>
               {conditions.map((condition, index) => (
                 <FilterConditionRow
                   key={condition.id}
@@ -308,7 +344,7 @@ export function TableFilterPanel({
               </p>
             </div>
           ) : (
-            <div className="space-y-1.5">
+            <div className="space-y-1.5" data-filter-focus>
               <Suspense
                 fallback={
                   <div className="h-36" role="status">

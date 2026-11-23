@@ -12,13 +12,16 @@ import { moveIconMenuFocus, useIconMenuAimState } from "./shared";
 
 const TIP_DELAY_MS = 250;
 const TIP_GAP = 8;
+const TIP_SKIP_MS = 300;
 
 function useIconMenuTip() {
   const ref = useRef<HTMLSpanElement>(null);
   const handlers = useMemo(() => {
     let timer = 0;
     let visible = false;
+    let warmUntil = 0;
     let current: HTMLElement | null = null;
+    let hovered: HTMLElement | null = null;
     let anchors: Map<Element, string> | null = null;
     const anchor = (el: HTMLElement) =>
       `translate(${el.offsetLeft + el.offsetWidth / 2}px, ${el.offsetTop - TIP_GAP}px) translate(-50%, -100%)`;
@@ -32,6 +35,7 @@ function useIconMenuTip() {
       if (!anchors.has(item)) anchors.set(item, anchor(item));
       return anchors.get(item);
     };
+    const isWarm = () => visible || performance.now() < warmUntil;
     const place = (item: HTMLElement) => {
       const tip = ref.current;
       const label = tip?.firstElementChild;
@@ -42,7 +46,7 @@ function useIconMenuTip() {
       label.textContent = item.dataset.tip ?? "";
       kbd.textContent = item.dataset.tipShortcut ?? "";
       kbd.hidden = !item.dataset.tipShortcut;
-      tip.style.transition = visible
+      tip.style.transition = isWarm()
         ? "opacity 150ms ease-out, transform 150ms var(--ease-smooth-out)"
         : "opacity 150ms ease-out";
       tip.style.transform = transform;
@@ -53,7 +57,7 @@ function useIconMenuTip() {
       if (item === current) return;
       current = item;
       window.clearTimeout(timer);
-      if (visible) place(item);
+      if (isWarm()) place(item);
       else timer = window.setTimeout(() => current && place(current), TIP_DELAY_MS);
     };
     const hide = () => {
@@ -63,6 +67,7 @@ function useIconMenuTip() {
       if (!visible || !ref.current) return;
       ref.current.style.opacity = "0";
       visible = false;
+      warmUntil = performance.now() + TIP_SKIP_MS;
     };
     const itemIn = (content: HTMLElement, target: EventTarget) => {
       const item = target instanceof Element ? target.closest<HTMLElement>("[data-tip]") : null;
@@ -72,14 +77,16 @@ function useIconMenuTip() {
       onFocus(event: FocusEvent<HTMLDivElement>) {
         const item = itemIn(event.currentTarget, event.target);
         if (item) show(item);
-        else hide();
+        else if (!hovered) hide();
       },
       onPointerOver(event: PointerEvent<HTMLDivElement>) {
-        const item = itemIn(event.currentTarget, event.target);
-        if (item?.hasAttribute("data-disabled")) show(item);
+        hovered = itemIn(event.currentTarget, event.target);
+        if (hovered) show(hovered);
+        else hide();
       },
       onPointerLeave() {
-        if (current?.hasAttribute("data-disabled")) hide();
+        hovered = null;
+        hide();
       },
       onBlur(event: FocusEvent<HTMLDivElement>) {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) hide();

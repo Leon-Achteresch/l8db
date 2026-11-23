@@ -196,7 +196,7 @@ test.skipIf(!process.env.L8DB_WORKBENCH_BROWSER)(
         .getByRole("dialog", { name: "Beobachtete Zeilen" })
         .getByText('"geändert"', { exact: true })
         .waitFor();
-      expect(calls.length).toBe(beforeWatch);
+      expect(calls.slice(beforeWatch)).toEqual([]);
       expect(await page.locator("tbody tr").count()).toBeLessThan(90);
       await mkdir("test-artifacts/workbench-qol", { recursive: true });
       for (const width of [1440, 760, 390]) {

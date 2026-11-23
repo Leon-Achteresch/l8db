@@ -1,4 +1,5 @@
 import type { QueryResult } from "@/lib/db";
+import { queryDurationText } from "@/lib/query-result-timing";
 import { createObjectMessage } from "@/lib/sql-statements";
 
 import { MAX_RESULT_ROWS } from "./constants";
@@ -33,7 +34,7 @@ export function buildStatusText(result: QueryResult | null): string | null {
   ) {
     parts.push(`${result.rows_affected} betroffen`);
   }
-  parts.push(`${result.execution_time_ms} ms`);
+  parts.push(queryDurationText(result));
   return parts.join(" · ");
 }
 

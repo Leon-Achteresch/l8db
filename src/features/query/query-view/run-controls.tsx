@@ -2,6 +2,7 @@ import { Loader, Play, ShieldCheck, TextSelect } from "lucide";
 import { ChevronDownIcon, SquareIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 
+import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -50,7 +51,8 @@ export function RunControls({
   return (
     <>
       <div className="flex shrink-0 items-stretch">
-        <Button
+        <IconButton
+          aria-label={runLabel}
           data-feature="query.run"
           size="sm"
           variant="default"
@@ -60,11 +62,10 @@ export function RunControls({
           onClick={actions.handleRun}
           disabled={runDisabled}
           disabledReason={runBlockedReason}
-          title={`${runLabel} (${shortcutLabel("query.run")})`}
         >
           <MorphIcon icon={hasSelection ? TextSelect : Play} className="size-3" />
           <span className="sr-only @min-[42rem]/qtb:not-sr-only">{runLabel}</span>
-        </Button>
+        </IconButton>
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
             <Button
@@ -89,7 +90,7 @@ export function RunControls({
               onClick={actions.handleRunStatement}
               disabled={runDisabled}
             >
-              Statement unter Cursor
+              Statement ausführen
               <span className="ml-auto text-[10px] text-muted-foreground">
                 {shortcutLabel("query.runStatement")}
               </span>
@@ -109,13 +110,14 @@ export function RunControls({
                 onClick={onOpenScript}
                 disabled={isRunning || !connected || !hasSql}
               >
-                Skript mit Einzelergebnissen
+                Alle Statements ausführen
               </DropdownMenuItem>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <Button
+      <IconButton
+        aria-label={isChecking ? "Prüfe…" : "Prüfen"}
         size="sm"
         variant="ghost"
         className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
@@ -124,7 +126,7 @@ export function RunControls({
         onClick={() => void actions.handleCheck()}
         disabled={isRunning || isChecking || !connected || !hasSql}
         disabledReason={isChecking ? "Prüfung läuft bereits" : runBlockedReason}
-        title={`Nur prüfen — Änderungen werden zurückgerollt, nichts wird übernommen (${shortcutLabel("query.check")})`}
+        title="Nur prüfen, Änderungen werden zurückgerollt"
       >
         <MorphIcon
           icon={isChecking ? Loader : ShieldCheck}
@@ -133,10 +135,11 @@ export function RunControls({
         <span className="sr-only @min-[54rem]/qtb:not-sr-only">
           {isChecking ? "Prüfe…" : "Prüfen"}
         </span>
-      </Button>
+      </IconButton>
       <QueryNotificationToggle />
       {isRunning && (
-        <Button
+        <IconButton
+          aria-label={activeJob?.status === "cancelling" ? "Abbruch angefordert…" : "Abbrechen"}
           size="sm"
           variant="ghost"
           className="h-7 gap-1.5 px-2 text-xs @min-[54rem]/qtb:px-3"
@@ -148,17 +151,12 @@ export function RunControls({
           }
           data-hotkey="query.cancel"
           onClick={stopActiveJob}
-          title={
-            activeJob?.cancellable
-              ? `Abbrechen (${shortcutLabel("query.cancel")})`
-              : "Dieser Treiber unterstützt keinen direkten Abfrageabbruch. Das konfigurierte Timeout bleibt wirksam."
-          }
         >
           <SquareIcon className="size-3" />
           <span className="sr-only @min-[54rem]/qtb:not-sr-only">
             {activeJob?.status === "cancelling" ? "Abbruch angefordert…" : "Abbrechen"}
           </span>
-        </Button>
+        </IconButton>
       )}
     </>
   );

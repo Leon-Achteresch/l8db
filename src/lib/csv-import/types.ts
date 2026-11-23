@@ -2,6 +2,8 @@ export const CSV_MAX_BYTES = 10 * 1024 * 1024;
 
 export const CSV_PREVIEW_ROWS = 100;
 
+export const CSV_MAX_VALIDATION_ERRORS = 10;
+
 export const CSV_MAX_IMPORT_ROWS = 10_000;
 
 export const CSV_DELIMITERS = [",", ";", "\t", "|"] as const;
@@ -56,4 +58,6 @@ export interface CsvColumnMapping {
 export interface CsvMappingIssues {
   errors: string[];
   warnings: string[];
+  checkedRows: number;
+  errorCount: number;
 }

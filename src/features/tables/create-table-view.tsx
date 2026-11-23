@@ -24,6 +24,7 @@ export function CreateTableView() {
     setTableName,
     schema,
     setSchema,
+    schemaPlaceholder,
     ifNotExists,
     setIfNotExists,
     columns,
@@ -86,7 +87,7 @@ export function CreateTableView() {
         <Input
           value={schema}
           onChange={(e) => setSchema(e.target.value)}
-          placeholder="public"
+          placeholder={schemaPlaceholder}
           aria-label="Schema"
           className="h-7 w-auto min-w-10 border-transparent bg-transparent px-1.5 text-xs text-muted-foreground shadow-none [field-sizing:content] hover:border-input focus-visible:text-foreground dark:bg-transparent"
         />

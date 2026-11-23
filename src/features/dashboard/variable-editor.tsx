@@ -1,16 +1,21 @@
 import { CalendarIcon, CopyIcon, HashIcon, ListIcon, Trash2Icon, TypeIcon } from "lucide-react";
 import { useId, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   createId,
   type DashboardVariable,
+  type VariableColumn,
   type VariableType,
   variableName,
   variableToken,
 } from "@/lib/dashboards";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
 import { showCopiedMessage } from "@/lib/workspace-status";
+import { VariableColumnSource } from "./variable-column-source";
 import { VariableControl } from "./variable-control";
 
 const TYPES: { type: VariableType; label: string; Icon: typeof TypeIcon; example: string }[] = [
@@ -34,19 +39,25 @@ export function VariableEditor({
   onDone: () => void;
 }) {
   const labelId = useId();
+  const columnFeature = useNewFeatureVisibility<HTMLButtonElement>("dashboard.filters.column");
+  const multipleFeature = useNewFeatureVisibility<HTMLLabelElement>("dashboard.filters.multiple");
   const [label, setLabel] = useState(variable?.label ?? "");
   const [type, setType] = useState<VariableType>(variable?.type ?? "select");
   const [defaultValue, setDefaultValue] = useState(variable?.defaultValue ?? "");
-  const [source, setSource] = useState<"list" | "sql">(variable?.optionsSql ? "sql" : "list");
+  const [source, setSource] = useState<"column" | "list" | "sql">(
+    variable?.column ? "column" : variable?.optionsSql ? "sql" : "list",
+  );
+  const [column, setColumn] = useState<VariableColumn | null>(variable?.column ?? null);
+  const [multiple, setMultiple] = useState(variable?.multiple ?? false);
   const [list, setList] = useState((variable?.options ?? []).join("\n"));
   const [sql, setSql] = useState(variable?.optionsSql ?? "");
-  const base = variable?.name ?? variableName(label || "filter");
+  const base = variable?.name ?? variableName(label || column?.column || "filter");
   let name = base;
   for (let i = 2; !variable && taken.includes(name); i++) name = `${base}_${i}`;
   const draft: DashboardVariable = {
     id: variable?.id ?? createId(),
     name,
-    label: label.trim() || "Filter",
+    label: label.trim() || (type === "select" && source === "column" && column?.column) || "Filter",
     type,
     defaultValue,
     ...(type === "select" && source === "list"
@@ -58,7 +69,11 @@ export function VariableEditor({
         }
       : {}),
     ...(type === "select" && source === "sql" && sql.trim() ? { optionsSql: sql.trim() } : {}),
+    ...(type === "select" && source === "column" && column?.column ? { column } : {}),
+    ...(type === "select" && multiple ? { multiple: true } : {}),
   };
+  const token = draft.multiple ? `IN (${variableToken(name)})` : variableToken(name);
+  const ready = !(type === "select" && source === "column" && !column?.column);
 
   return (
     <div className="space-y-4">
@@ -96,6 +111,15 @@ export function VariableEditor({
         <div className="space-y-1.5">
           <div className="flex gap-1">
             <Button
+              ref={columnFeature.ref}
+              size="xs"
+              variant={source === "column" ? "secondary" : "ghost"}
+              onClick={() => setSource("column")}
+            >
+              Aus Spalte
+              {columnFeature.isNew && <NewBadge />}
+            </Button>
+            <Button
               size="xs"
               variant={source === "list" ? "secondary" : "ghost"}
               onClick={() => setSource("list")}
@@ -107,10 +131,12 @@ export function VariableEditor({
               variant={source === "sql" ? "secondary" : "ghost"}
               onClick={() => setSource("sql")}
             >
-              Werte aus Abfrage
+              Abfrage
             </Button>
           </div>
-          {source === "list" ? (
+          {source === "column" ? (
+            <VariableColumnSource value={column} onChange={setColumn} />
+          ) : source === "list" ? (
             <textarea
               aria-label="Auswahlwerte"
               value={list}
@@ -132,6 +158,24 @@ export function VariableEditor({
           )}
         </div>
       )}
+      {type === "select" && (
+        <label
+          ref={multipleFeature.ref}
+          htmlFor={`${labelId}-multiple`}
+          className="flex cursor-pointer items-center gap-2 text-xs font-medium"
+        >
+          <Checkbox
+            id={`${labelId}-multiple`}
+            checked={multiple}
+            onCheckedChange={(checked) => {
+              setMultiple(checked === true);
+              setDefaultValue("");
+            }}
+          />
+          Mehrfachauswahl
+          {multipleFeature.isNew && <NewBadge />}
+        </label>
+      )}
       <div className="space-y-1">
         <p className="text-xs font-medium">Startwert</p>
         <div className="rounded-lg border px-1">
@@ -139,19 +183,27 @@ export function VariableEditor({
         </div>
       </div>
       <div className="space-y-1.5 rounded-lg bg-muted/50 p-2.5 text-[11px] text-muted-foreground">
-        <p>
-          Koppel den Filter im Chart unter{" "}
-          <span className="font-medium text-foreground">Filter</span> oder nutze ihn in SQL:
-        </p>
+        {draft.column ? (
+          <p>
+            Wirkt automatisch auf Baukasten-Charts mit{" "}
+            <span className="font-medium text-foreground">{draft.column.table}</span>. In eigenem
+            SQL:
+          </p>
+        ) : (
+          <p>
+            Koppel den Filter im Chart unter{" "}
+            <span className="font-medium text-foreground">Filter</span> oder nutze ihn in SQL:
+          </p>
+        )}
         <button
           type="button"
           onClick={() => {
-            void navigator.clipboard?.writeText(variableToken(name));
+            void navigator.clipboard?.writeText(token);
             showCopiedMessage("Platzhalter kopiert");
           }}
           className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 font-mono text-[11px] text-foreground hover:border-primary/50 focus-visible:outline-2 focus-visible:outline-ring"
         >
-          {variableToken(name)} <CopyIcon className="size-3" />
+          {token} <CopyIcon className="size-3" />
         </button>
       </div>
       <div className="flex items-center gap-2 border-t pt-3">
@@ -166,6 +218,7 @@ export function VariableEditor({
           </Button>
           <Button
             size="sm"
+            disabled={!ready}
             onClick={() => {
               onSave(draft);
               onDone();

@@ -92,15 +92,17 @@ export function TablePartitionsPanel({ schema, table }: TablePartitionsPanelProp
             {data.partition_key}
           </span>
         )}
-        <Button
-          size="sm"
-          variant="ghost"
-          className="ml-auto h-7 gap-1.5 px-2.5 text-xs"
-          onClick={() => setDialogOpen(true)}
-        >
-          <PlusIcon className="size-3.5" />
-          Partition anhängen
-        </Button>
+        {!data.read_only && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto h-7 gap-1.5 px-2.5 text-xs"
+            onClick={() => setDialogOpen(true)}
+          >
+            <PlusIcon className="size-3.5" />
+            Partition anhängen
+          </Button>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {data.partitions.length === 0 ? (
@@ -120,16 +122,18 @@ export function TablePartitionsPanel({ schema, table }: TablePartitionsPanelProp
                 <span className="min-w-0 flex-1 truncate font-mono text-sm">
                   {part.schema}.{part.name}
                 </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 shrink-0 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-destructive"
-                  onClick={() => void handleDetach(part.schema, part.name)}
-                  title="Partition lösen (DETACH, Tabelle bleibt erhalten)"
-                >
-                  <UnlinkIcon className="size-3.5" />
-                  Lösen
-                </Button>
+                {!data.read_only && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 shrink-0 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-destructive"
+                    onClick={() => void handleDetach(part.schema, part.name)}
+                    title="Partition lösen (DETACH, Tabelle bleibt erhalten)"
+                  >
+                    <UnlinkIcon className="size-3.5" />
+                    Lösen
+                  </Button>
+                )}
               </motion.div>
             ))}
           </div>

@@ -1,8 +1,12 @@
 import { expect, test } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { chromium, webkit } from "playwright";
 
 const database = "0";
 const provider = process.env.L8DB_REDIS_VARIANT === "valkey" ? "valkey" : "redis";
+const port = process.env.L8DB_REDIS_PORT ?? "6381";
+const shots = process.env.L8DB_SHOTS_DIR ?? tmpdir();
 
 test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
   "Redis: real adapter, keys, pattern, CRUD, editor and database switching",
@@ -24,6 +28,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
     await seed("1", 'FLUSHDB\nSET other:database "Datenbank 1"');
     const browser = await (process.env.L8DB_REDIS_WEBKIT ? webkit : chromium).launch({
       headless: true,
+      channel: process.env.L8DB_REDIS_WEBKIT ? undefined : process.env.L8DB_BROWSER_CHANNEL,
     });
     const page = await browser.newPage({ viewport: { width: 1200, height: 850 } });
     const errors: string[] = [];
@@ -32,7 +37,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
         errors.push(error.message);
     });
     await page.addInitScript(
-      ({ database, provider }) => {
+      ({ database, provider, port }) => {
         localStorage.setItem(
           "l8db.settings",
           JSON.stringify({ state: { tourFinished: true, onboardingDone: true }, version: 0 }),
@@ -46,7 +51,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
                   id: "redis-lab",
                   name: `${provider} Docker Lab`,
                   kind: "redis",
-                  connectionString: `${provider}://127.0.0.1:6381${database === "0" ? "" : `/${database}`}`,
+                  connectionString: `${provider}://127.0.0.1:${port}${database === "0" ? "" : `/${database}`}`,
                   sslMode: "disable",
                   ssh: null,
                   schemas: ["keys"],
@@ -94,7 +99,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
           },
         };
       },
-      { database, provider },
+      { database, provider, port },
     );
     try {
       await page.goto("http://localhost:1420");
@@ -107,7 +112,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await pattern.fill("demo:hash");
       await pattern.press("Enter");
       await page.getByText("1–1 von 1", { exact: true }).waitFor();
-      await page.screenshot({ path: "/tmp/l8db-redis-filter.png" });
+      await page.screenshot({ path: join(shots, "l8db-redis-filter.png") });
       await page.getByRole("button", { name: "Zurücksetzen", exact: true }).click();
       await page.getByText("demo:string", { exact: true }).first().waitFor();
       const rowFor = (key: string) =>
@@ -130,6 +135,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await edit("demo:string", "value", "");
       stored = await seed("0", "GET demo:string");
       expect(stored.rows[0].result).toBe("");
+      await rowFor("demo:string").locator('[data-col="type"]').click();
       await rowFor("demo:string").locator('[data-col="value"]').click();
       await rowFor("demo:string").getByTitle("Anzeigen / bearbeiten").click();
       const cellDialog = page.getByRole("dialog");
@@ -138,7 +144,12 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await cellDialog.getByRole("button", { name: "Übernehmen", exact: true }).click();
       await cellDialog.waitFor({ state: "detached" });
       expect((await seed("0", "GET demo:string")).rows[0].result).toBe("mehrzeilig\nkein JSON");
-      await edit("demo:string", "value", "Hallo Redis");
+      await rowFor("demo:string").locator('[data-col="value"]').dblclick();
+      await cellDialog.getByRole("button", { name: "Bearbeiten", exact: true }).click();
+      await cellDialog.locator("textarea").fill("Hallo Redis");
+      await cellDialog.getByRole("button", { name: "Übernehmen", exact: true }).click();
+      await cellDialog.waitFor({ state: "detached" });
+      expect((await seed("0", "GET demo:string")).rows[0].result).toBe("Hallo Redis");
       await edit("demo:string", "ttl", "");
       expect((await seed("0", "TTL demo:string")).rows[0].result).toBe(-1);
       await edit("demo:string", "key", "demo:renamed");
@@ -183,7 +194,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       expect(await page.locator('td[data-col="key"]').allTextContents()).toEqual([
         " literal:*?[x] ",
       ]);
-      await page.screenshot({ path: `/tmp/l8db-${provider}-column-filter.png` });
+      await page.screenshot({ path: join(shots, `l8db-${provider}-column-filter.png`) });
       await seed("0", 'DEL " literal:*?[x] " literal:other');
       await page.getByRole("button", { name: "Zurücksetzen", exact: true }).click();
       await page.getByRole("button", { name: "Key verwalten", exact: true }).click();
@@ -221,7 +232,7 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await choose("Key löschen");
       await dialog.getByRole("button", { name: "Key endgültig löschen", exact: true }).click();
       await dialog.getByRole("region", { name: "Redis-Ergebnis" }).waitFor();
-      await page.screenshot({ path: "/tmp/l8db-redis-key-actions.png" });
+      await page.screenshot({ path: join(shots, "l8db-redis-key-actions.png") });
       for (const [action, key, field, value] of [
         ["Hash-Feld setzen", "browser:hash", "name", "Ada"],
         ["An Liste anhängen", "browser:list", "", "first"],
@@ -257,12 +268,17 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
       await page.locator(".monaco-editor .view-lines").first().click();
       await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
       await page.keyboard.type('SET browser:editor "value; spaced"');
+      await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
+      await page.getByText("OK", { exact: true }).first().waitFor({ timeout: 5000 });
+      await page.locator(".monaco-editor .view-lines").first().click();
+      await page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowDown" : "Control+End");
+      await page.keyboard.press("End");
       await page.keyboard.press("Enter");
       await page.keyboard.type("GET browser:editor");
       await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
       await page.getByText("value; spaced", { exact: true }).first().waitFor({ timeout: 5000 });
       expect(await page.getByRole("dialog").count()).toBe(0);
-      await page.screenshot({ path: "/tmp/l8db-redis-query.png" });
+      await page.screenshot({ path: join(shots, "l8db-redis-query.png") });
       await page.getByRole("combobox", { name: "Datenbank", exact: true }).click();
       await page.getByRole("option", { name: "1", exact: true }).click();
       await page.locator('[data-tour="sidebar-table"]').first().click();
@@ -273,25 +289,26 @@ test.skipIf(!process.env.L8DB_REDIS_BROWSER)(
         .getByRole("alertdialog")
         .getByText(/FLUSHDB/)
         .waitFor();
+      await page.getByRole("alertdialog").getByLabel("Zum Bestätigen „1“ eingeben").fill("1");
       await page
         .getByRole("alertdialog")
-        .getByRole("button", { name: "Delete All", exact: true })
+        .getByRole("button", { name: "Alle Keys löschen", exact: true })
         .click();
       await page.getByText("Keine Daten.", { exact: false }).first().waitFor();
       await page.goto("http://localhost:1420/connections");
       await page.getByRole("button", { name: "Neue Verbindung", exact: true }).click();
       await page.getByRole("button", { name: "Ich habe schon einen Connection-String" }).click();
       await page.getByLabel("Name", { exact: true }).fill("Redis Connection Test");
-      await page.locator("#connection-url").fill(`${provider}://127.0.0.1:6381/0`);
+      await page.locator("#connection-url").fill(`${provider}://127.0.0.1:${port}/0`);
       await page.getByRole("button", { name: "Testen", exact: true }).click();
       await page.getByText(/Erreichbar/).waitFor();
-      await page.locator("#connection-url").fill(`${provider}://127.0.0.1:6381/9999`);
+      await page.locator("#connection-url").fill(`${provider}://127.0.0.1:${port}/9999`);
       await page.getByRole("button", { name: "Testen", exact: true }).click();
       await page.getByRole("alert").first().waitFor();
-      await page.screenshot({ path: "/tmp/l8db-redis-connection.png" });
+      await page.screenshot({ path: join(shots, "l8db-redis-connection.png") });
       expect(errors).toEqual([]);
     } catch (error) {
-      await page.screenshot({ path: "/tmp/l8db-redis-browser-failure.png" });
+      await page.screenshot({ path: join(shots, "l8db-redis-browser-failure.png") });
       throw error;
     } finally {
       await browser.close();

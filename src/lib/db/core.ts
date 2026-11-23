@@ -1,5 +1,5 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
-import { useSettingsStore } from "@/lib/settings";
+import { type PlsqlWarningRules, useSettingsStore } from "@/lib/settings";
 import { requestSqlConfirmation } from "@/lib/sql-confirmation";
 import { destructiveStatements, writesData } from "@/lib/sql-safety";
 import { finishTask, isTaskActive, startTask, updateTask, useTasksStore } from "@/lib/tasks";
@@ -48,6 +48,7 @@ const CONFIGURED_COMMANDS = new Set([
   "count_table_rows",
   "count_table_rows_capped",
   "begin_transaction",
+  "preview_row_changes",
   "open_ssh_tunnel",
   "open_proxy_tunnel",
   "csv_import",
@@ -65,6 +66,7 @@ const WRITE_COMMANDS = new Set([
   "debug_launch",
   "debug_action",
   "add_column",
+  "apply_row_changes_in_transaction",
   "alter_column",
   "alter_role",
   "alter_sequence",
@@ -265,6 +267,7 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
         String(args?.sql ?? ""),
         context.database ?? undefined,
         context.connectionName,
+        options.connectionId,
       );
     const jobId = options.jobId ?? crypto.randomUUID();
     backendOptions = { ...backendOptions, jobId };
@@ -306,6 +309,7 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
   const taskTitles: Record<string, string> = {
     export_table_csv: "CSV-Export",
     install_driver: "Treiberinstallation",
+    repair_driver: "Treiberreparatur",
     execute_schema_object_copy: "Schema-Struktur kopieren",
     copy_schema_table_data: "Tabellendaten kopieren",
   };
@@ -355,22 +359,43 @@ export async function confirmSqlExecution(
   sql: string,
   database?: string,
   connectionName?: string,
+  connectionId?: string,
 ): Promise<void> {
   const [{ operationContext }, { useConnectionsStore }, environments] = await Promise.all([
     import("@/lib/operation-context"),
     import("@/lib/connections/store"),
     import("@/lib/environments"),
   ]);
-  const context = operationContext({ kind, connectionString, database });
+  const context = operationContext({
+    kind,
+    connectionString,
+    database,
+    ...(connectionId ? { options: { connectionId } } : {}),
+  });
+  const { operationConnections } = await import("@/lib/operation-context");
+  const { isReadOnlyConnection } = await import("@/lib/connections");
+  if (
+    (operationConnections({ kind, connectionString }, "exact").some(isReadOnlyConnection) ||
+      isReadOnlyActive(connectionString)) &&
+    writesData(sql, kind)
+  )
+    throw new Error(READ_ONLY_MESSAGE);
   const connection = useConnectionsStore
     .getState()
     .connections.find((entry) => entry.id === context.connectionId);
+  const own = connectionId
+    ? useConnectionsStore.getState().connections.find((entry) => entry.id === connectionId)
+    : undefined;
+  const ownName =
+    own && connection && own.id !== connection.id
+      ? `${own.name} · gleiche Adresse wie ${connection.name}`
+      : own?.name;
   const production = environments.isProduction(connection);
   if (!production && !useSettingsStore.getState().confirmDestructiveQueries) return;
   const findings = destructiveStatements(sql, kind, { strict: production });
   if (!findings.length) return;
   const accepted = await requestSqlConfirmation({
-    connection: connectionName ?? context.connectionName,
+    connection: ownName ?? connectionName ?? context.connectionName,
     database: database ?? context.database,
     statements: findings,
     confirmTexts: production
@@ -383,7 +408,7 @@ export async function confirmSqlExecution(
 export async function configureExecutionDefaults(
   queryTimeout: number,
   connectionTimeout: number,
-  plsqlWarnings?: boolean,
+  plsqlWarnings?: Partial<PlsqlWarningRules>,
 ): Promise<void> {
   return invoke("configure_execution_defaults", {
     queryTimeout,

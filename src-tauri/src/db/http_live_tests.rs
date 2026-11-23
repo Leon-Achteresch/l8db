@@ -10,9 +10,14 @@ fn adapter(kind: DatabaseKind, url: &str) -> Box<dyn DatabaseAdapter> {
 }
 
 fn urls(vars: &[&str]) -> Vec<(String, String)> {
-    vars.iter()
+    let found: Vec<(String, String)> = vars
+        .iter()
         .filter_map(|v| std::env::var(v).ok().map(|url| (v.to_string(), url)))
-        .collect()
+        .collect();
+    if found.is_empty() {
+        eprintln!("übersprungen: keine von {} gesetzt", vars.join(", "));
+    }
+    found
 }
 
 #[tokio::test]
@@ -124,6 +129,48 @@ async fn elasticsearch_and_opensearch_live() {
             .await
             .unwrap();
         assert_eq!(sql.rows.len(), 3, "{var}: {sql:?}");
+        let capped = super::execution::with_row_limit(
+            10_021,
+            db.execute_query("SELECT n FROM big ORDER BY n"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(capped.rows.len(), 10_021, "{var}");
+        assert!(capped.truncated, "{var}");
+        assert_eq!(capped.rows[10_020]["n"], json!(10_020), "{var}");
+        let all = db
+            .execute_query("SELECT n FROM big ORDER BY n")
+            .await
+            .unwrap();
+        assert_eq!(all.rows.len(), 10_050, "{var}");
+        assert!(!all.truncated, "{var}");
+        let every = db.list_tables(None).await.unwrap();
+        assert!(
+            every
+                .iter()
+                .any(|t| t.schema == "aliases" && t.name == "logs_alias"),
+            "{var}"
+        );
+        let inline = db
+            .execute_query("GET big/_search {\"size\": 2}")
+            .await
+            .unwrap();
+        assert_eq!(inline.rows.len(), 2, "{var}");
+        let sorted_text = db
+            .fetch_rows(
+                "indices",
+                "logs",
+                None,
+                3,
+                0,
+                Some("user.name"),
+                true,
+                false,
+                false,
+            )
+            .await
+            .unwrap_err();
+        assert!(sorted_text.contains("Keyword"), "{var}: {sorted_text}");
         let aggs = db
             .execute_query("GET logs/_search\n{\"size\": 0, \"aggs\": {\"by\": {\"terms\": {\"field\": \"level\"}}}}")
             .await
@@ -239,6 +286,24 @@ async fn influxdb_v2_and_v3_live() {
         assert_eq!(influxql.rows.len(), 2, "{var}: {influxql:?}");
         let show = db.execute_query("SHOW MEASUREMENTS").await.unwrap();
         assert!(!show.rows.is_empty(), "{var}");
+        let mem = db.list_columns(None, Some("mem"), None).await.unwrap();
+        let used = mem.iter().find(|c| c.name == "used").unwrap();
+        assert!(
+            matches!(used.data_type.as_str(), "integer" | "Int64"),
+            "{var}: {mem:?}"
+        );
+        let delete = db
+            .execute_query("DELETE FROM cpu WHERE host = 'old'")
+            .await
+            .unwrap_err();
+        assert!(!delete.contains("ILLEGAL"), "{var}: {delete}");
+        if var.contains("INFLUXDB3") {
+            let flux = db
+                .execute_query("from(bucket: \"metrics\") |> range(start: -1h)")
+                .await
+                .unwrap_err();
+            assert!(flux.contains("Flux gibt es auf InfluxDB 3 nicht"), "{flux}");
+        }
         eprintln!("{var}: ok");
     }
 }
@@ -247,6 +312,7 @@ async fn influxdb_v2_and_v3_live() {
 #[ignore]
 async fn libsql_live() {
     let Ok(url) = std::env::var("L8DB_SMOKE_SQLITEHTTP_URL") else {
+        eprintln!("übersprungen: L8DB_SMOKE_SQLITEHTTP_URL fehlt");
         return;
     };
     let db = adapter(DatabaseKind::SqliteHttp, &url);
@@ -255,6 +321,30 @@ async fn libsql_live() {
         .unwrap();
     let tables = db.list_tables(None).await.unwrap();
     assert!(tables.iter().any(|t| t.name == "l8db_people"));
+    let rename = |old: &str, new: &str, data_type: Option<&str>| super::AlterColumnRequest {
+        old_name: old.into(),
+        new_name: Some(new.into()),
+        data_type: data_type.map(Into::into),
+        set_not_null: None,
+        new_default: None,
+        drop_default: false,
+        using: None,
+    };
+    db.alter_column("main", "l8db_people", &rename("name", "full_name", None))
+        .await
+        .unwrap();
+    assert!(db
+        .alter_column(
+            "main",
+            "l8db_people",
+            &rename("full_name", "x", Some("INT"))
+        )
+        .await
+        .unwrap_err()
+        .contains("nur das Umbenennen"));
+    db.alter_column("main", "l8db_people", &rename("full_name", "name", None))
+        .await
+        .unwrap();
     let all_columns = db.list_columns(None, None, None).await.unwrap();
     assert!(all_columns
         .iter()
@@ -320,6 +410,28 @@ async fn libsql_live() {
         .await
         .unwrap_err();
     assert!(error.contains("no such table"), "{error}");
+    let mut rolled = db.begin_transaction().await.unwrap();
+    rolled.execute("DELETE FROM l8db_people").await.unwrap();
+    assert!(rolled.execute("SELECT * FROM l8db_missing").await.is_err());
+    rolled.rollback().await.unwrap();
+    assert_eq!(
+        db.count_rows("main", "l8db_people", None, false)
+            .await
+            .unwrap(),
+        2
+    );
+    let mut own = db.begin_transaction().await.unwrap();
+    for statement in ["BEGIN", "DELETE FROM l8db_people", "ROLLBACK"] {
+        own.execute(statement).await.unwrap();
+    }
+    own.commit().await.unwrap();
+    assert_eq!(
+        db.count_rows("main", "l8db_people", None, false)
+            .await
+            .unwrap(),
+        2
+    );
+    assert!(db.execute_query("BEGIN").await.is_err());
     db.drop_table("main", "l8db_people").await.unwrap();
     eprintln!("L8DB_SMOKE_SQLITEHTTP_URL: ok");
 }

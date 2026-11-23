@@ -242,7 +242,7 @@ mod tests {
         let cs = ok(Cassandra, "cassandra://u@c1/ks?ssl=true&sslmode=prefer");
         assert!(!cs.tls);
         assert!(ok(Cassandra, "cassandra://u@c1/ks?sslmode=prefer&ssl=true").tls);
-        assert!(!ok(Cassandra, "cassandra://u@c1/ks?SSL=1").tls);
+        assert!(ok(Cassandra, "cassandra://u@c1/ks?SSL=1").tls);
         assert_eq!(
             ok(Cassandra, "cassandra://c1/ks?nodes=c2,c3:9043").params,
             vec![("nodes".into(), "c2:9042,c3:9043".into())]

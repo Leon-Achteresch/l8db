@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   type BindParamRef,
@@ -11,10 +11,11 @@ import {
 } from "@/lib/bind-params";
 import { confirmSqlExecution, type QueryResult } from "@/lib/db";
 import { beginQueryEvent } from "@/lib/discovery/events";
+import { ROW_COUNT_CAP } from "@/lib/queries";
 import { invalidateAfterSql } from "@/lib/query-client";
 import { beginQueryCompletion } from "@/lib/query-completion";
 import { useQueryHistoryStore } from "@/lib/query-history";
-import { viewableSelect } from "@/lib/query-result-view";
+import { queryCountSql, readCount, viewableSelect } from "@/lib/query-result-view";
 import { enableOracleOutput } from "@/lib/server-output";
 import { locateText } from "@/lib/sql-diagnostics";
 import { runsOneStatementPerCall, splitSqlStatements } from "@/lib/sql-statements";
@@ -72,6 +73,12 @@ export function useRunSql({
   const [bindRefs, setBindRefs] = useState<BindParamRef[]>([]);
   const [bindPendingSql, setBindPendingSql] = useState<string | null>(null);
   const [bindValues, setBindValues] = useState<Record<string, BindParamValue>>({});
+  const [lastRun, setLastRun] = useState<{
+    result: QueryResult;
+    sql: string;
+    bound?: ParameterizedQuery;
+    recoverySql: string;
+  } | null>(null);
   const {
     runningRef,
     setIsRunning,
@@ -106,6 +113,7 @@ export function useRunSql({
       skipBind = false,
       previewed = false,
       recoverySql = text,
+      rowLimit?: number | null,
     ) => {
       let sql = text;
       if (!connection || !sql.trim() || runningRef.current) return;
@@ -182,6 +190,8 @@ export function useRunSql({
           effectiveConnectionString(connection),
           sql,
           database ?? undefined,
+          undefined,
+          connection.id,
         );
         executionStarted = true;
         await enableOracleOutput(
@@ -199,6 +209,7 @@ export function useRunSql({
           bound,
           transactionsCapable: caps.transactions,
           onJob: setActiveJobId,
+          rowLimit,
         });
         void recordSuccessfulSql(connection.id, database, tabId, recoverySql).catch((error) =>
           toast.error("Erfolgreicher SQL-Stand konnte nicht gespeichert werden", {
@@ -210,6 +221,7 @@ export function useRunSql({
           !bound && res.columns.length > 0 ? viewableSelect(sql, connection.kind) : null;
         setViewSource(viewText ? { text: viewText, runId: crypto.randomUUID() } : null);
         setResult(res);
+        setLastRun(res.autoLimit ? { result: res, sql, bound, recoverySql } : null);
         revealOutput = res.columns.length === 0;
         if (res.columns.length > 0)
           recordRun({
@@ -226,7 +238,6 @@ export function useRunSql({
         setError(message);
         const base = locateText(editorSqlRef.current, sql, cursorOffsetRef.current);
         setErrorSource(base === null ? null : { text: sql, base });
-        setViewSource(null);
         finishNotification?.(
           /abgebrochen|cancelled|canceled/i.test(message) ? "cancelled" : "error",
         );
@@ -309,9 +320,39 @@ export function useRunSql({
     connection?.kind,
   ]);
 
+  const unlimited = useMemo(() => {
+    if (!connection || !lastRun) return null;
+    const { result, sql, bound, recoverySql } = lastRun;
+    const read = (statement: string, onJob: (id: string) => void, params?: ParameterizedQuery) =>
+      executeSqlWithTransactions({
+        connection,
+        database,
+        sql: statement,
+        bound: params,
+        transactionsCapable: caps.transactions,
+        onJob,
+        rowLimit: null,
+      });
+    return {
+      result,
+      exceedsWarnLimit: async () => {
+        const view = bound ? null : viewableSelect(sql, connection.kind);
+        if (!view) return false;
+        const counted = await read(
+          queryCountSql(view, connection.kind, result.columns, "", ROW_COUNT_CAP),
+          () => undefined,
+        ).catch(() => null);
+        return counted ? readCount(counted.rows) > ROW_COUNT_CAP : false;
+      },
+      run: () => runSql(sql, bound, true, true, recoverySql, null),
+      load: (onJob: (id: string) => void) => read(sql, onJob, bound),
+    };
+  }, [connection, database, caps.transactions, lastRun, runSql]);
+
   return {
     runSql,
     prepareSql,
+    unlimited,
     bind: {
       open: bindDialogOpen,
       sql: bindPendingSql ?? "",

@@ -45,9 +45,9 @@ export function useDraftRow(onInsertRow: DataTableProps["onInsertRow"], key: str
     setIsInserting(true);
     setInsertError(null);
     try {
-      await onInsertRow(values);
+      const outcome = await onInsertRow(values);
       setDraft(null);
-      toast.success("Zeile als neue Zeile eingefügt.");
+      if (outcome !== "collected") toast.success("Zeile als neue Zeile eingefügt.");
     } catch (error) {
       setInsertError(describeInsertError(error));
     } finally {

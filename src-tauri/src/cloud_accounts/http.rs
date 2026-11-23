@@ -230,7 +230,14 @@ fn network_error(label: &str, error: &reqwest::Error) -> ApiError {
     let message = if error.is_timeout() {
         format!("{label}: Zeitüberschreitung, der Dienst hat nicht rechtzeitig geantwortet.")
     } else if error.is_connect() {
-        format!("{label} ist nicht erreichbar. Netzwerk, DNS und TLS prüfen.")
+        match error.url().filter(|url| url.scheme() == "http") {
+            Some(url) => format!(
+                "{label}: {}:{} antwortet nicht. Adresse und Port prüfen.",
+                url.host_str().unwrap_or_default(),
+                url.port_or_known_default().unwrap_or(80)
+            ),
+            None => format!("{label} ist nicht erreichbar. Netzwerk, DNS und TLS prüfen."),
+        }
     } else {
         format!("{label} hat die Verbindung abgebrochen.")
     };

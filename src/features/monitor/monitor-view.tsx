@@ -31,7 +31,10 @@ import { PerformanceTab } from "@/features/monitor/monitor-view/performance-tab"
 import type { MonitorTab } from "@/features/monitor/monitor-view/types";
 import { useMonitorView } from "@/features/monitor/monitor-view/use-monitor-view";
 import { WorkloadTab } from "@/features/monitor/monitor-view/workload-tab";
+import type { Capabilities } from "@/lib/db";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { useHasNewFeatures } from "@/lib/new-features";
 
 const PRIMARY_TABS: { value: MonitorTab; label: string; icon: LucideIcon }[] = [
   { value: "live", label: "Live-Monitor", icon: MonitorIcon },
@@ -44,6 +47,15 @@ const PRIMARY_TABS: { value: MonitorTab; label: string; icon: LucideIcon }[] = [
   { value: "logs", label: "Logs", icon: ScrollTextIcon },
 ];
 
+const TAB_CAPABILITY: Partial<Record<MonitorTab, keyof Capabilities>> = {
+  sessions: "sessions",
+  connections: "sessions",
+  resources: "live_monitor",
+  locks: "locks",
+  io: "live_monitor",
+  replication: "replication",
+};
+
 const SECONDARY_TABS: { value: MonitorTab; label: string; icon: LucideIcon }[] = [
   { value: "performance", label: "Query-Verlauf", icon: GaugeIcon },
   { value: "workload", label: "Workload", icon: ListChecksIcon },
@@ -52,9 +64,19 @@ const SECONDARY_TABS: { value: MonitorTab; label: string; icon: LucideIcon }[] =
 export function MonitorView() {
   const m = useMonitorView();
   const live = useLiveMonitor();
+  const caps = useActiveCapabilities();
+  const primaryTabs = PRIMARY_TABS.filter(({ value }) => {
+    const capability = TAB_CAPABILITY[value];
+    return !capability || Boolean(caps[capability]);
+  });
   const { ref: liveTabRef, isNew: liveTabIsNew } =
     useNewFeatureVisibility<HTMLButtonElement>("monitor.live");
+  const hasSessionNews = useHasNewFeatures("monitor.sessions");
   const { connection, setTab, scopedServerOutput } = m;
+  const hasNewIndexProgress =
+    hasSessionNews &&
+    connection?.kind === "postgres" &&
+    live.sessions.some((session) => session.index_progress);
   const tab = useDeferredValue(m.tab);
 
   if (!connection) {
@@ -84,7 +106,7 @@ export function MonitorView() {
         <div className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur">
           <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-6 py-2 lg:px-9">
             <TabsList variant="line" className="h-10 flex-wrap" aria-label="Monitor-Bereiche">
-              {PRIMARY_TABS.map(({ value, label, icon: Icon }) => (
+              {primaryTabs.map(({ value, label, icon: Icon }) => (
                 <TabsTrigger
                   key={value}
                   value={value}
@@ -93,7 +115,8 @@ export function MonitorView() {
                 >
                   <Icon className="size-3.5" />
                   {label}
-                  {value === "live" && liveTabIsNew ? <NewBadge /> : null}
+                  {value === "live" && liveTabIsNew && <NewBadge />}
+                  {value === "sessions" && hasNewIndexProgress && <NewBadge />}
                   {value === "locks" && live.waitingLocks > 0 && (
                     <Badge variant="destructive" className="h-4 px-1 text-[10px]">
                       {live.waitingLocks}

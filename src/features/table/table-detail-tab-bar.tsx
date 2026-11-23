@@ -7,13 +7,13 @@ import {
   HistoryIcon,
   LayersIcon,
   NetworkIcon,
-  PuzzleIcon,
   ShieldCheckIcon,
   ShieldIcon,
   TableIcon,
   ZapIcon,
 } from "lucide-react";
 import { useCallback, useLayoutEffect, useRef, useState, type WheelEvent } from "react";
+import { NewBadge } from "@/components/new-badge";
 import {
   ContextMenu,
   ContextMenuCheckboxItem,
@@ -24,6 +24,8 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useHasNewFeatures } from "@/lib/new-features";
+import { scrollBehavior } from "@/lib/scroll-behavior";
 import { useSettingsStore } from "@/lib/settings";
 import type { TABLE_DETAIL_TABS } from "@/lib/table-detail-tabs";
 
@@ -45,10 +47,18 @@ const icons = {
 export function TableDetailTabBar({
   tabs,
   activeTab,
+  hasColumnUpdateRules = false,
+  hasOracleTextLimits = false,
 }: {
   tabs: typeof TABLE_DETAIL_TABS;
   activeTab: string;
+  hasColumnUpdateRules?: boolean;
+  hasOracleTextLimits?: boolean;
 }) {
+  const showColumnUpdateBadge =
+    useHasNewFeatures("table.structure.columns.on-update") && hasColumnUpdateRules;
+  const showOracleTextLimitBadge =
+    useHasNewFeatures("table.structure.columns.oracle-text-limit") && hasOracleTextLimits;
   const hidden = useSettingsStore((s) => s.hiddenTableDetailTabs);
   const setVisible = useSettingsStore((s) => s.setTableDetailTabVisible);
   const reset = useSettingsStore((s) => s.resetTableDetailTabs);
@@ -119,7 +129,7 @@ export function TableDetailTabBar({
   const scrollBy = (direction: -1 | 1) => {
     scrollRef.current?.scrollBy({
       left: direction * Math.max(120, (scrollRef.current?.clientWidth ?? 0) * 0.7),
-      behavior: "smooth",
+      behavior: scrollBehavior(),
     });
   };
 
@@ -137,11 +147,13 @@ export function TableDetailTabBar({
             {visible.length ? (
               <TabsList variant="line" className="h-9 w-max" aria-label="Tabellenansichten">
                 {visible.map((tab) => {
-                  const Icon = icons[tab.id as keyof typeof icons] ?? PuzzleIcon;
+                  const Icon = icons[tab.id];
                   return (
                     <TabsTrigger key={tab.id} value={tab.id} data-tab-id={tab.id}>
                       <Icon className="size-3.5" />
                       {tab.label}
+                      {tab.id === "columns" &&
+                        (showColumnUpdateBadge || showOracleTextLimitBadge) && <NewBadge />}
                     </TabsTrigger>
                   );
                 })}

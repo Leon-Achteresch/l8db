@@ -5,7 +5,6 @@ use super::{
 };
 use crate::mcp::{config::McpConfig, server::Server};
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -117,7 +116,7 @@ async fn sqlite_http_scenario(allowed: bool) {
     let config = context::scoped_config(&request, McpConfig::default()).unwrap();
     let server = Arc::new(tokio::sync::Mutex::new(Server {
         pool: crate::db::pool::create_pool_state(),
-        columns: HashMap::new(),
+        columns: Default::default(),
     }));
     let (run, events) = captured_run(allowed);
     let external = integrations::connect(&[], directory.path(), &run)

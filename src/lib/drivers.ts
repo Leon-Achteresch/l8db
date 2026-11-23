@@ -3,6 +3,8 @@ import type { DatabaseKind, Driver, DriverStatus, InstallHint, ProviderInfo } fr
 export type PlatformOs = "macos" | "linux" | "windows" | "all";
 
 export interface DriverSummary {
+  id: string;
+  providerId?: string;
   kind: DatabaseKind;
   title: string;
   typeLabel: string;
@@ -69,17 +71,29 @@ export function driverTypeLabel(driver: Driver): string {
   }
 }
 
+export function installsOwnDriver(provider: ProviderInfo): boolean {
+  return (
+    provider.driver.type === "odbc" &&
+    provider.driver.driver !== "" &&
+    provider.driver_status.install_command !== null
+  );
+}
+
 export function summarizeDrivers(
   providers: ProviderInfo[],
   os: PlatformOs = platformOs(),
 ): DriverSummary[] {
   const summaries: DriverSummary[] = [];
   for (const provider of providers) {
-    let summary = summaries.find((entry) => entry.kind === provider.kind);
+    const product = installsOwnDriver(provider);
+    const id = product ? provider.id : provider.kind;
+    let summary = summaries.find((entry) => entry.id === id);
     if (!summary) {
       summary = {
+        id,
+        providerId: product ? provider.id : undefined,
         kind: provider.kind,
-        title: DRIVER_FAMILY_TITLES[provider.kind],
+        title: product ? provider.name : DRIVER_FAMILY_TITLES[provider.kind],
         typeLabel: driverTypeLabel(provider.driver),
         installable: false,
         status: provider.driver_status,
@@ -96,6 +110,14 @@ export function summarizeDrivers(
     summary.installable = !summary.status.available && summary.installCommand !== null;
   }
   return summaries;
+}
+
+const DIAGNOSABLE: ReadonlySet<DatabaseKind> = new Set(["oracle"]);
+
+export function diagnosableKinds(providers: ProviderInfo[]): DatabaseKind[] {
+  return [
+    ...new Set(providers.map((provider) => provider.kind).filter((kind) => DIAGNOSABLE.has(kind))),
+  ];
 }
 
 export function missingDrivers(providers: ProviderInfo[]): ProviderInfo[] {

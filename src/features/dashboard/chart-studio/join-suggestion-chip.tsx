@@ -46,7 +46,7 @@ export function JoinSuggestionChip({
             </span>
           </span>
         </span>
-        <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[9px] text-muted-foreground">
+        <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
           {suggestion.reason}
         </span>
       </span>

@@ -31,6 +31,7 @@ export function toCellDraft(value: unknown, kind: CellEditorKind = "text"): Cell
 }
 
 export function detectCellEditorKind(value: unknown, dataType?: string | null): CellEditorKind {
+  if (dataType?.trim().endsWith("[]")) return "text";
   if (dataType && JSON_TYPE_PATTERN.test(dataType)) return "json";
   if (dataType && TEXT_EDITOR_TYPE_PATTERN.test(dataType)) return "text";
   if (typeof value === "object" && value !== null) return "json";

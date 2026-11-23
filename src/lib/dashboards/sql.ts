@@ -2,17 +2,20 @@ import type { DatabaseKind } from "@/lib/db";
 import { identifierStyleForKind, quoteIdentifier, type SqlIdentifierStyle } from "@/lib/export";
 import { compileConditionExpression, operatorNeedsList, parseFilterList } from "@/lib/sql-filter";
 import { quoteString } from "@/lib/sql-filter/quote";
-import { aliasOf, calcOf, datasetJoins, parseRef, replaceFieldTokens } from "./joins";
+import { aliasOf, calcOf, datasetJoins, joinRef, parseRef, replaceFieldTokens } from "./joins";
 import {
   type Agg,
   type CompareMode,
   CROSS_WHERE,
   type CrossCondition,
+  type CustomPeriod,
   type Dataset,
   type DatasetMetric,
   type Period,
+  type PresetPeriod,
   type SimpleDataset,
   type TimeBucket,
+  type VariableColumn,
 } from "./model";
 import { serverSqlParts } from "./sql-tables";
 import {
@@ -22,6 +25,7 @@ import {
   scopeValue,
   substituteVariables,
   type VariableScope,
+  variableList,
 } from "./variables";
 
 export function createId(): string {
@@ -159,7 +163,52 @@ function addDays(date: Date, days: number): Date {
   return d;
 }
 
+const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function parseDay(text: string): Date | null {
+  const match = ISO_DAY.exec(text);
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return isoDate(date) === text ? date : null;
+}
+
+export function customPeriod(start: string, end: string): CustomPeriod | null {
+  const from = parseDay(start);
+  const to = parseDay(end);
+  if (!from || !to) return null;
+  return from <= to ? `${start}..${end}` : `${end}..${start}`;
+}
+
+export function parseCustomPeriod(period: Period): { start: string; end: string } | null {
+  const [start = "", end = "", rest] = period.split("..");
+  if (rest !== undefined) return null;
+  const from = parseDay(start);
+  const to = parseDay(end);
+  return from && to && from <= to ? { start, end } : null;
+}
+
+export function isPresetPeriod(period: Period): period is PresetPeriod {
+  return Object.hasOwn(PRESET_PERIODS, period);
+}
+
+const PRESET_PERIODS: Record<PresetPeriod, true> = {
+  all: true,
+  "7d": true,
+  "30d": true,
+  "90d": true,
+  "12m": true,
+  quarter: true,
+  year: true,
+};
+
+function customSpan(period: Period): { start: Date; end: Date } | null {
+  const custom = parseCustomPeriod(period);
+  if (!custom) return null;
+  return { start: parseDay(custom.start) as Date, end: addDays(parseDay(custom.end) as Date, 1) };
+}
+
 function periodStartDate(period: Period, now: Date): Date | null {
+  if (!isPresetPeriod(period)) return customSpan(period)?.start ?? null;
   switch (period) {
     case "all":
       return null;
@@ -196,10 +245,12 @@ export interface DateRange {
 }
 
 export function periodRange(period: Period, now = new Date()): DateRange {
+  const span = customSpan(period);
+  if (span) return { start: isoDate(span.start), end: isoDate(span.end) };
   return { start: periodStart(period, now), end: null };
 }
 
-function shiftBack(date: Date, period: Exclude<Period, "all">, compare: CompareMode): Date {
+function shiftBack(date: Date, period: Exclude<PresetPeriod, "all">, compare: CompareMode): Date {
   if (compare === "year") return addMonths(date, -12);
   switch (period) {
     case "7d":
@@ -220,8 +271,17 @@ export function comparisonRange(
   compare: CompareMode,
   now = new Date(),
 ): DateRange | null {
+  if (compare === "none") return null;
+  const span = customSpan(period);
+  if (span) {
+    if (compare === "year")
+      return { start: isoDate(addMonths(span.start, -12)), end: isoDate(addMonths(span.end, -12)) };
+    const days = Math.round((span.end.getTime() - span.start.getTime()) / 86_400_000);
+    return { start: isoDate(addDays(span.start, -days)), end: isoDate(span.start) };
+  }
+  if (!isPresetPeriod(period) || period === "all") return null;
   const start = periodStartDate(period, now);
-  if (!start || period === "all" || compare === "none") return null;
+  if (!start) return null;
   return {
     start: isoDate(shiftBack(start, period, compare)),
     end: isoDate(shiftBack(addDays(now, 1), period, compare)),
@@ -323,6 +383,12 @@ export function metricKey(index: number): string {
   return `m${index}`;
 }
 
+function boundRef(ds: SimpleDataset, bound: VariableColumn): string | null {
+  if (ds.schema === bound.schema && ds.table === bound.table) return bound.column;
+  const join = datasetJoins(ds).find((j) => j.schema === bound.schema && j.table === bound.table);
+  return join ? joinRef(join.id ?? "", bound.column) : null;
+}
+
 export function buildSimpleSql(
   ds: SimpleDataset,
   kind: DatabaseKind | null,
@@ -371,21 +437,49 @@ export function buildSimpleSql(
       `${join.kind === "inner" ? "INNER" : "LEFT"} JOIN ${table(join.schema, join.table)}${as}${alias} ON ${pairs.map((pair) => `${alias}.${q(pair.to)} = ${parent}.${q(pair.from)}`).join(" AND ")}`,
     );
   }
+  const coupled = new Set<string>();
   const where = ds.filters
     .filter((f) => f.column)
     .map((f) => {
       const name = filterVariable(f.value);
+      if (name !== null) coupled.add(name);
+      const variable = name === null ? null : scope.variables.find((v) => v.name === name);
       const value = name === null ? f.value : scopeValue(scope, name);
       if (value === null || (name !== null && !value.trim())) return null;
-      return compileConditionExpression(
-        refExpr(f.column, ds, style),
-        f.operator,
-        neutralFilterValue(f.operator, value, kind),
-        kind,
-        f.dataType,
-      );
+      const compile = (operator: string, input: string) =>
+        compileConditionExpression(
+          refExpr(f.column, ds, style),
+          operator,
+          neutralFilterValue(operator, input, kind),
+          kind,
+          f.dataType,
+        );
+      if (!variable?.multiple) return compile(f.operator, value);
+      const list = variableList(variable, value);
+      if (list.length === 0) return null;
+      if (f.operator === "eq" || f.operator === "in") return compile("in", JSON.stringify(list));
+      if (f.operator === "neq" || f.operator === "notIn")
+        return compile("notIn", JSON.stringify(list));
+      const parts = list
+        .map((item) => compile(f.operator, item))
+        .filter((part): part is string => part !== null);
+      return parts.length > 1 ? `(${parts.join(" OR ")})` : (parts[0] ?? null);
     })
     .filter((part): part is string => part !== null);
+  for (const variable of scope.variables) {
+    if (!variable.column || coupled.has(variable.name)) continue;
+    const ref = boundRef(ds, variable.column);
+    const list = ref ? variableList(variable, scopeValue(scope, variable.name) ?? "") : [];
+    if (!ref || list.length === 0) continue;
+    const condition = compileConditionExpression(
+      refExpr(ref, ds, style),
+      "in",
+      neutralFilterValue("in", JSON.stringify(list), kind),
+      kind,
+      variable.column.dataType,
+    );
+    if (condition) where.push(condition);
+  }
   for (const cross of ds[CROSS_WHERE] ?? [])
     where.push(
       compileCross(
@@ -577,6 +671,11 @@ export function datasetMarginSql(
 export type TrendBucket = "day" | "week" | "month";
 
 export function trendBucket(period: Period): TrendBucket {
+  const span = customSpan(period);
+  if (span) {
+    const days = (span.end.getTime() - span.start.getTime()) / 86_400_000;
+    return days <= 62 ? "day" : days <= 190 ? "week" : "month";
+  }
   if (period === "7d" || period === "30d") return "day";
   return period === "90d" || period === "quarter" ? "week" : "month";
 }

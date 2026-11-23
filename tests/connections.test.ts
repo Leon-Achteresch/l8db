@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { DatabaseKind } from "../src/lib/db";
+import readOnlyMarkers from "./fixtures/read-only-markers.json";
 
 const calls: string[] = [];
 let rejectConnection = false;
@@ -44,6 +46,10 @@ const PROVIDERS = [
   provider("supabase", "postgres", ["postgresql", "postgres"], [".supabase.co", ".supabase.com"]),
   provider("neon", "postgres", ["postgresql", "postgres"], [".neon.tech"]),
   provider("cloud-postgres", "postgres", ["postgresql", "postgres"], [".rds.amazonaws.com"]),
+  provider("cockroachdb", "postgres", ["postgresql", "postgres"], [".cockroachlabs.cloud"], {
+    default_port: 26257,
+  }),
+  provider("yugabyte", "postgres", ["postgresql", "postgres"], [], { default_port: 5433 }),
   provider("mysql", "mysql", ["mysql", "mariadb"], ["localhost"], { default_port: 3306 }),
   provider("mongodb", "mongodb", ["mongodb", "mongodb+srv"], ["localhost"], {
     default_port: 27017,
@@ -201,6 +207,8 @@ describe("PostgreSQL URLs", () => {
     expect(detectProvider("postgres://10.0.0.5/app")).toBe("postgres");
     expect(detectProvider("postgres://dbserver/app")).toBe("postgres");
     expect(detectProvider("postgres://user@localhost/app")).toBe("postgres");
+    expect(detectProvider("postgresql://root@127.0.0.1:26257/defaultdb")).toBe("cockroachdb");
+    expect(detectProvider("postgresql://root@127.0.0.1:5433/app")).toBe("postgres");
   });
   test("preserves the hostname for TLS and all URL options through SSH", () => {
     const result = tunneledConnectionString(
@@ -352,6 +360,26 @@ describe("Other providers", () => {
     expect(readOnlyConnectionString("postgresql://u@h/db")).toBe(
       "postgresql://u@h/db?options=-c%20default_transaction_read_only%3Don",
     );
+  });
+  test("forces read-only sessions for MySQL and SQLite and leaves other families alone", () => {
+    expect(readOnlyConnectionString("mysql://u@h:3306/db", "mysql")).toBe(
+      "mysql://u@h:3306/db?read_only=true",
+    );
+    const mysql = readOnlyConnectionString("mysql://u@h/db?ssl-mode=REQUIRED", "mysql");
+    expect(mysql).toBe("mysql://u@h/db?ssl-mode=REQUIRED&read_only=true");
+    expect(readOnlyConnectionString(mysql, "mysql")).toBe(mysql);
+    expect(readOnlyConnectionString("/data/a?b.db", "sqlite")).toBe("/data/a?b.db?mode=ro");
+    expect(readOnlyConnectionString("sqlite:///data/a.db?cache=shared", "sqlite")).toBe(
+      "sqlite:///data/a.db?cache=shared&mode=ro",
+    );
+    expect(readOnlyConnectionString("sqlserver://u@h/db", "mssql")).toBe("sqlserver://u@h/db");
+  });
+  test("every read-only family gets the marker the Rust guards detect", () => {
+    for (const [kind, pairs] of Object.entries(readOnlyMarkers))
+      for (const [input, output] of pairs) {
+        expect(readOnlyConnectionString(input, kind as DatabaseKind)).toBe(output);
+        expect(readOnlyConnectionString(output, kind as DatabaseKind)).toBe(output);
+      }
   });
   test("connects tunneled MongoDB directly to the forwarded member", () => {
     expect(tunneledConnectionString("mongodb://u@db:27017", 6502, "mongodb")).toBe(

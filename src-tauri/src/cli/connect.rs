@@ -11,6 +11,7 @@ pub struct Target {
     pub name: String,
     pub kind: DatabaseKind,
     pub read_only: bool,
+    pub read_only_flag: bool,
     pub production: bool,
 }
 
@@ -21,6 +22,7 @@ impl Target {
             name: connection.name.clone(),
             kind: connection.kind,
             read_only: connection.read_only || connection.production_locked,
+            read_only_flag: false,
             production: connection.environment.as_deref() == Some("production"),
         }
     }
@@ -71,16 +73,23 @@ pub fn detect_kind(url: &str) -> Result<DatabaseKind, String> {
             )),
             [(kind, _)] => Ok(*kind),
             many => Err(format!(
-                "„{scheme}://“ ist mehrdeutig. Nutze stattdessen {}.",
+                "„{scheme}://“ ist mehrdeutig. Nutze stattdessen {}{}.",
                 many.iter()
                     .map(|(_, own)| own.as_str())
                     .collect::<Vec<_>>()
-                    .join(", ")
+                    .join(", "),
+                if scheme == "https" {
+                    ", jeweils mit ?tls=true"
+                } else {
+                    ""
+                }
             )),
         };
     }
-    let lower = url.to_ascii_lowercase();
-    if lower.starts_with("duckdb:") {
+    let lower = db::sqlite::strip_params(url).to_ascii_lowercase();
+    if lower.starts_with("jdbc:") {
+        Ok(DatabaseKind::Jdbc)
+    } else if lower.starts_with("duckdb:") {
         Ok(DatabaseKind::Duckdb)
     } else if lower.starts_with("sqlite:") {
         Ok(DatabaseKind::Sqlite)
@@ -93,7 +102,7 @@ pub fn detect_kind(url: &str) -> Result<DatabaseKind, String> {
         Ok(DatabaseKind::Sqlite)
     } else {
         Err(
-            "--url braucht eine URL wie postgres://user@host/db oder eine .sqlite/.duckdb-Datei."
+            "--url: Schema oder Dateiendung fehlt. Beispiel: postgres://user@host/db, daten.sqlite, daten.duckdb"
                 .into(),
         )
     }
@@ -108,10 +117,15 @@ pub fn ad_hoc(url: &str) -> Result<Source, String> {
                 return Err("--url braucht eine vorhandene Datenbankdatei.".into());
             }
             let path = std::path::absolute(&file).map_err(|e| format!("{url}: {e}"))?;
-            if !path.exists() {
+            let create = url.contains("mode=rwc");
+            if !path.exists() && !create {
                 return Err(format!("Datei {} gibt es nicht.", path.display()));
             }
-            path.display().to_string()
+            if create {
+                format!("{}?mode=rwc", path.display())
+            } else {
+                path.display().to_string()
+            }
         }
         _ => url.to_string(),
     };
@@ -122,6 +136,7 @@ pub fn ad_hoc(url: &str) -> Result<Source, String> {
             name: "--url".into(),
             kind,
             read_only: false,
+            read_only_flag: false,
             production: false,
         },
     })
@@ -166,6 +181,10 @@ mod tests {
         assert_eq!(detect_kind("x.duckdb").unwrap(), DatabaseKind::Duckdb);
         assert!(detect_kind("nope://x").unwrap_err().contains("nope://"));
         assert!(detect_kind("readme.txt").is_err());
+        assert_eq!(
+            detect_kind("/d/neu.sqlite?mode=rwc").unwrap(),
+            DatabaseKind::Sqlite
+        );
         assert_eq!(detect_kind("sqlite:data").unwrap(), DatabaseKind::Sqlite);
         assert_eq!(detect_kind("duckdb:x.db").unwrap(), DatabaseKind::Duckdb);
         let http = detect_kind("http://127.0.0.1:9").unwrap_err();

@@ -12,6 +12,7 @@ import {
   parseConnectionUrl,
 } from "@/lib/connection-url";
 import type { DatabaseKind, ProviderInfo, SslMode } from "@/lib/db";
+import { installsOwnDriver } from "@/lib/drivers";
 import { useSettingsStore } from "@/lib/settings";
 import { placeholderDefaults } from "./seed";
 import type { Mode, TestResult } from "./types";
@@ -77,6 +78,7 @@ export function createConnectionInputActions(ctx: ConnectionInputActionsContext)
       setMode("string");
       if (kindFromUrl(value) !== next.kind) setValue("");
     }
+    if (next.id === "odbc") setMode("string");
     if (mode === "tns" && next.kind !== "oracle" && !isProfileConnection(next.kind))
       setMode("fields");
     setPreview(next.kind, next.id);
@@ -90,7 +92,7 @@ export function createConnectionInputActions(ctx: ConnectionInputActionsContext)
       setSsl(
         defaultSslModeForProvider(next.kind, next.id, useSettingsStore.getState().sslDefaultMode),
       );
-    if (step === 1 && next.driver_status.available) setStep(2);
+    if (step === 1 && (next.driver_status.available || installsOwnDriver(next))) setStep(2);
   }
 
   function pasteConnectionString(url?: string) {

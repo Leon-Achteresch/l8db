@@ -1,6 +1,6 @@
 import type { CatalogObject, CatalogObjectType, DatabaseKind } from "@/lib/db";
 import { attributeValue, CONTAINER_TYPES, quoteName } from "./diff";
-import { addColumnCheck, columnChecks, type DataCheck, keyCheck } from "./precheck";
+import { addColumnCheck, castCheck, columnChecks, type DataCheck, keyCheck } from "./precheck";
 import type { CompareResult, DiffItem } from "./types";
 import { OBJECT_TYPE_META } from "./types";
 
@@ -317,6 +317,7 @@ export function buildSyncScript(
       node?: CatalogObject;
       body?: string;
       checks?: (DataCheck | null)[];
+      portable?: boolean;
       repeat?: boolean;
       backup?: SyncStatement["backup"];
     } = {},
@@ -324,9 +325,10 @@ export function buildSyncScript(
     const text = options.plsql ? sql.trim() : sql.trim().replace(/;\s*$/, "");
     if (!text || (!options.repeat && seen.has(text))) return;
     seen.add(text);
-    const checks = oracle
-      ? (options.checks ?? []).filter((check): check is DataCheck => Boolean(check))
-      : [];
+    const checks =
+      oracle || options.portable
+        ? (options.checks ?? []).filter((check): check is DataCheck => Boolean(check))
+        : [];
     const statement: SyncStatement = {
       key,
       sql: text,
@@ -693,7 +695,11 @@ export function buildSyncScript(
       emit(
         CREATE_PHASE.column ?? 13,
         `ALTER TABLE ${table} ALTER COLUMN ${column} TYPE ${a.type}${a.collation ? ` COLLATE ${a.collation}` : ""} USING ${column}::${a.type}`,
-        { dangerous: true },
+        {
+          dangerous: true,
+          portable: postgres,
+          checks: postgres ? [castCheck(column, table, b.type, a.type)] : [],
+        },
       );
     if (changed("default"))
       emit(

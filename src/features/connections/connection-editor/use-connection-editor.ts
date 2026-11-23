@@ -90,6 +90,9 @@ export function useConnectionEditor({
   const [tags, setTags] = useState(seed?.tags?.map((tag) => tag.name).join(", ") ?? "");
   const [color, setColor] = useState<string | null>(seed?.color ?? null);
   const [readOnly, setReadOnly] = useState(Boolean(seed?.readOnly));
+  const [editorMetadataPrefetch, setEditorMetadataPrefetch] = useState(
+    seed?.editorMetadataPrefetch !== false,
+  );
   const [environment, setEnvironment] = useState<ConnectionEnvironment | null>(
     seed?.environment ?? null,
   );
@@ -119,6 +122,7 @@ export function useConnectionEditor({
       seed?.proxy?.host ||
       seed?.commandTunnel?.command ||
       seed?.readOnly ||
+      seed?.editorMetadataPrefetch === false ||
       seed?.schemas?.length ||
       seed?.color ||
       seed?.environment ||
@@ -220,6 +224,7 @@ export function useConnectionEditor({
     queryClient,
     ssl,
     readOnly,
+    editorMetadataPrefetch,
     schemaFilter,
     showSingleSchemaSwitcher,
     color,
@@ -303,6 +308,7 @@ export function useConnectionEditor({
       tags,
       color,
       readOnly,
+      editorMetadataPrefetch,
       environment,
       maskRules,
       schemaFilter,
@@ -352,6 +358,7 @@ export function useConnectionEditor({
     quickKind,
     quickProviderId,
     readOnly,
+    editorMetadataPrefetch,
     reduce,
     result,
     save,
@@ -377,6 +384,7 @@ export function useConnectionEditor({
     setPort,
     setProvider,
     setReadOnly,
+    setEditorMetadataPrefetch,
     setResult,
     setSchemaFilter,
     setShowSingleSchemaSwitcher,

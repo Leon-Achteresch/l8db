@@ -109,7 +109,13 @@ export function FkPreviewPopover({
           }}
           className="flex h-5 w-fit items-center gap-1 min-w-0 max-w-full cursor-pointer group/fk"
         >
-          <LinkIcon className="size-3 shrink-0 text-blue-500/60 fk-hover:text-blue-500 transition-colors" />
+          <LinkIcon
+            role="img"
+            aria-label={`Fremdschlüssel auf ${primary.table}`}
+            className="size-3 shrink-0 text-blue-500/60 fk-hover:text-blue-500 transition-colors"
+          >
+            <title>{`Fremdschlüssel auf ${primary.table}`}</title>
+          </LinkIcon>
           <div className="truncate">{children}</div>
         </div>
       </HoverCardTrigger>

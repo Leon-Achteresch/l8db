@@ -150,6 +150,42 @@ describe("managed connection integration", () => {
     );
   });
 
+  test("placeholder users stay empty and generic ODBC starts in URL mode", () => {
+    const base = providerForKind("postgres");
+    if (!base) throw new Error("Missing provider postgres");
+    const d1 = {
+      ...base,
+      id: "d1",
+      kind: "sqlite_http" as const,
+      placeholder: "d1://ACCOUNT_ID:API_TOKEN@api.cloudflare.com/datenbank",
+    };
+    expect(seedFields(undefined, d1, false)).toMatchObject({
+      host: "api.cloudflare.com",
+      user: "",
+      database: "datenbank",
+    });
+    const spacetime = {
+      ...base,
+      id: "spacetimedb",
+      kind: "spacetimedb" as const,
+      placeholder: "spacetimedb://token:identity-token@maincloud.spacetimedb.com/datenbank",
+    };
+    expect(seedFields(undefined, spacetime, false).user).toBe("token");
+    for (const [kind, placeholder] of [
+      ["snowflake", "snowflake://USER@myorg-account/DB/PUBLIC?warehouse=COMPUTE_WH"],
+      ["bigquery", "bigquery://my-project/my_dataset?location=EU"],
+    ] as const) {
+      expect(seedFields(undefined, { ...base, id: kind, kind, placeholder }, false)).toMatchObject({
+        host: "",
+        database: "",
+        user: "",
+      });
+    }
+    const odbc = { ...base, id: "odbc", kind: "odbc" as const };
+    expect(seedMode(undefined, odbc)).toBe("string");
+    expect(seedMode(undefined, base)).toBe("fields");
+  });
+
   test("profile editing seeds URL mode and switching from Oracle TNS stays in URL mode", () => {
     for (const kind of ["jdbc", "workspace"] as const) {
       const info = providerForKind(kind);

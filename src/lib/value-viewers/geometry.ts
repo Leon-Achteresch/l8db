@@ -562,7 +562,7 @@ export function parseGeometryValue(value: unknown, dataType?: string | null): Pa
   const text = value.trim();
   if (text.startsWith("{")) return parseGeoJson(text);
   if (looksLikeWkt(text)) return parseWkt(text);
-  if (looksLikeHexWkb(text)) {
+  if (looksLikeHexWkb(text) || /^0x/i.test(text)) {
     const bytes = hexToBytes(text);
     if (bytes) return parseGeometryBytes(bytes, dataType);
   }

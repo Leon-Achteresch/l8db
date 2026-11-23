@@ -188,7 +188,9 @@ export function MasterDetailLink({
               </span>
               <span className="ml-auto">
                 {selection
-                  ? `Ausgewählt: Zeile ${selection.rowIndex + 1}`
+                  ? selection.rows
+                    ? `Ausgewählt: ${selection.rows.length} Zeilen`
+                    : `Ausgewählt: Zeile ${selection.rowIndex + 1}`
                   : "Noch keine Master-Zeile ausgewählt"}
               </span>
             </div>

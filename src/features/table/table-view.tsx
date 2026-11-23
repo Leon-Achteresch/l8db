@@ -11,13 +11,16 @@ import { TablePartitionsPanel } from "@/features/table/table-partitions-panel";
 import { TableRlsPanel } from "@/features/table/table-rls-panel";
 import { TableTriggersList } from "@/features/table/table-triggers-list";
 import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
-import { PluginDetailTabsContent } from "@/features/ui-plugins/plugin-detail-tabs-content";
 import { useTableExtensionActions } from "@/lib/hooks/use-table-extension-actions";
+import { mysqlColumnOnUpdate } from "@/lib/mysql-column-update";
+import { oracleColumnTextLimit } from "@/lib/oracle-column-text-limit";
 import type { TableDetailTab } from "@/lib/table-detail-tabs";
+import { ClickhouseMergeEngineBadge } from "./table-view/clickhouse-merge-engine-badge";
 import { TablePerfPanel } from "./table-view/lazy-panels";
 import { TableDataContent } from "./table-view/table-data-content";
 import { TableExportDialogs } from "./table-view/table-export-dialogs";
 import { TableToolbarActions } from "./table-view/table-toolbar-actions";
+import { UnloggedTableBadge } from "./table-view/unlogged-table-badge";
 import { useTableViewModel } from "./table-view/use-table-view-model";
 import { ViewDetailTabs } from "./table-view/view-detail-tabs";
 
@@ -36,6 +39,8 @@ export function TableView(props: TableViewProps) {
   const {
     inDrawer,
     isView,
+    unlogged,
+    mergeEngine,
     connection,
     database,
     saveRedisRow,
@@ -43,11 +48,12 @@ export function TableView(props: TableViewProps) {
     stateKey,
     caps,
     availableTabs,
-    pluginTable,
-    pluginTabs,
     viewTab,
     tableTab,
     tableRows,
+    stagedKey,
+    collecting,
+    collectBlocked,
     masked,
     saveRow,
     addRow,
@@ -84,6 +90,7 @@ export function TableView(props: TableViewProps) {
     filterRaw,
     sorting,
     setSorting,
+    sortableColumns,
     revealColumn,
     setPage,
     addRowSignal,
@@ -120,6 +127,8 @@ export function TableView(props: TableViewProps) {
       stateKey={stateKey}
       caps={caps}
       tableRows={tableRows}
+      stagedKey={stagedKey}
+      collecting={collecting}
       rowOffset={rowOffset}
       rowExtent={rowExtent}
       onVisibleRowsChange={onVisibleRowsChange}
@@ -145,6 +154,7 @@ export function TableView(props: TableViewProps) {
       filterRaw={filterRaw}
       sorting={sorting}
       setSorting={setSorting}
+      sortableColumns={sortableColumns}
       revealColumn={revealColumn}
       setPage={setPage}
       addRowSignal={addRowSignal}
@@ -168,15 +178,11 @@ export function TableView(props: TableViewProps) {
         <ViewDetailTabs
           extensionActions={extensionActions}
           caps={caps}
+          connection={connection}
           availableTabs={availableTabs}
-          pluginTable={pluginTable}
-          pluginTabs={pluginTabs}
-          stateKey={stateKey}
           columnDetails={columnDetails}
-          refetch={refetch}
           viewTab={viewTab}
           data={data}
-          tableRows={tableRows}
           exporting={exporting}
           csvExportOpen={csvExportOpen}
           setCsvExportOpen={setCsvExportOpen}
@@ -209,7 +215,20 @@ export function TableView(props: TableViewProps) {
           className="flex shrink-0 items-center border-b bg-muted/30 px-3"
           data-tour="table-toolbar"
         >
-          <TableDetailTabBar tabs={availableTabs} activeTab={tableTab} />
+          <TableDetailTabBar
+            tabs={availableTabs}
+            activeTab={tableTab}
+            hasColumnUpdateRules={
+              connection?.kind === "mysql" &&
+              columnDetails?.some((column) => Boolean(mysqlColumnOnUpdate(column, "mysql")))
+            }
+            hasOracleTextLimits={
+              connection?.kind === "oracle" &&
+              columnDetails?.some((column) => Boolean(oracleColumnTextLimit(column, "oracle")))
+            }
+          />
+          {unlogged ? <UnloggedTableBadge key={stateKey} /> : null}
+          {mergeEngine && <ClickhouseMergeEngineBadge key={stateKey} context={mergeEngine} />}
           <TableToolbarActions
             extensionActions={extensionActions}
             connection={connection}
@@ -219,7 +238,6 @@ export function TableView(props: TableViewProps) {
             tableTab={tableTab}
             insertRowMutation={insertRowMutation}
             data={data}
-            tableRows={tableRows}
             columnDetails={columnDetails}
             refetch={refetch}
             exporting={exporting}
@@ -228,20 +246,14 @@ export function TableView(props: TableViewProps) {
             setDataExportFormat={setDataExportFormat}
             handleExport={handleExport}
             requestAddRow={requestAddRow}
-            pluginTable={pluginTable}
+            stagedKey={stagedKey}
+            collectBlocked={collectBlocked}
             schema={schema}
             table={table}
           />
         </div>
 
         <TabsContent value="data" className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {caps.query_language === "redis" && (
-            <p className="border-b px-3 py-1.5 text-xs text-muted-foreground">
-              Key, TTL und vollständige Strings per Doppelklick bearbeiten. Keys per Rechtsklick auf
-              den Spaltenkopf filtern. Sammlungen und gekürzte Werte unter „Key verwalten“ lesen und
-              ändern. Vorschau: bis zu 100 Einträge bzw. 4 KiB; size zeigt die Gesamtgröße.
-            </p>
-          )}
           {dataContent}
         </TabsContent>
 
@@ -294,15 +306,6 @@ export function TableView(props: TableViewProps) {
             <ObjectAuditPanel schema={schema} name={table} objectType="table" />
           )}
         </TabsContent>
-
-        <PluginDetailTabsContent
-          entries={pluginTabs}
-          info={pluginTable}
-          stateKey={stateKey}
-          rows={tableRows}
-          columnNames={data?.columns}
-          columnDetails={columnDetails}
-        />
 
         <TableExportDialogs
           table={table}

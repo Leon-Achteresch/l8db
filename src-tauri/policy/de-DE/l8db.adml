@@ -20,7 +20,7 @@ Deaktiviert: gesperrt; die Anwendung lehnt die zugehörigen Backend-Aufrufe ab.
 
 Aktiviert oder Nicht konfiguriert: erlaubt.</string>
       <string id="AllowExtensions">Erweiterungen erlauben</string>
-      <string id="AllowExtensions_Help">Community-Erweiterungen und UI-Plugins.
+      <string id="AllowExtensions_Help">Community-Erweiterungen.
 
 Deaktiviert: gesperrt; die Anwendung lehnt die zugehörigen Backend-Aufrufe ab.
 

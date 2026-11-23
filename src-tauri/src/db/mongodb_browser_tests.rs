@@ -71,6 +71,19 @@ async fn dispatch(
             .await
             .map(|_| Value::Null),
         "drop_table" => adapter.drop_table(schema, table).await.map(|_| Value::Null),
+        "configure_execution_defaults" => Ok(Value::Null),
+        "list_views" => adapter.list_views(Some(schema)).await.map(|v| json!(v)),
+        "list_import_columns" => adapter
+            .list_import_columns(schema, table)
+            .await
+            .map(|v| json!(v)),
+        "export_table_csv" => adapter
+            .export_table_csv(
+                &serde_json::from_value(args["request"].clone()).map_err(|e| e.to_string())?,
+                &|_| {},
+            )
+            .await
+            .map(|v| json!(v)),
         "execute_query" => adapter
             .execute_query(args["sql"].as_str().unwrap_or(""))
             .await

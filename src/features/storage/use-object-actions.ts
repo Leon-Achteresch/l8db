@@ -31,7 +31,9 @@ export function useObjectActions(bucket: string) {
       const summary = await withOverwritePrompt((overwrite) =>
         uploadPaths(connection, bucket, prefix, paths, properties, overwrite),
       );
-      toast.success(`${summary.files} Datei(en) hochgeladen · ${formatBytes(summary.bytes)}`);
+      toast.success(
+        `${summary.files} ${summary.files === 1 ? "Objekt" : "Objekte"} hochgeladen · ${formatBytes(summary.bytes)}`,
+      );
     } catch (error) {
       toast.error(`Upload fehlgeschlagen: ${errorText(error)}`);
     } finally {

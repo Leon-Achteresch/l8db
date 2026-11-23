@@ -6,6 +6,7 @@ import {
   Undo2Icon,
   XIcon,
 } from "lucide-react";
+import { Popover as PopoverPrimitive } from "radix-ui";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -156,13 +157,15 @@ export function VersioningFileDiff({
               onChange={setMergeBranch}
               options={mergeBranches.map((branch) => ({ value: branch, label: branch }))}
             />
-            <Button
-              size="sm"
-              disabled={!mergeSource || conflicted}
-              onClick={() => void run(development.merge)}
-            >
-              Datei zusammenführen
-            </Button>
+            <PopoverPrimitive.Close asChild>
+              <Button
+                size="sm"
+                disabled={!mergeSource || conflicted}
+                onClick={() => void run(development.merge)}
+              >
+                Datei zusammenführen
+              </Button>
+            </PopoverPrimitive.Close>
           </VersioningPopover>
           <VersioningIconButton
             icon={Undo2Icon}

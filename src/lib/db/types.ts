@@ -28,6 +28,7 @@ export interface QueryResult {
   execution_time_ms: number;
   truncated?: boolean;
   notice?: string;
+  autoLimit?: number;
 }
 
 export interface FunctionInfo {
@@ -163,6 +164,7 @@ export interface TablePrivileges {
   truncate: boolean;
   references: boolean;
   trigger: boolean;
+  column_privileges?: string | null;
 }
 
 export interface SchemaPrivileges {

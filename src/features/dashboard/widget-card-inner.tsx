@@ -1,29 +1,15 @@
-import { CalendarIcon, GripVerticalIcon, SettingsIcon, Trash2Icon } from "lucide-react";
+import { GripVerticalIcon, SettingsIcon, Trash2Icon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PanelErrorBoundary } from "@/components/error-boundary/panel-error-boundary";
 import { IconButton } from "@/components/icon-button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryErrorMessage } from "@/lib/connection-url";
-import {
-  autoSubtitle,
-  CHARTS,
-  type Dataset,
-  PERIOD_LABEL,
-  type Period,
-  type Widget,
-  widgetOptions,
-} from "@/lib/dashboards";
+import { autoSubtitle, CHARTS, type Dataset, type Widget, widgetOptions } from "@/lib/dashboards";
 import { ChartInteractionArea } from "./chart-interaction-area";
 import { ChartPointMenu } from "./chart-point-menu";
 import { CHART_RENDERERS, ChartHeadline, ChartLegend } from "./charts";
 import { useDashboardPeriod } from "./dashboard-period";
+import { PeriodPicker } from "./period-picker";
 import { useChartSlot } from "./use-chart-slot";
 import { useDatasetSql, useSqlQuery } from "./use-dataset-query";
 import { useWidgetData } from "./use-widget-data";
@@ -141,29 +127,15 @@ export function WidgetCardInner({
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {periodPicker && (
-              <Select
+              <PeriodPicker
                 value={locked ? viewPeriod : widget.period}
-                onValueChange={(next) =>
-                  locked ? setViewPeriod(next as Period) : onChange({ period: next as Period })
+                onChange={(next) =>
+                  locked ? setViewPeriod(next ?? "all") : onChange({ period: next ?? "all" })
                 }
-              >
-                <SelectTrigger
-                  size="sm"
-                  className="h-7 gap-1.5 border-transparent bg-transparent px-1.5 text-xs text-muted-foreground shadow-none hover:bg-muted dark:bg-transparent"
-                >
-                  <CalendarIcon className="size-3.5" />
-                  <span className={widget.w < 4 ? "sr-only" : undefined}>
-                    <SelectValue />
-                  </span>
-                </SelectTrigger>
-                <SelectContent align="end">
-                  {(Object.keys(PERIOD_LABEL) as Period[]).map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {PERIOD_LABEL[p]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                hideLabel={widget.w < 4}
+                align="end"
+                className="max-w-48 border-transparent bg-transparent px-1.5 text-muted-foreground shadow-none hover:bg-muted dark:bg-transparent"
+              />
             )}
             {interact.interactive && (
               <WidgetMenu

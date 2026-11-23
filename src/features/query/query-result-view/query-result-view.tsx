@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { QueryResultStatus } from "@/features/query/query-result-status";
 import { TableDetailTabBar } from "@/features/table/table-detail-tab-bar";
 import type { QueryResult, TableInfo } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
@@ -28,6 +29,7 @@ interface QueryResultViewProps {
   result: QueryResult;
   tables: TableInfo[];
   statusText: string | null;
+  statusDetails?: string;
   actions: ReactNode;
   maximized: boolean;
   onToggleMaximized: () => void;
@@ -40,6 +42,7 @@ export function QueryResultView({
   result,
   tables,
   statusText,
+  statusDetails,
   actions,
   maximized,
   onToggleMaximized,
@@ -68,9 +71,11 @@ export function QueryResultView({
         <TableDetailTabBar tabs={RESULT_TABS} activeTab={activeTab} />
         <div className="flex shrink-0 items-center gap-1">
           {statusText && (
-            <span className="hidden truncate text-[10px] tabular-nums text-muted-foreground md:inline">
-              {statusText}
-            </span>
+            <QueryResultStatus
+              text={statusText}
+              details={statusDetails}
+              className="hidden truncate text-[10px] tabular-nums text-muted-foreground md:inline"
+            />
           )}
           {actions}
           <Button

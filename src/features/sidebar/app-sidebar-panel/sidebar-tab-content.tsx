@@ -31,7 +31,7 @@ export function SidebarTabContent({
   packages,
   plainFunctions,
 }: SidebarTabContentProps) {
-  const { principals } = useActiveCapabilities();
+  const { principals, materialized_views } = useActiveCapabilities();
   return (
     <>
       {!hasConnection ? (
@@ -57,7 +57,7 @@ export function SidebarTabContent({
             emptyMessage="Keine Views gefunden."
             type="view"
           />
-          <SidebarMatviewList items={q.matviews} />
+          {materialized_views && <SidebarMatviewList items={q.matviews} />}
         </>
       ) : sidebarTab === "functions" ? (
         <SidebarFunctionList

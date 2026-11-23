@@ -1,5 +1,9 @@
 mod ai;
 mod appwrite;
+#[cfg(debug_assertions)]
+mod array_editor_development;
+#[cfg(any(test, debug_assertions))]
+mod array_editor_target;
 mod automation;
 #[cfg(test)]
 mod baas_browser_tests;
@@ -14,6 +18,8 @@ mod community_extensions;
 mod connection_import;
 mod convex;
 mod convex_studio;
+#[cfg(debug_assertions)]
+mod csv_check_development;
 mod db;
 mod desktop;
 mod extension_process;
@@ -29,12 +35,12 @@ mod payments;
 mod pocketbase;
 mod process;
 mod query_notification;
+#[cfg(debug_assertions)]
+mod routine_result_development;
 mod supabase;
 mod supabase_studio;
 mod sync;
 mod team;
-mod ui_plugin_proposals;
-mod ui_plugins;
 mod updates;
 mod versioning;
 mod windows;
@@ -65,8 +71,55 @@ fn set_memory_target(window: &tauri::Window, low: bool) {
     });
 }
 
+fn application_context() -> tauri::Context<tauri::Wry> {
+    tauri::generate_context!()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if std::env::args().any(|arg| arg == "--csv-check-development") {
+        #[cfg(debug_assertions)]
+        {
+            if csv_check_development::selected(&std::env::args().skip(1).collect::<Vec<_>>()) {
+                csv_check_development::run(application_context())
+                    .expect("isolated CSV development failed");
+            } else {
+                eprintln!("CSV-Entwicklung muss ohne weitere Argumente gestartet werden.");
+            }
+        }
+        #[cfg(not(debug_assertions))]
+        eprintln!("CSV-Entwicklung ist nur im Debug-Build verfügbar.");
+        return;
+    }
+    if std::env::args().any(|arg| arg == "--array-editor-development") {
+        #[cfg(debug_assertions)]
+        {
+            if array_editor_development::selected(&std::env::args().skip(1).collect::<Vec<_>>()) {
+                array_editor_development::run(application_context())
+                    .expect("isolated array editor development failed");
+            } else {
+                eprintln!("Array-Entwicklung muss ohne weitere Argumente gestartet werden.");
+            }
+        }
+        #[cfg(not(debug_assertions))]
+        eprintln!("Array-Entwicklung ist nur im Debug-Build verfügbar.");
+        return;
+    }
+    if std::env::args().any(|arg| arg == "--routine-result-development") {
+        #[cfg(debug_assertions)]
+        {
+            let args: Vec<_> = std::env::args().skip(1).collect();
+            if routine_result_development::selected(&args) {
+                routine_result_development::run(application_context())
+                    .expect("isolated routine result development failed");
+            } else {
+                eprintln!("Routinen-Entwicklung muss ohne weitere Argumente gestartet werden.");
+            }
+        }
+        #[cfg(not(debug_assertions))]
+        eprintln!("Routinen-Entwicklung ist nur im Debug-Build verfügbar.");
+        return;
+    }
     desktop::mark_process_start();
     if std::env::args().nth(1).as_deref() == Some("--mcp-sandbox") {
         std::process::exit(mcp::sandbox());
@@ -163,8 +216,6 @@ pub fn run() {
         .manage(community_extensions::ExtensionStoreLock::default())
         .manage(file_open::PendingOpenFiles::new(initial_files))
         .manage(windows::WindowConnections::default())
-        .manage(ui_plugins::UiPluginWatcher::default())
-        .manage(ui_plugin_proposals::Proposals::default())
         .manage(std::sync::Arc::new(ai::AiState::default()))
         .manage(db::pool::create_pool_state())
         .manage(db::transaction::create_transaction_state())
@@ -589,6 +640,8 @@ pub fn run() {
             db::commands::run_backup,
             db::commands::run_restore,
             db::commands::install_driver,
+            db::commands::diagnose_driver,
+            db::commands::repair_driver,
             db::commands::oracle_tns_names,
             db::commands::oracle_open_tnsnames,
             db::commands::test_connection_string,
@@ -609,6 +662,7 @@ pub fn run() {
             db::commands::set_scheduler_job_enabled,
             db::commands::run_scheduler_job,
             db::commands::execute_query,
+            db::commands::read_duckdb_file_path_context,
             db::commands::cancel_execution,
             db::commands::configure_execution_defaults,
             db::commands::execute_query_with_params,
@@ -628,6 +682,8 @@ pub fn run() {
             db::commands::insert_row_in_transaction,
             db::commands::duplicate_row_in_transaction,
             db::commands::delete_row_in_transaction,
+            db::commands::apply_row_changes_in_transaction,
+            db::commands::preview_row_changes,
             db::commands::commit_transaction,
             db::commands::rollback_transaction,
             db::commands::list_transactions,
@@ -682,6 +738,7 @@ pub fn run() {
             db::datagen::datagen_seed_script,
             db::datagen::datagen_run,
             db::commands::read_csv_preview,
+            db::csv_check::check_csv_file,
             db::commands::export_table_csv,
             db::commands::read_table_snapshot,
             db::commands::compare_table_data,
@@ -718,17 +775,6 @@ pub fn run() {
             db::secrets::load_secret,
             db::secrets::delete_secret,
             team::team_connections,
-            ui_plugin_proposals::ui_plugin_proposals_start,
-            ui_plugin_proposals::ui_plugin_proposals_pending,
-            ui_plugin_proposals::ui_plugin_proposals_finish,
-            ui_plugins::ui_plugins_scan,
-            ui_plugins::ui_plugins_read_bundle,
-            ui_plugins::ui_plugins_export_bundle,
-            ui_plugins::ui_plugins_write,
-            ui_plugins::ui_plugins_remove,
-            ui_plugins::ui_plugins_write_support,
-            ui_plugins::ui_plugins_write_sdk,
-            ui_plugins::ui_plugins_watch,
             sync::sync_test,
             sync::sync_fetch,
             sync::sync_store,
@@ -781,7 +827,7 @@ pub fn run() {
             db::commands::get_database_overview,
             db::commands::get_schema_map,
         ]))
-        .build(tauri::generate_context!())
+        .build(application_context())
         .expect("error while running tauri application")
         .run(|_app, _event| {
             if let tauri::RunEvent::Exit = _event {

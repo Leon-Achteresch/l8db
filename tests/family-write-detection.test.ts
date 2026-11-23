@@ -1,25 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { destructiveStatements, writesData } from "../src/lib/sql-safety";
+import cases from "./fixtures/write-detection-cases.json";
 
 const reasons = (sql: string, dialect: string, strict = false) =>
   destructiveStatements(sql, dialect, { strict }).map((entry) => entry.reason);
 
 describe("write detection per family", () => {
-  test("MongoDB aggregate stages $out and $merge write", () => {
-    for (const sql of [
-      'db.src.aggregate([{$match:{}},{$out:"copy"}])',
-      'db.src.aggregate([{$merge:{into:"copy"}}])',
-      '{"aggregate":"src","pipeline":[{"$out":"copy"}],"cursor":{}}',
-      'db.src.mapReduce(function(){}, function(){}, {out:"copy"})',
-    ])
-      expect(writesData(sql, "mongodb")).toBe(true);
-    for (const sql of [
-      'db.src.aggregate([{$match:{status:"open"}},{$count:"n"}])',
-      "db.src.mapReduce(function(){}, function(){}, {out:{inline:1}})",
-      "db.src.find({})",
-    ])
-      expect(writesData(sql, "mongodb")).toBe(false);
-  });
+  for (const [dialect, { writes, reads }] of Object.entries(cases))
+    test(`${dialect}: shared cases match the Rust CLI detection`, () => {
+      for (const sql of writes) expect([sql, writesData(sql, dialect)]).toEqual([sql, true]);
+      for (const sql of reads) expect([sql, writesData(sql, dialect)]).toEqual([sql, false]);
+    });
 
   test("Redis reads stay reads and dangerous commands need confirmation", () => {
     for (const sql of ["ZCOUNT z 0 10", "PFCOUNT hll", "JSON.GET doc", "GEOPOS g a", "KEYS user:*"])
@@ -35,6 +26,16 @@ describe("write detection per family", () => {
     expect(reasons("RESTORE k 0 payload", "redis")).toEqual([]);
     expect(reasons("CONFIG GET maxmemory", "redis")).toEqual([]);
     expect(reasons("GET a", "redis")).toEqual([]);
+    for (const sql of ['"FLUSHALL"', "'flushdb'", 'FLUSH"ALL"', '"\\x46LUSHALL"', '  "flushall"  '])
+      expect([sql, reasons(sql, "redis")]).toEqual([sql, ["Alle Schlüssel löschen"]]);
+    expect(reasons('"DEL" key', "redis", true)).toEqual(["Schlüssel löschen"]);
+    expect(reasons("'unlink' key", "redis", true)).toEqual(["Schlüssel löschen"]);
+    expect(reasons('"CONFIG" "SET" maxmemory 1mb', "redis")).toEqual([
+      "Serverkonfiguration ändern",
+    ]);
+    expect(reasons('RESTORE k 0 payload "REPLACE"', "redis")).toEqual(["Schlüssel überschreiben"]);
+    expect(writesData('"GET" a', "redis")).toBe(false);
+    expect(writesData('"FLUSHALL"', "redis")).toBe(true);
   });
 
   test("Elasticsearch Dev-Tools reads are reads, writes and deletes are not", () => {
@@ -44,6 +45,8 @@ describe("write detection per family", () => {
       "HEAD logs",
       "GET a/_search\nGET b/_search",
       "SELECT * FROM logs",
+      'POST _plugins/_sql\n{"query":"SELECT 1"}',
+      'POST logs/_search {"size": 1}',
     ])
       expect(writesData(sql, "elasticsearch")).toBe(false);
     for (const sql of [
@@ -53,6 +56,8 @@ describe("write detection per family", () => {
       "POST logs/_delete_by_query",
       "POST logs/../_doc",
       "GET a/_search\nDELETE b",
+      "POST _plugins/_security/api/internalusers",
+      "POST _plugins/_ppl",
     ])
       expect(writesData(sql, "elasticsearch")).toBe(true);
     expect(reasons("DELETE logs", "elasticsearch")).toEqual(["Index löschen"]);
@@ -61,22 +66,6 @@ describe("write detection per family", () => {
     ]);
     expect(reasons("DELETE logs/_doc/1", "elasticsearch")).toEqual([]);
     expect(reasons("DELETE logs/_doc/1", "elasticsearch", true)).toEqual(["Dokument löschen"]);
-  });
-
-  test("InfluxDB Flux queries read, to() and line protocol write", () => {
-    for (const sql of [
-      'from(bucket: "m") |> range(start: -1h)',
-      'import "array"\nfrom(bucket: "m") |> range(start: -1h)',
-      'SELECT * FROM "cpu"',
-      "SHOW MEASUREMENTS",
-    ])
-      expect(writesData(sql, "influxdb")).toBe(false);
-    for (const sql of [
-      'from(bucket: "m") |> range(start: -1h) |> to(bucket: "copy")',
-      "cpu,host=a usage=1",
-      'DELETE FROM "cpu"',
-    ])
-      expect(writesData(sql, "influxdb")).toBe(true);
   });
 
   test("warehouse families block writes on read-only connections", () => {

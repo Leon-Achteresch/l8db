@@ -20,6 +20,7 @@ pub struct Services {
     pub sink: Sink,
     pub headless: bool,
     pub require_password: bool,
+    pub read_only: bool,
 }
 
 impl Services {
@@ -32,6 +33,7 @@ impl Services {
             sink,
             headless,
             require_password: true,
+            read_only: false,
         }
     }
 

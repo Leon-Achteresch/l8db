@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 
 use async_trait::async_trait;
+use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use super::filter_expr::{self, Cmp, Expr, LikePart, Literal};
@@ -36,9 +37,98 @@ pub struct InfluxAdapter {
     token: String,
     insecure: bool,
     database: Option<String>,
-    org: Option<String>,
+    org: Option<(&'static str, String)>,
     forced: Option<Version>,
     range: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct BucketCatalog {
+    databases: Vec<String>,
+    bucket_retention: BTreeMap<String, BucketRetention>,
+}
+
+#[derive(Serialize)]
+struct BucketRetention {
+    org_id: String,
+    bucket_id: String,
+    seconds: u64,
+}
+
+fn catalog_org_id<'a>(buckets: &'a [Value], org: Option<&(&str, String)>) -> Option<&'a str> {
+    let (selector, value) = org?;
+    let mut ids = buckets
+        .iter()
+        .filter_map(|bucket| bucket["orgID"].as_str().filter(|id| !id.is_empty()));
+    if *selector == "orgID" {
+        return ids.find(|id| *id == value.as_str());
+    }
+    let first = ids.next()?;
+    ids.all(|id| id == first).then_some(first)
+}
+
+fn expiration_seconds(bucket: &Value) -> Option<u64> {
+    let [rule] = bucket["retentionRules"].as_array()?.as_slice() else {
+        return None;
+    };
+    if rule["type"].as_str() != Some("expire") {
+        return None;
+    }
+    rule["everySeconds"]
+        .as_u64()
+        .filter(|seconds| *seconds <= 9_007_199_254_740_991)
+}
+
+fn bucket_catalog(reply: http_api::Reply, org: Option<&(&str, String)>) -> BucketCatalog {
+    let confirmed = reply
+        .header("x-influxdb-build")
+        .is_some_and(|build| build.eq_ignore_ascii_case("oss"))
+        && reply
+            .header("x-influxdb-version")
+            .is_some_and(|version| version.trim_start_matches('v').starts_with("2."));
+    let body = reply.json().unwrap_or(Value::Null);
+    let buckets = body["buckets"].as_array().map_or(&[][..], Vec::as_slice);
+    let org_id = if confirmed {
+        catalog_org_id(buckets, org)
+    } else {
+        None
+    };
+    let mut names = HashSet::new();
+    let mut duplicates = HashSet::new();
+    let mut bucket_retention = BTreeMap::new();
+    for bucket in buckets {
+        let Some(name) = bucket["name"].as_str().filter(|name| !name.is_empty()) else {
+            continue;
+        };
+        if !names.insert(name) {
+            duplicates.insert(name);
+        }
+        let Some(org_id) = org_id.filter(|id| bucket["orgID"].as_str() == Some(*id)) else {
+            continue;
+        };
+        let Some(bucket_id) = bucket["id"].as_str().filter(|id| !id.is_empty()) else {
+            continue;
+        };
+        if let Some(seconds) = expiration_seconds(bucket) {
+            bucket_retention.insert(
+                name.to_string(),
+                BucketRetention {
+                    org_id: org_id.to_string(),
+                    bucket_id: bucket_id.to_string(),
+                    seconds,
+                },
+            );
+        }
+    }
+    for name in duplicates {
+        bucket_retention.remove(name);
+    }
+    let mut databases = names.into_iter().map(str::to_string).collect::<Vec<_>>();
+    databases.sort_by(|a, b| (a.starts_with('_'), a).cmp(&(b.starts_with('_'), b)));
+    BucketCatalog {
+        databases,
+        bucket_retention,
+    }
 }
 
 fn versions() -> &'static Mutex<HashMap<String, Version>> {
@@ -244,8 +334,20 @@ fn typed(value: &str, datatype: &str) -> Value {
             .map(Value::Number)
             .unwrap_or_else(|| Value::String(value.into())),
         "boolean" => Value::Bool(value == "true"),
+        t if t.starts_with("dateTime") => Value::String(nanos(value)),
         _ => Value::String(value.into()),
     }
+}
+
+fn nanos(value: &str) -> String {
+    let Some(base) = value.strip_suffix('Z') else {
+        return value.to_string();
+    };
+    let (head, fraction) = base.split_once('.').unwrap_or((base, ""));
+    if fraction.len() > 9 || !fraction.chars().all(|c| c.is_ascii_digit()) {
+        return value.to_string();
+    }
+    format!("{head}.{fraction:0<9}Z")
 }
 
 type Table = (Vec<String>, Vec<Map<String, Value>>);
@@ -362,17 +464,295 @@ fn is_flux(statement: &str) -> bool {
         || trimmed.starts_with("option ")
 }
 
+const FLUX_READ_PACKAGES: &[&str] = &[
+    "array",
+    "csv",
+    "date",
+    "date/boundaries",
+    "dict",
+    "experimental",
+    "experimental/aggregate",
+    "experimental/array",
+    "experimental/date/boundaries",
+    "experimental/geo",
+    "experimental/json",
+    "experimental/table",
+    "generate",
+    "influxdata/influxdb",
+    "influxdata/influxdb/sample",
+    "influxdata/influxdb/schema",
+    "influxdata/influxdb/v1",
+    "interpolate",
+    "join",
+    "json",
+    "math",
+    "regexp",
+    "runtime",
+    "sampledata",
+    "strings",
+    "system",
+    "timezone",
+    "types",
+    "universe",
+];
+
+fn flux_ident(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+fn flux_regex_position(code: &str) -> bool {
+    let code = code.trim_end();
+    match code.chars().last() {
+        None => true,
+        Some(c) if "~(,:[{=".contains(c) => true,
+        Some(c) if flux_ident(c) => {
+            let start = code
+                .char_indices()
+                .rev()
+                .take_while(|(_, c)| flux_ident(*c))
+                .last()
+                .map_or(0, |(i, _)| i);
+            matches!(
+                &code[start..],
+                "return" | "then" | "else" | "and" | "or" | "not"
+            )
+        }
+        _ => false,
+    }
+}
+
+fn flux_scan(
+    chars: &[char],
+    mut i: usize,
+    out: &mut String,
+    strings: &mut Vec<String>,
+    level: usize,
+) -> Option<usize> {
+    if level > 32 {
+        return None;
+    }
+    let mut depth = 0usize;
+    while i < chars.len() {
+        let c = chars[i];
+        match c {
+            '"' => {
+                let mut text = String::new();
+                i += 1;
+                loop {
+                    match *chars.get(i)? {
+                        '\\' => {
+                            text.push('\\');
+                            text.push(*chars.get(i + 1)?);
+                            i += 2;
+                        }
+                        '"' => break,
+                        '$' if chars.get(i + 1) == Some(&'{') => {
+                            text.push_str("${");
+                            out.push(' ');
+                            i = flux_scan(chars, i + 2, out, strings, level + 1)?;
+                            out.push(' ');
+                        }
+                        c => {
+                            text.push(c);
+                            i += 1;
+                        }
+                    }
+                }
+                out.push_str(&format!("\"{}\"", strings.len()));
+                strings.push(text);
+            }
+            '/' if chars.get(i + 1) == Some(&'/') => {
+                while i + 1 < chars.len() && chars[i + 1] != '\n' {
+                    i += 1;
+                }
+            }
+            '/' if flux_regex_position(out) => {
+                i += 1;
+                loop {
+                    match *chars.get(i)? {
+                        '\\' => i += 2,
+                        '/' => break,
+                        '\n' => return None,
+                        _ => i += 1,
+                    }
+                }
+                out.push_str("\"\"");
+            }
+            '}' if level > 0 && depth == 0 => return Some(i + 1),
+            _ => {
+                match c {
+                    '{' => depth += 1,
+                    '}' => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+                out.push(c);
+            }
+        }
+        i += 1;
+    }
+    (level == 0).then_some(i)
+}
+
+fn flux_code(statement: &str) -> Option<(String, Vec<String>)> {
+    let chars: Vec<char> = statement.chars().collect();
+    let mut out = String::with_capacity(statement.len());
+    let mut strings = Vec::new();
+    flux_scan(&chars, 0, &mut out, &mut strings, 0)?;
+    Some((out, strings))
+}
+
+fn flux_import<'a>(rest: &[char], strings: &'a [String]) -> Option<&'a str> {
+    let rest: String = rest.iter().collect();
+    let mut rest = rest.trim_start();
+    if rest.starts_with(flux_ident) {
+        rest = rest.trim_start_matches(flux_ident).trim_start();
+    }
+    let index = rest.strip_prefix('"')?.split('"').next()?;
+    strings
+        .get(index.parse::<usize>().ok()?)
+        .map(String::as_str)
+}
+
+fn flux_writes(statement: &str) -> bool {
+    let Some((code, strings)) = flux_code(statement) else {
+        return true;
+    };
+    let chars: Vec<char> = code.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if !flux_ident(chars[i]) || (i > 0 && flux_ident(chars[i - 1])) {
+            i += 1;
+            continue;
+        }
+        let end = (i..chars.len())
+            .find(|&j| !flux_ident(chars[j]))
+            .unwrap_or(chars.len());
+        let word: String = chars[i..end].iter().collect();
+        if word == "import"
+            && flux_import(&chars[end..], &strings)
+                .is_none_or(|path| !FLUX_READ_PACKAGES.contains(&path))
+        {
+            return true;
+        }
+        if matches!(word.as_str(), "to" | "wideTo") {
+            let before = chars[..i].iter().rev().find(|c| !c.is_whitespace());
+            let after = chars[end..].iter().find(|c| !c.is_whitespace());
+            if after != Some(&':') && (before != Some(&'.') || after == Some(&'(')) {
+                return true;
+            }
+        }
+        i = end;
+    }
+    false
+}
+
 pub fn read_only_statement(statement: &str) -> Option<bool> {
     if is_line_protocol(statement) {
         return Some(false);
     }
-    if is_flux(statement) {
-        let compact: String = statement.chars().filter(|c| !c.is_whitespace()).collect();
-        return Some(
-            !(compact.contains("|>to(") || compact.contains("wideTo(") || compact.contains(".to(")),
-        );
+    let flux = is_flux(statement);
+    if flux || !SQL_WORDS.contains(&first_word(statement).as_str()) {
+        let writes = flux_writes(statement);
+        if flux || writes {
+            return Some(!writes);
+        }
     }
     None
+}
+
+pub fn range_note(connection_string: &str) -> Option<String> {
+    let secs = InfluxAdapter::new(connection_string, None).ok()?.range?;
+    let span = match secs {
+        s if s % 86_400 == 0 => format!("{} d", s / 86_400),
+        s if s % 3600 == 0 => format!("{} h", s / 3600),
+        s if s % 60 == 0 => format!("{} min", s / 60),
+        s => format!("{s} s"),
+    };
+    Some(format!(
+        "Hinweis: nur Punkte der letzten {span}. Alle: ?range=all in der URL."
+    ))
+}
+
+fn flux_hint(reason: &str) -> String {
+    let (place, message) = reason
+        .split_once("error @")
+        .and_then(|(_, rest)| rest.split_once(": "))
+        .unwrap_or(("", reason));
+    let at = place
+        .split('-')
+        .next()
+        .and_then(|start| start.split_once(':'))
+        .map(|(line, column)| format!(" in Zeile {line}, Spalte {column}"))
+        .unwrap_or_default();
+    let word = |marker: &str| {
+        message
+            .split_once(marker)
+            .and_then(|(_, rest)| rest.split_whitespace().next())
+            .map(|w| w.trim_matches(|c: char| c == '"' || c == ',' || c == ')'))
+            .filter(|w| !w.is_empty())
+    };
+    if let Some(name) = word("undefined identifier") {
+        format!("Flux kennt „{name}“ nicht{at}: Schreibweise prüfen.")
+    } else if let Some(name) = word("missing required argument") {
+        format!("Flux: Pflichtargument „{name}“ fehlt{at}.")
+    } else if message.contains("expected")
+        || message.contains("got ")
+        || message.contains("invalid")
+    {
+        format!("Flux-Syntaxfehler{at}: Klammern, Kommas und Kommentare prüfen.")
+    } else {
+        format!("Flux-Fehler{at}.")
+    }
+}
+
+fn friendly_error(status: u16, body: &str) -> String {
+    let mut reason = http_api::error_message(body);
+    if let Some(inner) = reason
+        .split_once("ParserError(\"")
+        .and_then(|(_, rest)| rest.rsplit_once("\")"))
+        .map(|(inner, _)| inner.to_string())
+    {
+        reason = inner;
+    }
+    let quoted = |text: &str, marker: &str| {
+        text.split_once(marker)
+            .and_then(|(_, rest)| rest.split('"').nth(1))
+            .unwrap_or_default()
+            .to_string()
+    };
+    let hint = if status == 401 {
+        Some("Token ungültig oder ohne Rechte.".to_string())
+    } else if reason.contains("organization name") && reason.contains("not found") {
+        Some(format!(
+            "Organisation „{}“ nicht gefunden: ?org= prüfen.",
+            quoted(&reason, "organization name")
+        ))
+    } else if reason.contains("could not find bucket") || reason.contains("bucket not found") {
+        Some(format!(
+            "Bucket „{}“ nicht gefunden.",
+            quoted(&reason, "bucket")
+        ))
+    } else if reason.contains("database not found") {
+        Some("Datenbank nicht gefunden.".to_string())
+    } else if reason.contains("field type conflict") {
+        Some("Feldtyp-Konflikt: das Feld hat schon einen anderen Typ.".to_string())
+    } else if reason.contains("unable to parse") {
+        Some("Line-Protokoll ungültig.".to_string())
+    } else if reason.contains("DML not supported") {
+        Some("Ändern und Löschen per SQL kann InfluxDB 3 nicht.".to_string())
+    } else if reason.starts_with("compilation failed") || reason.contains("error @") {
+        Some(flux_hint(&reason))
+    } else if reason.starts_with("SQL error") || reason.contains("Expected:") {
+        Some("SQL-Fehler.".to_string())
+    } else if status == 429 || status == 503 {
+        Some("Server überlastet. Später erneut versuchen.".to_string())
+    } else {
+        None
+    };
+    match hint {
+        Some(hint) => format!("InfluxDB {status}: {hint}\n  {reason}"),
+        None => format!("InfluxDB {status}: {reason}"),
+    }
 }
 
 fn is_influxql(statement: &str) -> bool {
@@ -401,7 +781,7 @@ pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String
         schema: String::new(),
         user: String::new(),
         params: super::endpoint::identity_params(&[
-            ("org", adapter.org.clone()),
+            ("org", adapter.org.map(|(_, value)| value)),
             (
                 "version",
                 adapter.forced.map(|version| match version {
@@ -449,7 +829,15 @@ impl InfluxAdapter {
             token,
             insecure: tls.insecure,
             database,
-            org: http_api::param(&url, &["org", "orgID", "org_id"]),
+            org: url.query_pairs().find_map(|(key, value)| {
+                if key.eq_ignore_ascii_case("org") {
+                    Some(("org", value.into_owned()))
+                } else if key.eq_ignore_ascii_case("orgID") || key.eq_ignore_ascii_case("org_id") {
+                    Some(("orgID", value.into_owned()))
+                } else {
+                    None
+                }
+            }),
             forced,
             range,
         })
@@ -474,16 +862,19 @@ impl InfluxAdapter {
         request.header("Authorization", format!("{scheme} {}", self.token))
     }
 
-    async fn send(&self, request: reqwest::RequestBuilder) -> Result<String, String> {
+    async fn send_reply(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> Result<http_api::Reply, String> {
         let reply = http_api::send("InfluxDB", request).await?;
         if !reply.ok() {
-            return Err(format!(
-                "InfluxDB {}: {}",
-                reply.status,
-                http_api::error_message(&reply.body)
-            ));
+            return Err(friendly_error(reply.status, &reply.body));
         }
-        Ok(reply.body)
+        Ok(reply)
+    }
+
+    async fn send(&self, request: reqwest::RequestBuilder) -> Result<String, String> {
+        Ok(self.send_reply(request).await?.body)
     }
 
     async fn version(&self) -> Result<Version, String> {
@@ -522,7 +913,7 @@ impl InfluxAdapter {
     }
 
     async fn org(&self) -> Result<String, String> {
-        if let Some(org) = &self.org {
+        if let Some((_, org)) = &self.org {
             return Ok(org.clone());
         }
         let key = format!("{}#{}", self.base, self.token);
@@ -544,8 +935,47 @@ impl InfluxAdapter {
         Ok(org)
     }
 
+    fn buckets_request(&self) -> reqwest::RequestBuilder {
+        self.request(
+            reqwest::Method::GET,
+            "/api/v2/buckets?limit=100",
+            Version::V2,
+        )
+    }
+
+    pub async fn database_catalog(&self) -> Result<BucketCatalog, String> {
+        let version = self.version().await?;
+        if version != Version::V2 {
+            return Ok(BucketCatalog {
+                databases: self.databases_for(version).await?,
+                bucket_retention: BTreeMap::new(),
+            });
+        }
+        let org = self
+            .org
+            .clone()
+            .or_else(|| {
+                orgs()
+                    .lock()
+                    .ok()?
+                    .get(&format!("{}#{}", self.base, self.token))
+                    .map(|name| ("org", name.clone()))
+            })
+            .filter(|(_, value)| !value.is_empty());
+        let mut request = self.buckets_request();
+        if let Some((selector, value)) = org.as_ref() {
+            request = request.query(&[(*selector, value.as_str())]);
+        }
+        let reply = self.send_reply(request).await?;
+        Ok(bucket_catalog(reply, org.as_ref()))
+    }
+
     async fn databases(&self) -> Result<Vec<String>, String> {
-        let mut names: Vec<String> = match self.version().await? {
+        self.databases_for(self.version().await?).await
+    }
+
+    async fn databases_for(&self, version: Version) -> Result<Vec<String>, String> {
+        let mut names: Vec<String> = match version {
             Version::V3 => {
                 let body = self
                     .send(self.request(
@@ -563,13 +993,7 @@ impl InfluxAdapter {
                     .collect()
             }
             Version::V2 => {
-                let body = self
-                    .send(self.request(
-                        reqwest::Method::GET,
-                        "/api/v2/buckets?limit=100",
-                        Version::V2,
-                    ))
-                    .await?;
+                let body = self.send(self.buckets_request()).await?;
                 serde_json::from_str::<Value>(&body)
                     .ok()
                     .and_then(|v| v["buckets"].as_array().cloned())
@@ -692,6 +1116,15 @@ impl InfluxAdapter {
                     }
                     rows.push(row);
                 }
+            }
+        }
+        let epoch = |row: &Map<String, Value>| {
+            row.get("time").and_then(Value::as_str) == Some("1970-01-01T00:00:00Z")
+        };
+        if columns.len() > 1 && !rows.is_empty() && rows.iter().all(epoch) {
+            columns.retain(|c| c != "time");
+            for row in &mut rows {
+                row.remove("time");
             }
         }
         Ok((columns, rows))
@@ -829,6 +1262,24 @@ impl InfluxAdapter {
         }
     }
 
+    async fn typed_columns(&self, db: &str, table: &str) -> Result<Vec<(String, String)>, String> {
+        let mut columns = self.columns(db, table).await?;
+        if self.version().await? == Version::V2 {
+            let ident = format!("\"{}\"", table.replace('\\', "\\\\").replace('"', "\\\""));
+            if let Ok((_, rows)) = self
+                .influxql_v2(db, &format!("SHOW FIELD KEYS FROM {ident}"))
+                .await
+            {
+                for (name, data_type) in columns.iter_mut().filter(|(_, t)| t == "field") {
+                    if let Some(row) = rows.iter().find(|r| text(&r["fieldKey"]) == *name) {
+                        *data_type = text(&row["fieldType"]);
+                    }
+                }
+            }
+        }
+        Ok(columns)
+    }
+
     fn list_start(&self) -> &'static str {
         "time(v: 0)"
     }
@@ -898,7 +1349,7 @@ impl DatabaseAdapter for InfluxAdapter {
         };
         let mut out = Vec::new();
         for table in tables {
-            for (name, data_type) in self.columns(&db, &table).await? {
+            for (name, data_type) in self.typed_columns(&db, &table).await? {
                 out.push(ColumnInfo {
                     schema: db.clone(),
                     table: table.clone(),
@@ -1020,7 +1471,21 @@ impl DatabaseAdapter for InfluxAdapter {
                 truncated: false,
             });
         }
-        let (columns, rows) = match self.version().await? {
+        let version = self.version().await?;
+        let word = first_word(sql);
+        if version == Version::V3 && is_flux(sql) {
+            return Err("Flux gibt es auf InfluxDB 3 nicht. SQL oder InfluxQL verwenden.".into());
+        }
+        if version == Version::V2
+            && !is_flux(sql)
+            && SQL_WORDS.contains(&word.as_str())
+            && !matches!(word.as_str(), "SELECT" | "SHOW")
+        {
+            return Err(format!(
+                "{word} kann InfluxDB 2 hier nicht. Möglich: Flux, InfluxQL (SELECT, SHOW) und Line-Protokoll."
+            ));
+        }
+        let (columns, rows) = match version {
             Version::V3 => {
                 let db = self.database().await?;
                 let rows = if is_influxql(sql) {
@@ -1063,7 +1528,7 @@ impl DatabaseAdapter for InfluxAdapter {
     ) -> Result<Vec<DetailedColumnInfo>, String> {
         let db = self.database().await?;
         Ok(self
-            .columns(&db, table)
+            .typed_columns(&db, table)
             .await?
             .into_iter()
             .enumerate()
@@ -1082,6 +1547,10 @@ impl DatabaseAdapter for InfluxAdapter {
 }
 
 #[cfg(test)]
+#[path = "influxdb_bucket_retention_tests.rs"]
+mod bucket_retention_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1095,7 +1564,7 @@ mod tests {
         assert_eq!(a.base, "http://localhost:8086");
         assert_eq!(a.token, "abc=");
         assert_eq!(a.database.as_deref(), Some("metrics"));
-        assert_eq!(a.org.as_deref(), Some("acme"));
+        assert_eq!(a.org, Some(("org", "acme".into())));
         assert_eq!(a.range, Some(7 * 86_400));
         let b = InfluxAdapter::new(
             "influxdb://eu-central-1-1.aws.cloud2.influxdata.com?version=3&range=all",
@@ -1137,6 +1606,100 @@ mod tests {
             Some(true)
         );
         assert_eq!(read_only_statement("SELECT 1"), None);
+        for write in [
+            "from(bucket: \"m\") |> range(start: -4h)\n  |> // audit\n  to(bucket: \"c\", org: \"o\")",
+            "from(bucket: \"m\") |> range(start: -1h) |> /* x */ to(bucket: \"c\")",
+            "import \"experimental\"\nfrom(bucket: \"m\") |> range(start: -1h) |> experimental.to(bucket: \"c\")",
+            "from(bucket: \"m\") |> range(start: -1h)\n|>\nto\n(bucket: \"c\")",
+            "t = to\nfrom(bucket: \"m\") |> range(start: -1h) |> t(bucket: \"c\")",
+            "from(bucket: \"m\") |> range(start: -1h) |> wideTo(bucket: \"c\")",
+        ] {
+            assert_eq!(read_only_statement(write), Some(false), "{write}");
+        }
+        for read in [
+            "from(bucket: \"to(\") |> range(start: -1h) // |> to(bucket: \"c\")",
+            "from(bucket: \"m\") |> range(start: -1h) |> filter(fn: (r) => r.to == \"x\")",
+            "import \"date\"\nfrom(bucket: \"m\") |> range(start: date.add(d: -1h, to: now())) |> map(fn: (r) => ({r with to: 1}))",
+            "from(bucket: \"m\") |> range(start: -1h) |> filter(fn: (r) => r[\"to\"] == \"a\\\" |> to(\")",
+        ] {
+            assert_eq!(read_only_statement(read), Some(true), "{read}");
+        }
+    }
+
+    #[test]
+    fn errors_are_short_and_keep_the_reason() {
+        let org = friendly_error(
+            400,
+            r#"{"code":"invalid","message":"failed to decode request body: organization name \"nope\" not found"}"#,
+        );
+        assert!(
+            org.starts_with("InfluxDB 400: Organisation „nope“ nicht gefunden"),
+            "{org}"
+        );
+        assert!(org.contains("failed to decode"), "{org}");
+        let bucket = friendly_error(
+            404,
+            r#"{"code":"not found","message":"failed to initialize execute state: could not find bucket \"nope\""}"#,
+        );
+        assert!(
+            bucket.starts_with("InfluxDB 404: Bucket „nope“ nicht gefunden."),
+            "{bucket}"
+        );
+        assert!(friendly_error(
+            401,
+            r#"{"code":"unauthorized","message":"unauthorized access"}"#
+        )
+        .contains("Token"));
+        let parser = friendly_error(
+            400,
+            r#"{"error":"SQL error: ParserError(\"Expected: an SQL statement, found: SELEC at Line: 1, Column: 1\")"}"#,
+        );
+        assert_eq!(parser, "InfluxDB 400: SQL-Fehler.\n  Expected: an SQL statement, found: SELEC at Line: 1, Column: 1");
+        assert!(friendly_error(
+            400,
+            r#"{"error":"Error during planning: DML not supported: Delete"}"#
+        )
+        .contains("InfluxDB 3 nicht"));
+        let flux = |message: &str| {
+            friendly_error(
+                400,
+                &json!({"code": "invalid", "message": message}).to_string(),
+            )
+        };
+        assert!(flux("compilation failed: error @2:5-2:9: undefined identifier fro")
+            .starts_with("InfluxDB 400: Flux kennt „fro“ nicht in Zeile 2, Spalte 5: Schreibweise prüfen.\n  compilation failed"));
+        assert!(
+            flux("error @1:1-1:20: missing required argument start (argument range)").starts_with(
+                "InfluxDB 400: Flux: Pflichtargument „start“ fehlt in Zeile 1, Spalte 1."
+            )
+        );
+        assert!(flux("compilation failed: error @1:33-1:33: expected RPAREN, got EOF")
+            .starts_with("InfluxDB 400: Flux-Syntaxfehler in Zeile 1, Spalte 33: Klammern, Kommas und Kommentare prüfen."));
+        assert!(friendly_error(422, r#"{"code":"unprocessable entity","message":"failure writing points to database: partial write: field type conflict: input field \"usage\" on measurement \"cpu\" is type string, already exists as type float dropped=1"}"#).contains("Feldtyp-Konflikt"));
+    }
+
+    #[test]
+    fn notes_the_default_range_and_pads_nanoseconds() {
+        assert_eq!(
+            range_note("influxdb://token:t@h:8086/metrics").as_deref(),
+            Some("Hinweis: nur Punkte der letzten 1 h. Alle: ?range=all in der URL.")
+        );
+        assert!(range_note("influxdb://h/m?range=7d")
+            .unwrap()
+            .contains("7 d"));
+        assert_eq!(range_note("influxdb://h/m?range=all"), None);
+        assert_eq!(
+            nanos("2026-11-11T08:20:52.996Z"),
+            "2026-11-11T08:20:52.996000000Z"
+        );
+        assert_eq!(
+            nanos("2026-11-11T08:20:53Z"),
+            "2026-11-11T08:20:53.000000000Z"
+        );
+        assert_eq!(
+            nanos("2026-11-11T08:20:52.998000128Z"),
+            "2026-11-11T08:20:52.998000128Z"
+        );
     }
 
     #[test]

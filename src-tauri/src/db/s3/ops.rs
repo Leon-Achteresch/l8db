@@ -894,7 +894,8 @@ impl S3 {
                 Ok(root) if root.name == "Error" => S3Error {
                     status: 200,
                     code: root.text_of("Code").unwrap_or_default(),
-                    message: root.text_of("Message").unwrap_or_default(),
+                    message: String::new(),
+                    detail: root.text_of("Message").unwrap_or_default(),
                 },
                 _ => return Ok(()),
             },

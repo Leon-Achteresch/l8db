@@ -12,8 +12,8 @@ import {
 
 export type { DiscoveryChannel } from "./channels";
 
-export const SURFACE_COOLDOWN_MS = 4 * 60_000;
-export const MAX_AUTO_SURFACES = 6;
+export const SURFACE_COOLDOWN_MS = 20 * 60_000;
+export const MAX_AUTO_SURFACES = 3;
 
 export interface SurfaceRequest {
   channel: DiscoveryChannel;

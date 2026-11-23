@@ -14,6 +14,7 @@ import {
 import { flushAppStorage } from "@/lib/app-storage";
 import { useConnectionsStore } from "@/lib/connections";
 import { saveQueryTabFile } from "@/lib/hooks/use-query-file";
+import { commitStagedTable, isUserCancel, useStagedEdits } from "@/lib/staged-edits";
 import { type Tab, useTableTabs } from "@/lib/table-tabs";
 import { dirtyQueryFiles } from "@/lib/table-tabs-dirty-files";
 import { isOwnTask, isTaskActive, useTasksStore } from "@/lib/tasks";
@@ -31,6 +32,7 @@ function hasCloseBlockers() {
       useConnectionsStore.getState().activeId ?? null,
     ).length > 0 ||
     useTransactionStore.getState().transactions.length > 0 ||
+    Object.keys(useStagedEdits.getState().tables).length > 0 ||
     useTasksStore.getState().tasks.some((task) => isOwnTask(task) && isTaskActive(task))
   );
 }
@@ -48,6 +50,11 @@ export function WindowCloseGuard() {
   const connectionName = (id: string | null) =>
     connections.find((connection) => connection.id === id)?.name ?? "Ohne Verbindung";
   const transactions = useTransactionStore((state) => state.transactions);
+  const stagedTables = useStagedEdits((state) => state.tables);
+  const stagedCount = Object.values(stagedTables).reduce(
+    (sum, entry) => sum + entry.changes.length,
+    0,
+  );
   const activeTasks = useTasksStore((state) =>
     open ? state.tasks.filter((task) => isOwnTask(task) && isTaskActive(task)).length : 0,
   );
@@ -98,6 +105,18 @@ export function WindowCloseGuard() {
       setSaving(false);
     }
   };
+  const commitStaged = async () => {
+    setSaving(true);
+    try {
+      for (const key of Object.keys(useStagedEdits.getState().tables)) await commitStagedTable(key);
+      if (!hasCloseBlockers()) closeWindow();
+      else toast.success("Änderungen übernommen");
+    } catch (error) {
+      if (!isUserCancel(error)) toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent>
@@ -113,6 +132,7 @@ export function WindowCloseGuard() {
           <p>
             {files.length} ungespeicherte Dateien · {transactions.length} offene Transaktionen ·{" "}
             {activeTasks} laufende Aufgaben
+            {stagedCount > 0 && ` · ${stagedCount} nicht übernommene Änderungen`}
           </p>
           {files.length > 0 && (
             <ul className="max-h-40 space-y-0.5 overflow-y-auto rounded-md border p-2 text-xs">
@@ -166,6 +186,11 @@ export function WindowCloseGuard() {
           {dirty.length > 0 && (
             <Button disabled={saving} onClick={() => void saveFiles()}>
               Dateien speichern
+            </Button>
+          )}
+          {stagedCount > 0 && (
+            <Button disabled={saving} onClick={() => void commitStaged()}>
+              Übernehmen
             </Button>
           )}
           <Button variant="destructive" disabled={saving} onClick={closeWindow}>

@@ -7,13 +7,22 @@ import {
   lifecycleXml,
   parseLifecycle,
 } from "@/lib/storage/s3";
+import { ConfirmActionDialog } from "./confirm-action-dialog";
 import { LifecycleRuleEditor } from "./lifecycle-rule-editor";
 import { SettingsCard } from "./settings-card";
+import { lifecycleDeletions } from "./storage-risks";
 import { useBucketConfig } from "./use-bucket-config";
 
 export function LifecycleSettings({ bucket }: { bucket: string }) {
   const config = useBucketConfig(bucket, "lifecycle");
   const [rules, setRules] = useState<LifecycleRule[]>([]);
+  const [confirming, setConfirming] = useState(false);
+  const deletions = lifecycleDeletions(rules);
+  const removingAll = !rules.length && !!config.data;
+  const save = () =>
+    rules.length
+      ? config.save(lifecycleXml(rules), "Lebenszyklus gespeichert")
+      : config.remove("Lebenszyklus entfernt");
 
   useEffect(() => {
     setRules(parseLifecycle(config.data));
@@ -21,7 +30,7 @@ export function LifecycleSettings({ bucket }: { bucket: string }) {
 
   return (
     <SettingsCard
-      title="Lifecycle-Regeln"
+      title="Lebenszyklus (Lifecycle)"
       description="Automatisches Löschen, Aufräumen alter Versionen und Speicherklassen-Übergänge."
       loading={config.loading}
       error={config.error}
@@ -49,16 +58,32 @@ export function LifecycleSettings({ bucket }: { bucket: string }) {
           <Button
             size="sm"
             disabled={config.busy}
-            onClick={() =>
-              void (rules.length
-                ? config.save(lifecycleXml(rules), "Lifecycle gespeichert")
-                : config.remove("Lifecycle entfernt"))
-            }
+            onClick={() => (deletions.length || removingAll ? setConfirming(true) : void save())}
           >
-            Speichern
+            {removingAll ? "Alle Regeln entfernen" : "Speichern"}
           </Button>
         </div>
       )}
+      <ConfirmActionDialog
+        open={confirming}
+        title={removingAll ? "Alle Regeln entfernen?" : "Automatisch löschen?"}
+        description={
+          removingAll ? (
+            `Der Lebenszyklus von „${bucket}“ wird gelöscht.`
+          ) : (
+            <ul className="grid gap-0.5">
+              {deletions.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          )
+        }
+        confirmLabel={removingAll ? "Entfernen" : "Regeln speichern"}
+        onOpenChange={setConfirming}
+        onConfirm={async () => {
+          await save();
+        }}
+      />
     </SettingsCard>
   );
 }

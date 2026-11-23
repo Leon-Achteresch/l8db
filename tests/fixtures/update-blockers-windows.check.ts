@@ -28,6 +28,9 @@ mock.module("@tauri-apps/api/core", () => ({
 
 const { finishTask, startTask, useTasksStore } = await import("../../src/lib/tasks");
 const { collectUpdateBlockers } = await import("../../src/lib/update-blockers");
+const { discardStagedTable, stageInsert, stagedTableKey, useStagedEdits } = await import(
+  "../../src/lib/staged-edits"
+);
 
 function snapshot(): Map<string, string> {
   return new Map(storage);
@@ -42,6 +45,7 @@ const realNow = Date.now;
 beforeEach(() => {
   Date.now = realNow;
   useTasksStore.setState({ tasks: [] });
+  useStagedEdits.setState({ tables: {}, committing: [] });
   storage.clear();
 });
 
@@ -74,5 +78,38 @@ describe("update blockers across windows", () => {
     const published = publishedByThisWindow(before).filter(([key]) => key !== "l8db.tasks");
     window.dispatchEvent(new Event("pagehide"));
     for (const [key] of published) expect(storage.has(key)).toBe(false);
+  });
+
+  test("staged grid edits in another window block the relaunch", async () => {
+    const target = { connectionId: "c1", database: null, schema: "public", table: "items" };
+    const before = snapshot();
+    stageInsert(target, { name: "a" });
+    stageInsert(target, { name: "b" });
+    const published = publishedByThisWindow(before).filter(([key]) =>
+      key.startsWith("l8db.window-tasks:"),
+    );
+    expect(published.length).toBe(1);
+    expect((await collectUpdateBlockers()).staged).toBe(2);
+    discardStagedTable(stagedTableKey(target));
+    expect((await collectUpdateBlockers()).staged).toBe(0);
+    for (const [key, value] of published) storage.set(`${key}#other-window`, value);
+    expect((await collectUpdateBlockers()).staged).toBeGreaterThan(0);
+  });
+
+  test("other windows see the current staged count within a second", async () => {
+    const target = { connectionId: "c2", database: null, schema: "public", table: "items" };
+    const published = () => {
+      const key = [...storage.keys()].find((entry) => entry.startsWith("l8db.window-tasks:"));
+      return key ? JSON.parse(storage.get(key) ?? "{}").staged : undefined;
+    };
+    stageInsert(target, { name: "a" });
+    expect(published()).toBe(1);
+    stageInsert(target, { name: "b" });
+    stageInsert(target, { name: "c" });
+    expect(published()).toBe(1);
+    await Bun.sleep(1100);
+    expect(published()).toBe(3);
+    discardStagedTable(stagedTableKey(target));
+    expect(published()).toBeUndefined();
   });
 });

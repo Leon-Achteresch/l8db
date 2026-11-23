@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { useMemo, useRef, useState } from "react";
 import { useGroupRef } from "react-resizable-panels";
 import { useShallow } from "zustand/shallow";
+import { EditorExtensionActions } from "@/features/extensions/editor-extension-actions";
 import { DmlPreviewDialog } from "@/features/query/dml-preview-dialog";
 import { MultiTargetSheet } from "@/features/query/multi-target/multi-target-sheet";
 import { useMultiTargetRun } from "@/features/query/multi-target/use-multi-target-run";
@@ -10,25 +11,32 @@ import { QuerySchemaBrowser } from "@/features/query/query-schema-browser";
 import { ServerOutputPanel } from "@/features/query/server-output-panel";
 import { SqlStatesButton } from "@/features/query/sql-states-button";
 import { afterPaint } from "@/lib/after-paint";
+import { useEditorAiAvailable } from "@/lib/ai/editor/use-editor-ai-available";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { SPRING_LAYOUT } from "@/lib/ease";
+import { useExtensionEditorId } from "@/lib/hooks/use-extension-editor";
 import { useCapabilities } from "@/lib/providers";
 import { resolveQueryRunTarget } from "@/lib/query-run-target";
 import { useQueryWorkspace } from "@/lib/query-workspace";
 import { scopeKey, useSessionViews, useSessionViewsStore } from "@/lib/session-views";
 import { useSettingsStore } from "@/lib/settings";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
+import { findTransaction, useTransactionStore } from "@/lib/transactions";
 import { DmlPreviewButton } from "./query-view/dml-preview-button";
 import { ExternalChangeBanner } from "./query-view/external-change-banner";
 import { MultiTargetButton } from "./query-view/multi-target-button";
 import { QueryEditorContent } from "./query-view/query-editor-content";
+import { QueryFileEncodingDialog } from "./query-view/query-file-encoding-dialog";
 import { QueryResultsContent } from "./query-view/query-results-content";
 import { QueryToolsMenu } from "./query-view/query-tools-menu";
 import { QueryViewDialogs } from "./query-view/query-view-dialogs";
 import { type QueryHistoryHandle, QueryViewDrawers } from "./query-view/query-view-drawers";
 import { QueryWorkspacePanels } from "./query-view/query-workspace-panels";
 import { ResultActions } from "./query-view/result-actions";
+import { ResultAskAiButton } from "./query-view/result-ask-ai-button";
+import { ResultRowLimitChip } from "./query-view/result-row-limit-chip";
+import { ResultServerOutputItem } from "./query-view/result-server-output-item";
 import { ResultTabs } from "./query-view/result-tabs";
 import { buildStatusText, runLabelFor } from "./query-view/result-text";
 import { RunControls } from "./query-view/run-controls";
@@ -76,6 +84,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const workspace = useQueryWorkspace(useShallow(viewWorkspace));
   const workspaceGroup = useGroupRef();
   const [editorFocus, setEditorFocus] = useState(false);
+  const editorAiAvailable = useEditorAiAvailable();
   const [resultFocus, setResultFocus] = useState(false);
   const toggleResultFocus = () => {
     setEditorFocus(false);
@@ -84,17 +93,38 @@ export function QueryView({ tabId }: QueryViewProps) {
   useWorkspaceLayoutSync(workspaceGroup, workspace, editorFocus || resultFocus);
   const connection = useActiveConnection();
   const database = useActiveDatabase();
-  const { sql, updateQuerySql, markQueryTabExecuted, filePath, fileDirty, externalChange } =
-    useQueryTabSql(tabId);
+  const duckdbTransactionId = useTransactionStore((state) =>
+    connection?.kind === "duckdb"
+      ? findTransaction(state.transactions, connection.id, database, { type: "query" })?.txId
+      : undefined,
+  );
+  const postgresTransaction = useTransactionStore((state) => {
+    if (connection?.kind !== "postgres") return undefined;
+    const transaction = findTransaction(state.transactions, connection.id, database, {
+      type: "query",
+    });
+    if (!transaction) return "unassigned";
+    return state.finalizingTransactions.includes(transaction.txId) ? "finalizing" : "assigned";
+  });
+  const {
+    sql,
+    updateQuerySql,
+    markQueryTabExecuted,
+    filePath,
+    fileDirty,
+    externalChange,
+    fileReadEncoding,
+    fileRequiresUtf8Copy,
+  } = useQueryTabSql(tabId);
   const file = useQueryFileActions(tabId, filePath);
 
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [snippetDialogOpen, setSnippetDialogOpen] = useState(false);
   const editorApiRef = useRef<QueryEditorApi | null>(null);
+  const extensionEditorId = useExtensionEditorId(tabId);
   const historyRef = useRef<QueryHistoryHandle | null>(null);
 
   const exec = useQueryExecutionState(tabId);
-  const exportState = useResultExport(exec.result);
   useLastResultSync(tabId, connection?.id ?? null, exec.executedSql, exec.result);
   const cursor = useEditorCursorState(sql);
   const bookmarks = useQueryTabBookmarks(tabId);
@@ -147,7 +177,7 @@ export function QueryView({ tabId }: QueryViewProps) {
   const dmlPreviewWarnThreshold = useSettingsStore((state) => state.dmlPreviewWarnThreshold);
   const blankLines = useSettingsStore((state) => state.editorBlankLineTerminator);
 
-  const { runSql, prepareSql, bind } = useRunSql({
+  const { runSql, prepareSql, bind, unlimited } = useRunSql({
     tabId,
     sql,
     connection,
@@ -162,6 +192,8 @@ export function QueryView({ tabId }: QueryViewProps) {
     confirmPreview: dmlPreview.confirmBeforeRun,
     askVariables: substitution.ask,
   });
+  const rerun = unlimited?.result === exec.result ? unlimited : null;
+  const exportState = useResultExport(exec.result, rerun?.load);
 
   const actions = useRunActions({
     sql,
@@ -174,6 +206,7 @@ export function QueryView({ tabId }: QueryViewProps) {
     previewSql: dmlPreview.preview,
     prepareSql,
     setEditorFocus,
+    setOutputOpen: output.setOutputOpen,
   });
 
   const hasSelection = cursor.selectedSql.trim().length > 0;
@@ -212,20 +245,35 @@ export function QueryView({ tabId }: QueryViewProps) {
   const isSql = caps.query_language === "sql";
 
   const [compareOpen, setCompareOpen] = useTabState(tabStateKey(exec.scope, "compareOpen"), false);
-  const resultActions = (
+  const hasColumns = Boolean(exec.result && exec.result.columns.length > 0);
+  const resultMenuItems = (
     <>
-      {exec.result && exec.result.columns.length > 0 && (
+      {hasColumns && (
         <ResultCompareButton open={compareOpen} onToggle={() => setCompareOpen((open) => !open)} />
       )}
-      <ResultActions
-        result={exec.result}
-        serverOutput={caps.server_output}
-        outputOpen={output.outputOpen}
-        connected={Boolean(connection)}
-        onToggleOutput={() => output.setOutputOpen((open) => !open)}
-        exportState={exportState}
-        sql={exec.executedSql ?? undefined}
-      />
+      {caps.server_output && (
+        <ResultServerOutputItem
+          open={output.outputOpen}
+          connected={Boolean(connection)}
+          onToggle={() => output.setOutputOpen((open) => !open)}
+        />
+      )}
+      {exec.result && hasColumns && (
+        <ResultAskAiButton result={exec.result} sql={exec.executedSql ?? undefined} />
+      )}
+    </>
+  );
+  const resultActions = (
+    <>
+      {exec.result?.autoLimit ? (
+        <ResultRowLimitChip
+          limit={exec.result.autoLimit}
+          disabled={exec.isRunning}
+          exceedsWarnLimit={rerun?.exceedsWarnLimit}
+          onRunUnlimited={rerun?.run}
+        />
+      ) : null}
+      <ResultActions result={exec.result} exportState={exportState} />
     </>
   );
 
@@ -300,6 +348,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 }}
               />
             )}
+            <EditorExtensionActions editorId={extensionEditorId} size="sm" />
           </div>
           <ToolbarViewControls
             isSql={isSql}
@@ -314,6 +363,25 @@ export function QueryView({ tabId }: QueryViewProps) {
             onResultFocusChange={toggleResultFocus}
             toolsMenu={
               <QueryToolsMenu
+                key={JSON.stringify([
+                  tabId,
+                  connection?.id,
+                  connection?.kind,
+                  database,
+                  duckdbTransactionId,
+                ])}
+                duckdbPathScope={
+                  isSql && connection?.kind === "duckdb"
+                    ? {
+                        connection,
+                        database,
+                        transaction: duckdbTransactionId !== undefined,
+                      }
+                    : undefined
+                }
+                pgvectorReferenceAvailable={isSql && connection?.kind === "postgres"}
+                postgresTransaction={isSql ? postgresTransaction : undefined}
+                hasResult={Boolean(exec.result)}
                 editorApiRef={editorApiRef}
                 shortcutLabel={shortcutLabel}
                 hasSql={Boolean(sql.trim())}
@@ -322,6 +390,8 @@ export function QueryView({ tabId }: QueryViewProps) {
                 serverOutput={caps.server_output}
                 bookmarkCount={bookmarks.normalizedBookmarks.length}
                 filePath={filePath}
+                fileBusy={file.fileBusy}
+                fileRequiresUtf8Copy={fileRequiresUtf8Copy}
                 isRunning={exec.isRunning}
                 onOpenHistory={() => afterPaint(() => historyRef.current?.open())}
                 onOpenOutput={() => {
@@ -333,6 +403,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 onOpenTabSearch={() => setTabSearchOpen(true)}
                 onClearBookmarks={() => bookmarks.clearQueryBookmarks(tabId)}
                 onFileOpen={() => void file.handleFileOpen()}
+                onChooseFileEncoding={file.setEncodingAction}
                 onFileSave={(saveAs) => void file.handleFileSave(saveAs)}
                 onClearEditor={() => {
                   exec.setResultState(null);
@@ -343,6 +414,16 @@ export function QueryView({ tabId }: QueryViewProps) {
             }
           />
         </div>
+
+        {file.encodingAction && (
+          <QueryFileEncodingDialog
+            action={file.encodingAction}
+            dirty={fileDirty}
+            initial={file.encodingAction === "reload" ? fileReadEncoding : "auto"}
+            onClose={() => file.setEncodingAction(null)}
+            onRead={file.applyEncoding}
+          />
+        )}
 
         {externalChange && (
           <ExternalChangeBanner
@@ -368,6 +449,7 @@ export function QueryView({ tabId }: QueryViewProps) {
                 sql={sql}
                 loading={schema.loading}
                 error={schema.error}
+                waitingForMetadata={schema.waitingForMetadata}
                 onRefresh={schema.refresh}
                 onInsert={(text) => editorApiRef.current?.insertText(text)}
                 onJump={(line, column) => editorApiRef.current?.revealMatch(line, column)}
@@ -382,6 +464,7 @@ export function QueryView({ tabId }: QueryViewProps) {
           editor={
             <QueryEditorContent
               tabId={tabId}
+              extensionEditorId={extensionEditorId}
               sql={sql}
               caps={caps}
               editorApiRef={editorApiRef}
@@ -404,6 +487,7 @@ export function QueryView({ tabId }: QueryViewProps) {
               kind={connection?.kind}
               statusText={statusText}
               actions={resultActions}
+              menuItems={resultMenuItems}
               chart={chart}
               tables={schema.registry.tables}
               maximized={resultFocus && !editorFocus}
@@ -425,7 +509,9 @@ export function QueryView({ tabId }: QueryViewProps) {
               }
               sql={sql}
               names={errorNames}
-              onFixWithAi={() => editorApiRef.current?.action("l8db.ai.fix")}
+              onFixWithAi={
+                editorAiAvailable ? () => editorApiRef.current?.action("l8db.ai.fix") : undefined
+              }
               onRevealError={(marker) => {
                 const prefix = sql.slice(0, marker.start);
                 const line = prefix.split("\n").length;

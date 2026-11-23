@@ -63,10 +63,9 @@ export function useExplainPlan({
           statements: [
             {
               sql: target,
-              reason:
-                connection.kind === "postgres" || connection.kind === "oracle"
-                  ? "Plan + Messung führt die Änderung aus und rollt sie danach zurück."
-                  : "Plan + Messung führt die Änderung wirklich aus.",
+              reason: ["postgres", "oracle", "mssql"].includes(connection.kind)
+                ? "Plan + Messung führt die Änderung aus und rollt sie danach zurück."
+                : "Plan + Messung führt die Änderung wirklich aus.",
             },
           ],
         }))

@@ -103,6 +103,7 @@ export const USAGE_COMMANDS: Readonly<Record<string, string>> = {
   open_ssh_tunnel: "tunnel",
   open_proxy_tunnel: "tunnel",
   install_driver: "driver",
+  repair_driver: "driver",
 };
 
 export function usageOutcome(error: unknown): UsageOutcome {

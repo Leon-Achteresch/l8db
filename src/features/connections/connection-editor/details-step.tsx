@@ -60,6 +60,7 @@ export function ConnectionDetailsStep({
     quickKind,
     quickProviderId,
     readOnly,
+    editorMetadataPrefetch,
     scanError,
     scanSchemas,
     scannedSchemas,
@@ -77,6 +78,7 @@ export function ConnectionDetailsStep({
     setPort,
     setProvider,
     setReadOnly,
+    setEditorMetadataPrefetch,
     setSchemaFilter,
     setShowSingleSchemaSwitcher,
     setShowPassword,
@@ -288,6 +290,8 @@ export function ConnectionDetailsStep({
         onSsl={setSsl}
         readOnly={quickKind === "spacetimedb" || readOnly}
         onReadOnly={(value) => setReadOnly(quickKind === "spacetimedb" || value)}
+        editorMetadataPrefetch={editorMetadataPrefetch}
+        onEditorMetadataPrefetch={setEditorMetadataPrefetch}
         sshEnabled={sshEnabled}
         onSshEnabled={setSshEnabled}
         sshHost={sshHost}

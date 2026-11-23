@@ -421,7 +421,7 @@ describe.skipIf(!E2E || !existsSync(BIN))("l8db CLI end-to-end", () => {
     ]) {
       const injected = cli(["-c", "Shop", ...args]);
       expect(injected.code).toBe(1);
-      expect(injected.err).toContain("--where darf nur eine Bedingung enthalten");
+      expect(injected.err).toContain("--where abgelehnt:");
     }
     expect(cli(["-c", "Shop", "table", "count", "kunde"]).out).toBe("250\n");
     const locked = cli(["-c", "Gesperrt", "q", "--yes", "delete from kunde"]);

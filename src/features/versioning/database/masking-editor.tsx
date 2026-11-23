@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { CircleAlertIcon, SparklesIcon } from "lucide-react";
+import { CircleAlertIcon, ScanEyeIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -153,7 +153,7 @@ export function MaskingEditor({ workspace }: { workspace: BranchingWorkspace }) 
                   update([...rules, ...suggestedRules(columns, effective).slice(effective.length)])
                 }
               >
-                <SparklesIcon className="size-3" />
+                <ScanEyeIcon className="size-3" />
                 Vorschläge übernehmen
               </Button>
             )}

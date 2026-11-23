@@ -1,6 +1,6 @@
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export interface Disposable { dispose(): void }
-export type Permission = "database:read" | "database:write" | "network" | "filesystem:extension-storage" | "filesystem" | "clipboard:read" | "clipboard:write" | "process:execute" | "connections:read" | "connections:write";
+export type Permission = "database:read" | "database:write" | "network" | "filesystem:extension-storage" | "filesystem" | "clipboard:read" | "clipboard:write" | "process:execute" | "connections:read" | "connections:write" | "editor:read";
 export interface ConfigurationProperty {
   type: "boolean" | "string" | "number";
   default: boolean | string | number;
@@ -23,7 +23,7 @@ export interface StatusBarContribution {
   alignment?: "left" | "right";
   priority?: number;
 }
-export type MenuLocation = "palette" | "view/title" | "view/item" | "statusBar" | "explain/toolbar" | "editor/plan" | "table/toolbar";
+export type MenuLocation = "palette" | "view/title" | "view/item" | "statusBar" | "explain/toolbar" | "editor/plan" | "table/toolbar" | "editor/toolbar";
 export interface MenuContribution {
   command: string;
   location: MenuLocation;
@@ -46,7 +46,7 @@ export interface ExtensionManifest {
   version: string;
   description?: string;
   publisher: string;
-  engines: { l8db: string; api: "^1.0.0" | "^1.1.0" };
+  engines: { l8db: string; api: "^1.0.0" | "^1.1.0" | "^1.2.0" };
   main: string;
   activationEvents: ("onStartup" | "onDatabaseOpen" | `onCommand:${string}` | `onView:${string}`)[];
   permissions?: Permission[];
@@ -135,6 +135,15 @@ export interface TableSnapshot {
   columns: string[];
   rows: Record<string, string | null>[];
 }
+export type EditorKind = "query" | "package-spec" | "package-body" | "function" | "procedure";
+export interface EditorContext {
+  editorId: string;
+  editorKind: EditorKind;
+  connectionKind: string;
+}
+export interface EditorText { text: string; version: number }
+export interface EditorTextChange { editorId: string; version: number }
+export interface HiddenRange { startLine: number; endLine: number }
 export type PromptKind = "quickPick" | "inputBox" | "message";
 export interface PromptRequest {
   kind: PromptKind;
@@ -215,11 +224,12 @@ export interface VaultConnection {
 }
 export interface SaveConnectionsResult { added: number; updated: number; skipped: string[] }
 export interface L8dbApi {
-  readonly version: "1.1.0";
+  readonly version: "1.2.0";
   commands: {
     registerCommand(id: string, handler: (payload?: Json) => Json | void | Promise<Json | void>): Disposable;
     executeCommand(id: string, payload?: Json): Promise<Json | void>;
     getCommands(): Promise<string[]>;
+    setChecked(commandId: string, editorId: string, checked: boolean): Promise<void>;
   };
   events: {
     onDatabaseOpened(listener: (event: DatabaseInfo) => void | Promise<void>): Disposable;
@@ -261,6 +271,12 @@ export interface L8dbApi {
     list(): Promise<VaultConnection[]>;
     save(connections: VaultConnection[]): Promise<SaveConnectionsResult>;
     remove(ids: string[]): Promise<number>;
+  };
+  editor: {
+    getText(editorId: string): Promise<EditorText>;
+    onDidChangeText(listener: (event: EditorTextChange) => void | Promise<void>): Disposable;
+    setHiddenRanges(editorId: string, version: number, ranges: HiddenRange[]): Promise<void>;
+    clearHiddenRanges(editorId: string): Promise<void>;
   };
   process: {
     run(command: string, options?: ProcessOptions): Promise<ProcessResult>;

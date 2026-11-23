@@ -1,3 +1,4 @@
+import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Switch } from "@/components/ui/switch";
 import { FilterBarStylePicker } from "@/features/settings/filter-bar-style-picker";
 import { SettingsRow } from "@/features/settings/settings-row";
@@ -12,6 +13,8 @@ export function SettingsTableAppearance() {
     filterBarStyle,
     setTableStyle,
     setFilterBarStyle,
+    tableFilterMode,
+    setTableFilterMode,
     setFitColumnsToHeader,
     setMonochromeCells,
   } = useSettingsStore();
@@ -22,6 +25,17 @@ export function SettingsTableAppearance() {
       </SettingsRow>
       <SettingsRow settingId="filter-bar-style" featureId="settings.appearance.filter-bar" stacked>
         <FilterBarStylePicker value={filterBarStyle} onChange={setFilterBarStyle} />
+      </SettingsRow>
+      <SettingsRow settingId="table-filter-mode" featureId="settings.appearance.filter-mode">
+        <SegmentedControl
+          value={tableFilterMode}
+          onChange={setTableFilterMode}
+          label="Standardmodus für Tabellenfilter"
+          options={[
+            { value: "simple", label: "Einfach" },
+            { value: "sql", label: "SQL" },
+          ]}
+        />
       </SettingsRow>
       <SettingsRow settingId="fit-columns-to-header">
         <Switch

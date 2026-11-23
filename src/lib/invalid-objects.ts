@@ -182,3 +182,22 @@ export function filterInvalidProblems(
       (!needle || `${item.schema}.${item.name}`.toLowerCase().includes(needle)),
   );
 }
+
+export type InvalidOpenTarget =
+  | { kind: "function" | "procedure"; schema: string; name: string; oid: string; line?: number }
+  | { kind: "package"; schema: string; name: string; part: "spec" | "body"; line?: number }
+  | { kind: "view"; schema: string; name: string }
+  | null;
+
+export function invalidOpenTarget(item: InvalidObjectInfo, line?: number): InvalidOpenTarget {
+  const { schema, name, oid } = item;
+  const at = line && line > 0 ? line : undefined;
+  const t = item.object_type.toUpperCase();
+  if (t === "FUNCTION" || t === "TRIGGER" || t === "TYPE" || t === "TYPE BODY")
+    return { kind: "function", schema, name, oid, line: at };
+  if (t === "PROCEDURE") return { kind: "procedure", schema, name, oid, line: at };
+  if (t === "PACKAGE" || t === "PACKAGE BODY")
+    return { kind: "package", schema, name, part: t === "PACKAGE" ? "spec" : "body", line: at };
+  if (t === "VIEW") return { kind: "view", schema, name };
+  return null;
+}

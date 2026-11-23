@@ -159,7 +159,7 @@ fn number_end(bytes: &[u8], index: usize) -> usize {
         .map_or(bytes.len(), |offset| index + offset)
 }
 
-fn has_unsafe_number(json: &str) -> bool {
+fn has_unsafe_number(json: &str, keep_array_lexemes: bool) -> bool {
     let bytes = json.as_bytes();
     let mut in_string = false;
     let mut escaped = false;
@@ -178,7 +178,10 @@ fn has_unsafe_number(json: &str) -> bool {
             in_string = true;
         } else if matches!(byte, b'-' | b'0'..=b'9') {
             let end = number_end(bytes, index);
-            if !is_exact_in_js(&json[index..end]) && !exact_exponent(&json[index..end]) {
+            let token = &json[index..end];
+            if (!is_exact_in_js(token) && !exact_exponent(token))
+                || (keep_array_lexemes && (keeps_scale(token) || token == "-0"))
+            {
                 return true;
             }
             index = end;
@@ -190,7 +193,7 @@ fn has_unsafe_number(json: &str) -> bool {
 }
 
 pub(crate) fn json_document(text: &str) -> Value {
-    if has_unsafe_number(text) {
+    if has_unsafe_number(text, false) {
         return Value::String(text.to_string());
     }
     serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.to_string()))
@@ -231,7 +234,7 @@ pub(crate) fn quote_unsafe_top_level_numbers(json: &str) -> Cow<'_, str> {
                 if depth == 1 {
                     if let Some(start) = container_start.take() {
                         let raw = &json[start..=index];
-                        if has_unsafe_number(raw) {
+                        if has_unsafe_number(raw, raw.starts_with('[')) {
                             let buffer =
                                 out.get_or_insert_with(|| String::with_capacity(json.len() + 16));
                             buffer.push_str(&json[copied..start]);
@@ -282,7 +285,7 @@ pub(crate) fn json_number(text: &str) -> Value {
 }
 
 pub(crate) fn json_text(text: &str) -> Value {
-    if has_unsafe_number(text) {
+    if has_unsafe_number(text, false) {
         return Value::String(text.to_string());
     }
     serde_json::from_str(text).unwrap_or_else(|_| Value::String(text.to_string()))
@@ -560,7 +563,19 @@ mod tests {
         let first = data.rows[0]["doc"].as_str().expect("raw text").to_string();
         assert!(first.contains("9007199254740993"), "{first}");
         assert!(first.contains("-9007199254740993"), "{first}");
-        assert_eq!(data.rows[1]["doc"], json!({"n": [1, 2.5]}));
+        let version = adapter
+            .execute_query("SELECT VERSION() AS v")
+            .await
+            .unwrap();
+        let mariadb = version.rows[0]["v"]
+            .as_str()
+            .is_some_and(|v| v.contains("MariaDB"));
+        let plain = if mariadb {
+            json!(r#"{"n": [1, 2.5]}"#)
+        } else {
+            json!({"n": [1, 2.5]})
+        };
+        assert_eq!(data.rows[1]["doc"], plain);
         assert_eq!(data.rows[2]["doc"], json!("9007199254740993"));
         let query = adapter
             .execute_query("SELECT doc FROM l8db_json_exact WHERE id = 1")

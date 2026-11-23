@@ -1,6 +1,6 @@
 # l8db Community Extensions
 
-Mit Community Extensions können externe Entwickler l8db erweitern, ohne den Anwendungscode zu ändern. Diese Anleitung beschreibt die implementierte Extension API v1.1. Alle v1.1-Ergänzungen sind additiv: Mit `engines.api: ^1.0.0` gebaute Extensions laufen unverändert weiter. Community Extensions sind unabhängig von PostgreSQL-Servererweiterungen.
+Mit Community Extensions können externe Entwickler l8db erweitern, ohne den Anwendungscode zu ändern. Diese Anleitung beschreibt die implementierte Extension API v1.2. Alle Ergänzungen in v1.1 und v1.2 sind additiv: Mit `engines.api: ^1.0.0` gebaute Extensions laufen unverändert weiter. Community Extensions sind unabhängig von PostgreSQL-Servererweiterungen.
 
 ## Schnellstart
 
@@ -126,7 +126,7 @@ Jede Extension benötigt eine `l8db-extension.json`:
 
 Die ID hat das Format `publisher.name`, verwendet Kleinbuchstaben, Ziffern und Bindestriche und ist höchstens 160 Zeichen lang. Der Herausgeber muss zum ID-Präfix passen. `main` bezeichnet einen sicheren relativen JavaScript-Pfad.
 
-`version`, `engines.l8db` und optionale `dependencies` verwenden SemVer beziehungsweise npm-SemVer-Bereiche. `engines.api` akzeptiert `^1.0.0` oder `^1.1.0`; ohne Angabe wird `^1.0.0` ergänzt. v1.1-Funktionen (Ansichten, Panels, Statusleiste, Abfragen, Netzwerk, Prozesse und Dialoge) stehen jeder Extension zur Verfügung, sobald der Host sie bereitstellt; das Manifest muss dafür keine neue API-Version deklarieren. Inkompatible Extensions werden nicht aktiviert. Die App-Version kommt aus der bestehenden Versionsverwaltung des Projekts; API und SDK sind unabhängig davon versioniert.
+`version`, `engines.l8db` und optionale `dependencies` verwenden SemVer beziehungsweise npm-SemVer-Bereiche. `engines.api` akzeptiert `^1.0.0`, `^1.1.0` oder `^1.2.0`; ohne Angabe wird `^1.0.0` ergänzt. v1.1-Funktionen (Ansichten, Panels, Statusleiste, Abfragen, Netzwerk, Prozesse und Dialoge) und v1.2-Funktionen (Editor-Werkzeugleiste und Namespace `editor`) stehen jeder Extension zur Verfügung, sobald der Host sie bereitstellt; das Manifest muss dafür keine neue API-Version deklarieren. Inkompatible Extensions werden nicht aktiviert. Die App-Version kommt aus der bestehenden Versionsverwaltung des Projekts; API und SDK sind unabhängig davon versioniert.
 
 Abhängigkeiten werden als ID-Version-Mapping angegeben:
 
@@ -227,6 +227,11 @@ Die vollständigen Verträge stehen in [packages/extension-api/src/index.ts](pac
 | `commands.registerCommand(id, handler)` | Einen im Manifest deklarierten Command registrieren; liefert ein Disposable. |
 | `commands.executeCommand(id, payload?)` | Einen Command einer aktiven Extension ausführen. Fremde Extensions müssen als Abhängigkeit deklariert sein. |
 | `commands.getCommands()` | Alle registrierten Commands mit Titel und Eigentümer lesen. |
+| `commands.setChecked(commandId, editorId, checked)` | An/Aus-Zustand eines eigenen `editor/toolbar`-Eintrags für genau diesen Editor setzen (ab v1.2). |
+| `editor.getText(editorId)` | `{ text, version }` eines offenen Editors lesen; benötigt `editor:read` (ab v1.2). |
+| `editor.onDidChangeText(listener)` | Textänderungen aller offenen Editoren abonnieren; der Listener erhält nur `{ editorId, version }`, nie den Text; benötigt `editor:read`. |
+| `editor.setHiddenRanges(editorId, version, ranges)` | Zeilenbereiche `{ startLine, endLine }` (1-basiert, einschließlich) in der Ansicht ausblenden; benötigt `editor:read`. |
+| `editor.clearHiddenRanges(editorId)` | Eigene ausgeblendete Bereiche wieder einblenden; benötigt `editor:read`. |
 | `events.onDatabaseOpened(listener)` | Öffnen einer aktiven Datenbankauswahl abonnieren; benötigt `database:read`. |
 | `events.onDatabaseClosed(listener)` | Schließen der vorherigen Datenbankauswahl abonnieren; benötigt `database:read`. |
 | `events.onActiveDatabaseChanged(listener)` | Wechsel der aktiven Datenbankauswahl (`DatabaseInfo` oder `null`) abonnieren; benötigt `database:read`. |
@@ -257,6 +262,66 @@ Die vollständigen Verträge stehen in [packages/extension-api/src/index.ts](pac
 Command- und Konfigurations-IDs sind global eindeutig und werden bereits bei der Discovery reserviert. Das gilt auch für Ansichten, Panels und Statusleisteneinträge. Doppelte Registrierungen werden abgewiesen. Alle Commands erscheinen in der Befehlspalette, außer sie sind ausschließlich über `menus` an anderen Orten platziert. Die Aktivierung wartet auf die Bestätigung der API-Registrierungen durch den Host.
 
 Transportwerte müssen JSON-kompatibel sein. Verbindungsstrings, Passwörter, interne Singleton-Instanzen, Datenbankadapter und Tauri-Handles werden nicht ausgegeben. `database:read` erlaubt Auswahlmetadaten, Auswahlereignisse und lesende Abfragen; schreibende Statements erfordern zusätzlich `database:write`.
+
+### Editor-Werkzeugleiste und ausgeblendete Zeilen (v1.2)
+
+Ein Menüeintrag mit `"location": "editor/toolbar"` erscheint in der Werkzeugleiste des Query-Editors und der Quelltextansichten von Package Spec, Package Body, Funktionen und Prozeduren. Der Command erhält `{ editorId, editorKind, connectionKind }` mit `editorKind` aus `query`, `package-spec`, `package-body`, `function` und `procedure`; der Text wird nicht mitgegeben. Mit `commands.setChecked` wird der Eintrag zum Umschalter.
+
+- `editorId` gilt, solange dieser Editor offen ist. Wechselt der Tab oder wird er geschlossen, verwirft der Host ausgeblendete Bereiche und Schalterzustand; spätere Aufrufe melden `EditorNotFoundError`, nur `clearHiddenRanges` bleibt dann wirkungslos.
+- Jede Textänderung erhöht `version`. `setHiddenRanges` mit veralteter `version` scheitert mit `StaleEditorVersionError`; dann Text neu lesen und neu rechnen.
+- Ändert sich der Text, verwirft der Host alle ausgeblendeten Bereiche und meldet `onDidChangeText`.
+- Bereiche müssen ganzzahlig sein, im Dokument liegen und mindestens eine Zeile sichtbar lassen; höchstens 10.000 pro Aufruf. Verstöße melden `ProtocolError`.
+- Ausblenden betrifft nur die Ansicht. Ausführen, Kompilieren, Speichern, Kopieren und Formatieren verwenden weiter den vollständigen Text. An jeder Stelle steht eine Marke „⋯ n Zeilen ausgeblendet“, die der Nutzer per Klick aufklappt. Ein Bereich, in dem der Cursor steht oder in den er springt (Suche, Fehlerposition), wird sofort eingeblendet; die Extension erfährt davon nichts und blendet nach der nächsten Textänderung neu aus.
+- Wird die Extension deaktiviert, entfernt oder stürzt sie ab, blendet der Host alles wieder ein.
+
+```ts
+import type { EditorContext, ExtensionContext, L8dbApi } from "@l8db/extension-api";
+
+export function activate(context: ExtensionContext, api: L8dbApi) {
+  const active = new Set<string>();
+  const hide = async (editorId: string) => {
+    const { text, version } = await api.editor.getText(editorId);
+    const lines = text.split("\n");
+    const ranges = [];
+    for (let index = 0; index < lines.length; index++) {
+      if (!/^\s*DBMS_OUTPUT\.PUT_LINE\(/i.test(lines[index])) continue;
+      let end = index;
+      while (end < lines.length - 1 && !lines[end].includes(";")) end++;
+      ranges.push({ startLine: index + 1, endLine: end + 1 });
+      index = end;
+    }
+    try {
+      await api.editor.setHiddenRanges(editorId, version, ranges);
+    } catch (error) {
+      if (!String(error).includes("StaleEditorVersionError")) throw error;
+    }
+  };
+  context.subscriptions.push(api.commands.registerCommand("logs.toggle", async (payload) => {
+    const { editorId } = payload as unknown as EditorContext;
+    const on = !active.delete(editorId);
+    if (on) {
+      active.add(editorId);
+      await hide(editorId);
+    } else await api.editor.clearHiddenRanges(editorId);
+    await api.commands.setChecked("logs.toggle", editorId, on);
+  }));
+  context.subscriptions.push(api.editor.onDidChangeText(({ editorId }) => {
+    if (active.has(editorId)) return hide(editorId);
+  }));
+}
+```
+
+```json
+{
+  "engines": { "l8db": ">=0.1.0 <2.0.0", "api": "^1.2.0" },
+  "activationEvents": ["onCommand:logs.toggle"],
+  "permissions": ["editor:read"],
+  "contributes": {
+    "commands": [{ "id": "logs.toggle", "title": "Logs ausblenden", "icon": "eye-off" }],
+    "menus": [{ "command": "logs.toggle", "location": "editor/toolbar" }]
+  }
+}
+```
 
 Datenbankereignisse beschreiben die aktive Auswahl im Workspace, nicht den Zustand einer Serververbindung oder externe Datenänderungen. Record-Created/Updated/Deleted-Events sind nicht implementiert, weil dafür zunächst ein einheitlicher Core-Vertrag für bestätigte Änderungen über Provider, Transaktionen und rohe SQL-Abfragen benötigt wird.
 
@@ -307,6 +372,7 @@ Eine Manifest-Anforderung ist keine Freigabe. Nutzer wählen unterstützte Berec
 | `filesystem` | Dateidialoge sowie Lese-/Schreibzugriff auf per Dialog freigegebene Pfade |
 | `clipboard:read` / `clipboard:write` | Lesen beziehungsweise Schreiben der Zwischenablage |
 | `process:execute` | Start deklarierter `capabilities.process.commands` ohne Shell, mit Timeout und Ausgabelimit |
+| `editor:read` | Vollständiger Text aller offenen Query-Editoren und Objektquelltexte, einschließlich darin stehender Passwörter und Daten, sowie das Ausblenden von Zeilen in der Ansicht |
 
 Extensions laufen in einem eigenen Worker innerhalb eines Sandbox-Iframes mit isoliertem Ursprung. Sie erhalten weder DOM- noch Node- oder Tauri-Zugriff. Der Host stellt eine private RPC-Verbindung mit einer expliziten Methodenliste bereit. Pro Aufruf gilt ein Timeout von zehn Sekunden; die Runtime begrenzt eingehende Nachrichten auf 500 pro Sekunde und Extension. Logs werden mit der Extension-ID versehen; die letzten 300 Einträge bleiben im Speicher.
 
@@ -383,7 +449,7 @@ Ein öffentlicher Marketplace ist nicht enthalten. Die öffentliche Schnittstell
 l8db Core
   → ExtensionManager / Registries / PermissionManager
     → ExtensionLoader → ExtensionRuntime
-      → SandboxRuntime → Worker → Public API v1.1 → Extension
+      → SandboxRuntime → Worker → Public API v1.2 → Extension
     → ExtensionStorage → zentrale Tauri-Bridge → Rust-App-Data-Speicher
 ```
 

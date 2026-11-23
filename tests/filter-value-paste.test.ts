@@ -32,6 +32,7 @@ function paste(operator: string, value: string, text: string) {
   internals.H = {
     useState: (initial: unknown) => [typeof initial === "function" ? initial() : initial, () => {}],
     useRef: (initial: unknown) => ({ current: initial }),
+    useEffect: () => {},
   };
   const changes: string[] = [];
   let prevented = false;

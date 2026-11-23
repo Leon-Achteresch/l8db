@@ -202,7 +202,7 @@ Messung auf der Maschine oben (Debug-Build, drei Läufe, parallel lief ein ander
 
 Zum Vergleich vor Phase 1: eine Suche auf diesem Katalog 6 bis 18 s (Baseline-Tabelle, ms-Spalte), weil jede Suche die Spaltenliste zweimal kopierte. Vor dem Cache der Maskierungsregeln kostete jede Vorprüfung 136 ms Median, fast nur Regex-Kompilierung. Nicht gemessen: Release-Build, Linux/Windows, echte PostgreSQL-Kataloge dieser Größe, gedrosselte CPU.
 
-Cache-Verhalten: Für `search`, `describe`, `relations`, `open` und Dashboard-Joins gilt ein Katalog 10 min. Sicherheitsprüfungen (`check_read_sql`/`check_write_sql` in query, execute, script, benchmark, sandbox, drilldown, dashboard, explain) laden ihn wie vor Phase 1 neu, sobald er älter als 60 s ist. Neue Tabellen, Spalten und Schemas außerhalb des MCP sind für die Prüfungen also nicht länger unbekannt als vorher. Jedes `execute`, jeder Workflow-Lauf und jeder CSV-Import im KI-Arbeitsbereich verwirft den Katalog der Verbindung. `search` mit `refresh=true` lädt neu.
+Cache-Verhalten: Für `search`, `describe`, `relations`, `open` und Dashboard-Joins gilt ein Katalog 10 min. Sicherheitsprüfungen (`check_read_sql`/`check_write_sql` in query, execute, script, benchmark, sandbox, drilldown, dashboard, explain) prüfen ihn, sobald er älter als 60 s ist: Familien mit Katalog-Fingerabdruck (Oracle, SQLite) bestätigen ihn mit einer kurzen Abfrage und laden nur bei Abweichung neu, alle anderen laden wie vor Phase 1 neu (siehe „Parallele Aufrufe“). Neue Tabellen, Spalten und Schemas außerhalb des MCP sind für die Prüfungen also nicht länger unbekannt als vorher. Jedes `execute`, jeder Workflow-Lauf und jeder CSV-Import im KI-Arbeitsbereich verwirft den Katalog der Verbindung. `search` mit `refresh=true` lädt neu.
 
 ## Phase 2
 
@@ -219,7 +219,7 @@ Cache-Verhalten: Für `search`, `describe`, `relations`, `open` und Dashboard-Jo
   - Er wird nur geschrieben, wenn die globale `mcp.json` die Verbindung mit demselben Schlüssel freigibt.
   - Verwaiste Dateien werden beim Speichern der MCP-Konfiguration gelöscht.
   - Ein Prozess erkennt an der mtime, dass ein anderer die Datei verworfen hat.
-- **TTL:** Die Entdeckungswerkzeuge nutzen eine adaptive TTL (Ladezeit × 600, zwischen 10 min und 6 h). Sicherheitsprüfungen laden weiter nach höchstens 60 s live und lesen nie die Datei.
+- **TTL:** Die Entdeckungswerkzeuge nutzen eine adaptive TTL (Ladezeit × 600, zwischen 10 min und 6 h). Sicherheitsprüfungen prüfen weiter nach höchstens 60 s live (Fingerabdruck oder Neuladen) und lesen nie die Datei.
 - **Neues Tool `overview`** (`mcp/overview.rs`).
 - **`search`** deckt alle Objektarten ab (`kind`, `in=source`) und durchsucht das KI-Wissen.
 - **`describe`** zeigt Tabellen kompakt, mit `columns`-Filter für breite Tabellen. Für Routinen und Views kommen Abhängigkeiten und Quelltext-Ausschnitte (`lines`) hinzu.
@@ -608,3 +608,77 @@ Review mit einer Fix-Runde (Resources-Sichtbarkeit, Protokoll, Live-Fixes). Alle
 - **Oracle-Routinen:** Hat eine Routine Argumente mit zusammen mehr als 4.000 Byte, scheitert `LISTAGG`. Dann gilt der Rückfall auf den Adapter, der nur das eigene Schema kennt. Die Sammelabfrage mit korrelierten Unterabfragen auf `ALL_ARGUMENTS` ist nicht an großen Wörterbüchern gemessen.
 - **Informationsabfluss:** `SHOW PROCESSLIST`, `SHOW GRANTS` und ähnliche Anweisungen bleiben erlaubt (nur Lesen, zeigen aber Anweisungen anderer Sitzungen).
 - **Read-only:** Bei MySQL, ClickHouse und SQL Server erzwingt nur die lexikalische Prüfung Read-only. Ein Datenbankbenutzer ohne Schreibrechte bleibt die empfohlene zweite Schicht.
+
+## Phase 5: opencode und schwache Modelle
+
+Gemessen mit opencode 2.2.6 gegen `target/debug/l8db --mcp`, eine schreibgeschützte SQLite-Verbindung (9 Tabellen, 40 Spalten, 1 View, synthetische Daten), alle anderen opencode-Tools gesperrt. Maschine wie oben.
+
+Was opencode dem Modell zeigt (aus einer mitgeschnittenen Anfrage):
+
+- MCP-Tools sind nicht direkt aufrufbar. Das Modell schreibt JavaScript für ein `execute`-Tool („Code Mode“) und ruft darin `tools.l8db.<tool>({…})` auf. Das Ergebnis ist der Text des Tools als String.
+- Der Katalog zeigt pro Tool die Signatur aus dem Schema, Parameterbeschreibungen ganz, die Tool-Beschreibung aber nur bis etwa 117 Zeichen. Ohne `outputSchema` steht dort `Promise<unknown>`.
+- opencode prüft die Argumente selbst gegen das Schema. `connection` stand in `required`, obwohl der Server sie bei genau einer Verbindung ergänzt und die Instructions „Omit connection“ sagen. Der erste Aufruf ohne `connection` scheiterte deshalb mit `connection: Missing key`.
+
+Änderungen:
+
+- `connection` steht in keinem Tool mehr in `required`. Fehlt sie bei mehreren Verbindungen, nennt der Fehler wie bisher die Namen.
+- `overview` listet bei kleinen Datenbanken (höchstens 30 Tabellen und 300 Spalten) jede Tabelle mit Spalten und Fremdschlüsseln (`kunde_id→kunden.id`) und ersetzt damit `search` und `describe` vor der ersten Abfrage. Datenbanktypen ohne Sammelabfrage lesen die Fremdschlüssel dafür einmal je Tabelle (höchstens 30 Aufrufe, 8 parallel, danach aus dem Graph-Cache). Größere Datenbanken bekommen die unveränderte Karte.
+- Die Beschreibung von `overview` beginnt mit „Start here“, `search.in` ist ein Enum (`names`, `source`).
+
+Ergebnis, je ein Lauf pro Frage (vier Fragen mit bekannter Antwort, Haiku ohne Frage 2):
+
+| Modell | richtig vorher → nachher | Tool-Aufrufe | fehlgeschlagene Aufrufe | Eingabe-Tokens |
+|---|---|---:|---:|---:|
+| github-copilot/gemini-3.8-flash (4 Fragen) | 4/4 → 4/4 | 45 → 24 | 1 → 0 | 235.206 → 133.843 |
+| github-copilot/claude-haiku-4.5 (3 Fragen) | 2/3 → 3/3 | 17 → 9 | 0 → 0 | 78.262 → 40.306 |
+| Summe | 6/7 → 7/7 | 62 → 33 | 1 → 0 | 313.468 → 174.149 |
+
+Bytes und Grenzen:
+
+| Messung | Bytes | Budget B |
+|---|---:|---:|
+| `tools/list` (alle Tools) | 12.978 | 13.182 |
+| `shop.map`: ein `overview`-Aufruf auf dem Shop-Lab, 14 Tabellen mit allen Spalten und Fremdschlüsseln | 1.106 | 1.200 |
+| zum Vergleich `shop.overview`: `search` und `describe` für 3 Tabellen | 957 | 1.000 |
+
+`small_databases_list_every_table_with_columns_within_a_fixed_bound` in `overview.rs` hält die Grenze fest: 30 Tabellen mit 300 Spalten bleiben unter 2.500 Byte und 50 ms, eine Tabelle oder Spalte mehr liefert die alte Karte.
+
+Nicht gemessen und nicht behoben:
+
+- Nur zwei Modelle, je ein Lauf, eine kleine SQLite-Datenbank. Die Gratis-Modelle von opencode waren nach einem Probelauf am Tageslimit. Kein Lauf mit mehreren Verbindungen, mit einer großen Datenbank oder mit anderen Clients.
+- In jenem Probelauf schrieb `opencode/nemotron-3.5-lightning-free` den Code als `async () => { … }`, ohne die Funktion aufzurufen. opencode gibt dann `null` ohne Fehlermeldung zurück, der MCP wird nie erreicht. Das liegt im Code Mode von opencode und lässt sich im Server nicht beheben.
+
+## Parallele Aufrufe (Issue #277)
+
+Gemeldet: Mehrere gleichzeitige Aufrufe aus opencode (ein `describe` mit `details=true`, zwei `code`-Aufrufe auf `ALL_SOURCE`) wirken gegen Oracle 19c langsam.
+
+Nachgestellt am Oracle-Lab (Oracle Free 23ai in Docker auf demselben Rechner, Schema mit 2000 Tabellen und 134.000 Spalten, MCP über stdio mit `l8db mcp --url`, drei Anfragen ohne Pause hintereinander gesendet). Ursachen:
+
+1. Der Server arbeitete Anfragen strikt nacheinander ab. Gleichzeitig gesendete Aufrufe dauerten die Summe ihrer Einzelzeiten.
+2. Oracle führte jede Abfrage auf derselben Sitzung aus. Auch die vier „parallelen“ Statements eines `code`-Laufs liefen in Wahrheit nacheinander.
+3. `query` und `code` luden den ganzen Katalog neu, sobald er älter als 60 s war. Bei Denkpausen des Modells über einer Minute fiel das in fast jeder Runde an.
+
+Zwischen 0.17.0 und 0.18.0 hat sich an diesem Pfad nichts Messbares geändert. Die drei Punkte bestehen seit 0.16.0, sie fallen mit großen Schemas, langsamen Abfragen und parallelen Clients stärker auf.
+
+Änderungen:
+
+- **Gleichzeitige Anfragen** (`mcp/pump.rs`): bis zu vier lesende Aufrufe laufen parallel (`connections`, `overview`, `search` ohne `refresh`, `describe`, `relations`, `explain`, `drilldown`, `query`, `code`, `health`, dazu alle Protokollmethoden). Alles andere (`execute`, `script`, `workflow`, `dashboard`, `open`, `benchmark`, `watch`, `search` mit `refresh=true`, …) läuft allein und behält seinen Platz in der Reihenfolge: Es wartet auf laufende Leser und hält spätere Aufrufe zurück. `notifications/cancelled` bricht laufende und wartende Aufrufe ab; ein Aufruf, der im selben Moment schon fertig war, liefert sein echtes Ergebnis. Ein Absturz in einem Aufruf beendet den Server nicht mehr, der Aufruf meldet „Interner Fehler“. Wie bisher werden höchstens 64 wartende Anfragen gelesen.
+- **Geteilter Katalog**: Alle Aufrufe teilen einen Katalog-Cache. Brauchen mehrere gleichzeitig den Katalog, die Objektliste, die Schemaliste oder die Fremdschlüssel einer Verbindung, wird einmal geladen; verschiedene Verbindungen warten nicht aufeinander. Ausnahme: Familien ohne Sammelabfrage für Fremdschlüssel können den Graphen bei einem kalten, parallelen Start mehrfach lesen.
+- **Oracle-Lesepool**: Nur im MCP-Prozess (`l8db mcp`), nicht in der App und nicht im KI-Arbeitsbereich: Abfragen aus `query` und `code` laufen auf bis zu drei eigenen Sitzungen (`#read`). Sobald über die Verbindung etwas anderes als eine Abfrage lief (DML, DDL, PL/SQL-Block, `ALTER SESSION`, `SET ROLE`), bleiben alle weiteren Abfragen auf der einen Hauptsitzung, damit Sitzungszustand sichtbar bleibt. Ein SQL-Fehler schließt die Lesesitzung nicht. Lehnt Oracle eine weitere Sitzung ab (ORA-02391), läuft die Abfrage auf der Hauptsitzung. Ein MCP-Prozess hält damit höchstens sieben Oracle-Sitzungen (Hauptsitzung, drei für Metadaten, drei für Lesezugriffe), geöffnet nur bei Bedarf.
+- **Katalog-Fingerabdruck** (`DatabaseAdapter::catalog_fingerprint`): Nach 60 s fragt die Sicherheitsprüfung einen Fingerabdruck ab und lädt nur bei Abweichung neu. Oracle: Anzahl der Tabellen des aktuellen Schemas und Summe von `ORA_HASH(object_name || last_ddl_time)` über alle; liegt die jüngste Änderung weniger als 2 s zurück, gibt es keinen Fingerabdruck und es wird wie bisher neu geladen. SQLite: SHA-256 über `sqlite_master`. Andere Familien: kein Fingerabdruck, Verhalten wie bisher. Der Fingerabdruck wird vor dem Laden der Spalten genommen und nicht auf Platte gespeichert; ein neuer Prozess lädt für die erste Prüfung weiterhin live.
+
+Messung (macOS 27.0.1, arm64, Apple M3, 16 GB, Oracle Free 23ai lokal in Docker, Debug-Build vor und nach der Änderung, sofern nicht anders genannt):
+
+| Szenario | vorher | nachher |
+|---|---|---|
+| `describe` + 2 × `code` (400 Zeilen `ALL_SOURCE`) gleichzeitig, warm | 990 ms | 453 ms |
+| dasselbe 61 s später | 2421 ms | 472 ms |
+| dasselbe im frischen Prozess (Katalog laden) | 3495 ms | 2536 ms |
+| `query` + 2 × `code` mit je 2 s Datenbankarbeit + `describe` gleichzeitig (vorher: Release 0.19.0-canary.1) | 6220 ms, `describe` nach 6220 ms | 2441 ms, `describe` nach 98 ms |
+| ein `code`-Aufruf allein, warm | 454 ms | 448 ms |
+
+Im Debug-Build kostet der Start des Sandbox-Prozesses rund 410 ms je `code`-Aufruf, im Release-Build auf macOS rund 10 ms (dort lag derselbe Dreierblock vorher bei 116 bis 131 ms). Gegenprobe am Lab: `ALTER TABLE … ADD (api_key …)` von außen, 62 s später lehnt `query` die neue Spalte als redigiert ab, der Katalog wurde also neu geladen.
+
+Tests: `cargo test --lib mcp::pump` (acht Leseaufrufe zu je 100 ms: Median 203 ms, Maximum 206 ms statt 800 ms; höchstens vier gleichzeitig; Schreibaufrufe und `refresh` allein und in Reihenfolge; Abbruch laufender und wartender Aufrufe; Absturz eines Aufrufs) und `cargo test --lib mcp::persist` (unveränderter Katalog wird bestätigt statt neu geladen, geändertes Schema lädt neu, die Datei zählt für Prüfungen nicht).
+
+Nicht gemessen: Windows (Prozessstart des Sandbox-Prozesses dort unbekannt), Oracle 19c, ein entferntes Netz, opencode selbst als Client, Release-Build nach der Änderung. `mcp::code_tests::worker_start_and_statement_overhead_stay_small` scheitert auf diesem Rechner schon ohne die Änderung am Startbudget (Median 412 ms bei 400 ms Grenze, Debug-Binary).

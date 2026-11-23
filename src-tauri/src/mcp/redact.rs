@@ -1,13 +1,22 @@
-use regex::{Regex, RegexBuilder};
+use regex::{Captures, Regex, RegexBuilder};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::{LazyLock, Mutex};
 
-use super::config::Redaction;
+use super::config::{Redaction, PHONE_PATTERN};
 
 const COMPILED_SLOTS: usize = 8;
 static COMPILED: LazyLock<Mutex<Vec<(String, Redactor)>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
+static CALENDAR_DATES: LazyLock<Regex> = LazyLock::new(|| {
+    let date = ["\\.", "/", "-"]
+        .map(|sep| format!(r"(?:0[1-9]|[12]\d|3[01]){sep}(?:0[1-9]|1[0-2]){sep}[12]\d{{3}}"))
+        .join("|");
+    Regex::new(&format!(
+        r"^(?:{date})(?:(?:\s+|\s*-\s*)(?:{date}))*(?:\s+\d{{1,2}})?$"
+    ))
+    .expect("calendar date pattern")
+});
 
 #[derive(Clone)]
 pub struct Redactor {
@@ -101,9 +110,23 @@ impl Redactor {
     pub fn redact_text(&self, text: &str) -> String {
         let mut out = text.to_string();
         for re in &self.values {
-            if re.is_match(&out) {
-                out = re.replace_all(&out, self.replacement.as_str()).into_owned();
+            if !re.is_match(&out) {
+                continue;
             }
+            out = if re.as_str() == PHONE_PATTERN {
+                re.replace_all(&out, |caps: &Captures| {
+                    if CALENDAR_DATES.is_match(&caps[0]) {
+                        caps[0].to_string()
+                    } else {
+                        let mut masked = String::new();
+                        caps.expand(&self.replacement, &mut masked);
+                        masked
+                    }
+                })
+                .into_owned()
+            } else {
+                re.replace_all(&out, self.replacement.as_str()).into_owned()
+            };
         }
         out
     }
@@ -263,7 +286,7 @@ pub fn check_dialect(
         return Err(format!("query ist read-only, '{word}' ist nicht erlaubt."));
     }
     if let Some(word) = dangerous_word_in(&tokens) {
-        return Err(format!("Funktion '{word}' ist über den MCP gesperrt."));
+        return Err(blocked_function(&word));
     }
     check_references_in(&tokens, index, row_values)
 }
@@ -866,6 +889,42 @@ fn write_word_in(tokens: &[Token]) -> Option<String> {
     })
 }
 
+const DBMS_LOB_ALLOWED: &[&str] = &[
+    "createtemporary",
+    "freetemporary",
+    "writeappend",
+    "append",
+    "istemporary",
+];
+
+pub fn blocked_function(word: &str) -> String {
+    if word == "dbms_lob" {
+        return format!(
+            "Funktion 'dbms_lob' ist über den MCP gesperrt. Erlaubt sind nur dbms_lob.{} auf lokalen LOBs, alternativ c := c || s.",
+            DBMS_LOB_ALLOWED.join(", dbms_lob.")
+        );
+    }
+    format!("Funktion '{word}' ist über den MCP gesperrt.")
+}
+
+fn allowed_dbms_lob_call(tokens: &[Token], i: usize) -> bool {
+    let owner_ok = match i.checked_sub(1).map(|p| &tokens[p]) {
+        Some(Token::Dot) => {
+            i >= 2
+                && tokens[i - 2] == Token::Word("sys".into())
+                && (i < 3 || tokens[i - 3] != Token::Dot)
+        }
+        _ => true,
+    };
+    owner_ok
+        && tokens.get(i + 1) == Some(&Token::Dot)
+        && matches!(
+            tokens.get(i + 2),
+            Some(Token::Word(name)) if DBMS_LOB_ALLOWED.contains(&name.as_str())
+        )
+        && tokens.get(i + 3) == Some(&Token::Open)
+}
+
 pub fn dangerous_word(sql: &str) -> Option<String> {
     readings(sql)
         .iter()
@@ -887,6 +946,7 @@ fn dangerous_word_in(tokens: &[Token]) -> Option<String> {
             let always = DANGEROUS_ALWAYS.contains(&word.as_str())
                 || (word != "dbms_output"
                     && !named
+                    && !(word == "dbms_lob" && allowed_dbms_lob_call(tokens, i))
                     && DANGEROUS_PREFIXES
                         .iter()
                         .any(|prefix| word.starts_with(prefix)));
@@ -993,6 +1053,7 @@ pub struct SchemaIndex {
     pub tables: HashMap<String, HashSet<String>>,
     pub allowed_schemas: HashSet<String>,
     schemas: HashSet<String>,
+    listed_schemas: Option<HashSet<String>>,
     column_rules: Vec<Regex>,
     invalid_pattern: Option<String>,
 }
@@ -1038,9 +1099,15 @@ impl SchemaIndex {
             tables: by_table,
             allowed_schemas: allowed_schemas.iter().map(|s| s.to_lowercase()).collect(),
             schemas,
+            listed_schemas: None,
             column_rules: redactor.columns.clone(),
             invalid_pattern: redactor.invalid.clone(),
         }
+    }
+
+    pub fn with_listed(mut self, schemas: &[String]) -> Self {
+        self.listed_schemas = Some(schemas.iter().map(|s| s.to_lowercase()).collect());
+        self
     }
 
     pub fn table_hidden(&self, table: &str) -> bool {
@@ -1101,6 +1168,32 @@ fn is_select_star(tokens: &[Token], i: usize) -> bool {
     }
 }
 
+fn starts_from(tokens: &[Token], i: usize, word: &str) -> bool {
+    FROM_START.contains(&word)
+        && !(word == "table"
+            && i > 0
+            && tokens[i - 1] == Token::Word("is".into())
+            && tokens.get(i + 1) == Some(&Token::Word("of".into())))
+}
+
+fn cursor_loop_record(tokens: &[Token], i: usize) -> Option<&str> {
+    let word_at = |i: usize| match tokens.get(i) {
+        Some(Token::Word(word)) => Some(word.as_str()),
+        _ => None,
+    };
+    if word_at(i) != Some("for")
+        || word_at(i + 2) != Some("in")
+        || tokens.get(i + 3) != Some(&Token::Open)
+        || !matches!(word_at(i + 4), Some("select" | "with"))
+    {
+        return None;
+    }
+    let close = matching_close(tokens, i + 3)?;
+    (word_at(close + 1) == Some("loop"))
+        .then(|| word_at(i + 1))
+        .flatten()
+}
+
 fn check_renames(tokens: &[Token]) -> Result<(), String> {
     let word_at = |i: usize| match tokens.get(i) {
         Some(Token::Word(word)) => Some(word.as_str()),
@@ -1133,7 +1226,7 @@ fn check_renames(tokens: &[Token]) -> Result<(), String> {
     let mut stack: Vec<(bool, usize)> = Vec::new();
     for (i, token) in tokens.iter().enumerate() {
         match token {
-            Token::Word(word) if FROM_START.contains(&word.as_str()) => in_from = true,
+            Token::Word(word) if starts_from(tokens, i, word) => in_from = true,
             Token::Word(word) if FROM_END.contains(&word.as_str()) => in_from = false,
             Token::Open => {
                 stack.push((in_from, i));
@@ -1233,19 +1326,70 @@ pub fn check_references(sql: &str, index: &SchemaIndex, row_values: bool) -> Res
     Ok(())
 }
 
-fn check_references_in(
-    tokens: &[Token],
-    index: &SchemaIndex,
-    row_values: bool,
-) -> Result<(), String> {
+pub fn check_plsql(sql: &str, index: &SchemaIndex) -> Result<(), String> {
+    if let Some(pattern) = &index.invalid_pattern {
+        return Err(invalid_pattern_error(pattern));
+    }
+    if !index.allowed_schemas.is_empty() && index.listed_schemas.is_none() {
+        return check_references(sql, index, true);
+    }
+    for tokens in readings(sql) {
+        check_names(&tokens, index)?;
+        check_plsql_in(&tokens, index)?;
+    }
+    Ok(())
+}
+
+fn check_plsql_in(tokens: &[Token], index: &SchemaIndex) -> Result<(), String> {
+    let mut queries: Vec<bool> = Vec::new();
+    for (i, token) in tokens.iter().enumerate() {
+        let previous = i.checked_sub(1).map(|p| &tokens[p]);
+        match token {
+            Token::Open => queries.push(matches!(
+                tokens.get(i + 1),
+                Some(Token::Word(word)) if word == "select" || word == "with"
+            )),
+            Token::Close => {
+                queries.pop();
+            }
+            Token::Other('*')
+                if previous == Some(&Token::Dot) && queries.last() == Some(&false) =>
+            {
+                return Err("Zeilenexpansion (alias.*) ist nur als direkte Spaltenauswahl erlaubt, nicht in Funktionen oder Ausdrücken.".into());
+            }
+            Token::Word(word)
+                if tokens.get(i + 1) == Some(&Token::Dot)
+                    && previous != Some(&Token::Dot)
+                    && !index.allowed_schemas.contains(word)
+                    && index
+                        .listed_schemas
+                        .as_ref()
+                        .is_some_and(|listed| listed.contains(word))
+                    && !index.allowed_schemas.is_empty() =>
+            {
+                return Err(format!(
+                    "Schema '{word}' ist für diese Verbindung nicht freigegeben."
+                ));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn check_names(tokens: &[Token], index: &SchemaIndex) -> Result<(), String> {
     let word_at = |i: usize| match tokens.get(i) {
         Some(Token::Word(word)) => Some(word.as_str()),
         _ => None,
     };
-    if !index.sensitive_columns.is_empty() {
-        check_renames(&tokens)?;
-    }
     for (i, token) in tokens.iter().enumerate() {
+        if *token == Token::Other('*')
+            && !index.sensitive_columns.is_empty()
+            && tokens.get(i.wrapping_sub(1)) == Some(&Token::Open)
+            && !matches!(word_at(i.wrapping_sub(2)), Some("count" | "count_big"))
+        {
+            return Err("* ist als Funktionsargument nur in count(*) erlaubt, weil sonst redigierte Spalten unmaskiert ausgegeben würden. Spalten einzeln wählen.".into());
+        }
         if let Token::Word(word) = token {
             if index.sensitive_columns.contains(word) {
                 return Err(format!(
@@ -1271,6 +1415,22 @@ fn check_references_in(
             }
         }
     }
+    Ok(())
+}
+
+fn check_references_in(
+    tokens: &[Token],
+    index: &SchemaIndex,
+    row_values: bool,
+) -> Result<(), String> {
+    let word_at = |i: usize| match tokens.get(i) {
+        Some(Token::Word(word)) => Some(word.as_str()),
+        _ => None,
+    };
+    if !index.sensitive_columns.is_empty() {
+        check_renames(&tokens)?;
+    }
+    check_names(tokens, index)?;
     let mut depth = 0i32;
     for (i, token) in tokens.iter().enumerate() {
         match token {
@@ -1280,13 +1440,6 @@ fn check_references_in(
                 if depth > 0 && tokens.get(i.wrapping_sub(1)) == Some(&Token::Dot) =>
             {
                 return Err("Zeilenexpansion (alias.*) ist nur als direkte Spaltenauswahl erlaubt, nicht in Funktionen oder Ausdrücken.".into());
-            }
-            Token::Other('*')
-                if !index.sensitive_columns.is_empty()
-                    && tokens.get(i.wrapping_sub(1)) == Some(&Token::Open)
-                    && !matches!(word_at(i.wrapping_sub(2)), Some("count" | "count_big")) =>
-            {
-                return Err("* ist als Funktionsargument nur in count(*) erlaubt, weil sonst redigierte Spalten unmaskiert ausgegeben würden. Spalten einzeln wählen.".into());
             }
             Token::Word(word)
                 if word == "apply"
@@ -1306,8 +1459,11 @@ fn check_references_in(
     let mut in_from = false;
     let mut depth_stack: Vec<bool> = Vec::new();
     for (i, token) in tokens.iter().enumerate() {
+        if let Some(record) = cursor_loop_record(tokens, i) {
+            aliases.insert(record.to_string());
+        }
         match token {
-            Token::Word(word) if FROM_START.contains(&word.as_str()) => in_from = true,
+            Token::Word(word) if starts_from(tokens, i, word) => in_from = true,
             Token::Word(word) if FROM_END.contains(&word.as_str()) => in_from = false,
             Token::Open => {
                 depth_stack.push(in_from);
@@ -1360,7 +1516,7 @@ fn check_references_in(
     depth_stack.clear();
     for (i, token) in tokens.iter().enumerate() {
         match token {
-            Token::Word(word) if FROM_START.contains(&word.as_str()) => in_from = true,
+            Token::Word(word) if starts_from(tokens, i, word) => in_from = true,
             Token::Word(word) if FROM_END.contains(&word.as_str()) => in_from = false,
             Token::Open => {
                 depth_stack.push(in_from);
@@ -1371,6 +1527,8 @@ fn check_references_in(
                 if !index.allowed_schemas.is_empty()
                     && tokens.get(i + 1) == Some(&Token::Dot)
                     && tokens.get(i.wrapping_sub(1)) != Some(&Token::Dot)
+                    && !(word.chars().all(|c| c.is_ascii_digit())
+                        && tokens.get(i + 2) == Some(&Token::Dot))
                     && !index.allowed_schemas.contains(word)
                     && !index.tables.contains_key(word)
                     && !aliases.contains(word)
@@ -1383,6 +1541,8 @@ fn check_references_in(
             Token::Word(word)
                 if row_values
                     && word_at(i.wrapping_sub(1)) != Some("as")
+                    && i.checked_sub(1).and_then(|p| cursor_loop_record(tokens, p))
+                        != Some(word.as_str())
                     && (index.tables.contains_key(word) || aliases.contains(word)) =>
             {
                 let prev = tokens.get(i.wrapping_sub(1));
@@ -2189,6 +2349,187 @@ mod tests {
             "select o.id from orders o cross apply (select 1 as x) a",
         ] {
             assert!(check_references(sql, &idx, false).is_ok(), "{sql}");
+        }
+    }
+
+    #[test]
+    fn issue_273_local_temporary_lobs_are_allowed() {
+        let sql = "declare
+  c clob;
+begin
+  dbms_lob.createtemporary(c, true);
+  dbms_lob.writeappend(c, 3, 'abc');
+  dbms_lob.freetemporary(c);
+end;
+/
+";
+        assert_eq!(dangerous_word(sql), None);
+        for sql in [
+            "begin SYS.DBMS_LOB.CreateTemporary(c, true); end;",
+            "begin \"DBMS_LOB\".\"APPEND\"(c, d); end;",
+            "begin dbms_lob . /* x */ writeappend (c, 1, 'a'); end;",
+            "begin if dbms_lob.istemporary(c) = 1 then null; end if; end;",
+        ] {
+            assert_eq!(dangerous_word(sql), None, "{sql}");
+        }
+    }
+
+    #[test]
+    fn issue_273_file_and_read_subprograms_stay_blocked() {
+        for sql in [
+            "begin dbms_lob.loadfromfile(c, f, 10); end;",
+            "begin dbms_lob.loadclobfromfile(c, f, 10, 1, 1, 0, 0, w); end;",
+            "begin dbms_lob.fileopen(f); end;",
+            "begin dbms_lob.open(f, 0); end;",
+            "begin x := dbms_lob.substr(c, 10, 1); end;",
+            "begin x := dbms_lob.getlength(c); end;",
+            "begin dbms_lob.read(c, n, 1, b); end;",
+            "begin sys.dbms_lob.loadfromfile(c, f, 10); end;",
+            "begin \"SYS\".\"DBMS_LOB\".\"LOADFROMFILE\"(c, f, 10); end;",
+            "begin \"DBMS_LOB\".\"LOADFROMFILE\"(c, f, 10); end;",
+            "begin DbMs_LoB . -- x\n LoadFromFile (c, f, 10); end;",
+            "begin dbms_lob./* x */fileopen(f); end;",
+            "begin evil.dbms_lob.createtemporary(c, true); end;",
+            "begin a.sys.dbms_lob.createtemporary(c, true); end;",
+            "begin dbms_lob.createtemporary@link(c, true); end;",
+            "begin dbms_lob.createtemporary; end;",
+            "begin x := dbms_lob.lobmaxsize; end;",
+            "begin dbms_lob.createtemporary(c, true); dbms_lob.fileopen(f); end;",
+        ] {
+            assert_eq!(dangerous_word(sql), Some("dbms_lob".into()), "{sql}");
+        }
+        let message = blocked_function("dbms_lob");
+        assert!(message.contains("dbms_lob.createtemporary"), "{message}");
+        assert!(message.contains("c := c || s"), "{message}");
+        assert_eq!(
+            blocked_function("pg_sleep"),
+            "Funktion 'pg_sleep' ist über den MCP gesperrt."
+        );
+    }
+
+    #[test]
+    fn issue_274_phone_rule_keeps_calendar_dates() {
+        let redactor = Redactor::new(&crate::mcp::config::McpConfig::default().redaction, &[]);
+        for text in [
+            "--*  Datum             : 04.07.2014",
+            "Datum 04/07/2014",
+            "Datum 04-07-2014",
+            "erstellt 04.07.2014 08:15 von x",
+            "Zeitraum 04.07.2014 - 05.07.2014",
+            "Zeitraum 04.07.2014-05.07.2014 und 31.12.1999",
+        ] {
+            assert_eq!(redactor.redact_text(text), text);
+        }
+        for text in [
+            "+49 221 123456",
+            "0221/123456",
+            "0221 123456",
+            "(0221) 123456",
+            "0221.123456",
+            "0171-1234567",
+            "01.23.45.67.89",
+            "004915112345678",
+            "04.07.2014123456",
+            "04.13.2014",
+            "04.07/2014",
+            "04.07.2014 123",
+        ] {
+            let out = redactor.redact_text(&format!("Tel: {text}"));
+            assert!(out.contains("[redacted]"), "{text}: {out}");
+            assert!(
+                !out.contains("123") && !out.contains("2014"),
+                "{text}: {out}"
+            );
+        }
+        assert_eq!(
+            redactor.redact_text("--* Datum: 04.07.2014 Key AKIAABCDEFGHIJKLMNOP"),
+            "--* Datum: 04.07.2014 Key [redacted]"
+        );
+        assert_eq!(
+            redactor.redact_text("--* 04.07.2014 max@example.com"),
+            "--* 04.07.2014 [redacted]"
+        );
+    }
+
+    #[test]
+    fn issue_274_custom_date_rules_still_redact() {
+        let mut config = McpConfig::default();
+        config.redaction.values = vec![super::super::config::RedactRule {
+            name: "Datum".into(),
+            pattern: r"\d{2}\.\d{2}\.\d{4}".into(),
+            enabled: true,
+            mask: None,
+        }];
+        let redactor = Redactor::new(&config.redaction, &[]);
+        assert_eq!(redactor.redact_text("Datum 04.07.2014"), "Datum [redacted]");
+        config.redaction.values[0].pattern = format!("{PHONE_PATTERN}|x");
+        let redactor = Redactor::new(&config.redaction, &[]);
+        assert_eq!(redactor.redact_text("Datum 04.07.2014"), "Datum [redacted]");
+    }
+
+    #[test]
+    fn issue_274_saved_config_with_builtin_phone_rule_keeps_dates() {
+        let saved = serde_json::json!({
+            "columns": [],
+            "values": [{
+                "name": "Telefon",
+                "pattern": r"(?:\+|\b0)\d[\d\s/().-]{6,}\d",
+                "enabled": true
+            }],
+            "replacement": "***"
+        });
+        let redaction: Redaction = serde_json::from_value(saved).unwrap();
+        let redactor = Redactor::new(&redaction, &[]);
+        assert_eq!(redactor.redact_text("am 04.07.2014"), "am 04.07.2014");
+        assert_eq!(redactor.redact_text("Tel 0221 123456"), "Tel ***");
+    }
+
+    #[test]
+    fn issue_278_plsql_keeps_name_rules_without_query_shape_rules() {
+        let listed = ["public".to_string(), "secret".into(), "hr".into()];
+        let unlisted = index(&["public"]);
+        let idx = index(&["public"]).with_listed(&listed);
+        let call = "begin pkg_a.log (5, 'x'); end;";
+        assert!(check_plsql(call, &unlisted).is_err());
+        assert_eq!(check_plsql(call, &index(&[])), Ok(()));
+        for (sql, blocked_as_query) in [
+            ("begin pkg_a.log (5, 'x'); end;", "kein freigegebenes Schema"),
+            (
+                "declare r users%rowtype; begin select * into r from users where id = -1; exception when no_data_found then null; end;",
+                "ganze Zeile",
+            ),
+            (
+                "declare n number; r orders%rowtype; begin select * into r from orders where id = 1; select count(distinct x.id) into n from (select nvl(u.id, 0) as id from users u union select o.id from orders o) x; end;",
+                "SELECT * ist hier gesperrt",
+            ),
+            (
+                "create or replace package body app_pkg as function f(p number) return number is v number; begin select max(o.id) into v from orders o; return nvl(v, 0); end f; procedure g is begin insert into orders (id, status) values (1, 'x'); for r in (select o.* from orders o) loop pkg_a.log(r.id, 'y'); end loop; end g; end app_pkg;",
+                "Spaltenlisten für Aliase",
+            ),
+        ] {
+            let error = check_references(sql, &idx, true).unwrap_err();
+            assert!(error.contains(blocked_as_query), "{sql}: {error}");
+            assert_eq!(check_plsql(sql, &idx), Ok(()), "{sql}");
+        }
+        for (sql, expected) in [
+            ("begin select password into v from users; end;", "redigiert"),
+            (
+                "declare v varchar2(100); begin select u.email into v from users u; dbms_output.put_line(v); end;",
+                "redigiert",
+            ),
+            ("begin select id into v from secret.vault; end;", "nicht freigegeben"),
+            ("begin select id into v from vault; end;", "nicht freigegebenen Schema"),
+            ("begin select json_object(*) into v from users; end;", "Funktionsargument"),
+            ("begin select json_object(u.*) into v from users u; end;", "Zeilenexpansion"),
+            ("begin delete from hr.jobs; end;", "Schema 'hr'"),
+            (
+                "begin for r in (select j.title from users u, \"HR\" . jobs j) loop dbms_output.put_line(r.title); end loop; end;",
+                "Schema 'hr'",
+            ),
+            ("begin v := hr.salary_of(1); end;", "Schema 'hr'"),
+        ] {
+            let error = check_plsql(sql, &idx).unwrap_err();
+            assert!(error.contains(expected), "{sql}: {error}");
         }
     }
 }

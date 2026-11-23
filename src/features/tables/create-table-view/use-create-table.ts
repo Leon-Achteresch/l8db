@@ -129,7 +129,7 @@ export function useCreateTable() {
 
   const applyTemplate = async (source: string) => {
     if (!kind || !connectionString) return;
-    const sourceSchema = schema.trim() || "public";
+    const sourceSchema = schema.trim() || template.schema;
     setLoadingTemplate(true);
     try {
       const loaded = await loadTemplateColumns(
@@ -233,6 +233,7 @@ export function useCreateTable() {
     setTableName,
     schema,
     setSchema,
+    schemaPlaceholder: template.schema || capabilities.terms.schema,
     ifNotExists,
     setIfNotExists,
     columns,

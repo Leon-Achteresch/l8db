@@ -7,12 +7,27 @@ use hmac::{Hmac, KeyInit, Mac};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Credentials {
     pub access_key: String,
     pub secret_key: String,
     pub session_token: Option<String>,
 }
+
+impl std::fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Credentials")
+            .field("access_key", &self.access_key)
+            .field("secret_key", &"<redacted>")
+            .field(
+                "session_token",
+                &self.session_token.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
+}
+
+const CREDENTIAL_HINT: &str = "Zugangsdaten in der URL (…://KEY:SECRET@REGION), mit ?profile=NAME oder per AWS_ACCESS_KEY_ID und AWS_SECRET_ACCESS_KEY angeben.";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CredentialSource {
@@ -74,9 +89,13 @@ pub fn parse_target(connection_string: &str, scheme: &str) -> Result<AwsTarget, 
         .collect();
     let endpoint = match params.get("endpoint").map(|e| e.trim()) {
         Some(e) if !e.is_empty() => {
-            let parsed = url::Url::parse(e).map_err(|_| format!("Ungültiger Endpunkt: {e}"))?;
+            let parsed = url::Url::parse(e).map_err(|_| {
+                format!("Ungültiger Endpunkt: {e}. Mit Schema angeben, z. B. http://{e}")
+            })?;
             if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
-                return Err("Der Endpunkt muss mit http:// oder https:// beginnen.".to_string());
+                return Err(format!(
+                    "Der Endpunkt muss mit http:// oder https:// beginnen, z. B. http://{e}"
+                ));
             }
             Some(parsed)
         }
@@ -196,6 +215,13 @@ impl AwsConnection {
             CredentialSource::Profile(name) => cached_profile_credentials(name).await?,
             CredentialSource::Default => match env_credentials() {
                 Some(c) => c,
+                None if env_value("AWS_PROFILE").is_none()
+                    && profile_section("default", true).is_none() =>
+                {
+                    return Err(format!(
+                        "Keine AWS-Zugangsdaten gefunden.\n  {CREDENTIAL_HINT}"
+                    ))
+                }
                 None => cached_profile_credentials(&self.profile_name()).await?,
             },
         })
@@ -293,8 +319,21 @@ impl AwsClient {
             }
         }
         let response = request.body(payload).send().await.map_err(|e| {
+            if e.is_timeout() {
+                return format!(
+                    "{}: keine Antwort von {} nach {} Sekunden. Der Serverabschluss ist nicht bestätigt.",
+                    self.service.label,
+                    self.endpoint,
+                    super::execution::query_duration().as_secs()
+                );
+            }
+            let hint = if e.is_connect() {
+                ". Endpunkt (?endpoint=) und Port prüfen.".to_string()
+            } else {
+                format!(": {e}")
+            };
             format!(
-                "{} nicht erreichbar ({}): {e}",
+                "{} nicht erreichbar ({}){hint}",
                 self.service.label, self.endpoint
             )
         })?;
@@ -316,7 +355,10 @@ impl AwsClient {
 
 pub fn service_error(label: &str, status: u16, body: &str) -> String {
     let Ok(json) = serde_json::from_str::<Value>(body) else {
-        return format!("{label} HTTP {status}: {}", body.trim());
+        return format!(
+            "{label} HTTP {status}: {}",
+            super::warehouse_auth::plain_text(body)
+        );
     };
     let kind = json
         .get("__type")
@@ -541,7 +583,7 @@ async fn cached_profile_credentials(profile: &str) -> Result<Credentials, String
 
 async fn profile_credentials(profile: &str) -> Result<(Credentials, Option<i64>), String> {
     let section = profile_section(profile, true).ok_or_else(|| {
-        format!("AWS-Profil \"{profile}\" wurde in ~/.aws/config oder ~/.aws/credentials nicht gefunden.")
+        format!("AWS-Profil \"{profile}\" wurde in ~/.aws/config oder ~/.aws/credentials nicht gefunden.\n  {CREDENTIAL_HINT}")
     })?;
     if let (Some(access_key), Some(secret_key)) = (
         section.get("aws_access_key_id"),

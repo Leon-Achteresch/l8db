@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildImportPayload,
+  CSV_MAX_VALIDATION_ERRORS,
   detectDelimiter,
   detectHeader,
   type ImportTargetColumn,
@@ -264,5 +265,101 @@ describe("German CSV conventions", () => {
   test("maps the configured NULL text to NULL but keeps quoted values", () => {
     const result = parseCsv('a;b\nNULL;"NULL"\n', { nullText: "NULL" });
     expect(result.rows).toEqual([[null, "NULL"]]);
+  });
+});
+
+describe("bounded local import preflight", () => {
+  test("collects late violations in dataset order across mapped columns", () => {
+    const rows: (string | null)[][] = Array.from({ length: 10_000 }, () => ["ok", "ok"]);
+    rows[9_000] = [null, null];
+    rows[9_999] = ["ok", null];
+    const issues = validateMappings(
+      [
+        { csvIndex: 1, target: "b" },
+        { csvIndex: 0, target: "a" },
+      ],
+      [target("a", { is_nullable: false }), target("b", { is_nullable: false })],
+      rows,
+    );
+    expect(issues.checkedRows).toBe(10_000);
+    expect(issues.errorCount).toBe(3);
+    expect(issues.errors).toEqual([
+      'Zeile 9001: Spalte "b" darf nicht NULL sein.',
+      'Zeile 9001: Spalte "a" darf nicht NULL sein.',
+      'Zeile 10000: Spalte "b" darf nicht NULL sein.',
+    ]);
+  });
+
+  test("counts all violations while retaining only bounded details without cell values", () => {
+    const rows = Array.from({ length: 80 }, () => [null, "private-value"]);
+    const issues = validateMappings(
+      [
+        { csvIndex: 0, target: "required" },
+        { csvIndex: 1, target: "ignored" },
+      ],
+      [target("required", { is_nullable: false }), target("ignored")],
+      rows,
+    );
+    expect(issues.errorCount).toBe(80);
+    expect(issues.errors).toHaveLength(CSV_MAX_VALIDATION_ERRORS);
+    expect(JSON.stringify(issues)).not.toContain("private-value");
+    expect(issues.errors.at(-1)).toContain(`Zeile ${CSV_MAX_VALIDATION_ERRORS}:`);
+  });
+
+  test("handles quoted empty strings, missing cells and explicit NULL with a default", () => {
+    const parsed = parseCsv('a,b\n"",x\nNULL,x\nx\n', { nullText: "NULL" });
+    const issues = validateMappings(
+      [
+        { csvIndex: 0, target: "a" },
+        { csvIndex: 1, target: "b" },
+      ],
+      [target("a", { is_nullable: false, has_default: true }), target("b", { is_nullable: false })],
+      parsed.rows,
+    );
+    expect(issues.errorCount).toBe(2);
+    expect(issues.errors[0]).toContain('Zeile 2: Spalte "a"');
+    expect(issues.errors[1]).toContain('Zeile 3: Spalte "b"');
+  });
+
+  test("does not multiply row errors for ambiguous or generated mappings", () => {
+    const issues = validateMappings(
+      [
+        { csvIndex: 0, target: "a" },
+        { csvIndex: 1, target: "a" },
+        { csvIndex: 2, target: "g" },
+      ],
+      [
+        target("a", { is_nullable: false }),
+        target("g", { is_generated: true, is_nullable: false }),
+      ],
+      [[null, null, null]],
+    );
+    expect(issues.errorCount).toBe(2);
+    expect(issues.errors).toHaveLength(2);
+    expect(issues.errors.join(" ")).not.toContain("Zeile");
+  });
+
+  test("structural errors remain blocking and bounded without data rows", () => {
+    const targets = Array.from({ length: 30 }, (_, i) => target(`c${i}`, { is_nullable: false }));
+    const issues = validateMappings([], targets, []);
+    expect(issues.errorCount).toBe(31);
+    expect(issues.errors).toHaveLength(CSV_MAX_VALIDATION_ERRORS);
+    expect(issues.checkedRows).toBe(0);
+  });
+
+  test("revalidation after corrections or mapping changes does not retain stale errors", () => {
+    const mappings = [{ csvIndex: 0, target: "a" }];
+    const targets = [target("a", { is_nullable: false })];
+    const rows: (string | null)[][] = [[null], [null]];
+    expect(validateMappings(mappings, targets, rows).errorCount).toBe(2);
+    rows[0] = ["fixed"];
+    rows[1] = ["fixed"];
+    expect(validateMappings(mappings, targets, rows)).toEqual({
+      errors: [],
+      warnings: [],
+      checkedRows: 2,
+      errorCount: 0,
+    });
+    expect(validateMappings([{ csvIndex: 1, target: "a" }], targets, rows).errorCount).toBe(2);
   });
 });

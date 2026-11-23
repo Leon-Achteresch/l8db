@@ -10,6 +10,7 @@ import { DriverOverviewLab } from "./driver-overview-lab";
 import { FeatureVideoPreview } from "./feature-video-preview";
 import { FontLab } from "./font-lab";
 import { McpOverviewLab } from "./mcp-overview-lab";
+import { ModelPickerLab } from "./model-picker-lab";
 import { NewBadgeExitLab } from "./new-badge-exit-lab";
 import { ProviderPickerLab } from "./provider-picker-lab";
 import { SettingsDesignLab } from "./settings-design-lab";
@@ -52,7 +53,7 @@ export function DevView() {
 
   return (
     <main className="min-w-0 flex-1 overflow-auto bg-background px-6 py-8 md:px-10">
-      <Tabs defaultValue="feature-video" className="mx-auto max-w-[1440px] gap-7">
+      <Tabs defaultValue="model-picker" className="mx-auto max-w-[1440px] gap-7">
         <div className="space-y-5">
           <div className="space-y-2">
             <p className="text-xs font-medium tracking-widest text-muted-foreground">
@@ -65,6 +66,9 @@ export function DevView() {
           </div>
           <div className="-mx-1 overflow-x-auto px-1 pb-2">
             <TabsList variant="line" aria-label="Komponenten-Vorschau" className="w-max">
+              <TabsTrigger value="model-picker" className="flex-none px-4">
+                Modellpicker
+              </TabsTrigger>
               <TabsTrigger value="ai-chat" className="flex-none px-4">
                 KI-Chat
               </TabsTrigger>
@@ -110,6 +114,9 @@ export function DevView() {
             </TabsList>
           </div>
         </div>
+        <TabsContent value="model-picker">
+          <ModelPickerLab />
+        </TabsContent>
         <TabsContent value="ai-chat">
           <AiChatLab />
         </TabsContent>

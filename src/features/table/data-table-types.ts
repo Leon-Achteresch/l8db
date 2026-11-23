@@ -1,6 +1,7 @@
 import type { OnChangeFn, RowData, SortingState } from "@tanstack/react-table";
 import type { ReactNode } from "react";
 import type { DetailedColumnInfo, ForeignKeyInfo } from "@/lib/db";
+import type { TemporalKind } from "@/lib/temporal-helpers";
 
 declare module "@tanstack/react-table" {
   interface ColumnMeta<TData extends RowData, TValue> {
@@ -17,6 +18,7 @@ export type EditingCell = {
   value: string;
   originalValues: Record<string, unknown>;
   typed?: boolean;
+  temporal?: TemporalKind | null;
 };
 
 export type InspectCell = {
@@ -50,7 +52,7 @@ export type DataTableProps = {
     ctid: string,
     updates: Record<string, string | null>,
     oldValues: Record<string, unknown>,
-  ) => Promise<void | "staged">;
+  ) => Promise<void | "staged" | "collected">;
   canEditCell?: (row: TableRow, column: string) => boolean;
   filterableColumns?: string[];
   compileColumnFilter?: (column: string, operator: string, value: string) => string | null;
@@ -66,6 +68,7 @@ export type DataTableProps = {
   pageSize?: number;
   onPageChange?: (page: number) => void;
   hasNextPage?: boolean;
+  recordView?: boolean;
   rowMenuItems?: (row: TableRow) => ReactNode;
   rowOffset?: number;
   rowExtent?: number;
@@ -74,7 +77,7 @@ export type DataTableProps = {
   currentSchema?: string;
   currentTable?: string;
   onNavigateToTable?: (schema: string, table: string, filter?: string, inTab?: boolean) => void;
-  onInsertRow?: (values: Record<string, string | null>) => Promise<void>;
+  onInsertRow?: (values: Record<string, string | null>) => Promise<"collected" | undefined>;
   onDeleteRow?: (ctid: string, oldValues: Record<string, unknown>) => void;
   onRefresh?: () => void | Promise<void>;
   columnDetails?: DetailedColumnInfo[];

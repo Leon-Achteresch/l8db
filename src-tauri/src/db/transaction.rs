@@ -59,6 +59,90 @@ async fn pin_inserted(
 pub(crate) const PG_ROW_GONE: &str =
     "Zeile wurde inzwischen geändert oder gelöscht. Bitte neu laden.";
 
+async fn pg_update_sql(
+    conn: &tokio_postgres::Client,
+    schema: &str,
+    table: &str,
+    row_id: &PgRowId,
+    updates: &HashMap<String, Option<String>>,
+) -> Result<Option<String>, String> {
+    let col_rows = conn
+        .query(super::postgres::arrays::COLUMNS_SQL, &[&schema, &table])
+        .await
+        .map_err(map_pg_err)?;
+    if col_rows.is_empty() {
+        return Err(format!("Tabelle {schema}.{table} nicht gefunden"));
+    }
+    let set_parts = super::postgres::arrays::update_assignments(
+        &super::postgres::arrays::columns(&col_rows),
+        updates,
+    )?;
+    if set_parts.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(format!(
+        "UPDATE {}.{} SET {} WHERE {} RETURNING {PG_ROW_ID}",
+        quote_ident(schema),
+        quote_ident(table),
+        set_parts.join(", "),
+        row_id.filter(schema, table),
+    )))
+}
+
+async fn pg_insert_sql(
+    conn: &tokio_postgres::Client,
+    schema: &str,
+    table: &str,
+    values: &HashMap<String, Option<String>>,
+) -> Result<String, String> {
+    let col_rows = conn
+        .query(
+            "SELECT column_name FROM information_schema.columns \
+             WHERE table_schema = $1 AND table_name = $2",
+            &[&schema, &table],
+        )
+        .await
+        .map_err(map_pg_err)?;
+    if col_rows.is_empty() {
+        return Err(format!("Tabelle {schema}.{table} nicht gefunden"));
+    }
+    let valid_columns: HashSet<String> = col_rows.iter().map(|r| r.get::<_, String>(0)).collect();
+    let target = format!("{}.{}", quote_ident(schema), quote_ident(table));
+    if values.is_empty() {
+        return Ok(format!(
+            "WITH ins AS (INSERT INTO {target} DEFAULT VALUES RETURNING *, {PG_INSERTED_ID} AS __l8_ctid) \
+             SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
+        ));
+    }
+    let mut cols: Vec<String> = Vec::new();
+    let mut vals: Vec<String> = Vec::new();
+    for (col, val) in sorted(values) {
+        if !valid_columns.contains(col) {
+            return Err(format!("Unbekannte Spalte: {col}"));
+        }
+        cols.push(quote_ident(col));
+        vals.push(match val {
+            None => "NULL".to_string(),
+            Some(s) => format!("'{}'", s.replace('\'', "''")),
+        });
+    }
+    Ok(format!(
+        "WITH ins AS (INSERT INTO {target} ({}) VALUES ({}) RETURNING *, {PG_INSERTED_ID} AS __l8_ctid) \
+         SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
+        cols.join(", "),
+        vals.join(", "),
+    ))
+}
+
+fn pg_delete_sql(schema: &str, table: &str, row_id: &PgRowId) -> String {
+    format!(
+        "DELETE FROM {}.{} WHERE {}",
+        quote_ident(schema),
+        quote_ident(table),
+        row_id.filter(schema, table),
+    )
+}
+
 #[derive(Debug, PartialEq)]
 pub(crate) struct PgRowId {
     ctid: String,
@@ -168,12 +252,19 @@ fn json_lit(kind: DatabaseKind, value: &serde_json::Value) -> String {
 }
 
 fn binary_lit(kind: DatabaseKind, value: &str) -> Option<String> {
-    let hex = super::hex_blob_body(value)?;
+    let hex = match value.get(..2) {
+        Some("0x" | "0X") if matches!(kind, DatabaseKind::Mssql | DatabaseKind::Mysql) => {
+            let body = &value[2..];
+            (body.len() % 2 == 0 && body.bytes().all(|b| b.is_ascii_hexdigit())).then_some(body)?
+        }
+        _ => super::hex_blob_body(value)?,
+    };
     match kind {
         DatabaseKind::Mysql | DatabaseKind::Sqlite | DatabaseKind::SqliteHttp => {
             Some(format!("X'{hex}'"))
         }
         DatabaseKind::Mssql => Some(format!("0x{hex}")),
+        DatabaseKind::Duckdb => Some(format!("from_hex('{hex}')")),
         _ => None,
     }
 }
@@ -227,6 +318,12 @@ fn where_key(kind: DatabaseKind, key: &Key, binary: &HashSet<String>) -> String 
         })
         .collect::<Vec<_>>()
         .join(" AND ")
+}
+
+fn sorted(values: &HashMap<String, Option<String>>) -> Vec<(&String, &Option<String>)> {
+    let mut entries: Vec<_> = values.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    entries
 }
 
 fn json_to_text(value: &serde_json::Value) -> Option<String> {
@@ -300,6 +397,99 @@ impl Generic {
             .collect())
     }
 
+    async fn update_sql(
+        &self,
+        schema: &str,
+        table: &str,
+        key: &Key,
+        updates: &HashMap<String, Option<String>>,
+    ) -> Result<String, String> {
+        let binary = self.binary_columns(schema, table, updates).await?;
+        let set_parts: Vec<String> = sorted(updates)
+            .into_iter()
+            .map(|(col, val)| {
+                format!(
+                    "{} = {}",
+                    quote(self.kind, col),
+                    value_lit(self.kind, &binary, col, val)
+                )
+            })
+            .collect();
+        Ok(format!(
+            "UPDATE {} SET {} WHERE {}",
+            self.target(schema, table),
+            set_parts.join(", "),
+            self.where_key(schema, table, key).await?
+        ))
+    }
+
+    async fn insert_sql(
+        &self,
+        schema: &str,
+        table: &str,
+        values: &HashMap<String, Option<String>>,
+    ) -> Result<String, String> {
+        let target = self.target(schema, table);
+        let binary = self.binary_columns(schema, table, values).await?;
+        let entries = sorted(values);
+        let cols: Vec<String> = entries.iter().map(|(c, _)| quote(self.kind, c)).collect();
+        let vals: Vec<String> = entries
+            .iter()
+            .map(|(col, v)| value_lit(self.kind, &binary, col, v))
+            .collect();
+        let (col_sql, val_sql) = if values.is_empty() {
+            match self.kind {
+                DatabaseKind::Mysql => ("()".to_string(), "VALUES ()".to_string()),
+                _ => (String::new(), "DEFAULT VALUES".to_string()),
+            }
+        } else {
+            (
+                format!("({})", cols.join(", ")),
+                format!("VALUES ({})", vals.join(", ")),
+            )
+        };
+        Ok(match self.kind {
+            DatabaseKind::Mssql => {
+                format!("INSERT INTO {target} {col_sql} OUTPUT INSERTED.* {val_sql}")
+            }
+            DatabaseKind::SqliteHttp | DatabaseKind::Duckdb => {
+                format!("INSERT INTO {target} {col_sql} {val_sql} RETURNING *")
+            }
+            _ => format!("INSERT INTO {target} {col_sql} {val_sql}"),
+        })
+    }
+
+    async fn delete_sql(&self, schema: &str, table: &str, key: &Key) -> Result<String, String> {
+        Ok(format!(
+            "DELETE FROM {} WHERE {}",
+            self.target(schema, table),
+            self.where_key(schema, table, key).await?
+        ))
+    }
+
+    async fn change_sql(
+        &self,
+        schema: &str,
+        table: &str,
+        change: &RowChange,
+    ) -> Result<Option<String>, String> {
+        match change {
+            RowChange::Update { ctid, updates } if updates.is_empty() => {
+                parse_key(ctid)?;
+                Ok(None)
+            }
+            RowChange::Update { ctid, updates } => self
+                .update_sql(schema, table, &parse_key(ctid)?, updates)
+                .await
+                .map(Some),
+            RowChange::Insert { values } => self.insert_sql(schema, table, values).await.map(Some),
+            RowChange::Delete { ctid } => self
+                .delete_sql(schema, table, &parse_key(ctid)?)
+                .await
+                .map(Some),
+        }
+    }
+
     async fn update_row(
         &self,
         schema: &str,
@@ -311,23 +501,7 @@ impl Generic {
         if updates.is_empty() {
             return Ok(ctid.to_string());
         }
-        let binary = self.binary_columns(schema, table, updates).await?;
-        let set_parts: Vec<String> = updates
-            .iter()
-            .map(|(col, val)| {
-                format!(
-                    "{} = {}",
-                    quote(self.kind, col),
-                    value_lit(self.kind, &binary, col, val)
-                )
-            })
-            .collect();
-        let sql = format!(
-            "UPDATE {} SET {} WHERE {}",
-            self.target(schema, table),
-            set_parts.join(", "),
-            self.where_key(schema, table, &key).await?
-        );
+        let sql = self.update_sql(schema, table, &key, updates).await?;
         if self.execute(&sql).await?.rows_affected == Some(0) {
             return Err("Zeile nicht gefunden".to_string());
         }
@@ -347,35 +521,13 @@ impl Generic {
     ) -> Result<serde_json::Value, String> {
         let target = self.target(schema, table);
         let pk = self.primary_key(schema, table).await?;
-        let cols: Vec<String> = values.keys().map(|c| quote(self.kind, c)).collect();
-        let binary = self.binary_columns(schema, table, values).await?;
-        let vals: Vec<String> = values
-            .iter()
-            .map(|(col, v)| value_lit(self.kind, &binary, col, v))
-            .collect();
-        let (col_sql, val_sql) = if values.is_empty() {
-            match self.kind {
-                DatabaseKind::Mysql => ("()".to_string(), "VALUES ()".to_string()),
-                _ => (String::new(), "DEFAULT VALUES".to_string()),
-            }
-        } else {
-            (
-                format!("({})", cols.join(", ")),
-                format!("VALUES ({})", vals.join(", ")),
-            )
-        };
+        let sql = self.insert_sql(schema, table, values).await?;
         let mut row = match self.kind {
-            DatabaseKind::Mssql => {
-                let sql = format!("INSERT INTO {target} {col_sql} OUTPUT INSERTED.* {val_sql}");
-                self.execute(&sql).await?.rows.into_iter().next()
-            }
-            DatabaseKind::SqliteHttp => {
-                let sql = format!("INSERT INTO {target} {col_sql} {val_sql} RETURNING *");
+            DatabaseKind::Mssql | DatabaseKind::SqliteHttp | DatabaseKind::Duckdb => {
                 self.execute(&sql).await?.rows.into_iter().next()
             }
             _ => {
-                self.execute(&format!("INSERT INTO {target} {col_sql} {val_sql}"))
-                    .await?;
+                self.execute(&sql).await?;
                 let where_sql = match self.kind {
                     DatabaseKind::Sqlite => "rowid = last_insert_rowid()".to_string(),
                     _ if pk.len() == 1 && !values.contains_key(&pk[0]) => {
@@ -443,11 +595,7 @@ impl Generic {
 
     async fn delete_row(&self, schema: &str, table: &str, ctid: &str) -> Result<(), String> {
         let key = parse_key(ctid)?;
-        let sql = format!(
-            "DELETE FROM {} WHERE {}",
-            self.target(schema, table),
-            self.where_key(schema, table, &key).await?
-        );
+        let sql = self.delete_sql(schema, table, &key).await?;
         let res = self.execute(&sql).await?;
         if res.rows_affected == Some(0) {
             return Err("Zeile nicht gefunden".to_string());
@@ -469,6 +617,35 @@ where
     })
     .await
     .map_err(|e| format!("Oracle-Task fehlgeschlagen: {e}"))?
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum RowChange {
+    Update {
+        ctid: String,
+        updates: HashMap<String, Option<String>>,
+    },
+    Insert {
+        values: HashMap<String, Option<String>>,
+    },
+    Delete {
+        ctid: String,
+    },
+}
+
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct RowChangeSql {
+    pub index: usize,
+    pub sql: String,
+    pub params: Vec<String>,
+}
+
+#[derive(Debug, PartialEq, serde::Serialize)]
+pub struct RowChangesOutcome {
+    pub applied: usize,
+    pub failed: Option<usize>,
+    pub error: Option<String>,
 }
 
 pub struct TransactionManager {
@@ -744,41 +921,9 @@ impl TransactionManager {
         let row_id = PgRowId::parse(ctid)?;
         let conn = conn.lock().await?;
 
-        let col_rows = conn
-            .query(
-                "SELECT column_name FROM information_schema.columns \
-                 WHERE table_schema = $1 AND table_name = $2",
-                &[&schema, &table],
-            )
-            .await
-            .map_err(map_pg_err)?;
-
-        let valid_columns: std::collections::HashSet<String> =
-            col_rows.iter().map(|r| r.get::<_, String>(0)).collect();
-
-        let mut set_parts: Vec<String> = Vec::new();
-        for (col, val) in updates {
-            if !valid_columns.contains(col) {
-                return Err(format!("Unbekannte Spalte: {col}"));
-            }
-            let sql_val = match val {
-                None => "NULL".to_string(),
-                Some(s) => format!("'{}'", s.replace('\'', "''")),
-            };
-            set_parts.push(format!("{} = {}", quote_ident(col), sql_val));
-        }
-
-        if set_parts.is_empty() {
+        let Some(sql) = pg_update_sql(&conn, schema, table, &row_id, updates).await? else {
             return Ok(ctid.to_string());
-        }
-
-        let sql = format!(
-            "UPDATE {}.{} SET {} WHERE {} RETURNING {PG_ROW_ID}",
-            quote_ident(schema),
-            quote_ident(table),
-            set_parts.join(", "),
-            row_id.filter(schema, table),
-        );
+        };
 
         conn.batch_execute("SAVEPOINT l8_op")
             .await
@@ -822,46 +967,8 @@ impl TransactionManager {
             TransactionEntry::Dynamo(d) => return d.insert_row(table, values).await,
         };
         let conn = conn.lock().await?;
-
-        let col_rows = conn
-            .query(
-                "SELECT column_name FROM information_schema.columns \
-                 WHERE table_schema = $1 AND table_name = $2",
-                &[&schema, &table],
-            )
-            .await
-            .map_err(map_pg_err)?;
-
-        let valid_columns: std::collections::HashSet<String> =
-            col_rows.iter().map(|r| r.get::<_, String>(0)).collect();
-
         let target = format!("{}.{}", quote_ident(schema), quote_ident(table));
-
-        let sql = if values.is_empty() {
-            format!(
-                "WITH ins AS (INSERT INTO {target} DEFAULT VALUES RETURNING *, {PG_INSERTED_ID} AS __l8_ctid) \
-                 SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
-            )
-        } else {
-            let mut cols: Vec<String> = Vec::new();
-            let mut vals: Vec<String> = Vec::new();
-            for (col, val) in values {
-                if !valid_columns.contains(col) {
-                    return Err(format!("Unbekannte Spalte: {col}"));
-                }
-                cols.push(quote_ident(col));
-                vals.push(match val {
-                    None => "NULL".to_string(),
-                    Some(s) => format!("'{}'", s.replace('\'', "''")),
-                });
-            }
-            format!(
-                "WITH ins AS (INSERT INTO {target} ({}) VALUES ({}) RETURNING *, {PG_INSERTED_ID} AS __l8_ctid) \
-                 SELECT (to_jsonb(ins) - '__l8_ctid') || jsonb_build_object('__ctid__', __l8_ctid::text) FROM ins",
-                cols.join(", "),
-                vals.join(", "),
-            )
-        };
+        let sql = pg_insert_sql(&conn, schema, table, values).await?;
 
         conn.batch_execute("SAVEPOINT l8_op")
             .await
@@ -1010,12 +1117,7 @@ impl TransactionManager {
         let row_id = PgRowId::parse(ctid)?;
         let conn = conn.lock().await?;
 
-        let sql = format!(
-            "DELETE FROM {}.{} WHERE {}",
-            quote_ident(schema),
-            quote_ident(table),
-            row_id.filter(schema, table),
-        );
+        let sql = pg_delete_sql(schema, table, &row_id);
 
         conn.batch_execute("SAVEPOINT l8_op")
             .await
@@ -1034,6 +1136,116 @@ impl TransactionManager {
                 let _ = conn.batch_execute("ROLLBACK TO SAVEPOINT l8_op").await;
                 Err(map_pg_err(e))
             }
+        }
+    }
+
+    pub async fn preview_row_changes(
+        &self,
+        kind: DatabaseKind,
+        connection_string: &str,
+        database: Option<&str>,
+        pool_state: &PoolState,
+        schema: &str,
+        table: &str,
+        changes: &[RowChange],
+    ) -> Result<Vec<RowChangeSql>, String> {
+        let tx_id = self
+            .begin(kind, connection_string, database, pool_state)
+            .await?;
+        let mut statements = Vec::with_capacity(changes.len());
+        let mut outcome = Ok(());
+        for (index, change) in changes.iter().enumerate() {
+            match self.row_change_sql(&tx_id, schema, table, change).await {
+                Ok(Some((sql, params))) => statements.push(RowChangeSql { index, sql, params }),
+                Ok(None) => {}
+                Err(error) => {
+                    outcome = Err(error);
+                    break;
+                }
+            }
+        }
+        let _ = self.rollback(&tx_id).await;
+        if self.entry(&tx_id).await.is_ok() {
+            self.transactions.lock().await.remove(&tx_id);
+        }
+        outcome.map(|()| statements)
+    }
+
+    async fn row_change_sql(
+        &self,
+        tx_id: &str,
+        schema: &str,
+        table: &str,
+        change: &RowChange,
+    ) -> Result<Option<(String, Vec<String>)>, String> {
+        let entry = self.entry(tx_id).await?;
+        match &*entry {
+            TransactionEntry::Pg(c, _) => {
+                let conn = c.lock().await?;
+                match change {
+                    RowChange::Update { ctid, updates } => {
+                        let row_id = PgRowId::parse(ctid)?;
+                        pg_update_sql(&conn, schema, table, &row_id, updates).await
+                    }
+                    RowChange::Insert { values } => {
+                        pg_insert_sql(&conn, schema, table, values).await.map(Some)
+                    }
+                    RowChange::Delete { ctid } => {
+                        Ok(Some(pg_delete_sql(schema, table, &PgRowId::parse(ctid)?)))
+                    }
+                }
+                .map(|sql| sql.map(|sql| (sql, Vec::new())))
+            }
+            TransactionEntry::Oracle(c) => {
+                let (schema, table, change) =
+                    (schema.to_string(), table.to_string(), change.clone());
+                ora(c.clone(), move |c| {
+                    oracle::tx_change_sql(c, &schema, &table, &change)
+                })
+                .await
+            }
+            TransactionEntry::Generic(g) => g
+                .change_sql(schema, table, change)
+                .await
+                .map(|sql| sql.map(|sql| (sql, Vec::new()))),
+            TransactionEntry::Dynamo(_) => {
+                Err("Für DynamoDB gibt es keine SQL-Vorschau.".to_string())
+            }
+        }
+    }
+
+    pub async fn apply_row_changes(
+        &self,
+        tx_id: &str,
+        schema: &str,
+        table: &str,
+        changes: &[RowChange],
+    ) -> RowChangesOutcome {
+        for (index, change) in changes.iter().enumerate() {
+            let result = match change {
+                RowChange::Update { updates, .. } if updates.is_empty() => Ok(()),
+                RowChange::Update { ctid, updates } => self
+                    .update_row(tx_id, schema, table, ctid, updates)
+                    .await
+                    .map(|_| ()),
+                RowChange::Insert { values } => self
+                    .insert_row(tx_id, schema, table, values)
+                    .await
+                    .map(|_| ()),
+                RowChange::Delete { ctid } => self.delete_row(tx_id, schema, table, ctid).await,
+            };
+            if let Err(error) = result {
+                return RowChangesOutcome {
+                    applied: index,
+                    failed: Some(index),
+                    error: Some(error),
+                };
+            }
+        }
+        RowChangesOutcome {
+            applied: changes.len(),
+            failed: None,
+            error: None,
         }
     }
 
@@ -1221,7 +1433,8 @@ mod tests {
             |order| crate::db::postgres::table_page_sql("s", "t", "", order, true, &["id".into()]);
         assert!(keyed(None).contains("ORDER BY t.\"id\" LIMIT"));
         assert!(keyed(None).ends_with("ORDER BY p.\"id\""));
-        assert!(keyed(Some(("name", true))).contains("ORDER BY t.\"name\" DESC LIMIT"));
+        assert!(keyed(Some(("name", true))).contains("ORDER BY t.\"name\" DESC, t.\"id\" LIMIT"));
+        assert!(keyed(Some(("name", true))).ends_with("ORDER BY p.\"name\" DESC, p.\"id\""));
         assert!(
             !crate::db::postgres::table_page_sql("s", "t", "", None, true, &[])
                 .contains("ORDER BY")
@@ -1242,8 +1455,26 @@ mod tests {
             super::binary_lit(DatabaseKind::Mssql, "\\xab").as_deref(),
             Some("0xab")
         );
+        assert_eq!(
+            super::binary_lit(DatabaseKind::Mssql, "0x00FF").as_deref(),
+            Some("0x00FF")
+        );
+        assert_eq!(
+            super::binary_lit(DatabaseKind::Mssql, "0x").as_deref(),
+            Some("0x")
+        );
+        assert_eq!(super::binary_lit(DatabaseKind::Mssql, "0x0G"), None);
+        assert_eq!(
+            super::binary_lit(DatabaseKind::Mysql, "0xC3A4").as_deref(),
+            Some("X'C3A4'")
+        );
+        assert_eq!(super::binary_lit(DatabaseKind::Sqlite, "0x00"), None);
         assert_eq!(super::binary_lit(DatabaseKind::Mysql, "\\x0g"), None);
-        assert_eq!(super::binary_lit(DatabaseKind::Duckdb, "\\x00"), None);
+        assert_eq!(
+            super::binary_lit(DatabaseKind::Duckdb, "\\x00ff").as_deref(),
+            Some("from_hex('00ff')")
+        );
+        assert_eq!(super::binary_lit(DatabaseKind::Postgres, "\\x00"), None);
         let binary = std::collections::HashSet::from(["b".to_string()]);
         let value = Some("\\x0102".to_string());
         assert_eq!(
@@ -1351,6 +1582,169 @@ mod tests {
         assert_eq!(res.rows[0]["data"], "\\x00ff10");
         assert_eq!(res.rows[0]["note"], "\\x41");
         tx.rollback(&id).await.unwrap();
+        let _ = std::fs::remove_file(&dir);
+    }
+
+    #[tokio::test]
+    async fn duckdb_row_edits_commit_and_roll_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let url = format!(
+            "duckdb://{}?mode=rwc",
+            dir.path().join("edit.duckdb").display()
+        );
+        let pool = super::super::pool::create_pool_state();
+        let adapter = super::super::create_adapter_from_string(
+            DatabaseKind::Duckdb,
+            &url,
+            None,
+            pool.clone(),
+        )
+        .unwrap();
+        adapter
+            .execute_query("CREATE TABLE t (id INTEGER PRIMARY KEY, data BLOB, note VARCHAR)")
+            .await
+            .unwrap();
+        let tx = TransactionManager {
+            transactions: Mutex::new(HashMap::new()),
+        };
+        let id = tx
+            .begin(DatabaseKind::Duckdb, &url, None, &pool)
+            .await
+            .unwrap();
+        let values = HashMap::from([
+            ("id".to_string(), Some("1".to_string())),
+            ("data".to_string(), Some("\\x89504e47".to_string())),
+            ("note".to_string(), Some("a".to_string())),
+        ]);
+        let row = tx.insert_row(&id, "main", "t", &values).await.unwrap();
+        assert_eq!(row["data"], "\\x89504e47");
+        let ctid = row["__ctid__"].as_str().unwrap().to_string();
+        let updates = HashMap::from([("note".to_string(), Some("b".to_string()))]);
+        tx.update_row(&id, "main", "t", &ctid, &updates)
+            .await
+            .unwrap();
+        tx.commit(&id).await.unwrap();
+        let rows = adapter
+            .fetch_rows("main", "t", None, 10, 0, None, false, false, false)
+            .await
+            .unwrap();
+        assert_eq!(rows.rows[0]["note"], "b");
+        let id = tx
+            .begin(DatabaseKind::Duckdb, &url, None, &pool)
+            .await
+            .unwrap();
+        tx.delete_row(&id, "main", "t", &ctid).await.unwrap();
+        tx.rollback(&id).await.unwrap();
+        assert_eq!(
+            adapter.count_rows("main", "t", None, false).await.unwrap(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn staged_row_changes_preview_matches_apply_and_report_failures() {
+        let dir = std::env::temp_dir().join(format!("l8db-staged-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&dir);
+        let url = format!("sqlite://{}?mode=rwc", dir.display());
+        let pool = super::super::pool::create_pool_state();
+        let adapter = super::super::create_adapter_from_string(
+            DatabaseKind::Sqlite,
+            &url,
+            None,
+            pool.clone(),
+        )
+        .unwrap();
+        adapter
+            .execute_query("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, note TEXT)")
+            .await
+            .unwrap();
+        adapter
+            .execute_query("INSERT INTO t VALUES (1, 'a', 'x'), (2, 'b', 'y')")
+            .await
+            .unwrap();
+        let tx = TransactionManager {
+            transactions: Mutex::new(HashMap::new()),
+        };
+        let map = |pairs: &[(&str, Option<&str>)]| -> HashMap<String, Option<String>> {
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.map(str::to_string)))
+                .collect()
+        };
+        let changes = vec![
+            RowChange::Update {
+                ctid: r#"{"id":1}"#.to_string(),
+                updates: map(&[("note", Some("it's")), ("name", None)]),
+            },
+            RowChange::Insert {
+                values: map(&[("id", Some("3")), ("name", Some("c"))]),
+            },
+            RowChange::Delete {
+                ctid: r#"{"id":2}"#.to_string(),
+            },
+        ];
+        let preview = tx
+            .preview_row_changes(
+                DatabaseKind::Sqlite,
+                &url,
+                None,
+                &pool,
+                "main",
+                "t",
+                &changes,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            preview.iter().map(|s| s.sql.as_str()).collect::<Vec<_>>(),
+            vec![
+                r#"UPDATE "main"."t" SET "name" = NULL, "note" = 'it''s' WHERE "id" = 1"#,
+                r#"INSERT INTO "main"."t" ("id", "name") VALUES ('3', 'c')"#,
+                r#"DELETE FROM "main"."t" WHERE "id" = 2"#,
+            ]
+        );
+        assert!(tx.list_active_ids().await.is_empty());
+
+        let id = tx
+            .begin(DatabaseKind::Sqlite, &url, None, &pool)
+            .await
+            .unwrap();
+        let outcome = tx.apply_row_changes(&id, "main", "t", &changes).await;
+        assert_eq!(outcome.failed, None);
+        assert_eq!(outcome.applied, 3);
+        tx.commit(&id).await.unwrap();
+        let rows = adapter
+            .execute_query("SELECT id, name, note FROM t ORDER BY id")
+            .await
+            .unwrap()
+            .rows;
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["note"], "it's");
+        assert_eq!(rows[1]["name"], "c");
+
+        let failing = vec![
+            RowChange::Update {
+                ctid: r#"{"id":1}"#.to_string(),
+                updates: map(&[("name", Some("z"))]),
+            },
+            RowChange::Delete {
+                ctid: r#"{"id":99}"#.to_string(),
+            },
+        ];
+        let id = tx
+            .begin(DatabaseKind::Sqlite, &url, None, &pool)
+            .await
+            .unwrap();
+        let outcome = tx.apply_row_changes(&id, "main", "t", &failing).await;
+        assert_eq!(outcome.failed, Some(1));
+        assert_eq!(outcome.applied, 1);
+        tx.rollback(&id).await.unwrap();
+        let rows = adapter
+            .execute_query("SELECT name FROM t WHERE id = 1")
+            .await
+            .unwrap()
+            .rows;
+        assert_eq!(rows[0]["name"], serde_json::Value::Null);
         let _ = std::fs::remove_file(&dir);
     }
 
@@ -1535,11 +1929,24 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn mysql_transaction_roundtrip() {
+        let Ok(url) = std::env::var("L8DB_SMOKE_MYSQL_URL") else {
+            eprintln!("übersprungen: L8DB_SMOKE_MYSQL_URL fehlt");
+            return;
+        };
+        let schema = std::env::var("L8DB_SMOKE_MYSQL_SCHEMA").unwrap_or_else(|_| {
+            url::Url::parse(&url)
+                .ok()
+                .map(|u| u.path().trim_start_matches('/').to_string())
+                .filter(|db| !db.is_empty())
+                .unwrap_or_else(|| "test".into())
+        });
         generic_roundtrip(
             DatabaseKind::Mysql,
             "L8DB_SMOKE_MYSQL_URL",
-            "test",
-            "CREATE TABLE l8_tx_test (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50))",
+            &schema,
+            &format!(
+                "CREATE TABLE `{schema}`.l8_tx_test (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50))"
+            ),
         )
         .await;
     }
@@ -1634,6 +2041,135 @@ mod tests {
         for sql in ["DROP TABLE l8_tx_bigkey", "DROP TABLE l8_tx_binkey"] {
             adapter.execute_query(sql).await.unwrap();
         }
+    }
+
+    async fn binary_cells_survive_row_edits(
+        kind: DatabaseKind,
+        var: &str,
+        schema_sql: &str,
+        binary_type: &str,
+        hex: &str,
+    ) {
+        let Ok(url) = std::env::var(var) else {
+            eprintln!("übersprungen: {var} fehlt");
+            return;
+        };
+        let pool = super::super::pool::create_pool_state();
+        let adapter =
+            super::super::create_adapter_from_string(kind, &url, None, pool.clone()).unwrap();
+        let schema = adapter.execute_query(schema_sql).await.unwrap().rows[0]["s"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let schema = schema.as_str();
+        let _ = adapter.execute_query("DROP TABLE fixr_bin").await;
+        adapter
+            .execute_query(&format!(
+                "CREATE TABLE fixr_bin (id INT PRIMARY KEY, data {binary_type}, note VARCHAR(20))"
+            ))
+            .await
+            .unwrap();
+        let big: Vec<u8> = (0..12000u32).map(|i| (i % 251) as u8).collect();
+        let original = format!("\\x005c7841ff{}", &super::super::hex_blob(&big)[2..]);
+        let insert = binary_lit(kind, &original).unwrap_or_else(|| format!("'{original}'::bytea"));
+        adapter
+            .execute_query(&format!("INSERT INTO fixr_bin VALUES (1, {insert}, 'a')"))
+            .await
+            .unwrap();
+        let stored = |id: i32| {
+            let sql = format!(
+                "SELECT {} AS h FROM fixr_bin WHERE id = {id}",
+                hex.replace("{c}", "data")
+            );
+            let adapter = &adapter;
+            async move {
+                let rows = adapter.execute_query(&sql).await.unwrap().rows;
+                format!("\\x{}", rows[0]["h"].as_str().unwrap().to_ascii_lowercase())
+            }
+        };
+        assert_eq!(stored(1).await, original);
+        let rows = adapter
+            .fetch_rows(
+                schema,
+                "fixr_bin",
+                None,
+                10,
+                0,
+                Some("id"),
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap()
+            .rows;
+        let shown = rows[0]["data"].as_str().unwrap().to_string();
+        let expected = match kind {
+            DatabaseKind::Mssql | DatabaseKind::Mysql => {
+                format!("0x{}", original[2..].to_ascii_uppercase())
+            }
+            _ => original.clone(),
+        };
+        assert_eq!(shown, expected, "{kind:?} zeigt den Binärwert anders an");
+        let mut ctid = rows[0]["__ctid__"].as_str().unwrap().to_string();
+        let tx = create_transaction_state();
+        for updates in [
+            HashMap::from([("note".to_string(), Some("b".to_string()))]),
+            HashMap::from([("data".to_string(), Some(shown.clone()))]),
+        ] {
+            let id = tx.begin(kind, &url, None, &pool).await.unwrap();
+            ctid = tx
+                .update_row(&id, schema, "fixr_bin", &ctid, &updates)
+                .await
+                .unwrap();
+            tx.commit(&id).await.unwrap();
+            assert_eq!(stored(1).await, original, "{kind:?}");
+        }
+        let id = tx.begin(kind, &url, None, &pool).await.unwrap();
+        let values = HashMap::from([
+            ("id".to_string(), Some("2".to_string())),
+            ("data".to_string(), Some(shown.clone())),
+        ]);
+        tx.insert_row(&id, schema, "fixr_bin", &values)
+            .await
+            .unwrap();
+        let updates = HashMap::from([("data".to_string(), Some("\\x0102ff".to_string()))]);
+        tx.update_row(&id, schema, "fixr_bin", &ctid, &updates)
+            .await
+            .unwrap();
+        tx.commit(&id).await.unwrap();
+        assert_eq!(stored(2).await, original, "{kind:?}");
+        assert_eq!(stored(1).await, "\\x0102ff", "{kind:?}");
+        adapter.execute_query("DROP TABLE fixr_bin").await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn binary_cells_survive_row_edits_on_labs() {
+        binary_cells_survive_row_edits(
+            DatabaseKind::Mysql,
+            "L8DB_SMOKE_MYSQL_URL",
+            "SELECT DATABASE() AS s",
+            "LONGBLOB",
+            "HEX({c})",
+        )
+        .await;
+        binary_cells_survive_row_edits(
+            DatabaseKind::Mssql,
+            "L8DB_SMOKE_MSSQL_URL",
+            "SELECT SCHEMA_NAME() AS s",
+            "VARBINARY(MAX)",
+            "CONVERT(VARCHAR(MAX), {c}, 2)",
+        )
+        .await;
+        binary_cells_survive_row_edits(
+            DatabaseKind::Postgres,
+            "L8DB_E2E_PG_URL",
+            "SELECT current_schema() AS s",
+            "BYTEA",
+            "encode({c}, 'hex')",
+        )
+        .await;
     }
 
     #[tokio::test]

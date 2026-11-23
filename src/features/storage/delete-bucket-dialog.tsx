@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { s3DeleteBucket } from "@/lib/db";
@@ -45,6 +46,7 @@ export function DeleteBucketDialog({
           new CustomEvent("l8db:request-close-tab", { detail: `bucket:${bucket}` }),
         );
         await queryClient.invalidateQueries({ queryKey: ["s3", connection?.id] });
+        toast.success(`Bucket „${bucket}“ gelöscht`);
       }}
     >
       <label className="flex items-center justify-between gap-3 text-sm">

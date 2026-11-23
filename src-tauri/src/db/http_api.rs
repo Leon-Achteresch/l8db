@@ -47,12 +47,41 @@ fn describe(error: &reqwest::Error) -> String {
     text
 }
 
+fn unreachable(label: &str, error: &reqwest::Error) -> String {
+    let detail = describe(error);
+    let lower = detail.to_ascii_lowercase();
+    if [
+        "record overflow",
+        "wrong version number",
+        "invalidcontenttype",
+        "corrupt message",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+    {
+        return format!(
+            "{label} nicht erreichbar: Der Server antwortet ohne TLS. Mit http:// verbinden."
+        );
+    }
+    format!("{label} nicht erreichbar: {detail}")
+}
+
 pub(crate) async fn send(label: &str, request: reqwest::RequestBuilder) -> Result<Reply, String> {
-    super::timed(async {
-        let response = request
-            .send()
+    let (client, request) = request.build_split();
+    let request = request.map_err(|e| unreachable(label, &e))?;
+    let url = request.url();
+    let target = format!(
+        "{}://{}{}",
+        url.scheme(),
+        url.host_str().unwrap_or_default(),
+        url.port().map(|p| format!(":{p}")).unwrap_or_default()
+    );
+    let deadline = super::execution::query_duration();
+    tokio::time::timeout(deadline, async {
+        let response = client
+            .execute(request)
             .await
-            .map_err(|e| format!("{label} nicht erreichbar: {}", describe(&e)))?;
+            .map_err(|e| unreachable(label, &e))?;
         let status = response.status().as_u16();
         let headers = response.headers().clone();
         let body = response
@@ -66,6 +95,12 @@ pub(crate) async fn send(label: &str, request: reqwest::RequestBuilder) -> Resul
         })
     })
     .await
+    .map_err(|_| {
+        format!(
+            "{label}: keine Antwort von {target} nach {} Sekunden. Der Serverabschluss ist nicht bestätigt.",
+            deadline.as_secs()
+        )
+    })?
 }
 
 pub(crate) fn decode(value: &str) -> String {
@@ -220,6 +255,13 @@ pub(crate) mod mock {
     where
         F: Fn(&Request) -> (u16, String) + Send + Sync + 'static,
     {
+        serve_with_headers("", handler).await
+    }
+
+    pub async fn serve_with_headers<F>(headers: &'static str, handler: F) -> (String, Log)
+    where
+        F: Fn(&Request) -> (u16, String) + Send + Sync + 'static,
+    {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let log: Log = Default::default();
@@ -280,7 +322,7 @@ pub(crate) mod mock {
                     let (status, body) = handler(&request);
                     log.lock().unwrap().push(request);
                     let response = format!(
-                        "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                        "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n{headers}\r\n{body}",
                         body.len()
                     );
                     let _ = socket.write_all(response.as_bytes()).await;
@@ -289,5 +331,62 @@ pub(crate) mod mock {
             }
         });
         (format!("127.0.0.1:{}", addr.port()), log)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[tokio::test]
+    async fn silent_servers_time_out_with_their_address() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (_socket, _) = listener.accept().await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        });
+        let started = std::time::Instant::now();
+        let error = crate::db::execution::run(
+            Some(crate::db::execution::ExecutionOptions {
+                query_timeout: Some(5),
+                ..Default::default()
+            }),
+            false,
+            super::send(
+                "libSQL",
+                super::client(false).get(format!("http://127.0.0.1:{port}/x")),
+            ),
+        )
+        .await
+        .err()
+        .unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(7));
+        assert_eq!(
+            error,
+            format!("libSQL: keine Antwort von http://127.0.0.1:{port} nach 5 Sekunden. Der Serverabschluss ist nicht bestätigt.")
+        );
+    }
+
+    #[tokio::test]
+    async fn https_against_plain_http_names_the_cause() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buffer = [0u8; 1024];
+            let _ = socket.read(&mut buffer).await;
+            let _ = socket
+                .write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n")
+                .await;
+        });
+        let request = super::client(false).get(format!("https://127.0.0.1:{port}/"));
+        let Err(error) = super::send("Elasticsearch", request).await else {
+            panic!("HTTPS gegen HTTP darf nicht gelingen");
+        };
+        assert_eq!(
+            error,
+            "Elasticsearch nicht erreichbar: Der Server antwortet ohne TLS. Mit http:// verbinden."
+        );
     }
 }

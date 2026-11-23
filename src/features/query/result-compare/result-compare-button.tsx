@@ -1,24 +1,17 @@
 import { GitCompareArrowsIcon } from "lucide-react";
-import { NewBadge } from "@/components/new-badge";
-import { Button } from "@/components/ui/button";
+import { IconMenuCheckboxItem } from "@/components/icon-menu/icon-menu-checkbox-item";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
 export function ResultCompareButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  const feature = useNewFeatureVisibility<HTMLButtonElement>("query.result.compare");
+  const feature = useNewFeatureVisibility<HTMLDivElement>("query.result.compare");
   return (
-    <Button
+    <IconMenuCheckboxItem
       data-feature="query.result.compare"
       ref={feature.ref}
-      size="sm"
-      variant={open ? "secondary" : "ghost"}
-      className="h-7 gap-1.5 px-2 text-xs"
-      aria-pressed={open}
-      title={open ? "Zurück zum Ergebnis" : "Ergebnis mit dem vorherigen Lauf vergleichen"}
-      onClick={onToggle}
-    >
-      <GitCompareArrowsIcon className="size-3" />
-      <span className="hidden sm:inline">Vergleich</span>
-      {feature.isNew && <NewBadge />}
-    </Button>
+      icon={<GitCompareArrowsIcon />}
+      label={open ? "Vergleich schließen" : "Mit vorherigem Lauf vergleichen"}
+      checked={open}
+      onCheckedChange={onToggle}
+    />
   );
 }

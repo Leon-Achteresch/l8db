@@ -1,13 +1,15 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { CopyIcon, EraserIcon } from "lucide-react";
-import { type ReactNode, useLayoutEffect, useRef } from "react";
+import { type ReactNode, useLayoutEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { copyText } from "@/lib/clipboard";
 import {
+  clearServerOutputDatabase,
   MAX_SERVER_OUTPUT_ENTRIES,
   type ServerOutputEntry,
+  serverOutputForDatabase,
   useServerOutputStore,
 } from "@/lib/server-output";
 import { cn } from "@/lib/utils";
@@ -15,6 +17,7 @@ import { showCopiedMessage } from "@/lib/workspace-status";
 
 interface ServerOutputPanelProps {
   connectionId: string;
+  database?: string | null;
   enabled: boolean;
   busy: boolean;
   onToggle: (enabled: boolean) => void;
@@ -43,13 +46,14 @@ function asText(entries: ServerOutputEntry[]): string {
 
 export function ServerOutputPanel({
   connectionId,
+  database,
   enabled,
   busy,
   onToggle,
   tabs,
 }: ServerOutputPanelProps) {
-  const rows = useServerOutputStore((state) => state.entries[connectionId]) ?? NO_ENTRIES;
-  const clear = useServerOutputStore((state) => state.clear);
+  const allRows = useServerOutputStore((state) => state.entries[connectionId]) ?? NO_ENTRIES;
+  const rows = useMemo(() => serverOutputForDatabase(allRows, database), [allRows, database]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -104,7 +108,7 @@ export function ServerOutputPanel({
           aria-label="Ausgabe leeren"
           title="Leeren"
           disabled={rows.length === 0}
-          onClick={() => clear(connectionId)}
+          onClick={() => clearServerOutputDatabase(connectionId, database)}
         >
           <EraserIcon className="size-3.5" />
         </Button>

@@ -5,6 +5,7 @@ import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { useAiEnabled } from "@/lib/ai/access";
 import { useAiStore } from "@/lib/ai/store";
 import {
   compileDashboardStylesheet,
@@ -76,6 +77,7 @@ export function DashboardDesignPanel({
     }
   };
 
+  const aiOn = useAiEnabled();
   const askAi = async () => {
     if (!checkCss()) return;
     const current = useDashboardsStore.getState().dashboards.find((d) => d.id === dashboardId);
@@ -284,26 +286,28 @@ export function DashboardDesignPanel({
             </div>
           </details>
         </div>
-        <div className="space-y-2 border-t pt-3">
-          <label htmlFor="dashboard-design-request" className="text-xs font-medium">
-            Mit KI gestalten
-          </label>
-          <Input
-            id="dashboard-design-request"
-            value={request}
-            disabled={busy}
-            onChange={(event) => setRequest(event.target.value)}
-            placeholder="Dunkel, violette Akzente, große Kennzahlen…"
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={busy || !request.trim()}
-            onClick={() => void askAi()}
-          >
-            <SparklesIcon /> {busy ? "KI wird geöffnet…" : "Design mit KI ändern"}
-          </Button>
-        </div>
+        {aiOn && (
+          <div className="space-y-2 border-t pt-3">
+            <label htmlFor="dashboard-design-request" className="text-xs font-medium">
+              Mit KI gestalten
+            </label>
+            <Input
+              id="dashboard-design-request"
+              value={request}
+              disabled={busy}
+              onChange={(event) => setRequest(event.target.value)}
+              placeholder="Dunkel, violette Akzente, große Kennzahlen…"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy || !request.trim()}
+              onClick={() => void askAi()}
+            >
+              <SparklesIcon /> {busy ? "KI wird geöffnet…" : "Design mit KI ändern"}
+            </Button>
+          </div>
+        )}
         <p className="text-[11px] text-muted-foreground">
           Strg/⌘ + Umschalt + D öffnet den Editor und schaltet eigenes CSS vorübergehend aus. So
           bleibt das Dashboard auch nach ungünstigen CSS-Regeln erreichbar.

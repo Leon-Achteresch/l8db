@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/select";
 import { FilterOperatorSelect } from "@/features/filters/filter-operator-select";
 import { FilterValueInput } from "@/features/filters/filter-value-input";
+import { ElasticExactFilterHint } from "@/features/table/elastic-exact-filter-hint";
 import type { DetailedColumnInfo } from "@/lib/db";
 import { useActiveCapabilities } from "@/lib/db-selection";
 import { filterSupportsOr, isDateFilterType, operatorNeedsValue } from "@/lib/sql-filter";
@@ -39,10 +40,8 @@ export function FilterConditionRow({
   apply: () => void;
 }) {
   const { terms } = useActiveCapabilities();
-  const date = isDateFilterType(
-    columnDetails?.find((column) => column.name === condition.column)?.data_type ??
-      condition.dataType,
-  );
+  const column = columnDetails?.find((column) => column.name === condition.column);
+  const date = isDateFilterType(column?.data_type ?? condition.dataType);
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
       <div className="shrink-0 text-xs text-muted-foreground sm:w-16 sm:text-right">
@@ -124,6 +123,7 @@ export function FilterConditionRow({
       >
         <Trash2Icon />
       </Button>
+      <ElasticExactFilterHint column={column} kind={kind} operator={condition.operator} />
     </div>
   );
 }

@@ -83,8 +83,7 @@ export function Onboarding() {
     {
       id: "tables",
       title: "Wie sollen deine Tabellen aussehen?",
-      subtitle:
-        "Stil, Spaltenbreite und ob Werte nach Datentyp eingefärbt werden. Kein Bock? Überspringen behält die Standards.",
+      subtitle: "Stil, Spaltenbreite und ob Werte nach Datentyp eingefärbt werden.",
       skippable: true,
       content: (
         <div className="@container mt-8 space-y-3">
@@ -304,7 +303,7 @@ export function Onboarding() {
                     <div className="flex gap-2">
                       {"skippable" in current && (
                         <Button variant="ghost" onClick={skipAppearance}>
-                          Überspringen
+                          Standard behalten
                         </Button>
                       )}
                       {step > 1 && (

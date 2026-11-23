@@ -121,6 +121,36 @@ describe("SQL Server batches", () => {
     ]);
   });
 
+  test("variables and control flow keep their batch together, plain statements stay separate", () => {
+    expect(
+      texts("DECLARE @x INT = 5; SELECT @x AS v;\nGO\nSELECT 1; SELECT @@VERSION;", "mssql"),
+    ).toEqual(["DECLARE @x INT = 5; SELECT @x AS v;", "SELECT 1;", "SELECT @@VERSION;"]);
+    expect(
+      texts("SELECT 1; CREATE VIEW v AS SELECT 1; DECLARE @x INT; SELECT @x\nGO 2", "mssql"),
+    ).toEqual([
+      "SELECT 1;",
+      "CREATE VIEW v AS SELECT 1;",
+      "DECLARE @x INT; SELECT @x",
+      "SELECT 1;",
+      "CREATE VIEW v AS SELECT 1;",
+      "DECLARE @x INT; SELECT @x",
+    ]);
+    expect(
+      texts(
+        "BEGIN TRAN; INSERT INTO t VALUES (1); DROP TABLE IF EXISTS x; SELECT 'DECLARE @y';",
+        "mssql",
+      ),
+    ).toEqual([
+      "BEGIN TRAN;",
+      "INSERT INTO t VALUES (1);",
+      "DROP TABLE IF EXISTS x;",
+      "SELECT 'DECLARE @y';",
+    ]);
+    expect(
+      texts("IF 1 = 1 BEGIN SELECT 1; SELECT 2; END; SELECT TRY_CAST('1' AS INT);", "mssql"),
+    ).toEqual(["IF 1 = 1 BEGIN SELECT 1; SELECT 2; END; SELECT TRY_CAST('1' AS INT);"]);
+  });
+
   test("GO inside strings, comments, identifiers or longer words is not a separator", () => {
     const sql = "SELECT 'a\nGO\nb', [x\nGO\ny];\n/*\nGO\n*/ SELECT GOTO_x;\nSELECT 1 GO";
     expect(texts(sql, "mssql")).toEqual([
@@ -150,5 +180,30 @@ describe("PostgreSQL SQL-standard bodies", () => {
       "CREATE FUNCTION f() RETURNS trigger AS $$ BEGIN RETURN NEW; END $$ LANGUAGE plpgsql;";
     const trig = "CREATE TRIGGER t BEFORE INSERT ON a FOR EACH ROW EXECUTE FUNCTION f();";
     expect(texts(`${fn}\n${trig}\nSELECT 1;`, "postgres")).toEqual([fn, trig, "SELECT 1;"]);
+  });
+});
+
+describe("Elasticsearch console requests", () => {
+  test("every request line starts a statement without semicolons", () => {
+    const sql =
+      '# Suche\nGET a/_search\n{\n  "query": { "match_all": {} }\n}\n\nGET b/_search\nPOST logs/_doc;\n{"a": 1};\n';
+    const result = splitSqlStatements(sql, "elasticsearch");
+    expect(result.statements.map((statement) => statement.text)).toEqual([
+      'GET a/_search\n{\n  "query": { "match_all": {} }\n}',
+      "GET b/_search",
+      'POST logs/_doc;\n{"a": 1}',
+    ]);
+    for (const statement of result.statements)
+      expect(sql.slice(statement.start, statement.end)).toBe(statement.text);
+    expect(statementAtOffset(sql, sql.indexOf("b/_search"), "elasticsearch")?.text).toBe(
+      "GET b/_search",
+    );
+  });
+
+  test("Elasticsearch SQL keeps semicolon splitting", () => {
+    expect(texts("SELECT 1;\nDELETE FROM logs;", "elasticsearch")).toEqual([
+      "SELECT 1;",
+      "DELETE FROM logs;",
+    ]);
   });
 });

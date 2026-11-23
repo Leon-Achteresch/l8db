@@ -18,7 +18,7 @@ import {
   startLivePolling,
   useLiveMonitorStore,
 } from "@/lib/live-monitor";
-import { useLocksQuery, useSessionsQuery } from "@/lib/queries";
+import { isPermissionDenied, useLocksQuery, useSessionsQuery } from "@/lib/queries";
 import { sessionActionMessage, sessionIdLabel } from "@/lib/session-actions";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
@@ -60,6 +60,7 @@ export function useLiveMonitor() {
   const [range, setRange] = useTabState<LiveRange>(tabStateKey(scope, "liveRange"), 30);
   const pollNow = useRef<(() => void) | null>(null);
   const [metricsError, setMetricsError] = useState<string | null>(null);
+  const [deniedKey, setDeniedKey] = useState<string | null>(null);
   const [selectedPid, setSelectedPid] = useTabState<number | null>(
     tabStateKey(scope, "selectedPid"),
     null,
@@ -75,12 +76,13 @@ export function useLiveMonitor() {
   const sessionsQuery = useSessionsQuery(pollInterval);
   const locksQuery = useLocksQuery(pollInterval);
   const key = connection ? liveKey(connection.id, database) : null;
+  const metricsDenied = key !== null && deniedKey === key;
   const series = useLiveMonitorStore();
   const ownSeries = series.key === key;
   const live = Boolean(connection && capabilities.live_monitor);
 
   useEffect(() => {
-    if (!connection || !key || !capabilities.live_monitor || paused) return;
+    if (!connection || !key || !capabilities.live_monitor || paused || metricsDenied) return;
     let cancelled = false;
     let inFlight = false;
     const poll = async () => {
@@ -99,7 +101,10 @@ export function useLiveMonitor() {
           useLiveMonitorStore.getState().push(key, { at: Date.now(), metrics }, includeDetails);
           setMetricsError(null);
         } catch (error) {
-          if (!cancelled) setMetricsError(typeof error === "string" ? error : String(error));
+          if (!cancelled) {
+            setMetricsError(typeof error === "string" ? error : String(error));
+            if (isPermissionDenied(error)) setDeniedKey(key);
+          }
         }
         if (!cancelled) setNow(Date.now());
       } finally {
@@ -117,7 +122,7 @@ export function useLiveMonitor() {
       pollNow.current = null;
       stop();
     };
-  }, [capabilities.live_monitor, connection, database, interval, key, paused]);
+  }, [capabilities.live_monitor, connection, database, interval, key, paused, metricsDenied]);
 
   useEffect(() => {
     if (paused || live) return;
@@ -129,6 +134,7 @@ export function useLiveMonitor() {
 
   const refresh = useCallback(() => {
     setNow(Date.now());
+    setDeniedKey(null);
     pollNow.current?.();
     void queryClient.invalidateQueries({ queryKey: ["sessions"] });
     void queryClient.invalidateQueries({ queryKey: ["locks"] });
@@ -232,6 +238,9 @@ export function useLiveMonitor() {
     setInterval: setIntervalMs,
     paused,
     setPaused,
+    stalled:
+      !paused &&
+      (metricsDenied || (sessionsQuery.status === "error" && sessionsQuery.data === undefined)),
     range,
     setRange,
     refresh,

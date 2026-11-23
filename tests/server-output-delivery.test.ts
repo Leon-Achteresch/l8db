@@ -165,4 +165,39 @@ describe("server output delivery", () => {
     expect(watched.fired).toBe(11);
     expect(watched.p95).toBeLessThan(150);
   });
+
+  test("crossing the retention cap keeps the newest entries without mutating snapshots", () => {
+    const store = useServerOutputStore.getState();
+    store.append(
+      connectionId,
+      "main",
+      Array.from({ length: MAX_SERVER_OUTPUT_ENTRIES - 1 }, (_, index) => ({
+        level: "OUTPUT",
+        message: String(index),
+      })),
+    );
+    const previous = entries();
+    store.append("conn-other", null, [{ level: "OUTPUT", message: "foreign" }]);
+    const foreign = useServerOutputStore.getState().entries["conn-other"];
+    store.append(connectionId, "main", [
+      { level: "OUTPUT", message: "first new line" },
+      { level: "WARNING", message: "second new line", detail: "details" },
+    ]);
+    expect(previous).toHaveLength(MAX_SERVER_OUTPUT_ENTRIES - 1);
+    expect(previous[0]?.message).toBe("0");
+    expect(entries()).toHaveLength(MAX_SERVER_OUTPUT_ENTRIES);
+    expect(entries()[0]).toBe(previous[1]);
+    expect(
+      entries()
+        .slice(-2)
+        .map(({ message }) => message),
+    ).toEqual(["first new line", "second new line"]);
+    expect(entries().at(-1)).toMatchObject({
+      database: "main",
+      level: "WARNING",
+      detail: "details",
+    });
+    expect(useServerOutputStore.getState().entries["conn-other"]).toBe(foreign);
+    store.clear("conn-other");
+  });
 });

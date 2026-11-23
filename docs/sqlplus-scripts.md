@@ -1,6 +1,6 @@
 # SQL*Plus scripts
 
-"Skript mit Einzelergebnissen" (and running several Oracle statements at once) executes Oracle scripts with SQL*Plus semantics. The runner is `runSqlScript` in `src/lib/script-runner.ts`; commands are parsed in `src/lib/sql-statements/sqlplus.ts`, feedback and the transcript come from `src/lib/sqlplus-output.ts`, bind variables run through the Tauri command `execute_with_binds` (`src-tauri/src/db/oracle.rs`).
+"Alle Statements ausführen" (and running several Oracle statements at once) executes Oracle scripts with SQL*Plus semantics. The runner is `runSqlScript` in `src/lib/script-runner.ts`; commands are parsed in `src/lib/sql-statements/sqlplus.ts`, feedback and the transcript come from `src/lib/sqlplus-output.ts`, bind variables run through the Tauri command `execute_with_binds` (`src-tauri/src/db/oracle.rs`).
 
 ## Session and transactions
 
@@ -45,7 +45,7 @@ Display and buffer commands (`SET LINESIZE/PAGESIZE/FEEDBACK/ECHO/TERMOUT/…`, 
 - `&` inside comments is not substituted.
 - SPOOL writes l8db's transcript format, not SQL*Plus text reports.
 - Exit codes are shown as given, not modulo 256.
-- Other script paths behave differently: the MCP `script` tool runs one transaction with its own SQL*Plus subset (no `@`, `VARIABLE`, `SPOOL`, `ACCEPT`; combined `SET` lines and command abbreviations follow the editor), and `l8db query -f` skips SQL*Plus commands and stops at `EXIT`/`QUIT`.
+- Other script paths behave differently: the MCP `script` tool runs one transaction with its own SQL*Plus subset (no `@`, `VARIABLE`, `SPOOL`, `ACCEPT`; combined `SET` lines and command abbreviations follow the editor; instead of `sql` it takes `file`, an absolute path to a local `.sql` file of at most 4 MB, also after resolving links, valid UTF-8, checked statement by statement like `sql`, with errors that do not quote the file; Oracle PL/SQL units, meaning anonymous blocks and `CREATE … PROCEDURE/FUNCTION/PACKAGE/TRIGGER/TYPE BODY`, are checked by name: redacted columns, tables and schemas outside the shared ones (schema names come from the database's user list), blocked packages and row expansion inside function calls stay rejected, while the query-shape rules for `SELECT *`, alias column lists, whole-row output and unknown qualifiers apply to plain SQL), and `l8db query -f` skips SQL*Plus commands and stops at `EXIT`/`QUIT`.
 - Server messages of other families are collected per connection; queries of other tabs on the same connection that run at the same time can show up under a script statement.
 
 ## Tests

@@ -1,4 +1,9 @@
 import { expect, test } from "bun:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { HotkeyKbd } from "@/components/hotkey-kbd";
+import { IconButton } from "@/components/icon-button";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { HOTKEY_COMMANDS, useHotkeysStore } from "@/lib/hotkeys";
 import {
   eventHotkey,
@@ -80,4 +85,67 @@ test("shortcut hints: keydown and click paths stay cheap and bounded", async () 
     click: clickTiming,
   });
   store.reset();
+});
+
+test("hotkey tooltips: 500 toolbar buttons resolve no keys until a tooltip opens", async () => {
+  const ids = HOTKEY_COMMANDS.map((command) => command.id);
+  const buttons = Array.from({ length: 500 }, (_, index) =>
+    createElement(IconButton, {
+      key: index,
+      "aria-label": `Aktion ${index}`,
+      "data-hotkey": ids[index % ids.length],
+    }),
+  );
+  const toolbar = createElement(TooltipProvider, null, buttons);
+  const keys = Array.from({ length: 500 }, (_, index) =>
+    createElement(HotkeyKbd, { key: index, command: ids[index % ids.length] }),
+  );
+  const store = useHotkeysStore.getState();
+  store.setOverride("query.run", "Mod+Shift+R");
+  let reads = 0;
+  const realGetState = useHotkeysStore.getState;
+  useHotkeysStore.getState = () => {
+    reads++;
+    return realGetState();
+  };
+
+  const closed: number[] = [];
+  let markup = "";
+  for (let run = 0; run < 15; run++) {
+    const start = performance.now();
+    markup = renderToStaticMarkup(toolbar);
+    closed.push(performance.now() - start);
+  }
+  const closedReads = reads;
+
+  reads = 0;
+  const open: number[] = [];
+  let kbd = "";
+  for (let run = 0; run < 15; run++) {
+    const start = performance.now();
+    kbd = renderToStaticMarkup(createElement("div", null, keys));
+    open.push(performance.now() - start);
+  }
+  const openReads = reads;
+  useHotkeysStore.getState = realGetState;
+  store.resetAll();
+
+  const closedTiming = percentiles(closed);
+  const openTiming = percentiles(open);
+  expect(markup.match(/data-hotkey=/g)?.length).toBe(500);
+  expect(markup).not.toContain('data-slot="kbd"');
+  expect(closedReads).toBe(0);
+  expect(kbd.match(/data-slot="kbd-group"/g)?.length).toBe(500);
+  expect(openReads).toBe(15 * 500);
+  expect(closedTiming.p95Ms).toBeLessThan(150);
+  expect(openTiming.p95Ms).toBeLessThan(60);
+
+  await reportScenario("hotkey-tooltips", {
+    buttons: 500,
+    commands: ids.length,
+    closed: closedTiming,
+    open: openTiming,
+    storeReadsClosed: closedReads,
+    storeReadsOpenPerRender: openReads / 15,
+  });
 });

@@ -83,11 +83,13 @@ export function CopyMoveDialog({
       await queryClient.invalidateQueries({ queryKey: ["s3", connection?.id] });
       if (outcome.errors.length) {
         setError(
-          `${outcome.deleted} übertragen, ${outcome.errors.length} Fehler:\n${outcome.errors.slice(0, 5).join("\n")}`,
+          `${outcome.deleted} übertragen, ${outcome.errors.length} nicht übertragen:\n${outcome.errors.slice(0, 20).join("\n")}${outcome.errors.length > 20 ? `\n… und ${outcome.errors.length - 20} weitere` : ""}`,
         );
         return;
       }
-      toast.success(`${outcome.deleted} Objekt(e) ${request.move ? "verschoben" : "kopiert"}`);
+      toast.success(
+        `${outcome.deleted} ${outcome.deleted === 1 ? "Objekt" : "Objekte"} ${request.move ? "verschoben" : "kopiert"}`,
+      );
       onClose();
     } catch (e) {
       setError(errorText(e));
@@ -106,7 +108,9 @@ export function CopyMoveDialog({
               {request?.rows.length ?? 0} Einträge {verb.toLowerCase()}
             </DialogTitle>
             <DialogDescription>
-              Serverseitige Kopie (CopyObject). Ordner werden rekursiv übertragen.
+              {request?.move
+                ? "Kopiert auf dem Server und löscht danach die Originale. Ordner mit Inhalt."
+                : "Kopiert auf dem Server. Ordner mit Inhalt."}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-1.5">
@@ -129,7 +133,7 @@ export function CopyMoveDialog({
             <Input
               id="copy-target-prefix"
               value={destination}
-              placeholder="leer = Wurzel"
+              placeholder="leer = oberste Ebene"
               onChange={(event) => setDestination(event.target.value)}
             />
           </div>

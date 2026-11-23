@@ -1,3 +1,8 @@
+import {
+  type NumberDisplayOptions,
+  numberCellText,
+  RAW_NUMBER_DISPLAY,
+} from "@/lib/number-display";
 import { resultCellText } from "@/lib/result-grid";
 import { type TimestampOptions, timestampCellText } from "@/lib/timestamp-display";
 
@@ -11,6 +16,7 @@ export function resultColumnWidths(
   measure: (text: string) => number,
   content: boolean,
   timestamps: TimestampOptions,
+  numbers: NumberDisplayOptions = RAW_NUMBER_DISPLAY,
 ): Record<string, number> {
   const sampleSize = Math.min(
     RESULT_WIDTH_SAMPLE_ROWS,
@@ -28,7 +34,9 @@ export function resultColumnWidths(
             ? Array.isArray(value)
               ? "[…]"
               : "{…}"
-            : (timestampCellText(value, timestamps) ?? resultCellText(value));
+            : (numberCellText(value, numbers) ??
+              timestampCellText(value, timestamps) ??
+              resultCellText(value));
         width = Math.max(width, measure(text.slice(0, 256)) + 32);
       }
       return [column, Math.min(RESULT_WIDTH_MAX, Math.max(64, Math.ceil(width)))];

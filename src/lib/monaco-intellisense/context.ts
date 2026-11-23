@@ -6,7 +6,9 @@ import { type SavedConnection, useActiveConnection } from "@/lib/connections";
 import { listAllColumns } from "@/lib/db";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { monaco } from "@/lib/monaco";
+import { useCapabilities } from "@/lib/providers";
 import { useAllSchemaObjectsQuery, useSchemasQuery } from "@/lib/queries";
+import { editorMetadataEnabled } from "@/lib/queries/editor-metadata";
 import {
   EMPTY_REGISTRY,
   prepareCompletions,
@@ -101,7 +103,9 @@ export function useSqlIntellisenseSync(): void {
   const database = useActiveDatabase();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { data: objects } = useAllSchemaObjectsQuery();
+  const { query_language } = useCapabilities(connection?.kind);
+  const enabled = () => editorMetadataEnabled(connection, query_language === "sql");
+  const { data: objects } = useAllSchemaObjectsQuery(enabled);
   const { data: schemas } = useSchemasQuery();
   const { data: columns } = useQuery({
     queryKey: ["all-columns", connection?.id, database],
@@ -111,7 +115,7 @@ export function useSqlIntellisenseSync(): void {
         effectiveConnectionString(connection!),
         database ?? undefined,
       ),
-    enabled: Boolean(connection),
+    enabled,
     staleTime: 60_000,
   });
 

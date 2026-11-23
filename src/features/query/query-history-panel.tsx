@@ -18,10 +18,16 @@ import { HistoryEntryItem } from "@/features/query/query-history-panel/history-e
 import { SavedQueryItem } from "@/features/query/query-history-panel/saved-query-item";
 import { SavedQueriesExportDialog } from "@/features/query/saved-queries-export-dialog";
 import { SavedQueriesImportDialog } from "@/features/query/saved-queries-import-dialog";
+import { useConnectionsStore } from "@/lib/connections";
 import { createFreshElementScroll } from "@/lib/fresh-element-scroll";
 import { observeVirtualScrollRect } from "@/lib/observe-virtual-scroll-rect";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { useSavedQueriesStore } from "@/lib/saved-queries";
+import {
+  matchesSavedQuerySearch,
+  savedQueryConnectionNames,
+  savedQueryOriginInfo,
+} from "@/lib/saved-query-origin";
 import { measureVirtualItem } from "@/lib/virtual-item-measurement";
 
 interface QueryHistoryPanelProps {
@@ -42,6 +48,8 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
   const removeEntry = useQueryHistoryStore((state) => state.removeEntry);
   const clearForConnection = useQueryHistoryStore((state) => state.clearForConnection);
   const savedQueries = useSavedQueriesStore((state) => state.queries);
+  const connections = useConnectionsStore((state) => state.connections);
+  const originNames = useMemo(() => savedQueryConnectionNames(connections), [connections]);
   const deleteQuery = useSavedQueriesStore((state) => state.deleteQuery);
   const limit = useQueryHistoryStore((state) => state.retentionLimit);
   const restore = useQueryHistoryStore((state) => state.restore);
@@ -87,11 +95,8 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
 
   const saved = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return savedQueries.filter(
-      (item) =>
-        !query || item.sql.toLowerCase().includes(query) || item.name.toLowerCase().includes(query),
-    );
-  }, [savedQueries, search]);
+    return savedQueries.filter((item) => matchesSavedQuerySearch(item, query, originNames));
+  }, [savedQueries, search, originNames]);
 
   const visibleEntries = tab === "history" ? history : saved;
   const scrollToFn = useMemo(() => createFreshElementScroll<HTMLDivElement, HTMLDivElement>(), []);
@@ -240,6 +245,7 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
                 ) : (
                   <SavedQueryItem
                     entry={saved[virtualRow.index]}
+                    originInfo={savedQueryOriginInfo(saved[virtualRow.index].origin, originNames)}
                     onLoad={onLoad}
                     onDelete={undoableDelete}
                     onRename={renameSaved}

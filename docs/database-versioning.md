@@ -41,6 +41,12 @@ Der Cache liegt lokal im Git-Common-Directory unter `l8db-drift-cache.json` (hö
 
 **Ausgeschlossene Objekte** (Symbol im Kopf der Änderungsliste) pflegt Muster in `database/ignore.json`, eines pro Zeile, optional mit Typ: `view:V_EXP_*`, `TMP_?`. Passende Objekte werden weder gelesen noch zur Aufnahme vorgeschlagen. Ist die Datei ungültig, prüft l8db ohne Ausschlüsse und zeigt den Fehler im Popover. Bereits verwaltete Objekte bleiben versioniert. Die Datei wird wie jede andere Änderung committet und gilt damit für das Team.
 
+## Git Blame im Editor
+
+Ist ein Repository geöffnet, zeigen die Editoren für Funktionen, Prozeduren und Packages (Spec und Body getrennt) wie VS Code am Ende der Cursorzeile, wer sie zuletzt geändert hat: `Commit-Betreff, Autor (vor 3 Tagen)`. Der Hover nennt E-Mail, Datum und Kurz-Hash. Gilt nur für Objekte aus `database/project.json` derselben Datenbankfamilie (Schema und Name exakt). Grundlage ist `git blame` der Datei im Arbeitsbaum; lokal geänderte Zeilen heißen **Noch nicht committet**.
+
+Der Editor zeigt die Definition aus der Datenbank, nicht die Datei. Die Zeilen werden deshalb an eindeutigen Zeilen verankert und dazwischen per Zeilendiff zugeordnet; Zeilenenden und Leerzeichen am Zeilenende zählen nicht. Zeilen ohne Gegenstück in der Datei heißen **Weicht vom Repository ab**, auch während der Bearbeitung. Pro Objekt laufen höchstens ein `git blame` und ein Lesen von `project.json` (30 Sekunden zwischengespeichert, ohne Polling). Gemessen auf macOS arm64 (Apple M3, 16 GB, Bun 1.4.3): 40.000 Zeilen werden in rund 7 ms geparst und in höchstens 11 ms zugeordnet (`tests/perf-versioning-blame.test.ts`); im Browser (Chromium, 20.000 Zeilen) erscheint die Annotation nach einem Zeilenwechsel im Median nach 116 ms, davon 80 ms gewollte Verzögerung (`tests/git-blame-browser.test.ts`). Windows, Linux und gedrosselte CPU sind nicht gemessen.
+
 ## Branches und Swimlanes
 
 **Branches** zeigt die letzten 120 Commits aller lokalen und bereits abgerufenen Remote-Branches als Swimlanes mit Verzweigungen und Merge-Verbindungen. Branches können gewechselt und von einer gewählten lokalen Basis angelegt werden. Ein echter Git-Merge übernimmt den Quell-Branch in den aktiven Branch. Er verlangt einen sauberen Arbeitsbaum und bricht bei Konflikten ab; danach bleibt der vorherige Stand erhalten. Der vorhandene Drei-Wege-Dateieditor dient zur gezielten Konfliktauflösung. Ein Merge darf bestehende Release-Manifeste aus der gemeinsamen Basis nicht verändern oder entfernen.

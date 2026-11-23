@@ -1,4 +1,5 @@
 import { XIcon } from "lucide-react";
+import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { s3CancelTransfer } from "@/lib/db";
 import { transferDetail, transferPercent, useTransfers } from "@/lib/storage/transfers";
@@ -23,7 +24,11 @@ export function TransferProgress({ bucket }: { bucket: string }) {
             type="button"
             aria-label="Übertragung abbrechen"
             className="text-muted-foreground hover:text-foreground"
-            onClick={() => void s3CancelTransfer(transfer.id)}
+            onClick={() =>
+              void s3CancelTransfer(transfer.id).then((cancelled) =>
+                cancelled ? toast.info("Übertragung abgebrochen") : undefined,
+              )
+            }
           >
             <XIcon className="size-3.5" />
           </button>

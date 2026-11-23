@@ -6,7 +6,9 @@ import { PivotTable } from "../src/features/dashboard/charts/pivot-table";
 import {
   applyCrossFilters,
   type CrossFilter,
+  comparisonRange,
   crossField,
+  type DashboardVariable,
   type Dataset,
   DEFAULT_OPTIONS,
   DIM_KEY,
@@ -83,6 +85,58 @@ test("cross filters over 60 widgets only rebuild the affected queries", async ()
   expect(changed).toBe(40);
   expect(unchanged).toBe(20);
   expect(timing.p95Ms).toBeLessThan(25);
+});
+
+test("column filters with 500 values each and a custom range only touch matching widgets", async () => {
+  const widgets = Array.from({ length: 60 }, (_, index) =>
+    index < 20
+      ? dataset("orders", `col${index}`)
+      : index < 40
+        ? dataset("order_items", `col${index}`, true)
+        : dataset(`other_${index}`, `col${index}`),
+  );
+  for (const widget of widgets) widget.simple.dateColumn = "created_at";
+  const values = Array.from({ length: 500 }, (_, i) => `Kunde ${i}`);
+  const variables: DashboardVariable[] = ["kunde", "art", "region", "kanal", "lager", "team"].map(
+    (name, i) => ({
+      id: name,
+      name,
+      label: name,
+      type: "select",
+      defaultValue: "",
+      multiple: true,
+      column: { schema: "public", table: i < 3 ? "orders" : "nowhere", column: name },
+    }),
+  );
+  const scope = {
+    variables,
+    values: Object.fromEntries(variables.map((v) => [v.name, JSON.stringify(values)])),
+  };
+  const period = "2026-01-01..2026-03-31" as const;
+  let filtered = 0;
+  let longest = 0;
+  const timing = await measureScenario(() => {
+    filtered = 0;
+    longest = 0;
+    for (const widget of widgets) {
+      const sql = datasetSql(widget, "oracle", period, scope);
+      datasetTrendSql(widget, "oracle", period, scope);
+      comparisonRange(period, "previous");
+      if (sql.includes(`"kunde" IN (`)) filtered++;
+      longest = Math.max(longest, sql.length);
+    }
+  }, 21);
+  await reportScenario("dashboard-column-filter-fanout", {
+    ...timing,
+    widgets: widgets.length,
+    filters: variables.length,
+    valuesPerFilter: values.length,
+    filteredWidgets: filtered,
+    longestSqlChars: longest,
+  });
+  expect(filtered).toBe(40);
+  expect(longest).toBeLessThan(50_000);
+  expect(timing.p95Ms).toBeLessThan(60);
 });
 
 test("pivot with 60 x 40 cells renders bounded markup quickly", async () => {

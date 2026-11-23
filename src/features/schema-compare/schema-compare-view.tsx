@@ -47,6 +47,7 @@ import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
 import { SchemaCompareDetail } from "./schema-compare-detail";
 import { SchemaCompareOptionsMenu } from "./schema-compare-options-menu";
+import { SchemaCompareReportActions } from "./schema-compare-report-actions";
 import { SchemaCompareScript } from "./schema-compare-script";
 import { SchemaCompareSideChip } from "./schema-compare-side-chip";
 import { SchemaCompareSummary } from "./schema-compare-summary";
@@ -255,6 +256,7 @@ export function SchemaCompareView({ tabId }: { tabId?: string } = {}) {
             {tabsFeature.isNew && <NewBadge />}
           </Button>
           <div className="ml-auto flex min-w-0 items-center gap-1.5">
+            <SchemaCompareReportActions state={state} getCurrent={store.getState} script={script} />
             {loading ? (
               <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
                 <LoaderIcon className="size-3.5 shrink-0 animate-spin" />

@@ -7,8 +7,10 @@ import { useConnectionsStore, usesTunnel } from "@/lib/connections";
 import { closeSshTunnel, connectionInOtherWindow, testConnectionString } from "@/lib/db";
 import { ensurePassword } from "@/lib/password-prompt";
 import { useSettingsStore } from "@/lib/settings";
+import { hasStagedChanges } from "@/lib/staged-edits";
 import { getTransactionForConnection } from "@/lib/transactions";
 import { effectiveConnectionString } from "./connection-string";
+import { detectServerProduct } from "./server-product";
 import { ensureSshTunnel, type TunnelOutcome } from "./tunnel";
 
 interface ConnectionSwitchState {
@@ -43,6 +45,12 @@ async function performActivation(
         ok: false,
         error:
           "Schließe zuerst die offene Transaktion ab: Übernehmen oder Zurückrollen im Transaktionspanel.",
+      };
+    }
+    if (previous && previous.id !== id && hasStagedChanges(previous.id)) {
+      return {
+        ok: false,
+        error: "Schließe zuerst die gesammelten Änderungen ab: Übernehmen oder Verwerfen.",
       };
     }
     if (id && !next) return { ok: false, error: "Verbindung nicht gefunden." };
@@ -102,6 +110,8 @@ async function performActivation(
       }
     }
     store.setActiveId(id);
+    const active = useConnectionsStore.getState().connections.find((entry) => entry.id === id);
+    if (active) void detectServerProduct(active);
     return { ok: true };
   } finally {
     useConnectionSwitch.setState({ targetId: null, isSwitching: false });

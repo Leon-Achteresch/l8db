@@ -28,7 +28,30 @@ pub fn configure_system_ini() {
         ) {
             std::env::set_var("ODBCSYSINI", dir);
         }
+        if let Some(path) = user_ini(
+            std::env::var_os("ODBCINI").is_some(),
+            std::env::var_os("HOME"),
+            |path| path.exists(),
+        ) {
+            std::env::set_var("ODBCINI", path);
+        }
     });
+}
+
+fn user_ini(
+    configured: bool,
+    home: Option<std::ffi::OsString>,
+    exists: impl Fn(&std::path::Path) -> bool,
+) -> Option<std::path::PathBuf> {
+    if !cfg!(unix) || configured {
+        return None;
+    }
+    let path = std::path::PathBuf::from(home.filter(|h| !h.is_empty())?).join(".odbc.ini");
+    Some(if exists(&path) {
+        path
+    } else {
+        "/dev/null".into()
+    })
 }
 
 fn system_ini_dir(configured: bool, exists: impl Fn(&str) -> bool) -> Option<&'static str> {
@@ -86,8 +109,20 @@ pub fn connection_string_from_url(value: &str) -> Result<String, String> {
     for (k, v) in url.query_pairs() {
         parts.push((k.into_owned(), v.into_owned()));
     }
+    let ibmi = parts.iter().any(|(k, v)| {
+        k.eq_ignore_ascii_case("Driver")
+            && v.to_ascii_lowercase()
+                .starts_with(&super::provider::IBMI_DRIVER.to_ascii_lowercase())
+    });
+    if ibmi && url.port().is_some() {
+        return Err("Der IBM i Access ODBC Driver kennt keinen Port. Entferne den Port; SSH-Tunnel und Proxys sind mit diesem Treiber nicht möglich.".to_string());
+    }
     if let Some(host) = url.host_str() {
-        if !has(&parts, "Server") && !has(&parts, "Hostname") && !has(&parts, "Host") {
+        if ibmi {
+            if !has(&parts, "System") {
+                parts.push(("System".to_string(), host.to_string()));
+            }
+        } else if !has(&parts, "Server") && !has(&parts, "Hostname") && !has(&parts, "Host") {
             parts.push(("Server".to_string(), host.to_string()));
         }
         if let Some(port) = url.port() {
@@ -99,7 +134,7 @@ pub fn connection_string_from_url(value: &str) -> Result<String, String> {
     let database = percent(url.path().trim_start_matches('/'));
     if !database.is_empty()
         && !has(&parts, "Database")
-        && !has(&parts, "DBQ")
+        && (ibmi || !has(&parts, "DBQ"))
         && !has(&parts, "Dbname")
     {
         parts.push(("Database".to_string(), database));
@@ -122,6 +157,49 @@ pub fn connection_string_from_url(value: &str) -> Result<String, String> {
         .map(|(k, v)| format!("{k}={}", escape(&v)))
         .collect::<Vec<_>>()
         .join(";"))
+}
+
+fn attribute(connection_string: &str, key: &str) -> Option<String> {
+    connection_string.split(';').find_map(|part| {
+        let (k, v) = part.split_once('=')?;
+        k.trim()
+            .eq_ignore_ascii_case(key)
+            .then(|| v.trim().trim_matches(['{', '}']).to_string())
+    })
+}
+
+fn connect_error(connection_string: &str, raw: &str) -> String {
+    let detail: String = raw
+        .split_once("Message: ")
+        .map_or(raw, |(_, message)| message)
+        .chars()
+        .take(160)
+        .collect();
+    let system = std::env::var("ODBCSYSINI").unwrap_or_else(|_| "/etc".into());
+    let main = if raw.contains("Can't open lib") || raw.contains("State: IM003") {
+        let driver = attribute(connection_string, "Driver").unwrap_or_default();
+        let list = if cfg!(windows) {
+            "ODBC-Datenquellen-Administrator".to_string()
+        } else {
+            format!("{system}/odbcinst.ini")
+        };
+        format!("ODBC-Treiber „{driver}“ nicht gefunden. Name prüfen oder Treiber installieren (installierte Treiber: {list}).")
+    } else if raw.contains("State: IM002") || raw.contains("Data source name not found") {
+        match attribute(connection_string, "DSN") {
+            Some(dsn) => format!(
+                "ODBC-Datenquelle „{dsn}“ nicht gefunden. Name prüfen (vorhandene DSN: {}).",
+                if cfg!(windows) {
+                    "ODBC-Datenquellen-Administrator".to_string()
+                } else {
+                    format!("~/.odbc.ini, {system}/odbc.ini")
+                }
+            ),
+            None => "Weder Driver= noch DSN= angegeben.".to_string(),
+        }
+    } else {
+        return format!("ODBC-Verbindung fehlgeschlagen: {raw}");
+    };
+    format!("{main}\n  Treiber-Manager: {detail}")
 }
 
 fn percent(value: &str) -> String {
@@ -217,7 +295,7 @@ impl OdbcAdapter {
                         ..Default::default()
                     },
                 )
-                .map_err(|e| format!("ODBC-Verbindung fehlgeschlagen: {e}"))?;
+                .map_err(|e| connect_error(&connection_string, &e.to_string()))?;
             f(&conn)
         })
         .await
@@ -510,6 +588,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn connect_errors_name_the_missing_driver_or_dsn() {
+        let lib = "ODBC emitted an error calling 'SQLDriverConnect': State: 01000, Native error: 0, Message: [unixODBC][Driver Manager]Can't open lib 'Nope' : dlopen(Nope, 0x0009): tried: 'Nope' (no such file), '/usr/lib/Nope' (no such file), '/System/Volumes/Preboot/Cryptexes/OSNope' (no such file)";
+        let message = connect_error("Driver={Nope};Server=x", lib);
+        assert!(
+            message.starts_with("ODBC-Treiber „Nope“ nicht gefunden."),
+            "{message}"
+        );
+        assert!(message.lines().nth(1).unwrap().chars().count() < 200);
+        if cfg!(unix) {
+            assert!(message.contains("odbcinst.ini)"), "{message}");
+            assert!(!message.contains("odbcinst -q"), "{message}");
+        }
+        let dsn = "ODBC emitted an error calling 'SQLDriverConnect': State: IM002, Native error: 0, Message: [unixODBC][Driver Manager]Data source name not found and no default driver specified";
+        assert!(
+            connect_error("DSN=nope", dsn).starts_with("ODBC-Datenquelle „nope“ nicht gefunden.")
+        );
+        assert!(connect_error("Server=x", dsn).starts_with("Weder Driver= noch DSN="));
+        assert_eq!(
+            connect_error("DSN=x", "timeout"),
+            "ODBC-Verbindung fehlgeschlagen: timeout"
+        );
+    }
+
+    #[test]
     fn system_ini_dir_prefers_existing_configuration() {
         let homebrew = |path: &str| path == "/opt/homebrew/etc/odbcinst.ini";
         assert_eq!(system_ini_dir(true, homebrew), None);
@@ -526,6 +628,42 @@ mod tests {
     }
 
     #[test]
+    fn user_ini_never_falls_back_to_the_home_automount() {
+        let home = Some(std::ffi::OsString::from("/Users/a"));
+        assert_eq!(user_ini(true, home.clone(), |_| true), None);
+        assert_eq!(user_ini(false, None, |_| true), None);
+        if cfg!(unix) {
+            assert_eq!(
+                user_ini(false, home.clone(), |p| p.ends_with(".odbc.ini")),
+                Some("/Users/a/.odbc.ini".into())
+            );
+            assert_eq!(user_ini(false, home, |_| false), Some("/dev/null".into()));
+        }
+    }
+
+    #[test]
+    fn missing_dsn_fails_within_seconds() {
+        for _ in 0..10 {
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let result = environment().and_then(|env| {
+                    env.connect_with_connection_string(
+                        "DSN=l8db_missing_dsn",
+                        ConnectionOptions::default(),
+                    )
+                    .map(|_| ())
+                    .map_err(|e| connect_error("DSN=l8db_missing_dsn", &e.to_string()))
+                });
+                let _ = tx.send(result);
+            });
+            let result = rx
+                .recv_timeout(std::time::Duration::from_secs(3))
+                .expect("ODBC-Verbindung hängt");
+            assert!(result.unwrap_err().contains("nicht gefunden"));
+        }
+    }
+
+    #[test]
     fn environment_starts_without_system_driver_manager() {
         assert!(environment().is_ok());
     }
@@ -536,6 +674,15 @@ mod tests {
             connection_string_from_url("odbc://db2inst1:p%3Bw@localhost:50000/SAMPLE?Driver=IBM%20DB2%20ODBC%20DRIVER").unwrap(),
             "Driver=IBM DB2 ODBC DRIVER;Server=localhost;Port=50000;Database=SAMPLE;UID=db2inst1;PWD={p;w}"
         );
+        assert_eq!(
+            connection_string_from_url("odbc://QUSER:pw@as400.example.com/IASP1?Driver=IBM+i+Access+ODBC+Driver&DBQ=LIB1%2CLIB2").unwrap(),
+            "Driver=IBM i Access ODBC Driver;DBQ=LIB1,LIB2;System=as400.example.com;Database=IASP1;UID=QUSER;PWD=pw"
+        );
+        assert!(connection_string_from_url(
+            "odbc://QUSER:pw@127.0.0.1:51234/?Driver=IBM%20i%20Access%20ODBC%20Driver%2064-bit"
+        )
+        .unwrap_err()
+        .contains("kennt keinen Port"));
         assert_eq!(
             connection_string_from_url("DSN=mydsn;UID=a").unwrap(),
             "DSN=mydsn;UID=a"

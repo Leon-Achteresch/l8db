@@ -7,6 +7,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/component
 import { formatBytes } from "@/lib/backup";
 import { cn } from "@/lib/utils";
 import { ObjectRowMenu, type RowActions } from "./object-row-menu";
+import { storageClassLabel } from "./storage-risks";
 import type { BrowserMode, BrowserRow } from "./use-object-listing";
 import { formatDate } from "./use-storage-connection";
 
@@ -111,7 +112,7 @@ export function ObjectList({
           {mode === "versions" && <th className="px-2 py-1.5 text-left font-medium">Version</th>}
           <th className="w-24 px-2 py-1.5 text-right font-medium">Größe</th>
           <th className="w-44 px-2 py-1.5 text-left font-medium">Geändert</th>
-          <th className="w-28 px-2 py-1.5 text-left font-medium">Klasse</th>
+          <th className="w-28 px-2 py-1.5 text-left font-medium">Speicherklasse</th>
         </tr>
       </thead>
       <tbody ref={bodyRef}>
@@ -184,7 +185,7 @@ export function ObjectList({
                     {row.lastModified ? formatDate(row.lastModified) : ""}
                   </td>
                   <td className="px-2 py-1 text-xs text-muted-foreground">
-                    {row.storageClass ?? ""}
+                    {row.storageClass ? storageClassLabel(row.storageClass) : ""}
                   </td>
                 </tr>
               </ContextMenuTrigger>

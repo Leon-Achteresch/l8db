@@ -14,12 +14,40 @@ use super::{
 
 pub struct SqliteAdapter {
     path: String,
+    read_only: bool,
     pool_state: PoolState,
     key: String,
 }
 
 pub fn quote(ident: &str) -> String {
     format!("\"{}\"", ident.replace('"', "\"\""))
+}
+
+fn is_params(tail: &str) -> bool {
+    !tail.is_empty()
+        && tail.split('&').all(|pair| {
+            pair.split_once('=').is_some_and(|(key, _)| {
+                !key.is_empty() && key.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+            })
+        })
+}
+
+pub fn strip_params(value: &str) -> &str {
+    match value.rfind('?') {
+        Some(at) if is_params(&value[at + 1..]) => &value[..at],
+        _ => value,
+    }
+}
+
+pub fn opens_read_only(connection_string: &str) -> bool {
+    let value = connection_string.trim();
+    value.rfind('?').is_some_and(|at| {
+        let tail = &value[at + 1..];
+        is_params(tail)
+            && tail
+                .split('&')
+                .any(|pair| matches!(pair, "mode=ro" | "immutable=1" | "access_mode=read_only"))
+    })
 }
 
 pub fn file_path(connection_string: &str) -> Result<String, String> {
@@ -33,17 +61,17 @@ pub fn file_path(connection_string: &str) -> Result<String, String> {
         .or_else(|| value.strip_prefix("file://"))
         .or_else(|| value.strip_prefix("sqlite:"))
         .or_else(|| value.strip_prefix("duckdb:"))
+        .or_else(|| value.strip_prefix("file:"))
         .unwrap_or(value);
-    let stripped = stripped.split('?').next().unwrap_or(stripped);
+    let stripped = strip_params(stripped);
     if stripped == ":memory:" || stripped.is_empty() {
         return Ok(":memory:".to_string());
     }
-    let decoded = url::form_urlencoded::parse(format!("p={stripped}").as_bytes())
-        .next()
-        .map(|(_, v)| v.into_owned())
-        .unwrap_or_else(|| stripped.to_string());
-    let path = if stripped.contains('%') {
-        decoded
+    let path = if stripped.contains('%') && !std::path::Path::new(stripped).exists() {
+        url::form_urlencoded::parse(format!("p={}", stripped.replace('+', "%2B")).as_bytes())
+            .next()
+            .map(|(_, v)| v.into_owned())
+            .unwrap_or_else(|| stripped.to_string())
     } else {
         stripped.to_string()
     };
@@ -82,8 +110,64 @@ fn value_to_json(value: ValueRef<'_>) -> serde_json::Value {
     }
 }
 
+pub(crate) fn file_header(path: &str) -> Vec<u8> {
+    use std::io::Read;
+    let mut header = Vec::with_capacity(16);
+    if let Ok(file) = std::fs::File::open(path) {
+        let _ = file.take(16).read_to_end(&mut header);
+    }
+    header
+}
+
 fn map_err(e: rusqlite::Error) -> String {
-    format!("SQLite: {e}")
+    use rusqlite::ErrorCode;
+    let german = match &e {
+        rusqlite::Error::SqlInputError { msg, offset, .. } => {
+            let summary = engine_summary(msg).map(|s| format!("{s}: ")).unwrap_or_default();
+            return format!("SQLite: {summary}{msg} (Position {})", offset + 1);
+        }
+        rusqlite::Error::SqliteFailure(failure, _) => match failure.code {
+            ErrorCode::NotADatabase => Some("Datei ist keine SQLite-Datenbank oder verschlüsselt."),
+            ErrorCode::DatabaseCorrupt => Some("Datei ist beschädigt."),
+            ErrorCode::ReadOnly => Some("Verbindung ist schreibgeschützt: Datei nur lesend geöffnet (Lesemodus, Dateirechte oder ?mode=ro)."),
+            ErrorCode::DatabaseBusy | ErrorCode::DatabaseLocked => Some(
+                "Datei wird gerade von einem anderen Programm verwendet. Schließen und erneut versuchen.",
+            ),
+            ErrorCode::CannotOpen => Some("Datei kann nicht geöffnet werden."),
+            ErrorCode::DiskFull => Some("Datenträger ist voll."),
+            _ => None,
+        },
+        _ => None,
+    };
+    match german {
+        Some(text) => format!("SQLite: {text}"),
+        None => {
+            let text = e.to_string();
+            match engine_summary(&text) {
+                Some(summary) => format!("SQLite: {summary}: {text}"),
+                None => format!("SQLite: {text}"),
+            }
+        }
+    }
+}
+
+fn engine_summary(message: &str) -> Option<&'static str> {
+    const SUMMARIES: [(&str, &str); 10] = [
+        ("no such table", "Tabelle nicht gefunden"),
+        ("no such column", "Spalte nicht gefunden"),
+        ("no such function", "Funktion nicht gefunden"),
+        ("syntax error", "Syntaxfehler"),
+        ("incomplete input", "Anweisung unvollständig"),
+        ("already exists", "Objekt existiert bereits"),
+        ("UNIQUE constraint failed", "Eindeutigkeit verletzt"),
+        ("NOT NULL constraint failed", "Pflichtfeld leer"),
+        ("FOREIGN KEY constraint failed", "Fremdschlüssel verletzt"),
+        ("cannot store", "Wert passt nicht zum Spaltentyp"),
+    ];
+    SUMMARIES
+        .iter()
+        .find(|(needle, _)| message.contains(needle))
+        .map(|(_, summary)| *summary)
 }
 
 type Rows = (Vec<String>, Vec<Vec<serde_json::Value>>);
@@ -147,22 +231,32 @@ impl SqliteAdapter {
     ) -> Result<Self, String> {
         Ok(Self {
             path: existing_file_path(connection_string)?,
+            read_only: opens_read_only(connection_string),
             pool_state,
             key,
         })
     }
 
-    fn open(path: &str) -> Result<Connection, String> {
+    fn open(path: &str, read_only: bool) -> Result<Connection, String> {
+        if file_header(path).get(8..12) == Some(b"DUCK") {
+            return Err(
+                "Datei ist eine DuckDB-Datenbank: duckdb:// statt sqlite:// verwenden.".into(),
+            );
+        }
         let conn = if path == ":memory:" {
             Connection::open_in_memory().map_err(map_err)?
         } else {
-            Connection::open_with_flags(
-                path,
-                OpenFlags::SQLITE_OPEN_READ_WRITE
-                    | OpenFlags::SQLITE_OPEN_CREATE
-                    | OpenFlags::SQLITE_OPEN_URI,
-            )
-            .map_err(|e| format!("SQLite-Datei konnte nicht geöffnet werden ({path}): {e}"))?
+            let mode = if read_only {
+                OpenFlags::SQLITE_OPEN_READ_ONLY
+            } else {
+                OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE
+            };
+            Connection::open_with_flags(path, mode | OpenFlags::SQLITE_OPEN_URI).map_err(|e| {
+                format!(
+                    "SQLite-Datei konnte nicht geöffnet werden ({path}): {}",
+                    map_err(e).trim_start_matches("SQLite: ")
+                )
+            })?
         };
         conn.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(map_err)?;
@@ -171,11 +265,11 @@ impl SqliteAdapter {
 
     async fn conn(&self) -> Result<Arc<Mutex<Connection>>, String> {
         let path = self.path.clone();
+        let read_only = self.read_only;
         self.pool_state
-            .shared(
-                &self.key,
-                || async move { Self::open(&path).map(Mutex::new) },
-            )
+            .shared(&self.key, || async move {
+                Self::open(&path, read_only).map(Mutex::new)
+            })
             .await
     }
 
@@ -191,6 +285,13 @@ impl SqliteAdapter {
         format!("{}.sqlite_master", quote(schema))
     }
 
+    fn tables_sql(schema: &str) -> String {
+        format!(
+            "SELECT name FROM pragma_table_list WHERE schema = '{}' AND type IN ('table', 'virtual') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name",
+            schema.replace('\'', "''")
+        )
+    }
+
     fn table_info(
         conn: &Connection,
         schema: &str,
@@ -198,19 +299,27 @@ impl SqliteAdapter {
     ) -> Result<Vec<DetailedColumnInfo>, String> {
         let (_, rows) = query_all(
             conn,
-            &format!("PRAGMA {}.table_info({})", quote(schema), quote(table)),
+            &format!("PRAGMA {}.table_xinfo({})", quote(schema), quote(table)),
         )?;
         Ok(rows
             .iter()
-            .map(|r| DetailedColumnInfo {
-                name: text(&r[1]),
-                data_type: text(&r[2]),
-                is_nullable: !truthy(&r[3]),
-                column_default: r.get(4).filter(|v| !v.is_null()).map(text),
-                is_primary_key: truthy(&r[5]),
-                ordinal_position: r[0].as_i64().unwrap_or(0) as i32 + 1,
-                character_maximum_length: None,
-                comment: None,
+            .filter_map(|r| {
+                let generated = match r.get(6).and_then(|v| v.as_i64()).unwrap_or(0) {
+                    1 => return None,
+                    2 => Some("Generiert (VIRTUAL)".to_string()),
+                    3 => Some("Generiert (STORED)".to_string()),
+                    _ => None,
+                };
+                Some(DetailedColumnInfo {
+                    name: text(&r[1]),
+                    data_type: text(&r[2]),
+                    is_nullable: !truthy(&r[3]),
+                    column_default: r.get(4).filter(|v| !v.is_null()).map(text),
+                    is_primary_key: truthy(&r[5]),
+                    ordinal_position: r[0].as_i64().unwrap_or(0) as i32 + 1,
+                    character_maximum_length: None,
+                    comment: generated,
+                })
             })
             .collect())
     }
@@ -361,13 +470,41 @@ impl DatabaseAdapter for SqliteAdapter {
     async fn list_tables(&self, schema: Option<&str>) -> Result<Vec<TableInfo>, String> {
         let schema = schema.unwrap_or("main").to_string();
         self.run(move |c| {
-            let names = strings(
-                c,
-                &format!("SELECT name FROM {} WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name", Self::master(&schema)),
-            )?;
-            Ok(names.into_iter().map(|name| TableInfo { schema: schema.clone(), name }).collect())
+            let names = strings(c, &Self::tables_sql(&schema))?;
+            Ok(names
+                .into_iter()
+                .map(|name| TableInfo {
+                    schema: schema.clone(),
+                    name,
+                })
+                .collect())
         })
         .await
+    }
+
+    async fn catalog_fingerprint(&self) -> Result<Option<String>, String> {
+        use sha2::{Digest, Sha256};
+        self.run(|c| {
+            strings(
+                c,
+                "SELECT type || ' ' || name || ' ' || COALESCE(sql, '') FROM main.sqlite_master ORDER BY type, name",
+            )
+        })
+        .await
+        .map(|objects| {
+            let mut digest = Sha256::new();
+            for object in objects {
+                digest.update(object.as_bytes());
+                digest.update([0u8]);
+            }
+            Some(
+                digest
+                    .finalize()
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect(),
+            )
+        })
     }
 
     async fn list_columns(
@@ -386,12 +523,24 @@ impl DatabaseAdapter for SqliteAdapter {
         self.run(move |c| {
             let tables = match table {
                 Some(t) => vec![t],
-                None => strings(c, &format!("SELECT name FROM {} WHERE type = '{object_type}' AND name NOT LIKE 'sqlite_%' ORDER BY name", Self::master(&schema)))?,
+                None if object_type == "view" => strings(
+                    c,
+                    &format!(
+                        "SELECT name FROM {} WHERE type = 'view' ORDER BY name",
+                        Self::master(&schema)
+                    ),
+                )?,
+                None => strings(c, &Self::tables_sql(&schema))?,
             };
             let mut out = Vec::new();
             for t in tables {
                 for col in Self::table_info(c, &schema, &t)? {
-                    out.push(ColumnInfo { schema: schema.clone(), table: t.clone(), name: col.name, data_type: col.data_type });
+                    out.push(ColumnInfo {
+                        schema: schema.clone(),
+                        table: t.clone(),
+                        name: col.name,
+                        data_type: col.data_type,
+                    });
                 }
             }
             Ok(out)
@@ -482,7 +631,8 @@ impl DatabaseAdapter for SqliteAdapter {
             self.conn().await?
         } else {
             let path = self.path.clone();
-            let conn = tokio::task::spawn_blocking(move || Self::open(&path))
+            let read_only = self.read_only;
+            let conn = tokio::task::spawn_blocking(move || Self::open(&path, read_only))
                 .await
                 .map_err(|e| format!("SQLite-Task fehlgeschlagen: {e}"))??;
             Arc::new(Mutex::new(conn))
@@ -685,18 +835,49 @@ impl DatabaseAdapter for SqliteAdapter {
                     quote(&table)
                 ),
             )?;
-            Ok(rows
-                .iter()
-                .map(|r| ForeignKeyInfo {
+            let mut primary_keys: std::collections::HashMap<String, Vec<String>> =
+                std::collections::HashMap::new();
+            let mut out = Vec::with_capacity(rows.len());
+            for r in &rows {
+                let to_table = text(&r[2]);
+                let to_column = if r[4].is_null() {
+                    if !primary_keys.contains_key(&to_table) {
+                        let mut pk: Vec<(i64, String)> = query_all(
+                            c,
+                            &format!("PRAGMA {}.table_info({})", quote(&schema), quote(&to_table)),
+                        )
+                        .map(|(_, columns)| columns)
+                        .unwrap_or_default()
+                        .iter()
+                        .filter_map(|col| {
+                            let position = col[5].as_i64().unwrap_or(0);
+                            (position > 0).then(|| (position, text(&col[1])))
+                        })
+                        .collect();
+                        pk.sort();
+                        primary_keys.insert(
+                            to_table.clone(),
+                            pk.into_iter().map(|(_, name)| name).collect(),
+                        );
+                    }
+                    primary_keys[&to_table]
+                        .get(r[1].as_i64().unwrap_or(0) as usize)
+                        .cloned()
+                        .unwrap_or_else(|| "rowid".to_string())
+                } else {
+                    text(&r[4])
+                };
+                out.push(ForeignKeyInfo {
                     constraint_name: format!("fk_{}_{}", table, text(&r[0])),
                     from_schema: schema.clone(),
                     from_table: table.clone(),
                     from_column: text(&r[3]),
                     to_schema: schema.clone(),
-                    to_table: text(&r[2]),
-                    to_column: text(&r[4]),
-                })
-                .collect())
+                    to_table,
+                    to_column,
+                });
+            }
+            Ok(out)
         })
         .await
     }
@@ -744,8 +925,7 @@ impl DatabaseAdapter for SqliteAdapter {
                     c,
                     &format!("PRAGMA {}.index_info({})", quote(&schema), quote(&name)),
                 )?;
-                let columns: Vec<String> = info.iter().map(|i| text(&i[2])).collect();
-                let definition = c
+                let definition: String = c
                     .query_row(
                         &format!(
                             "SELECT sql FROM {} WHERE type = 'index' AND name = ?1",
@@ -757,6 +937,18 @@ impl DatabaseAdapter for SqliteAdapter {
                     .ok()
                     .flatten()
                     .unwrap_or_default();
+                let parts = catalog::table_parts(&definition);
+                let columns: Vec<String> = info
+                    .iter()
+                    .enumerate()
+                    .map(|(position, i)| match (&i[2], i[1].as_i64()) {
+                        (serde_json::Value::Null, Some(-1)) => "rowid".to_string(),
+                        (serde_json::Value::Null, _) => {
+                            parts.get(position).cloned().unwrap_or_default()
+                        }
+                        (name, _) => text(name),
+                    })
+                    .collect();
                 out.push(IndexInfo {
                     is_unique: truthy(&r[2]),
                     is_primary: text(&r[3]) == "pk",
@@ -776,6 +968,7 @@ impl DatabaseAdapter for SqliteAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<ConstraintInfo>, String> {
+        let table_name = table.to_string();
         let columns = self.list_table_columns_detailed(schema, table).await?;
         let mut out = Vec::new();
         let pk: Vec<String> = columns
@@ -797,22 +990,98 @@ impl DatabaseAdapter for SqliteAdapter {
             .into_iter()
             .filter(|i| i.is_unique && !i.is_primary)
         {
+            let condition = catalog::where_condition(&idx.definition);
             out.push(ConstraintInfo {
                 name: idx.name,
                 constraint_type: "UNIQUE".to_string(),
-                definition: format!("UNIQUE ({})", idx.columns.join(", ")),
-                columns: idx.columns,
+                definition: match &condition {
+                    Some(condition) => {
+                        format!("UNIQUE ({}) WHERE {condition}", idx.columns.join(", "))
+                    }
+                    None => format!("UNIQUE ({})", idx.columns.join(", ")),
+                },
+                columns: if condition.is_some() {
+                    Vec::new()
+                } else {
+                    idx.columns
+                },
             });
         }
-        for fk in self.list_foreign_keys(schema, table).await? {
+        let foreign = self.list_foreign_keys(schema, table).await?;
+        let (schema, table) = (schema.to_string(), table.to_string());
+        let (sql, actions) = self
+            .run(move |c| {
+                let sql = c
+                    .query_row(
+                        &format!(
+                            "SELECT sql FROM {} WHERE type = 'table' AND name = ?1",
+                            Self::master(&schema)
+                        ),
+                        [&table],
+                        |r| r.get::<_, Option<String>>(0),
+                    )
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default();
+                let (_, keys) = query_all(
+                    c,
+                    &format!(
+                        "PRAGMA {}.foreign_key_list({})",
+                        quote(&schema),
+                        quote(&table)
+                    ),
+                )?;
+                let actions: std::collections::HashMap<String, String> = keys
+                    .iter()
+                    .map(|r| {
+                        let action = [("UPDATE", text(&r[5])), ("DELETE", text(&r[6]))]
+                            .into_iter()
+                            .filter(|(_, action)| !action.is_empty() && action != "NO ACTION")
+                            .map(|(event, action)| format!(" ON {event} {action}"))
+                            .collect::<String>();
+                        (format!("fk_{}_{}", table, text(&r[0])), action)
+                    })
+                    .collect();
+                Ok((sql, actions))
+            })
+            .await?;
+        let mut grouped: Vec<(String, Vec<ForeignKeyInfo>)> = Vec::new();
+        for fk in foreign {
+            match grouped
+                .iter_mut()
+                .find(|(name, _)| *name == fk.constraint_name)
+            {
+                Some((_, keys)) => keys.push(fk),
+                None => grouped.push((fk.constraint_name.clone(), vec![fk])),
+            }
+        }
+        for (name, keys) in grouped {
+            let from: Vec<String> = keys.iter().map(|k| k.from_column.clone()).collect();
+            let to: Vec<String> = keys.iter().map(|k| k.to_column.clone()).collect();
             out.push(ConstraintInfo {
-                name: fk.constraint_name,
-                constraint_type: "FOREIGN KEY".to_string(),
-                columns: vec![fk.from_column.clone()],
                 definition: format!(
-                    "FOREIGN KEY ({}) REFERENCES {}({})",
-                    fk.from_column, fk.to_table, fk.to_column
+                    "FOREIGN KEY ({}) REFERENCES {}({}){}",
+                    from.join(", "),
+                    keys[0].to_table,
+                    to.join(", "),
+                    actions.get(&name).map(String::as_str).unwrap_or("")
                 ),
+                name,
+                constraint_type: "FOREIGN KEY".to_string(),
+                columns: from,
+            });
+        }
+        let parts = catalog::table_parts(&sql);
+        for (index, (name, expression)) in parts
+            .iter()
+            .flat_map(|part| catalog::check_clauses(part))
+            .enumerate()
+        {
+            out.push(ConstraintInfo {
+                name: name.unwrap_or_else(|| format!("ck_{}_{}", table_name, index + 1)),
+                constraint_type: "CHECK".to_string(),
+                definition: format!("CHECK ({expression})"),
+                columns: Vec::new(),
             });
         }
         Ok(out)
@@ -850,13 +1119,28 @@ impl DatabaseAdapter for SqliteAdapter {
     async fn get_database_overview(&self) -> Result<DatabaseOverview, String> {
         let path = self.path.clone();
         self.run(move |c| {
-            let size: i64 = c.query_row("SELECT page_count * page_size FROM pragma_page_count, pragma_page_size", [], |r| r.get(0)).map_err(map_err)?;
+            let size: i64 = c
+                .query_row(
+                    "SELECT page_count * page_size FROM pragma_page_count, pragma_page_size",
+                    [],
+                    |r| r.get(0),
+                )
+                .map_err(map_err)?;
             let mut schemas = Vec::new();
             for name in strings(c, "SELECT name FROM pragma_database_list ORDER BY seq")? {
-                let table_count: i64 = c.query_row(&format!("SELECT COUNT(*) FROM {} WHERE type = 'table' AND name NOT LIKE 'sqlite_%'", Self::master(&name)), [], |r| r.get(0)).map_err(map_err)?;
-                schemas.push(SchemaSize { size_bytes: if name == "main" { size } else { 0 }, schema: name, table_count });
+                let table_count = strings(c, &Self::tables_sql(&name))?.len() as i64;
+                schemas.push(SchemaSize {
+                    size_bytes: if name == "main" { size } else { 0 },
+                    schema: name,
+                    table_count,
+                });
             }
-            Ok(DatabaseOverview { database: path, size_bytes: size, size_pretty: super::pretty_bytes(size), schemas })
+            Ok(DatabaseOverview {
+                database: path,
+                size_bytes: size,
+                size_pretty: super::pretty_bytes(size),
+                schemas,
+            })
         })
         .await
     }
@@ -929,6 +1213,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mode_ro_opens_the_file_read_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ro.sqlite");
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch("CREATE TABLE t(x); INSERT INTO t VALUES (1)")
+            .unwrap();
+        assert!(!opens_read_only(&format!("sqlite://{}", path.display())));
+        assert!(!opens_read_only("sqlite:///d/what?mode=rox.db"));
+        let url = format!("sqlite://{}?mode=ro", path.display());
+        let db = SqliteAdapter::new(&url, create_pool_state(), "ro".into()).unwrap();
+        let err = db
+            .execute_query("INSERT INTO t VALUES (2)")
+            .await
+            .unwrap_err();
+        assert!(err.contains("Verbindung ist schreibgeschützt"), "{err}");
+        assert!(db.begin_transaction().await.is_ok());
+        let rows = db
+            .execute_query("SELECT count(*) AS n FROM t")
+            .await
+            .unwrap();
+        assert_eq!(rows.rows[0]["n"], 1);
+    }
+
+    #[tokio::test]
     async fn cancellation_interrupts_only_its_query() {
         let db = adapter();
         let options = super::super::execution::ExecutionOptions {
@@ -973,6 +1282,184 @@ mod tests {
             file_path("sqlite:///tmp/a%20b.db?mode=ro").unwrap(),
             "/tmp/a b.db"
         );
+    }
+
+    #[test]
+    fn paths_keep_question_marks_plus_signs_and_file_uris() {
+        let dir = tempfile::tempdir().unwrap();
+        let odd = dir.path().join("Daten #1 ?x+y 100%.sqlite");
+        std::fs::write(&odd, b"").unwrap();
+        let shown = odd.display().to_string();
+        assert_eq!(file_path(&format!("sqlite://{shown}")).unwrap(), shown);
+        assert_eq!(
+            file_path(&format!("sqlite://{shown}?mode=rwc")).unwrap(),
+            shown
+        );
+        let plus = dir.path().join("a+b c.sqlite");
+        std::fs::write(&plus, b"").unwrap();
+        assert_eq!(
+            file_path(&format!("{}/a+b%20c.sqlite", dir.path().display())).unwrap(),
+            plus.display().to_string()
+        );
+        assert_eq!(file_path("file:/tmp/a.db").unwrap(), "/tmp/a.db");
+        assert_eq!(strip_params("/d/neu.sqlite?mode=rwc"), "/d/neu.sqlite");
+        assert_eq!(strip_params("/d/was?.sqlite"), "/d/was?.sqlite");
+        let missing =
+            existing_file_path(&format!("{}/fehlt ?x.sqlite", dir.path().display())).unwrap_err();
+        assert!(missing.contains("fehlt ?x.sqlite"), "{missing}");
+    }
+
+    #[tokio::test]
+    async fn files_of_the_wrong_kind_get_german_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let text = dir.path().join("notes.sqlite");
+        std::fs::write(
+            &text,
+            "kein SQLite, nur Text, aber lang genug für einen Header\n".repeat(20),
+        )
+        .unwrap();
+        let db = SqliteAdapter::new(
+            &text.display().to_string(),
+            create_pool_state(),
+            "text".into(),
+        )
+        .unwrap();
+        let error = db.list_tables(None).await.unwrap_err();
+        assert_eq!(
+            error,
+            "SQLite: Datei ist keine SQLite-Datenbank oder verschlüsselt."
+        );
+        let duck = dir.path().join("x.db");
+        let mut header = vec![0u8; 8];
+        header.extend_from_slice(b"DUCK");
+        header.resize(4096, 0);
+        std::fs::write(&duck, header).unwrap();
+        let db = SqliteAdapter::new(
+            &duck.display().to_string(),
+            create_pool_state(),
+            "duck".into(),
+        )
+        .unwrap();
+        assert!(db
+            .list_tables(None)
+            .await
+            .unwrap_err()
+            .contains("duckdb://"));
+        let error = adapter().execute_query("selec 1").await.unwrap_err();
+        assert!(
+            error.starts_with("SQLite: Syntaxfehler: near \"selec\": syntax error (Position 1)"),
+            "{error}"
+        );
+        assert!(!error.contains(" in selec"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn catalog_shows_generated_columns_and_hides_only_internal_tables() {
+        let db = adapter();
+        db.execute_script("CREATE TABLE gen (a INTEGER, b INTEGER, s INTEGER GENERATED ALWAYS AS (a+b) STORED, v INTEGER AS (a*2) VIRTUAL); \
+            INSERT INTO gen (a, b) VALUES (2, 3); CREATE TABLE sqliteinfo (a INT); CREATE TABLE auto (id INTEGER PRIMARY KEY AUTOINCREMENT); \
+            INSERT INTO auto DEFAULT VALUES; CREATE VIRTUAL TABLE docs USING fts5(body); CREATE VIRTUAL TABLE geo USING rtree(id, x0, x1)")
+            .await
+            .unwrap();
+        let names: Vec<String> = db
+            .list_tables(None)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        assert_eq!(names, ["auto", "docs", "gen", "geo", "sqliteinfo"]);
+        assert_eq!(
+            db.get_database_overview().await.unwrap().schemas[0].table_count,
+            5
+        );
+        let columns = db.list_table_columns_detailed("main", "gen").await.unwrap();
+        let described: Vec<(&str, Option<&str>)> = columns
+            .iter()
+            .map(|c| (c.name.as_str(), c.comment.as_deref()))
+            .collect();
+        assert_eq!(
+            described,
+            [
+                ("a", None),
+                ("b", None),
+                ("s", Some("Generiert (STORED)")),
+                ("v", Some("Generiert (VIRTUAL)"))
+            ]
+        );
+        let rows = db
+            .fetch_rows("main", "gen", None, 10, 0, Some("v"), false, false, false)
+            .await
+            .unwrap();
+        assert_eq!(rows.columns, ["a", "b", "s", "v"]);
+        assert_eq!(
+            (rows.rows[0]["s"].clone(), rows.rows[0]["v"].clone()),
+            (5.into(), 4.into())
+        );
+        let all = db.list_columns(None, None, None).await.unwrap();
+        assert!(all.iter().any(|c| c.table == "gen" && c.name == "v"));
+        assert!(!all
+            .iter()
+            .any(|c| c.table.starts_with("docs_") || c.table == "sqlite_sequence"));
+    }
+
+    #[tokio::test]
+    async fn constraints_show_checks_conditions_expressions_and_actions() {
+        let db = adapter();
+        db.execute_script("CREATE TABLE parent (id INTEGER PRIMARY KEY, name TEXT, CONSTRAINT name_set CHECK (name <> '')); \
+            CREATE TABLE child (id INTEGER PRIMARY KEY CHECK (id > 0), pid INTEGER REFERENCES parent ON DELETE CASCADE, code TEXT); \
+            CREATE UNIQUE INDEX idx_partial ON child (pid) WHERE id > 10; CREATE UNIQUE INDEX ex_lower ON parent (lower(name))")
+            .await
+            .unwrap();
+        let fks = db.list_foreign_keys("main", "child").await.unwrap();
+        assert_eq!(
+            (fks[0].to_table.as_str(), fks[0].to_column.as_str()),
+            ("parent", "id")
+        );
+        let indexes = db.list_indexes("main", "parent").await.unwrap();
+        assert_eq!(
+            indexes
+                .iter()
+                .find(|i| i.name == "ex_lower")
+                .unwrap()
+                .columns,
+            ["lower(name)"]
+        );
+        let definitions = |list: Vec<ConstraintInfo>| -> Vec<(String, String)> {
+            list.into_iter()
+                .map(|c| (c.constraint_type, c.definition))
+                .collect()
+        };
+        let child = definitions(db.list_constraints("main", "child").await.unwrap());
+        assert!(
+            child.contains(&("UNIQUE".into(), "UNIQUE (pid) WHERE id > 10".into())),
+            "{child:?}"
+        );
+        assert!(
+            child.contains(&(
+                "FOREIGN KEY".into(),
+                "FOREIGN KEY (pid) REFERENCES parent(id) ON DELETE CASCADE".into()
+            )),
+            "{child:?}"
+        );
+        assert!(
+            child.contains(&("CHECK".into(), "CHECK (id > 0)".into())),
+            "{child:?}"
+        );
+        let parent = db.list_constraints("main", "parent").await.unwrap();
+        assert!(parent
+            .iter()
+            .any(|c| c.name == "name_set" && c.definition == "CHECK (name <> '')"));
+        assert!(parent
+            .iter()
+            .any(|c| c.definition == "UNIQUE (lower(name))"));
+        let partial = db.list_constraints("main", "child").await.unwrap();
+        assert!(partial
+            .iter()
+            .find(|c| c.name == "idx_partial")
+            .unwrap()
+            .columns
+            .is_empty());
     }
 
     #[tokio::test]

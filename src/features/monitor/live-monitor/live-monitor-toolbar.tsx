@@ -38,6 +38,7 @@ export function LiveMonitorToolbar({
   onOpenHistory: () => void;
   onOpenWorkload: () => void;
 }) {
+  const stalled = m.stalled;
   return (
     <div className="flex items-center gap-2">
       <Select
@@ -61,8 +62,8 @@ export function LiveMonitorToolbar({
       >
         <SelectTrigger size="sm" className="h-8 w-28 text-xs" aria-label="Aktualisierungsintervall">
           <ClockIcon className="size-3.5" />
-          <span>Auto</span>
-          <span className="text-muted-foreground">
+          <span>{stalled ? "Gestoppt" : "Auto"}</span>
+          <span className={stalled ? "hidden" : "text-muted-foreground"}>
             <SelectValue />
           </span>
         </SelectTrigger>
@@ -74,15 +75,27 @@ export function LiveMonitorToolbar({
           ))}
         </SelectContent>
       </Select>
-      <Button
-        size="icon-sm"
-        variant={m.paused ? "outline" : "default"}
-        onClick={() => m.setPaused(!m.paused)}
-        aria-label={m.paused ? "Aktualisierung fortsetzen" : "Aktualisierung pausieren"}
-        title={m.paused ? "Aktualisierung fortsetzen" : "Aktualisierung pausieren"}
-      >
-        {m.paused ? <PlayIcon /> : <PauseIcon />}
-      </Button>
+      {stalled ? (
+        <Button
+          size="icon-sm"
+          variant="outline"
+          onClick={m.refresh}
+          aria-label="Neu laden"
+          title="Neu laden"
+        >
+          <RefreshCwIcon />
+        </Button>
+      ) : (
+        <Button
+          size="icon-sm"
+          variant={m.paused ? "outline" : "default"}
+          onClick={() => m.setPaused(!m.paused)}
+          aria-label={m.paused ? "Aktualisierung fortsetzen" : "Aktualisierung pausieren"}
+          title={m.paused ? "Aktualisierung fortsetzen" : "Aktualisierung pausieren"}
+        >
+          {m.paused ? <PlayIcon /> : <PauseIcon />}
+        </Button>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon-sm" aria-label="Weitere Monitor-Aktionen">

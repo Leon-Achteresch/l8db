@@ -18,6 +18,7 @@ pub(crate) use objects::{schema_map, schema_map_supported, SchemaMap};
 pub mod open;
 mod overview;
 mod persist;
+mod pump;
 pub mod redact;
 pub(crate) mod sandbox;
 mod script;

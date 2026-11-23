@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useAlterTable } from "@/features/alter-table/alter-table-view/use-alter-table";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { mysqlColumnOnUpdate } from "@/lib/mysql-column-update";
+import { oracleColumnTextLimit } from "@/lib/oracle-column-text-limit";
 import { capabilitiesFor, supports } from "@/lib/providers";
 import { cn } from "@/lib/utils";
 import { ColumnListItem } from "./table-columns-list/column-list-item";
@@ -37,12 +40,19 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
   const [selectedFilter, setSelectedFilter] = useState<string>("all");
   const [copiedColumn, setCopiedColumn] = useState<string | null>(null);
 
+  const updateFeature = useNewFeatureVisibility<HTMLSpanElement>(
+    "table.structure.columns.on-update",
+  );
+  const textLimitFeature = useNewFeatureVisibility<HTMLSpanElement>(
+    "table.structure.columns.oracle-text-limit",
+  );
+
   const count = columns?.length ?? 0;
   const constraints = supports(connection, "constraints");
   const terms = capabilitiesFor(connection?.kind).terms;
   const filters = useMemo(
-    () => columnFilterCounts(columns ?? [], constraints),
-    [columns, constraints],
+    () => columnFilterCounts(columns ?? [], constraints, terms.primary_key),
+    [columns, constraints, terms.primary_key],
   );
   const canEdit = editable && !!connection && supports(connection, "alter_columns");
 
@@ -77,6 +87,17 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
 
   const filteredColumns =
     columns?.filter((column) => matchesColumnFilter(column, search, selectedFilter)) ?? [];
+  const updateFeatureColumn = updateFeature.isNew
+    ? filteredColumns.find(
+        (column) => editingColumn !== column.name && mysqlColumnOnUpdate(column, connection?.kind),
+      )?.name
+    : undefined;
+  const textLimitFeatureColumn =
+    textLimitFeature.isNew && connection?.kind === "oracle"
+      ? filteredColumns.find(
+          (column) => editingColumn !== column.name && oracleColumnTextLimit(column, "oracle"),
+        )?.name
+      : undefined;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
@@ -141,8 +162,8 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
             <div className="grid grid-cols-[minmax(190px,1.5fr)_minmax(145px,1fr)_90px_minmax(180px,1.3fr)_4rem] gap-3 px-3 py-2 font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
               <span>{terms.column}</span>
               <span>Datentyp</span>
-              <span>NULL</span>
-              <span>Standardwert</span>
+              <span>{constraints ? "NULL" : ""}</span>
+              <span>{constraints ? "Standardwert" : ""}</span>
               <span />
             </div>
             <motion.div
@@ -158,6 +179,10 @@ export function TableColumnsList({ schema, table, editable = false }: TableColum
                 <ColumnListItem
                   key={column.name}
                   column={column}
+                  updateFeature={updateFeatureColumn === column.name ? updateFeature : undefined}
+                  textLimitFeature={
+                    textLimitFeatureColumn === column.name ? textLimitFeature : undefined
+                  }
                   copiedColumn={copiedColumn}
                   setCopiedColumn={setCopiedColumn}
                   editable={canEdit}

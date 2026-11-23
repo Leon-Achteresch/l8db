@@ -1,4 +1,5 @@
 import type { CsvCell, CsvColumnMapping, CsvMappingIssues, ImportTargetColumn } from "./types";
+import { CSV_MAX_VALIDATION_ERRORS } from "./types";
 
 function normalizeName(value: string): string {
   return value
@@ -56,52 +57,63 @@ export function validateMappings(
 ): CsvMappingIssues {
   const errors: string[] = [];
   const warnings: string[] = [];
+  let errorCount = 0;
+  const addError = (message: string) => {
+    errorCount += 1;
+    if (errors.length < CSV_MAX_VALIDATION_ERRORS) errors.push(message);
+  };
   const byName = new Map(targets.map((t) => [t.name, t]));
 
   const seen = new Map<string, number>();
   for (const mapping of mappings) {
     if (!mapping.target) continue;
     if (!byName.has(mapping.target)) {
-      errors.push(`Unbekannte Zielspalte "${mapping.target}".`);
+      addError(`Unbekannte Zielspalte "${mapping.target}".`);
       continue;
     }
     seen.set(mapping.target, (seen.get(mapping.target) ?? 0) + 1);
   }
   for (const [name, count] of seen) {
-    if (count > 1) errors.push(`Zielspalte "${name}" ist mehrfach zugeordnet.`);
+    if (count > 1) addError(`Zielspalte "${name}" ist mehrfach zugeordnet.`);
   }
 
   const mapped = new Set(seen.keys());
-  if (mapped.size === 0) errors.push("Keine Spalte zugeordnet.");
+  if (mapped.size === 0) addError("Keine Spalte zugeordnet.");
 
   for (const target of targets) {
     if (mapped.has(target.name) && target.is_generated) {
-      errors.push(`Generierte Spalte "${target.name}" kann nicht befüllt werden.`);
+      addError(`Generierte Spalte "${target.name}" kann nicht befüllt werden.`);
     }
     if (mapped.has(target.name) && target.is_identity) {
       warnings.push(`Identity-Spalte "${target.name}" wird mit CSV-Werten überschrieben.`);
     }
     if (!mapped.has(target.name) && isRequiredColumn(target)) {
-      errors.push(`Pflichtspalte "${target.name}" ist nicht zugeordnet.`);
+      addError(`Pflichtspalte "${target.name}" ist nicht zugeordnet.`);
     }
     if (!mapped.has(target.name) && target.has_default && !target.is_identity) {
       warnings.push(`Spalte "${target.name}" verwendet den Default-Wert.`);
     }
   }
 
-  for (const mapping of mappings) {
+  const requiredMappings = mappings.flatMap((mapping) => {
     const target = mapping.target ? byName.get(mapping.target) : undefined;
-    if (!target || target.is_nullable) continue;
-    for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
-      const value = rows[rowIndex]?.[mapping.csvIndex] ?? null;
+    return target && !target.is_nullable && !target.is_generated && seen.get(target.name) === 1
+      ? [{ csvIndex: mapping.csvIndex, name: target.name }]
+      : [];
+  });
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex];
+    for (const mapping of requiredMappings) {
+      const value = row?.[mapping.csvIndex] ?? null;
       if (value === null) {
-        errors.push(`Zeile ${rowIndex + 1}: Spalte "${target.name}" darf nicht NULL sein.`);
-        break;
+        errorCount += 1;
+        if (errors.length < CSV_MAX_VALIDATION_ERRORS)
+          errors.push(`Zeile ${rowIndex + 1}: Spalte "${mapping.name}" darf nicht NULL sein.`);
       }
     }
   }
 
-  return { errors, warnings };
+  return { errors, warnings, checkedRows: rows.length, errorCount };
 }
 
 export interface CsvImportPayload {

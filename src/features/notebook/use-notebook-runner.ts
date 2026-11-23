@@ -66,6 +66,8 @@ export function useNotebookRunner() {
           effectiveConnectionString(connection),
           prepared.sql,
           database ?? undefined,
+          undefined,
+          connection.id,
         );
         const result = await executeSqlWithTransactions({
           connection,

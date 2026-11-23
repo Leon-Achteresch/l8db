@@ -25,7 +25,7 @@ serde_json = "1"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["raw_value"] }
 async-trait = "0.1"
 axum = { version = "0.8", features = ["json", "http1", "tokio"] }
 bytes = "1"
@@ -56,7 +56,7 @@ time = { version = "0.3", features = ["formatting"] }
 tauri-plugin-process = "2"
 mysql_async = { version = "0.37", default-features = false, features = ["minimal", "native-tls-tls"] }
 rusqlite = { version = "0.41", default-features = false, features = ["bundled", "backup", "hooks", "limits"] }
-tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono"] }
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono", "sql-browser-tokio"] }
 chrono = "0.4"
 tokio-util = { version = "0.7", features = ["compat", "io"] }
 portable-pty = "0.9"
@@ -70,7 +70,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 rustls-platform-verifier = "0.7"
 futures-util = "0.3"
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "native-tls"] }
-duckdb = { version = "1", features = ["bundled"], optional = true }
+duckdb = { version = "1", features = ["bundled", "json", "parquet"], optional = true }
 odbc-api = { version = "29", default-features = false, features = ["odbc_version_3_80"], optional = true }
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-single-instance = "2"
@@ -95,7 +95,6 @@ chrono-tz = "0.10"
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-native-tls", "hostname"] }
 zip = { version = "9", default-features = false, features = ["deflate"] }
 notify-rust = "4"
-notify = "8"
 clap = { version = "4.6.7", features = ["derive", "env", "wrap_help"] }
 clap_complete = "4.6.11"
 comfy-table = { version = "7.1", default-features = false }
@@ -139,7 +138,7 @@ keyring = { version = "3", features = ["windows-native"] }
 webview2-com = "0.39"
 windows-core = "0.62"
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Storage_EnhancedStorage", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_Shell_PropertiesSystem", "Win32_System_Console", "Win32_System_GroupPolicy", "Win32_System_Registry"] }
-tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono", "winauth"] }
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "native-tls", "chrono", "winauth", "sql-browser-tokio"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", features = ["linux-native-sync-persistent", "crypto-rust"] }

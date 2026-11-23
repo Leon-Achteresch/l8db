@@ -122,7 +122,9 @@ test("formats sizes for the storage overview", () => {
   expect(storageLabel("l8db.new-feature-seen:0.9.1:settings.general.workspace-tab")).toBe(
     "Neu-Markierungen",
   );
-  expect(storageLabel("l8db.discovery.usage")).toBe("Entdecken");
+  expect(storageLabel("l8db.discovery.usage")).toBe("Entdecken · Funktionsnutzung");
+  expect(storageLabel("l8db.discovery.spotlight")).not.toBe(storageLabel("l8db.discovery.usage"));
+  expect(storageLabel("l8db.discovery.unbekannt")).toBe("Entdecken");
   expect(storageLabel("l8db.secret-edits")).toBe("Passwort-Änderungen");
 });
 

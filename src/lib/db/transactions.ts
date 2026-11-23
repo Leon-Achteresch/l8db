@@ -82,6 +82,50 @@ export async function deleteRowInTransaction(
   await invoke("delete_row_in_transaction", { txId, schema, table, ctid });
 }
 
+export type RowChange =
+  | { type: "update"; ctid: string; updates: Record<string, string | null> }
+  | { type: "insert"; values: Record<string, string | null> }
+  | { type: "delete"; ctid: string };
+
+export interface RowChangeSql {
+  index: number;
+  sql: string;
+  params: string[];
+}
+
+export interface RowChangesOutcome {
+  applied: number;
+  failed: number | null;
+  error: string | null;
+}
+
+export async function previewRowChanges(
+  kind: DatabaseKind,
+  connectionString: string,
+  database: string | undefined,
+  schema: string,
+  table: string,
+  changes: RowChange[],
+): Promise<RowChangeSql[]> {
+  return invoke("preview_row_changes", {
+    kind,
+    connectionString,
+    database,
+    schema,
+    table,
+    changes,
+  });
+}
+
+export async function applyRowChangesInTransaction(
+  txId: string,
+  schema: string,
+  table: string,
+  changes: RowChange[],
+): Promise<RowChangesOutcome> {
+  return invoke("apply_row_changes_in_transaction", { txId, schema, table, changes });
+}
+
 export async function commitTransaction(txId: string): Promise<void> {
   await invoke("commit_transaction", { txId });
 }

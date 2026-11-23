@@ -41,13 +41,18 @@ const { FilterConditionTokens } = await import(
 const { FilterRuleTokens } = await import("@/features/table/filter-bar/filter-rule-tokens");
 const { FilterPillBar } = await import("@/features/table/filter-bar/filter-pill-bar");
 const { FALLBACK_PROVIDERS, useProvidersStore } = await import("@/lib/providers");
+const { useAiAccess } = await import("@/lib/ai/access");
+const { AI_PROVIDERS } = await import("@/lib/ai/store");
 const { useConnectionsStore } = await import("@/lib/connections");
+const { useSettingsStore } = await import("@/lib/settings");
+const { useTableViewStateStore } = await import("@/lib/table-view-state");
 
 import type { FilterBarModel } from "@/features/table/filter-bar/use-filter-bar-model";
 import type { FilterAiContext } from "@/lib/filter-ai/types";
 import type { FilterCondition, RowRule } from "@/lib/table-view-state";
 
 useProvidersStore.setState({ providers: FALLBACK_PROVIDERS, loaded: true });
+useAiAccess.setState({ enabled: true, consent: AI_PROVIDERS.map((entry) => entry.id) });
 useConnectionsStore.setState({
   activeId: "perf",
   connections: [
@@ -287,6 +292,34 @@ test("one request per question, cancellation stops it and idle bars send nothing
   expect(tokens.chip.length + tokens.pill.length).toBeLessThan(120_000);
   expect(bars.medianMs).toBeLessThan(20);
   expect(render.medianMs).toBeLessThan(40);
+});
+
+test("default filter mode setting picks the mode of unsaved tables and keeps renders cheap", async () => {
+  const props = (stateKey: string) => ({
+    stateKey,
+    columns: COLUMNS.slice(0, 200),
+    activeFilter: "",
+    onApply: () => {},
+  });
+  const sqlPressed = (markup: string) =>
+    /aria-pressed="true"[^>]*title="Filter als SQL-Ausdruck/.test(markup);
+  useSettingsStore.getState().setTableFilterMode("sql");
+  let fresh = "";
+  const timing = measure(() => {
+    fresh = renderToStaticMarkup(createElement(FilterOmnibar, props("mode-fresh")));
+  }, 20);
+  useSettingsStore.getState().setTableFilterMode("simple");
+  const reset = renderToStaticMarkup(createElement(FilterOmnibar, props("mode-other")));
+  const bytes = retainedBytes(() => {
+    for (let index = 0; index < 50; index++)
+      renderToStaticMarkup(createElement(FilterOmnibar, props(`mode-${index}`)));
+  });
+  await reportScenario("filter-bar-default-mode", { columns: 200, timing, retainedBytes: bytes });
+  expect(sqlPressed(fresh)).toBe(true);
+  expect(sqlPressed(reset)).toBe(false);
+  expect(useTableViewStateStore.getState().views["mode-fresh"]).toBeUndefined();
+  expect(timing.medianMs).toBeLessThan(20);
+  expect(bytes).toBeLessThan(8 * 1024 * 1024);
 });
 
 test("date filter inputs load the date picker only when the calendar opens", () => {

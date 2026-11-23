@@ -11,6 +11,7 @@ import {
 import type { SavedConnection } from "@/lib/connections";
 import type { ImportTargetColumn } from "@/lib/csv-import";
 import { type CsvImportConflict, listConstraints } from "@/lib/db";
+import { supports } from "@/lib/providers";
 import { effectiveConnectionString } from "@/lib/ssh";
 
 export function CsvConflictOptions({
@@ -33,6 +34,7 @@ export function CsvConflictOptions({
   onChange: (value: CsvImportConflict | undefined) => void;
 }) {
   const id = useId();
+  const transactions = supports(connection, "transactions");
   const [mode, setMode] = useState(
     value ? (value.update_columns.length ? "update" : "skip") : "abort",
   );
@@ -68,7 +70,9 @@ export function CsvConflictOptions({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="select:abort">Abbrechen und vollständig zurückrollen</SelectItem>
+          <SelectItem value="select:abort">
+            {transactions ? "Abbrechen und vollständig zurückrollen" : "Abbrechen"}
+          </SelectItem>
           <SelectItem value="select:skip">Überspringen</SelectItem>
           <SelectItem value="select:update">Ausgewählte Spalten aktualisieren</SelectItem>
         </SelectContent>

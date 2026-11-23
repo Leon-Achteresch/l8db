@@ -246,7 +246,7 @@ pub fn App(mut hooks: Hooks, props: &mut AppProps) -> impl Into<AnyElement<'stat
         Screen::Confirm => {
             body.push(line(
                 format!(
-                    "⚠ „{}“ ist Produktion und das SQL schreibt.",
+                    "⚠ „{}“ ist Produktion und die Anweisung schreibt.",
                     state.banner.name
                 ),
                 Some(Color::Red),

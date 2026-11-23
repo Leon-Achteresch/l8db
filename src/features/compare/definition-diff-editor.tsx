@@ -42,6 +42,8 @@ interface DefinitionDiffEditorProps {
   original: string;
   modified: string;
   onlyDifferences: boolean;
+  ignoreTrimWhitespace?: boolean;
+  maxComputationTime?: number;
   onStats?: (stats: DiffStats) => void;
   onModifiedChange?: (value: string) => void;
   readOnly?: boolean;
@@ -59,6 +61,8 @@ export function DefinitionDiffEditor({
   original,
   modified,
   onlyDifferences,
+  ignoreTrimWhitespace = true,
+  maxComputationTime,
   onStats,
   onModifiedChange,
   readOnly = false,
@@ -81,6 +85,7 @@ export function DefinitionDiffEditor({
   modifiedCallback.current = onModifiedChange;
   statsRef.current = onStats;
   const readOnlyRef = useRef(readOnly);
+  const initialDiffOptions = useRef({ ignoreTrimWhitespace, maxComputationTime });
   const minimapRef = useRef(minimap);
   const activateRef = useRef(onActivate);
   activateRef.current = onActivate;
@@ -93,7 +98,9 @@ export function DefinitionDiffEditor({
       theme: themeFor(resolvedTheme),
       readOnly: readOnlyRef.current,
       renderMarginRevertIcon: !readOnlyRef.current,
+      renderGutterMenu: !readOnlyRef.current,
       originalEditable: false,
+      ...initialDiffOptions.current,
       automaticLayout: true,
       renderSideBySide: true,
       renderOverviewRuler: true,
@@ -178,8 +185,12 @@ export function DefinitionDiffEditor({
   }, [onlyDifferences]);
 
   useEffect(() => {
-    diffRef.current?.updateOptions({ renderSideBySide: sideBySide });
-  }, [sideBySide]);
+    diffRef.current?.updateOptions({
+      renderSideBySide: sideBySide,
+      ignoreTrimWhitespace,
+      maxComputationTime,
+    });
+  }, [sideBySide, ignoreTrimWhitespace, maxComputationTime]);
 
   useEffect(() => {
     const editor = diffRef.current;

@@ -16,6 +16,7 @@ import type { DatabaseKind, QueryResult } from "@/lib/db";
 import { createGridWindowRange } from "@/lib/grid-window-range";
 import { useColumnWindow } from "@/lib/hooks/use-column-window";
 import { useRowMarkers } from "@/lib/hooks/use-row-markers";
+import { useScrollingFlag } from "@/lib/hooks/use-scrolling-flag";
 import { useSpiderVisit } from "@/lib/hooks/use-spider-visit";
 import { useGridVirtualizer } from "@/lib/hooks/use-transition-virtualizer";
 import { applyMasks } from "@/lib/masking";
@@ -159,6 +160,7 @@ export const QueryResultTable = memo(function QueryResultTable({
   const rows = useMemo(() => displayedResult?.rows ?? [], [displayedResult]);
   const { markedRows, toggleRowMarker } = useRowMarkers(rows);
   useSpiderVisit(scrollRef, columns, rows);
+  useScrollingFlag(scrollRef);
   const deferredFilters = useDeferredValue(filters);
   const visibleRows = useMemo(
     () => applyResultView(rows, columns, sorts, deferredFilters),
@@ -249,6 +251,7 @@ export const QueryResultTable = memo(function QueryResultTable({
   };
 
   const timestamps = useQueryQolSettings((s) => s.timestamps);
+  const numbers = useQueryQolSettings((s) => s.numbers);
   const autoSizeColumns = (content = false) => {
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
@@ -260,6 +263,7 @@ export const QueryResultTable = memo(function QueryResultTable({
       (text) => context.measureText(text).width,
       content,
       timestamps,
+      numbers,
     );
     setAutoColumnWidths(nextWidths);
   };

@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { ColumnMaskList } from "./csv-export-dialog/column-mask-list";
 import { CsvOptionsFields } from "./csv-export-dialog/csv-options-fields";
 import { type CsvExportDialogProps, PREVIEW_ROWS } from "./csv-export-dialog/types";
@@ -61,6 +62,7 @@ export function CsvExportDialog({
     totalRows,
     update,
   } = useCsvExport({ open, onOpenChange, columns, rows, defaultFileName, fullExport });
+  const { terms } = useActiveCapabilities();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -68,7 +70,10 @@ export function CsvExportDialog({
         <DialogHeader>
           <DialogTitle>CSV exportieren</DialogTitle>
           <DialogDescription>
-            {rows.length} geladene Zeile{rows.length === 1 ? "" : "n"} mit {columns.length} Spalten.
+            {totalRows !== null && totalRows > rows.length
+              ? `${rows.length} von ${totalRows} ${terms.rows} geladen`
+              : `${rows.length} geladene ${rows.length === 1 ? terms.row : terms.rows}`}
+            , {columns.length} {columns.length === 1 ? terms.column : terms.columns}.
           </DialogDescription>
         </DialogHeader>
 
@@ -133,7 +138,7 @@ export function CsvExportDialog({
         {fullSupported && (
           <div className="grid gap-2 rounded-md border p-3">
             <div className="flex items-center justify-between">
-              <Label htmlFor="csv-full">Alle gefilterten Zeilen exportieren</Label>
+              <Label htmlFor="csv-full">Alle gefilterten {terms.rows} exportieren</Label>
               <Switch
                 id="csv-full"
                 checked={fullMode}
@@ -141,7 +146,7 @@ export function CsvExportDialog({
                   setFullMode(checked);
                   setConfirmed(false);
                 }}
-                aria-label="Alle gefilterten Zeilen exportieren"
+                aria-label={`Alle gefilterten ${terms.rows} exportieren`}
               />
             </div>
             {fullMode && (
@@ -158,7 +163,7 @@ export function CsvExportDialog({
                 <p className="text-xs text-muted-foreground">
                   {totalRows === null
                     ? "Die Zeilenzahl ist nicht genau bekannt. Der Export streamt direkt aus der Datenbank in die Datei."
-                    : `${totalRows} Zeilen entsprechen dem aktuellen Filter.`}
+                    : `${totalRows} ${terms.rows} entsprechen dem aktuellen Filter.`}
                 </p>
                 {needsConfirm && (
                   <div className="flex items-center justify-between">

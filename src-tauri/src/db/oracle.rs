@@ -9,6 +9,8 @@ pub use oracle::Connection;
 use oracle::{Connector, Row};
 use tokio_util::sync::CancellationToken;
 
+use super::column_metadata::ColumnMetadata;
+use super::oracle_text_limit::oracle_text_limit;
 use super::pool::{BlockingPool, PoolState, IDLE_CHECK_AFTER};
 use super::server_output::ServerMessage;
 use super::{
@@ -230,32 +232,35 @@ fn map_err(e: oracle::Error) -> String {
     with_hint(format!("Oracle: {}", error_text(&e)))
 }
 
-const HINTS: &[(&str, &str)] = &[
-    ("ORA-12154", "Der TNS-Alias ist unbekannt. TNS_ADMIN und tnsnames.ora prüfen oder Host:Port/Service direkt angeben."),
-    ("ORA-12514", "Der Listener kennt diesen Service nicht. Service-Namen prüfen; bei Multitenant ist es meist der PDB-Service (z. B. FREEPDB1 statt FREE)."),
-    ("ORA-12505", "Der Listener kennt diese SID nicht. Den Service-Namen statt der SID verwenden oder ?sid= prüfen."),
-    ("ORA-12541", "Auf Host und Port läuft kein Listener. Port (Standard 1521), Listener-Status und Firewall prüfen."),
-    ("ORA-12170", "Zeitüberschreitung beim Verbinden. Host, VPN, Firewall oder SSH-Tunnel prüfen."),
-    ("ORA-12535", "Zeitüberschreitung beim Verbinden. Host, VPN, Firewall oder SSH-Tunnel prüfen."),
-    ("ORA-01017", "Benutzername oder Passwort ist falsch. Passwörter unterscheiden Groß- und Kleinschreibung; Benutzernamen mit Kleinbuchstaben in Anführungszeichen angeben (\"name\"); für Proxy-Logins Benutzer[Zielschema] verwenden."),
-    ("ORA-28000", "Das Konto ist gesperrt. Ein DBA kann es mit ALTER USER <name> ACCOUNT UNLOCK entsperren."),
-    ("ORA-28001", "Das Passwort ist abgelaufen. Ein DBA kann es mit ALTER USER <name> IDENTIFIED BY <neues Passwort> zurücksetzen."),
-    ("ORA-03113", "Die Verbindung zum Server ist abgerissen (Netzwerk, Neustart oder Idle-Timeout). l8db baut die Sitzung beim nächsten Aufruf neu auf."),
-    ("ORA-03114", "Die Verbindung zum Server ist abgerissen (Netzwerk, Neustart oder Idle-Timeout). l8db baut die Sitzung beim nächsten Aufruf neu auf."),
-    ("ORA-04021", "Das Objekt wird gerade von einer anderen Sitzung ausgeführt oder ist gesperrt. Unter Sitzungen & Locks prüfen, wer es benutzt."),
-    ("ORA-01031", "Dafür fehlen Rechte. Welche Rechte die Verbindung hat, zeigt Sitzungen & Locks → Verbindung."),
-    ("ORA-00942", "Tabelle oder View fehlt oder ist nicht freigegeben. Ohne Anführungszeichen schreibt Oracle Namen groß."),
-    ("ORA-00904", "Spalte oder Bezeichner unbekannt. Ohne Anführungszeichen schreibt Oracle Namen groß."),
-    ("ORA-00900", "Oracle erkennt die Anweisung nicht. Das erste Wort prüfen."),
-    ("ORA-00001", "Der Wert verletzt einen Primär- oder Eindeutigkeitsschlüssel."),
-    ("ORA-01008", "Für eine Bindvariable (:name) fehlt der Wert. In der CLI den Wert direkt ins SQL schreiben."),
-    ("ORA-22913", "Für die Nested-Table-Spalte fehlt NESTED TABLE … STORE AS."),
-    ("DPI-1047", "Der Oracle Instant Client fehlt oder passt nicht zur Architektur (64 Bit). Siehe Treiberseite."),
+const HINTS: &[(&str, &str, &str)] = &[
+    ("ORA-12154", "TNS-Alias unbekannt", "Der TNS-Alias ist unbekannt. TNS_ADMIN und tnsnames.ora prüfen oder Host:Port/Service direkt angeben."),
+    ("ORA-12514", "Service unbekannt", "Der Listener kennt diesen Service nicht. Service-Namen prüfen; bei Multitenant ist es meist der PDB-Service (z. B. FREEPDB1 statt FREE)."),
+    ("ORA-12505", "SID unbekannt", "Der Listener kennt diese SID nicht. Den Service-Namen statt der SID verwenden oder ?sid= prüfen."),
+    ("ORA-12541", "Kein Listener", "Auf Host und Port läuft kein Listener. Port (Standard 1521), Listener-Status und Firewall prüfen."),
+    ("ORA-12170", "Zeitüberschreitung", "Zeitüberschreitung beim Verbinden. Host, VPN, Firewall oder SSH-Tunnel prüfen."),
+    ("ORA-12535", "Zeitüberschreitung", "Zeitüberschreitung beim Verbinden. Host, VPN, Firewall oder SSH-Tunnel prüfen."),
+    ("ORA-01017", "Anmeldung fehlgeschlagen", "Benutzername oder Passwort ist falsch. Passwörter unterscheiden Groß- und Kleinschreibung; Benutzernamen mit Kleinbuchstaben in Anführungszeichen angeben (\"name\"); für Proxy-Logins Benutzer[Zielschema] verwenden."),
+    ("ORA-28000", "Konto gesperrt", "Das Konto ist gesperrt. Ein DBA kann es mit ALTER USER <name> ACCOUNT UNLOCK entsperren."),
+    ("ORA-28001", "Passwort abgelaufen", "Das Passwort ist abgelaufen. Ein DBA kann es mit ALTER USER <name> IDENTIFIED BY <neues Passwort> zurücksetzen."),
+    ("ORA-03113", "Verbindung abgerissen", "Die Verbindung zum Server ist abgerissen (Netzwerk, Neustart oder Idle-Timeout). l8db baut die Sitzung beim nächsten Aufruf neu auf."),
+    ("ORA-03114", "Verbindung abgerissen", "Die Verbindung zum Server ist abgerissen (Netzwerk, Neustart oder Idle-Timeout). l8db baut die Sitzung beim nächsten Aufruf neu auf."),
+    ("ORA-04021", "Objekt gesperrt", "Das Objekt wird gerade von einer anderen Sitzung ausgeführt oder ist gesperrt. Unter Sitzungen & Locks prüfen, wer es benutzt."),
+    ("ORA-01031", "Rechte fehlen", "Dafür fehlen Rechte. Welche Rechte die Verbindung hat, zeigt Sitzungen & Locks → Verbindung."),
+    ("ORA-00942", "Tabelle oder View fehlt", "Tabelle oder View fehlt oder ist nicht freigegeben. Ohne Anführungszeichen schreibt Oracle Namen groß."),
+    ("ORA-00904", "Spalte unbekannt", "Spalte oder Bezeichner unbekannt. Ohne Anführungszeichen schreibt Oracle Namen groß."),
+    ("ORA-00900", "Anweisung unbekannt", "Oracle erkennt die Anweisung nicht. Das erste Wort prüfen."),
+    ("ORA-00001", "Schlüssel verletzt", "Der Wert verletzt einen Primär- oder Eindeutigkeitsschlüssel."),
+    ("ORA-01008", "Bindwert fehlt", "Für eine Bindvariable (:name) fehlt der Wert. In der CLI den Wert direkt ins SQL schreiben."),
+    ("ORA-22913", "Speicherklausel fehlt", "Für die Nested-Table-Spalte fehlt NESTED TABLE … STORE AS."),
+    ("DPI-1047", "Instant Client fehlt", "Der Oracle Instant Client fehlt oder passt nicht zur Architektur. Unter Treiber analysiert und repariert l8db das."),
 ];
 
 fn with_hint(message: String) -> String {
-    match HINTS.iter().find(|(code, _)| message.contains(code)) {
-        Some((_, hint)) => format!("{message}\nHinweis: {hint}"),
+    match HINTS.iter().find(|(code, _, _)| message.contains(code)) {
+        Some((_, title, hint)) => match message.strip_prefix("Oracle: ") {
+            Some(raw) => format!("{title}: {raw}\nHinweis: {hint}"),
+            None => format!("{message}\nHinweis: {hint}"),
+        },
         None => message,
     }
 }
@@ -279,17 +284,6 @@ fn split_privilege(user: &str) -> (&str, Option<oracle::Privilege>) {
         }
     }
     (user, None)
-}
-
-pub(crate) static PLSQL_WARNINGS: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-fn warnings_sql(enabled: bool) -> &'static str {
-    if enabled {
-        "ALTER SESSION SET PLSQL_WARNINGS = 'ENABLE:ALL'"
-    } else {
-        "ALTER SESSION SET PLSQL_WARNINGS = 'DISABLE:ALL'"
-    }
 }
 
 fn legacy_paging(c: &Connection) -> bool {
@@ -950,7 +944,7 @@ fn caller_label(owner: &str, name: &str, kind: &str) -> String {
     format!("Aufrufer {owner}.{name} ({kind})")
 }
 
-const USER_TABLES: &str = "dropped = 'NO' AND secondary = 'N' AND nested = 'NO' AND (iot_type IS NULL OR iot_type = 'IOT') AND NOT EXISTS (SELECT 1 FROM all_objects m WHERE m.owner = all_tables.owner AND m.object_name = all_tables.table_name AND m.object_type = 'MATERIALIZED VIEW') AND table_name NOT LIKE 'AQ$\\_%' ESCAPE '\\' AND table_name NOT LIKE 'MLOG$\\_%' ESCAPE '\\' AND table_name NOT LIKE 'RUPD$\\_%' ESCAPE '\\'";
+pub(crate) const USER_TABLES: &str = "dropped = 'NO' AND secondary = 'N' AND nested = 'NO' AND (iot_type IS NULL OR iot_type = 'IOT') AND NOT EXISTS (SELECT 1 FROM all_objects m WHERE m.owner = all_tables.owner AND m.object_name = all_tables.table_name AND m.object_type = 'MATERIALIZED VIEW') AND table_name NOT LIKE 'AQ$\\_%' ESCAPE '\\' AND table_name NOT LIKE 'MLOG$\\_%' ESCAPE '\\' AND table_name NOT LIKE 'RUPD$\\_%' ESCAPE '\\'";
 
 const NLS_SESSION: &str = "ALTER SESSION SET NLS_NUMERIC_CHARACTERS = '.,' NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS' NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF' NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM'";
 const ROWID_SELECT: &str = "ROWIDTOCHAR(t.ROWID) AS \"__ctid__\", t.*";
@@ -1001,6 +995,10 @@ pub(crate) fn statement_count(sql: &str) -> usize {
     sql::split_statements(sql).len()
 }
 
+pub(crate) fn is_plsql_block(sql: &str) -> bool {
+    sql::is_block(sql)
+}
+
 pub(crate) fn script_items(sql: &str) -> Vec<(bool, String)> {
     sql::split_items(sql)
 }
@@ -1010,7 +1008,7 @@ const MAX_OUTPUT_LINES: usize = 100_000;
 
 const READ_OUTPUT: &str = "DECLARE l_lines DBMS_OUTPUT.CHARARR; l_count INTEGER := :count; l_out CLOB; BEGIN DBMS_OUTPUT.GET_LINES(l_lines, l_count); IF l_count > 0 THEN DBMS_LOB.CREATETEMPORARY(l_out, TRUE); FOR i IN 1 .. l_count LOOP IF l_lines(i) IS NOT NULL THEN DBMS_LOB.WRITEAPPEND(l_out, LENGTH(l_lines(i)), l_lines(i)); END IF; DBMS_LOB.WRITEAPPEND(l_out, 1, CHR(10)); END LOOP; END IF; :text := l_out; :count := l_count; END;";
 
-fn output_limit_note() -> String {
+pub(crate) fn output_limit_note() -> String {
     format!("… Grenze von {MAX_OUTPUT_LINES} Zeilen erreicht, weitere Ausgabe verworfen.")
 }
 
@@ -1479,7 +1477,7 @@ impl OracleAdapter {
         tokio::task::spawn_blocking(move || {
             ensure_client_lib();
             oracle::Version::client()
-                .map_err(|e| format!("Oracle Instant Client nicht gefunden: {e}"))?;
+                .map_err(|e| with_hint(format!("Oracle Instant Client nicht gefunden: {e}")))?;
             connect_sync(&user, &password, &connect_string)
         })
         .await
@@ -1584,11 +1582,13 @@ impl OracleAdapter {
                 guard.0 = init.reopen(&login)?;
                 init.notice(RECONNECTED);
             }
-            let wanted = PLSQL_WARNINGS.load(Ordering::Relaxed);
-            if init.warnings.load(Ordering::Relaxed) != wanted
-                && guard.0.execute(warnings_sql(wanted), &[]).is_ok()
-            {
-                init.warnings.store(wanted, Ordering::Relaxed);
+            let wanted = super::oracle_warnings::current();
+            if let Ok(mut applied) = init.warnings.lock() {
+                if applied.clone().unwrap_or_default() != wanted
+                    && guard.0.execute(&wanted.sql(), &[]).is_ok()
+                {
+                    *applied = Some(wanted);
+                }
             }
             let result = call.run(&guard.0, f);
             let result = match result {
@@ -1630,6 +1630,29 @@ impl OracleAdapter {
         let call = CallGuard::current(suffix).killing(self.login());
         pool.run(|| self.open_raw(), alive, move |c| call.run(c, f))
             .await
+    }
+
+    async fn run_read<T, F>(&self, f: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Connection) -> Result<T, String> + Send + 'static,
+    {
+        let pool = self
+            .pool_state
+            .shared(&format!("{}#read", self.key), || async {
+                Ok(BlockingPool::<Connection>::new(3))
+            })
+            .await?;
+        let call = CallGuard::current("read").killing(self.login());
+        pool.run(
+            || self.open_raw(),
+            alive,
+            move |c| match call.run(c, f) {
+                Err(error) if !alive(c) => Err(error),
+                result => Ok(result),
+            },
+        )
+        .await?
     }
 
     async fn run_meta<T, F>(&self, f: F) -> Result<T, String>
@@ -1809,7 +1832,8 @@ impl OracleAdapter {
 
     async fn exec(&self, sql: String) -> Result<u64, String> {
         let init = self.session_init().await?;
-        let warnings = PLSQL_WARNINGS.load(Ordering::Relaxed) || init.has("SET PLSQL_WARNINGS");
+        let warnings =
+            super::oracle_warnings::current().enabled() || init.has("SET PLSQL_WARNINGS");
         let (count, warning) = self
             .run(move |c| {
                 let count = super::sql_log::logged(
@@ -1939,21 +1963,13 @@ impl OracleAdapter {
         if let Some(users) = users {
             return Err(format!("{error_type} {owner}.{name} wird gerade ausgeführt: {users}. Kompilieren würde bis zum Ende warten (ORA-04021); später erneut versuchen oder die Sitzung unter Sitzungen & Locks beenden."));
         }
-        let warnings = if PLSQL_WARNINGS.load(Ordering::Relaxed)
-            && !matches!(compile_kind, "VIEW" | "MATERIALIZED VIEW")
-        {
-            " PLSQL_WARNINGS = 'ENABLE:ALL'"
-        } else {
-            ""
-        };
         let compile_error = self
             .exec(format!(
-                "ALTER {} {}.{} COMPILE{}{}",
+                "ALTER {} {}.{} COMPILE{}",
                 compile_kind,
                 quote(owner),
                 quote(name),
-                compile_part,
-                warnings
+                compile_part
             ))
             .await
             .err();
@@ -2165,9 +2181,16 @@ async fn execute_one(adapter: &OracleAdapter, sql: &str) -> Result<QueryResult, 
     let statement = prepare(sql);
     if is_query(&statement) {
         let limit = super::execution::row_limit();
-        let (columns, rows) = adapter
-            .run(move |c| run_query_named(c, &statement, &[], limit))
-            .await?;
+        let read =
+            |statement: String| move |c: &Connection| run_query_named(c, &statement, &[], limit);
+        let pooled = super::execution::parallel_reads() && adapter.session_init().await?.plain();
+        let (columns, rows) = match pooled {
+            true => match adapter.run_read(read(statement.clone())).await {
+                Err(error) if error.contains("ORA-02391") => adapter.run(read(statement)).await?,
+                result => result?,
+            },
+            false => adapter.run(read(statement)).await?,
+        };
         return Ok(QueryResult {
             rows: rows_to_objects(&columns, rows),
             columns,
@@ -2176,6 +2199,7 @@ async fn execute_one(adapter: &OracleAdapter, sql: &str) -> Result<QueryResult, 
             truncated: false,
         });
     }
+    adapter.session_init().await?.touch();
     let plsql = is_plsql(&statement);
     if matches!(sql::first_word(&statement).as_str(), "BEGIN" | "DECLARE") {
         let limit = super::execution::row_limit();
@@ -2311,6 +2335,19 @@ impl DatabaseAdapter for OracleAdapter {
                 name: s(r, 1),
             })
             .collect())
+    }
+
+    async fn catalog_fingerprint(&self) -> Result<Option<String>, String> {
+        let rows = self
+            .rows(format!(
+                "SELECT COUNT(*) || ':' || SUM(ORA_HASH(object_name || TO_CHAR(last_ddl_time, 'YYYYMMDDHH24MISS'))), CASE WHEN MAX(last_ddl_time) >= SYSDATE - 2 / 86400 THEN 1 ELSE 0 END FROM all_objects WHERE {} AND object_type = 'TABLE'",
+                Self::owner_filter(None, "owner")
+            ))
+            .await?;
+        Ok(rows
+            .first()
+            .filter(|row| s(row, 1) == "0")
+            .map(|row| s(row, 0)))
     }
 
     async fn list_columns(
@@ -2627,6 +2664,27 @@ impl DatabaseAdapter for OracleAdapter {
             .map(|r| TableInfo {
                 schema: s(r, 0),
                 name: s(r, 1),
+            })
+            .collect())
+    }
+
+    async fn list_materialized_views(
+        &self,
+        schema: Option<&str>,
+    ) -> Result<Vec<super::MatviewInfo>, String> {
+        let sql = format!(
+            "SELECT owner, mview_name, CASE WHEN last_refresh_date IS NULL THEN 0 ELSE 1 END FROM all_mviews WHERE {} ORDER BY mview_name",
+            Self::owner_filter(schema, "owner")
+        );
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| super::MatviewInfo {
+                schema: s(r, 0),
+                name: s(r, 1),
+                is_populated: i(r, 2) == 1,
+                definition: None,
             })
             .collect())
     }
@@ -3279,11 +3337,24 @@ impl DatabaseAdapter for OracleAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
+        Ok(self
+            .list_table_column_metadata(schema, table)
+            .await?
+            .into_iter()
+            .map(|metadata| metadata.column)
+            .collect())
+    }
+
+    async fn list_table_column_metadata(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<ColumnMetadata>, String> {
         let sql = String::from(
             "SELECT c.column_name, c.data_type || CASE WHEN c.data_type IN ('VARCHAR2', 'CHAR', 'NVARCHAR2', 'NCHAR') THEN '(' || c.char_length || ')' WHEN c.data_type = 'NUMBER' AND c.data_precision IS NOT NULL THEN '(' || c.data_precision || ',' || NVL(c.data_scale, 0) || ')' ELSE '' END, \
              c.nullable, c.data_default, c.column_id, c.char_length, \
              (SELECT COUNT(*) FROM all_constraints k JOIN all_cons_columns kc ON kc.owner = k.owner AND kc.constraint_name = k.constraint_name WHERE k.constraint_type = 'P' AND k.owner = c.owner AND k.table_name = c.table_name AND kc.column_name = c.column_name), \
-             cc.comments \
+             cc.comments, c.data_type, c.char_used, c.data_length \
              FROM all_tab_columns c LEFT JOIN all_col_comments cc ON cc.owner = c.owner AND cc.table_name = c.table_name AND cc.column_name = c.column_name \
              WHERE c.owner = :owner AND c.table_name = :tbl ORDER BY c.column_id"
         );
@@ -3291,17 +3362,25 @@ impl DatabaseAdapter for OracleAdapter {
             .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
             .await?
             .iter()
-            .map(|r| DetailedColumnInfo {
-                name: s(r, 0),
-                data_type: s(r, 1),
-                is_nullable: s(r, 2) == "Y",
-                column_default: s_opt(r, 3).map(|d| d.trim().to_string()),
-                ordinal_position: i(r, 4) as i32,
-                character_maximum_length: s_opt(r, 5)
-                    .and_then(|v| v.parse().ok())
-                    .filter(|v| *v > 0),
-                is_primary_key: i(r, 6) > 0,
-                comment: s_opt(r, 7).filter(|c| !c.is_empty()),
+            .map(|r| {
+                let char_length = s_opt(r, 5).and_then(|v| v.parse().ok()).filter(|v| *v > 0);
+                let mut metadata = ColumnMetadata::from(DetailedColumnInfo {
+                    name: s(r, 0),
+                    data_type: s(r, 1),
+                    is_nullable: s(r, 2) == "Y",
+                    column_default: s_opt(r, 3).map(|d| d.trim().to_string()),
+                    ordinal_position: i(r, 4) as i32,
+                    character_maximum_length: char_length,
+                    is_primary_key: i(r, 6) > 0,
+                    comment: s_opt(r, 7).filter(|c| !c.is_empty()),
+                });
+                metadata.oracle_text_limit = oracle_text_limit(
+                    &s(r, 8),
+                    s_opt(r, 9).as_deref(),
+                    char_length,
+                    s_opt(r, 10).and_then(|v| v.parse().ok()),
+                );
+                metadata
             })
             .collect())
     }
@@ -3826,9 +3905,9 @@ impl DatabaseAdapter for OracleAdapter {
             .next()
             .unwrap_or_default();
         let tables = self
-            .rows(
-                "SELECT owner, COUNT(*) FROM all_tables GROUP BY owner ORDER BY owner".to_string(),
-            )
+            .rows(format!(
+                "SELECT owner, COUNT(*) FROM all_tables WHERE {USER_TABLES} GROUP BY owner ORDER BY owner"
+            ))
             .await?;
         let segments = match self
             .rows("SELECT owner, SUM(bytes) FROM dba_segments GROUP BY owner".to_string())
@@ -4063,7 +4142,8 @@ const PROBE_TTL: Duration = Duration::from_secs(300);
 pub(crate) struct SessionInit {
     settings: Mutex<Vec<(String, String)>>,
     notices: Mutex<Vec<String>>,
-    warnings: std::sync::atomic::AtomicBool,
+    warnings: Mutex<Option<super::oracle_warnings::PlsqlWarnings>>,
+    touched: std::sync::atomic::AtomicBool,
 }
 
 impl SessionInit {
@@ -4089,13 +4169,28 @@ impl SessionInit {
         }
     }
 
+    fn touch(&self) {
+        self.touched
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn plain(&self) -> bool {
+        !self.touched.load(std::sync::atomic::Ordering::Relaxed)
+            && self
+                .settings
+                .lock()
+                .is_ok_and(|settings| settings.is_empty())
+    }
+
     fn reopen(&self, login: &Login) -> Result<Connection, String> {
         let conn = connect_sync(&login.user, &login.password, &login.connect_string)?;
         let settings = self.settings.lock().map(|s| s.clone()).unwrap_or_default();
         for (_, sql) in settings {
             let _ = conn.execute(&sql, &[]);
         }
-        self.warnings.store(false, Ordering::Relaxed);
+        if let Ok(mut applied) = self.warnings.lock() {
+            *applied = None;
+        }
         Ok(conn)
     }
 
@@ -4173,7 +4268,7 @@ pub fn ensure_client_lib() {
     }
 }
 
-fn is_client_lib(file: &str) -> bool {
+pub(super) fn is_client_lib(file: &str) -> bool {
     if cfg!(target_os = "windows") {
         file.eq_ignore_ascii_case("oci.dll")
     } else if cfg!(target_os = "macos") {
@@ -4211,7 +4306,7 @@ fn instant_client_dirs(parent: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-fn client_lib_candidates() -> impl Iterator<Item = PathBuf> {
+pub(super) fn client_lib_candidates() -> impl Iterator<Item = PathBuf> {
     let mut dirs = Vec::new();
     if let Some(home) = std::env::var_os("ORACLE_HOME") {
         dirs.push(PathBuf::from(&home).join("lib"));
@@ -4343,6 +4438,39 @@ mod tests {
     }
 
     use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires the isolated A36_FIXTURE Oracle schema on loopback"]
+    async fn live_oracle_text_limit_catalog_fixture() {
+        let url = std::env::var("L8DB_A36_ORACLE_URL").expect("Missing isolated Oracle fixture");
+        let adapter =
+            OracleAdapter::new(&url, crate::db::pool::create_pool_state(), "a36".into()).unwrap();
+        assert_eq!(
+            adapter.tcp.as_ref().map(|(host, _)| host.as_str()),
+            Some("127.0.0.1")
+        );
+        assert!(adapter.user.eq_ignore_ascii_case("A36_FIXTURE"));
+        let columns = adapter
+            .list_table_column_metadata("A36_FIXTURE", "L8DB_A36_TEXT_LIMIT")
+            .await
+            .unwrap();
+        assert_eq!(columns.len(), 4);
+        for (name, expected) in [
+            ("B", serde_json::json!({"length": 4, "unit": "BYTE"})),
+            ("C", serde_json::json!({"length": 2, "unit": "CHAR"})),
+            ("N", serde_json::json!({"length": 2, "unit": "CHAR"})),
+            ("R", serde_json::Value::Null),
+        ] {
+            let column = columns
+                .iter()
+                .find(|column| column.column.name == name)
+                .unwrap();
+            assert_eq!(
+                serde_json::to_value(&column.oracle_text_limit).unwrap(),
+                expected
+            );
+        }
+    }
 
     #[test]
     fn requalifies_unquoted_oracle_qualifiers_case_insensitively() {
@@ -4538,6 +4666,58 @@ mod tests {
         assert_eq!(native, Ok(Some(std::time::Duration::from_secs(7))));
         let untimed = run(options(), false, async { Ok(query_deadline()) }).await;
         assert_eq!(untimed, Ok(None));
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_table_counts_agree_between_list_atlas_and_overview() {
+        let url = std::env::var("L8DB_SMOKE_ORACLE_URL")
+            .expect("Lab fehlt: L8DB_SMOKE_ORACLE_URL ist nicht gesetzt");
+        let adapter =
+            OracleAdapter::new(&url, crate::db::pool::create_pool_state(), "counts".into())
+                .unwrap();
+        for sql in [
+            "BEGIN EXECUTE IMMEDIATE 'DROP MATERIALIZED VIEW FIXR_MV'; EXCEPTION WHEN OTHERS THEN NULL; END;",
+            "BEGIN EXECUTE IMMEDIATE 'DROP TABLE FIXR_A PURGE'; EXCEPTION WHEN OTHERS THEN NULL; END;",
+            "CREATE TABLE FIXR_A (id NUMBER PRIMARY KEY)",
+            "CREATE TABLE FIXR_B (id NUMBER)",
+            "DROP TABLE FIXR_B",
+            "CREATE MATERIALIZED VIEW FIXR_MV AS SELECT id FROM FIXR_A",
+        ] {
+            adapter.execute_query(sql).await.unwrap();
+        }
+        let schema = adapter.list_schemas().await.unwrap();
+        let owner = schema
+            .iter()
+            .find(|s| s.eq_ignore_ascii_case("L8DB"))
+            .unwrap()
+            .clone();
+        let listed = adapter.list_tables(Some(&owner)).await.unwrap();
+        let map = crate::mcp::schema_map(&adapter, crate::db::DatabaseKind::Oracle, &owner)
+            .await
+            .unwrap();
+        let overview = adapter.get_database_overview().await.unwrap();
+        for sql in [
+            "DROP MATERIALIZED VIEW FIXR_MV",
+            "DROP TABLE FIXR_A PURGE",
+            "PURGE TABLE FIXR_B",
+        ] {
+            let _ = adapter.execute_query(sql).await;
+        }
+        let fixr: Vec<&str> = map
+            .tables
+            .iter()
+            .map(|t| t.name.as_str())
+            .filter(|n| n.starts_with("FIXR") || n.starts_with("BIN$"))
+            .collect();
+        assert_eq!(fixr, ["FIXR_A", "FIXR_MV"]);
+        let counted = overview
+            .schemas
+            .iter()
+            .find(|s| s.schema == owner)
+            .unwrap()
+            .table_count;
+        assert_eq!(counted, listed.len() as i64);
     }
 
     #[tokio::test]
@@ -6310,19 +6490,26 @@ pub fn tx_execute(c: &Connection, sql: &str) -> Result<QueryResult, String> {
     })
 }
 
-pub fn tx_update_row(
+fn sorted_values(
+    values: &std::collections::HashMap<String, Option<String>>,
+) -> Vec<(&String, &Option<String>)> {
+    let mut entries: Vec<_> = values.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    entries
+}
+
+fn tx_update_sql(
     c: &Connection,
     schema: &str,
     table: &str,
     rowid: &str,
     updates: &std::collections::HashMap<String, Option<String>>,
-) -> Result<String, String> {
-    let rowid = validate_rowid(rowid)?;
+) -> Result<Option<(String, Vec<LongValue>)>, String> {
     let valid = existing_columns(c, schema, table)?;
     let binary = binary_columns(c, schema, table, updates)?;
     let mut set_parts = Vec::new();
     let mut long = Vec::new();
-    for (col, val) in updates {
+    for (col, val) in sorted_values(updates) {
         if !valid.contains(col) {
             return Err(format!("Unbekannte Spalte: {col}"));
         }
@@ -6333,15 +6520,110 @@ pub fn tx_update_row(
         ));
     }
     if set_parts.is_empty() {
-        return Ok(rowid.to_string());
+        return Ok(None);
     }
-    let sql = format!(
-        "UPDATE {}.{} SET {} WHERE ROWID = CHARTOROWID({}) RETURNING ROWIDTOCHAR(ROWID) INTO :l8db_rid",
+    Ok(Some((
+        format!(
+            "UPDATE {}.{} SET {} WHERE ROWID = CHARTOROWID({}) RETURNING ROWIDTOCHAR(ROWID) INTO :l8db_rid",
+            quote(schema),
+            quote(table),
+            set_parts.join(", "),
+            lit(rowid)
+        ),
+        long,
+    )))
+}
+
+fn tx_insert_sql(
+    c: &Connection,
+    schema: &str,
+    table: &str,
+    values: &std::collections::HashMap<String, Option<String>>,
+) -> Result<(String, Vec<LongValue>), String> {
+    let valid = existing_columns(c, schema, table)?;
+    let binary = binary_columns(c, schema, table, values)?;
+    let mut long = Vec::new();
+    let (cols, vals): (Vec<String>, Vec<String>) = if values.is_empty() {
+        let first = valid.first().ok_or("Tabelle hat keine Spalten")?;
+        (vec![quote(first)], vec!["DEFAULT".to_string()])
+    } else {
+        let mut cols = Vec::new();
+        let mut vals = Vec::new();
+        for (col, val) in sorted_values(values) {
+            if !valid.contains(col) {
+                return Err(format!("Unbekannte Spalte: {col}"));
+            }
+            cols.push(quote(col));
+            vals.push(column_value(&binary, col, val, &mut long));
+        }
+        (cols, vals)
+    };
+    Ok((
+        format!(
+            "INSERT INTO {}.{} ({}) VALUES ({}) RETURNING ROWIDTOCHAR(ROWID) INTO :rid",
+            quote(schema),
+            quote(table),
+            cols.join(", "),
+            vals.join(", ")
+        ),
+        long,
+    ))
+}
+
+fn tx_delete_sql(schema: &str, table: &str, rowid: &str) -> String {
+    format!(
+        "DELETE FROM {}.{} WHERE ROWID = CHARTOROWID({})",
         quote(schema),
         quote(table),
-        set_parts.join(", "),
         lit(rowid)
-    );
+    )
+}
+
+fn describe_long(long: &[LongValue]) -> Vec<String> {
+    long_names(long)
+        .into_iter()
+        .zip(long)
+        .map(|(name, value)| match value {
+            LongValue::Text(text) => format!(":{name} = CLOB, {} Zeichen", text.chars().count()),
+            LongValue::Bytes(bytes) => format!(":{name} = BLOB, {} Bytes", bytes.len()),
+        })
+        .collect()
+}
+
+pub fn tx_change_sql(
+    c: &Connection,
+    schema: &str,
+    table: &str,
+    change: &super::transaction::RowChange,
+) -> Result<Option<(String, Vec<String>)>, String> {
+    use super::transaction::RowChange;
+    Ok(match change {
+        RowChange::Update { ctid, updates } => {
+            tx_update_sql(c, schema, table, validate_rowid(ctid)?, updates)?
+                .map(|(sql, long)| (sql, describe_long(&long)))
+        }
+        RowChange::Insert { values } => {
+            let (sql, long) = tx_insert_sql(c, schema, table, values)?;
+            Some((sql, describe_long(&long)))
+        }
+        RowChange::Delete { ctid } => Some((
+            tx_delete_sql(schema, table, validate_rowid(ctid)?),
+            Vec::new(),
+        )),
+    })
+}
+
+pub fn tx_update_row(
+    c: &Connection,
+    schema: &str,
+    table: &str,
+    rowid: &str,
+    updates: &std::collections::HashMap<String, Option<String>>,
+) -> Result<String, String> {
+    let rowid = validate_rowid(rowid)?;
+    let Some((sql, long)) = tx_update_sql(c, schema, table, rowid, updates)? else {
+        return Ok(rowid.to_string());
+    };
     let names = long_names(&long);
     let boxed = long_params(&names, &long);
     let out = OracleType::Varchar2(4000);
@@ -6366,31 +6648,7 @@ pub fn tx_insert_row(
     table: &str,
     values: &std::collections::HashMap<String, Option<String>>,
 ) -> Result<serde_json::Value, String> {
-    let valid = existing_columns(c, schema, table)?;
-    let binary = binary_columns(c, schema, table, values)?;
-    let mut long = Vec::new();
-    let (cols, vals): (Vec<String>, Vec<String>) = if values.is_empty() {
-        let first = valid.first().ok_or("Tabelle hat keine Spalten")?;
-        (vec![quote(first)], vec!["DEFAULT".to_string()])
-    } else {
-        let mut cols = Vec::new();
-        let mut vals = Vec::new();
-        for (col, val) in values {
-            if !valid.contains(col) {
-                return Err(format!("Unbekannte Spalte: {col}"));
-            }
-            cols.push(quote(col));
-            vals.push(column_value(&binary, col, val, &mut long));
-        }
-        (cols, vals)
-    };
-    let sql = format!(
-        "INSERT INTO {}.{} ({}) VALUES ({}) RETURNING ROWIDTOCHAR(ROWID) INTO :rid",
-        quote(schema),
-        quote(table),
-        cols.join(", "),
-        vals.join(", ")
-    );
+    let (sql, long) = tx_insert_sql(c, schema, table, values)?;
     let names = long_names(&long);
     let boxed = long_params(&names, &long);
     let out = OracleType::Varchar2(4000);
@@ -6437,13 +6695,7 @@ pub fn tx_duplicate_row(
 }
 
 pub fn tx_delete_row(c: &Connection, schema: &str, table: &str, rowid: &str) -> Result<(), String> {
-    let rowid = validate_rowid(rowid)?;
-    let sql = format!(
-        "DELETE FROM {}.{} WHERE ROWID = CHARTOROWID({})",
-        quote(schema),
-        quote(table),
-        lit(rowid)
-    );
+    let sql = tx_delete_sql(schema, table, validate_rowid(rowid)?);
     let affected = c
         .execute(&sql, &[])
         .map_err(map_err)
@@ -6541,9 +6793,12 @@ mod batch_tests {
             with_hint("Oracle: ORA-12899: value too large for column".into()),
             "Oracle: ORA-12899: value too large for column"
         );
+        let missing = with_hint("Oracle: ORA-00942: table or view does not exist".into());
+        assert!(missing.starts_with("Tabelle oder View fehlt: ORA-00942: table or view"));
+        assert!(missing.contains("Hinweis: Tabelle oder View fehlt"));
         assert!(
-            with_hint("Oracle: ORA-00942: table or view does not exist".into())
-                .contains("Hinweis: Tabelle oder View fehlt")
+            with_hint("Oracle-Verbindung fehlgeschlagen: ORA-12514: x".into())
+                .starts_with("Oracle-Verbindung fehlgeschlagen: ORA-12514")
         );
     }
 

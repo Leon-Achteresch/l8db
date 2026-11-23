@@ -277,8 +277,7 @@ pub fn authorize(command: &str) -> Result<(), String> {
         || (!policy.allow_extensions
             && (command.starts_with("community_extension")
                 || command == "read_community_extension"
-                || command.starts_with("extension_")
-                || command.starts_with("ui_plugin")))
+                || command.starts_with("extension_")))
         || (!policy.allow_personal_sync && command.starts_with("sync_"))
         || (!policy.allow_mcp && command.starts_with("mcp_") && command != "mcp_clear_audit");
     if denied {

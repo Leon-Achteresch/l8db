@@ -14,6 +14,7 @@ import {
   executeWithBinds,
   listTableColumnsDetailed,
   type QueryResult,
+  READ_ONLY_MESSAGE,
   takeServerOutput,
   transactionServerOutput,
 } from "@/lib/db";
@@ -196,7 +197,7 @@ function verifyLines(before: string, after: string): ScriptRunMessage[] {
 
 function createdObject(sql: string): { type: string; owner: string | null; name: string } | null {
   const match =
-    /^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:EDITIONABLE|NONEDITIONABLE)\s+)?(PACKAGE\s+BODY|TYPE\s+BODY|JAVA\s+SOURCE|PACKAGE|PROCEDURE|FUNCTION|TRIGGER|TYPE|VIEW|LIBRARY)\s+((?:"[^"]+"|[\w$#]+)(?:\s*\.\s*(?:"[^"]+"|[\w$#]+))?)/i.exec(
+    /^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NO\s+)?FORCE\s+)?(?:(?:EDITIONABLE|NONEDITIONABLE|EDITIONING)\s+)*(PACKAGE\s+BODY|TYPE\s+BODY|JAVA\s+SOURCE|PACKAGE|PROCEDURE|FUNCTION|TRIGGER|TYPE|VIEW|LIBRARY)\s+((?:"[^"]+"|[\w$#]+)(?:\s*\.\s*(?:"[^"]+"|[\w$#]+))?)/i.exec(
       sql.replace(/^(?:\s|--[^\n]*\n|\/\*[\s\S]*?\*\/)*/, ""),
     );
   if (!match) return null;
@@ -273,7 +274,11 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     : request.sql;
   const policyIssue = scriptPolicyIssue(executable, connection.kind, mode !== "autocommit");
   if (policyIssue) throw new Error(policyIssue);
-  await confirmSqlExecution(connection.kind, url, executable, database ?? undefined);
+  await confirmSqlExecution(connection.kind, url, executable, database ?? undefined).catch(
+    (error) => {
+      if (!(error instanceof Error && error.message === READ_ONLY_MESSAGE)) throw error;
+    },
+  );
   const existing = getQueryTransaction(connection.id, database);
   if (existing && mode !== "existing-transaction")
     throw new Error(
@@ -1023,11 +1028,20 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
           ? bindNames(sql).filter((name) => plus.binds.has(name))
           : [];
       const activeTxId = txId;
-      const limited = applySelectRowLimit(
-        expandSessionViews(sql, sessionViewsFor(connection.id, database), connection.kind),
+      const expanded = expandSessionViews(
+        sql,
+        sessionViewsFor(connection.id, database),
         connection.kind,
-        oracle ? 0 : (request.selectRowLimit ?? 0),
       );
+      const rowLimit = oracle ? 0 : (request.selectRowLimit ?? 0);
+      const limited = applySelectRowLimit(expanded, connection.kind, rowLimit);
+      const mark = (result: QueryResult): QueryResult =>
+        rowLimit > 0 &&
+        limited !== expanded &&
+        result.columns.length > 0 &&
+        result.rows.length >= rowLimit
+          ? { ...result, autoLimit: rowLimit }
+          : result;
       if (used.length) {
         const run = () =>
           executeWithBinds(
@@ -1052,19 +1066,21 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         }
         if (plus.autoprint) printBinds(entry, used, true);
         if (activeTxId) record(activeTxId, entry.sql, bound.result, []);
-        return bound.result;
+        return mark(bound.result);
       }
       const sessionResult = await runSessionViewStatement(connection, database, sql);
       if (sessionResult) return sessionResult;
       if (!activeTxId)
-        return executeQuery(connection.kind, url, limited, database ?? undefined, options);
+        return mark(
+          await executeQuery(connection.kind, url, limited, database ?? undefined, options),
+        );
       const tracked = await runManagedOperation(activeTxId, () =>
         executeWithTransactionChanges(connection, database, activeTxId, sql, () =>
           executeInTransaction(activeTxId, limited, options),
         ),
       );
       record(activeTxId, entry.sql, tracked.result, tracked.changes);
-      return tracked.result;
+      return mark(tracked.result);
     };
     const runStatement = async (item: ScriptItem, entry: ScriptRunEntry) => {
       lastSql = item;

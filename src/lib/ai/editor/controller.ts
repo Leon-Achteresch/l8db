@@ -1,5 +1,6 @@
 import { type Hotkey, matchesKeyboardEvent } from "@tanstack/react-hotkeys";
 import { toast } from "sonner";
+import { aiEnabled } from "@/lib/ai/access";
 import type { ChatContextItem } from "@/lib/ai/chat-context";
 import { useAiStore } from "@/lib/ai/store";
 import type { DatabaseKind } from "@/lib/db";
@@ -18,7 +19,7 @@ import { type EditStart, InlineEditSession } from "./inline-edit";
 import type { EditorAiAction } from "./metrics";
 import { recentEdits } from "./monaco-ghost";
 import { findRenameProposal, identifierAt, type RenameProposal } from "./rename";
-import { useEditorAiSettings } from "./settings";
+import { editorAiOn, onEditorAiToggle, useEditorAiSettings } from "./settings";
 import { insertionAfter, resolveTarget, statementBounds } from "./targets";
 
 export interface EditorAiErrorSource {
@@ -84,9 +85,11 @@ export class EditorAiController {
     controllers.set(options.editorId, this);
     this.renameKey = editor.createContextKey("l8dbAiRenameHint", false);
     this.errorKey = editor.createContextKey("l8dbAiHasError", false);
-    editor.createContextKey("l8dbAiEnabled", true);
+    const enabledKey = editor.createContextKey("l8dbAiEnabled", editorAiOn());
+    const offToggle = onEditorAiToggle(() => enabledKey.set(editorAiOn()));
     this.renameDecorations = editor.createDecorationsCollection([]);
     this.disposables.push(
+      { dispose: offToggle },
       editor.onDidChangeModelContent((event) => this.onContent(event)),
       editor.onDidChangeCursorPosition(() => this.onCursor()),
       editor.addAction({
@@ -199,7 +202,7 @@ export class EditorAiController {
         label,
         contextMenuGroupId: "0_ai",
         contextMenuOrder: order,
-        precondition,
+        precondition: precondition ? `l8dbAiEnabled && ${precondition}` : "l8dbAiEnabled",
         run: () => {
           if (this.ready()) run();
         },
@@ -208,7 +211,8 @@ export class EditorAiController {
   }
 
   ready(): boolean {
-    if (!useEditorAiSettings.getState().enabled) {
+    if (!aiEnabled()) return false;
+    if (!editorAiOn()) {
       toast.message("KI im Editor ist ausgeschaltet.", {
         description: "Einstellungen → SQL-Editor → KI im Editor",
       });
@@ -420,6 +424,7 @@ export class EditorAiController {
       session.cancel();
       return true;
     }
+    if (!aiEnabled()) return false;
     if (hotkeyMatches(event, "query.aiEdit")) {
       if (this.ready()) this.startEdit("edit");
       return true;

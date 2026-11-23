@@ -375,9 +375,18 @@ pub struct ImportPlan {
     pub conflict: Option<ConflictPlan>,
     pub identity_insert: bool,
     pub overriding: bool,
+    pub xmax: bool,
 }
 
 impl ImportPlan {
+    fn returning(&self) -> &'static str {
+        if self.xmax {
+            " RETURNING (xmax = 0)"
+        } else {
+            ""
+        }
+    }
+
     fn column_list(&self) -> String {
         self.columns
             .iter()
@@ -499,14 +508,15 @@ impl ImportPlan {
                     oracle_select()
                 ),
                 Dialect::Postgres => format!(
-                    "INSERT INTO {} ({columns}) {}VALUES {} RETURNING (xmax = 0)",
+                    "INSERT INTO {} ({columns}) {}VALUES {}{}",
                     self.target,
                     if self.overriding {
                         "OVERRIDING SYSTEM VALUE "
                     } else {
                         ""
                     },
-                    values()
+                    values(),
+                    self.returning()
                 ),
                 _ => format!(
                     "INSERT INTO {} ({columns}) VALUES {}",
@@ -530,7 +540,7 @@ impl ImportPlan {
         };
         match d {
             Dialect::Postgres => format!(
-                "INSERT INTO {} ({columns}) VALUES {} ON CONFLICT ON CONSTRAINT {} {} RETURNING (xmax = 0)",
+                "INSERT INTO {} ({columns}) VALUES {} ON CONFLICT ON CONSTRAINT {} {}{}",
                 self.target,
                 values(),
                 d.quote(&conflict.constraint),
@@ -541,7 +551,8 @@ impl ImportPlan {
                         "DO UPDATE SET {}",
                         set(&|c| d.quote(c), &|c| format!("EXCLUDED.{}", d.quote(c)))
                     )
-                }
+                },
+                self.returning()
             ),
             Dialect::Mysql => format!(
                 "INSERT INTO {} ({columns}) VALUES {} ON DUPLICATE KEY UPDATE {}",
@@ -604,7 +615,11 @@ impl ImportPlan {
                 )
             }
             Dialect::Clickhouse => {
-                format!("INSERT INTO {} ({columns}) VALUES {}", self.target, values())
+                format!(
+                    "INSERT INTO {} ({columns}) VALUES {}",
+                    self.target,
+                    values()
+                )
             }
         }
     }
@@ -613,6 +628,15 @@ impl ImportPlan {
 fn cell_text(result: &QueryResult, row: usize, column: usize) -> Option<String> {
     let name = result.columns.get(column)?;
     super::export::value_text(result.rows.get(row)?.get(name)?)
+}
+
+pub async fn detect_xmax(plan: &mut ImportPlan, session: &mut dyn TxSession) {
+    if plan.dialect == Dialect::Postgres {
+        plan.xmax = !session
+            .execute("SELECT version() LIKE 'CockroachDB%'")
+            .await
+            .is_ok_and(|result| cell_flag(&result, 0, 0));
+    }
 }
 
 fn cell_flag(result: &QueryResult, row: usize, column: usize) -> bool {
@@ -780,6 +804,7 @@ pub async fn prepare_plan(
         target: dialect.target(schema, table),
         identity_insert: dialect == Dialect::Mssql && mapped.iter().any(|c| c.is_identity),
         overriding: false,
+        xmax: true,
         columns: mapped,
         conflict,
     })
@@ -909,6 +934,18 @@ impl TxSession for AutoCommit {
     }
 }
 
+pub async fn open_postgres(
+    connection_string: &str,
+    database: Option<&str>,
+    begin: &str,
+) -> Result<Box<dyn TxSession>, String> {
+    if super::connection::connection_string_is_read_only(connection_string) {
+        return Err("Lesemodus: Diese Verbindung ist schreibgeschützt.".into());
+    }
+    let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
+    Ok(Box::new(PgTx::open_with(&config, &ssl, begin).await?))
+}
+
 pub async fn open_session(
     kind: DatabaseKind,
     connection_string: &str,
@@ -916,13 +953,7 @@ pub async fn open_session(
     pool: PoolState,
 ) -> Result<Box<dyn TxSession>, String> {
     Ok(match kind {
-        DatabaseKind::Postgres => {
-            if super::connection::connection_string_is_read_only(connection_string) {
-                return Err("Lesemodus: Diese Verbindung ist schreibgeschützt.".into());
-            }
-            let (config, ssl) = super::connection::parse_connection(connection_string, database)?;
-            Box::new(PgTx::open(&config, &ssl).await?)
-        }
+        DatabaseKind::Postgres => open_postgres(connection_string, database, "BEGIN").await?,
         DatabaseKind::Oracle => {
             let key = super::connection::connection_key(connection_string, database);
             let adapter = super::oracle::OracleAdapter::new(connection_string, pool, key)?;
@@ -1048,7 +1079,7 @@ impl BatchWriter {
     async fn run_batch(&mut self, rows: &[Vec<String>]) -> Result<Counts, String> {
         let existing = match self.plan.existing_count_sql(rows) {
             Some(sql) if sql.is_empty() => Some(0),
-            Some(sql) if self.plan.dialect != Dialect::Postgres => {
+            Some(sql) if self.plan.dialect != Dialect::Postgres || !self.plan.xmax => {
                 let result = self.session.execute(&sql).await?;
                 Some(
                     cell_text(&result, 0, 0)
@@ -1060,41 +1091,47 @@ impl BatchWriter {
         };
         let result = self.session.execute(&self.plan.insert_sql(rows)).await?;
         let total = rows.len() as u64;
-        Ok(if self.plan.dialect == Dialect::Postgres {
-            let inserted = (0..result.rows.len())
-                .filter(|row| cell_flag(&result, *row, 0))
-                .count() as u64;
-            let returned = result.rows.len() as u64;
-            Counts {
-                inserted,
-                updated: returned - inserted,
-                skipped: total.saturating_sub(returned),
-            }
-        } else {
-            let existing = existing.unwrap_or(0).min(total);
-            match &self.plan.conflict {
-                Some(conflict) if conflict.updates.is_empty() => Counts {
-                    inserted: total - existing,
-                    updated: 0,
-                    skipped: existing,
-                },
-                Some(_) => Counts {
-                    inserted: total - existing,
-                    updated: existing,
-                    skipped: 0,
-                },
-                None => Counts {
-                    inserted: total,
-                    updated: 0,
-                    skipped: 0,
-                },
-            }
-        })
+        Ok(
+            if self.plan.dialect == Dialect::Postgres && self.plan.xmax {
+                let inserted = (0..result.rows.len())
+                    .filter(|row| cell_flag(&result, *row, 0))
+                    .count() as u64;
+                let returned = result.rows.len() as u64;
+                Counts {
+                    inserted,
+                    updated: returned - inserted,
+                    skipped: total.saturating_sub(returned),
+                }
+            } else {
+                let existing = existing.unwrap_or(0).min(total);
+                match &self.plan.conflict {
+                    Some(conflict) if conflict.updates.is_empty() => Counts {
+                        inserted: total - existing,
+                        updated: 0,
+                        skipped: existing,
+                    },
+                    Some(_) => Counts {
+                        inserted: total - existing,
+                        updated: existing,
+                        skipped: 0,
+                    },
+                    None => Counts {
+                        inserted: total,
+                        updated: 0,
+                        skipped: 0,
+                    },
+                }
+            },
+        )
     }
 
     async fn locate(&mut self, rows: &[Vec<String>]) -> Option<usize> {
         let (_, rollback) = self.plan.dialect.savepoint()?;
-        self.session.execute(rollback).await.ok()?;
+        if self.session.execute(rollback).await.is_err() {
+            let probe = (self.plan.dialect == Dialect::Mssql)
+                .then_some("IF @@TRANCOUNT = 0 BEGIN TRANSACTION")?;
+            self.session.execute(probe).await.ok()?;
+        }
         for (index, row) in rows.iter().enumerate() {
             if self
                 .session
@@ -1400,6 +1437,7 @@ mod tests {
             conflict,
             identity_insert: false,
             overriding: false,
+            xmax: true,
         }
     }
 
@@ -1566,6 +1604,14 @@ mod tests {
         assert!(pg.insert_sql(&rows(&pg)).contains(
             "ON CONFLICT ON CONSTRAINT \"t_pkey\" DO UPDATE SET \"name\" = EXCLUDED.\"name\" RETURNING"
         ));
+        let mut cockroach = plan(Dialect::Postgres, upsert());
+        cockroach.xmax = false;
+        let sql = cockroach.insert_sql(&rows(&cockroach));
+        assert!(sql.ends_with("DO UPDATE SET \"name\" = EXCLUDED.\"name\""));
+        assert!(!sql.contains("xmax"));
+        assert!(cockroach
+            .existing_count_sql(&rows(&cockroach))
+            .is_some_and(|sql| sql.contains("\"id\" IN ('1', '2')")));
     }
 
     #[test]
@@ -1629,6 +1675,47 @@ mod tests {
             self.log.lock().unwrap().push("ROLLBACK".into());
             Ok(())
         }
+    }
+
+    struct Server(&'static str);
+
+    #[async_trait]
+    impl TxSession for Server {
+        async fn execute(&mut self, _sql: &str) -> Result<QueryResult, String> {
+            Ok(QueryResult {
+                columns: vec!["c".into()],
+                rows: vec![serde_json::json!({ "c": self.0 })],
+                rows_affected: None,
+                execution_time_ms: 0,
+                truncated: false,
+            })
+        }
+        async fn commit(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+        async fn rollback(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn copies_into_cockroach_skip_xmax_and_postgres_keeps_it() {
+        let mut cockroach = plan(Dialect::Postgres, None);
+        detect_xmax(&mut cockroach, &mut Server("t")).await;
+        assert!(!cockroach.insert_sql(&rows(&cockroach)).contains("xmax"));
+        let mut postgres = plan(Dialect::Postgres, None);
+        detect_xmax(&mut postgres, &mut Server("f")).await;
+        assert!(postgres
+            .insert_sql(&rows(&postgres))
+            .ends_with("RETURNING (xmax = 0)"));
+        let mut mysql = plan(Dialect::Mysql, None);
+        mysql.xmax = true;
+        let mut probes = Recorder {
+            log: Arc::new(std::sync::Mutex::new(Vec::new())),
+            fail_on: None,
+        };
+        detect_xmax(&mut mysql, &mut probes).await;
+        assert!(probes.log.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

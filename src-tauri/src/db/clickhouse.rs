@@ -2,6 +2,7 @@ use std::sync::OnceLock;
 
 use async_trait::async_trait;
 
+use super::column_metadata::TableColumnDetails;
 use super::{
     rows_to_objects, where_clause, AddColumnRequest, AlterColumnRequest, ColumnInfo,
     CreateTableRequest, DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, FunctionInfo,
@@ -21,6 +22,28 @@ pub fn quote(ident: &str) -> String {
 
 fn lit(value: &str) -> String {
     format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
+}
+
+fn detailed_columns_sql(schema: &str, table: &str, engine_column: &str) -> String {
+    format!(
+        "SELECT name, type, default_expression, is_in_primary_key, position, comment{engine_column} FROM system.columns WHERE database = {} AND table = {} ORDER BY position",
+        lit(schema), lit(table)
+    )
+}
+
+fn detailed_column(row: &[serde_json::Value]) -> DetailedColumnInfo {
+    let data_type = text(&row[1]);
+    DetailedColumnInfo {
+        name: text(&row[0]),
+        is_nullable: data_type.starts_with("Nullable(")
+            || data_type.starts_with("LowCardinality(Nullable("),
+        data_type,
+        column_default: text_opt(&row[2]),
+        is_primary_key: int(&row[3]) == 1,
+        ordinal_position: int(&row[4]) as i32,
+        character_maximum_length: None,
+        comment: text_opt(&row[5]),
+    }
 }
 
 fn http() -> &'static reqwest::Client {
@@ -206,14 +229,16 @@ impl ClickhouseAdapter {
         extra: &[(&str, &str)],
         query_id: &str,
     ) -> Result<(String, Option<serde_json::Value>), String> {
-        let response = http()
+        let mut response = http()
             .post(&self.base)
             .query(&[
                 ("database", self.database.as_str()),
                 ("query_id", query_id),
-                ("default_format", "JSONCompact"),
-                ("output_format_json_quote_64bit_integers", "1"),
+                ("default_format", OUTPUT_FORMAT),
+                ("output_format_json_quote_64bit_integers", "0"),
                 ("output_format_json_quote_decimals", "1"),
+                ("output_format_json_quote_denormals", "1"),
+                ("http_write_exception_in_output_format", "0"),
             ])
             .query(extra)
             .header("X-ClickHouse-User", &self.user)
@@ -221,21 +246,132 @@ impl ClickhouseAdapter {
             .body(sql.to_string())
             .send()
             .await
-            .map_err(|e| format!("ClickHouse nicht erreichbar: {e}"))?;
+            .map_err(|e| self.unreachable(e))?;
         let summary = response
             .headers()
             .get("X-ClickHouse-Summary")
             .and_then(|h| h.to_str().ok())
             .and_then(|s| serde_json::from_str(s).ok());
         let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| format!("Antwort konnte nicht gelesen werden: {e}"))?;
+        let max_lines = super::execution::row_limit().checked_add(2);
+        let mut body = Vec::new();
+        let mut lines = 0usize;
+        let mut stopped = false;
+        let mut broken = None;
+        loop {
+            let chunk = match response.chunk().await {
+                Ok(Some(chunk)) => chunk,
+                Ok(None) => break,
+                Err(e) => {
+                    broken = Some(format!(
+                        "Antwort konnte nicht gelesen werden: {}",
+                        e.without_url()
+                    ));
+                    break;
+                }
+            };
+            body.extend_from_slice(&chunk);
+            if let Some(max) = max_lines.filter(|_| status.is_success()) {
+                lines += chunk.iter().filter(|b| **b == b'\n').count();
+                if lines >= max {
+                    stopped = true;
+                    break;
+                }
+            }
+        }
+        if stopped {
+            drop(response);
+            if let Some(end) = max_lines.and_then(|max| {
+                body.iter()
+                    .enumerate()
+                    .filter(|(_, b)| **b == b'\n')
+                    .nth(max - 1)
+                    .map(|(i, _)| i + 1)
+            }) {
+                body.truncate(end);
+            }
+            let _ = self.kill(query_id).await;
+        }
+        let body = lossless_text(body);
         if !status.is_success() {
-            return Err(format!("ClickHouse {}: {}", status.as_u16(), body.trim()));
+            return Err(self.server_error(status.as_u16(), &body));
+        }
+        if let Some(error) = broken {
+            return Err(parse_body(&body).err().unwrap_or(error));
         }
         Ok((body, summary))
+    }
+
+    fn unreachable(&self, error: reqwest::Error) -> String {
+        let base = url::Url::parse(&self.base).ok();
+        let host = base
+            .as_ref()
+            .and_then(|u| u.host_str().map(str::to_string))
+            .unwrap_or_default();
+        let port = base
+            .as_ref()
+            .and_then(url::Url::port_or_known_default)
+            .unwrap_or(0);
+        let tls = self.base.starts_with("https");
+        let timeout = error.is_timeout();
+        let error = error.without_url();
+        let mut chain = error.to_string();
+        let mut source = std::error::Error::source(&error);
+        while let Some(inner) = source {
+            chain.push_str(": ");
+            chain.push_str(&inner.to_string());
+            source = inner.source();
+        }
+        let lower = chain.to_ascii_lowercase();
+        let tls_failed = ["tls", "ssl", "certificate", "handshake"]
+            .iter()
+            .any(|w| lower.contains(w));
+        let reason = if timeout {
+            "Zeitüberschreitung beim Verbindungsaufbau".to_string()
+        } else if lower.contains("refused") {
+            "Verbindung abgelehnt".to_string()
+        } else if lower.contains("dns")
+            || lower.contains("lookup")
+            || lower.contains("nodename")
+            || lower.contains("not known")
+        {
+            "Host nicht gefunden".to_string()
+        } else if tls_failed || tls {
+            "TLS-Verbindung fehlgeschlagen".to_string()
+        } else {
+            chain
+        };
+        let hint = if matches!(port, 9000 | 9440) {
+            format!(" Port {port} ist der native ClickHouse-Port; l8db nutzt die HTTP-Schnittstelle (8123, mit TLS 8443).")
+        } else if tls && (tls_failed || !lower.contains("refused")) {
+            format!(" Spricht Port {port} HTTPS? Sonst ohne ?secure=1 verbinden (HTTP-Port 8123).")
+        } else {
+            String::new()
+        };
+        format!("ClickHouse unter {host}:{port} nicht erreichbar: {reason}.{hint}")
+    }
+
+    fn server_error(&self, status: u16, body: &str) -> String {
+        let body = body.trim();
+        if body.contains("is for clickhouse-client program") {
+            let port = url::Url::parse(&self.base)
+                .ok()
+                .and_then(|u| u.port_or_known_default())
+                .unwrap_or(0);
+            return format!("Port {port} ist der native ClickHouse-Port. l8db nutzt die HTTP-Schnittstelle (8123, mit TLS 8443).");
+        }
+        let message = serde_json::from_str::<serde_json::Value>(body)
+            .ok()
+            .and_then(|v| {
+                v.get("exception")
+                    .and_then(|e| e.as_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| body.to_string());
+        if message.is_empty() {
+            return format!("ClickHouse antwortet mit HTTP {status}.");
+        }
+        explain_exception(&message)
     }
 
     async fn kill(&self, query_id: &str) -> Result<(), String> {
@@ -252,65 +388,32 @@ impl ClickhouseAdapter {
             .await
             .and_then(reqwest::Response::error_for_status)
             .map(|_| ())
-            .map_err(|e| format!("Abbruch nicht bestätigt: {e}. Serverzustand prüfen."))
+            .map_err(|e| {
+                format!(
+                    "Abbruch nicht bestätigt: {}. Serverzustand prüfen.",
+                    e.without_url()
+                )
+            })
     }
 
     async fn query(
         &self,
         sql: &str,
     ) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>, Option<u64>), String> {
-        let (body, summary) = self.raw(sql).await?;
+        let sql = match output_format(sql) {
+            Some((start, end, name)) if !name.eq_ignore_ascii_case("Null") => {
+                format!("{}{}", &sql[..start], &sql[end..])
+            }
+            _ => sql.to_string(),
+        };
+        let (body, summary) = self.raw(&sql).await?;
         let written = summary
             .as_ref()
             .and_then(|s| s.get("written_rows"))
             .map(int)
             .map(|n| n as u64);
-        if body.trim().is_empty() {
-            return Ok((vec![], vec![], written));
-        }
-        let parsed: serde_json::Value = match serde_json::from_str(&body) {
-            Ok(v) => v,
-            Err(_) => {
-                return Ok((
-                    vec!["result".to_string()],
-                    body.lines()
-                        .map(|l| vec![serde_json::Value::String(l.to_string())])
-                        .collect(),
-                    None,
-                ))
-            }
-        };
-        let meta = parsed
-            .get("meta")
-            .and_then(|m| m.as_array())
-            .cloned()
-            .unwrap_or_default();
-        let columns = super::unique_column_names(meta.iter().map(|c| text(&c["name"])).collect());
-        let wide: Vec<bool> = meta
-            .iter()
-            .map(|c| {
-                let column_type = text(&c["type"]);
-                column_type.contains("Decimal") || WIDE_INT.iter().any(|w| column_type.contains(w))
-            })
-            .collect();
-        let rows: Vec<Vec<serde_json::Value>> = parsed
-            .get("data")
-            .and_then(|d| d.as_array())
-            .map(|d| {
-                d.iter()
-                    .map(|r| {
-                        let mut row = r.as_array().cloned().unwrap_or_default();
-                        for (i, v) in row.iter_mut().enumerate() {
-                            if wide.get(i).copied().unwrap_or(false) {
-                                unquote_safe_ints(v);
-                            }
-                        }
-                        row
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        Ok((columns, rows, None))
+        let (columns, rows) = parse_body(&body)?;
+        Ok((columns, rows, written))
     }
 
     async fn rows(&self, sql: &str) -> Result<Vec<Vec<serde_json::Value>>, String> {
@@ -322,7 +425,464 @@ impl ClickhouseAdapter {
     }
 }
 
-const WIDE_INT: [&str; 6] = ["Int64", "UInt64", "Int128", "UInt128", "Int256", "UInt256"];
+const OUTPUT_FORMAT: &str = "JSONCompactEachRowWithNamesAndTypes";
+
+const AGGREGATE_STATE: &str = "‹Aggregationszustand›";
+
+const MUTATION_STARTED: &str = "Mutation gestartet, läuft asynchron (system.mutations)";
+
+const RAW_BYTE_BASE: u32 = 0x10FF00;
+
+fn is_raw_byte(c: char) -> bool {
+    (RAW_BYTE_BASE..=RAW_BYTE_BASE + 0xFF).contains(&u32::from(c))
+}
+
+fn restore_raw_bytes(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::String(text) if text.chars().any(is_raw_byte) => {
+            let mut bytes = Vec::with_capacity(text.len());
+            let mut buffer = [0u8; 4];
+            for c in text.chars() {
+                if is_raw_byte(c) {
+                    bytes.push((u32::from(c) - RAW_BYTE_BASE) as u8);
+                } else {
+                    bytes.extend_from_slice(c.encode_utf8(&mut buffer).as_bytes());
+                }
+            }
+            *value = serde_json::Value::String(super::hex_blob(&bytes));
+        }
+        serde_json::Value::Array(items) => items.iter_mut().for_each(restore_raw_bytes),
+        serde_json::Value::Object(map) => map.values_mut().for_each(restore_raw_bytes),
+        _ => {}
+    }
+}
+
+fn lossless_text(bytes: Vec<u8>) -> String {
+    match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(error) => {
+            let bytes = error.into_bytes();
+            let mut out = String::with_capacity(bytes.len() + 16);
+            for chunk in bytes.utf8_chunks() {
+                out.push_str(chunk.valid());
+                for byte in chunk.invalid() {
+                    out.extend(char::from_u32(RAW_BYTE_BASE + u32::from(*byte)));
+                }
+            }
+            out
+        }
+    }
+}
+
+fn explain_exception(message: &str) -> String {
+    let message = message.trim();
+    let code = message
+        .strip_prefix("Code: ")
+        .and_then(|rest| rest.split('.').next())
+        .and_then(|c| c.trim().parse::<u32>().ok());
+    let detail = message
+        .split_once("DB::Exception: ")
+        .map_or(message, |(_, d)| d);
+    let detail = detail.split(" (version ").next().unwrap_or(detail).trim();
+    let detail = match detail.rfind(" (") {
+        Some(i)
+            if detail.ends_with(')')
+                && detail[i + 2..detail.len() - 1]
+                    .chars()
+                    .all(|c| c.is_ascii_uppercase() || c == '_') =>
+        {
+            detail[..i].trim()
+        }
+        _ => detail,
+    };
+    let detail = detail.trim_end_matches('.');
+    match code {
+        Some(62) => syntax_error(detail),
+        Some(60) => format!("Tabelle nicht gefunden: {detail}."),
+        Some(81) => detail
+            .strip_prefix("Database ")
+            .and_then(|rest| rest.strip_suffix(" does not exist"))
+            .map(|name| format!("Datenbank „{}“ existiert nicht.", name.trim_matches('`')))
+            .unwrap_or_else(|| format!("Datenbank nicht gefunden: {detail}.")),
+        Some(192 | 193 | 194 | 516) => {
+            "Anmeldung fehlgeschlagen: Benutzer oder Passwort falsch.".to_string()
+        }
+        Some(497) => format!("Keine Berechtigung: {detail}."),
+        Some(47) => format!("Unbekannte Spalte oder Bezeichner: {detail}."),
+        Some(46) => format!("Unbekannte Funktion: {detail}."),
+        Some(48)
+            if detail.contains("Lightweight updates")
+                || detail.contains("DELETE query is not supported") =>
+        {
+            format!("UPDATE und DELETE gehen nur bei MergeTree-Tabellen: {detail}.")
+        }
+        Some(48) => format!("Nicht unterstützt: {detail}."),
+        Some(43 | 53) => format!("Typfehler: {detail}."),
+        Some(57) => format!("Tabelle existiert bereits: {detail}."),
+        Some(82) => format!("Datenbank existiert bereits: {detail}."),
+        Some(159) => format!("Zeitlimit des Servers überschritten: {detail}."),
+        Some(164) => format!("Nur Lesezugriff erlaubt: {detail}."),
+        Some(241) => format!("Speicherlimit des Servers überschritten: {detail}."),
+        Some(394) => "Abfrage abgebrochen.".to_string(),
+        Some(_) => format!("{detail}."),
+        None => message.to_string(),
+    }
+}
+
+fn syntax_error(detail: &str) -> String {
+    let Some(rest) = detail
+        .split_once("failed at position ")
+        .map(|(_, rest)| rest)
+    else {
+        return format!("Syntaxfehler: {detail}.");
+    };
+    let position: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    let near = rest
+        .split_once(" (")
+        .and_then(|(_, r)| r.split_once("):"))
+        .map(|(token, _)| format!(" bei „{token}“"))
+        .unwrap_or_default();
+    let expected = rest
+        .split_once("Expected ")
+        .map(|(_, e)| {
+            let items: Vec<&str> = e
+                .trim_start_matches("one of: ")
+                .trim_end_matches('.')
+                .split(", ")
+                .collect();
+            let more = if items.len() > 8 { ", …" } else { "" };
+            format!(
+                "\nErwartet: {}{more}",
+                items[..items.len().min(8)].join(", ")
+            )
+        })
+        .unwrap_or_default();
+    format!("Syntaxfehler an Position {position}{near}.{expected}")
+}
+
+fn base_type(column_type: &str) -> &str {
+    let mut current = column_type.trim();
+    loop {
+        let inner = ["Nullable(", "LowCardinality(", "Array("]
+            .iter()
+            .find_map(|prefix| current.strip_prefix(prefix))
+            .and_then(|rest| rest.strip_suffix(')'));
+        match inner {
+            Some(inner) => current = inner.trim(),
+            None => return current,
+        }
+    }
+}
+
+fn quote_unsafe_integers(line: &str) -> std::borrow::Cow<'_, str> {
+    let bytes = line.as_bytes();
+    let mut out: Option<String> = None;
+    let mut copied = 0;
+    let mut i = 0;
+    let mut in_string = false;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if in_string {
+            match c {
+                b'\\' => i += 2,
+                b'"' => {
+                    in_string = false;
+                    i += 1;
+                }
+                _ => i += 1,
+            }
+            continue;
+        }
+        if c == b'"' {
+            in_string = true;
+            i += 1;
+            continue;
+        }
+        if c == b'-' || c.is_ascii_digit() {
+            let start = i;
+            i += 1;
+            while i < bytes.len()
+                && matches!(bytes[i], b'0'..=b'9' | b'.' | b'e' | b'E' | b'+' | b'-')
+            {
+                i += 1;
+            }
+            let token = &line[start..i];
+            if !token.contains(['.', 'e', 'E']) && !super::exact_number::is_exact_in_js(token) {
+                let o = out.get_or_insert_with(|| String::with_capacity(line.len() + 8));
+                o.push_str(&line[copied..start]);
+                o.push('"');
+                o.push_str(token);
+                o.push('"');
+                copied = i;
+            }
+            continue;
+        }
+        i += 1;
+    }
+    match out {
+        Some(mut o) => {
+            o.push_str(&line[copied..]);
+            std::borrow::Cow::Owned(o)
+        }
+        None => std::borrow::Cow::Borrowed(line),
+    }
+}
+
+type Rows = Vec<Vec<serde_json::Value>>;
+
+fn parse_body(body: &str) -> Result<(Vec<String>, Rows), String> {
+    let mut lines = body.lines().filter(|l| !l.trim().is_empty());
+    let Some(first) = lines.next() else {
+        return Ok((vec![], vec![]));
+    };
+    let names = match serde_json::from_str::<serde_json::Value>(first) {
+        Ok(serde_json::Value::Array(names)) => names.iter().map(text).collect::<Vec<_>>(),
+        _ => {
+            return Ok((
+                vec!["result".to_string()],
+                body.lines()
+                    .map(|l| {
+                        let mut line = serde_json::Value::String(l.to_string());
+                        restore_raw_bytes(&mut line);
+                        vec![line]
+                    })
+                    .collect(),
+            ))
+        }
+    };
+    let types: Vec<String> = lines
+        .next()
+        .and_then(|l| serde_json::from_str::<Vec<String>>(l).ok())
+        .unwrap_or_default();
+    let rest: Vec<&str> = lines.collect();
+    let raw_bytes = body.chars().any(is_raw_byte);
+    let mut rows = Vec::with_capacity(rest.len());
+    for (i, line) in rest.iter().enumerate() {
+        let parsed = serde_json::from_str::<serde_json::Value>(&quote_unsafe_integers(line));
+        let Ok(serde_json::Value::Array(mut row)) = parsed else {
+            let message = rest[i..]
+                .iter()
+                .map(|l| l.trim())
+                .find(|l| l.starts_with("Code: "))
+                .unwrap_or(line);
+            return Err(explain_exception(message));
+        };
+        for (value, column_type) in row.iter_mut().zip(&types) {
+            let base = base_type(column_type);
+            if base.starts_with("Decimal") {
+                unquote_safe_ints(value);
+            } else if base.starts_with("AggregateFunction(") && !value.is_null() {
+                *value = serde_json::Value::String(AGGREGATE_STATE.to_string());
+            } else if raw_bytes {
+                restore_raw_bytes(value);
+            }
+        }
+        rows.push(row);
+    }
+    Ok((super::unique_column_names(names), rows))
+}
+
+struct Token {
+    start: usize,
+    end: usize,
+    word: bool,
+    depth: usize,
+}
+
+fn tokens(sql: &str) -> Vec<Token> {
+    let bytes = sql.as_bytes();
+    let mut out = Vec::new();
+    let mut depth = 0usize;
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i];
+        let start = i;
+        match c {
+            b'\'' | b'"' | b'`' => {
+                i += 1;
+                while i < bytes.len() {
+                    if bytes[i] == b'\\' {
+                        i += 2;
+                        continue;
+                    }
+                    if bytes[i] == c {
+                        if bytes.get(i + 1) == Some(&c) {
+                            i += 2;
+                            continue;
+                        }
+                        i += 1;
+                        break;
+                    }
+                    i += 1;
+                }
+                let end = i.min(bytes.len());
+                out.push(Token {
+                    start,
+                    end,
+                    word: false,
+                    depth,
+                });
+                i = end;
+            }
+            b'-' if bytes.get(i + 1) == Some(&b'-') => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'#' if matches!(bytes.get(i + 1), Some(b' ' | b'!')) => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                i = sql[i + 2..]
+                    .find("*/")
+                    .map_or(bytes.len(), |p| i + 2 + p + 2);
+            }
+            b'(' | b'[' => {
+                out.push(Token {
+                    start,
+                    end: i + 1,
+                    word: false,
+                    depth,
+                });
+                depth += 1;
+                i += 1;
+            }
+            b')' | b']' => {
+                depth = depth.saturating_sub(1);
+                out.push(Token {
+                    start,
+                    end: i + 1,
+                    word: false,
+                    depth,
+                });
+                i += 1;
+            }
+            c if c.is_ascii_alphabetic() || c == b'_' => {
+                while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                    i += 1;
+                }
+                out.push(Token {
+                    start,
+                    end: i,
+                    word: true,
+                    depth,
+                });
+            }
+            c if c.is_ascii_whitespace() => i += 1,
+            _ => {
+                i += sql[i..].chars().next().map_or(1, char::len_utf8);
+                out.push(Token {
+                    start,
+                    end: i,
+                    word: false,
+                    depth,
+                });
+            }
+        }
+    }
+    out
+}
+
+fn is_word(sql: &str, token: Option<&Token>, word: &str) -> bool {
+    token.is_some_and(|t| t.word && sql[t.start..t.end].eq_ignore_ascii_case(word))
+}
+
+fn first_word(sql: &str) -> String {
+    tokens(sql)
+        .iter()
+        .find(|t| t.word)
+        .map(|t| sql[t.start..t.end].to_ascii_uppercase())
+        .unwrap_or_default()
+}
+
+fn output_format(sql: &str) -> Option<(usize, usize, String)> {
+    let all = tokens(sql);
+    if is_word(sql, all.iter().find(|t| t.word), "INSERT") {
+        return None;
+    }
+    let at = all
+        .iter()
+        .rposition(|t| t.depth == 0 && is_word(sql, Some(t), "FORMAT"))?;
+    let after_operand = at.checked_sub(1).map(|i| &all[i]).is_some_and(|t| {
+        ["BY", "AS", "SELECT", "DISTINCT"]
+            .iter()
+            .any(|w| is_word(sql, Some(t), w))
+            || matches!(&sql[t.start..t.end], "," | "." | "(")
+    });
+    let name = all.get(at + 1).filter(|t| {
+        t.word
+            && t.depth == 0
+            && !["ASC", "DESC", "FINAL", "NULLS", "WITH", "COLLATE"]
+                .iter()
+                .any(|w| is_word(sql, Some(t), w))
+    })?;
+    if after_operand {
+        return None;
+    }
+    let rest = &all[at + 2..];
+    let tail_ok = match rest.first() {
+        None => true,
+        Some(t) if is_word(sql, Some(t), "SETTINGS") => true,
+        Some(_) => rest.iter().all(|t| &sql[t.start..t.end] == ";"),
+    };
+    tail_ok.then(|| {
+        (
+            all[at].start,
+            name.end,
+            sql[name.start..name.end].to_string(),
+        )
+    })
+}
+
+fn is_mutation(sql: &str) -> bool {
+    let all = tokens(sql);
+    let mut iter = all.iter().peekable();
+    if !is_word(sql, iter.next(), "ALTER") || !is_word(sql, iter.next(), "TABLE") {
+        return false;
+    }
+    iter.next();
+    if iter.peek().is_some_and(|t| &sql[t.start..t.end] == ".") {
+        iter.next();
+        iter.next();
+    }
+    if is_word(sql, iter.peek().copied(), "ON") {
+        iter.next();
+        iter.next();
+        iter.next();
+    }
+    let next = iter.next();
+    is_word(sql, next, "UPDATE") || is_word(sql, next, "DELETE")
+}
+
+fn select_body(definition: &str) -> &str {
+    let all = tokens(definition);
+    if !matches!(
+        first_word(definition).as_str(),
+        "CREATE" | "ATTACH" | "REPLACE"
+    ) {
+        return definition.trim().trim_end_matches(';').trim_end();
+    }
+    all.iter()
+        .enumerate()
+        .find(|(i, t)| {
+            t.depth == 0
+                && is_word(definition, Some(t), "AS")
+                && all.get(i + 1).is_some_and(|next| {
+                    is_word(definition, Some(next), "SELECT")
+                        || is_word(definition, Some(next), "WITH")
+                        || &definition[next.start..next.end] == "("
+                })
+        })
+        .map(|(i, _)| {
+            definition[all[i + 1].start..]
+                .trim()
+                .trim_end_matches(';')
+                .trim_end()
+        })
+        .unwrap_or_else(|| definition.trim().trim_end_matches(';').trim_end())
+}
 
 fn unquote_safe_ints(value: &mut serde_json::Value) {
     match value {
@@ -350,7 +910,7 @@ impl DatabaseAdapter for ClickhouseAdapter {
 
     async fn list_databases(&self) -> Result<Vec<String>, String> {
         Ok(self
-            .rows("SELECT name FROM system.databases ORDER BY name")
+            .rows("SELECT name FROM system.databases WHERE name != 'INFORMATION_SCHEMA' ORDER BY name")
             .await?
             .iter()
             .map(|r| text(&r[0]))
@@ -387,12 +947,14 @@ impl DatabaseAdapter for ClickhouseAdapter {
         table_type: Option<&str>,
     ) -> Result<Vec<ColumnInfo>, String> {
         let db = schema.unwrap_or(&self.database);
-        let engines = if table_type.is_some_and(|t| t.eq_ignore_ascii_case("view")) {
-            "IN"
-        } else {
-            "NOT IN"
+        let engines = match table_type {
+            Some(t) if t.eq_ignore_ascii_case("view") => {
+                " AND t.engine IN ('View', 'MaterializedView', 'LiveView')"
+            }
+            None if table.is_some() => "",
+            _ => " AND t.engine NOT IN ('View', 'MaterializedView', 'LiveView') AND t.name NOT LIKE '.inner%'",
         };
-        let mut sql = format!("SELECT c.database, c.table, c.name, c.type FROM system.columns c JOIN system.tables t ON t.database = c.database AND t.name = c.table WHERE c.database = {} AND t.engine {engines} ('View', 'MaterializedView', 'LiveView')", lit(db));
+        let mut sql = format!("SELECT c.database, c.table, c.name, c.type FROM system.columns c JOIN system.tables t ON t.database = c.database AND t.name = c.table WHERE c.database = {}{engines}", lit(db));
         if let Some(t) = table {
             sql.push_str(&format!(" AND c.table = {}", lit(t)));
         }
@@ -423,12 +985,8 @@ impl DatabaseAdapter for ClickhouseAdapter {
         allow_raw_filter: bool,
     ) -> Result<TableData, String> {
         let where_sql = where_clause(filter, allow_raw_filter)?;
-        let columns: Vec<String> = self
-            .list_table_columns_detailed(schema, table)
-            .await?
-            .into_iter()
-            .map(|c| c.name)
-            .collect();
+        let detailed = self.list_table_columns_detailed(schema, table).await?;
+        let columns: Vec<String> = detailed.iter().map(|c| c.name.clone()).collect();
         let order_sql = match order_by {
             Some(col) if columns.iter().any(|c| c == col) => format!(
                 " ORDER BY {} {}",
@@ -440,9 +998,15 @@ impl DatabaseAdapter for ClickhouseAdapter {
         let select = if columns.is_empty() {
             "*".to_string()
         } else {
-            columns
+            detailed
                 .iter()
-                .map(|c| quote(c))
+                .map(|c| {
+                    if c.data_type.starts_with("AggregateFunction(") {
+                        format!("finalizeAggregation({0}) AS {0}", quote(&c.name))
+                    } else {
+                        quote(&c.name)
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         };
@@ -489,10 +1053,19 @@ impl DatabaseAdapter for ClickhouseAdapter {
 
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, String> {
         let start = std::time::Instant::now();
-        let (columns, rows, written) = self.query(sql).await?;
+        let (mut columns, mut rows, written) = self.query(sql).await?;
+        let rows_affected = if columns.is_empty() && first_word(sql) == "INSERT" {
+            written
+        } else {
+            None
+        };
+        if columns.is_empty() && is_mutation(sql) {
+            columns = vec!["status".to_string()];
+            rows = vec![vec![MUTATION_STARTED.into()]];
+        }
         Ok(QueryResult {
             rows: rows_to_objects(&columns, rows),
-            rows_affected: if columns.is_empty() { written } else { None },
+            rows_affected,
             columns,
             execution_time_ms: start.elapsed().as_millis() as u64,
             truncated: false,
@@ -555,15 +1128,26 @@ impl DatabaseAdapter for ClickhouseAdapter {
         body: &str,
         dry_run: bool,
     ) -> Result<(), String> {
+        let select = select_body(body);
         if dry_run {
-            return self.exec(&format!("EXPLAIN SYNTAX {body}")).await;
+            return self.exec(&format!("EXPLAIN SYNTAX {select}")).await;
         }
-        self.exec(&format!(
-            "CREATE OR REPLACE VIEW {}.{} AS {}",
-            quote(schema),
-            quote(view),
-            body
-        ))
+        let engine = self
+            .rows(&format!(
+                "SELECT engine FROM system.tables WHERE database = {} AND name = {}",
+                lit(schema),
+                lit(view)
+            ))
+            .await?
+            .first()
+            .map(|r| text(&r[0]))
+            .unwrap_or_default();
+        let target = format!("{}.{}", quote(schema), quote(view));
+        self.exec(&match engine.as_str() {
+            "MaterializedView" => format!("ALTER TABLE {target} MODIFY QUERY {select}"),
+            "View" | "" => format!("CREATE OR REPLACE VIEW {target} AS {select}"),
+            other => return Err(format!("{view} ist keine View (Engine {other}).")),
+        })
         .await
     }
 
@@ -616,23 +1200,38 @@ impl DatabaseAdapter for ClickhouseAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<DetailedColumnInfo>, String> {
-        let sql = format!("SELECT name, type, default_expression, is_in_primary_key, position, comment FROM system.columns WHERE database = {} AND table = {} ORDER BY position", lit(schema), lit(table));
+        let sql = detailed_columns_sql(schema, table, "");
         Ok(self
             .rows(&sql)
             .await?
             .iter()
-            .map(|r| DetailedColumnInfo {
-                name: text(&r[0]),
-                is_nullable: text(&r[1]).starts_with("Nullable(")
-                    || text(&r[1]).starts_with("LowCardinality(Nullable("),
-                data_type: text(&r[1]),
-                column_default: text_opt(&r[2]),
-                is_primary_key: int(&r[3]) == 1,
-                ordinal_position: int(&r[4]) as i32,
-                character_maximum_length: None,
-                comment: text_opt(&r[5]),
-            })
+            .map(|row| detailed_column(row))
             .collect())
+    }
+
+    async fn describe_table_columns(
+        &self,
+        schema: &str,
+        table: &str,
+    ) -> Result<TableColumnDetails, String> {
+        let engine_column = format!(
+            ", (SELECT if(count() = 1, any(engine), '') FROM system.tables WHERE database = {} AND name = {} AND NOT is_temporary) AS relation_engine",
+            lit(schema),
+            lit(table)
+        );
+        let rows = self
+            .rows(&detailed_columns_sql(schema, table, &engine_column))
+            .await?;
+        let engine = rows
+            .first()
+            .and_then(|row| row.get(6))
+            .and_then(serde_json::Value::as_str)
+            .filter(|engine| !engine.is_empty());
+        Ok(TableColumnDetails {
+            columns: rows.iter().map(|row| detailed_column(row).into()).collect(),
+            unlogged: false,
+            clickhouse_engine: engine.map(str::to_owned),
+        })
     }
 
     async fn add_column(
@@ -745,11 +1344,12 @@ impl DatabaseAdapter for ClickhouseAdapter {
         if !analyze {
             return Ok(plan);
         }
-        let trimmed = sql.trim().trim_end_matches(';');
-        let run = if trimmed.to_ascii_uppercase().contains(" FORMAT ") {
-            trimmed.to_string()
-        } else {
-            format!("{trimmed} FORMAT Null")
+        let trimmed = sql.trim().trim_end_matches(';').trim_end();
+        let run = match output_format(trimmed) {
+            Some((start, end, _)) => {
+                format!("{}{} FORMAT Null", &trimmed[..start], &trimmed[end..])
+            }
+            None => format!("{trimmed} FORMAT Null"),
         };
         let start = std::time::Instant::now();
         let (_, summary) = self.raw_with(&run, &[("wait_end_of_query", "1")]).await?;
@@ -787,7 +1387,7 @@ impl DatabaseAdapter for ClickhouseAdapter {
 
     async fn get_database_overview(&self) -> Result<DatabaseOverview, String> {
         let rows = self
-            .rows("SELECT database, count(), sum(total_bytes) FROM system.tables WHERE database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema') AND name NOT LIKE '.inner%' GROUP BY database ORDER BY database")
+            .rows("SELECT database, countIf(name NOT LIKE '.inner%' AND engine NOT IN ('View', 'MaterializedView', 'LiveView')), sum(total_bytes) FROM system.tables WHERE database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema') AND NOT is_temporary GROUP BY database ORDER BY database")
             .await?;
         let schemas: Vec<SchemaSize> = rows
             .iter()
@@ -842,6 +1442,10 @@ fn nullable_allowed(data_type: &str) -> bool {
         .iter()
         .any(|prefix| data_type.starts_with(prefix))
 }
+
+#[cfg(test)]
+#[path = "clickhouse_merge_context_tests.rs"]
+mod merge_context_tests;
 
 #[cfg(test)]
 mod tests {
@@ -916,6 +1520,208 @@ mod tests {
             super::super::import::Dialect::Clickhouse.quote("x\\`y"),
             quote("x\\`y")
         );
+    }
+
+    #[test]
+    fn strips_user_output_formats_but_keeps_insert_data() {
+        let strip = |sql: &str| {
+            output_format(sql).map(|(s, e, name)| (format!("{}{}", &sql[..s], &sql[e..]), name))
+        };
+        for format in ["JSON", "JSONEachRow", "CSV", "TSV", "Pretty", "Vertical"] {
+            let sql = format!("SELECT 7 AS x, 'a' AS y FORMAT {format}");
+            assert_eq!(
+                strip(&sql),
+                Some(("SELECT 7 AS x, 'a' AS y ".to_string(), format.to_string()))
+            );
+        }
+        assert_eq!(
+            strip("select 1 format csv settings max_threads = 1;").map(|r| r.0),
+            Some("select 1  settings max_threads = 1;".to_string())
+        );
+        assert_eq!(
+            strip("SELECT 1 SETTINGS max_threads = 1 FORMAT JSON;").map(|r| r.0),
+            Some("SELECT 1 SETTINGS max_threads = 1 ;".to_string())
+        );
+        assert_eq!(strip("INSERT INTO t FORMAT CSV"), None);
+        assert_eq!(strip("SELECT 'x FORMAT JSON'"), None);
+        assert_eq!(strip("SELECT 1 -- FORMAT JSON"), None);
+        assert_eq!(
+            strip("SELECT * FROM format(JSONEachRow, '{\"a\":1}')"),
+            None
+        );
+        assert_eq!(strip("SELECT format FROM t"), None);
+        assert_eq!(strip("SELECT * FROM logs ORDER BY format DESC"), None);
+        assert_eq!(strip("SELECT * FROM logs ORDER BY a, format ASC"), None);
+        assert_eq!(strip("SELECT * FROM logs AS format FINAL"), None);
+        assert_eq!(strip("SELECT * FROM logs ORDER BY l.format DESC"), None);
+        assert_eq!(
+            strip("SELECT 1 FORMAT Null"),
+            Some(("SELECT 1 ".to_string(), "Null".to_string()))
+        );
+        assert_eq!(strip("SELECT (SELECT 1 FORMAT JSON)"), None);
+        assert_eq!(
+            strip("SELECT 1 FORMAT Null").map(|r| r.1),
+            Some("Null".to_string())
+        );
+    }
+
+    #[test]
+    fn recognizes_mutations_and_view_bodies() {
+        assert!(is_mutation("ALTER TABLE big DELETE WHERE id < 10"));
+        assert!(is_mutation(
+            "alter table db.`big` on cluster c update a = 1 where 1"
+        ));
+        assert!(!is_mutation("ALTER TABLE big ADD COLUMN x UInt8"));
+        assert!(!is_mutation("DELETE FROM big WHERE 1"));
+        assert_eq!(
+            select_body(
+                "CREATE VIEW db.v (`id` UInt32, `as` String) AS SELECT id, s AS `as` FROM t;"
+            ),
+            "SELECT id, s AS `as` FROM t"
+        );
+        assert_eq!(
+            select_body("CREATE MATERIALIZED VIEW db.mv TO db.t (`k` UInt32) AS WITH 1 AS one SELECT k FROM s"),
+            "WITH 1 AS one SELECT k FROM s"
+        );
+        assert_eq!(
+            select_body(
+                "CREATE MATERIALIZED VIEW db.mv ENGINE = MergeTree ORDER BY id AS SELECT id FROM t"
+            ),
+            "SELECT id FROM t"
+        );
+        assert_eq!(select_body(" SELECT 1; "), "SELECT 1");
+    }
+
+    #[test]
+    fn rows_keep_server_types() {
+        let body = concat!(
+            "[\"id\", \"v\", \"js\", \"f\", \"d\", \"agg\", \"big\"]\n",
+            "[\"UInt8\", \"Variant(String, UInt64)\", \"JSON\", \"Float64\", \"Nullable(Decimal(38, 6))\", \"AggregateFunction(count)\", \"Int256\"]\n",
+            "[1, \"123\", {\"a\":1,\"big\":18446744073709551615}, \"nan\", \"42\", \"\\u0005\", -2000000000000000039798268413536]\n",
+            "[2, 42, {}, -0.5, \"12.50\", null, 9007199254740991]\n",
+        );
+        let (columns, rows) = parse_body(body).unwrap();
+        assert_eq!(columns, ["id", "v", "js", "f", "d", "agg", "big"]);
+        assert_eq!(
+            rows[0],
+            serde_json::json!([1, "123", {"a": 1, "big": "18446744073709551615"}, "nan", 42, AGGREGATE_STATE, "-2000000000000000039798268413536"])
+                .as_array()
+                .unwrap()
+                .clone()
+        );
+        assert_eq!(
+            rows[1],
+            serde_json::json!([2, 42, {}, -0.5, "12.50", null, 9007199254740991_i64])
+                .as_array()
+                .unwrap()
+                .clone()
+        );
+        assert_eq!(
+            quote_unsafe_integers("[\"9007199254740993\", 9007199254740993, 1e300, -12]"),
+            "[\"9007199254740993\", \"9007199254740993\", 1e300, -12]"
+        );
+    }
+
+    #[test]
+    fn broken_streams_and_invalid_bytes_are_not_silent() {
+        let body = "[\"n\"]\n[\"UInt8\"]\n[0]\n__exception__\nCode: 395. DB::Exception: boom: while executing 'x'. (FUNCTION_THROW_IF_VALUE_IS_NON_ZERO) (version 25.8.33.6 (official build))\n";
+        assert_eq!(parse_body(body).unwrap_err(), "boom: while executing 'x'.");
+        let text = lossless_text(
+            b"[\"s\",\"t\"]\n[\"String\",\"String\"]\n[\"Hallo \\u0000\xFF\",\"\\\\xFF\"]\n"
+                .to_vec(),
+        );
+        let (_, rows) = parse_body(&text).unwrap();
+        assert_eq!(rows[0][0], "\\x48616c6c6f2000ff");
+        assert_eq!(rows[0][1], "\\xFF");
+        assert_eq!(lossless_text("ü".as_bytes().to_vec()), "ü");
+    }
+
+    #[test]
+    fn server_errors_are_short_and_german() {
+        assert_eq!(
+            explain_exception("Code: 62. DB::Exception: Syntax error: failed at position 1 (SELEC): SELEC 1. Expected one of: Query, Query with output, EXPLAIN, SELECT, WITH, FROM, SHOW, DESCRIBE, CREATE, ALTER. (SYNTAX_ERROR) (version 25.8.33.6 (official build))"),
+            "Syntaxfehler an Position 1 bei „SELEC“.\nErwartet: Query, Query with output, EXPLAIN, SELECT, WITH, FROM, SHOW, DESCRIBE, …"
+        );
+        assert_eq!(
+            explain_exception("Code: 81. DB::Exception: Database gibtsnicht does not exist. (UNKNOWN_DATABASE) (version 25.8.33.6 (official build))"),
+            "Datenbank „gibtsnicht“ existiert nicht."
+        );
+        assert_eq!(
+            explain_exception("Code: 516. DB::Exception: l8db: Authentication failed: password is incorrect, or there is no user with such name. (AUTHENTICATION_FAILED) (version 25.8.33.6 (official build))"),
+            "Anmeldung fehlgeschlagen: Benutzer oder Passwort falsch."
+        );
+        let adapter = ClickhouseAdapter::new("clickhouse://localhost:9000/db", None).unwrap();
+        assert!(adapter
+            .server_error(400, "{\"exception\": \"Code: 60. DB::Exception: Unknown table expression identifier 'nope_tbl' in scope SELECT * FROM nope_tbl. (UNKNOWN_TABLE) (version 25.8.33.6 (official build))\"}")
+            .starts_with("Tabelle nicht gefunden: Unknown table expression identifier 'nope_tbl'"));
+        assert!(adapter
+            .server_error(400, "Port 9000 is for clickhouse-client program.\r\nYou must use port 8123 for HTTP.\r\n")
+            .starts_with("Port 9000 ist der native ClickHouse-Port"));
+    }
+
+    async fn streaming_server(rows: usize) -> (String, Seen) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen = Seen::default();
+        let log = seen.clone();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let log = log.clone();
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 65536];
+                    let n = socket.read(&mut buf).await.unwrap_or(0);
+                    let request = String::from_utf8_lossy(&buf[..n]).to_string();
+                    let kill = request.contains("KILL QUERY");
+                    log.lock()
+                        .unwrap()
+                        .push(if kill { "KILL".into() } else { "QUERY".into() });
+                    let _ = socket
+                        .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n")
+                        .await;
+                    let mut chunk = String::from("[\"n\"]\n[\"UInt64\"]\n");
+                    let total = if kill { 0 } else { rows };
+                    for i in 0..total {
+                        chunk.push_str(&format!("[{i}]\n"));
+                        if chunk.len() > 4096 || i + 1 == total {
+                            let frame = format!("{:x}\r\n{chunk}\r\n", chunk.len());
+                            if socket.write_all(frame.as_bytes()).await.is_err() {
+                                log.lock().unwrap().push(format!("closed after {i}"));
+                                return;
+                            }
+                            chunk.clear();
+                        }
+                    }
+                    let _ = socket.write_all(b"0\r\n\r\n").await;
+                    log.lock().unwrap().push("finished".into());
+                });
+            }
+        });
+        (format!("http://{addr}/"), seen)
+    }
+
+    #[tokio::test]
+    async fn row_limit_stops_reading_and_kills_the_query() {
+        let (url, seen) = streaming_server(2_000_000).await;
+        let adapter = ClickhouseAdapter::new(&url, None).unwrap();
+        let started = std::time::Instant::now();
+        let result = super::super::execution::with_row_limit(
+            1001,
+            adapter.execute_query("SELECT number AS n FROM numbers(2000000)"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.rows.len(), 1001);
+        assert_eq!(result.rows[1000]["n"], 1000);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        let log = seen.lock().unwrap().clone();
+        assert_eq!(log.iter().filter(|l| *l == "QUERY").count(), 1);
+        assert_eq!(log.iter().filter(|l| *l == "KILL").count(), 1);
+        let (url, seen) = streaming_server(3).await;
+        let adapter = ClickhouseAdapter::new(&url, None).unwrap();
+        let all = adapter.execute_query("SELECT 1").await.unwrap();
+        assert_eq!(all.rows.len(), 3);
+        assert!(!seen.lock().unwrap().iter().any(|l| l == "KILL"));
     }
 
     type Seen = std::sync::Arc<std::sync::Mutex<Vec<String>>>;

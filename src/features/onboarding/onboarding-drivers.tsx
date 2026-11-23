@@ -40,7 +40,7 @@ export function OnboardingDrivers() {
     if (!provider) return;
     setInstalling(id);
     try {
-      await installDriver(provider.kind);
+      await installDriver(provider.kind, provider.id);
       await loadProviders();
       toast.success(`${provider.name}: Installation abgeschlossen.`);
     } catch (error) {
@@ -84,9 +84,7 @@ export function OnboardingDrivers() {
               provider.driver.type === "odbc" && provider.id !== "odbc"
                 ? provider.driver_status.install.find((entry) => entry.os === "all")
                 : hintForPlatform(provider.driver_status);
-            const automatic =
-              provider.driver_status.install_command !== null &&
-              (provider.kind === "oracle" || provider.id === "odbc");
+            const automatic = provider.driver_status.install_command !== null;
             return (
               <section key={provider.id} className="rounded-xl border border-border bg-card p-3">
                 <div className="flex flex-wrap items-center gap-3">

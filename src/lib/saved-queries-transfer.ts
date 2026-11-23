@@ -1,4 +1,5 @@
 import type { SavedQuery } from "@/lib/saved-queries";
+import { type SavedQueryOrigin, toStoredSavedQuery } from "@/lib/saved-query-origin";
 
 export const SAVED_QUERY_EXPORT_FORMAT = "l8db-saved-queries";
 export const SAVED_QUERY_EXPORT_VERSION = 1;
@@ -8,6 +9,7 @@ export interface ExportedSavedQuery {
   name: string;
   sql: string;
   createdAt: number;
+  origin?: SavedQueryOrigin;
 }
 
 export interface SavedQueryExportFile {
@@ -43,12 +45,7 @@ function newId(): string {
 }
 
 export function toExportedSavedQuery(query: SavedQuery): ExportedSavedQuery {
-  return {
-    id: query.id,
-    name: query.name,
-    sql: query.sql,
-    createdAt: query.createdAt,
-  };
+  return toStoredSavedQuery(query);
 }
 
 export function buildSavedQueryExport(
@@ -73,12 +70,13 @@ function parseEntry(value: unknown): ExportedSavedQuery | string {
   if (!name) return "Name fehlt.";
   if (typeof value.sql !== "string" || value.sql.trim().length === 0) return "SQL fehlt.";
   const createdAt = Number(value.createdAt);
-  return {
+  return toStoredSavedQuery({
     id: typeof value.id === "string" && value.id ? value.id : newId(),
     name,
     sql: value.sql,
     createdAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : Date.now(),
-  };
+    origin: value.origin,
+  });
 }
 
 export function findSavedQueryDuplicate(
@@ -155,21 +153,11 @@ export function resolveSavedQueryImport(
       if (strategy === "skip") continue;
       const name = uniqueCopyName(candidate.query.name, taken);
       taken.push(name);
-      result.push({
-        id: newId(),
-        name,
-        sql: candidate.query.sql,
-        createdAt: candidate.query.createdAt,
-      });
+      result.push(toStoredSavedQuery({ ...candidate.query, id: newId(), name }));
       continue;
     }
     taken.push(candidate.query.name);
-    result.push({
-      id: candidate.query.id,
-      name: candidate.query.name,
-      sql: candidate.query.sql,
-      createdAt: candidate.query.createdAt,
-    });
+    result.push(toStoredSavedQuery(candidate.query));
   }
   return result;
 }

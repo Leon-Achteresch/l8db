@@ -426,6 +426,7 @@ describe("editor fields mode", () => {
       default_port: 5432,
       url_schemes: ["postgresql"],
       capabilities: { ssh: true, ssl: false },
+      driver: { type: "builtin" },
     };
     const makeUrl = (host: string) =>
       createConnectionUrlActions({
@@ -447,6 +448,36 @@ describe("editor fields mode", () => {
     expect(() => makeUrl("my host")).toThrow("ungültige Zeichen");
     expect(makeUrl("::1")).toBe("postgresql://app@[::1]:5432/app");
     expect(makeUrl("db.example.com")).toBe("postgresql://app@db.example.com:5432/app");
+  });
+
+  test("an ODBC product carries its driver name unless the user set one", () => {
+    const info = {
+      id: "ibmi",
+      kind: "odbc",
+      file_based: false,
+      default_port: null,
+      url_schemes: ["odbc"],
+      capabilities: { ssh: true, ssl: false },
+      driver: { type: "odbc", driver: "IBM i Access ODBC Driver" },
+    };
+    const makeUrl = (extraParams: string) =>
+      createConnectionUrlActions({
+        mode: "fields",
+        value: "",
+        kind: "odbc",
+        providers: [info],
+        info,
+        host: "as400",
+        port: "",
+        user: "app",
+        password: "",
+        database: "",
+        extraParams,
+        windowsAuth: false,
+        withSsl: (url: string) => url,
+      } as never).makeUrl();
+    expect(makeUrl("")).toBe("odbc://app@as400/?Driver=IBM+i+Access+ODBC+Driver");
+    expect(makeUrl("?driver=Other")).toBe("odbc://app@as400/?driver=Other");
   });
 });
 

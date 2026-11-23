@@ -2,10 +2,12 @@ import { Hammer, Loader } from "lucide";
 import { PlayIcon, TriangleAlertIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DebugButton } from "@/features/debugger/debug-button";
+import { EditorExtensionActions } from "@/features/extensions/editor-extension-actions";
 import { objectError, SqlEditorPane } from "@/features/functions/function-view";
 import { ProcedureRunDialog } from "@/features/functions/procedure-run-dialog";
 import { useCompileObject } from "@/features/functions/use-compile-object";
@@ -18,7 +20,9 @@ import {
 } from "@/features/functions/use-sql-object-edit";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveCapabilities } from "@/lib/db-selection";
+import { useExtensionEditorId } from "@/lib/hooks/use-extension-editor";
 import { buildInvalidSet, isProcedureInvalid } from "@/lib/invalid-objects";
+import { useHasNewFeatures } from "@/lib/new-features";
 import {
   useFunctionDefinitionQuery,
   useInvalidObjectsQuery,
@@ -26,6 +30,7 @@ import {
 } from "@/lib/queries";
 import { useTableTabs } from "@/lib/table-tabs";
 import { cn } from "@/lib/utils";
+import { ROUTINE_TYPES } from "@/lib/versioning/blame";
 import { useWorkspacePane } from "@/lib/workspace-pane";
 
 export interface ProcedureViewProps {
@@ -56,8 +61,10 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
         : Promise.resolve(),
     schema,
   );
+  const extensionEditorId = useExtensionEditorId(edit.key);
 
   const [runOpen, setRunOpen] = useState(false);
+  const newRunResults = useHasNewFeatures("procedures.run.results");
 
   useEffect(() => {
     if (oid && !pane) {
@@ -134,6 +141,7 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
           >
             <PlayIcon data-icon="inline-start" />
             Ausführen
+            {newRunResults && <NewBadge />}
           </Button>
         ) : null}
         {!edit.editing && capabilities.compile_objects ? (
@@ -154,6 +162,7 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
         {!edit.editing && oid ? (
           <DebugButton oid={oid} schema={schema} name={name} objectType="procedure" />
         ) : null}
+        <EditorExtensionActions editorId={extensionEditorId} />
         <OpenInQueryEditorButton sql={data ?? ""} title={`${schema}.${name}`} />
         <SqlEditActions edit={edit} />
       </div>
@@ -161,12 +170,14 @@ export function ProcedureView({ schema, name, oid, line }: ProcedureViewProps) {
       {edit.editing ? <SqlEditHint /> : null}
 
       <SqlEditorPane
+        blame={{ schema, name, types: ROUTINE_TYPES }}
         value={edit.editing ? edit.sql : (data ?? "")}
         readOnly={!edit.editing}
         onChange={edit.editing ? edit.setSql : undefined}
         revealLine={revealLine}
         error={objectError(compileResult?.message, edit.state)}
         stateKey={edit.key}
+        extensionEditor={{ id: extensionEditorId, kind: "procedure" }}
       />
 
       <SqlEditFeedback state={edit.state} />

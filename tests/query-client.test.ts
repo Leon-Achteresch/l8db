@@ -121,6 +121,8 @@ describe("query cache performance and isolation", () => {
       "FEHLER: storniere Anfrage wegen Zeitüberschreitung der Anweisung\nSQLSTATE 57014",
       "ERROR: canceling statement due to lock timeout\nSQLSTATE 55P03",
       "Abbruch nicht bestätigt: io error",
+      'Der Filter muss gültiges JSON sein (Zeile 1, Spalte 1), z. B. {"status": "open"}.',
+      "Filter abgelehnt: ; ist nicht erlaubt.",
     ])
       expect(retry(0, new Error(message))).toBe(false);
     expect(retry(0, new Error("Datenbankfehler: connection reset"))).toBe(true);
