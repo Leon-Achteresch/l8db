@@ -78,6 +78,14 @@ export function DataTableRecordDialog({
           tabIndex={scrollable ? 0 : undefined}
           className="min-h-0 overflow-auto overscroll-contain rounded-md outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
           style={{ height }}
+          onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return;
+            if (event.key !== "Home" && event.key !== "End") return;
+            event.preventDefault();
+            virtualizer.scrollToIndex(event.key === "Home" ? 0 : columns.length - 1, {
+              align: event.key === "Home" ? "start" : "end",
+            });
+          }}
         >
           <table
             aria-label="Felder"
