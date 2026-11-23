@@ -175,6 +175,7 @@ Object.assign(window, {
       target.setPosition({ lineNumber: 1, column: 1 });
       target.executeEdits("fixture", [{ range: new monaco.Range(1, 1, 1, 1), text }]);
     },
+    moveTo: (line: number) => editor().setPosition({ lineNumber: line, column: 1 }),
     copy: () => {
       const target = editor();
       const model = target.getModel();

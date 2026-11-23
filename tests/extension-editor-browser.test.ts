@@ -16,6 +16,7 @@ type Fixture = {
   checked: () => boolean;
   openEditors: () => number;
   type: (text: string) => void;
+  moveTo: (line: number) => void;
   copy: () => string;
   switchTab: (index: number) => void;
   disable: () => Promise<void>;
@@ -139,6 +140,13 @@ run(
         "AS fertig",
       ])
         expect(sent.some((args) => args.includes(statement))).toBe(true);
+
+      await fixture(page, (host) => host.moveTo(5));
+      await page.waitForFunction(
+        () => (window as Host).extensionEditorFixture.hidden().length === 0,
+      );
+      expect(await fixture(page, (host) => host.visible())).toContain("debug: kunde");
+      expect(await markers(page).count()).toBe(0);
 
       await fixture(page, (host) => host.disable());
       await page.waitForFunction(

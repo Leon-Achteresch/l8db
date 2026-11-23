@@ -1,4 +1,4 @@
-import { type RefObject, useContext, useEffect, useMemo } from "react";
+import { type RefObject, useContext, useEffect, useMemo, useRef } from "react";
 import { useActiveConnection } from "@/lib/connections";
 import { ExtensionHostContext } from "@/lib/extensions/react-context";
 import type { monaco } from "@/lib/monaco";
@@ -21,7 +21,8 @@ export function useExtensionEditor(
   target: ExtensionEditorTarget | undefined,
 ) {
   const host = useContext(ExtensionHostContext);
-  const connectionKind = useActiveConnection()?.kind ?? "";
+  const connectionKind = useRef("");
+  connectionKind.current = useActiveConnection()?.kind ?? "";
   const id = target?.id;
   const kind = target?.kind;
 
@@ -31,7 +32,9 @@ export function useExtensionEditor(
     const view = attachHiddenRanges(editor, (line) => host.editors.reveal(id, line));
     const registration = host.editors.register(id, {
       kind,
-      connectionKind,
+      get connectionKind() {
+        return connectionKind.current;
+      },
       text: () => editor.getValue(),
       lineCount: () => editor.getModel()?.getLineCount() ?? 0,
       watch: (listener) => editor.onDidChangeModelContent(listener),
@@ -41,5 +44,5 @@ export function useExtensionEditor(
       registration.dispose();
       view.dispose();
     };
-  }, [host, editorRef, id, kind, connectionKind]);
+  }, [host, editorRef, id, kind]);
 }
