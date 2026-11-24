@@ -260,6 +260,12 @@ export function TableTabs() {
           onClose={collapse}
           onCloseTabs={() => handleCloseGroup(paneTabs.flat())}
           onDelete={openGroup ? () => deleteGroup(openGroup.id) : undefined}
+          shared={openGroup?.shared}
+          onToggleShared={
+            openGroup ? () => setGroupShared(openGroup.id, !openGroup.shared) : undefined
+          }
+          others={groups.filter((group) => group.id !== openGroup?.id)}
+          onOpenGroup={handleOpenGroup}
         />
       )}
       <div ref={containerRef} className="flex min-w-0 items-center">
@@ -308,23 +314,50 @@ export function TableTabs() {
           />
         )}
       </div>
-      <Tooltip
-        content="Neue Abfrage öffnen"
-        hotkey="tab.newQuery"
-        side="bottom"
-        wrapperClassName="shrink-0"
-      >
-        <button
-          type="button"
-          data-feature="query.new-tab"
-          onClick={handleNewQueryTab}
-          data-hotkey="tab.newQuery"
-          aria-label="Neue Abfrage öffnen"
-          className={`${iconButton} bg-primary/8 text-primary hover:bg-primary/15`}
+      <div className="flex shrink-0 items-center rounded-full bg-primary/8">
+        <Tooltip
+          content="Neue Abfrage öffnen"
+          hotkey="tab.newQuery"
+          side="bottom"
+          wrapperClassName="shrink-0"
         >
-          <PlusIcon className="size-3.5" />
-        </button>
-      </Tooltip>
+          <button
+            type="button"
+            data-feature="query.new-tab"
+            onClick={handleNewQueryTab}
+            data-hotkey="tab.newQuery"
+            aria-label="Neue Abfrage öffnen"
+            className={cn(
+              iconButton,
+              "text-primary hover:bg-primary/15 hover:text-primary",
+              !easyMode && "rounded-r-none",
+            )}
+          >
+            <PlusIcon className="size-3.5" />
+          </button>
+        </Tooltip>
+        {!easyMode && (
+          <SplitGroupsMenu
+            onNewQuery={handleNewQueryTab}
+            groups={groups}
+            foreign={foreignGroups}
+            activeGroup={hasSplit ? activeGroup : null}
+            canSave={canSaveGroup}
+            onSave={handleSaveGroup}
+            onSwitch={(group, connectionId) => void handleSwitchGroup(group, connectionId)}
+            onRename={(group, name) => renameGroup(group.id, name)}
+            isNew={groupFeature.isNew || sharedFeature.isNew}
+            triggerRef={groupFeature.ref}
+            sharedNew={sharedFeature.isNew}
+            sharedRef={sharedFeature.ref}
+            onToggleShared={(group, connectionId) =>
+              setGroupShared(group.id, !group.shared, connectionId)
+            }
+            onOpen={handleOpenGroup}
+            onDelete={(group, connectionId) => deleteGroup(group.id, connectionId)}
+          />
+        )}
+      </div>
       <div className="min-w-0 flex-1" />
       <InvestigationsButton />
 
@@ -365,26 +398,6 @@ export function TableTabs() {
             />
           </button>
         </Tooltip>
-      )}
-      {!easyMode && (groups.length > 0 || foreignGroups.length > 0 || canSaveGroup) && (
-        <SplitGroupsMenu
-          groups={groups}
-          foreign={foreignGroups}
-          activeGroup={hasSplit ? activeGroup : null}
-          canSave={canSaveGroup}
-          onSave={handleSaveGroup}
-          onSwitch={(group, connectionId) => void handleSwitchGroup(group, connectionId)}
-          onRename={(group, name) => renameGroup(group.id, name)}
-          isNew={groupFeature.isNew || sharedFeature.isNew}
-          triggerRef={groupFeature.ref}
-          sharedNew={sharedFeature.isNew}
-          sharedRef={sharedFeature.ref}
-          onToggleShared={(group, connectionId) =>
-            setGroupShared(group.id, !group.shared, connectionId)
-          }
-          onOpen={handleOpenGroup}
-          onDelete={(group, connectionId) => deleteGroup(group.id, connectionId)}
-        />
       )}
       {hasSplit && (
         <Tooltip content="Einzelansicht" side="bottom" wrapperClassName="shrink-0">

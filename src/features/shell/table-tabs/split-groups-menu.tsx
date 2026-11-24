@@ -1,4 +1,4 @@
-import { LayoutPanelLeftIcon, PlusIcon } from "lucide-react";
+import { ChevronDownIcon, CodeIcon, PlusIcon } from "lucide-react";
 import type * as React from "react";
 import { Fragment, useState } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
@@ -23,6 +23,7 @@ interface SplitGroupsMenuProps {
   isNew: boolean;
   triggerRef: React.Ref<HTMLButtonElement>;
   foreign: readonly ForeignSplitGroup[];
+  onNewQuery: () => void;
   onOpen: (group: SplitGroup, connectionId?: string) => void;
   onSwitch: (group: SplitGroup, connectionId: string) => void;
   onSave: (group?: SplitGroup) => string | null;
@@ -43,6 +44,7 @@ export function SplitGroupsMenu({
   isNew,
   triggerRef,
   foreign,
+  onNewQuery,
   onOpen,
   onSwitch,
   onSave,
@@ -54,6 +56,7 @@ export function SplitGroupsMenu({
 }: SplitGroupsMenuProps) {
   const [editing, setEditing] = useState<string | null>(null);
   const saveFeature = useNewFeatureVisibility<HTMLDivElement>("split.saved-views.tab-sets");
+  const menuFeature = useNewFeatureVisibility<HTMLDivElement>("split.saved-views.plus-menu");
   const total = groups.length + foreign.length;
   const label = total ? `Tab-Gruppen (${total})` : "Tab-Gruppen";
   const hold = editing ? HOLD : undefined;
@@ -65,17 +68,16 @@ export function SplitGroupsMenu({
         setEditing(null);
       }}
     >
-      <Tooltip content={label} side="bottom" wrapperClassName="shrink-0">
+      <Tooltip content="Abfrage oder Ansicht öffnen" side="bottom" wrapperClassName="shrink-0">
         <DropdownMenuTrigger asChild>
           <button
             ref={triggerRef}
             type="button"
             aria-label={label}
-            className={`${iconButton} relative ${total ? "w-11 gap-0.5" : ""}`}
+            className={`${iconButton} relative w-6 rounded-l-none text-primary hover:bg-primary/15 hover:text-primary`}
           >
-            <LayoutPanelLeftIcon className="size-3.5" />
-            {total > 0 && <span className="text-[10px] tabular-nums">{total}</span>}
-            {isNew && <NewBadge className={`absolute -top-1.5 ${total ? "left-6" : "left-4"}`} />}
+            <ChevronDownIcon className="size-3.5" />
+            {isNew && <NewBadge className="absolute -top-1.5 left-3" />}
           </button>
         </DropdownMenuTrigger>
       </Tooltip>
@@ -84,6 +86,11 @@ export function SplitGroupsMenu({
         onEscapeKeyDown={(event) => editing && event.preventDefault()}
         className="max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] w-80 max-w-[calc(100vw-2rem)]"
       >
+        <DropdownMenuItem {...hold} ref={menuFeature.ref} onSelect={onNewQuery}>
+          <CodeIcon className="size-3.5 text-muted-foreground" />
+          <span className="flex-1">Neue Abfrage</span>
+          {menuFeature.isNew && <NewBadge />}
+        </DropdownMenuItem>
         <DropdownMenuItem
           {...hold}
           ref={saveFeature.ref}

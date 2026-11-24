@@ -3,11 +3,17 @@ import { type Ref, useRef, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import {
   ContextMenu,
+  ContextMenuCheckboxItem,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import type { SplitGroup } from "@/lib/split-view";
 import { cn } from "@/lib/utils";
 
 interface SplitGroupTabProps {
@@ -21,6 +27,10 @@ interface SplitGroupTabProps {
   onClose: () => void;
   onCloseTabs?: () => void;
   onDelete?: () => void;
+  shared?: boolean;
+  onToggleShared?: () => void;
+  others?: SplitGroup[];
+  onOpenGroup?: (group: SplitGroup) => void;
 }
 
 export function SplitGroupTab({
@@ -34,6 +44,10 @@ export function SplitGroupTab({
   onClose,
   onCloseTabs,
   onDelete,
+  shared,
+  onToggleShared,
+  others = [],
+  onOpenGroup,
 }: SplitGroupTabProps) {
   const [editing, setEditing] = useState(false);
   const closeFeature = useNewFeatureVisibility<HTMLDivElement>("split.master-tabs.close-group");
@@ -103,6 +117,24 @@ export function SplitGroupTab({
         {onRename && (
           <ContextMenuItem onSelect={() => setEditing(true)}>Umbenennen</ContextMenuItem>
         )}
+        {onToggleShared && (
+          <ContextMenuCheckboxItem checked={Boolean(shared)} onSelect={onToggleShared}>
+            Allgemein verfügbar
+          </ContextMenuCheckboxItem>
+        )}
+        {onOpenGroup && others.length > 0 && (
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>Ansicht wechseln</ContextMenuSubTrigger>
+            <ContextMenuSubContent className="max-h-80 overflow-y-auto">
+              {others.map((group) => (
+                <ContextMenuItem key={group.id} onSelect={() => onOpenGroup(group)}>
+                  {group.name}
+                </ContextMenuItem>
+              ))}
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+        )}
+        <ContextMenuSeparator />
         <ContextMenuItem onSelect={onClose}>Geteilte Ansicht auflösen</ContextMenuItem>
         {onCloseTabs && (
           <ContextMenuItem ref={closeFeature.ref} onSelect={onCloseTabs}>
