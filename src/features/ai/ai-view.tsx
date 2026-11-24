@@ -33,9 +33,10 @@ import { AI_KNOWLEDGE_PROMPT, AI_RULES_PROMPT } from "@/lib/ai/prompts";
 import { aiFigures, aiThreadMarkdown } from "@/lib/ai/result";
 import { mergeAiRich, normalizeAiRich } from "@/lib/ai/rich";
 import { useAiSetupNeeded } from "@/lib/ai/setup";
+import { recordAiSpend, settleAiSpend } from "@/lib/ai/spend";
 import { AI_PROVIDERS, type AiSession, aiSessionConnection, useAiStore } from "@/lib/ai/store";
 import { aiLatestLeaf, aiThread } from "@/lib/ai/thread";
-import { mergeAiUsage } from "@/lib/ai/usage";
+import { mergeAiUsage, summarizeAiUsage } from "@/lib/ai/usage";
 import { isReadOnlyConnection, type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import {
   type AiAttachment,
@@ -648,6 +649,24 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           ...(stopping.current ? { stopped: true } : {}),
         }));
         if (synced) liveSession.current = { ...liveSession.current, nativeLeafId: assistantId };
+        const model = liveSession.current.usageModel ?? profile.model;
+        const settled = settleAiSpend(
+          summarizeAiUsage(
+            usageRef.current,
+            { ...profile, model },
+            { requestedModel: profile.model },
+            [],
+          ),
+          liveSession.current,
+        );
+        if (settled) {
+          liveSession.current = {
+            ...liveSession.current,
+            spend: settled.spend,
+            spendSeen: settled.spendSeen,
+          };
+          recordAiSpend(model || profile.provider, settled.delta);
+        }
         saveLive();
       }
       run.current = null;
@@ -1106,6 +1125,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           messages={thread}
           prompt={prompt}
           summary={session?.summary}
+          spend={session?.spend}
+          spendSeen={session?.spendSeen}
+          running={Boolean(runId)}
           onSettings={() => setView("settings")}
         />
       }
