@@ -32,6 +32,7 @@ import { useSettingsStore } from "@/lib/settings";
 import { compileFilterConditions } from "@/lib/sql-filter";
 import type { FilterCondition as Condition } from "@/lib/table-view-state";
 import { FilterGroupingPreview } from "./filter-bar/filter-grouping-preview";
+import { type FilterBarSort, FilterSortControl } from "./filter-bar/filter-sort-control";
 import { useFilterFocusHotkey } from "./filter-bar/use-filter-focus-hotkey";
 import { ActiveFilterBadge } from "./table-filter-panel/active-filter-badge";
 import { FilterConditionRow } from "./table-filter-panel/filter-condition-row";
@@ -51,6 +52,7 @@ interface TableFilterPanelProps {
   columnDetails?: DetailedColumnInfo[];
   activeFilter: string;
   onApply: (where: string, isRaw: boolean) => void;
+  sort?: FilterBarSort;
 }
 
 export function TableFilterPanel({
@@ -60,6 +62,7 @@ export function TableFilterPanel({
   columnDetails,
   activeFilter,
   onApply,
+  sort,
 }: TableFilterPanelProps) {
   const listRef = useListAnimation<HTMLDivElement>();
   const caps = useActiveCapabilities();
@@ -244,6 +247,8 @@ export function TableFilterPanel({
             onRemove={() => setRules((current) => current.filter((item) => item.id !== rule.id))}
           />
         ))}
+
+        <FilterSortControl sort={sort} columns={columns} />
 
         {!native && (
           <RuleColorPopover

@@ -9,6 +9,7 @@ interface TableViewChipProps {
   label: string;
   filter: string;
   filterRaw?: boolean;
+  sort?: string;
   color: string;
   active: boolean;
   onSelect: () => void;
@@ -21,6 +22,7 @@ export function TableViewChip({
   label,
   filter,
   filterRaw,
+  sort,
   color,
   active,
   onSelect,
@@ -38,6 +40,7 @@ export function TableViewChip({
         type="button"
         onClick={onSelect}
         aria-pressed={active}
+        title={[filter, sort].filter(Boolean).join(" · ") || undefined}
         className="flex items-center gap-1.5 rounded-full px-2 py-1 focus-visible:outline-2"
       >
         <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />

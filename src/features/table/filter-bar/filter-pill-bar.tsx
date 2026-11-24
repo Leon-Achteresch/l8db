@@ -6,6 +6,7 @@ import { FilterConditionPopover } from "./filter-condition-popover";
 import { FilterConditionTokens } from "./filter-condition-tokens";
 import { FilterModeToggle } from "./filter-mode-toggle";
 import { FilterRuleTokens } from "./filter-rule-tokens";
+import { FilterSortControl } from "./filter-sort-control";
 import { FilterSqlField } from "./filter-sql-field";
 import { useFilterAi } from "./use-filter-ai";
 import { type FilterBarProps, useFilterBarModel } from "./use-filter-bar-model";
@@ -66,6 +67,7 @@ export function FilterPillBar(props: FilterBarProps) {
           </div>
         )}
         <FilterRuleTokens model={model} variant="pill" showLabel={!model.rules.length} />
+        <FilterSortControl sort={props.sort} columns={model.columns} />
         <span className="flex-1" />
         {model.hasFilter ? (
           <Button

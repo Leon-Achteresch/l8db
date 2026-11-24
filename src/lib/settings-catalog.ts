@@ -343,6 +343,15 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "filterBarStyle",
   },
   {
+    id: "filter-bar-sorting",
+    tabId: "appearance",
+    title: "Sortierung in der Filterleiste",
+    description:
+      "Die Sortierung zusätzlich in der Filterleiste setzen und ändern. Gespeicherte Ansichten merken sich die Sortierung zusammen mit dem Filter.",
+    keywords: ["sortierung", "sortieren", "sort", "order by", "filter", "filterleiste", "ansicht"],
+    key: "filterBarSorting",
+  },
+  {
     id: "table-filter-mode",
     tabId: "appearance",
     title: "Standardmodus für Tabellenfilter",

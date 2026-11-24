@@ -12,6 +12,7 @@ import { activeRuleConditions } from "@/lib/row-rules";
 import { useSettingsStore } from "@/lib/settings";
 import { compileFilterConditions, filterSupportsOr } from "@/lib/sql-filter";
 import type { FilterCondition, RowRule } from "@/lib/table-view-state";
+import type { FilterBarSort } from "./filter-sort-control";
 
 export interface FilterBarProps {
   leading?: ReactNode;
@@ -20,6 +21,7 @@ export interface FilterBarProps {
   columnDetails?: DetailedColumnInfo[];
   activeFilter: string;
   onApply: (where: string, isRaw: boolean) => void;
+  sort?: FilterBarSort;
 }
 
 export function useFilterBarModel({

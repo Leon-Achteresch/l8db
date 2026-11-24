@@ -12,6 +12,7 @@ import { canEditRedisCell, REDIS_KEY_FILTER_OPERATORS, redisKeyFilter } from "@/
 import { discardStagedChange, stagedMarkOf } from "@/lib/staged-edits";
 import { tableColumnPrefKey, useTableColumnPrefs } from "@/lib/table-column-prefs";
 import { useTableViewStateStore } from "@/lib/table-view-state";
+import { savedViewPatch } from "@/lib/views";
 import type { useTableViewModel } from "./use-table-view-model";
 
 type Props = Pick<
@@ -133,17 +134,13 @@ export function TableDataContent({
             <TableViewsPanel
               schema={schema}
               table={table}
+              stateKey={stateKey}
               activeFilter={filter}
               filterRaw={filterRaw}
               onSelectView={(nextFilter, raw, saved) => {
                 handleFilterChange(nextFilter, raw);
-                if (stateKey && saved?.state)
-                  useTableViewStateStore.getState().patch(stateKey, {
-                    ...saved.state,
-                    filter: nextFilter,
-                    filterRaw: raw ?? false,
-                    page: 0,
-                  });
+                const patch = savedViewPatch(saved, nextFilter, raw);
+                if (stateKey && patch) useTableViewStateStore.getState().patch(stateKey, patch);
                 if (connection && saved?.layout)
                   useTableColumnPrefs
                     .getState()
@@ -160,6 +157,11 @@ export function TableDataContent({
           columnDetails={columnDetails}
           activeFilter={filter}
           onApply={handleFilterChange}
+          sort={{
+            sorting,
+            sortableColumns: redis ? REDIS_KEY_COLUMNS : sortableColumns,
+            onChange: handleSortingChange,
+          }}
         />
       </div>
       {isLoading || (!isError && !gridReady) ? (

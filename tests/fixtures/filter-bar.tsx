@@ -6,19 +6,24 @@ import { createRoot } from "react-dom/client";
 import { SettingsTableAppearance } from "../../src/features/settings/settings-table-appearance";
 import { DataTable } from "../../src/features/table/data-table";
 import { TableFilterBar } from "../../src/features/table/table-filter-bar";
+import { TableViewsPanel } from "../../src/features/table/table-views-panel";
 import { useConnectionsStore } from "../../src/lib/connections";
 import type { DatabaseKind } from "../../src/lib/db";
 import { normalizeFilterBarStyle } from "../../src/lib/filter-bar-style";
+import { useTableViewState } from "../../src/lib/hooks/use-table-view-state";
 import { FALLBACK_PROVIDERS, useProvidersStore } from "../../src/lib/providers";
 import { useSettingsStore } from "../../src/lib/settings";
 import { compileFilterConditions } from "../../src/lib/sql-filter";
 import { useTableViewStateStore } from "../../src/lib/table-view-state";
+import { savedViewPatch } from "../../src/lib/views";
 import "../../src/index.css";
 
 const params = new URLSearchParams(location.search);
 const kind = (params.get("kind") ?? "postgres") as DatabaseKind;
 useSettingsStore.getState().setFilterBarStyle(normalizeFilterBarStyle(params.get("style")));
 if (params.get("filterMode") === "sql") useSettingsStore.getState().setTableFilterMode("sql");
+if (params.has("sorting"))
+  useSettingsStore.getState().setFilterBarSorting(params.get("sorting") !== "off");
 document.documentElement.classList.toggle("dark", params.get("theme") !== "light");
 
 const columns = ["id", "message_id", "status", "tokens", "created_at"];
@@ -130,6 +135,8 @@ function App() {
     return () => clearTimeout(timer);
   }, []);
   const [raw, setRaw] = useState(false);
+  const [sorting, setSorting] = useTableViewState("filter-bar", "sorting", []);
+  const sortable = params.get("sortable")?.split(",");
   const [applies, setApplies] = useState(0);
   const apply = (where: string, isRaw: boolean) => {
     setActiveFilter(where);
@@ -144,6 +151,23 @@ function App() {
         </div>
       ) : null}
       <TableFilterBar
+        leading={
+          params.has("views") ? (
+            <TableViewsPanel
+              schema="public"
+              table="messages"
+              stateKey="filter-bar"
+              activeFilter={activeFilter}
+              filterRaw={raw}
+              onSelectView={(nextFilter, isRaw, saved) => {
+                apply(nextFilter, isRaw ?? false);
+                const patch = savedViewPatch(saved, nextFilter, isRaw);
+                if (patch) useTableViewStateStore.getState().patch("filter-bar", patch);
+              }}
+            />
+          ) : undefined
+        }
+        sort={{ sorting, sortableColumns: sortable, onChange: setSorting }}
         stateKey={stateKey}
         columns={ready ? columns : []}
         columnDetails={ready ? columnDetails : undefined}
@@ -154,6 +178,7 @@ function App() {
         <output aria-label="Applied filter">{activeFilter}</output>
         <output aria-label="Raw SQL">{String(raw)}</output>
         <output aria-label="Apply count">{applies}</output>
+        <output aria-label="Applied sorting">{JSON.stringify(sorting)}</output>
         <button type="button" onClick={() => apply("", false)}>
           Extern zurücksetzen
         </button>
@@ -169,8 +194,9 @@ function App() {
         columns={columns}
         data={data}
         emptyMessage="Keine Daten"
-        sorting={[]}
-        onSortingChange={() => {}}
+        sorting={sorting}
+        sortableColumns={sortable}
+        onSortingChange={setSorting}
         onApplyFilter={apply}
       />
     </div>
