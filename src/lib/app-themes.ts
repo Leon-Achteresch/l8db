@@ -60,6 +60,7 @@ export type ThemeColors = Partial<Record<ThemeColorToken, string>>;
 
 export const MAX_CUSTOM_THEMES = 50;
 const MAX_NAME = 60;
+const ACCENT_TOKEN = /^(primary|ring|sidebar-primary|sidebar-ring|menu-highlight|chart-)/;
 const COLOR_PATTERN = /^[#a-z0-9.,%()\s/+-]{1,80}$/i;
 
 export const DEFAULT_APP_THEME = "l8db";
@@ -197,7 +198,9 @@ export function appThemeCssVars(
     "--db-glow": String(db ? Math.min(db.glow, 0.05) : Math.min(variant.chroma, 0.05)),
     "--db-tint": String(variant.tint),
     ...Object.fromEntries(
-      Object.entries(variant.colors ?? {}).map(([token, color]) => [`--${token}`, color]),
+      Object.entries(variant.colors ?? {})
+        .filter(([token]) => !db || !ACCENT_TOKEN.test(token))
+        .map(([token, color]) => [`--${token}`, color]),
     ),
   };
 }

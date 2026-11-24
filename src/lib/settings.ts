@@ -225,7 +225,7 @@ export interface SettingsState {
   setSeasonalAccents: (value: boolean) => void;
   setLightTheme: (value: string) => void;
   setDarkTheme: (value: string) => void;
-  saveCustomTheme: (theme: AppTheme) => void;
+  saveCustomTheme: (theme: AppTheme) => boolean;
   deleteCustomTheme: (id: string) => void;
   setDbThemes: (value: boolean) => void;
   setFitColumnsToHeader: (value: boolean) => void;
@@ -488,14 +488,15 @@ export const useSettingsStore = create<SettingsState>()(
         set({ darkTheme: normalizeAppTheme(darkTheme, get().customThemes) }),
       saveCustomTheme: (theme) => {
         const next = normalizeCustomTheme(theme);
-        if (!next) return;
+        if (!next) return false;
         const themes = get().customThemes;
         const index = themes.findIndex((entry) => entry.id === next.id);
-        if (index < 0 && themes.length >= MAX_CUSTOM_THEMES) return;
+        if (index < 0 && themes.length >= MAX_CUSTOM_THEMES) return false;
         set({
           customThemes:
             index < 0 ? [...themes, next] : themes.map((entry, i) => (i === index ? next : entry)),
         });
+        return true;
       },
       deleteCustomTheme: (id) => {
         const state = get();
