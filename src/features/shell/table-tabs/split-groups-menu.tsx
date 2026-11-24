@@ -1,5 +1,6 @@
-import { GlobeIcon, LayoutPanelLeftIcon, Trash2Icon } from "lucide-react";
+import { LayoutPanelLeftIcon, PlusIcon } from "lucide-react";
 import type * as React from "react";
+import { Fragment, useState } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
 import {
@@ -7,115 +8,134 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { ForeignSplitGroup, SplitGroup } from "@/lib/split-view";
-import { tabLabel } from "@/lib/tab-navigation";
-import { cn } from "@/lib/utils";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { type ForeignSplitGroup, isTabSet, type SplitGroup } from "@/lib/split-view";
 import { iconButton } from "./constants";
+import { SplitGroupRow } from "./split-group-row";
 
 interface SplitGroupsMenuProps {
   groups: SplitGroup[];
   activeGroup: string | null;
+  canSave: boolean;
   isNew: boolean;
   triggerRef: React.Ref<HTMLButtonElement>;
   foreign: readonly ForeignSplitGroup[];
   onOpen: (group: SplitGroup, connectionId?: string) => void;
+  onSwitch: (group: SplitGroup, connectionId: string) => void;
+  onSave: (group?: SplitGroup) => string | null;
+  onRename: (group: SplitGroup, name: string) => void;
   onDelete: (group: SplitGroup, connectionId?: string) => void;
   onToggleShared: (group: SplitGroup, connectionId?: string) => void;
   sharedNew: boolean;
   sharedRef: React.Ref<HTMLDivElement>;
 }
 
+const prevent = (event: React.PointerEvent) => event.preventDefault();
+const HOLD = { onPointerMove: prevent, onPointerLeave: prevent };
+
 export function SplitGroupsMenu({
   groups,
   activeGroup,
+  canSave,
   isNew,
   triggerRef,
   foreign,
   onOpen,
+  onSwitch,
+  onSave,
+  onRename,
   onDelete,
   onToggleShared,
   sharedNew,
   sharedRef,
 }: SplitGroupsMenuProps) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const saveFeature = useNewFeatureVisibility<HTMLDivElement>("split.saved-views.tab-sets");
   const total = groups.length + foreign.length;
-  const label = `Tab-Gruppen (${total})`;
-  const entries = [
-    ...groups.map((group) => ({ group, connectionId: undefined, connectionName: undefined })),
-    ...foreign,
-  ];
+  const label = total ? `Tab-Gruppen (${total})` : "Tab-Gruppen";
+  const hold = editing ? HOLD : undefined;
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      onOpenChange={(open) => {
+        if (open) return;
+        if (document.activeElement instanceof HTMLInputElement) document.activeElement.blur();
+        setEditing(null);
+      }}
+    >
       <Tooltip content={label} side="bottom" wrapperClassName="shrink-0">
         <DropdownMenuTrigger asChild>
           <button
             ref={triggerRef}
             type="button"
             aria-label={label}
-            className={`${iconButton} relative w-11 gap-0.5`}
+            className={`${iconButton} relative ${total ? "w-11 gap-0.5" : ""}`}
           >
             <LayoutPanelLeftIcon className="size-3.5" />
-            <span className="text-[10px] tabular-nums">{total}</span>
-            {isNew && <NewBadge className="absolute -top-1.5 left-6" />}
+            {total > 0 && <span className="text-[10px] tabular-nums">{total}</span>}
+            {isNew && <NewBadge className={`absolute -top-1.5 ${total ? "left-6" : "left-4"}`} />}
           </button>
         </DropdownMenuTrigger>
       </Tooltip>
       <DropdownMenuContent
         align="end"
+        onEscapeKeyDown={(event) => editing && event.preventDefault()}
         className="max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] w-80 max-w-[calc(100vw-2rem)]"
       >
-        <DropdownMenuLabel>Tab-Gruppen</DropdownMenuLabel>
-        {entries.map(({ group, connectionId, connectionName }, index) => {
-          const members = group.tabs.map((tab) => (tab ? tabLabel(tab) : "Leer")).join(" | ");
-          const detail = connectionName ? `${connectionName} · ${members}` : members;
-          return (
-            <div key={`${connectionId ?? ""}:${group.id}`} className="flex items-center gap-0.5">
-              <DropdownMenuItem
-                onSelect={() => onOpen(group, connectionId)}
-                title={`${group.name}: ${detail}`}
-                aria-current={group.id === activeGroup ? "page" : undefined}
-                className={cn("min-w-0 flex-1", group.id === activeGroup && "bg-primary/10")}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{group.name}</span>
-                  <span className="block truncate text-[10px] text-muted-foreground">{detail}</span>
-                </span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                ref={index === 0 ? sharedRef : undefined}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  onToggleShared(group, connectionId);
-                }}
-                aria-label={
-                  group.shared
-                    ? `${group.name} nur für diese Verbindung`
-                    : `${group.name} allgemein verfügbar machen`
-                }
-                aria-pressed={Boolean(group.shared)}
-                title={group.shared ? "Allgemein verfügbar" : "Nur diese Verbindung"}
-                className={cn(
-                  "relative shrink-0",
-                  group.shared ? "text-primary" : "text-muted-foreground",
-                )}
-              >
-                <GlobeIcon className="size-3.5" />
-                {index === 0 && sharedNew && <NewBadge className="absolute -top-1 right-0" />}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault();
-                  onDelete(group, connectionId);
-                }}
-                aria-label={`Tab-Gruppe ${group.name} löschen`}
-                className="shrink-0 text-muted-foreground"
-              >
-                <Trash2Icon className="size-3.5" />
-              </DropdownMenuItem>
-            </div>
-          );
-        })}
+        <DropdownMenuItem
+          {...hold}
+          ref={saveFeature.ref}
+          disabled={!canSave}
+          onSelect={(event) => {
+            event.preventDefault();
+            const id = onSave();
+            if (id) setEditing(id);
+          }}
+        >
+          <PlusIcon className="size-3.5 text-muted-foreground" />
+          <span className="flex-1">Offene Tabs als Gruppe speichern</span>
+          {saveFeature.isNew && <NewBadge />}
+        </DropdownMenuItem>
+        {groups.length > 0 && <DropdownMenuSeparator />}
+        {groups.map((group, index) => (
+          <SplitGroupRow
+            key={group.id}
+            group={group}
+            active={group.id === activeGroup}
+            editing={editing === group.id}
+            canSave={canSave}
+            hold={hold}
+            sharedRef={index === 0 ? sharedRef : undefined}
+            sharedNew={index === 0 && sharedNew}
+            onOpen={() => onOpen(group)}
+            onOverwrite={isTabSet(group) ? () => onSave(group) : undefined}
+            onEdit={(open) => setEditing(open ? group.id : null)}
+            onRename={(name) => onRename(group, name)}
+            onToggleShared={() => onToggleShared(group)}
+            onDelete={() => onDelete(group)}
+          />
+        ))}
+        {foreign.map(({ group, connectionId, connectionName }, index) => (
+          <Fragment key={`${connectionId}:${group.id}`}>
+            {foreign[index - 1]?.connectionId !== connectionId && (
+              <DropdownMenuLabel className="truncate">{connectionName}</DropdownMenuLabel>
+            )}
+            <SplitGroupRow
+              group={group}
+              connectionName={connectionName}
+              active={false}
+              editing={false}
+              canSave={false}
+              hold={hold}
+              onOpen={() => onOpen(group, connectionId)}
+              onSwitch={() => onSwitch(group, connectionId)}
+              onToggleShared={() => onToggleShared(group, connectionId)}
+              onDelete={() => onDelete(group, connectionId)}
+            />
+          </Fragment>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );

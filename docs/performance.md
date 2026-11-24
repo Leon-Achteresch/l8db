@@ -1190,3 +1190,47 @@ Measured on macOS 27.0, arm64, Apple M3 (8 cores), 16 GiB RAM, Bun 1.4.3, Playwr
 Open: a tab switch still unmounts one view and mounts the next, about 34 ms of React work, 12 ms style and 13 ms paint/layerize per switch on this machine. Within that, the grid's `DragDropProvider` teardown takes about 2.7 ms and motion's layout projection about 1.7 ms. Sticky row-number cells are one compositor layer each (31 of 65 layers); without them Layerize dropped a further 40 % in an experiment. Keeping recent tabs mounted would remove most of the switch cost and is not implemented.
 
 Not covered: no Windows machine, WebView2 build, weak GPU or CPU throttling was measured; the throttled suites do not run on this Mac. The mocked transport excludes database time. The core-count heuristic was verified only in `tests/change-animation.test.ts`; `tests/perf-workspace-motion.test.ts` pins eight cores and was not run.
+
+## Tab groups: all pane tabs, saved tab bars and cross-connection opening (2026-11-24)
+
+A tab group now stores every tab of every pane (`SplitGroup.paneTabs`, only written when a pane holds more than one tab), a tab bar can be saved as a group without a split (`saveTabs`), and a group shared from another connection opens in the active connection as a copy (`adoptGroup`). The last state of a closed query or tool tab that a group still references lives once per connection in `closedTabs` (query tabs inside a group are stored without their SQL); it is dropped again as soon as the tab is open, when no group references it after an overwrite, a deletion or a live split following the close, and on hydration. A fresh split reuses an existing group only when the tabs of every pane match, so a group with more tabs is never overwritten by splitting its two visible tabs again.
+
+Limits: 50 groups per connection (unnamed `Ansicht N` views that are not active are evicted first, otherwise saving is refused), no database request and no timer in any group operation, one store write per operation, no store notification for no-op calls. `closedTabs` holds at most one copy per closed query or tool tab that a group references; its size is bounded by the SQL the user typed, not by the number of groups.
+
+Measured on macOS 27.2.1, arm64, Apple M3 (8 cores), 16 GiB RAM, Bun 1.4.3, mocked Tauri transport, no CPU throttling. Nine measured runs follow two warmups.
+
+`tests/perf-tab-groups.test.ts` (scenario `tab-groups`): 600 open tabs (400 tables, 200 queries with 1,970 characters of SQL each), one split group following 400 tabs in four panes, one saved tab bar with 200 tabs, 48 more groups with 22 tabs each, 21 connections.
+
+| Operation | Workload | Median / p95 | Gate (p95) |
+| --- | --- | --- | --- |
+| Follow a pane focus change | 100 changes, 400-tab group | 3.09 / 3.97 ms | 100 ms |
+| Move a tab between panes | 100 moves | 3.24 / 3.41 ms | 100 ms |
+| Overwrite a saved tab bar | 20 saves of 200 tabs | 1.44 / 1.96 ms | 20 ms |
+| Open a group | 20 switches between a 400-tab and a 22-tab group | 2.61 / 3.00 ms | 40 ms |
+| Close everything and reopen two groups | 600 closes, 600 reopened tabs | 2.55 / 2.96 ms | 40 ms |
+| Close a tab | 50 closes plus one group reopen | 7.89 / 9.41 ms | 100 ms |
+| Open a group from another connection | copy, open, delete and close 400 tabs | 1.49 / 2.12 ms | 20 ms |
+| List shared groups | 100 listings over 20 connections × 50 groups | 1.53 / 3.47 ms | 50 ms |
+| No-op calls | 300 calls, 0 store notifications | 0.05 / 0.07 ms | 10 ms |
+
+Earlier runs of the same scenario stayed within 3.00–5.73 ms p95 for opening and 8.77–9.68 ms for closing. The persisted store measured 440,263 characters with an unopened copy of 133 queries and 851,954 with 200 more closed queries (gate: below 1,000,000 and at most one SQL copy per closed query). The only transport call was the one-time `list_providers`.
+
+`tests/perf-split-groups.test.ts` (scenario `split-saved-views`, 1,000 tabs, 50 groups of four panes), before → after, measured from a clean export of the previous revision on the same machine:
+
+| Operation | Before | After |
+| --- | --- | --- |
+| 100 focus changes | 3.43 / 3.66 ms | 2.23 / 2.82 ms |
+| 20 group switches | 2.08 / 2.30 ms | 1.21 / 1.61 ms |
+| 100 moves | 4.98 / 5.14 ms | 3.04 / 4.06 ms |
+| 100 reorders | 5.21 / 5.33 ms | 3.10 / 3.45 ms |
+| 20 pane close/split cycles | 3.47 / 3.63 ms | 2.96 / 3.31 ms |
+| 100 detaches | 48.55 / 53.48 ms | 57.22 / 59.35 ms |
+| 20 fresh splits | 10.68 / 11.10 ms | 8.91 / 9.21 ms |
+| 100 shared listings | 0.94 / 1.59 ms | 1.26 / 1.83 ms |
+| Persisted characters | 20,762 | 24,917 |
+
+Resolving pane tabs through one cached key map replaced four linear scans per store update, which is why most operations got faster. Detaching got 11–18% slower across runs and the store about 20% larger because the active group now records every pane tab. No budget was changed.
+
+Browser: `L8DB_TAB_BROWSER=1 bun test tests/tab-groups-browser.test.ts` passed once each in Playwright Chromium and WebKit against the production build (save, rename with pointer movement, cancel, commit by clicking outside the menu, overwrite, reopen after closing, open from another connection, close the group, reload, delete, switch connection).
+
+Not covered: no Windows or Linux run, no WebView2, no CPU or heap throttling (not run on this Mac), no real database, no measurement of renderer heap or of the IndexedDB write that follows a store update. Groups whose query tabs were closed while another connection was active do not keep that SQL.

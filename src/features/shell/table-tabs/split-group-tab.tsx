@@ -7,6 +7,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
 
 interface SplitGroupTabProps {
@@ -18,6 +19,7 @@ interface SplitGroupTabProps {
   onOpen: () => void;
   onRename?: (name: string) => void;
   onClose: () => void;
+  onCloseTabs?: () => void;
   onDelete?: () => void;
 }
 
@@ -30,9 +32,11 @@ export function SplitGroupTab({
   onOpen,
   onRename,
   onClose,
+  onCloseTabs,
   onDelete,
 }: SplitGroupTabProps) {
   const [editing, setEditing] = useState(false);
+  const closeFeature = useNewFeatureVisibility<HTMLDivElement>("split.master-tabs.close-group");
   const cancelled = useRef(false);
   const finish = (value: string) => {
     setEditing(false);
@@ -100,6 +104,12 @@ export function SplitGroupTab({
           <ContextMenuItem onSelect={() => setEditing(true)}>Umbenennen</ContextMenuItem>
         )}
         <ContextMenuItem onSelect={onClose}>Geteilte Ansicht auflösen</ContextMenuItem>
+        {onCloseTabs && (
+          <ContextMenuItem ref={closeFeature.ref} onSelect={onCloseTabs}>
+            <span className="flex-1">Gruppe schließen</span>
+            {closeFeature.isNew && <NewBadge />}
+          </ContextMenuItem>
+        )}
         {onDelete && <ContextMenuItem onSelect={onDelete}>Tab-Gruppe löschen</ContextMenuItem>}
       </ContextMenuContent>
     </ContextMenu>

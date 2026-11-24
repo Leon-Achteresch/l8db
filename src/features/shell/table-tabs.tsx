@@ -5,6 +5,7 @@ import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import type * as React from "react";
 import { useCallback, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
@@ -32,6 +33,7 @@ import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 import { useSettingsStore } from "@/lib/settings";
 import type { SplitEdge } from "@/lib/split-layout";
 import {
+  MAX_SPLIT_GROUPS,
   MAX_SPLIT_PANES,
   openDetached,
   placeOpenTab,
@@ -121,6 +123,7 @@ export function TableTabs() {
     tabs.map(tabKey).join("\0"),
   );
   const hiddenTabs = tabs.filter((tab) => hiddenKeys.includes(tabKey(tab)));
+  const canSaveGroup = tabs.some((tab) => !(tab.kind === "tool" && tab.tool === "workbench"));
 
   const {
     pendingTransactions,
@@ -135,6 +138,7 @@ export function TableTabs() {
     handleCloseOthers,
     handleCloseToRight,
     handleCloseAll,
+    handleCloseGroup,
   } = useTabClose({ tabs, activeTab: pendingTab ?? activeTab, navigate });
 
   const handleSplit = useCallback(() => {
@@ -169,16 +173,42 @@ export function TableTabs() {
     if (tab) navigateToTab(navigate, tab);
   };
 
-  const handleOpenGroup = async (group: SplitGroup, connectionId?: string) => {
-    if (connectionId) {
-      if (useConnectionSwitch.getState().isSwitching) return;
-      if (!(await activateConnectionWithToast(connectionId))) return;
-    } else if (hasSplit && group.id === activeGroup) {
+  const handleSwitchGroup = async (group: SplitGroup, connectionId: string) => {
+    if (useConnectionSwitch.getState().isSwitching) return;
+    if (!(await activateConnectionWithToast(connectionId))) return;
+    const tab = useSplitView.getState().openGroup(group.id);
+    if (tab) navigateToTab(navigate, tab);
+  };
+
+  const handleOpenGroup = (group: SplitGroup, connectionId?: string) => {
+    if (connectionId && !activeConnection) {
+      void handleSwitchGroup(group, connectionId);
+      return;
+    }
+    const state = useSplitView.getState();
+    const id = connectionId ? state.adoptGroup(group.id, connectionId) : group.id;
+    if (!id) {
+      toast.error(`„${group.name}“ lässt sich hier nicht öffnen`);
+      return;
+    }
+    if (hasSplit && id === activeGroup) {
       handleShowSplit();
       return;
     }
-    const tab = useSplitView.getState().openGroup(group.id);
+    const tab = state.openGroup(id);
     if (tab) navigateToTab(navigate, tab);
+  };
+
+  const handleSaveGroup = (group?: SplitGroup) => {
+    const id = useSplitView.getState().saveTabs(chipActive ? null : latestKey, group?.id);
+    if (!id)
+      toast.error(
+        group
+          ? `„${group.name}“ gibt es nicht mehr`
+          : `Höchstens ${MAX_SPLIT_GROUPS} Tab-Gruppen je Verbindung`,
+      );
+    else if (group) toast.success(`„${group.name}“ aktualisiert`);
+    return id;
   };
 
   const handleNewQueryTab = () => {
@@ -228,6 +258,7 @@ export function TableTabs() {
           onOpen={handleShowSplit}
           onRename={openGroup ? (name) => renameGroup(openGroup.id, name) : undefined}
           onClose={collapse}
+          onCloseTabs={() => handleCloseGroup(paneTabs.flat())}
           onDelete={openGroup ? () => deleteGroup(openGroup.id) : undefined}
         />
       )}
@@ -335,11 +366,15 @@ export function TableTabs() {
           </button>
         </Tooltip>
       )}
-      {!easyMode && (groups.length > 0 || foreignGroups.length > 0) && (
+      {!easyMode && (groups.length > 0 || foreignGroups.length > 0 || canSaveGroup) && (
         <SplitGroupsMenu
           groups={groups}
           foreign={foreignGroups}
           activeGroup={hasSplit ? activeGroup : null}
+          canSave={canSaveGroup}
+          onSave={handleSaveGroup}
+          onSwitch={(group, connectionId) => void handleSwitchGroup(group, connectionId)}
+          onRename={(group, name) => renameGroup(group.id, name)}
           isNew={groupFeature.isNew || sharedFeature.isNew}
           triggerRef={groupFeature.ref}
           sharedNew={sharedFeature.isNew}
@@ -347,7 +382,7 @@ export function TableTabs() {
           onToggleShared={(group, connectionId) =>
             setGroupShared(group.id, !group.shared, connectionId)
           }
-          onOpen={(group, connectionId) => void handleOpenGroup(group, connectionId)}
+          onOpen={handleOpenGroup}
           onDelete={(group, connectionId) => deleteGroup(group.id, connectionId)}
         />
       )}
