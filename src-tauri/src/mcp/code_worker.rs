@@ -28,6 +28,8 @@ pub(super) struct Init {
     pub stack: usize,
     pub chars: u32,
     pub items: u32,
+    #[serde(default)]
+    pub tools: Vec<String>,
 }
 
 type Resolvers = (Persistent<Function<'static>>, Persistent<Function<'static>>);
@@ -262,7 +264,7 @@ fn start<'js>(
         .catch(ctx)
         .map_err(setup)?;
     let run: Function = prelude
-        .call((host, log, init.chars, init.items))
+        .call((host, log, init.chars, init.items, init.tools.clone()))
         .catch(ctx)
         .map_err(setup)?;
     let trimmed = init.code.trim_start();

@@ -1,4 +1,4 @@
-(host, log, limit, items) => {
+(host, log, limit, items, names) => {
   const stringify = JSON.stringify;
   const isArray = Array.isArray;
   const freeze = Object.freeze;
@@ -108,14 +108,18 @@
       return v;
     },
     catalog: catalogFor({}),
-    tools: new Proxy(freeze({}), {
-      get: (_, name) => (typeof name !== "string" || name === "then" || name === "toJSON" ? undefined : (args) => call("tool", { name, args })),
-    }),
+    tools: freeze(Object.fromEntries(names.map((name) => [name, (args) => call("tool", { name, args })]))),
     console: freeze({ log: print, info: print, warn: print, error: print, debug: print }),
   });
   return async (fn) => {
     if (typeof fn !== "function") throw new TypeError("code must be an async arrow function: async () => { ... }");
-    let v = await fn();
+    let v;
+    try {
+      v = await fn();
+    } catch (e) {
+      if (e instanceof TypeError && String(e.message).includes("not a function")) e.message += "; tools.name is undefined when that tool does not exist here";
+      throw e;
+    }
     if (typeof v === "string" && v.length > limit) return stringify({ s: v.slice(0, limit), n: v.length });
     let n = null;
     if (isArray(v) && v.length > items) {

@@ -887,12 +887,7 @@ async fn external_stdio_mcp_initializes_and_requires_every_call_approval() {
     ] {
         let (mut hosted, events) = run(Some(allow));
         hosted.approval = mode.into();
-        let mut host = super::tools::Host {
-            catalog: &catalog,
-            external: &mut external,
-            config: &config,
-            run: &hosted,
-        };
+        let mut host = super::tools::Host::new(&catalog, &mut external, &config, &hosted);
         let result = host
             .call(
                 &mut server,
@@ -1095,7 +1090,7 @@ async fn private_bridge_requires_bearer_and_exposes_only_scoped_connections() {
         pool: crate::db::pool::create_pool_state(),
         columns: Default::default(),
     }));
-    let bridge = super::bridge::Bridge::start(server, scoped, run, external)
+    let bridge = super::bridge::Bridge::start(server, scoped, run, external, false)
         .await
         .unwrap();
     let address: Value =
@@ -1467,12 +1462,7 @@ async fn code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction() {
         .await
         .unwrap();
     let catalog = Catalog::new(&config, false, &[]);
-    let mut host = Host {
-        catalog: &catalog,
-        external: &mut external,
-        config: &config,
-        run: &denied,
-    };
+    let mut host = Host::new(&catalog, &mut external, &config, &denied);
     let result = context::code(
         &server,
         &config,
@@ -1503,24 +1493,39 @@ async fn code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction() {
         );
     }
 
+    let mut host = Host::new(&catalog, host.external, &config, &denied);
     let result = context::code(
         &server,
         &config,
         &denied,
-        json!({"connection":"active","code":"async () => { try { await tools.execute({connection: 'active', sql: 'DELETE FROM users', confirm: true}) } catch (e) { return e.name } }"}),
+        json!({"connection":"active","code":"async () => { const out = []; for (let i = 0; i < 3; i++) { try { await tools.execute({connection: 'active', sql: 'DELETE FROM users', confirm: true}) } catch (e) { out.push(e.name + ' ' + e.message) } } return out.join('|') }"}),
         &mut host,
     )
     .await;
     assert_eq!(result["isError"], false, "{result}");
-    assert!(result.to_string().contains("ToolError"), "{result}");
+    let text = result.to_string();
+    assert_eq!(text.matches("ToolError").count(), 3, "{text}");
+    assert_eq!(
+        text.matches("already declined tools.execute").count(),
+        2,
+        "{text}"
+    );
     assert_eq!(approvals(&events), 2);
     assert_eq!(label(), "alpha");
+    {
+        use crate::mcp::code::ToolHost;
+        let mut held = server.lock().await;
+        for name in ["code", "script", "watch", "missing"] {
+            let error = host.call(&mut held, name, json!({})).await.unwrap_err();
+            assert!(error.contains("does not exist"), "{name}: {error}");
+        }
+    }
 
     let result = context::code(
         &server,
         &config,
         &denied,
-        json!({"connection":"active","code":"async () => [await tools.query({connection: 'active', sql: 'SELECT * FROM users ORDER BY id'}), await tools.code({code: 'async () => 1'}).catch((e) => e.message), await tools.script({}).catch((e) => e.message), await tools.search({in: 'tools', term: 'relations'})].join('|')"}),
+        json!({"connection":"active","code":"async () => [await tools.query({connection: 'active', sql: 'SELECT * FROM users ORDER BY id'}), typeof tools.code, typeof tools.script, tools.missing ? 'present' : 'absent', typeof tools.relations, await tools.search({in: 'tools', term: 'relations'})].join('|')"}),
         &mut host,
     )
     .await;
@@ -1530,12 +1535,24 @@ async fn code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction() {
         text.contains("alpha") && !text.contains("fixture-password"),
         "{text}"
     );
-    assert!(text.contains("tools.code does not exist"), "{text}");
-    assert!(text.contains("tools.script does not exist"), "{text}");
-    assert!(text.contains("tools.relations(args:"), "{text}");
     assert!(
-        text.contains("3 tool calls") || text.contains("4 tool calls"),
+        text.contains("|undefined|undefined|absent|function|"),
         "{text}"
+    );
+    assert!(text.contains("tools.relations(args:"), "{text}");
+    assert!(text.contains("2 tool calls"), "{text}");
+    let result = context::code(
+        &server,
+        &config,
+        &denied,
+        json!({"connection":"active","code":"async () => tools.missing({})"}),
+        &mut host,
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result}");
+    assert!(
+        result.to_string().contains("tools.name is undefined"),
+        "{result}"
     );
     assert_eq!(approvals(&events), 2);
     assert!(events
@@ -1551,12 +1568,7 @@ async fn code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction() {
     let locked = Catalog::new(&blocked, false, &[]);
     assert!(!locked.callable("execute"));
     for (label_text, catalog) in [("hidden", &locked), ("listed", &catalog)] {
-        let mut host = Host {
-            catalog,
-            external: host.external,
-            config: &blocked,
-            run: &denied,
-        };
+        let mut host = Host::new(catalog, host.external, &blocked, &denied);
         let result = context::code(
             &server,
             &blocked,
@@ -1571,12 +1583,7 @@ async fn code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction() {
     }
     let mut production = config.clone();
     production.connections[0].environment = Some("production".into());
-    let mut guarded = Host {
-        catalog: &catalog,
-        external: host.external,
-        config: &production,
-        run: &denied,
-    };
+    let mut guarded = Host::new(&catalog, host.external, &production, &denied);
     let result = context::code(
         &server,
         &production,
@@ -1591,12 +1598,7 @@ async fn code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction() {
 
     let (mut planning, plan_events) = run(Some(true));
     planning.plan_only = true;
-    let mut plan_host = Host {
-        catalog: &catalog,
-        external: guarded.external,
-        config: &config,
-        run: &planning,
-    };
+    let mut plan_host = Host::new(&catalog, guarded.external, &config, &planning);
     let result = context::code(
         &server,
         &config,
@@ -1610,12 +1612,7 @@ async fn code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction() {
     assert_eq!(label(), "alpha");
 
     let (approved, events) = run(Some(true));
-    let mut approving = Host {
-        catalog: &catalog,
-        external: plan_host.external,
-        config: &config,
-        run: &approved,
-    };
+    let mut approving = Host::new(&catalog, plan_host.external, &config, &approved);
     let result = context::code(
         &server,
         &config,
@@ -1637,6 +1634,280 @@ async fn code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction() {
     .await;
     assert_eq!(result["isError"], true, "{result}");
     assert_eq!(approvals(&events), 1);
+    assert_eq!(
+        database
+            .query_row("SELECT count(*) FROM users", [], |row| row.get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn bridge_code_mode_lists_core_tools_and_gates_calls_from_code_like_direct_calls() {
+    use super::tools::Catalog;
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("fixture.sqlite");
+    let database = rusqlite::Connection::open(&path).unwrap();
+    database.execute_batch("CREATE TABLE users(id INTEGER PRIMARY KEY, label TEXT, password TEXT); INSERT INTO users VALUES(1,'alpha','fixture-password'),(2,'beta','fixture-password');").unwrap();
+    let label = || {
+        database
+            .query_row("SELECT label FROM users WHERE id=1", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .unwrap()
+    };
+    let mut request = request();
+    request.connections.truncate(1);
+    request.connections[0].connection_string = path.to_string_lossy().into_owned();
+    let config = context::scoped_config(&request, McpConfig::default()).unwrap();
+    let server = tokio::sync::Mutex::new(Server {
+        pool: crate::db::pool::create_pool_state(),
+        columns: Default::default(),
+    });
+    let (denied, events) = run(Some(false));
+    let external = tokio::sync::Mutex::new(
+        integrations::connect(&[], std::path::Path::new("."), &denied)
+            .await
+            .unwrap(),
+    );
+    let catalog = Catalog::new(&config, false, &[]);
+    let rpc =
+        |run: &'static Run, config: &'static McpConfig, method: &'static str, params: Value| {
+            let (server, external, catalog) = (&server, &external, &catalog);
+            async move {
+                super::bridge::dispatch(
+                    json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}),
+                    server,
+                    config,
+                    run,
+                    external,
+                    catalog,
+                )
+                .await["result"]
+                    .clone()
+            }
+        };
+    let leak = |value: McpConfig| -> &'static McpConfig { Box::leak(Box::new(value)) };
+    let hold = |value: Run| -> &'static Run { Box::leak(Box::new(value)) };
+    let config: &'static McpConfig = leak(config);
+    let denied = hold(denied);
+    let code =
+        |text: &str| json!({"name": "code", "arguments": {"connection": "active", "code": text}});
+    let titles = |events: &Arc<Mutex<Vec<Value>>>| -> Vec<String> {
+        events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|event| event["kind"] == "approval")
+            .map(|event| event["data"]["title"].as_str().unwrap_or("").to_string())
+            .collect()
+    };
+
+    let init = rpc(denied, config, "initialize", json!({})).await;
+    let instructions = init["instructions"].as_str().unwrap();
+    assert!(
+        instructions.contains("search with in=tools") && instructions.contains("tools.name(args)"),
+        "{instructions}"
+    );
+    let full = Catalog::new(config, false, &[]).full().direct();
+    assert_eq!(full.len(), catalog.available().len());
+    assert!(full.iter().any(|tool| tool["name"] == "relations"));
+    let listed = rpc(denied, config, "tools/list", json!({})).await["tools"].clone();
+    let names: Vec<&str> = listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "search",
+            "describe",
+            "query",
+            "code",
+            "execute",
+            "visualize"
+        ]
+    );
+    let bytes = listed.to_string().len();
+    let before = json!({"tools": context::published_tools()})
+        .to_string()
+        .len();
+    println!(
+        "bridge tools/list {before} B ({} tools) -> {} B, instructions {} B",
+        context::published_tools().len(),
+        json!({"tools": listed}).to_string().len(),
+        instructions.len()
+    );
+    assert!(bytes < 6_600 && bytes * 2 < before, "{bytes} vs {before}");
+
+    let overview = rpc(
+        denied,
+        config,
+        "tools/call",
+        json!({"name": "overview", "arguments": {"connection": "active"}}),
+    )
+    .await;
+    assert_eq!(overview["isError"], false, "{overview}");
+    assert!(overview.to_string().contains("users"), "{overview}");
+    let docs = rpc(
+        denied,
+        config,
+        "tools/call",
+        json!({"name": "search", "arguments": {"in": "tools", "term": "overview sandbox"}}),
+    )
+    .await;
+    let text = docs.to_string();
+    assert!(
+        text.contains("tools.overview(args:") && text.contains("tools.sandbox(args:"),
+        "{text}"
+    );
+    assert!(titles(&events).is_empty());
+
+    events.lock().unwrap().clear();
+    let result = rpc(denied, config, "tools/call", code("async () => [typeof tools.code, typeof tools.script, (await tools.overview({connection: 'active'})).split('\\n')[0], await tools.query({connection: 'active', sql: 'SELECT * FROM users ORDER BY id'})].join('|')")).await;
+    assert_eq!(result["isError"], false, "{result}");
+    let text = result.to_string();
+    assert!(text.contains("\"text\":\"undefined|undefined|"), "{text}");
+    assert!(
+        text.contains("alpha") && !text.contains("fixture-password"),
+        "{text}"
+    );
+    assert!(text.contains("2 tool calls"), "{text}");
+    assert!(titles(&events).is_empty());
+    {
+        let events = events.lock().unwrap();
+        let steps: Vec<(&str, &str)> = events
+            .iter()
+            .filter(|event| event["kind"] == "tool")
+            .map(|event| {
+                (
+                    event["data"]["name"].as_str().unwrap_or(""),
+                    event["data"]["status"].as_str().unwrap_or(""),
+                )
+            })
+            .collect();
+        assert_eq!(
+            steps,
+            [
+                ("code", "running"),
+                ("overview", "running"),
+                ("overview", "completed"),
+                ("query", "running"),
+                ("query", "completed"),
+                ("code", "completed")
+            ]
+        );
+    }
+
+    let update = "async () => tools.execute({connection: 'active', sql: \"UPDATE users SET label='changed' WHERE id=1\", confirm: true})";
+    let result = rpc(denied, config, "tools/call", code(update)).await;
+    assert_eq!(result["isError"], true, "{result}");
+    assert!(result.to_string().contains("abgelehnt"), "{result}");
+    assert_eq!(titles(&events), ["Datenbank ändern"]);
+    let result = rpc(denied, config, "tools/call", code("async () => { let failed = 0; for (let i = 0; i < 5; i++) { try { await tools.execute({connection: 'active', sql: 'DELETE FROM users', confirm: true}) } catch (e) { failed++ } } return failed }")).await;
+    assert_eq!(result["isError"], false, "{result}");
+    assert!(result.to_string().contains("\"5\\n"), "{result}");
+    assert_eq!(titles(&events).len(), 2);
+    let result = rpc(
+        denied,
+        config,
+        "tools/call",
+        code("async () => tools.editor({action: 'list'})"),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result}");
+    assert_eq!(titles(&events)[2..], ["Tool aus code: editor"]);
+    assert!(!result.to_string().contains("signature:"), "{result}");
+    let result = rpc(
+        denied,
+        config,
+        "tools/call",
+        code("async () => tools.dashboard({action: 'arrange', id: 'missing'})"),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result}");
+    assert_eq!(titles(&events)[3..], ["Dashboard ändern"]);
+    let result = rpc(
+        denied,
+        config,
+        "tools/call",
+        code("async () => tools.query({connection: 'active', sql: 'SELECT nothing FROM missing'})"),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result}");
+    assert!(
+        result
+            .to_string()
+            .contains("[signature: search in=tools term=query]"),
+        "{result}"
+    );
+    assert_eq!(titles(&events).len(), 4);
+    assert_eq!(label(), "alpha");
+
+    let mut blocked = config.clone();
+    blocked.connections[0].read_only = true;
+    let mut production = config.clone();
+    production.connections[0].environment = Some("production".into());
+    for (name, guarded, asks) in [("read-only", blocked, 0), ("production", production, 0)] {
+        let before = titles(&events).len();
+        let result = rpc(denied, leak(guarded), "tools/call", code(update)).await;
+        assert_eq!(result["isError"], true, "{name}: {result}");
+        assert_eq!(titles(&events).len() - before, asks, "{name}");
+        assert_eq!(label(), "alpha", "{name}");
+    }
+
+    let (mut planning, plan_events) = run(Some(true));
+    planning.plan_only = true;
+    let planning = hold(planning);
+    for attempt in [
+        update,
+        "async () => tools.sandbox({connection: 'active', statements: ['DELETE FROM users']})",
+        "async () => tools.editor({action: 'open', sql: 'SELECT 1'})",
+        "async () => tools.open({connection: 'active', table: 'users'})",
+        "async () => tools.dashboard({action: 'list'})",
+        "async () => tools.knowledge({connection: 'active', notes: 'x'})",
+    ] {
+        let result = rpc(planning, config, "tools/call", code(attempt)).await;
+        assert_eq!(result["isError"], true, "{attempt}: {result}");
+        assert!(
+            result.to_string().contains("Plan-Modus"),
+            "{attempt}: {result}"
+        );
+    }
+    let result = rpc(planning, config, "tools/call", code("async () => tools.query({connection: 'active', sql: 'SELECT count(*) AS n FROM users'})")).await;
+    assert_eq!(result["isError"], false, "{result}");
+    assert!(titles(&plan_events).is_empty());
+    let result = rpc(planning, config, "tools/call", code("async () => tools.benchmark({connection: 'active', sql: 'SELECT count(*) FROM users', repeats: 1})")).await;
+    assert_eq!(result["isError"], false, "{result}");
+    assert_eq!(titles(&plan_events), ["Tool aus code: benchmark"]);
+    assert_eq!(label(), "alpha");
+
+    let (approved, events) = run(Some(true));
+    let approved = hold(approved);
+    let result = rpc(approved, config, "tools/call", code(update)).await;
+    assert_eq!(result["isError"], false, "{result}");
+    assert_eq!(titles(&events), ["Datenbank ändern"]);
+    assert_eq!(label(), "changed");
+    let result = rpc(
+        approved,
+        config,
+        "tools/call",
+        code("async () => sql`DELETE FROM users`"),
+    )
+    .await;
+    assert_eq!(result["isError"], true, "{result}");
+    let result = rpc(
+        approved,
+        config,
+        "tools/call",
+        json!({"name": "execute", "arguments": {"connection": "active", "sql": "UPDATE users SET label='direct' WHERE id=1", "confirm": true}}),
+    )
+    .await;
+    assert_eq!(result["isError"], false, "{result}");
+    assert_eq!(titles(&events).len(), 2);
+    assert_eq!(label(), "direct");
     assert_eq!(
         database
             .query_row("SELECT count(*) FROM users", [], |row| row.get::<_, i64>(0))
