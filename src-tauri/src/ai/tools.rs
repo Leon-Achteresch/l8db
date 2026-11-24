@@ -230,19 +230,21 @@ const SELF_GATED: &[&str] = &[
     "sandbox",
 ];
 
+const DECLINES: usize = 3;
+
 pub(super) struct Host<'a> {
     pub catalog: &'a Catalog,
-    pub external: &'a mut super::integrations::External,
+    pub external: &'a tokio::sync::Mutex<super::integrations::External>,
     pub config: &'a McpConfig,
     pub run: &'a super::runtime::Run,
     cli: bool,
-    declined: HashSet<String>,
+    declined: HashMap<String, Vec<String>>,
 }
 
 impl<'a> Host<'a> {
     pub fn new(
         catalog: &'a Catalog,
-        external: &'a mut super::integrations::External,
+        external: &'a tokio::sync::Mutex<super::integrations::External>,
         config: &'a McpConfig,
         run: &'a super::runtime::Run,
     ) -> Self {
@@ -252,7 +254,7 @@ impl<'a> Host<'a> {
             config,
             run,
             cli: false,
-            declined: HashSet::new(),
+            declined: HashMap::new(),
         }
     }
 
@@ -317,12 +319,20 @@ impl crate::mcp::code::ToolHost for Host<'_> {
                     "tools.{name} does not exist. search in=tools lists the functions."
                 ));
             }
-            if self.declined.contains(name) {
-                return Err(format!(
-                    "The user already declined tools.{name} in this code run; do not call it again here."
-                ));
-            }
             let args = crate::mcp::server::normalize_args(self.catalog.available(), name, args);
+            let key = args.to_string();
+            if let Some(seen) = self.declined.get(name) {
+                if seen.len() >= DECLINES {
+                    return Err(format!(
+                        "The user already declined tools.{name} {DECLINES} times in this code run; do not call it again here."
+                    ));
+                }
+                if seen.contains(&key) {
+                    return Err(format!(
+                        "The user already declined tools.{name} with these arguments in this code run; do not repeat it."
+                    ));
+                }
+            }
             let flag = std::cell::Cell::new(false);
             let (outcome, declined) = super::runtime::DECLINED
                 .scope(flag, async {
@@ -331,7 +341,7 @@ impl crate::mcp::code::ToolHost for Host<'_> {
                 })
                 .await;
             if declined {
-                self.declined.insert(name.to_string());
+                self.declined.entry(name.to_string()).or_default().push(key);
             }
             outcome
         })
@@ -356,7 +366,7 @@ impl Host<'_> {
             {
                 return Err("Tool-Aufruf abgelehnt".into());
             }
-            self.external.call(name, args, self.run).await
+            self.external.lock().await.call(name, args, self.run).await
         } else if Catalog::documents(name, &args) {
             self.catalog.docs(&args)
         } else {

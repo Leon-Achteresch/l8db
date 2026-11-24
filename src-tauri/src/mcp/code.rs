@@ -716,13 +716,18 @@ impl Server {
                                 return Err("Sandbox-Protokoll verletzt; Lauf abgebrochen.".into());
                             };
                             session.calls += 1;
+                            let name = arg_str(args, "name");
+                            let counted = op == "tool" && matches!(name, "query" | "explain");
                             let step = if session.calls > MAX_CALLS {
                                 Step::Reply(Err(format!("Höchstens {MAX_CALLS} Aufrufe pro code-Lauf.")))
+                            } else if let Some(error) = counted.then(|| spent(session, limits)).flatten() {
+                                Step::Reply(Err(error))
                             } else if op == "tool" {
                                 let waited = tokio::time::Instant::now();
                                 let allowed = host.is_some() && session.tools < MAX_TOOLS;
                                 let waits = host.as_deref().is_some_and(|host| host.waits());
                                 session.tools += usize::from(allowed);
+                                session.statements += usize::from(allowed && counted);
                                 let mut early = Vec::new();
                                 let result = {
                                     let call = self.tool(host.as_deref_mut(), args, allowed);
@@ -731,6 +736,9 @@ impl Server {
                                         tokio::select! {
                                             result = &mut call => break result,
                                             Some(done) = running.next() => early.push(done),
+                                            _ = tokio::time::sleep_until(deadline), if !waits => {
+                                                return Err(format!("Zeitlimit von {} s überschritten; Sandbox beendet.", limits.time.as_secs()));
+                                            }
                                         }
                                     }
                                 };
@@ -742,8 +750,11 @@ impl Server {
                                     deliver(&tx, session, id, result);
                                 }
                                 refill(&mut running, &mut queue, session, limits, &tx, config);
-                                if result.is_ok() {
-                                    session.applied.push(arg_str(args, "name").chars().take(80).collect());
+                                if let Ok(Value::String(text)) = &result {
+                                    session.applied.push(name.chars().take(80).collect());
+                                    if name == "query" {
+                                        session.rows += tool_rows(text);
+                                    }
                                 }
                                 Step::Reply(result)
                             } else {
@@ -805,14 +816,8 @@ impl Server {
         };
         match op {
             "sql" | "query" | "explain" => {
-                if session.statements >= limits.statements {
-                    return Step::Reply(Err(format!(
-                        "Höchstens {} Statements pro code-Lauf.",
-                        limits.statements
-                    )));
-                }
-                if session.rows >= limits.total_rows {
-                    return Step::Reply(Err(rows_spent(limits)));
+                if let Some(error) = spent(session, limits) {
+                    return Step::Reply(Err(error));
                 }
                 let sql = match op {
                     "sql" => compose(connection.kind, args),
@@ -1281,6 +1286,36 @@ fn rows_spent(limits: &Limits) -> String {
         "Zeilenbudget von {} gelesenen Zeilen pro code-Lauf erschöpft; aggregieren statt Zeilen laden.",
         limits.total_rows
     )
+}
+
+fn spent(session: &Session, limits: &Limits) -> Option<String> {
+    if session.statements >= limits.statements {
+        Some(format!(
+            "Höchstens {} Statements pro code-Lauf.",
+            limits.statements
+        ))
+    } else if session.rows >= limits.total_rows {
+        Some(rows_spent(limits))
+    } else {
+        None
+    }
+}
+
+fn tool_rows(text: &str) -> usize {
+    let Some(footer) = text.lines().rev().find(|line| line.starts_with('(')) else {
+        return 0;
+    };
+    let count = |part: &str| {
+        part.trim_start_matches('(')
+            .split(' ')
+            .next()
+            .and_then(|number| number.parse::<usize>().ok())
+            .unwrap_or(0)
+    };
+    count(footer)
+        + footer
+            .split_once(" rows, ")
+            .map_or(0, |(_, more)| count(more))
 }
 
 fn finished(done: Finished, session: &mut Session) -> (u64, Result<String, String>) {

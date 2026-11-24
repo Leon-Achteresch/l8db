@@ -4,6 +4,7 @@
   const freeze = Object.freeze;
   const entries = Object.entries;
   const describe = Object.prototype.toString;
+  let missed = null;
   const idents = new WeakSet();
   const isIdent = WeakSet.prototype.has.bind(idents);
   const mark = WeakSet.prototype.add.bind(idents);
@@ -108,7 +109,12 @@
       return v;
     },
     catalog: catalogFor({}),
-    tools: freeze(Object.fromEntries(names.map((name) => [name, (args) => call("tool", { name, args })]))),
+    tools: new Proxy(freeze(Object.fromEntries(names.map((name) => [name, (args) => call("tool", { name, args })]))), {
+      get: (listed, key) => {
+        if (typeof key === "string" && key !== "then" && !(key in listed)) missed = key;
+        return listed[key];
+      },
+    }),
     console: freeze({ log: print, info: print, warn: print, error: print, debug: print }),
   });
   return async (fn) => {
@@ -117,7 +123,7 @@
     try {
       v = await fn();
     } catch (e) {
-      if (e instanceof TypeError && String(e.message).includes("not a function")) e.message += "; tools.name is undefined when that tool does not exist here";
+      if (missed && e instanceof TypeError && String(e.message).includes("not a function")) e.message += `; tools.${missed} does not exist here, search in=tools lists the functions`;
       throw e;
     }
     if (typeof v === "string" && v.length > limit) return stringify({ s: v.slice(0, limit), n: v.length });

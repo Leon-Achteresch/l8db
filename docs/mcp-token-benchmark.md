@@ -509,7 +509,6 @@ Review: Ein unabhängiger Sicherheitsreview (Prozessgrenze, IPC, Limits, Maskier
 
 Grenzen:
 
-- Der BYOK-Server hält die Server-Sperre für die Dauer eines `code`-Laufs, genauso wie bei `query`.
 - Adapter ohne `with_row_limit` (SQL Server, ClickHouse, Snowflake, BigQuery …) lesen eine Anweisung vollständig in den Host, bevor sie gekürzt wird, wie bei `query`.
 - Ein Lauf liest höchstens 250.000 Zeilen. Für große Auswertungen gehört die Aggregation ins SQL.
 - RegExp-Filter folgen der Rust-Syntax (ohne Lookaround), nicht der JS-Syntax.
@@ -782,12 +781,14 @@ Chat-Brücke. Dort setzt l8db die Freigaben selbst durch. `code` bekommt denselb
 
 Für alle Wege neu:
 
-- Lehnt der Benutzer eine Freigabe ab, gilt das für dieses Werkzeug bis zum Ende des `code`-Laufs. Eine Schleife mit `try/catch` fragt genau einmal.
-- `tools` ist ein echtes Objekt mit den vorhandenen Funktionen. `if (tools.x)` und `Object.keys(tools)` stimmen. Ein fehlendes Werkzeug wirft `TypeError: not a function` mit dem Hinweis, dass `tools.name` dann `undefined` ist.
+- Lehnt der Benutzer eine Freigabe ab, wird derselbe Aufruf (Werkzeug und Argumente) in diesem `code`-Lauf nicht noch einmal gefragt. Andere Argumente fragen erneut; nach drei Ablehnungen ist das Werkzeug bis zum Ende des Laufs gesperrt. Eine Schleife mit `try/catch` fragt also höchstens dreimal.
+- `tools` ist ein echtes Objekt mit den vorhandenen Funktionen. `if (tools.x)` und `Object.keys(tools)` stimmen. Ein fehlendes Werkzeug wirft `TypeError: not a function` mit dem Hinweis, welches `tools.name` es hier nicht gibt; andere `not a function`-Fehler bleiben ohne Hinweis.
 - Meldet ein Werkzeug aus `code` einen Fehler, nennt die Meldung die passende Doku-Suche (`[signature: search in=tools term=…]`). Bei abgelehnter Freigabe und bei Sperren fehlt der Hinweis, damit das Modell nicht erneut probiert. `search in=tools` nimmt auch `query` statt `term`.
-- Im externen MCP zählen Werkzeugaufrufe aus `code` zum Zeitlimit des Laufs, weil dort niemand auf eine Freigabe wartet. In Chat und Brücke bleibt die Wartezeit auf den Benutzer ausgenommen.
+- Im externen MCP zählen Werkzeugaufrufe aus `code` zum Zeitlimit des Laufs, weil dort niemand auf eine Freigabe wartet; ein hängender Aufruf wird am Limit abgebrochen. In Chat und Brücke bleibt die Wartezeit auf den Benutzer ausgenommen.
+- `tools.query` und `tools.explain` zählen wie `sql` gegen das Budget von 500 Statements, die Zeilen aus `tools.query` gegen die 250.000 gelesenen Zeilen.
+- Chat und Brücke halten während eines `code`-Laufs weder die Server-Sperre noch die Sperre der externen MCP-Server; parallele Werkzeugaufrufe laufen weiter. Die Sperre der externen Server gilt nur für die Dauer eines einzelnen `ext_`-Aufrufs.
 
-Regressionstests: `mcp::server::tests::code_mode_keeps_every_side_effect_tool_direct_and_hosts_only_read_tools`, `mcp::code_tests::external_code_reaches_read_tools_only_and_hidden_tools_stay_callable` (gesperrte Werkzeuge aus `code` und am Host, Schreibversuche über Lese-Werkzeuge, direkte Aufrufe ausgeblendeter Werkzeuge, `execute` mit und ohne Schreibsperre), `ai::tests::bridge_code_mode_lists_core_tools_and_gates_calls_from_code_like_direct_calls` (Liste, direkte Aufrufe, Freigabe, Ablehnung, Schreibsperre, Produktion, Plan-Modus, Schwärzung, Tool-Schritte), `ai::tests::code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction` (BYOK, einmalige Rückfrage). Mit echten CLIs (ignoriert): `ai::cli::tests::native_cli_reaches_hidden_tools_through_code_and_writes_from_code_wait_for_approval`.
+Regressionstests: `mcp::server::tests::code_mode_keeps_every_side_effect_tool_direct_and_hosts_only_read_tools`, `mcp::code_tests::external_code_reaches_read_tools_only_and_hidden_tools_stay_callable` (gesperrte Werkzeuge aus `code` und am Host, Schreibversuche über Lese-Werkzeuge, direkte Aufrufe ausgeblendeter Werkzeuge, `execute` mit und ohne Schreibsperre), `ai::tests::bridge_code_mode_lists_core_tools_and_gates_calls_from_code_like_direct_calls` (Liste, direkte Aufrufe, Freigabe, Ablehnung, Schreibsperre, Produktion, Plan-Modus, Schwärzung, Tool-Schritte), `ai::tests::code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction` (BYOK, einmalige Rückfrage), `mcp::code_tests::hosted_statements_spend_the_budgets_and_unpaused_hosts_spend_the_time_limit` (Statement- und Zeilenbudget über `tools.query`, Zeitlimit ohne Wartezeit, Hinweis nur bei fehlendem Werkzeug). Mit echten CLIs (ignoriert): `ai::cli::tests::native_cli_reaches_hidden_tools_through_code_and_writes_from_code_wait_for_approval`.
 
 ### Messung
 
