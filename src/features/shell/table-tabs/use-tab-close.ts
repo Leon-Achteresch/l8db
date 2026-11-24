@@ -17,7 +17,7 @@ import {
 } from "@/lib/table-tabs";
 import { useWorkbenchTabs, workbenchTabBusy } from "@/lib/workbench-tabs";
 
-export type PendingClose = { keys: string[]; keep?: string } | null;
+export type PendingClose = { keys: string[]; keep?: string; collapse?: boolean } | null;
 export type PendingTransactionClose = {
   close: NonNullable<PendingClose>;
   txIds: string[];
@@ -57,6 +57,7 @@ export function useTabClose({ tabs, activeTab, navigate, listen = true }: UseTab
   const executeClose = (pending: NonNullable<PendingClose>) => {
     const closing = new Set(pending.keys);
     const close = () => {
+      if (pending.collapse) useSplitView.getState().collapse();
       useTableTabs.getState().closeTabs(pending.keys.filter((key) => !remoteTab(key)));
       for (const key of pending.keys) if (remoteTab(key)) useSplitView.getState().removeTab(key);
     };
@@ -187,6 +188,8 @@ export function useTabClose({ tabs, activeTab, navigate, listen = true }: UseTab
 
   const handleCloseAll = () => requestClose({ keys: keysOf(tabs) });
 
+  const handleCloseGroup = (keys: string[]) => requestClose({ keys, collapse: true });
+
   useEffect(() => {
     if (!listen) return;
     const onCloseRequest = (event: Event) => {
@@ -213,5 +216,6 @@ export function useTabClose({ tabs, activeTab, navigate, listen = true }: UseTab
     handleCloseOthers,
     handleCloseToRight,
     handleCloseAll,
+    handleCloseGroup,
   };
 }

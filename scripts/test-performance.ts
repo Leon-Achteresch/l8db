@@ -74,6 +74,7 @@ const SUITES = {
     "tests/perf-tab-state.test.ts",
     "tests/perf-shared-tabs.test.ts",
     "tests/perf-split-groups.test.ts",
+    "tests/perf-tab-groups.test.ts",
     "tests/perf-dml-preview.test.ts",
     "tests/perf-dml-preview-cancel.test.ts",
     "tests/perf-multi-target.test.ts",
