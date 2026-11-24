@@ -11,6 +11,7 @@ import { ColorSchemePreview } from "@/features/settings/color-scheme-preview";
 import { ThemeVariantFields } from "@/features/settings/theme-variant-fields";
 import { isAbort } from "@/lib/ai/editor/client";
 import type { AppTheme, ThemeMode } from "@/lib/app-themes";
+import { copyText } from "@/lib/clipboard";
 import { useSettingsStore } from "@/lib/settings";
 import { runThemeAi, THEME_AI_MAX_PROMPT, themeAiAvailable } from "@/lib/theme-ai";
 import { pickAndWriteTheme, themeAiPrompt } from "@/lib/theme-file";
@@ -36,7 +37,10 @@ export function ThemeEditorDialog({ themeId, onClose }: Props) {
   const pending = useRef<AppTheme>(undefined);
 
   useEffect(() => {
-    if (stored?.id !== draft?.id) setDraft(stored);
+    if (stored?.id === draft?.id) return;
+    clearTimeout(timer.current);
+    pending.current = undefined;
+    setDraft(stored);
   }, [stored, draft?.id]);
 
   const flush = () => {
@@ -56,7 +60,7 @@ export function ThemeEditorDialog({ themeId, onClose }: Props) {
 
   const update = (next: AppTheme) => {
     setDraft(next);
-    pending.current = next;
+    pending.current = next.name.trim() ? next : { ...next, name: "Eigenes Theme" };
     clearTimeout(timer.current);
     timer.current = setTimeout(flush, 120);
   };
@@ -84,12 +88,7 @@ export function ThemeEditorDialog({ themeId, onClose }: Props) {
   };
 
   const copyPrompt = async () => {
-    try {
-      await navigator.clipboard.writeText(themeAiPrompt(wish));
-      toast.success("KI-Prompt kopiert");
-    } catch {
-      toast.error("Kopieren fehlgeschlagen");
-    }
+    await copyText(themeAiPrompt(wish), "KI-Prompt kopiert").catch(() => undefined);
   };
 
   const exportTheme = async () => {

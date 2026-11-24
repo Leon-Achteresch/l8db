@@ -9,7 +9,7 @@ type Props = {
 
 const SLIDERS = [
   { key: "hue", label: "Farbton", min: 0, max: 360, step: 1 },
-  { key: "chroma", label: "Sättigung", min: 0, max: 0.3, step: 0.005 },
+  { key: "chroma", label: "Sättigung", min: 0, max: 0.4, step: 0.005 },
   { key: "tint", label: "Tönung", min: 0, max: 5, step: 0.1 },
   { key: "surfaceHue", label: "Flächenton", min: 0, max: 360, step: 1 },
 ] as const;

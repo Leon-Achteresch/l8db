@@ -129,7 +129,17 @@ describe("app themes", () => {
       useSettingsStore.getState().customThemes,
     );
     expect(vars["--background"]).toBe("oklch(0.25 0.02 250)");
-    expect(vars["--primary"]).toBe("#88c0d0");
+    expect(vars["--primary"]).toBeUndefined();
+    expect(
+      activeThemeCssVars(
+        theme.id,
+        "dark",
+        false,
+        null,
+        null,
+        useSettingsStore.getState().customThemes,
+      )["--primary"],
+    ).toBe("#88c0d0");
     expect(themeSwatch(theme.dark, "dark")).toContain("#88c0d0");
     const copy = parseThemeFile(serializeThemeFile(theme));
     expect(copy.id).not.toBe(theme.id);

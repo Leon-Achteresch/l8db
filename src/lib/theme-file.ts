@@ -52,7 +52,10 @@ export function parseThemeFile(text: string): AppTheme {
   )
     throw new Error("Kein gültiges l8db-Theme.");
   const theme = normalizeCustomTheme(
-    { ...raw, name: raw.name || "Importiertes Theme" },
+    {
+      ...raw,
+      name: typeof raw.name === "string" && raw.name.trim() ? raw.name : "Importiertes Theme",
+    },
     newCustomThemeId(),
   );
   if (!theme) throw new Error("Kein gültiges l8db-Theme.");
