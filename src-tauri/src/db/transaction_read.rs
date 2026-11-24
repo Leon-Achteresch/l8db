@@ -27,7 +27,15 @@ impl TransactionTableRead {
                 quote(kind, column),
                 if self.order_desc { "DESC" } else { "ASC" }
             ),
-            _ if kind == DatabaseKind::Mssql => " ORDER BY (SELECT NULL)".to_string(),
+            _ if kind == DatabaseKind::Mssql
+                && self
+                    .filter
+                    .as_deref()
+                    .and_then(crate::db::filter_order_start)
+                    .is_none() =>
+            {
+                " ORDER BY (SELECT NULL)".to_string()
+            }
             _ => String::new(),
         }
     }

@@ -123,7 +123,8 @@ export function invalidateTableReads(
   });
 }
 
-const INVALID_INPUT = /muss gültiges JSON sein|muss ein JSON-Objekt sein|Filter abgelehnt/;
+const INVALID_INPUT =
+  /muss gültiges JSON sein|muss ein JSON-Objekt sein|Filter abgelehnt|ORA-009\d\d|syntax error|Syntaxfehler|Incorrect syntax near| 1064:/i;
 
 export function createAppQueryClient() {
   const client = new QueryClient({

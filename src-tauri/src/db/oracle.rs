@@ -2428,11 +2428,7 @@ impl DatabaseAdapter for OracleAdapter {
                     if keys.is_empty() && order.is_some() && rowid {
                         terms.push("t.ROWID".to_string());
                     }
-                    let order_sql = if terms.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" ORDER BY {}", terms.join(", "))
-                    };
+                    let order_sql = super::order_clause(&where_sql, &terms);
                     page_sql(
                         &format!(
                             "SELECT {} FROM {}.{} t{}{}",

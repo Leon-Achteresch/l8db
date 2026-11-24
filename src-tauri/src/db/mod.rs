@@ -2197,13 +2197,85 @@ pub(crate) fn where_clause_in(
     match filter.map(str::trim).filter(|f| !f.is_empty()) {
         Some(expression) => {
             if allow_raw {
-                return Ok(format!(" WHERE {expression}\n"));
+                let keyword = if filter_order_start(expression) == Some(0) {
+                    ""
+                } else {
+                    " WHERE"
+                };
+                return Ok(format!("{keyword} {expression}\n"));
             }
             validate_table_filter_in(expression, hash_comments)?;
             Ok(format!(" WHERE ({expression})"))
         }
         None => Ok(String::new()),
     }
+}
+
+fn starts_order_by(bytes: &[u8], at: usize) -> bool {
+    let word = |b: &u8| b.is_ascii_alphanumeric() || *b == b'_' || *b >= 0x80;
+    if at > 0 && word(&bytes[at - 1]) {
+        return false;
+    }
+    let rest = &bytes[at..];
+    if rest.len() < 5 || !rest[..5].eq_ignore_ascii_case(b"order") {
+        return false;
+    }
+    let gap = rest[5..]
+        .iter()
+        .take_while(|b| b.is_ascii_whitespace())
+        .count();
+    let by = &rest[5 + gap..];
+    gap > 0
+        && by.len() >= 2
+        && by[..2].eq_ignore_ascii_case(b"by")
+        && by.get(2).is_none_or(|b| !word(b))
+}
+
+pub(crate) fn filter_order_start(sql: &str) -> Option<usize> {
+    let bytes = sql.as_bytes();
+    let (mut i, mut depth) = (0, 0usize);
+    while i < bytes.len() {
+        match bytes[i] {
+            quote @ (b'\'' | b'"' | b'`') => {
+                i += 1;
+                while i < bytes.len() && bytes[i] != quote {
+                    i += 1;
+                }
+            }
+            b'-' if bytes.get(i + 1) == Some(&b'-') => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                i = sql[i + 2..]
+                    .find("*/")
+                    .map_or(bytes.len(), |end| i + 3 + end);
+            }
+            b'(' => depth += 1,
+            b')' => depth = depth.saturating_sub(1),
+            b'o' | b'O' if depth == 0 && starts_order_by(bytes, i) => return Some(i),
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+pub(crate) fn without_filter_order(filter: &str) -> &str {
+    filter_order_start(filter).map_or(filter, |at| filter[..at].trim_end())
+}
+
+pub(crate) fn order_clause(where_sql: &str, terms: &[String]) -> String {
+    if terms.is_empty() {
+        return String::new();
+    }
+    let lead = if filter_order_start(where_sql).is_some() {
+        ","
+    } else {
+        " ORDER BY"
+    };
+    format!("{lead} {}", terms.join(", "))
 }
 
 const URI_COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
@@ -2814,6 +2886,51 @@ mod tests {
             " WHERE a = 1 -- b\n"
         );
         assert_eq!(super::where_clause(Some("  "), false).unwrap(), "");
+    }
+
+    #[test]
+    fn filter_order_joins_the_key_order_and_leaves_counts() {
+        let filter = "RECEIVER LIKE 'TVB_BC%'\nAND INHALT = 'LSABSCHLUSS'\nORDER BY CTIME desc";
+        let where_sql = super::where_clause(Some(filter), true).unwrap();
+        let keys = ["t.\"ID\"".to_string()];
+        assert_eq!(
+            format!("{where_sql}{}", super::order_clause(&where_sql, &keys)),
+            format!(" WHERE {filter}\n, t.\"ID\"")
+        );
+        assert_eq!(super::order_clause(&where_sql, &[]), "");
+        assert_eq!(
+            super::order_clause(" WHERE a = 1\n", &keys),
+            " ORDER BY t.\"ID\""
+        );
+        assert_eq!(
+            super::without_filter_order(filter),
+            "RECEIVER LIKE 'TVB_BC%'\nAND INHALT = 'LSABSCHLUSS'"
+        );
+        assert_eq!(super::without_filter_order("order  BY a"), "");
+        assert_eq!(
+            super::where_clause(Some("order by a"), true).unwrap(),
+            " order by a\n"
+        );
+        for kept in [
+            "a = 'x ORDER BY y'",
+            "\"ORDER BY\" = 1",
+            "r = (SELECT MAX(r) OVER (ORDER BY c) FROM d)",
+            "a = 1 -- ORDER BY b",
+            "a = 1 /* ORDER BY b */",
+            "reorder by_x = 1",
+            "border BY = 1",
+            "a = 1 /*",
+        ] {
+            assert_eq!(super::without_filter_order(kept), kept, "{kept}");
+        }
+        assert_eq!(
+            super::without_filter_order("n = 'it''s' ORDER BY ä"),
+            "n = 'it''s'"
+        );
+        let big = format!("{} ORDER BY a", "a = 'x' AND ".repeat(20_000) + "b = 1");
+        let start = std::time::Instant::now();
+        assert!(super::without_filter_order(&big).ends_with("b = 1"));
+        assert!(start.elapsed() < std::time::Duration::from_millis(50));
     }
 
     #[test]
