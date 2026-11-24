@@ -1439,6 +1439,16 @@ mod tests {
             !crate::db::postgres::table_page_sql("s", "t", "", None, true, &[])
                 .contains("ORDER BY")
         );
+        let ordered = crate::db::postgres::table_page_sql(
+            "s",
+            "t",
+            " WHERE a = 1 ORDER BY b DESC\n",
+            None,
+            true,
+            &["id".into()],
+        );
+        assert!(ordered.contains("ORDER BY b DESC\n, t.\"id\" LIMIT"));
+        assert_eq!(ordered.matches("ORDER BY").count(), 1);
     }
 
     #[test]

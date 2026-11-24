@@ -123,6 +123,10 @@ describe("query cache performance and isolation", () => {
       "Abbruch nicht bestätigt: io error",
       'Der Filter muss gültiges JSON sein (Zeile 1, Spalte 1), z. B. {"status": "open"}.',
       "Filter abgelehnt: ; ist nicht erlaubt.",
+      "Oracle: ORA-00933: SQL command not properly ended\nPosition: 162 (Zeile 4, Spalte 2)",
+      'Datenbankfehler: syntax error at or near "ORDER"',
+      "MySQL 1064: You have an error in your SQL syntax",
+      "Incorrect syntax near the keyword 'ORDER'.",
     ])
       expect(retry(0, new Error(message))).toBe(false);
     expect(retry(0, new Error("Datenbankfehler: connection reset"))).toBe(true);

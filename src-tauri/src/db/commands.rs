@@ -226,6 +226,19 @@ pub async fn list_tables(
     .await
 }
 
+fn unordered_filter(
+    kind: DatabaseKind,
+    filter: Option<String>,
+    raw: Option<bool>,
+) -> Option<String> {
+    match filter {
+        Some(filter) if raw == Some(true) && kind.capabilities().query_language == "sql" => {
+            Some(super::without_filter_order(&filter).to_string()).filter(|rest| !rest.is_empty())
+        }
+        other => other,
+    }
+}
+
 #[tauri::command]
 pub async fn fetch_table_rows(
     kind: DatabaseKind,
@@ -245,6 +258,11 @@ pub async fn fetch_table_rows(
     pool_state: tauri::State<'_, PoolState>,
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<TableData, String> {
+    let filter = if order_by.is_some() {
+        unordered_filter(kind, filter, allow_raw)
+    } else {
+        filter
+    };
     super::execution::run(
         options,
         matches!(
@@ -353,6 +371,7 @@ pub async fn count_table_rows(
     pool_state: tauri::State<'_, PoolState>,
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<i64, String> {
+    let filter = unordered_filter(kind, filter, allow_raw);
     super::execution::run(
         options,
         matches!(
@@ -404,6 +423,7 @@ pub async fn count_table_rows_capped(
     pool_state: tauri::State<'_, PoolState>,
     options: Option<super::execution::ExecutionOptions>,
 ) -> Result<super::RowCount, String> {
+    let filter = unordered_filter(kind, filter, allow_raw);
     let cap = cap.clamp(1, super::MAX_ROW_COUNT_CAP);
     super::execution::run(
         options,

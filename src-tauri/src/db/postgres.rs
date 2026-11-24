@@ -967,19 +967,16 @@ pub(crate) fn table_page_sql(
     primary_key: &[String],
 ) -> String {
     let keys = super::stable_order_terms(order, primary_key, quote_ident);
-    let (inner_order, outer_order) = if keys.is_empty() {
-        (String::new(), String::new())
+    let list = |alias: &str| {
+        keys.iter()
+            .map(|key| format!("{alias}.{key}"))
+            .collect::<Vec<_>>()
+    };
+    let inner_order = super::order_clause(where_clause, &list("t"));
+    let outer_order = if super::filter_order_start(where_clause).is_some() {
+        String::new()
     } else {
-        let list = |alias: &str| {
-            keys.iter()
-                .map(|key| format!("{alias}.{key}"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
-        (
-            format!(" ORDER BY {}", list("t")),
-            format!(" ORDER BY {}", list("p")),
-        )
+        super::order_clause("", &list("p"))
     };
     let ctid = if with_ctid {
         ", t.ctid::text || '@' || t.tableoid::text || '@' || t.xmin::text AS \"__ctid__\""

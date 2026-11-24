@@ -1323,10 +1323,10 @@ impl DatabaseAdapter for MssqlAdapter {
             .filter(|col| columns.iter().any(|c| c == col))
             .map(|col| (col, order_desc));
         let terms = super::stable_order_terms(order, &pk, quote);
-        let order_sql = if terms.is_empty() {
+        let order_sql = if terms.is_empty() && super::filter_order_start(&where_sql).is_none() {
             " ORDER BY (SELECT NULL)".to_string()
         } else {
-            format!(" ORDER BY {}", terms.join(", "))
+            super::order_clause(&where_sql, &terms)
         };
         let sql = format!(
             "SELECT {} FROM {}{}{} OFFSET {} ROWS FETCH NEXT {} ROWS ONLY",
