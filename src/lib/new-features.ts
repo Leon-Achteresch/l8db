@@ -307,6 +307,7 @@ export const NEW_FEATURES = {
   "settings.appearance.table-style": "0.14.0",
   "settings.appearance.filter-bar": "0.16.0",
   "settings.appearance.filter-mode": "0.19.0",
+  "settings.appearance.filter-sorting": NEXT_FEATURE_VERSION,
   "settings.appearance.seasonal": "0.15.0",
   "settings.appearance.themes": "0.17.0",
   "settings.appearance.themes.custom": NEXT_FEATURE_VERSION,

@@ -31,6 +31,13 @@ export function QueryResultData({ model, text, columns, onShowClassic }: QueryRe
           columnDetails={model.columnDetails}
           activeFilter={filter}
           onApply={handleFilterChange}
+          sort={{
+            sorting,
+            onChange: (next) => {
+              setSorting(next);
+              setPage(0);
+            },
+          }}
         />
       </div>
       {model.isLoading || (!model.isError && !gridReady) ? (

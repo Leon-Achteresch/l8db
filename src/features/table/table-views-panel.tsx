@@ -10,11 +10,13 @@ import { tableColumnPrefKey, useTableColumnPrefs } from "@/lib/table-column-pref
 import { tableViewStateKey, useTableViewStateStore } from "@/lib/table-view-state";
 import { type SavedView, savedViewKey, useViewsStore, VIEW_COLORS } from "@/lib/views";
 import { TableFilterImportMenu } from "./table-filter-import-menu";
+import { sameSorting, sortingLabel } from "./table-view/sortable-columns";
 import { TableViewChip } from "./table-view-chip";
 
 interface TableViewsPanelProps {
   schema: string;
   table: string;
+  stateKey?: string;
   activeFilter: string;
   filterRaw?: boolean;
   onSelectView: (filter: string, raw?: boolean, view?: SavedView) => void;
@@ -23,6 +25,7 @@ interface TableViewsPanelProps {
 export function TableViewsPanel({
   schema,
   table,
+  stateKey,
   activeFilter,
   filterRaw = false,
   onSelectView,
@@ -33,6 +36,14 @@ export function TableViewsPanel({
   const savedViews = useViewsStore((s) => s.views[tableKey]) ?? [];
   const addView = useViewsStore((s) => s.addView);
   const removeView = useViewsStore((s) => s.removeView);
+  const viewStateKey = stateKey ?? tableViewStateKey(connection?.id, database, schema, table);
+  const sorting = useTableViewStateStore((s) =>
+    viewStateKey ? s.views[viewStateKey]?.sorting : undefined,
+  );
+  const sortLabel = sortingLabel(sorting);
+  const sortOnlyView = (view: SavedView) =>
+    view.filter === "" && sortLabel !== "" && sameSorting(view.state?.sorting, sorting);
+  const sortViewActive = activeFilter === "" && savedViews.some(sortOnlyView);
 
   const [saveOpen, setSaveOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -41,8 +52,7 @@ export function TableViewsPanel({
   const handleSave = () => {
     if (!newName.trim()) return;
     const color = VIEW_COLORS[savedViews.length % VIEW_COLORS.length];
-    const key = tableViewStateKey(connection?.id, database, schema, table);
-    const state = key ? useTableViewStateStore.getState().views[key] : undefined;
+    const state = viewStateKey ? useTableViewStateStore.getState().views[viewStateKey] : undefined;
     const layoutKey = connection
       ? tableColumnPrefKey(connection.id, schema, table, database)
       : undefined;
@@ -70,8 +80,12 @@ export function TableViewsPanel({
           label="Alle Zeilen"
           filter=""
           color="#6b7280"
-          active={activeFilter === ""}
-          onSelect={() => onSelectView("")}
+          active={activeFilter === "" && !sortViewActive}
+          onSelect={() => {
+            onSelectView("");
+            if (sortViewActive && viewStateKey)
+              useTableViewStateStore.getState().patch(viewStateKey, { sorting: [], page: 0 });
+          }}
         />
 
         {savedViews.map((view: SavedView) => (
@@ -83,7 +97,12 @@ export function TableViewsPanel({
             filter={view.filter}
             filterRaw={view.filterRaw}
             color={view.color}
-            active={activeFilter !== "" && activeFilter === view.filter}
+            sort={sortingLabel(view.state?.sorting)}
+            active={
+              view.filter === ""
+                ? activeFilter === "" && sortOnlyView(view)
+                : activeFilter === view.filter
+            }
             onSelect={() => onSelectView(view.filter, view.filterRaw, view)}
             onRemove={() => {
               removeView(tableKey, view.id);
@@ -132,6 +151,11 @@ export function TableViewsPanel({
               <span className="text-xs text-muted-foreground">
                 {activeFilter.trim() === "" ? "Aktuell kein Filter aktiv" : activeFilter}
               </span>
+              {sortLabel ? (
+                <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
+                  {sortLabel}
+                </span>
+              ) : null}
             </div>
             <Input
               ref={inputRef}

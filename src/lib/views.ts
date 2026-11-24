@@ -15,6 +15,21 @@ export interface SavedView {
   layout?: TableColumnPref;
 }
 
+export function savedViewPatch(
+  view: SavedView | undefined,
+  filter: string,
+  raw: boolean | undefined,
+): Partial<TableViewState> | undefined {
+  if (!view?.state) return undefined;
+  return {
+    ...view.state,
+    sorting: view.state.sorting ?? [],
+    filter,
+    filterRaw: raw ?? false,
+    page: 0,
+  };
+}
+
 export function savedViewKey(
   connectionId: string,
   database: string | null,

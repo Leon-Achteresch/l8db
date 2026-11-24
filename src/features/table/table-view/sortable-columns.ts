@@ -26,3 +26,15 @@ export function applicableSorting(
   if (!sortable || sorting.every((entry) => sortable.includes(entry.id))) return sorting;
   return sorting.filter((entry) => sortable.includes(entry.id));
 }
+
+export function sortingLabel(sorting: SortingState | undefined): string {
+  const active = sorting?.[0];
+  return active?.id ? `${active.desc ? "↓" : "↑"} ${active.id}` : "";
+}
+
+export function sameSorting(
+  left: SortingState | undefined,
+  right: SortingState | undefined,
+): boolean {
+  return sortingLabel(left) === sortingLabel(right);
+}

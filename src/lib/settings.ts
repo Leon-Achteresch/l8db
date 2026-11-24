@@ -149,6 +149,7 @@ export interface SettingsState {
   monochromeCells: boolean;
   tableStyle: TableStyle;
   filterBarStyle: FilterBarStyle;
+  filterBarSorting: boolean;
   tableFilterMode: TableFilterMode;
   connectionTimeout: number;
   sslDefaultMode: SslDefaultMode;
@@ -232,6 +233,7 @@ export interface SettingsState {
   setMonochromeCells: (value: boolean) => void;
   setTableStyle: (value: TableStyle) => void;
   setFilterBarStyle: (value: FilterBarStyle) => void;
+  setFilterBarSorting: (value: boolean) => void;
   setTableFilterMode: (value: TableFilterMode) => void;
   setConnectionTimeout: (v: number) => void;
   setSslDefaultMode: (v: SslDefaultMode) => void;
@@ -255,6 +257,7 @@ export const TABLE_APPEARANCE_DEFAULTS = {
   monochromeCells: true,
   tableStyle: "classic",
   filterBarStyle: "classic",
+  filterBarSorting: false,
   tableFilterMode: "simple",
 } satisfies Partial<SettingsState>;
 
@@ -368,6 +371,7 @@ export const DEFAULT_SETTINGS = {
   monochromeCells: true,
   tableStyle: "classic" as TableStyle,
   filterBarStyle: "classic" as FilterBarStyle,
+  filterBarSorting: false,
   tableFilterMode: "simple" as TableFilterMode,
   connectionTimeout: 15,
   sslDefaultMode: "prefer" as SslDefaultMode,
@@ -512,6 +516,7 @@ export const useSettingsStore = create<SettingsState>()(
       setTableStyle: (tableStyle) => set({ tableStyle: normalizeTableStyle(tableStyle) }),
       setFilterBarStyle: (filterBarStyle) =>
         set({ filterBarStyle: normalizeFilterBarStyle(filterBarStyle) }),
+      setFilterBarSorting: (filterBarSorting) => set({ filterBarSorting }),
       setTableFilterMode: (tableFilterMode) =>
         set({ tableFilterMode: tableFilterMode === "sql" ? "sql" : "simple" }),
       resetAppearance: () => set({ ...LAYOUT_APPEARANCE_DEFAULTS, ...TABLE_APPEARANCE_DEFAULTS }),
@@ -566,6 +571,7 @@ export const useSettingsStore = create<SettingsState>()(
           monochromeCells: saved?.monochromeCells !== false,
           tableStyle: normalizeTableStyle(saved?.tableStyle),
           filterBarStyle: normalizeFilterBarStyle(saved?.filterBarStyle),
+          filterBarSorting: saved?.filterBarSorting === true,
           tableFilterMode: saved?.tableFilterMode === "sql" ? "sql" : "simple",
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
           dmlPreviewMode: normalizeDmlPreviewMode(saved?.dmlPreviewMode),
