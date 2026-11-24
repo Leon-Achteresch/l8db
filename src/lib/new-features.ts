@@ -305,6 +305,7 @@ export const NEW_FEATURES = {
   "settings.appearance.filter-mode": NEXT_FEATURE_VERSION,
   "settings.appearance.seasonal": "0.15.0",
   "settings.appearance.themes": "0.17.0",
+  "settings.appearance.themes.custom": NEXT_FEATURE_VERSION,
   "settings.appearance.db-themes": "0.17.0",
   "query.transaction.changes": "0.7.0",
   "query.transaction.database-diff": "0.14.0",

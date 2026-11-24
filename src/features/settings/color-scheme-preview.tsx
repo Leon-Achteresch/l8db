@@ -8,16 +8,17 @@ type Props = {
 };
 
 export function ColorSchemePreview({ mode, variant, className, style }: Props) {
-  const { hue, chroma, tint } = variant;
+  const { hue, chroma, tint, colors = {} } = variant;
   const dark = mode === "dark";
   const surface = (light: number, base: number) =>
-    `oklch(${light} ${(base * tint).toFixed(4)} ${hue})`;
-  const bg = dark ? surface(0.17, 0.008) : surface(0.975, 0.004);
-  const sidebar = dark ? surface(0.19, 0.008) : surface(0.965, 0.004);
-  const line = dark ? "oklch(1 0 0 / 12%)" : surface(0.89, 0.008);
-  const bar = dark ? surface(0.3, 0.01) : surface(0.9, 0.008);
-  const card = dark ? surface(0.21, 0.009) : surface(0.995, 0.002);
-  const accent = `oklch(${dark ? 0.72 : 0.55} ${Math.max(chroma * 2, 0.02)} ${hue})`;
+    `oklch(${light} ${(base * tint).toFixed(4)} ${variant.surfaceHue ?? hue})`;
+  const bg = colors.background ?? (dark ? surface(0.17, 0.008) : surface(0.975, 0.004));
+  const sidebar = colors.sidebar ?? (dark ? surface(0.19, 0.008) : surface(0.965, 0.004));
+  const line = colors.border ?? (dark ? "oklch(1 0 0 / 12%)" : surface(0.89, 0.008));
+  const bar = colors.muted ?? (dark ? surface(0.3, 0.01) : surface(0.9, 0.008));
+  const card = colors.card ?? (dark ? surface(0.21, 0.009) : surface(0.995, 0.002));
+  const accent =
+    colors.primary ?? `oklch(${dark ? 0.72 : 0.55} ${Math.max(chroma * 2, 0.02)} ${hue})`;
   return (
     <div aria-hidden className={className} style={{ ...style, background: bg }}>
       <div className="flex h-full">
