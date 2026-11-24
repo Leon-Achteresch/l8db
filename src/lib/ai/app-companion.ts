@@ -1,3 +1,4 @@
+import { lucideIconExists } from "@/lib/ai/chat-icon";
 import { featureShortcut } from "@/lib/ai/feature-search";
 import { commandNeedle } from "@/lib/command-score";
 import { useConnectionsStore } from "@/lib/connections";
@@ -77,6 +78,7 @@ export interface AppUiTarget {
   openDocs: (path: string) => Promise<unknown>;
   showFeature?: (id: string, signal: AbortSignal) => Promise<string>;
   guideFeature?: (id: string, signal: AbortSignal) => Promise<boolean>;
+  setTitle?: (title: string, icon?: string) => void;
 }
 
 async function showFeature(id: string, signal: AbortSignal): Promise<string> {
@@ -112,6 +114,20 @@ export async function handleAppRequest(
     if (typeof args.query !== "string" || !args.query.trim() || args.query.length > 200)
       return { ok: false, text: "query braucht 1 bis 200 Zeichen." };
     return { ok: true, text: searchAppFeatures(args.query, options) };
+  }
+  if (args.action === "chat_title") {
+    const title = typeof args.title === "string" ? args.title.trim().slice(0, 60) : "";
+    if (!title) return { ok: false, text: "title fehlt." };
+    if (!target.setTitle) return { ok: false, text: "Kein Gespräch geöffnet." };
+    const icon = typeof args.icon === "string" && args.icon ? args.icon : undefined;
+    const known = !icon || (await lucideIconExists(icon));
+    target.setTitle(title, known ? icon : undefined);
+    return known
+      ? { ok: true, text: `Titel gesetzt: ${title}` }
+      : {
+          ok: false,
+          text: `Titel gesetzt, aber das Lucide-Icon "${icon}" gibt es nicht. Nur icon mit einem gültigen Namen wie database oder chart-line erneut senden.`,
+        };
   }
   if (typeof args.id !== "string" || args.id.length > 180)
     return { ok: false, text: "id aus app_search verwenden." };

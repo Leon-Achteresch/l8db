@@ -853,3 +853,14 @@ Nicht gemessen:
 - Windows und Linux, MySQL, SQL Server, Oracle, MongoDB und Redis.
 - Was Prompt-Caching aus der Ersparnis macht. Die geschätzte Eingabe rechnet ohne Cache; die CLIs oben lesen den größten Teil aus dem Cache.
 - Schwache lokale Modelle. Haiku brauchte in einzelnen Läufen zwei bis drei Fehlversuche, bis die Argumente einer Funktion stimmten.
+
+## Chat-Titel und Icon (`chat_title`)
+
+Die KI benennt ein Gespräch selbst: `chat_title` setzt Titel und ein Lucide-Icon für die Gesprächsliste. Das Werkzeug ist direkt (BYOK und Chat-Brücke), damit die KI dafür keinen `code`-Aufruf braucht.
+
+| Messung | vorher | nachher | Budget B |
+|---|---:|---:|---:|
+| BYOK-Startkatalog je Runde | 5.581 B (7 Tools) | 5.870 B (8 Tools) | 5.900 (vorher 5.650) |
+| `tools/list` der Chat-Brücke | 5.403 B (6 Tools) | 5.692 B (7 Tools) | 5.750 (vorher 5.500) |
+
+Das Schema kostet 289 B je Runde, die Budgets wurden bewusst um diesen Betrag angehoben, nicht wegen einer Regression. Gemessen mit `cargo test --lib token_benchmark` auf macOS 27.2, arm64, Apple M3, 16 GB, Debug-Profil.

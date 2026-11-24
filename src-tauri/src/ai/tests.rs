@@ -1333,7 +1333,7 @@ fn byok_catalog_stays_small_and_documents_the_other_tools_as_functions() {
     let catalog = Catalog::new(&config, false, &external);
     let initial = catalog.tools().to_vec();
     let names = published(&initial);
-    assert_eq!(names.len(), 7, "{names:?}");
+    assert_eq!(names.len(), 8, "{names:?}");
     for name in [
         "search",
         "describe",
@@ -1341,6 +1341,7 @@ fn byok_catalog_stays_small_and_documents_the_other_tools_as_functions() {
         "code",
         "execute",
         "visualize",
+        "chat_title",
         "plan",
     ] {
         assert!(names.contains(name), "{name}");
@@ -1751,7 +1752,8 @@ async fn bridge_code_mode_lists_core_tools_and_gates_calls_from_code_like_direct
             "query",
             "code",
             "execute",
-            "visualize"
+            "visualize",
+            "chat_title"
         ]
     );
     let bytes = listed.to_string().len();

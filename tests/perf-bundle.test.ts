@@ -36,6 +36,7 @@ test.skipIf(!process.env.L8DB_PERF_BROWSER)(
     expect([...visited].sort()).toEqual([...new Set([entry, ...preloads])].sort());
     expect([...visited].some((name) => name.startsWith("monaco-"))).toBe(false);
     expect([...visited].some((name) => name.startsWith("ai-view-"))).toBe(false);
+    expect([...visited].some((name) => name.startsWith("iconsAndAliases-"))).toBe(false);
     expect(visited.size).toBeLessThanOrEqual(6);
     console.log(`start package: ${(bytes / 1_000_000).toFixed(2)} MB, ${visited.size} chunks`);
   },

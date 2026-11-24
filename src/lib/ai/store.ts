@@ -26,6 +26,7 @@ export const AI_LOCAL_ENDPOINTS: Partial<Record<AiProvider, string>> = {
 export interface AiSession {
   id: string;
   title: string;
+  icon?: string;
   profileId: string;
   nativeId: string | null;
   cwd: string;
