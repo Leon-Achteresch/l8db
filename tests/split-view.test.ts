@@ -17,8 +17,10 @@ const { remoteTab, remoteTableTab, tabKey, useTableTabs } = await import("../src
 const {
   MAX_SPLIT_PANES,
   foreignSplitGroups,
+  hiddenTabLists,
   isSplitShown,
   openDetached,
+  parkedViews,
   standaloneTabs,
   useSplitView,
 } = await import("../src/lib/split-view");
@@ -64,6 +66,7 @@ function reset() {
     orientation: "horizontal",
     activeGroup: null,
     groups: {},
+    openGroups: {},
     away: true,
   });
 }
@@ -759,6 +762,46 @@ describe("Gespeicherte Ansichten", () => {
     state().openGroup(group.id);
     expect(state().panes).toEqual([users, orders]);
     expect(state().groups[a.id][1].tabs.map((tab) => tab && tabKey(tab))).toEqual([items, null]);
+  });
+
+  test("mehrere Ansichten bleiben gleichzeitig offen, ihre Tabs bleiben aus der Tab-Leiste", async () => {
+    const { a, users, orders, items, group } = savedSplit();
+    const [logs] = openDetached(() => open("logs"));
+    state().reveal(items);
+    state().split({ activeKey: items });
+    const second = state().groups[a.id][1];
+    const hidden = () =>
+      standaloneTabs(useTableTabs.getState().tabs, hiddenTabLists(state())).map(tabKey);
+
+    expect(state().openGroups[a.id]).toEqual([group.id, second.id]);
+    expect(parkedViews(state()).map((entry) => entry.id)).toEqual([group.id]);
+    expect(hidden()).toEqual([logs]);
+
+    state().openGroup(group.id);
+    expect(state().panes).toEqual([users, orders]);
+    expect(parkedViews(state()).map((entry) => entry.id)).toEqual([second.id]);
+    expect(hidden()).toEqual([logs]);
+
+    await useSplitView.persist.rehydrate();
+    expect(state().openGroups[a.id]).toEqual([group.id, second.id]);
+    expect(parkedViews(state()).map((entry) => entry.id)).toEqual([second.id]);
+
+    state().closeView(second.id);
+    expect(state().openGroups[a.id]).toEqual([group.id]);
+    expect(state().panes).toEqual([users, orders]);
+    expect(hidden()).toEqual([items, logs]);
+    expect(state().groups[a.id]).toHaveLength(2);
+
+    state().openGroup(second.id);
+    expect(state().openGroups[a.id]).toEqual([group.id, second.id]);
+    state().closeView(second.id);
+    expect(state().panes).toEqual([]);
+    expect(parkedViews(state()).map((entry) => entry.id)).toEqual([group.id]);
+    expect(hidden()).toEqual([items, logs]);
+
+    state().deleteGroup(group.id);
+    expect(state().openGroups[a.id]).toEqual([]);
+    expect(hidden().sort()).toEqual([items, logs, orders, users].sort());
   });
 
   test("Ansicht teilen im angezeigten Split ergänzt nur einen leeren Bereich", () => {

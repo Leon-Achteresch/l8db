@@ -4,8 +4,9 @@ import { PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
 import { motion } from "motion/react";
 import type * as React from "react";
-import { useCallback, useEffect, useRef } from "react";
+import { Fragment, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
+import { useShallow } from "zustand/shallow";
 import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
@@ -33,9 +34,11 @@ import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 import { useSettingsStore } from "@/lib/settings";
 import type { SplitEdge } from "@/lib/split-layout";
 import {
+  groupPaneTabs,
   MAX_SPLIT_GROUPS,
   MAX_SPLIT_PANES,
   openDetached,
+  parkedViews,
   placeOpenTab,
   type SplitGroup,
   standaloneTabs,
@@ -72,6 +75,8 @@ export function TableTabs() {
   const renameGroup = useSplitView((state) => state.renameGroup);
   const deleteGroup = useSplitView((state) => state.deleteGroup);
   const openGroup = groups.find((group) => group.id === activeGroup);
+  const parked = useSplitView(useShallow(parkedViews));
+  const closeView = useSplitView((state) => state.closeView);
   const groupFeature = useNewFeatureVisibility<HTMLButtonElement>("split.saved-views");
   const sharedFeature = useNewFeatureVisibility<HTMLDivElement>("split.saved-views.shared");
   const setGroupShared = useSplitView((state) => state.setGroupShared);
@@ -96,7 +101,12 @@ export function TableTabs() {
   const chipActive = !easyMode && latestShown;
   const tabs = standaloneTabs(
     allTabs.filter((tab) => isEasyModeTabVisible(tab, easyMode)),
-    hasSplit ? paneTabs : [],
+    easyMode
+      ? []
+      : [
+          ...(hasSplit ? paneTabs : []),
+          ...parked.flatMap((group) => groupPaneTabs(group).map((list) => list.map(tabKey))),
+        ],
   );
   const caret = useDropPreview((state) =>
     state.preview?.pane === "master" && state.preview.at !== undefined
@@ -147,6 +157,18 @@ export function TableTabs() {
   }, [routeKey, easyMode]);
 
   useEffect(() => onHotkeyAction("view.split", handleSplit), [handleSplit]);
+
+  useEffect(() => {
+    if (easyMode || !routeKey) return;
+    const state = useSplitView.getState();
+    if (state.paneTabs.some((list) => list.includes(routeKey))) return;
+    const owner = parkedViews(state).find((group) =>
+      groupPaneTabs(group).some((list) => list.some((tab) => tabKey(tab) === routeKey)),
+    );
+    if (!owner) return;
+    state.openGroup(owner.id);
+    useSplitView.getState().reveal(routeKey);
+  }, [routeKey, easyMode]);
 
   const showTab = (tab: Tab) => {
     useSplitView.getState().reveal(tabKey(tab));
@@ -240,6 +262,25 @@ export function TableTabs() {
   const actions = useRef(tabActions);
   actions.current = tabActions;
 
+  const liveChip = !easyMode && hasSplit && (
+    <SplitGroupTab
+      name={openGroup?.name ?? "Geteilte Ansicht"}
+      members={members}
+      active={chipActive}
+      isNew={masterFeature.isNew}
+      featureRef={masterFeature.ref}
+      onOpen={handleShowSplit}
+      onRename={openGroup ? (name) => renameGroup(openGroup.id, name) : undefined}
+      onClose={collapse}
+      onCloseTabs={() => handleCloseGroup(paneTabs.flat())}
+      onDelete={openGroup ? () => deleteGroup(openGroup.id) : undefined}
+      shared={openGroup?.shared}
+      onToggleShared={openGroup ? () => setGroupShared(openGroup.id, !openGroup.shared) : undefined}
+      others={groups.filter((group) => group.id !== openGroup?.id)}
+      onOpenGroup={handleOpenGroup}
+    />
+  );
+
   return (
     <div
       data-drop-zone="master"
@@ -248,26 +289,28 @@ export function TableTabs() {
         caret !== null && "bg-primary/10 ring-1 ring-inset ring-primary/50",
       )}
     >
-      {hasSplit && (
-        <SplitGroupTab
-          name={openGroup?.name ?? "Geteilte Ansicht"}
-          members={members}
-          active={chipActive}
-          isNew={masterFeature.isNew}
-          featureRef={masterFeature.ref}
-          onOpen={handleShowSplit}
-          onRename={openGroup ? (name) => renameGroup(openGroup.id, name) : undefined}
-          onClose={collapse}
-          onCloseTabs={() => handleCloseGroup(paneTabs.flat())}
-          onDelete={openGroup ? () => deleteGroup(openGroup.id) : undefined}
-          shared={openGroup?.shared}
-          onToggleShared={
-            openGroup ? () => setGroupShared(openGroup.id, !openGroup.shared) : undefined
-          }
-          others={groups.filter((group) => group.id !== openGroup?.id)}
-          onOpenGroup={handleOpenGroup}
-        />
-      )}
+      {!openGroup && liveChip}
+      {!easyMode &&
+        groups.map((group) =>
+          group.id === openGroup?.id ? (
+            <Fragment key={group.id}>{liveChip}</Fragment>
+          ) : parked.includes(group) ? (
+            <SplitGroupTab
+              key={group.id}
+              name={group.name}
+              members={group.tabs.map((tab) => (tab ? tabLabel(tab) : "Leer"))}
+              active={false}
+              onOpen={() => handleOpenGroup(group)}
+              onRename={(name) => renameGroup(group.id, name)}
+              onClose={() => closeView(group.id)}
+              onDelete={() => deleteGroup(group.id)}
+              shared={group.shared}
+              onToggleShared={() => setGroupShared(group.id, !group.shared)}
+              others={groups.filter((entry) => entry.id !== group.id)}
+              onOpenGroup={handleOpenGroup}
+            />
+          ) : null,
+        )}
       <div ref={containerRef} className="flex min-w-0 items-center">
         <motion.nav
           layoutScroll
