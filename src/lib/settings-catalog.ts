@@ -360,6 +360,20 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     keywords: [],
   },
   {
+    id: "tasks",
+    tabId: "data",
+    title: "Aufgaben",
+    description: "Laufende und abgeschlossene Hintergrundaufgaben.",
+    keywords: ["tasks", "jobs", "hintergrund", "laufend"],
+  },
+  {
+    id: "drafts",
+    tabId: "data",
+    title: "Entwürfe",
+    description: "Ungespeicherte Entwürfe wiederherstellen.",
+    keywords: ["drafts", "wiederherstellen", "recovery", "ungespeichert"],
+  },
+  {
     id: "history-limit",
     tabId: "data",
     title: "Query-Verlauf je Verbindung",

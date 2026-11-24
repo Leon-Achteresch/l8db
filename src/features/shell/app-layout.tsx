@@ -14,7 +14,6 @@ import { useSidebarPanel } from "@/lib/sidebar-panel";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 import { ShortcutHint } from "./shortcut-hint";
-import { WorkspaceStatus } from "./workspace-status";
 
 const VersioningPanel = lazy(() =>
   import("@/features/versioning/versioning-panel").then(({ VersioningPanel }) => ({
@@ -85,7 +84,6 @@ export function AppLayout() {
             </PanelErrorBoundary>
           )}
         </div>
-        <WorkspaceStatus />
       </SidebarInset>
     </SidebarProvider>
   );
