@@ -205,10 +205,9 @@ pub(crate) async fn code(
         "tool",
         json!({"id": id, "name": "code", "arguments": args, "status": "running"}),
     );
+    let mut local = server.lock().await.clone();
     let result = text_result(
-        server
-            .lock()
-            .await
+        local
             .code_hosted(config, &args, Some(host))
             .await
             .map_err(|error| crate::mcp::server::scrub_error(&error)),

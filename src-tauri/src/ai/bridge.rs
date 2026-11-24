@@ -42,8 +42,7 @@ pub(super) async fn dispatch(
             let name = request["params"]["name"].as_str().unwrap_or("");
             let args = request["params"]["arguments"].clone();
             if name == "code" {
-                let mut external = external.lock().await;
-                let mut host = super::tools::Host::new(catalog, &mut external, config, run).cli();
+                let mut host = super::tools::Host::new(catalog, external, config, run).cli();
                 super::context::code(server, config, run, args, &mut host).await
             } else if super::tools::Catalog::documents(name, &args) {
                 let result = catalog.docs(&args);

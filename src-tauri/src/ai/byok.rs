@@ -774,7 +774,7 @@ pub async fn run(
     instructions: &str,
     server: &Arc<tokio::sync::Mutex<crate::mcp::server::Server>>,
     config: &crate::mcp::config::McpConfig,
-    mut external: External,
+    external: External,
     run: &Run,
 ) -> Result<(), String> {
     let key = key(&request.profile).await?;
@@ -792,6 +792,7 @@ pub async fn run(
         .collect();
     let catalog =
         super::tools::Catalog::new(config, !request.attachments.is_empty(), &external.tools);
+    let external = tokio::sync::Mutex::new(external);
     let mut failures = super::tools::Failures::default();
     let mut plan = harness::Plan::default();
     let mut repeats = harness::Repeats::default();
@@ -933,10 +934,10 @@ pub async fn run(
                 run.emit("tool", json!({"id": super::new_id(), "name": call.name, "arguments": arguments, "result": result, "status": "completed"}));
                 result
             } else if call.name == "code" {
-                let mut host = super::tools::Host::new(&catalog, &mut external, config, run);
+                let mut host = super::tools::Host::new(&catalog, &external, config, run);
                 super::context::code(server, config, run, arguments, &mut host).await
             } else if call.name.starts_with("ext_") {
-                external.call(&call.name, arguments, run).await
+                external.lock().await.call(&call.name, arguments, run).await
             } else {
                 super::context::call(server, config, run, &call.name, arguments).await
             };

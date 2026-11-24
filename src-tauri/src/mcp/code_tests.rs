@@ -770,12 +770,109 @@ impl super::code::ToolHost for SlowHost {
     }
 }
 
+struct Unpaused(SlowHost);
+
+impl super::code::ToolHost for Unpaused {
+    fn names(&self) -> Vec<String> {
+        self.0.names()
+    }
+
+    fn waits(&self) -> bool {
+        false
+    }
+
+    fn call<'a>(
+        &'a mut self,
+        server: &'a mut Server,
+        name: &'a str,
+        args: Value,
+    ) -> futures_util::future::BoxFuture<'a, Result<String, String>> {
+        self.0.call(server, name, args)
+    }
+}
+
+#[test]
+fn hosted_statements_spend_the_budgets_and_unpaused_hosts_spend_the_time_limit() {
+    let mut lab = fixture();
+    let home = lab.config.connections[0].clone();
+    let config = lab.config.clone();
+    let looped = "async () => { const out = []; for (let i = 0; i < 3; i++) out.push(await tools.query({connection: 'Shop', sql: 'SELECT name FROM customers'}).then(() => 'ok', (e) => e.message)); out.push(await tools.explain({connection: 'Shop', sql: 'SELECT 1'}).then(() => 'ok', (e) => e.message)); return out.join('|'); }";
+    let mut functions = super::server::Functions(&config);
+    let text = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            looped,
+            &Limits {
+                statements: 2,
+                ..short(30)
+            },
+            Some(&mut functions),
+        ))
+        .unwrap();
+    assert!(
+        text.starts_with(
+            "ok|ok|Höchstens 2 Statements pro code-Lauf.|Höchstens 2 Statements pro code-Lauf.\n"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.contains("(2 statements, 2 tool calls, 6 rows read"),
+        "{text}"
+    );
+    let text = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            looped,
+            &Limits {
+                total_rows: 3,
+                ..short(30)
+            },
+            Some(&mut functions),
+        ))
+        .unwrap();
+    assert!(text.starts_with("ok|Zeilenbudget von 3 "), "{text}");
+    assert!(
+        text.contains("(1 statements, 1 tool calls, 3 rows read"),
+        "{text}"
+    );
+    let (error, text) = lab.code(
+        "Shop",
+        "async () => { const rows = {}; return rows.map((row) => row); }",
+    );
+    assert!(
+        error && text.contains("not a function") && !text.contains("does not exist here"),
+        "{text}"
+    );
+    let mut unpaused = Unpaused(SlowHost {
+        wait: Duration::from_secs(20),
+        calls: 0,
+    });
+    let started = Instant::now();
+    let error = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            "async () => tools.first()",
+            &short(1),
+            Some(&mut unpaused),
+        ))
+        .unwrap_err();
+    assert!(error.contains("Zeitlimit von 1 s"), "{error}");
+    assert!(started.elapsed() < Duration::from_secs(10), "{error}");
+    assert_eq!(unpaused.0.calls, 1);
+}
+
 #[test]
 fn hosted_tool_calls_pause_the_time_limit_are_counted_and_need_a_host() {
     let mut lab = fixture();
     let (error, text) = lab.code("Shop", "async () => tools.dashboard({action: 'list'})");
     assert!(
-        error && text.contains("not a function; tools.name is undefined"),
+        error && text.contains("not a function; tools.dashboard does not exist here"),
         "{text}"
     );
     let home = lab.config.connections[0].clone();

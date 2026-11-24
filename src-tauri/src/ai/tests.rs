@@ -867,6 +867,7 @@ async fn external_stdio_mcp_initializes_and_requires_every_call_approval() {
     use crate::mcp::code::ToolHost;
     let config = context::scoped_config(&request(), McpConfig::default()).unwrap();
     let catalog = super::tools::Catalog::new(&config, false, &external.tools);
+    let external = tokio::sync::Mutex::new(external);
     let mut server = Server {
         pool: crate::db::pool::create_pool_state(),
         columns: Default::default(),
@@ -887,7 +888,7 @@ async fn external_stdio_mcp_initializes_and_requires_every_call_approval() {
     ] {
         let (mut hosted, events) = run(Some(allow));
         hosted.approval = mode.into();
-        let mut host = super::tools::Host::new(&catalog, &mut external, &config, &hosted);
+        let mut host = super::tools::Host::new(&catalog, &external, &config, &hosted);
         let result = host
             .call(
                 &mut server,
@@ -1458,11 +1459,13 @@ async fn code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction() {
     };
 
     let (denied, events) = run(Some(false));
-    let mut external = integrations::connect(&[], std::path::Path::new("."), &denied)
-        .await
-        .unwrap();
+    let external = tokio::sync::Mutex::new(
+        integrations::connect(&[], std::path::Path::new("."), &denied)
+            .await
+            .unwrap(),
+    );
     let catalog = Catalog::new(&config, false, &[]);
-    let mut host = Host::new(&catalog, &mut external, &config, &denied);
+    let mut host = Host::new(&catalog, &external, &config, &denied);
     let result = context::code(
         &server,
         &config,
@@ -1512,6 +1515,25 @@ async fn code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction() {
     );
     assert_eq!(approvals(&events), 2);
     assert_eq!(label(), "alpha");
+    let (refusing, refusals) = run(Some(false));
+    let mut varied = Host::new(&catalog, &external, &config, &refusing);
+    let result = context::code(
+        &server,
+        &config,
+        &refusing,
+        json!({"connection":"active","code":"async () => { const out = []; for (let i = 0; i < 5; i++) { try { await tools.execute({connection: 'active', sql: `DELETE FROM users WHERE id = ${i}`, confirm: true}) } catch (e) { out.push(e.message) } } return out.join('|') }"}),
+        &mut varied,
+    )
+    .await;
+    let text = result.to_string();
+    assert_eq!(approvals(&refusals), 3, "{text}");
+    assert_eq!(
+        text.matches("already declined tools.execute 3 times")
+            .count(),
+        2,
+        "{text}"
+    );
+    assert_eq!(label(), "alpha");
     {
         use crate::mcp::code::ToolHost;
         let mut held = server.lock().await;
@@ -1551,7 +1573,9 @@ async fn code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction() {
     .await;
     assert_eq!(result["isError"], true, "{result}");
     assert!(
-        result.to_string().contains("tools.name is undefined"),
+        result
+            .to_string()
+            .contains("tools.missing does not exist here"),
         "{result}"
     );
     assert_eq!(approvals(&events), 2);
