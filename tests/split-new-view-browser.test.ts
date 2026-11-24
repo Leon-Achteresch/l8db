@@ -78,7 +78,7 @@ test.skipIf(!process.env.L8DB_TAB_BROWSER)(
           items.map((item) => item.getAttribute("title")),
         );
         await page.keyboard.press("Escape");
-        await page.locator("[role='menu']").waitFor({ state: "detached" });
+        await page.waitForFunction(() => !document.querySelector("[role='menu']"));
         return titles;
       };
 
@@ -111,12 +111,11 @@ test.skipIf(!process.env.L8DB_TAB_BROWSER)(
         "Ansicht 2: table_0003 | Leer",
       ]);
 
-      await page.locator("button[aria-label='Tab-Gruppen (2)']").click();
-      await page
-        .getByRole("menuitem", { name: /Ansicht 1/ })
-        .first()
-        .click();
-      await page.locator("[role='menu']").waitFor({ state: "detached" });
+      await page.locator("button[title^='Ansicht 2:']").click({ button: "right" });
+      await page.getByRole("menuitemcheckbox", { name: "Allgemein verfügbar" }).waitFor();
+      await page.getByRole("menuitem", { name: "Ansicht wechseln" }).hover();
+      await page.getByRole("menuitem", { name: "Ansicht 1", exact: true }).click();
+      await page.waitForFunction(() => !document.querySelector("[role='menu']"));
       await page.waitForFunction(() =>
         document
           .querySelector("[data-pane-strip='1'] [data-tab-key]")
@@ -136,6 +135,9 @@ test.skipIf(!process.env.L8DB_TAB_BROWSER)(
       await page.locator("button[aria-label='Ansicht teilen']").click();
       await page.locator("[data-pane-strip='2']").waitFor();
       expect(await groups()).toHaveLength(2);
+      await page.locator("button[aria-label^='Tab-Gruppen (']").click();
+      await page.getByRole("menuitem", { name: "Neue Abfrage" }).click();
+      await page.waitForURL(/\/query\//);
       expect(errors).toEqual([]);
     } finally {
       await browser.close();

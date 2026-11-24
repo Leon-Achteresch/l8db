@@ -335,6 +335,7 @@ export const NEW_FEATURES = {
   "split.saved-views": "0.16.0",
   "split.saved-views.shared": "0.17.0",
   "split.saved-views.tab-sets": NEXT_FEATURE_VERSION,
+  "split.saved-views.plus-menu": NEXT_FEATURE_VERSION,
   "split.pane-tabs": "0.17.0",
   "split.master-tabs": "0.17.0",
   "split.master-tabs.close-group": NEXT_FEATURE_VERSION,
