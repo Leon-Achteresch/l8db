@@ -1053,9 +1053,7 @@ async fn claude(
                 }
                 return Ok(());
             }
-            "rate_limit_event" => {
-                run.emit("usage", json!({"rateLimit": event["rate_limit_info"]}))
-            }
+            "rate_limit_event" => run.emit("usage", json!({"rateLimit": event["rate_limit_info"]})),
             "system" => {
                 if let Some(message) = claude_fast_notice(&request.profile, &event) {
                     run.emit("notice", json!({"message": message}));
