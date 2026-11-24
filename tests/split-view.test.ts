@@ -740,6 +740,35 @@ describe("Gespeicherte Ansichten", () => {
     expect(state().groups[a.id]).toEqual([]);
   });
 
+  test("Ansicht teilen aus einem eigenständigen Tab legt eine neue Ansicht an", () => {
+    const { a, users, orders, items, group } = savedSplit();
+    state().reveal(items);
+    expect(state().away).toBe(true);
+
+    state().split({ activeKey: items });
+    const groups = state().groups[a.id];
+    expect(groups.map((entry) => entry.name)).toEqual(["Ansicht 1", "Ansicht 2"]);
+    expect(groups[0].tabs.map((tab) => tab && tabKey(tab))).toEqual([users, orders]);
+    expect(groups[1].tabs.map((tab) => tab && tabKey(tab))).toEqual([items, null]);
+    expect(state().activeGroup).toBe(groups[1].id);
+    expect(state().panes).toEqual([items, null]);
+    expect(state().paneTabs).toEqual([[items], []]);
+    expect(state().away).toBe(false);
+    expect(standalone()).toEqual([users, orders]);
+
+    state().openGroup(group.id);
+    expect(state().panes).toEqual([users, orders]);
+    expect(state().groups[a.id][1].tabs.map((tab) => tab && tabKey(tab))).toEqual([items, null]);
+  });
+
+  test("Ansicht teilen im angezeigten Split ergänzt nur einen leeren Bereich", () => {
+    const { a, users, orders } = savedSplit();
+    state().reveal(orders);
+    state().split({ activeKey: orders });
+    expect(state().panes).toEqual([users, orders, null]);
+    expect(state().groups[a.id]).toHaveLength(1);
+  });
+
   test("gleicher Split nutzt die vorhandene Gruppe, ein neuer legt eine weitere an", () => {
     const { a, users, orders, items, group } = savedSplit();
     state().collapse();

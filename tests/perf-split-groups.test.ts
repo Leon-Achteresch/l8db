@@ -134,6 +134,18 @@ test("saved split views stay cheap with many tabs and groups", async () => {
       useSplitView.getState().detach(key, backgroundKeys[(index * 7) % backgroundKeys.length]);
     }
   });
+  const origin = useSplitView.getState().activeGroup ?? "";
+  let fresh = 0;
+  const freshSplit = await measureScenario(() => {
+    for (let index = 0; index < 20; index++) {
+      const key = backgroundKeys[fresh++ % 10];
+      useSplitView.getState().reveal(key);
+      useSplitView.getState().split({ activeKey: key });
+      useSplitView.getState().openGroup(origin);
+    }
+  });
+  const freshGroups = useSplitView.getState().groups[connection.id];
+  const freshViews = freshGroups.filter((group) => group.tabs[1] === null).length;
   const stripTabs = Array.from({ length: 60 }, (_, index) => ({
     left: index * 100,
     right: index * 100 + 96,
@@ -183,6 +195,8 @@ test("saved split views stay cheap with many tabs and groups", async () => {
     masterList,
     switchView,
     detach,
+    freshSplit,
+    freshViews,
     drop,
     foreign,
     foreignGroups: foreignCount,
@@ -210,6 +224,10 @@ test("saved split views stay cheap with many tabs and groups", async () => {
       .paneTabs.flat()
       .filter((key) => backgroundKeys.includes(key)),
   ).toEqual([]);
+  expect(freshSplit.p95Ms / 20).toBeLessThan(3);
+  expect(freshViews).toBe(10);
+  expect(freshGroups).toHaveLength(MAX_SPLIT_GROUPS);
+  expect(useSplitView.getState().activeGroup).toBe(origin);
   expect(drop.p95Ms / 1_000).toBeLessThan(0.05);
   expect(bytes).toBeLessThan(50 * 4 * 512);
 });
