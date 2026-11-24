@@ -27,8 +27,15 @@ Object.defineProperty(globalThis, "window", {
 
 const { useConnectionsStore } = await import("../src/lib/connections");
 const { tabKey, useTableTabs } = await import("../src/lib/table-tabs");
-const { MAX_SPLIT_GROUPS, foreignSplitGroups, openDetached, standaloneTabs, useSplitView } =
-  await import("../src/lib/split-view");
+const {
+  MAX_SPLIT_GROUPS,
+  foreignSplitGroups,
+  hiddenTabLists,
+  openDetached,
+  parkedViews,
+  standaloneTabs,
+  useSplitView,
+} = await import("../src/lib/split-view");
 const { resolveDrop } = await import("../src/lib/tab-drop");
 const { focusedConnectionId, paneConnectionId } = await import("../src/lib/split-view");
 const { connectionEnvironment } = await import("../src/lib/environments");
@@ -146,6 +153,12 @@ test("saved split views stay cheap with many tabs and groups", async () => {
   });
   const freshGroups = useSplitView.getState().groups[connection.id];
   const freshViews = freshGroups.filter((group) => group.tabs[1] === null).length;
+  const parkedCount = parkedViews(useSplitView.getState()).length;
+  const openCount = useSplitView.getState().openGroups[connection.id]?.length ?? 0;
+  const parkedList = await measureScenario(() => {
+    for (let index = 0; index < 100; index++)
+      standaloneTabs(useTableTabs.getState().tabs, hiddenTabLists(useSplitView.getState()));
+  });
   const stripTabs = Array.from({ length: 60 }, (_, index) => ({
     left: index * 100,
     right: index * 100 + 96,
@@ -197,6 +210,9 @@ test("saved split views stay cheap with many tabs and groups", async () => {
     detach,
     freshSplit,
     freshViews,
+    openViews: openCount,
+    parkedViews: parkedCount,
+    parkedList,
     drop,
     foreign,
     foreignGroups: foreignCount,
@@ -226,6 +242,9 @@ test("saved split views stay cheap with many tabs and groups", async () => {
   ).toEqual([]);
   expect(freshSplit.p95Ms / 20).toBeLessThan(3);
   expect(freshViews).toBe(10);
+  expect(openCount).toBeLessThanOrEqual(MAX_SPLIT_GROUPS);
+  expect(parkedCount).toBe(openCount - 1);
+  expect(parkedList.p95Ms / 100).toBeLessThan(1);
   expect(freshGroups).toHaveLength(MAX_SPLIT_GROUPS);
   expect(useSplitView.getState().activeGroup).toBe(origin);
   expect(drop.p95Ms / 1_000).toBeLessThan(0.05);

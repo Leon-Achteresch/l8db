@@ -28,6 +28,7 @@ import { useWriteModeExpiry } from "@/lib/hooks/use-write-mode-expiry";
 import { usePaneSourceKey } from "@/lib/master-detail";
 import { useSettingsStore } from "@/lib/settings";
 import {
+  hiddenTabLists,
   isBoundToSplit,
   placeOpenTab,
   standaloneTabs,
@@ -166,7 +167,7 @@ export function WorkspaceLayout() {
   const masterKeys = () =>
     standaloneTabs(
       useTableTabs.getState().tabs.filter((tab) => isEasyModeTabVisible(tab, easyMode)),
-      easyMode ? [] : useSplitView.getState().paneTabs,
+      easyMode ? [] : hiddenTabLists(useSplitView.getState()),
     ).map(tabKey);
   const followFocus = (fallback: string | null, standalone = false) => {
     const state = useSplitView.getState();

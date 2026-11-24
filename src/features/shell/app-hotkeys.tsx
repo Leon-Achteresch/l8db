@@ -14,7 +14,13 @@ import { emitHotkeyAction, HOTKEY_ACTION_EVENT, useHotkeysStore } from "@/lib/ho
 import { cycleFocusRegion, focusRegionByName, installFocusRescue } from "@/lib/keyboard-nav";
 import { useRefreshConnection } from "@/lib/queries";
 import { UI_SCALE_STEP, useSettingsStore } from "@/lib/settings";
-import { isSplitShown, standaloneTabs, tabAfterClose, useSplitView } from "@/lib/split-view";
+import {
+  hiddenTabLists,
+  isSplitShown,
+  standaloneTabs,
+  tabAfterClose,
+  useSplitView,
+} from "@/lib/split-view";
 import { navigateToTab } from "@/lib/tab-navigation";
 import { queryNeedsCloseConfirmation, tabKey, useTableTabs } from "@/lib/table-tabs";
 import { checkForUpdates, presentUpdate } from "@/lib/updater";
@@ -61,10 +67,10 @@ export function AppHotkeys() {
       .getState()
       .tabs.filter((tab) => isEasyModeTabVisible(tab, easyMode));
     const split = useSplitView.getState();
-    if (easyMode || split.panes.length < 2) return visible;
+    if (easyMode) return visible;
     const key = tabAfterClose(new Set());
     const entry = visible.find((tab) => tabKey(tab) === key);
-    const tabs = standaloneTabs(visible, split.paneTabs);
+    const tabs = standaloneTabs(visible, hiddenTabLists(split));
     return entry ? [entry, ...tabs] : tabs;
   }, [easyMode]);
 

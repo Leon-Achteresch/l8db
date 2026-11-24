@@ -70,6 +70,13 @@ test.skipIf(!process.env.L8DB_TAB_BROWSER)(
             (el) => el.getAttribute("data-tab-key"),
           ),
         );
+      const chips = () =>
+        page.evaluate(() =>
+          Array.from(
+            document.querySelectorAll("[data-drop-zone='master'] button[title^='Ansicht ']"),
+            (el) => el.getAttribute("title")?.split(":")[0],
+          ),
+        );
       const groups = async () => {
         await page.locator("button[aria-label^='Tab-Gruppen (']").click();
         const items = page.locator("[role='menuitem'][title^='Ansicht ']");
@@ -101,11 +108,8 @@ test.skipIf(!process.env.L8DB_TAB_BROWSER)(
       await page.locator("[data-pane-strip='1']").waitFor();
       await page.waitForTimeout(200);
       expect(await paneKeys()).toEqual([["table:public.table_0003"], [], []]);
-      expect((await masterKeys()).sort()).toEqual([
-        "table:public.table_0000",
-        "table:public.table_0001",
-        "table:public.table_0002",
-      ]);
+      expect(await masterKeys()).toEqual(["table:public.table_0002"]);
+      expect(await chips()).toEqual(["Ansicht 1", "Ansicht 2"]);
       expect(await groups()).toEqual([
         "Ansicht 1: table_0000 | table_0001",
         "Ansicht 2: table_0003 | Leer",
@@ -126,6 +130,43 @@ test.skipIf(!process.env.L8DB_TAB_BROWSER)(
         ["table:public.table_0000"],
         ["table:public.table_0001"],
         [],
+      ]);
+      expect(await chips()).toEqual(["Ansicht 1", "Ansicht 2"]);
+      expect(await masterKeys()).toEqual(["table:public.table_0002"]);
+      expect(await groups()).toEqual([
+        "Ansicht 1: table_0000 | table_0001",
+        "Ansicht 2: table_0003 | Leer",
+      ]);
+
+      await page.locator("button[title^='Ansicht 2:']").click();
+      await page.waitForFunction(() =>
+        document
+          .querySelector("[data-pane-strip='0'] [data-tab-key]")
+          ?.getAttribute("data-tab-key")
+          ?.endsWith("table_0003"),
+      );
+      expect(await chips()).toEqual(["Ansicht 1", "Ansicht 2"]);
+      await page
+        .locator(
+          "nav[aria-label='Geöffnete Objekte'] [data-tab-key='table:public.table_0002'] > button[title]",
+        )
+        .click();
+      await page.waitForFunction(() => !document.querySelector("[data-pane-strip]"));
+      await page.locator("button[title^='Ansicht 1:']").click();
+      await page.waitForFunction(() =>
+        document
+          .querySelector("[data-pane-strip='1'] [data-tab-key]")
+          ?.getAttribute("data-tab-key")
+          ?.endsWith("table_0001"),
+      );
+      await page
+        .locator("button[aria-label='Geteilte Ansicht Ansicht 2 auflösen']")
+        .click({ force: true });
+      await page.waitForFunction(() => !document.querySelector("button[title^='Ansicht 2:']"));
+      expect(await chips()).toEqual(["Ansicht 1"]);
+      expect((await masterKeys()).sort()).toEqual([
+        "table:public.table_0002",
+        "table:public.table_0003",
       ]);
       expect(await groups()).toEqual([
         "Ansicht 1: table_0000 | table_0001",
