@@ -790,7 +790,7 @@ pub async fn run(
         .iter()
         .map(|message| json!({"role": message.role, "content": message.text}))
         .collect();
-    let mut catalog =
+    let catalog =
         super::tools::Catalog::new(config, !request.attachments.is_empty(), &external.tools);
     let mut failures = super::tools::Failures::default();
     let mut plan = harness::Plan::default();
@@ -910,7 +910,7 @@ pub async fn run(
             let refusal = if failures.blocked(&key) {
                 Some("This exact call already failed twice. Change the arguments or use a different tool; do not repeat it unchanged.")
             } else if !published.contains(&call.name) {
-                Some("This tool was not available in this round. Load it with discover_tools first, then call it in the next round.")
+                Some("This tool is not in your tool list. Call it inside code as await tools.name(args); search in=tools shows the signature.")
             } else {
                 None
             };
@@ -928,10 +928,18 @@ pub async fn run(
                     Err(text) => (text, true),
                 };
                 json!({"content": [{"type": "text", "text": text}], "isError": error})
-            } else if call.name == "discover_tools" {
-                let result = catalog.discover(&arguments);
-                run.emit("tool", json!({"id": super::new_id(), "name": call.name, "arguments": arguments, "result": result, "status": if result["isError"] == true { "error" } else { "completed" }}));
+            } else if super::tools::Catalog::documents(&call.name, &arguments) {
+                let result = catalog.docs(&arguments);
+                run.emit("tool", json!({"id": super::new_id(), "name": call.name, "arguments": arguments, "result": result, "status": "completed"}));
                 result
+            } else if call.name == "code" {
+                let mut host = super::tools::Host {
+                    catalog: &catalog,
+                    external: &mut external,
+                    config,
+                    run,
+                };
+                super::context::code(server, config, run, arguments, &mut host).await
             } else if call.name.starts_with("ext_") {
                 external.call(&call.name, arguments, run).await
             } else {

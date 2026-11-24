@@ -741,3 +741,133 @@ fn worker_start_and_statement_overhead_stay_small() {
         "{per_statement:?}"
     );
 }
+
+struct SlowHost {
+    wait: Duration,
+    calls: usize,
+}
+
+impl super::code::ToolHost for SlowHost {
+    fn call<'a>(
+        &'a mut self,
+        _server: &'a mut Server,
+        name: &'a str,
+        args: Value,
+    ) -> futures_util::future::BoxFuture<'a, Result<String, String>> {
+        Box::pin(async move {
+            self.calls += 1;
+            tokio::time::sleep(self.wait).await;
+            if name == "fail" {
+                Err("postgres://user:secret@db.internal/app refused".into())
+            } else {
+                Ok(format!("{name}:{args}"))
+            }
+        })
+    }
+}
+
+#[test]
+fn hosted_tool_calls_pause_the_time_limit_are_counted_and_need_a_host() {
+    let mut lab = fixture();
+    let (error, text) = lab.code("Shop", "async () => tools.dashboard({action: 'list'})");
+    assert!(
+        error && text.contains("Unbekannte Funktion 'tool'"),
+        "{text}"
+    );
+    let home = lab.config.connections[0].clone();
+    let mut host = SlowHost {
+        wait: Duration::from_millis(1_300),
+        calls: 0,
+    };
+    let started = Instant::now();
+    let text = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            "async () => [await tools.first({a: 1}), await tools.second(), (await sql`SELECT count(*) AS n FROM customers`)[0].n, await tools.fail().catch((e) => `${e.name}: ${e.message}`), typeof tools.then].join(' ')",
+            &short(1),
+            Some(&mut host),
+        ))
+        .unwrap();
+    assert!(started.elapsed() > Duration::from_millis(3_900), "{text}");
+    assert!(
+        text.starts_with("first:{\"a\":1} second:{} 3 ToolError: ")
+            && text.contains(" undefined\n"),
+        "{text}"
+    );
+    assert!(!text.contains("secret"), "{text}");
+    assert!(
+        text.contains("(1 statements, 3 tool calls, 1 rows read"),
+        "{text}"
+    );
+    assert_eq!(host.calls, 3);
+    let mut parallel = SlowHost {
+        wait: Duration::from_millis(1_300),
+        calls: 0,
+    };
+    let text = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            "async () => { const [rows, text] = await Promise.all([sql`SELECT count(*) AS n FROM customers`, tools.first()]); await tools.fail(); return rows[0].n + text; }",
+            &short(1),
+            Some(&mut parallel),
+        ))
+        .unwrap_err();
+    assert!(text.contains("ToolError"), "{text}");
+    assert!(
+        text.contains("[tool calls that already succeeded and took effect before the error: first; do not repeat them]"),
+        "{text}"
+    );
+    assert!(
+        text.contains("(1 statements, 2 tool calls, 1 rows read"),
+        "{text}"
+    );
+    let text = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            "async () => JSON.stringify({tools}) + typeof tools.toJSON",
+            &short(5),
+            Some(&mut parallel),
+        ))
+        .unwrap();
+    assert!(
+        text.starts_with("{\"tools\":{}}undefined\n(0 statements, 0 rows read"),
+        "{text}"
+    );
+    let mut busy = SlowHost {
+        wait: Duration::ZERO,
+        calls: 0,
+    };
+    let error = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            "async () => { await tools.first(); for (;;) {} }",
+            &short(1),
+            Some(&mut busy),
+        ))
+        .unwrap_err();
+    assert!(error.contains("time limit of 1 s"), "{error}");
+    let mut many = SlowHost {
+        wait: Duration::ZERO,
+        calls: 0,
+    };
+    let text = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            "async () => { let failed = 0; for (let i = 0; i < 105; i++) await tools.first().catch(() => failed++); return failed; }",
+            &Limits::new(&lab.config),
+            Some(&mut many),
+        ))
+        .unwrap();
+    assert!(text.starts_with("5\n"), "{text}");
+    assert_eq!(many.calls, 100);
+}

@@ -2,7 +2,6 @@ use super::knowledge::{self, Invariant, MAX_INVARIANTS};
 use super::runtime::Run;
 use crate::mcp::config::{McpConfig, McpConnection};
 use crate::mcp::sandbox::{NamedSql, RuleStatus};
-use crate::mcp::server::Server;
 use serde_json::{json, Value};
 
 const MAX_PER_CALL: usize = 20;
@@ -109,7 +108,7 @@ pub fn saved_rules(connection_id: &str) -> Vec<NamedSql> {
 }
 
 pub async fn call(
-    server: &tokio::sync::Mutex<Server>,
+    server: &mut super::context::Access<'_>,
     config: &McpConfig,
     run: &Run,
     args: Value,
