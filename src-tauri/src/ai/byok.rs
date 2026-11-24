@@ -933,12 +933,7 @@ pub async fn run(
                 run.emit("tool", json!({"id": super::new_id(), "name": call.name, "arguments": arguments, "result": result, "status": "completed"}));
                 result
             } else if call.name == "code" {
-                let mut host = super::tools::Host {
-                    catalog: &catalog,
-                    external: &mut external,
-                    config,
-                    run,
-                };
+                let mut host = super::tools::Host::new(&catalog, &mut external, config, run);
                 super::context::code(server, config, run, arguments, &mut host).await
             } else if call.name.starts_with("ext_") {
                 external.call(&call.name, arguments, run).await

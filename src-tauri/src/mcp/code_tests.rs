@@ -748,6 +748,10 @@ struct SlowHost {
 }
 
 impl super::code::ToolHost for SlowHost {
+    fn names(&self) -> Vec<String> {
+        ["first", "second", "fail"].map(String::from).to_vec()
+    }
+
     fn call<'a>(
         &'a mut self,
         _server: &'a mut Server,
@@ -771,7 +775,7 @@ fn hosted_tool_calls_pause_the_time_limit_are_counted_and_need_a_host() {
     let mut lab = fixture();
     let (error, text) = lab.code("Shop", "async () => tools.dashboard({action: 'list'})");
     assert!(
-        error && text.contains("Unbekannte Funktion 'tool'"),
+        error && text.contains("not a function; tools.name is undefined"),
         "{text}"
     );
     let home = lab.config.connections[0].clone();
@@ -870,4 +874,133 @@ fn hosted_tool_calls_pause_the_time_limit_are_counted_and_need_a_host() {
         .unwrap();
     assert!(text.starts_with("5\n"), "{text}");
     assert_eq!(many.calls, 100);
+}
+
+#[test]
+fn external_code_reaches_read_tools_only_and_hidden_tools_stay_callable() {
+    use super::code::ToolHost;
+    let mut lab = fixture();
+    let shop = lab.dir.path().join("shop.db");
+    let customers = || {
+        rusqlite::Connection::open(&shop)
+            .unwrap()
+            .query_row(
+                "SELECT count(*) || ':' || min(name) FROM customers",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap()
+    };
+    let text = lab.ok("Shop", "async () => Object.keys(tools).join(',')");
+    assert!(
+        text.starts_with(&format!("{}\n", super::server::HOSTED.join(","))),
+        "{text}"
+    );
+    let text = lab.ok(
+        "Shop",
+        "async () => { const out = []; for (const connection of ['Shop', 'Lake']) out.push((await tools.overview({connection})).split('\\n')[0]); out.push(await tools.connections()); out.push(await tools.search({in: 'tools', term: 'relations'})); out.push(await tools.query({connection: 'Masked', sql: 'SELECT * FROM customers'})); for (const sql of ['SELECT token FROM secret.keys', 'SELECT * FROM app.leak']) out.push(await tools.query({connection: 'Lake', sql}).catch((e) => e.name)); return out.join('\\n'); }",
+    );
+    assert!(text.contains("tools.relations(args:"), "{text}");
+    assert!(text.contains("Shop") && text.contains("Lake"), "{text}");
+    assert!(!text.contains("alice@example.com"), "{text}");
+    assert!(!text.contains("top-secret-token"), "{text}");
+    assert_eq!(text.matches("ToolError").count(), 1, "{text}");
+    assert!(text.contains("token\n[redacted]\n"), "{text}");
+    assert!(text.contains("7 tool calls, "), "{text}");
+    let (error, text) = lab.code(
+        "",
+        "async () => [(await tools.connections()).includes('Lake'), (await tools.query({connection: 'Shop', sql: 'SELECT count(*) AS n FROM customers'})).split('\\n')[1]].join('|')",
+    );
+    assert!(!error && text.starts_with("true|3\n"), "{text}");
+    let (_, text) = lab.code(
+        "Shop",
+        "async () => tools.explain({connection: 'Shop', sql: 'DELETE FROM customers'})",
+    );
+    assert_eq!(customers(), "3:Alice", "{text}");
+    let blocked = [
+        "execute",
+        "dashboard",
+        "workflow",
+        "open",
+        "watch",
+        "report_issue",
+        "script",
+        "benchmark",
+        "code",
+        "sandbox",
+        "import_file",
+    ];
+    for name in blocked {
+        let text = lab.ok(
+            "Shop",
+            &format!("async () => typeof tools.{name} + (tools.{name} ? ' present' : ' absent')"),
+        );
+        assert!(text.starts_with("undefined absent"), "{name}: {text}");
+    }
+    let (error, text) = lab.code(
+        "Shop",
+        "async () => tools.execute({connection: 'Shop', sql: 'DELETE FROM customers', confirm: true})",
+    );
+    assert!(error && text.contains("not a function"), "{text}");
+    for write in [
+        "tools.query({connection: 'Shop', sql: 'DELETE FROM customers'})",
+        "tools.explain({connection: 'Shop', sql: 'DELETE FROM customers', analyze: true})",
+        "tools.drilldown({connection: 'Shop', from: 'customers; DELETE FROM customers', current: '1=1', baseline: '1=1', dimensions: ['name']})",
+        "sql`DELETE FROM customers`",
+    ] {
+        let (error, text) = lab.code("Shop", &format!("async () => {write}"));
+        assert!(error, "{write}: {text}");
+    }
+    let config = lab.config.clone();
+    let mut host = super::server::Functions(&config);
+    for name in blocked {
+        let error = lab
+            .runtime
+            .block_on(host.call(
+                &mut lab.server,
+                name,
+                json!({"connection": "Shop", "sql": "DELETE FROM customers", "confirm": true, "code": "async () => 1"}),
+            ))
+            .unwrap_err();
+        assert!(
+            error.contains("not available inside code"),
+            "{name}: {error}"
+        );
+    }
+    assert_eq!(customers(), "3:Alice");
+
+    let mut direct = |name: &str, args: Value, config: &McpConfig| {
+        let reply = lab.runtime.block_on(
+            lab.server
+                .call_with_config(&json!({"name": name, "arguments": args}), config),
+        );
+        (
+            reply["isError"] == true,
+            reply["content"][0]["text"]
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
+        )
+    };
+    for (name, args) in [
+        ("connections", json!({})),
+        ("overview", json!({"connection": "Shop"})),
+        ("relations", json!({"connection": "Shop", "from": "orders"})),
+        (
+            "explain",
+            json!({"connection": "Shop", "sql": "SELECT * FROM customers"}),
+        ),
+    ] {
+        let (error, text) = direct(name, args, &config);
+        assert!(!error && !text.is_empty(), "{name}: {text}");
+    }
+    let mut locked = config.clone();
+    locked.connections[0].read_only = true;
+    let update = json!({"connection": "Shop", "sql": "UPDATE customers SET name = 'Al' WHERE id = 1", "confirm": true});
+    let (error, text) = direct("execute", update.clone(), &locked);
+    assert!(error, "{text}");
+    assert_eq!(customers(), "3:Alice");
+    let (error, text) = direct("execute", update, &config);
+    assert!(!error, "{text}");
+    assert_eq!(customers(), "3:Al");
 }

@@ -13,6 +13,8 @@ Zahlen aus dem letzten Benchmark-Lauf in Phase 4, nach der Review-Fix-Runde (Deb
 | instructions | 1.324 B | 932 B | −30 % |
 | BYOK-Startkatalog | 12.201 B | 10.518 B | −14 % |
 | BYOK-Startkatalog nach Phase 6 (15 → 7 Tools, Rest über `search` + `code`) | 10.450 B | 5.581 B | −47 % |
+| `tools/list` der Chat-Brücke für CLI-Agenten nach Phase 7 (26 → 6 Tools) | 23.309 B | 5.403 B | −77 % |
+| `tools/list` des externen MCP nach Phase 7 (17 → 11 Tools, nur Lese-Werkzeuge wandern in `code`) | 12.626 B | 10.223 B | −19 % |
 | huge.wide_table_column (1 Spalte aus 450) | 12.223 B | 155 B | −98,7 % |
 | huge.tenant_id_tables (300 Mandanten-Schemas) | 20.030 B | 2.077 B | −89,6 % |
 | huge.revenue_per_customer | 21.960 B, Info unvollständig | 4.358 B, vollständig | −80,2 % |
@@ -745,3 +747,108 @@ Nicht gemessen und nicht geändert:
 - Während ein Tool-Aufruf aus `code` läuft, laufen bereits gestartete SQL-Statements desselben Laufs weiter, ihre Ergebnisse erreichen den Code aber erst nach dem Tool-Aufruf. Neue Anfragen des Codes werden in dieser Zeit nicht gelesen.
 - Ein `try/catch` um einen abgelehnten Aufruf kann dieselbe Freigabe mehrfach anfordern (höchstens 100-mal je Lauf). Ein Lauf mit vielen Freigaben kann entsprechend lange dauern; er hält dabei den Sandbox-Prozess.
 - `mcp::code_tests::worker_start_and_statement_overhead_stay_small` scheitert auf dieser Maschine am Startbudget (Median 504 ms bei 400 ms Grenze, Last um 4; unter Last 902 ms). Das Testbinary (515 MB) braucht schon ohne jeden Test 0,48 bis 0,49 s zum Start, die Zeit ist also reiner Prozessstart. Der Test scheiterte laut Abschnitt oben bereits vorher. Budget unverändert.
+
+## Phase 7: Code Mode für CLI-Agenten und den externen MCP
+
+Ziel: Die beiden Wege, die in Phase 6 unverändert blieben, bekommen dieselbe kurze Liste. Die Bausteine sind die aus Phase 6 (`ai::tools::Catalog`, `ai::tools::Host`, `announce`, `docs`, `ToolHost`).
+
+Was jeder Weg jetzt sieht:
+
+| Weg | `tools/list` | in `code` als `tools.*` erreichbar |
+|---|---|---|
+| BYOK-Chat | `search`, `describe`, `query`, `code`, `execute`, `visualize`, `plan` (unverändert) | alle übrigen Werkzeuge der Sitzung |
+| Chat-Brücke (Claude Code, Codex, ACP-Agenten außer OpenCode) | `search`, `describe`, `query`, `code`, `execute`, `visualize` | alle übrigen Werkzeuge der Sitzung, mit denselben Prüfungen wie beim direkten Aufruf |
+| Chat-Brücke mit OpenCode | alle Werkzeuge der Sitzung wie vor Phase 7 | dieselben, mit denselben Prüfungen |
+| Externer MCP (`l8db mcp`) | `search`, `describe`, `query`, `code` und alles mit Nebenwirkung: `execute`, `dashboard`, `workflow`, `open`, `script`, `watch`, `report_issue`, dazu `benchmark` | nur `connections`, `overview`, `search`, `describe`, `relations`, `explain`, `drilldown`, `query`, `health` |
+
+`search` mit `in=tools` ist auf allen drei Wegen die Doku. Im externen MCP beschreibt sie genau die neun Funktionen, die `code` kennt. Werkzeuge, die aus `tools/list` verschwunden sind, bleiben per `tools/call` unter ihrem Namen aufrufbar, mit denselben Prüfungen wie vorher. Bestehende Allowlists und Skripte brechen nicht. Hat der externe MCP keine SQL-Verbindung freigegeben, gibt es dort kein `code`; dann bleibt die Liste vollständig.
+
+OpenCode behält in der Brücke die volle Liste. OpenCode 2.2.6 verpackt MCP-Werkzeuge selbst in einen Code-Ausführer mit `tools.<server>.<tool>`. Das Modell schrieb `tools.relations(…)` dort hinein statt in l8dbs `code` und erreichte das ausgeblendete Werkzeug in drei von drei Läufen nicht (Details unten). Die volle Liste kostet dort kaum Tokens, weil OpenCode die Werkzeuge selbst nicht einzeln auflistet.
+
+### Sicherheit
+
+Externer MCP. Die Freigabe liegt beim MCP-Client, der pro Tool nach Name und Annotation entscheidet. `code` ist als lesend annotiert, also darf darüber nichts schreiben oder nach außen wirken:
+
+- `code` erreicht nur die feste Liste `HOSTED` in `mcp/server.rs`. Der Host (`Functions`) prüft den Namen selbst; das `tools`-Objekt im Sandbox-Prozess enthält nur diese neun Funktionen. `tools.execute` ist `undefined`.
+- Jedes Werkzeug, das nicht als lesend annotiert ist, bleibt direkt. Ein Test prüft das für die ganze Tool-Tabelle: Was in `HOSTED` steht, muss `readOnlyHint` tragen.
+- `benchmark` ist lesend annotiert, bleibt aber direkt: Es liest mit `file` eine lokale Datei, und `code` verspricht „keine Dateien“. `watch` bleibt direkt, weil es Kanäle abonniert.
+- Die erreichbaren Werkzeuge laufen durch dieselbe Funktion wie der direkte Aufruf (`call_with_config`): Schema-Freigaben, Schwärzung, Leseprüfung, Audit-Log und Budgets gelten unverändert.
+
+Chat-Brücke. Dort setzt l8db die Freigaben selbst durch. `code` bekommt denselben Host wie im BYOK-Pfad, Aufrufe laufen durch `ai::context::call_in`. Zusätzlich gilt für CLI-Agenten:
+
+- Im Plan-Modus laufen aus `code` die Werkzeuge frei, die der Plan-Modus auch direkt erlaubt (`connections`, `overview`, `search`, `describe`, `relations`, `explain`, `query`). Andere lesend annotierte Werkzeuge (`drilldown`, `health`, `benchmark`, …) fragen erst nach. Alles, was nicht lesend annotiert ist oder sich selbst absichert, ist im Plan-Modus aus `code` gesperrt.
+- Werkzeuge, die nicht lesend annotiert sind und sich nicht selbst absichern (`open`, `editor`, `notebook`, `app_execute`, `app_search`), fragen aus `code` heraus nach, außer die Sitzung gibt MCP-Aufrufe automatisch frei. Das entspricht der Rückfrage, die der CLI-Agent beim direkten Aufruf stellt.
+- `execute`, `sandbox`, `dashboard`, `knowledge`, `workflow`, `rules`, `import_file` und `report_issue` fragen wie bisher selbst. `dashboard` mit `action=arrange` fragt jetzt ebenfalls; vorher lief es ohne Rückfrage, auch im BYOK-Chat.
+
+Für alle Wege neu:
+
+- Lehnt der Benutzer eine Freigabe ab, gilt das für dieses Werkzeug bis zum Ende des `code`-Laufs. Eine Schleife mit `try/catch` fragt genau einmal.
+- `tools` ist ein echtes Objekt mit den vorhandenen Funktionen. `if (tools.x)` und `Object.keys(tools)` stimmen. Ein fehlendes Werkzeug wirft `TypeError: not a function` mit dem Hinweis, dass `tools.name` dann `undefined` ist.
+- Meldet ein Werkzeug aus `code` einen Fehler, nennt die Meldung die passende Doku-Suche (`[signature: search in=tools term=…]`). Bei abgelehnter Freigabe und bei Sperren fehlt der Hinweis, damit das Modell nicht erneut probiert. `search in=tools` nimmt auch `query` statt `term`.
+- Im externen MCP zählen Werkzeugaufrufe aus `code` zum Zeitlimit des Laufs, weil dort niemand auf eine Freigabe wartet. In Chat und Brücke bleibt die Wartezeit auf den Benutzer ausgenommen.
+
+Regressionstests: `mcp::server::tests::code_mode_keeps_every_side_effect_tool_direct_and_hosts_only_read_tools`, `mcp::code_tests::external_code_reaches_read_tools_only_and_hidden_tools_stay_callable` (gesperrte Werkzeuge aus `code` und am Host, Schreibversuche über Lese-Werkzeuge, direkte Aufrufe ausgeblendeter Werkzeuge, `execute` mit und ohne Schreibsperre), `ai::tests::bridge_code_mode_lists_core_tools_and_gates_calls_from_code_like_direct_calls` (Liste, direkte Aufrufe, Freigabe, Ablehnung, Schreibsperre, Produktion, Plan-Modus, Schwärzung, Tool-Schritte), `ai::tests::code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction` (BYOK, einmalige Rückfrage). Mit echten CLIs (ignoriert): `ai::cli::tests::native_cli_reaches_hidden_tools_through_code_and_writes_from_code_wait_for_approval`.
+
+### Messung
+
+`cargo test --lib token_benchmark -- --nocapture`, Test `token_benchmark_code_mode_for_bridge_and_external_mcp_reports_lists_and_scenarios`. Lab wie in Phase 6. „Vorher“ sind die Werte von Commit `7a770667` am selben Tag auf derselben Maschine.
+
+| Messung | vorher | nachher | ≈Tokens nachher | Budget B |
+|---|---:|---:|---:|---:|
+| `tools/list` der Chat-Brücke | 23.309 B (26 Tools) | 5.403 B (6 Tools) | 1.351 | 5.500 (neu) |
+| `tools/list` des externen MCP | 12.626 B (17 Tools) | 10.223 B (11 Tools) | 2.556 | 10.350 (vorher 13.182) |
+| `instructions` des externen MCP | 945 B | 949 B | 238 | 950 (unverändert) |
+| `instructions` der Chat-Brücke, eine Verbindung | 239 B | 427 B | 107 | – |
+| BYOK-Startkatalog | 5.581 B | 5.581 B | 1.396 | 5.650 (unverändert) |
+
+Bytes je direktem Tool. Brücke: `search` 719, `describe` 589, `query` 500, `code` 2.040, `execute` 433, `visualize` 1.105. Externer MCP: `search` 719, `describe` 589, `query` 500, `dashboard` 1.499, `benchmark` 562, `workflow` 1.085, `open` 1.287, `code` 1.922, `script` 935, `watch` 670, `execute` 433. Der externe MCP spart wenig, weil die großen Schemas (`dashboard`, `open`, `workflow`, `script`) zu Werkzeugen mit Nebenwirkung gehören und deshalb direkt bleiben müssen.
+
+Mehrschritt-Szenarien. „Verkehr“ ist **gemessen** (Argumente plus Antworten, über den echten `code`-Pfad des externen MCP). „Eingabe“ ist **geschätzt** wie in Phase 6: `tools/list` je Runde plus bisheriger Verlauf, ein Aufruf je Runde, ohne Prompt-Caching, Systemprompt und Nutzertext.
+
+| Szenario | direkt: Aufrufe / Verkehr | `code`: Aufrufe / Verkehr | Verkehr | Eingabe externer MCP, direkt → `code` | Eingabe Brücke, direkt → `code` |
+|---|---:|---:|---:|---:|---:|
+| `mcp.overview_connections`: `overview` von 4 Verbindungen, je eine Zeile | 4 / 2.500 B | 2 / 789 B (`search in=tools` 297 B + `code` 492 B) | −68 % | 70.400 B → 31.755 B (−55 %) | 123.815 B → 17.295 B (−86 %) |
+| `mcp.explain_variants`: Plan von 4 Abfragevarianten, je die erste Zeile | 4 / 1.624 B | 2 / 1.552 B (`search in=tools` 318 B + `code` 1.234 B) | −4 % | 67.141 B → 32.539 B (−52 %) | 120.556 B → 18.079 B (−85 %) |
+
+Ein einzelner direkter Aufruf (400 B Verkehr, zwei Runden) kommt geschätzt auf 81 % der bisherigen Eingabe im externen MCP und auf 24 % in der Brücke.
+
+### Läufe mit echten Modellen
+
+Alle Läufe gegen ein Debug-Binary dieses Stands, mit temporären SQLite-Dateien und temporärer Konfiguration. Die Zahlen stammen aus den Protokollen der CLIs. Die Tokenzahlen enthalten den gesamten Kontext des jeweiligen CLI (eigener Systemprompt, eigene Tools, weitere MCP-Server des Nutzers), nicht nur l8db; sie eignen sich nicht für einen Vorher-Nachher-Vergleich. Einen Vorher-Lauf mit echten Modellen gab es nicht.
+
+Externer MCP. Aufgabe in einem Prompt: JOIN-Bedingung über das Werkzeug `relations` holen (nicht in `tools/list`), Umsatz je Kunde berichten, dann einen Kunden umbenennen.
+
+| CLI, Modell | l8db-Aufrufe in Reihenfolge | Ergebnis | Tokens laut CLI |
+|---|---|---|---|
+| Claude Code 2.1.331, `claude-haiku-5-5`, Modus `auto` | `code` 3× mit geratenen Argumenten für `tools.relations` (Fehler), `search in=tools`, `code` (ok), `describe`, `query`, `execute` | richtig; Umbenennung lief über das direkte `execute`, das der Client im Modus `auto` freigab | 1.295 Eingabe, 48.243 Cache-Schreiben, 511.513 Cache-Lesen, 2.259 Ausgabe, 12 Runden, 20 s |
+| Codex CLI 0.172.0, `gpt-6-astra`, Aufwand `low`, `exec` | `search in=tools`, `code` (ok), `describe`, `query`, `execute` | richtig; Codex verweigerte `execute`, weil das Tool eine Freigabe verlangt (`approval policy is never`), Daten unverändert | 168.895 Eingabe (134.016 aus dem Cache), 381 Ausgabe |
+
+| Claude Code 2.1.331, `claude-haiku-5-5`, Modus `auto`, zweiter Lauf am Endstand | `search in=tools`, `code` (ok), `code` mit eigenem Syntaxfehler, `code` (ok), `query`, `execute` | richtig; Umbenennung wieder über das direkte `execute` | 16 Eingabe, 47.110 Cache-Schreiben, 321.787 Cache-Lesen, 1.460 Ausgabe, 8 Runden |
+
+Beide Modelle fanden `search in=tools` und `tools.*` ohne Hilfe im Prompt. Haiku riet im ersten Lauf dreimal die Argumente; der Hinweis auf die Doku-Suche in der Fehlermeldung kam erst danach in den Code. Im zweiten Lauf suchte Haiku zuerst. Ein Lauf je Stand ist kein Beleg, dass der Hinweis die Ursache ist.
+
+Chat-Brücke, `ai::cli::tests`, Freigabemodus „immer fragen“. Drei Aufgaben je CLI: `relations` holen, eine Änderung aus `code` bei abgelehnter Freigabe, dieselbe bei erteilter Freigabe.
+
+| CLI, Modell | `relations` | Änderung abgelehnt | Änderung erlaubt | Tokens laut CLI (`relations` / abgelehnt / erlaubt) |
+|---|---|---|---|---|
+| Claude Code 2.1.331, `claude-haiku-5-5` | `search in=tools`, `code` mit `tools.relations` (ok) | `code` → Rückfrage „Datenbank ändern“ → Fehler, Daten unverändert | `code` → Rückfrage → `execute` lief | Cache-Schreiben 58.277 / 26.450 / 24.613, Cache-Lesen 171.728 / 144.340 / 146.113, Ausgabe 940 / 668 / 654 |
+| Codex CLI 0.172.0, Aufwand `low` | `search in=tools`, `code` mit `tools.relations` (ok) | wie oben | wie oben | Eingabe 93.220 (76.928 Cache) / 66.829 (57.216) / 66.780 (57.216), Ausgabe 219 / 210 / 184 |
+| OpenCode 2.2.6, `github-copilot/claude-haiku-5.5`, volle Liste | `relations` direkt, ein Aufruf | `code` verschachtelt → Rückfrage → Fehler, Daten unverändert | Rückfrage → `execute` lief | gesamt 52.748 / 53.368 / 53.193 |
+
+Claude Code und Codex bestehen damit auch den bestehenden Lesetest (`native_cli_reads_scoped_sqlite`: `describe`, `query`, zwei Runden). Jeder Aufruf aus `code` erscheint im Chat als eigener Tool-Schritt.
+
+OpenCode mit der kurzen Liste (vor der Ausnahme, drei Läufe): `search in=tools` lief, danach `tools.relations(…)` und `tools.l8db_ai.relations(…)` in OpenCodes eigenem Ausführer („Unknown tool 'relations'. Did you mean tools.l8db_ai.code?“), am Ende `describe`. `relations` wurde nie erreicht, 131.543 bis 132.947 Tokens je Lauf. Eine zusätzliche Hinweiszeile in der Antwort von `search in=tools` änderte nichts (zwei Läufe) und ist nicht im Code. Mit der vollen Liste braucht dieselbe Aufgabe einen Aufruf und 52.748 Tokens. Der Schreibtest nennt OpenCode den verschachtelten Aufruf wörtlich (`tools.l8db_ai.code({code: …})`); mit freiem Prompt fügte das Modell die Funktion in einem Lauf in OpenCodes Ausführer ein, der `null` lieferte, ohne l8db zu erreichen.
+
+### Maschine und Lücken
+
+macOS 27.2.1, arm64, Apple M3 (8 Kerne), 16 GB, rustc 1.99.0, Debug-Profil. Externer MCP zusätzlich ohne Modell per JSON-RPC über stdio geprüft (40 Prüfungen: `initialize`, `tools/list`, `search in=tools`, `code` mit sieben `tools.*`-Aufrufen über drei Verbindungen, direkte Aufrufe ausgeblendeter Werkzeuge, gesperrte Werkzeuge aus `code`, `execute` mit und ohne Schreibsperre) gegen SQLite, DuckDB und ein temporäres PostgreSQL 17.11. Ein `code`-Aufruf braucht im Debug-Binary rund 0,5 s, fast alles davon ist der Start des Sandbox-Prozesses. `mcp::code_tests::worker_start_and_statement_overhead_stay_small` misst das: im Debug-Profil 492 ms Median gegen 400 ms Budget (schlägt wie schon vor dieser Phase fehl, Budget unverändert), im Release-Profil 15,1 ms Median und 22,4 ms p95 (besteht).
+
+Nicht gemessen:
+
+- BYOK mit echtem Modell. Auf dieser Maschine lief weder Ollama noch LM Studio.
+- Gemini CLI und GitHub Copilot CLI sind nicht installiert.
+- OpenCode als Client des externen MCP. Dort ist dieselbe Verwechslung der beiden `tools`-Objekte zu erwarten; die sechs ausgeblendeten Lese-Werkzeuge wären für schwache Modelle dann schwer erreichbar.
+- Codex gegen den externen MCP am Endstand (nur der Lauf oben vor der Korrekturrunde).
+- Windows und Linux, MySQL, SQL Server, Oracle, MongoDB und Redis.
+- Was Prompt-Caching aus der Ersparnis macht. Die geschätzte Eingabe rechnet ohne Cache; die CLIs oben lesen den größten Teil aus dem Cache.
+- Schwache lokale Modelle. Haiku brauchte in einzelnen Läufen zwei bis drei Fehlversuche, bis die Argumente einer Funktion stimmten.

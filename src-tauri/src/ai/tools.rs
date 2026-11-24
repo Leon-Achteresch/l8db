@@ -52,42 +52,17 @@ impl Catalog {
             })
             .collect();
         available.extend_from_slice(external);
-        let mut functions = String::new();
-        let mut hidden = 0;
-        for name in available
+        let functions: Vec<String> = available
             .iter()
             .filter_map(|tool| tool["name"].as_str())
             .filter(|name| !CORE.contains(name))
-        {
-            if functions.len() + name.len() > LISTED {
-                hidden += 1;
-            } else {
-                if !functions.is_empty() {
-                    functions.push_str(", ");
-                }
-                functions.push_str(name);
-            }
-        }
-        if hidden > 0 {
-            functions.push_str(&format!(" and {hidden} more"));
-        }
-        for tool in &mut available {
-            let extra = match tool["name"].as_str() {
-                Some("search") => {
-                    tool["inputSchema"]["properties"]["in"]["enum"] =
-                        json!(["names", "source", "tools"]);
-                    " in=tools finds l8db functions for code by words: signature, purpose, example; empty term lists all.".to_string()
-                }
-                Some("code") => format!(
-                    "\nMore l8db tools are functions here: `await tools.name(args)` resolves to the tool's text and throws ToolError; user approvals and write locks apply as for direct calls. Look up the signature with search in=tools first. tools: {functions}."
-                ),
-                _ => continue,
-            };
-            tool["description"] = json!(format!(
-                "{}{extra}",
-                tool["description"].as_str().unwrap_or("")
-            ));
-        }
+            .map(str::to_string)
+            .collect();
+        announce(
+            &mut available,
+            &functions,
+            "More l8db tools are functions here: `await tools.name(args)` resolves to the tool's text and throws ToolError; user approvals and write locks apply as for direct calls.",
+        );
         let mut loaded: Vec<Value> = available
             .iter()
             .filter(|tool| CORE.contains(&tool["name"].as_str().unwrap_or("")))
@@ -97,8 +72,21 @@ impl Catalog {
         Self { available, loaded }
     }
 
+    pub fn full(mut self) -> Self {
+        self.loaded = self.available.clone();
+        self
+    }
+
     pub fn tools(&self) -> &[Value] {
         &self.loaded
+    }
+
+    pub fn direct(&self) -> Vec<Value> {
+        self.loaded
+            .iter()
+            .filter(|tool| tool["name"] != "plan")
+            .cloned()
+            .collect()
     }
 
     pub fn available(&self) -> &[Value] {
@@ -114,87 +102,209 @@ impl Catalog {
     }
 
     pub fn docs(&self, args: &Value) -> Value {
-        let term = args["term"].as_str().unwrap_or("").trim().to_lowercase();
-        let limit = args["limit"].as_u64().unwrap_or(5).clamp(1, 10) as usize;
         let functions: Vec<&Value> = self
             .available
             .iter()
             .filter(|tool| tool["name"] != "code")
             .collect();
-        let text = if term.is_empty() {
-            functions
-                .iter()
-                .map(|tool| {
-                    format!(
-                        "tools.{}: {}",
-                        tool["name"].as_str().unwrap_or(""),
-                        sentence(tool["description"].as_str().unwrap_or(""), 160)
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        } else {
-            let words: Vec<&str> = term
-                .split(|c: char| c.is_whitespace() || matches!(c, '|' | ','))
-                .map(|word| word.trim_start_matches("tools."))
-                .filter(|word| !word.is_empty())
-                .collect();
-            let mut matches: Vec<(usize, usize)> = functions
-                .iter()
-                .enumerate()
-                .filter_map(|(index, tool)| {
-                    let name = tool["name"].as_str().unwrap_or("").to_lowercase();
-                    let description = tool["description"].as_str().unwrap_or("").to_lowercase();
-                    let score = if words.contains(&name.as_str()) {
-                        1000
-                    } else {
-                        words
-                            .iter()
-                            .map(|word| {
-                                usize::from(name.contains(*word)) * 10
-                                    + usize::from(description.contains(*word))
-                            })
-                            .sum()
-                    };
-                    (score > 0).then_some((index, score))
-                })
-                .collect();
-            matches.sort_by_key(|(index, score)| (std::cmp::Reverse(*score), *index));
-            let exact = matches.first().is_some_and(|(_, score)| *score == 1000);
-            if exact {
-                matches.retain(|(_, score)| *score == 1000);
-            }
-            let shown = if exact { 10 } else { limit };
-            if matches.is_empty() {
-                "No matching functions. search in=tools with an empty term lists all.".to_string()
-            } else {
-                let more = matches.len().saturating_sub(shown);
-                let mut text = matches
-                    .into_iter()
-                    .take(shown)
-                    .map(|(index, _)| signature(functions[index]))
-                    .collect::<Vec<_>>()
-                    .join("\n\n");
-                if more > 0 {
-                    text.push_str(&format!(
-                        "\n\n[{more} more matches; narrow the term or name the functions]"
-                    ));
-                }
-                text
-            }
-        };
-        json!({"content": [{"type": "text", "text": text}], "isError": false})
+        docs(&functions, args)
     }
 }
+
+pub(crate) fn announce(tools: &mut [Value], functions: &[String], note: &str) {
+    let mut listed = String::new();
+    let mut hidden = 0;
+    for name in functions {
+        if listed.len() + name.len() > LISTED {
+            hidden += 1;
+        } else {
+            if !listed.is_empty() {
+                listed.push_str(", ");
+            }
+            listed.push_str(name);
+        }
+    }
+    if hidden > 0 {
+        listed.push_str(&format!(" and {hidden} more"));
+    }
+    for tool in tools {
+        let extra = match tool["name"].as_str() {
+            Some("search") => {
+                tool["inputSchema"]["properties"]["in"]["enum"] =
+                    json!(["names", "source", "tools"]);
+                " in=tools finds l8db functions for code by words: signature, purpose, example; empty term lists all.".to_string()
+            }
+            Some("code") => format!(
+                "\n{note} Look up the signature with search in=tools first. tools: {listed}."
+            ),
+            _ => continue,
+        };
+        tool["description"] = json!(format!(
+            "{}{extra}",
+            tool["description"].as_str().unwrap_or("")
+        ));
+    }
+}
+
+pub(crate) fn docs(functions: &[&Value], args: &Value) -> Value {
+    let term = args["term"]
+        .as_str()
+        .or(args["query"].as_str())
+        .unwrap_or("")
+        .trim()
+        .to_lowercase();
+    let limit = args["limit"].as_u64().unwrap_or(5).clamp(1, 10) as usize;
+    let text = if term.is_empty() {
+        functions
+            .iter()
+            .map(|tool| {
+                format!(
+                    "tools.{}: {}",
+                    tool["name"].as_str().unwrap_or(""),
+                    sentence(tool["description"].as_str().unwrap_or(""), 160)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        let words: Vec<&str> = term
+            .split(|c: char| c.is_whitespace() || matches!(c, '|' | ','))
+            .map(|word| word.trim_start_matches("tools."))
+            .filter(|word| !word.is_empty())
+            .collect();
+        let mut matches: Vec<(usize, usize)> = functions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, tool)| {
+                let name = tool["name"].as_str().unwrap_or("").to_lowercase();
+                let description = tool["description"].as_str().unwrap_or("").to_lowercase();
+                let score = if words.contains(&name.as_str()) {
+                    1000
+                } else {
+                    words
+                        .iter()
+                        .map(|word| {
+                            usize::from(name.contains(*word)) * 10
+                                + usize::from(description.contains(*word))
+                        })
+                        .sum()
+                };
+                (score > 0).then_some((index, score))
+            })
+            .collect();
+        matches.sort_by_key(|(index, score)| (std::cmp::Reverse(*score), *index));
+        let exact = matches.first().is_some_and(|(_, score)| *score == 1000);
+        if exact {
+            matches.retain(|(_, score)| *score == 1000);
+        }
+        let shown = if exact { 10 } else { limit };
+        if matches.is_empty() {
+            "No matching functions. search in=tools with an empty term lists all.".to_string()
+        } else {
+            let more = matches.len().saturating_sub(shown);
+            let mut text = matches
+                .into_iter()
+                .take(shown)
+                .map(|(index, _)| signature(functions[index]))
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            if more > 0 {
+                text.push_str(&format!(
+                    "\n\n[{more} more matches; narrow the term or name the functions]"
+                ));
+            }
+            text
+        }
+    };
+    json!({"content": [{"type": "text", "text": text}], "isError": false})
+}
+
+const SELF_GATED: &[&str] = &[
+    "execute",
+    "import_file",
+    "report_issue",
+    "knowledge",
+    "dashboard",
+    "workflow",
+    "rules",
+    "sandbox",
+];
 
 pub(super) struct Host<'a> {
     pub catalog: &'a Catalog,
     pub external: &'a mut super::integrations::External,
     pub config: &'a McpConfig,
     pub run: &'a super::runtime::Run,
+    cli: bool,
+    declined: HashSet<String>,
+}
+
+impl<'a> Host<'a> {
+    pub fn new(
+        catalog: &'a Catalog,
+        external: &'a mut super::integrations::External,
+        config: &'a McpConfig,
+        run: &'a super::runtime::Run,
+    ) -> Self {
+        Self {
+            catalog,
+            external,
+            config,
+            run,
+            cli: false,
+            declined: HashSet::new(),
+        }
+    }
+
+    pub fn cli(mut self) -> Self {
+        self.cli = true;
+        self
+    }
+
+    async fn gate(&self, name: &str, args: &Value) -> Result<(), String> {
+        if !self.cli || name.starts_with("ext_") {
+            return Ok(());
+        }
+        let reads = self
+            .catalog
+            .available()
+            .iter()
+            .any(|tool| tool["name"] == name && tool["annotations"]["readOnlyHint"] == true);
+        if self.run.plan_only {
+            if super::cli::PLAN_READS.contains(&name) {
+                return Ok(());
+            }
+            if !reads || SELF_GATED.contains(&name) {
+                return Err(
+                    "Im Plan-Modus sind aus code nur lesende Datenbank-Werkzeuge erreichbar."
+                        .into(),
+                );
+            }
+        } else if reads || SELF_GATED.contains(&name) {
+            return Ok(());
+        }
+        match self
+            .run
+            .approve_tool(true, &format!("Tool aus code: {name}"), args.clone())
+            .await
+        {
+            Ok(true) => Ok(()),
+            _ => Err("Tool-Aufruf abgelehnt".into()),
+        }
+    }
 }
 
 impl crate::mcp::code::ToolHost for Host<'_> {
+    fn names(&self) -> Vec<String> {
+        self.catalog
+            .available()
+            .iter()
+            .filter_map(|tool| tool["name"].as_str())
+            .filter(|name| !matches!(*name, "code" | "then"))
+            .map(str::to_string)
+            .collect()
+    }
+
     fn call<'a>(
         &'a mut self,
         server: &'a mut crate::mcp::server::Server,
@@ -207,40 +317,70 @@ impl crate::mcp::code::ToolHost for Host<'_> {
                     "tools.{name} does not exist. search in=tools lists the functions."
                 ));
             }
-            let args = crate::mcp::server::normalize_args(self.catalog.available(), name, args);
-            let result = if name.starts_with("ext_") {
-                if self.run.auto(true)
-                    && !self
-                        .run
-                        .approve(&format!("Externes Tool aus code: {name}"), args.clone())
-                        .await
-                        .unwrap_or(false)
-                {
-                    return Err("Tool-Aufruf abgelehnt".into());
-                }
-                self.external.call(name, args, self.run).await
-            } else if Catalog::documents(name, &args) {
-                self.catalog.docs(&args)
-            } else {
-                super::context::call_in(
-                    &mut super::context::Access::Held(server),
-                    self.config,
-                    self.run,
-                    name,
-                    args,
-                )
-                .await
-            };
-            let text = model_output(&result, self.config.max_chars);
-            if result["isError"] == true {
-                Err(text
-                    .trim_start_matches("[tool error]")
-                    .trim_start()
-                    .to_string())
-            } else {
-                Ok(text)
+            if self.declined.contains(name) {
+                return Err(format!(
+                    "The user already declined tools.{name} in this code run; do not call it again here."
+                ));
             }
+            let args = crate::mcp::server::normalize_args(self.catalog.available(), name, args);
+            let flag = std::cell::Cell::new(false);
+            let (outcome, declined) = super::runtime::DECLINED
+                .scope(flag, async {
+                    let outcome = self.dispatch(server, name, args).await;
+                    (outcome, super::runtime::DECLINED.with(std::cell::Cell::get))
+                })
+                .await;
+            if declined {
+                self.declined.insert(name.to_string());
+            }
+            outcome
         })
+    }
+}
+
+impl Host<'_> {
+    async fn dispatch(
+        &mut self,
+        server: &mut crate::mcp::server::Server,
+        name: &str,
+        args: Value,
+    ) -> Result<String, String> {
+        self.gate(name, &args).await?;
+        let result = if name.starts_with("ext_") {
+            if self.run.auto(true)
+                && !self
+                    .run
+                    .approve(&format!("Externes Tool aus code: {name}"), args.clone())
+                    .await
+                    .unwrap_or(false)
+            {
+                return Err("Tool-Aufruf abgelehnt".into());
+            }
+            self.external.call(name, args, self.run).await
+        } else if Catalog::documents(name, &args) {
+            self.catalog.docs(&args)
+        } else {
+            super::context::call_in(
+                &mut super::context::Access::Held(server),
+                self.config,
+                self.run,
+                name,
+                args,
+            )
+            .await
+        };
+        let text = model_output(&result, self.config.max_chars);
+        if result["isError"] != true {
+            return Ok(text);
+        }
+        let text = text.trim_start_matches("[tool error]").trim_start();
+        Err(
+            if super::runtime::DECLINED.try_with(std::cell::Cell::get) == Ok(true) {
+                text.to_string()
+            } else {
+                crate::mcp::code::hinted(text, name)
+            },
+        )
     }
 }
 

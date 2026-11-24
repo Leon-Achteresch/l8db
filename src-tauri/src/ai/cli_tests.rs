@@ -69,11 +69,181 @@ async fn rpc_rejects_unsupported_methods_without_exposing_error_secrets() {
     assert!(!error.contains("private-token"));
 }
 
+struct Native {
+    run: Arc<Run>,
+    events: Arc<Mutex<Vec<Value>>>,
+    writes: Arc<std::sync::atomic::AtomicBool>,
+}
+
+fn native_profile(provider: &str) -> Value {
+    let setting = |name: &str| {
+        std::env::var(format!(
+            "L8DB_AI_NATIVE_{name}_{}",
+            provider.to_uppercase().replace('-', "_")
+        ))
+        .unwrap_or_default()
+    };
+    json!({"id": "native-fixture", "provider": provider, "model": setting("MODEL"), "effort": setting("EFFORT")})
+}
+
+fn native(request: &RunRequest) -> Native {
+    use super::super::runtime::AiState;
+    let events = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let captured = events.clone();
+    let state = Arc::new(AiState::default());
+    let approvals = state.clone();
+    let writes = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let allow_writes = writes.clone();
+    let channel = Channel::new(move |body| {
+        if let InvokeResponseBody::Json(body) = body {
+            let event: Value = serde_json::from_str(&body).unwrap();
+            if event["kind"] == "approval" {
+                let key = format!(
+                    "native-window:native-fixture:{}",
+                    event["data"]["id"].as_str().unwrap()
+                );
+                if let Some(sender) = approvals.approvals.lock().unwrap().remove(&key) {
+                    let private_native_id = captured.lock().unwrap().iter().any(|prior| {
+                        prior["kind"] == "tool"
+                            && prior["data"]["name"]
+                                .as_str()
+                                .is_some_and(|name| name.starts_with("l8db_ai-"))
+                            && prior["data"]["id"] == event["data"]["details"]["toolCallId"]
+                    });
+                    let bridge_tool = private_native_id
+                        || event["data"]["details"].to_string().contains("l8db_ai")
+                        || event["data"]["title"]
+                            .as_str()
+                            .is_some_and(|title| title.contains("mcp__l8db_ai__"));
+                    let allowed = if event["data"]["title"] == "Datenbank ändern" {
+                        allow_writes.load(std::sync::atomic::Ordering::SeqCst)
+                    } else {
+                        bridge_tool
+                    };
+                    let _ = sender.send(json!(allowed));
+                }
+            }
+            if event["kind"] == "input" {
+                let key = format!(
+                    "native-window:native-fixture:{}",
+                    event["data"]["id"].as_str().unwrap()
+                );
+                if let Some(sender) = approvals.approvals.lock().unwrap().remove(&key) {
+                    let allowed = event["data"]["details"]["serverName"] == "l8db_ai"
+                        && event["data"]["details"]["requestedSchema"]["properties"]
+                            .as_object()
+                            .is_some_and(|fields| fields.is_empty());
+                    let _ = sender.send(
+                        json!({"action": if allowed {"accept"} else {"decline"}, "content": {}}),
+                    );
+                }
+            }
+            captured.lock().unwrap().push(event);
+        }
+        Ok(())
+    });
+    Native {
+        run: Arc::new(Run {
+            scope: Default::default(),
+            id: "native-fixture".into(),
+            owner: "native-window".into(),
+            state,
+            channel,
+            plan_only: super::super::context::is_plan(request),
+            approval: String::new(),
+        }),
+        events,
+        writes,
+    }
+}
+
+async fn native_turn(native: &Native, request: &RunRequest, label: &str) {
+    use super::super::{context, integrations};
+    use crate::mcp::{config::McpConfig, server::Server};
+    native.events.lock().unwrap().clear();
+    let config = context::scoped_config(request, McpConfig::default()).unwrap();
+    let server = Arc::new(tokio::sync::Mutex::new(Server {
+        pool: crate::db::pool::PoolState::default(),
+        columns: Default::default(),
+    }));
+    let external = integrations::connect(&[], std::path::Path::new(&request.cwd), &native.run)
+        .await
+        .unwrap();
+    let bridge = Bridge::start(
+        server,
+        config,
+        native.run.clone(),
+        external,
+        request.profile.provider == "opencode",
+    )
+    .await
+    .unwrap();
+    let result = tokio::time::timeout(
+        Duration::from_secs(180),
+        super::run(
+            request,
+            &context::instructions(request),
+            &bridge,
+            &native.run,
+        ),
+    )
+    .await;
+    assert!(
+        matches!(result, Ok(Ok(()))),
+        "{label}: {}",
+        match result {
+            Ok(Err(error)) => error,
+            Err(_) => "native turn exceeded 180 seconds".into(),
+            _ => String::new(),
+        }
+    );
+    let events = native.events.lock().unwrap();
+    let steps: Vec<String> = events
+        .iter()
+        .filter(|event| event["kind"] == "approval" || event["kind"] == "tool")
+        .filter(|event| event["data"]["name"].as_str() != Some(""))
+        .map(|event| {
+            let data = &event["data"];
+            let name = data["name"].as_str().unwrap_or("");
+            if event["kind"] == "approval" {
+                format!("approval[{}]", data["title"].as_str().unwrap_or(""))
+            } else if data["status"] == "running" {
+                let arguments: String = data["arguments"].to_string().chars().take(110).collect();
+                format!("{name}({arguments})")
+            } else {
+                format!("{name}[{}]", data["status"].as_str().unwrap_or(""))
+            }
+        })
+        .collect();
+    let usage = events
+        .iter()
+        .rev()
+        .find(|event| {
+            event["kind"] == "usage"
+                && event["data"].get("layout").is_none()
+                && event["data"].get("rateLimits").is_none()
+        })
+        .map(|event| event["data"].to_string())
+        .unwrap_or_default();
+    println!("{label}: steps {steps:?}");
+    println!(
+        "{label}: usage {}",
+        usage.chars().take(600).collect::<String>()
+    );
+}
+
+fn native_tool(native: &Native, name: &str, status: &str, contains: &str) -> bool {
+    native.events.lock().unwrap().iter().any(|event| {
+        event["kind"] == "tool"
+            && event["data"]["name"] == name
+            && event["data"]["status"] == status
+            && event["data"].to_string().contains(contains)
+    })
+}
+
 #[tokio::test]
 #[ignore]
 async fn native_cli_reads_scoped_sqlite() {
-    use super::super::{context, integrations, runtime::AiState};
-    use crate::mcp::{config::McpConfig, server::Server};
     let providers =
         std::env::var("L8DB_AI_NATIVE_PROVIDERS").expect("Explicitly select installed native CLIs");
     assert!(std::env::var_os("L8DB_AI_RELAY_EXECUTABLE").is_some());
@@ -83,61 +253,8 @@ async fn native_cli_reads_scoped_sqlite() {
         let database = rusqlite::Connection::open(&path).unwrap();
         database.execute_batch("CREATE TABLE native_probe(value TEXT); INSERT INTO native_probe VALUES ('l8db-native-verified');").unwrap();
         drop(database);
-        let mut request: RunRequest = serde_json::from_value(json!({"runId":"native-fixture", "profile":{"id":"native-fixture", "provider":provider}, "cwd":directory.path(), "sessionId":null, "messages":[{"role":"user", "text":"Use only l8db_ai MCP tools. Describe native_probe on connection native-fixture, then query SELECT value FROM native_probe and return the value. Do not use shell, filesystem tools, external MCP servers, or modify anything."}], "connections":[{"id":"native-fixture", "name":"native-fixture", "kind":"sqlite", "connectionString":format!("sqlite://{}", path.display()), "readOnly":true}], "activeId":"native-fixture"})).unwrap();
-        let events = Arc::new(Mutex::new(Vec::<Value>::new()));
-        let captured = events.clone();
-        let state = Arc::new(AiState::default());
-        let approvals = state.clone();
-        let channel = Channel::new(move |body| {
-            if let InvokeResponseBody::Json(body) = body {
-                let event: Value = serde_json::from_str(&body).unwrap();
-                if event["kind"] == "approval" {
-                    let key = format!(
-                        "native-window:native-fixture:{}",
-                        event["data"]["id"].as_str().unwrap()
-                    );
-                    if let Some(sender) = approvals.approvals.lock().unwrap().remove(&key) {
-                        let private_native_id = captured.lock().unwrap().iter().any(|prior| {
-                            prior["kind"] == "tool"
-                                && prior["data"]["name"]
-                                    .as_str()
-                                    .is_some_and(|name| name.starts_with("l8db_ai-"))
-                                && prior["data"]["id"] == event["data"]["details"]["toolCallId"]
-                        });
-                        let bridge_tool = private_native_id
-                            || event["data"]["details"].to_string().contains("l8db_ai")
-                            || event["data"]["title"]
-                                .as_str()
-                                .is_some_and(|title| title.contains("mcp__l8db_ai__"));
-                        let _ = sender.send(json!(bridge_tool));
-                    }
-                }
-                if event["kind"] == "input" {
-                    let key = format!(
-                        "native-window:native-fixture:{}",
-                        event["data"]["id"].as_str().unwrap()
-                    );
-                    if let Some(sender) = approvals.approvals.lock().unwrap().remove(&key) {
-                        let allowed = event["data"]["details"]["serverName"] == "l8db_ai"
-                            && event["data"]["details"]["requestedSchema"]["properties"]
-                                .as_object()
-                                .is_some_and(|fields| fields.is_empty());
-                        let _ = sender.send(json!({"action": if allowed {"accept"} else {"decline"}, "content": {}}));
-                    }
-                }
-                captured.lock().unwrap().push(event);
-            }
-            Ok(())
-        });
-        let run = Arc::new(Run {
-            scope: Default::default(),
-            id: "native-fixture".into(),
-            owner: "native-window".into(),
-            state,
-            channel,
-            plan_only: super::super::context::is_plan(&request),
-            approval: String::new(),
-        });
+        let mut request: RunRequest = serde_json::from_value(json!({"runId":"native-fixture", "profile":native_profile(provider), "cwd":directory.path(), "sessionId":null, "messages":[{"role":"user", "text":"Use only l8db_ai MCP tools. Describe native_probe on connection native-fixture, then query SELECT value FROM native_probe and return the value. Do not use shell, filesystem tools, external MCP servers, or modify anything."}], "connections":[{"id":"native-fixture", "name":"native-fixture", "kind":"sqlite", "connectionString":format!("sqlite://{}", path.display()), "readOnly":true}], "activeId":"native-fixture"})).unwrap();
+        let native = native(&request);
         for turn in 0..2 {
             let expected = if turn == 0 {
                 "l8db-native-verified"
@@ -145,7 +262,8 @@ async fn native_cli_reads_scoped_sqlite() {
                 "l8db-resumed-verified"
             };
             if turn == 1 {
-                request.session_id = events
+                request.session_id = native
+                    .events
                     .lock()
                     .unwrap()
                     .iter()
@@ -166,44 +284,105 @@ async fn native_cli_reads_scoped_sqlite() {
                     .execute("UPDATE native_probe SET value = ?1", [expected])
                     .unwrap();
             }
-            events.lock().unwrap().clear();
-            let config = context::scoped_config(&request, McpConfig::default()).unwrap();
-            let server = Arc::new(tokio::sync::Mutex::new(Server {
-                pool: crate::db::pool::PoolState::default(),
-                columns: Default::default(),
-            }));
-            let external = integrations::connect(&[], directory.path(), &run)
-                .await
-                .unwrap();
-            let bridge = Bridge::start(server, config, run.clone(), external)
-                .await
-                .unwrap();
-            let result = tokio::time::timeout(
-                Duration::from_secs(180),
-                super::run(&request, &context::instructions(&request), &bridge, &run),
-            )
-            .await;
+            native_turn(&native, &request, &format!("{provider} turn {turn}")).await;
             assert!(
-                matches!(result, Ok(Ok(()))),
-                "{provider} turn {turn}: {}",
-                match result {
-                    Ok(Err(error)) => error,
-                    Err(_) => "native turn exceeded 180 seconds".into(),
-                    _ => String::new(),
-                }
-            );
-            assert!(
-                events
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .any(|event| event["kind"] == "tool"
-                        && event["data"]["name"] == "query"
-                        && event["data"]["status"] == "completed"
-                        && event["data"]["result"].to_string().contains(expected)),
+                native_tool(&native, "query", "completed", expected),
                 "{provider} turn {turn}: native MCP query did not return the current fixture value"
             );
         }
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn native_cli_reaches_hidden_tools_through_code_and_writes_from_code_wait_for_approval() {
+    let providers =
+        std::env::var("L8DB_AI_NATIVE_PROVIDERS").expect("Explicitly select installed native CLIs");
+    assert!(std::env::var_os("L8DB_AI_RELAY_EXECUTABLE").is_some());
+    for provider in providers.split(',').filter(|provider| !provider.is_empty()) {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("native-fixture.sqlite");
+        let database = rusqlite::Connection::open(&path).unwrap();
+        database.execute_batch("CREATE TABLE native_customers(id INTEGER PRIMARY KEY, name TEXT); CREATE TABLE native_orders(id INTEGER PRIMARY KEY, buyer INTEGER REFERENCES native_customers(id), total REAL); INSERT INTO native_customers VALUES (1, 'original'); INSERT INTO native_orders VALUES (1, 1, 5.0);").unwrap();
+        let name = || {
+            database
+                .query_row(
+                    "SELECT name FROM native_customers WHERE id = 1",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap()
+        };
+        let ask = |text: &str| -> RunRequest {
+            serde_json::from_value(json!({"runId":"native-fixture", "profile":native_profile(provider), "cwd":directory.path(), "sessionId":null, "allowWrites":true, "messages":[{"role":"user", "text":text}], "connections":[{"id":"native-fixture", "name":"native-fixture", "kind":"sqlite", "connectionString":format!("sqlite://{}", path.display()), "readOnly":false}], "activeId":"native-fixture"})).unwrap()
+        };
+        let request = ask("Use only l8db_ai MCP tools. Get the JOIN condition between native_orders and native_customers on connection native-fixture from the l8db relations tool and report it. Do not use shell, filesystem tools or external MCP servers, and do not modify anything.");
+        let native = native(&request);
+        native_turn(&native, &request, &format!("{provider} relations")).await;
+        assert!(
+            native_tool(
+                &native,
+                "relations",
+                "completed",
+                "native_orders.buyer = main.native_customers.id"
+            ),
+            "{provider}: relations was not reached"
+        );
+        let nested = provider == "opencode";
+        assert!(
+            nested
+                || native_tool(&native, "code", "running", "tools.relations")
+                    && native_tool(&native, "code", "completed", ""),
+            "{provider}: relations did not run inside code"
+        );
+
+        let write = "Use only l8db_ai MCP tools. Make exactly one code tool call that runs await tools.execute({connection: 'native-fixture', sql: \"UPDATE native_customers SET name = 'changed-from-code' WHERE id = 1\", confirm: true}) and report what it returned. Do not use any other tool for the update and do not retry.";
+        let request = if nested {
+            ask("Use only l8db_ai MCP tools. Run exactly this once and report what it returned, without any other tool and without retrying: await tools.l8db_ai.code({ code: \"async () => await tools.execute({connection: 'native-fixture', sql: \\\"UPDATE native_customers SET name = 'changed-from-code' WHERE id = 1\\\", confirm: true})\" })")
+        } else {
+            ask(write)
+        };
+        native_turn(&native, &request, &format!("{provider} denied write")).await;
+        let asked = |native: &Native| {
+            native
+                .events
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|event| {
+                    event["kind"] == "approval" && event["data"]["title"] == "Datenbank ändern"
+                })
+                .count()
+        };
+        assert!(asked(&native) >= 1, "{provider}: write did not ask");
+        assert!(
+            native
+                .events
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|event| event["kind"] == "tool"
+                    && event["data"]["name"] == "code"
+                    && event["data"]["arguments"]
+                        .to_string()
+                        .contains("tools.execute")),
+            "{provider}: write was not attempted from code"
+        );
+        assert_eq!(name(), "original", "{provider}: denied write changed data");
+
+        native
+            .writes
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        native_turn(&native, &request, &format!("{provider} approved write")).await;
+        assert!(
+            asked(&native) >= 1,
+            "{provider}: approved write did not ask"
+        );
+        assert_eq!(
+            name(),
+            "changed-from-code",
+            "{provider}: approved write missing"
+        );
     }
 }
 
@@ -334,7 +513,7 @@ for line in sys.stdin:
         let external = integrations::connect(&[], directory.path(), &run)
             .await
             .unwrap();
-        let bridge = Bridge::start(server, McpConfig::default(), run.clone(), external)
+        let bridge = Bridge::start(server, McpConfig::default(), run.clone(), external, false)
             .await
             .unwrap();
         tokio::time::timeout(

@@ -37,6 +37,16 @@ pub(crate) trait ToolHost: Send {
         name: &'a str,
         args: Value,
     ) -> BoxFuture<'a, Result<String, String>>;
+
+    fn names(&self) -> Vec<String>;
+
+    fn waits(&self) -> bool {
+        true
+    }
+}
+
+pub(crate) fn hinted(error: &str, name: &str) -> String {
+    format!("{error} [signature: search in=tools term={name}]")
 }
 
 const DTS: &str = "type On={connection?:string;database?:string};type P=string|RegExp;type Row=Record<string,any>;type F={schema?:P;name?:P;limit?:number};
@@ -533,7 +543,8 @@ impl Server {
         config: &McpConfig,
         args: &Value,
     ) -> Result<String, String> {
-        self.code_hosted(config, args, None).await
+        let mut host = super::server::Functions(config);
+        self.code_hosted(config, args, Some(&mut host)).await
     }
 
     pub(crate) async fn code_hosted(
@@ -642,6 +653,7 @@ impl Server {
             "stack": limits.stack,
             "chars": RESULT_CHARS,
             "items": RESULT_ITEMS,
+            "tools": host.as_deref().map(|host| host.names()).unwrap_or_default(),
         }))
         .map_err(|e| e.to_string())?;
         init.push(b'\n');
@@ -709,6 +721,7 @@ impl Server {
                             } else if op == "tool" {
                                 let waited = tokio::time::Instant::now();
                                 let allowed = host.is_some() && session.tools < MAX_TOOLS;
+                                let waits = host.as_deref().is_some_and(|host| host.waits());
                                 session.tools += usize::from(allowed);
                                 let mut early = Vec::new();
                                 let result = {
@@ -721,7 +734,9 @@ impl Server {
                                         }
                                     }
                                 };
-                                deadline += waited.elapsed();
+                                if waits {
+                                    deadline += waited.elapsed();
+                                }
                                 for done in early {
                                     let (id, result) = finished(done, session);
                                     deliver(&tx, session, id, result);

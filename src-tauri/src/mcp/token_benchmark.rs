@@ -29,7 +29,8 @@ const WRITERS: [&str; 3] = ["billing", "fin", "erp"];
 const BIG_LINES: usize = 5_200;
 
 pub(super) const BUDGET: &[(&str, usize)] = &[
-    ("tools/list", 13_182),
+    ("tools/list", 10_350),
+    ("bridge tools/list", 5_500),
     ("instructions", 950),
     ("byok start catalog", 5_650),
     ("shop.revenue_per_customer", 1_450),
@@ -1266,6 +1267,14 @@ pub(super) fn surface(config: &McpConfig) -> Vec<(String, usize)> {
         ),
         ("instructions".to_string(), server::INSTRUCTIONS.len()),
         (
+            "bridge tools/list".to_string(),
+            serde_json::to_string(
+                &json!({"tools": crate::ai::tools::Catalog::new(config, false, &[]).direct()}),
+            )
+            .unwrap()
+            .len(),
+        ),
+        (
             "byok start catalog".to_string(),
             crate::ai::tools::Catalog::new(config, false, &[])
                 .tools()
@@ -1992,6 +2001,10 @@ const PHASE5_DISCOVER: (&str, &str) = (
 struct DirectHost<'a>(&'a McpConfig);
 
 impl super::code::ToolHost for DirectHost<'_> {
+    fn names(&self) -> Vec<String> {
+        ["benchmark", "overview"].map(String::from).to_vec()
+    }
+
     fn call<'a>(
         &'a mut self,
         server: &'a mut Server,
@@ -2221,6 +2234,191 @@ fn token_benchmark_byok_code_mode_reports_catalog_and_function_bytes() {
     assert!(
         over_budget("byok start catalog", start).is_none(),
         "{start}"
+    );
+    assert!(failed.is_empty(), "failed: {failed:?}");
+}
+
+const PHASE6_MCP_LIST: usize = 12_626;
+const PHASE6_MCP_INSTRUCTIONS: usize = 945;
+const PHASE6_BRIDGE_LIST: usize = 23_309;
+const PHASE6_BRIDGE_TOOLS: usize = 26;
+
+fn explains_code() -> String {
+    let entries: Vec<String> = VARIANT_SQL
+        .iter()
+        .map(|(name, sql)| format!("    {name}: {},", Value::String(sql.to_string())))
+        .collect();
+    format!(
+        "async () => {{\n  const variants = {{\n{}\n  }};\n  const out = [];\n  for (const [variant, sql] of Object.entries(variants)) {{\n    const text = await tools.explain({{ connection: \"Shop\", sql }});\n    out.push({{ variant, plan: text.split(\"\\n\")[0] }});\n  }}\n  return out;\n}}",
+        entries.join("\n")
+    )
+}
+
+#[test]
+fn token_benchmark_code_mode_for_bridge_and_external_mcp_reports_lists_and_scenarios() {
+    let mut lab = lab(Arc::new(Vec::new()));
+    code_lab(&mut lab);
+    let size = |tools: &[Value]| {
+        serde_json::to_string(&json!({"tools": tools}))
+            .unwrap()
+            .len()
+    };
+    let listed = server::listed_tools(&lab.config);
+    let mcp = size(&listed);
+    let catalog = crate::ai::tools::Catalog::new(&lab.config, false, &[]);
+    let bridge_before = PHASE6_BRIDGE_LIST;
+    let bridge = size(&catalog.direct());
+    println!("| surface | before B | after B | ≈tokens after | saved | tools before → after |\n|---|---:|---:|---:|---:|---|");
+    println!(
+        "| external MCP tools/list | {PHASE6_MCP_LIST} | {mcp} | {} | {:.0} % | 17 → {} |",
+        tokens(mcp),
+        100.0 * (1.0 - mcp as f64 / PHASE6_MCP_LIST as f64),
+        listed.len()
+    );
+    println!(
+        "| external MCP instructions | {PHASE6_MCP_INSTRUCTIONS} | {} | {} | | |",
+        server::INSTRUCTIONS.len(),
+        tokens(server::INSTRUCTIONS.len())
+    );
+    println!(
+        "| bridge tools/list | {bridge_before} | {bridge} | {} | {:.0} % | {} → {} |",
+        tokens(bridge),
+        100.0 * (1.0 - bridge as f64 / bridge_before as f64),
+        PHASE6_BRIDGE_TOOLS,
+        catalog.direct().len()
+    );
+    for tool in &listed {
+        println!(
+            "| mcp tool {} | {} |",
+            tool["name"].as_str().unwrap_or(""),
+            serde_json::to_string(tool).unwrap().len()
+        );
+    }
+    for tool in &catalog.direct() {
+        println!(
+            "| bridge tool {} | {} |",
+            tool["name"].as_str().unwrap_or(""),
+            serde_json::to_string(tool).unwrap().len()
+        );
+    }
+    let config = lab.config.clone();
+    let call = |lab: &mut Lab, name: &str, args: &Value| {
+        let reply = lab.runtime.block_on(
+            lab.server
+                .call_with_config(&json!({"name": name, "arguments": args}), &config),
+        );
+        (
+            reply["isError"] == true,
+            reply["content"][0]["text"]
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
+        )
+    };
+    let docs = |term: &str| {
+        let args = json!({"in": "tools", "term": term});
+        let text = crate::ai::tools::docs(
+            &server::listed_functions(&config).iter().collect::<Vec<_>>(),
+            &args,
+        )["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        serde_json::to_string(&args).unwrap().len() + text.len()
+    };
+    let scenarios: Vec<(&str, &str, Vec<Step>, String, &[&str])> = vec![
+        (
+            "mcp.overview_connections",
+            "overview",
+            ["Shop", "Shop A", "Shop B", "Tenants"]
+                .iter()
+                .map(|name| step("overview", json!({"connection": name}), &["tables"]))
+                .collect(),
+            OVERVIEWS.to_string(),
+            &["connection\tsummary", "(4 rows)", "4 tool calls"],
+        ),
+        (
+            "mcp.explain_variants",
+            "explain",
+            VARIANT_SQL
+                .iter()
+                .map(|(_, sql)| step("explain", json!({"connection": "Shop", "sql": sql}), &[]))
+                .collect(),
+            explains_code(),
+            &["variant\tplan", "(4 rows)", "4 tool calls"],
+        ),
+    ];
+    println!("| scenario | direct calls | direct traffic B | code calls | code traffic B | saved | external MCP input direct → code B | saved | bridge input direct → code B | saved | info complete | ms direct / code |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|");
+    let mut failed = Vec::new();
+    for (id, function, steps, code, expect) in scenarios {
+        let started = Instant::now();
+        let direct = run_task(&mut lab, &Task { id, steps });
+        let middle = started.elapsed();
+        let before: Vec<usize> = direct
+            .steps
+            .iter()
+            .map(|step| {
+                let (args, response) = step.split_once(' ').unwrap().1.split_once('+').unwrap();
+                args.parse::<usize>().unwrap() + response.parse::<usize>().unwrap()
+            })
+            .collect();
+        let args = json!({"connection": "Shop", "code": code});
+        let (error, text) = call(&mut lab, "code", &args);
+        let mut missing = direct.missing.clone();
+        if error {
+            missing.push(format!("code error: {text}"));
+        }
+        missing.extend(
+            expect
+                .iter()
+                .filter(|expected| !text.contains(*expected))
+                .map(|expected| format!("code lacks {expected:?}: {text}")),
+        );
+        let after = vec![
+            docs(function),
+            serde_json::to_string(&args).unwrap().len() + text.len(),
+        ];
+        let (old, new) = (before.iter().sum::<usize>(), after.iter().sum::<usize>());
+        let inputs = [(PHASE6_MCP_LIST, mcp), (bridge_before, bridge)]
+            .map(|(old, new)| (cumulative(&[old], &before), cumulative(&[new], &after)));
+        println!(
+            "| {id} | {} | {old} | {} | {new} | {:.0} % | {} → {} | {:.0} % | {} → {} | {:.0} % | {} | {} / {} |",
+            before.len(),
+            after.len(),
+            100.0 * (1.0 - new as f64 / old as f64),
+            inputs[0].0,
+            inputs[0].1,
+            100.0 * (1.0 - inputs[0].1 as f64 / inputs[0].0 as f64),
+            inputs[1].0,
+            inputs[1].1,
+            100.0 * (1.0 - inputs[1].1 as f64 / inputs[1].0 as f64),
+            if missing.is_empty() { "yes".to_string() } else { missing.join("; ") },
+            middle.as_millis(),
+            (started.elapsed() - middle).as_millis()
+        );
+        println!("|  code steps: search {}, code {} |", after[0], after[1]);
+        if !missing.is_empty() || inputs.iter().any(|(old, new)| new >= old) {
+            failed.push(id);
+        }
+    }
+    for (old, new, label) in [
+        (PHASE6_MCP_LIST, mcp, "external MCP"),
+        (bridge_before, bridge, "bridge"),
+    ] {
+        println!(
+            "modeled single direct call on {label} (400 B traffic, 2 rounds): {:.0} % of the previous input",
+            100.0 * cumulative(&[new], &[400]) as f64 / cumulative(&[old], &[400]) as f64
+        );
+    }
+    assert!(over_budget("tools/list", mcp).is_none(), "{mcp}");
+    assert!(
+        over_budget("bridge tools/list", bridge).is_none(),
+        "{bridge}"
+    );
+    assert!(
+        over_budget("instructions", server::INSTRUCTIONS.len()).is_none(),
+        "{}",
+        server::INSTRUCTIONS.len()
     );
     assert!(failed.is_empty(), "failed: {failed:?}");
 }

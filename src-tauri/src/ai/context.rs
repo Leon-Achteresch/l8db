@@ -280,7 +280,15 @@ pub(crate) async fn call_in(
     if name == "dashboard"
         && matches!(
             args["action"].as_str(),
-            Some("create" | "update" | "delete" | "add_charts" | "update_chart" | "remove_chart")
+            Some(
+                "create"
+                    | "update"
+                    | "delete"
+                    | "add_charts"
+                    | "update_chart"
+                    | "remove_chart"
+                    | "arrange"
+            )
         )
     {
         if run.plan_only {
