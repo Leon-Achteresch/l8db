@@ -59,6 +59,8 @@ export function useTableViewModel({
   type,
   fkFilter,
   fkRaw,
+  fkSort,
+  fkSortDesc,
   column,
   drawerId,
 }: TableViewProps) {
@@ -417,20 +419,30 @@ export function useTableViewModel({
   }, [isView, type, routeNavigate, pane, inDrawer, scopedId]);
 
   useEffect(() => {
-    if (fkFilter === undefined) return;
-    setFilter(fkFilter);
-    setFilterRaw(fkRaw ?? false);
-    setSorting([]);
+    if (fkFilter === undefined && fkSort === undefined) return;
+    if (fkFilter !== undefined) {
+      setFilter(fkFilter);
+      setFilterRaw(fkRaw ?? false);
+    }
+    setSorting(fkSort ? [{ id: fkSort, desc: fkSortDesc ?? false }] : []);
     setPage(0);
     showDataTab();
     if (inDrawer) return;
     void routeNavigate({
-      search: (previous) => ({ ...previous, fkFilter: undefined, fkRaw: undefined }),
+      search: (previous) => ({
+        ...previous,
+        fkFilter: undefined,
+        fkRaw: undefined,
+        fkSort: undefined,
+        fkSortDesc: undefined,
+      }),
       replace: true,
     });
   }, [
     fkFilter,
     fkRaw,
+    fkSort,
+    fkSortDesc,
     routeNavigate,
     setFilter,
     setFilterRaw,

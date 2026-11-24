@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
+import type { SortingState } from "@tanstack/react-table";
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useActiveConnection } from "@/lib/connections";
 import { useColumnsQuery, useTablesQuery, useViewsQuery } from "@/lib/queries";
@@ -23,6 +24,7 @@ export function useTableSearch(open: boolean, onOpenChange: (open: boolean) => v
   const [conditions, setConditions] = useState<Condition[]>([emptyCondition()]);
   const [combinator, setCombinator] = useState<Combinator>("AND");
   const [sql, setSql] = useState("");
+  const [sorting, setSorting] = useState<SortingState>([]);
 
   const [selectedEntity, setSelectedEntity] = useState<MatchedEntity | null>(null);
   const searchIncludeColumns = useSettingsStore((state) => state.searchIncludeColumns);
@@ -43,6 +45,7 @@ export function useTableSearch(open: boolean, onOpenChange: (open: boolean) => v
     setConditions([emptyCondition()]);
     setCombinator("AND");
     setSql("");
+    setSorting([]);
     setSelectedEntity(null);
   }, [open]);
 
@@ -167,6 +170,7 @@ export function useTableSearch(open: boolean, onOpenChange: (open: boolean) => v
     setConditions([emptyCondition()]);
     setCombinator("AND");
     setSql("");
+    setSorting([]);
   }, []);
 
   const handleOpen = useCallback(() => {
@@ -184,9 +188,11 @@ export function useTableSearch(open: boolean, onOpenChange: (open: boolean) => v
         type: selectedEntity.type,
         ...(whereClause ? { fkFilter: whereClause } : {}),
         ...(whereClause && whereIsRaw ? { fkRaw: true } : {}),
+        ...(sorting[0] ? { fkSort: sorting[0].id } : {}),
+        ...(sorting[0]?.desc ? { fkSortDesc: true } : {}),
       },
     });
-  }, [selectedEntity, whereClause, whereIsRaw, openTab, onOpenChange, navigate]);
+  }, [selectedEntity, whereClause, whereIsRaw, sorting, openTab, onOpenChange, navigate]);
 
   const handleOpenDirect = useCallback(
     (entity: MatchedEntity) => {
@@ -219,6 +225,8 @@ export function useTableSearch(open: boolean, onOpenChange: (open: boolean) => v
     setCombinator,
     sql,
     setSql,
+    sorting,
+    setSorting,
     selectedEntity,
     searchIncludeColumns,
     setSearchIncludeColumns,

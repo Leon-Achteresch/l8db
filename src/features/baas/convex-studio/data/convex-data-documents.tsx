@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DataTable } from "@/features/table/data-table";
+import { FilterSortControl } from "@/features/table/filter-bar/filter-sort-control";
 import { TableDataError } from "@/features/table/table-data-error";
 import { TableDataSkeleton } from "@/features/table/table-data-skeleton";
 import { changedRowValues } from "@/lib/cell-editor";
@@ -209,6 +210,14 @@ export function ConvexDataDocuments({
           <Filter className="size-3.5" /> Filter
           {filtered ? ` (${activeFilterCount(filter)})` : ""}
         </Button>
+        <FilterSortControl
+          sort={{
+            sorting,
+            sortableColumns: searching ? NO_SORT_COLUMNS : SORT_COLUMNS,
+            onChange: changeSorting,
+          }}
+          columns={SORT_COLUMNS}
+        />
         <Button size="sm" onClick={() => setDialog({ mode: "insert" })}>
           <Plus className="size-3.5" /> Dokument
         </Button>
@@ -410,3 +419,6 @@ export function ConvexDataDocuments({
     </div>
   );
 }
+
+const SORT_COLUMNS = ["_creationTime"];
+const NO_SORT_COLUMNS: string[] = [];

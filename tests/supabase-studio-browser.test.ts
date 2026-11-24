@@ -10,19 +10,35 @@ let browser: Browser;
 
 type CountingWindow = {
   __invokes: string[];
+  __sorts: string[];
   __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => unknown };
 };
 
-async function openStudio(section: string) {
+async function openStudio(section: string, sorting = false) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await seedSupabaseStudio(page);
+  if (sorting)
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "l8db.settings",
+        JSON.stringify({
+          state: { tourFinished: true, onboardingDone: true, filterBarSorting: true },
+          version: 1,
+        }),
+      );
+    });
   await page.addInitScript(() => {
     const state = window as unknown as CountingWindow;
     state.__invokes = [];
+    state.__sorts = [];
     const invoke = state.__TAURI_INTERNALS__.invoke;
     state.__TAURI_INTERNALS__.invoke = (command, args) => {
+      if (command === "supabase_studio_tables_rows") {
+        const query = (args?.query ?? {}) as { sort_column?: string | null; sort_desc?: boolean };
+        state.__sorts.push(`${query.sort_column ?? ""}:${query.sort_desc ? "desc" : "asc"}`);
+      }
       const kind = typeof args?.kind === "string" ? `:${args.kind}` : "";
       state.__invokes.push(`${command}${kind}`);
       return invoke(command, args);
@@ -39,6 +55,14 @@ async function invokes(page: Page) {
 
 function count(list: string[], command: string) {
   return list.filter((entry) => entry === command).length;
+}
+
+async function eventually(read: () => Promise<unknown>, expected: unknown) {
+  for (let attempt = 0; attempt < 80; attempt++) {
+    if ((await read()) === expected) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  expect(await read()).toBe(expected);
 }
 
 beforeAll(async () => {
@@ -142,4 +166,50 @@ test.skipIf(!enabled)(
     await page.close();
   },
   60_000,
+);
+
+test.skipIf(!enabled)(
+  "die Sortierung steht neben dem Filter, sobald die Einstellung aktiv ist",
+  async () => {
+    const sorts = (page: Page) =>
+      page.evaluate(() => (window as unknown as CountingWindow).__sorts);
+    const openData = async (sorting: boolean) => {
+      const opened = await openStudio("overview", sorting);
+      const sidebar = opened.page.locator("[data-baas-studio] [data-baas-context]");
+      await sidebar.getByRole("button", { name: "orders", exact: true }).click();
+      await opened.page.getByRole("tab", { name: "Spalten" }).waitFor();
+      await opened.page.getByRole("tab", { name: "Daten", exact: true }).click();
+      await opened.page.getByRole("button", { name: /^Filter/ }).waitFor();
+      return opened;
+    };
+
+    const off = await openData(false);
+    await off.page.waitForTimeout(300);
+    expect(await off.page.locator('[data-filter-token="sort"]').count()).toBe(0);
+    expect(await off.page.getByRole("button", { name: "Sortierung hinzufügen" }).count()).toBe(0);
+    expect(off.errors).toEqual([]);
+    await off.page.close();
+
+    const { page, errors } = await openData(true);
+    await page.getByRole("button", { name: "Aufsteigend nach id – absteigend sortieren" }).click();
+    await page
+      .getByRole("button", { name: "Absteigend nach id – aufsteigend sortieren" })
+      .waitFor();
+    await eventually(async () => (await sorts(page)).at(-1), "id:desc");
+
+    await page.getByRole("button", { name: "Sortierung ändern: id" }).click();
+    await page.getByRole("combobox", { name: "Sortierspalte" }).click();
+    await page.getByRole("option", { name: "status", exact: true }).click();
+    await page.getByRole("button", { name: "Sortierung ändern: status" }).waitFor();
+    await eventually(async () => (await sorts(page)).at(-1), "status:desc");
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("button", { name: "Sortierung entfernen: status" }).click();
+    await page.getByRole("button", { name: "Sortierung hinzufügen" }).waitFor();
+    await eventually(async () => (await sorts(page)).at(-1), ":asc");
+    expect(await page.locator('[data-filter-token="sort"]').count()).toBe(0);
+    expect(errors).toEqual([]);
+    await page.close();
+  },
+  90_000,
 );

@@ -11,6 +11,9 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { FilterSortControl } from "@/features/table/filter-bar/filter-sort-control";
+import { sortableColumnNames } from "@/features/table/table-view/sortable-columns";
+import { useActiveCapabilities } from "@/lib/db-selection";
 import { FilterConditionsEditor } from "./filter-conditions-editor";
 import type { FilterMode } from "./types";
 import type { useTableSearch } from "./use-table-search";
@@ -36,6 +39,8 @@ type EntityFilterPanelProps = Pick<
   | "removeCondition"
   | "sql"
   | "setSql"
+  | "sorting"
+  | "setSorting"
   | "resetFilter"
   | "handleOpen"
 >;
@@ -56,9 +61,12 @@ export function EntityFilterPanel({
   removeCondition,
   sql,
   setSql,
+  sorting,
+  setSorting,
   resetFilter,
   handleOpen,
 }: EntityFilterPanelProps) {
+  const caps = useActiveCapabilities();
   return (
     <div className="flex min-h-0 w-1/2 flex-col">
       {selectedEntity ? (
@@ -68,6 +76,14 @@ export function EntityFilterPanel({
             <span className="min-w-0 flex-1 truncate text-xs font-medium">
               {selectedEntity.name}
             </span>
+            <FilterSortControl
+              sort={{
+                sorting,
+                sortableColumns: sortableColumnNames(caps.sort, undefined),
+                onChange: setSorting,
+              }}
+              columns={selectedColumns}
+            />
             {whereClause && (
               <Badge variant="secondary" className="text-[10px]">
                 {kind === "mongodb" ? "JSON" : kind === "redis" ? "MATCH" : "WHERE"}
