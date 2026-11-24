@@ -1565,7 +1565,7 @@ pub fn format_result(
     cap(lines.join("\n"), config.max_chars)
 }
 
-pub(super) fn scrub_error(error: &str) -> String {
+pub(crate) fn scrub_error(error: &str) -> String {
     let re = regex::Regex::new(r"[a-z][a-z0-9+.-]*://[^\s]+").unwrap();
     re.replace_all(error, "[connection-url]").into_owned()
 }

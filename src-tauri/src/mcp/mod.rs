@@ -1,7 +1,7 @@
 pub mod benchmark;
 mod catalog;
 pub mod clients;
-mod code;
+pub(crate) mod code;
 #[cfg(all(test, feature = "duckdb"))]
 mod code_tests;
 mod code_worker;

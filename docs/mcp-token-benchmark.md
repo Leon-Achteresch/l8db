@@ -12,6 +12,7 @@ Zahlen aus dem letzten Benchmark-Lauf in Phase 4, nach der Review-Fix-Runde (Deb
 | `tools/list`, echte Konfiguration dieser Maschine | – | 9.890 B | |
 | instructions | 1.324 B | 932 B | −30 % |
 | BYOK-Startkatalog | 12.201 B | 10.518 B | −14 % |
+| BYOK-Startkatalog nach Phase 6 (15 → 7 Tools, Rest über `search` + `code`) | 10.450 B | 5.581 B | −47 % |
 | huge.wide_table_column (1 Spalte aus 450) | 12.223 B | 155 B | −98,7 % |
 | huge.tenant_id_tables (300 Mandanten-Schemas) | 20.030 B | 2.077 B | −89,6 % |
 | huge.revenue_per_customer | 21.960 B, Info unvollständig | 4.358 B, vollständig | −80,2 % |
@@ -682,3 +683,65 @@ Im Debug-Build kostet der Start des Sandbox-Prozesses rund 410 ms je `code`-Aufr
 Tests: `cargo test --lib mcp::pump` (acht Leseaufrufe zu je 100 ms: Median 203 ms, Maximum 206 ms statt 800 ms; höchstens vier gleichzeitig; Schreibaufrufe und `refresh` allein und in Reihenfolge; Abbruch laufender und wartender Aufrufe; Absturz eines Aufrufs) und `cargo test --lib mcp::persist` (unveränderter Katalog wird bestätigt statt neu geladen, geändertes Schema lädt neu, die Datei zählt für Prüfungen nicht).
 
 Nicht gemessen: Windows (Prozessstart des Sandbox-Prozesses dort unbekannt), Oracle 19c, ein entferntes Netz, opencode selbst als Client, Release-Build nach der Änderung. `mcp::code_tests::worker_start_and_statement_overhead_stay_small` scheitert auf diesem Rechner schon ohne die Änderung am Startbudget (Median 412 ms bei 400 ms Grenze, Debug-Binary).
+
+## Phase 6: Code Mode im KI-Chat
+
+Ziel: Der eingebaute KI-Chat (BYOK-Pfad, `ai/byok.rs`) schickt in jeder Runde nur noch wenige Tool-Schemas. Vorbild ist Cloudflares Code Mode: `search` ist die Doku, `code` der Aufruf.
+
+Was das Modell jetzt sieht:
+
+- **Direkte Tools (7):** `search`, `describe`, `query`, `code`, `execute`, `visualize`, `plan`. Vorher 15: zusätzlich `connections`, `overview`, `relations`, `explain`, `drilldown`, `sandbox`, `editor` und `discover_tools`.
+- **`search` mit `in=tools`:** sucht in den übrigen Werkzeugen. Treffer kommen als TypeScript-Signatur mit Beschreibung und einem Beispielaufruf zurück (`tools.relations(args: {connection?: string; from: string; …}): Promise<string>`), höchstens 5 je Suche, exakte Namen (`dashboard|workflow`) liefern genau diese. Ein leerer Suchbegriff listet alle Funktionen mit einem Satz.
+- **`code`:** kennt zusätzlich `tools.<name>(args)`. Der Aufruf liefert den Text des Werkzeugs als String, Fehler werfen `ToolError`. Schleifen, Filtern und Verdichten passieren im Code, zurück kommt nur der Rückgabewert. Die Namen der Funktionen stehen in der Beschreibung von `code`.
+- `discover_tools` gibt es nicht mehr. Der Katalog ändert sich während einer Anfrage nicht (gut für Prompt-Caching).
+
+Sicherheit:
+
+- Jeder Aufruf aus `code` läuft durch dieselbe Funktion wie der direkte Tool-Call (`ai::context::call_in`). Schreibsperre, Produktionsschutz, Plan-Modus, Probelauf und Nutzerfreigabe von `execute`, die Freigaben von `sandbox`, `dashboard`, `knowledge`, `workflow`, `report_issue` und externen MCP-Tools gelten unverändert. `confirm: true` aus dem Code ersetzt keine Freigabe.
+- Aufrufbar ist nur, was der Katalog der Sitzung anbietet (dieselbe Menge, die `discover_tools` laden konnte). `code` ruft sich nicht selbst auf, `script` bleibt gesperrt.
+- `sql`, `query` und `catalog` im Code bleiben rein lesend. Die Ausgabe der Werkzeuge ist bereits geschwärzt und läuft danach noch einmal durch die Schwärzung von `code`.
+- Externe MCP-Tools fragen aus `code` heraus immer nach, auch wenn die Sitzung MCP-Aufrufe sonst automatisch freigibt. Im Code gelesene Zeilen könnten sonst ohne Umweg über den Modellkontext an einen fremden Server gehen.
+- Scheitert ein Lauf, nennt die Fehlermeldung die Tool-Aufrufe, die davor schon gewirkt haben, damit das Modell sie nicht wiederholt.
+- Höchstens 100 Tool-Aufrufe je `code`-Lauf. Die Wartezeit eines Tool-Aufrufs (z. B. auf die Freigabe) zählt nicht gegen das Zeitlimit des Laufs, Rechenzeit im Code weiterhin.
+- In der Oberfläche erscheint jeder Aufruf aus `code` wie bisher als eigener Tool-Schritt (dieselben `tool`- und `approval`-Ereignisse), zwischen Start und Ende des `code`-Schritts.
+
+Regressionstests: `ai::tests::code_tool_calls_keep_approval_write_locks_plan_mode_and_redaction` (abgelehnte und erteilte Freigabe, Schreibsperre, Produktion, Plan-Modus, Schwärzung, kein rekursives `code`), `ai::tests::byok_catalog_stays_small_and_documents_the_other_tools_as_functions`, `ai::tests::byok_discovery_and_failure_recovery_preserve_real_query_results` (Ablauf über den Provider-Stub), `mcp::code_tests::hosted_tool_calls_pause_the_time_limit_are_counted_and_need_a_host`, `ai::tests::external_stdio_mcp_initializes_and_requires_every_call_approval` (externe Tools aus `code`).
+
+### Messung
+
+`cargo test --lib token_benchmark -- --nocapture`, Test `token_benchmark_byok_code_mode_reports_catalog_and_function_bytes`. Lab wie in Phase 3 (Shop, Shop A/B, Tenants). „Vorher“ ist der Lauf auf Commit `5301548c` am selben Tag auf derselben Maschine.
+
+| Messung | vorher | nachher | ≈Tokens nachher | Budget B |
+|---|---:|---:|---:|---:|
+| BYOK-Startkatalog je Runde | 10.450 B (15 Tools) | 5.581 B (7 Tools) | 1.396 | 5.650 (vorher 10.622) |
+| `tools/list` des externen MCP | 12.626 B | 12.626 B | 3.157 | 13.182 |
+
+Bytes je direktem Tool: `search` 645, `describe` 513, `query` 427, `code` 1.968, `execute` 355, `visualize` 1.028, `plan` 644.
+
+Doku auf Abruf (einmalig, nur wenn das Modell sie holt): Liste aller 22 Funktionen 2.920 B. Alle Signaturen zusammen 12.604 B, als Schemas wären es 16.556 B. Beispiele: `editor` 1.205 B statt 1.663 B Schema in jeder Runde, `dashboard` 1.008 B, `benchmark` 347 B.
+
+Mehrschritt-Szenarien, direkt gegen `code`. „Verkehr“ ist gemessen (Argumente plus Antworten). „Eingabe modelliert“ ist **geschätzt**: Summe der Bytes, die über alle Runden an den Provider gehen (Startkatalog je Runde plus bisheriger Verlauf), bei einem Tool-Aufruf je Runde, ohne Prompt-Caching, ohne Systemprompt und Nutzertext.
+
+| Szenario | direkt: Aufrufe / Verkehr | `code`: Aufrufe / Verkehr | Verkehr | Eingabe modelliert direkt → `code` | ms direkt / `code` |
+|---|---:|---:|---:|---:|---:|
+| `byok.benchmark_variants`: 4 Abfragevarianten mit `benchmark` messen, schnellste nennen | 5 / 3.014 B (`discover_tools` + 4 × `benchmark`) | 2 / 1.679 B (`search in=tools` 380 B + `code` 1.299 B) | −44 % | 72.843 B → 18.802 B (−74 %) | 39 / 511 |
+| `byok.overview_connections`: `overview` von 4 Verbindungen, je eine Zeile | 4 / 2.500 B | 2 / 789 B (`search in=tools` 297 B + `code` 492 B) | −68 % | 59.520 B → 17.829 B (−70 %) | 335 / 507 |
+
+Ein einzelner direkter Aufruf (z. B. `query`, 400 B Verkehr, zwei Runden) kommt modelliert auf 54 % der bisherigen Eingabe, weil nur der Startkatalog schrumpft.
+
+Der `discover_tools`-Aufruf der alten Seite ist aus dem Phase-5-Code nachgestellt (23 B Argumente, 31 B Antwort, danach das `benchmark`-Schema mit 485 B in jeder Runde).
+
+Was teurer wird: Ein einzelner Aufruf eines nicht mehr direkten Werkzeugs braucht einmal die Signatur und den `code`-Rahmen (rund 40 B) und startet den Sandbox-Prozess. Dessen Start kostet im Debug-Testbinary dieser Maschine rund 0,5 s (unter Last bis 0,9 s), laut Abschnitt „Parallele Aufrufe“ im Release-Build auf macOS rund 10 ms.
+
+### Maschine und Lücken
+
+macOS 27.2.1, arm64, Apple M3 (8 Kerne), 16 GB, rustc 1.99.0, Debug-Profil. Die Tabellenwerte stammen aus dem Lauf nach der Review-Fix-Runde bei einer Last um 4; frühere Läufe bei Last 10 bis 23 lagen bei rund 700 ms je `code`-Aufruf. Die Millisekunden sind nur grobe Orientierung.
+
+Nicht gemessen und nicht geändert:
+
+- Kein Lauf mit einem echten Modell. Ob Modelle `search in=tools` und `tools.*` zuverlässig nutzen, wie sich schwache lokale Modelle (Ollama, LM Studio) verhalten und was Prompt-Caching aus der Ersparnis macht, ist offen. Die Tokens sind Bytes/4.
+- CLI-Provider (Claude Code, Codex, ACP) laufen über die Bridge und sehen weiter alle Tools direkt. Der externe MCP-Server (`l8db mcp`) ist unverändert: gleiche `tools/list`, `tools.*` gibt es dort nicht (`Unbekannte Funktion 'tool'`).
+- Windows, Linux und der Release-Build.
+- Während ein Tool-Aufruf aus `code` läuft, laufen bereits gestartete SQL-Statements desselben Laufs weiter, ihre Ergebnisse erreichen den Code aber erst nach dem Tool-Aufruf. Neue Anfragen des Codes werden in dieser Zeit nicht gelesen.
+- Ein `try/catch` um einen abgelehnten Aufruf kann dieselbe Freigabe mehrfach anfordern (höchstens 100-mal je Lauf). Ein Lauf mit vielen Freigaben kann entsprechend lange dauern; er hält dabei den Sandbox-Prozess.
+- `mcp::code_tests::worker_start_and_statement_overhead_stay_small` scheitert auf dieser Maschine am Startbudget (Median 504 ms bei 400 ms Grenze, Last um 4; unter Last 902 ms). Das Testbinary (515 MB) braucht schon ohne jeden Test 0,48 bis 0,49 s zum Start, die Zeit ist also reiner Prozessstart. Der Test scheiterte laut Abschnitt oben bereits vorher. Budget unverändert.

@@ -11,7 +11,7 @@
   const call = (op, args) => {
     const error = new Error();
     return host(op, stringify(args)).catch((message) => {
-      error.name = op === "sql" || op === "query" || op === "explain" ? "SqlError" : "CatalogError";
+      error.name = op === "sql" || op === "query" || op === "explain" ? "SqlError" : op === "tool" ? "ToolError" : "CatalogError";
       error.message = String(message);
       throw error;
     });
@@ -108,6 +108,9 @@
       return v;
     },
     catalog: catalogFor({}),
+    tools: new Proxy(freeze({}), {
+      get: (_, name) => (typeof name !== "string" || name === "then" || name === "toJSON" ? undefined : (args) => call("tool", { name, args })),
+    }),
     console: freeze({ log: print, info: print, warn: print, error: print, debug: print }),
   });
   return async (fn) => {
