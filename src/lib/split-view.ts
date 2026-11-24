@@ -482,6 +482,11 @@ export const useSplitView = create<SplitState>()(
           }),
 
         split: ({ activeKey, key = null, target, edge }) => {
+          const before = get();
+          if (activeKey && !key && before.panes.length > 1 && !isSplitShown(before, activeKey)) {
+            set(snapshot(liveOf(before), before));
+            get().collapse();
+          }
           const state = get();
           const single = state.panes.length < 2;
           const seed = activeKey && activeKey !== key ? activeKey : null;

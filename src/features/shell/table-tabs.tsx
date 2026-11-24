@@ -32,7 +32,6 @@ import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 import { useSettingsStore } from "@/lib/settings";
 import type { SplitEdge } from "@/lib/split-layout";
 import {
-  isSplitShown,
   MAX_SPLIT_PANES,
   openDetached,
   placeOpenTab,
@@ -140,9 +139,7 @@ export function TableTabs() {
 
   const handleSplit = useCallback(() => {
     if (easyMode || !routeKey) return;
-    const state = useSplitView.getState();
-    const hidden = state.panes.length > 1 && !isSplitShown(state, routeKey);
-    state.split({ activeKey: routeKey, key: hidden ? routeKey : null });
+    useSplitView.getState().split({ activeKey: routeKey });
   }, [routeKey, easyMode]);
 
   useEffect(() => onHotkeyAction("view.split", handleSplit), [handleSplit]);
