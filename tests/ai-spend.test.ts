@@ -1,6 +1,13 @@
 import { expect, test } from "bun:test";
 import { aiCurrencyRate, formatAiCost, parseAiRates } from "@/lib/ai/currency";
 import {
+  AI_LIMIT_WINDOWS,
+  activeAiLimits,
+  aiLimitReset,
+  mergeAiLimits,
+  parseAiLimits,
+} from "@/lib/ai/limits";
+import {
   AI_SPEND_DAYS,
   AI_SPEND_MODELS,
   type AiSpend,
@@ -139,4 +146,91 @@ test("costs convert with the reference or manual rate and fall back to USD", () 
   expect(format(10, { code: "GBP", manual: null, rates: rates.rates })).toBe("10,00 $");
   expect(format(10, euro, "CAD")).toBe("10,00 CA$");
   expect(format(0.00123, { code: "USD", manual: null, rates: {} })).toBe("0,00123 $");
+  expect(format(0.083, euro)).toBe("0,076 €");
+});
+
+test("Claude Code and Codex limit events become windows with usage and reset time", () => {
+  const claude = parseAiLimits({
+    rateLimit: {
+      status: "allowed",
+      resetsAt: 1795526400,
+      rateLimitType: "five_hour",
+      overageStatus: "rejected",
+      isUsingOverage: false,
+      unifiedWindows: {
+        five_hour: { utilization: 0.23, resetsAt: 1795526400, status: "allowed" },
+        seven_day: { utilization: 0.12, resetsAt: 1796032800, status: "allowed" },
+      },
+    },
+  });
+  expect(claude).toEqual([
+    { id: "five_hour", label: "5 Std.", used: 23, resetsAt: 1795526400000, rejected: false },
+    { id: "seven_day", label: "Woche", used: 12, resetsAt: 1796032800000, rejected: false },
+  ]);
+  expect(
+    parseAiLimits({
+      rateLimit: { status: "rejected", rateLimitType: "seven_day_opus", resetsAt: 1796032800 },
+    }),
+  ).toEqual([
+    {
+      id: "seven_day_opus",
+      label: "Woche · Opus",
+      used: 100,
+      resetsAt: 1796032800000,
+      rejected: true,
+    },
+  ]);
+  const codex = parseAiLimits({
+    rateLimits: {
+      limitId: "codex",
+      limitName: null,
+      primary: { usedPercent: 41, windowDurationMins: 300, resetsAt: 1795526400 },
+      secondary: { usedPercent: 100, windowDurationMins: 10080, resetsAt: null },
+      credits: null,
+      planType: "plus",
+    },
+  });
+  expect(codex).toEqual([
+    { id: "codex:primary", label: "5 Std.", used: 41, resetsAt: 1795526400000, rejected: false },
+    { id: "codex:secondary", label: "Woche", used: 100, resetsAt: null, rejected: true },
+  ]);
+  expect(parseAiLimits({ usage: { input_tokens: 5 } })).toEqual([]);
+  expect(parseAiLimits({ rateLimits: { primary: { usedPercent: "x" } }, rateLimit: 7 })).toEqual(
+    [],
+  );
+});
+
+test("sparse limit updates merge by window, expired windows disappear and the list stays bounded", () => {
+  const now = 1795500000000;
+  const first = parseAiLimits({
+    rateLimits: {
+      primary: { usedPercent: 10, windowDurationMins: 300, resetsAt: 1795526400 },
+      secondary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: 1796032800 },
+    },
+  });
+  const update = parseAiLimits({
+    rateLimits: { primary: { usedPercent: 55, windowDurationMins: 300, resetsAt: 1795526400 } },
+  });
+  const merged = mergeAiLimits(first, update, now);
+  expect(merged.map((limit) => [limit.id, limit.used])).toEqual([
+    [":primary", 55],
+    [":secondary", 5],
+  ]);
+  expect(activeAiLimits(merged, 1795526400001).map((limit) => limit.id)).toEqual([":secondary"]);
+  expect(mergeAiLimits(merged, [], 1796032800001)).toEqual([]);
+  let many = merged;
+  for (let index = 0; index < 50; index++)
+    many = mergeAiLimits(
+      many,
+      [{ id: `w${index}`, label: "x", used: 1, resetsAt: null, rejected: false }],
+      now,
+    );
+  expect(many).toHaveLength(AI_LIMIT_WINDOWS);
+  expect(
+    aiLimitReset(new Date(2026, 10, 24, 14, 5).getTime(), new Date(2026, 10, 24, 9).getTime()),
+  ).toBe("14:05");
+  expect(
+    aiLimitReset(new Date(2026, 10, 30, 9, 0).getTime(), new Date(2026, 10, 24, 9).getTime()),
+  ).toBe("Mo 09:00");
+  expect(aiLimitReset(null)).toBe("");
 });

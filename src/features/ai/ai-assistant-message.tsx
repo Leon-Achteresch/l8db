@@ -8,6 +8,7 @@ import { useSettingsStore } from "@/lib/settings";
 import { AiAnswer } from "./ai-answer";
 import { AiBranchSwitcher } from "./ai-branch-switcher";
 import { AiCopyAction } from "./ai-copy-action";
+import { AiMessageCost } from "./ai-message-cost";
 import { AiMessageTime } from "./ai-message-time";
 import { AiRichContent } from "./ai-rich-content";
 import { AiTurnHeader } from "./ai-turn-header";
@@ -138,6 +139,7 @@ export function AiAssistantMessage({
             onBranch={onBranch}
           />
           <AiMessageTime at={message.createdAt} />
+          <AiMessageCost spend={message.spend} />
         </div>
       )}
     </article>

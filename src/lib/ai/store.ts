@@ -4,7 +4,7 @@ import { sanitizeAiRich } from "@/lib/ai/rich-core";
 import { readAiSessions, writeAiSessions } from "@/lib/ai/session-db";
 import type { AiMessage, AiProfile, AiProvider, AiServer } from "@/lib/db/ai";
 import { syncAcrossWindows } from "@/lib/window-sync";
-import type { AiSpend } from "./spend";
+import { type AiSpend, cleanSpend } from "./spend";
 
 export const AI_PROVIDERS: { id: AiProvider; name: string; binary: string; cli: boolean }[] = [
   { id: "codex", name: "Codex", binary: "codex", cli: true },
@@ -148,6 +148,7 @@ function sanitizeMessage(
     stopped,
     createdAt,
     durationMs,
+    spend,
     attachments,
     context,
     contextLabels,
@@ -165,6 +166,7 @@ function sanitizeMessage(
     ...(stopped ? { stopped: true } : {}),
     ...(typeof createdAt === "number" ? { createdAt } : {}),
     ...(typeof durationMs === "number" ? { durationMs } : {}),
+    ...(spend && typeof spend === "object" ? { spend: cleanSpend(spend) } : {}),
     ...(Array.isArray(attachments) && attachments.length
       ? { attachments: attachments.slice(0, 10) }
       : {}),
