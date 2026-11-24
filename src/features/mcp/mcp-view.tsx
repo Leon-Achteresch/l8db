@@ -1,5 +1,6 @@
 import {
   Database,
+  FlaskConical,
   History,
   LayoutDashboard,
   ShieldCheck,
@@ -9,6 +10,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { NewBadge } from "@/components/new-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { McpAuditSection } from "@/features/mcp/mcp-audit-section";
@@ -17,6 +19,7 @@ import { McpConnectionsSection } from "@/features/mcp/mcp-connections-section";
 import { McpHeader } from "@/features/mcp/mcp-header";
 import { McpLimitsSection } from "@/features/mcp/mcp-limits-section";
 import { McpRedactionSection } from "@/features/mcp/mcp-redaction-section";
+import { McpSandboxSection } from "@/features/mcp/mcp-sandbox-section";
 import { McpSmartGuide } from "@/features/mcp/mcp-smart-guide";
 import { McpStatsGrid } from "@/features/mcp/mcp-stats-grid";
 import { McpWorkflowsSection } from "@/features/mcp/mcp-workflows-section";
@@ -33,9 +36,10 @@ import {
   saveMcpConfig,
   syncMcpConfig,
 } from "@/lib/mcp";
+import { useHasNewFeatures } from "@/lib/new-features";
 import { cn } from "@/lib/utils";
 
-type TabId = "overview" | "connections" | "clients" | "security" | "limits" | "audit";
+type TabId = "overview" | "connections" | "clients" | "security" | "limits" | "audit" | "sandbox";
 
 const TABS: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard },
@@ -44,6 +48,7 @@ const TABS: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "security", label: "Datenschutz", icon: ShieldCheck },
   { id: "limits", label: "Limits", icon: SlidersHorizontal },
   { id: "audit", label: "Audit-Log", icon: History },
+  { id: "sandbox", label: "Sandbox", icon: FlaskConical },
 ];
 
 export function McpView() {
@@ -53,6 +58,7 @@ export function McpView() {
   const [audit, setAudit] = useState<McpAuditEntry[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const sandboxIsNew = useHasNewFeatures("mcp.sandbox");
   const [loadError, setLoadError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<((current: McpConfig) => McpConfig)[]>([]);
@@ -219,6 +225,7 @@ export function McpView() {
                       {registeredClientsCount}
                     </Badge>
                   ) : null}
+                  {tab.id === "sandbox" && sandboxIsNew && !isActive ? <NewBadge /> : null}
                 </span>
               </button>
             );
@@ -294,6 +301,13 @@ export function McpView() {
             {activeTab === "limits" && <McpLimitsSection config={config} onUpdateConfig={update} />}
 
             {activeTab === "audit" && <McpAuditSection audit={audit} onRefresh={refreshAudit} />}
+
+            {activeTab === "sandbox" && (
+              <McpSandboxSection
+                enabled={config.testViews}
+                onToggle={(testViews) => update((current) => ({ ...current, testViews }))}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>

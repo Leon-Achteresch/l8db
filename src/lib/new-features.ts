@@ -161,6 +161,7 @@ export const NEW_FEATURES = {
   "automation.background": "0.10.0",
   "mcp.workflows": "0.10.0",
   "mcp.scripts": "0.14.0",
+  "mcp.sandbox": NEXT_FEATURE_VERSION,
   "health.advisor": "0.10.0",
   "health.advisor.index-observation": "0.19.0",
   "monitor.live": "0.14.0",

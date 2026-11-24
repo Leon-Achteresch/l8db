@@ -297,26 +297,24 @@ fn offered(config: &McpConfig) -> Vec<Value> {
         return Vec::new();
     }
     let mut tools = published(
-        tool_definitions()
-            .as_array()
-            .cloned()
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|tool| config.workflows || tool["name"] != "workflow")
-            .filter(|tool| tool["name"] != "report_issue" || crate::issues::relay().is_ok())
-            .filter(|tool| {
-                tool["name"] != "code"
-                    || exposed(config).any(|connection| sql_family(connection.kind))
-            })
-            .filter(|tool| {
-                tool["name"] != "script"
-                    || exposed(config).any(|connection| connection.allow_scripts)
-            })
-            .filter(|tool| {
-                tool["name"] != "watch"
-                    || exposed(config).any(|connection| connection.kind == DatabaseKind::Postgres)
-            })
-            .collect(),
+        super::open::gated(
+            tool_definitions().as_array().cloned().unwrap_or_default(),
+            config,
+        )
+        .into_iter()
+        .filter(|tool| config.workflows || tool["name"] != "workflow")
+        .filter(|tool| tool["name"] != "report_issue" || crate::issues::relay().is_ok())
+        .filter(|tool| {
+            tool["name"] != "code" || exposed(config).any(|connection| sql_family(connection.kind))
+        })
+        .filter(|tool| {
+            tool["name"] != "script" || exposed(config).any(|connection| connection.allow_scripts)
+        })
+        .filter(|tool| {
+            tool["name"] != "watch"
+                || exposed(config).any(|connection| connection.kind == DatabaseKind::Postgres)
+        })
+        .collect(),
     );
     if tools.iter().any(|tool| tool["name"] == "code") {
         let hidden: Vec<String> = HOSTED
@@ -630,7 +628,16 @@ impl Server {
                 }
                 result
             }
-            "open" => self.open(config, &args).await,
+            "open" => {
+                let result = self.open(config, &args).await;
+                let probed = config.test_views && (args["test"] == true || args["split"].is_array());
+                if let (true, Ok(connection)) =
+                    (probed, find_connection(config, arg_str(&args, "connection")))
+                {
+                    audit(connection, name, &args.to_string(), &result, started);
+                }
+                result
+            }
             "report_issue" if args["confirm"] != true => Err(
                 "Titel und Text erst dem Benutzer zeigen und nach seiner Zustimmung mit confirm=true senden."
                     .into(),
