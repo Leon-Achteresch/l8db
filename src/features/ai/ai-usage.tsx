@@ -15,12 +15,15 @@ import {
   refreshAiRates,
   useAiCurrency,
 } from "@/lib/ai/currency";
+import { activeAiLimits, useAiLimits } from "@/lib/ai/limits";
 import { type AiSpend, settleAiSpend } from "@/lib/ai/spend";
 import type { AiSession } from "@/lib/ai/store";
 import { type AiUsageData, summarizeAiUsage } from "@/lib/ai/usage";
 import type { AiMessage, AiProfile } from "@/lib/db/ai";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { cn } from "@/lib/utils";
 import { AiContextMap } from "./ai-context-map";
+import { AiLimits } from "./ai-limits";
 
 interface Props {
   data: AiUsageData;
@@ -57,6 +60,12 @@ export function AiUsage({
   const count = (value: number) => value.toLocaleString("de-DE");
   const price = (value: number) => formatAiCost(value, currency, usage.currency);
   const rate = usage.currency === "USD" ? aiCurrencyRate(currency) : null;
+  const limit = Math.max(
+    0,
+    ...activeAiLimits(useAiLimits((state) => state.limits[profile.id])).map((entry) =>
+      entry.rejected ? 100 : entry.used,
+    ),
+  );
   const total = running ? (settleAiSpend(usage, { spend, spendSeen })?.spend ?? spend) : spend;
   const percent = Math.min(100, (usage.context / usage.contextLimit) * 100);
   if (percent < 1 && !usage.total) return null;
@@ -100,6 +109,16 @@ export function AiUsage({
             </svg>
             {usage.contextEstimated ? "≈" : ""}
             {Math.round(percent)}%
+            {limit >= 80 && (
+              <span
+                role="img"
+                aria-label={`Abo-Limit bei ${Math.round(limit)} %`}
+                className={cn(
+                  "size-1.5 rounded-full",
+                  limit >= 95 ? "bg-destructive" : "bg-amber-500",
+                )}
+              />
+            )}
           </button>
         </PopoverTrigger>
         <PopoverContent
@@ -161,6 +180,7 @@ export function AiUsage({
               </>
             )}
           </div>
+          <AiLimits profileId={profile.id} />
           <details>
             <summary className="min-h-7 cursor-pointer py-1 text-muted-foreground">
               Berechnung &amp; weitere Details

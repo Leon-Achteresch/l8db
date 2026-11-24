@@ -28,6 +28,15 @@ const empty = (): AiSpend => ({
   unpriced: 0,
 });
 
+export function cleanSpend(value: unknown): AiSpend {
+  const spend = empty();
+  for (const field of FIELDS) {
+    const number = (value as Record<string, unknown> | null)?.[field];
+    if (typeof number === "number" && Number.isFinite(number) && number >= 0) spend[field] = number;
+  }
+  return spend;
+}
+
 export function addSpend(a: AiSpend, b: AiSpend): AiSpend {
   const result = empty();
   for (const field of FIELDS) result[field] = a[field] + b[field];
@@ -113,15 +122,8 @@ export function parseSpendLog(raw: string | null): AiSpendLog {
   for (const [day, models] of Object.entries(data).sort().slice(-AI_SPEND_DAYS)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !models || typeof models !== "object") continue;
     const entries: Record<string, AiSpend> = {};
-    for (const [model, value] of Object.entries(models).slice(0, AI_SPEND_MODELS + 1)) {
-      const spend = empty();
-      for (const field of FIELDS) {
-        const number = (value as Record<string, unknown> | null)?.[field];
-        if (typeof number === "number" && Number.isFinite(number) && number >= 0)
-          spend[field] = number;
-      }
-      entries[model.slice(0, 80)] = spend;
-    }
+    for (const [model, value] of Object.entries(models).slice(0, AI_SPEND_MODELS + 1))
+      entries[model.slice(0, 80)] = cleanSpend(value);
     log[day] = entries;
   }
   return log;

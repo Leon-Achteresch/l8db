@@ -1,6 +1,7 @@
 import { heapSize } from "bun:jsc";
 import { expect, test } from "bun:test";
 import { arch, cpus, platform, totalmem } from "node:os";
+import { AI_LIMIT_WINDOWS, type AiLimit, mergeAiLimits, parseAiLimits } from "@/lib/ai/limits";
 import {
   AI_SPEND_DAYS,
   AI_SPEND_MODELS,
@@ -43,6 +44,29 @@ test("spend log stays bounded and fast after 20000 requests over 200 days and 40
   const summarize = await measureScenario(() => {
     report = summarizeAiSpend(parseSpendLog(stored), 90, now);
   }, 60);
+  let limits: AiLimit[] = [];
+  const limitEvents = await measureScenario(() => {
+    for (let index = 0; index < 5000; index++)
+      limits = mergeAiLimits(
+        limits,
+        parseAiLimits({
+          rateLimits: {
+            limitId: `bucket-${index % 20}`,
+            primary: {
+              usedPercent: index % 100,
+              windowDurationMins: 300,
+              resetsAt: now / 1000 + 9000,
+            },
+            secondary: {
+              usedPercent: 12,
+              windowDurationMins: 10080,
+              resetsAt: now / 1000 + 90_000,
+            },
+          },
+        }),
+        now,
+      );
+  }, 20);
   Bun.gc(true);
   const retainedBytes = Math.max(0, heapSize() - heapBefore);
   const days = Object.keys(parseSpendLog(stored)).length;
@@ -57,11 +81,15 @@ test("spend log stays bounded and fast after 20000 requests over 200 days and 40
   expect(record.p95Ms).toBeLessThan(8);
   expect(summarize.medianMs).toBeLessThan(3);
   expect(summarize.p95Ms).toBeLessThan(8);
+  expect(limits).toHaveLength(AI_LIMIT_WINDOWS);
+  expect(limitEvents.medianMs).toBeLessThan(25);
+  expect(limitEvents.p95Ms).toBeLessThan(60);
   expect(retainedBytes).toBeLessThan(4 * 1024 * 1024);
   await reportScenario("ai-spend", {
     workload: { requests, days: 200, models: 40, runs: 60 },
     record,
     summarize,
+    limitEvents: { events: 5000, buckets: 20, ...limitEvents },
     storedBytes: stored.length,
     retainedBytes,
     limits: {
@@ -71,6 +99,9 @@ test("spend log stays bounded and fast after 20000 requests over 200 days and 40
       days: AI_SPEND_DAYS,
       modelsPerDay: AI_SPEND_MODELS + 1,
       retainedBytes: 4 * 1024 * 1024,
+      limitEventsMedianMs: 25,
+      limitEventsP95Ms: 60,
+      limitWindows: AI_LIMIT_WINDOWS,
     },
     environment: {
       os: platform(),
@@ -80,6 +111,6 @@ test("spend log stays bounded and fast after 20000 requests over 200 days and 40
       runtime: Bun.version,
     },
     coverage:
-      "One record per finished chat request (parse, add, serialize) and one report per opened settings view; no polling. Exchange rates are fetched at most once per 24 hours and only for a non-USD display currency; the network request is not measured here.",
+      "One record per finished chat request (parse, add, serialize) and one report per opened settings view; no polling. Exchange rates are fetched at most once per 24 hours and only for a non-USD display currency; the network request is not measured here. Limit events are parsed and merged per usage event of a run and kept to a fixed number of windows per profile; nothing polls the providers.",
   });
 });

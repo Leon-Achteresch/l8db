@@ -28,6 +28,7 @@ import { editorAiController } from "@/lib/ai/editor/controller";
 import { useEditorAiSettings } from "@/lib/ai/editor/settings";
 import { AiFigureContext, useAiFigureNumbers } from "@/lib/ai/figures";
 import { handleChatIssueRequest } from "@/lib/ai/issue";
+import { useAiLimits } from "@/lib/ai/limits";
 import { handleChatNotebookRequest } from "@/lib/ai/notebook";
 import { AI_KNOWLEDGE_PROMPT, AI_RULES_PROMPT } from "@/lib/ai/prompts";
 import { aiFigures, aiThreadMarkdown } from "@/lib/ai/result";
@@ -619,6 +620,7 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
               saveLive();
             }
           } else if (event.kind === "usage") {
+            useAiLimits.getState().capture(profile.id, event.data);
             usageRef.current = mergeAiUsage(usageRef.current, event.data);
             setUsage(usageRef.current);
             if (liveSession.current) {
@@ -643,12 +645,6 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       } else setError(String(error));
     } finally {
       if (liveSession.current?.leafId === assistantId) {
-        updateLast((last) => ({
-          ...last,
-          durationMs: Date.now() - (last.createdAt ?? Date.now()),
-          ...(stopping.current ? { stopped: true } : {}),
-        }));
-        if (synced) liveSession.current = { ...liveSession.current, nativeLeafId: assistantId };
         const model = liveSession.current.usageModel ?? profile.model;
         const settled = settleAiSpend(
           summarizeAiUsage(
@@ -659,6 +655,13 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           ),
           liveSession.current,
         );
+        updateLast((last) => ({
+          ...last,
+          durationMs: Date.now() - (last.createdAt ?? Date.now()),
+          ...(stopping.current ? { stopped: true } : {}),
+          ...(settled ? { spend: settled.delta } : {}),
+        }));
+        if (synced) liveSession.current = { ...liveSession.current, nativeLeafId: assistantId };
         if (settled) {
           liveSession.current = {
             ...liveSession.current,

@@ -95,6 +95,6 @@ export function formatAiCost(
     style: "currency",
     currency: rate ? state.code : source,
     minimumFractionDigits: 2,
-    maximumFractionDigits: amount < 0.1 ? 5 : 2,
+    maximumFractionDigits: amount < 0.01 ? 5 : amount < 0.1 ? 3 : 2,
   }).format(amount);
 }

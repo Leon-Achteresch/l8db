@@ -128,6 +128,8 @@ export const NEW_FEATURES = {
   "ai.usage.context-map": "0.18.0",
   "ai.usage.currency": "0.20.0",
   "ai.usage.spend": "0.20.0",
+  "ai.usage.limits": "0.20.0",
+  "ai.chat.message-cost": "0.20.0",
   "ai.onboarding": "0.10.0",
   "ai.ask": "0.10.0",
   "ai.chat.charts": "0.10.0",
