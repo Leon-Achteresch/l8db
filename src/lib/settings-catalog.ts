@@ -50,7 +50,21 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     title: "Themes",
     description:
       "Je ein Theme für den hellen und den dunklen Modus wählen: linker Kreis hell, rechter Kreis dunkel.",
-    keywords: ["theme", "farbe", "akzent", "rose", "grove", "ocean", "ember", "iris", "graphite"],
+    keywords: [
+      "theme",
+      "farbe",
+      "akzent",
+      "rose",
+      "grove",
+      "ocean",
+      "ember",
+      "iris",
+      "graphite",
+      "eigenes theme",
+      "import",
+      "export",
+      "ki",
+    ],
   },
   {
     id: "db-themes",

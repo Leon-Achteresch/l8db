@@ -1,6 +1,13 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { DEFAULT_APP_THEME, normalizeAppTheme } from "@/lib/app-themes";
+import {
+  type AppTheme,
+  DEFAULT_APP_THEME,
+  MAX_CUSTOM_THEMES,
+  normalizeAppTheme,
+  normalizeCustomTheme,
+  normalizeCustomThemes,
+} from "@/lib/app-themes";
 import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import {
   DEFAULT_DISCOVERY_SETTINGS,
@@ -136,6 +143,7 @@ export interface SettingsState {
   seasonalAccents: boolean;
   lightTheme: string;
   darkTheme: string;
+  customThemes: AppTheme[];
   dbThemes: boolean;
   fitColumnsToHeader: boolean;
   monochromeCells: boolean;
@@ -217,6 +225,8 @@ export interface SettingsState {
   setSeasonalAccents: (value: boolean) => void;
   setLightTheme: (value: string) => void;
   setDarkTheme: (value: string) => void;
+  saveCustomTheme: (theme: AppTheme) => void;
+  deleteCustomTheme: (id: string) => void;
   setDbThemes: (value: boolean) => void;
   setFitColumnsToHeader: (value: boolean) => void;
   setMonochromeCells: (value: boolean) => void;
@@ -352,6 +362,7 @@ export const DEFAULT_SETTINGS = {
   seasonalAccents: true,
   lightTheme: DEFAULT_APP_THEME,
   darkTheme: DEFAULT_APP_THEME,
+  customThemes: [] as AppTheme[],
   dbThemes: false,
   fitColumnsToHeader: true,
   monochromeCells: true,
@@ -364,7 +375,7 @@ export const DEFAULT_SETTINGS = {
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
-    withOrganizationSettings<SettingsState>((set) => ({
+    withOrganizationSettings<SettingsState>((set, get) => ({
       ...DEFAULT_SETTINGS,
       setEasyMode: (easyMode) => set({ easyMode }),
       setTableDetailTabVisible: (tab, visible) =>
@@ -471,8 +482,29 @@ export const useSettingsStore = create<SettingsState>()(
       setShortcutHints: (shortcutHints) => set({ shortcutHints }),
       setNewFeatureBadges: (newFeatureBadges) => set({ newFeatureBadges }),
       setSeasonalAccents: (seasonalAccents) => set({ seasonalAccents }),
-      setLightTheme: (lightTheme) => set({ lightTheme: normalizeAppTheme(lightTheme) }),
-      setDarkTheme: (darkTheme) => set({ darkTheme: normalizeAppTheme(darkTheme) }),
+      setLightTheme: (lightTheme) =>
+        set({ lightTheme: normalizeAppTheme(lightTheme, get().customThemes) }),
+      setDarkTheme: (darkTheme) =>
+        set({ darkTheme: normalizeAppTheme(darkTheme, get().customThemes) }),
+      saveCustomTheme: (theme) => {
+        const next = normalizeCustomTheme(theme);
+        if (!next) return;
+        const themes = get().customThemes;
+        const index = themes.findIndex((entry) => entry.id === next.id);
+        if (index < 0 && themes.length >= MAX_CUSTOM_THEMES) return;
+        set({
+          customThemes:
+            index < 0 ? [...themes, next] : themes.map((entry, i) => (i === index ? next : entry)),
+        });
+      },
+      deleteCustomTheme: (id) => {
+        const state = get();
+        set({
+          customThemes: state.customThemes.filter((theme) => theme.id !== id),
+          ...(state.lightTheme === id ? { lightTheme: DEFAULT_APP_THEME } : {}),
+          ...(state.darkTheme === id ? { darkTheme: DEFAULT_APP_THEME } : {}),
+        });
+      },
       setDbThemes: (dbThemes) => set({ dbThemes }),
       setFitColumnsToHeader: (fitColumnsToHeader) => set({ fitColumnsToHeader }),
       setMonochromeCells: (monochromeCells) => set({ monochromeCells }),
@@ -502,6 +534,7 @@ export const useSettingsStore = create<SettingsState>()(
       }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<SettingsState> | undefined;
+        const customThemes = normalizeCustomThemes(saved?.customThemes);
         return applyOrganizationSettings({
           ...current,
           ...saved,
@@ -524,8 +557,9 @@ export const useSettingsStore = create<SettingsState>()(
           shortcutHints: saved?.shortcutHints !== false,
           newFeatureBadges: saved?.newFeatureBadges !== false,
           seasonalAccents: saved?.seasonalAccents !== false,
-          lightTheme: normalizeAppTheme(saved?.lightTheme),
-          darkTheme: normalizeAppTheme(saved?.darkTheme),
+          customThemes,
+          lightTheme: normalizeAppTheme(saved?.lightTheme, customThemes),
+          darkTheme: normalizeAppTheme(saved?.darkTheme, customThemes),
           dbThemes: saved?.dbThemes === true,
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
           monochromeCells: saved?.monochromeCells !== false,
