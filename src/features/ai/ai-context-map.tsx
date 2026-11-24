@@ -152,7 +152,11 @@ export function AiContextMap({ layout, messages, summary, prompt, measured, limi
         >
           <span className="min-w-0 flex-1 break-all font-medium">{active.label}</span>
           <span className="shrink-0 text-muted-foreground">
-            {formatTokens(active.tokens)} · {Math.round((active.tokens / map.limit) * 1000) / 10}%
+            {formatTokens(active.tokens)} ·{" "}
+            {(active.tokens / map.limit).toLocaleString("de-DE", {
+              style: "percent",
+              maximumFractionDigits: 1,
+            })}
             {KINDS[active.kind] === active.label ? "" : ` · ${KINDS[active.kind]}`}
           </span>
         </div>
