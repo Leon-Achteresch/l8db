@@ -16,6 +16,7 @@ export async function seedAiWorkspace(page: Page): Promise<void> {
     Object.assign(window, { aiFixture: mock });
     const runs = new Map<string, { events: Channel; resolve: () => void }>();
     const issueRuns = new Set<string>();
+    const titleRuns = new Map<string, () => void>();
     const issueTitle = "Abfrage-Ergebnis bleibt nach Aktualisieren leer";
     const issueBody =
       "### Beschreibung\nNach dem Aktualisieren bleibt das Ergebnis leer.\n\n### Schritte\n1. Abfrage ausführen\n2. Ergebnis aktualisieren\n\n### Erwartet\nDas Ergebnis wird erneut angezeigt.\n\n### Tatsächlich\nDie Ergebnisansicht bleibt leer.\n\n### Umgebung\n```\nl8db · Demo-Aufnahme\nKeine echten Verbindungs- oder Nutzerdaten.\n```";
@@ -85,6 +86,22 @@ export async function seedAiWorkspace(page: Page): Promise<void> {
           const events = args.events as Channel;
           const runId = String(request.runId);
           const last = (request.messages as { role: string; text: string }[]).at(-1)?.text;
+          if (last === "Benenne das Gespräch.") {
+            events.onmessage({
+              kind: "app",
+              data: {
+                id: "title-1",
+                title: "l8db",
+                details: { action: "chat_title", title: "Umsatz je Kunde", icon: "chart-line" },
+              },
+            });
+            return new Promise<void>((resolve) =>
+              titleRuns.set(runId, () => {
+                events.onmessage({ kind: "text", data: { delta: "Titel gesetzt." } });
+                resolve();
+              }),
+            );
+          }
           if (last === "Erstelle dafür ein Issue.") {
             issueRuns.add(runId);
             const canvas = document.createElement("canvas");
@@ -308,6 +325,12 @@ export async function seedAiWorkspace(page: Page): Promise<void> {
         }
         if (command === "ai_respond") {
           mock.responses.push(args);
+          const titled = titleRuns.get(String(args.runId));
+          if (titled) {
+            titleRuns.delete(String(args.runId));
+            titled();
+            return;
+          }
           const run = runs.get(String(args.runId));
           run?.events.onmessage({ kind: "approvalResolved", data: { id: args.approvalId } });
           run?.events.onmessage({ kind: "text", data: { delta: "complete." } });

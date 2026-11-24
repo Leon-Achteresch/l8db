@@ -15,9 +15,13 @@ import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { AiChatIcon } from "./ai-chat-icon";
 
 export function AiPanelHeader({
   title,
+  icon,
+  titleNew,
+  titleRef,
   view,
   minimized,
   busy,
@@ -33,6 +37,9 @@ export function AiPanelHeader({
   onClose,
 }: {
   title: string;
+  icon?: string;
+  titleNew?: boolean;
+  titleRef?: Ref<HTMLSpanElement>;
   view: "chat" | "settings" | "history";
   minimized: boolean;
   busy: boolean;
@@ -70,11 +77,19 @@ export function AiPanelHeader({
       ) : null}
       <h2
         className={cn(
-          "mr-auto min-w-0 truncate text-[13px] font-semibold tracking-[-0.005em]",
+          "mr-auto flex min-w-0 items-center gap-2 text-[13px] font-semibold tracking-[-0.005em]",
           view === "chat" && !minimized && "pl-1.5",
         )}
       >
-        {view === "settings" ? "Einstellungen" : view === "history" ? "Gespräche" : title}
+        {view === "chat" && icon && (
+          <span ref={titleRef} className="grid shrink-0">
+            <AiChatIcon name={icon} className="size-3.5 text-muted-foreground" />
+          </span>
+        )}
+        <span className="truncate">
+          {view === "settings" ? "Einstellungen" : view === "history" ? "Gespräche" : title}
+        </span>
+        {view === "chat" && icon && titleNew && <NewBadge />}
       </h2>
       {!minimized && view === "chat" && (
         <>

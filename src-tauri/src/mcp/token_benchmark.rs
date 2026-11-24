@@ -30,9 +30,9 @@ const BIG_LINES: usize = 5_200;
 
 pub(super) const BUDGET: &[(&str, usize)] = &[
     ("tools/list", 10_350),
-    ("bridge tools/list", 5_500),
+    ("bridge tools/list", 5_750),
     ("instructions", 950),
-    ("byok start catalog", 5_650),
+    ("byok start catalog", 5_900),
     ("shop.revenue_per_customer", 1_450),
     ("shop.overview", 1_000),
     ("shop.map", 1_200),

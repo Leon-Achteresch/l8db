@@ -130,6 +130,7 @@ export const NEW_FEATURES = {
   "ai.usage.spend": "0.20.0",
   "ai.usage.limits": "0.20.0",
   "ai.chat.message-cost": "0.20.0",
+  "ai.chat.title": NEXT_FEATURE_VERSION,
   "ai.onboarding": "0.10.0",
   "ai.ask": "0.10.0",
   "ai.chat.charts": "0.10.0",

@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { IconButton } from "@/components/icon-button";
 import { IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
+import { NewBadge } from "@/components/new-badge";
 import { SidebarNav } from "@/components/primitives/sidebar-nav";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -72,6 +73,7 @@ import { AiApprovalPicker } from "./ai-approval-picker";
 import { AiAttachmentChips } from "./ai-attachment-chips";
 import { AiBanner } from "./ai-banner";
 import { AiCapabilities } from "./ai-capabilities";
+import { AiChatIcon } from "./ai-chat-icon";
 import { AiComposerFrame } from "./ai-composer-frame";
 import { AiContext } from "./ai-context";
 import { AiContextChips } from "./ai-context-chips";
@@ -211,6 +213,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
   const features = useNewFeatureVisibility<HTMLElement>("ai.chat");
   const minimizeFeature = useNewFeatureVisibility<HTMLDivElement>(
     !fullPage && !minimized ? "ai.chat.minimize" : undefined,
+  );
+  const titleFeature = useNewFeatureVisibility<HTMLSpanElement>(
+    session?.icon && !minimized ? "ai.chat.title" : undefined,
   );
   const historyFeature = useNewFeatureVisibility<HTMLDivElement>(
     fullPage || view === "history" ? "ai.history" : undefined,
@@ -554,6 +559,15 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
             void handleAppRequest(event.data.details, {
               signal: appSignal.signal,
               openDocs: (path) => navigate({ to: "/docs", search: { path } }),
+              setTitle: (title, icon) => {
+                if (!liveSession.current) return;
+                liveSession.current = {
+                  ...liveSession.current,
+                  title,
+                  icon: icon ?? liveSession.current.icon,
+                };
+                saveLive();
+              },
             })
               .catch((reason) => ({ ok: false, text: String(reason) }))
               .then((answer) => aiRespond(id, requestId, answer))
@@ -984,7 +998,11 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
           label: entry.title,
           icon: (
             <span title={label} className="grid shrink-0">
-              <MorphIcon icon={icon} className={`size-3.5 ${tone}`} />
+              {entry.icon && icon === CircleCheck ? (
+                <AiChatIcon name={entry.icon} className="size-3.5 text-muted-foreground" />
+              ) : (
+                <MorphIcon icon={icon} className={`size-3.5 ${tone}`} />
+              )}
             </span>
           ),
         };
@@ -1406,6 +1424,9 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
         <div>
           <AiPanelHeader
             title={session?.title || "KI-Assistent"}
+            icon={session?.icon}
+            titleNew={titleFeature.isNew}
+            titleRef={titleFeature.ref}
             view={view}
             minimized={minimized}
             busy={busy}
@@ -1430,7 +1451,15 @@ export function AiView({ fullPage = false }: { fullPage?: boolean }) {
       )}
       {fullPage && view === "chat" && thread.length > 0 && (
         <div className="flex h-12 shrink-0 items-center px-5">
-          <h2 className="min-w-0 truncate text-[13px] font-semibold">{session?.title}</h2>
+          <h2 className="flex min-w-0 items-center gap-2 text-[13px] font-semibold">
+            {session?.icon && (
+              <span ref={titleFeature.ref} className="grid shrink-0">
+                <AiChatIcon name={session.icon} className="size-3.5 text-muted-foreground" />
+              </span>
+            )}
+            <span className="truncate">{session?.title}</span>
+            {titleFeature.isNew && <NewBadge />}
+          </h2>
         </div>
       )}
       {view === "settings" ? (

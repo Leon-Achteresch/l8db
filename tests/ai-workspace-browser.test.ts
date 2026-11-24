@@ -62,6 +62,10 @@ test.skipIf(!enabled)(
       const page = await browser.newPage();
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
+      const consent = page.getByRole("alertdialog").filter({ hasText: "freigeben?" });
+      await page.addLocatorHandler(consent, () =>
+        consent.getByRole("button", { name: "Erlauben", exact: true }).click(),
+      );
       await seedAiWorkspace(page);
       await page.goto(`http://localhost:${server.port}/`);
       await page.getByRole("button", { name: "AI-Arbeitsbereich", exact: true }).click();
@@ -416,6 +420,36 @@ test.skipIf(!enabled)(
       expect(recoveredHistory).toContain('"deleted":true');
       expect(recoveredHistory).toContain("SQL proposal");
       expect(recoveredHistory).not.toContain("persistenceError");
+      await panel.getByRole("button", { name: "Neues Gespräch", exact: true }).click();
+      await panel.getByLabel("Nachricht an AI").fill("Benenne das Gespräch.");
+      await panel.getByRole("button", { name: "Nachricht senden", exact: true }).click();
+      await panel.getByText("Titel gesetzt.", { exact: true }).waitFor();
+      expect(
+        await page.evaluate(
+          () =>
+            (
+              window as unknown as { aiFixture: { responses: { answer: unknown }[] } }
+            ).aiFixture.responses.at(-1)?.answer,
+        ),
+      ).toEqual({ ok: true, text: "Titel gesetzt: Umsatz je Kunde" });
+      const heading = panel.getByRole("heading", { name: "Umsatz je Kunde", exact: true });
+      await heading.waitFor();
+      await heading.locator("svg").waitFor();
+      await waitForHistory(page, (sessions) =>
+        sessions.some(
+          (session) =>
+            (session as unknown as { title: string; icon?: string }).title === "Umsatz je Kunde" &&
+            (session as unknown as { icon?: string }).icon === "chart-line",
+        ),
+      );
+      await page.screenshot({ path: resolve(tmpdir(), "l8db-ai-chat-title.png") });
+      const label = page.getByText("Umsatz je Kunde", { exact: true });
+      await label.nth(1).waitFor();
+      expect(
+        await label.evaluateAll((nodes) =>
+          nodes.map((node) => Boolean(node.parentElement?.querySelector("svg.lucide, svg"))),
+        ),
+      ).toEqual([true, true]);
       expect(errors).toEqual([]);
     } finally {
       await browser.close();

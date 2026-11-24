@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   ShieldX,
   SquarePen,
+  Tag,
   Terminal,
   Workflow,
   Wrench,
@@ -50,6 +51,7 @@ const TOOL_NAMES: Record<string, string> = {
   notebook: "Notebook",
   app_search: "l8db-Hilfe suchen",
   app_execute: "l8db-Begleiter",
+  chat_title: "Gespräch benannt",
 };
 
 function toolIcon(name: string) {
@@ -63,6 +65,7 @@ function toolIcon(name: string) {
   if (name === "code") return Braces;
   if (name === "rules") return ListChecks;
   if (name === "notebook") return NotebookPen;
+  if (name === "chat_title") return Tag;
   if (/search|find|grep/i.test(name)) return Search;
   if (/query|sql|execute|benchmark/i.test(name)) return Database;
   if (/list|describe|overview|read|get|schema|show/i.test(name)) return Eye;

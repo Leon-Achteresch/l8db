@@ -9,6 +9,7 @@ const CORE: &[&str] = &[
     "code",
     "execute",
     "visualize",
+    "chat_title",
 ];
 const LISTED: usize = 600;
 

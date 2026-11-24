@@ -22,6 +22,51 @@ pub fn definitions() -> Vec<Value> {
     ]
 }
 
+pub fn title_definition() -> Value {
+    json!({
+        "name": "chat_title",
+        "description": "Name this chat once at the start, again only on a new topic.",
+        "inputSchema": {"type": "object", "properties": {
+            "title": {"type": "string", "description": "2-6 words"},
+            "icon": {"type": "string", "description": "Lucide name, e.g. chart-line"}
+        }, "required": ["title"]}
+    })
+}
+
+const TITLE_CHARS: usize = 60;
+
+pub fn chat_title(args: &Value) -> Result<Value, String> {
+    let title = args["title"]
+        .as_str()
+        .unwrap_or("")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if title.is_empty() || title.chars().count() > TITLE_CHARS {
+        return Err(format!("title braucht 1 bis {TITLE_CHARS} Zeichen."));
+    }
+    let icon = match &args["icon"] {
+        Value::Null => None,
+        Value::String(icon) if icon.trim().is_empty() => None,
+        Value::String(icon) => {
+            let icon = icon.trim().to_ascii_lowercase();
+            let valid = icon.len() <= 48
+                && icon.starts_with(|first: char| first.is_ascii_lowercase())
+                && icon
+                    .chars()
+                    .all(|char| char.is_ascii_lowercase() || char.is_ascii_digit() || char == '-');
+            if !valid {
+                return Err(
+                    "icon muss ein Lucide-Name in kebab-case sein, z. B. chart-line.".into(),
+                );
+            }
+            Some(icon)
+        }
+        _ => return Err("icon muss ein Text sein.".into()),
+    };
+    Ok(json!({"action": "chat_title", "title": title, "icon": icon}))
+}
+
 pub async fn call(run: &Run, name: &str, args: Value) -> Value {
     let id = super::new_id();
     run.emit(
@@ -52,6 +97,9 @@ async fn ui(run: &Run, details: Value) -> Result<String, String> {
 }
 
 async fn dispatch(run: &Run, name: &str, args: &Value) -> Result<String, String> {
+    if name == "chat_title" {
+        return ui(run, chat_title(args)?).await;
+    }
     if name == "app_search" {
         let query = args["query"]
             .as_str()
@@ -185,6 +233,57 @@ mod tests {
                 .filter(|event| event["kind"] == "app")
                 .count(),
             1
+        );
+        let result = call(
+            &run,
+            "chat_title",
+            json!({"title": "  Umsatz   pro Monat ", "icon": " Chart-Line "}),
+        )
+        .await;
+        assert_eq!(result["isError"], false);
+        let sent: Vec<Value> = events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|event| event["kind"] == "app")
+            .map(|event| event["data"]["details"].clone())
+            .collect();
+        assert_eq!(
+            sent.last().unwrap(),
+            &json!({"action": "chat_title", "title": "Umsatz pro Monat", "icon": "chart-line"})
+        );
+        for args in [
+            json!({"title": ""}),
+            json!({"title": "x".repeat(61)}),
+            json!({"title": "Ok", "icon": "<svg>"}),
+            json!({"title": "Ok", "icon": "9lives"}),
+            json!({"title": "Ok", "icon": 3}),
+        ] {
+            assert_eq!(call(&run, "chat_title", args).await["isError"], true);
+        }
+        assert_eq!(
+            events
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|event| event["kind"] == "app")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn chat_title_is_a_direct_tool_with_small_schema() {
+        let config = crate::mcp::config::McpConfig::default();
+        let catalog = crate::ai::tools::Catalog::new(&config, false, &[]);
+        assert!(catalog
+            .tools()
+            .iter()
+            .any(|tool| tool["name"] == "chat_title"));
+        assert!(serde_json::to_string(&title_definition()).unwrap().len() < 320);
+        assert_eq!(
+            chat_title(&json!({"title": "Langsame Abfragen", "icon": ""})).unwrap()["icon"],
+            Value::Null
         );
     }
 }
