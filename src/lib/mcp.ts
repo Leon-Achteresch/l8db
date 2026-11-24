@@ -40,6 +40,7 @@ export interface McpConfig {
   redaction: Redaction;
   connections: McpConnection[];
   workflows: boolean;
+  testViews: boolean;
 }
 
 export interface McpClient {

@@ -105,6 +105,8 @@ pub struct McpConfig {
     pub connections: Vec<McpConnection>,
     #[serde(default)]
     pub workflows: bool,
+    #[serde(default)]
+    pub test_views: bool,
 }
 
 fn yes() -> bool {
@@ -222,6 +224,7 @@ impl Default for McpConfig {
             redaction: default_redaction(),
             connections: Vec::new(),
             workflows: false,
+            test_views: false,
         }
     }
 }
