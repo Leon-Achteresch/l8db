@@ -97,7 +97,7 @@ test("live steps render as a timeline with per-step durations and bounded DOM", 
   expect(html).toContain("4,2 s");
   expect(html).toContain("1 min 3 s");
   expect(html.match(/ data-step[ =>]/g)?.length).toBe(61);
-  expect(elements / 60).toBeLessThan(16);
+  expect(elements / 60).toBeLessThan(13);
   expect(p95Ms).toBeLessThan(100);
   await reportScenario("ai-transcript-live-timeline", {
     steps: 60,
@@ -106,4 +106,27 @@ test("live steps render as a timeline with per-step durations and bounded DOM", 
     medianMs,
     p95Ms,
   });
+});
+
+test("MCP-prefixed tools show their l8db label and failed steps stay marked", () => {
+  const html = render(
+    {
+      ...turn(3, 0),
+      durationMs: undefined,
+      rich: [
+        { type: "tool", id: "m1", name: "mcp__l8db_ai__search", status: "success", output: "" },
+        {
+          type: "tool",
+          id: "m2",
+          name: "mcp__l8db_ai__describe",
+          status: "error",
+          output: "nicht gefunden",
+        },
+      ],
+    },
+    true,
+  );
+  expect(html).toContain("Schemasuche ausgeführt");
+  expect(html).toContain("Objektansicht fehlgeschlagen");
+  expect(html).not.toContain("mcp__");
 });
