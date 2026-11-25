@@ -10,8 +10,9 @@ import { useCapabilities } from "@/lib/providers";
 import { useAllSchemaObjectsQuery, useSchemasQuery } from "@/lib/queries";
 import { editorMetadataEnabled } from "@/lib/queries/editor-metadata";
 import {
+  cancelCompletionPreparation,
   EMPTY_REGISTRY,
-  prepareCompletions,
+  prepareCompletionSlice,
   type SqlObjectRegistry,
   type SymbolTarget,
 } from "@/lib/sql-intellisense";
@@ -50,7 +51,7 @@ function prepareAfterPaint() {
   preparing = true;
   afterPaint(() => {
     preparing = false;
-    if (attachedEditors > 0) prepareCompletions(ctx.registry);
+    if (attachedEditors > 0 && !prepareCompletionSlice(ctx.registry)) prepareAfterPaint();
   });
 }
 
@@ -93,6 +94,7 @@ export function attachSqlIntellisense(
       mouse.dispose();
       menu.dispose();
       attachedEditors--;
+      if (!attachedEditors) cancelCompletionPreparation(ctx.registry);
       if (model) attached.delete(model);
     },
   };
@@ -120,6 +122,7 @@ export function useSqlIntellisenseSync(): void {
   });
 
   useEffect(() => {
+    cancelCompletionPreparation(ctx.registry);
     ctx = {
       registry: {
         schemas: schemas ?? [],

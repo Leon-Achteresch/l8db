@@ -8,6 +8,7 @@ import {
   limitMatches,
   memberSuggestions,
   packageForQualifier,
+  prepareCompletionSlice,
   resolveSymbol,
   type Suggestion,
   type SymbolTarget,
@@ -99,7 +100,20 @@ for (const language of ["sql", "plsql"]) {
       if (pkg) items = memberSuggestions(await packageMembers(pkg.schema, pkg.name));
       else {
         const snippets = useSnippetsStore.getState().snippets;
-        items = joinOnly ? [] : suggestCompletions(ctx.registry, text, line, snippets, scope);
+        const registry = ctx.registry;
+        if (!joinOnly) {
+          while (
+            !token.isCancellationRequested &&
+            attached.has(model) &&
+            ctx.registry === registry &&
+            !prepareCompletionSlice(registry)
+          ) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          }
+          if (token.isCancellationRequested || !attached.has(model) || ctx.registry !== registry)
+            return { suggestions: [] };
+        }
+        items = joinOnly ? [] : suggestCompletions(registry, text, line, snippets, scope);
         if (scope.join) {
           const controller = new AbortController();
           const cancel = token.onCancellationRequested(() => controller.abort());

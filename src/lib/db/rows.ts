@@ -2,6 +2,8 @@ import { invoke, type QueryExecutionOptions } from "./core";
 import type { DatabaseKind } from "./providers";
 import type { QueryColumnSource, QueryResult, RowCount, TableData, TableInfo } from "./types";
 
+export type TablePageBoundary = { key: string; value: number; sortText?: string };
+
 export type TableRowSort = {
   column: string;
   desc: boolean;
@@ -21,6 +23,7 @@ export async function fetchTableRows(
   allowRaw?: boolean,
   txId?: string,
   options?: QueryExecutionOptions,
+  after?: TablePageBoundary,
 ): Promise<TableData> {
   return invoke("fetch_table_rows", {
     kind,
@@ -37,6 +40,7 @@ export async function fetchTableRows(
     isView: isView || undefined,
     allowRaw: allowRaw ?? true,
     options,
+    ...(after && { after }),
   });
 }
 

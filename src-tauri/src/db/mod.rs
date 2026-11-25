@@ -134,6 +134,14 @@ pub struct TableData {
     pub rows: Vec<serde_json::Value>,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageBoundary {
+    pub key: String,
+    pub value: i64,
+    pub sort_text: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RowCount {
     pub count: i64,
@@ -564,6 +572,24 @@ pub trait DatabaseAdapter: Send + Sync {
         is_view: bool,
         allow_raw_filter: bool,
     ) -> Result<TableData, String>;
+    async fn fetch_rows_after(
+        &self,
+        r: &transaction::TransactionTableRead,
+        _after: &PageBoundary,
+    ) -> Result<TableData, String> {
+        self.fetch_rows(
+            &r.schema,
+            &r.table,
+            r.filter.as_deref(),
+            r.limit,
+            r.offset,
+            r.order_by.as_deref(),
+            r.order_desc,
+            r.is_view,
+            r.allow_raw,
+        )
+        .await
+    }
     async fn count_rows(
         &self,
         schema: &str,

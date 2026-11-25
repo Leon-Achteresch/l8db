@@ -1,5 +1,10 @@
 export { BUILTIN_FUNCTIONS } from "./builtin-functions";
-export { prepareCompletions, suggestCompletions } from "./completions";
+export {
+  cancelCompletionPreparation,
+  prepareCompletionSlice,
+  prepareCompletions,
+  suggestCompletions,
+} from "./completions";
 export type { HoverExtras } from "./hover";
 export { hoverMarkdown, quoteIdent, rowsMarkdownTable } from "./hover";
 export { joinSuggestions, joinTables, MAX_JOIN_TABLES } from "./joins";

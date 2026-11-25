@@ -254,6 +254,7 @@ pub async fn fetch_table_rows(
     is_view: Option<bool>,
     allow_raw: Option<bool>,
     tx_id: Option<String>,
+    after: Option<super::PageBoundary>,
     tx_state: tauri::State<'_, TransactionState>,
     pool_state: tauri::State<'_, PoolState>,
     options: Option<super::execution::ExecutionOptions>,
@@ -270,42 +271,49 @@ pub async fn fetch_table_rows(
             DatabaseKind::Postgres | DatabaseKind::Sqlite | DatabaseKind::Athena
         ),
         async {
+            let request = super::transaction::TransactionTableRead {
+                schema,
+                table,
+                filter,
+                limit: limit.unwrap_or(100),
+                offset: offset.unwrap_or(0),
+                order_by,
+                order_desc: order_desc.unwrap_or(false),
+                is_view: is_view.unwrap_or(false),
+                allow_raw: allow_raw.unwrap_or(false),
+            };
             if let Some(tx_id) = tx_id {
-                return tx_state
-                    .fetch_rows(
-                        &tx_id,
-                        super::transaction::TransactionTableRead {
-                            schema,
-                            table,
-                            filter,
-                            limit: limit.unwrap_or(100),
-                            offset: offset.unwrap_or(0),
-                            order_by,
-                            order_desc: order_desc.unwrap_or(false),
-                            is_view: is_view.unwrap_or(false),
-                            allow_raw: allow_raw.unwrap_or(false),
-                        },
-                    )
-                    .await;
+                return tx_state.fetch_rows(&tx_id, request).await;
             }
-            create_adapter_from_string(
+            let adapter = create_adapter_from_string(
                 kind,
                 &connection_string,
                 database.as_deref(),
                 pool_state.inner().clone(),
-            )?
-            .fetch_rows(
-                &schema,
-                &table,
-                filter.as_deref(),
-                limit.unwrap_or(100),
-                offset.unwrap_or(0),
-                order_by.as_deref(),
-                order_desc.unwrap_or(false),
-                is_view.unwrap_or(false),
-                allow_raw.unwrap_or(false),
-            )
-            .await
+            )?;
+            if let Some(boundary) = after.filter(|a| {
+                request.offset >= 4096
+                    && (1..=1000).contains(&request.limit)
+                    && !request.is_view
+                    && request.filter.is_none()
+                    && a.key.len() <= 512
+                    && a.sort_text.as_ref().is_none_or(|v| v.len() <= 1024)
+            }) {
+                return adapter.fetch_rows_after(&request, &boundary).await;
+            }
+            adapter
+                .fetch_rows(
+                    &request.schema,
+                    &request.table,
+                    request.filter.as_deref(),
+                    request.limit,
+                    request.offset,
+                    request.order_by.as_deref(),
+                    request.order_desc,
+                    request.is_view,
+                    request.allow_raw,
+                )
+                .await
         },
     )
     .await
