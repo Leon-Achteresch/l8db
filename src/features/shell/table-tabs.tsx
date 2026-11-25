@@ -12,7 +12,7 @@ import { NewBadge } from "@/components/new-badge";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { iconButton } from "@/features/shell/table-tabs/constants";
 import { HiddenTabsMenu } from "@/features/shell/table-tabs/hidden-tabs-menu";
-import { SavedTabsMenu } from "@/features/shell/table-tabs/saved-tabs-menu";
+import { SharedTabLinkHotkey } from "@/features/shell/table-tabs/shared-tab-link-hotkey";
 import { SharedTabDialog } from "@/features/shell/table-tabs/shared-tab-dialog";
 import { SplitGroupTab } from "@/features/shell/table-tabs/split-group-tab";
 import { SplitGroupsMenu } from "@/features/shell/table-tabs/split-groups-menu";
@@ -454,7 +454,7 @@ export function TableTabs() {
           </button>
         </Tooltip>
       )}
-      <SavedTabsMenu />
+      <SharedTabLinkHotkey />
       {caret !== null && (
         <span
           aria-hidden="true"
