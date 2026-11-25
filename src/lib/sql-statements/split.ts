@@ -724,14 +724,23 @@ export function statementAtOffset(
     if (statement.end > position) break;
     previous = statement;
   }
-  if (previous && onlyGap(sql, previous.end, position)) return previous;
+  if (previous && onlyGap(sql, previous.end, position, dialect === "oracle")) return previous;
   return null;
 }
 
-function onlyGap(sql: string, from: number, to: number): boolean {
+function slashLine(sql: string, index: number): boolean {
+  const end = sql.indexOf("\n", index);
+  return (
+    !sql.slice(sql.lastIndexOf("\n", index - 1) + 1, index).trim() &&
+    !sql.slice(index + 1, end < 0 ? sql.length : end).trim()
+  );
+}
+
+function onlyGap(sql: string, from: number, to: number, slashes: boolean): boolean {
   let index = from;
   while (index < to) {
     if (isSpace(sql[index])) index += 1;
+    else if (slashes && sql[index] === "/" && slashLine(sql, index)) index += 1;
     else if (sql.startsWith("--", index)) {
       const newline = sql.indexOf("\n", index);
       index = newline < 0 ? sql.length : newline + 1;

@@ -128,6 +128,39 @@ describe("statementAtOffset", () => {
   });
 });
 
+test("Oracle blocks with local procedures run from a cursor behind the closing slash", () => {
+  const block = [
+    "declare",
+    "  c_owner constant number := 59;",
+    "  v_ref ORDERS.REF%type;",
+    "  procedure partner (pName varchar2, pActive char) is",
+    "    v_cnt number;",
+    "  begin",
+    "    select count(*) into v_cnt from PARTNERS where OWNER = c_owner and NAME = pName;",
+    "    if v_cnt = 0 then",
+    "      insert into PARTNERS (OWNER, NAME, ACTIVE) values (c_owner, pName, pActive);",
+    "    end if;",
+    "  end;",
+    "begin",
+    "  begin",
+    "    select REF into v_ref from ORDERS where ID = 'A';",
+    "  exception when no_data_found then",
+    "    dbms_output.put_line('fehlt: ' || v_ref);",
+    "  end;",
+    "  partner ('STATUS', '1');",
+    "end;",
+  ].join("\n");
+  const sql = `set serveroutput on\n\n${block}\n/\n`;
+  const split = splitSqlStatements(sql, "oracle");
+  expect(split.statements.map((statement) => statement.text)).toEqual([block]);
+  expect(split.commands.map((command) => command.text)).toEqual(["set serveroutput on"]);
+  for (const offset of [sql.indexOf("c_owner"), sql.lastIndexOf("/"), sql.length - 1, sql.length])
+    expect(statementAtOffset(sql, offset, "oracle")?.text).toBe(block);
+  expect(statementAtOffset(`${block}\n/\n\n-- fertig\n/\n`, 9999, "oracle")?.text).toBe(block);
+  expect(statementAtOffset("SELECT 1;\n/\n", 12, "postgres")?.text).toBe("/");
+  expect(statementAtOffset(sql, 3, "oracle")?.text).toBe("set serveroutput on");
+});
+
 test("sqlToRun runs only the selection when one exists", () => {
   expect(sqlToRun("SELECT 1; SELECT 2;", "SELECT 2;")).toBe("SELECT 2;");
   expect(sqlToRun("SELECT 1; SELECT 2;", "   \n ")).toBe("SELECT 1; SELECT 2;");

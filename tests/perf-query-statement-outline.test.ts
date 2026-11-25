@@ -219,6 +219,10 @@ test("the blank-line option keeps statement-at-cursor latency on a 5000-statemen
   const outline = await measureScenario(() => {
     new QueryStatementOutlineCache().read(sql, "oracle", true);
   });
+  const closed = `${sql}${"\n/\n".repeat(2000)}`;
+  const trailing = await measureScenario(() => {
+    statementAtOffset(closed, closed.length, "oracle");
+  });
   const cache = new QueryStatementOutlineCache();
   const entries = cache.read(sql, "oracle", true);
   await reportScenario("query-statement-at-cursor-blank-lines", {
@@ -227,9 +231,13 @@ test("the blank-line option keeps statement-at-cursor latency on a 5000-statemen
     plain,
     blank,
     outline,
+    trailing,
     retainedEntries: cache.retainedEntries,
   });
   expect(statementAtOffset(sql, offset, "oracle", { blankLines: true })).not.toBeNull();
+  expect(statementAtOffset(closed, closed.length, "oracle")?.end).toBe(sql.length);
+  expect(trailing.p95Ms).toBeLessThan(250);
+  expect(trailing.medianMs).toBeLessThan(plain.medianMs * 2 + 10);
   expect(entries).toHaveLength(5000);
   expect(cache.retainedEntries).toBe(0);
   expect(blank.p95Ms).toBeLessThan(250);
