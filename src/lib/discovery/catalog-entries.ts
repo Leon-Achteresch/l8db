@@ -929,7 +929,6 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
     related: ["workspace.saved-tabs", "connections.open-window"],
     steps: [
       { anchor: "view.split", title: "Ansicht teilen" },
-      { anchor: "workspace.saved-tabs", title: "Tabs speichern" },
     ],
   },
   {

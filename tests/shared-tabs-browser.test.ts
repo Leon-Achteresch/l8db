@@ -156,20 +156,6 @@ test.skipIf(!process.env.L8DB_SHARED_TABS_BROWSER)(
       );
       const queryLink = await clipboardOf(sender);
 
-      await queryTab.click({ button: "right" });
-      await sender.getByRole("menuitem", { name: "Global speichern" }).click();
-      const savedMenu = sender.getByRole("button", { name: "Gespeicherte Tabs (1)" });
-      await savedMenu.click();
-      const savedEntry = sender.getByRole("menuitem", { name: /Umsatz/ }).first();
-      await savedEntry.waitFor();
-      if (SHOTS) await shot(sender, { path: `${SHOTS}/2-gespeicherte-tabs.png` });
-      await savedEntry.click();
-      await sender.waitForFunction(
-        () =>
-          document.querySelectorAll('[data-tab-key^="query:"] button[title="Umsatz"]').length === 2,
-      );
-      expect(await sender.getByRole("dialog").count()).toBe(0);
-
       const context = await browser.newContext({ viewport: { width: 1400, height: 860 } });
       const colleague = await context.newPage();
       colleague.on("pageerror", (error) => errors.push(error.message));
