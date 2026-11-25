@@ -1,6 +1,7 @@
 import type { DatabaseKind, FunctionInfo } from "@/lib/db";
 import type { PlsqlMember } from "@/lib/plsql";
 import { quoteIdent as quoteFor } from "@/lib/sql-filter/quote";
+import { columnsByTable } from "./catalog";
 import { isReserved } from "./reserved";
 import { eq } from "./resolve";
 import type { SqlObjectRegistry, SymbolTarget } from "./types";
@@ -53,10 +54,8 @@ export function hoverMarkdown(
     const head = `\`\`\`sql\n${target.kind.toUpperCase()} ${signature}${returns}\n\`\`\``;
     return info?.language ? `${head}\n${info.language}` : head;
   }
-  if (target.kind !== "table") return "";
-  const columns = registry.columns.filter(
-    (c) => eq(c.schema, target.schema) && eq(c.table, target.name),
-  );
+  const candidates = columnsByTable(registry.columns).get(target.name.toLowerCase()) ?? [];
+  const columns = candidates.filter((c) => eq(c.schema, target.schema));
   if (target.column) {
     const column = columns.find((c) => eq(c.name, target.column ?? ""));
     return `**${target.schema}.${target.name}.${target.column}** · ${column?.data_type ?? "Spalte"}`;

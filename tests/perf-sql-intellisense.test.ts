@@ -5,10 +5,12 @@ import { measureScenario, reportScenario } from "../scripts/performance-report";
 import type { ColumnInfo, ForeignKeyInfo, TableInfo } from "../src/lib/db";
 import { loadForeignKeys } from "../src/lib/monaco-intellisense/foreign-keys";
 import {
+  hoverMarkdown,
   joinSuggestions,
   joinTables,
   limitMatches,
   prepareCompletions,
+  resolveSymbol,
   type SqlObjectRegistry,
   scopeAt,
   statementBounds,
@@ -342,4 +344,79 @@ test("closing the completion popup cancels foreign key requests and frees the qu
   expect(requests.length).toBe(dispatched + 2);
   expect(client.isFetching()).toBe(0);
   client.clear();
+});
+
+test("qualified column hover stays within 3 ms across a 400,000-column catalog", async () => {
+  const tables = Array.from({ length: 20_000 }, (_, index) => ({
+    schema: index < 10_000 ? "sales" : "archive",
+    name: `ledger_${index % 10_000}`,
+  }));
+  const columns = tables.flatMap(({ schema, name: table }) =>
+    Array.from({ length: 20 }, (_, i) => ({
+      schema,
+      table,
+      name: `field_${i}`,
+      data_type: schema === "sales" ? "text" : "integer",
+    })),
+  );
+  const registry: SqlObjectRegistry = {
+    schemas: ["sales", "archive"],
+    tables,
+    columns,
+    views: [],
+    functions: [],
+    procedures: [],
+  };
+  const start = performance.now();
+  prepareCompletions(registry);
+  const prepareMs = performance.now() - start;
+  const token = { qualifier: "e", word: "FIELD_19", startColumn: 10, endColumn: 18 };
+  let sequence = 0;
+  const inspect = () => {
+    const name = `ledger_${9999 - (sequence++ % 1000)}`;
+    const sql = `SELECT e.FIELD_19 FROM archive.${name} e`;
+    const target = resolveSymbol(registry, token, sql, scopeAt(sql, 12));
+    if (!target) throw new Error("missing column");
+    expect(hoverMarkdown(registry, target)).toBe(`**archive.${name}.field_19** · integer`);
+  };
+  const hover = await measureScenario(inspect, 51);
+  Bun.gc(true);
+  const before = heapSize();
+  for (let n = 0; n < 100; n++) inspect();
+  Bun.gc(true);
+  const retainedBytes = heapSize() - before;
+  await reportScenario("sql-large-catalog-column-hover", {
+    tables: tables.length,
+    columns: columns.length,
+    prepareMs,
+    hover,
+    retainedBytes,
+  });
+  expect(hover.p95Ms).toBeLessThan(3);
+  expect(retainedBytes).toBeLessThan(2 * 1024 * 1024);
+});
+
+test("common prefixes stop reading a 100,000-item completion list once the result is settled", async () => {
+  const items = Array.from({ length: 100_000 }, (_, i) => ({
+    label: `${i < 100 ? "sales_" : ""}table_${i}`,
+  }));
+  const run = () => {
+    const result = limitMatches(items, "tab", 300);
+    expect(result.truncated).toBe(true);
+    expect(result.items).toHaveLength(300);
+    expect(result.items[0]).toBe(items[100]);
+    expect(result.items[299]).toBe(items[399]);
+  };
+  const timing = await measureScenario(run, 31);
+  let visited = 0;
+  const counted = new Proxy(items, {
+    get(target, key, receiver) {
+      if (typeof key === "string" && /^\d+$/.test(key)) visited++;
+      return Reflect.get(target, key, receiver);
+    },
+  });
+  limitMatches(counted, "tab", 300);
+  await reportScenario("sql-common-prefix-limit", { ...timing, candidates: items.length, visited });
+  expect(visited).toBe(400);
+  expect(timing.p95Ms).toBeLessThan(3);
 });

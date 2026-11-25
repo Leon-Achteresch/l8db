@@ -1,5 +1,48 @@
 # Performance tests, workloads and headless benchmarks
 
+## Large catalogs and filtered row counts
+
+The SQL editor groups tables, views and columns by case-insensitive name. Lookup preserves the first matching relation in catalog order and checks the schema when resolving a qualified name. Hover, definition lookup, JOIN suggestions and completion share indexes keyed by the metadata arrays. Replacing an array after a metadata refresh rebuilds its index on demand.
+
+The SQLite table browser stops counting after the first 100,001 matches of a builder filter, including within an open transaction. Up to 100,000 matches it returns the exact count. Larger results use the existing lower-bound display and exact-count action. Plain unfiltered counts keep SQLite’s native count operation. Raw SQL filters keep their existing aggregate semantics. A sparse unindexed predicate can still read the entire table before reaching the limit.
+
+Run the editor workload with `bun test tests/perf-sql-intellisense.test.ts` and the SQLite workload with `cargo test --release --lib filtered_count_large_table_budget -- --ignored --nocapture` in `src-tauri`. The editor test alternates target tables across 51 measured lookups, checks the resolved type against a same-named table in another schema, and limits retained heap growth across another 100 lookups to 2 MiB. The SQLite test exercises a real in-memory adapter, returns one aggregate per query, and interrupts a separate probe if the query executes two million SQLite VM instructions.
+
+Measured on 2026-11-25 on macOS 27.2.1, arm64, Apple M3, 16 GiB RAM, Bun 1.3.10 and Rust 1.99.0. The machine was shared with desktop applications and compiler processes. No CPU or heap throttling was applied.
+
+| Workload | Before, median / p95 | After, median / p95 |
+| --- | ---: | ---: |
+| Resolve and format a qualified column hover, prepared synthetic catalog of 20,000 tables and 400,000 columns | 23.13 / 46.37 ms | 0.10 / 0.23 ms |
+| Filter 100,000 completion candidates for 300 prefix matches | 11.40 / 17.91 ms | 0.033 / 0.086 ms |
+| Count a 50% matching unindexed builder filter, 2 million file-backed SQLite rows | 70.11 / 102.16 ms | 8.87 / 12.71 ms |
+
+For the editor comparison both revisions ran in the same process against identical input, alternating the execution order over 51 samples after two warmups. The hover timings cover scope parsing, symbol lookup and Markdown generation. The 3 ms p95 gate applies after warmup. Retained JS heap changed by −22,779 bytes after GC. Under heavier compiler load the standalone hover regression test measured 0.12 / 0.77 ms and the new prefix gate measured 0.06 / 0.94 ms. Cold completion-index construction measured 423 ms before and 351 ms after in a separate alternating seven-sample median comparison. It remains expensive, and these timings exclude WebView paint.
+
+The real SQLite adapter test with two million in-memory rows measured **5.61 ms median / 9.12 ms p95 in release**, against a 30 ms p95 gate. The debug build measured 19.23 / 26.53 ms. The statement completed within the two-million-instruction budget. Both the empty result and exactly 100,000 matches were exact. The transaction test verified the lower bound against uncommitted writes.
+
+The file-backed measurement alternated the old and new SQL against the same local SQLite 3.54.0 database, with two warmups and 21 samples per query. The exact query returned 1,000,000. The capped query returned the lower bound 100,001. These SQL-only measurements exclude IPC. The virtual grid tests also measured 40 visible ID lookups out of 100,000 rows at 0.48 / 3.60 ms. During 6,000 simulated scroll frames over a 10-million-row extent, the planner requested 182 pages and held at most two requests in flight and 200 rows in its active window.
+
+The completion-prefix scenario places 100 fuzzy matches before the first prefix match. Once the 300 prefix results and truncation are known, the search returns. It visits 400 candidates versus 100,000 before. Its regression budget is 3 ms at p95. When fewer prefixes match, it still scans to the end so later candidates can outrank earlier fuzzy matches.
+
+The PostgreSQL workload now measures 21 samples after one warmup for each operation, including the deep page previously timed only once. A temporary local PostgreSQL 17.11 instance ran the dataset from `scripts/test-load-perf.sh` with 3,001 tables, 400 views, 2,000,000 rows in `big` and a database size of 328 MB. The Rust test profile used the real adapter over loopback.
+
+| PostgreSQL operation | Median | p95 |
+| --- | ---: | ---: |
+| Open large table, five parallel adapter operations | 23.84 ms | 67.71 ms |
+| First 100 rows, default order | 5.41 ms | 9.68 ms |
+| First 100 rows, indexed ID order | 7.44 ms | 15.20 ms |
+| First 100 rows, unindexed name order | 740.10 ms | 1,244.38 ms |
+| Default order, offset 1,000,000 | 570.00 ms | 984.84 ms |
+| Unindexed name order, offset 1,000,000 | 2,814.67 ms | 7,492.42 ms |
+| Exact filtered count | 115.72 ms | 129.56 ms |
+| Capped filtered count | 26.14 ms | 30.50 ms |
+| Detailed columns for one table | 2.50 ms | 3.01 ms |
+| List 3,001 tables | 16.89 ms | 20.28 ms |
+
+The plan for a deep unindexed name sort used a parallel sequential scan, sort and gather merge before the limit. Database latency and deep paging depend on the available indexes, sort order and number of skipped rows. A separate server-side experiment on PostgreSQL 17.11 gave the same two-million-row table a composite index on `(name, id)`. Both queries returned the same ordered 100 IDs. With the preceding row's key already known, `WHERE (name, id) > ($last_name, $last_id) ORDER BY name, id LIMIT 100` measured 0.372 ms median / 3.096 ms p95. On that indexed fixture, `OFFSET 1000000` measured 5,906 / 7,694 ms. Each query had one warmup and 21 samples using `EXPLAIN (ANALYZE, TIMING OFF)`. Anchor discovery, network time and rendering are excluded. The app still uses offset pagination. This experiment measures the opportunity for sequential navigation when an index and a valid anchor are available.
+
+The measurements cover one Mac and local SQLite and PostgreSQL. Remote latency, other database families, Windows, Linux and end-to-end WebView latency remain unmeasured in this run.
+
 ## Workspace motion
 
 Start the local Vite dev server, then run the scoped checks:

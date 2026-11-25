@@ -58,11 +58,15 @@ export function limitMatches<T extends { label: string; filterText?: string }>(
   for (const item of items) {
     const candidate = item.filterText ?? item.label;
     const text = lowerCandidate(item);
-    if (!matchesLower(candidate, text, prefix)) continue;
+    const startsWithWord = text.startsWith(prefix);
+    if (!startsWithWord && !matchesLower(candidate, text, prefix)) continue;
     count++;
     if (matching.length < cap) matching.push(item);
-    const bucket = text.startsWith(prefix) ? prefixMatches : otherMatches;
+    const bucket = startsWithWord ? prefixMatches : otherMatches;
     if (bucket.length < cap) bucket.push(item);
+    if (count > cap && prefixMatches.length >= cap) {
+      return { items: prefixMatches.slice(0, cap), truncated: true };
+    }
   }
   if (count <= cap) return { items: matching, truncated: false };
   return {

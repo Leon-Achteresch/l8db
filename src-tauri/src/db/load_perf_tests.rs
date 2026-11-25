@@ -10,19 +10,25 @@ fn perf_url() -> String {
         .unwrap_or_else(|_| "postgresql://leon@127.0.0.1:5432/l8db_perf".to_string())
 }
 
-async fn median<F, Fut, T>(runs: usize, mut run: F) -> Duration
+async fn report<F, Fut, T>(name: &str, mut run: F)
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<T, String>>,
 {
-    let mut samples = Vec::with_capacity(runs);
-    for _ in 0..runs {
+    const RUNS: usize = 21;
+    run().await.expect("warmup failed");
+    let mut samples = Vec::with_capacity(RUNS);
+    for _ in 0..RUNS {
         let start = Instant::now();
         run().await.expect("query failed");
         samples.push(start.elapsed());
     }
     samples.sort();
-    samples[runs / 2]
+    println!(
+        "{name:<44} median {:>8.2} ms, p95 {:>8.2} ms ({RUNS} runs)",
+        samples[RUNS / 2].as_secs_f64() * 1000.0,
+        samples[(RUNS * 95).div_ceil(100) - 1].as_secs_f64() * 1000.0,
+    );
 }
 
 async fn table_open(adapter: &dyn DatabaseAdapter, table: &str) -> Result<(), String> {
@@ -39,10 +45,6 @@ async fn table_open(adapter: &dyn DatabaseAdapter, table: &str) -> Result<(), St
     keys?;
     views?;
     Ok(())
-}
-
-fn report(name: &str, duration: Duration) {
-    println!("{name:<44} {:>10.1} ms", duration.as_secs_f64() * 1000.0);
 }
 
 #[tokio::test]
@@ -62,129 +64,96 @@ async fn perf_table_loading() {
     };
     execution::run(Some(options), true, async {
         adapter.list_schemas().await?;
-        report(
-            "open big (parallel like frontend)",
-            median(5, || table_open(adapter, "big")).await,
-        );
-        report(
-            "open t_1 (parallel like frontend)",
-            median(5, || table_open(adapter, "t_1")).await,
-        );
-        report(
-            "rows big page 1 unsorted",
-            median(7, || {
-                adapter.fetch_rows("public", "big", None, 100, 0, None, false, false, false)
-            })
-            .await,
-        );
-        report(
-            "rows big page 1 sorted by id (indexed)",
-            median(7, || {
-                adapter.fetch_rows(
-                    "public",
-                    "big",
-                    None,
-                    100,
-                    0,
-                    Some("id"),
-                    false,
-                    false,
-                    false,
-                )
-            })
-            .await,
-        );
-        report(
-            "rows big page 1 sorted by name",
-            median(3, || {
-                adapter.fetch_rows(
-                    "public",
-                    "big",
-                    None,
-                    100,
-                    0,
-                    Some("name"),
-                    false,
-                    false,
-                    false,
-                )
-            })
-            .await,
-        );
-        report(
-            "rows big offset 1M unsorted",
-            median(3, || {
-                adapter.fetch_rows(
-                    "public", "big", None, 100, 1_000_000, None, false, false, false,
-                )
-            })
-            .await,
-        );
-        report(
-            "rows big offset 1M sorted by name",
-            median(1, || {
-                adapter.fetch_rows(
-                    "public",
-                    "big",
-                    None,
-                    100,
-                    1_000_000,
-                    Some("name"),
-                    false,
-                    false,
-                    false,
-                )
-            })
-            .await,
-        );
-        report(
-            "rows t_1 page 1 unsorted",
-            median(7, || {
-                adapter.fetch_rows("public", "t_1", None, 100, 0, None, false, false, false)
-            })
-            .await,
-        );
-        report(
-            "count big exact",
-            median(3, || adapter.count_rows("public", "big", None, false)).await,
-        );
-        report(
-            "count big filtered exact",
-            median(3, || {
-                adapter.count_rows("public", "big", Some("amount > 500"), false)
-            })
-            .await,
-        );
-        report(
-            "count big capped 100k",
-            median(3, || {
-                adapter.count_rows_capped("public", "big", None, false, 100_000)
-            })
-            .await,
-        );
-        report(
-            "count big filtered capped 100k",
-            median(3, || {
-                adapter.count_rows_capped("public", "big", Some("amount > 500"), false, 100_000)
-            })
-            .await,
-        );
-        report(
-            "columns detailed big",
-            median(7, || adapter.list_table_columns_detailed("public", "big")).await,
-        );
-        report(
-            "foreign keys big",
-            median(7, || adapter.list_foreign_keys("public", "big")).await,
-        );
-        report(
-            "list tables public",
-            median(5, || adapter.list_tables(Some("public"))).await,
-        );
-        report(
-            "list views public",
-            median(5, || adapter.list_views(Some("public"))).await,
-        );
+        report("open big (parallel like frontend)", || {
+            table_open(adapter, "big")
+        })
+        .await;
+        report("open t_1 (parallel like frontend)", || {
+            table_open(adapter, "t_1")
+        })
+        .await;
+        report("rows big page 1 unsorted", || {
+            adapter.fetch_rows("public", "big", None, 100, 0, None, false, false, false)
+        })
+        .await;
+        report("rows big page 1 sorted by id (indexed)", || {
+            adapter.fetch_rows(
+                "public",
+                "big",
+                None,
+                100,
+                0,
+                Some("id"),
+                false,
+                false,
+                false,
+            )
+        })
+        .await;
+        report("rows big page 1 sorted by name", || {
+            adapter.fetch_rows(
+                "public",
+                "big",
+                None,
+                100,
+                0,
+                Some("name"),
+                false,
+                false,
+                false,
+            )
+        })
+        .await;
+        report("rows big offset 1M unsorted", || {
+            adapter.fetch_rows(
+                "public", "big", None, 100, 1_000_000, None, false, false, false,
+            )
+        })
+        .await;
+        report("rows big offset 1M sorted by name", || {
+            adapter.fetch_rows(
+                "public",
+                "big",
+                None,
+                100,
+                1_000_000,
+                Some("name"),
+                false,
+                false,
+                false,
+            )
+        })
+        .await;
+        report("rows t_1 page 1 unsorted", || {
+            adapter.fetch_rows("public", "t_1", None, 100, 0, None, false, false, false)
+        })
+        .await;
+        report("count big exact", || {
+            adapter.count_rows("public", "big", None, false)
+        })
+        .await;
+        report("count big filtered exact", || {
+            adapter.count_rows("public", "big", Some("amount > 500"), false)
+        })
+        .await;
+        report("count big capped 100k", || {
+            adapter.count_rows_capped("public", "big", None, false, 100_000)
+        })
+        .await;
+        report("count big filtered capped 100k", || {
+            adapter.count_rows_capped("public", "big", Some("amount > 500"), false, 100_000)
+        })
+        .await;
+        report("columns detailed big", || {
+            adapter.list_table_columns_detailed("public", "big")
+        })
+        .await;
+        report("foreign keys big", || {
+            adapter.list_foreign_keys("public", "big")
+        })
+        .await;
+        report("list tables public", || adapter.list_tables(Some("public"))).await;
+        report("list views public", || adapter.list_views(Some("public"))).await;
         Ok::<_, String>(())
     })
     .await

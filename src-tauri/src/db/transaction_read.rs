@@ -231,6 +231,19 @@ impl TransactionManager {
                 .count_rows_capped(schema, table, filter, allow_raw, cap)
                 .await;
         }
+        if let TransactionEntry::Generic(g) = &*entry {
+            if g.kind == DatabaseKind::Sqlite {
+                if let Some(sql) = crate::db::sqlite::filtered_count_sql(
+                    &g.target(schema, table),
+                    filter,
+                    allow_raw,
+                    cap,
+                )? {
+                    let count = count_value(&g.execute(&sql).await?.rows)?;
+                    return Ok(crate::db::sqlite::filtered_count(count, cap));
+                }
+            }
+        }
         let TransactionEntry::Pg(c, ssl) = &*entry else {
             return self
                 .count_rows(tx_id, schema, table, filter, allow_raw)
