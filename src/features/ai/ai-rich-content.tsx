@@ -100,11 +100,12 @@ export function AiRichContent({
           if (block.name === "visualize" && status === "success" && parseAiTable(block.output))
             return <AiResultCard key={block.id} block={block} />;
           if (!showWork) return null;
-          const name = TOOL_NAMES[block.name] ?? block.name;
+          const tool = block.name.replace(/^mcp__.+?__/, "");
+          const name = TOOL_NAMES[tool] ?? tool;
           return (
             <AiWorkRow
               key={block.id}
-              icon={toolIcon(block.name)}
+              icon={toolIcon(tool)}
               active={status === "running"}
               tone={status === "success" ? "done" : status === "error" ? "failed" : "idle"}
               meta={
