@@ -9,7 +9,7 @@ use super::{
     attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, unsupported, where_clause,
     AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, IndexInfo, QueryResult,
-    SchemaSize, TableData, TableInfo, TriggerInfo, TxSession,
+    RowCount, SchemaSize, TableData, TableInfo, TriggerInfo, TxSession,
 };
 
 pub struct SqliteAdapter {
@@ -21,6 +21,30 @@ pub struct SqliteAdapter {
 
 pub fn quote(ident: &str) -> String {
     format!("\"{}\"", ident.replace('"', "\"\""))
+}
+
+pub(super) fn filtered_count_sql(
+    target: &str,
+    filter: Option<&str>,
+    allow_raw: bool,
+    cap: i64,
+) -> Result<Option<String>, String> {
+    if allow_raw || filter.is_none_or(|value| value.trim().is_empty()) {
+        return Ok(None);
+    }
+    let predicate = where_clause(filter, false)?;
+    let limit = cap.saturating_add(1);
+    Ok(Some(format!(
+        "SELECT COUNT(*) FROM (SELECT 1 FROM {target}{predicate} LIMIT {limit})"
+    )))
+}
+
+pub(super) fn filtered_count(count: i64, cap: i64) -> RowCount {
+    RowCount {
+        count,
+        exact: count <= cap,
+        estimate: None,
+    }
 }
 
 fn is_params(tail: &str) -> bool {
@@ -626,6 +650,29 @@ impl DatabaseAdapter for SqliteAdapter {
         .await
     }
 
+    async fn count_rows_capped(
+        &self,
+        schema: &str,
+        table: &str,
+        filter: Option<&str>,
+        allow_raw_filter: bool,
+        cap: i64,
+    ) -> Result<RowCount, String> {
+        let target = format!("{}.{}", quote(schema), quote(table));
+        let Some(sql) = filtered_count_sql(&target, filter, allow_raw_filter, cap)? else {
+            return self
+                .count_rows(schema, table, filter, allow_raw_filter)
+                .await
+                .map(RowCount::exact);
+        };
+        self.run(move |c| {
+            c.query_row(&sql, [], |row| row.get(0))
+                .map(|count| filtered_count(count, cap))
+                .map_err(map_err)
+        })
+        .await
+    }
+
     async fn begin_transaction(&self) -> Result<Box<dyn TxSession>, String> {
         let conn = if self.path == ":memory:" {
             self.conn().await?
@@ -1210,6 +1257,67 @@ mod tests {
 
     fn adapter() -> SqliteAdapter {
         SqliteAdapter::new(":memory:", create_pool_state(), "test".to_string()).unwrap()
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn filtered_count_large_table_budget() {
+        let db = adapter();
+        db.execute_query("CREATE TABLE events (id INTEGER PRIMARY KEY, active INTEGER)")
+            .await
+            .unwrap();
+        db.execute_query(
+            "WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<2000000)
+             INSERT INTO events SELECT i, i%2 FROM n",
+        )
+        .await
+        .unwrap();
+        let mut samples = Vec::new();
+        for round in 0..23 {
+            let start = std::time::Instant::now();
+            let result = db
+                .count_rows_capped("main", "events", Some("active = 1"), false, 100_000)
+                .await
+                .unwrap();
+            let elapsed = start.elapsed();
+            if round > 1 {
+                samples.push(elapsed);
+            }
+            assert_eq!(
+                (result.count, result.exact, result.estimate),
+                (100_001, false, None)
+            );
+        }
+        for (filter, expected) in [("id < 0", 0), ("id <= 100000", 100_000)] {
+            let result = db
+                .count_rows_capped("main", "events", Some(filter), false, 100_000)
+                .await
+                .unwrap();
+            assert_eq!((result.count, result.exact), (expected, true));
+        }
+        for (filter, raw) in [(None, false), (Some("id > 0"), true)] {
+            let result = db
+                .count_rows_capped("main", "events", filter, raw, 100_000)
+                .await
+                .unwrap();
+            assert_eq!((result.count, result.exact), (2_000_000, true));
+        }
+        let conn = db.conn().await.unwrap();
+        conn.lock()
+            .unwrap()
+            .progress_handler(2_000_000, Some(|| true))
+            .unwrap();
+        let bounded = db
+            .count_rows_capped("main", "events", Some("active = 1"), false, 100_000)
+            .await
+            .unwrap();
+        assert_eq!(bounded.count, 100_001);
+        samples.sort();
+        println!(
+            "SQLite filtered count, 2M rows: median {:?}, p95 {:?}",
+            samples[10], samples[19]
+        );
+        assert!(samples[19] < std::time::Duration::from_millis(30));
     }
 
     #[tokio::test]

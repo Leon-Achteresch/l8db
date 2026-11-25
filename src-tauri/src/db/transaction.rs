@@ -1813,6 +1813,12 @@ mod tests {
             .unwrap();
         assert_eq!(empty["id"], 3);
 
+        let count = tx
+            .count_rows_capped(&id, "main", "t", Some("id > 0"), false, 1)
+            .await
+            .unwrap();
+        assert_eq!((count.count, count.exact), (2, false));
+
         tx.delete_row(&id, "main", "t", dup["__ctid__"].as_str().unwrap())
             .await
             .unwrap();

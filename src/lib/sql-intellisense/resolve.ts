@@ -1,5 +1,6 @@
 import type { FunctionInfo, TableInfo } from "@/lib/db";
 import { type PlsqlMember, parsePlsqlMembers } from "@/lib/plsql";
+import { columnsByTable, findRelation } from "./catalog";
 import { findRef, type QueryScope } from "./scope";
 import type { SqlObjectRegistry, SqlToken, Suggestion, SymbolTarget } from "./types";
 
@@ -43,10 +44,9 @@ export function findTable(
   name: string,
   schema: string | null,
 ): { info: TableInfo; entityType: "table" | "view" } | null {
-  const inSchema = (t: TableInfo) => eq(t.name, name) && (!schema || eq(t.schema, schema));
-  const table = registry.tables.find(inSchema);
+  const table = findRelation(registry.tables, name, schema);
   if (table) return { info: table, entityType: "table" };
-  const view = registry.views.find(inSchema);
+  const view = findRelation(registry.views, name, schema);
   return view ? { info: view, entityType: "view" } : null;
 }
 
@@ -108,10 +108,9 @@ export function resolveSymbol(
     const tableName = ref ? ref.name : (aliasMap(source).get(qualifier.toLowerCase()) ?? qualifier);
     const table = findTable(registry, tableName, ref?.schema ?? null);
     if (!table) return null;
-    const column = registry.columns.find(
-      (c) =>
-        eq(c.schema, table.info.schema) && eq(c.table, table.info.name) && eq(c.name, token.word),
-    );
+    const column = columnsByTable(registry.columns)
+      .get(table.info.name.toLowerCase())
+      ?.find((c) => eq(c.schema, table.info.schema) && eq(c.name, token.word));
     if (!column) return null;
     return {
       kind: "table",

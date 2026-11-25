@@ -1,4 +1,5 @@
 import type { ForeignKeyInfo, TableInfo } from "@/lib/db";
+import { findRelation } from "./catalog";
 import { quoteIdent } from "./hover";
 import { eq } from "./resolve";
 import type { JoinTarget, TableRef } from "./scope";
@@ -8,9 +9,7 @@ export const MAX_JOIN_TABLES = 8;
 
 function resolveTable(registry: SqlObjectRegistry, ref: TableRef): TableInfo | null {
   if (ref.columns) return null;
-  const match = (table: TableInfo) =>
-    eq(table.name, ref.name) && (!ref.schema || eq(table.schema, ref.schema));
-  return registry.tables.find(match) ?? null;
+  return findRelation(registry.tables, ref.name, ref.schema) ?? null;
 }
 
 export function joinTables(registry: SqlObjectRegistry, join: JoinTarget): TableInfo[] {

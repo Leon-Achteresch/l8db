@@ -1,6 +1,7 @@
 import type { ColumnInfo, DatabaseKind, FunctionInfo, TableInfo } from "@/lib/db";
 import { toMonacoSnippet } from "@/lib/snippets";
 import { BUILTIN_FUNCTIONS } from "./builtin-functions";
+import { columnsByTable } from "./catalog";
 import { CLICKHOUSE_FUNCTIONS } from "./clickhouse-functions";
 import { quoteIdent } from "./hover";
 import { SQL_KEYWORDS } from "./keywords";
@@ -171,13 +172,8 @@ const registryIndexes = new WeakMap<SqlObjectRegistry, RegistryIndex>();
 function registryIndex(registry: SqlObjectRegistry): RegistryIndex {
   const cached = registryIndexes.get(registry);
   if (cached) return cached;
-  const columnsByTable = new Map<string, ColumnInfo[]>();
   const byName = new Map<string, ColumnInfo[]>();
   for (const column of registry.columns) {
-    const key = column.table.toLowerCase();
-    const list = columnsByTable.get(key);
-    if (list) list.push(column);
-    else columnsByTable.set(key, [column]);
     const group = byName.get(column.name);
     if (group) group.push(column);
     else byName.set(column.name, [column]);
@@ -192,7 +188,7 @@ function registryIndex(registry: SqlObjectRegistry): RegistryIndex {
     }));
   const index: RegistryIndex = {
     dialect: registry.dialect,
-    columnsByTable,
+    columnsByTable: columnsByTable(registry.columns),
     columnGroups: [...byName].map(([name, columns]) => ({
       name,
       columns,
