@@ -1,6 +1,6 @@
 import type { ColumnInfo, TableInfo } from "@/lib/db";
 
-const columnIndexes = new WeakMap<ColumnInfo[], Map<string, ColumnInfo[]>>();
+export const columnIndexes = new WeakMap<ColumnInfo[], Map<string, ColumnInfo[]>>();
 const relationIndexes = new WeakMap<TableInfo[], Map<string, TableInfo[]>>();
 
 function groupByName<T>(

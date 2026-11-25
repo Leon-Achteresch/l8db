@@ -149,6 +149,53 @@ pub struct PostgresAdapter {
 }
 
 impl PostgresAdapter {
+    async fn browse_rows(
+        &self,
+        schema: &str,
+        table: &str,
+        filter: Option<&str>,
+        limit: i64,
+        offset: i64,
+        order_by: Option<&str>,
+        order_desc: bool,
+        is_view: bool,
+        allow_raw_filter: bool,
+        after: Option<&super::PageBoundary>,
+    ) -> Result<TableData, String> {
+        let where_sql = super::where_clause_in(filter, allow_raw_filter, false)?;
+        let mut conn = self.get_conn().await?;
+        let token = conn.cancel_token();
+        let guarded = !where_sql.is_empty() && matches!(conn, AdapterConnection::Pooled(_));
+        self.timed(token, async {
+            let page = TablePage {
+                schema,
+                table,
+                where_sql: &where_sql,
+                order_by,
+                order_desc,
+                is_view,
+                limit,
+                offset,
+                server: self.server(&conn).await,
+                after,
+            };
+            if guarded {
+                let tx = conn
+                    .build_transaction()
+                    .read_only(true)
+                    .start()
+                    .await
+                    .map_err(map_pg_err)?;
+                tx.batch_execute("SAVEPOINT l8_page")
+                    .await
+                    .map_err(map_pg_err)?;
+                return page.read(&tx, Some("ROLLBACK TO SAVEPOINT l8_page")).await;
+            }
+            page.read(&*conn, None).await
+        })
+        .await
+    }
+
     pub fn from_session(
         session: std::sync::Arc<super::execution::PgSession>,
         ssl: super::connection::PgTls,
@@ -990,29 +1037,62 @@ pub(crate) fn table_page_sql(
     )
 }
 
-struct TablePage<'a> {
-    schema: &'a str,
-    table: &'a str,
-    where_sql: &'a str,
-    order_by: Option<&'a str>,
-    order_desc: bool,
-    is_view: bool,
-    limit: i64,
-    offset: i64,
-    server: PgServer,
+fn deep_page_sql(
+    schema: &str,
+    table: &str,
+    order: Option<(&str, bool)>,
+    primary_key: &[String],
+    join_keys: &[String],
+) -> String {
+    let target = relation_name(schema, table);
+    let keys = join_keys
+        .iter()
+        .map(|key| quote_ident(key))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sort =
+        super::stable_order_terms(order, primary_key, |key| format!("t.{}", quote_ident(key)))
+            .join(", ");
+    let outer =
+        super::stable_order_terms(order, primary_key, |key| format!("p.{}", quote_ident(key)))
+            .join(", ");
+    format!(
+        "SELECT row_to_json(p) FROM (SELECT t.*, t.ctid::text || '@' || t.tableoid::text || '@' || \
+         t.xmin::text AS \"__ctid__\" FROM (SELECT {keys} FROM {target} t ORDER BY {sort} LIMIT $1 OFFSET $2) page \
+         JOIN {target} t USING ({keys})) p ORDER BY {outer}"
+    )
+}
+
+pub(super) struct TablePage<'a> {
+    pub(super) after: Option<&'a super::PageBoundary>,
+    pub(super) schema: &'a str,
+    pub(super) table: &'a str,
+    pub(super) where_sql: &'a str,
+    pub(super) order_by: Option<&'a str>,
+    pub(super) order_desc: bool,
+    pub(super) is_view: bool,
+    pub(super) limit: i64,
+    pub(super) offset: i64,
+    pub(super) server: PgServer,
 }
 
 impl TablePage<'_> {
-    async fn read<C: tokio_postgres::GenericClient + Sync>(
+    pub(super) async fn read<C: tokio_postgres::GenericClient + Sync>(
         &self,
         conn: &C,
-        savepoint: bool,
+        rollback_to: Option<&'static str>,
     ) -> Result<TableData, String> {
         let (schema, table, where_sql) = (self.schema, self.table, self.where_sql);
         let (limit, offset, is_view) = (self.limit, self.offset, self.is_view);
+        let deep = self.server == PgServer::Native
+            && !is_view
+            && offset >= 4096
+            && limit > 0
+            && limit <= 1000
+            && where_sql.is_empty();
         let column_rows = conn
             .query(
-                &self.server.columns_sql(self.order_by.is_some()),
+                &self.server.columns_sql(self.order_by.is_some() || deep),
                 &[&schema, &table],
             )
             .await
@@ -1024,13 +1104,58 @@ impl TablePage<'_> {
             .map(|column| (column, self.order_desc));
         let primary_key = primary_key_columns(&column_rows, order.is_some());
         let with_ctid = !is_view && has_row_ids(&column_rows);
-        let sql = table_page_sql(schema, table, where_sql, order, with_ctid, &primary_key);
-        if savepoint {
-            conn.batch_execute("SAVEPOINT l8_page")
-                .await
-                .map_err(map_pg_err)?;
-        }
-        let data_rows = match conn.query(&sql, &[&limit, &offset]).await {
+        let join_keys = if deep && column_rows.first().is_some_and(|row| row.get::<_, bool>(5)) {
+            primary_key_columns(&column_rows, true)
+        } else {
+            Vec::new()
+        };
+        let boundary = self.after.filter(|a| {
+            join_keys.len() == 1
+                && join_keys[0] == a.key
+                && primary_key == join_keys
+                && column_rows.iter().any(|r| {
+                    r.get::<_, &str>(0) == a.key
+                        && matches!(r.get::<_, &str>(1), "integer" | "bigint" | "smallint")
+                })
+        });
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&limit, &offset];
+        let seek = boundary.and_then(|a| {
+            let key = format!("t.{}", quote_ident(&a.key));
+            let predicate = match order {
+                Some((name, desc)) if name != a.key => {
+                    let text_sort = column_rows.iter().any(|r| {
+                        r.get::<_, &str>(0) == name && r.get::<_, bool>(6)
+                            && matches!(r.get::<_, &str>(1), "text" | "character varying")
+                    });
+                    if !text_sort { return None; }
+                    let value = a.sort_text.as_ref()?;
+                    params = vec![&limit, &a.value, value];
+                    let col = format!("t.{}", quote_ident(name));
+                    if desc {
+                        format!("{col} <= $3::text AND ({col} < $3::text OR {key} > $2::bigint)")
+                    } else {
+                        format!("({col}, {key}) > ($3::text, $2::bigint)")
+                    }
+                }
+                _ => {
+                    params = vec![&limit, &a.value];
+                    let cmp = if order.is_some_and(|(_, desc)| desc) { "<" } else { ">" };
+                    format!("{key} {cmp} $2::bigint")
+                }
+            };
+            let sort = super::stable_order_terms(order, &primary_key, |col| format!("t.{}", quote_ident(col))).join(", ");
+            let outer = super::stable_order_terms(order, &primary_key, |col| format!("p.{}", quote_ident(col))).join(", ");
+            let target = relation_name(schema, table);
+            Some(format!("SELECT row_to_json(p) FROM (SELECT t.*, t.ctid::text || '@' || t.tableoid::text || '@' || t.xmin::text AS \"__ctid__\" FROM {target} t WHERE {predicate} ORDER BY {sort} LIMIT $1) p ORDER BY {outer}"))
+        });
+        let sql = seek.unwrap_or_else(|| {
+            if join_keys.is_empty() {
+                table_page_sql(schema, table, where_sql, order, with_ctid, &primary_key)
+            } else {
+                deep_page_sql(schema, table, order, &primary_key, &join_keys)
+            }
+        });
+        let data_rows = match conn.query(&sql, &params).await {
             Ok(rows) => rows,
             Err(e)
                 if with_ctid
@@ -1040,10 +1165,8 @@ impl TablePage<'_> {
                             | Some(&tokio_postgres::error::SqlState::INVALID_COLUMN_REFERENCE)
                     ) =>
             {
-                if savepoint {
-                    conn.batch_execute("ROLLBACK TO SAVEPOINT l8_page")
-                        .await
-                        .map_err(map_pg_err)?;
+                if let Some(rollback) = rollback_to {
+                    conn.batch_execute(rollback).await.map_err(map_pg_err)?;
                 }
                 let sql = table_page_sql(schema, table, where_sql, order, false, &primary_key);
                 conn.query(&sql, &[&limit, &offset])
@@ -1103,10 +1226,15 @@ impl PgServer {
         } else {
             "false"
         };
+        let late_lookup = if self == Self::Native && explicit_order {
+            "c.relkind = 'r' AND NOT c.relrowsecurity AND NOT c.relhassubclass"
+        } else {
+            "false"
+        };
         let sql = format!(
             "SELECT a.attname::text, \
                 format_type(CASE WHEN ty.typtype = 'd' THEN ty.typbasetype ELSE a.atttypid END, NULL), \
-                COALESCE(a.attnum = ANY(pk.indkey), false), c.relkind = 'f', {tie_key} \
+                COALESCE(a.attnum = ANY(pk.indkey), false), c.relkind = 'f', {tie_key}, {late_lookup}, a.attnotnull \
              FROM pg_catalog.pg_attribute a \
              JOIN pg_catalog.pg_class c ON c.oid = a.attrelid \
              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
@@ -1830,33 +1958,38 @@ impl DatabaseAdapter for PostgresAdapter {
         is_view: bool,
         allow_raw_filter: bool,
     ) -> Result<TableData, String> {
-        let where_sql = super::where_clause_in(filter, allow_raw_filter, false)?;
-        let mut conn = self.get_conn().await?;
-        let token = conn.cancel_token();
-        let guarded = !where_sql.is_empty() && matches!(conn, AdapterConnection::Pooled(_));
-        self.timed(token, async {
-            let page = TablePage {
-                schema,
-                table,
-                where_sql: &where_sql,
-                order_by,
-                order_desc,
-                is_view,
-                limit,
-                offset,
-                server: self.server(&conn).await,
-            };
-            if guarded {
-                let tx = conn
-                    .build_transaction()
-                    .read_only(true)
-                    .start()
-                    .await
-                    .map_err(map_pg_err)?;
-                return page.read(&tx, true).await;
-            }
-            page.read(&*conn, false).await
-        })
+        self.browse_rows(
+            schema,
+            table,
+            filter,
+            limit,
+            offset,
+            order_by,
+            order_desc,
+            is_view,
+            allow_raw_filter,
+            None,
+        )
+        .await
+    }
+
+    async fn fetch_rows_after(
+        &self,
+        r: &super::transaction::TransactionTableRead,
+        after: &super::PageBoundary,
+    ) -> Result<TableData, String> {
+        self.browse_rows(
+            &r.schema,
+            &r.table,
+            r.filter.as_deref(),
+            r.limit,
+            r.offset,
+            r.order_by.as_deref(),
+            r.order_desc,
+            r.is_view,
+            r.allow_raw,
+            Some(after),
+        )
         .await
     }
 

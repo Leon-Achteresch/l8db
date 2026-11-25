@@ -1,5 +1,58 @@
 # Performance tests, workloads and headless benchmarks
 
+## Deep PostgreSQL and Oracle pages
+
+Measured on 2026-11-25. Each fixture held two million rows, a numeric primary key on `id`, an ascending B-tree on `(name, id)` and a non-null text name. PostgreSQL 17.11 ran natively on macOS. Oracle AI Database 26ai Free 23.26.3 ran locally in Docker with the native macOS Oracle client. The fixtures, including indexes, occupied 333 MiB and 515 MiB respectively. Hardware was an Apple M3 with 16 GiB RAM, macOS 27.2.1 arm64, Rust 1.99.0 and Bun 1.3.10. The desktop was shared with other applications and some samples overlapped compilation. Neither CPU nor heap was throttled.
+
+The table shows median / p95 milliseconds for the production Rust adapters over loopback, including metadata reads, data transfer and row conversion. Each operation returned 100 rows after position 1,000,000. Both revisions used the same running database, index definitions and data. Each series had one warmup and 21 measured requests in the Rust test profile. The old adapter at `1a64c6de` used the same offset query for jumps and next pages. The new benchmark alternates jumps and next pages. It obtains the preceding page outside the timers and compares every column, row, row marker and position with the absolute result. SQL-only spot checks also compared old and new ordered results. Tauri IPC, WebView rendering, remote databases, other providers and older Oracle releases were outside this experiment.
+
+| Database and order | Before | Jump now | Next page now |
+| --- | ---: | ---: | ---: |
+| PostgreSQL, ID ASC | 245.47 / 265.41 | 25.91 / 27.34 | 1.95 / 2.31 |
+| PostgreSQL, ID DESC | 244.34 / 258.33 | 26.04 / 29.44 | 1.91 / 2.39 |
+| PostgreSQL, NAME ASC, ID ASC | 885.19 / 902.75 | 37.78 / 41.93 | 1.98 / 2.24 |
+| PostgreSQL, NAME DESC, ID ASC | 1,125.92 / 1,613.30 | 97.49 / 102.49 | 2.06 / 2.48 |
+| Oracle, ID ASC | 223.76 / 305.69 | 87.75 / 97.71 | 2.91 / 3.49 |
+| Oracle, ID DESC | 482.31 / 708.43 | 90.11 / 95.98 | 3.13 / 4.09 |
+| Oracle, NAME ASC, ID ASC | 3,424.65 / 4,671.42 | 139.55 / 148.92 | 3.75 / 5.11 |
+| Oracle, NAME DESC, ID ASC | 3,833.72 / 6,408.34 | 246.45 / 278.12 | 4.35 / 9.40 |
+
+In a separate alternating old/new SQL comparison, ascending name jumps on PostgreSQL took 888.97 / 954.17 ms before and 44.36 / 53.32 ms after (server execution time). On Oracle the same comparison measured 2,827.25 / 3,114.04 ms before and 113.23 / 121.89 ms after (thin client on loopback fetching all 100 rows).
+
+From offset 4,096, eligible unfiltered jumps of up to 1,000 rows read narrow keys first and load the displayed rows afterwards. PostgreSQL uses verified primary keys on ordinary heaps without inheritance or row-level security. Oracle uses ROWIDs. For mixed Oracle ordering (`name DESC, id ASC`) a visible ascending composite index lets the adapter read the page's names and keys backwards. It then obtains each name's selected IDs in ascending order, accounting for groups that cross a page boundary. A separate live test exercises a group of 5,000 equal names, two group boundaries in one page, a partial last page and an empty result.
+
+Forward navigation uses the last visible key of an already loaded, complete, fresh preceding page. The database validates the key type and current columns. A usable boundary requires one numeric primary key representable exactly in JavaScript and either key ordering or a supported non-null text sort. Data changes between requests follow the last displayed key. Filters, views, active transactions, stale pages and refreshes use absolute positioning. Oracle binds text with the column's character type. On the ascending name fixture, the execution plan changed from an index full scan with a character conversion to an index range scan. Cache lookup makes zero database requests and creates zero query entries. A sparse or unindexed sort, a cold disk or network latency can still dominate.
+
+Run `scripts/test-load-perf.sh` for the PostgreSQL fixture. It adds the composite index after its unindexed workloads. For an existing disposable database, use `L8DB_PERF_PG_URL` or `L8DB_PERF_ORACLE_URL` and run the corresponding `cargo test --lib deep_forward_postgres -- --ignored --nocapture` or `cargo test --lib deep_forward_oracle -- --ignored --nocapture` from `src-tauri`. Forward p95 must stay below 20 ms and jump p95 below 300 ms on the indexed fixture. The Oracle tie test runs with `cargo test --lib deep_mixed_page_ties -- --ignored --nocapture`. For Oracle, connect as the owner of a dedicated, empty `L8DB` schema with the native client available and provision this fixture once.
+
+```sql
+CREATE TABLE big (id NUMBER PRIMARY KEY, name VARCHAR2(32) NOT NULL, payload VARCHAR2(120));
+INSERT INTO big
+SELECT LEVEL, RAWTOHEX(STANDARD_HASH(TO_CHAR(LEVEL), 'MD5')), RPAD('x', 120, 'x')
+FROM dual CONNECT BY LEVEL <= 2000000;
+COMMIT;
+CREATE INDEX big_name_id ON big (name, id);
+BEGIN DBMS_STATS.GATHER_TABLE_STATS(USER, 'BIG', cascade => TRUE); END;
+/
+```
+
+## Building the SQL editor catalog
+
+The completion index processes table and column metadata in short slices, shares completed indexes across editor contexts with identical metadata arrays and discards unfinished work when the registry changes or its last editor closes. Preparing completions and opening an already prepared list requires no further catalog request.
+
+| In-memory catalog of 20,000 tables and 400,000 columns | Before median / p95 | After median / p95 |
+| --- | ---: | ---: |
+| PostgreSQL, fresh metadata | 23.72 / 28.14 ms | 15.19 / 19.45 ms |
+| Oracle, fresh metadata | 36.43 / 54.57 ms | 15.23 / 16.22 ms |
+| PostgreSQL, new context sharing the metadata | 17.92 / 25.68 ms | 0.82 / 0.91 ms |
+| Oracle, new context sharing the metadata | 18.96 / 29.20 ms | 0.81 / 0.86 ms |
+
+These are synchronous build times using two schemas with overlapping table names and 20 shared field names. Both revisions used the same Bun workload with two warmups, 21 samples, new metadata arrays before each cold sample and GC outside the timer. The subsequent unqualified SELECT completion took 0.08 ms p95 for PostgreSQL and 0.10 ms for Oracle. The measurements start after the metadata is available in memory. Frame scheduling can extend elapsed time to a completely prepared catalog.
+
+The scoped regression also mixes two column types per shared name and checks cancellation, reuse and retained heap. Under concurrent compilation its cold p95 was 35.03 ms for PostgreSQL and 44.24 ms for Oracle (80 ms limit). Individual preparation slices measured 2.79 and 2.46 ms p95 (15 ms limit). Reused contexts measured 2.06 and 1.89 ms p95 (6 ms limit). Twenty additional preparations retained 0.64 MiB after GC for each dialect (4 MiB limit). The boundary lookup in the row cache measured 0.066 ms p95 over 51 requests with no database traffic (3 ms limit).
+
+Reproduce the editor and cache regressions with `bun test tests/perf-sql-intellisense.test.ts tests/perf-page-boundary.test.ts`. The virtual scroll workload in `tests/perf-rows-window.test.ts` also checks that scrolling across a 10-million-row range holds at most two requests in flight and idle scrolling issues no requests.
+
 ## Large catalogs and filtered row counts
 
 The SQL editor groups tables, views and columns by case-insensitive name. Lookup preserves the first matching relation in catalog order and checks the schema when resolving a qualified name. Hover, definition lookup, JOIN suggestions and completion share indexes keyed by the metadata arrays. Replacing an array after a metadata refresh rebuilds its index on demand.
@@ -39,7 +92,7 @@ The PostgreSQL workload now measures 21 samples after one warmup for each operat
 | Detailed columns for one table | 2.50 ms | 3.01 ms |
 | List 3,001 tables | 16.89 ms | 20.28 ms |
 
-The plan for a deep unindexed name sort used a parallel sequential scan, sort and gather merge before the limit. Database latency and deep paging depend on the available indexes, sort order and number of skipped rows. A separate server-side experiment on PostgreSQL 17.11 gave the same two-million-row table a composite index on `(name, id)`. Both queries returned the same ordered 100 IDs. With the preceding row's key already known, `WHERE (name, id) > ($last_name, $last_id) ORDER BY name, id LIMIT 100` measured 0.372 ms median / 3.096 ms p95. On that indexed fixture, `OFFSET 1000000` measured 5,906 / 7,694 ms. Each query had one warmup and 21 samples using `EXPLAIN (ANALYZE, TIMING OFF)`. Anchor discovery, network time and rendering are excluded. The app still uses offset pagination. This experiment measures the opportunity for sequential navigation when an index and a valid anchor are available.
+The plan for a deep unindexed name sort used a parallel sequential scan, sort and gather merge before the limit. Database latency and deep paging depend on the available indexes, sort order and number of skipped rows. A separate server-side experiment on PostgreSQL 17.11 gave the same two-million-row table a composite index on `(name, id)`. Both queries returned the same ordered 100 IDs. With the preceding row's key already known, `WHERE (name, id) > ($last_name, $last_id) ORDER BY name, id LIMIT 100` measured 0.372 ms median / 3.096 ms p95. On that indexed fixture, `OFFSET 1000000` measured 5,906 / 7,694 ms. Each query had one warmup and 21 samples using `EXPLAIN (ANALYZE, TIMING OFF)`. Anchor discovery, network time and rendering are excluded. At the time of that baseline the app used offset pagination for every page. The deep-paging measurements above cover the subsequent implementation.
 
 The measurements cover one Mac and local SQLite and PostgreSQL. Remote latency, other database families, Windows, Linux and end-to-end WebView latency remain unmeasured in this run.
 

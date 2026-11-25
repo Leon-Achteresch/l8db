@@ -337,3 +337,148 @@ async fn database_load_guards() {
         .await
         .expect("drop table");
 }
+
+async fn deep_forward_pages(
+    kind: DatabaseKind,
+    url_env: &str,
+    schema: &str,
+    table: &str,
+    id: &str,
+    name: &str,
+) {
+    let url = std::env::var(url_env).expect("set fixture URL");
+    let adapter = create_adapter_from_string(kind, &url, None, create_pool_state()).unwrap();
+    let make_request = |order: &str, offset| super::transaction::TransactionTableRead {
+        schema: schema.into(),
+        table: table.into(),
+        filter: None,
+        limit: 100,
+        offset,
+        order_by: Some(order.into()),
+        order_desc: false,
+        is_view: false,
+        allow_raw: false,
+    };
+    for (col, desc) in [(name, false), (id, false), (id, true), (name, true)] {
+        let mut request = make_request(col, 1_000_000);
+        request.order_desc = desc;
+        let before = adapter
+            .fetch_rows(
+                schema,
+                table,
+                None,
+                100,
+                request.offset - 100,
+                Some(col),
+                desc,
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        let last = before.rows.last().unwrap();
+        let anchor = super::PageBoundary {
+            key: id.into(),
+            value: last[id].as_i64().unwrap(),
+            sort_text: (col != id).then(|| last[col].as_str().unwrap().into()),
+        };
+        let expected = adapter
+            .fetch_rows(
+                schema,
+                table,
+                None,
+                100,
+                request.offset,
+                Some(col),
+                desc,
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        assert_eq!(expected.rows.len(), 100);
+        assert!(expected.rows.iter().all(|row| row["__ctid__"].is_string()));
+        let mut jumps = Vec::new();
+        let mut forward = Vec::new();
+        for n in 0..22 {
+            for pass in 0..2 {
+                let seek = (pass + n) % 2 == 0;
+                let start = Instant::now();
+                let page = if seek {
+                    adapter.fetch_rows_after(&request, &anchor).await
+                } else {
+                    adapter
+                        .fetch_rows(
+                            schema,
+                            table,
+                            None,
+                            100,
+                            request.offset,
+                            Some(col),
+                            desc,
+                            false,
+                            false,
+                        )
+                        .await
+                }
+                .unwrap();
+                let elapsed = start.elapsed();
+                assert_eq!(page.rows, expected.rows);
+                assert_eq!(page.columns, expected.columns);
+                if n > 0 {
+                    if seek {
+                        forward.push(elapsed);
+                    } else {
+                        jumps.push(elapsed);
+                    }
+                }
+            }
+        }
+        for (mode, mut samples, budget) in [("jump", jumps, 300), ("forward", forward, 20)] {
+            samples.sort();
+            println!(
+                "{kind:?} {mode} {col} desc={desc} median {:?} p95 {:?}",
+                samples[10], samples[19]
+            );
+            assert!(
+                samples[19] < Duration::from_millis(budget),
+                "{kind:?} {mode} {col}: {samples:?}"
+            );
+        }
+        let invalid = super::PageBoundary {
+            key: "missing".into(),
+            value: -1,
+            sort_text: None,
+        };
+        let fallback = adapter.fetch_rows_after(&request, &invalid).await.unwrap();
+        assert_eq!(fallback.rows, expected.rows);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires indexed two-million-row BIG fixture"]
+async fn deep_forward_postgres() {
+    deep_forward_pages(
+        DatabaseKind::Postgres,
+        "L8DB_PERF_PG_URL",
+        "public",
+        "big",
+        "id",
+        "name",
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires indexed two-million-row BIG fixture and Oracle Instant Client"]
+async fn deep_forward_oracle() {
+    deep_forward_pages(
+        DatabaseKind::Oracle,
+        "L8DB_PERF_ORACLE_URL",
+        "L8DB",
+        "BIG",
+        "ID",
+        "NAME",
+    )
+    .await;
+}

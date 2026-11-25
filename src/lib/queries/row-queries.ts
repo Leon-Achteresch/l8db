@@ -31,6 +31,7 @@ import { useSettingsStore } from "@/lib/settings";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { tableReadTransactionId, useTransactionStore } from "@/lib/transactions";
 import { runUntilAbandoned } from "./abandoned-jobs";
+import { previousPageBoundary, ROWS_WINDOW_STALE_MS, type RowsQueryKey } from "./page-boundary";
 import { sortingToRowSort } from "./schema-queries";
 
 export const PAGE_SIZE = 100;
@@ -86,22 +87,23 @@ type RowsSource = ReturnType<typeof useRowsSource>;
 function rowsQueryOptions(source: RowsSource, page: number) {
   const { connection, database, schema, table, filter, sort, isView, rowLimit, allowRaw, txId } =
     source;
+  const queryKey: RowsQueryKey = [
+    "rows",
+    connection?.id,
+    database,
+    schema,
+    table,
+    filter ?? "",
+    sort?.column ?? "",
+    sort?.desc ?? false,
+    isView,
+    page,
+    rowLimit,
+    allowRaw,
+    txId,
+  ];
   return {
-    queryKey: [
-      "rows",
-      connection?.id,
-      database,
-      schema,
-      table,
-      filter ?? "",
-      sort?.column ?? "",
-      sort?.desc ?? false,
-      isView,
-      page,
-      rowLimit,
-      allowRaw,
-      txId,
-    ],
+    queryKey,
     queryFn: (context: QueryFunctionContext) => {
       if (!connection) throw new Error("Keine Verbindung aktiv.");
       return runUntilAbandoned(
@@ -121,6 +123,7 @@ function rowsQueryOptions(source: RowsSource, page: number) {
             allowRaw,
             txId,
             { jobId },
+            previousPageBoundary(context.client, queryKey, connection.kind),
           ).then((data): RowsPage => ({ ...data, fetchedRows: data.rows.length })),
         cancelJob,
       );
@@ -187,8 +190,6 @@ type RowsWindowView = {
   columns: string[];
   pages: RowsWindowPage[];
 };
-
-const ROWS_WINDOW_STALE_MS = 30_000;
 
 function samePageSource(key: readonly unknown[], base: readonly unknown[]) {
   return (

@@ -420,3 +420,79 @@ test("common prefixes stop reading a 100,000-item completion list once the resul
   expect(visited).toBe(400);
   expect(timing.p95Ms).toBeLessThan(3);
 });
+
+test("large PostgreSQL and Oracle catalogs build in interruptible slices and reuse metadata arrays", async () => {
+  const { prepareCompletionSlice, cancelCompletionPreparation } = await import(
+    "../src/lib/sql-intellisense"
+  );
+  for (const dialect of ["postgres", "oracle"] as const) {
+    const tables = Array.from({ length: 20000 }, (_, i) => ({
+      schema: i < 10000 ? "SALES" : "ARCHIVE",
+      name: `LEDGER_${i % 10000}`,
+    }));
+    const columns = tables.flatMap(({ schema, name: table }) =>
+      Array.from({ length: 20 }, (_, i) => ({
+        schema,
+        table,
+        name: `FIELD_${i}`,
+        data_type: schema === "SALES" ? "INTEGER" : "TEXT",
+      })),
+    );
+    const registry: SqlObjectRegistry = {
+      schemas: ["SALES", "ARCHIVE"],
+      tables,
+      columns,
+      views: [],
+      functions: [],
+      procedures: [],
+      dialect,
+    };
+    expect(prepareCompletionSlice(registry)).toBe(false);
+    cancelCompletionPreparation(registry);
+    const times: number[] = [];
+    let ready = false;
+    do {
+      const start = performance.now();
+      ready = prepareCompletionSlice(registry);
+      times.push(performance.now() - start);
+      if (!ready) await new Promise((resolve) => setTimeout(resolve, 0));
+    } while (!ready);
+    times.sort((a, b) => a - b);
+    const sliceP95 = times[Math.ceil(times.length * 0.95) - 1];
+    expect(
+      suggestCompletions(registry, "SELECT ", "SELECT ").find((s) => s.label === "FIELD_19")
+        ?.detail,
+    ).toBe("INTEGER | TEXT · 20000 Tabellen");
+    const cold: number[] = [];
+    for (let n = 0; n < 23; n++) {
+      const fresh = { ...registry, tables: [...tables], columns: [...columns] };
+      Bun.gc(true);
+      const start = performance.now();
+      prepareCompletions(fresh);
+      if (n >= 2) cold.push(performance.now() - start);
+    }
+    cold.sort((a, b) => a - b);
+    const reuse = await measureScenario(() => prepareCompletions({ ...registry }), 21);
+    Bun.gc(true);
+    const before = heapSize();
+    for (let i = 0; i < 20; i++) prepareCompletions({ ...registry });
+    Bun.gc(true);
+    const retained = heapSize() - before;
+    await reportScenario(`catalog-sliced-${dialect}`, {
+      tables: 20000,
+      columns: 400000,
+      coldMedian: cold[10],
+      coldP95: cold[19],
+      slices: times.length,
+      sliceMedian: times[times.length >> 1],
+      sliceP95,
+      reuse,
+      retained,
+    });
+    expect(cold[19]).toBeLessThan(80);
+    expect(times.length).toBeGreaterThan(1);
+    expect(sliceP95).toBeLessThan(15);
+    expect(reuse.p95Ms).toBeLessThan(6);
+    expect(retained).toBeLessThan(4 * 1024 * 1024);
+  }
+}, 30000);
