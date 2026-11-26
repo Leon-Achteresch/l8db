@@ -27,6 +27,7 @@ import {
 } from "@/lib/managed-transactions";
 import { supports } from "@/lib/providers";
 import { useQueryHistoryStore } from "@/lib/query-history";
+import { createScriptProgress } from "@/lib/script-progress";
 import { applySelectRowLimit } from "@/lib/select-row-limit";
 import {
   deliverServerOutput,
@@ -331,6 +332,18 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
   let lastResult: QueryResult | null = null;
   let exit: ScriptExit | null = null;
   const stopOnError = request.stopOnError !== false;
+  const progress = createScriptProgress(entries, request.onProgress, (completed) =>
+    updateTask(jobId, {
+      progress: completed,
+      ...(stopped
+        ? {}
+        : {
+            detail: txId
+              ? "Ausgeführt in einer verwalteten Transaktion. Commit oder Rollback erfolgt separat im Transaktionspanel."
+              : "Autocommit: Erfolgreiche Statements wurden einzeln übernommen.",
+          }),
+    }),
+  );
   const internal = { confirmed: true, track: false, session: jobId };
   const plus = {
     serverOutput: isServerOutputEnabled(connection.id),
@@ -366,7 +379,6 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         : Promise.resolve([])
     ).catch(() => []);
     if (leftovers.length) deliverServerOutput(connection.id, database, leftovers);
-    const publish = () => request.onProgress?.(entries.map((entry) => ({ ...entry })));
     let halted = false;
     let outputLines = 0;
     let lastSql: ScriptItem | null = null;
@@ -1105,7 +1117,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       const plsql = oracle && ["BEGIN", "DECLARE", "CALL", "EXEC", "EXECUTE"].includes(verb);
       const ends = plsql && /\b(COMMIT|ROLLBACK)\b/i.test(sql);
       entry.status = "running";
-      publish();
+      progress.changed(entry);
       const started = performance.now();
       let failure: string | null = null;
       try {
@@ -1222,7 +1234,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
       if (!entry) continue;
       if (stopped || halted) {
         entry.status = "skipped";
-        publish();
+        progress.changed(entry);
         continue;
       }
       if (item.kind === "error") {
@@ -1231,11 +1243,13 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
         await onRule(entry, plus.osError, entry.error).catch((failure: unknown) =>
           crash(entry, failure),
         );
-        publish();
+        progress.changed(entry, true);
         continue;
       }
       if (item.kind === "command") {
         const started = performance.now();
+        entry.status = "running";
+        progress.changed(entry);
         entry.status = await runCommand(item.text, entry).catch(async (failure: unknown) => {
           const text = message(failure);
           if (failure instanceof ScriptAbort) crash(entry, failure);
@@ -1248,26 +1262,21 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
           return "error" as const;
         });
         entry.durationMs = Math.round(performance.now() - started);
-        publish();
+        progress.changed(entry, true);
         continue;
       }
       await runStatement(item, entry).catch((failure: unknown) => crash(entry, failure));
-      updateTask(jobId, {
-        progress: entries.filter(
-          (entry) => entry.status !== "pending" && entry.status !== "skipped",
-        ).length,
-        detail: txId
-          ? "Ausgeführt in einer verwalteten Transaktion. Commit oder Rollback erfolgt separat im Transaktionspanel."
-          : "Autocommit: Erfolgreiche Statements wurden einzeln übernommen.",
-      });
-      publish();
+      progress.changed(entry, true);
     }
     const tail = entries.at(-1);
-    if (tail && plus.spool)
+    if (tail && plus.spool) {
       await flushSpool(tail, entries.length).catch((failure: unknown) => {
         tail.error ??= message(failure);
         error ??= tail.error;
       });
+      progress.changed(tail);
+    }
+    progress.flush();
     const ran = entries.filter((entry) => entry.durationMs !== null);
     if (ran.length)
       useQueryHistoryStore.getState().record({
@@ -1314,6 +1323,7 @@ export async function runSqlScript(request: ScriptRequest): Promise<ScriptOutcom
     );
     return outcome;
   } catch (failure) {
+    progress.cancelTimer();
     forget();
     finishTask(jobId, undefined, failure);
     throw failure;

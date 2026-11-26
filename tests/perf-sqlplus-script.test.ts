@@ -13,7 +13,7 @@ Object.defineProperty(globalThis, "localStorage", {
 
 const counts = new Map<string, number>();
 let outputLines = 1;
-let onExecute: (() => void) | null = null;
+let onExecute: (() => void | Promise<void>) | null = null;
 mock.module("@tauri-apps/api/core", () => ({
   invoke: async (command: string, args: Record<string, unknown> = {}) => {
     if (command === "list_providers") return [];
@@ -27,7 +27,7 @@ mock.module("@tauri-apps/api/core", () => ({
         message: `zeile ${index}`,
       }));
     if (command === "execute_in_transaction" || command === "execute_query") {
-      onExecute?.();
+      if (onExecute) await onExecute();
       const sql = String(args.sql);
       if (sql.includes("LOCAL_TRANSACTION_ID"))
         return { columns: ["ID"], rows: [{ ID: null }], rows_affected: null, execution_time_ms: 0 };
@@ -210,3 +210,107 @@ test("non-Oracle scripts read server messages without extra database round trips
     p95BudgetMs: 4000,
   });
 }, 60_000);
+
+test("visible progress for 2,000 statements bounds snapshots and task writes", async () => {
+  outputLines = 0;
+  let snapshots = 0;
+  let copies = 0;
+  let writes = 0;
+  let maxSnapshots = 0;
+  let maxCopies = 0;
+  let maxWrites = 0;
+  const timing = await measureScenario(async () => {
+    counts.clear();
+    useTasksStore.setState({ tasks: [] });
+    let previous: Awaited<ReturnType<typeof runSqlScript>>["entries"] = [];
+    snapshots = 0;
+    copies = 0;
+    writes = 0;
+    const unsubscribe = useTasksStore.subscribe(() => {
+      writes++;
+    });
+    try {
+      const outcome = await runSqlScript({
+        connection: postgres,
+        database: null,
+        sql: PG_SCRIPT,
+        mode: "autocommit",
+        onProgress(entries) {
+          snapshots++;
+          for (let index = 0; index < entries.length; index++)
+            if (entries[index] !== previous[index]) copies++;
+          previous = entries;
+        },
+      });
+      expect(previous).toEqual(outcome.entries);
+      expect(previous).toHaveLength(BLOCKS);
+      expect(counts.get("execute_query")).toBe(BLOCKS);
+      expect(outcome.error).toBeNull();
+      maxSnapshots = Math.max(maxSnapshots, snapshots);
+      maxCopies = Math.max(maxCopies, copies);
+      maxWrites = Math.max(maxWrites, writes);
+    } finally {
+      unsubscribe();
+    }
+  }, 7);
+  console.log("Visible SQL progress", { maxSnapshots, maxCopies, maxWrites, ...timing });
+  expect(maxCopies).toBeLessThanOrEqual(BLOCKS * 3);
+  expect(maxSnapshots).toBeLessThan(64);
+  expect(maxWrites).toBeLessThan(68);
+  expect(timing.medianMs).toBeLessThan(1000);
+  expect(timing.p95Ms).toBeLessThan(3000);
+}, 90000);
+
+test("a waiting statement becomes visible and cancellation publishes one stable final state", async () => {
+  const waiting = Promise.withResolvers<void>();
+  const blocked = Promise.withResolvers<void>();
+  let executes = 0;
+  onExecute = () => {
+    if (++executes === 3) {
+      waiting.resolve();
+      return blocked.promise;
+    }
+  };
+  const frames: Awaited<ReturnType<typeof runSqlScript>>["entries"][] = [];
+  let jobId = "";
+  const running = runSqlScript({
+    connection: postgres,
+    database: null,
+    sql: PG_SCRIPT,
+    mode: "autocommit",
+    onJob: (id) => {
+      jobId = id;
+    },
+    onProgress: (entries) => frames.push(entries),
+  });
+  try {
+    await waiting.promise;
+    await Bun.sleep(100);
+    const frame = frames.at(-1);
+    expect(frame?.slice(0, 4).map((entry) => entry.status)).toEqual([
+      "success",
+      "success",
+      "running",
+      "pending",
+    ]);
+    expect(frames[0][0].status).toBe("running");
+    expect(frames[0][3]).toBe(frame?.[3]);
+    const updates = frames.length;
+    await Bun.sleep(100);
+    expect(frames.length).toBe(updates);
+    await cancelTask(jobId);
+  } finally {
+    blocked.resolve();
+  }
+  const outcome = await running;
+  expect(executes).toBe(3);
+  expect(outcome.entries.slice(3).every((entry) => entry.status === "skipped")).toBe(true);
+  expect(frames.at(-1)).toEqual(outcome.entries);
+  expect(frames[0][3].status).toBe("pending");
+  const task = useTasksStore.getState().tasks.find((entry) => entry.id === jobId);
+  expect(task?.status).toBe("cancelled");
+  expect(task?.progress).toBe(3);
+  const finalUpdates = frames.length;
+  await Bun.sleep(100);
+  expect(frames.length).toBe(finalUpdates);
+}, 10000);
