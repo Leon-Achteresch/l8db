@@ -84,12 +84,17 @@ export function searchQueryTabs(
 
   const maxMatches = options.maxMatches ?? DEFAULT_MAX_MATCHES;
   const matches: TabSearchMatch[] = [];
-  const truncated = false;
 
   for (const source of sources) {
-    const lines = source.sql.split("\n");
-    for (let index = 0; index < lines.length; index += 1) {
-      const lineText = lines[index].replace(/\r$/, "");
+    let start = 0;
+    for (let line = 1; start <= source.sql.length; line += 1) {
+      const newline = source.sql.indexOf("\n", start);
+      const end = newline < 0 ? source.sql.length : newline;
+      const lineText = source.sql.slice(
+        start,
+        end > start && source.sql[end - 1] === "\r" ? end - 1 : end,
+      );
+      start = end + 1;
       pattern.lastIndex = 0;
       let hit: RegExpExecArray | null;
       while ((hit = pattern.exec(lineText)) !== null) {
@@ -101,7 +106,7 @@ export function searchQueryTabs(
         matches.push({
           tabId: source.id,
           tabTitle: source.title,
-          line: index + 1,
+          line,
           column,
           length,
           lineText,
@@ -112,7 +117,7 @@ export function searchQueryTabs(
     }
   }
 
-  return { matches, invalidPattern: false, patternError: null, truncated };
+  return { matches, invalidPattern: false, patternError: null, truncated: false };
 }
 
 export function groupMatchesByTab(matches: TabSearchMatch[]): {
