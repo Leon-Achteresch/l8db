@@ -96,7 +96,7 @@ export function ObjectList({
     }
   }
 
-  const allSelected = rows.length > 0 && rows.every((row) => selected.has(row.id));
+  const allSelected = rows.length > 0 && selectedRows.length === rows.length;
   return (
     <table className="w-full border-collapse text-sm" aria-label="Objekte">
       <thead className="sticky top-0 z-10 bg-background text-xs text-muted-foreground shadow-[0_1px_0_var(--border)]">
