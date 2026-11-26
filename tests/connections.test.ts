@@ -58,6 +58,7 @@ const PROVIDERS = [
     default_port: null,
   }),
   provider("sqlite", "sqlite", ["sqlite", "file"], [], { default_port: null, file_based: true }),
+  provider("duckdb", "duckdb", ["duckdb"], [], { default_port: null, file_based: true }),
   provider("redis", "redis", ["redis", "rediss"], ["localhost"], { default_port: 6379 }),
   provider("oracle", "oracle", ["oracle"], ["localhost"], { default_port: 1521 }),
   provider("dynamodb", "dynamodb", ["dynamodb"], [], { default_port: null }),
@@ -298,6 +299,72 @@ describe("Temporary connections", () => {
 });
 
 describe("Other providers", () => {
+  test("uses the native file-open families for pasted data paths and shows their filenames", () => {
+    for (const path of [
+      "/tmp/bericht.tsv",
+      "~/Export.JSON",
+      "../out/log.jsonl",
+      String.raw`C:\Exporte\Daten.NDJSON`,
+      "./export.CSV",
+      "./sales.parquet",
+      "/tmp/db.DDB",
+      "/tmp/report.duckdb",
+    ]) {
+      expect(kindFromUrl(path)).toBe("duckdb");
+      expect(detectProvider(path)).toBe("duckdb");
+      expect(parseConnectionUrl(path).protocol).toBe("duckdb:");
+    }
+    const windowsPath = String.raw`C:\Exporte\Daten.NDJSON`;
+    expect(connectionSummary(windowsPath)).toEqual({
+      host: "Daten.NDJSON",
+      port: "",
+      database: windowsPath,
+      user: "",
+    });
+    for (const path of ["/tmp/app.db3", "/tmp/archiv.json/datei.db", "/tmp/app", ":memory:"]) {
+      expect(kindFromUrl(path)).toBe("sqlite");
+    }
+    expect(parseConnectionUrl("sqlite:///tmp/datei.json").protocol).toBe("sqlite:");
+  });
+
+  test("recognizes 4096 local database and data paths without constructing network URLs", () => {
+    const extensions = ["tsv", "db", "json", "ddb", "ndjson", "sqlite", "jsonl", "csv"];
+    const paths = Array.from(
+      { length: 4096 },
+      (_, i) =>
+        `/imports/Abteilung ${i % 90}/${"historisch/".repeat(i % 20)}export-${i}.${extensions[i % extensions.length]}`,
+    );
+    const NativeURL = globalThis.URL;
+    let urls = 0;
+    const samples: number[] = [];
+    let duckdb = 0;
+    try {
+      globalThis.URL = class extends NativeURL {
+        constructor(input: string | URL, base?: string | URL) {
+          urls++;
+          super(input, base);
+        }
+      };
+      for (let run = 0; run < 22; run++) {
+        duckdb = 0;
+        const started = performance.now();
+        for (const path of paths) if (detectProvider(path) === "duckdb") duckdb++;
+        if (run) samples.push(performance.now() - started);
+      }
+    } finally {
+      globalThis.URL = NativeURL;
+    }
+    samples.sort((a, b) => a - b);
+    console.log(
+      `Dateipfade: Median ${samples[10].toFixed(3)} ms, p95 ${samples[19].toFixed(3)} ms, ${urls} URL-Konstruktionen`,
+    );
+    expect(duckdb).toBe(3072);
+    expect(urls).toBe(0);
+    expect(calls).toEqual([]);
+    expect(samples[10]).toBeLessThan(12);
+    expect(samples[19]).toBeLessThan(32);
+  });
+
   test("detects the driver family from the URL scheme or a file path", () => {
     expect(kindFromUrl("mysql://root@localhost/db")).toBe("mysql");
     const atlas = "mongodb+srv://cs-admin:XXX@cXXX.mongodb.net/";

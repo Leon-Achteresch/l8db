@@ -1,14 +1,22 @@
 import type { DatabaseKind, SslMode } from "@/lib/db";
 import { allProviders, providerForKind } from "@/lib/providers";
-import { DATABASE_REQUIRED, PATH_LIKE, SSL_MODES, SSLMODE_PARAM, USER_REQUIRED } from "./constants";
+import {
+  DATABASE_REQUIRED,
+  DUCKDB_FILE_EXTENSIONS,
+  PATH_LIKE,
+  SSL_MODES,
+  SSLMODE_PARAM,
+  USER_REQUIRED,
+} from "./constants";
 import { oracleConnectString, oracleKeyValueToUrl } from "./oracle-endpoint";
 import { isOracleKeyValue } from "./oracle-key-value";
 import { isProfileConnection, parseProfileConnection } from "./profile-pointer";
 
+const DUCKDB_PATH = new RegExp(`\\.(?:${DUCKDB_FILE_EXTENSIONS.join("|")})$`, "i");
+
 export function kindFromUrl(value: string): DatabaseKind | undefined {
   const trimmed = value.trim();
-  if (PATH_LIKE.test(trimmed))
-    return /\.(duckdb|ddb|parquet|csv)$/i.test(trimmed) ? "duckdb" : "sqlite";
+  if (PATH_LIKE.test(trimmed)) return DUCKDB_PATH.test(trimmed) ? "duckdb" : "sqlite";
   if (isOracleKeyValue(trimmed)) return "oracle";
   const match = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
   if (!match) return undefined;
