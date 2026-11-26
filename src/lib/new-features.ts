@@ -7,6 +7,7 @@ export const NEXT_FEATURE_VERSION = "0.20.0";
 
 export const NEW_FEATURES = {
   "storage.objects.image-preview": NEXT_FEATURE_VERSION,
+  "storage.objects.retry-read": NEXT_FEATURE_VERSION,
   "functions.editor.git-blame": "0.19.0",
   "workspace.tab-status": "0.19.0",
   "settings.data.collect-cell-edits": "0.19.0",

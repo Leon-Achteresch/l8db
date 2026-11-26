@@ -39,6 +39,11 @@ test("S3 ranges follow the listed size, actual MIME type and the version's repor
   expect(nextPreviewLimit("text", text, 2 * MiB)).toBe(16 * MiB);
   expect(nextPreviewLimit("text", text, 16 * MiB)).toBeNull();
   expect(nextPreviewLimit("text", response("done", "text/plain"), MiB / 4)).toBeNull();
+  const unknown = { ...text, size: null };
+  expect(nextPreviewLimit("text", unknown, MiB / 4)).toBe(2 * MiB);
+  expect(nextPreviewLimit("text", unknown, 16 * MiB)).toBeNull();
+  expect(nextPreviewLimit("image", unknown, 2048)).toBe(12 * MiB);
+  expect(nextPreviewLimit("image", unknown, 12 * MiB)).toBeNull();
 });
 
 test("partial text keeps complete UTF-8 characters and complete CSV and TSV records", () => {
