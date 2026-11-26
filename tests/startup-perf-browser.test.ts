@@ -14,6 +14,8 @@ const SCRIPT_BUDGET_BYTES = Number(process.env.L8DB_STARTUP_SCRIPT_BYTES ?? 2_20
 const INVOKE_BUDGET = Number(process.env.L8DB_STARTUP_INVOKES ?? 40);
 const PAINT_BUDGET_MS = Number(process.env.L8DB_STARTUP_PAINT_MS ?? 150);
 const FILE_BUDGET = Number(process.env.L8DB_STARTUP_FILES ?? 16);
+const DB_LATENCY_MS = Number(process.env.L8DB_STARTUP_DB_MS ?? 0);
+const WARM = Boolean(process.env.L8DB_STARTUP_WARM);
 
 type Sample = {
   fcp: number;
@@ -53,7 +55,7 @@ async function measure(browser: Browser, port: number): Promise<Sample> {
       (route) => route.fulfill({ contentType: "text/html", body: "" }),
     );
     await seedApp(page, 3000, { rows: 2000, columns: 60 }, "perf-test");
-    await page.addInitScript(() => {
+    await page.addInitScript((latency) => {
       const state = window as unknown as StartupWindow & {
         __TAURI_INTERNALS__: { invoke: (command: string, ...rest: unknown[]) => unknown };
         __REACT_DEVTOOLS_GLOBAL_HOOK__: unknown;
@@ -80,6 +82,10 @@ async function measure(browser: Browser, port: number): Promise<Sample> {
       const invoke = state.__TAURI_INTERNALS__.invoke;
       state.__TAURI_INTERNALS__.invoke = (command, ...rest) => {
         state.__startupInvokes.push({ at: performance.now(), command });
+        if (latency > 0 && (rest[0] as { connectionString?: string })?.connectionString)
+          return new Promise((resolve) => setTimeout(resolve, latency)).then(() =>
+            invoke(command, ...rest),
+          );
         return invoke(command, ...rest);
       };
       state.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
@@ -104,12 +110,17 @@ async function measure(browser: Browser, port: number): Promise<Sample> {
         for (const entry of list.getEntries())
           state.__startupTasks.push({ at: entry.startTime, duration: entry.duration });
       }).observe({ type: "longtask", buffered: true });
-    });
+    }, DB_LATENCY_MS);
     if (RATE > 1) {
       const cdp = await page.context().newCDPSession(page);
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: await cpuThrottleRate(RATE) });
     }
     await page.goto(`http://localhost:${port}/`);
+    if (WARM) {
+      await page.waitForSelector('a[data-name="table_0000"]', { timeout: 60000 });
+      await page.waitForTimeout(3000);
+      await page.reload();
+    }
     await page.waitForSelector('a[data-name="table_0000"]', { timeout: 60000 });
     const readyAt = await page.evaluate(() => performance.now());
     await page.waitForTimeout(4000);
@@ -191,7 +202,7 @@ test.skipIf(!ENABLED)(
       const counts = new Map<string, number>();
       for (const command of invokes) counts.set(command, (counts.get(command) ?? 0) + 1);
       console.log(
-        `startup-perf ${RATE}× (Median aus ${RUNS}): FCP ${pick("fcp").toFixed(0)} ms, App sichtbar nach ${pick("app").toFixed(0)} ms (leer ${pick("blank").toFixed(0)} ms), nutzbar nach ${pick("ready").toFixed(0)} ms, Long-Tasks bis dahin ${pick("bootTaskTotal").toFixed(0)} ms, schlimmster Frame ${pick("firstViewWorst").toFixed(0)} ms, danach ${pick("afterReadyWorst").toFixed(0)} ms und längster Task ${pick("afterReadyTaskWorst").toFixed(0)} ms`,
+        `startup-perf ${RATE}×${WARM ? " warm" : ""}${DB_LATENCY_MS ? `, DB ${DB_LATENCY_MS} ms` : ""} (Median aus ${RUNS}): FCP ${pick("fcp").toFixed(0)} ms, App sichtbar nach ${pick("app").toFixed(0)} ms (leer ${pick("blank").toFixed(0)} ms), nutzbar nach ${pick("ready").toFixed(0)} ms, Long-Tasks bis dahin ${pick("bootTaskTotal").toFixed(0)} ms, schlimmster Frame ${pick("firstViewWorst").toFixed(0)} ms, danach ${pick("afterReadyWorst").toFixed(0)} ms und längster Task ${pick("afterReadyTaskWorst").toFixed(0)} ms`,
       );
       console.log(
         `startup-perf bis nutzbar: ${(pick("scriptBytes") / 1_000_000).toFixed(2)} MB JS in ${pick("scripts")} Chunks, ${pick("files")} Dateien, ${invokes.length} invoke()-Aufrufe, ${pick("commits")} React-Commits`,

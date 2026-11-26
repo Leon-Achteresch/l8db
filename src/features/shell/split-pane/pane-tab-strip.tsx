@@ -1,5 +1,6 @@
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { PlusIcon } from "lucide-react";
+import { AnimatePresence } from "motion/react";
 import type * as React from "react";
 import { useMemo, useRef } from "react";
 import { Tooltip } from "@/components/motion/tooltip";
@@ -149,31 +150,33 @@ export function PaneTabStrip({ index, focused }: { index: number; focused: boole
           className="no-scrollbar min-w-0 overflow-x-auto"
         >
           <div ref={trackRef} className="relative flex w-max items-center gap-0.5 px-0.5">
-            {tabs.map((tab, position) => {
-              const key = tabKey(tab);
-              const connectionId =
-                paneConnectionId({ paneConnections }, key, activeId, connections) ?? activeId;
-              return (
-                <TableTabsSortableTab
-                  key={key}
-                  tab={tab}
-                  index={position}
-                  group={group}
-                  pane={index}
-                  paneCount={paneCount}
-                  isActive={key === active}
-                  dimmed={!focused}
-                  isPending={Boolean(pendingTab && tabKey(pendingTab) === key)}
-                  color={colorOf(tab)}
-                  connectionId={connectionId}
-                  environment={connectionId ? (environments.get(connectionId) ?? null) : null}
-                  hasTabsToRight={position < tabs.length - 1}
-                  tabsCount={tabs.length}
-                  canSplit={paneCount < MAX_SPLIT_PANES}
-                  actions={actions}
-                />
-              );
-            })}
+            <AnimatePresence initial={false} mode="popLayout">
+              {tabs.map((tab, position) => {
+                const key = tabKey(tab);
+                const connectionId =
+                  paneConnectionId({ paneConnections }, key, activeId, connections) ?? activeId;
+                return (
+                  <TableTabsSortableTab
+                    key={key}
+                    tab={tab}
+                    index={position}
+                    group={group}
+                    pane={index}
+                    paneCount={paneCount}
+                    isActive={key === active}
+                    dimmed={!focused}
+                    isPending={Boolean(pendingTab && tabKey(pendingTab) === key)}
+                    color={colorOf(tab)}
+                    connectionId={connectionId}
+                    environment={connectionId ? (environments.get(connectionId) ?? null) : null}
+                    hasTabsToRight={position < tabs.length - 1}
+                    tabsCount={tabs.length}
+                    canSplit={paneCount < MAX_SPLIT_PANES}
+                    actions={actions}
+                  />
+                );
+              })}
+            </AnimatePresence>
           </div>
         </nav>
         {overflow && (

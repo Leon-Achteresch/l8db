@@ -2,7 +2,7 @@ import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Columns2, RotateCwSquare, Rows2 } from "lucide";
 import { PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import type * as React from "react";
 import { Fragment, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
@@ -331,25 +331,27 @@ export function TableTabs() {
             onKeyDown={tabListKeyDown}
             className="relative flex w-max items-center gap-1 px-1"
           >
-            {tabs.map((tab, index) => {
-              const key = tabKey(tab);
-              return (
-                <TableTabsSortableTab
-                  key={key}
-                  tab={tab}
-                  index={index}
-                  isActive={!chipActive && latestKey === key}
-                  isPending={Boolean(pendingTab && tabKey(pendingTab) === key)}
-                  paneCount={hasSplit ? paneCount : 0}
-                  connectionId={activeConnection?.id ?? null}
-                  environment={environment}
-                  hasTabsToRight={index < tabs.length - 1}
-                  tabsCount={tabs.length}
-                  canSplit={!easyMode && paneCount < MAX_SPLIT_PANES}
-                  actions={actions}
-                />
-              );
-            })}
+            <AnimatePresence initial={false} mode="popLayout">
+              {tabs.map((tab, index) => {
+                const key = tabKey(tab);
+                return (
+                  <TableTabsSortableTab
+                    key={key}
+                    tab={tab}
+                    index={index}
+                    isActive={!chipActive && latestKey === key}
+                    isPending={Boolean(pendingTab && tabKey(pendingTab) === key)}
+                    paneCount={hasSplit ? paneCount : 0}
+                    connectionId={activeConnection?.id ?? null}
+                    environment={environment}
+                    hasTabsToRight={index < tabs.length - 1}
+                    tabsCount={tabs.length}
+                    canSplit={!easyMode && paneCount < MAX_SPLIT_PANES}
+                    actions={actions}
+                  />
+                );
+              })}
+            </AnimatePresence>
           </div>
         </motion.nav>
         {overflow && (
