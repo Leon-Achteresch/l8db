@@ -7,6 +7,7 @@ import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import type { HostGroupRule } from "@/lib/connection-groups";
 import type { SavedConnection } from "@/lib/connections";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useHasNewFeatures } from "@/lib/new-features";
 
 export function ConnectionsToolbar({
@@ -30,20 +31,24 @@ export function ConnectionsToolbar({
   setExportOpen: (open: boolean) => void;
   setRulesDialog: (value: { draft: Omit<HostGroupRule, "id"> | null }) => void;
 }) {
+  const groupSearch = useNewFeatureVisibility<HTMLDivElement>("connections.search.host-groups");
   const importIsNew = useHasNewFeatures("connections.import");
   return (
     <>
       {connections.length > 0 && (
         <>
-          <div className="relative w-48 min-w-0 sm:w-64 md:w-80">
+          <div ref={groupSearch.ref} className="relative w-48 min-w-0 sm:w-64 md:w-80">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Name, Host, User suchen…"
+              placeholder="Name, Host, Gruppe suchen…"
               aria-label="Verbindungen suchen"
-              className="h-9 pl-8 text-xs"
+              className={groupSearch.isNew ? "h-9 pr-12 pl-8 text-xs" : "h-9 pl-8 text-xs"}
             />
+            {groupSearch.isNew && (
+              <NewBadge className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2" />
+            )}
           </div>
           <Button
             variant={favoritesOnly ? "secondary" : "outline"}

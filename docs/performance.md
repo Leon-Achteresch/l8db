@@ -1445,3 +1445,13 @@ With 1,024 PostgreSQL connection entries and 16 two-pattern rules, the connectio
 The in-memory measurements used one warmup and 21 timed passes on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10. Run `bun test tests/host-group-rules.test.ts`. The budgets for either pass are 10 ms median and 24 ms p95. A separate production-build browser check used simulated connections in Chromium and WebKit. Reordering overlapping rules, editing a pattern, saving and discarding an edit issued zero database requests.
 
 The existing 200-tab environment marker test in tests/perf-split-groups.test.ts observed one `list_providers` call when run individually, failing its zero-request assertion on both the parent commit 55f2057b and the changed code.
+
+## Searching saved connections by group
+
+The connections page builds a sorted list when the saved profiles, cloud profiles, host rules, favorite groups or custom group order change. A search can match the whole visible group label or individual profile metadata. The first metadata search builds at most one search string per listed profile. Clearing the filters reuses the full list.
+
+With 2,048 PostgreSQL profiles, 16 host rules and 22 successive searches alternating between all profiles and favorites, the previous view logic read connection URLs 136,389 times. Preparing the new list and running all searches required 4,096 reads, including the first search. The previous implementation returned zero results for the group name `Fachbereich 12`. The new one returned its 64 profiles. After one warmup, filtering took 0.34 ms median and 9.74 ms p95, compared with 25.68 ms and 44.31 ms for the previous filtering and regrouping path. The regression limits are 6 ms median and 16 ms p95. These timings cover in-memory work on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10.
+
+Run `bun test tests/connection-listing.test.ts`. Chromium and WebKit also exercised group renaming, search, clearing a failed favorite search and finding a cloud project on the production build with simulated connections. Repeated searches for one profile did not parse a hidden profile's URL or issue database queries.
+
+For 256 saved profiles, the time from a browser input event to the matching card appearing in the DOM was measured on the two production builds in alternating order. Across 41 measured searches, Chromium went from 2.9 / 3.5 ms median / p95 to 1.9 / 3.3 ms. WebKit went from 4 / 5 ms to 3 / 4 ms. A separate sequential Playwright measurement included input automation and waiting for the one-card assertion. Its p95 increased from 25.15 to 69.35 ms in Chromium and from 58.64 to 98.93 ms in WebKit. That run does not establish an improvement in overall automation time.

@@ -77,6 +77,7 @@ export const NEW_FEATURES = {
   "settings.discovery": "0.18.0",
   "settings.hotkeys.focus-regions": "0.18.0",
   "settings.general.workspaces": "0.17.0",
+  "connections.search.host-groups": NEXT_FEATURE_VERSION,
   "connections.cloud-accounts": "0.17.0",
   "drivers.jdbc": "0.17.0",
   "baas.supabase.studio.payments": "0.17.0",

@@ -126,9 +126,7 @@ export function connectionUser(connection: Pick<SavedConnection, "connectionStri
   return connectionSummary(connection.connectionString, connection.kind).user;
 }
 
-export function matchesConnectionQuery(connection: SavedConnection, query: string) {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
+export function connectionSearchText(connection: SavedConnection) {
   const endpoint = connectionSummary(connection.connectionString, connection.kind);
   return [
     connection.name,
@@ -141,8 +139,12 @@ export function matchesConnectionQuery(connection: SavedConnection, query: strin
     ...(connection.schemas ?? []),
   ]
     .join("\0")
-    .toLowerCase()
-    .includes(needle);
+    .toLowerCase();
+}
+
+export function matchesConnectionQuery(connection: SavedConnection, query: string) {
+  const needle = query.trim().toLowerCase();
+  return !needle || connectionSearchText(connection).includes(needle);
 }
 
 export function serverLabel(connection: Pick<SavedConnection, "connectionString" | "kind">) {
