@@ -1357,3 +1357,7 @@ On the same Apple M3 with 16 GiB RAM, macOS 27.2.1 arm64 and Bun 1.3.10, the ten
 ## Command palette match highlighting
 
 The 500-label fixture in tests/command-score.test.ts highlights two German search terms in each result, including names with an emoji before the match. On macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10, the 21 timed samples took 13.75 ms median and 25.04 ms p95 under shared system load. The budgets are 25 and 60 ms, with 1,000 returned ranges. The workload exercises the local highlighting function.
+
+## Import column mapping
+
+With 120 source columns and 120 targets, including one unmapped column, warm React server rendering on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10 took 58.45 ms median and 71.19 ms p95 before pagination and deferred menu creation. The final regression run took 15.56 and 36.03 ms with 20 visible selectors and 20 target type reads. Budgets are 45 and 100 ms, over 11 timed renders after warmup. Timing varied under concurrent host load. Chromium and WebKit separately exercised filtering, mapping the last unmatched column and paging to verify its new value on the same Mac. Desktop Tauri and database writes were outside these tests.

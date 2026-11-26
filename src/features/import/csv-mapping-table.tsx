@@ -1,5 +1,8 @@
-import { ArrowRightIcon } from "lucide-react";
+import { ArrowRightIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { useRef, useState } from "react";
+import { NewBadge } from "@/components/new-badge";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -15,8 +18,10 @@ import {
   isRequiredColumn,
   typeMismatch,
 } from "@/lib/csv-import";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { cn } from "@/lib/utils";
 
+const PAGE_SIZE = 20;
 const NO_TARGET = "__skip__";
 
 interface CsvMappingTableProps {
@@ -45,10 +50,75 @@ export function CsvMappingTable({
   inferredTypes = [],
   onChange,
 }: CsvMappingTableProps) {
+  const [onlyUnmapped, setOnlyUnmapped] = useState(false);
+  const [page, setPage] = useState(0);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const filterButton = useRef<HTMLButtonElement>(null);
+  const filter = useNewFeatureVisibility<HTMLButtonElement>("import.csv.unmapped-filter");
+  const byIndex = new Map(mappings.map((mapping) => [mapping.csvIndex, mapping.target]));
+  const byName = new Map(targets.map((target) => [target.name, target]));
+  const unmapped = headers.flatMap((_, index) => {
+    const name = byIndex.get(index);
+    return name == null || !byName.has(name) ? [index] : [];
+  });
+  const count = onlyUnmapped ? unmapped.length : headers.length;
+  const lastPage = Math.max(0, Math.ceil(count / PAGE_SIZE) - 1);
+  const currentPage = Math.min(page, lastPage);
+  const start = currentPage * PAGE_SIZE;
+  const end = Math.min(start + PAGE_SIZE, count);
+  const visible = onlyUnmapped
+    ? unmapped.slice(start, end)
+    : Array.from({ length: end - start }, (_, i) => start + i);
   const usedTargets = new Set(mappings.map((m) => m.target).filter(Boolean) as string[]);
 
   return (
     <table className="w-full table-fixed border-collapse text-[13px]">
+      <caption className="px-4 py-1 text-left">
+        <div className="flex items-center gap-2">
+          <Button
+            ref={(button) => {
+              filterButton.current = button;
+              return filter.ref(button);
+            }}
+            type="button"
+            size="xs"
+            variant={onlyUnmapped ? "secondary" : "ghost"}
+            aria-pressed={onlyUnmapped}
+            onClick={() => {
+              setOnlyUnmapped(!onlyUnmapped);
+              setPage(0);
+            }}
+          >
+            Nur ohne Zielspalte <span className="tabular-nums">{unmapped.length}</span>
+            {filter.isNew && <NewBadge />}
+          </Button>
+          {lastPage > 0 && (
+            <div className="ml-auto flex items-center gap-1">
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {start + 1}–{end} von {count}
+              </span>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                aria-label="Vorherige Spalten"
+                disabled={currentPage === 0}
+                onClick={() => setPage(currentPage - 1)}
+              >
+                <ChevronLeftIcon />
+              </Button>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                aria-label="Nächste Spalten"
+                disabled={currentPage === lastPage}
+                onClick={() => setPage(currentPage + 1)}
+              >
+                <ChevronRightIcon />
+              </Button>
+            </div>
+          )}
+        </div>
+      </caption>
       <colgroup>
         <col className="w-[22%]" />
         <col />
@@ -66,12 +136,20 @@ export function CsvMappingTable({
         </tr>
       </thead>
       <tbody>
-        {headers.map((header, index) => {
-          const mapping = mappings.find((m) => m.csvIndex === index);
-          const value = mapping?.target ?? NO_TARGET;
+        {onlyUnmapped && unmapped.length === 0 && (
+          <tr>
+            <td colSpan={5} className="px-4 py-3 text-muted-foreground">
+              Alle Quellspalten sind zugeordnet.
+            </td>
+          </tr>
+        )}
+        {visible.map((index) => {
+          const header = headers[index];
+          const name = byIndex.get(index);
+          const target = name == null ? undefined : byName.get(name);
+          const value = name ?? NO_TARGET;
           const sample = sampleRow?.[index] ?? null;
           const inferred = inferredTypes[index];
-          const target = targets.find((column) => column.name === mapping?.target);
           const mismatch = Boolean(inferred && target && typeMismatch(inferred, target.data_type));
           return (
             <tr
@@ -87,10 +165,17 @@ export function CsvMappingTable({
               </td>
               <td className="px-2 py-1">
                 <Select
+                  open={openIndex === index}
+                  onOpenChange={(open) => setOpenIndex(open ? index : null)}
                   value={value}
-                  onValueChange={(next) => onChange(index, next === NO_TARGET ? null : next)}
+                  onValueChange={(next) => {
+                    setOpenIndex(null);
+                    onChange(index, next === NO_TARGET ? null : next);
+                    if (onlyUnmapped && next !== NO_TARGET) filterButton.current?.focus();
+                  }}
                 >
                   <SelectTrigger
+                    aria-label={`Zielspalte für ${header}`}
                     size="sm"
                     className={cn(
                       "h-7 w-full min-w-0 font-mono text-xs",
@@ -101,31 +186,33 @@ export function CsvMappingTable({
                       {target ? target.name : "Nicht importieren"}
                     </SelectValue>
                   </SelectTrigger>
-                  <SelectContent searchable>
-                    <SelectItem value={NO_TARGET}>Nicht importieren</SelectItem>
-                    {targets.map((target) => (
-                      <SelectItem
-                        key={target.name}
-                        value={target.name}
-                        disabled={
-                          target.is_generated ||
-                          (usedTargets.has(target.name) && target.name !== mapping?.target)
-                        }
-                      >
-                        <span className="flex items-center gap-2">
-                          <span className="font-mono">{target.name}</span>
-                          <span className="text-[10px] text-muted-foreground">
-                            {targetHint(target)}
+                  {openIndex === index && (
+                    <SelectContent searchable>
+                      <SelectItem value={NO_TARGET}>Nicht importieren</SelectItem>
+                      {targets.map((target) => (
+                        <SelectItem
+                          key={target.name}
+                          value={target.name}
+                          disabled={
+                            target.is_generated ||
+                            (usedTargets.has(target.name) && target.name !== name)
+                          }
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="font-mono">{target.name}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {targetHint(target)}
+                            </span>
+                            {isRequiredColumn(target) && (
+                              <Badge variant="outline" className="text-[10px]">
+                                Pflicht
+                              </Badge>
+                            )}
                           </span>
-                          {isRequiredColumn(target) && (
-                            <Badge variant="outline" className="text-[10px]">
-                              Pflicht
-                            </Badge>
-                          )}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  )}
                 </Select>
               </td>
               <td className="px-2 py-1 pr-4">

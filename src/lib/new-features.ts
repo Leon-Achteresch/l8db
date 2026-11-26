@@ -40,6 +40,7 @@ export const NEW_FEATURES = {
   "table.structure.columns.on-update": "0.19.0",
   "table.structure.columns.oracle-text-limit": "0.19.0",
   "table.structure.indexes.mongo-form": "0.19.0",
+  "import.csv.unmapped-filter": NEXT_FEATURE_VERSION,
   "import.csv.file-check": "0.19.0",
   "import.csv.null-preflight": "0.19.0",
   "sidebar.roles.principals": "0.18.0",
