@@ -6,6 +6,7 @@ import ReactDOM from "react-dom/client";
 import { ExtensionPrompts } from "@/features/extensions/extension-prompts";
 import { initAppearance } from "@/lib/appearance";
 import { initBootPaint } from "@/lib/boot-paint";
+import { persistConnectionSnapshots, restoreConnectionSnapshot } from "@/lib/connection-snapshot";
 import { initConnectionSecrets, isMainWindow, windowConnectionId } from "@/lib/connections";
 import { initCrashReporting } from "@/lib/crash-reporting";
 import { reportStartup } from "@/lib/db";
@@ -93,6 +94,7 @@ Promise.all([organizationReady, executionSettings.ready, initConnectionSecrets()
   .catch(() => undefined)
   .finally(async () => {
     performance.mark("l8db.gate");
+    if (startupReady && isMainWindow) restoreConnectionSnapshot(queryClient);
     await router.load().catch(() => undefined);
     new MutationObserver((_, observer) => {
       observer.disconnect();
@@ -106,6 +108,10 @@ Promise.all([organizationReady, executionSettings.ready, initConnectionSecrets()
     }).observe(container, { childList: true });
     render();
     recordDuration("app.startup", performance.now(), { ready: String(startupReady) });
+    if (isMainWindow) {
+      const disposeSnapshots = persistConnectionSnapshots(queryClient);
+      if (import.meta.hot) import.meta.hot.dispose(disposeSnapshots);
+    }
     const disposeBootPaint = initBootPaint();
     if (import.meta.hot) import.meta.hot.dispose(disposeBootPaint);
     const disposeWindowIntegration = initWindowIntegration();

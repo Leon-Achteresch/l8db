@@ -24,6 +24,7 @@ const LABELS: Record<string, string> = {
   "l8db.views": "Ansichten",
   "l8db.ai": "KI",
   "l8db.boot": "Darstellung beim Start",
+  "l8db.snapshot": "Letzte Verbindung",
   "l8db-dashboards": "Dashboards",
   "l8db.team": "Team-Verbindungen",
   "l8db.tour": "Rundgang",
