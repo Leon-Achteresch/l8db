@@ -143,3 +143,23 @@ test("maskierte Spalten zeigen nur maskierte Werte, gemischte nie den echten Wer
   expect(compareCellText("name", null, [])).toBe("NULL");
   expect(compareCellText("data", { a: 1 }, [])).toBe('{"a":1}');
 });
+
+test("Zu viele Duplikate werden an ihren letzten Positionen ausgewiesen", () => {
+  const make = (values: string[]) =>
+    result(
+      ["v"],
+      values.map((v) => ({ v })),
+    );
+  const diff = compareResults(
+    make(["a", "b", "a", "c", "a", "b"]),
+    make(["b", "c", "a", "c", "b", "b"]),
+    [],
+  );
+  expect(diff.counts).toEqual({ added: 2, removed: 2, changed: 0, equal: 4 });
+  expect(diff.changes.map(({ kind, row }) => [kind, row])).toEqual([
+    ["removed", 2],
+    ["added", 3],
+    ["removed", 4],
+    ["added", 5],
+  ]);
+});

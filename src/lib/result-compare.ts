@@ -162,26 +162,25 @@ function byWholeRow(
   after: QueryResult,
   columns: string[],
 ): Pick<ResultComparison, "changes" | "counts"> {
-  const unmatched = (
-    rows: Record<string, unknown>[],
-    other: Record<string, unknown>[],
-  ): number[] => {
-    const available = new Map<string, number>();
-    for (const row of other) {
-      const key = rowKeyText(row, columns);
-      available.set(key, (available.get(key) ?? 0) + 1);
+  const available = new Map<string, number[]>();
+  for (let index = after.rows.length - 1; index >= 0; index--) {
+    const key = rowKeyText(after.rows[index], columns);
+    const positions = available.get(key);
+    if (positions) positions.push(index);
+    else available.set(key, [index]);
+  }
+  const removed: number[] = [];
+  before.rows.forEach((row, index) => {
+    const key = rowKeyText(row, columns);
+    const positions = available.get(key);
+    if (!positions) {
+      removed.push(index);
+      return;
     }
-    const rest: number[] = [];
-    rows.forEach((row, index) => {
-      const key = rowKeyText(row, columns);
-      const count = available.get(key) ?? 0;
-      if (count > 0) available.set(key, count - 1);
-      else rest.push(index);
-    });
-    return rest;
-  };
-  const removed = unmatched(before.rows, after.rows);
-  const added = unmatched(after.rows, before.rows);
+    positions.pop();
+    if (positions.length === 0) available.delete(key);
+  });
+  const added = Array.from(available.values()).flat();
   const changes: ResultChange[] = [
     ...removed.map((row) => ({
       id: `removed:${row}`,
