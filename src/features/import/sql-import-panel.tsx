@@ -1,6 +1,7 @@
 import { PlayIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { createPortal } from "react-dom";
+import { toast } from "sonner";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -23,7 +24,7 @@ import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { readImportFile } from "@/lib/import-file";
-import { EMPTY_SQL_IMPORT, useImportWorkspace } from "@/lib/import-workspace";
+import { beginSqlImport, EMPTY_SQL_IMPORT, useImportWorkspace } from "@/lib/import-workspace";
 import { supports } from "@/lib/providers";
 import { runSqlScript } from "@/lib/script-runner";
 import { createSubstitutionState } from "@/lib/sql-statements/sqlplus";
@@ -49,18 +50,20 @@ export function SqlImportPanel({
   const update = (
     patch: Parameters<ReturnType<typeof useImportWorkspace.getState>["patchSql"]>[1],
   ) => useImportWorkspace.getState().patchSql(key, patch);
-  const task = useTasksStore((state) => state.tasks.find((entry) => entry.id === draft.jobId));
+  const active = draft.activeRun;
+  const taskId = active?.jobId ?? draft.jobId;
+  const task = useTasksStore((state) => state.tasks.find((entry) => entry.id === taskId));
   const existing = mode === "existing-transaction";
   const commands = useNewFeatureVisibility<HTMLSpanElement>(
     script?.hasCommands ? "import.sql.sqlplus" : undefined,
   );
-  const [preparing, setPreparing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useTabState<number | null>(
     tabStateKey(`import:${key}`, "activeStatement"),
     null,
   );
-  const running = preparing || Boolean(task && isTaskActive(task));
+  const running = Boolean(active || (task && isTaskActive(task)));
+  const runningLabel =
+    active && !active.attached ? `Import läuft · ${active.fileName}` : "Import läuft…";
 
   useEffect(() => {
     if (!draft.filePath || draft.sql !== null) return;
@@ -70,7 +73,10 @@ export function SqlImportPanel({
         if (active) useImportWorkspace.getState().patchSql(key, { sql: file.text });
       })
       .catch((failure) => {
-        if (active) setError(`Datei erneut wählen: ${String(failure)}`);
+        if (active)
+          useImportWorkspace
+            .getState()
+            .patchSql(key, { error: `Datei erneut wählen: ${String(failure)}` });
       });
     return () => {
       active = false;
@@ -79,8 +85,9 @@ export function SqlImportPanel({
 
   const run = async () => {
     if (!connection || !draft.sql || !script?.runnable || running) return;
-    setPreparing(true);
-    setError(null);
+    const execution = beginSqlImport(key);
+    if (!execution) return;
+    let error: string | null = null;
     try {
       const outcome = await runSqlScript({
         connection,
@@ -91,14 +98,15 @@ export function SqlImportPanel({
         filePath: draft.filePath,
         variables: { state: { ...createSubstitutionState(), marker: null }, answers: {} },
         title: `SQL-Import · ${draft.fileName}`,
-        onJob: (jobId) => update({ jobId }),
-        onProgress: (entries) => update({ entries }),
+        onJob: execution.onJob,
+        onProgress: execution.onProgress,
       });
-      if (outcome.error) setError(outcome.error);
+      error = outcome.error;
     } catch (failure) {
-      setError(String(failure));
+      error = String(failure);
     } finally {
-      setPreparing(false);
+      if (!execution.finish(error) && error)
+        toast.error(`SQL-Import · ${draft.fileName}`, { description: error });
     }
   };
 
@@ -163,12 +171,12 @@ export function SqlImportPanel({
           Offenes Literal oder Kommentar. Datei korrigieren und erneut auswählen.
         </p>
       )}
-      {error && (
+      {draft.error && (
         <p
           role="alert"
           className="border-b px-4 py-2 text-xs whitespace-pre-wrap break-all text-destructive"
         >
-          {error}
+          {draft.error}
         </p>
       )}
       {draft.sql !== null ? (
@@ -197,7 +205,7 @@ export function SqlImportPanel({
         createPortal(
           <>
             {draft.sql !== null && (
-              <Button variant="ghost" size="sm" disabled={running} onClick={onPickFile}>
+              <Button variant="ghost" size="sm" onClick={onPickFile}>
                 Andere Datei…
               </Button>
             )}
@@ -207,7 +215,9 @@ export function SqlImportPanel({
                 size="sm"
                 disabled={task.status === "cancelling"}
                 onClick={() =>
-                  void cancelTask(task.id).catch((failure) => setError(String(failure)))
+                  void cancelTask(task.id).catch((failure) =>
+                    toast.error(task.title, { description: String(failure) }),
+                  )
                 }
               >
                 Abbrechen
@@ -218,15 +228,15 @@ export function SqlImportPanel({
               disabled={running || !script?.runnable}
               disabledReason={
                 running
-                  ? "Import läuft bereits"
+                  ? runningLabel
                   : script?.unterminated
                     ? "Das Skript endet mit einer nicht abgeschlossenen Anweisung"
                     : "Keine ausführbaren Anweisungen gefunden"
               }
               onClick={() => void run()}
             >
-              {running ? <Spinner className="size-3.5" /> : <PlayIcon />}
-              {running ? "Import läuft…" : "Ausführen"}
+              {running ? <Spinner aria-hidden="true" className="size-3.5" /> : <PlayIcon />}
+              {running ? runningLabel : "Ausführen"}
             </Button>
           </>,
           actions,

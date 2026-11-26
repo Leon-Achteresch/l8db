@@ -22,6 +22,7 @@ declare global {
   interface Window {
     sqlImportFixture: FilePicker;
     firstStatementCopies: number;
+    sqlRunFixture: { hold: boolean; fail: boolean; calls: number; release?: () => void };
   }
 }
 
@@ -64,6 +65,110 @@ async function seedSqlImport(page: Page) {
 }
 
 for (const engine of [chromium, webkit]) {
+  test.skipIf(!appUrl)(
+    `${engine.name()}: replacing a script keeps the previous import's results and errors separate`,
+    async () => {
+      const browser = await engine.launch();
+      try {
+        const page = await browser.newPage();
+        page.setDefaultTimeout(10000);
+        await seedSqlImport(page);
+        await page.addInitScript(() => {
+          const fixture: Window["sqlRunFixture"] = {
+            hold: false,
+            fail: false,
+            calls: 0,
+          };
+          window.sqlRunFixture = fixture;
+          const tauri = (
+            window as unknown as {
+              __TAURI_INTERNALS__: {
+                invoke(command: string, args?: { sql?: string }): Promise<unknown>;
+              };
+            }
+          ).__TAURI_INTERNALS__;
+          const invoke = tauri.invoke;
+          tauri.invoke = async (command, args) => {
+            if (command !== "execute_query" || !args?.sql?.includes("import_probe"))
+              return invoke(command, args);
+            fixture.calls++;
+            if (fixture.hold) {
+              fixture.hold = false;
+              await new Promise<void>((resolve) => {
+                fixture.release = resolve;
+              });
+              if (fixture.fail) throw new Error("Fehler aus dem vorherigen Import");
+            }
+            return {
+              columns: ["import_probe"],
+              rows: [{ import_probe: 1 }],
+              rows_affected: null,
+              execution_time_ms: 1,
+            };
+          };
+        });
+        await page.goto(`${appUrl}/import`);
+        const choose = page.getByRole("button", { name: /Datei auswählen/ });
+        const run = page.getByRole("button", { name: "Ausführen", exact: true });
+        for (const sameFile of [false, true]) {
+          await page.evaluate((fail) => {
+            Object.assign(window.sqlImportFixture, {
+              path: "/fixture/source.sql",
+              sql: "SELECT 1 AS import_probe;",
+            });
+            Object.assign(window.sqlRunFixture, { hold: true, fail, release: undefined });
+          }, sameFile);
+          await choose.click();
+          await page.getByText("Skript · 1 Anweisung", { exact: true }).waitFor();
+          await run.click();
+          await page.waitForFunction(() => !!window.sqlRunFixture.release);
+          const calls = await page.evaluate(() => window.sqlRunFixture.calls);
+          if (!sameFile)
+            await page.evaluate(() =>
+              Object.assign(window.sqlImportFixture, {
+                path: "/fixture/next.sql",
+                sql: "SELECT 2 AS import_probe;",
+              }),
+            );
+          await page.getByRole("button", { name: "Andere Datei…", exact: true }).click();
+          const waiting = page.getByRole("button", {
+            name: "Import läuft · source.sql",
+            exact: true,
+          });
+          await waiting.waitFor();
+          expect(await waiting.isDisabled()).toBe(true);
+          expect(
+            await page.getByRole("button", { name: "Abbrechen", exact: true }).isEnabled(),
+          ).toBe(true);
+          expect(
+            await page.getByRole("button", { name: "Skriptergebnisse schließen" }).count(),
+          ).toBe(0);
+          await page.evaluate(() => window.sqlRunFixture.release?.());
+          await run.waitFor();
+          if (sameFile)
+            await page
+              .getByText("Fehler aus dem vorherigen Import", { exact: false })
+              .last()
+              .waitFor();
+          expect(await page.locator("p[role=alert]").count()).toBe(0);
+          const selected = page.locator("aside button[aria-current=true]");
+          expect(await selected.innerText()).toContain(sameFile ? "source.sql" : "next.sql");
+          expect(await selected.innerText()).not.toMatch(/Ausgeführt|Fehler|Abgebrochen|Läuft/);
+          expect(
+            await page.getByRole("button", { name: "Skriptergebnisse schließen" }).count(),
+          ).toBe(0);
+          expect(await page.evaluate(() => window.sqlRunFixture.calls)).toBe(calls);
+          await run.click();
+          await page.getByText("1/1 erfolgreich", { exact: true }).waitFor();
+          expect(await page.evaluate(() => window.sqlRunFixture.calls)).toBe(calls + 1);
+        }
+      } finally {
+        await browser.close();
+      }
+    },
+    60000,
+  );
+
   test.skipIf(!appUrl)(
     `${engine.name()}: import options reuse parsed statements`,
     async () => {
