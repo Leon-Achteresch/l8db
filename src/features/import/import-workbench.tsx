@@ -9,7 +9,7 @@ import {
   pickImportFilePath,
   readImportFile,
 } from "@/lib/import-file";
-import { EMPTY_SQL_IMPORT, useImportWorkspace } from "@/lib/import-workspace";
+import { EMPTY_SQL_IMPORT, selectSqlImportFile, useImportWorkspace } from "@/lib/import-workspace";
 import { capabilitiesFor, supports } from "@/lib/providers";
 import { sqlFileTitle } from "@/lib/sql-file";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
@@ -110,13 +110,7 @@ export function ImportWorkbench({ tab }: { tab?: "csv" }) {
       return;
     }
     if (selection !== sqlSelection.current) return;
-    useImportWorkspace.getState().patchSql(sqlKey, {
-      fileName: file.name,
-      filePath: file.path,
-      sql: file.text,
-      entries: null,
-      jobId: null,
-    });
+    selectSqlImportFile(sqlKey, file);
     setSelected("sql");
   };
 

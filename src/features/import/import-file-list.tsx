@@ -61,8 +61,12 @@ export function ImportFileList({
   onPickSql: () => void;
 }) {
   const sqlTask = useTasksStore((state) => state.tasks.find((task) => task.id === sql.jobId));
-  const sqlRunning = Boolean(sqlTask && isTaskActive(sqlTask));
-  const sqlFailed = sql.entries?.some((entry) => entry.status === "error");
+  const sqlRunning = Boolean(sql.activeRun?.attached || (sqlTask && isTaskActive(sqlTask)));
+  const sqlFailed = Boolean(
+    sql.error ||
+      sqlTask?.status === "error" ||
+      sql.entries?.some((entry) => entry.status === "error"),
+  );
   const sqlDone = Boolean(sql.entries?.length) && !sqlRunning;
 
   const dataTask = csv?.task;
@@ -206,13 +210,17 @@ export function ImportFileList({
             script ? `Skript · ${script.label}` : sql.fileName ? "SQL-Skript" : "Keine Datei",
             sqlRunning
               ? badge("info", "Läuft")
-              : sqlFailed
-                ? badge("error", "Fehler")
-                : sqlDone
-                  ? badge("ok", "Ausgeführt")
-                  : sql.fileName
-                    ? badge("muted", "Skript")
-                    : null,
+              : sqlTask?.status === "cancelled"
+                ? badge("muted", "Abgebrochen")
+                : sqlTask?.status === "interrupted"
+                  ? badge("warn", "Unterbrochen")
+                  : sqlFailed
+                    ? badge("error", "Fehler")
+                    : sqlDone
+                      ? badge("ok", "Ausgeführt")
+                      : sql.fileName
+                        ? badge("muted", "Skript")
+                        : null,
             !sql.fileName,
           )}
       </ul>

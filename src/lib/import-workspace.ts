@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { ScriptRunEntry } from "@/features/query/script-result-list";
 import type { ScriptRunMode } from "@/features/query/script-run-dialog";
-import { createSafeJsonStorage } from "@/lib/buffered-storage";
+import { createChangedOnlyJsonStorage } from "@/lib/buffered-storage";
 import type { CsvColumnMapping, CsvEmptyFieldMode, ImportTargetColumn } from "@/lib/csv-import";
 import type { CsvImportOutcome, ImportFormat, ImportPreview } from "@/lib/db";
 
@@ -14,6 +14,8 @@ export interface SqlImportDraft {
   stopOnError: boolean;
   jobId: string | null;
   entries: ScriptRunEntry[] | null;
+  error?: string | null;
+  activeRun?: { id: symbol; fileName: string; jobId: string | null; attached: boolean };
 }
 
 export interface CsvImportDraft {
@@ -90,12 +92,12 @@ export const useImportWorkspace = create<ImportWorkspace>()(
     }),
     {
       name: "l8db.import-workspace",
-      storage: createSafeJsonStorage(),
+      storage: createChangedOnlyJsonStorage(),
       partialize: (state) => ({
         sql: Object.fromEntries(
           Object.entries(state.sql).map(([key, draft]) => [
             key,
-            { ...draft, sql: null, entries: null },
+            { ...draft, sql: null, entries: null, activeRun: undefined, error: undefined },
           ]),
         ),
         csv: Object.fromEntries(
@@ -108,3 +110,51 @@ export const useImportWorkspace = create<ImportWorkspace>()(
     },
   ),
 );
+
+export function selectSqlImportFile(
+  key: string,
+  file: { path: string; name: string; text: string },
+) {
+  const { sql, patchSql } = useImportWorkspace.getState();
+  const run = sql[key]?.activeRun;
+  patchSql(key, {
+    fileName: file.name,
+    filePath: file.path,
+    sql: file.text,
+    jobId: null,
+    entries: null,
+    error: null,
+    activeRun: run && { ...run, attached: false },
+  });
+}
+
+export function beginSqlImport(key: string) {
+  const { sql, patchSql } = useImportWorkspace.getState();
+  const draft = sql[key];
+  if (!draft?.sql || draft.activeRun) return null;
+  const id = Symbol();
+  patchSql(key, {
+    activeRun: { id, fileName: draft.fileName ?? "SQL-Skript", jobId: null, attached: true },
+    entries: null,
+    error: null,
+    jobId: null,
+  });
+  const current = () => {
+    const run = useImportWorkspace.getState().sql[key]?.activeRun;
+    return run?.id === id ? run : undefined;
+  };
+  return {
+    onJob(jobId: string) {
+      const run = current();
+      if (run) patchSql(key, { activeRun: { ...run, jobId }, ...(run.attached && { jobId }) });
+    },
+    onProgress(entries: ScriptRunEntry[]) {
+      if (current()?.attached) patchSql(key, { entries });
+    },
+    finish(error: string | null) {
+      const run = current();
+      if (run) patchSql(key, { activeRun: undefined, ...(run.attached && { error }) });
+      return run?.attached === true;
+    },
+  };
+}
