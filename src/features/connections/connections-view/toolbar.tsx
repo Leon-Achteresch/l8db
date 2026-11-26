@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import type { HostGroupRule } from "@/lib/connection-groups";
-import type { SavedConnection } from "@/lib/connections";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useHasNewFeatures } from "@/lib/new-features";
 
 export function ConnectionsToolbar({
-  connections,
+  hasSavedProfiles,
+  hasListedProfiles,
   query,
   setQuery,
   favoritesOnly,
@@ -21,7 +21,8 @@ export function ConnectionsToolbar({
   setExportOpen,
   setRulesDialog,
 }: {
-  connections: SavedConnection[];
+  hasSavedProfiles: boolean;
+  hasListedProfiles: boolean;
   query: string;
   setQuery: (value: string) => void;
   favoritesOnly: boolean;
@@ -31,36 +32,38 @@ export function ConnectionsToolbar({
   setExportOpen: (open: boolean) => void;
   setRulesDialog: (value: { draft: Omit<HostGroupRule, "id"> | null }) => void;
 }) {
-  const groupSearch = useNewFeatureVisibility<HTMLDivElement>("connections.search.host-groups");
+  const groupSearch = useNewFeatureVisibility<HTMLDivElement>(
+    hasListedProfiles ? "connections.search.host-groups" : undefined,
+  );
   const importIsNew = useHasNewFeatures("connections.import");
   return (
     <>
-      {connections.length > 0 && (
-        <>
-          <div ref={groupSearch.ref} className="relative w-48 min-w-0 sm:w-64 md:w-80">
-            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Name, Host, Gruppe suchen…"
-              aria-label="Verbindungen suchen"
-              className={groupSearch.isNew ? "h-9 pr-12 pl-8 text-xs" : "h-9 pl-8 text-xs"}
-            />
-            {groupSearch.isNew && (
-              <NewBadge className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2" />
-            )}
-          </div>
-          <Button
-            variant={favoritesOnly ? "secondary" : "outline"}
-            size="icon-sm"
-            aria-pressed={favoritesOnly}
-            aria-label={favoritesOnly ? "Alle anzeigen" : "Nur Favoriten"}
-            onClick={() => setFavoritesOnly((value) => !value)}
-            className={favoritesOnly ? "text-amber-500 border-amber-500/30" : ""}
-          >
-            <Star className={favoritesOnly ? "size-4 fill-current" : "size-4"} />
-          </Button>
-        </>
+      <div ref={groupSearch.ref} className="relative w-48 min-w-0 sm:w-64 md:w-80">
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={
+            hasListedProfiles ? "Name, Host, Gruppe suchen…" : "Projekt oder Anbieter suchen…"
+          }
+          aria-label="Verbindungen suchen"
+          className={groupSearch.isNew ? "h-9 pr-12 pl-8 text-xs" : "h-9 pl-8 text-xs"}
+        />
+        {groupSearch.isNew && (
+          <NewBadge className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2" />
+        )}
+      </div>
+      {hasListedProfiles && (
+        <Button
+          variant={favoritesOnly ? "secondary" : "outline"}
+          size="icon-sm"
+          aria-pressed={favoritesOnly}
+          aria-label={favoritesOnly ? "Alle anzeigen" : "Nur Favoriten"}
+          onClick={() => setFavoritesOnly((value) => !value)}
+          className={favoritesOnly ? "text-amber-500 border-amber-500/30" : ""}
+        >
+          <Star className={favoritesOnly ? "size-4 fill-current" : "size-4"} />
+        </Button>
       )}
       <Button
         data-feature="connections.add"
@@ -73,7 +76,7 @@ export function ConnectionsToolbar({
         <Plus className="size-4" />
         Neue Verbindung
       </Button>
-      {connections.length > 0 && (
+      {hasSavedProfiles ? (
         <IconMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -98,6 +101,18 @@ export function ConnectionsToolbar({
             />
           </IconMenuContent>
         </IconMenu>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setImportOpen(true)}
+          aria-label="Verbindungen importieren"
+        >
+          <Upload className="size-4" />
+          <span className="hidden sm:inline">Import</span>
+          {importIsNew && <NewBadge />}
+        </Button>
       )}
     </>
   );

@@ -242,6 +242,7 @@ export const NEW_FEATURES = {
   "settings.about.update-channel": "0.14.0",
   "settings.about.version-history": "0.18.0",
   "settings.about.blog-suggestions": "0.16.0",
+  "connections.baas.project-pages": NEXT_FEATURE_VERSION,
   "connections.baas": "0.7.0",
   "connections.welcome": "0.14.0",
   "connections.import.external": "0.14.0",
