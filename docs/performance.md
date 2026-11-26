@@ -1493,3 +1493,11 @@ A running SQL import keeps its connection, database and source filename when the
 The regression delivers 1,000 progress notifications, each carrying the result list for 2,048 statements, after a different file has been selected. The previous implementation changed the draft and wrote its saved metadata 1,000 times, then left all 2,048 entries attached to the other file. The updated implementation performs zero draft updates and zero storage writes for those notifications. The selected file retains zero old entries. Across 21 timed repetitions after one warmup, notification handling went from 1.59 to 0.029 ms median and from 5.78 to 0.099 ms p95. The limits are 1 ms median and 3 ms p95 per 1,000 notifications.
 
 Run `bun test tests/sql-import-run.test.ts`. The SQL import browser suite also holds a query open while the user replaces the file, covers both successful and failed runs and verifies that the new preview issues its first query only on an explicit run. Measurements used Bun 1.3.10 on macOS 27.2.1 arm64, Apple M3 and 16 GiB RAM. The browser checks used Chromium and WebKit on the production build with a simulated database and file picker.
+
+## SQL previews for multiline statements
+
+The monitor, history, statement navigator and script result list extract the first nonblank line from the SQL. Each view keeps its existing display width of 80, 110 or 120 characters. After finding the start, the formatter reads the display prefix and checks for more text on the same line when needed to distinguish truncation from trailing whitespace.
+
+The regression formats 64 procedure bodies of 14,000 SQL lines each in both the monitor and the navigator. The 128 previews cover 10,754,614 input characters. Across 21 warm runs, the previous formatters took 52.13 ms median and 53.22 ms p95. The shared formatter took 0.027 ms median and 0.037 ms p95. The measured heap increase after garbage collection was zero bytes in both runs. Regression limits are 1 ms median, 3 ms p95 and 1 MiB of retained heap growth.
+
+Run `bun test tests/perf-query-history-format.test.ts`. Measurements cover local text formatting with Bun 1.3.10 on macOS 27.2.1 arm64, Apple M3 and 16 GiB RAM. The display tests also check truncation at each view's width, including the rendered script result.

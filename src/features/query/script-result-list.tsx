@@ -14,6 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { copyWithToast } from "@/lib/clipboard";
 import type { QueryResult } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { sqlPreviewLine } from "@/lib/sql-preview-line";
 import { scriptTranscript } from "@/lib/sqlplus-output";
 import { ScriptEntryOutput } from "./script-entry-output";
 
@@ -56,11 +57,6 @@ interface ScriptResultListProps {
   onClose: () => void;
   note: string;
   featureId?: "query.sqlplus-session";
-}
-
-function firstLine(sql: string): string {
-  const line = sql.split("\n").find((entry) => entry.trim().length > 0) ?? sql;
-  return line.trim().slice(0, 120);
 }
 
 function statusIcon(status: ScriptRunStatus) {
@@ -148,7 +144,9 @@ export function ScriptResultList({
               </span>
               <span className="mt-0.5 shrink-0">{statusIcon(entry.status)}</span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-mono">{firstLine(entry.sql)}</span>
+                <span className="block truncate font-mono">
+                  {sqlPreviewLine(entry.sql, 120, "")}
+                </span>
                 {entry.source && (
                   <span className="block truncate text-muted-foreground">aus {entry.source}</span>
                 )}

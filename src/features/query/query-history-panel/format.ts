@@ -1,3 +1,5 @@
+import { sqlPreviewLine } from "@/lib/sql-preview-line";
+
 let timeFormatter: Intl.DateTimeFormat | undefined;
 
 export function formatTime(timestamp: number): string {
@@ -13,9 +15,5 @@ export function formatTime(timestamp: number): string {
 }
 
 export function firstLine(sql: string): string {
-  const start = sql.search(/\S/);
-  if (start < 0) return "";
-  const end = sql.indexOf("\n", start);
-  const line = sql.slice(start, end < 0 ? undefined : end).trimEnd();
-  return line.length > 80 ? `${line.slice(0, 80)}…` : line;
+  return sqlPreviewLine(sql, 80);
 }

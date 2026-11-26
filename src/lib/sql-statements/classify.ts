@@ -1,3 +1,4 @@
+import { sqlPreviewLine } from "../sql-preview-line";
 import { splitSqlStatements } from "./split";
 
 export interface StatementSummary {
@@ -11,9 +12,7 @@ export function summarizeStatement(text: string): StatementSummary {
   const trimmed = text.trim();
   const match = STATEMENT_LEAD_PATTERN.exec(trimmed);
   const kind = match ? match[1].toUpperCase() : "SQL";
-  const firstLine = trimmed.split("\n")[0].trim();
-  const preview =
-    firstLine.length > 80 ? `${firstLine.slice(0, 80)}…` : firstLine || "Leeres Statement";
+  const preview = sqlPreviewLine(trimmed, 80) || "Leeres Statement";
   return { kind, preview };
 }
 
