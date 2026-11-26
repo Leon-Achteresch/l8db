@@ -1319,6 +1319,150 @@ mod tests {
         assert!(p95 < std::time::Duration::from_millis(250), "{p95:?}");
     }
 
+    fn issue_295_package_body(name: &str) -> String {
+        format!(
+            "CREATE OR REPLACE PACKAGE BODY {name} AS\n  FUNCTION write_line(p_dir IN VARCHAR2, p_text IN VARCHAR2) RETURN NUMBER IS\n    f UTL_FILE.FILE_TYPE;\n  BEGIN\n    f := UTL_FILE.FOPEN(p_dir, 'out.txt', 'w');\n    UTL_FILE.PUT_LINE(f, p_text);\n    UTL_FILE.FCLOSE(f);\n    RETURN 1;\n  END write_line;\nEND {name};\n/\n"
+        )
+    }
+
+    fn issue_295_296_precheck(
+        connection: &McpConnection,
+        index: &super::super::redact::SchemaIndex,
+        script: &str,
+    ) -> Result<usize, String> {
+        let plan = plan(DatabaseKind::Oracle, script)?;
+        let statements = sqls(&plan);
+        for (number, statement) in statements.iter().enumerate() {
+            if check_read_sql(statement, connection, index).is_ok() {
+                continue;
+            }
+            check_write_sql(statement, connection, index)
+                .map_err(|e| format!("#{}: {e}", number + 1))?;
+        }
+        Ok(statements.len())
+    }
+
+    #[test]
+    fn issue_295_compiled_plsql_may_reference_blocked_packages() {
+        let (connection, index) = issue_278_setup();
+        let script = format!(
+            "CREATE OR REPLACE PACKAGE app_files AS\n  g_file UTL_FILE.FILE_TYPE;\n  FUNCTION write_line(p_dir IN VARCHAR2, p_text IN VARCHAR2) RETURN NUMBER;\nEND app_files;\n/\n{}create or replace procedure app_sleep is begin dbms_lock.sleep(1); end;\n/\ncreate or replace editionable function app_host return varchar2 is begin return utl_inaddr.get_host_name; end;\n/\ncreate or replace trigger t_log after insert on T for each row begin utl_file.fremove('D', 'x'); end;\n/\ncreate or replace type body ty as member function f return number is begin dbms_lock.sleep(1); return 1; end; end;\n/\n",
+            issue_295_package_body("app_files")
+        );
+        assert_eq!(issue_295_296_precheck(&connection, &index, &script), Ok(6));
+        for (sql, expected) in [
+            ("begin utl_file.fremove('D', 'x.txt'); end;", "'utl_file'"),
+            ("declare f utl_file.file_type; begin f := utl_file.fopen('D', 'x', 'w'); end;", "'utl_file'"),
+            ("call utl_file.fremove('D', 'x')", "'utl_file'"),
+            ("update T set NAME = utl_inaddr.get_host_name", "'utl_inaddr'"),
+            ("create table t2 as select utl_http.request('http://x') r from dual", "'utl_http'"),
+            ("create materialized view mv as select utl_inaddr.get_host_name h from dual", "'utl_inaddr'"),
+            ("create view v as select utl_http.request('http://x') r from dual", "'utl_http'"),
+            ("with function f return number is begin utl_file.fremove('D', 'x'); return 1; end; select f from dual", "'utl_file'"),
+            ("create or replace procedure p is begin null; end;\nbegin utl_file.fremove('D', 'x'); end;", "Nur ein Statement"),
+            ("create or replace package body p as procedure w is v varchar2(100); begin select max(email) into v from kunden; utl_file.put_line(g_file, v); end; end p;", "redigiert"),
+            ("create or replace procedure p is begin utl_file.fremove('D', 'x'); delete from hr.vault; end;", "Schema 'hr'"),
+        ] {
+            let error = check_write_sql(sql, &connection, &index).unwrap_err();
+            assert!(error.contains(expected), "{sql}: {error}");
+        }
+        let split = issue_295_296_precheck(
+            &connection,
+            &index,
+            &format!(
+                "{}begin utl_file.fremove('D', 'x'); end;\n/\n",
+                issue_295_package_body("p")
+            ),
+        )
+        .unwrap_err();
+        assert!(
+            split.starts_with("#2: ") && split.contains("'utl_file'"),
+            "{split}"
+        );
+        let no_ddl = McpConnection {
+            allow_ddl: false,
+            ..connection.clone()
+        };
+        let error = check_write_sql(&issue_295_package_body("p"), &no_ddl, &index).unwrap_err();
+        assert!(error.contains("DDL ist"), "{error}");
+        let mssql = McpConnection {
+            kind: DatabaseKind::Mssql,
+            ..connection.clone()
+        };
+        let error = check_write_sql(
+            "create procedure p as exec xp_cmdshell 'dir'",
+            &mssql,
+            &index,
+        )
+        .unwrap_err();
+        assert!(error.contains("'xp_cmdshell'"), "{error}");
+    }
+
+    #[test]
+    fn issue_296_alter_table_modify_passes_the_script_precheck() {
+        let (connection, index) = issue_278_setup();
+        let script = "alter table T modify C varchar2(16);\nalter table T modify (NAME varchar2(16) default 'x');\nalter table T add (C2 varchar2(16 char), N number(10, 2));\nalter table T add constraint T_CK check (C in ('a', 'b'));\nalter table T add constraint T_FK foreign key (ID) references KUNDEN (ID);\n";
+        assert_eq!(issue_295_296_precheck(&connection, &index, script), Ok(5));
+        for (sql, expected) in [
+            ("create table copy as select k.e from kunden k(i, e)", "Spaltenlisten"),
+            ("create view v as with x(i, e) as (select k.id, k.id from kunden k) select x.e from x", "Spaltenlisten"),
+            ("create table copy (a, b) as select * from kunden", "SELECT *"),
+            ("alter table kunden rename column email to mail", "redigiert"),
+        ] {
+            let error = check_write_sql(sql, &connection, &index).unwrap_err();
+            assert!(error.contains(expected), "{sql}: {error}");
+        }
+    }
+
+    #[test]
+    fn issue_295_296_deploy_script_precheck_stays_fast() {
+        let (connection, index) = issue_278_setup();
+        let mut script = issue_278_package_body(26);
+        for n in 0..200 {
+            script.push_str(&issue_295_package_body(&format!("app_files_{n}")));
+            script.push_str(&format!(
+                "alter table T modify C{n} varchar2({});\nalter table T add (D{n} number(10, 2));\n",
+                n + 1
+            ));
+        }
+        let mut samples: Vec<std::time::Duration> = (0..20)
+            .map(|_| {
+                let started = std::time::Instant::now();
+                assert_eq!(
+                    issue_295_296_precheck(&connection, &index, &script),
+                    Ok(601)
+                );
+                started.elapsed()
+            })
+            .collect();
+        samples.sort();
+        let median = samples[samples.len() / 2];
+        let p95 = samples[samples.len() * 95 / 100];
+        let plan = plan(DatabaseKind::Oracle, &script).unwrap();
+        let statements = sqls(&plan);
+        let mut checks: Vec<std::time::Duration> = (0..20)
+            .map(|_| {
+                let started = std::time::Instant::now();
+                let compiled = statements
+                    .iter()
+                    .filter(|statement| crate::db::oracle::is_stored_plsql(statement))
+                    .count();
+                assert_eq!(compiled, 201);
+                started.elapsed()
+            })
+            .collect();
+        checks.sort();
+        let unit_check = checks[checks.len() / 2];
+        println!(
+            "issue_295_296: {} bytes, {} lines, {} statements, median {median:?}, p95 {p95:?}, stored-unit check {unit_check:?}",
+            script.len(),
+            script.lines().count(),
+            statements.len()
+        );
+        assert!(p95 < std::time::Duration::from_millis(750), "{p95:?}");
+        assert!(unit_check * 10 < median, "{unit_check:?} vs {median:?}");
+    }
+
     #[tokio::test]
     #[ignore]
     async fn issue_278_oracle_lab_runs_plsql_from_the_report() {
