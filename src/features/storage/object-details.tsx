@@ -122,7 +122,12 @@ export function ObjectDetails({
         </TabsList>
         <div className="min-h-0 flex-1 overflow-auto p-3">
           <TabsContent value="preview" className="h-full">
-            <ObjectPreview bucket={bucket} objectKey={row.key} versionId={versionId} />
+            <ObjectPreview
+              bucket={bucket}
+              objectKey={row.key}
+              versionId={versionId}
+              listedSize={row.size}
+            />
           </TabsContent>
           <TabsContent value="properties">
             <ObjectPropertiesPanel

@@ -49,6 +49,7 @@ const SUITES = {
     "tests/perf-rows-window.test.ts",
     "tests/perf-query-history-format.test.ts",
     "tests/perf-script-result-list.test.ts",
+    "tests/perf-s3-object-preview.test.ts",
     "tests/perf-home-activity.test.ts",
     "tests/perf-home-atlas.test.ts",
     "tests/perf-result-compare.test.ts",
