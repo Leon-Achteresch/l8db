@@ -4,53 +4,43 @@ export function stripBom(text: string): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
-function countDelimiterOutsideQuotes(line: string, delimiter: string, quote: string): number {
-  let count = 0;
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i];
-    if (char === quote) {
-      if (inQuotes && line[i + 1] === quote) {
-        i += 1;
-        continue;
-      }
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (!inQuotes && char === delimiter) count += 1;
-  }
-  return count;
-}
-
-function sampleLines(text: string, limit: number): string[] {
-  const lines: string[] = [];
-  let current = "";
-  let inQuotes = false;
-  for (let i = 0; i < text.length && lines.length < limit; i += 1) {
-    const char = text[i];
-    if (char === '"') inQuotes = !inQuotes;
-    if (!inQuotes && (char === "\n" || char === "\r")) {
-      if (char === "\r" && text[i + 1] === "\n") i += 1;
-      if (current.length > 0) lines.push(current);
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-  if (current.length > 0 && lines.length < limit) lines.push(current);
-  return lines;
-}
-
 export function detectDelimiter(text: string, quote = '"'): string {
-  const lines = sampleLines(stripBom(text), 10);
-  if (lines.length === 0) return ",";
+  const content = stripBom(text);
+  const samples: number[][] = [];
+  let counts = CSV_DELIMITERS.map(() => 0);
+  let recordStart = 0;
+  let fieldStart = true;
+  for (let i = 0; i < content.length && samples.length < 10; i += 1) {
+    const char = content[i];
+    if (fieldStart && char === quote) {
+      let end = content.indexOf(quote, i + 1);
+      while (end !== -1 && content[end + 1] === quote) {
+        end = content.indexOf(quote, end + 2);
+      }
+      i = end === -1 ? content.length : end;
+      fieldStart = false;
+    } else if (char === "\n" || char === "\r") {
+      if (i > recordStart) {
+        samples.push(counts);
+        counts = CSV_DELIMITERS.map(() => 0);
+      }
+      if (char === "\r" && content[i + 1] === "\n") i += 1;
+      recordStart = i + 1;
+      fieldStart = true;
+    } else {
+      const index = CSV_DELIMITERS.findIndex((candidate) => candidate === char);
+      fieldStart = index !== -1;
+      if (fieldStart) counts[index] += 1;
+    }
+  }
+  if (samples.length < 10 && recordStart < content.length) samples.push(counts);
+  if (samples.length === 0) return ",";
   let best = "\t";
   let bestScore = -1;
-  for (const delimiter of CSV_DELIMITERS) {
-    const counts = lines.map((line) => countDelimiterOutsideQuotes(line, delimiter, quote));
-    const first = counts[0] ?? 0;
+  for (const [index, delimiter] of CSV_DELIMITERS.entries()) {
+    const first = samples[0][index];
     if (first === 0) continue;
-    const consistent = counts.filter((c) => c === first).length;
+    const consistent = samples.filter((sample) => sample[index] === first).length;
     const score = first * 100 + consistent;
     if (score > bestScore) {
       bestScore = score;

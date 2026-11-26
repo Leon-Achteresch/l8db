@@ -1349,3 +1349,7 @@ Before the fix the same open sent no request and left 400 tabs in the wrong sche
 ## Search across open SQL tabs
 
 On macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10, searching 250,000 identical SQL lines for SELECT took 3.29 ms median and 6.11 ms p95 before incremental line scanning, then 0.09 and 0.12 ms. Each series used one warmup and 25 samples. The search returns the first 500 matches and confirms truncation at match 501. The regression in tests/tab-search.test.ts sets limits of 2 and 5 ms. These measurements cover the local search function. WebView rendering, database operations and other platforms were outside the workload.
+
+## CSV delimiter detection
+
+On the same Apple M3 with 16 GiB RAM, macOS 27.2.1 arm64 and Bun 1.3.10, the ten-record, 450,058-character multiline fixture in tests/csv-import.test.ts took 9.29 ms median and 22.31 ms p95 before the change. Skipping quoted fields and retaining four delimiter counts per sampled record took 0.029 and 0.058 ms over 25 warm samples. The regression budgets are 2 and 5 ms. Only local delimiter detection was measured.

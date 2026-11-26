@@ -363,3 +363,29 @@ describe("bounded local import preflight", () => {
     expect(validateMappings([{ csvIndex: 1, target: "a" }], targets, rows).errorCount).toBe(2);
   });
 });
+
+test("erkennt Semikolon nach mehrzeiligem Feld mit einfachen Anführungszeichen", () => {
+  const text = "\ufeff'Messung\r\nA,''B''';Wert\r\nO'Brien;42";
+  const result = parseCsv(text, { quote: "'", hasHeader: true });
+  expect(result.delimiter).toBe(";");
+  expect(result.headers).toEqual(["Messung\r\nA,'B'", "Wert"]);
+  expect(result.rows).toEqual([["O'Brien", "42"]]);
+});
+
+test("erkennt Trennzeichen in langen mehrzeiligen CSV-Feldern mit begrenzter Stichprobe", () => {
+  const text = Array.from({ length: 10 }, () => `"${"alpha,;|\n".repeat(5000)}";1`).join("\r\n");
+  detectDelimiter(text);
+  const times: number[] = [];
+  for (let i = 0; i < 25; i++) {
+    const start = performance.now();
+    const delimiter = detectDelimiter(text);
+    times.push(performance.now() - start);
+    expect(delimiter).toBe(";");
+  }
+  times.sort((a, b) => a - b);
+  console.log(
+    `CSV-Trennzeichen: Median ${times[12].toFixed(3)} ms, p95 ${times[23].toFixed(3)} ms`,
+  );
+  expect(times[12]).toBeLessThan(2);
+  expect(times[23]).toBeLessThan(5);
+});
