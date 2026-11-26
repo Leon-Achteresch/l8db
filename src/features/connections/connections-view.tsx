@@ -103,6 +103,7 @@ export function ConnectionsView() {
     <CloudProjectCards
       key={needle}
       projects={baasConnections}
+      databaseByProject={listing.databaseByProject}
       onEditDatabase={(id) => openEditor(id)}
     />
   );

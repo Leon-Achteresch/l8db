@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import type { SavedConnection } from "@/lib/connections/types";
 import { SPRING_LAYOUT } from "@/lib/ease";
 import { activateConnectionWithToast } from "@/lib/ssh";
 import { BAAS_PROVIDERS } from "./baas-providers";
@@ -25,13 +26,14 @@ import { type BaasSection, DATABASE_LABEL, PROVIDER_SECTIONS, SECTION_INFO } fro
 import { disconnectBaas, disconnectDescription } from "./disconnect-baas";
 import { SupabaseDatabaseConnectDialog } from "./supabase-database-connect-dialog";
 import type { BaasConnection } from "./use-baas-connections";
-import { useSupabaseDatabase } from "./use-supabase-database";
 
 export function BaasConnectionCard({
   connection,
+  database,
   onEditDatabase,
 }: {
   connection: BaasConnection;
+  database?: SavedConnection;
   onEditDatabase: (id: string) => void;
 }) {
   const navigate = useNavigate();
@@ -40,10 +42,6 @@ export function BaasConnectionCard({
   const [confirm, setConfirm] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const supabase = connection.provider === "supabase" && Boolean(connection.id);
-  const database = useSupabaseDatabase(
-    supabase ? connection.id : "",
-    supabase && connection.url ? { url: connection.url, name: connection.name } : undefined,
-  );
   const providerName = BAAS_PROVIDERS.find((item) => item.id === connection.provider)?.name;
   const [primary, ...sections] = PROVIDER_SECTIONS[connection.provider];
   const PrimaryIcon = SECTION_INFO[primary].icon;
