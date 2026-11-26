@@ -11,10 +11,10 @@ import { IconMenu, IconMenuContent, IconMenuItem } from "@/components/icon-menu"
 import { Button } from "@/components/ui/button";
 import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { SqlImportDraft } from "@/lib/import-workspace";
-import { splitSqlStatements } from "@/lib/sql-statements";
 import { isTaskActive, useTasksStore } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
 import type { CsvImportState } from "./csv-import-panel/use-csv-import";
+import type { SqlImportSummary } from "./sql-import-summary";
 
 const FORMATS = ["CSV", "XLSX", "JSON", "NDJSON", "Parquet", "SQL"];
 
@@ -38,6 +38,7 @@ function badge(tone: "ok" | "warn" | "error" | "info" | "muted", children: React
 export function ImportFileList({
   csv,
   sql,
+  script,
   scripts = true,
   selected,
   error,
@@ -49,6 +50,7 @@ export function ImportFileList({
 }: {
   csv: CsvImportState | null;
   sql: SqlImportDraft;
+  script: SqlImportSummary;
   scripts?: boolean;
   selected: "data" | "sql";
   error: string | null;
@@ -59,7 +61,6 @@ export function ImportFileList({
   onPickSql: () => void;
 }) {
   const sqlTask = useTasksStore((state) => state.tasks.find((task) => task.id === sql.jobId));
-  const statements = sql.sql ? splitSqlStatements(sql.sql).statements.length : null;
   const sqlRunning = Boolean(sqlTask && isTaskActive(sqlTask));
   const sqlFailed = sql.entries?.some((entry) => entry.status === "error");
   const sqlDone = Boolean(sql.entries?.length) && !sqlRunning;
@@ -202,9 +203,7 @@ export function ImportFileList({
             "sql",
             <FileCodeIcon className="size-4" />,
             sql.fileName ?? "SQL-Skript",
-            statements === null
-              ? "Keine Datei"
-              : `Skript · ${statements.toLocaleString("de-DE")} Anweisungen`,
+            script ? `Skript · ${script.label}` : sql.fileName ? "SQL-Skript" : "Keine Datei",
             sqlRunning
               ? badge("info", "Läuft")
               : sqlFailed
