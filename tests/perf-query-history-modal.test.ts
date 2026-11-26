@@ -164,7 +164,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
         baseline.pointerEvents,
       );
       await dialog
-        .locator('input[aria-label="Query-Verlauf durchsuchen"]')
+        .locator('input[aria-label="Gespeicherte Queries durchsuchen"]')
         .evaluate((element) => (element as HTMLElement).focus());
       expect(
         await exportDialog.evaluate((element) => element.contains(document.activeElement)),
@@ -266,7 +266,9 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       await importDialog.getByText("Import-Probe", { exact: true }).waitFor();
       await importDialog.getByRole("button", { name: "1 Query importieren", exact: true }).click();
       await importDialog.waitFor({ state: "detached" });
-      await dialog.getByRole("textbox", { name: "Query-Verlauf durchsuchen" }).fill("Import-Probe");
+      await dialog
+        .getByRole("textbox", { name: "Gespeicherte Queries durchsuchen" })
+        .fill("Import-Probe");
       await dialog.getByText("Import-Probe", { exact: true }).waitFor();
       await dialog
         .locator("[data-sonner-toast]")
