@@ -84,19 +84,20 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
     [savedQueries, deleteQuery],
   );
 
+  const query = search.trim().toLowerCase();
   const history = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    if (tab !== "history" || (!connectionId && !query)) return entries;
     return entries.filter(
       (entry) =>
         (!connectionId || entry.connectionId === connectionId) &&
         (!query || entry.sql.toLowerCase().includes(query)),
     );
-  }, [entries, connectionId, search]);
+  }, [entries, connectionId, query, tab]);
 
   const saved = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    if (tab !== "saved" || !query) return savedQueries;
     return savedQueries.filter((item) => matchesSavedQuerySearch(item, query, originNames));
-  }, [savedQueries, search, originNames]);
+  }, [savedQueries, query, originNames, tab]);
 
   const visibleEntries = tab === "history" ? history : saved;
   const scrollToFn = useMemo(() => createFreshElementScroll<HTMLDivElement, HTMLDivElement>(), []);
@@ -142,17 +143,21 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
               setSearch(event.target.value);
               scrollRef.current?.scrollTo({ top: 0 });
             }}
-            placeholder="Suchen…"
-            aria-label="Query-Verlauf durchsuchen"
+            placeholder={tab === "history" ? "SQL suchen…" : "Name, SQL oder Herkunft suchen…"}
+            aria-label={
+              tab === "history" ? "Query-Verlauf durchsuchen" : "Gespeicherte Queries durchsuchen"
+            }
             className="h-8 pl-8 text-xs"
           />
         </div>
       </div>
 
-      <p className="border-b px-3 py-2 text-[10px] text-muted-foreground">
-        Bis zu {limit} Einträge je Verbindung. Sehr lange SQL-Texte werden gekennzeichnet gekürzt.
-        Aufbewahrung in den Einstellungen ändern.
-      </p>
+      {tab === "history" && (
+        <p className="border-b px-3 py-2 text-[10px] text-muted-foreground">
+          Bis zu {limit} Einträge je Verbindung. Sehr lange SQL-Texte werden gekennzeichnet gekürzt.
+          Aufbewahrung in den Einstellungen ändern.
+        </p>
+      )}
       {tab === "history" && connectionId && history.length > 0 && (
         <div className="flex shrink-0 justify-end border-b p-2">
           <Button
@@ -204,7 +209,7 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
         style={{ contain: "strict" }}
       >
         {visibleEntries.length === 0 ? (
-          tab === "saved" ? (
+          tab === "saved" && savedQueries.length === 0 ? (
             <FeatureEmptyState
               icon={BookmarkIcon}
               title="Keine gespeicherten Queries"
@@ -215,7 +220,7 @@ export function QueryHistoryPanel({ connectionId, onLoad, searchRef }: QueryHist
                 onClick: () => setImportOpen(true),
               }}
             />
-          ) : search ? (
+          ) : query ? (
             <p className="px-4 py-8 text-center text-xs text-muted-foreground">
               Keine Treffer. Suche ändern oder leeren.
             </p>

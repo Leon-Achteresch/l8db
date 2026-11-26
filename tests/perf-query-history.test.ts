@@ -16,6 +16,125 @@ import {
   requestsSince,
   waitForAppMetadata,
 } from "./fixtures/perf-app-requests";
+import { installQueryTransferFixture } from "./fixtures/perf-query-transfer";
+
+test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
+  "Query-Bibliothek durchsucht nur die sichtbare Liste und unterscheidet fehlende Treffer",
+  async () => {
+    const engine = process.env.L8DB_QUERY_BROWSER_ENGINE === "webkit" ? webkit : chromium;
+    const browser = await engine.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 940 } });
+      await seedApp(page, 1);
+      await installQueryTransferFixture(page);
+      await installAppRequestProbe(page);
+      await page.goto(`${process.env.L8DB_QUERY_BROWSER_URL}/tests/fixtures/query-workspace.html`);
+      const tools = page.getByRole("button", { name: "Weitere Werkzeuge" });
+      await tools.waitFor();
+      await page.evaluate(async () => {
+        const { useQueryHistoryStore } = await import("/src/lib/query-history.ts");
+        const { useSavedQueriesStore } = await import("/src/lib/saved-queries.ts");
+        const reads = { history: 0, saved: 0 };
+        Object.assign(window, { libraryReads: reads });
+        for (const entry of useQueryHistoryStore.getState().entries) {
+          entry.connectionId = "query-test";
+          const sql = entry.sql;
+          Object.defineProperty(entry, "sql", {
+            get() {
+              reads.history++;
+              return sql;
+            },
+          });
+        }
+        for (const entry of useSavedQueriesStore.getState().queries) {
+          const name = entry.name;
+          Object.defineProperty(entry, "name", {
+            get() {
+              reads.saved++;
+              return name;
+            },
+          });
+        }
+      });
+      await tools.click();
+      await page.getByRole("menuitem", { name: /Verlauf & Gespeichertes/ }).click();
+      const dialog = page.getByRole("dialog", { name: "Verlauf & Gespeichertes" });
+      const list = dialog.locator('[data-slot="query-history-list"]');
+      const search = dialog.getByRole("textbox");
+      const noMatches = dialog.getByText("Keine Treffer. Suche ändern oder leeren.");
+      const before = await appRequestSnapshot(page);
+      const readCounts = () =>
+        page.evaluate(() => ({
+          ...(
+            window as unknown as {
+              libraryReads: { history: number; saved: number };
+            }
+          ).libraryReads,
+        }));
+      const measure = async (tab: "history" | "saved") => {
+        const initial = await readCounts();
+        const samples: number[] = [];
+        for (let i = 0; i < 22; i++) {
+          const id = 4900 + i;
+          const start = performance.now();
+          await search.fill(`SELECT ${id}`);
+          await list
+            .getByText(tab === "history" ? `SELECT ${id} FROM table_0000` : `Gespeichert ${id}`, {
+              exact: true,
+            })
+            .waitFor();
+          if (i) samples.push(performance.now() - start);
+        }
+        const final = await readCounts();
+        const { medianMs, p95Ms } = interactionPercentiles(samples);
+        return {
+          medianMs,
+          p95Ms,
+          hiddenReads:
+            tab === "history" ? final.saved - initial.saved : final.history - initial.history,
+        };
+      };
+      const history = await measure("history");
+      expect(await search.getAttribute("aria-label")).toBe("Query-Verlauf durchsuchen");
+      await dialog.getByText("Gespeichert", { exact: true }).click();
+      await list.getByText("Gespeichert 4921", { exact: true }).waitFor();
+      const saved = await measure("saved");
+      console.log("Query-Bibliothek", engine.name(), { history, saved });
+      expect(history.hiddenReads).toBe(0);
+      expect(saved.hiddenReads).toBe(0);
+      for (const timing of [history, saved]) {
+        expect(timing.medianMs).toBeLessThan(60);
+        expect(timing.p95Ms).toBeLessThan(120);
+      }
+      expect(await search.getAttribute("aria-label")).toBe("Gespeicherte Queries durchsuchen");
+      expect(await dialog.getByText(/Aufbewahrung in den Einstellungen/).count()).toBe(0);
+      await search.fill("  gEsPeIchErt 4999  ");
+      await list.getByText("Gespeichert 4999", { exact: true }).waitFor();
+      await search.fill("xyz-kein-treffer");
+      await noMatches.waitFor();
+      expect(await dialog.getByText("Keine gespeicherten Queries").count()).toBe(0);
+      await search.fill("   ");
+      await list.getByText("Gespeichert 0", { exact: true }).waitFor();
+      expect(await list.locator("[data-index]").count()).toBeLessThan(100);
+      await search.fill("xyz-kein-treffer");
+      await page.evaluate(async () => {
+        const { useSavedQueriesStore } = await import("/src/lib/saved-queries.ts");
+        useSavedQueriesStore.setState({ queries: [] });
+      });
+      await dialog.getByText("Keine gespeicherten Queries", { exact: true }).waitFor();
+      expect(await noMatches.count()).toBe(0);
+      await dialog.getByText("Verlauf", { exact: true }).click();
+      await noMatches.waitFor();
+      await search.fill("   ");
+      await list.getByText("SELECT 0 FROM table_0000", { exact: true }).waitFor();
+      const after = await appRequestSnapshot(page);
+      expect(requestsSince(before, after).databaseRequests).toBe(0);
+    } finally {
+      await browser.close();
+    }
+  },
+  60_000,
+);
 
 test.skipIf(!process.env.L8DB_PERF_APP)(
   "Query-Verlauf bleibt bei 5000 Einträgen bedienbar",
@@ -225,7 +344,7 @@ test.skipIf(!process.env.L8DB_PERF_APP)(
       await page.getByText("Gespeichert 4999", { exact: true }).waitFor();
       expect(await page.evaluate(() => document.querySelectorAll("*").length)).toBeLessThan(5000);
       await page
-        .getByRole("textbox", { name: "Query-Verlauf durchsuchen" })
+        .getByRole("textbox", { name: "Gespeicherte Queries durchsuchen" })
         .fill("Gespeichert 4999");
       await page.getByText("Gespeichert 4999", { exact: true }).waitFor();
       const openSamples: number[] = [];

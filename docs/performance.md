@@ -1399,3 +1399,20 @@ The separate 50,000-entry server-render scenario measured 7.4 ms median and 23.1
 With a 1,000-row SQL preview and 200,000 available rows, dismissing the save dialog used to trigger one full query per export. Across 22 independent attempts the simulated database generated 4.4 million unused rows. The warm median was 1.788 ms and p95 was 5.921 ms. Choosing the destination first reduced the same workload to zero query requests, zero full-result rows and zero file writes. The median was 0.004 ms and p95 was 0.036 ms, against budgets of 3 and 10 ms. The hook test in tests/query-row-limit.test.tsx also checks concurrent export commands, cancelling an active read, successful output and retry after a dialog error. Measurements used Bun 1.3.10 on macOS 27.2.1 arm64, Apple M3 and 16 GiB RAM with simulated database, dialog and file transports.
 
 Chromium and WebKit exercised the export menu with a 1,000-row preview and 1,200 total rows. One cancellation and two confirmed exports triggered one full-result read and produced two complete JSON documents. The grid performed its usual separate row count.
+
+## Searching history and saved queries
+
+With 5,000 entries in each tab, 22 searches per tab previously accessed 110,000 names or SQL texts in the hidden list. Scoping search to the selected tab reduced those accesses to zero in Chromium and WebKit. Clearing the search kept fewer than 100 list rows mounted. Searching, switching tabs and clearing the filter issued zero database requests.
+
+The browser test in tests/perf-query-history.test.ts measures from filling the search field to observing the matching row. Times below are milliseconds, with one warmup and 21 measured searches per tab. Limits are 60 ms median and 120 ms p95. Runs used an unthrottled Vite development server with simulated Tauri transport on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10.
+
+| Browser and tab | Previous median / p95 | New median / p95 |
+| --- | ---: | ---: |
+| Chromium, history | 5.99 / 9.41 | 5.08 / 7.79 |
+| Chromium, saved | 5.68 / 7.30 | 4.78 / 7.03 |
+| WebKit, history | 8.80 / 12.72 | 8.40 / 10.72 |
+| WebKit, saved | 6.40 / 7.78 | 6.08 / 7.73 |
+
+With the Vite development server running locally, use `L8DB_QUERY_BROWSER_URL=http://127.0.0.1:1420 bun test tests/perf-query-history.test.ts -t 'Query-Bibliothek durchsucht'`. Add `L8DB_QUERY_BROWSER_ENGINE=webkit` for the WebKit run.
+
+Two existing Chromium scenarios also ran against fresh production builds of this change and its parent d884bb2f. The nested import scenario saw the imported entry but timed out waiting for its success notification on both builds. The history scenario recorded zero database requests and one unclassified `cli_status` request on both builds, failing its zero-unknown-request assertion. The first run on the changed build also timed out reopening the tools menu. The isolated rerun reached the request-count assertion.
