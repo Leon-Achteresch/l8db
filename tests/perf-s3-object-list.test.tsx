@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { measureScenario, reportScenario } from "../scripts/performance-report";
+import { countDeleteTargets, deleteEffects } from "../src/features/storage/object-deletion";
 import { ObjectList } from "../src/features/storage/object-list";
 import { indexObjectRows } from "../src/features/storage/object-row-index";
 import type { RowActions } from "../src/features/storage/object-row-menu";
@@ -31,6 +33,50 @@ function rows(count: number): BrowserRow[] {
     etag: null,
   }));
 }
+
+test("S3 deletion messages preserve the distinct effects of mixed object and folder selections", () => {
+  const items = rows(4);
+  items[2].versionId = "null";
+  items[3].versionId = "marker";
+  items[3].deleteMarker = true;
+  const selection = countDeleteTargets(items);
+  expect(selection).toEqual({ folders: 1, currentObjects: 1, versions: 1, markers: 1 });
+  const mixed = deleteEffects(selection, true, "Enabled");
+  for (const text of [
+    "in den ausgewählten Ordnern",
+    "Objektversionen",
+    "wieder sichtbar",
+    "S3 setzt",
+  ])
+    expect(mixed).toContain(text);
+  expect(deleteEffects(selection, false, "Unknown")).not.toContain("bleiben erhalten");
+  expect(deleteEffects(selection, false, "Checking")).not.toContain("bleiben erhalten");
+  expect(deleteEffects(selection, false, "Suspended")).toContain("Null-Versionen");
+  expect(deleteEffects(selection, false, "Off")).toContain("Versionierung ist aus");
+  const onlyMarkers = countDeleteTargets([items[3]]);
+  expect(deleteEffects(onlyMarkers, false, "Unknown")).not.toContain("Versionsstatus");
+});
+
+test("S3 deletion summary for 50,000 targets retains only four counters", async () => {
+  const selected = rows(50_000);
+  for (const [index, row] of selected.entries()) {
+    row.kind = index % 20 === 0 ? "folder" : "object";
+    row.versionId = index % 4 === 0 ? `v${index}` : undefined;
+    row.deleteMarker = false;
+  }
+  let counts = countDeleteTargets([]);
+  const timing = await measureScenario(() => {
+    counts = countDeleteTargets(selected);
+  }, 31);
+  expect(counts).toEqual({ folders: 2500, currentObjects: 37500, versions: 10000, markers: 0 });
+  expect(timing.medianMs).toBeLessThan(3);
+  expect(timing.p95Ms).toBeLessThan(6);
+  await reportScenario("s3-deletion-summary", {
+    ...timing,
+    targets: selected.length,
+    retainedCounters: Object.keys(counts).length,
+  });
+});
 
 function render(list: BrowserRow[], filtered = false) {
   return renderToStaticMarkup(

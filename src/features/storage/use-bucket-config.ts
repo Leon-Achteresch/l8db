@@ -10,12 +10,13 @@ export function isUnsupported(error: unknown): boolean {
   );
 }
 
-export function useBucketConfig(bucket: string, resource: BucketResource) {
+export function useBucketConfig(bucket: string, resource: BucketResource, enabled = true) {
   const { connection, url, readOnly } = useStorageConnection();
   const queryClient = useQueryClient();
   const queryKey = ["s3", connection?.id, "config", bucket, null, null, resource];
   const query = useQuery({
     queryKey,
+    enabled,
     queryFn: () => s3GetConfig(url, { bucket }, resource),
     retry: false,
   });
@@ -41,6 +42,7 @@ export function useBucketConfig(bucket: string, resource: BucketResource) {
   return {
     data: query.data ?? null,
     loading: query.isLoading,
+    checking: query.isPending || query.isFetching,
     error: query.isError ? query.error : null,
     unsupported: query.isError && isUnsupported(query.error),
     busy,
