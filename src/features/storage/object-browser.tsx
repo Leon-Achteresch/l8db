@@ -15,6 +15,7 @@ import { CopyMoveDialog } from "./copy-move-dialog";
 import { DeleteObjectsDialog } from "./delete-objects-dialog";
 import { ObjectDetails } from "./object-details";
 import { ObjectList } from "./object-list";
+import { indexObjectRows } from "./object-row-index";
 import { ObjectTextEditorDialog } from "./object-text-editor-dialog";
 import { ObjectToolbar } from "./object-toolbar";
 import { TextPromptDialog } from "./text-prompt-dialog";
@@ -70,8 +71,10 @@ export function ObjectBrowser({
         : allRows,
     [allRows, needle, mode],
   );
-  const selectedRows = rows.filter((row) => selected.has(row.id));
-  const details = rows.find((row) => row.id === detailsId && row.kind === "object") ?? null;
+  const rowIndex = useMemo(() => indexObjectRows(rows), [rows]);
+  const selectedRows = useMemo(() => rowIndex.selectedRows(selected), [rowIndex, selected]);
+  const details = rowIndex.detail(detailsId);
+  const folderCount = rowIndex.folderCount;
   const truncated = listing.data?.pages.at(-1)?.truncated ?? false;
 
   const seen = useRef({ scope, prefix, mode });
@@ -119,8 +122,6 @@ export function ObjectBrowser({
     }
     setDetailsId(row.kind === "object" ? row.id : null);
   }
-
-  const folderCount = rows.filter((row) => row.kind === "folder").length;
 
   function activate(row: BrowserRow) {
     if (row.kind === "folder") navigateTo(row.key);

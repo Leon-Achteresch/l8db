@@ -18,6 +18,25 @@ for (const engine of [chromium, webkit]) {
         await page.getByText("Zweiter", { exact: true }).waitFor();
         await page.getByText(/Liste unvollständig/).waitFor();
         expect(await page.getByRole("button", { name: "Weitere laden" }).count()).toBe(0);
+        const all = page.getByRole("checkbox", { name: "Alle auswählen" });
+        await page.getByRole("checkbox", { name: "Zweiter auswählen" }).click();
+        expect(await all.isChecked()).toBe(false);
+        const filter = page.getByRole("textbox", { name: "Objekte filtern" });
+        await filter.fill("Zweiter");
+        await page.getByText("Erster", { exact: true }).waitFor({ state: "hidden" });
+        expect(await all.isChecked()).toBe(true);
+        await filter.fill("Erster");
+        await page.getByText("Erster", { exact: true }).waitFor();
+        expect(await page.getByRole("button", { name: "Herunterladen" }).count()).toBe(0);
+        await filter.fill("");
+        await page.getByText("Zweiter", { exact: true }).waitFor();
+        expect(await page.getByRole("checkbox", { name: "Zweiter auswählen" }).isChecked()).toBe(
+          true,
+        );
+        await all.click();
+        expect(await page.getByRole("checkbox", { name: "Erster auswählen" }).isChecked()).toBe(
+          true,
+        );
       } finally {
         await browser.close();
       }
