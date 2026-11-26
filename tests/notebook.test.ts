@@ -8,8 +8,8 @@ import {
   type NotebookDoc,
   type NotebookOutput,
   newNotebook,
-  notebookToHtml,
   notebookPages,
+  notebookToHtml,
   notebookToMarkdown,
   notebookVariables,
   parseNotebook,
@@ -118,6 +118,23 @@ describe("Notebook-Export", () => {
     expect(md).toContain("| region | n |");
     expect(md).toContain("Süd\\|Ost");
     expect(md).toContain("_2 Zeilen · 7 ms_");
+  });
+
+  test("Export zählt gespeicherte und tatsächlich gezeigte Zeilen", () => {
+    for (const render of [notebookToMarkdown, notebookToHtml]) {
+      for (const totalRows of [100, 900]) {
+        const saved = parseNotebook(serializeNotebook(doc, { q: { ...output, totalRows } }));
+        expect(render(saved.doc, saved.outputs)).toContain(`2 von ${totalRows} gezeigt`);
+      }
+      const rows = Array.from({ length: 201 }, (_, n) => ({ region: `Region-${n}`, n }));
+      const text = render(doc, { q: { ...output, rows } });
+      expect(text).toContain("200 von 201 gezeigt");
+      expect(text).toContain("Region-199");
+      expect(text).not.toContain("Region-200");
+      expect(render(doc, { q: { ...output, rows: [], totalRows: 7 } })).toContain(
+        "0 von 7 gezeigt",
+      );
+    }
   });
 
   test("HTML maskiert Inhalte und entfernt unsichere Links", () => {

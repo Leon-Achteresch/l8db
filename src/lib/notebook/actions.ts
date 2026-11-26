@@ -2,10 +2,10 @@ import { toast } from "sonner";
 import { useConnectionsStore } from "@/lib/connections";
 import { notebookToHtml, notebookToMarkdown } from "./export";
 import {
+  pickExportTarget,
   pickNotebookFile,
   pickNotebookTarget,
   readNotebookFile,
-  writeExportFile,
   writeNotebookText,
 } from "./files";
 import { serializeNotebook } from "./model";
@@ -73,9 +73,12 @@ export async function saveNotebook(saveAs = false): Promise<boolean> {
 export async function exportNotebook(format: "md" | "html"): Promise<void> {
   const { doc, outputs } = useNotebookStore.getState();
   try {
+    const path = await pickExportTarget(doc.name, format);
+    if (!path) return;
     const content =
       format === "md" ? notebookToMarkdown(doc, outputs) : notebookToHtml(doc, outputs);
-    if (await writeExportFile(doc.name, format, content)) toast.success("Notebook exportiert");
+    await writeNotebookText(path, content);
+    toast.success("Notebook exportiert");
   } catch (error) {
     toast.error(`Export fehlgeschlagen: ${message(error)}`);
   }

@@ -10,7 +10,8 @@ function outputSummary(output: NotebookOutput): string {
     output.columns.length ? `${total} Zeilen` : `${output.rowsAffected ?? 0} Zeilen betroffen`,
     `${output.executionMs} ms`,
   ];
-  if (output.columns.length && total > EXPORT_ROWS) parts.push(`erste ${EXPORT_ROWS} gezeigt`);
+  const shown = Math.min(output.rows.length, EXPORT_ROWS);
+  if (output.columns.length && total > shown) parts.push(`${shown} von ${total} gezeigt`);
   return parts.join(" · ");
 }
 
