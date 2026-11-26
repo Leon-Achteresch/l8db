@@ -102,3 +102,32 @@ test("pro Tab bleibt höchstens ein zweiter Lauf im Speicher und geht beim Schli
   expect(readTabState(key("compare-a"))).toBeDefined();
   expect(readTabState(key("compare-b"))).toBeUndefined();
 });
+
+test("999 Zeilen mit Duplikaten werden ohne Schlüssel je Lauf genau einmal gelesen", async () => {
+  let reads = 0;
+  const make = (offset: number) => ({
+    ...before,
+    rows: Array.from({ length: ROWS }, (_, index) => ({
+      get id() {
+        reads++;
+        return Math.floor(((index + offset) % ROWS) / 4);
+      },
+    })),
+    columns: ["id"],
+  });
+  const left = make(0);
+  const right = make(42);
+  const timing = await measureScenario(() => {
+    reads = 0;
+    const result = compareResults(left, right, []);
+    expect(result.changes).toHaveLength(0);
+    expect(result.counts.equal).toBe(ROWS);
+    expect(reads).toBe(ROWS * 2);
+  }, 21);
+  console.log(
+    `Ergebnisvergleich mit Duplikaten: Median ${timing.medianMs.toFixed(2)} ms, p95 ${timing.p95Ms.toFixed(2)} ms`,
+  );
+  expect(timing.medianMs).toBeLessThan(12);
+  expect(timing.p95Ms).toBeLessThan(30);
+  expect(invocations).toEqual([]);
+});

@@ -1361,3 +1361,7 @@ The 500-label fixture in tests/command-score.test.ts highlights two German searc
 ## Import column mapping
 
 With 120 source columns and 120 targets, including one unmapped column, warm React server rendering on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10 took 58.45 ms median and 71.19 ms p95 before pagination and deferred menu creation. The final regression run took 15.56 and 36.03 ms with 20 visible selectors and 20 target type reads. Budgets are 45 and 100 ms, over 11 timed renders after warmup. Timing varied under concurrent host load. Chromium and WebKit separately exercised filtering, mapping the last unmatched column and paging to verify its new value on the same Mac. Desktop Tauri and database writes were outside these tests.
+
+## Keyless result comparison
+
+Two 999-row results with 40 string columns, repeated groups of four rows and a rotated row order took 22.56 ms median and 43.70 ms p95 before one-pass row matching, then 6.51 and 8.34 ms after (21 warm samples per series on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM, Bun 1.3.10, variable shared load). The regression in tests/perf-result-compare.test.ts counts exactly 1,998 key-cell reads for a single-column variant. This variant took 0.58 ms median and 0.79 ms p95 against limits of 12 and 30 ms. Both fixture results stay local, and the existing mixed-changes benchmark recorded zero database requests.
