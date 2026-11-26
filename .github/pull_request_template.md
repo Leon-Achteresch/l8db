@@ -23,7 +23,7 @@ Describe the checks you ran and any manual verification. Check only the items yo
 ## Checklist
 
 - [ ] Commit subjects follow Conventional Commits (`feat:`, `fix:`, `docs:`, …) — the release changelog is generated from them
-- [ ] Docs in `docs/` updated if behaviour changed
+- [ ] README/AGENTS.md updated if behaviour changed
 - [ ] New user-facing features registered in `src/lib/new-features.ts` and connected to their UI
 - [ ] Breaking changes and migration steps described, if applicable
 

@@ -16,10 +16,10 @@ fix/* von main ──PR──▶ main, danach main ──▶ development und /ca
 
 ## Schnelle Agenten-CI und vollständige Stable-Prüfung
 
-- Jeder Push auf `development` und jeder PR nach `development` prüft Produktionskonfiguration, Formatierung, Frontend-Build inklusive TypeScript, isolierte Unit-Tests, `cargo check --locked`, Rust-Formatierung und die Linux-Kernbudgets. Überholte CI- und Performance-Läufe werden weiterhin abgebrochen. Es laufen keine nativen Paketbuilds pro Agenten-Push.
+- Jeder Push auf `development` und jeder PR nach `development` prüft Produktionskonfiguration, Formatierung, Frontend-Build inklusive TypeScript, isolierte Unit-Tests, `cargo check --locked` und Rust-Formatierung. Überholte CI-Läufe werden abgebrochen. Es laufen keine nativen Paketbuilds pro Agenten-Push.
 - PRs nach `main` und manuell gestartete CI-Läufe behalten die vollständigen Prüfungen: zusätzlich Dependency-Audits, Chromium/WebKit einschließlich CSP/Extension-Isolation, Rust-Clippy mit/ohne Default-Features, Rust-Tests und PostgreSQL/SSH/CLI-Integration. Main-PRs behalten die vorhandenen nativen macOS-/Windows-Pflichtchecks.
-- Es gibt keine täglichen Test- oder Build-Läufe ohne Freigabe. Die vollständige Performance-Matrix läuft für Main-PRs, Stable-Releases und auf manuellen Aufruf: echte Linux-/macOS-/Windows-Runner, Chromium/WebKit, CPU-/Heap-Simulation und PostgreSQL. Alle Jobs eines Workflows prüfen die unveränderliche `github.sha`. Manuelle Performance-Filter bleiben verfügbar. Die Concurrency-Gruppen enthalten den Workflow-Namen, damit unabhängige Aufrufe keine Release-Prüfung abbrechen können.
-- Canary verwendet die schnelle CI. Stable verwendet volle CI **und die vollständige Performance-Matrix als Veröffentlichungssperre**. Fehlerhafte Budgets werden nicht aufgeweicht. Native Installation/Upgrade, Signaturen, Notarisierung und Artefaktintegrität bleiben in beiden Kanälen verpflichtend.
+- Es gibt keine täglichen Test- oder Build-Läufe ohne Freigabe und keine Performance-CI; Performance-Tests laufen nur lokal (siehe `AGENTS.md`). Alle Jobs eines Workflows prüfen die unveränderliche `github.sha`. Die Concurrency-Gruppen enthalten den Workflow-Namen, damit unabhängige Aufrufe keine Release-Prüfung abbrechen können.
+- Canary verwendet die schnelle CI, Stable die volle CI. Native Installation/Upgrade, Signaturen, Notarisierung und Artefaktintegrität bleiben in beiden Kanälen verpflichtend.
 - Canary kompiliert mit `opt-level=2`, `lto=false`, `codegen-units=16`; Stable behält `3`, `thin`, `1`. Die Caches `release-canary` und `release-stable` sind getrennt. Die App-Funktionen und enthaltenen Datenbanktreiber bleiben gleich. Das schnellere Compilerprofil kann die Laufzeitleistung von Canary gegenüber Stable beeinflussen; Canary ist kein Stable-Performance-Nachweis.
 - Dependabot bündelt Minor-/Patch-Updates pro Ökosystem und öffnet maximal zwei PRs je Ökosystem gleichzeitig. Major-Updates bleiben getrennt.
 
@@ -32,7 +32,7 @@ fix/* von main ──PR──▶ main, danach main ──▶ development und /ca
    ```
    Die Variable ist die Freigabe für genau diesen Commit. Ein Branchname, ein Tag, ein neu gepushter Canary oder eine Freigabe eines älteren Commits genügt nicht. Widerruf: `gh variable delete NIGHTLY_RELEASE_SHA`.
 3. **Nightly stable release** prüft täglich um **01:17 UTC** (02:17 CET / 03:17 CEST), ob der aktuelle Canary exakt der Freigabe entspricht, als Pre-Release veröffentlicht wurde und einen offenen internen Release-PR hat. Unmittelbar vor dem Merge werden Freigabe und Canary erneut geprüft. Gemergt wird ohne Admin-Bypass mit `--merge --match-head-commit <sha>`; GitHub erzwingt die bestehenden Rulesets und Pflichtchecks.
-4. Der Merge nutzt `RELEASE_PR_TOKEN`, damit der Push auf `main` den normalen Release-Workflow auslöst. Dieser baut Stable neu mit dem Produktionsprofil und veröffentlicht erst nach voller CI, voller Performance-Matrix und allen nativen Paketprüfungen. Ein Canary-Binary wird nicht als Stable umetikettiert. Die Uhrzeit ist der früheste Start; GitHub-Wartezeiten und Tests können die Veröffentlichung verzögern.
+4. Der Merge nutzt `RELEASE_PR_TOKEN`, damit der Push auf `main` den normalen Release-Workflow auslöst. Dieser baut Stable neu mit dem Produktionsprofil und veröffentlicht erst nach voller CI und allen nativen Paketprüfungen. Ein Canary-Binary wird nicht als Stable umetikettiert. Die Uhrzeit ist der früheste Start; GitHub-Wartezeiten und Tests können die Veröffentlichung verzögern.
 5. Nach dem Merge die Variable löschen. Bei einem gescheiterten Stable-Build denselben Release-Lauf wiederholen; keinen weiteren Merge erzeugen. Neue Canaries brauchen eine neue ausdrückliche Freigabe.
 
 Ohne Variable wird der Nacht-Job übersprungen: keine Runner, keine Nacht-Tests, keine Builds und keine Veröffentlichung. Beliebig viele Canaries können davor erscheinen; weder ihre Anzahl noch ihr Alter erteilt eine Freigabe. Der manuelle Workflow-Start ist standardmäßig ein **Dry Run** und verändert nichts. `dry_run: false` ist nur auf `main` erlaubt und verwendet dieselbe exakte Freigabe. Nach erfolgreichem Merge verweigert die fehlende offene PR einen weiteren Merge.
@@ -91,14 +91,6 @@ Die Job-Tabelle in der Release-Zusammenfassung zeigt Laufzeiten und Ergebnisse. 
 Für `canary` verhindert ein eigenes Ruleset Force-Pushes und das Löschen des Branches, damit `canary` nur per Fast-Forward wächst und die Canary-Zählung zur Historie passt.
 
 Für Signierung und Notarisierung gelten weiterhin die unten beschriebenen Secrets. Es gibt keinen unsignierten Produktions-Fallback.
-
-## Messstand dieser Umstellung (1. November 2026)
-
-Der bestehende Development-Lauf `41305205531` brauchte für Rust 21:31 Minuten, Rust-Tests 23:36 Minuten und Integration 25:39 Minuten. Die Integration scheiterte erst danach an fehlendem Bun; dessen Installation ist jetzt vorangestellt. Im Performance-Lauf `41305205499` bestanden die Kernbudgets, während Browser-/Throttle-Budgets fehlschlugen. Diese bestehenden Fehler sind nicht behoben; sie blockieren Stable weiterhin. Es werden keine Budgets gelockert.
-
-Lokal: `bun run test:release` bestand mit 65 Tests, dazu actionlint 1.7.12, Produktionskonfiguration und der schreibfreie Aufruf ohne Freigabe. Die Auswahlprüfung simuliert 500 Entscheidungen über jeweils 100 PRs und 1.000 veröffentlichte Canaries: Median **0,069 ms**, p95 **0,187 ms**, gemessene zusätzliche gehaltene JS-Heap-Bytes nach GC **0**; Grenzen p95 < 5 ms und Heap-Zuwachs < 4 MiB. Ohne Freigabe gibt es null API-Aufrufe; der Promotion-Test begrenzt die expliziten API-Aufrufe auf fünf plus zweimaliges paginiertes Lesen der Release-Historie. Es gibt keine Hintergrundabfragen und keine eigene Parallelisierung.
-
-Umgebung: Debian 13, Linux x86_64, KVM/QEMU mit 8 vCPUs und 15 GiB RAM, Bun 1.3.10, Node 20.19.2. GitHub verwendet weiterhin Node 24.14.0. Die lokalen Messungen betreffen die Release-Auswahl, nicht die reale Kompilierungszeit. Es wurden keine Installer gebaut oder veröffentlicht; tatsächliche warme Canary-/Stable-Buildzeiten, macOS, Windows und native Upgrade-Tests müssen die nächsten autorisierten GitHub-Release-Läufe belegen.
 
 ## Lokal prüfen
 

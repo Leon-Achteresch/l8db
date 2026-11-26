@@ -10,7 +10,7 @@ A fast, native desktop client for PostgreSQL and other database families — bui
 
 ## Features
 
-Features depend on the selected database family and installed driver. The list below describes the PostgreSQL feature set; see the [provider matrix and contributor guide](docs/providers.md) for other products, capabilities and driver requirements.
+Features depend on the selected database family and installed driver. The list below describes the PostgreSQL feature set; capabilities and driver requirements for other products come from the provider registry in `src-tauri/src/db/provider.rs`.
 
 - **Table browser** — browse rows with filtering, sorting, and infinite scrolling that loads pages on demand with bounded memory
 - **Inline row editing** — edit, insert, duplicate, and delete rows with transaction support
@@ -149,10 +149,7 @@ src-tauri/src/
 
 ## Operations
 
-- Data transfer behavior, limits and benchmarks: [data-transfer.md](docs/data-transfer.md).
-- Backup, restore and dump tools: [backup.md](docs/backup.md).
-- Reproducible database and browser checks: [integration-tests.md](docs/integration-tests.md).
-- Performance tests, workload replay and `l8db --benchmark`: [performance.md](docs/performance.md).
+- Community extensions: [EXTENSIONS.md](EXTENSIONS.md).
 - Production configuration: [.github/PRODUCTION.md](.github/PRODUCTION.md).
 
 - `CHANGELOG.md` tracks user-facing changes (Keep a Changelog).

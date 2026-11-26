@@ -63,8 +63,6 @@ DuckDB 1.20000.1 benötigt den dokumentierten lokalen
 [NULL-Konvertierungspatch](../src-tauri/vendor/duckdb/L8DB-PATCH.md), damit Arrow-60-Nullspalten
 und verschachtelte NULL-Werte keine Panic und vergiftete Pool-Verbindungen auslösen.
 
-Maschinenrichtlinie, Team-Einweisung und Abnahmematrix: [Unternehmensrollout](../docs/enterprise-rollout.md).
-
 ## Grenzen der lokalen Verifikation
 
 Die automatisierten Browsertests prüfen den gebauten Client mit gemocktem Tauri-
@@ -92,8 +90,7 @@ benötigen die in `AGENTS.md` beschriebenen Datenbank- und SSH-Instanzen.
 - 24 echte PostgreSQL-/SSH-Labtests und 40 CLI-End-to-End-Tests bestanden. SSH nutzt
   ausschließlich RSA-Hostschlüssel; plain/encrypted OpenSSH und PKCS#1 mit 3072-Bit-
   RSA-Clientschlüsseln, falsche Passphrase und Tunnel-Abbau wurden geprüft.
-- Native Signatur-/Importbudgets und große Konfigurationsmerges bestanden; Messwerte
-  und Grenzen stehen in [performance.md](../docs/performance.md).
+- Native Signatur-/Importbudgets und große Konfigurationsmerges bestanden
 - Das macOS-Binary hat keine dynamische OpenSSL-/unixODBC-Abhängigkeit. Die Labs
   und temporären SSH-Agenten wurden nach dem Lauf entfernt.
 
