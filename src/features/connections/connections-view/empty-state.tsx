@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { AppLogo } from "@/components/app-logo";
 import { Illustration } from "@/components/illustration";
 import { pasteText } from "@/lib/clipboard";
+import { DUCKDB_FILE_EXTENSIONS } from "@/lib/connection-url/constants";
 import { resolveOpenFiles } from "@/lib/db";
 import { runOpenFileActions } from "@/lib/file-open";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
@@ -45,13 +46,8 @@ export function ConnectionsEmptyState({
               "db",
               "sqlite",
               "sqlite3",
-              "duckdb",
-              "csv",
-              "tsv",
-              "json",
-              "jsonl",
-              "ndjson",
-              "parquet",
+              "db3",
+              ...DUCKDB_FILE_EXTENSIONS,
               "sql",
               "l8nb",
             ],

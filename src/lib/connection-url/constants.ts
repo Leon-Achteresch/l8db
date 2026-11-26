@@ -3,6 +3,16 @@ import type { DatabaseKind } from "@/lib/db";
 export const SSL_MODES = ["disable", "prefer", "require", "verify-ca", "verify-full"];
 
 export const PATH_LIKE = /^(\/|~\/|\.{1,2}\/|[A-Za-z]:[\\/]|:memory:$)/;
+export const DUCKDB_FILE_EXTENSIONS = [
+  "duckdb",
+  "ddb",
+  "parquet",
+  "csv",
+  "tsv",
+  "json",
+  "jsonl",
+  "ndjson",
+] as const;
 
 export const USER_REQUIRED: DatabaseKind[] = ["postgres", "mysql", "mssql", "oracle"];
 
