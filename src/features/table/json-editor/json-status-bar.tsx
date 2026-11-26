@@ -1,5 +1,7 @@
 import { ChevronRightIcon, CircleCheckIcon, CopyIcon, TriangleAlertIcon } from "lucide-react";
 import { Fragment } from "react";
+import { NewBadge } from "@/components/new-badge";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { type JsonPath, jsonKind, pathId, toJsonPath } from "@/lib/json-editor";
 import { formatByteSize } from "@/lib/value-viewers/binary";
 import { JsonTypeIcon } from "./json-type-icon";
@@ -7,6 +9,7 @@ import type { JsonEditorState } from "./use-json-editor";
 
 export function JsonStatusBar({ state }: { state: JsonEditorState }) {
   const { selectedPath, stats, parsed, doc } = state;
+  const pointer = useNewFeatureVisibility<HTMLButtonElement>("table.cell.json-editor.pointer");
   const showPath = state.mode !== "code";
   const select = (path: JsonPath) => state.reveal(path);
   let cursor: unknown = doc;
@@ -65,6 +68,18 @@ export function JsonStatusBar({ state }: { state: JsonEditorState }) {
             </button>
           )}
         </div>
+      )}
+      {showPath && parsed.ok && (
+        <button
+          ref={pointer.ref}
+          type="button"
+          title="JSON Pointer kopieren"
+          aria-label="JSON Pointer kopieren"
+          onClick={() => state.actions.copy(selectedPath, "pointer")}
+          className="inline-flex shrink-0 items-center gap-1 rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
+        >
+          <CopyIcon className="size-3" /> JSON Pointer {pointer.isNew && <NewBadge />}
+        </button>
       )}
       {!showPath && <div className="flex-1" />}
       <span className="ml-auto shrink-0 tabular-nums">

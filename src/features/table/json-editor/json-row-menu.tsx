@@ -110,6 +110,11 @@ export function JsonRowMenu({ row, readOnly, actions, open, onOpenChange }: Prop
               onSelect={() => actions.copy(path, "jsonpath")}
             />
             <IconMenuItem
+              icon={<RouteIcon />}
+              label="JSON Pointer kopieren"
+              onSelect={() => actions.copy(path, "pointer")}
+            />
+            <IconMenuItem
               icon={<FileCodeIcon />}
               label="JavaScript-Zugriff kopieren"
               onSelect={() => actions.copy(path, "js")}
