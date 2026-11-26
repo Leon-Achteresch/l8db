@@ -1034,6 +1034,10 @@ pub(crate) fn is_plsql_block(sql: &str) -> bool {
     sql::is_block(sql)
 }
 
+pub(crate) fn is_stored_plsql(sql: &str) -> bool {
+    sql::is_stored_unit(sql)
+}
+
 pub(crate) fn script_items(sql: &str) -> Vec<(bool, String)> {
     sql::split_items(sql)
 }

@@ -1042,7 +1042,8 @@ pub(super) fn check_write_sql(
     if statement_count(connection.kind, sql) > 1 {
         return Err(single_statement(connection));
     }
-    if let Some(word) = redact::dangerous_word(sql) {
+    let compiled = connection.kind == DatabaseKind::Oracle && db::oracle::is_stored_plsql(sql);
+    if let Some(word) = (!compiled).then(|| redact::dangerous_word(sql)).flatten() {
         return Err(redact::blocked_function(&word));
     }
     let index_ddl =

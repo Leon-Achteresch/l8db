@@ -125,6 +125,14 @@ pub(super) fn is_block(sql: &str) -> bool {
     unit_kind(sql, &tokens(sql)) == Some(UnitKind::Block)
 }
 
+pub(super) fn is_stored_unit(sql: &str) -> bool {
+    let tokens = tokens(sql);
+    tokens
+        .first()
+        .is_some_and(|first| sql[first.clone()].eq_ignore_ascii_case("CREATE"))
+        && unit_kind(sql, &tokens) == Some(UnitKind::Block)
+}
+
 #[derive(PartialEq)]
 enum UnitKind {
     Block,
