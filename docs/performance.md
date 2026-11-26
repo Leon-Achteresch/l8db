@@ -1373,3 +1373,7 @@ The CLI preview regression in cli::output formats 64 cells per sample, each hold
 ## JSON Pointer copying
 
 Formatting 500 paths of 33 segments, with slashes and tildes in every named segment, took 7.46 ms median and 14.02 ms p95 in 21 warm samples on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM, Bun 1.3.10. The budgets in tests/json-editor.test.ts are 15 and 40 ms. The formatter receives only the selected path. Browser tests exercised the status bar, row menu, root and read-only cells in Chromium and WebKit with an instrumented clipboard. Native clipboard and other operating systems were outside that test.
+
+## Cancelled notebook exports
+
+With 100 SQL cells and 1,000 in-memory rows per cell, cancelling a Markdown or HTML export previously accessed 20,000 result values per cancellation. Across alternating formats the median was 8.123 ms and p95 was 19.398 ms. Opening the save dialog first reduced both the result reads and file writes on cancellation to zero. The measured median was 0.002 ms and p95 was 0.005 ms. Tests used Bun 1.3.10 on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM, one warmup and 21 measured cancellations. The limits in tests/perf-notebook-export.test.ts are 3 ms median and 10 ms p95. The Tauri dialog and filesystem transport were simulated, so timings exclude native dialog and disk latency.

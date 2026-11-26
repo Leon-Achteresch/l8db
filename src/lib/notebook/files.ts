@@ -28,17 +28,14 @@ export async function pickNotebookTarget(name: string): Promise<string | null> {
   });
 }
 
-export async function writeExportFile(
+export async function pickExportTarget(
   name: string,
   extension: "md" | "html",
-  content: string,
 ): Promise<string | null> {
-  const path = await save({
+  return await save({
     defaultPath: `${safeName(name)}.${extension}`,
     filters: [{ name: extension === "md" ? "Markdown" : "HTML", extensions: [extension] }],
   });
-  if (path) await writeTextFile(path, content);
-  return path;
 }
 
 export { writeTextFile as writeNotebookText };
