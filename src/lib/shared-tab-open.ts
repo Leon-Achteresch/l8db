@@ -23,10 +23,11 @@ import {
   sharedTabLink,
   sharedViewOf,
 } from "@/lib/shared-tabs";
+import { groupPaneTabs, type SplitGroup, useSplitView } from "@/lib/split-view";
 import { effectiveConnectionString } from "@/lib/ssh";
 import { activateConnectionWithToast } from "@/lib/ssh/activation";
 import { navigateToTab, tabLabel } from "@/lib/tab-navigation";
-import type { Tab } from "@/lib/table-tabs";
+import type { Tab, TableTab } from "@/lib/table-tabs";
 import { useTableTabs } from "@/lib/table-tabs";
 import { tableViewStateKey, useTableViewStateStore } from "@/lib/table-view-state";
 import { router } from "@/router";
@@ -60,31 +61,80 @@ export function captureSharedTab(tab: Tab): SharedTab | null {
   };
 }
 
+type SchemaTarget = Pick<TableTab, "schema" | "table" | "entityType">;
+
+function schemaResolver(
+  connection: SavedConnection,
+  database: string | null,
+): (target: SchemaTarget) => Promise<string | null> {
+  const url = effectiveConnectionString(connection);
+  const names = new Map<string, Promise<Set<string>>>();
+  const has = async (target: SchemaTarget, schema: string) => {
+    const view = target.entityType === "view";
+    const key = JSON.stringify([view, schema]);
+    let found = names.get(key);
+    if (!found) {
+      found = (view ? listViews : listTables)(connection.kind, url, database ?? undefined, schema)
+        .then((entries) => new Set(entries.map((entry) => entry.name)))
+        .catch(() => new Set<string>());
+      names.set(key, found);
+    }
+    return (await found).has(target.table);
+  };
+  let own: Promise<string> | undefined;
+  const ownSchema = () => {
+    own ??= listSchemas(connection.kind, url, database ?? undefined)
+      .then(
+        (entries) => visibleSchemas(connection, entries),
+        () => undefined,
+      )
+      .then((schemas) =>
+        defaultSchema(
+          connection,
+          capabilitiesFor(connection.kind),
+          database,
+          schemas,
+          useDbSelectionStore.getState().schemaByConnection[connection.id] ?? null,
+        ),
+      );
+    return own;
+  };
+  return async (target) => {
+    if (await has(target, target.schema)) return target.schema;
+    const schema = await ownSchema();
+    return schema !== target.schema && (await has(target, schema)) ? schema : null;
+  };
+}
+
 async function targetSchema(
   shared: SharedTableTab,
   connection: SavedConnection,
   database: string | null,
 ): Promise<string> {
-  const url = effectiveConnectionString(connection);
-  const list = shared.entityType === "view" ? listViews : listTables;
-  const has = (schema: string) =>
-    list(connection.kind, url, database ?? undefined, schema).then(
-      (entries) => entries.some((entry) => entry.name === shared.table),
-      () => false,
-    );
-  if (await has(shared.schema)) return shared.schema;
-  const schemas = await listSchemas(connection.kind, url, database ?? undefined).then(
-    (entries) => visibleSchemas(connection, entries),
-    () => undefined,
-  );
-  const own = defaultSchema(
-    connection,
-    capabilitiesFor(connection.kind),
-    database,
-    schemas,
-    useDbSelectionStore.getState().schemaByConnection[connection.id] ?? null,
-  );
-  return own !== shared.schema && (await has(own)) ? own : shared.schema;
+  return (await schemaResolver(connection, database)(shared)) ?? shared.schema;
+}
+
+export async function openableGroup(
+  group: SplitGroup,
+  connectionId?: string,
+): Promise<string | null> {
+  const id = connectionId ? useSplitView.getState().adoptGroup(group.id, connectionId) : group.id;
+  const { activeId, connections } = useConnectionsStore.getState();
+  const connection = connections.find((entry) => entry.id === activeId);
+  const copy = useSplitView
+    .getState()
+    .groups[activeId ?? ""]?.find((entry) => entry.id === id && entry.origin);
+  if (!id || !copy || !connection) return id;
+  const resolve = schemaResolver(connection, connectionDatabase(connection));
+  const schemas = new Map<string, string>();
+  for (const tab of groupPaneTabs(copy).flat()) {
+    if (tab.kind !== "table" || tab.connectionId || schemas.has(tab.schema)) continue;
+    const schema = await resolve(tab);
+    if (schema) schemas.set(tab.schema, schema);
+  }
+  if (useConnectionsStore.getState().activeId === connection.id)
+    useSplitView.getState().retargetGroup(id, schemas);
+  return id;
 }
 
 export async function openSharedTab(shared: SharedTab, connectionId: string): Promise<boolean> {

@@ -126,6 +126,7 @@ interface SplitState {
   openGroup: (id: string) => Tab | null;
   saveTabs: (activeKey: string | null, id?: string) => string | null;
   adoptGroup: (id: string, connectionId: string) => string | null;
+  retargetGroup: (id: string, schemas: ReadonlyMap<string, string>) => void;
   renameGroup: (id: string, name: string) => void;
   setGroupShared: (id: string, shared: boolean, connectionId?: string) => void;
   deleteGroup: (id: string, connectionId?: string) => void;
@@ -643,6 +644,45 @@ export const useSplitView = create<SplitState>()(
           set({ ...groupsPatch(state, scope, [...list, group], closed), paneConnections });
           return group.id;
         },
+        retargetGroup: (id, schemas) =>
+          set((state) => {
+            const scope = scopeKey();
+            const group = state.groups[scope]?.find((entry) => entry.id === id);
+            if (!group) return state;
+            const lists = groupPaneTabs(group);
+            const local = new Set(
+              [...group.tabs, ...lists.flat()].flatMap((tab) =>
+                tab && !tab.connectionId ? [tabKey(tab)] : [],
+              ),
+            );
+            const home = Object.keys(state.groups).find(
+              (key) =>
+                key !== scope && state.groups[key].some((entry) => entry.id === group.origin),
+            );
+            let changed = false;
+            const move = (tab: Tab | null): Tab | null => {
+              if (!tab || tab.connectionId || !("schema" in tab) || !portable(tab)) return tab;
+              const schema = schemas.get(tab.schema);
+              if (!schema || schema === tab.schema) return tab;
+              if (state.paneConnections[`${scope}|${tabKey(tab)}`]) return tab;
+              const moved = { ...tab, schema };
+              const taken = local.has(tabKey(moved));
+              if (taken && !(home && tab.kind === "table")) return tab;
+              changed = true;
+              return taken ? { ...tab, connectionId: home } : moved;
+            };
+            const tabs = group.tabs.map(move);
+            const paneTabs = group.paneTabs?.map((list) => list.flatMap((tab) => move(tab) ?? []));
+            if (!changed) return state;
+            return {
+              groups: {
+                ...state.groups,
+                [scope]: state.groups[scope].map((entry) =>
+                  entry.id === id ? { ...group, tabs, paneTabs } : entry,
+                ),
+              },
+            };
+          }),
         renameGroup: (id, name) =>
           set((state) => {
             const scope = scopeKey();
