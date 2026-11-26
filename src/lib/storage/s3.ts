@@ -92,11 +92,15 @@ export function tagsXml(tags: S3Tag[]): string {
   return `<Tagging><TagSet>${body}</TagSet></Tagging>`;
 }
 
-export type VersioningStatus = "Enabled" | "Suspended" | "Off";
+export type VersioningStatus = "Enabled" | "Suspended" | "Off" | "Unknown";
 
 export function parseVersioning(xml: string | null): VersioningStatus {
-  const status = textOf(xml ? parseS3Xml(xml) : null, "Status");
-  return status === "Enabled" || status === "Suspended" ? status : "Off";
+  if (xml === null) return "Off";
+  const root = parseS3Xml(xml);
+  if (root?.name !== "VersioningConfiguration") return "Unknown";
+  const status = child(root, "Status")?.text.trim();
+  if (status === undefined) return "Off";
+  return status === "Enabled" || status === "Suspended" ? status : "Unknown";
 }
 
 export function versioningXml(status: "Enabled" | "Suspended"): string {

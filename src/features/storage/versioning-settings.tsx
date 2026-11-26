@@ -7,7 +7,9 @@ import { useBucketConfig } from "./use-bucket-config";
 export function VersioningSettings({ bucket }: { bucket: string }) {
   const config = useBucketConfig(bucket, "versioning");
   const status = parseVersioning(config.data);
-  const label = status === "Enabled" ? "Aktiv" : status === "Suspended" ? "Pausiert" : "Aus";
+  const label = { Enabled: "Aktiv", Suspended: "Pausiert", Off: "Aus", Unknown: "Unbekannt" }[
+    status
+  ];
   return (
     <SettingsCard
       title="Versionierung"

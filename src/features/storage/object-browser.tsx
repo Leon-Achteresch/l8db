@@ -129,6 +129,7 @@ export function ObjectBrowser({
   }
 
   function onKeyDown(event: React.KeyboardEvent) {
+    if (deleteRows !== null) return;
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
       return;
     if (
@@ -161,7 +162,11 @@ export function ObjectBrowser({
   };
 
   return (
-    <div className="flex h-full min-h-0" onKeyDown={onKeyDown}>
+    <fieldset
+      aria-label="Objektbrowser"
+      className="flex h-full min-h-0 min-w-0"
+      onKeyDown={onKeyDown}
+    >
       <div className="flex min-w-0 flex-1 flex-col">
         <ObjectToolbar
           bucket={bucket}
@@ -317,16 +322,18 @@ export function ObjectBrowser({
         request={copyMove}
         onClose={() => setCopyMove(null)}
       />
-      <DeleteObjectsDialog
-        bucket={bucket}
-        rows={deleteRows}
-        versionsMode={mode === "versions"}
-        onClose={() => setDeleteRows(null)}
-        onDeleted={() => {
-          setSelected(new Set());
-          setDetailsId(null);
-        }}
-      />
+      {deleteRows && (
+        <DeleteObjectsDialog
+          bucket={bucket}
+          rows={deleteRows}
+          versionsMode={mode === "versions"}
+          onClose={() => setDeleteRows(null)}
+          onDeleted={() => {
+            setSelected(new Set());
+            setDetailsId(null);
+          }}
+        />
+      )}
       <UploadOptionsDialog
         open={uploadOptions}
         prefix={prefix}
@@ -336,6 +343,6 @@ export function ObjectBrowser({
         }
       />
       <ObjectTextEditorDialog bucket={bucket} row={editRow} onClose={() => setEditRow(null)} />
-    </div>
+    </fieldset>
   );
 }
