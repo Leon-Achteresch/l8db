@@ -1365,3 +1365,7 @@ With 120 source columns and 120 targets, including one unmapped column, warm Rea
 ## Keyless result comparison
 
 Two 999-row results with 40 string columns, repeated groups of four rows and a rotated row order took 22.56 ms median and 43.70 ms p95 before one-pass row matching, then 6.51 and 8.34 ms after (21 warm samples per series on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM, Bun 1.3.10, variable shared load). The regression in tests/perf-result-compare.test.ts counts exactly 1,998 key-cell reads for a single-column variant. This variant took 0.58 ms median and 0.79 ms p95 against limits of 12 and 30 ms. Both fixture results stay local, and the existing mixed-changes benchmark recorded zero database requests.
+
+## Long text in CLI table previews
+
+The CLI preview regression in cli::output formats 64 cells per sample, each holding 65,536 Unicode characters (112 KiB of UTF-8, including tabs and newlines). The original implementation exceeded the 5 ms median budget and the 22-sample benchmark took 23.09 s in the Rust test profile under shared host load. Borrowing text and inspecting at most 81 characters took 0.243 ms median and 0.368 ms p95 over 21 measured samples after warmup. Maximum observed output string capacity was 160 bytes. Limits are 5 ms median, 15 ms p95 and 640 bytes of output capacity. Measurements used macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and rustc 1.99.0. The test checks string preview formatting within the process, excluding database and terminal I/O.

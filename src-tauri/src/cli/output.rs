@@ -1,5 +1,6 @@
 use comfy_table::{presets::UTF8_FULL_CONDENSED, ContentArrangement, Table};
 use serde_json::Value;
+use std::borrow::Cow;
 use std::io::{IsTerminal, Write};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -23,11 +24,11 @@ impl Format {
 
 const TABLE_CELL_CHARS: usize = 80;
 
-pub fn cell(row: &Value, column: &str, index: usize) -> Value {
+fn cell<'a>(row: &'a Value, column: &str, index: usize) -> &'a Value {
     match row {
-        Value::Object(map) => map.get(column).cloned().unwrap_or(Value::Null),
-        Value::Array(list) => list.get(index).cloned().unwrap_or(Value::Null),
-        other => other.clone(),
+        Value::Object(map) => map.get(column).unwrap_or(&Value::Null),
+        Value::Array(list) => list.get(index).unwrap_or(&Value::Null),
+        other => other,
     }
 }
 
@@ -36,11 +37,11 @@ fn missing(row: &Value, column: &str) -> bool {
         .is_some_and(|fields| !fields.contains_key(column))
 }
 
-fn plain(value: &Value) -> Option<String> {
+fn plain(value: &Value) -> Option<Cow<'_, str>> {
     match value {
         Value::Null => None,
-        Value::String(text) => Some(text.clone()),
-        other => Some(other.to_string()),
+        Value::String(text) => Some(Cow::Borrowed(text)),
+        other => Some(Cow::Owned(other.to_string())),
     }
 }
 
@@ -48,13 +49,16 @@ pub fn table_text(value: &Value) -> String {
     let Some(text) = plain(value) else {
         return "NULL".into();
     };
-    let flat = text.replace(['\t', '\n', '\r'], " ");
-    if flat.chars().count() > TABLE_CELL_CHARS {
-        let cut: String = flat.chars().take(TABLE_CELL_CHARS - 1).collect();
-        format!("{cut}…")
-    } else {
-        flat
+    let mut characters = text.chars().map(|c| match c {
+        '\t' | '\n' | '\r' => ' ',
+        c => c,
+    });
+    let mut preview: String = characters.by_ref().take(TABLE_CELL_CHARS).collect();
+    if characters.next().is_some() {
+        preview.pop();
+        preview.push('…');
     }
+    preview
 }
 
 fn csv_field(text: &str) -> String {
@@ -96,7 +100,7 @@ fn write_table(
                     if missing(row, column) {
                         "—".into()
                     } else {
-                        table_text(&cell(row, column, index))
+                        table_text(cell(row, column, index))
                     }
                 })
                 .collect()
@@ -184,7 +188,7 @@ pub fn write_rows(
                         if missing(row, column) {
                             String::new()
                         } else {
-                            plain(&cell(row, column, index))
+                            plain(cell(row, column, index))
                                 .map(|text| field(&text))
                                 .unwrap_or_else(|| null.to_string())
                         }
@@ -209,7 +213,7 @@ fn object(columns: &[String], row: &Value) -> Value {
             n += 1;
             key = format!("{column}_{n}");
         }
-        map.insert(key, cell(row, column, index));
+        map.insert(key, cell(row, column, index).clone());
     }
     Value::Object(map)
 }
@@ -294,6 +298,54 @@ mod tests {
         assert!(text.contains("NULL"));
         assert!(text.contains('…'));
         assert!(!text.contains(&"x".repeat(100)));
+    }
+
+    #[test]
+    fn table_preview_preserves_unicode_boundaries_and_full_export_values() {
+        let prefix = "界".repeat(79);
+        assert_eq!(
+            table_text(&json!(format!("{prefix}🦀"))),
+            format!("{prefix}🦀")
+        );
+        assert_eq!(
+            table_text(&json!(format!("{prefix}🦀x"))),
+            format!("{prefix}…")
+        );
+        assert_eq!(table_text(&json!("a\r\n\tb")), "a   b");
+        let rows = [json!({"text": format!("{prefix}🦀x")})];
+        assert!(std::ptr::eq(cell(&rows[0], "text", 0), &rows[0]["text"]));
+        for format in [Format::Json, Format::Ndjson, Format::Csv, Format::Tsv] {
+            assert!(render(format, &["text"], &rows).contains(&format!("{prefix}🦀x")));
+        }
+    }
+
+    #[test]
+    fn wide_string_cell_previews_stay_bounded() {
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        let row = json!({"text": "Ä\t界\n".repeat(16_384)});
+        let mut samples = Vec::new();
+        let mut retained_bytes = 0;
+        for run in 0..22 {
+            let start = Instant::now();
+            for _ in 0..64 {
+                let preview = table_text(cell(black_box(&row), "text", 0));
+                retained_bytes = retained_bytes.max(preview.capacity());
+                black_box(preview);
+            }
+            if run > 0 {
+                samples.push(start.elapsed());
+            }
+        }
+        samples.sort_unstable();
+        println!(
+            "64 CLI previews: median {:?}, p95 {:?}, max string capacity {retained_bytes}",
+            samples[10], samples[19]
+        );
+        assert!(retained_bytes <= TABLE_CELL_CHARS * 8);
+        assert!(samples[10].as_millis() < 5);
+        assert!(samples[19].as_millis() < 15);
     }
 
     #[test]
