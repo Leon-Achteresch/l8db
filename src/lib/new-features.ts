@@ -217,6 +217,7 @@ export const NEW_FEATURES = {
   "table.infinite-scroll": "0.16.0",
   "table.filter.rules": "0.10.0",
   "table.filter.ai": "0.16.0",
+  "table.cell.json-editor.pointer": NEXT_FEATURE_VERSION,
   "table.cell.json-editor": "0.10.0",
   "table.extensions.table-json-viewer": "0.10.0",
   "query.select-row-limit": "0.7.0",

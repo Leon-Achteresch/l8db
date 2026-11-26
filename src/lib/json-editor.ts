@@ -258,6 +258,12 @@ export function parseTypedInput(
 
 const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
 
+export function toJsonPointer(path: JsonPath): string {
+  return path
+    .map((segment) => `/${String(segment).replaceAll("~", "~0").replaceAll("/", "~1")}`)
+    .join("");
+}
+
 export function toJsonPath(path: JsonPath): string {
   return path.reduce<string>(
     (out, segment) =>

@@ -1369,3 +1369,7 @@ Two 999-row results with 40 string columns, repeated groups of four rows and a r
 ## Long text in CLI table previews
 
 The CLI preview regression in cli::output formats 64 cells per sample, each holding 65,536 Unicode characters (112 KiB of UTF-8, including tabs and newlines). The original implementation exceeded the 5 ms median budget and the 22-sample benchmark took 23.09 s in the Rust test profile under shared host load. Borrowing text and inspecting at most 81 characters took 0.243 ms median and 0.368 ms p95 over 21 measured samples after warmup. Maximum observed output string capacity was 160 bytes. Limits are 5 ms median, 15 ms p95 and 640 bytes of output capacity. Measurements used macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and rustc 1.99.0. The test checks string preview formatting within the process, excluding database and terminal I/O.
+
+## JSON Pointer copying
+
+Formatting 500 paths of 33 segments, with slashes and tildes in every named segment, took 7.46 ms median and 14.02 ms p95 in 21 warm samples on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM, Bun 1.3.10. The budgets in tests/json-editor.test.ts are 15 and 40 ms. The formatter receives only the selected path. Browser tests exercised the status bar, row menu, root and read-only cells in Chromium and WebKit with an instrumented clipboard. Native clipboard and other operating systems were outside that test.

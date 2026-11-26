@@ -26,6 +26,7 @@ import {
   stringifyJson,
   toJsAccessor,
   toJsonPath,
+  toJsonPointer,
   toPostgresAccessor,
   toPostgresPath,
 } from "@/lib/json-editor";
@@ -178,6 +179,7 @@ export function useJsonEditor({
         value: () => (typeof value === "string" ? value : stringifyJson(value, 2)),
         key: () => String(path[path.length - 1] ?? ""),
         jsonpath: () => toJsonPath(path),
+        pointer: () => toJsonPointer(path),
         js: () => toJsAccessor(path),
         pg: () =>
           toPostgresAccessor(
@@ -188,8 +190,18 @@ export function useJsonEditor({
         pgpath: () => `${toPostgresAccessor([], columnName)} #> ${toPostgresPath(path)}`,
       };
       const out = textFor[format]();
-      void copyText(out);
-      toast.success("Kopiert", { description: out.length > 80 ? `${out.slice(0, 80)}…` : out });
+      void copyText(out).then(
+        () =>
+          toast.success("Kopiert", {
+            description:
+              format === "pointer" && !path.length
+                ? "JSON Pointer der Wurzel (leere Zeichenfolge)"
+                : out.length > 80
+                  ? `${out.slice(0, 80)}…`
+                  : out,
+          }),
+        () => {},
+      );
     };
     return {
       startEdit: (path, target) =>
