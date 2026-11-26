@@ -101,6 +101,7 @@ export const NEW_FEATURES = {
   "settings.general.organization": "0.17.0",
   "connections.team.help": "0.17.0",
   "onboarding.team-workflow": "0.17.0",
+  "settings.cli.markdown": NEXT_FEATURE_VERSION,
   "settings.cli.doctor": "0.17.0",
   "settings.statistics.overview": "0.14.0",
   "settings.cli.install": "0.18.0",

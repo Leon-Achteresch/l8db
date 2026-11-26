@@ -1,4 +1,7 @@
+import type { NewFeatureId } from "@/lib/new-features";
+
 export interface CliExample {
+  featureId?: NewFeatureId;
   command: string;
   description: string;
 }
@@ -37,8 +40,16 @@ export const CLI_CHEATSHEET: CliExampleGroup[] = [
     title: "Ausgabe & Optionen",
     examples: [
       { command: "-c <name>", description: "Andere Verbindung für einen Befehl" },
-      { command: "-o json | csv | tsv | ndjson", description: "Ausgabeformat wählen" },
+      {
+        command: "-o table | json | ndjson | csv | tsv | markdown",
+        description: "Ausgabeformat wählen",
+      },
       { command: "l8db q -o csv -f bericht.sql > bericht.csv", description: "Als CSV exportieren" },
+      {
+        command: "l8db q -o markdown -f bericht.sql > bericht.md",
+        description: "Ergebnis als Markdown-Tabelle speichern",
+        featureId: "settings.cli.markdown",
+      },
       { command: "l8db --help", description: "Alle Befehle, l8db <befehl> --help für Details" },
     ],
   },
