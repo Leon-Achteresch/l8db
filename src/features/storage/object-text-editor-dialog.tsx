@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { s3GetObjectText, s3HeadObject, s3PutObjectText } from "@/lib/db";
 import { ConfirmActionDialog } from "./confirm-action-dialog";
+import { ObjectReadError } from "./object-read-error";
 import type { BrowserRow } from "./use-object-listing";
 import { errorText, useStorageConnection } from "./use-storage-connection";
 
@@ -36,8 +37,8 @@ export function ObjectTextEditorDialog({
   const [etag, setEtag] = useState<string | null>(null);
   const content = useQuery({
     queryKey: ["s3", connection?.id, "text", bucket, row?.key],
-    queryFn: () => s3GetObjectText(url, bucket, row!.key),
-    enabled: row !== null,
+    queryFn: row ? () => s3GetObjectText(url, bucket, row.key) : skipToken,
+    retry: false,
     gcTime: 0,
   });
 
@@ -94,7 +95,7 @@ export function ObjectTextEditorDialog({
     setError(null);
     try {
       const head = await s3HeadObject(url, bucket, row.key);
-      const fresh = await content.refetch();
+      const fresh = await content.refetch({ throwOnError: true });
       setEtag(head.etag);
       if (fresh.data !== undefined) setText(fresh.data);
       setConflict(false);
@@ -119,7 +120,11 @@ export function ObjectTextEditorDialog({
             <Spinner /> Lade Inhalt…
           </div>
         ) : content.isError ? (
-          <p className="text-sm text-destructive">{errorText(content.error)}</p>
+          <ObjectReadError
+            error={content.error}
+            busy={busy || content.isFetching}
+            onRetry={() => (conflict ? void reload() : void content.refetch())}
+          />
         ) : (
           <Textarea
             aria-label="Objektinhalt"
@@ -129,8 +134,10 @@ export function ObjectTextEditorDialog({
             onChange={(event) => setText(event.target.value)}
           />
         )}
-        {error ? <p className="text-xs break-words text-destructive">{error}</p> : null}
-        {conflict ? (
+        {error && (!content.isError || error !== errorText(content.error)) ? (
+          <p className="text-xs break-words text-destructive">{error}</p>
+        ) : null}
+        {conflict && !content.isError ? (
           <div className="flex items-center gap-2 text-xs text-destructive">
             Das Objekt wurde inzwischen geändert.
             <Button size="xs" variant="outline" onClick={() => void reload()} disabled={busy}>
@@ -146,6 +153,7 @@ export function ObjectTextEditorDialog({
             <Button
               variant="outline"
               className="mr-auto"
+              disabled={busy || content.isPending || content.isError}
               onClick={() => {
                 try {
                   setText(JSON.stringify(JSON.parse(text), null, 2));

@@ -81,7 +81,7 @@ async fn s3_live_object_lifecycle() {
 
     let preview = s3.preview(&bucket, "in/big.bin", None, 100).await.unwrap();
     assert!(preview.truncated);
-    assert_eq!(preview.size, big.len() as u64);
+    assert_eq!(preview.size, Some(big.len() as u64));
 
     assert_eq!(
         s3.get_text(&bucket, "in/upload/a b.txt").await.unwrap(),

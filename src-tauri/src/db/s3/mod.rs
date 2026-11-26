@@ -2,6 +2,9 @@ pub mod client;
 pub mod commands;
 #[cfg(test)]
 mod live_tests;
+mod object_read;
+#[cfg(test)]
+mod object_read_tests;
 pub mod ops;
 pub mod select;
 pub mod transfer;

@@ -18,9 +18,15 @@ export function initialPreviewLimit(key: string, listedSize: number | null) {
 
 export function nextPreviewLimit(kind: PreviewKind, data: ObjectPreview, current: number) {
   if (!data.truncated || kind === "binary" || kind === "pdf") return null;
-  if (kind === "image")
-    return data.size <= IMAGE_PREVIEW_LIMIT && data.size > current ? data.size : null;
-  const next = Math.min(data.size, MAX_TEXT_BYTES, Math.max(TEXT_BYTES, current * 8));
+  if (kind === "image") {
+    const size = data.size ?? IMAGE_PREVIEW_LIMIT;
+    return size <= IMAGE_PREVIEW_LIMIT && size > current ? size : null;
+  }
+  const next = Math.min(
+    data.size ?? MAX_TEXT_BYTES,
+    MAX_TEXT_BYTES,
+    Math.max(TEXT_BYTES, current * 8),
+  );
   return next > current ? next : null;
 }
 

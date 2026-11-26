@@ -26,18 +26,35 @@ for (const engine of [chromium, webkit]) {
           picture: image.length,
           "updated.png": 32 * 1024 * 1024,
           notes: text.length,
+          "document.txt": text.length,
         };
         const reads: ReadRequest[] = [];
+        let documentPreviews = 0;
+        let editorReads = 0;
+        let writes = 0;
         await seedApp(page, 1);
+        await page.exposeFunction("readEditorText", () => {
+          editorReads++;
+          if (editorReads === 1 || editorReads === 3)
+            throw new Error("Der Speicher hat das Objekt nur teilweise geliefert.");
+          return editorReads === 2 ? "Vollständiger Text" : "Neue Fassung";
+        });
+        await page.exposeFunction("writeEditorText", () => {
+          writes++;
+          throw new Error("PreconditionFailed");
+        });
         await page.exposeFunction(
           "readPreviewRange",
           ({ key, maxBytes, versionId }: ReadRequest) => {
             reads.push({ key, maxBytes, versionId });
+            if (key === "document.txt" && ++documentPreviews === 1)
+              throw new Error("Speicher vorübergehend nicht erreichbar.");
             const png = key === "picture" || key === "updated.png";
+            const plain = key === "notes" || key === "document.txt";
             const size = png ? image.length : sizes[key as keyof typeof sizes];
             const bytes = png
               ? image.subarray(0, maxBytes)
-              : key === "notes"
+              : plain
                 ? text.subarray(0, maxBytes)
                 : Buffer.alloc(Math.min(size, maxBytes), 65);
             return {
@@ -45,11 +62,11 @@ for (const engine of [chromium, webkit]) {
                 ? "image/png"
                 : key === "report.pdf"
                   ? "application/pdf"
-                  : key === "notes"
+                  : plain
                     ? "text/plain"
                     : "image/jpeg",
               data: bytes.toString("base64"),
-              size,
+              size: (key === "picture" || key === "notes") && bytes.length < size ? null : size,
               truncated: bytes.length < size,
             };
           },
@@ -64,6 +81,8 @@ for (const engine of [chromium, webkit]) {
           localStorage.setItem(key, JSON.stringify(saved));
           const scope = window as unknown as {
             readPreviewRange(args: ReadRequest): Promise<unknown>;
+            readEditorText(): Promise<string>;
+            writeEditorText(): Promise<void>;
             __TAURI_INTERNALS__: { invoke(command: string, args?: ReadRequest): Promise<unknown> };
           };
           const bridge = scope.__TAURI_INTERNALS__;
@@ -75,7 +94,7 @@ for (const engine of [chromium, webkit]) {
               key,
               size,
               storage_class: "STANDARD",
-              etag: null,
+              etag: "first",
               last_modified: null,
             }));
             if (command === "s3_list_objects")
@@ -94,6 +113,9 @@ for (const engine of [chromium, webkit]) {
                 next_version_marker: null,
               };
             if (command === "s3_preview_object" && args) return scope.readPreviewRange(args);
+            if (command === "s3_get_object_text") return scope.readEditorText();
+            if (command === "s3_head_object") return { etag: "second" };
+            if (command === "s3_put_object_text") return scope.writeEditorText();
             return invoke(command, args);
           };
         }, sizes);
@@ -110,6 +132,7 @@ for (const engine of [chromium, webkit]) {
         await open("picture");
         const load = details.getByRole("button", { name: /Bildvorschau laden/ });
         await load.waitFor();
+        await details.getByText(/Größe unbekannt/).waitFor();
         expect(await details.getByRole("img").count()).toBe(0);
         await load.click();
         await page.waitForFunction(
@@ -117,9 +140,48 @@ for (const engine of [chromium, webkit]) {
             document.querySelector<HTMLImageElement>('img[alt="picture"]')?.naturalWidth === 128,
         );
         await open("notes");
+        await details.getByText(/Größe unbekannt.*erste 2.0 KB geladen/).waitFor();
         await details.getByRole("button", { name: "Mehr laden" }).click();
         await details.locator("pre").filter({ hasText: "Letzte Zeile" }).waitFor();
         expect(await details.getByRole("button", { name: "Mehr laden" }).count()).toBe(0);
+        await open("document.txt");
+        await details.getByRole("alert").waitFor();
+        expect(documentPreviews).toBe(1);
+        await details.getByRole("button", { name: /Erneut versuchen/ }).click();
+        await details.locator("pre").filter({ hasText: "Letzte Zeile" }).waitFor();
+        await details.getByRole("button", { name: "Inhalt bearbeiten" }).click();
+        const editor = page.getByRole("dialog");
+        await editor.getByRole("alert").filter({ hasText: "nur teilweise geliefert" }).waitFor();
+        expect(editorReads).toBe(1);
+        expect(await editor.getByRole("button", { name: "Speichern" }).isDisabled()).toBe(true);
+        expect(await editor.getByRole("textbox").count()).toBe(0);
+        await editor.getByRole("button", { name: /Erneut versuchen/ }).click();
+        const input = editor.getByRole("textbox", { name: "Objektinhalt" });
+        await page.waitForFunction(
+          () =>
+            document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Objektinhalt"]')
+              ?.value === "Vollständiger Text",
+        );
+        expect(await input.inputValue()).toBe("Vollständiger Text");
+        expect(editorReads).toBe(2);
+        expect(writes).toBe(0);
+        await input.fill("Lokaler Entwurf");
+        await editor.getByRole("button", { name: "Speichern" }).click();
+        await editor.getByRole("button", { name: "Neu laden" }).click();
+        await editor.getByRole("alert").filter({ hasText: "nur teilweise geliefert" }).waitFor();
+        expect(await editor.getByRole("button", { name: "Speichern" }).isDisabled()).toBe(true);
+        expect(await editor.getByRole("button", { name: "Trotzdem überschreiben" }).count()).toBe(
+          0,
+        );
+        await editor.getByRole("button", { name: /Erneut versuchen/ }).click();
+        await page.waitForFunction(
+          () =>
+            document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Objektinhalt"]')
+              ?.value === "Neue Fassung",
+        );
+        await editor.getByRole("button", { name: "Abbrechen" }).click();
+        expect(editorReads).toBe(4);
+        expect(writes).toBe(1);
         await page.getByRole("button", { name: "Versionen anzeigen" }).click();
         await open("updated.png");
         await load.click();
@@ -132,9 +194,11 @@ for (const engine of [chromium, webkit]) {
           { key: "huge.jpg", maxBytes: 2048, versionId: null },
           { key: "report.pdf", maxBytes: 2048, versionId: null },
           { key: "picture", maxBytes: 2048, versionId: null },
-          { key: "picture", maxBytes: image.length, versionId: null },
+          { key: "picture", maxBytes: 12 * 1024 * 1024, versionId: null },
           { key: "notes", maxBytes: 2048, versionId: null },
-          { key: "notes", maxBytes: text.length, versionId: null },
+          { key: "notes", maxBytes: 256 * 1024, versionId: null },
+          { key: "document.txt", maxBytes: 256 * 1024, versionId: null },
+          { key: "document.txt", maxBytes: 256 * 1024, versionId: null },
           { key: "updated.png", maxBytes: 2048, versionId: "v2" },
           { key: "updated.png", maxBytes: image.length, versionId: "v2" },
         ]);

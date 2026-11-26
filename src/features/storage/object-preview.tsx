@@ -12,8 +12,9 @@ import {
   nextPreviewLimit,
   objectPreviewContent,
 } from "./object-preview-content";
+import { ObjectReadError } from "./object-read-error";
 import { SimpleResultTable } from "./simple-result-table";
-import { errorText, useStorageConnection } from "./use-storage-connection";
+import { useStorageConnection } from "./use-storage-connection";
 
 export function ObjectPreview({
   bucket,
@@ -32,6 +33,7 @@ export function ObjectPreview({
   const preview = useQuery({
     queryKey: ["s3", connection?.id, "preview", bucket, objectKey, versionId, maxBytes],
     queryFn: () => s3PreviewObject(url, bucket, objectKey, maxBytes, versionId),
+    retry: false,
   });
   const data = preview.data;
   const content = useMemo(() => data && objectPreviewContent(objectKey, data), [objectKey, data]);
@@ -39,9 +41,11 @@ export function ObjectPreview({
 
   if (preview.isError)
     return (
-      <p role="alert" className="text-sm break-words text-destructive">
-        {errorText(preview.error)}
-      </p>
+      <ObjectReadError
+        error={preview.error}
+        busy={preview.isFetching}
+        onRetry={() => void preview.refetch()}
+      />
     );
   if (!data || !content)
     return (
@@ -55,9 +59,10 @@ export function ObjectPreview({
   return (
     <div>
       <p className="mb-2 text-[11px] text-muted-foreground">
-        {data.content_type ?? "unbekannter Typ"} · {formatBytes(data.size)}
+        {data.content_type ?? "unbekannter Typ"} ·{" "}
+        {data.size === null ? "Größe unbekannt" : formatBytes(data.size)}
         {hex &&
-          data.size > content.bytes &&
+          (data.truncated || (data.size !== null && data.size > content.bytes)) &&
           ` · erste ${formatBytes(content.bytes)} als Hex angezeigt`}
         {!hex &&
           content.kind !== "image" &&
@@ -79,7 +84,7 @@ export function ObjectPreview({
         ) : (
           !next && (
             <p className="text-sm text-muted-foreground">
-              {data.size > IMAGE_PREVIEW_LIMIT
+              {data.size !== null && data.size > IMAGE_PREVIEW_LIMIT
                 ? `Bild ist zu groß für die Vorschau (maximal ${formatBytes(IMAGE_PREVIEW_LIMIT)}).`
                 : "Bild wurde unvollständig geladen."}
             </p>
