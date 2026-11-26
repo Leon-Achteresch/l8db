@@ -56,22 +56,25 @@ fn is_params(tail: &str) -> bool {
         })
 }
 
-pub fn strip_params(value: &str) -> &str {
-    match value.rfind('?') {
-        Some(at) if is_params(&value[at + 1..]) => &value[..at],
-        _ => value,
-    }
+pub(crate) fn split_file_params(value: &str) -> (&str, &str) {
+    value
+        .rsplit_once('?')
+        .filter(|(_, query)| is_params(query))
+        .unwrap_or((value, ""))
+}
+
+fn params_are_read_only(query: &str) -> bool {
+    query
+        .split('&')
+        .any(|pair| matches!(pair, "mode=ro" | "immutable=1" | "access_mode=read_only"))
+}
+
+pub(crate) fn can_create_file(query: &str) -> bool {
+    query.split('&').any(|pair| pair == "mode=rwc") && !params_are_read_only(query)
 }
 
 pub fn opens_read_only(connection_string: &str) -> bool {
-    let value = connection_string.trim();
-    value.rfind('?').is_some_and(|at| {
-        let tail = &value[at + 1..];
-        is_params(tail)
-            && tail
-                .split('&')
-                .any(|pair| matches!(pair, "mode=ro" | "immutable=1" | "access_mode=read_only"))
-    })
+    params_are_read_only(split_file_params(connection_string.trim()).1)
 }
 
 pub fn file_path(connection_string: &str) -> Result<String, String> {
@@ -87,15 +90,14 @@ pub fn file_path(connection_string: &str) -> Result<String, String> {
         .or_else(|| value.strip_prefix("duckdb:"))
         .or_else(|| value.strip_prefix("file:"))
         .unwrap_or(value);
-    let stripped = strip_params(stripped);
+    let (stripped, _) = split_file_params(stripped);
     if stripped == ":memory:" || stripped.is_empty() {
         return Ok(":memory:".to_string());
     }
     let path = if stripped.contains('%') && !std::path::Path::new(stripped).exists() {
-        url::form_urlencoded::parse(format!("p={}", stripped.replace('+', "%2B")).as_bytes())
-            .next()
-            .map(|(_, v)| v.into_owned())
-            .unwrap_or_else(|| stripped.to_string())
+        percent_encoding::percent_decode_str(stripped)
+            .decode_utf8_lossy()
+            .into_owned()
     } else {
         stripped.to_string()
     };
@@ -113,7 +115,7 @@ pub fn existing_file_path(connection_string: &str) -> Result<String, String> {
     let path = file_path(connection_string)?;
     if path == ":memory:"
         || std::path::Path::new(&path).exists()
-        || connection_string.contains("mode=rwc")
+        || can_create_file(split_file_params(connection_string.trim()).1)
     {
         return Ok(path);
     }
@@ -1253,6 +1255,11 @@ mod tests {
             path.display().to_string()
         );
         assert_eq!(existing_file_path("sqlite::memory:").unwrap(), ":memory:");
+        for suffix in ["?hint=mode=rwc", "?mode=rwc-extra", "?immutable=1&mode=rwc"] {
+            assert!(existing_file_path(&format!("sqlite://{}{suffix}", path.display())).is_err());
+        }
+        let literal = dir.path().join("mode=rwc.sqlite");
+        assert!(existing_file_path(literal.to_str().unwrap()).is_err());
     }
 
     fn adapter() -> SqliteAdapter {
@@ -1409,9 +1416,16 @@ mod tests {
             file_path(&format!("{}/a+b%20c.sqlite", dir.path().display())).unwrap(),
             plus.display().to_string()
         );
+        assert_eq!(
+            file_path("sqlite:/tmp/a+b&c%20d.db?mode=ro").unwrap(),
+            "/tmp/a+b&c d.db"
+        );
         assert_eq!(file_path("file:/tmp/a.db").unwrap(), "/tmp/a.db");
-        assert_eq!(strip_params("/d/neu.sqlite?mode=rwc"), "/d/neu.sqlite");
-        assert_eq!(strip_params("/d/was?.sqlite"), "/d/was?.sqlite");
+        assert_eq!(
+            split_file_params("/d/neu.sqlite?mode=rwc"),
+            ("/d/neu.sqlite", "mode=rwc")
+        );
+        assert_eq!(split_file_params("/d/was?.sqlite"), ("/d/was?.sqlite", ""));
         let missing =
             existing_file_path(&format!("{}/fehlt ?x.sqlite", dir.path().display())).unwrap_err();
         assert!(missing.contains("fehlt ?x.sqlite"), "{missing}");

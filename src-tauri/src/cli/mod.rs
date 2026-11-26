@@ -54,6 +54,7 @@ Beispiele
   l8db doctor -o json
   l8db conn use prod
   l8db tui
+  l8db --url \"bestand.sqlite?mode=ro\" table list
   l8db q \"select count(*) from users\"
   l8db table rows users --where \"active\" --limit 20
   l8db query -c staging -f bericht.sql -o csv > bericht.csv

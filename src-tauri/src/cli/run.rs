@@ -1769,10 +1769,13 @@ pub(super) fn postgres_json(data_type: &str, value: Value) -> Value {
 }
 
 pub(super) async fn allow_write(target: &Target, approval: &Approval) -> Result<(), String> {
-    if target.read_only && (target.id.is_empty() || target.read_only_flag) {
-        return Err("--read-only: die Anweisung würde schreiben.".into());
-    }
     if target.read_only {
+        if target.read_only_flag {
+            return Err("--read-only: die Anweisung würde schreiben.".into());
+        }
+        if target.id.is_empty() {
+            return Err("Die Dateioptionen öffnen die Datenbank schreibgeschützt.".into());
+        }
         return Err(format!(
             "„{}“ ist schreibgeschützt, die Anweisung würde schreiben.\n  Schreibschutz oder Produktionssperre lassen sich nur in der App ändern.",
             target.name
