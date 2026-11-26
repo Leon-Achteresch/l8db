@@ -74,7 +74,7 @@ export function useObjectActions(bucket: string) {
     return s3Presign(url, bucket, row.key, {
       method,
       expiresSecs,
-      versionId: row.versionId && row.versionId !== "null" ? row.versionId : null,
+      versionId: method === "GET" ? (row.versionId ?? null) : null,
     });
   }
 

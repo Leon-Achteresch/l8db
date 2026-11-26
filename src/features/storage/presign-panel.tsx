@@ -50,8 +50,7 @@ export function PresignPanel({
       const value = await s3Presign(url, bucket, row.key, {
         method,
         expiresSecs: Number(expires),
-        versionId:
-          method === "GET" && row.versionId && row.versionId !== "null" ? row.versionId : null,
+        versionId: method === "GET" ? (row.versionId ?? null) : null,
         downloadName: method === "GET" && attachment ? basename(row.key) : undefined,
       });
       setLink(value);

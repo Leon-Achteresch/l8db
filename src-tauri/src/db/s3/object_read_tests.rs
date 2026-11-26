@@ -16,6 +16,35 @@ use super::{client::S3, tests::url};
 use crate::db::http_mock;
 
 #[tokio::test]
+async fn null_version_head_preserves_the_reported_or_requested_id() {
+    let server = http_mock::start_with_headers(|req| {
+        let headers = match req.route().rsplit('/').next().unwrap() {
+            "legacy" => vec![("x-amz-version-id".into(), "null".into())],
+            "current" => vec![("x-amz-version-id".into(), "v2".into())],
+            _ => vec![],
+        };
+        (200, headers, vec![])
+    });
+    let s3 = S3::connect(&url(&server)).await.unwrap();
+    for (key, requested, expected) in [
+        ("legacy", None, Some("null")),
+        ("current", None, Some("v2")),
+        ("no-header", Some("null"), Some("null")),
+        ("no-header", Some("v1"), Some("v1")),
+        ("no-header", None, None),
+        ("no-header", Some(""), None),
+    ] {
+        let head = s3.head_object("sample", key, requested).await.unwrap();
+        assert_eq!(head.version_id.as_deref(), expected);
+    }
+    let requests = server.requests();
+    assert_eq!(requests.len(), 6);
+    assert!(requests.iter().all(|r| r.method == "HEAD"));
+    assert_eq!(requests[2].query("versionId").as_deref(), Some("null"));
+    assert!(requests[4].query("versionId").is_none());
+}
+
+#[tokio::test]
 async fn preview_budget_when_the_server_returns_the_full_object() {
     const SIZE: usize = 8 * 1024 * 1024;
     let server = http_mock::start(|_| (200, vec![b'x'; SIZE]));
