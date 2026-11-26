@@ -265,6 +265,7 @@ export function CsvImportPanel({
               </Popover>
             </div>
             <CsvMappingTable
+              key={JSON.stringify([connection?.id, database, schema, targetTable, filePath])}
               headers={parsed.headers}
               sampleRow={parsed.rows[0]}
               mappings={mappings}
