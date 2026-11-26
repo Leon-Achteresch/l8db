@@ -1345,3 +1345,7 @@ Limits: per source schema at most one `list_tables`/`list_views` in that schema 
 | Reopen the mapped copy | 2 | 0.81 / 0.83 ms | 10 ms |
 
 Before the fix the same open sent no request and left 400 tabs in the wrong schema. Not covered: no real Oracle or MySQL database, network latency of the list calls is not part of the measurement, no Windows or Linux run, no CPU or heap throttling.
+
+## Search across open SQL tabs
+
+On macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10, searching 250,000 identical SQL lines for SELECT took 3.29 ms median and 6.11 ms p95 before incremental line scanning, then 0.09 and 0.12 ms. Each series used one warmup and 25 samples. The search returns the first 500 matches and confirms truncation at match 501. The regression in tests/tab-search.test.ts sets limits of 2 and 5 ms. These measurements cover the local search function. WebView rendering, database operations and other platforms were outside the workload.

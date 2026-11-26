@@ -27,7 +27,7 @@ export function TabSearchDialog({
   currentTabId,
 }: TabSearchDialogProps) {
   const navigate = useNavigate();
-  const tabs = useTableTabs((state) => state.tabs);
+  const tabs = useTableTabs((state) => (open ? state.tabs : null));
   const requestReveal = useQueryRevealStore((state) => state.requestReveal);
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
@@ -39,12 +39,13 @@ export function TabSearchDialog({
   useEffect(() => {
     if (!open) return;
     setQuery(initialQuery?.trim() ? initialQuery.trim() : "");
-    setTimeout(() => inputRef.current?.select(), 0);
+    const timer = setTimeout(() => inputRef.current?.select(), 0);
+    return () => clearTimeout(timer);
   }, [open, initialQuery]);
 
   const sources = useMemo<TabSearchSource[]>(
     () =>
-      tabs
+      (tabs ?? [])
         .filter((tab) => tab.kind === "query")
         .map((tab) => ({ id: tab.id, title: tab.title, sql: tab.sql })),
     [tabs],
@@ -72,6 +73,7 @@ export function TabSearchDialog({
         <div className="grid gap-3">
           <div className="flex items-center gap-2">
             <Input
+              aria-label="Offene Query-Tabs durchsuchen"
               ref={inputRef}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -125,9 +127,10 @@ export function TabSearchDialog({
               </Label>
             </div>
             <span className="ml-auto tabular-nums">
-              {sources.length} Tab{sources.length === 1 ? "" : "s"} · {result.matches.length}{" "}
-              Treffer
-              {result.truncated ? " (gekürzt)" : ""}
+              {sources.length} Tab{sources.length === 1 ? "" : "s"} ·{" "}
+              {result.truncated
+                ? `Erste ${result.matches.length} Treffer`
+                : `${result.matches.length} Treffer`}
             </span>
           </div>
 
