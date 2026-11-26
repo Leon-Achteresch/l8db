@@ -1377,3 +1377,7 @@ Formatting 500 paths of 33 segments, with slashes and tildes in every named segm
 ## Cancelled notebook exports
 
 With 100 SQL cells and 1,000 in-memory rows per cell, cancelling a Markdown or HTML export previously accessed 20,000 result values per cancellation. Across alternating formats the median was 8.123 ms and p95 was 19.398 ms. Opening the save dialog first reduced both the result reads and file writes on cancellation to zero. The measured median was 0.002 ms and p95 was 0.005 ms. Tests used Bun 1.3.10 on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM, one warmup and 21 measured cancellations. The limits in tests/perf-notebook-export.test.ts are 3 ms median and 10 ms p95. The Tauri dialog and filesystem transport were simulated, so timings exclude native dialog and disk latency.
+
+## Saving while editing a notebook
+
+At revision 34d37af2, eight overlapping save requests for the same 5,000-cell notebook started eight filesystem writes. In tests/notebook-save.test.ts, one initial request and 22,000 repeated requests for the same snapshot shared one save dialog, one pending promise and one filesystem write. Across 21 measured batches after warmup, dispatching 1,000 repeat requests took 0.027 ms median and 0.227 ms p95 (limits 3 and 10 ms). The test covers a single window with a simulated pending native write on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10. It excludes disk latency and simultaneous writes from separate windows.
