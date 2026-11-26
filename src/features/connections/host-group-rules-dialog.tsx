@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { type HostGroupRule, matchingHostRule } from "@/lib/connection-groups";
+import { countHostRuleMatches, type HostGroupRule } from "@/lib/connection-groups";
 import {
   type ConnectionEnvironment,
   createConnectionId,
@@ -36,6 +36,10 @@ export function HostGroupRulesDialog({ open, draft, onOpenChange }: Props) {
   const listRef = useListAnimation<HTMLDivElement>();
   const connections = useConnectionsStore((state) => state.connections);
   const [rules, setRules] = useState<HostGroupRule[]>([]);
+  const counts = useMemo(
+    () => (open ? countHostRuleMatches(connections, rules) : undefined),
+    [connections, rules, open],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -95,9 +99,7 @@ export function HostGroupRulesDialog({ open, draft, onOpenChange }: Props) {
             </p>
           )}
           {rules.map((rule, index) => {
-            const count = connections.filter(
-              (connection) => matchingHostRule(connection, rules)?.id === rule.id,
-            ).length;
+            const count = counts?.get(rule.id) ?? 0;
             return (
               <div key={rule.id} className="flex items-center gap-2">
                 <Input
