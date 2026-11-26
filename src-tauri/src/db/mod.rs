@@ -557,6 +557,9 @@ pub trait DatabaseAdapter: Send + Sync {
         table: Option<&str>,
         table_type: Option<&str>,
     ) -> Result<Vec<ColumnInfo>, String>;
+    async fn list_catalog_columns(&self, _schemas: &[String]) -> Result<Vec<ColumnInfo>, String> {
+        self.list_columns(None, None, None).await
+    }
     async fn catalog_fingerprint(&self) -> Result<Option<String>, String> {
         Ok(None)
     }

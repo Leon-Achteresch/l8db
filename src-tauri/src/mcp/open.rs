@@ -1090,6 +1090,124 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    async fn live_oracle_split_opens_tables_from_other_granted_schemas() {
+        const SCHEMAS: usize = 40;
+        const TABLES: usize = 25;
+        let admin_url = std::env::var("L8DB_E2E_ORACLE_ADMIN_URL")
+            .unwrap_or_else(|_| "oracle://system:testpw@127.0.0.1:11521/FREEPDB1".into());
+        let app = format!("L8DB_OPEN_{}", std::process::id());
+        let other = format!("{app}_B");
+        let (_dir, mut config, mut connection, mut server) =
+            super::super::sandbox::sqlite_fixture("");
+        connection.kind = DatabaseKind::Oracle;
+        connection.connection_string = admin_url.clone();
+        let system = adapter(&connection, &server.pool).unwrap();
+        let cleanup = format!(
+            "BEGIN
+  FOR s IN (SELECT sid, serial# AS serial FROM v$session WHERE username LIKE '{app}%') LOOP
+    BEGIN EXECUTE IMMEDIATE 'ALTER SYSTEM KILL SESSION ''' || s.sid || ',' || s.serial || ''' IMMEDIATE'; EXCEPTION WHEN OTHERS THEN NULL; END;
+  END LOOP;
+  FOR u IN (SELECT username FROM dba_users WHERE username LIKE '{app}%') LOOP
+    EXECUTE IMMEDIATE 'DROP USER ' || u.username || ' CASCADE';
+  END LOOP;
+END;"
+        );
+        let bulk = format!(
+            "BEGIN
+  FOR s IN 1..{SCHEMAS} LOOP
+    EXECUTE IMMEDIATE 'CREATE USER {app}_S' || s || ' IDENTIFIED BY \"Pw_l8db1\" QUOTA UNLIMITED ON USERS';
+    FOR t IN 1..{TABLES} LOOP
+      EXECUTE IMMEDIATE 'CREATE TABLE {app}_S' || s || '.T' || t || '(id NUMBER PRIMARY KEY, c1 VARCHAR2(20), c2 VARCHAR2(20), c3 NUMBER, c4 DATE, c5 NUMBER(10, 2), c6 VARCHAR2(40), c7 TIMESTAMP)';
+      EXECUTE IMMEDIATE 'GRANT SELECT ON {app}_S' || s || '.T' || t || ' TO {app}';
+    END LOOP;
+  END LOOP;
+END;"
+        );
+        for sql in [
+            cleanup.clone(),
+            format!("CREATE USER {app} IDENTIFIED BY \"Pw_l8db1\" QUOTA UNLIMITED ON USERS"),
+            format!("CREATE USER {other} IDENTIFIED BY \"Pw_l8db1\" QUOTA UNLIMITED ON USERS"),
+            format!("GRANT CREATE SESSION TO {app}"),
+            format!("CREATE TABLE {app}.t(id NUMBER PRIMARY KEY)"),
+            format!("INSERT INTO {app}.t VALUES (1)"),
+            format!("CREATE TABLE {other}.t2(id NUMBER PRIMARY KEY, name VARCHAR2(20))"),
+            format!("INSERT INTO {other}.t2 VALUES (1, 'b')"),
+            "COMMIT".into(),
+            format!("GRANT SELECT ON {other}.t2 TO {app}"),
+            bulk,
+        ] {
+            system
+                .execute_query(&sql)
+                .await
+                .unwrap_or_else(|e| panic!("{sql}: {e}"));
+        }
+        let mut url = url::Url::parse(&admin_url).unwrap();
+        url.set_username(&app.to_lowercase()).unwrap();
+        url.set_password(Some("Pw_l8db1")).unwrap();
+        connection.connection_string = url.to_string();
+        config.test_views = true;
+        let args = json!({"table": "t", "split": [{"table": format!("{other}.t2")}], "test": true});
+        let mut outcomes = Vec::new();
+        for schemas in [vec![], vec![app.clone(), other.clone()], vec![app.clone()]] {
+            connection.schemas = schemas;
+            config.connections = vec![connection.clone()];
+            server.forget_catalog(&connection);
+            outcomes.push(server.open(&config, &args).await);
+        }
+        connection.schemas = Vec::new();
+        config.connections = vec![connection.clone()];
+        let reader = adapter(&connection, &server.pool).unwrap();
+        let spread = |mut times: Vec<std::time::Duration>| {
+            times.sort();
+            (times[times.len() / 2], times[times.len() * 95 / 100])
+        };
+        let (mut narrow, mut prints, mut loads) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut stages, mut tables, mut retained) = (0, 0, 0);
+        for _ in 0..9 {
+            let started = std::time::Instant::now();
+            reader.list_columns(None, None, None).await.unwrap();
+            narrow.push(started.elapsed());
+            let started = std::time::Instant::now();
+            reader.catalog_fingerprint().await.unwrap();
+            prints.push(started.elapsed());
+            server.forget_catalog(&connection);
+            let before = super::super::objects::CALLS.with(|calls| calls.get());
+            let started = std::time::Instant::now();
+            let catalog = server.catalog(&config, &connection).await.unwrap();
+            loads.push(started.elapsed());
+            stages = super::super::objects::CALLS.with(|calls| calls.get()) - before;
+            tables = catalog.tables().list.len();
+            retained = catalog.retained_bytes();
+        }
+        std::mem::drop((reader, server));
+        let _ = system.execute_query(&cleanup).await;
+        let ((narrow_median, narrow_p95), (print_median, print_p95), (median, p95)) =
+            (spread(narrow), spread(prints), spread(loads));
+        eprintln!(
+            "oracle mcp catalog, {} granted schemas, {tables} tables, {} columns: load median {median:?} p95 {p95:?}, {stages} query stage, {retained} bytes retained; fingerprint median {print_median:?} p95 {print_p95:?}; current schema only (old scope) median {narrow_median:?} p95 {narrow_p95:?}",
+            SCHEMAS + 2,
+            8 * SCHEMAS * TABLES + 3
+        );
+        for outcome in &outcomes[..2] {
+            let report = outcome.as_ref().unwrap();
+            assert!(report.contains("1: 1 Zeilen; Spalten: ID"), "{report}");
+            assert!(
+                report.contains("2: 1 Zeilen; Spalten: ID, NAME"),
+                "{report}"
+            );
+        }
+        let hidden = outcomes[2].as_ref().unwrap_err();
+        assert!(hidden.contains("nicht gefunden"), "{hidden}");
+        assert!(tables >= SCHEMAS * TABLES + 2, "{tables} tables");
+        assert_eq!(stages, 1);
+        assert!(retained < 2 << 20, "{retained} bytes");
+        assert!(median.as_millis() < 1500, "median {median:?}");
+        assert!(p95.as_millis() < 3000, "p95 {p95:?}");
+        assert!(print_p95.as_millis() < 500, "fingerprint p95 {print_p95:?}");
+    }
+
+    #[tokio::test]
+    #[ignore]
     async fn live_postgres_dry_run_checks_links_and_stays_bounded() {
         let url = std::env::var("L8DB_E2E_PG_URL")
             .unwrap_or_else(|_| "postgres://postgres:testpw@127.0.0.1:5433/testdb".into());

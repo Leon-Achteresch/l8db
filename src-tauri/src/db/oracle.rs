@@ -2184,6 +2184,53 @@ impl OracleAdapter {
         }
     }
 
+    fn catalog_owner_filter(schemas: &[String], column: &str) -> String {
+        let owners = if schemas.is_empty() {
+            "SELECT username FROM all_users WHERE oracle_maintained = 'N'".to_string()
+        } else {
+            schemas
+                .iter()
+                .map(|schema| lit(schema))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        format!(
+            "({} OR {column} IN ({owners}))",
+            Self::owner_filter(None, column)
+        )
+    }
+
+    async fn columns_where(
+        &self,
+        owners: &str,
+        table: Option<&str>,
+        table_type: Option<&str>,
+    ) -> Result<Vec<ColumnInfo>, String> {
+        let source = match table_type {
+            Some(t) if t.eq_ignore_ascii_case("view") => {
+                " JOIN all_views v ON v.owner = c.owner AND v.view_name = c.table_name"
+            }
+            None if table.is_some() => "",
+            _ => " JOIN all_tables v ON v.owner = c.owner AND v.table_name = c.table_name",
+        };
+        let mut sql = format!("SELECT c.owner, c.table_name, c.column_name, c.data_type FROM all_tab_columns c{source} WHERE {owners}");
+        if let Some(t) = table {
+            sql.push_str(&format!(" AND c.table_name = {}", lit(t)));
+        }
+        sql.push_str(" ORDER BY c.owner, c.table_name, c.column_id");
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| ColumnInfo {
+                schema: s(r, 0),
+                table: s(r, 1),
+                name: s(r, 2),
+                data_type: s(r, 3),
+            })
+            .collect())
+    }
+
     async fn compile_body(&self, owner: &str, name: &str) -> Result<Option<CompileResult>, String> {
         if self
             .compile_state(owner, name, "PACKAGE BODY")
@@ -2625,8 +2672,8 @@ impl DatabaseAdapter for OracleAdapter {
     async fn catalog_fingerprint(&self) -> Result<Option<String>, String> {
         let rows = self
             .rows(format!(
-                "SELECT COUNT(*) || ':' || SUM(ORA_HASH(object_name || TO_CHAR(last_ddl_time, 'YYYYMMDDHH24MISS'))), CASE WHEN MAX(last_ddl_time) >= SYSDATE - 2 / 86400 THEN 1 ELSE 0 END FROM all_objects WHERE {} AND object_type = 'TABLE'",
-                Self::owner_filter(None, "owner")
+                "SELECT COUNT(*) || ':' || SUM(ORA_HASH(owner || '.' || object_name || TO_CHAR(last_ddl_time, 'YYYYMMDDHH24MISS'))), CASE WHEN MAX(last_ddl_time) >= SYSDATE - 2 / 86400 THEN 1 ELSE 0 END FROM all_objects WHERE {} AND object_type = 'TABLE'",
+                Self::catalog_owner_filter(&[], "owner")
             ))
             .await?;
         Ok(rows
@@ -2641,29 +2688,13 @@ impl DatabaseAdapter for OracleAdapter {
         table: Option<&str>,
         table_type: Option<&str>,
     ) -> Result<Vec<ColumnInfo>, String> {
-        let source = match table_type {
-            Some(t) if t.eq_ignore_ascii_case("view") => {
-                " JOIN all_views v ON v.owner = c.owner AND v.view_name = c.table_name"
-            }
-            None if table.is_some() => "",
-            _ => " JOIN all_tables v ON v.owner = c.owner AND v.table_name = c.table_name",
-        };
-        let mut sql = format!("SELECT c.owner, c.table_name, c.column_name, c.data_type FROM all_tab_columns c{source} WHERE {}", Self::owner_filter(schema, "c.owner"));
-        if let Some(t) = table {
-            sql.push_str(&format!(" AND c.table_name = {}", lit(t)));
-        }
-        sql.push_str(" ORDER BY c.table_name, c.column_id");
-        Ok(self
-            .rows(sql)
-            .await?
-            .iter()
-            .map(|r| ColumnInfo {
-                schema: s(r, 0),
-                table: s(r, 1),
-                name: s(r, 2),
-                data_type: s(r, 3),
-            })
-            .collect())
+        self.columns_where(&Self::owner_filter(schema, "c.owner"), table, table_type)
+            .await
+    }
+
+    async fn list_catalog_columns(&self, schemas: &[String]) -> Result<Vec<ColumnInfo>, String> {
+        self.columns_where(&Self::catalog_owner_filter(schemas, "c.owner"), None, None)
+            .await
     }
 
     async fn fetch_rows(

@@ -801,7 +801,9 @@ impl Server {
                 return duckdb_columns(adapter.as_ref()).await;
             }
             if connection.kind != DatabaseKind::Mongodb || adapter.list_schemas().await.is_ok() {
-                return adapter.list_columns(None, None, None).await;
+                return adapter
+                    .list_catalog_columns(connection.allowed_schemas())
+                    .await;
             }
             let mut out = Vec::new();
             for database in adapter.list_databases().await? {
