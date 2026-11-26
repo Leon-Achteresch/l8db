@@ -1,9 +1,5 @@
 import type { BaasConnection } from "@/features/baas/use-baas-connections";
 import {
-  isSelfHostedSupabaseDatabase,
-  supabaseReferenceOf,
-} from "@/features/baas/use-supabase-database";
-import {
   connectionSearchText,
   groupByServer,
   type HostGroupRule,
@@ -11,6 +7,7 @@ import {
   sortServerGroups,
 } from "@/lib/connection-groups";
 import { type SavedConnection, sortConnectionsByName } from "@/lib/connections/types";
+import { matchSupabaseProjects } from "./supabase-project-matches";
 
 export function createConnectionListing(
   connections: SavedConnection[],
@@ -19,18 +16,7 @@ export function createConnectionListing(
   favoriteKeys: string[],
   order: string[],
 ) {
-  const supabase = baas.filter((item) => item.provider === "supabase");
-  const references = new Set(supabase.map((item) => item.id));
-  const selfHosted = supabase.filter((item) => item.url);
-  const visible = supabase.length
-    ? connections.filter((connection) => {
-        const reference = supabaseReferenceOf(connection);
-        if (reference && references.has(reference)) return false;
-        return !selfHosted.some((item) =>
-          isSelfHostedSupabaseDatabase(connection, item.url ?? "", item.name),
-        );
-      })
-    : connections;
+  const { visible, databaseByProject } = matchSupabaseProjects(connections, baas);
   const sorted = sortConnectionsByName(visible);
   const groups = sortServerGroups(groupByServer(sorted, rules), favoriteKeys, order);
   const favorites = new Set(favoriteKeys);
@@ -70,5 +56,5 @@ export function createConnectionListing(
       connections: sorted.filter((connection) => matches.has(connection)),
     };
   }
-  return { groups, count: sorted.length, hasFavorites, filter };
+  return { groups, count: sorted.length, hasFavorites, filter, databaseByProject };
 }

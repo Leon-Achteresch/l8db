@@ -4,15 +4,18 @@ import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { BaasConnectionCard } from "@/features/baas/baas-connection-card";
 import type { BaasConnection } from "@/features/baas/use-baas-connections";
+import type { SavedConnection } from "@/lib/connections/types";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 
 const PAGE_SIZE = 24;
 
 export function CloudProjectCards({
   projects,
+  databaseByProject,
   onEditDatabase,
 }: {
   projects: BaasConnection[];
+  databaseByProject: ReadonlyMap<BaasConnection, SavedConnection>;
   onEditDatabase: (id: string) => void;
 }) {
   const [page, setPage] = useState(0);
@@ -59,6 +62,7 @@ export function CloudProjectCards({
         <BaasConnectionCard
           key={`${project.provider}:${project.id || project.name}`}
           connection={project}
+          database={databaseByProject.get(project)}
           onEditDatabase={onEditDatabase}
         />
       ))}

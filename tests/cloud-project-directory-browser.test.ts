@@ -13,6 +13,59 @@ const total = 257;
 
 for (const engine of [chromium, webkit]) {
   test.skipIf(!appUrl)(
+    `${engine.name()}: self-hosted projects open the matching saved SQL profile`,
+    async () => {
+      const browser = await engine.launch();
+      try {
+        const page = await browser.newPage();
+        await seedApp(page, 1);
+        await page.addInitScript(() => {
+          const tauri = (
+            window as unknown as {
+              __TAURI_INTERNALS__: { invoke(command: string, args?: unknown): Promise<unknown> };
+            }
+          ).__TAURI_INTERNALS__;
+          const invoke = tauri.invoke;
+          tauri.invoke = (command, args) => {
+            if (command === "supabase_is_connected") return Promise.resolve(true);
+            if (command === "supabase_projects")
+              return Promise.resolve({
+                projects: ["perf", "anderes Projekt"].map((name, i) => ({
+                  reference: `self-hosted-${i}`,
+                  name,
+                  api_url: "http://localhost:8000",
+                  self_hosted: true,
+                })),
+              });
+            return invoke(command, args);
+          };
+        });
+        await installAppRequestProbe(page);
+        await page.goto(`${appUrl}/connections`);
+        const saved = page
+          .locator("article")
+          .filter({ has: page.getByTitle("perf", { exact: true }) });
+        const other = page.locator("article").filter({ has: page.getByTitle("anderes Projekt") });
+        await saved.getByRole("button", { name: "SQL öffnen" }).waitFor();
+        await other.getByRole("button", { name: "Verbinden" }).waitFor();
+        const before = await appRequestSnapshot(page);
+        await saved.getByRole("button", { name: "perf Aktionen" }).click();
+        await page.getByRole("menuitem", { name: "Datenbankverbindung bearbeiten" }).click();
+        await page.getByRole("heading", { name: "Verbindung bearbeiten" }).waitFor();
+        await page.getByRole("heading", { name: "perf", exact: true }).waitFor();
+        await page.getByRole("button", { name: "Editor schließen" }).click();
+        await page.getByRole("textbox", { name: "Verbindungen suchen" }).fill("perf");
+        await saved.getByRole("button", { name: "SQL öffnen" }).waitFor();
+        expect(await other.isVisible()).toBe(false);
+        expect(requestsSince(before, await appRequestSnapshot(page)).databaseRequests).toBe(0);
+      } finally {
+        await browser.close();
+      }
+    },
+    60000,
+  );
+
+  test.skipIf(!appUrl)(
     `${engine.name()}: cloud-only project search, paging and profile import`,
     async () => {
       const browser = await engine.launch();
