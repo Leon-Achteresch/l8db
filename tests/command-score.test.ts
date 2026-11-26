@@ -117,3 +117,35 @@ test("Umlaute, ß und Akzente lassen sich ohne Sonderzeichen suchen", () => {
   expect(commandMatchRanges("grosse", "Größe ändern")).toEqual([{ start: 0, end: 5 }]);
   expect(commandMatchRanges("uber", "Übersicht")).toEqual([{ start: 0, end: 4 }]);
 });
+
+test("markiert ausgeschriebene Umlaute im ursprünglichen Namen", () => {
+  const text = "📁 Übersicht öffnen · Größe";
+  for (const [query, labels] of [
+    ["ueber", ["Über"]],
+    ["oeffnen groesse", ["öffnen", "Größe"]],
+    ["uber oeffnen", ["Über", "öffnen"]],
+    ["eu", []],
+  ] as const) {
+    expect(commandMatchRanges(query, text).map(({ start, end }) => text.slice(start, end))).toEqual(
+      labels,
+    );
+  }
+});
+
+test("begrenzt Hervorhebungen für 500 sichtbare Suchergebnisse", () => {
+  const items = Array.from({ length: 500 }, (_, i) => `📁 Übersicht öffnen · Größe ${i}`);
+  const times: number[] = [];
+  for (let run = 0; run < 22; run++) {
+    const start = performance.now();
+    let rangeCount = 0;
+    for (const item of items) rangeCount += commandMatchRanges("ueber groesse", item).length;
+    if (run) times.push(performance.now() - start);
+    expect(rangeCount).toBe(1000);
+  }
+  times.sort((a, b) => a - b);
+  console.log(
+    `500 Palettentreffer: Median ${times[10].toFixed(2)} ms, p95 ${times[19].toFixed(2)} ms`,
+  );
+  expect(times[10]).toBeLessThan(25);
+  expect(times[19]).toBeLessThan(60);
+});

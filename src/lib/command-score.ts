@@ -118,29 +118,47 @@ export function scoreNeedle(needle: string, item: Scorable) {
   return Math.max(whole, sum / tokens.length);
 }
 
+function addOriginalPositions(
+  matched: Set<number>,
+  positions: Set<number>,
+  text: string,
+  expand: boolean,
+) {
+  if (!positions.size) return;
+  let foldedIndex = 0;
+  let originalIndex = 0;
+  for (const character of text) {
+    const length = foldChar(character, expand).length;
+    let included = false;
+    for (let i = 0; i < length; i++) {
+      if (positions.delete(foldedIndex++)) included = true;
+    }
+    if (included) {
+      for (let i = 0; i < character.length; i++) matched.add(originalIndex + i);
+    }
+    if (!positions.size) break;
+    originalIndex += character.length;
+  }
+}
+
 export function commandMatchRanges(query: string, text: string) {
   const needle = commandNeedle(query);
   if (!needle) return [];
   const hay = fold(text);
-  const offsets: { start: number; end: number }[] = [];
-  if (!ASCII.test(text)) {
-    let start = 0;
-    for (const character of text) {
-      const end = start + character.length;
-      for (let i = 0; i < foldChar(character, false).length; i++) offsets.push({ start, end });
-      start = end;
-    }
-  }
-  const matched = new Set<number>();
+  const expanded = /[äöü]/i.test(text) ? fold(text, true) : hay;
+  const basePositions = new Set<number>();
+  const expandedPositions = new Set<number>();
   for (const token of needle.split(/\s+/)) {
-    const positions = matchPositions(token, hay);
+    const useExpanded = expanded !== hay && textScore(token, expanded) > textScore(token, hay);
+    const positions = matchPositions(token, useExpanded ? expanded : hay);
     if (!positions) continue;
-    for (const position of positions) {
-      const offset = offsets[position];
-      if (offset) {
-        for (let i = offset.start; i < offset.end; i++) matched.add(i);
-      } else matched.add(position);
-    }
+    const selected = useExpanded ? expandedPositions : basePositions;
+    for (const position of positions) selected.add(position);
+  }
+  const matched = ASCII.test(text) ? basePositions : new Set<number>();
+  if (matched !== basePositions) {
+    addOriginalPositions(matched, basePositions, text, false);
+    addOriginalPositions(matched, expandedPositions, text, true);
   }
   const ranges: { start: number; end: number }[] = [];
   for (const position of [...matched].sort((a, b) => a - b)) {
