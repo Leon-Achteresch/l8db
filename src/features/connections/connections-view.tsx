@@ -1,30 +1,15 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
 import { BaasConnectionCard } from "@/features/baas/baas-connection-card";
 import { useBaasConnections } from "@/features/baas/use-baas-connections";
-import {
-  isSelfHostedSupabaseDatabase,
-  supabaseReferenceOf,
-} from "@/features/baas/use-supabase-database";
 import { disconnectActiveConnection } from "@/features/connections/disconnect-button";
-import {
-  groupByServer,
-  groupKey,
-  type HostGroupRule,
-  matchesConnectionQuery,
-  type ServerGroup,
-  sortServerGroups,
-} from "@/lib/connection-groups";
-import {
-  type SavedConnection,
-  sortConnectionsByName,
-  useConnectionsStore,
-} from "@/lib/connections";
+import { groupKey, type HostGroupRule, type ServerGroup } from "@/lib/connection-groups";
+import { type SavedConnection, useConnectionsStore } from "@/lib/connections";
 import { openAppWindow } from "@/lib/db";
 import { useHasNewFeatures } from "@/lib/new-features";
 import { supports } from "@/lib/providers";
@@ -34,6 +19,7 @@ import { ConnectionEditor } from "./connection-editor";
 import { ConnectionExportDialog } from "./connection-export-dialog";
 import { ConnectionImportDialog } from "./connection-import-dialog";
 import { ConnectionPickCard } from "./connection-pick-card";
+import { createConnectionListing } from "./connections-view/connection-listing";
 import { DeleteConnectionDialog } from "./connections-view/delete-connection-dialog";
 import { DeleteServerGroupDialog } from "./connections-view/delete-group-dialog";
 import { ConnectionsEmptyState } from "./connections-view/empty-state";
@@ -78,39 +64,21 @@ export function ConnectionsView() {
   const deleting = connections.find((connection) => connection.id === deleteId);
   const activeConnection = connections.find((connection) => connection.id === activeId);
   const allBaasConnections = useBaasConnections();
-  const supabaseProjects = new Set(
-    allBaasConnections.filter((item) => item.provider === "supabase").map((item) => item.id),
+  const listing = useMemo(
+    () =>
+      createConnectionListing(
+        connections,
+        allBaasConnections,
+        hostGroupRules,
+        favoriteServerKeys,
+        serverOrder,
+      ),
+    [connections, allBaasConnections, hostGroupRules, favoriteServerKeys, serverOrder],
   );
-  const selfHostedSupabase = allBaasConnections.filter(
-    (item) => item.provider === "supabase" && item.url,
-  );
-  const listed = connections.filter((connection) => {
-    const reference = supabaseReferenceOf(connection);
-    if (reference && supabaseProjects.has(reference)) return false;
-    return !selfHostedSupabase.some((item) =>
-      isSelfHostedSupabaseDatabase(connection, item.url ?? "", item.name),
-    );
-  });
-  const filtered = sortConnectionsByName(
-    listed.filter((connection) => {
-      if (
-        favoritesOnly &&
-        !connection.favorite &&
-        !favoriteServerKeys.includes(groupKey(connection, hostGroupRules))
-      )
-        return false;
-      return matchesConnectionQuery(connection, query);
-    }),
-  );
-  const allGroups = sortServerGroups(
-    groupByServer(sortConnectionsByName(listed), hostGroupRules),
-    favoriteServerKeys,
-    serverOrder,
-  );
-  const groups = sortServerGroups(
-    groupByServer(filtered, hostGroupRules),
-    favoriteServerKeys,
-    serverOrder,
+  const allGroups = listing.groups;
+  const { connections: filtered, groups } = useMemo(
+    () => listing.filter(query, favoritesOnly),
+    [listing, query, favoritesOnly],
   );
   const grouped = allGroups.some((group) => group.connections.length > 1 || group.ruleId);
   const effectiveKey =
@@ -122,7 +90,7 @@ export function ConnectionsView() {
       ? groups.filter((group) => group.key === effectiveKey)
       : groups;
   const needle = query.trim().toLowerCase();
-  const totalConnections = listed.length + allBaasConnections.length;
+  const totalConnections = listing.count + allBaasConnections.length;
   const baasConnections = allBaasConnections.filter(
     (item) =>
       !favoritesOnly &&
@@ -308,7 +276,7 @@ export function ConnectionsView() {
                 setInitialUrl(url);
               }}
             />
-          ) : favoritesOnly && filtered.length === 0 ? (
+          ) : favoritesOnly && !listing.hasFavorites ? (
             <ConnectionsNoFavoritesState setFavoritesOnly={setFavoritesOnly} />
           ) : filtered.length === 0 && baasCards.length === 0 ? (
             <ConnectionsNoResultsState query={query} setQuery={setQuery} />
