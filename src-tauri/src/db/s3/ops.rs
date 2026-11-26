@@ -567,7 +567,8 @@ impl S3 {
         let get = |name: &str| header(&response, name);
         Ok(ObjectHead {
             key: key.to_string(),
-            version_id: get("x-amz-version-id").filter(|v| v != "null"),
+            version_id: get("x-amz-version-id")
+                .or_else(|| version_id.filter(|id| !id.is_empty()).map(str::to_owned)),
             size: get("content-length")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(0),

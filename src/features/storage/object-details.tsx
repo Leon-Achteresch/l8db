@@ -47,7 +47,7 @@ export function ObjectDetails({
   });
   const tab = detailsTab.id === row.id ? detailsTab.tab : "preview";
   const setTab = (next: string) => setDetailsTab({ id: row.id, tab: next });
-  const versionId = row.versionId && row.versionId !== "null" ? row.versionId : null;
+  const versionId = row.versionId ?? null;
   const editable =
     !readOnly && !row.versionId && ["text", "json", "csv"].includes(previewKind(row.key, null));
   const canSelect = selectFormat(row.key) !== null && (!row.versionId || row.isLatest);
