@@ -1432,3 +1432,16 @@ Run `cargo test --lib cli::output::markdown -- --nocapture --test-threads=1` in 
 Resolving 512 existing local SQLite paths with four different option strings took 2.94 ms median and 3.34 ms p95 over 21 warm batches. The CLI retained the requested read-only state for 384 paths and the ordinary access mode for the other 128. Each returned URL was dropped before resolving the next one. The largest URL capacity was 158 bytes. The regression test permits 25 ms median, 60 ms p95 and at most twice the input length plus 16 bytes of URL capacity.
 
 Run `cargo test --lib cli::connect::tests::file_options_bound_resolution_cost -- --nocapture` in `src-tauri`. These timings cover local filesystem metadata and URL resolution without opening a database connection. Separate tests exercise real SQLite and DuckDB connections and the TUI write protection. Measurements used the unoptimized Rust 1.99.0 test profile on macOS 27.2.1 arm64, Apple M3 and 16 GiB RAM.
+
+## Grouping connections by host rules
+
+With 1,024 PostgreSQL connection entries and 16 two-pattern rules, the connection manager produced 32 groups. Half of the connections matched a rule. The original grouping compiled 25,088 regular expressions per pass. The rule editor independently recomputed the winning rule for each counter, compiling 401,408 expressions. Each rule now keeps its compiled patterns in a weakly keyed cache. All 16 rules together compiled 32 expressions on first use, zero on an unchanged pass and one when replacing a rule with a single new pattern. Connection URLs are read once per entry per pass. The preview stores one count per matching rule.
+
+| Operation | Previous median / p95 | New median / p95 | Previous / new URL reads per pass |
+| --- | ---: | ---: | ---: |
+| Group connections | 11.98 / 12.72 ms | 1.56 / 1.69 ms | 2,576 / 1,024 |
+| Preview all rule counts | 182.79 / 188.56 ms | 1.36 / 1.42 ms | 32,768 / 1,024 |
+
+The in-memory measurements used one warmup and 21 timed passes on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10. Run `bun test tests/host-group-rules.test.ts`. The budgets for either pass are 10 ms median and 24 ms p95. A separate production-build browser check used simulated connections in Chromium and WebKit. Reordering overlapping rules, editing a pattern, saving and discarding an edit issued zero database requests.
+
+The existing 200-tab environment marker test in tests/perf-split-groups.test.ts observed one `list_providers` call when run individually, failing its zero-request assertion on both the parent commit 55f2057b and the changed code.

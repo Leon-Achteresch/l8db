@@ -19,40 +19,69 @@ export interface HostGroupRule {
   environment?: ConnectionEnvironment | null;
 }
 
-function hostPatternRegexes(pattern: string): RegExp[] {
-  return pattern
+type Endpoint = ReturnType<typeof connectionSummary>;
+
+interface CompiledHostPatterns {
+  source: string;
+  patterns: { regex: RegExp; includeLabel: boolean }[];
+}
+
+const compiledHostPatterns = new WeakMap<HostGroupRule, CompiledHostPatterns>();
+
+function patternsFor(rule: HostGroupRule) {
+  const cached = compiledHostPatterns.get(rule);
+  if (cached?.source === rule.pattern) return cached.patterns;
+  const patterns = rule.pattern
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean)
-    .map(
-      (part) =>
-        new RegExp(
-          `^${part
-            .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-            .replace(/\*/g, ".*")
-            .replace(/\?/g, ".")}$`,
-          "i",
-        ),
-    );
+    .map((part) => ({
+      includeLabel: /[:/]/.test(part),
+      regex: new RegExp(
+        `^${part
+          .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+          .replace(/\*/g, ".*")
+          .replace(/\?/g, ".")}$`,
+        "i",
+      ),
+    }));
+  compiledHostPatterns.set(rule, { source: rule.pattern, patterns });
+  return patterns;
 }
 
-export function matchingHostRule(
-  connection: Pick<SavedConnection, "connectionString" | "kind">,
-  rules: HostGroupRule[],
-): HostGroupRule | undefined {
-  const host = connectionSummary(connection.connectionString, connection.kind).host;
+function endpointLabel(endpoint: Endpoint) {
+  const host = endpoint.port ? `${endpoint.host}:${endpoint.port}` : endpoint.host;
+  return endpoint.database && endpoint.database !== endpoint.host
+    ? `${host}/${endpoint.database}`
+    : host;
+}
+
+function firstHostRule(host: string, label: string, rules: HostGroupRule[]) {
   const bare = host.replace(/^\[|\]$/g, "");
-  const label = serverLabel(connection);
   return rules.find((rule) =>
-    rule.pattern
-      .split(",")
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .some((part) => {
-        const [regex] = hostPatternRegexes(part);
-        return regex.test(host) || regex.test(bare) || (/[:/]/.test(part) && regex.test(label));
-      }),
+    patternsFor(rule).some(
+      ({ regex, includeLabel }) =>
+        regex.test(host) ||
+        (bare !== host && regex.test(bare)) ||
+        (includeLabel && regex.test(label)),
+    ),
   );
+}
+
+export function matchingHostRule(connection: Groupable, rules: HostGroupRule[]) {
+  if (!rules.length) return undefined;
+  const endpoint = connectionSummary(connection.connectionString, connection.kind);
+  return firstHostRule(endpoint.host, endpointLabel(endpoint), rules);
+}
+
+export function countHostRuleMatches(connections: Groupable[], rules: HostGroupRule[]) {
+  const counts = new Map<string, number>();
+  if (!rules.length) return counts;
+  for (const connection of connections) {
+    const rule = matchingHostRule(connection, rules);
+    if (rule) counts.set(rule.id, (counts.get(rule.id) ?? 0) + 1);
+  }
+  return counts;
 }
 
 export function suggestHostPattern(connection: Pick<SavedConnection, "connectionString" | "kind">) {
@@ -61,12 +90,19 @@ export function suggestHostPattern(connection: Pick<SavedConnection, "connection
   return `${prefix || host}*`;
 }
 
-export function groupKey(
-  connection: Pick<SavedConnection, "connectionString" | "kind">,
-  rules: HostGroupRule[],
-) {
-  const rule = matchingHostRule(connection, rules);
-  return rule ? `rule|${rule.id}` : serverKey(connection);
+function serverGroup(connection: Groupable, rules: HostGroupRule[]) {
+  const endpoint = connectionSummary(connection.connectionString, connection.kind);
+  const label = endpointLabel(endpoint);
+  const rule = firstHostRule(endpoint.host, label, rules);
+  return {
+    key: rule ? `rule|${rule.id}` : `${connection.kind}|${label.toLowerCase()}`,
+    label: rule ? rule.name.trim() || rule.pattern : label,
+    ruleId: rule?.id,
+  };
+}
+
+export function groupKey(connection: Groupable, rules: HostGroupRule[]) {
+  return serverGroup(connection, rules).key;
 }
 
 export function sortServerGroups(
@@ -110,11 +146,7 @@ export function matchesConnectionQuery(connection: SavedConnection, query: strin
 }
 
 export function serverLabel(connection: Pick<SavedConnection, "connectionString" | "kind">) {
-  const endpoint = connectionSummary(connection.connectionString, connection.kind);
-  const host = endpoint.port ? `${endpoint.host}:${endpoint.port}` : endpoint.host;
-  return endpoint.database && endpoint.database !== endpoint.host
-    ? `${host}/${endpoint.database}`
-    : host;
+  return endpointLabel(connectionSummary(connection.connectionString, connection.kind));
 }
 
 export function serverKey(connection: Pick<SavedConnection, "connectionString" | "kind">) {
@@ -127,18 +159,10 @@ export function groupByServer<T extends Groupable = SavedConnection>(
 ): ServerGroup<T>[] {
   const groups = new Map<string, ServerGroup<T>>();
   for (const connection of connections) {
-    const rule = matchingHostRule(connection, rules);
-    const key = rule ? `rule|${rule.id}` : serverKey(connection);
-    const group = groups.get(key);
+    const host = serverGroup(connection, rules);
+    const group = groups.get(host.key);
     if (group) group.connections.push(connection);
-    else
-      groups.set(key, {
-        key,
-        label: rule ? rule.name.trim() || rule.pattern : serverLabel(connection),
-        kind: connection.kind,
-        connections: [connection],
-        ruleId: rule?.id,
-      });
+    else groups.set(host.key, { ...host, kind: connection.kind, connections: [connection] });
   }
   return [...groups.values()];
 }
