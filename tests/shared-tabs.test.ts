@@ -794,3 +794,132 @@ test("a compressed link that inflates to 50 MB is rejected quickly", async () =>
   expect(await shared.parseSharedTabLink(`l8db://tab/b${body}`)).toBeNull();
   expect(await shared.parseSharedTabLink(`l8db://tab/z${body}`)).toBeNull();
 }, 5_000);
+
+async function oracleSplit() {
+  const { useSplitView } = await import("../src/lib/split-view");
+  const production = addConnection(
+    "APP_PROD@PROD",
+    "oracle://APP_PROD@prod.example.com:1521/PROD",
+    {
+      kind: "oracle",
+    },
+  );
+  const testing = addConnection("APP_TEST@TEST", "oracle://APP_TEST@test.example.com:1521/TEST", {
+    kind: "oracle",
+  });
+  useSplitView.setState({
+    panes: [],
+    paneTabs: [],
+    layout: null,
+    masters: [],
+    focusedPane: 0,
+    byConnection: {},
+    paneConnections: {},
+    activeGroup: null,
+    groups: {},
+    closedTabs: {},
+    openGroups: {},
+    away: true,
+  });
+  useConnectionsStore.getState().setActiveId(production.id);
+  const tabs = useTableTabs.getState();
+  tabs.openTab({ schema: "APP_PROD", table: "ORDERS", entityType: "table" });
+  tabs.openTab({ schema: "APP_PROD", table: "V_OPEN_ORDERS", entityType: "view" });
+  tabs.openTab({ schema: "SHARED", table: "COUNTRIES", entityType: "table" });
+  useSplitView.getState().split({
+    activeKey: "table:APP_PROD.ORDERS",
+    key: "table:APP_PROD.V_OPEN_ORDERS",
+    edge: "right",
+  });
+  useSplitView.getState().moveTab("table:SHARED.COUNTRIES", 0);
+  const id = useSplitView.getState().activeGroup ?? "";
+  useSplitView.getState().setGroupShared(id, true);
+  useConnectionsStore.getState().setActiveId(testing.id);
+  const requests: string[] = [];
+  invokeHandler = (command, args) => {
+    requests.push(command);
+    if (!String(args?.connectionString ?? "").includes("TEST")) return [];
+    const schema = args?.schema;
+    if (command === "list_schemas") return ["APP_TEST", "SHARED", "SYS"];
+    if (command === "list_tables" && schema === "APP_TEST")
+      return [{ schema: "APP_TEST", name: "ORDERS" }];
+    if (command === "list_tables" && schema === "SHARED")
+      return [{ schema: "SHARED", name: "COUNTRIES" }];
+    if (command === "list_views" && schema === "APP_TEST")
+      return [{ schema: "APP_TEST", name: "V_OPEN_ORDERS" }];
+    return [];
+  };
+  const source = useSplitView.getState().groups[production.id]?.[0];
+  if (!source) throw new Error("keine Gruppe");
+  return { production, testing, id, source, requests };
+}
+
+const IN_TEST = ["table:APP_TEST.ORDERS", "table:APP_TEST.V_OPEN_ORDERS", "table:SHARED.COUNTRIES"];
+
+test("a split view shared by another Oracle user opens its tables and views in the own schema", async () => {
+  const { useSplitView, groupPaneTabs } = await import("../src/lib/split-view");
+  const { tabKey } = await import("../src/lib/table-tabs");
+  const { production, testing, id, source, requests } = await oracleSplit();
+  const copy = (await open.openableGroup(source, production.id)) ?? "";
+  expect(useSplitView.getState().openGroup(copy)).not.toBeNull();
+
+  expect(useTableTabs.getState().tabs.map(tabKey).sort()).toEqual(IN_TEST);
+  expect(
+    useTableTabs
+      .getState()
+      .tabs.find((tab) => tab.kind === "table" && tab.table === "V_OPEN_ORDERS"),
+  ).toMatchObject({ entityType: "view" });
+  const stored = useSplitView.getState().groups[testing.id]?.find((group) => group.id === copy);
+  expect(stored && groupPaneTabs(stored).flat().map(tabKey).sort()).toEqual(IN_TEST);
+  expect(useSplitView.getState().groups[production.id]?.[0]).toMatchObject({ id, shared: true });
+  expect(groupPaneTabs(source).flat().map(tabKey).sort()).toEqual([
+    "table:APP_PROD.ORDERS",
+    "table:APP_PROD.V_OPEN_ORDERS",
+    "table:SHARED.COUNTRIES",
+  ]);
+  expect(requests).toEqual(["list_tables", "list_schemas", "list_tables", "list_tables"]);
+
+  requests.length = 0;
+  expect(await open.openableGroup(stored ?? source)).toBe(copy);
+  expect(requests).toEqual(["list_tables", "list_tables"]);
+});
+
+test("copies made before the schema fix are repaired on open, same-named comparisons stay remote", async () => {
+  const { useSplitView, groupPaneTabs } = await import("../src/lib/split-view");
+  const { tabKey } = await import("../src/lib/table-tabs");
+  const { production, testing, source } = await oracleSplit();
+  const broken = useSplitView.getState().adoptGroup(source.id, production.id) ?? "";
+  const old = useSplitView.getState().groups[testing.id]?.find((group) => group.id === broken);
+  if (!old) throw new Error("keine Kopie");
+  expect(groupPaneTabs(old).flat().map(tabKey)).toContain("table:APP_PROD.ORDERS");
+  expect(await open.openableGroup(old)).toBe(broken);
+  expect(useSplitView.getState().openGroup(broken)).not.toBeNull();
+  expect(useTableTabs.getState().tabs.map(tabKey).sort()).toEqual(IN_TEST);
+
+  useSplitView.setState((state) => ({
+    groups: {
+      ...state.groups,
+      [testing.id]: (state.groups[testing.id] ?? []).map((group) =>
+        group.id === broken
+          ? {
+              ...old,
+              paneTabs: [
+                [{ kind: "table", schema: "APP_PROD", table: "ORDERS", entityType: "table" }],
+                [{ kind: "table", schema: "APP_TEST", table: "ORDERS", entityType: "table" }],
+              ],
+            }
+          : group,
+      ),
+    },
+  }));
+  const compare = useSplitView.getState().groups[testing.id]?.find((group) => group.id === broken);
+  if (!compare) throw new Error("kein Vergleich");
+  await open.openableGroup(compare);
+  const lists = groupPaneTabs(
+    useSplitView.getState().groups[testing.id]?.find((group) => group.id === broken) ?? compare,
+  );
+  expect(lists.map((list) => list.map(tabKey))).toEqual([
+    [tabKey({ kind: "table", schema: "APP_PROD", table: "ORDERS", connectionId: production.id })],
+    ["table:APP_TEST.ORDERS"],
+  ]);
+});

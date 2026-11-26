@@ -1291,7 +1291,7 @@ Not covered: no Windows machine, WebView2 build, weak GPU or CPU throttling was 
 
 A tab group now stores every tab of every pane (`SplitGroup.paneTabs`, only written when a pane holds more than one tab), a tab bar can be saved as a group without a split (`saveTabs`), and a group shared from another connection opens in the active connection as a copy (`adoptGroup`). The last state of a closed query or tool tab that a group still references lives once per connection in `closedTabs` (query tabs inside a group are stored without their SQL); it is dropped again as soon as the tab is open, when no group references it after an overwrite, a deletion or a live split following the close, and on hydration. A fresh split reuses an existing group only when the tabs of every pane match, so a group with more tabs is never overwritten by splitting its two visible tabs again.
 
-Limits: 50 groups per connection (unnamed `Ansicht N` views that are not active are evicted first, otherwise saving is refused), no database request and no timer in any group operation, one store write per operation, no store notification for no-op calls. `closedTabs` holds at most one copy per closed query or tool tab that a group references; its size is bounded by the SQL the user typed, not by the number of groups.
+Limits: 50 groups per connection (unnamed `Ansicht N` views that are not active are evicted first, otherwise saving is refused), no timer in any group operation, no database request except the schema check when a copied group opens (see below), one store write per operation, no store notification for no-op calls. `closedTabs` holds at most one copy per closed query or tool tab that a group references; its size is bounded by the SQL the user typed, not by the number of groups.
 
 Measured on macOS 27.2.1, arm64, Apple M3 (8 cores), 16 GiB RAM, Bun 1.4.3, mocked Tauri transport, no CPU throttling. Nine measured runs follow two warmups.
 
@@ -1330,3 +1330,18 @@ Resolving pane tabs through one cached key map replaced four linear scans per st
 Browser: `L8DB_TAB_BROWSER=1 bun test tests/tab-groups-browser.test.ts` passed once each in Playwright Chromium and WebKit against the production build (save, rename with pointer movement, cancel, commit by clicking outside the menu, overwrite, reopen after closing, open from another connection, close the group, reload, delete, switch connection).
 
 Not covered: no Windows or Linux run, no WebView2, no CPU or heap throttling (not run on this Mac), no real database, no measurement of renderer heap or of the IndexedDB write that follows a store update. Groups whose query tabs were closed while another connection was active do not keep that SQL.
+
+### Tab groups from another connection map the schema (2026-11-26)
+
+Opening a group from another connection kept the source schema, so a group saved by Oracle user `APP_PROD` opened `APP_PROD.ORDERS` under `APP_TEST` and failed with ORA-00942 (MySQL: other database name). `openableGroup` (`src/lib/shared-tab-open.ts`) now checks each source schema once in the active connection and, when the object is missing there, maps it to the connection's own default schema (`retargetGroup`), like pasted tab links do. Copies made before the fix are repaired the next time they open. Opening a group of the own connection stays without any database request.
+
+Limits: per source schema at most one `list_tables`/`list_views` in that schema and one in the own schema, at most one `list_schemas` per open, requests run one after another and never per tab; nothing is cached across opens; a connection switch during the check skips the mapping.
+
+`tests/perf-tab-groups.test.ts` (scenario `tab-groups-schema-mapping`), same machine and runtime as above: 500 tabs in two panes (400 in `APP_PROD`, 100 in `SHARED`, every fifth a view), target lists 400 and 100 objects.
+
+| Operation | Requests per open | Median / p95 | Gate (p95) |
+| --- | --- | --- | --- |
+| Copy, map, open, delete and close 500 tabs | 4 | 3.32 / 3.86 ms | 40 ms |
+| Reopen the mapped copy | 2 | 0.81 / 0.83 ms | 10 ms |
+
+Before the fix the same open sent no request and left 400 tabs in the wrong schema. Not covered: no real Oracle or MySQL database, network latency of the list calls is not part of the measurement, no Windows or Linux run, no CPU or heap throttling.

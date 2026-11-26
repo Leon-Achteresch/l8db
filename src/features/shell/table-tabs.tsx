@@ -32,6 +32,7 @@ import { onHotkeyAction } from "@/lib/hotkeys";
 import { tabListKeyDown } from "@/lib/keyboard-nav";
 import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 import { useSettingsStore } from "@/lib/settings";
+import { openableGroup } from "@/lib/shared-tab-open";
 import type { SplitEdge } from "@/lib/split-layout";
 import {
   groupPaneTabs,
@@ -202,13 +203,17 @@ export function TableTabs() {
     if (tab) navigateToTab(navigate, tab);
   };
 
-  const handleOpenGroup = (group: SplitGroup, connectionId?: string) => {
+  const handleOpenGroup = async (group: SplitGroup, connectionId?: string) => {
     if (connectionId && !activeConnection) {
       void handleSwitchGroup(group, connectionId);
       return;
     }
+    if (!connectionId && hasSplit && group.id === activeGroup) {
+      handleShowSplit();
+      return;
+    }
+    const id = await openableGroup(group, connectionId);
     const state = useSplitView.getState();
-    const id = connectionId ? state.adoptGroup(group.id, connectionId) : group.id;
     if (!id) {
       toast.error(`„${group.name}“ lässt sich hier nicht öffnen`);
       return;
@@ -300,7 +305,7 @@ export function TableTabs() {
               name={group.name}
               members={group.tabs.map((tab) => (tab ? tabLabel(tab) : "Leer"))}
               active={false}
-              onOpen={() => handleOpenGroup(group)}
+              onOpen={() => void handleOpenGroup(group)}
               onRename={(name) => renameGroup(group.id, name)}
               onClose={() => closeView(group.id)}
               onDelete={() => deleteGroup(group.id)}

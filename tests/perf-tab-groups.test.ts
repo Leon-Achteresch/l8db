@@ -2,11 +2,15 @@ import { expect, mock, test } from "bun:test";
 import { measureScenario, reportScenario } from "../scripts/performance-report";
 
 const invocations: string[] = [];
+let respond: (command: string, args?: Record<string, unknown>) => unknown = () => null;
 mock.module("@tauri-apps/api/core", () => ({
-  invoke: async (command: string) => {
+  invoke: async (command: string, args?: Record<string, unknown>) => {
     invocations.push(command);
-    return null;
+    return respond(command, args);
   },
+}));
+mock.module("@/router", () => ({
+  router: { navigate: async () => undefined, preloadRoute: async () => undefined },
 }));
 
 const storage = new Map<string, string>();
@@ -222,4 +226,83 @@ test("tab groups with hundreds of tabs save, reopen and cross connections cheapl
   expect(foreign.p95Ms / 100).toBeLessThan(0.5);
   expect(idle.p95Ms / 100).toBeLessThan(0.1);
   expect(bytes).toBeLessThan(1_000_000);
+});
+
+test("a large group from another Oracle user maps its schema with a constant number of requests", async () => {
+  const { openableGroup } = await import("../src/lib/shared-tab-open");
+  const oracle = (user: string) =>
+    useConnectionsStore.getState().addConnection({
+      name: `${user}@DB`,
+      kind: "oracle",
+      connectionString: `oracle://${user}@${user.toLowerCase()}.example.com:1521/DB`,
+      sslMode: "prefer",
+    });
+  const home = oracle("APP_PROD");
+  const target = oracle("APP_TEST");
+  useConnectionsStore.getState().setActiveId(home.id);
+  const tabs: Tab[] = Array.from({ length: 500 }, (_, index) => ({
+    kind: "table",
+    schema: index < 400 ? "APP_PROD" : "SHARED",
+    table: `T${index}`,
+    entityType: index % 5 === 0 ? "view" : "table",
+  }));
+  const keys = tabs.map(tabKey);
+  useTableTabs.setState({ tabs, tabsByConnection: { [home.id]: tabs } });
+  useSplitView.getState().collapse();
+  useSplitView.getState().split({ activeKey: keys[0], key: keys[1], edge: "right" });
+  for (let index = 2; index < 500; index++) useSplitView.getState().moveTab(keys[index], index % 2);
+  const id = useSplitView.getState().activeGroup ?? "";
+  useSplitView.getState().setGroupShared(id, true);
+  const source = useSplitView.getState().groups[home.id].find((group) => group.id === id);
+  if (!source) throw new Error("keine Gruppe");
+  useConnectionsStore.getState().setActiveId(target.id);
+  const names = (schema: string, start: number, end: number) =>
+    Array.from({ length: end - start }, (_, index) => ({ schema, name: `T${start + index}` }));
+  respond = (command, args) => {
+    if (!String(args?.connectionString ?? "").includes("app_test")) return [];
+    if (command === "list_schemas") return ["APP_TEST", "SHARED", "SYS"];
+    if (args?.schema === "APP_TEST") return names("APP_TEST", 0, 400);
+    if (args?.schema === "SHARED") return names("SHARED", 400, 500);
+    return [];
+  };
+
+  invocations.length = 0;
+  let runs = 0;
+  const adopt = await measureScenario(async () => {
+    runs++;
+    const copy = (await openableGroup(source, home.id)) ?? "";
+    useSplitView.getState().openGroup(copy);
+    useSplitView.getState().deleteGroup(copy);
+    useTableTabs.getState().closeAllTabs();
+  });
+  const adoptRequests = invocations.length / runs;
+  const copy = (await openableGroup(source, home.id)) ?? "";
+  const stored = useSplitView.getState().groups[target.id].find((group) => group.id === copy);
+  const mapped = stored ? groupPaneTabs(stored).flat() : [];
+  invocations.length = 0;
+  runs = 0;
+  const reopen = await measureScenario(async () => {
+    runs++;
+    await openableGroup(stored ?? source);
+  });
+  const reopenRequests = invocations.length / runs;
+  respond = () => null;
+
+  await reportScenario("tab-groups-schema-mapping", {
+    tabs: tabs.length,
+    schemas: 2,
+    adopt,
+    adoptRequests,
+    reopen,
+    reopenRequests,
+  });
+  expect(mapped).toHaveLength(500);
+  expect(mapped.filter((tab) => tab.kind === "table" && tab.schema === "APP_TEST")).toHaveLength(
+    400,
+  );
+  expect(mapped.filter((tab) => tab.kind === "table" && tab.schema === "SHARED")).toHaveLength(100);
+  expect(adoptRequests).toBe(4);
+  expect(reopenRequests).toBe(2);
+  expect(adopt.p95Ms).toBeLessThan(40);
+  expect(reopen.p95Ms).toBeLessThan(10);
 });
