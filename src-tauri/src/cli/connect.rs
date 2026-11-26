@@ -86,7 +86,7 @@ pub fn detect_kind(url: &str) -> Result<DatabaseKind, String> {
             )),
         };
     }
-    let lower = db::sqlite::strip_params(url).to_ascii_lowercase();
+    let lower = db::sqlite::split_file_params(url).0.to_ascii_lowercase();
     if lower.starts_with("jdbc:") {
         Ok(DatabaseKind::Jdbc)
     } else if lower.starts_with("duckdb:") {
@@ -110,6 +110,7 @@ pub fn detect_kind(url: &str) -> Result<DatabaseKind, String> {
 
 pub fn ad_hoc(url: &str) -> Result<Source, String> {
     let kind = detect_kind(url)?;
+    let read_only = kind.is_file_based() && db::sqlite::opens_read_only(url);
     let url = match kind {
         DatabaseKind::Sqlite | DatabaseKind::Duckdb if !url.contains("://") => {
             let file = db::sqlite::file_path(url)?;
@@ -117,14 +118,14 @@ pub fn ad_hoc(url: &str) -> Result<Source, String> {
                 return Err("--url braucht eine vorhandene Datenbankdatei.".into());
             }
             let path = std::path::absolute(&file).map_err(|e| format!("{url}: {e}"))?;
-            let create = url.contains("mode=rwc");
-            if !path.exists() && !create {
+            let (_, query) = db::sqlite::split_file_params(url.trim());
+            if !path.exists() && !db::sqlite::can_create_file(query) {
                 return Err(format!("Datei {} gibt es nicht.", path.display()));
             }
-            if create {
-                format!("{}?mode=rwc", path.display())
-            } else {
+            if query.is_empty() {
                 path.display().to_string()
+            } else {
+                format!("{}?{query}", path.display())
             }
         }
         _ => url.to_string(),
@@ -135,7 +136,7 @@ pub fn ad_hoc(url: &str) -> Result<Source, String> {
             id: String::new(),
             name: "--url".into(),
             kind,
-            read_only: false,
+            read_only,
             read_only_flag: false,
             production: false,
         },
@@ -166,6 +167,7 @@ pub async fn open(source: Source, database: Option<&str>) -> Result<Session, Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn detects_kinds_from_urls_and_files() {
@@ -204,5 +206,117 @@ mod tests {
             panic!("missing file accepted");
         };
         assert!(error.contains("gibt es nicht"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn file_options_reach_the_cli_and_the_database_driver() {
+        let dir = tempfile::tempdir().unwrap();
+        for (extension, kind) in [
+            ("sqlite", DatabaseKind::Sqlite),
+            #[cfg(feature = "duckdb")]
+            ("duckdb", DatabaseKind::Duckdb),
+        ] {
+            let path = dir.path().join(format!("A+B & Lager.{extension}"));
+            let encoded = path.to_str().unwrap().replace(' ', "%20");
+            let adapter = |url: &str| {
+                db::create_adapter_from_string(kind, url, None, db::pool::create_pool_state())
+                    .unwrap()
+            };
+            let Source::Url { url, target } =
+                ad_hoc(&format!("{encoded}?cache=private&mode=rwc")).unwrap()
+            else {
+                panic!("Dateiverbindung erwartet");
+            };
+            assert!(!target.read_only);
+            adapter(&url)
+                .execute_query("CREATE TABLE bestand (anzahl INTEGER)")
+                .await
+                .unwrap();
+            assert!(path.is_file());
+            for (prefix, query) in [
+                ("", "mode=ro"),
+                (extension, "cache=private&immutable=1"),
+                (extension, "access_mode=read_only&cache=private"),
+            ] {
+                let prefix = if prefix.is_empty() {
+                    String::new()
+                } else {
+                    format!("{prefix}:")
+                };
+                let Source::Url { url, target } =
+                    ad_hoc(&format!("{prefix}{encoded}?{query}")).unwrap()
+                else {
+                    panic!("Dateiverbindung erwartet");
+                };
+                assert!(target.read_only);
+                assert_eq!(
+                    db::sqlite::split_file_params(&url),
+                    (path.to_str().unwrap(), query)
+                );
+                let db = adapter(&url);
+                assert!(db
+                    .execute_query("INSERT INTO bestand VALUES (1)")
+                    .await
+                    .is_err());
+                let rows = db
+                    .execute_query("SELECT COUNT(*) AS n FROM bestand")
+                    .await
+                    .unwrap();
+                assert_eq!(rows.rows[0]["n"], 0);
+            }
+            let uri = format!("{extension}://{encoded}?mode=ro");
+            let Source::Url { url, target } = ad_hoc(&uri).unwrap() else {
+                unreachable!()
+            };
+            assert_eq!(url, uri);
+            assert!(target.read_only);
+        }
+    }
+
+    #[test]
+    fn file_options_bound_resolution_cost() {
+        let dir = tempfile::tempdir().unwrap();
+        let queries = [
+            "mode=ro",
+            "immutable=1",
+            "access_mode=read_only&cache=private",
+            "cache=shared",
+        ];
+        let mut inputs = Vec::new();
+        for index in 0..512 {
+            let path = dir.path().join(format!("Bestand {index:04}.sqlite"));
+            std::fs::File::create(&path).unwrap();
+            inputs.push(format!(
+                "{}?{}",
+                path.display(),
+                queries[index % queries.len()]
+            ));
+        }
+        let mut samples = Vec::new();
+        let mut max_capacity = 0;
+        for run in 0..22 {
+            let start = Instant::now();
+            let mut protected = 0;
+            for input in &inputs {
+                let Source::Url { url, target } = ad_hoc(input).unwrap() else {
+                    unreachable!()
+                };
+                protected += usize::from(target.read_only);
+                assert_eq!(&url, input);
+                assert!(url.capacity() <= 2 * input.len() + 16);
+                max_capacity = max_capacity.max(url.capacity());
+            }
+            if run > 0 {
+                samples.push(start.elapsed());
+            }
+            assert_eq!(protected, 384);
+        }
+        samples.sort_unstable();
+        println!(
+            "512 file URLs: median {:?}, p95 {:?}, max URL capacity {max_capacity} bytes",
+            samples[10], samples[19]
+        );
+        assert!(samples[10] < Duration::from_millis(25));
+        assert!(samples[19] < Duration::from_millis(60));
     }
 }
