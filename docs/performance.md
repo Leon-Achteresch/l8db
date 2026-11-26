@@ -1381,3 +1381,9 @@ With 100 SQL cells and 1,000 in-memory rows per cell, cancelling a Markdown or H
 ## Saving while editing a notebook
 
 At revision 34d37af2, eight overlapping save requests for the same 5,000-cell notebook started eight filesystem writes. In tests/notebook-save.test.ts, one initial request and 22,000 repeated requests for the same snapshot shared one save dialog, one pending promise and one filesystem write. Across 21 measured batches after warmup, dispatching 1,000 repeat requests took 0.027 ms median and 0.227 ms p95 (limits 3 and 10 ms). The test covers a single window with a simulated pending native write on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10. It excludes disk latency and simultaneous writes from separate windows.
+
+## S3 browser pagination
+
+In tests/s3-object-pagination.test.ts the listing receives 50 pages of 1,000 objects. The last response repeats an earlier continuation token. Ten subsequent attempts to load more leave the total at 50 requests and 50,000 retained rows. Previously the browser offered any returned nonempty token again. On macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10, the 49 follow-up pages took 0.391 ms median and 1.139 ms p95, against limits of 15 and 50 ms. The transport was simulated. Chromium and WebKit covered keeping prior objects visible after an error, retrying the failed page and displaying the incomplete-list status. No live S3 provider was used.
+
+During this change the separate server-render test of the unmodified ObjectList component retained 52 DOM rows for 50,000 objects but exceeded its existing timing budgets (126.4 ms median, 423.0 ms p95 against 50 and 120 ms). This measurement covers rendering rather than loading a page.

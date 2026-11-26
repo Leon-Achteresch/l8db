@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { infiniteQueryOptions, useInfiniteQuery } from "@tanstack/react-query";
 import { cancelExecution, s3ListObjects, s3ListObjectVersions, s3SearchObjects } from "@/lib/db";
 import { basename } from "@/lib/storage/s3";
 import { useStorageConnection } from "./use-storage-connection";
@@ -45,10 +45,21 @@ export function useObjectListing(
   search: string,
 ) {
   const { connection, url } = useStorageConnection();
-  return useInfiniteQuery({
+  return useInfiniteQuery(objectListingOptions(connection?.id, url, bucket, prefix, mode, search));
+}
+
+export function objectListingOptions(
+  connectionId: string | undefined,
+  url: string,
+  bucket: string,
+  prefix: string,
+  mode: BrowserMode,
+  search: string,
+) {
+  return infiniteQueryOptions({
     queryKey: [
       "s3",
-      connection?.id,
+      connectionId,
       "objects",
       bucket,
       prefix,
@@ -57,7 +68,18 @@ export function useObjectListing(
     ],
     enabled: Boolean(url) && (mode !== "search" || Boolean(search.trim())),
     initialPageParam: null as Page["next"],
-    getNextPageParam: (last: Page) => last.next ?? undefined,
+    getNextPageParam: (last: Page, _pages, _current, requested) => {
+      const next = last.next;
+      if (!next || !last.truncated) return undefined;
+      const repeated = requested.some(
+        (cursor) =>
+          cursor &&
+          cursor.token === next.token &&
+          cursor.keyMarker === next.keyMarker &&
+          cursor.versionMarker === next.versionMarker,
+      );
+      return repeated ? undefined : next;
+    },
     queryFn: async ({ pageParam, signal }): Promise<Page> => {
       if (mode === "search") {
         const jobId = crypto.randomUUID();
@@ -100,12 +122,13 @@ export function useObjectListing(
               deleteMarker: v.delete_marker,
             })),
           ],
-          next: page.truncated
-            ? {
-                keyMarker: page.next_key_marker ?? undefined,
-                versionMarker: page.next_version_marker ?? undefined,
-              }
-            : null,
+          next:
+            page.next_key_marker && page.truncated
+              ? {
+                  keyMarker: page.next_key_marker ?? undefined,
+                  versionMarker: page.next_version_marker ?? undefined,
+                }
+              : null,
           truncated: page.truncated,
         };
       }
