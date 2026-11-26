@@ -1,22 +1,28 @@
 import {
   AlertTriangleIcon,
   CheckCircle2Icon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronsLeftIcon,
+  ChevronsRightIcon,
   CircleDashedIcon,
   CircleMinusIcon,
   CopyIcon,
+  ListFilterIcon,
   LoaderIcon,
   XCircleIcon,
   XIcon,
 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { copyWithToast } from "@/lib/clipboard";
 import type { QueryResult } from "@/lib/db";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { sqlPreviewLine } from "@/lib/sql-preview-line";
 import { scriptTranscript } from "@/lib/sqlplus-output";
 import { ScriptEntryOutput } from "./script-entry-output";
+import { scriptPageForEntry, scriptResultPage } from "./script-result-page";
 
 export type ScriptRunStatus =
   | "pending"
@@ -57,6 +63,7 @@ interface ScriptResultListProps {
   onClose: () => void;
   note: string;
   featureId?: "query.sqlplus-session";
+  issuesFeatureId?: "query.results.script-issues" | "import.sql.result-issues";
 }
 
 function statusIcon(status: ScriptRunStatus) {
@@ -79,6 +86,10 @@ function detailOf(entry: ScriptRunEntry): string {
   return parts.join(" · ");
 }
 
+function revealSelectedStatement(button: HTMLButtonElement | null) {
+  button?.scrollIntoView({ block: "nearest" });
+}
+
 export function ScriptResultList({
   entries,
   activeIndex,
@@ -86,12 +97,17 @@ export function ScriptResultList({
   onClose,
   note,
   featureId,
+  issuesFeatureId = "query.results.script-issues",
 }: ScriptResultListProps) {
-  const failed = entries.filter((entry) => entry.status === "error").length;
-  const warned = entries.filter((entry) => entry.status === "warning").length;
-  const done = entries.filter((entry) => entry.status === "success").length;
+  const [issuesOnly, setIssuesOnly] = useState(false);
+  const [page, setPage] = useState(() => scriptPageForEntry(entries, activeIndex));
+  const { done, failed, warned, count, currentPage, lastPage, start, end, visible } = useMemo(
+    () => scriptResultPage(entries, page, issuesOnly),
+    [entries, page, issuesOnly],
+  );
   const { ref, isNew } = useNewFeatureVisibility<HTMLSpanElement>(featureId);
   const output = useNewFeatureVisibility<HTMLButtonElement>("query.script-output");
+  const filter = useNewFeatureVisibility<HTMLButtonElement>(issuesFeatureId);
 
   return (
     <div className="flex max-h-64 shrink-0 flex-col border-t bg-card/40">
@@ -112,7 +128,7 @@ export function ScriptResultList({
           variant="ghost"
           className={output.isNew ? "ml-auto h-6 gap-1 px-1.5" : "ml-auto size-6"}
           aria-label="Skriptprotokoll kopieren"
-          title="Protokoll kopieren"
+          title="Vollständiges Protokoll kopieren"
           onClick={() => void copyWithToast(scriptTranscript(entries), "Skriptprotokoll")}
         >
           <CopyIcon className="size-3" />
@@ -128,12 +144,88 @@ export function ScriptResultList({
           <XIcon className="size-3" />
         </Button>
       </div>
-      <ScrollArea className="min-h-0 flex-1">
+      {(failed + warned > 0 || issuesOnly || lastPage > 0) && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 px-3 py-1 text-xs">
+          {(failed + warned > 0 || issuesOnly) && (
+            <Button
+              ref={filter.ref}
+              size="xs"
+              variant={issuesOnly ? "secondary" : "ghost"}
+              aria-pressed={issuesOnly}
+              onClick={() => {
+                setIssuesOnly(!issuesOnly);
+                setPage(issuesOnly ? scriptPageForEntry(entries, activeIndex) : 0);
+              }}
+            >
+              <ListFilterIcon />
+              Nur Fehler und Warnungen
+              {filter.isNew && <NewBadge />}
+            </Button>
+          )}
+          {lastPage > 0 && (
+            <div className="ml-auto flex items-center gap-1">
+              <span className="text-muted-foreground tabular-nums">
+                {start + 1}–{end} von {count}
+              </span>
+              {lastPage > 1 && (
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label="Erste Statements"
+                  disabled={currentPage === 0}
+                  onClick={() => setPage(0)}
+                >
+                  <ChevronsLeftIcon />
+                </Button>
+              )}
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                aria-label="Vorherige Statements"
+                disabled={currentPage === 0}
+                onClick={() => setPage(currentPage - 1)}
+              >
+                <ChevronLeftIcon />
+              </Button>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                aria-label="Nächste Statements"
+                disabled={currentPage === lastPage}
+                onClick={() => setPage(currentPage + 1)}
+              >
+                <ChevronRightIcon />
+              </Button>
+              {lastPage > 1 && (
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label="Letzte Statements"
+                  disabled={currentPage === lastPage}
+                  onClick={() => setPage(lastPage)}
+                >
+                  <ChevronsRightIcon />
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      <section
+        key={`${issuesOnly}-${currentPage}`}
+        aria-label="Statement-Ergebnisse"
+        className="min-h-0 overflow-y-auto overscroll-contain"
+      >
         <div className="divide-y">
-          {entries.map((entry) => (
+          {issuesOnly && count === 0 && (
+            <p className="px-3 py-2 text-xs text-muted-foreground">Keine Fehler oder Warnungen.</p>
+          )}
+          {visible.map((entry) => (
             <button
               key={entry.index}
+              ref={activeIndex === entry.index ? revealSelectedStatement : undefined}
               type="button"
+              aria-pressed={activeIndex === entry.index}
               onClick={() => onSelect(entry)}
               className={`flex w-full items-start gap-2 px-3 py-1.5 text-left text-xs hover:bg-accent/50 ${
                 activeIndex === entry.index ? "bg-accent/60" : ""
@@ -143,6 +235,8 @@ export function ScriptResultList({
                 {entry.index + 1}
               </span>
               <span className="mt-0.5 shrink-0">{statusIcon(entry.status)}</span>
+              {entry.status === "error" && <span className="sr-only">Fehler</span>}
+              {entry.status === "warning" && <span className="sr-only">Warnung</span>}
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-mono">
                   {sqlPreviewLine(entry.sql, 120, "")}
@@ -161,7 +255,7 @@ export function ScriptResultList({
             </button>
           ))}
         </div>
-      </ScrollArea>
+      </section>
     </div>
   );
 }

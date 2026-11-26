@@ -42,6 +42,8 @@ export const NEW_FEATURES = {
   "table.structure.indexes.mongo-form": "0.19.0",
   "import.csv.unmapped-filter": NEXT_FEATURE_VERSION,
   "import.sql.sqlplus": NEXT_FEATURE_VERSION,
+  "import.sql.result-issues": NEXT_FEATURE_VERSION,
+  "query.results.script-issues": NEXT_FEATURE_VERSION,
   "import.csv.file-check": "0.19.0",
   "import.csv.null-preflight": "0.19.0",
   "sidebar.roles.principals": "0.18.0",

@@ -23,6 +23,7 @@ declare global {
     sqlImportFixture: FilePicker;
     firstStatementCopies: number;
     sqlRunFixture: { hold: boolean; fail: boolean; calls: number; release?: () => void };
+    scriptResultProbe: { calls: number; clipboard: string };
   }
 }
 
@@ -65,6 +66,110 @@ async function seedSqlImport(page: Page) {
 }
 
 for (const engine of [chromium, webkit]) {
+  test.skipIf(!appUrl)(
+    `${engine.name()}: filter script issues, select the original statement and copy every page`,
+    async () => {
+      const browser = await engine.launch();
+      try {
+        const page = await browser.newPage();
+        page.setDefaultTimeout(10000);
+        await seedSqlImport(page);
+        await page.addInitScript(() => {
+          const probe = { calls: 0, clipboard: "" };
+          window.scriptResultProbe = probe;
+          const tauri = (
+            window as unknown as {
+              __TAURI_INTERNALS__: {
+                invoke(command: string, args?: { text?: string; sql?: string }): Promise<unknown>;
+              };
+            }
+          ).__TAURI_INTERNALS__;
+          const invoke = tauri.invoke;
+          tauri.invoke = async (command, args) => {
+            if (command === "plugin:clipboard-manager|write_text") {
+              probe.clipboard = args?.text ?? "";
+              return;
+            }
+            const sql = args?.sql ?? "";
+            if (command !== "execute_query" || !sql.includes("page_probe"))
+              return invoke(command, args);
+            probe.calls++;
+            if (sql.includes("CREATE VIEW")) throw new Error("ORA-24344: compilation warning");
+            if (sql.includes("SELECT 125 ")) throw new Error("Erwarteter Lesefehler");
+            return {
+              columns: ["page_probe"],
+              rows: [{ page_probe: 1 }],
+              rows_affected: null,
+              execution_time_ms: 1,
+            };
+          };
+        });
+        await page.goto(`${appUrl}/import`);
+        await page.evaluate(() => {
+          window.sqlImportFixture.sql = Array.from({ length: 127 }, (_, i) =>
+            i === 75
+              ? "CREATE VIEW page_probe AS SELECT 75 AS n FROM dual;"
+              : `SELECT ${i} AS page_probe FROM dual;`,
+          ).join("\n");
+        });
+        await page.getByRole("button", { name: /Datei auswählen/ }).click();
+        const mode = page.locator("#sql-import-mode");
+        if (!(await mode.innerText()).includes("Autocommit")) {
+          await mode.click();
+          await page.getByRole("option", { name: "Autocommit je Statement" }).click();
+        }
+        const stop = page.getByRole("switch", { name: "Bei Fehler stoppen" });
+        if (await stop.isChecked()) await stop.click();
+        await page.getByRole("button", { name: "Ausführen", exact: true }).click();
+        await page
+          .getByText("125/127 erfolgreich · 1 fehlgeschlagen · 1 mit Warnung", { exact: true })
+          .waitFor();
+        const viewport = page.getByRole("region", { name: "Statement-Ergebnisse" });
+        const rows = viewport.getByRole("button").filter({ hasText: "page_probe" });
+        expect(await rows.count()).toBe(50);
+        const previous = page.getByRole("button", { name: "Vorherige Statements" });
+        const next = page.getByRole("button", { name: "Nächste Statements" });
+        expect(await previous.isDisabled()).toBe(true);
+        await next.click();
+        await page.getByText("51–100 von 127").waitFor();
+        await page.getByRole("button", { name: "Letzte Statements" }).click();
+        await page.getByText("101–127 von 127").waitFor();
+        expect(await next.isDisabled()).toBe(true);
+        expect(await rows.count()).toBe(27);
+        await page.getByRole("button", { name: "Erste Statements" }).click();
+        const filter = page.getByRole("button", { name: /Nur Fehler und Warnungen/ });
+        await filter.focus();
+        await filter.press("Enter");
+        expect(await filter.getAttribute("aria-pressed")).toBe("true");
+        expect(await rows.count()).toBe(2);
+        await page.getByRole("button", { name: /76 Warnung CREATE VIEW page_probe/ }).waitFor();
+        const failure = page.getByRole("button", { name: /126 Fehler SELECT 125 AS page_probe/ });
+        await failure.click();
+        expect(await failure.getAttribute("aria-pressed")).toBe("true");
+        await page.getByRole("button", { name: "Skriptprotokoll kopieren" }).click();
+        const copied = await page.evaluate(() => window.scriptResultProbe.clipboard);
+        expect(copied.match(/^SQL> /gm)).toHaveLength(127);
+        expect(copied).toContain("SQL> SELECT 0 AS page_probe");
+        expect(copied).toContain("SQL> SELECT 126 AS page_probe");
+        await filter.click();
+        await page.getByText("101–127 von 127").waitFor();
+        expect(await failure.getAttribute("aria-pressed")).toBe("true");
+        const rowBox = await failure.boundingBox();
+        const listBox = await viewport.boundingBox();
+        expect(
+          rowBox &&
+            listBox &&
+            rowBox.y >= listBox.y - 1 &&
+            rowBox.y + rowBox.height <= listBox.y + listBox.height + 1,
+        ).toBe(true);
+        expect(await page.evaluate(() => window.scriptResultProbe.calls)).toBe(127);
+      } finally {
+        await browser.close();
+      }
+    },
+    60000,
+  );
+
   test.skipIf(!appUrl)(
     `${engine.name()}: replacing a script keeps the previous import's results and errors separate`,
     async () => {

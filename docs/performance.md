@@ -1501,3 +1501,11 @@ The monitor, history, statement navigator and script result list extract the fir
 The regression formats 64 procedure bodies of 14,000 SQL lines each in both the monitor and the navigator. The 128 previews cover 10,754,614 input characters. Across 21 warm runs, the previous formatters took 52.13 ms median and 53.22 ms p95. The shared formatter took 0.027 ms median and 0.037 ms p95. The measured heap increase after garbage collection was zero bytes in both runs. Regression limits are 1 ms median, 3 ms p95 and 1 MiB of retained heap growth.
 
 Run `bun test tests/perf-query-history-format.test.ts`. Measurements cover local text formatting with Bun 1.3.10 on macOS 27.2.1 arm64, Apple M3 and 16 GiB RAM. The display tests also check truncation at each view's width, including the rendered script result.
+
+## Reviewing large SQL script results
+
+The editor and SQL import show 50 statements per page. When a run contains errors or warnings, the filter keeps those statements in source order with their original numbers. Turning it off reveals the selected statement in context. The copy action always includes the entire transcript.
+
+The core regression renders 2,048 mixed results with row counts, timing and feedback. Over 31 warm samples of React's static renderer, the previous list rendered 2,048 rows (1,936,418 bytes) in 86.99 ms median and 220.64 ms p95. The paged list rendered 50 rows (57,613 bytes) in 1.97 ms median and 3.50 ms p95. The limits are 50 rows, 80 KiB of markup, 12 ms median and 30 ms p95. These measurements cover rendering to HTML. They used Bun 1.3.10 on macOS 27.2.1 arm64, Apple M3 and 16 GiB RAM.
+
+Run `bun test tests/perf-script-result-list.test.ts`. The production browser checks used Chromium and WebKit with simulated database responses. For 127 imported statements including an Oracle compilation warning and a query error, filtering, paging, selecting a result and copying all 127 entries required zero further query executions. The editor check selected the original result of statement 92 after inspecting an error on the same page of a 104-statement run.

@@ -193,6 +193,7 @@ export function SqlImportPanel({
       {draft.entries && (
         <div className="max-h-[45%] min-h-0 shrink-0 overflow-hidden border-t">
           <ScriptResultList
+            issuesFeatureId="import.sql.result-issues"
             entries={draft.entries}
             activeIndex={activeIndex}
             onSelect={(entry) => setActiveIndex(entry.index)}
