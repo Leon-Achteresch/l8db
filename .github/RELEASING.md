@@ -71,6 +71,8 @@ Unter Einstellungen → Über & Updates wählt jeder Nutzer den Update-Kanal; St
 
 ## Version und Changelog
 
+`services/issue-relay/LIVE-SETUP.md` wurde am 27. November 2026 per `git filter-repo` aus der Historie entfernt. Die Tags der Immutable Releases zeigen weiter auf die alten Commits; `.github/rewritten-commits.json` ordnet sie den umgeschriebenen Commits zu, und `tagCommit()` in `release-utils.mjs` nutzt diese Zuordnung für Changelog und Release-Plan.
+
 Die Versionen in `package.json`, `Cargo.toml`, `Cargo.lock` und `tauri.conf.json` sowie `CHANGELOG.md` im Repository sind nicht maßgeblich und werden nicht mehr gepflegt. Jeder Release-Job setzt die berechnete Version mit `.github/scripts/set-version.mjs` nur im Runner und erzeugt `CHANGELOG.md` aus den Tags neu; die App liefert diesen Stand aus, die Release-Notes stammen aus demselben Abschnitt. Maßgeblich sind die Git-Tags und GitHub-Releases. Eine Version lässt sich nur über die Commit-Typen steuern, etwa `feat!:` für den nächsten großen Sprung.
 
 ## Wiederholungen und Fehler
