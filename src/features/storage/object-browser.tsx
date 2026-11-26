@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { TableDataError } from "@/features/table/table-data-error";
 import { s3CreateFolder, s3RenameObject } from "@/lib/db";
+import { errorMessageOf } from "@/lib/error-details";
 import { useTableScrollState } from "@/lib/hooks/use-table-scroll-state";
 import { IS_MAC } from "@/lib/platform";
 import { setBucketDropHandler } from "@/lib/storage/drop-target";
@@ -192,7 +193,7 @@ export function ObjectBrowser({
             <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
               <Spinner /> Lade Objekte…
             </div>
-          ) : listing.isError ? (
+          ) : listing.isError && !listing.isFetchNextPageError ? (
             <div className="p-4">
               <TableDataError
                 title="Objekte konnten nicht geladen werden"
@@ -232,16 +233,22 @@ export function ObjectBrowser({
             {rows.length - folderCount} {rows.length - folderCount === 1 ? "Objekt" : "Objekte"}
             {selectedRows.length ? ` · ${selectedRows.length} ausgewählt` : ""}
             {mode === "search" && truncated ? " · Suche begrenzt" : ""}
+            {mode !== "search" && truncated && !listing.hasNextPage
+              ? " · Liste unvollständig: Der Anbieter liefert keine neue Seitenmarke."
+              : ""}
+            {listing.isFetchNextPageError && (
+              <span role="alert"> · Nachladen fehlgeschlagen: {errorMessageOf(listing.error)}</span>
+            )}
           </span>
           {listing.hasNextPage ? (
             <Button
               size="xs"
               variant="outline"
               disabled={listing.isFetchingNextPage}
-              onClick={() => void listing.fetchNextPage()}
+              onClick={() => void listing.fetchNextPage({ cancelRefetch: false })}
             >
               {listing.isFetchingNextPage ? <Spinner className="size-3" /> : null}
-              Weitere laden
+              {listing.isFetchNextPageError ? "Erneut versuchen" : "Weitere laden"}
             </Button>
           ) : null}
           {!actions.readOnly && (
