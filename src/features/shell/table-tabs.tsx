@@ -318,7 +318,6 @@ export function TableTabs() {
         )}
       <div ref={containerRef} className="flex min-w-0 items-center">
         <motion.nav
-          layoutScroll
           ref={navRef}
           onWheel={handleWheel}
           aria-label="Geöffnete Objekte"

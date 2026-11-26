@@ -203,6 +203,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
           ref={ref}
           data-tab-key={tabKey(tab)}
           layout={!isDragging && !reduceMotion ? "position" : false}
+          layoutDependency={`${index}/${tabsCount}`}
           initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={
