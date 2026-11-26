@@ -1,3 +1,5 @@
+import { sqlPreviewLine } from "@/lib/sql-preview-line";
+
 const BYTES = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
 const MILLISECONDS = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
 const TIME = new Intl.DateTimeFormat("de-DE", {
@@ -34,12 +36,7 @@ export function formatDateTime(value: number | string | null): string {
 }
 
 export function firstLine(sql: string): string {
-  const line =
-    sql
-      .split("\n")
-      .map((part) => part.trim())
-      .filter(Boolean)[0] ?? "";
-  return line.length > 110 ? `${line.slice(0, 110)}…` : line;
+  return sqlPreviewLine(sql, 110);
 }
 
 export function levelVariant(level: string): "destructive" | "secondary" | "outline" {
