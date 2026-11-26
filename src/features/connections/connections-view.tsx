@@ -5,7 +5,6 @@ import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
-import { BaasConnectionCard } from "@/features/baas/baas-connection-card";
 import { useBaasConnections } from "@/features/baas/use-baas-connections";
 import { disconnectActiveConnection } from "@/features/connections/disconnect-button";
 import { groupKey, type HostGroupRule, type ServerGroup } from "@/lib/connection-groups";
@@ -19,6 +18,7 @@ import { ConnectionEditor } from "./connection-editor";
 import { ConnectionExportDialog } from "./connection-export-dialog";
 import { ConnectionImportDialog } from "./connection-import-dialog";
 import { ConnectionPickCard } from "./connection-pick-card";
+import { CloudProjectCards } from "./connections-view/cloud-project-cards";
 import { createConnectionListing } from "./connections-view/connection-listing";
 import { DeleteConnectionDialog } from "./connections-view/delete-connection-dialog";
 import { DeleteServerGroupDialog } from "./connections-view/delete-group-dialog";
@@ -46,7 +46,7 @@ export function ConnectionsView() {
   const [template, setTemplate] = useState<SavedConnection | null>(null);
   const [initialUrl, setInitialUrl] = useState<string | undefined>();
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [favoritesRequested, setFavoritesOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState("all");
   const [exportOpen, setExportOpen] = useState(false);
@@ -75,6 +75,7 @@ export function ConnectionsView() {
       ),
     [connections, allBaasConnections, hostGroupRules, favoriteServerKeys, serverOrder],
   );
+  const favoritesOnly = listing.count > 0 && favoritesRequested;
   const allGroups = listing.groups;
   const { connections: filtered, groups } = useMemo(
     () => listing.filter(query, favoritesOnly),
@@ -91,18 +92,20 @@ export function ConnectionsView() {
       : groups;
   const needle = query.trim().toLowerCase();
   const totalConnections = listing.count + allBaasConnections.length;
-  const baasConnections = allBaasConnections.filter(
-    (item) =>
-      !favoritesOnly &&
+  const baasConnections = useMemo(() => {
+    if (favoritesOnly) return [];
+    if (!needle) return allBaasConnections;
+    return allBaasConnections.filter((item) =>
       [item.name, item.detail, item.provider].some((value) => value.toLowerCase().includes(needle)),
-  );
-  const baasCards = baasConnections.map((item) => (
-    <BaasConnectionCard
-      key={`${item.provider}:${item.id}`}
-      connection={item}
+    );
+  }, [allBaasConnections, favoritesOnly, needle]);
+  const baasCards = baasConnections.length > 0 && (
+    <CloudProjectCards
+      key={needle}
+      projects={baasConnections}
       onEditDatabase={(id) => openEditor(id)}
     />
-  ));
+  );
   const activeGroupKey = activeConnection ? groupKey(activeConnection, hostGroupRules) : null;
 
   function openEditor(id: string | null, from: SavedConnection | null = null) {
@@ -202,7 +205,7 @@ export function ConnectionsView() {
       <div className="relative flex h-full min-h-0 w-full flex-col p-4 md:p-6">
         <SecretStorageNotice />
         {(editorId || totalConnections > 0) && (
-          <header className="mb-4 flex shrink-0 items-center justify-between gap-4">
+          <header className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <div className="min-w-0">
               <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
                 {editorId
@@ -219,7 +222,7 @@ export function ConnectionsView() {
                 </p>
               )}
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex min-w-0 max-w-full items-center gap-2">
               {editorId && connections.length === 0 && (
                 <Button
                   variant="outline"
@@ -234,7 +237,8 @@ export function ConnectionsView() {
               )}
               {!editorId && (
                 <ConnectionsToolbar
-                  connections={connections}
+                  hasSavedProfiles={connections.length > 0}
+                  hasListedProfiles={listing.count > 0}
                   query={query}
                   setQuery={setQuery}
                   favoritesOnly={favoritesOnly}
@@ -278,7 +282,7 @@ export function ConnectionsView() {
             />
           ) : favoritesOnly && !listing.hasFavorites ? (
             <ConnectionsNoFavoritesState setFavoritesOnly={setFavoritesOnly} />
-          ) : filtered.length === 0 && baasCards.length === 0 ? (
+          ) : filtered.length === 0 && baasConnections.length === 0 ? (
             <ConnectionsNoResultsState query={query} setQuery={setQuery} />
           ) : grouped ? (
             <ConnectionsGroupedLayout
@@ -291,7 +295,7 @@ export function ConnectionsView() {
               displayGroups={displayGroups}
               renderGroup={renderGroup}
               extra={
-                baasCards.length > 0 && (
+                baasCards && (
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(min(15rem,100%),1fr))] gap-3.5">
                     {baasCards}
                   </div>

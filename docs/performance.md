@@ -1455,3 +1455,11 @@ With 2,048 PostgreSQL profiles, 16 host rules and 22 successive searches alterna
 Run `bun test tests/connection-listing.test.ts`. Chromium and WebKit also exercised group renaming, search, clearing a failed favorite search and finding a cloud project on the production build with simulated connections. Repeated searches for one profile did not parse a hidden profile's URL or issue database queries.
 
 For 256 saved profiles, the time from a browser input event to the matching card appearing in the DOM was measured on the two production builds in alternating order. Across 41 measured searches, Chromium went from 2.9 / 3.5 ms median / p95 to 1.9 / 3.3 ms. WebKit went from 4 / 5 ms to 3 / 4 ms. A separate sequential Playwright measurement included input automation and waiting for the one-card assertion. Its p95 increased from 25.15 to 69.35 ms in Chromium and from 58.64 to 98.93 ms in WebKit. That run does not establish an improvement in overall automation time.
+
+## Browsing cloud projects in the connection directory
+
+With 257 simulated Appwrite projects and zero saved SQL profiles, both Chromium and WebKit mounted 257 cards in the previous production build. The search field and profile import action were absent. The updated directory mounts at most 24 cloud cards. Searching by project name, provider or endpoint includes all pages.
+
+The regression test visits all 11 pages in both directions and records 20 transitions from click to the first animation frame with the expected card. Chromium took 22.9 ms median and 26.9 ms p95. WebKit took 55 ms median and 62 ms p95. The limits are 150 ms median and 350 ms p95. Paging, searching and opening the import dialog issued zero additional database queries or project-list requests. The test also covers keyboard navigation and the transition from a mixed directory to a cloud-only directory while the favorites filter is active.
+
+Run `L8DB_CLOUD_PROJECTS_BROWSER_URL=http://127.0.0.1:1420 bun test tests/cloud-project-directory-browser.test.ts` against a local frontend. Measurements used a production Vite build on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10 with a simulated Tauri transport.
