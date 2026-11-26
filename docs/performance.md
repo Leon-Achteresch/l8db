@@ -1353,3 +1353,7 @@ On macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10, searching 250,000 id
 ## CSV delimiter detection
 
 On the same Apple M3 with 16 GiB RAM, macOS 27.2.1 arm64 and Bun 1.3.10, the ten-record, 450,058-character multiline fixture in tests/csv-import.test.ts took 9.29 ms median and 22.31 ms p95 before the change. Skipping quoted fields and retaining four delimiter counts per sampled record took 0.029 and 0.058 ms over 25 warm samples. The regression budgets are 2 and 5 ms. Only local delimiter detection was measured.
+
+## Command palette match highlighting
+
+The 500-label fixture in tests/command-score.test.ts highlights two German search terms in each result, including names with an emoji before the match. On macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10, the 21 timed samples took 13.75 ms median and 25.04 ms p95 under shared system load. The budgets are 25 and 60 ms, with 1,000 returned ranges. The workload exercises the local highlighting function.
