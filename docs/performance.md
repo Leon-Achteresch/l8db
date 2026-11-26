@@ -1541,3 +1541,19 @@ In the production browser test, a failed preview and an incomplete editor read e
 Before the fix, selecting the historical version with the literal ID `"null"` sent unversioned requests for the preview, tags and download link in Chromium and WebKit. The regression test alternates between a 25-byte archive and an 8.5 MB current object. Nine round trips made 18 version-specific preview requests per browser. Chromium took 510 ms median and 608 ms p95 per round trip. WebKit took 223 ms median and 278 ms p95. The limits are 18 requests, 1,000 ms median and 3,000 ms p95. Run `bun test tests/s3-null-version-browser.test.ts` with `L8DB_S3_PREVIEW_BROWSER_URL` pointing at a production build. These measurements used a simulated S3 bridge on macOS 27.2.1 arm64, Apple M3, 16 GiB RAM and Bun 1.3.10.
 
 On the same machine, the native client read a 24-byte archive from a local MinIO bucket containing an 8 MiB replacement. Each preview returned 32 base64 characters. Across 15 warm reads, median latency was 0.41 ms and p95 was 1.58 ms with Rust 1.99.0 in the debug test profile. The live test also checked version-specific metadata and tags and downloaded both versions through links signed by l8db. Run `cargo test --lib null_version -- --include-ignored --nocapture` in `src-tauri` with `L8DB_E2E_S3_URL` pointing to a MinIO test instance where buckets can be created and deleted.
+
+## MCP catalog over every granted Oracle schema (2026-11-26)
+
+The MCP catalog that `open`, `search` and `describe` resolve names against loaded Oracle columns with `list_columns(None)`, which Oracle restricts to `CURRENT_SCHEMA`. A split view requested through MCP with a table from another granted schema therefore failed with „Tabelle '…' nicht gefunden“ (issue #294); PostgreSQL and SQL Server already load every schema, MySQL and ClickHouse every database. Oracle now loads the catalog with `list_catalog_columns` in one query over the current schema plus the MCP schema allow-list, or every non-Oracle-maintained user when the allow-list is empty. The catalog fingerprint covers the same owners and includes the owner in its hash. Persisted catalogs move to format version 2, so every connection rebuilds its catalog once after the update.
+
+Limits: one catalog query and one fingerprint query per load, no per-schema queries, fingerprint at most once per 60 s per connection, allow-listed schemas still filter what MCP shows.
+
+`cargo test --lib live_oracle_split_opens_tables_from_other_granted_schemas -- --ignored --nocapture` in `src-tauri` with `L8DB_E2E_ORACLE_ADMIN_URL` pointing at a system account. Workload: login schema plus 41 granted schemas, 1,002 tables, 8,003 columns. Debug build, nine samples, Oracle Database 26ai Free 23.26.3 in Docker (datafiles on tmpfs) on macOS 27.2.1, arm64, Apple M3 (8 cores), 16 GiB RAM, Rust 1.99.0, no CPU throttling.
+
+| Operation | Median / p95 | Gate (p95) |
+| --- | ---: | ---: |
+| Load the MCP catalog (1 query stage, 105 KB derived index) | 162 / 169 ms | 3,000 ms |
+| Catalog fingerprint over all granted owners | 75 / 81 ms | 500 ms |
+| Before: current schema only (old scope, 1 table) | 2.8 / 48 ms | – |
+
+Not covered: no Oracle 19c, no instance with thousands of database users, no Windows or Linux run, no release build. The fingerprint cost grows with the number of accessible tables.

@@ -98,6 +98,23 @@ test("fails loudly when two tables share no foreign key", async () => {
   expect(useSplitView.getState().panes.length).toBe(2);
 });
 
+test("each pane keeps its own schema when both schemas hold the same table name", async () => {
+  await applyMcpOpen({
+    connectionId,
+    schema: "APP_A",
+    table: "T",
+    split: [{ schema: "APP_B", table: "T" }],
+  });
+  const own = tabKey({ kind: "table", schema: "APP_A", table: "T" });
+  const other = tabKey({ kind: "table", schema: "APP_B", table: "T" });
+  expect(useSplitView.getState().panes.toSorted()).toEqual([own, other].toSorted());
+  expect(
+    useTableTabs
+      .getState()
+      .tabs.flatMap((tab) => (tab.kind === "table" ? [`${tab.schema}.${tab.table}`] : [])),
+  ).toEqual(["APP_A.T", "APP_B.T"]);
+});
+
 test("auto-refresh 0 turns a running interval off", async () => {
   await applyMcpOpen({ connectionId, schema: "public", table: "customers", autoRefresh: 30 });
   await applyMcpOpen({ connectionId, schema: "public", table: "customers", autoRefresh: 0 });
