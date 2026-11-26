@@ -115,6 +115,7 @@ fn cheatsheet_examples_in_the_app_parse() {
         "l8db table rows users --where \"id > 10\" -n 20",
         "l8db table count users",
         "l8db q -o csv -f bericht.sql",
+        "l8db q -o markdown -f bericht.sql",
         "l8db completions zsh",
         "l8db completions bash",
         "l8db completions fish",
@@ -239,7 +240,7 @@ fn errors_are_german_with_suggestions() {
     assert!(error.contains("Meintest du „--limit“?"), "{error}");
     let error = german(&parse("l8db q -o xml x").unwrap_err());
     assert!(
-        error.contains("Möglich: table, json, ndjson, csv, tsv"),
+        error.contains("Möglich: table, json, ndjson, csv, tsv, markdown"),
         "{error}"
     );
     for error in [
@@ -293,6 +294,7 @@ fn completions_cover_commands_and_formats() {
         "conn",
         "describe",
         "ndjson",
+        "markdown",
         "--connection",
         "--where",
     ] {

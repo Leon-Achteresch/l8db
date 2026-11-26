@@ -2053,6 +2053,9 @@ fn print_result(
         &result.columns,
         &result.rows,
     ))?;
+    if script && format == Format::Markdown {
+        write(writeln!(out))?;
+    }
     let _ = out.flush();
     if result.truncated && limit.rows().is_some_and(|rows| result.rows.len() >= rows) {
         eprintln!(

@@ -3,6 +3,8 @@ use serde_json::Value;
 use std::borrow::Cow;
 use std::io::{IsTerminal, Write};
 
+mod markdown;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Format {
     Table,
@@ -10,6 +12,7 @@ pub enum Format {
     Ndjson,
     Csv,
     Tsv,
+    Markdown,
 }
 
 impl Format {
@@ -153,6 +156,19 @@ pub fn write_rows(
     rows: &[Value],
 ) -> std::io::Result<()> {
     match format {
+        Format::Markdown => markdown::write(
+            out,
+            columns,
+            rows.iter().map(|row| {
+                columns.iter().enumerate().map(move |(index, column)| {
+                    if missing(row, column) {
+                        Cow::Borrowed("—")
+                    } else {
+                        plain(cell(row, column, index)).unwrap_or(Cow::Borrowed("NULL"))
+                    }
+                })
+            }),
+        ),
         Format::Table => write_table(
             out,
             columns,
@@ -225,6 +241,12 @@ pub fn write_list(
     items: &[String],
 ) -> std::io::Result<()> {
     let columns = [header.to_string()];
+    if format == Format::Markdown {
+        let rows = items
+            .iter()
+            .map(|item| std::iter::once(Cow::Borrowed(item.as_str())));
+        return markdown::write(out, &columns, rows);
+    }
     let rows: Vec<Value> = items
         .iter()
         .map(|item| Value::Array(vec![Value::String(item.clone())]))
@@ -242,6 +264,32 @@ mod tests {
         let mut out = Vec::new();
         write_rows(&mut out, format, &columns, rows).unwrap();
         String::from_utf8(out).unwrap()
+    }
+
+    #[test]
+    fn markdown_keeps_cells_rows_and_headers_intact() {
+        let text = render(
+            Format::Markdown,
+            &["a|b", "missing", "null", "empty"],
+            &[
+                json!({"a|b": "Ä\\|x\r\ny\rz\nw", "null": null, "empty": ""}),
+                json!([1, true, ["x"], "**hi** <i> &lt;"]),
+            ],
+        );
+        assert_eq!(
+            text,
+            "| a\\|b | missing | null | empty |\n| --- | --- | --- | --- |\n| Ä&#92;\\|x<br>y<br>z<br>w | — | NULL |  |\n| 1 | true | \\[\"x\"\\] | \\*\\*hi\\*\\* &lt;i&gt; &amp;lt; |\n"
+        );
+        assert_eq!(
+            render(Format::Markdown, &["id", "id"], &[]),
+            "| id | id |\n| --- | --- |\n"
+        );
+        assert!(render(Format::Markdown, &[], &[]).is_empty());
+        let long = "🦀".repeat(1000);
+        assert!(render(Format::Markdown, &["v"], &[json!(long)]).contains(&long));
+        let mut list = Vec::new();
+        write_list(&mut list, Format::Markdown, "Name", &["a|b".into()]).unwrap();
+        assert_eq!(list, b"| Name |\n| --- |\n| a\\|b |\n");
     }
 
     #[test]
