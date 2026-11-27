@@ -95,7 +95,11 @@ export function useActiveSchema(): string {
 }
 
 export function defaultSchema(
-  connection: Pick<SavedConnection, "kind" | "connectionString"> | null | undefined,
+  connection:
+    | (Pick<SavedConnection, "kind" | "connectionString"> &
+        Pick<Partial<SavedConnection>, "schemas">)
+    | null
+    | undefined,
   capabilities: Pick<Capabilities, "query_language" | "database_is_schema">,
   database: string | null,
   schemas: string[] | undefined,
@@ -105,7 +109,7 @@ export function defaultSchema(
   if ((capabilities.query_language === "json" || capabilities.database_is_schema) && database)
     return database;
   if (selected && (!schemas || schemas.includes(selected))) return selected;
-  if (connection?.kind === "oracle" && schemas) {
+  if (connection?.kind === "oracle" && (schemas || !connection.schemas?.length)) {
     const login = oracleLoginSchema(connection.connectionString, schemas);
     if (login) return login;
   }

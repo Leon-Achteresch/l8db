@@ -113,9 +113,9 @@ fn relations_sql(kind: DatabaseKind, schemas: &[String], allowlist: &[String]) -
         DatabaseKind::Oracle => {
             let owners = oracle_owners(schemas)?;
             format!(
-                "SELECT * FROM (SELECT owner AS a, table_name AS b, 'TABLE' AS c, num_rows AS d, blocks * 8192 AS e, \
-                 (SELECT comments FROM all_tab_comments m WHERE m.owner = all_tables.owner AND m.table_name = all_tables.table_name) AS f \
-                 FROM all_tables WHERE owner IN ({owners}) AND {} \
+                "SELECT * FROM (SELECT t.owner AS a, t.table_name AS b, 'TABLE' AS c, t.num_rows AS d, t.blocks * 8192 AS e, m.comments AS f \
+                 FROM (SELECT owner, table_name, num_rows, blocks FROM all_tables WHERE owner IN ({owners}) AND {}) t \
+                 LEFT JOIN all_tab_comments m ON m.owner = t.owner AND m.table_name = t.table_name AND m.comments IS NOT NULL AND m.owner IN ({owners}) \
                  UNION ALL SELECT owner, view_name, 'VIEW', NULL, NULL, NULL FROM all_views WHERE owner IN ({owners}) \
                  UNION ALL SELECT owner, mview_name, 'MVIEW', NULL, NULL, NULL FROM all_mviews WHERE owner IN ({owners})) \
                  WHERE ROWNUM <= {MAX_RELATIONS}",
@@ -383,17 +383,25 @@ pub(crate) async fn schema_map(
         None => Vec::new(),
     };
     if let Some(sql) = own_segments_sql(kind, schema) {
+        let mut positions: std::collections::HashMap<String, usize> = tables
+            .iter()
+            .enumerate()
+            .map(|(position, table)| (table.name.clone(), position))
+            .collect();
         for row in fetch(adapter, &sql).await.unwrap_or_default() {
             let Some(bytes) = int(&row[1]).filter(|bytes| *bytes > 0) else {
                 continue;
             };
-            match tables.iter_mut().find(|table| table.name == row[0]) {
-                Some(table) => table.bytes = Some(bytes),
-                None if warning.is_some() => tables.push(SchemaMapTable {
-                    name: row[0].clone(),
-                    bytes: Some(bytes),
-                    ..SchemaMapTable::default()
-                }),
+            match positions.get(&row[0]) {
+                Some(&position) => tables[position].bytes = Some(bytes),
+                None if warning.is_some() => {
+                    positions.insert(row[0].clone(), tables.len());
+                    tables.push(SchemaMapTable {
+                        name: row[0].clone(),
+                        bytes: Some(bytes),
+                        ..SchemaMapTable::default()
+                    });
+                }
                 None => {}
             }
         }

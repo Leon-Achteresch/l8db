@@ -3631,9 +3631,11 @@ impl DatabaseAdapter for OracleAdapter {
         let sql = String::from(
             "SELECT c.column_name, c.data_type || CASE WHEN c.data_type IN ('VARCHAR2', 'CHAR', 'NVARCHAR2', 'NCHAR') THEN '(' || c.char_length || ')' WHEN c.data_type = 'NUMBER' AND c.data_precision IS NOT NULL THEN '(' || c.data_precision || ',' || NVL(c.data_scale, 0) || ')' ELSE '' END, \
              c.nullable, c.data_default, c.column_id, c.char_length, \
-             (SELECT COUNT(*) FROM all_constraints k JOIN all_cons_columns kc ON kc.owner = k.owner AND kc.constraint_name = k.constraint_name WHERE k.constraint_type = 'P' AND k.owner = c.owner AND k.table_name = c.table_name AND kc.column_name = c.column_name), \
+             CASE WHEN pk.column_name IS NULL THEN 0 ELSE 1 END, \
              cc.comments, c.data_type, c.char_used, c.data_length \
              FROM all_tab_columns c LEFT JOIN all_col_comments cc ON cc.owner = c.owner AND cc.table_name = c.table_name AND cc.column_name = c.column_name \
+             LEFT JOIN (SELECT DISTINCT kc.column_name FROM all_constraints k JOIN all_cons_columns kc ON kc.owner = k.owner AND kc.constraint_name = k.constraint_name AND kc.table_name = k.table_name \
+             WHERE k.constraint_type = 'P' AND k.owner = :owner AND k.table_name = :tbl) pk ON pk.column_name = c.column_name \
              WHERE c.owner = :owner AND c.table_name = :tbl ORDER BY c.column_id"
         );
         Ok(self
@@ -3749,19 +3751,15 @@ impl DatabaseAdapter for OracleAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<ForeignKeyInfo>, String> {
-        let sql = format!(
+        let sql = String::from(
             "SELECT c.constraint_name, c.owner, c.table_name, cc.column_name, r.owner, r.table_name, rc.column_name FROM all_constraints c \
              JOIN all_cons_columns cc ON cc.owner = c.owner AND cc.constraint_name = c.constraint_name \
              JOIN all_constraints r ON r.owner = c.r_owner AND r.constraint_name = c.r_constraint_name \
              JOIN all_cons_columns rc ON rc.owner = r.owner AND rc.constraint_name = r.constraint_name AND rc.position = cc.position \
-             WHERE c.constraint_type = 'R' AND ((c.owner = {} AND c.table_name = {}) OR (r.owner = {} AND r.table_name = {})) ORDER BY c.owner, c.table_name, c.constraint_name, cc.position",
-            lit(schema),
-            lit(table),
-            lit(schema),
-            lit(table)
+             WHERE c.constraint_type = 'R' AND ((c.owner = :owner AND c.table_name = :tbl) OR (r.owner = :owner AND r.table_name = :tbl)) ORDER BY c.owner, c.table_name, c.constraint_name, cc.position",
         );
         Ok(self
-            .rows(sql)
+            .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
             .await?
             .iter()
             .map(|r| ForeignKeyInfo {
@@ -3777,9 +3775,9 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn list_triggers(&self, schema: &str, table: &str) -> Result<Vec<TriggerInfo>, String> {
-        let sql = format!("SELECT trigger_name, trigger_type, triggering_event, status, trigger_body, owner FROM all_triggers WHERE table_owner = {} AND table_name = {} ORDER BY trigger_name", lit(schema), lit(table));
+        let sql = String::from("SELECT trigger_name, trigger_type, triggering_event, status, trigger_body, owner FROM all_triggers WHERE table_owner = :owner AND table_name = :tbl ORDER BY trigger_name");
         let rows: Vec<Vec<String>> = self
-            .rows(sql)
+            .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
             .await?
             .iter()
             .map(|r| (0..6).map(|i| s(r, i)).collect())
@@ -3787,13 +3785,15 @@ impl DatabaseAdapter for OracleAdapter {
         let mut sources: std::collections::HashMap<(String, String), String> =
             std::collections::HashMap::new();
         if !rows.is_empty() {
-            let sql = format!(
+            let sql = String::from(
                 "SELECT s.owner, s.name, s.text FROM all_source s JOIN all_triggers t ON t.owner = s.owner AND t.trigger_name = s.name \
-                 WHERE t.table_owner = {} AND t.table_name = {} AND s.type = 'TRIGGER' ORDER BY s.owner, s.name, s.line",
-                lit(schema),
-                lit(table)
+                 WHERE t.table_owner = :owner AND t.table_name = :tbl AND s.type = 'TRIGGER' ORDER BY s.owner, s.name, s.line",
             );
-            for r in self.rows(sql).await.unwrap_or_default() {
+            for r in self
+                .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
+                .await
+                .unwrap_or_default()
+            {
                 sources
                     .entry((s(&r, 0), s(&r, 1)))
                     .or_default()
@@ -3833,13 +3833,11 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn table_comment(&self, schema: &str, table: &str) -> Result<Option<String>, String> {
-        let sql = format!(
-            "SELECT comments FROM all_tab_comments WHERE owner = {} AND table_name = {}",
-            lit(schema),
-            lit(table)
+        let sql = String::from(
+            "SELECT comments FROM all_tab_comments WHERE owner = :owner AND table_name = :tbl",
         );
         Ok(self
-            .rows(sql)
+            .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
             .await?
             .first()
             .map(|r| s(r, 0))
@@ -3847,14 +3845,18 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
-        let sql = format!(
-            "SELECT i.index_name, i.uniqueness, i.index_type, ic.column_name, (SELECT COUNT(*) FROM all_constraints k WHERE k.owner = i.owner AND k.index_name = i.index_name AND k.constraint_type = 'P') \
-             FROM all_indexes i JOIN all_ind_columns ic ON ic.index_owner = i.owner AND ic.index_name = i.index_name WHERE i.table_owner = {} AND i.table_name = {} ORDER BY i.index_name, ic.column_position",
-            lit(schema),
-            lit(table)
+        let sql = String::from(
+            "SELECT i.index_name, i.uniqueness, i.index_type, ic.column_name, CASE WHEN k.index_name IS NULL THEN 0 ELSE 1 END \
+             FROM all_indexes i JOIN all_ind_columns ic ON ic.index_owner = i.owner AND ic.index_name = i.index_name \
+             LEFT JOIN (SELECT DISTINCT NVL(index_owner, owner) AS index_owner, index_name FROM all_constraints WHERE owner = :owner AND table_name = :tbl AND constraint_type = 'P') k \
+             ON k.index_owner = i.owner AND k.index_name = i.index_name \
+             WHERE i.table_owner = :owner AND i.table_name = :tbl ORDER BY i.index_name, ic.column_position",
         );
         let mut out: Vec<IndexInfo> = Vec::new();
-        for r in self.rows(sql).await? {
+        for r in self
+            .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
+            .await?
+        {
             let name = s(&r, 0);
             let column = s(&r, 3);
             if let Some(existing) = out.iter_mut().find(|x| x.name == name) {
