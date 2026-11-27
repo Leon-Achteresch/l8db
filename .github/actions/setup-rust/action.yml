@@ -38,3 +38,9 @@ runs:
         shared-key: ${{ steps.key.outputs.shared }}
         cache-targets: ${{ inputs.cache != 'packaging' }}
         save-if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    - name: Drop incomplete bundled DuckDB sources
+      shell: bash
+      run: |
+        for dir in src-tauri/target/*/build/libduckdb-sys-*/out/* src-tauri/target/*/*/build/libduckdb-sys-*/out/* src-tauri/target/*/build/libduckdb-sys-*/out/.duckdb-unpack-* src-tauri/target/*/*/build/libduckdb-sys-*/out/.duckdb-unpack-*; do
+          if [ -d "$dir" ] && [ ! -f "$dir/.complete" ]; then rm -rf "$dir"; fi
+        done
