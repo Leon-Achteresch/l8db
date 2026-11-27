@@ -149,6 +149,32 @@ test("Snapshot bleibt unter dem Byte-Limit und übergeht nur zu große Abfragen"
   expect(raw).not.toContain('"all-columns"');
 });
 
+test("Snapshot serialisiert Kataloge nicht, die das Limit sicher sprengen", () => {
+  activate("pg");
+  const source = new QueryClient();
+  let serialized = 0;
+  const row = {
+    get schema() {
+      serialized++;
+      return "s";
+    },
+    table: "t",
+    name: "c",
+    data_type: "NUMBER",
+  };
+  source.setQueryData(
+    ["all-columns", "pg", "app"],
+    Array.from({ length: 200_000 }, () => row),
+  );
+  source.setQueryData(["tables", "pg", "app", "public"], [{ schema: "public", name: "t" }]);
+  const { storage } = memoryStorage();
+  const started = performance.now();
+  expect(saveConnectionSnapshot(source, storage)).toBe(1);
+  expect(performance.now() - started).toBeLessThan(50);
+  expect(serialized).toBe(0);
+  expect(storage.getItem(SNAPSHOT_KEY)).toContain('"tables"');
+});
+
 test("Snapshot nur für die aktive, gespeicherte Verbindung", () => {
   const source = new QueryClient();
   seed(source, "pg");

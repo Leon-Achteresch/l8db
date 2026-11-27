@@ -4,6 +4,12 @@ import { useConnectionsStore } from "@/lib/connections/store";
 export const SNAPSHOT_KEY = "l8db.snapshot";
 export const SNAPSHOT_MAX_BYTES = 4_000_000;
 
+function minimumRowChars(row: unknown) {
+  return row && typeof row === "object"
+    ? Object.keys(row).reduce((chars, key) => chars + key.length + 4, 2)
+    : 3;
+}
+
 const ROOTS = new Set([
   "databases",
   "schemas",
@@ -69,6 +75,8 @@ export function saveConnectionSnapshot(
   const parts: string[] = [];
   let bytes = head.length + 2;
   for (const query of queries) {
+    const data = query.state.data;
+    if (Array.isArray(data) && data.length * minimumRowChars(data[0]) > maxBytes) continue;
     const part = JSON.stringify({
       queryKey: query.queryKey,
       queryHash: query.queryHash,
