@@ -1223,16 +1223,34 @@ fn check_renames(tokens: &[Token]) -> Result<(), String> {
         Err("SELECT * ist hier gesperrt: In UNION, INSERT … SELECT oder Vergleichs-Subqueries würden Spalten ohne ihren Namen weitergegeben. Spalten einzeln wählen.".to_string())
     };
     let mut in_from = false;
-    let mut stack: Vec<(bool, usize)> = Vec::new();
+    let mut join_on = false;
+    let mut stack: Vec<(bool, bool, usize)> = Vec::new();
     for (i, token) in tokens.iter().enumerate() {
         match token {
-            Token::Word(word) if starts_from(tokens, i, word) => in_from = true,
-            Token::Word(word) if FROM_END.contains(&word.as_str()) => in_from = false,
-            Token::Open => {
-                stack.push((in_from, i));
+            Token::Word(word)
+                if (word != "table" || tokens.get(i + 1) == Some(&Token::Open))
+                    && starts_from(tokens, i, word) =>
+            {
+                in_from = true
+            }
+            Token::Word(word) if FROM_END.contains(&word.as_str()) => {
+                join_on = word == "on" && (in_from || join_on);
                 in_from = false;
             }
-            Token::Close => in_from = stack.pop().map(|(from, _)| from).unwrap_or(false),
+            Token::Comma if join_on => {
+                in_from = true;
+                join_on = false;
+            }
+            Token::Open => {
+                stack.push((in_from, join_on, i));
+                in_from = false;
+                join_on = false;
+            }
+            Token::Close => {
+                (in_from, join_on) = stack
+                    .pop()
+                    .map_or((false, false), |(from, on, _)| (from, on))
+            }
             _ => {}
         }
         if is_select_star(tokens, i) {
@@ -1242,9 +1260,13 @@ fn check_renames(tokens: &[Token]) -> Result<(), String> {
             match stack.last() {
                 None if positional_head => return star(),
                 None => {}
-                Some(&(from, open)) => {
+                Some(&(from, _, open)) => {
                     let opener = open.checked_sub(1).and_then(word_at);
-                    if !from && !matches!(opener, Some("exists" | "as" | "materialized")) {
+                    let listed = open >= 2 && tokens[open - 2] == Token::Close;
+                    if !from
+                        && !(matches!(opener, Some("exists" | "materialized"))
+                            || (opener == Some("as") && !listed))
+                    {
                         return star();
                     }
                 }
@@ -1272,7 +1294,7 @@ fn check_renames(tokens: &[Token]) -> Result<(), String> {
             && !RENAME_WORD_SKIP.contains(&word.as_str())
         {
             let alias = match prev {
-                Some(Token::Close) => true,
+                Some(Token::Close | Token::Other('*')) => true,
                 Some(Token::Word(p)) => {
                     p == "as"
                         || !(ALIAS_STOP.contains(&p.as_str())
@@ -2529,6 +2551,49 @@ end;
             ("begin v := hr.salary_of(1); end;", "Schema 'hr'"),
         ] {
             let error = check_plsql(sql, &idx).unwrap_err();
+            assert!(error.contains(expected), "{sql}: {error}");
+        }
+    }
+
+    #[test]
+    fn issue_296_alter_table_type_lengths_are_not_alias_lists() {
+        let idx = index(&[]);
+        for sql in [
+            "alter table T modify C varchar2(16)",
+            "alter table users modify name varchar(16) not null",
+            "alter table users modify (name varchar2(16) default 'x')",
+            "alter table users add (nick varchar2(16), score number(10, 2))",
+            "alter table users add nick varchar2(16 char)",
+            "alter table users add constraint ck check (name in ('a', 'b'))",
+            "alter table orders add constraint fk foreign key (id) references users (id)",
+            "alter table users change name nick varchar(16)",
+            "create table notes (id number(10), body varchar2(4000))",
+            "drop table users",
+            "create table copy as (select * from users)",
+            "select o.id from orders o join users u on o.id = u.id where u.id in (1, 2)",
+            "select x.i from orders o join users u on o.id = u.id, table(f()) x where x.i in (1, 2)",
+        ] {
+            assert_eq!(check_references(sql, &idx, true), Ok(()), "{sql}");
+        }
+        for (sql, expected) in [
+            ("select u.e from users as u(i, n, p, e)", "Spaltenlisten"),
+            ("with x(a, b, c, d) as (select * from users) select x.d from x", "Spaltenlisten"),
+            ("create table copy as select u.e from users u(i, n, p, e)", "Spaltenlisten"),
+            ("create view v as select t.e from (select * from users) t(i, n, p, e)", "Spaltenlisten"),
+            ("alter table users add constraint ck check (name in (select x.e from users x(i, n, p, e)))", "Spaltenlisten"),
+            ("select x.e from table(f()) x(i, n, p, e)", "Spaltenlisten"),
+            ("create table copy (a, b, c, d) as select * from users", "SELECT *"),
+            ("insert into table notes select * from users", "SELECT *"),
+            ("create table copy (i, n, p, e) as (select * from users)", "SELECT *"),
+            ("create view v (i, n, p, e) as (select * from users)", "SELECT *"),
+            ("select x.e from users a join orders b on a.id = b.id, table(f()) x(i, n, p, e)", "Spaltenlisten"),
+            ("select u.e from orders o join orders q on o.id = q.id, users u(i, n, p, e)", "Spaltenlisten"),
+            ("select u.e from orders o join orders q on (o.id = q.id), users u(i, n, p, e)", "Spaltenlisten"),
+            ("select u.e from users * u(i, n, p, e)", "Spaltenlisten"),
+            ("alter table users rename column email to mail", "redigiert"),
+            ("alter table users add mail varchar2(100) as (email)", "redigiert"),
+        ] {
+            let error = check_references(sql, &idx, true).unwrap_err();
             assert!(error.contains(expected), "{sql}: {error}");
         }
     }

@@ -154,8 +154,8 @@ run(
       const samples: number[] = [];
       for (let index = 0; index < 16; index++) {
         await cell(page).click();
-        const measured = page.evaluate(
-          () =>
+        await page.evaluate(() => {
+          (window as Window & { focusLatency?: Promise<number> }).focusLatency =
             new Promise<number>((resolve, reject) => {
               let started = 0;
               const timeout = setTimeout(() => reject(new Error("no focus")), 3000);
@@ -171,10 +171,14 @@ run(
                 },
                 { once: true },
               );
-            }),
-        );
+            });
+        });
         await page.keyboard.press(HOTKEY);
-        samples.push(await measured);
+        samples.push(
+          (await page.evaluate(
+            () => (window as Window & { focusLatency?: Promise<number> }).focusLatency,
+          )) as number,
+        );
       }
       const latency = interactionPercentiles(samples.slice(1));
       const after = await page.evaluate(

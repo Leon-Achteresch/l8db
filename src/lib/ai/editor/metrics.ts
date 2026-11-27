@@ -14,7 +14,8 @@ export type EditorAiAction =
   | "summary"
   | "chat"
   | "filter"
-  | "tour";
+  | "tour"
+  | "theme";
 
 export const EDITOR_AI_ACTION_LABELS: Record<EditorAiAction, string> = {
   inline: "Ghost-Text",
@@ -29,6 +30,7 @@ export const EDITOR_AI_ACTION_LABELS: Record<EditorAiAction, string> = {
   chat: "KI-Chat",
   filter: "Tabellenfilter",
   tour: "Tour-Fragen",
+  theme: "Theme",
 };
 
 export interface EditorAiStats {

@@ -152,7 +152,12 @@ test.skipIf(!process.env.L8DB_QOL_BROWSER)(
         () => (window as unknown as { xlsxBytes: number[] }).xlsxBytes,
       );
       expect(new TextDecoder().decode(Uint8Array.from(bytes))).toContain("third-unloaded-row");
-      await page.getByRole("button", { name: /^Aufgaben/ }).click();
+      await page.keyboard.press("ControlOrMeta+Comma");
+      await page.getByRole("button", { name: /^Daten & Abfragen/ }).click();
+      await page
+        .getByRole("button", { name: /^Öffnen/ })
+        .first()
+        .click();
       await page.getByRole("heading", { name: "Aufgaben", exact: true }).waitFor();
       expect(await page.getByText("XLSX-Export", { exact: true }).count()).toBe(1);
       expect(

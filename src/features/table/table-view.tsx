@@ -30,6 +30,8 @@ export interface TableViewProps {
   type?: "table" | "view";
   fkFilter?: string;
   fkRaw?: boolean;
+  fkSort?: string;
+  fkSortDesc?: boolean;
   column?: string;
   drawerId?: string;
 }

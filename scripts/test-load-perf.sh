@@ -54,4 +54,10 @@ SQL
 base="postgresql://postgres:testpw@127.0.0.1:$port"
 L8DB_PERF_PG_URL="$base/l8db_perf" L8DB_GUARD_PG_URL="$base/l8db_small" \
   cargo test --manifest-path src-tauri/Cargo.toml --locked --lib load_perf_tests -- \
-  --ignored --test-threads=1 --nocapture
+  --ignored --skip deep_forward --test-threads=1 --nocapture
+
+if ((big_rows >= 1000100)); then
+  psql -d l8db_perf -c "CREATE INDEX big_name_id ON public.big (name, id)" -c "VACUUM ANALYZE public.big"
+  L8DB_PERF_PG_URL="$base/l8db_perf" cargo test --manifest-path src-tauri/Cargo.toml --locked \
+    --lib deep_forward_postgres -- --ignored --nocapture
+fi

@@ -4,6 +4,7 @@ import { sanitizeAiRich } from "@/lib/ai/rich-core";
 import { readAiSessions, writeAiSessions } from "@/lib/ai/session-db";
 import type { AiMessage, AiProfile, AiProvider, AiServer } from "@/lib/db/ai";
 import { syncAcrossWindows } from "@/lib/window-sync";
+import { type AiSpend, cleanSpend } from "./spend";
 
 export const AI_PROVIDERS: { id: AiProvider; name: string; binary: string; cli: boolean }[] = [
   { id: "codex", name: "Codex", binary: "codex", cli: true },
@@ -25,6 +26,7 @@ export const AI_LOCAL_ENDPOINTS: Partial<Record<AiProvider, string>> = {
 export interface AiSession {
   id: string;
   title: string;
+  icon?: string;
   profileId: string;
   nativeId: string | null;
   cwd: string;
@@ -39,6 +41,8 @@ export interface AiSession {
   usage?: Record<string, unknown>;
   usageModel?: string;
   usageRequestedModel?: string;
+  spend?: AiSpend;
+  spendSeen?: AiSpend;
   summary?: { upTo: string; count: number; text: string };
 }
 export function aiSessionConnection(session: AiSession): string | null {
@@ -145,6 +149,7 @@ function sanitizeMessage(
     stopped,
     createdAt,
     durationMs,
+    spend,
     attachments,
     context,
     contextLabels,
@@ -162,6 +167,7 @@ function sanitizeMessage(
     ...(stopped ? { stopped: true } : {}),
     ...(typeof createdAt === "number" ? { createdAt } : {}),
     ...(typeof durationMs === "number" ? { durationMs } : {}),
+    ...(spend && typeof spend === "object" ? { spend: cleanSpend(spend) } : {}),
     ...(Array.isArray(attachments) && attachments.length
       ? { attachments: attachments.slice(0, 10) }
       : {}),

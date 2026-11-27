@@ -53,6 +53,7 @@ interface Props {
 
 export function AiContextMap({ layout, messages, summary, prompt, measured, limit }: Props) {
   const [before, setBefore] = useState(false);
+  const [focused, setFocused] = useState<string | null>(null);
   const after = buildContextMap({ layout, messages, summary, prompt, measured, limit });
   const map =
     before && after.compacted
@@ -69,10 +70,11 @@ export function AiContextMap({ layout, messages, summary, prompt, measured, limi
   const placed = placeContextMap(map, WIDTH, HEIGHT);
   const free = Math.max(0, map.limit - map.used);
   const percent = (value: number, total: number) => `${(value / total) * 100}%`;
+  const active = placed.tiles.find((tile) => tile.id === focused);
   return (
     <div className="space-y-1.5">
       <div
-        role="img"
+        role="group"
         aria-label={`Kontext: ${formatTokens(map.used)} von ${formatTokens(map.limit)} belegt`}
         className="relative aspect-[2/1] w-full overflow-hidden rounded-lg"
         data-testid="ai-context-map"
@@ -81,11 +83,19 @@ export function AiContextMap({ layout, messages, summary, prompt, measured, limi
           const labelled = tile.w >= 30 && tile.h >= 16;
           const detailed = tile.w >= 40 && tile.h >= 30;
           return (
-            <div
+            <button
+              type="button"
               key={tile.id}
               data-tile={tile.id}
-              title={`${tile.label} · ${formatTokens(tile.tokens)} · ${KINDS[tile.kind]}`}
-              className="absolute p-px transition-[left,top,width,height] duration-500 ease-out motion-reduce:transition-none"
+              aria-label={`${tile.label} · ${formatTokens(tile.tokens)} · ${KINDS[tile.kind]}`}
+              onPointerEnter={() => setFocused(tile.id)}
+              onPointerLeave={() => setFocused(null)}
+              onFocus={() => setFocused(tile.id)}
+              onBlur={() => setFocused(null)}
+              className={cn(
+                "absolute cursor-default p-px text-left outline-none transition-[left,top,width,height,opacity] duration-500 ease-out motion-reduce:transition-none",
+                active && active.id !== tile.id && "opacity-40",
+              )}
               style={{
                 left: percent(tile.x, WIDTH),
                 top: percent(tile.y, HEIGHT),
@@ -97,6 +107,7 @@ export function AiContextMap({ layout, messages, summary, prompt, measured, limi
                 className={cn(
                   "size-full overflow-hidden rounded-md px-1 py-0.5 leading-tight",
                   TONES[tile.kind],
+                  active?.id === tile.id && "ring-2 ring-foreground/30",
                 )}
               >
                 {labelled && <div className="truncate font-medium">{tile.label}</div>}
@@ -107,7 +118,7 @@ export function AiContextMap({ layout, messages, summary, prompt, measured, limi
                   </div>
                 )}
               </div>
-            </div>
+            </button>
           );
         })}
         {placed.free && (
@@ -134,7 +145,22 @@ export function AiContextMap({ layout, messages, summary, prompt, measured, limi
           </div>
         )}
       </div>
-      {after.compacted > 0 ? (
+      {active ? (
+        <div
+          className="flex items-center gap-2 text-[11px] tabular-nums"
+          data-testid="ai-context-focus"
+        >
+          <span className="min-w-0 flex-1 break-all font-medium">{active.label}</span>
+          <span className="shrink-0 text-muted-foreground">
+            {formatTokens(active.tokens)} ·{" "}
+            {(active.tokens / map.limit).toLocaleString("de-DE", {
+              style: "percent",
+              maximumFractionDigits: 1,
+            })}
+            {KINDS[active.kind] === active.label ? "" : ` · ${KINDS[active.kind]}`}
+          </span>
+        </div>
+      ) : after.compacted > 0 ? (
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
           <span className="min-w-0 flex-1 truncate tabular-nums">
             {after.compacted} Nachrichten komprimiert · −{formatTokens(after.saved)}

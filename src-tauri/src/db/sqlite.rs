@@ -9,7 +9,7 @@ use super::{
     attach_row_keys, create_table_ddl, hex_blob, rows_to_objects, unsupported, where_clause,
     AddColumnRequest, AlterColumnRequest, ColumnInfo, ConstraintInfo, CreateTableRequest,
     DatabaseAdapter, DatabaseOverview, DetailedColumnInfo, ForeignKeyInfo, IndexInfo, QueryResult,
-    SchemaSize, TableData, TableInfo, TriggerInfo, TxSession,
+    RowCount, SchemaSize, TableData, TableInfo, TriggerInfo, TxSession,
 };
 
 pub struct SqliteAdapter {
@@ -23,6 +23,30 @@ pub fn quote(ident: &str) -> String {
     format!("\"{}\"", ident.replace('"', "\"\""))
 }
 
+pub(super) fn filtered_count_sql(
+    target: &str,
+    filter: Option<&str>,
+    allow_raw: bool,
+    cap: i64,
+) -> Result<Option<String>, String> {
+    if allow_raw || filter.is_none_or(|value| value.trim().is_empty()) {
+        return Ok(None);
+    }
+    let predicate = where_clause(filter, false)?;
+    let limit = cap.saturating_add(1);
+    Ok(Some(format!(
+        "SELECT COUNT(*) FROM (SELECT 1 FROM {target}{predicate} LIMIT {limit})"
+    )))
+}
+
+pub(super) fn filtered_count(count: i64, cap: i64) -> RowCount {
+    RowCount {
+        count,
+        exact: count <= cap,
+        estimate: None,
+    }
+}
+
 fn is_params(tail: &str) -> bool {
     !tail.is_empty()
         && tail.split('&').all(|pair| {
@@ -32,22 +56,25 @@ fn is_params(tail: &str) -> bool {
         })
 }
 
-pub fn strip_params(value: &str) -> &str {
-    match value.rfind('?') {
-        Some(at) if is_params(&value[at + 1..]) => &value[..at],
-        _ => value,
-    }
+pub(crate) fn split_file_params(value: &str) -> (&str, &str) {
+    value
+        .rsplit_once('?')
+        .filter(|(_, query)| is_params(query))
+        .unwrap_or((value, ""))
+}
+
+fn params_are_read_only(query: &str) -> bool {
+    query
+        .split('&')
+        .any(|pair| matches!(pair, "mode=ro" | "immutable=1" | "access_mode=read_only"))
+}
+
+pub(crate) fn can_create_file(query: &str) -> bool {
+    query.split('&').any(|pair| pair == "mode=rwc") && !params_are_read_only(query)
 }
 
 pub fn opens_read_only(connection_string: &str) -> bool {
-    let value = connection_string.trim();
-    value.rfind('?').is_some_and(|at| {
-        let tail = &value[at + 1..];
-        is_params(tail)
-            && tail
-                .split('&')
-                .any(|pair| matches!(pair, "mode=ro" | "immutable=1" | "access_mode=read_only"))
-    })
+    params_are_read_only(split_file_params(connection_string.trim()).1)
 }
 
 pub fn file_path(connection_string: &str) -> Result<String, String> {
@@ -63,15 +90,14 @@ pub fn file_path(connection_string: &str) -> Result<String, String> {
         .or_else(|| value.strip_prefix("duckdb:"))
         .or_else(|| value.strip_prefix("file:"))
         .unwrap_or(value);
-    let stripped = strip_params(stripped);
+    let (stripped, _) = split_file_params(stripped);
     if stripped == ":memory:" || stripped.is_empty() {
         return Ok(":memory:".to_string());
     }
     let path = if stripped.contains('%') && !std::path::Path::new(stripped).exists() {
-        url::form_urlencoded::parse(format!("p={}", stripped.replace('+', "%2B")).as_bytes())
-            .next()
-            .map(|(_, v)| v.into_owned())
-            .unwrap_or_else(|| stripped.to_string())
+        percent_encoding::percent_decode_str(stripped)
+            .decode_utf8_lossy()
+            .into_owned()
     } else {
         stripped.to_string()
     };
@@ -89,7 +115,7 @@ pub fn existing_file_path(connection_string: &str) -> Result<String, String> {
     let path = file_path(connection_string)?;
     if path == ":memory:"
         || std::path::Path::new(&path).exists()
-        || connection_string.contains("mode=rwc")
+        || can_create_file(split_file_params(connection_string.trim()).1)
     {
         return Ok(path);
     }
@@ -621,6 +647,29 @@ impl DatabaseAdapter for SqliteAdapter {
         );
         self.run(move |c| {
             c.query_row(&sql, [], |r| r.get::<_, i64>(0))
+                .map_err(map_err)
+        })
+        .await
+    }
+
+    async fn count_rows_capped(
+        &self,
+        schema: &str,
+        table: &str,
+        filter: Option<&str>,
+        allow_raw_filter: bool,
+        cap: i64,
+    ) -> Result<RowCount, String> {
+        let target = format!("{}.{}", quote(schema), quote(table));
+        let Some(sql) = filtered_count_sql(&target, filter, allow_raw_filter, cap)? else {
+            return self
+                .count_rows(schema, table, filter, allow_raw_filter)
+                .await
+                .map(RowCount::exact);
+        };
+        self.run(move |c| {
+            c.query_row(&sql, [], |row| row.get(0))
+                .map(|count| filtered_count(count, cap))
                 .map_err(map_err)
         })
         .await
@@ -1206,10 +1255,76 @@ mod tests {
             path.display().to_string()
         );
         assert_eq!(existing_file_path("sqlite::memory:").unwrap(), ":memory:");
+        for suffix in ["?hint=mode=rwc", "?mode=rwc-extra", "?immutable=1&mode=rwc"] {
+            assert!(existing_file_path(&format!("sqlite://{}{suffix}", path.display())).is_err());
+        }
+        let literal = dir.path().join("mode=rwc.sqlite");
+        assert!(existing_file_path(literal.to_str().unwrap()).is_err());
     }
 
     fn adapter() -> SqliteAdapter {
         SqliteAdapter::new(":memory:", create_pool_state(), "test".to_string()).unwrap()
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn filtered_count_large_table_budget() {
+        let db = adapter();
+        db.execute_query("CREATE TABLE events (id INTEGER PRIMARY KEY, active INTEGER)")
+            .await
+            .unwrap();
+        db.execute_query(
+            "WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<2000000)
+             INSERT INTO events SELECT i, i%2 FROM n",
+        )
+        .await
+        .unwrap();
+        let mut samples = Vec::new();
+        for round in 0..23 {
+            let start = std::time::Instant::now();
+            let result = db
+                .count_rows_capped("main", "events", Some("active = 1"), false, 100_000)
+                .await
+                .unwrap();
+            let elapsed = start.elapsed();
+            if round > 1 {
+                samples.push(elapsed);
+            }
+            assert_eq!(
+                (result.count, result.exact, result.estimate),
+                (100_001, false, None)
+            );
+        }
+        for (filter, expected) in [("id < 0", 0), ("id <= 100000", 100_000)] {
+            let result = db
+                .count_rows_capped("main", "events", Some(filter), false, 100_000)
+                .await
+                .unwrap();
+            assert_eq!((result.count, result.exact), (expected, true));
+        }
+        for (filter, raw) in [(None, false), (Some("id > 0"), true)] {
+            let result = db
+                .count_rows_capped("main", "events", filter, raw, 100_000)
+                .await
+                .unwrap();
+            assert_eq!((result.count, result.exact), (2_000_000, true));
+        }
+        let conn = db.conn().await.unwrap();
+        conn.lock()
+            .unwrap()
+            .progress_handler(2_000_000, Some(|| true))
+            .unwrap();
+        let bounded = db
+            .count_rows_capped("main", "events", Some("active = 1"), false, 100_000)
+            .await
+            .unwrap();
+        assert_eq!(bounded.count, 100_001);
+        samples.sort();
+        println!(
+            "SQLite filtered count, 2M rows: median {:?}, p95 {:?}",
+            samples[10], samples[19]
+        );
+        assert!(samples[19] < std::time::Duration::from_millis(30));
     }
 
     #[tokio::test]
@@ -1301,9 +1416,16 @@ mod tests {
             file_path(&format!("{}/a+b%20c.sqlite", dir.path().display())).unwrap(),
             plus.display().to_string()
         );
+        assert_eq!(
+            file_path("sqlite:/tmp/a+b&c%20d.db?mode=ro").unwrap(),
+            "/tmp/a+b&c d.db"
+        );
         assert_eq!(file_path("file:/tmp/a.db").unwrap(), "/tmp/a.db");
-        assert_eq!(strip_params("/d/neu.sqlite?mode=rwc"), "/d/neu.sqlite");
-        assert_eq!(strip_params("/d/was?.sqlite"), "/d/was?.sqlite");
+        assert_eq!(
+            split_file_params("/d/neu.sqlite?mode=rwc"),
+            ("/d/neu.sqlite", "mode=rwc")
+        );
+        assert_eq!(split_file_params("/d/was?.sqlite"), ("/d/was?.sqlite", ""));
         let missing =
             existing_file_path(&format!("{}/fehlt ?x.sqlite", dir.path().display())).unwrap_err();
         assert!(missing.contains("fehlt ?x.sqlite"), "{missing}");

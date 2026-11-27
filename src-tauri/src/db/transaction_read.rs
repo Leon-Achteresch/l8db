@@ -1,9 +1,6 @@
 use super::{map_pg_err, ora, oracle, quote, DatabaseKind, TransactionEntry, TransactionManager};
 use crate::db::execution::guarded;
-use crate::db::postgres::{
-    capped_count, capped_count_sql, has_row_ids, primary_key_columns, relation_name,
-    table_page_sql, PgServer,
-};
+use crate::db::postgres::{capped_count, capped_count_sql, relation_name, PgServer, TablePage};
 use crate::db::{attach_row_keys, quote_ident, where_clause, DatabaseAdapter, RowCount, TableData};
 
 #[derive(Clone)]
@@ -27,7 +24,15 @@ impl TransactionTableRead {
                 quote(kind, column),
                 if self.order_desc { "DESC" } else { "ASC" }
             ),
-            _ if kind == DatabaseKind::Mssql => " ORDER BY (SELECT NULL)".to_string(),
+            _ if kind == DatabaseKind::Mssql
+                && self
+                    .filter
+                    .as_deref()
+                    .and_then(crate::db::filter_order_start)
+                    .is_none() =>
+            {
+                " ORDER BY (SELECT NULL)".to_string()
+            }
             _ => String::new(),
         }
     }
@@ -109,39 +114,20 @@ impl TransactionManager {
                 let conn = c.lock().await?;
                 pg_read(&conn, ssl, async {
                     let server = PgServer::detect(&conn).await.unwrap_or_default();
-                    let column_rows = conn
-                        .query(
-                            &server.columns_sql(request.order_by.is_some()),
-                            &[&request.schema, &request.table],
-                        )
-                        .await
-                        .map_err(map_pg_err)?;
-                    let columns: Vec<String> = column_rows.iter().map(|row| row.get(0)).collect();
-                    let order = request
-                        .order_by
-                        .as_deref()
-                        .filter(|column| columns.iter().any(|name| name == column))
-                        .map(|column| (column, request.order_desc));
-                    let primary_key = primary_key_columns(&column_rows, order.is_some());
-                    let sql = table_page_sql(
-                        &request.schema,
-                        &request.table,
-                        &where_sql,
-                        order,
-                        !request.is_view && has_row_ids(&column_rows),
-                        &primary_key,
-                    );
-                    let data = conn
-                        .query(&sql, &[&request.limit.max(0), &request.offset.max(0)])
-                        .await
-                        .map_err(map_pg_err)?;
-                    Ok(TableData {
-                        columns,
-                        rows: data
-                            .iter()
-                            .map(|row| row.get::<_, crate::db::exact_number::ExactJson>(0).0)
-                            .collect(),
-                    })
+                    TablePage {
+                        after: None,
+                        schema: &request.schema,
+                        table: &request.table,
+                        where_sql: &where_sql,
+                        order_by: request.order_by.as_deref(),
+                        order_desc: request.order_desc,
+                        is_view: request.is_view,
+                        limit: request.limit.max(0),
+                        offset: request.offset.max(0),
+                        server,
+                    }
+                    .read(&*conn, Some("ROLLBACK TO SAVEPOINT l8_read"))
+                    .await
                 })
                 .await
             }
@@ -222,6 +208,19 @@ impl TransactionManager {
                 .adapter()
                 .count_rows_capped(schema, table, filter, allow_raw, cap)
                 .await;
+        }
+        if let TransactionEntry::Generic(g) = &*entry {
+            if g.kind == DatabaseKind::Sqlite {
+                if let Some(sql) = crate::db::sqlite::filtered_count_sql(
+                    &g.target(schema, table),
+                    filter,
+                    allow_raw,
+                    cap,
+                )? {
+                    let count = count_value(&g.execute(&sql).await?.rows)?;
+                    return Ok(crate::db::sqlite::filtered_count(count, cap));
+                }
+            }
         }
         let TransactionEntry::Pg(c, ssl) = &*entry else {
             return self

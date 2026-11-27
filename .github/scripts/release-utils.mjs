@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 
 export const REPOSITORY = "Leon-Achteresch/l8db";
 export const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
@@ -57,6 +57,14 @@ export function semanticBump(messages, version) {
 
 export function git(...args) {
   return execFileSync("git", args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }).trim();
+}
+
+const REWRITTEN = JSON.parse(
+  readFileSync(new URL("../rewritten-commits.json", import.meta.url), "utf8"),
+);
+
+export function tagCommit(tag) {
+  return REWRITTEN[git("rev-parse", `${tag}^{commit}`)] ?? tag;
 }
 
 const BUILD_NEUTRAL = [

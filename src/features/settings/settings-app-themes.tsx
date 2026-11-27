@@ -1,5 +1,11 @@
+import { PencilIcon } from "lucide-react";
+import { useState } from "react";
+import { NewBadge } from "@/components/new-badge";
+import { ThemeAddMenu } from "@/features/settings/theme-add-menu";
+import { ThemeEditorDialog } from "@/features/settings/theme-editor-dialog";
 import { ThemeSwatchButton } from "@/features/settings/theme-swatch-button";
 import { APP_THEMES } from "@/lib/app-themes";
+import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
 import { useSettingsStore } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
@@ -9,6 +15,9 @@ export function SettingsAppThemes() {
   const dbThemes = useSettingsStore((state) => state.dbThemes);
   const setLightTheme = useSettingsStore((state) => state.setLightTheme);
   const setDarkTheme = useSettingsStore((state) => state.setDarkTheme);
+  const customThemes = useSettingsStore((state) => state.customThemes);
+  const [editing, setEditing] = useState<string | null>(null);
+  const customBadge = useNewFeatureVisibility<HTMLDivElement>("settings.appearance.themes.custom");
   return (
     <div className="w-full space-y-2">
       {dbThemes ? (
@@ -18,7 +27,7 @@ export function SettingsAppThemes() {
         </p>
       ) : null}
       <div className="grid w-full grid-cols-1 gap-3 @min-[30rem]:grid-cols-2 @min-[56rem]:grid-cols-3">
-        {APP_THEMES.map((theme) => {
+        {[...APP_THEMES, ...customThemes].map((theme) => {
           const active = theme.id === lightTheme || theme.id === darkTheme;
           return (
             <div
@@ -45,11 +54,32 @@ export function SettingsAppThemes() {
                   onSelect={() => setDarkTheme(theme.id)}
                 />
               </div>
-              <span className="text-sm font-medium">{theme.name}</span>
+              <div className="flex items-center gap-1">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">{theme.name}</span>
+                {theme.custom ? (
+                  <button
+                    type="button"
+                    aria-label={`${theme.name} bearbeiten`}
+                    onClick={() => setEditing(theme.id)}
+                    className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <PencilIcon className="size-3.5" />
+                  </button>
+                ) : null}
+              </div>
             </div>
           );
         })}
+        <div ref={customBadge.ref} className="relative">
+          {customBadge.isNew ? <NewBadge className="absolute top-2 right-2 z-10" /> : null}
+          <ThemeAddMenu onCreated={setEditing} />
+        </div>
       </div>
+      <ThemeEditorDialog
+        key={editing ?? "none"}
+        themeId={editing}
+        onClose={() => setEditing(null)}
+      />
     </div>
   );
 }

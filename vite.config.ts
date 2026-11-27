@@ -9,7 +9,8 @@ const host = process.env.TAURI_DEV_HOST;
 const root = import.meta.dirname;
 const moduleId = (file: string) => normalizePath(path.resolve(root, file));
 const SHELL_ROUTES = new Set(["/_app", "/_app/_workspace", "/_app/_workspace/"]);
-const ICON_BARREL = /lucide-react[\\/]dist[\\/]esm[\\/]lucide-react\.mjs$/;
+const ICON_BARREL =
+  /(?:lucide-react[\\/]dist[\\/]esm[\\/]lucide-react|lucide[\\/]dist[\\/]esm[\\/]lucide)\.mjs$/;
 const REACT_CORE =
   /node_modules[\\/](?:\.bun[\\/][^\\/]+[\\/]node_modules[\\/])?(?:react|react-dom|scheduler|@tanstack[\\/][^\\/]+|zustand|use-sync-external-store)[\\/]/;
 const startupModules = new Set<string>();

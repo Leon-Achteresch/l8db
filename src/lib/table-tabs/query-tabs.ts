@@ -47,6 +47,13 @@ export function hasUnexecutedQueryChanges(tab: QueryTab): boolean {
     tab.sql !== tab.lastExecutedSql
   );
 }
+
+export function withoutRepeatedSql<T extends Tab>(tab: T): T {
+  if (tab.kind !== "query" || tab.lastExecutedSql !== tab.sql) return tab;
+  const { lastExecutedSql: _repeated, ...rest } = tab;
+  return rest as T;
+}
+
 export function normalizeBookmarks(lines: number[]): number[] {
   return [...new Set(lines.filter((line) => Number.isInteger(line) && line > 0))].sort(
     (a, b) => a - b,

@@ -1,6 +1,6 @@
 import { useTheme } from "next-themes";
 import { type ReactNode, useEffect } from "react";
-import { activeThemeCssVars } from "@/lib/app-themes";
+import { activeThemeCssVars, THEME_COLOR_TOKENS } from "@/lib/app-themes";
 import { detectProvider } from "@/lib/connection-url";
 import { useActiveConnection } from "@/lib/connections";
 import { useDbThemeStore } from "@/lib/db-theme";
@@ -21,14 +21,20 @@ export function DbThemeRoot({ children, className }: { children: ReactNode; clas
     mode === "dark" ? state.darkTheme : state.lightTheme,
   );
   const dbThemes = useSettingsStore((state) => state.dbThemes);
+  const customThemes = useSettingsStore((state) => state.customThemes);
 
   useEffect(() => {
-    const vars = activeThemeCssVars(themeId, mode, dbThemes, kind, providerId);
+    const vars = activeThemeCssVars(themeId, mode, dbThemes, kind, providerId, customThemes);
     const root = document.documentElement;
     for (const [name, value] of Object.entries(vars)) {
       root.style.setProperty(name, value);
     }
-  }, [kind, providerId, mode, themeId, dbThemes]);
+    return () => {
+      for (const token of THEME_COLOR_TOKENS) {
+        if (`--${token}` in vars) root.style.removeProperty(`--${token}`);
+      }
+    };
+  }, [kind, providerId, mode, themeId, dbThemes, customThemes]);
 
   return (
     <div

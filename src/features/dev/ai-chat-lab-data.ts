@@ -23,6 +23,7 @@ export const LAB_DONE: AiMessage = {
   role: "assistant",
   createdAt: now - 58_000,
   durationMs: 8400,
+  spend: { input: 61_000, output: 2_400, cached: 52_000, cost: 0.083, requests: 1, unpriced: 0 },
   reasoning:
     "Ich suche zuerst die Bestelltabelle und prüfe, welche Spalte das Bestelldatum enthält.\nDanach summiere ich pro Monat.",
   text: `${answer}${followups}`,

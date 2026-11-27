@@ -15,3 +15,5 @@ declare module "monaco-editor/languages/definitions/javascript/javascript" {
 declare module "monaco-editor/esm/vs/editor/editor.api" {
   export * from "monaco-editor";
 }
+
+declare module "lucide/dist/esm/iconsAndAliases.mjs";

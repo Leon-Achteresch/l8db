@@ -50,6 +50,11 @@ describe("s3 xml helpers", () => {
     expect(parseVersioning(versioningXml("Enabled"))).toBe("Enabled");
     expect(parseVersioning('<VersioningConfiguration xmlns="x"/>')).toBe("Off");
     expect(parseVersioning(null)).toBe("Off");
+    expect(parseVersioning(versioningXml("Suspended"))).toBe("Suspended");
+    expect(parseVersioning("<Error><Code>AccessDenied</Code></Error>")).toBe("Unknown");
+    expect(
+      parseVersioning("<VersioningConfiguration><Status>other</Status></VersioningConfiguration>"),
+    ).toBe("Unknown");
   });
 
   test("round-trips lifecycle rules and keeps unknown parts", () => {

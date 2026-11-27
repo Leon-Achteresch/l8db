@@ -90,7 +90,7 @@ pub struct ObjectHead {
 #[derive(Debug, Clone, Serialize)]
 pub struct ObjectPreview {
     pub content_type: Option<String>,
-    pub size: u64,
+    pub size: Option<u64>,
     pub truncated: bool,
     pub data: String,
 }
@@ -567,7 +567,8 @@ impl S3 {
         let get = |name: &str| header(&response, name);
         Ok(ObjectHead {
             key: key.to_string(),
-            version_id: get("x-amz-version-id").filter(|v| v != "null"),
+            version_id: get("x-amz-version-id")
+                .or_else(|| version_id.filter(|id| !id.is_empty()).map(str::to_owned)),
             size: get("content-length")
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(0),
@@ -592,67 +593,6 @@ impl S3 {
             metadata,
             headers,
         })
-    }
-
-    pub async fn get_range(
-        &self,
-        bucket: &str,
-        key: &str,
-        version_id: Option<&str>,
-        max_bytes: u64,
-    ) -> Result<(Option<String>, u64, Vec<u8>), String> {
-        let mut req =
-            Request::new(Method::GET, Some(bucket), Some(key)).query_opt("versionId", version_id);
-        if max_bytes > 0 {
-            req = req.header("range", format!("bytes=0-{}", max_bytes - 1));
-        }
-        let response = match self.send(req).await {
-            Ok(r) => r,
-            Err(e) if e.code == "InvalidRange" => {
-                return Ok((None, 0, Vec::new()));
-            }
-            Err(e) => return Err(e.into()),
-        };
-        let content_type = header(&response, "content-type");
-        let total = header(&response, "content-range")
-            .and_then(|r| r.rsplit('/').next().and_then(|t| t.parse().ok()))
-            .or_else(|| header(&response, "content-length").and_then(|v| v.parse().ok()))
-            .unwrap_or(0);
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| format!("Objekt konnte nicht gelesen werden: {e}"))?;
-        Ok((content_type, total, bytes.to_vec()))
-    }
-
-    pub async fn preview(
-        &self,
-        bucket: &str,
-        key: &str,
-        version_id: Option<&str>,
-        max_bytes: u64,
-    ) -> Result<ObjectPreview, String> {
-        use base64::Engine;
-        let limit = max_bytes.clamp(1, MAX_PREVIEW_BYTES);
-        let (content_type, size, bytes) = self.get_range(bucket, key, version_id, limit).await?;
-        Ok(ObjectPreview {
-            content_type,
-            size,
-            truncated: (bytes.len() as u64) < size,
-            data: base64::engine::general_purpose::STANDARD.encode(bytes),
-        })
-    }
-
-    pub async fn get_text(&self, bucket: &str, key: &str) -> Result<String, String> {
-        let (_, size, bytes) = self
-            .get_range(bucket, key, None, MAX_TEXT_BYTES + 1)
-            .await?;
-        if size > MAX_TEXT_BYTES {
-            return Err(format!(
-                "Objekt ist zu groß für den Editor ({size} Bytes, maximal {MAX_TEXT_BYTES})."
-            ));
-        }
-        String::from_utf8(bytes).map_err(|_| "Objekt ist kein UTF-8-Text.".to_string())
     }
 
     pub async fn put_bytes(

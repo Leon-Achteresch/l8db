@@ -68,22 +68,24 @@ fn plan_mode(mode: &str) -> bool {
     mode.rsplit(['#', '/']).next() == Some("plan")
 }
 
+pub(super) const PLAN_READS: [&str; 8] = [
+    "connections",
+    "overview",
+    "search",
+    "describe",
+    "relations",
+    "explain",
+    "query",
+    "code",
+];
+
 fn acp_plan_read(tool: &Value) -> bool {
     match tool["kind"].as_str() {
         Some("read" | "search") => return true,
         Some("other") | None => {}
         Some(_) => return false,
     }
-    let reads = [
-        "connections",
-        "overview",
-        "search",
-        "describe",
-        "relations",
-        "explain",
-        "query",
-        "code",
-    ];
+    let reads = PLAN_READS;
     let input = &tool["rawInput"];
     if input["serverName"] == "l8db_ai"
         && input["toolName"]
@@ -1053,6 +1055,7 @@ async fn claude(
                 }
                 return Ok(());
             }
+            "rate_limit_event" => run.emit("usage", json!({"rateLimit": event["rate_limit_info"]})),
             "system" => {
                 if let Some(message) = claude_fast_notice(&request.profile, &event) {
                     run.emit("notice", json!({"message": message}));

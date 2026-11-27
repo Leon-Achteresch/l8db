@@ -18,7 +18,7 @@ export async function readCsvImportFile(path: string) {
   return { path, name: sqlFileTitle(path), ...preview };
 }
 
-export async function pickImportFile(kind: "sql" | "csv" | "json") {
+export async function pickImportFilePath(kind: "sql" | "csv" | "json") {
   const path = await open({
     multiple: false,
     directory: false,
@@ -30,11 +30,13 @@ export async function pickImportFile(kind: "sql" | "csv" | "json") {
       },
     ],
   });
-  return typeof path === "string"
-    ? kind === "csv"
-      ? readCsvImportFile(path)
-      : readImportFile(path)
-    : null;
+  return typeof path === "string" ? path : null;
+}
+
+export async function pickImportFile(kind: "sql" | "csv" | "json") {
+  const path = await pickImportFilePath(kind);
+  if (!path) return null;
+  return kind === "csv" ? readCsvImportFile(path) : readImportFile(path);
 }
 
 export const IMPORT_FILE_EXTENSIONS: Record<ImportFormat, string[]> = {

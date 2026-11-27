@@ -7,9 +7,10 @@ use rquickjs::{
 use serde::Deserialize;
 use serde_json::{json, Value as Json};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, Write};
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const PRELUDE: &str = include_str!("code_prelude.js");
@@ -27,6 +28,8 @@ pub(super) struct Init {
     pub stack: usize,
     pub chars: u32,
     pub items: u32,
+    #[serde(default)]
+    pub tools: Vec<String>,
 }
 
 type Resolvers = (Persistent<Function<'static>>, Persistent<Function<'static>>);
@@ -35,6 +38,7 @@ struct Bridge {
     out: std::io::StdoutLock<'static>,
     next: u64,
     pending: HashMap<u64, Resolvers>,
+    hosted: HashSet<u64>,
     logs: Vec<String>,
     log_chars: usize,
     dropped: usize,
@@ -99,6 +103,7 @@ fn work() -> i32 {
         out: std::io::stdout().lock(),
         next: 0,
         pending: HashMap::new(),
+        hosted: HashSet::new(),
         logs: Vec::new(),
         log_chars: 0,
         dropped: 0,
@@ -139,14 +144,15 @@ fn execute(init: &Init, bridge: &Rc<RefCell<Bridge>>, input: &mut impl BufRead) 
     };
     runtime.set_memory_limit(init.memory);
     runtime.set_max_stack_size(init.stack);
-    let deadline = Instant::now() + Duration::from_millis(init.ms);
-    runtime.set_interrupt_handler(Some(Box::new(move || Instant::now() >= deadline)));
+    let deadline = Arc::new(Mutex::new(Instant::now() + Duration::from_millis(init.ms)));
+    let limit_at = deadline.clone();
+    runtime.set_interrupt_handler(Some(Box::new(move || expired(&limit_at))));
     let Ok(context) = Context::full(&runtime) else {
         return failure("sandbox context could not start");
     };
     let message = match context.with(|ctx| start(&ctx, init, bridge)) {
         Ok((promise, offset)) => drive(
-            &runtime, &context, &promise, offset, deadline, bridge, input,
+            &runtime, &context, &promise, offset, &deadline, bridge, input,
         ),
         Err(error) => error,
     };
@@ -154,12 +160,16 @@ fn execute(init: &Init, bridge: &Rc<RefCell<Bridge>>, input: &mut impl BufRead) 
     limit(message, init)
 }
 
+fn expired(deadline: &Mutex<Instant>) -> bool {
+    deadline.lock().map_or(true, |at| Instant::now() >= *at)
+}
+
 fn drive(
     runtime: &Runtime,
     context: &Context,
     promise: &Persistent<Promise<'static>>,
     offset: usize,
-    deadline: Instant,
+    deadline: &Mutex<Instant>,
     bridge: &Rc<RefCell<Bridge>>,
     input: &mut impl BufRead,
 ) -> Json {
@@ -176,7 +186,7 @@ fn drive(
         if let Some(message) = context.with(|ctx| settle(&ctx, promise, offset)) {
             return message;
         }
-        if Instant::now() >= deadline {
+        if expired(deadline) {
             return failure("InternalError: interrupted");
         }
         if bridge.borrow().pending.is_empty() {
@@ -185,8 +195,15 @@ fn drive(
             );
         }
         let mut line = String::new();
+        let waited = Instant::now();
+        let hosted = !bridge.borrow().hosted.is_empty();
         if input.read_line(&mut line).unwrap_or(0) == 0 {
             std::process::exit(0);
+        }
+        if hosted {
+            if let Ok(mut at) = deadline.lock() {
+                *at += waited.elapsed();
+            }
         }
         let Some((id, payload)) = line
             .trim_end_matches(['\n', '\r'])
@@ -195,6 +212,7 @@ fn drive(
         else {
             return failure("sandbox received a malformed reply");
         };
+        bridge.borrow_mut().hosted.remove(&id);
         let Some((resolve, reject)) = bridge.borrow_mut().pending.remove(&id) else {
             continue;
         };
@@ -246,7 +264,7 @@ fn start<'js>(
         .catch(ctx)
         .map_err(setup)?;
     let run: Function = prelude
-        .call((host, log, init.chars, init.items))
+        .call((host, log, init.chars, init.items, init.tools.clone()))
         .catch(ctx)
         .map_err(setup)?;
     let trimmed = init.code.trim_start();
@@ -298,6 +316,9 @@ fn host_function<'js>(
             let mut bridge = bridge.borrow_mut();
             bridge.next += 1;
             let id = bridge.next;
+            if op == "tool" {
+                bridge.hosted.insert(id);
+            }
             bridge.pending.insert(
                 id,
                 (

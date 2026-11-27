@@ -70,14 +70,34 @@ export type SplitGroup = {
   focusedPane: number;
   layout?: SplitTree;
   shared?: boolean;
+  paneTabs?: Tab[][];
+  origin?: string;
 };
 
 type Live = Pick<SplitState, "panes" | "paneTabs" | "layout" | "masters" | "focusedPane">;
 
 const SINGLE: Live = { panes: [], paneTabs: [], layout: null, masters: [], focusedPane: 0 };
 const SNAPSHOT_VERSION = 2;
-const groupTabs = new Map<string, string[][]>();
 let detaching = false;
+let liveSource: Tab[] | null = null;
+let liveByKey = new Map<string, Tab>();
+
+function liveTabs(): Map<string, Tab> {
+  const { tabs } = useTableTabs.getState();
+  if (tabs !== liveSource) {
+    liveSource = tabs;
+    liveByKey = new Map(tabs.map((tab) => [tabKey(tab), tab]));
+  }
+  return liveByKey;
+}
+
+export function groupPaneTabs(group: Pick<SplitGroup, "tabs" | "paneTabs">): Tab[][] {
+  return group.paneTabs ?? group.tabs.map((tab) => (tab ? [tab] : []));
+}
+
+export function isTabSet(group: Pick<SplitGroup, "tabs">): boolean {
+  return group.tabs.length < 2;
+}
 
 function liveOf(state: Live): Live {
   return {
@@ -102,10 +122,16 @@ interface SplitState {
   showSplit: () => void;
   activeGroup: string | null;
   groups: Record<string, SplitGroup[]>;
+  closedTabs: Record<string, Record<string, Tab>>;
   openGroup: (id: string) => Tab | null;
+  saveTabs: (activeKey: string | null, id?: string) => string | null;
+  adoptGroup: (id: string, connectionId: string) => string | null;
+  retargetGroup: (id: string, schemas: ReadonlyMap<string, string>) => void;
   renameGroup: (id: string, name: string) => void;
   setGroupShared: (id: string, shared: boolean, connectionId?: string) => void;
   deleteGroup: (id: string, connectionId?: string) => void;
+  openGroups: Record<string, string[]>;
+  closeView: (id: string) => void;
   byConnection: Record<string, SplitSnapshot>;
   paneConnections: Record<string, string>;
   setPaneConnection: (tabKey: string, connectionId: string | null) => void;
@@ -149,11 +175,80 @@ function storedLayout(layout: unknown, count: number): SplitTree {
   return layout && isSplitTree(layout) && leafCount(layout) === count ? layout : null;
 }
 
-function paneTab(key: string | null, previous: (Tab | null)[]): Tab | null {
-  if (!key) return null;
-  const live = useTableTabs.getState().tabs.find((tab) => tabKey(tab) === key);
-  if (live?.kind === "query") return { kind: "query", id: live.id, title: live.title, sql: "" };
-  return remoteTab(key) ?? live ?? previous.find((tab) => tab && tabKey(tab) === key) ?? null;
+function queryStub(tab: { id: string; title: string }): Extract<Tab, { kind: "query" }> {
+  return { kind: "query", id: tab.id, title: tab.title, sql: "" };
+}
+
+function tabResolver(group?: SplitGroup): (key: string | null) => Tab | null {
+  const live = liveTabs();
+  let previous: Map<string, Tab> | undefined;
+  return (key) => {
+    if (!key) return null;
+    const tab = live.get(key);
+    if (tab?.kind === "query") return queryStub(tab);
+    const remote = remoteTab(key) ?? tab;
+    if (remote || !group) return remote ?? null;
+    previous ??= new Map(
+      [...group.tabs, ...groupPaneTabs(group).flat()].flatMap((entry) =>
+        entry ? [[tabKey(entry), entry] as const] : [],
+      ),
+    );
+    return previous.get(key) ?? null;
+  };
+}
+
+function storedPaneTabs(
+  paneTabs: string[][],
+  resolve: (key: string | null) => Tab | null,
+): Tab[][] | undefined {
+  if (paneTabs.every((keys) => keys.length < 2)) return undefined;
+  return paneTabs.map((keys) => keys.flatMap((key) => resolve(key) ?? []));
+}
+
+function isWorkbench(tab: Tab): boolean {
+  return tab.kind === "tool" && tab.tool === "workbench";
+}
+
+function keepsContent(tab: Tab | null | undefined): tab is Tab {
+  return tab?.kind === "query" || (tab?.kind === "tool" && !isWorkbench(tab));
+}
+
+function ownTab(tab: Tab): Tab {
+  const { connectionId: _, ...own } = tab;
+  return own as Tab;
+}
+
+function groupsPatch(
+  state: Pick<SplitState, "groups" | "closedTabs">,
+  scope: string,
+  list: SplitGroup[],
+  closed = state.closedTabs[scope],
+): Pick<SplitState, "groups" | "closedTabs"> {
+  return {
+    groups: { ...state.groups, [scope]: list },
+    closedTabs: closed
+      ? { ...state.closedTabs, [scope]: usedCopies(closed, list) }
+      : state.closedTabs,
+  };
+}
+
+function portable(tab: Tab): boolean {
+  return (
+    tab.kind !== "function" &&
+    tab.kind !== "procedure" &&
+    !(tab.kind === "tool" && tab.id !== undefined)
+  );
+}
+
+function evictable(
+  list: SplitGroup[],
+  activeGroup: string | null,
+): { list: SplitGroup[]; full: boolean } {
+  if (list.length < MAX_SPLIT_GROUPS) return { list, full: false };
+  const stale = list.find(
+    (group) => group.id !== activeGroup && DEFAULT_GROUP_NAME.test(group.name),
+  );
+  return { list: stale ? list.filter((group) => group !== stale) : list, full: !stale };
 }
 
 function syncedGroups(
@@ -166,18 +261,19 @@ function syncedGroups(
     return state.groups;
   return {
     ...state.groups,
-    [scope]: list.map((group) =>
-      group.id === state.activeGroup
-        ? {
-            ...group,
-            tabs: live.panes.map((key) => paneTab(key, group.tabs)),
-            masters: live.masters,
-            focusedPane: live.focusedPane,
-            orientation: state.orientation,
-            layout: live.layout,
-          }
-        : group,
-    ),
+    [scope]: list.map((group) => {
+      if (group.id !== state.activeGroup) return group;
+      const resolve = tabResolver(group);
+      return {
+        ...group,
+        tabs: live.panes.map(resolve),
+        paneTabs: storedPaneTabs(live.paneTabs, resolve),
+        masters: live.masters,
+        focusedPane: live.focusedPane,
+        orientation: state.orientation,
+        layout: live.layout,
+      };
+    }),
   };
 }
 
@@ -191,7 +287,14 @@ function ensureGroup(
     return { groups: state.groups, activeGroup: state.activeGroup, adopted: null };
   const keys = live.panes.join("\0");
   const same = existing.find(
-    (group) => group.tabs.map((tab) => (tab ? tabKey(tab) : "")).join("\0") === keys,
+    (group) =>
+      group.tabs.map((tab) => (tab ? tabKey(tab) : "")).join("\0") === keys &&
+      (!group.paneTabs ||
+        group.paneTabs.every(
+          (tabs, pane) =>
+            tabs.length === live.paneTabs[pane]?.length &&
+            tabs.every((tab, index) => tabKey(tab) === live.paneTabs[pane][index]),
+        )),
   );
   if (same) return { groups: state.groups, activeGroup: same.id, adopted: same };
   const stale =
@@ -204,7 +307,7 @@ function ensureGroup(
   const group: SplitGroup = {
     id: crypto.randomUUID(),
     name: `Ansicht ${number}`,
-    tabs: live.panes.map((key) => paneTab(key, [])),
+    tabs: live.panes.map(tabResolver()),
     masters: live.masters,
     orientation: state.orientation,
     focusedPane: live.focusedPane,
@@ -217,9 +320,31 @@ function ensureGroup(
   };
 }
 
+function withOpen(
+  openGroups: Record<string, string[]>,
+  scope: string,
+  id: string | null,
+  groups: SplitGroup[] = [],
+): Record<string, string[]> {
+  const list = openGroups[scope] ?? [];
+  if (!id || list.includes(id)) return openGroups;
+  const known = new Set(groups.map((group) => group.id));
+  return { ...openGroups, [scope]: [...list.filter((entry) => known.has(entry)), id] };
+}
+
+function withoutOpen(
+  openGroups: Record<string, string[]>,
+  scope: string,
+  id: string | null,
+): Record<string, string[]> {
+  const list = openGroups[scope];
+  if (!id || !list?.includes(id)) return openGroups;
+  return { ...openGroups, [scope]: list.filter((entry) => entry !== id) };
+}
+
 function snapshot(
   live: Live,
-  state: Pick<SplitState, "byConnection" | "orientation" | "groups" | "activeGroup">,
+  state: Pick<SplitState, "byConnection" | "orientation" | "groups" | "activeGroup" | "openGroups">,
 ): Partial<SplitState> {
   const scope = scopeKey();
   const split = live.panes.length > 1;
@@ -232,11 +357,13 @@ function snapshot(
   const orientation = restyle ? adopted.orientation : state.orientation;
   const layout = restyle ? storedLayout(adopted.layout, live.panes.length) : live.layout;
   const next = { ...live, masters, layout };
-  if (split && grouped.activeGroup) groupTabs.set(grouped.activeGroup, next.paneTabs);
   return {
     ...next,
     orientation,
     activeGroup: grouped.activeGroup,
+    openGroups: split
+      ? withOpen(state.openGroups, scope, grouped.activeGroup, grouped.groups[scope])
+      : state.openGroups,
     groups: split
       ? syncedGroups(
           { groups: grouped.groups, activeGroup: grouped.activeGroup, orientation },
@@ -357,6 +484,8 @@ export const useSplitView = create<SplitState>()(
         orientation: "horizontal",
         activeGroup: null,
         groups: {},
+        openGroups: {},
+        closedTabs: {},
         byConnection: {},
         paneConnections: {},
 
@@ -368,19 +497,30 @@ export const useSplitView = create<SplitState>()(
           const scope = scopeKey();
           const group = get().groups[scope]?.find((entry) => entry.id === id);
           if (!group) return null;
-          const open = new Set(openKeys());
-          const missing = group.tabs.filter(
-            (tab): tab is Tab => tab != null && !tab.connectionId && !open.has(tabKey(tab)),
-          );
-          if (missing.length > 0)
+          const lists = groupPaneTabs(group);
+          const open = liveTabs();
+          const closed = get().closedTabs[scope];
+          const missing = new Map<string, Tab>();
+          for (const tab of lists.flat()) {
+            const key = tabKey(tab);
+            if (!tab.connectionId && !open.has(key) && !isWorkbench(tab))
+              missing.set(key, closed?.[key] ?? tab);
+          }
+          if (missing.size > 0)
             openDetached(() =>
-              useTableTabs.setState((tabs) => storeFor([...tabs.tabs, ...missing], tabs)),
+              useTableTabs.setState((tabs) => storeFor([...tabs.tabs, ...missing.values()], tabs)),
             );
+          const local = lists.flat().filter((tab) => !tab.connectionId);
+          if (isTabSet(group)) {
+            const first = group.tabs[0] ?? local[0] ?? null;
+            if (first) get().reveal(tabKey(first));
+            return first;
+          }
           const panes = group.tabs.map((tab) => (tab ? tabKey(tab) : null));
           const ws = normalizeWorkspace(
             {
               panes,
-              paneTabs: groupTabs.get(id),
+              paneTabs: group.paneTabs?.map((tabs) => tabs.map(tabKey)),
               masters: group.masters,
               layout: group.layout,
               focusedPane: Math.min(group.focusedPane, panes.length - 1),
@@ -397,10 +537,152 @@ export const useSplitView = create<SplitState>()(
             ),
             away: false,
           }));
-          const local = group.tabs.filter((tab): tab is Tab => tab != null && !tab.connectionId);
           const focused = group.tabs[ws.focusedPane];
           return focused && !focused.connectionId ? focused : (local[0] ?? null);
         },
+        saveTabs: (activeKey, id) => {
+          const state = get();
+          const scope = scopeKey();
+          const resolve = tabResolver();
+          const tabs = standaloneTabs(useTableTabs.getState().tabs, hiddenTabLists(state))
+            .filter((tab) => !isWorkbench(tab))
+            .flatMap((tab) => resolve(tabKey(tab)) ?? []);
+          if (tabs.length === 0) return null;
+          const content = {
+            tabs: [tabs.find((tab) => tabKey(tab) === activeKey) ?? tabs[0]],
+            paneTabs: [tabs],
+          };
+          const existing = state.groups[scope] ?? [];
+          if (id) {
+            if (!existing.some((group) => group.id === id && isTabSet(group))) return null;
+            set(
+              groupsPatch(
+                state,
+                scope,
+                existing.map((group) => (group.id === id ? { ...group, ...content } : group)),
+              ),
+            );
+            return id;
+          }
+          const { list, full } = evictable(existing, state.activeGroup);
+          if (full) return null;
+          let number = 1;
+          while (list.some((group) => group.name === `Gruppe ${number}`)) number++;
+          const group: SplitGroup = {
+            id: crypto.randomUUID(),
+            name: `Gruppe ${number}`,
+            ...content,
+            masters: [null],
+            orientation: "horizontal",
+            focusedPane: 0,
+          };
+          set(groupsPatch(state, scope, [...list, group]));
+          return group.id;
+        },
+        adoptGroup: (id, connectionId) => {
+          const state = get();
+          const scope = scopeKey();
+          const source = state.groups[connectionId]?.find((group) => group.id === id);
+          if (!source) return null;
+          if (connectionId === scope) return id;
+          const existing = state.groups[scope] ?? [];
+          const adopted = existing.find((group) => group.origin === id);
+          if (adopted) return adopted.id;
+          const { list, full } = evictable(existing, state.activeGroup);
+          if (full) return null;
+          const home = new Map(
+            (useTableTabs.getState().tabsByConnection[connectionId] ?? []).map((tab) => [
+              tabKey(tab),
+              tab,
+            ]),
+          );
+          const copies = new Map<string, Tab | null>();
+          const taken = new Set(
+            [...source.tabs, ...groupPaneTabs(source).flat()].flatMap((tab) =>
+              tab?.connectionId === scope ? tabKey(ownTab(tab)) : [],
+            ),
+          );
+          const closed = { ...state.closedTabs[scope] };
+          const paneConnections = { ...state.paneConnections };
+          const adopt = (tab: Tab | null): Tab | null => {
+            if (!tab) return null;
+            const key = tabKey(tab);
+            const known = copies.get(key);
+            if (known !== undefined) return known;
+            let copy: Tab | null = tab;
+            if (tab.connectionId === scope) copy = ownTab(tab);
+            else if (tab.connectionId) copy = tab;
+            else if (taken.has(key)) copy = { ...tab, connectionId };
+            else if (!portable(tab)) copy = null;
+            else if (tab.kind === "query") {
+              const live = home.get(key) ?? state.closedTabs[connectionId]?.[key];
+              const from = live?.kind === "query" ? live : tab;
+              const stub = queryStub({ id: crypto.randomUUID(), title: from.title });
+              closed[tabKey(stub)] = { ...stub, sql: from.sql };
+              copy = stub;
+            }
+            copies.set(key, copy);
+            const override = state.paneConnections[`${connectionId}|${key}`];
+            if (copy && !tab.connectionId && !copy.connectionId && override && override !== scope)
+              paneConnections[`${scope}|${tabKey(copy)}`] = override;
+            return copy;
+          };
+          const lists = groupPaneTabs(source).map((tabs) =>
+            tabs.flatMap((tab) => adopt(tab) ?? []),
+          );
+          if (lists.every((tabs) => tabs.length === 0)) return null;
+          const tabs = source.tabs.map((tab, index) => adopt(tab) ?? lists[index]?.[0] ?? null);
+          const group: SplitGroup = {
+            ...source,
+            id: crypto.randomUUID(),
+            origin: id,
+            shared: undefined,
+            tabs,
+            paneTabs:
+              isTabSet(source) || lists.some((entries) => entries.length > 1) ? lists : undefined,
+          };
+          set({ ...groupsPatch(state, scope, [...list, group], closed), paneConnections });
+          return group.id;
+        },
+        retargetGroup: (id, schemas) =>
+          set((state) => {
+            const scope = scopeKey();
+            const group = state.groups[scope]?.find((entry) => entry.id === id);
+            if (!group) return state;
+            const lists = groupPaneTabs(group);
+            const local = new Set(
+              [...group.tabs, ...lists.flat()].flatMap((tab) =>
+                tab && !tab.connectionId ? [tabKey(tab)] : [],
+              ),
+            );
+            const home = Object.keys(state.groups).find(
+              (key) =>
+                key !== scope && state.groups[key].some((entry) => entry.id === group.origin),
+            );
+            let changed = false;
+            const move = (tab: Tab | null): Tab | null => {
+              if (!tab || tab.connectionId || !("schema" in tab) || !portable(tab)) return tab;
+              const schema = schemas.get(tab.schema);
+              if (!schema || schema === tab.schema) return tab;
+              if (state.paneConnections[`${scope}|${tabKey(tab)}`]) return tab;
+              const moved = { ...tab, schema };
+              const taken = local.has(tabKey(moved));
+              if (taken && !(home && tab.kind === "table")) return tab;
+              changed = true;
+              return taken ? { ...tab, connectionId: home } : moved;
+            };
+            const tabs = group.tabs.map(move);
+            const paneTabs = group.paneTabs?.map((list) => list.flatMap((tab) => move(tab) ?? []));
+            if (!changed) return state;
+            return {
+              groups: {
+                ...state.groups,
+                [scope]: state.groups[scope].map((entry) =>
+                  entry.id === id ? { ...group, tabs, paneTabs } : entry,
+                ),
+              },
+            };
+          }),
         renameGroup: (id, name) =>
           set((state) => {
             const scope = scopeKey();
@@ -430,15 +712,20 @@ export const useSplitView = create<SplitState>()(
         deleteGroup: (id, connectionId) => {
           const state = get();
           const scope = connectionId ?? scopeKey();
-          const groups = {
-            ...state.groups,
-            [scope]: (state.groups[scope] ?? []).filter((group) => group.id !== id),
-          };
+          const { groups, closedTabs } = groupsPatch(
+            state,
+            scope,
+            (state.groups[scope] ?? []).filter((group) => group.id !== id),
+          );
+          const openGroups = withoutOpen(state.openGroups, scope, id);
           if (state.activeGroup !== id || scope !== scopeKey()) {
-            set({ groups });
+            set({ groups, closedTabs, openGroups });
             return;
           }
-          set(snapshot(SINGLE, { ...state, groups, activeGroup: null }));
+          set({
+            ...snapshot(SINGLE, { ...state, groups, openGroups, activeGroup: null }),
+            closedTabs,
+          });
           reorderOpenTabs(state.paneTabs.flat());
         },
         setMaster: (detail, master) =>
@@ -482,6 +769,11 @@ export const useSplitView = create<SplitState>()(
           }),
 
         split: ({ activeKey, key = null, target, edge }) => {
+          const before = get();
+          if (activeKey && !key && before.panes.length > 1 && !isSplitShown(before, activeKey)) {
+            set(snapshot(liveOf(before), before));
+            set(snapshot(SINGLE, get()));
+          }
           const state = get();
           const single = state.panes.length < 2;
           const seed = activeKey && activeKey !== key ? activeKey : null;
@@ -536,8 +828,18 @@ export const useSplitView = create<SplitState>()(
 
         collapse: () => {
           const state = get();
-          set(snapshot(SINGLE, state));
+          const openGroups = withoutOpen(state.openGroups, scopeKey(), state.activeGroup);
+          set(snapshot(SINGLE, { ...state, openGroups }));
           reorderOpenTabs(state.paneTabs.flat());
+        },
+
+        closeView: (id) => {
+          const state = get();
+          if (state.panes.length > 1 && state.activeGroup === id) {
+            state.collapse();
+            return;
+          }
+          set({ openGroups: withoutOpen(state.openGroups, scopeKey(), id) });
         },
 
         focusPane: (index) =>
@@ -603,6 +905,10 @@ export const useSplitView = create<SplitState>()(
             delete byConnection[connectionId];
             const groups = { ...state.groups };
             delete groups[connectionId];
+            const closedTabs = { ...state.closedTabs };
+            delete closedTabs[connectionId];
+            const openGroups = { ...state.openGroups };
+            delete openGroups[connectionId];
             const paneConnections = Object.fromEntries(
               Object.entries(state.paneConnections).filter(
                 ([key, value]) => !key.startsWith(`${connectionId}|`) && value !== connectionId,
@@ -616,10 +922,12 @@ export const useSplitView = create<SplitState>()(
                 activeGroup: null,
                 byConnection,
                 groups,
+                closedTabs,
+                openGroups,
                 paneConnections,
               };
             }
-            return { byConnection, groups, paneConnections };
+            return { byConnection, groups, closedTabs, openGroups, paneConnections };
           }),
       };
     },
@@ -630,15 +938,25 @@ export const useSplitView = create<SplitState>()(
         byConnection: state.byConnection,
         paneConnections: state.paneConnections,
         groups: state.groups,
+        openGroups: state.openGroups,
+        closedTabs: state.closedTabs,
       }),
       merge: (persistedState, currentState) => {
         const stored = persistedState as Partial<SplitState> | undefined;
         const byConnection = stored?.byConnection ?? {};
+        const groups = stored?.groups ?? {};
         return {
           ...currentState,
           byConnection,
           paneConnections: stored?.paneConnections ?? {},
-          groups: stored?.groups ?? {},
+          groups,
+          openGroups: stored?.openGroups ?? {},
+          closedTabs: Object.fromEntries(
+            Object.entries(stored?.closedTabs ?? {}).map(([scope, closed]) => [
+              scope,
+              usedCopies(closed, groups[scope]),
+            ]),
+          ),
           ...restore(byConnection[scopeKey()], stored?.paneConnections ?? {}),
         };
       },
@@ -662,6 +980,28 @@ export function isSplitShown(
 ): boolean {
   if (state.panes.length < 2 || !routeKey) return false;
   return !state.away || state.paneTabs.some((tabs) => tabs.includes(routeKey));
+}
+
+export function parkedViews(
+  state: Pick<SplitState, "groups" | "openGroups" | "activeGroup" | "panes">,
+): SplitGroup[] {
+  const scope = scopeKey();
+  const live = state.panes.length > 1 ? state.activeGroup : null;
+  const groups = state.groups[scope] ?? [];
+  return (state.openGroups[scope] ?? []).flatMap((id) => {
+    if (id === live) return [];
+    const group = groups.find((entry) => entry.id === id);
+    return group && !isTabSet(group) ? [group] : [];
+  });
+}
+
+export function hiddenTabLists(
+  state: Pick<SplitState, "groups" | "openGroups" | "activeGroup" | "panes" | "paneTabs">,
+): string[][] {
+  const parked = parkedViews(state).flatMap((group) =>
+    groupPaneTabs(group).map((tabs) => tabs.map(tabKey)),
+  );
+  return parked.length > 0 ? [...state.paneTabs, ...parked] : state.paneTabs;
 }
 
 export function useSplitShown(routeKey: string | null): boolean {
@@ -729,11 +1069,14 @@ export function foreignSplitGroups(
   activeId: string | null,
   connections: readonly { id: string; name: string }[],
 ): ForeignSplitGroup[] {
+  const adopted = new Set(
+    (groups[keyForConnection(activeId)] ?? []).flatMap((group) => group.origin ?? []),
+  );
   return connections.flatMap((connection) =>
     connection.id === activeId
       ? []
       : (groups[connection.id] ?? [])
-          .filter((group) => group.shared)
+          .filter((group) => group.shared && !adopted.has(group.id))
           .map((group) => ({
             connectionId: connection.id,
             connectionName: connection.name,
@@ -800,12 +1143,11 @@ export function useFocusedPaneScope(): { index: number; connectionId: string } |
 
 syncAcrossWindows("l8db.split-view", (value) => {
   try {
-    const groups: Record<string, SplitGroup[]> | null = value
-      ? JSON.parse(value)?.state?.groups
-      : null;
+    const stored: Partial<SplitState> | null = value ? JSON.parse(value)?.state : null;
+    const groups = stored?.groups;
     if (!groups) return;
     const { activeGroup } = useSplitView.getState();
-    useSplitView.setState({ groups });
+    useSplitView.setState({ groups, closedTabs: stored.closedTabs ?? {} });
     if (activeGroup && !groups[scopeKey()]?.some((group) => group.id === activeGroup))
       useSplitView.getState().collapse();
   } catch {}
@@ -827,7 +1169,6 @@ useConnectionsStore.subscribe((state, previous) => {
 useTableTabs.subscribe((state, previous) => {
   if (state.tabs === previous.tabs) return;
   if (splitConnectionId !== useConnectionsStore.getState().activeId) return;
-  rememberClosedGroupTabs(previous.tabs, state.tabs);
   if (sameKeys(previous.tabs, state.tabs)) return;
   const before = new Set(previous.tabs.map(tabKey));
   const open = state.tabs.map(tabKey);
@@ -835,6 +1176,7 @@ useTableTabs.subscribe((state, previous) => {
     open,
     open.filter((key) => !before.has(key)),
   );
+  syncGroupCopies(previous.tabs, state.tabs);
 });
 
 function sameKeys(previous: Tab[], current: Tab[]) {
@@ -846,24 +1188,41 @@ function sameKeys(previous: Tab[], current: Tab[]) {
   );
 }
 
-function rememberClosedGroupTabs(previous: Tab[], current: Tab[]) {
-  if (previous.length <= current.length) return;
-  const open = new Set(current.map(tabKey));
-  const closed = new Map(
-    previous.filter((tab) => !open.has(tabKey(tab))).map((tab) => [tabKey(tab), tab]),
+function usedCopies(
+  closed: Record<string, Tab> | undefined,
+  groups: SplitGroup[] | undefined,
+): Record<string, Tab> {
+  if (!closed) return {};
+  const used = new Set<string>();
+  for (const group of groups ?? [])
+    for (const tab of [...group.tabs, ...(group.paneTabs?.flat() ?? [])])
+      if (keepsContent(tab)) used.add(tabKey(tab));
+  return Object.fromEntries(Object.entries(closed).filter(([key]) => used.has(key)));
+}
+
+function syncGroupCopies(previous: Tab[], current: Tab[]) {
+  if (previous.length === current.length) return;
+  const closing = previous.length > current.length;
+  const kept = new Set<string>();
+  for (const tab of closing ? current : previous) if (keepsContent(tab)) kept.add(tabKey(tab));
+  const changed = (closing ? previous : current).filter(
+    (tab) => keepsContent(tab) && !kept.has(tabKey(tab)),
   );
-  if (closed.size === 0) return;
+  if (changed.length === 0) return;
   const scope = scopeKey();
-  const { groups } = useSplitView.getState();
-  const list = groups[scope];
-  if (!list?.some((group) => group.tabs.some((tab) => tab && closed.has(tabKey(tab))))) return;
-  useSplitView.setState({
-    groups: {
-      ...groups,
-      [scope]: list.map((group) => ({
-        ...group,
-        tabs: group.tabs.map((tab) => (tab ? (closed.get(tabKey(tab)) ?? tab) : tab)),
-      })),
-    },
-  });
+  const state = useSplitView.getState();
+  const stored = state.closedTabs[scope] ?? {};
+  const closed = { ...stored };
+  const copies = closing
+    ? usedCopies(Object.fromEntries(changed.map((tab) => [tabKey(tab), tab])), state.groups[scope])
+    : {};
+  for (const [key, tab] of Object.entries(copies)) {
+    const before = stored[key];
+    if (tab.kind !== "query") closed[key] = tab;
+    else if (tab.sql !== "" || before?.kind !== "query") closed[key] = { ...tab, autoRun: false };
+  }
+  if (!closing) for (const tab of changed) delete closed[tabKey(tab)];
+  if (Object.keys(closed).length === Object.keys(stored).length && Object.keys(copies).length === 0)
+    return;
+  useSplitView.setState({ closedTabs: { ...state.closedTabs, [scope]: closed } });
 }

@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowRightLeftIcon } from "lucide-react";
+import { useState } from "react";
 import { SegmentedControl } from "@/components/motion/segmented-control";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,8 +8,10 @@ import { Switch } from "@/components/ui/switch";
 import { MultiTargetSettingsRow } from "@/features/settings/multi-target-settings-row";
 import { SettingsNumberInput } from "@/features/settings/settings-number-input";
 import { SettingsRow } from "@/features/settings/settings-row";
+import { DraftRecoveryDialog } from "@/features/shell/draft-recovery-dialog";
 import { useQueryHistoryStore } from "@/lib/query-history";
 import { type CollectCellEdits, useSettingsStore } from "@/lib/settings";
+import { isTaskActive, useTasksStore } from "@/lib/tasks";
 import { useTransactionStore } from "@/lib/transactions";
 
 const ROW_LIMIT_PRESETS = [50, 100, 500, 1000];
@@ -38,12 +41,29 @@ export function SettingsDataTab() {
   const historyLimit = useQueryHistoryStore((state) => state.retentionLimit);
   const setHistoryLimit = useQueryHistoryStore((state) => state.setRetentionLimit);
   const hasTransactions = useTransactionStore((state) => state.transactions.length > 0);
+  const activeTasks = useTasksStore((state) => state.tasks.filter(isTaskActive).length);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
 
   return (
     <div className="space-y-4">
       <h2 className="text-base font-semibold tracking-tight">Daten & Abfragen</h2>
 
       <div className="space-y-3">
+        <SettingsRow settingId="tasks">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => useTasksStore.setState({ open: true })}
+          >
+            Öffnen{activeTasks ? ` (${activeTasks})` : ""}
+          </Button>
+        </SettingsRow>
+        <SettingsRow settingId="drafts">
+          <Button variant="outline" size="sm" onClick={() => setRecoveryOpen(true)}>
+            Öffnen
+          </Button>
+          <DraftRecoveryDialog open={recoveryOpen} onOpenChange={setRecoveryOpen} />
+        </SettingsRow>
         <SettingsRow settingId="history-limit">
           <Input
             type="number"

@@ -13,6 +13,10 @@ pub struct AiState {
     pub completions: Mutex<HashMap<String, watch::Sender<bool>>>,
 }
 
+tokio::task_local! {
+    pub static DECLINED: std::cell::Cell<bool>;
+}
+
 #[derive(Default)]
 pub struct RunScope {
     pub connections: Vec<ConnectionContext>,
@@ -128,6 +132,9 @@ impl Run {
             .map_err(|_| "Freigabespeicher nicht verfügbar")?
             .remove(&key);
         let allowed = result.ok().and_then(Result::ok).unwrap_or(json!(false));
+        if kind == "approval" && allowed.get("allowed").unwrap_or(&allowed) != &json!(true) {
+            let _ = DECLINED.try_with(|declined| declined.set(true));
+        }
         if announce {
             let shown = allowed.get("allowed").unwrap_or(&allowed);
             self.emit("approvalResolved", json!({"id": id, "allowed": shown}));

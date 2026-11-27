@@ -30,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FilterSortControl } from "@/features/table/filter-bar/filter-sort-control";
 import { copyWithToast } from "@/lib/clipboard";
 import {
   type StudioColumn,
@@ -169,6 +170,16 @@ export function SupabaseTableGrid({
         >
           <Filter className="size-3.5" /> Filter{filters.length ? ` (${filters.length})` : ""}
         </Button>
+        <FilterSortControl
+          sort={{
+            sorting: sort ? [{ id: sort.column, desc: sort.desc }] : [],
+            onChange: (next) => {
+              setOffset(0);
+              setSort(next[0] ? { column: next[0].id, desc: Boolean(next[0].desc) } : null);
+            },
+          }}
+          columns={columnNames}
+        />
         {writableKind && (
           <Button size="sm" onClick={() => setEditing({ row: null })}>
             <Plus className="size-3.5" /> Zeile

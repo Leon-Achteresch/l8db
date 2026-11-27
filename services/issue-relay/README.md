@@ -2,7 +2,6 @@
 
 Nimmt Fehlerberichte aus l8db an (KI-Chat-Tool und MCP-Tool `report_issue`) und legt sie als GitHub-Issue in `Leon-Achteresch/l8db` an. Geschwärzte Screenshots werden öffentlich gespeichert und im Issue eingebettet. Der Relay läuft wahlweise auf einem eigenen VPS mit lokalem Volume oder als Cloudflare-Worker mit R2. Ein separates GitHub-Assets-Repository ist nicht nötig. Nutzer brauchen kein GitHub-Konto.
 
-Die tatsächlich eingerichtete VPS-Instanz und ihre Live-Prüfung sind in [LIVE-SETUP.md](LIVE-SETUP.md) dokumentiert.
 
 ## Eigener VPS mit Docker / Coolify
 
@@ -19,7 +18,7 @@ Diese Variante nutzt vorhandenen VPS-Speicher und braucht kein R2-Abonnement. De
 
 Grenzen: 4 MB pro Request, vier gleichzeitig verarbeitete Berichte, drei Berichte pro Minute/IP, maximal 4096 Rate-Limit-Einträge und 4096 Bilder beziehungsweise 512 MiB Bilddaten. Bei voller Rate-Limit-Tabelle werden neue IPs abgewiesen. Die In-Memory-Rate-Limits starten bei einem Neustart neu. Bilder verfallen nach 365 Tagen; physisch entfernt werden sie beim Start und beim nächsten Upload. Uploads haben eine feste Gesamtdauer von 15 Sekunden, auch wenn laufend weitere Bytes eintreffen. Unvollständige Dateien tragen `.pending`, werden nie ausgeliefert und vor Freigabe der Speicherreservierung gelöscht; bei fehlgeschlagener Bereinigung bleibt die gesamte Reservierung erhalten. Es gibt keine Bereinigungstimer, Datenbank oder Hintergrundabfragen. GitHub-Aufrufe haben jeweils 15 Sekunden Timeout und übernehmen den Abbruch des Requests.
 
-Scoped Checks: `bun test tests/issue-relay.test.ts tests/issue-relay-self-hosted.test.ts` mit Bun 1.3.10. Der Leistungstest prüft 100 000 Client-Identitäten (4096 Einträge, Median < 1 ms, p95 < 2 ms, Heap-Zuwachs < 32 MiB), acht parallele Schreibvorgänge mit insgesamt 24 MB (< 3 s), Quoten, Abbruch und unveränderten Idle-Zustand. Der Worker-Dekodierungstest verarbeitet acht komplette Berichte mit je 2,9 MB PNG. Die Node-Tests laufen separat mit `node --test services/issue-relay/test/self-hosted.test.js`: gleiche acht Berichte bei vier parallelen Anfragen, p95 < 3 s, RSS-Zuwachs < 128 MiB und genau 24 gemockte GitHub-Aufrufe; dazu echte HTTP-Abbrüche, langsame Uploads und simulierte Schreib-/Bereinigungsfehler. Plattformmessungen stehen in `PERFORMANCE.md`.
+Scoped Checks: `bun test tests/issue-relay.test.ts tests/issue-relay-self-hosted.test.ts` mit Bun 1.3.10. Der Leistungstest prüft 100 000 Client-Identitäten (4096 Einträge, Median < 1 ms, p95 < 2 ms, Heap-Zuwachs < 32 MiB), acht parallele Schreibvorgänge mit insgesamt 24 MB (< 3 s), Quoten, Abbruch und unveränderten Idle-Zustand. Der Worker-Dekodierungstest verarbeitet acht komplette Berichte mit je 2,9 MB PNG. Die Node-Tests laufen separat mit `node --test services/issue-relay/test/self-hosted.test.js`: gleiche acht Berichte bei vier parallelen Anfragen, p95 < 3 s, RSS-Zuwachs < 128 MiB und genau 24 gemockte GitHub-Aufrufe; dazu echte HTTP-Abbrüche, langsame Uploads und simulierte Schreib-/Bereinigungsfehler.
 
 ## Cloudflare-Worker mit R2
 

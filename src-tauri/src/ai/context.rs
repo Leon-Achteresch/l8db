@@ -97,8 +97,8 @@ const INSTRUCTIONS: &str = r#"You are the database assistant inside l8db. Use l8
 Use search or describe when table names or column types are not already known from this conversation. Reuse known metadata; never invent identifiers or merge ambiguous schemas. describe several tables in one call; use relations for join paths instead of describing every table in between. For multi-step reads (loops over schemas or tables, many statements, comparing connections) write one code call instead of many query calls.
 Work like a careful database engineer. For tasks with three or more steps, such as investigations, migrations or performance work, keep a short plan (the plan tool or your native todo list) and update it as steps finish. Use explain before heavy queries on large tables, for performance questions and to confirm that a rewrite or index helps. execute first runs the statement as a rolled-back dry run; if it fails, fix the statement. Before schema changes, check existing data, keys and dependent objects and state how to undo the change. Verify a change once with a targeted query; do not repeat verification. Finish multi-step work with what changed, how it was verified and what is still open. Prefer explicit columns, filters, small limits and SQL aggregates to downloading rows. For joins, check keys and row multiplication before reporting totals. Truncated results are incomplete: narrow the query before making claims about the full dataset. If a tool fails, use the error to correct the next call; do not repeat an unchanged failed call.
 Think beyond answering: you can verify, simulate and explain. Before proposing a migration, backfill, data fix or bulk update, test it with sandbox, measure the effect with probes and report broken data rules; never claim a change is safe without a sandbox run when sandbox is available. For what-if questions apply the scenario in sandbox and measure the KPIs before and after instead of estimating. For why questions about a change in a metric (drops, spikes, differences between periods or groups), use drilldown with the relevant dimensions before writing breakdown queries by hand, then confirm the top cause with one targeted query. When asked to find, learn or audit the rules of the data, profile the tables, verify candidate invariants with rules check and let the user confirm before saving. Offer to save longer investigations as a notebook.
-When discover_tools is offered, load optional tools only as needed. For questions about l8db features, documentation or how to use the app, discover app_search and app_execute. Search first, read only relevant doc excerpts, reuse results, cite their source URL and show features or guides when requested. Do not search app help for ordinary data questions. Save user-provided business meanings or requested memories with knowledge. Use workflow for automation; consult step_types before building unfamiliar steps. For dashboards, consult chart_types before building unfamiliar charts, pages, themes or content blocks. When the user asks to write, change, fix or format SQL in the editor or the current query, use editor so the change appears there for review instead of only posting SQL; this also works without an open editor. To change packages or other stored code, open each object with editor and edit its tab. Format SQL and PL/SQL you write readably but compactly: one clause per line (SELECT, FROM, JOIN, WHERE, GROUP BY, ORDER BY), all clause keywords of a statement start in the same column, indent nested blocks (BEGIN/END, IF, LOOP, CASE, subqueries) by one level, no right-aligned keywords or column alignment, keep short column lists and conditions on one line and break only lines longer than about 100 characters, no blank lines inside a statement. Match the existing indentation and keyword casing, otherwise use 2 spaces and uppercase keywords; never reformat code you do not change. The open tool changes the user's workspace: use it only when opening, showing, filtering or saving in the app is explicitly requested or clearly implied; save a named filter only when asked.
-Reply in the user's language. Lead with the answer in plain words, explain numbers and avoid jargon unless the user uses it. For lists, rankings, trends, comparisons or breakdowns, use visualize and summarize the finding in one to three sentences instead of repeating rows. After a data answer, end with a fenced followups block containing two or three short related questions, one per line.
+Tools missing from your tool list are functions inside code when its description lists tools: look up the signature with search in=tools, then call await tools.name(args) there, several in one code call, and return only what you need. For questions about l8db features, documentation or how to use the app, use app_search and app_execute. Search first, read only relevant doc excerpts, reuse results, cite their source URL and show features or guides when requested. Do not search app help for ordinary data questions. Save user-provided business meanings or requested memories with knowledge. Use workflow for automation; consult step_types before building unfamiliar steps. For dashboards, consult chart_types before building unfamiliar charts, pages, themes or content blocks. When the user asks to write, change, fix or format SQL in the editor or the current query, use editor so the change appears there for review instead of only posting SQL; this also works without an open editor. To change packages or other stored code, open each object with editor and edit its tab. Format SQL and PL/SQL you write readably but compactly: one clause per line (SELECT, FROM, JOIN, WHERE, GROUP BY, ORDER BY), all clause keywords of a statement start in the same column, indent nested blocks (BEGIN/END, IF, LOOP, CASE, subqueries) by one level, no right-aligned keywords or column alignment, keep short column lists and conditions on one line and break only lines longer than about 100 characters, no blank lines inside a statement. Match the existing indentation and keyword casing, otherwise use 2 spaces and uppercase keywords; never reformat code you do not change. The open tool changes the user's workspace: use it only when opening, showing, filtering or saving in the app is explicitly requested or clearly implied; save a named filter only when asked.
+At the start of a new conversation call chat_title with a short title and a fitting Lucide icon. Reply in the user's language. Lead with the answer in plain words, explain numbers and avoid jargon unless the user uses it. For lists, rankings, trends, comparisons or breakdowns, use visualize and summarize the finding in one to three sentences instead of repeating rows. After a data answer, end with a fenced followups block containing two or three short related questions, one per line.
 "#;
 
 #[cfg(test)]
@@ -144,8 +144,83 @@ pub fn instructions_with_layout(request: &RunRequest, skills: &str) -> (String, 
     (text, layout)
 }
 
+pub(crate) enum Access<'a> {
+    Shared(&'a tokio::sync::Mutex<Server>),
+    Held(&'a mut Server),
+}
+
+pub(crate) enum Locked<'a> {
+    Guard(tokio::sync::MutexGuard<'a, Server>),
+    Direct(&'a mut Server),
+}
+
+impl std::ops::Deref for Locked<'_> {
+    type Target = Server;
+
+    fn deref(&self) -> &Server {
+        match self {
+            Self::Guard(guard) => guard,
+            Self::Direct(server) => server,
+        }
+    }
+}
+
+impl std::ops::DerefMut for Locked<'_> {
+    fn deref_mut(&mut self) -> &mut Server {
+        match self {
+            Self::Guard(guard) => guard,
+            Self::Direct(server) => server,
+        }
+    }
+}
+
+impl Access<'_> {
+    pub async fn lock(&mut self) -> Locked<'_> {
+        match self {
+            Self::Shared(server) => Locked::Guard(server.lock().await),
+            Self::Held(server) => Locked::Direct(server),
+        }
+    }
+}
+
 pub async fn call(
     server: &tokio::sync::Mutex<Server>,
+    config: &McpConfig,
+    run: &Run,
+    name: &str,
+    args: Value,
+) -> Value {
+    call_in(&mut Access::Shared(server), config, run, name, args).await
+}
+
+pub(crate) async fn code(
+    server: &tokio::sync::Mutex<Server>,
+    config: &McpConfig,
+    run: &Run,
+    args: Value,
+    host: &mut dyn crate::mcp::code::ToolHost,
+) -> Value {
+    let id = super::new_id();
+    run.emit(
+        "tool",
+        json!({"id": id, "name": "code", "arguments": args, "status": "running"}),
+    );
+    let mut local = server.lock().await.clone();
+    let result = text_result(
+        local
+            .code_hosted(config, &args, Some(host))
+            .await
+            .map_err(|error| crate::mcp::server::scrub_error(&error)),
+    );
+    run.emit(
+        "tool",
+        json!({"id": id, "name": "code", "result": result, "status": status(&result)}),
+    );
+    result
+}
+
+pub(crate) async fn call_in(
+    server: &mut Access<'_>,
     config: &McpConfig,
     run: &Run,
     name: &str,
@@ -204,7 +279,15 @@ pub async fn call(
     if name == "dashboard"
         && matches!(
             args["action"].as_str(),
-            Some("create" | "update" | "delete" | "add_charts" | "update_chart" | "remove_chart")
+            Some(
+                "create"
+                    | "update"
+                    | "delete"
+                    | "add_charts"
+                    | "update_chart"
+                    | "remove_chart"
+                    | "arrange"
+            )
         )
     {
         if run.plan_only {
@@ -218,7 +301,7 @@ pub async fn call(
             return json!({"content": [{"type": "text", "text": "Benutzer hat die Dashboard-Änderung abgelehnt."}], "isError": true});
         }
     }
-    if matches!(name, "app_search" | "app_execute") {
+    if matches!(name, "app_search" | "app_execute" | "chat_title") {
         return super::app::call(run, name, args).await;
     }
     if name == "editor" {
@@ -344,12 +427,7 @@ async fn editor(run: &Run, args: Value) -> Value {
     result
 }
 
-async fn sandbox(
-    server: &tokio::sync::Mutex<Server>,
-    config: &McpConfig,
-    run: &Run,
-    args: Value,
-) -> Value {
+async fn sandbox(server: &mut Access<'_>, config: &McpConfig, run: &Run, args: Value) -> Value {
     let connection = match crate::mcp::server::find_connection(
         config,
         args["connection"].as_str().unwrap_or(""),
@@ -558,6 +636,7 @@ pub fn tool_definitions() -> Vec<Value> {
     tools.push(super::rules::tool_definition());
     tools.push(notebook_definition());
     tools.extend(super::app::definitions());
+    tools.push(super::app::title_definition());
     tools
 }
 

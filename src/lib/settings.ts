@@ -1,6 +1,13 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { DEFAULT_APP_THEME, normalizeAppTheme } from "@/lib/app-themes";
+import {
+  type AppTheme,
+  DEFAULT_APP_THEME,
+  MAX_CUSTOM_THEMES,
+  normalizeAppTheme,
+  normalizeCustomTheme,
+  normalizeCustomThemes,
+} from "@/lib/app-themes";
 import { createSafeJsonStorage } from "@/lib/buffered-storage";
 import {
   DEFAULT_DISCOVERY_SETTINGS,
@@ -136,11 +143,13 @@ export interface SettingsState {
   seasonalAccents: boolean;
   lightTheme: string;
   darkTheme: string;
+  customThemes: AppTheme[];
   dbThemes: boolean;
   fitColumnsToHeader: boolean;
   monochromeCells: boolean;
   tableStyle: TableStyle;
   filterBarStyle: FilterBarStyle;
+  filterBarSorting: boolean;
   tableFilterMode: TableFilterMode;
   connectionTimeout: number;
   sslDefaultMode: SslDefaultMode;
@@ -217,11 +226,14 @@ export interface SettingsState {
   setSeasonalAccents: (value: boolean) => void;
   setLightTheme: (value: string) => void;
   setDarkTheme: (value: string) => void;
+  saveCustomTheme: (theme: AppTheme) => boolean;
+  deleteCustomTheme: (id: string) => void;
   setDbThemes: (value: boolean) => void;
   setFitColumnsToHeader: (value: boolean) => void;
   setMonochromeCells: (value: boolean) => void;
   setTableStyle: (value: TableStyle) => void;
   setFilterBarStyle: (value: FilterBarStyle) => void;
+  setFilterBarSorting: (value: boolean) => void;
   setTableFilterMode: (value: TableFilterMode) => void;
   setConnectionTimeout: (v: number) => void;
   setSslDefaultMode: (v: SslDefaultMode) => void;
@@ -245,6 +257,7 @@ export const TABLE_APPEARANCE_DEFAULTS = {
   monochromeCells: true,
   tableStyle: "classic",
   filterBarStyle: "classic",
+  filterBarSorting: false,
   tableFilterMode: "simple",
 } satisfies Partial<SettingsState>;
 
@@ -352,11 +365,13 @@ export const DEFAULT_SETTINGS = {
   seasonalAccents: true,
   lightTheme: DEFAULT_APP_THEME,
   darkTheme: DEFAULT_APP_THEME,
+  customThemes: [] as AppTheme[],
   dbThemes: false,
   fitColumnsToHeader: true,
   monochromeCells: true,
   tableStyle: "classic" as TableStyle,
   filterBarStyle: "classic" as FilterBarStyle,
+  filterBarSorting: false,
   tableFilterMode: "simple" as TableFilterMode,
   connectionTimeout: 15,
   sslDefaultMode: "prefer" as SslDefaultMode,
@@ -364,7 +379,7 @@ export const DEFAULT_SETTINGS = {
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
-    withOrganizationSettings<SettingsState>((set) => ({
+    withOrganizationSettings<SettingsState>((set, get) => ({
       ...DEFAULT_SETTINGS,
       setEasyMode: (easyMode) => set({ easyMode }),
       setTableDetailTabVisible: (tab, visible) =>
@@ -471,14 +486,37 @@ export const useSettingsStore = create<SettingsState>()(
       setShortcutHints: (shortcutHints) => set({ shortcutHints }),
       setNewFeatureBadges: (newFeatureBadges) => set({ newFeatureBadges }),
       setSeasonalAccents: (seasonalAccents) => set({ seasonalAccents }),
-      setLightTheme: (lightTheme) => set({ lightTheme: normalizeAppTheme(lightTheme) }),
-      setDarkTheme: (darkTheme) => set({ darkTheme: normalizeAppTheme(darkTheme) }),
+      setLightTheme: (lightTheme) =>
+        set({ lightTheme: normalizeAppTheme(lightTheme, get().customThemes) }),
+      setDarkTheme: (darkTheme) =>
+        set({ darkTheme: normalizeAppTheme(darkTheme, get().customThemes) }),
+      saveCustomTheme: (theme) => {
+        const next = normalizeCustomTheme(theme);
+        if (!next) return false;
+        const themes = get().customThemes;
+        const index = themes.findIndex((entry) => entry.id === next.id);
+        if (index < 0 && themes.length >= MAX_CUSTOM_THEMES) return false;
+        set({
+          customThemes:
+            index < 0 ? [...themes, next] : themes.map((entry, i) => (i === index ? next : entry)),
+        });
+        return true;
+      },
+      deleteCustomTheme: (id) => {
+        const state = get();
+        set({
+          customThemes: state.customThemes.filter((theme) => theme.id !== id),
+          ...(state.lightTheme === id ? { lightTheme: DEFAULT_APP_THEME } : {}),
+          ...(state.darkTheme === id ? { darkTheme: DEFAULT_APP_THEME } : {}),
+        });
+      },
       setDbThemes: (dbThemes) => set({ dbThemes }),
       setFitColumnsToHeader: (fitColumnsToHeader) => set({ fitColumnsToHeader }),
       setMonochromeCells: (monochromeCells) => set({ monochromeCells }),
       setTableStyle: (tableStyle) => set({ tableStyle: normalizeTableStyle(tableStyle) }),
       setFilterBarStyle: (filterBarStyle) =>
         set({ filterBarStyle: normalizeFilterBarStyle(filterBarStyle) }),
+      setFilterBarSorting: (filterBarSorting) => set({ filterBarSorting }),
       setTableFilterMode: (tableFilterMode) =>
         set({ tableFilterMode: tableFilterMode === "sql" ? "sql" : "simple" }),
       resetAppearance: () => set({ ...LAYOUT_APPEARANCE_DEFAULTS, ...TABLE_APPEARANCE_DEFAULTS }),
@@ -502,6 +540,7 @@ export const useSettingsStore = create<SettingsState>()(
       }),
       merge: (persisted, current) => {
         const saved = persisted as Partial<SettingsState> | undefined;
+        const customThemes = normalizeCustomThemes(saved?.customThemes);
         return applyOrganizationSettings({
           ...current,
           ...saved,
@@ -524,13 +563,15 @@ export const useSettingsStore = create<SettingsState>()(
           shortcutHints: saved?.shortcutHints !== false,
           newFeatureBadges: saved?.newFeatureBadges !== false,
           seasonalAccents: saved?.seasonalAccents !== false,
-          lightTheme: normalizeAppTheme(saved?.lightTheme),
-          darkTheme: normalizeAppTheme(saved?.darkTheme),
+          customThemes,
+          lightTheme: normalizeAppTheme(saved?.lightTheme, customThemes),
+          darkTheme: normalizeAppTheme(saved?.darkTheme, customThemes),
           dbThemes: saved?.dbThemes === true,
           fitColumnsToHeader: saved?.fitColumnsToHeader !== false,
           monochromeCells: saved?.monochromeCells !== false,
           tableStyle: normalizeTableStyle(saved?.tableStyle),
           filterBarStyle: normalizeFilterBarStyle(saved?.filterBarStyle),
+          filterBarSorting: saved?.filterBarSorting === true,
           tableFilterMode: saved?.tableFilterMode === "sql" ? "sql" : "simple",
           editorKeymap: saved?.editorKeymap === "vim" ? "vim" : "default",
           dmlPreviewMode: normalizeDmlPreviewMode(saved?.dmlPreviewMode),

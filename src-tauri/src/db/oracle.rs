@@ -301,6 +301,41 @@ fn page_sql(select: &str, offset: i64, limit: i64, legacy: bool) -> String {
     }
 }
 
+fn browse_page_sql(
+    target: &str,
+    predicate: &str,
+    sort: &str,
+    rowid: bool,
+    offset: i64,
+    limit: i64,
+    legacy: bool,
+) -> String {
+    if !legacy
+        && rowid
+        && predicate.is_empty()
+        && !sort.is_empty()
+        && offset >= 4096
+        && (1..=1000).contains(&limit)
+    {
+        let ids = page_sql(
+            &format!("SELECT t.ROWID AS rid FROM {target} t{sort}"),
+            offset,
+            limit,
+            false,
+        );
+        return format!(
+            "SELECT {ROWID_SELECT} FROM (SELECT rid FROM ({ids}) WHERE ROWNUM <= {limit}) page JOIN {target} t ON t.ROWID = page.rid{sort}"
+        );
+    }
+    let projection = if rowid { ROWID_SELECT } else { "t.*" };
+    page_sql(
+        &format!("SELECT {projection} FROM {target} t{predicate}{sort}"),
+        offset,
+        limit,
+        legacy,
+    )
+}
+
 fn drop_page_column(legacy: bool, cols: &mut Vec<String>, rows: &mut [Vec<serde_json::Value>]) {
     if legacy {
         cols.pop();
@@ -999,6 +1034,10 @@ pub(crate) fn is_plsql_block(sql: &str) -> bool {
     sql::is_block(sql)
 }
 
+pub(crate) fn is_stored_plsql(sql: &str) -> bool {
+    sql::is_stored_unit(sql)
+}
+
 pub(crate) fn script_items(sql: &str) -> Vec<(bool, String)> {
     sql::split_items(sql)
 }
@@ -1411,7 +1450,253 @@ pub fn endpoint(value: &str) -> Result<super::endpoint::EndpointIdentity, String
     })
 }
 
+#[derive(Default)]
+struct BrowseMetadata {
+    columns: Vec<String>,
+    keys: Vec<String>,
+    numeric_key: Option<String>,
+    text_sort: Option<String>,
+    reverse_index: bool,
+}
+
+fn browse_metadata(
+    c: &Connection,
+    schema: &str,
+    table: &str,
+    order_by: Option<&str>,
+    is_view: bool,
+    check_reverse_index: bool,
+) -> Result<BrowseMetadata, String> {
+    if is_view {
+        return Ok(BrowseMetadata {
+            columns: table_columns(c, schema, table, false)?,
+            ..Default::default()
+        });
+    }
+    let owner = lit(schema);
+    let name = lit(table);
+    let index_flag = match order_by.filter(|_| check_reverse_index) {
+        Some(col) => format!("CASE WHEN k.position = 1 AND EXISTS (
+            SELECT 1 FROM all_ind_columns a
+            JOIN all_ind_columns b ON b.index_owner = a.index_owner AND b.index_name = a.index_name
+            JOIN all_indexes idx ON idx.owner = a.index_owner AND idx.index_name = a.index_name
+            WHERE a.table_owner = {owner} AND a.table_name = {name} AND a.column_position = 1 AND a.column_name = {}
+              AND b.column_position = 2 AND b.column_name = k.column_name AND a.descend = 'ASC' AND b.descend = 'ASC'
+              AND idx.index_type = 'NORMAL' AND idx.visibility = 'VISIBLE' AND idx.status = 'VALID'
+        ) THEN 1 ELSE 0 END", lit(col)),
+        None => "0".to_owned(),
+    };
+    let rows = fetch(c, &format!(
+        "SELECT c.column_name, c.data_type, c.nullable, k.position, k.status, k.validated, k.deferrable, c.hidden_column, {index_flag}
+         FROM all_tab_cols c LEFT JOIN (
+           SELECT cc.column_name, cc.position, pk.status, pk.validated, pk.deferrable FROM all_constraints pk
+           JOIN all_cons_columns cc ON cc.owner = pk.owner AND cc.constraint_name = pk.constraint_name
+           WHERE pk.owner = {owner} AND pk.table_name = {name} AND pk.constraint_type = 'P'
+         ) k ON k.column_name = c.column_name
+         WHERE c.owner = {owner} AND c.table_name = {name} AND (c.hidden_column = 'NO' OR k.position IS NOT NULL)
+         ORDER BY c.column_id"
+    ))?;
+    let mut metadata = BrowseMetadata::default();
+    let mut keys = Vec::new();
+    for row in &rows {
+        let col = s(row, 0);
+        let position = i(row, 3);
+        if position > 0 {
+            keys.push((position, col.clone()));
+            if s(row, 1) == "NUMBER"
+                && s(row, 4) == "ENABLED"
+                && s(row, 5) == "VALIDATED"
+                && s(row, 6) == "NOT DEFERRABLE"
+            {
+                metadata.numeric_key = Some(col.clone());
+                metadata.reverse_index = i(row, 8) == 1;
+            }
+        }
+        if order_by == Some(col.as_str()) && s(row, 1) == "VARCHAR2" && s(row, 2) == "N" {
+            metadata.text_sort = Some(col.clone());
+        }
+        if s(row, 7) == "NO" {
+            metadata.columns.push(col);
+        }
+    }
+    keys.sort_by_key(|(position, _)| *position);
+    metadata.keys = keys.into_iter().map(|(_, col)| col).collect();
+    Ok(metadata)
+}
+
+fn descending_text_jump(target: &str, col: &str, key: &str, offset: i64, limit: i64) -> String {
+    format!("WITH page_groups AS (
+        SELECT n, MAX(k) high_key, COUNT(*) take FROM (
+            SELECT {col} n, {key} k FROM {target} t ORDER BY {col} DESC, {key} DESC
+            OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY
+        ) GROUP BY n
+    ) SELECT {ROWID_SELECT} FROM page_groups g CROSS APPLY (
+        SELECT t.ROWID rid FROM {target} t WHERE {col} = g.n ORDER BY {key}
+        OFFSET (SELECT COUNT(*) FROM {target} t WHERE {col} = g.n AND {key} > g.high_key) ROWS FETCH NEXT g.take ROWS ONLY
+    ) page JOIN {target} t ON t.ROWID = page.rid ORDER BY {col} DESC, {key}")
+}
+
+fn descending_text_page(target: &str, col: &str, key: &str, limit: i64) -> String {
+    format!("WITH edge AS (
+        SELECT MIN(n) n FROM (SELECT {col} n FROM {target} t WHERE {col} < :last_sort ORDER BY {col} DESC FETCH FIRST {limit} ROWS ONLY)
+    ), candidates AS (
+        SELECT * FROM (SELECT t.ROWID rid, {col} n, {key} k FROM {target} t WHERE {col} = :last_sort AND {key} > :last_key ORDER BY {key} FETCH FIRST {limit} ROWS ONLY)
+        UNION ALL SELECT t.ROWID, {col}, {key} FROM {target} t WHERE {col} < :last_sort AND {col} > (SELECT n FROM edge)
+        UNION ALL SELECT * FROM (SELECT t.ROWID, {col}, {key} FROM {target} t WHERE {col} = (SELECT n FROM edge) ORDER BY {key} FETCH FIRST {limit} ROWS ONLY)
+    ) SELECT {ROWID_SELECT} FROM (SELECT rid FROM candidates ORDER BY n DESC, k FETCH FIRST {limit} ROWS ONLY) page
+      JOIN {target} t ON t.ROWID = page.rid ORDER BY {col} DESC, {key}")
+}
+
+fn read_after(
+    c: &Connection,
+    target: &str,
+    metadata: &BrowseMetadata,
+    order: Option<(&str, bool)>,
+    limit: i64,
+    anchor: &super::PageBoundary,
+) -> Result<Option<Grid>, String> {
+    if metadata.keys.len() != 1 || metadata.numeric_key.as_ref() != Some(&anchor.key) {
+        return Ok(None);
+    }
+    let key = format!("t.{}", quote(&anchor.key));
+    let mut binds: Vec<(&str, &dyn oracle::sql_type::ToSql)> = vec![("last_key", &anchor.value)];
+    let varchar_type;
+    let varchar_bind;
+    let sort = super::stable_order_terms(order, &metadata.keys, |col| format!("t.{}", quote(col)))
+        .join(", ");
+    let select = |predicate: String| {
+        format!("SELECT {ROWID_SELECT} FROM {target} t WHERE {predicate} ORDER BY {sort} FETCH FIRST {limit} ROWS ONLY")
+    };
+    let sql = match order {
+        Some((name, desc)) if metadata.text_sort.as_deref() == Some(name) => {
+            let Some(value) = &anchor.sort_text else {
+                return Ok(None);
+            };
+            varchar_type = OracleType::Varchar2(value.len() as u32);
+            varchar_bind = (value, &varchar_type);
+            binds.push(("last_sort", &varchar_bind));
+            let col = format!("t.{}", quote(name));
+            if desc && metadata.reverse_index {
+                descending_text_page(target, &col, &key, limit)
+            } else {
+                let (bound, cmp) = if desc { ("<=", "<") } else { (">=", ">") };
+                select(format!(
+                    "{col} {bound} :last_sort AND ({col} {cmp} :last_sort OR {key} > :last_key)"
+                ))
+            }
+        }
+        Some((sort, _)) if sort != anchor.key => return Ok(None),
+        _ => {
+            let cmp = if order.is_some_and(|(_, desc)| desc) {
+                "<"
+            } else {
+                ">"
+            };
+            select(format!("{key} {cmp} :last_key"))
+        }
+    };
+    match run_query_named(c, &sql, &binds, limit as usize) {
+        Ok(data) => Ok(Some(data)),
+        Err(e) if e.contains("ORA-01410") => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 impl OracleAdapter {
+    async fn browse_rows(
+        &self,
+        schema: &str,
+        table: &str,
+        filter: Option<&str>,
+        limit: i64,
+        offset: i64,
+        order_by: Option<&str>,
+        order_desc: bool,
+        is_view: bool,
+        allow_raw_filter: bool,
+        after: Option<&super::PageBoundary>,
+    ) -> Result<TableData, String> {
+        let where_sql = where_clause(filter, allow_raw_filter)?;
+        let (schema, table) = (schema.to_string(), table.to_string());
+        let order_by = order_by.map(str::to_string);
+        let after = after.cloned();
+        let (columns, cols, rows) = self
+            .run_browse(move |c| {
+                let target = format!("{}.{}", quote(&schema), quote(&table));
+                let legacy = legacy_paging(c);
+                let deep = !legacy
+                    && where_sql.is_empty()
+                    && offset >= 4096
+                    && (1..=1000).contains(&limit);
+                let metadata = browse_metadata(
+                    c,
+                    &schema,
+                    &table,
+                    order_by.as_deref(),
+                    is_view,
+                    deep && order_desc,
+                )?;
+                let order = order_by
+                    .as_deref()
+                    .and_then(|col| order_column(&metadata.columns, col))
+                    .map(|col| (col, order_desc));
+                if deep {
+                    if let Some(anchor) = after.as_ref() {
+                        if let Some((cols, rows)) =
+                            read_after(c, &target, &metadata, order, limit, anchor)?
+                        {
+                            return Ok((metadata.columns, cols, rows));
+                        }
+                    }
+                }
+                let page = |rowid: bool| {
+                    if rowid && metadata.reverse_index && metadata.keys.len() == 1 {
+                        if let (Some(col), Some(key)) = (&metadata.text_sort, &metadata.numeric_key)
+                        {
+                            return descending_text_jump(
+                                &target,
+                                &format!("t.{}", quote(col)),
+                                &format!("t.{}", quote(key)),
+                                offset,
+                                limit,
+                            );
+                        }
+                    }
+                    let mut terms = super::stable_order_terms(order, &metadata.keys, |col| {
+                        format!("t.{}", quote(col))
+                    });
+                    if metadata.keys.is_empty() && order.is_some() && rowid {
+                        terms.push("t.ROWID".to_string());
+                    }
+                    let order_sql = super::order_clause(&where_sql, &terms);
+                    browse_page_sql(
+                        &target,
+                        &where_sql,
+                        &order_sql,
+                        rowid,
+                        offset.max(0),
+                        limit.max(1),
+                        legacy,
+                    )
+                };
+                let (mut cols, mut rows) = match run_query(c, &page(!is_view)) {
+                    Err(e) if !is_view && e.contains("ORA-01410") => run_query(c, &page(false))?,
+                    result => result?,
+                };
+                drop_page_column(legacy, &mut cols, &mut rows);
+                Ok((metadata.columns, cols, rows))
+            })
+            .await?;
+        Ok(TableData {
+            columns: if columns.is_empty() {
+                cols.clone()
+            } else {
+                columns
+            },
+            rows: rows_to_objects(&cols, rows),
+        })
+    }
+
     pub fn new(
         connection_string: &str,
         pool_state: PoolState,
@@ -1899,6 +2184,53 @@ impl OracleAdapter {
         }
     }
 
+    fn catalog_owner_filter(schemas: &[String], column: &str) -> String {
+        let owners = if schemas.is_empty() {
+            "SELECT username FROM all_users WHERE oracle_maintained = 'N'".to_string()
+        } else {
+            schemas
+                .iter()
+                .map(|schema| lit(schema))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        format!(
+            "({} OR {column} IN ({owners}))",
+            Self::owner_filter(None, column)
+        )
+    }
+
+    async fn columns_where(
+        &self,
+        owners: &str,
+        table: Option<&str>,
+        table_type: Option<&str>,
+    ) -> Result<Vec<ColumnInfo>, String> {
+        let source = match table_type {
+            Some(t) if t.eq_ignore_ascii_case("view") => {
+                " JOIN all_views v ON v.owner = c.owner AND v.view_name = c.table_name"
+            }
+            None if table.is_some() => "",
+            _ => " JOIN all_tables v ON v.owner = c.owner AND v.table_name = c.table_name",
+        };
+        let mut sql = format!("SELECT c.owner, c.table_name, c.column_name, c.data_type FROM all_tab_columns c{source} WHERE {owners}");
+        if let Some(t) = table {
+            sql.push_str(&format!(" AND c.table_name = {}", lit(t)));
+        }
+        sql.push_str(" ORDER BY c.owner, c.table_name, c.column_id");
+        Ok(self
+            .rows(sql)
+            .await?
+            .iter()
+            .map(|r| ColumnInfo {
+                schema: s(r, 0),
+                table: s(r, 1),
+                name: s(r, 2),
+                data_type: s(r, 3),
+            })
+            .collect())
+    }
+
     async fn compile_body(&self, owner: &str, name: &str) -> Result<Option<CompileResult>, String> {
         if self
             .compile_state(owner, name, "PACKAGE BODY")
@@ -2340,8 +2672,8 @@ impl DatabaseAdapter for OracleAdapter {
     async fn catalog_fingerprint(&self) -> Result<Option<String>, String> {
         let rows = self
             .rows(format!(
-                "SELECT COUNT(*) || ':' || SUM(ORA_HASH(object_name || TO_CHAR(last_ddl_time, 'YYYYMMDDHH24MISS'))), CASE WHEN MAX(last_ddl_time) >= SYSDATE - 2 / 86400 THEN 1 ELSE 0 END FROM all_objects WHERE {} AND object_type = 'TABLE'",
-                Self::owner_filter(None, "owner")
+                "SELECT COUNT(*) || ':' || SUM(ORA_HASH(owner || '.' || object_name || TO_CHAR(last_ddl_time, 'YYYYMMDDHH24MISS'))), CASE WHEN MAX(last_ddl_time) >= SYSDATE - 2 / 86400 THEN 1 ELSE 0 END FROM all_objects WHERE {} AND object_type = 'TABLE'",
+                Self::catalog_owner_filter(&[], "owner")
             ))
             .await?;
         Ok(rows
@@ -2356,29 +2688,13 @@ impl DatabaseAdapter for OracleAdapter {
         table: Option<&str>,
         table_type: Option<&str>,
     ) -> Result<Vec<ColumnInfo>, String> {
-        let source = match table_type {
-            Some(t) if t.eq_ignore_ascii_case("view") => {
-                " JOIN all_views v ON v.owner = c.owner AND v.view_name = c.table_name"
-            }
-            None if table.is_some() => "",
-            _ => " JOIN all_tables v ON v.owner = c.owner AND v.table_name = c.table_name",
-        };
-        let mut sql = format!("SELECT c.owner, c.table_name, c.column_name, c.data_type FROM all_tab_columns c{source} WHERE {}", Self::owner_filter(schema, "c.owner"));
-        if let Some(t) = table {
-            sql.push_str(&format!(" AND c.table_name = {}", lit(t)));
-        }
-        sql.push_str(" ORDER BY c.table_name, c.column_id");
-        Ok(self
-            .rows(sql)
-            .await?
-            .iter()
-            .map(|r| ColumnInfo {
-                schema: s(r, 0),
-                table: s(r, 1),
-                name: s(r, 2),
-                data_type: s(r, 3),
-            })
-            .collect())
+        self.columns_where(&Self::owner_filter(schema, "c.owner"), table, table_type)
+            .await
+    }
+
+    async fn list_catalog_columns(&self, schemas: &[String]) -> Result<Vec<ColumnInfo>, String> {
+        self.columns_where(&Self::catalog_owner_filter(schemas, "c.owner"), None, None)
+            .await
     }
 
     async fn fetch_rows(
@@ -2393,78 +2709,40 @@ impl DatabaseAdapter for OracleAdapter {
         is_view: bool,
         allow_raw_filter: bool,
     ) -> Result<TableData, String> {
-        let where_sql = where_clause(filter, allow_raw_filter)?;
-        let (schema, table) = (schema.to_string(), table.to_string());
-        let order_by = order_by.map(str::to_string);
-        let (columns, cols, rows) = self
-            .run_browse(move |c| {
-                let columns = table_columns(c, &schema, &table, false)?;
-                let keys: Vec<String> = if is_view {
-                    Vec::new()
-                } else {
-                    fetch(
-                        c,
-                        &format!(
-                            "SELECT cc.column_name FROM all_constraints k JOIN all_cons_columns cc \
-                             ON cc.owner = k.owner AND cc.constraint_name = k.constraint_name \
-                             WHERE k.owner = {} AND k.table_name = {} AND k.constraint_type = 'P' \
-                             ORDER BY cc.position",
-                            lit(&schema),
-                            lit(&table)
-                        ),
-                    )?
-                    .iter()
-                    .map(|row| s(row, 0))
-                    .collect()
-                };
-                let order = order_by
-                    .as_deref()
-                    .and_then(|col| order_column(&columns, col))
-                    .map(|col| (col, order_desc));
-                let legacy = legacy_paging(c);
-                let page = |rowid: bool| {
-                    let mut terms =
-                        super::stable_order_terms(order, &keys, |col| format!("t.{}", quote(col)));
-                    if keys.is_empty() && order.is_some() && rowid {
-                        terms.push("t.ROWID".to_string());
-                    }
-                    let order_sql = if terms.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" ORDER BY {}", terms.join(", "))
-                    };
-                    page_sql(
-                        &format!(
-                            "SELECT {} FROM {}.{} t{}{}",
-                            if rowid { ROWID_SELECT } else { "t.*" },
-                            quote(&schema),
-                            quote(&table),
-                            where_sql,
-                            order_sql
-                        ),
-                        offset.max(0),
-                        limit.max(1),
-                        legacy,
-                    )
-                };
-                let (mut cols, mut rows) = match run_query(c, &page(!is_view)) {
-                    Err(e) if !is_view && e.contains("ORA-01410") => run_query(c, &page(false))?,
-                    result => result?,
-                };
-                drop_page_column(legacy, &mut cols, &mut rows);
-                Ok((columns, cols, rows))
-            })
-            .await?;
-        Ok(TableData {
-            columns: if columns.is_empty() {
-                cols.clone()
-            } else {
-                columns
-            },
-            rows: rows_to_objects(&cols, rows),
-        })
+        self.browse_rows(
+            schema,
+            table,
+            filter,
+            limit,
+            offset,
+            order_by,
+            order_desc,
+            is_view,
+            allow_raw_filter,
+            None,
+        )
+        .await
     }
 
+    async fn fetch_rows_after(
+        &self,
+        r: &super::transaction::TransactionTableRead,
+        after: &super::PageBoundary,
+    ) -> Result<TableData, String> {
+        self.browse_rows(
+            &r.schema,
+            &r.table,
+            r.filter.as_deref(),
+            r.limit,
+            r.offset,
+            r.order_by.as_deref(),
+            r.order_desc,
+            r.is_view,
+            r.allow_raw,
+            Some(after),
+        )
+        .await
+    }
     async fn count_rows(
         &self,
         schema: &str,
@@ -3353,9 +3631,11 @@ impl DatabaseAdapter for OracleAdapter {
         let sql = String::from(
             "SELECT c.column_name, c.data_type || CASE WHEN c.data_type IN ('VARCHAR2', 'CHAR', 'NVARCHAR2', 'NCHAR') THEN '(' || c.char_length || ')' WHEN c.data_type = 'NUMBER' AND c.data_precision IS NOT NULL THEN '(' || c.data_precision || ',' || NVL(c.data_scale, 0) || ')' ELSE '' END, \
              c.nullable, c.data_default, c.column_id, c.char_length, \
-             (SELECT COUNT(*) FROM all_constraints k JOIN all_cons_columns kc ON kc.owner = k.owner AND kc.constraint_name = k.constraint_name WHERE k.constraint_type = 'P' AND k.owner = c.owner AND k.table_name = c.table_name AND kc.column_name = c.column_name), \
+             CASE WHEN pk.column_name IS NULL THEN 0 ELSE 1 END, \
              cc.comments, c.data_type, c.char_used, c.data_length \
              FROM all_tab_columns c LEFT JOIN all_col_comments cc ON cc.owner = c.owner AND cc.table_name = c.table_name AND cc.column_name = c.column_name \
+             LEFT JOIN (SELECT DISTINCT kc.column_name FROM all_constraints k JOIN all_cons_columns kc ON kc.owner = k.owner AND kc.constraint_name = k.constraint_name AND kc.table_name = k.table_name \
+             WHERE k.constraint_type = 'P' AND k.owner = :owner AND k.table_name = :tbl) pk ON pk.column_name = c.column_name \
              WHERE c.owner = :owner AND c.table_name = :tbl ORDER BY c.column_id"
         );
         Ok(self
@@ -3471,19 +3751,15 @@ impl DatabaseAdapter for OracleAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Vec<ForeignKeyInfo>, String> {
-        let sql = format!(
+        let sql = String::from(
             "SELECT c.constraint_name, c.owner, c.table_name, cc.column_name, r.owner, r.table_name, rc.column_name FROM all_constraints c \
              JOIN all_cons_columns cc ON cc.owner = c.owner AND cc.constraint_name = c.constraint_name \
              JOIN all_constraints r ON r.owner = c.r_owner AND r.constraint_name = c.r_constraint_name \
              JOIN all_cons_columns rc ON rc.owner = r.owner AND rc.constraint_name = r.constraint_name AND rc.position = cc.position \
-             WHERE c.constraint_type = 'R' AND ((c.owner = {} AND c.table_name = {}) OR (r.owner = {} AND r.table_name = {})) ORDER BY c.owner, c.table_name, c.constraint_name, cc.position",
-            lit(schema),
-            lit(table),
-            lit(schema),
-            lit(table)
+             WHERE c.constraint_type = 'R' AND ((c.owner = :owner AND c.table_name = :tbl) OR (r.owner = :owner AND r.table_name = :tbl)) ORDER BY c.owner, c.table_name, c.constraint_name, cc.position",
         );
         Ok(self
-            .rows(sql)
+            .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
             .await?
             .iter()
             .map(|r| ForeignKeyInfo {
@@ -3499,9 +3775,9 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn list_triggers(&self, schema: &str, table: &str) -> Result<Vec<TriggerInfo>, String> {
-        let sql = format!("SELECT trigger_name, trigger_type, triggering_event, status, trigger_body, owner FROM all_triggers WHERE table_owner = {} AND table_name = {} ORDER BY trigger_name", lit(schema), lit(table));
+        let sql = String::from("SELECT trigger_name, trigger_type, triggering_event, status, trigger_body, owner FROM all_triggers WHERE table_owner = :owner AND table_name = :tbl ORDER BY trigger_name");
         let rows: Vec<Vec<String>> = self
-            .rows(sql)
+            .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
             .await?
             .iter()
             .map(|r| (0..6).map(|i| s(r, i)).collect())
@@ -3509,13 +3785,15 @@ impl DatabaseAdapter for OracleAdapter {
         let mut sources: std::collections::HashMap<(String, String), String> =
             std::collections::HashMap::new();
         if !rows.is_empty() {
-            let sql = format!(
+            let sql = String::from(
                 "SELECT s.owner, s.name, s.text FROM all_source s JOIN all_triggers t ON t.owner = s.owner AND t.trigger_name = s.name \
-                 WHERE t.table_owner = {} AND t.table_name = {} AND s.type = 'TRIGGER' ORDER BY s.owner, s.name, s.line",
-                lit(schema),
-                lit(table)
+                 WHERE t.table_owner = :owner AND t.table_name = :tbl AND s.type = 'TRIGGER' ORDER BY s.owner, s.name, s.line",
             );
-            for r in self.rows(sql).await.unwrap_or_default() {
+            for r in self
+                .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
+                .await
+                .unwrap_or_default()
+            {
                 sources
                     .entry((s(&r, 0), s(&r, 1)))
                     .or_default()
@@ -3555,13 +3833,11 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn table_comment(&self, schema: &str, table: &str) -> Result<Option<String>, String> {
-        let sql = format!(
-            "SELECT comments FROM all_tab_comments WHERE owner = {} AND table_name = {}",
-            lit(schema),
-            lit(table)
+        let sql = String::from(
+            "SELECT comments FROM all_tab_comments WHERE owner = :owner AND table_name = :tbl",
         );
         Ok(self
-            .rows(sql)
+            .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
             .await?
             .first()
             .map(|r| s(r, 0))
@@ -3569,14 +3845,18 @@ impl DatabaseAdapter for OracleAdapter {
     }
 
     async fn list_indexes(&self, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
-        let sql = format!(
-            "SELECT i.index_name, i.uniqueness, i.index_type, ic.column_name, (SELECT COUNT(*) FROM all_constraints k WHERE k.owner = i.owner AND k.index_name = i.index_name AND k.constraint_type = 'P') \
-             FROM all_indexes i JOIN all_ind_columns ic ON ic.index_owner = i.owner AND ic.index_name = i.index_name WHERE i.table_owner = {} AND i.table_name = {} ORDER BY i.index_name, ic.column_position",
-            lit(schema),
-            lit(table)
+        let sql = String::from(
+            "SELECT i.index_name, i.uniqueness, i.index_type, ic.column_name, CASE WHEN k.index_name IS NULL THEN 0 ELSE 1 END \
+             FROM all_indexes i JOIN all_ind_columns ic ON ic.index_owner = i.owner AND ic.index_name = i.index_name \
+             LEFT JOIN (SELECT DISTINCT NVL(index_owner, owner) AS index_owner, index_name FROM all_constraints WHERE owner = :owner AND table_name = :tbl AND constraint_type = 'P') k \
+             ON k.index_owner = i.owner AND k.index_name = i.index_name \
+             WHERE i.table_owner = :owner AND i.table_name = :tbl ORDER BY i.index_name, ic.column_position",
         );
         let mut out: Vec<IndexInfo> = Vec::new();
-        for r in self.rows(sql).await? {
+        for r in self
+            .rows_bound(sql, binds(&[("owner", schema), ("tbl", table)]))
+            .await?
+        {
             let name = s(&r, 0);
             let column = s(&r, 3);
             if let Some(existing) = out.iter_mut().find(|x| x.name == name) {
@@ -4438,6 +4718,37 @@ mod tests {
     }
 
     use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires the Oracle BIG paging fixture"]
+    async fn deep_mixed_page_ties() {
+        let url = std::env::var("L8DB_PERF_ORACLE_URL").unwrap();
+        let adapter = OracleAdapter::new(
+            &url,
+            crate::db::pool::create_pool_state(),
+            "mixed-ties".into(),
+        )
+        .unwrap();
+        adapter.run_browse(|c| {
+            let target = "(SELECT id, CASE WHEN id <= 5000 THEN 'Z' WHEN id <= 5040 THEN 'M' ELSE 'A' END name FROM big WHERE id <= 8192)";
+            let all = run_query(c, &format!("SELECT {ROWID_SELECT} FROM {target} t ORDER BY t.name DESC, t.id"))?.1;
+            assert_eq!(all.len(), 8192);
+            let mut metadata = BrowseMetadata { keys: vec!["ID".into()], numeric_key: Some("ID".into()), text_sort: Some("NAME".into()), ..Default::default() };
+            for offset in [4123, 4950, 5040, 8150, 8192] {
+                let expected = &all[offset..(offset + 100).min(all.len())];
+                let jump = descending_text_jump(target, "t.name", "t.id", offset as i64, 100);
+                assert_eq!(run_query(c, &jump)?.1, expected, "jump {offset}");
+                let last = &all[offset - 1];
+                let anchor = crate::db::PageBoundary { key: "ID".into(), value: last[1].as_i64().unwrap(), sort_text: Some(last[2].as_str().unwrap().to_string()) };
+                for indexed in [false, true] {
+                    metadata.reverse_index = indexed;
+                    let page = read_after(c, target, &metadata, Some(("NAME", true)), 100, &anchor)?.unwrap();
+                    assert_eq!(page.1, expected, "seek {offset}, indexed {indexed}");
+                }
+            }
+            Ok(())
+        }).await.unwrap();
+    }
 
     #[tokio::test]
     #[ignore = "requires the isolated A36_FIXTURE Oracle schema on loopback"]
@@ -6283,15 +6594,22 @@ pub fn tx_fetch_rows(
 ) -> Result<TableData, String> {
     let columns = table_columns(c, &request.schema, &request.table, false)?;
     let legacy = legacy_paging(c);
-    let sql = page_sql(
-        &format!(
-            "SELECT {} FROM {}.{} t{}{}",
-            if request.is_view { "t.*" } else { ROWID_SELECT },
-            quote(&request.schema),
-            quote(&request.table),
-            where_clause(request.filter.as_deref(), request.allow_raw)?,
-            request.order_sql(&columns, super::provider::DatabaseKind::Oracle),
-        ),
+    let sort = request
+        .order_by
+        .as_ref()
+        .filter(|col| columns.contains(col))
+        .map_or_else(String::new, |col| {
+            format!(
+                " ORDER BY t.{} {}",
+                quote(col),
+                if request.order_desc { "DESC" } else { "ASC" }
+            )
+        });
+    let sql = browse_page_sql(
+        &format!("{}.{}", quote(&request.schema), quote(&request.table)),
+        &where_clause(request.filter.as_deref(), request.allow_raw)?,
+        &sort,
+        !request.is_view,
         request.offset.max(0),
         request.limit.max(1),
         legacy,

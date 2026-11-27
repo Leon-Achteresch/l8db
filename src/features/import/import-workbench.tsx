@@ -1,22 +1,25 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useActiveConnection } from "@/lib/connections";
 import { useActiveDatabase } from "@/lib/db-selection";
 import {
   detectImportFormat,
   IMPORT_FILE_EXTENSIONS,
-  pickImportFile,
+  pickDataFile,
+  pickImportFilePath,
   readImportFile,
 } from "@/lib/import-file";
-import { EMPTY_SQL_IMPORT, useImportWorkspace } from "@/lib/import-workspace";
+import { EMPTY_SQL_IMPORT, selectSqlImportFile, useImportWorkspace } from "@/lib/import-workspace";
 import { capabilitiesFor, supports } from "@/lib/providers";
 import { sqlFileTitle } from "@/lib/sql-file";
 import { tabStateKey, useTabState } from "@/lib/tab-state";
+import { findTransaction, useTransactionStore } from "@/lib/transactions";
 import { CsvImportPanel } from "./csv-import-panel";
 import { useCsvImport } from "./csv-import-panel/use-csv-import";
 import { ImportFileList } from "./import-file-list";
 import { ImportSteps } from "./import-steps";
 import { SqlImportPanel } from "./sql-import-panel";
+import { sqlImportSummary } from "./sql-import-summary";
 
 const SQL_MODE_LABELS = {
   "existing-transaction": "Offene Transaktion",
@@ -34,6 +37,29 @@ export function ImportWorkbench({ tab }: { tab?: "csv" }) {
   const csv = useCsvImport();
   const sqlKey = JSON.stringify([connection?.id, database]);
   const sqlDraft = useImportWorkspace((state) => state.sql[sqlKey] ?? EMPTY_SQL_IMPORT);
+  const script = useMemo(
+    () => sqlImportSummary(sqlDraft.sql, connection?.kind),
+    [sqlDraft.sql, connection?.kind],
+  );
+  const existing = useTransactionStore((state) =>
+    Boolean(
+      connection && findTransaction(state.transactions, connection.id, database, { type: "query" }),
+    ),
+  );
+  const mode = existing
+    ? "existing-transaction"
+    : supports(connection, "transactions")
+      ? sqlDraft.mode === "existing-transaction"
+        ? "new-transaction"
+        : sqlDraft.mode
+      : "autocommit";
+  const sqlSelection = useRef<number | null>(0);
+  useLayoutEffect(() => {
+    sqlSelection.current = 0;
+    return () => {
+      sqlSelection.current = null;
+    };
+  }, []);
   const [selected, setSelected] = useTabState<"data" | "sql">(
     tabStateKey(`import:${sqlKey}`, "pane"),
     csvEnabled && (tab === "csv" || !sqlDraft.fileName) ? "data" : "sql",
@@ -62,7 +88,7 @@ export function ImportWorkbench({ tab }: { tab?: "csv" }) {
         ? csv.transactional
           ? "Eine Transaktion"
           : "Ohne Transaktion"
-        : SQL_MODE_LABELS[sqlDraft.mode],
+        : SQL_MODE_LABELS[mode],
     ],
   ];
   if (pane === "data" && csv.parsed)
@@ -74,15 +100,25 @@ export function ImportWorkbench({ tab }: { tab?: "csv" }) {
     ]);
 
   const loadSql = async (path: string) => {
-    const file = await readImportFile(path);
-    useImportWorkspace.getState().patchSql(sqlKey, {
-      fileName: file.name,
-      filePath: file.path,
-      sql: file.text,
-      entries: null,
-      jobId: null,
-    });
+    if (sqlSelection.current === null) return;
+    const selection = ++sqlSelection.current;
+    let file: Awaited<ReturnType<typeof readImportFile>>;
+    try {
+      file = await readImportFile(path);
+    } catch (error) {
+      if (selection === sqlSelection.current) throw error;
+      return;
+    }
+    if (selection !== sqlSelection.current) return;
+    selectSqlImportFile(sqlKey, file);
     setSelected("sql");
+  };
+
+  const loadData = async (file: NonNullable<Awaited<ReturnType<typeof pickDataFile>>>) => {
+    if (sqlSelection.current === null) return;
+    sqlSelection.current++;
+    setSelected("data");
+    await csv.handlePickFile(file);
   };
 
   const guard = async (action: () => Promise<void>) => {
@@ -111,24 +147,23 @@ export function ImportWorkbench({ tab }: { tab?: "csv" }) {
       });
       if (typeof path !== "string") return;
       if (!csvEnabled || (scripts && path.toLowerCase().endsWith(".sql"))) return loadSql(path);
-      await csv.handlePickFile({
+      await loadData({
         path,
         name: sqlFileTitle(path),
         format: detectImportFormat(path),
       });
-      setSelected("data");
     });
 
   const pickSql = () =>
     guard(async () => {
-      const file = await pickImportFile("sql");
-      if (file) await loadSql(file.path);
+      const path = await pickImportFilePath("sql");
+      if (path) await loadSql(path);
     });
 
   const pickData = () =>
     guard(async () => {
-      await csv.handlePickFile();
-      setSelected("data");
+      const file = await pickDataFile();
+      if (file) await loadData(file);
     });
 
   return (
@@ -145,6 +180,7 @@ export function ImportWorkbench({ tab }: { tab?: "csv" }) {
         <ImportFileList
           csv={csvEnabled ? csv : null}
           sql={sqlDraft}
+          script={script}
           scripts={scripts}
           selected={pane}
           error={pickError}
@@ -158,7 +194,12 @@ export function ImportWorkbench({ tab }: { tab?: "csv" }) {
           {pane === "data" ? (
             <CsvImportPanel csv={csv} actions={actions} onPickFile={() => void pickData()} />
           ) : (
-            <SqlImportPanel actions={actions} onPickFile={() => void pickSql()} />
+            <SqlImportPanel
+              actions={actions}
+              onPickFile={() => void pickSql()}
+              script={script}
+              mode={mode}
+            />
           )}
         </div>
       </div>

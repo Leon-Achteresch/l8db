@@ -3,7 +3,7 @@ use crate::db::{
     csv_stream::CsvFileSource, import_source::ImportFormat, ColumnDefinition, CreateTableRequest,
     CsvImportRequest, DatabaseKind,
 };
-use crate::mcp::{config::McpConfig, server::Server};
+use crate::mcp::config::McpConfig;
 use serde_json::{json, Value};
 
 const PREVIEW_ROWS: usize = 20;
@@ -158,7 +158,7 @@ pub fn columns(
 }
 
 async fn import(
-    server: &tokio::sync::Mutex<Server>,
+    server: &mut super::context::Access<'_>,
     config: &McpConfig,
     run: &Run,
     args: &Value,
@@ -289,7 +289,7 @@ async fn import(
 }
 
 pub async fn call(
-    server: &tokio::sync::Mutex<Server>,
+    server: &mut super::context::Access<'_>,
     config: &McpConfig,
     run: &Run,
     args: Value,

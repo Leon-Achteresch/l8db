@@ -24,6 +24,7 @@ import { TableUsedByPanel } from "@/features/table/table-used-by-panel";
 import { TableViewsPanel } from "@/features/table/table-views-panel";
 import { tableColumnPrefKey, useTableColumnPrefs } from "@/lib/table-column-prefs";
 import { useTableViewStateStore } from "@/lib/table-view-state";
+import { savedViewPatch } from "@/lib/views";
 import { useViewEditor } from "./view-editor-view/use-view-editor";
 
 const QueryEditorPane = lazy(() =>
@@ -145,18 +146,15 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
                   <TableViewsPanel
                     schema={schema}
                     table={view}
+                    stateKey={stateKey}
                     activeFilter={filter}
                     filterRaw={filterRaw}
                     onSelectView={(nextFilter, raw, saved) => {
                       handleFilterChange(nextFilter, raw);
-                      if (saved?.state?.sorting) setSorting(saved.state.sorting);
-                      if (stateKey && saved?.state)
-                        useTableViewStateStore.getState().patch(stateKey, {
-                          ...saved.state,
-                          filter: nextFilter,
-                          filterRaw: raw ?? false,
-                          page: 0,
-                        });
+                      const patch = savedViewPatch(saved, nextFilter, raw);
+                      if (patch) setSorting(patch.sorting ?? []);
+                      if (stateKey && patch)
+                        useTableViewStateStore.getState().patch(stateKey, patch);
                       if (connection && saved?.layout)
                         useTableColumnPrefs
                           .getState()
@@ -173,6 +171,7 @@ export function ViewEditorView({ schema, view }: ViewEditorViewProps) {
                 columnDetails={columnDetails}
                 activeFilter={filter}
                 onApply={handleFilterChange}
+                sort={{ sorting, onChange: setSorting }}
               />
             </div>
             <DataTable

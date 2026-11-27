@@ -419,6 +419,33 @@ async fn dispatch(
         )
         .await
         .map(|v| json!(v)),
+        "get_schema_map" => crate::db::commands::get_schema_map(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            a(x, "database")?,
+            a(x, "schema")?,
+            st(&pool),
+        )
+        .await
+        .map(|v| json!(v)),
+        "list_synonyms" => crate::db::commands::list_synonyms(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            a(x, "database")?,
+            a(x, "schema")?,
+            st(&pool),
+        )
+        .await
+        .map(|v| json!(v)),
+        "list_package_members" => crate::db::commands::list_package_members(
+            a(x, "kind")?,
+            a(x, "connectionString")?,
+            a(x, "database")?,
+            a(x, "schema")?,
+            st(&pool),
+        )
+        .await
+        .map(|v| json!(v)),
         "get_database_overview" => crate::db::commands::get_database_overview(
             a(x, "kind")?,
             a(x, "connectionString")?,

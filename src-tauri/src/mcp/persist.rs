@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 const MAX_COLUMNS: usize = 5_000_000;
 
 #[derive(Serialize, Deserialize)]
@@ -457,7 +457,7 @@ mod tests {
             assert_eq!(mode(file.parent().unwrap()), 0o700);
         }
         let stored = std::fs::read_to_string(&file).unwrap();
-        assert!(stored.contains("\"version\":1") && stored.contains("orders"));
+        assert!(stored.contains("\"version\":2") && stored.contains("orders"));
         assert!(!stored.contains("geheimer-wert-4711") && !stored.contains("fixture.db"));
 
         let mut second = server();

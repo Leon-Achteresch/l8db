@@ -13,8 +13,8 @@ import {
   XIcon,
   ZapIcon,
 } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
-import { memo, type RefObject } from "react";
+import { motion, useIsPresent, useReducedMotion } from "motion/react";
+import { memo, type Ref, type RefObject, useCallback } from "react";
 import { toast } from "sonner";
 import { CopyAsMenu } from "@/components/copy-as-menu";
 import { HotkeyMenuShortcut } from "@/components/hotkey-menu-shortcut";
@@ -28,7 +28,7 @@ import {
 import { AiFlash } from "@/features/automation/ai-flash";
 import { TabStatusMarkers } from "@/features/shell/table-tabs/tab-status-markers";
 import type { ConnectionEnvironment } from "@/lib/connections";
-import { SPRING, SPRING_PRESS } from "@/lib/ease";
+import { SPRING_PRESS, SPRING_TAB } from "@/lib/ease";
 import { focusNeighborTab } from "@/lib/keyboard-nav";
 import { useSavedTabsStore } from "@/lib/saved-tabs";
 import { useSettingsStore } from "@/lib/settings";
@@ -73,6 +73,7 @@ export interface TableTabsSortableTabProps {
   hasTabsToRight: boolean;
   tabsCount: number;
   actions: RefObject<TableTabActions>;
+  ref?: Ref<HTMLDivElement>;
 }
 
 export function tabVisual(tab: Tab) {
@@ -126,11 +127,17 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
   hasTabsToRight,
   tabsCount,
   actions,
+  ref: presenceRef,
 }: TableTabsSortableTabProps) {
   const reduceMotion = useReducedMotion();
+  const isPresent = useIsPresent();
   const easyMode = useSettingsStore((state) => state.easyMode);
   const detachable = useSplitView((state) => pane !== null && !isBoundToSplit(state, tabKey(tab)));
-  const { ref, handleRef, isDragging } = useSortable({
+  const {
+    ref: sortableRef,
+    handleRef,
+    isDragging,
+  } = useSortable({
     id: `${group}:${tabKey(tab)}`,
     index,
     group,
@@ -178,6 +185,14 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
       )}
     </>
   );
+  const ref = useCallback(
+    (element: HTMLDivElement | null) => {
+      sortableRef(element);
+      if (typeof presenceRef === "function") presenceRef(element);
+      else if (presenceRef) presenceRef.current = element;
+    },
+    [sortableRef, presenceRef],
+  );
   const onPreload = () => actions.current.preload(tab);
   const onClose = () => actions.current.close(tab);
 
@@ -188,8 +203,15 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
           ref={ref}
           data-tab-key={tabKey(tab)}
           layout={!isDragging && !reduceMotion ? "position" : false}
-          layoutDependency={index}
-          transition={{ layout: SPRING }}
+          layoutDependency={`${index}/${tabsCount}`}
+          initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={
+            reduceMotion
+              ? { opacity: 0, transition: { duration: 0 } }
+              : { opacity: 0, scale: 0.9, transition: { duration: 0.14, ease: "easeOut" } }
+          }
+          transition={{ layout: SPRING_TAB, default: SPRING_TAB }}
           onAuxClick={(event) => {
             if (event.button !== 1) return;
             event.preventDefault();
@@ -206,6 +228,7 @@ export const TableTabsSortableTab = memo(function TableTabsSortableTab({
               ? "text-foreground"
               : "text-muted-foreground hover:bg-card/70 hover:text-foreground",
             isDragging && "z-10 cursor-grabbing opacity-90 shadow-md ring-1 ring-ring/40",
+            !isPresent && "pointer-events-none",
           )}
         >
           <AiFlash id={`tab:${tabKey(tab)}`} neon />

@@ -10,6 +10,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { AI_CURRENCIES, useAiCurrency } from "@/lib/ai/currency";
 import { useAiStore } from "@/lib/ai/store";
 import type { AiPricing, AiProfile } from "@/lib/db/ai";
 
@@ -18,6 +26,7 @@ type PricingKey = Exclude<keyof AiPricing, "model">;
 export function AiUsageSettings({ profile }: { profile: AiProfile }) {
   const id = useId();
   const save = useAiStore((state) => state.saveProfile);
+  const currency = useAiCurrency();
   const pricing = profile.pricing?.model === profile.model ? profile.pricing : undefined;
   const fields: { key: PricingKey; label: string }[] = [
     { key: "inputUsd", label: "Eingabe" },
@@ -45,9 +54,9 @@ export function AiUsageSettings({ profile }: { profile: AiProfile }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="min-w-0">
-        <div>Tarif &amp; Kontextlimit</div>
+        <div>Tarif, Währung &amp; Limit</div>
         <div className="truncate text-muted-foreground">
-          {custom ? "Eigener Tarif" : "Automatisch"}
+          {custom ? "Eigener Tarif" : "Automatisch"} · {currency.code}
           {pricing?.contextWindow ? ` · ${pricing.contextWindow.toLocaleString()} Tokens` : ""}
         </div>
       </div>
@@ -75,6 +84,40 @@ export function AiUsageSettings({ profile }: { profile: AiProfile }) {
             <label htmlFor={`${id}-contextWindow`} className="col-span-2 block space-y-1">
               <span>Kontextlimit · Tokens</span>
               {input("contextWindow", "1")}
+            </label>
+            <div className="space-y-1">
+              <span>Anzeigewährung</span>
+              <Select value={currency.code} onValueChange={currency.setCode}>
+                <SelectTrigger aria-label="Anzeigewährung" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {AI_CURRENCIES.map((code) => (
+                    <SelectItem key={code} value={code}>
+                      {code}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <label htmlFor={`${id}-rate`} className="block space-y-1">
+              <span>Kurs · 1 USD</span>
+              <Input
+                id={`${id}-rate`}
+                type="number"
+                min="0"
+                step="0.0001"
+                disabled={currency.code === "USD"}
+                placeholder={
+                  currency.rates[currency.code]
+                    ? `${currency.rates[currency.code]} · EZB`
+                    : "Automatisch"
+                }
+                value={currency.manual ?? ""}
+                onChange={(event) =>
+                  currency.setManual(event.target.value === "" ? null : Number(event.target.value))
+                }
+              />
             </label>
           </div>
           <p className="text-muted-foreground">

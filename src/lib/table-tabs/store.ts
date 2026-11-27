@@ -11,6 +11,7 @@ import { syncAcrossWindows } from "@/lib/window-sync";
 import { createCloseActions } from "./close-actions";
 import { createOpenActions } from "./open-actions";
 import { createQueryActions } from "./query-actions";
+import { withoutRepeatedSql } from "./query-tabs";
 import { keyForConnection, readPersistedActiveConnectionId, tabKey } from "./tab-keys";
 import type { Tab, TableTab, TabsState } from "./types";
 
@@ -77,10 +78,12 @@ export const useTableTabs = create<TabsState>()(
         tabsByConnection: Object.fromEntries(
           Object.entries(state.tabsByConnection).map(([key, tabs]) => [
             key,
-            tabs.filter((tab) => !(tab.kind === "tool" && tab.tool === "workbench")),
+            tabs
+              .filter((tab) => !(tab.kind === "tool" && tab.tool === "workbench"))
+              .map(withoutRepeatedSql),
           ]),
         ),
-        recentlyClosed: state.recentlyClosed,
+        recentlyClosed: state.recentlyClosed.map(withoutRepeatedSql),
       }),
       merge: (persistedState, currentState) => {
         const stored = persistedState as Partial<TabsState> | undefined;

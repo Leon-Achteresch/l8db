@@ -23,6 +23,119 @@ fn events() -> (Arc<Mutex<Vec<TransferEvent>>>, transfer::Emit) {
 
 #[tokio::test]
 #[ignore]
+async fn s3_live_null_version_targets_the_archived_object() {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use std::time::Instant;
+
+    let s3 = S3::connect(&url()).await.unwrap();
+    let bucket = bucket_name("null-version");
+    let key = "notes.txt";
+    let archive = b"Archiv vor Versionierung";
+    let current = vec![b'N'; 8 * 1024 * 1024];
+    s3.create_bucket(&bucket, None, false).await.unwrap();
+    s3.put_bytes(&bucket, key, archive.to_vec(), &[])
+        .await
+        .unwrap();
+    s3.put_config(&bucket, None, None, "versioning",
+        r#"<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Status>Enabled</Status></VersioningConfiguration>"#.into(), false).await.unwrap();
+    let current_id = s3
+        .put_bytes(&bucket, key, current.clone(), &[])
+        .await
+        .unwrap()
+        .unwrap();
+    let versions = s3
+        .list_versions(&bucket, key, None, None, None, None)
+        .await
+        .unwrap();
+    assert!(versions
+        .versions
+        .iter()
+        .any(|v| v.version_id == "null" && !v.is_latest));
+    assert!(versions
+        .versions
+        .iter()
+        .any(|v| v.version_id == current_id && v.is_latest));
+    let mut samples = Vec::new();
+    for run in 0..16 {
+        let start = Instant::now();
+        let preview = s3
+            .preview(&bucket, key, Some("null"), 256 * 1024)
+            .await
+            .unwrap();
+        if run > 0 {
+            samples.push(start.elapsed());
+        }
+        assert_eq!(preview.size, Some(archive.len() as u64));
+        assert!(!preview.truncated);
+        assert_eq!(preview.data.len(), archive.len().div_ceil(3) * 4);
+        assert_eq!(STANDARD.decode(preview.data).unwrap(), archive);
+    }
+    samples.sort();
+    eprintln!(
+        "S3 null-version preview: bytes={} median={:?} p95={:?}",
+        archive.len(),
+        samples[7],
+        samples[14]
+    );
+    let head = s3.head_object(&bucket, key, Some("null")).await.unwrap();
+    assert_eq!(head.version_id.as_deref(), Some("null"));
+    assert_eq!(head.size, archive.len() as u64);
+
+    for (version, value) in [(None, "current"), (Some("null"), "archived")] {
+        let tags = format!("<Tagging><TagSet><Tag><Key>revision</Key><Value>{value}</Value></Tag></TagSet></Tagging>");
+        s3.put_config(&bucket, Some(key), version, "tagging", tags, false)
+            .await
+            .unwrap();
+    }
+    let get_tags = |version| s3.get_config(&bucket, Some(key), version, "tagging");
+    assert!(get_tags(Some("null"))
+        .await
+        .unwrap()
+        .unwrap()
+        .contains("<Value>archived</Value>"));
+    s3.delete_config(&bucket, Some(key), Some("null"), "tagging")
+        .await
+        .unwrap();
+    assert!(!get_tags(Some("null"))
+        .await
+        .unwrap()
+        .unwrap_or_default()
+        .contains("<Tag>"));
+    assert!(get_tags(None)
+        .await
+        .unwrap()
+        .unwrap()
+        .contains("<Value>current</Value>"));
+
+    for (version, expected) in [
+        (Some("null"), archive.as_slice()),
+        (None, current.as_slice()),
+    ] {
+        let link = super::commands::s3_presign(
+            url(),
+            bucket.clone(),
+            key.into(),
+            Some("GET".into()),
+            Some(60),
+            version.map(str::to_owned),
+            None,
+        )
+        .await
+        .unwrap();
+        let response = reqwest::get(link)
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap();
+        let bytes = response.bytes().await.unwrap();
+        assert_eq!(bytes.len(), expected.len());
+        assert!(bytes.as_ref() == expected);
+    }
+    s3.delete_bucket(&bucket, true).await.unwrap();
+}
+
+#[tokio::test]
+#[ignore]
 async fn s3_live_object_lifecycle() {
     let s3 = S3::connect(&url()).await.unwrap();
     let bucket = bucket_name("obj");
@@ -81,7 +194,7 @@ async fn s3_live_object_lifecycle() {
 
     let preview = s3.preview(&bucket, "in/big.bin", None, 100).await.unwrap();
     assert!(preview.truncated);
-    assert_eq!(preview.size, big.len() as u64);
+    assert_eq!(preview.size, Some(big.len() as u64));
 
     assert_eq!(
         s3.get_text(&bucket, "in/upload/a b.txt").await.unwrap(),

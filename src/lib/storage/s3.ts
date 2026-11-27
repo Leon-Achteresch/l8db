@@ -92,11 +92,15 @@ export function tagsXml(tags: S3Tag[]): string {
   return `<Tagging><TagSet>${body}</TagSet></Tagging>`;
 }
 
-export type VersioningStatus = "Enabled" | "Suspended" | "Off";
+export type VersioningStatus = "Enabled" | "Suspended" | "Off" | "Unknown";
 
 export function parseVersioning(xml: string | null): VersioningStatus {
-  const status = textOf(xml ? parseS3Xml(xml) : null, "Status");
-  return status === "Enabled" || status === "Suspended" ? status : "Off";
+  if (xml === null) return "Off";
+  const root = parseS3Xml(xml);
+  if (root?.name !== "VersioningConfiguration") return "Unknown";
+  const status = child(root, "Status")?.text.trim();
+  if (status === undefined) return "Off";
+  return status === "Enabled" || status === "Suspended" ? status : "Unknown";
 }
 
 export function versioningXml(status: "Enabled" | "Suspended"): string {
@@ -396,7 +400,7 @@ const TEXT_EXTENSIONS = new Set([
 ]);
 
 export function previewKind(key: string, contentType: string | null | undefined): PreviewKind {
-  const type = (contentType ?? "").toLowerCase();
+  const type = (contentType ?? "").split(";", 1)[0].trim().toLowerCase();
   const ext = basename(key).toLowerCase().split(".").pop() ?? "";
   if (type.startsWith("image/") && type !== "image/svg+xml") return "image";
   if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "avif"].includes(ext)) return "image";
@@ -420,7 +424,7 @@ export function selectFormat(key: string): string | null {
   return ["csv", "tsv", "json", "jsonl", "ndjson", "parquet"].includes(ext) ? ext : null;
 }
 
-export function parseCsv(text: string, delimiter = ","): string[][] {
+export function parseCsv(text: string, delimiter = ",", completeRowsOnly = false): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
@@ -445,7 +449,7 @@ export function parseCsv(text: string, delimiter = ","): string[][] {
       field = "";
     } else field += char;
   }
-  if (field || row.length) {
+  if (!completeRowsOnly && (field || row.length)) {
     row.push(field);
     rows.push(row);
   }

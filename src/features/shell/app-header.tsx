@@ -44,6 +44,7 @@ import { useTableTabs } from "@/lib/table-tabs";
 import { useTransactionStore } from "@/lib/transactions";
 import { cn } from "@/lib/utils";
 import { useVersioningPanel } from "@/lib/versioning/panel";
+import { version } from "../../../package.json";
 
 const HEADER_SECTIONS = ["/about", "/dev", "/drivers", "/mcp", "/settings"];
 
@@ -155,6 +156,9 @@ export function AppHeader() {
               />
             ) : null}
             l8db
+            <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-normal text-muted-foreground tabular-nums">
+              v{version}
+            </span>
           </Link>
         )}
         <AnimatePresence initial={false}>

@@ -1,3 +1,4 @@
+import { fileName } from "@/lib/connection-import/paths";
 import type { DatabaseKind, ProviderInfo } from "@/lib/db";
 import { allProviders, FALLBACK_PROVIDERS, providerById, providerForKind } from "@/lib/providers";
 import { serverProduct } from "@/lib/server-products";
@@ -52,6 +53,7 @@ function publicHost(host: string): boolean {
 export function detectProvider(value: string, kind = kindFromUrl(value)): string {
   const candidates = allProviders().filter((provider) => provider.kind === (kind ?? "postgres"));
   if (!candidates.length) return "postgres";
+  if (candidates.length === 1 && candidates[0].file_based) return candidates[0].id;
   if (kind === "s3") return detectObjectStorage(value, candidates);
   if (kind === "odbc") {
     const raw = /(?:^|[;?&])\s*driver\s*=\s*\{?([^};&]+)/i.exec(value)?.[1] ?? "";
@@ -132,7 +134,7 @@ export function connectionSummary(value: string, kind = kindFromUrl(value)) {
   }
   if (info?.file_based) {
     const path = filePath(value);
-    return { host: path.split("/").pop() || path, port: "", database: path, user: "" };
+    return { host: fileName(path), port: "", database: path, user: "" };
   }
   if (resolved === "oracle" || resolved === undefined) {
     const oracle = parseOracleKeyValue(value);

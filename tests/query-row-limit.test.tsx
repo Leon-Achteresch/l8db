@@ -9,6 +9,8 @@ const commands: { command: string; sql?: string; jobId?: string }[] = [];
 let rowsFor: (sql: string) => number = () => 0;
 let pending: ((value: QueryResult) => void) | null = null;
 let hold = false;
+let savePath: string | null | Promise<string | null> = null;
+const jsonWrites: string[] = [];
 
 function result(count: number): QueryResult {
   return {
@@ -31,6 +33,11 @@ mock.module("@tauri-apps/api/core", () => ({
       return result(rowsFor(String(args.sql)));
     }
     if (command === "cancel_execution") return true;
+    if (command === "plugin:dialog|save") return savePath;
+    if (command === "plugin:fs|write_text_file") {
+      jsonWrites.push(new TextDecoder().decode(args as unknown as Uint8Array));
+      return;
+    }
     if (command.includes("server_output")) return [];
     return null;
   },
@@ -90,6 +97,8 @@ beforeEach(() => {
   toasts.length = 0;
   hold = false;
   pending = null;
+  savePath = null;
+  jsonWrites.length = 0;
   rowsFor = (sql) => (/LIMIT 1000/.test(sql) ? 1000 : 5000);
   useSettingsStore.setState({ transactionsEnabled: false });
 });
@@ -160,6 +169,78 @@ test("limited results without a full reload are exported as labelled loaded rows
   expect(exportState(limited).loadedRows).toBe(1000);
   expect(exportState(limited, async () => result(5000)).partial).toBe(false);
   expect(exportState(result(20)).partial).toBe(false);
+});
+
+test("Abbruch des JSON-Speicherdialogs vermeidet das Nachladen von 200.000 Ergebniszeilen", async () => {
+  let generatedRows = 0;
+  rowsFor = () => {
+    generatedRows += 200_000;
+    return 200_000;
+  };
+  const state = exportState({ ...result(1000), autoLimit: 1000 }, () =>
+    run("SELECT * FROM items", null),
+  );
+  const samples: number[] = [];
+  for (let i = 0; i < 22; i++) {
+    const start = performance.now();
+    await state.handleExportJson();
+    if (i) samples.push(performance.now() - start);
+  }
+  samples.sort((a, b) => a - b);
+  console.log(
+    `JSON-Export abgebrochen: Median ${samples[10].toFixed(3)} ms, p95 ${samples[19].toFixed(3)} ms, ${generatedRows} geladene Zeilen`,
+  );
+  expect(generatedRows).toBe(0);
+  expect(commands.map((entry) => entry.command)).toEqual(Array(22).fill("plugin:dialog|save"));
+  expect(jsonWrites).toHaveLength(0);
+  expect(toasts).toHaveLength(0);
+  expect(samples[10]).toBeLessThan(3);
+  expect(samples[19]).toBeLessThan(10);
+});
+
+test("JSON-Export wartet auf den Zielpfad und verhindert doppelte Exporte", async () => {
+  const dialog = Promise.withResolvers<string>();
+  savePath = dialog.promise;
+  const state = exportState({ ...result(1), autoLimit: 1 }, () => run("SELECT * FROM items", null));
+  const first = state.handleExportJson();
+  const repeated = state.handleExportJson();
+  state.openCsvExport();
+  expect(commands.map((entry) => entry.command)).toEqual(["plugin:dialog|save"]);
+  dialog.resolve("/fixtures/result.json");
+  await Promise.all([first, repeated]);
+  expect(commands.map((entry) => entry.command)).toEqual([
+    "plugin:dialog|save",
+    "execute_query",
+    "plugin:fs|write_text_file",
+  ]);
+  expect(jsonWrites).toHaveLength(1);
+  expect(JSON.parse(jsonWrites[0])).toEqual(result(5000).rows);
+});
+
+test("Abbruch beim Nachladen für JSON schreibt keine Datei", async () => {
+  savePath = "/fixtures/result.json";
+  hold = true;
+  const state = exportState({ ...result(1), autoLimit: 1 }, () => run("SELECT * FROM items", null));
+  const exporting = state.handleExportJson();
+  await Bun.sleep(0);
+  expect(commands.at(-1)?.command).toBe("execute_query");
+  toasts.find((entry) => entry.kind === "loading")?.action?.onClick();
+  pending?.(result(12));
+  await exporting;
+  expect(toasts.at(-1)?.message).toBe("Export abgebrochen");
+  expect(jsonWrites).toHaveLength(0);
+});
+
+test("JSON-Export lässt sich nach einem Dialogfehler mit den vorhandenen Zeilen wiederholen", async () => {
+  const state = exportState(result(3));
+  savePath = Promise.reject(new Error("Dialog nicht verfügbar"));
+  await state.handleExportJson();
+  expect(toasts.at(-1)?.message).toContain("Dialog nicht verfügbar");
+  expect(jsonWrites).toHaveLength(0);
+  savePath = "/fixtures/result.json";
+  await state.handleExportJson();
+  expect(jsonWrites.map((content) => JSON.parse(content))).toEqual([result(3).rows]);
+  expect(commands.filter((entry) => entry.command === "execute_query")).toHaveLength(0);
 });
 
 test("full export loads the result once and returns every row", async () => {

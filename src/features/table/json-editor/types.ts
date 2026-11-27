@@ -1,6 +1,6 @@
 import type { JsonKind, JsonPath } from "@/lib/json-editor";
 
-export type JsonCopyFormat = "value" | "key" | "jsonpath" | "js" | "pg" | "pgpath";
+export type JsonCopyFormat = "value" | "key" | "jsonpath" | "pointer" | "js" | "pg" | "pgpath";
 
 export type JsonActions = {
   startEdit: (path: JsonPath, target: "key" | "value") => void;

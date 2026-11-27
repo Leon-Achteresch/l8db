@@ -741,3 +741,363 @@ fn worker_start_and_statement_overhead_stay_small() {
         "{per_statement:?}"
     );
 }
+
+struct SlowHost {
+    wait: Duration,
+    calls: usize,
+}
+
+impl super::code::ToolHost for SlowHost {
+    fn names(&self) -> Vec<String> {
+        ["first", "second", "fail"].map(String::from).to_vec()
+    }
+
+    fn call<'a>(
+        &'a mut self,
+        _server: &'a mut Server,
+        name: &'a str,
+        args: Value,
+    ) -> futures_util::future::BoxFuture<'a, Result<String, String>> {
+        Box::pin(async move {
+            self.calls += 1;
+            tokio::time::sleep(self.wait).await;
+            if name == "fail" {
+                Err("postgres://user:secret@db.internal/app refused".into())
+            } else {
+                Ok(format!("{name}:{args}"))
+            }
+        })
+    }
+}
+
+struct Unpaused(SlowHost);
+
+impl super::code::ToolHost for Unpaused {
+    fn names(&self) -> Vec<String> {
+        self.0.names()
+    }
+
+    fn waits(&self) -> bool {
+        false
+    }
+
+    fn call<'a>(
+        &'a mut self,
+        server: &'a mut Server,
+        name: &'a str,
+        args: Value,
+    ) -> futures_util::future::BoxFuture<'a, Result<String, String>> {
+        self.0.call(server, name, args)
+    }
+}
+
+#[test]
+fn hosted_statements_spend_the_budgets_and_unpaused_hosts_spend_the_time_limit() {
+    let mut lab = fixture();
+    let home = lab.config.connections[0].clone();
+    let config = lab.config.clone();
+    let looped = "async () => { const out = []; for (let i = 0; i < 3; i++) out.push(await tools.query({connection: 'Shop', sql: 'SELECT name FROM customers'}).then(() => 'ok', (e) => e.message)); out.push(await tools.explain({connection: 'Shop', sql: 'SELECT 1'}).then(() => 'ok', (e) => e.message)); return out.join('|'); }";
+    let mut functions = super::server::Functions(&config);
+    let text = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            looped,
+            &Limits {
+                statements: 2,
+                ..short(30)
+            },
+            Some(&mut functions),
+        ))
+        .unwrap();
+    assert!(
+        text.starts_with(
+            "ok|ok|Höchstens 2 Statements pro code-Lauf.|Höchstens 2 Statements pro code-Lauf.\n"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.contains("(2 statements, 2 tool calls, 6 rows read"),
+        "{text}"
+    );
+    let text = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            looped,
+            &Limits {
+                total_rows: 3,
+                ..short(30)
+            },
+            Some(&mut functions),
+        ))
+        .unwrap();
+    assert!(text.starts_with("ok|Zeilenbudget von 3 "), "{text}");
+    assert!(
+        text.contains("(1 statements, 1 tool calls, 3 rows read"),
+        "{text}"
+    );
+    let (error, text) = lab.code(
+        "Shop",
+        "async () => { const rows = {}; return rows.map((row) => row); }",
+    );
+    assert!(
+        error && text.contains("not a function") && !text.contains("does not exist here"),
+        "{text}"
+    );
+    let mut unpaused = Unpaused(SlowHost {
+        wait: Duration::from_secs(20),
+        calls: 0,
+    });
+    let started = Instant::now();
+    let error = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            "async () => tools.first()",
+            &short(1),
+            Some(&mut unpaused),
+        ))
+        .unwrap_err();
+    assert!(error.contains("Zeitlimit von 1 s"), "{error}");
+    assert!(started.elapsed() < Duration::from_secs(10), "{error}");
+    assert_eq!(unpaused.0.calls, 1);
+}
+
+#[test]
+fn hosted_tool_calls_pause_the_time_limit_are_counted_and_need_a_host() {
+    let mut lab = fixture();
+    let (error, text) = lab.code("Shop", "async () => tools.dashboard({action: 'list'})");
+    assert!(
+        error && text.contains("not a function; tools.dashboard does not exist here"),
+        "{text}"
+    );
+    let home = lab.config.connections[0].clone();
+    let mut host = SlowHost {
+        wait: Duration::from_millis(1_300),
+        calls: 0,
+    };
+    let started = Instant::now();
+    let text = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            "async () => [await tools.first({a: 1}), await tools.second(), (await sql`SELECT count(*) AS n FROM customers`)[0].n, await tools.fail().catch((e) => `${e.name}: ${e.message}`), typeof tools.then].join(' ')",
+            &short(1),
+            Some(&mut host),
+        ))
+        .unwrap();
+    assert!(started.elapsed() > Duration::from_millis(3_900), "{text}");
+    assert!(
+        text.starts_with("first:{\"a\":1} second:{} 3 ToolError: ")
+            && text.contains(" undefined\n"),
+        "{text}"
+    );
+    assert!(!text.contains("secret"), "{text}");
+    assert!(
+        text.contains("(1 statements, 3 tool calls, 1 rows read"),
+        "{text}"
+    );
+    assert_eq!(host.calls, 3);
+    let mut parallel = SlowHost {
+        wait: Duration::from_millis(1_300),
+        calls: 0,
+    };
+    let text = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            "async () => { const [rows, text] = await Promise.all([sql`SELECT count(*) AS n FROM customers`, tools.first()]); await tools.fail(); return rows[0].n + text; }",
+            &short(1),
+            Some(&mut parallel),
+        ))
+        .unwrap_err();
+    assert!(text.contains("ToolError"), "{text}");
+    assert!(
+        text.contains("[tool calls that already succeeded and took effect before the error: first; do not repeat them]"),
+        "{text}"
+    );
+    assert!(
+        text.contains("(1 statements, 2 tool calls, 1 rows read"),
+        "{text}"
+    );
+    let text = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            "async () => JSON.stringify({tools}) + typeof tools.toJSON",
+            &short(5),
+            Some(&mut parallel),
+        ))
+        .unwrap();
+    assert!(
+        text.starts_with("{\"tools\":{}}undefined\n(0 statements, 0 rows read"),
+        "{text}"
+    );
+    let mut busy = SlowHost {
+        wait: Duration::ZERO,
+        calls: 0,
+    };
+    let error = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            "async () => { await tools.first(); for (;;) {} }",
+            &short(1),
+            Some(&mut busy),
+        ))
+        .unwrap_err();
+    assert!(error.contains("time limit of 1 s"), "{error}");
+    let mut many = SlowHost {
+        wait: Duration::ZERO,
+        calls: 0,
+    };
+    let text = lab
+        .runtime
+        .block_on(lab.server.code_run(
+            &lab.config,
+            Some(&home),
+            "async () => { let failed = 0; for (let i = 0; i < 105; i++) await tools.first().catch(() => failed++); return failed; }",
+            &Limits::new(&lab.config),
+            Some(&mut many),
+        ))
+        .unwrap();
+    assert!(text.starts_with("5\n"), "{text}");
+    assert_eq!(many.calls, 100);
+}
+
+#[test]
+fn external_code_reaches_read_tools_only_and_hidden_tools_stay_callable() {
+    use super::code::ToolHost;
+    let mut lab = fixture();
+    let shop = lab.dir.path().join("shop.db");
+    let customers = || {
+        rusqlite::Connection::open(&shop)
+            .unwrap()
+            .query_row(
+                "SELECT count(*) || ':' || min(name) FROM customers",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap()
+    };
+    let text = lab.ok("Shop", "async () => Object.keys(tools).join(',')");
+    assert!(
+        text.starts_with(&format!("{}\n", super::server::HOSTED.join(","))),
+        "{text}"
+    );
+    let text = lab.ok(
+        "Shop",
+        "async () => { const out = []; for (const connection of ['Shop', 'Lake']) out.push((await tools.overview({connection})).split('\\n')[0]); out.push(await tools.connections()); out.push(await tools.search({in: 'tools', term: 'relations'})); out.push(await tools.query({connection: 'Masked', sql: 'SELECT * FROM customers'})); for (const sql of ['SELECT token FROM secret.keys', 'SELECT * FROM app.leak']) out.push(await tools.query({connection: 'Lake', sql}).catch((e) => e.name)); return out.join('\\n'); }",
+    );
+    assert!(text.contains("tools.relations(args:"), "{text}");
+    assert!(text.contains("Shop") && text.contains("Lake"), "{text}");
+    assert!(!text.contains("alice@example.com"), "{text}");
+    assert!(!text.contains("top-secret-token"), "{text}");
+    assert_eq!(text.matches("ToolError").count(), 1, "{text}");
+    assert!(text.contains("token\n[redacted]\n"), "{text}");
+    assert!(text.contains("7 tool calls, "), "{text}");
+    let (error, text) = lab.code(
+        "",
+        "async () => [(await tools.connections()).includes('Lake'), (await tools.query({connection: 'Shop', sql: 'SELECT count(*) AS n FROM customers'})).split('\\n')[1]].join('|')",
+    );
+    assert!(!error && text.starts_with("true|3\n"), "{text}");
+    let (_, text) = lab.code(
+        "Shop",
+        "async () => tools.explain({connection: 'Shop', sql: 'DELETE FROM customers'})",
+    );
+    assert_eq!(customers(), "3:Alice", "{text}");
+    let blocked = [
+        "execute",
+        "dashboard",
+        "workflow",
+        "open",
+        "watch",
+        "report_issue",
+        "script",
+        "benchmark",
+        "code",
+        "sandbox",
+        "import_file",
+    ];
+    for name in blocked {
+        let text = lab.ok(
+            "Shop",
+            &format!("async () => typeof tools.{name} + (tools.{name} ? ' present' : ' absent')"),
+        );
+        assert!(text.starts_with("undefined absent"), "{name}: {text}");
+    }
+    let (error, text) = lab.code(
+        "Shop",
+        "async () => tools.execute({connection: 'Shop', sql: 'DELETE FROM customers', confirm: true})",
+    );
+    assert!(error && text.contains("not a function"), "{text}");
+    for write in [
+        "tools.query({connection: 'Shop', sql: 'DELETE FROM customers'})",
+        "tools.explain({connection: 'Shop', sql: 'DELETE FROM customers', analyze: true})",
+        "tools.drilldown({connection: 'Shop', from: 'customers; DELETE FROM customers', current: '1=1', baseline: '1=1', dimensions: ['name']})",
+        "sql`DELETE FROM customers`",
+    ] {
+        let (error, text) = lab.code("Shop", &format!("async () => {write}"));
+        assert!(error, "{write}: {text}");
+    }
+    let config = lab.config.clone();
+    let mut host = super::server::Functions(&config);
+    for name in blocked {
+        let error = lab
+            .runtime
+            .block_on(host.call(
+                &mut lab.server,
+                name,
+                json!({"connection": "Shop", "sql": "DELETE FROM customers", "confirm": true, "code": "async () => 1"}),
+            ))
+            .unwrap_err();
+        assert!(
+            error.contains("not available inside code"),
+            "{name}: {error}"
+        );
+    }
+    assert_eq!(customers(), "3:Alice");
+
+    let mut direct = |name: &str, args: Value, config: &McpConfig| {
+        let reply = lab.runtime.block_on(
+            lab.server
+                .call_with_config(&json!({"name": name, "arguments": args}), config),
+        );
+        (
+            reply["isError"] == true,
+            reply["content"][0]["text"]
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
+        )
+    };
+    for (name, args) in [
+        ("connections", json!({})),
+        ("overview", json!({"connection": "Shop"})),
+        ("relations", json!({"connection": "Shop", "from": "orders"})),
+        (
+            "explain",
+            json!({"connection": "Shop", "sql": "SELECT * FROM customers"}),
+        ),
+    ] {
+        let (error, text) = direct(name, args, &config);
+        assert!(!error && !text.is_empty(), "{name}: {text}");
+    }
+    let mut locked = config.clone();
+    locked.connections[0].read_only = true;
+    let update = json!({"connection": "Shop", "sql": "UPDATE customers SET name = 'Al' WHERE id = 1", "confirm": true});
+    let (error, text) = direct("execute", update.clone(), &locked);
+    assert!(error, "{text}");
+    assert_eq!(customers(), "3:Alice");
+    let (error, text) = direct("execute", update, &config);
+    assert!(!error, "{text}");
+    assert_eq!(customers(), "3:Al");
+}

@@ -15,6 +15,7 @@ import {
   stringHint,
   tableShape,
   toJsonPath,
+  toJsonPointer,
   toPostgresAccessor,
   toPostgresPath,
 } from "../src/lib/json-editor";
@@ -84,4 +85,33 @@ describe("json-editor", () => {
     expect(stringHint('{"nested":true}')).toBe("json");
     expect(stringHint("#ff8800")).toBe("color");
   });
+});
+
+test("JSON Pointer unterscheidet Wurzel, leere Schlüssel und Escape-Zeichen", () => {
+  expect(toJsonPointer([])).toBe("");
+  expect(toJsonPointer([""])).toBe("/");
+  expect(toJsonPointer(["a/b", 0, "x~1", "00", "", " #🦀%"])).toBe("/a~1b/0/x~01/00// #🦀%");
+});
+
+test("500 tiefe JSON Pointer werden ohne Dokumentzugriff formatiert", () => {
+  const paths = Array.from({ length: 500 }, (_, i) => [
+    ...Array.from({ length: 32 }, (_, d) => `Abschnitt/${d}~`),
+    i,
+  ]);
+  const samples: number[] = [];
+  for (let run = 0; run < 22; run++) {
+    const start = performance.now();
+    let maxLength = 0;
+    for (const path of paths) {
+      maxLength = Math.max(maxLength, toJsonPointer(path).length);
+    }
+    if (run) samples.push(performance.now() - start);
+    expect(maxLength).toBeLessThan(550);
+  }
+  samples.sort((a, b) => a - b);
+  console.log(
+    `500 JSON Pointer: Median ${samples[10].toFixed(2)} ms, p95 ${samples[19].toFixed(2)} ms`,
+  );
+  expect(samples[10]).toBeLessThan(15);
+  expect(samples[19]).toBeLessThan(40);
 });

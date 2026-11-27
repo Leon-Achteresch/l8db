@@ -424,31 +424,38 @@ async fn perf_rendered_frames_scroll_a_full_result() {
 }
 
 #[tokio::test]
-async fn read_only_flag_reaches_every_tui_connection() {
+async fn read_only_flag_and_file_options_reach_the_tui() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("tui.db");
     rusqlite::Connection::open(&path)
         .unwrap()
         .execute_batch("CREATE TABLE t (a INTEGER); INSERT INTO t VALUES (1);")
         .unwrap();
-    let url = format!("sqlite://{}", path.display());
-    let backend = Arc::new(super::backend::Backend::new(None, Vec::new(), true));
-    let source = crate::cli::connect::ad_hoc(&url).unwrap();
-    let Response::Opened { banner, .. } = backend.open(source).await.unwrap() else {
-        panic!("nicht geöffnet");
-    };
-    assert!(banner.read_only);
-    let reply = backend
-        .clone()
-        .perform(Request::Run {
-            sql: "DELETE FROM t".into(),
-            answer: None,
-        })
-        .await;
-    let Response::Failed(error) = reply else {
-        panic!("DELETE lief trotz --read-only");
-    };
-    assert!(error.starts_with("--read-only"), "{error}");
+    for (url, flag, reason) in [
+        (format!("sqlite://{}", path.display()), true, "--read-only"),
+        (
+            format!("{}?mode=ro", path.display()),
+            false,
+            "Die Dateioptionen",
+        ),
+    ] {
+        let backend = Arc::new(super::backend::Backend::new(None, Vec::new(), flag));
+        let source = crate::cli::connect::ad_hoc(&url).unwrap();
+        let Response::Opened { banner, .. } = backend.open(source).await.unwrap() else {
+            panic!("nicht geöffnet");
+        };
+        assert!(banner.read_only);
+        let reply = backend
+            .perform(Request::Run {
+                sql: "DELETE FROM t".into(),
+                answer: None,
+            })
+            .await;
+        let Response::Failed(error) = reply else {
+            panic!("DELETE lief trotz Schreibschutz");
+        };
+        assert!(error.starts_with(reason), "{error}");
+    }
     let left: i64 = rusqlite::Connection::open(&path)
         .unwrap()
         .query_row("SELECT COUNT(*) FROM t", [], |row| row.get(0))

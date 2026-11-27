@@ -17,21 +17,21 @@ pub struct Bridge {
     task: tokio::task::JoinHandle<()>,
 }
 
-async fn dispatch(
+pub(super) async fn dispatch(
     request: Value,
     server: &tokio::sync::Mutex<Server>,
     config: &McpConfig,
     run: &Run,
     external: &tokio::sync::Mutex<super::integrations::External>,
+    catalog: &super::tools::Catalog,
 ) -> Value {
     let id = request["id"].clone();
     let result = match request["method"].as_str().unwrap_or("") {
         "initialize" => {
-            json!({"protocolVersion": "2025-06-18", "capabilities": {"tools": {}}, "serverInfo": {"name": "l8db_ai", "version": env!("CARGO_PKG_VERSION")}, "instructions": format!("Use l8db_ai tools for database access and respect their policies. Only selected connections are available; the first is the primary database. Current connections: {}", config.connections.iter().map(|connection| json!({"id": connection.id, "name": connection.name, "kind": connection.kind, "database": connection.database, "schemas": connection.schemas})).collect::<Vec<_>>().iter().map(Value::to_string).collect::<Vec<_>>().join(", "))})
+            json!({"protocolVersion": "2025-06-18", "capabilities": {"tools": {}}, "serverInfo": {"name": "l8db_ai", "version": env!("CARGO_PKG_VERSION")}, "instructions": format!("Use l8db_ai tools for database access and respect their policies. Only selected connections are available; the first is the primary database. Tools missing from the tool list are functions inside code: search with in=tools returns their signatures, then call await tools.name(args) in one code call and return only what you need. Current connections: {}", config.connections.iter().map(|connection| json!({"id": connection.id, "name": connection.name, "kind": connection.kind, "database": connection.database, "schemas": connection.schemas})).collect::<Vec<_>>().iter().map(Value::to_string).collect::<Vec<_>>().join(", "))})
         }
         "tools/list" => {
-            let mut tools = super::context::published_tools();
-            tools.extend(external.lock().await.tools.clone());
+            let tools = catalog.direct();
             let chars = serde_json::to_string(&tools)
                 .map(|text| text.len())
                 .unwrap_or(0);
@@ -41,7 +41,14 @@ async fn dispatch(
         "tools/call" => {
             let name = request["params"]["name"].as_str().unwrap_or("");
             let args = request["params"]["arguments"].clone();
-            if name.starts_with("ext_") {
+            if name == "code" {
+                let mut host = super::tools::Host::new(catalog, external, config, run).cli();
+                super::context::code(server, config, run, args, &mut host).await
+            } else if super::tools::Catalog::documents(name, &args) {
+                let result = catalog.docs(&args);
+                run.emit("tool", json!({"id": super::new_id(), "name": name, "arguments": args, "result": result, "status": "completed"}));
+                result
+            } else if name.starts_with("ext_") {
                 external.lock().await.call(name, args, run).await
             } else {
                 super::context::call(server, config, run, name, args).await
@@ -64,6 +71,7 @@ async fn handle(
     config: &McpConfig,
     run: &Run,
     external: &tokio::sync::Mutex<super::integrations::External>,
+    catalog: &super::tools::Catalog,
 ) -> Result<(), String> {
     let mut reader = BufReader::new(stream);
     let mut first = String::new();
@@ -122,7 +130,7 @@ async fn handle(
     .map_err(|_| "Bridge-Handshake abgelaufen")?
     .map_err(|_| "Bridge geschlossen")?;
     let request = serde_json::from_slice(&bytes).map_err(|_| "Ungültiges JSON")?;
-    let result = dispatch(request, server, config, run, external).await;
+    let result = dispatch(request, server, config, run, external, catalog).await;
     let body = serde_json::to_vec(&result).map_err(|_| "Ungültige Bridge-Antwort")?;
     let mut stream = reader.into_inner();
     stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).as_bytes()).await.map_err(|_| "Bridge geschlossen")?;
@@ -138,6 +146,7 @@ impl Bridge {
         config: McpConfig,
         run: Arc<Run>,
         external: super::integrations::External,
+        full: bool,
     ) -> Result<Self, String> {
         let listener = TcpListener::bind(("127.0.0.1", 0))
             .await
@@ -154,6 +163,9 @@ impl Bridge {
         crate::mcp::config::restrict(file.path());
         serde_json::to_writer(file.as_file_mut(), &address)
             .map_err(|_| "Bridge-Datei konnte nicht gespeichert werden")?;
+        let catalog =
+            super::tools::Catalog::new(&config, !run.scope.attachments.is_empty(), &external.tools);
+        let catalog = Arc::new(if full { catalog.full() } else { catalog });
         let external = Arc::new(tokio::sync::Mutex::new(external));
         let task = tokio::spawn(async move {
             let mut requests = tokio::task::JoinSet::new();
@@ -162,8 +174,8 @@ impl Bridge {
                     accepted = listener.accept() => {
                         let Ok((stream, _)) = accepted else { break };
                         if requests.len() >= 16 { continue; }
-                        let server = server.clone(); let config = config.clone(); let run = run.clone(); let token = address.token.clone(); let external = external.clone();
-                        requests.spawn(async move { let _ = tokio::time::timeout(std::time::Duration::from_secs(660), handle(stream, &token, &server, &config, &run, &external)).await; });
+                        let server = server.clone(); let config = config.clone(); let run = run.clone(); let token = address.token.clone(); let external = external.clone(); let catalog = catalog.clone();
+                        requests.spawn(async move { let _ = tokio::time::timeout(std::time::Duration::from_secs(660), handle(stream, &token, &server, &config, &run, &external, &catalog)).await; });
                     }
                     _ = requests.join_next(), if !requests.is_empty() => {}
                 }

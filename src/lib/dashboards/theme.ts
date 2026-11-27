@@ -18,7 +18,7 @@ export const FONT_LABEL: Record<ThemeFont, string> = {
 
 const FONT_STACK: Record<ThemeFont, string> = {
   system: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
-  inter: 'Inter, "Segoe UI Variable", "Helvetica Neue", Arial, sans-serif',
+  inter: '"Inter Variable", Inter, "Segoe UI Variable", "Helvetica Neue", Arial, sans-serif',
   serif: 'Charter, "Bitstream Charter", Georgia, Cambria, "Times New Roman", serif',
   mono: 'ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace',
   rounded: 'ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", "Segoe UI", sans-serif',

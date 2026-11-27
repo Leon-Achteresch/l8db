@@ -2,16 +2,18 @@ import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Columns2, RotateCwSquare, Rows2 } from "lucide";
 import { PlusIcon, SquareIcon, SquareSplitHorizontalIcon } from "lucide-react";
 import { MorphIcon } from "morphicons/react";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import type * as React from "react";
-import { useCallback, useEffect, useRef } from "react";
+import { Fragment, useCallback, useEffect, useRef } from "react";
+import { toast } from "sonner";
+import { useShallow } from "zustand/shallow";
 import { Tooltip } from "@/components/motion/tooltip";
 import { NewBadge } from "@/components/new-badge";
 import { CloseConfirmDialog } from "@/features/shell/table-tabs/close-confirm-dialog";
 import { iconButton } from "@/features/shell/table-tabs/constants";
 import { HiddenTabsMenu } from "@/features/shell/table-tabs/hidden-tabs-menu";
-import { SavedTabsMenu } from "@/features/shell/table-tabs/saved-tabs-menu";
 import { SharedTabDialog } from "@/features/shell/table-tabs/shared-tab-dialog";
+import { SharedTabLinkHotkey } from "@/features/shell/table-tabs/shared-tab-link-hotkey";
 import { SplitGroupTab } from "@/features/shell/table-tabs/split-group-tab";
 import { SplitGroupsMenu } from "@/features/shell/table-tabs/split-groups-menu";
 import { TransactionCloseDialog } from "@/features/shell/table-tabs/transaction-close-dialog";
@@ -30,11 +32,14 @@ import { onHotkeyAction } from "@/lib/hotkeys";
 import { tabListKeyDown } from "@/lib/keyboard-nav";
 import { hasNewFeatures, useSeenNewFeatures } from "@/lib/new-features";
 import { useSettingsStore } from "@/lib/settings";
+import { openableGroup } from "@/lib/shared-tab-open";
 import type { SplitEdge } from "@/lib/split-layout";
 import {
-  isSplitShown,
+  groupPaneTabs,
+  MAX_SPLIT_GROUPS,
   MAX_SPLIT_PANES,
   openDetached,
+  parkedViews,
   placeOpenTab,
   type SplitGroup,
   standaloneTabs,
@@ -71,6 +76,8 @@ export function TableTabs() {
   const renameGroup = useSplitView((state) => state.renameGroup);
   const deleteGroup = useSplitView((state) => state.deleteGroup);
   const openGroup = groups.find((group) => group.id === activeGroup);
+  const parked = useSplitView(useShallow(parkedViews));
+  const closeView = useSplitView((state) => state.closeView);
   const groupFeature = useNewFeatureVisibility<HTMLButtonElement>("split.saved-views");
   const sharedFeature = useNewFeatureVisibility<HTMLDivElement>("split.saved-views.shared");
   const setGroupShared = useSplitView((state) => state.setGroupShared);
@@ -95,7 +102,12 @@ export function TableTabs() {
   const chipActive = !easyMode && latestShown;
   const tabs = standaloneTabs(
     allTabs.filter((tab) => isEasyModeTabVisible(tab, easyMode)),
-    hasSplit ? paneTabs : [],
+    easyMode
+      ? []
+      : [
+          ...(hasSplit ? paneTabs : []),
+          ...parked.flatMap((group) => groupPaneTabs(group).map((list) => list.map(tabKey))),
+        ],
   );
   const caret = useDropPreview((state) =>
     state.preview?.pane === "master" && state.preview.at !== undefined
@@ -122,6 +134,7 @@ export function TableTabs() {
     tabs.map(tabKey).join("\0"),
   );
   const hiddenTabs = tabs.filter((tab) => hiddenKeys.includes(tabKey(tab)));
+  const canSaveGroup = tabs.some((tab) => !(tab.kind === "tool" && tab.tool === "workbench"));
 
   const {
     pendingTransactions,
@@ -136,16 +149,27 @@ export function TableTabs() {
     handleCloseOthers,
     handleCloseToRight,
     handleCloseAll,
+    handleCloseGroup,
   } = useTabClose({ tabs, activeTab: pendingTab ?? activeTab, navigate });
 
   const handleSplit = useCallback(() => {
     if (easyMode || !routeKey) return;
-    const state = useSplitView.getState();
-    const hidden = state.panes.length > 1 && !isSplitShown(state, routeKey);
-    state.split({ activeKey: routeKey, key: hidden ? routeKey : null });
+    useSplitView.getState().split({ activeKey: routeKey });
   }, [routeKey, easyMode]);
 
   useEffect(() => onHotkeyAction("view.split", handleSplit), [handleSplit]);
+
+  useEffect(() => {
+    if (easyMode || !routeKey) return;
+    const state = useSplitView.getState();
+    if (state.paneTabs.some((list) => list.includes(routeKey))) return;
+    const owner = parkedViews(state).find((group) =>
+      groupPaneTabs(group).some((list) => list.some((tab) => tabKey(tab) === routeKey)),
+    );
+    if (!owner) return;
+    state.openGroup(owner.id);
+    useSplitView.getState().reveal(routeKey);
+  }, [routeKey, easyMode]);
 
   const showTab = (tab: Tab) => {
     useSplitView.getState().reveal(tabKey(tab));
@@ -172,16 +196,46 @@ export function TableTabs() {
     if (tab) navigateToTab(navigate, tab);
   };
 
+  const handleSwitchGroup = async (group: SplitGroup, connectionId: string) => {
+    if (useConnectionSwitch.getState().isSwitching) return;
+    if (!(await activateConnectionWithToast(connectionId))) return;
+    const tab = useSplitView.getState().openGroup(group.id);
+    if (tab) navigateToTab(navigate, tab);
+  };
+
   const handleOpenGroup = async (group: SplitGroup, connectionId?: string) => {
-    if (connectionId) {
-      if (useConnectionSwitch.getState().isSwitching) return;
-      if (!(await activateConnectionWithToast(connectionId))) return;
-    } else if (hasSplit && group.id === activeGroup) {
+    if (connectionId && !activeConnection) {
+      void handleSwitchGroup(group, connectionId);
+      return;
+    }
+    if (!connectionId && hasSplit && group.id === activeGroup) {
       handleShowSplit();
       return;
     }
-    const tab = useSplitView.getState().openGroup(group.id);
+    const id = await openableGroup(group, connectionId);
+    const state = useSplitView.getState();
+    if (!id) {
+      toast.error(`„${group.name}“ lässt sich hier nicht öffnen`);
+      return;
+    }
+    if (hasSplit && id === activeGroup) {
+      handleShowSplit();
+      return;
+    }
+    const tab = state.openGroup(id);
     if (tab) navigateToTab(navigate, tab);
+  };
+
+  const handleSaveGroup = (group?: SplitGroup) => {
+    const id = useSplitView.getState().saveTabs(chipActive ? null : latestKey, group?.id);
+    if (!id)
+      toast.error(
+        group
+          ? `„${group.name}“ gibt es nicht mehr`
+          : `Höchstens ${MAX_SPLIT_GROUPS} Tab-Gruppen je Verbindung`,
+      );
+    else if (group) toast.success(`„${group.name}“ aktualisiert`);
+    return id;
   };
 
   const handleNewQueryTab = () => {
@@ -213,6 +267,25 @@ export function TableTabs() {
   const actions = useRef(tabActions);
   actions.current = tabActions;
 
+  const liveChip = !easyMode && hasSplit && (
+    <SplitGroupTab
+      name={openGroup?.name ?? "Geteilte Ansicht"}
+      members={members}
+      active={chipActive}
+      isNew={masterFeature.isNew}
+      featureRef={masterFeature.ref}
+      onOpen={handleShowSplit}
+      onRename={openGroup ? (name) => renameGroup(openGroup.id, name) : undefined}
+      onClose={collapse}
+      onCloseTabs={() => handleCloseGroup(paneTabs.flat())}
+      onDelete={openGroup ? () => deleteGroup(openGroup.id) : undefined}
+      shared={openGroup?.shared}
+      onToggleShared={openGroup ? () => setGroupShared(openGroup.id, !openGroup.shared) : undefined}
+      others={groups.filter((group) => group.id !== openGroup?.id)}
+      onOpenGroup={handleOpenGroup}
+    />
+  );
+
   return (
     <div
       data-drop-zone="master"
@@ -221,22 +294,30 @@ export function TableTabs() {
         caret !== null && "bg-primary/10 ring-1 ring-inset ring-primary/50",
       )}
     >
-      {hasSplit && (
-        <SplitGroupTab
-          name={openGroup?.name ?? "Geteilte Ansicht"}
-          members={members}
-          active={chipActive}
-          isNew={masterFeature.isNew}
-          featureRef={masterFeature.ref}
-          onOpen={handleShowSplit}
-          onRename={openGroup ? (name) => renameGroup(openGroup.id, name) : undefined}
-          onClose={collapse}
-          onDelete={openGroup ? () => deleteGroup(openGroup.id) : undefined}
-        />
-      )}
+      {!openGroup && liveChip}
+      {!easyMode &&
+        groups.map((group) =>
+          group.id === openGroup?.id ? (
+            <Fragment key={group.id}>{liveChip}</Fragment>
+          ) : parked.includes(group) ? (
+            <SplitGroupTab
+              key={group.id}
+              name={group.name}
+              members={group.tabs.map((tab) => (tab ? tabLabel(tab) : "Leer"))}
+              active={false}
+              onOpen={() => void handleOpenGroup(group)}
+              onRename={(name) => renameGroup(group.id, name)}
+              onClose={() => closeView(group.id)}
+              onDelete={() => deleteGroup(group.id)}
+              shared={group.shared}
+              onToggleShared={() => setGroupShared(group.id, !group.shared)}
+              others={groups.filter((entry) => entry.id !== group.id)}
+              onOpenGroup={handleOpenGroup}
+            />
+          ) : null,
+        )}
       <div ref={containerRef} className="flex min-w-0 items-center">
         <motion.nav
-          layoutScroll
           ref={navRef}
           onWheel={handleWheel}
           aria-label="Geöffnete Objekte"
@@ -249,25 +330,27 @@ export function TableTabs() {
             onKeyDown={tabListKeyDown}
             className="relative flex w-max items-center gap-1 px-1"
           >
-            {tabs.map((tab, index) => {
-              const key = tabKey(tab);
-              return (
-                <TableTabsSortableTab
-                  key={key}
-                  tab={tab}
-                  index={index}
-                  isActive={!chipActive && latestKey === key}
-                  isPending={Boolean(pendingTab && tabKey(pendingTab) === key)}
-                  paneCount={hasSplit ? paneCount : 0}
-                  connectionId={activeConnection?.id ?? null}
-                  environment={environment}
-                  hasTabsToRight={index < tabs.length - 1}
-                  tabsCount={tabs.length}
-                  canSplit={!easyMode && paneCount < MAX_SPLIT_PANES}
-                  actions={actions}
-                />
-              );
-            })}
+            <AnimatePresence initial={false} mode="popLayout">
+              {tabs.map((tab, index) => {
+                const key = tabKey(tab);
+                return (
+                  <TableTabsSortableTab
+                    key={key}
+                    tab={tab}
+                    index={index}
+                    isActive={!chipActive && latestKey === key}
+                    isPending={Boolean(pendingTab && tabKey(pendingTab) === key)}
+                    paneCount={hasSplit ? paneCount : 0}
+                    connectionId={activeConnection?.id ?? null}
+                    environment={environment}
+                    hasTabsToRight={index < tabs.length - 1}
+                    tabsCount={tabs.length}
+                    canSplit={!easyMode && paneCount < MAX_SPLIT_PANES}
+                    actions={actions}
+                  />
+                );
+              })}
+            </AnimatePresence>
           </div>
         </motion.nav>
         {overflow && (
@@ -280,23 +363,50 @@ export function TableTabs() {
           />
         )}
       </div>
-      <Tooltip
-        content="Neue Abfrage öffnen"
-        hotkey="tab.newQuery"
-        side="bottom"
-        wrapperClassName="shrink-0"
-      >
-        <button
-          type="button"
-          data-feature="query.new-tab"
-          onClick={handleNewQueryTab}
-          data-hotkey="tab.newQuery"
-          aria-label="Neue Abfrage öffnen"
-          className={`${iconButton} bg-primary/8 text-primary hover:bg-primary/15`}
+      <div className="flex shrink-0 items-center rounded-full bg-primary/8">
+        <Tooltip
+          content="Neue Abfrage öffnen"
+          hotkey="tab.newQuery"
+          side="bottom"
+          wrapperClassName="shrink-0"
         >
-          <PlusIcon className="size-3.5" />
-        </button>
-      </Tooltip>
+          <button
+            type="button"
+            data-feature="query.new-tab"
+            onClick={handleNewQueryTab}
+            data-hotkey="tab.newQuery"
+            aria-label="Neue Abfrage öffnen"
+            className={cn(
+              iconButton,
+              "text-primary hover:bg-primary/15 hover:text-primary",
+              !easyMode && "rounded-r-none",
+            )}
+          >
+            <PlusIcon className="size-3.5" />
+          </button>
+        </Tooltip>
+        {!easyMode && (
+          <SplitGroupsMenu
+            onNewQuery={handleNewQueryTab}
+            groups={groups}
+            foreign={foreignGroups}
+            activeGroup={hasSplit ? activeGroup : null}
+            canSave={canSaveGroup}
+            onSave={handleSaveGroup}
+            onSwitch={(group, connectionId) => void handleSwitchGroup(group, connectionId)}
+            onRename={(group, name) => renameGroup(group.id, name)}
+            isNew={groupFeature.isNew || sharedFeature.isNew}
+            triggerRef={groupFeature.ref}
+            sharedNew={sharedFeature.isNew}
+            sharedRef={sharedFeature.ref}
+            onToggleShared={(group, connectionId) =>
+              setGroupShared(group.id, !group.shared, connectionId)
+            }
+            onOpen={handleOpenGroup}
+            onDelete={(group, connectionId) => deleteGroup(group.id, connectionId)}
+          />
+        )}
+      </div>
       <div className="min-w-0 flex-1" />
       <InvestigationsButton />
 
@@ -338,22 +448,6 @@ export function TableTabs() {
           </button>
         </Tooltip>
       )}
-      {!easyMode && (groups.length > 0 || foreignGroups.length > 0) && (
-        <SplitGroupsMenu
-          groups={groups}
-          foreign={foreignGroups}
-          activeGroup={hasSplit ? activeGroup : null}
-          isNew={groupFeature.isNew || sharedFeature.isNew}
-          triggerRef={groupFeature.ref}
-          sharedNew={sharedFeature.isNew}
-          sharedRef={sharedFeature.ref}
-          onToggleShared={(group, connectionId) =>
-            setGroupShared(group.id, !group.shared, connectionId)
-          }
-          onOpen={(group, connectionId) => void handleOpenGroup(group, connectionId)}
-          onDelete={(group, connectionId) => deleteGroup(group.id, connectionId)}
-        />
-      )}
       {hasSplit && (
         <Tooltip content="Einzelansicht" side="bottom" wrapperClassName="shrink-0">
           <button
@@ -366,7 +460,7 @@ export function TableTabs() {
           </button>
         </Tooltip>
       )}
-      <SavedTabsMenu />
+      <SharedTabLinkHotkey />
       {caret !== null && (
         <span
           aria-hidden="true"

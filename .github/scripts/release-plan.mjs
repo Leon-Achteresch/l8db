@@ -11,6 +11,7 @@ import {
   REPOSITORY,
   releases,
   semanticBump,
+  tagCommit,
   VERSION_PATTERN,
 } from "./release-utils.mjs";
 
@@ -93,7 +94,12 @@ export function canaryState(sha, stable, canaries, messages, messagesSinceCanary
 }
 
 function commitMessages(previous, sha) {
-  return git("log", previous ? `${previous}..${sha}` : sha, "--no-merges", "--format=%B%x00")
+  return git(
+    "log",
+    previous ? `${tagCommit(previous)}..${sha}` : sha,
+    "--no-merges",
+    "--format=%B%x00",
+  )
     .split("\0")
     .map((message) => message.trim())
     .filter(Boolean);
@@ -102,7 +108,7 @@ function commitMessages(previous, sha) {
 function plan(canary, sha, stable, canaries) {
   const previous = newestRelease(stable)?.tag_name;
   if (!canary) {
-    if (previous) git("merge-base", "--is-ancestor", previous, sha);
+    if (previous) git("merge-base", "--is-ancestor", tagCommit(previous), sha);
     return releaseState(sha, stable, commitMessages(previous, sha));
   }
   const last = previousCanary(stable, canaries)?.tag_name ?? previous;
@@ -120,7 +126,7 @@ function assertStableMerged(tag, sha) {
     "log",
     "--no-merges",
     "--format=%h %s",
-    `${sha}..${tag}`,
+    `${sha}..${tagCommit(tag)}`,
     "--",
     ".",
     ":(exclude)packaging",

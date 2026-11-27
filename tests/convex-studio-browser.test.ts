@@ -20,19 +20,33 @@ let browser: Browser;
 
 type CountingWindow = {
   __invokes: string[];
+  __orders: string[];
   __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => unknown };
 };
 
-async function openStudio(section: string, width = 1440) {
+async function openStudio(section: string, width = 1440, sorting = false) {
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await seedConvexStudio(page);
+  if (sorting)
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "l8db.settings",
+        JSON.stringify({
+          state: { tourFinished: true, onboardingDone: true, filterBarSorting: true },
+          version: 1,
+        }),
+      );
+    });
   await page.addInitScript(() => {
     const state = window as unknown as CountingWindow;
     state.__invokes = [];
+    state.__orders = [];
     const invoke = state.__TAURI_INTERNALS__.invoke;
     state.__TAURI_INTERNALS__.invoke = (command, args) => {
+      if (command === "convex_studio_data_documents")
+        state.__orders.push(String((args?.filter as { order?: string } | null)?.order ?? ""));
       state.__invokes.push(command);
       return invoke(command, args);
     };
@@ -48,6 +62,14 @@ async function invokes(page: Page) {
 
 function count(list: string[], command: string) {
   return list.filter((entry) => entry === command).length;
+}
+
+async function eventually(read: () => Promise<unknown>, expected: unknown) {
+  for (let attempt = 0; attempt < 80; attempt++) {
+    if ((await read()) === expected) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  expect(await read()).toBe(expected);
 }
 
 beforeAll(async () => {
@@ -170,4 +192,45 @@ test.skipIf(!enabled)(
     await page.close();
   },
   60_000,
+);
+
+test.skipIf(!enabled)(
+  "die Sortierung steht neben dem Filter, sobald die Einstellung aktiv ist",
+  async () => {
+    const orders = (page: Page) =>
+      page.evaluate(() => (window as unknown as CountingWindow).__orders);
+
+    const off = await openStudio("data&table=messages");
+    await off.page.getByRole("button", { name: /^Filter/ }).waitFor();
+    await off.page.waitForTimeout(300);
+    expect(await off.page.locator('[data-filter-token="sort"]').count()).toBe(0);
+    expect(off.errors).toEqual([]);
+    await off.page.close();
+
+    const { page, errors } = await openStudio("data&table=messages", 1440, true);
+    const flip = page.getByRole("button", {
+      name: "Absteigend nach _creationTime – aufsteigend sortieren",
+    });
+    await flip.waitFor();
+    await flip.click();
+    await page
+      .getByRole("button", { name: "Aufsteigend nach _creationTime – absteigend sortieren" })
+      .waitFor();
+    await eventually(async () => (await orders(page)).at(-1), "asc");
+
+    await page.getByRole("button", { name: "Sortierung ändern: _creationTime" }).click();
+    await page.getByRole("combobox", { name: "Sortierspalte" }).click();
+    expect(await page.getByRole("option").allTextContents()).toEqual(["_creationTime"]);
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("button", { name: "Sortierung entfernen: _creationTime" }).click();
+    await page
+      .getByRole("button", { name: "Absteigend nach _creationTime – aufsteigend sortieren" })
+      .waitFor();
+    await eventually(async () => (await orders(page)).at(-1), "");
+    expect(errors).toEqual([]);
+    await page.close();
+  },
+  90_000,
 );

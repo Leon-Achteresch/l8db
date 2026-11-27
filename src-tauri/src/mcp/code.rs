@@ -28,6 +28,26 @@ const RESULT_CHARS: u32 = 200_000;
 const RESULT_ITEMS: u32 = 10_000;
 const CATALOG_LIMIT: u64 = 1_000;
 const LOG_CHARS: usize = 3_000;
+const MAX_TOOLS: usize = 100;
+
+pub(crate) trait ToolHost: Send {
+    fn call<'a>(
+        &'a mut self,
+        server: &'a mut Server,
+        name: &'a str,
+        args: Value,
+    ) -> BoxFuture<'a, Result<String, String>>;
+
+    fn names(&self) -> Vec<String>;
+
+    fn waits(&self) -> bool {
+        true
+    }
+}
+
+pub(crate) fn hinted(error: &str, name: &str) -> String {
+    format!("{error} [signature: search in=tools term={name}]")
+}
 
 const DTS: &str = "type On={connection?:string;database?:string};type P=string|RegExp;type Row=Record<string,any>;type F={schema?:P;name?:P;limit?:number};
 declare const sql:{(s:TemplateStringsArray,...v:unknown[]):Promise<Row[]>;with(o:On):typeof sql},
@@ -96,6 +116,8 @@ struct Session {
     calls: usize,
     statements: usize,
     lookups: usize,
+    tools: usize,
+    applied: Vec<String>,
     rows: usize,
     notes: Vec<String>,
     stderr: Vec<u8>,
@@ -497,12 +519,15 @@ fn capped(
     (Value::Array(items), note)
 }
 
-fn target(config: &McpConfig, home: &McpConnection, args: &Value) -> Result<McpConnection, String> {
+fn target(
+    config: &McpConfig,
+    home: Option<&McpConnection>,
+    args: &Value,
+) -> Result<McpConnection, String> {
     let name = arg_str(args, "c").trim();
-    let base = if name.is_empty() {
-        home.clone()
-    } else {
-        find_connection(config, name)?.clone()
+    let base = match home {
+        Some(home) if name.is_empty() => home.clone(),
+        _ => find_connection(config, name)?.clone(),
     };
     let connection = match arg_str(args, "d").trim() {
         "" => base,
@@ -518,6 +543,16 @@ impl Server {
         config: &McpConfig,
         args: &Value,
     ) -> Result<String, String> {
+        let mut host = super::server::Functions(config);
+        self.code_hosted(config, args, Some(&mut host)).await
+    }
+
+    pub(crate) async fn code_hosted(
+        &mut self,
+        config: &McpConfig,
+        args: &Value,
+        host: Option<&mut (dyn ToolHost + '_)>,
+    ) -> Result<String, String> {
         let code = arg_str(args, "code");
         if code.trim().is_empty() {
             return Err("code fehlt: async () => { … }".into());
@@ -528,13 +563,25 @@ impl Server {
                 MAX_CODE >> 10
             ));
         }
-        let home = find_connection(config, arg_str(args, "connection"))
-            .and_then(|connection| with_database(connection, args))?;
-        supported(&home)?;
-        self.code_with(config, &home, code, &Limits::new(config))
+        let home = match find_connection(config, arg_str(args, "connection")) {
+            Ok(connection) => Some(with_database(connection, args)?),
+            Err(_)
+                if host.is_some()
+                    && arg_str(args, "connection").trim().is_empty()
+                    && args.get("database").is_none_or(Value::is_null) =>
+            {
+                None
+            }
+            Err(error) => return Err(error),
+        };
+        if let (None, Some(home)) = (&host, &home) {
+            supported(home)?;
+        }
+        self.code_run(config, home.as_ref(), code, &Limits::new(config), host)
             .await
     }
 
+    #[cfg(test)]
     pub(super) async fn code_with(
         &mut self,
         config: &McpConfig,
@@ -542,11 +589,22 @@ impl Server {
         code: &str,
         limits: &Limits,
     ) -> Result<String, String> {
+        self.code_run(config, Some(home), code, limits, None).await
+    }
+
+    pub(super) async fn code_run(
+        &mut self,
+        config: &McpConfig,
+        home: Option<&McpConnection>,
+        code: &str,
+        limits: &Limits,
+        host: Option<&mut (dyn ToolHost + '_)>,
+    ) -> Result<String, String> {
         let started = Instant::now();
         let mut session = Session::default();
         let mut child = spawn()?;
         let outcome = self
-            .drive(config, home, code, limits, &mut child, &mut session)
+            .drive(config, home, code, limits, &mut child, &mut session, host)
             .await;
         let settled =
             matches!(&outcome, Ok(message) if message["t"] == "done" || message["t"] == "error");
@@ -563,16 +621,18 @@ impl Server {
         render(config, code, outcome, &session, started)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn drive(
         &mut self,
         config: &McpConfig,
-        home: &McpConnection,
+        home: Option<&McpConnection>,
         code: &str,
         limits: &Limits,
         child: &mut Child,
         session: &mut Session,
+        mut host: Option<&mut (dyn ToolHost + '_)>,
     ) -> Result<Value, String> {
-        let deadline = tokio::time::Instant::now() + limits.time + GRACE;
+        let mut deadline = tokio::time::Instant::now() + limits.time + GRACE;
         let mut reader =
             BufReader::with_capacity(64 << 10, child.stdout.take().ok_or("Sandbox ohne Ausgabe")?);
         let mut stdin = child.stdin.take().ok_or("Sandbox ohne Eingabe")?;
@@ -593,6 +653,7 @@ impl Server {
             "stack": limits.stack,
             "chars": RESULT_CHARS,
             "items": RESULT_ITEMS,
+            "tools": host.as_deref().map(|host| host.names()).unwrap_or_default(),
         }))
         .map_err(|e| e.to_string())?;
         init.push(b'\n');
@@ -621,14 +682,7 @@ impl Server {
                 Some(done) = running.next() => {
                     let (id, result) = finished(done, session);
                     deliver(&tx, session, id, result);
-                    while running.len() < limits.parallel {
-                        let Some(next) = queue.pop_front() else { break };
-                        if session.rows >= limits.total_rows {
-                            deliver(&tx, session, next.id, Err(rows_spent(limits)));
-                            continue;
-                        }
-                        running.push(execute(next, config.clone()));
-                    }
+                    refill(&mut running, &mut queue, session, limits, &tx, config);
                 }
                 line = next_line(&mut reader, &mut buf) => {
                     let Some(line) = line? else {
@@ -662,8 +716,47 @@ impl Server {
                                 return Err("Sandbox-Protokoll verletzt; Lauf abgebrochen.".into());
                             };
                             session.calls += 1;
+                            let name = arg_str(args, "name");
+                            let counted = op == "tool" && matches!(name, "query" | "explain");
                             let step = if session.calls > MAX_CALLS {
                                 Step::Reply(Err(format!("Höchstens {MAX_CALLS} Aufrufe pro code-Lauf.")))
+                            } else if let Some(error) = counted.then(|| spent(session, limits)).flatten() {
+                                Step::Reply(Err(error))
+                            } else if op == "tool" {
+                                let waited = tokio::time::Instant::now();
+                                let allowed = host.is_some() && session.tools < MAX_TOOLS;
+                                let waits = host.as_deref().is_some_and(|host| host.waits());
+                                session.tools += usize::from(allowed);
+                                session.statements += usize::from(allowed && counted);
+                                let mut early = Vec::new();
+                                let result = {
+                                    let call = self.tool(host.as_deref_mut(), args, allowed);
+                                    tokio::pin!(call);
+                                    loop {
+                                        tokio::select! {
+                                            result = &mut call => break result,
+                                            Some(done) = running.next() => early.push(done),
+                                            _ = tokio::time::sleep_until(deadline), if !waits => {
+                                                return Err(format!("Zeitlimit von {} s überschritten; Sandbox beendet.", limits.time.as_secs()));
+                                            }
+                                        }
+                                    }
+                                };
+                                if waits {
+                                    deadline += waited.elapsed();
+                                }
+                                for done in early {
+                                    let (id, result) = finished(done, session);
+                                    deliver(&tx, session, id, result);
+                                }
+                                refill(&mut running, &mut queue, session, limits, &tx, config);
+                                if let Ok(Value::String(text)) = &result {
+                                    session.applied.push(name.chars().take(80).collect());
+                                    if name == "query" {
+                                        session.rows += tool_rows(text);
+                                    }
+                                }
+                                Step::Reply(result)
                             } else {
                                 match tokio::time::timeout_at(deadline, self.step(config, home, id, op, args, session, limits)).await {
                                     Ok(step) => step,
@@ -687,11 +780,30 @@ impl Server {
         }
     }
 
+    async fn tool(
+        &mut self,
+        host: Option<&mut (dyn ToolHost + '_)>,
+        args: &Value,
+        allowed: bool,
+    ) -> Result<Value, String> {
+        let host = host.ok_or("Unbekannte Funktion 'tool'.")?;
+        if !allowed {
+            return Err(format!("Höchstens {MAX_TOOLS} Tool-Aufrufe pro code-Lauf."));
+        }
+        let input = match args.get("args") {
+            None | Some(Value::Null) => json!({}),
+            Some(input) => input.clone(),
+        };
+        host.call(self, arg_str(args, "name"), input)
+            .await
+            .map(Value::String)
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn step(
         &mut self,
         config: &McpConfig,
-        home: &McpConnection,
+        home: Option<&McpConnection>,
         id: u64,
         op: &str,
         args: &Value,
@@ -704,14 +816,8 @@ impl Server {
         };
         match op {
             "sql" | "query" | "explain" => {
-                if session.statements >= limits.statements {
-                    return Step::Reply(Err(format!(
-                        "Höchstens {} Statements pro code-Lauf.",
-                        limits.statements
-                    )));
-                }
-                if session.rows >= limits.total_rows {
-                    return Step::Reply(Err(rows_spent(limits)));
+                if let Some(error) = spent(session, limits) {
+                    return Step::Reply(Err(error));
                 }
                 let sql = match op {
                     "sql" => compose(connection.kind, args),
@@ -1157,11 +1263,59 @@ fn references(
     Ok((Value::Array(items), None))
 }
 
+fn refill(
+    running: &mut FuturesUnordered<BoxFuture<'static, Finished>>,
+    queue: &mut VecDeque<Prepared>,
+    session: &mut Session,
+    limits: &Limits,
+    tx: &tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    config: &McpConfig,
+) {
+    while running.len() < limits.parallel {
+        let Some(next) = queue.pop_front() else { break };
+        if session.rows >= limits.total_rows {
+            deliver(tx, session, next.id, Err(rows_spent(limits)));
+            continue;
+        }
+        running.push(execute(next, config.clone()));
+    }
+}
+
 fn rows_spent(limits: &Limits) -> String {
     format!(
         "Zeilenbudget von {} gelesenen Zeilen pro code-Lauf erschöpft; aggregieren statt Zeilen laden.",
         limits.total_rows
     )
+}
+
+fn spent(session: &Session, limits: &Limits) -> Option<String> {
+    if session.statements >= limits.statements {
+        Some(format!(
+            "Höchstens {} Statements pro code-Lauf.",
+            limits.statements
+        ))
+    } else if session.rows >= limits.total_rows {
+        Some(rows_spent(limits))
+    } else {
+        None
+    }
+}
+
+fn tool_rows(text: &str) -> usize {
+    let Some(footer) = text.lines().rev().find(|line| line.starts_with('(')) else {
+        return 0;
+    };
+    let count = |part: &str| {
+        part.trim_start_matches('(')
+            .split(' ')
+            .next()
+            .and_then(|number| number.parse::<usize>().ok())
+            .unwrap_or(0)
+    };
+    count(footer)
+        + footer
+            .split_once(" rows, ")
+            .map_or(0, |(_, more)| count(more))
 }
 
 fn finished(done: Finished, session: &mut Session) -> (u64, Result<String, String>) {
@@ -1265,8 +1419,12 @@ fn render(
     session: &Session,
     started: Instant,
 ) -> Result<String, String> {
+    let tools = match session.tools {
+        0 => String::new(),
+        count => format!("{count} tool calls, "),
+    };
     let footer = format!(
-        "({} statements, {} rows read, {:.1} s)",
+        "({} statements, {tools}{} rows read, {:.1} s)",
         session.statements,
         session.rows,
         started.elapsed().as_secs_f64()
@@ -1274,6 +1432,13 @@ fn render(
     let mut extra = String::new();
     for note in &session.notes {
         extra.push_str(&format!("\n[{note}]"));
+    }
+    let failed = !matches!(&outcome, Ok(message) if message["t"] == "done");
+    if failed && !session.applied.is_empty() {
+        extra.push_str(&format!(
+            "\n[tool calls that already succeeded and took effect before the error: {}; do not repeat them]",
+            session.applied.join(", ")
+        ));
     }
     let values = Redactor::new(&config.redaction, &[]);
     let message = outcome.as_ref().ok();

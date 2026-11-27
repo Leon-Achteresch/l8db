@@ -47,7 +47,7 @@ export function ObjectDetails({
   });
   const tab = detailsTab.id === row.id ? detailsTab.tab : "preview";
   const setTab = (next: string) => setDetailsTab({ id: row.id, tab: next });
-  const versionId = row.versionId && row.versionId !== "null" ? row.versionId : null;
+  const versionId = row.versionId ?? null;
   const editable =
     !readOnly && !row.versionId && ["text", "json", "csv"].includes(previewKind(row.key, null));
   const canSelect = selectFormat(row.key) !== null && (!row.versionId || row.isLatest);
@@ -122,7 +122,12 @@ export function ObjectDetails({
         </TabsList>
         <div className="min-h-0 flex-1 overflow-auto p-3">
           <TabsContent value="preview" className="h-full">
-            <ObjectPreview bucket={bucket} objectKey={row.key} versionId={versionId} />
+            <ObjectPreview
+              bucket={bucket}
+              objectKey={row.key}
+              versionId={versionId}
+              listedSize={row.size}
+            />
           </TabsContent>
           <TabsContent value="properties">
             <ObjectPropertiesPanel

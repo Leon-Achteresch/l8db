@@ -5,10 +5,12 @@ import { measureScenario, reportScenario } from "../scripts/performance-report";
 import type { ColumnInfo, ForeignKeyInfo, TableInfo } from "../src/lib/db";
 import { loadForeignKeys } from "../src/lib/monaco-intellisense/foreign-keys";
 import {
+  hoverMarkdown,
   joinSuggestions,
   joinTables,
   limitMatches,
   prepareCompletions,
+  resolveSymbol,
   type SqlObjectRegistry,
   scopeAt,
   statementBounds,
@@ -343,3 +345,154 @@ test("closing the completion popup cancels foreign key requests and frees the qu
   expect(client.isFetching()).toBe(0);
   client.clear();
 });
+
+test("qualified column hover stays within 3 ms across a 400,000-column catalog", async () => {
+  const tables = Array.from({ length: 20_000 }, (_, index) => ({
+    schema: index < 10_000 ? "sales" : "archive",
+    name: `ledger_${index % 10_000}`,
+  }));
+  const columns = tables.flatMap(({ schema, name: table }) =>
+    Array.from({ length: 20 }, (_, i) => ({
+      schema,
+      table,
+      name: `field_${i}`,
+      data_type: schema === "sales" ? "text" : "integer",
+    })),
+  );
+  const registry: SqlObjectRegistry = {
+    schemas: ["sales", "archive"],
+    tables,
+    columns,
+    views: [],
+    functions: [],
+    procedures: [],
+  };
+  const start = performance.now();
+  prepareCompletions(registry);
+  const prepareMs = performance.now() - start;
+  const token = { qualifier: "e", word: "FIELD_19", startColumn: 10, endColumn: 18 };
+  let sequence = 0;
+  const inspect = () => {
+    const name = `ledger_${9999 - (sequence++ % 1000)}`;
+    const sql = `SELECT e.FIELD_19 FROM archive.${name} e`;
+    const target = resolveSymbol(registry, token, sql, scopeAt(sql, 12));
+    if (!target) throw new Error("missing column");
+    expect(hoverMarkdown(registry, target)).toBe(`**archive.${name}.field_19** · integer`);
+  };
+  const hover = await measureScenario(inspect, 51);
+  Bun.gc(true);
+  const before = heapSize();
+  for (let n = 0; n < 100; n++) inspect();
+  Bun.gc(true);
+  const retainedBytes = heapSize() - before;
+  await reportScenario("sql-large-catalog-column-hover", {
+    tables: tables.length,
+    columns: columns.length,
+    prepareMs,
+    hover,
+    retainedBytes,
+  });
+  expect(hover.p95Ms).toBeLessThan(3);
+  expect(retainedBytes).toBeLessThan(2 * 1024 * 1024);
+});
+
+test("common prefixes stop reading a 100,000-item completion list once the result is settled", async () => {
+  const items = Array.from({ length: 100_000 }, (_, i) => ({
+    label: `${i < 100 ? "sales_" : ""}table_${i}`,
+  }));
+  const run = () => {
+    const result = limitMatches(items, "tab", 300);
+    expect(result.truncated).toBe(true);
+    expect(result.items).toHaveLength(300);
+    expect(result.items[0]).toBe(items[100]);
+    expect(result.items[299]).toBe(items[399]);
+  };
+  const timing = await measureScenario(run, 31);
+  let visited = 0;
+  const counted = new Proxy(items, {
+    get(target, key, receiver) {
+      if (typeof key === "string" && /^\d+$/.test(key)) visited++;
+      return Reflect.get(target, key, receiver);
+    },
+  });
+  limitMatches(counted, "tab", 300);
+  await reportScenario("sql-common-prefix-limit", { ...timing, candidates: items.length, visited });
+  expect(visited).toBe(400);
+  expect(timing.p95Ms).toBeLessThan(3);
+});
+
+test("large PostgreSQL and Oracle catalogs build in interruptible slices and reuse metadata arrays", async () => {
+  const { prepareCompletionSlice, cancelCompletionPreparation } = await import(
+    "../src/lib/sql-intellisense"
+  );
+  for (const dialect of ["postgres", "oracle"] as const) {
+    const tables = Array.from({ length: 20000 }, (_, i) => ({
+      schema: i < 10000 ? "SALES" : "ARCHIVE",
+      name: `LEDGER_${i % 10000}`,
+    }));
+    const columns = tables.flatMap(({ schema, name: table }) =>
+      Array.from({ length: 20 }, (_, i) => ({
+        schema,
+        table,
+        name: `FIELD_${i}`,
+        data_type: schema === "SALES" ? "INTEGER" : "TEXT",
+      })),
+    );
+    const registry: SqlObjectRegistry = {
+      schemas: ["SALES", "ARCHIVE"],
+      tables,
+      columns,
+      views: [],
+      functions: [],
+      procedures: [],
+      dialect,
+    };
+    expect(prepareCompletionSlice(registry)).toBe(false);
+    cancelCompletionPreparation(registry);
+    const times: number[] = [];
+    let ready = false;
+    do {
+      const start = performance.now();
+      ready = prepareCompletionSlice(registry);
+      times.push(performance.now() - start);
+      if (!ready) await new Promise((resolve) => setTimeout(resolve, 0));
+    } while (!ready);
+    times.sort((a, b) => a - b);
+    const sliceP95 = times[Math.ceil(times.length * 0.95) - 1];
+    expect(
+      suggestCompletions(registry, "SELECT ", "SELECT ").find((s) => s.label === "FIELD_19")
+        ?.detail,
+    ).toBe("INTEGER | TEXT · 20000 Tabellen");
+    const cold: number[] = [];
+    for (let n = 0; n < 23; n++) {
+      const fresh = { ...registry, tables: [...tables], columns: [...columns] };
+      Bun.gc(true);
+      const start = performance.now();
+      prepareCompletions(fresh);
+      if (n >= 2) cold.push(performance.now() - start);
+    }
+    cold.sort((a, b) => a - b);
+    const reuse = await measureScenario(() => prepareCompletions({ ...registry }), 21);
+    Bun.gc(true);
+    const before = heapSize();
+    for (let i = 0; i < 20; i++) prepareCompletions({ ...registry });
+    Bun.gc(true);
+    const retained = heapSize() - before;
+    await reportScenario(`catalog-sliced-${dialect}`, {
+      tables: 20000,
+      columns: 400000,
+      coldMedian: cold[10],
+      coldP95: cold[19],
+      slices: times.length,
+      sliceMedian: times[times.length >> 1],
+      sliceP95,
+      reuse,
+      retained,
+    });
+    expect(cold[19]).toBeLessThan(80);
+    expect(times.length).toBeGreaterThan(1);
+    expect(sliceP95).toBeLessThan(15);
+    expect(reuse.p95Ms).toBeLessThan(6);
+    expect(retained).toBeLessThan(4 * 1024 * 1024);
+  }
+}, 30000);

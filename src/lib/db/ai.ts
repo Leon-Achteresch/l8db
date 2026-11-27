@@ -1,6 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { assertAiAllowed } from "@/lib/ai/access";
 import type { AiRichBlock } from "@/lib/ai/rich";
+import type { AiSpend } from "@/lib/ai/spend";
 import type { DatabaseKind } from "@/lib/db";
 import type { MaskRule } from "@/lib/masking";
 
@@ -84,6 +85,7 @@ export interface AiMessage {
   stopped?: boolean;
   createdAt?: number;
   durationMs?: number;
+  spend?: AiSpend;
   attachments?: AiAttachment[];
   context?: string;
   contextLabels?: string[];

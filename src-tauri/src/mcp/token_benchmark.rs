@@ -29,9 +29,10 @@ const WRITERS: [&str; 3] = ["billing", "fin", "erp"];
 const BIG_LINES: usize = 5_200;
 
 pub(super) const BUDGET: &[(&str, usize)] = &[
-    ("tools/list", 13_182),
+    ("tools/list", 10_350),
+    ("bridge tools/list", 5_750),
     ("instructions", 950),
-    ("byok start catalog", 10_622),
+    ("byok start catalog", 5_900),
     ("shop.revenue_per_customer", 1_450),
     ("shop.overview", 1_000),
     ("shop.map", 1_200),
@@ -1266,6 +1267,14 @@ pub(super) fn surface(config: &McpConfig) -> Vec<(String, usize)> {
         ),
         ("instructions".to_string(), server::INSTRUCTIONS.len()),
         (
+            "bridge tools/list".to_string(),
+            serde_json::to_string(
+                &json!({"tools": crate::ai::tools::Catalog::new(config, false, &[]).direct()}),
+            )
+            .unwrap()
+            .len(),
+        ),
+        (
             "byok start catalog".to_string(),
             crate::ai::tools::Catalog::new(config, false, &[])
                 .tools()
@@ -1981,4 +1990,435 @@ pub(super) fn code_tasks() -> Vec<(Task, Task)> {
             },
         ),
     ]
+}
+
+const PHASE5_BYOK_CATALOG: usize = 10_450;
+const PHASE5_DISCOVER: (&str, &str) = (
+    r#"{"names":["benchmark"]}"#,
+    "Available next round: benchmark",
+);
+
+struct DirectHost<'a>(&'a McpConfig);
+
+impl super::code::ToolHost for DirectHost<'_> {
+    fn names(&self) -> Vec<String> {
+        ["benchmark", "overview"].map(String::from).to_vec()
+    }
+
+    fn call<'a>(
+        &'a mut self,
+        server: &'a mut Server,
+        name: &'a str,
+        args: Value,
+    ) -> futures_util::future::BoxFuture<'a, Result<String, String>> {
+        Box::pin(async move {
+            let reply = server
+                .call_with_config(&json!({"name": name, "arguments": args}), self.0)
+                .await;
+            let text = reply["content"][0]["text"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            if reply["isError"] == true {
+                Err(text)
+            } else {
+                Ok(text)
+            }
+        })
+    }
+}
+
+const VARIANT_SQL: [(&str, &str); 4] = [
+    ("join", "SELECT c.name, SUM(oi.quantity * oi.unit_price) AS revenue FROM customers c JOIN orders o ON o.customer_id = c.id JOIN order_items oi ON oi.order_id = o.id GROUP BY c.name"),
+    ("subquery", "SELECT c.name, (SELECT SUM(oi.quantity * oi.unit_price) FROM orders o JOIN order_items oi ON oi.order_id = o.id WHERE o.customer_id = c.id) AS revenue FROM customers c"),
+    ("cte", "WITH totals AS (SELECT o.customer_id, SUM(oi.quantity * oi.unit_price) AS revenue FROM orders o JOIN order_items oi ON oi.order_id = o.id GROUP BY o.customer_id) SELECT c.name, t.revenue FROM customers c JOIN totals t ON t.customer_id = c.id"),
+    ("exists", "SELECT c.name FROM customers c WHERE EXISTS (SELECT 1 FROM orders o JOIN order_items oi ON oi.order_id = o.id WHERE o.customer_id = c.id)"),
+];
+
+fn variants_code() -> String {
+    let entries: Vec<String> = VARIANT_SQL
+        .iter()
+        .map(|(name, sql)| format!("    {name}: {},", Value::String(sql.to_string())))
+        .collect();
+    format!(
+        "async () => {{\n  const variants = {{\n{}\n  }};\n  const out = [];\n  for (const [variant, sql] of Object.entries(variants)) {{\n    const text = await tools.benchmark({{ connection: \"Shop\", sql, repeats: 5 }});\n    out.push({{ variant, median_ms: Number((text.match(/median ([\\d.]+)/) || [])[1]) }});\n  }}\n  return out.sort((a, b) => a.median_ms - b.median_ms);\n}}",
+        entries.join("\n")
+    )
+}
+
+const OVERVIEWS: &str = "async () => {
+  const out = [];
+  for (const connection of [\"Shop\", \"Shop A\", \"Shop B\", \"Tenants\"]) {
+    const text = await tools.overview({ connection });
+    out.push({ connection, summary: text.split(\"\\n\")[0] });
+  }
+  return out;
+}";
+
+fn cumulative(catalog: &[usize], traffic: &[usize]) -> usize {
+    let mut history = 0;
+    let mut total = 0;
+    for (round, bytes) in traffic.iter().enumerate() {
+        total += catalog[round.min(catalog.len() - 1)] + history;
+        history += bytes;
+    }
+    total + catalog[traffic.len().min(catalog.len() - 1)] + history
+}
+
+#[test]
+fn token_benchmark_byok_code_mode_reports_catalog_and_function_bytes() {
+    let mut lab = lab(Arc::new(Vec::new()));
+    code_lab(&mut lab);
+    let entry = |tool: &Value| {
+        serde_json::to_string(&json!({"name": tool["name"], "description": tool["description"], "inputSchema": tool["inputSchema"]}))
+            .unwrap()
+            .len()
+            + 1
+    };
+    let catalog = crate::ai::tools::Catalog::new(&lab.config, false, &[]);
+    let start = catalog.tools().iter().map(entry).sum::<usize>() + 1;
+    println!("| byok start catalog | Phase 5 B | Phase 6 B | ≈tokens | saved |\n|---|---:|---:|---:|---:|");
+    println!(
+        "| per round | {PHASE5_BYOK_CATALOG} | {start} | {} | {:.0} % |",
+        tokens(start),
+        100.0 * (1.0 - start as f64 / PHASE5_BYOK_CATALOG as f64)
+    );
+    for tool in catalog.tools() {
+        println!(
+            "| byok tool {} | – | {} | {} | |",
+            tool["name"].as_str().unwrap_or(""),
+            entry(tool),
+            tokens(entry(tool))
+        );
+    }
+    let docs = |args: Value| {
+        catalog.docs(&args)["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    let listing = docs(json!({"in": "tools"}));
+    println!(
+        "function listing (search in=tools, empty term): {} B, {} functions",
+        listing.len(),
+        listing.lines().count()
+    );
+    let mut full = 0;
+    let mut signatures = 0;
+    for tool in catalog
+        .available()
+        .iter()
+        .filter(|tool| tool["name"] != "code")
+    {
+        let name = tool["name"].as_str().unwrap();
+        let text = docs(json!({"in": "tools", "term": name}));
+        full += entry(tool);
+        signatures += text.len();
+        println!(
+            "| function {name} | schema {} B | signature {} B |",
+            entry(tool),
+            text.len()
+        );
+    }
+    println!("all function signatures: {signatures} B vs {full} B as schemas");
+    assert!(signatures < full, "{signatures} vs {full}");
+
+    let schema = |name: &str| {
+        catalog
+            .available()
+            .iter()
+            .find(|tool| tool["name"] == name)
+            .map(entry)
+            .unwrap()
+    };
+    let scenarios: Vec<(&str, &str, bool, Vec<Step>, String, &[&str])> = vec![
+        (
+            "byok.benchmark_variants",
+            "benchmark",
+            true,
+            VARIANT_SQL
+                .iter()
+                .map(|(_, sql)| {
+                    step(
+                        "benchmark",
+                        json!({"connection": "Shop", "sql": sql, "repeats": 5}),
+                        &["median"],
+                    )
+                })
+                .collect(),
+            variants_code(),
+            &["variant\tmedian_ms", "(4 rows)", "4 tool calls"],
+        ),
+        (
+            "byok.overview_connections",
+            "overview",
+            false,
+            ["Shop", "Shop A", "Shop B", "Tenants"]
+                .iter()
+                .map(|name| step("overview", json!({"connection": name}), &["tables"]))
+                .collect(),
+            OVERVIEWS.to_string(),
+            &["connection\tsummary", "(4 rows)", "4 tool calls"],
+        ),
+    ];
+    println!("| byok scenario | direct calls | direct traffic B | code calls | code traffic B | saved | modeled input direct B | modeled input code B | saved | info complete | ms direct / code |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|");
+    let mut failed = Vec::new();
+    for (id, function, discovered, steps, code, expect) in scenarios {
+        let started = Instant::now();
+        let direct = run_task(&mut lab, &Task { id, steps });
+        let middle = started.elapsed();
+        let mut before: Vec<usize> = direct
+            .steps
+            .iter()
+            .map(|step| {
+                let (args, response) = step.split_once(' ').unwrap().1.split_once('+').unwrap();
+                args.parse::<usize>().unwrap() + response.parse::<usize>().unwrap()
+            })
+            .collect();
+        let mut old_catalog = vec![PHASE5_BYOK_CATALOG];
+        if discovered {
+            before.insert(0, PHASE5_DISCOVER.0.len() + PHASE5_DISCOVER.1.len());
+            old_catalog.push(PHASE5_BYOK_CATALOG + schema(function));
+        }
+        let lookup = json!({"in": "tools", "term": function});
+        let signature = docs(lookup.clone());
+        let args = json!({"connection": "Shop", "code": code});
+        let config = lab.config.clone();
+        let mut host = DirectHost(&config);
+        let result = lab
+            .runtime
+            .block_on(lab.server.code_hosted(&config, &args, Some(&mut host)));
+        let text = match &result {
+            Ok(text) | Err(text) => text.clone(),
+        };
+        let mut missing = direct.missing.clone();
+        if result.is_err() {
+            missing.push(format!("code error: {text}"));
+        }
+        missing.extend(
+            expect
+                .iter()
+                .filter(|expected| !text.contains(*expected))
+                .map(|expected| format!("code lacks {expected:?}: {text}")),
+        );
+        let after = vec![
+            serde_json::to_string(&lookup).unwrap().len() + signature.len(),
+            serde_json::to_string(&args).unwrap().len() + text.len(),
+        ];
+        let (old, new) = (before.iter().sum::<usize>(), after.iter().sum::<usize>());
+        let (old_input, new_input) = (
+            cumulative(&old_catalog, &before),
+            cumulative(&[start], &after),
+        );
+        println!(
+            "| {id} | {} | {old} | {} | {new} | {:.0} % | {old_input} | {new_input} | {:.0} % | {} | {} / {} |",
+            before.len(),
+            after.len(),
+            100.0 * (1.0 - new as f64 / old as f64),
+            100.0 * (1.0 - new_input as f64 / old_input as f64),
+            if missing.is_empty() { "yes".to_string() } else { missing.join("; ") },
+            middle.as_millis(),
+            (started.elapsed() - middle).as_millis()
+        );
+        println!("|  code steps: search {}, code {} |", after[0], after[1]);
+        if !missing.is_empty() || new_input >= old_input {
+            failed.push(id);
+        }
+    }
+    let single =
+        cumulative(&[start], &[400]) as f64 / cumulative(&[PHASE5_BYOK_CATALOG], &[400]) as f64;
+    println!(
+        "modeled single direct call (400 B traffic, 2 rounds): {:.0} % of Phase 5 input",
+        100.0 * single
+    );
+    assert!(
+        over_budget("byok start catalog", start).is_none(),
+        "{start}"
+    );
+    assert!(failed.is_empty(), "failed: {failed:?}");
+}
+
+const PHASE6_MCP_LIST: usize = 12_626;
+const PHASE6_MCP_INSTRUCTIONS: usize = 945;
+const PHASE6_BRIDGE_LIST: usize = 23_309;
+const PHASE6_BRIDGE_TOOLS: usize = 26;
+
+fn explains_code() -> String {
+    let entries: Vec<String> = VARIANT_SQL
+        .iter()
+        .map(|(name, sql)| format!("    {name}: {},", Value::String(sql.to_string())))
+        .collect();
+    format!(
+        "async () => {{\n  const variants = {{\n{}\n  }};\n  const out = [];\n  for (const [variant, sql] of Object.entries(variants)) {{\n    const text = await tools.explain({{ connection: \"Shop\", sql }});\n    out.push({{ variant, plan: text.split(\"\\n\")[0] }});\n  }}\n  return out;\n}}",
+        entries.join("\n")
+    )
+}
+
+#[test]
+fn token_benchmark_code_mode_for_bridge_and_external_mcp_reports_lists_and_scenarios() {
+    let mut lab = lab(Arc::new(Vec::new()));
+    code_lab(&mut lab);
+    let size = |tools: &[Value]| {
+        serde_json::to_string(&json!({"tools": tools}))
+            .unwrap()
+            .len()
+    };
+    let listed = server::listed_tools(&lab.config);
+    let mcp = size(&listed);
+    let catalog = crate::ai::tools::Catalog::new(&lab.config, false, &[]);
+    let bridge_before = PHASE6_BRIDGE_LIST;
+    let bridge = size(&catalog.direct());
+    println!("| surface | before B | after B | ≈tokens after | saved | tools before → after |\n|---|---:|---:|---:|---:|---|");
+    println!(
+        "| external MCP tools/list | {PHASE6_MCP_LIST} | {mcp} | {} | {:.0} % | 17 → {} |",
+        tokens(mcp),
+        100.0 * (1.0 - mcp as f64 / PHASE6_MCP_LIST as f64),
+        listed.len()
+    );
+    println!(
+        "| external MCP instructions | {PHASE6_MCP_INSTRUCTIONS} | {} | {} | | |",
+        server::INSTRUCTIONS.len(),
+        tokens(server::INSTRUCTIONS.len())
+    );
+    println!(
+        "| bridge tools/list | {bridge_before} | {bridge} | {} | {:.0} % | {} → {} |",
+        tokens(bridge),
+        100.0 * (1.0 - bridge as f64 / bridge_before as f64),
+        PHASE6_BRIDGE_TOOLS,
+        catalog.direct().len()
+    );
+    for tool in &listed {
+        println!(
+            "| mcp tool {} | {} |",
+            tool["name"].as_str().unwrap_or(""),
+            serde_json::to_string(tool).unwrap().len()
+        );
+    }
+    for tool in &catalog.direct() {
+        println!(
+            "| bridge tool {} | {} |",
+            tool["name"].as_str().unwrap_or(""),
+            serde_json::to_string(tool).unwrap().len()
+        );
+    }
+    let config = lab.config.clone();
+    let call = |lab: &mut Lab, name: &str, args: &Value| {
+        let reply = lab.runtime.block_on(
+            lab.server
+                .call_with_config(&json!({"name": name, "arguments": args}), &config),
+        );
+        (
+            reply["isError"] == true,
+            reply["content"][0]["text"]
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
+        )
+    };
+    let docs = |term: &str| {
+        let args = json!({"in": "tools", "term": term});
+        let text = crate::ai::tools::docs(
+            &server::listed_functions(&config).iter().collect::<Vec<_>>(),
+            &args,
+        )["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        serde_json::to_string(&args).unwrap().len() + text.len()
+    };
+    let scenarios: Vec<(&str, &str, Vec<Step>, String, &[&str])> = vec![
+        (
+            "mcp.overview_connections",
+            "overview",
+            ["Shop", "Shop A", "Shop B", "Tenants"]
+                .iter()
+                .map(|name| step("overview", json!({"connection": name}), &["tables"]))
+                .collect(),
+            OVERVIEWS.to_string(),
+            &["connection\tsummary", "(4 rows)", "4 tool calls"],
+        ),
+        (
+            "mcp.explain_variants",
+            "explain",
+            VARIANT_SQL
+                .iter()
+                .map(|(_, sql)| step("explain", json!({"connection": "Shop", "sql": sql}), &[]))
+                .collect(),
+            explains_code(),
+            &["variant\tplan", "(4 rows)", "4 tool calls"],
+        ),
+    ];
+    println!("| scenario | direct calls | direct traffic B | code calls | code traffic B | saved | external MCP input direct → code B | saved | bridge input direct → code B | saved | info complete | ms direct / code |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|");
+    let mut failed = Vec::new();
+    for (id, function, steps, code, expect) in scenarios {
+        let started = Instant::now();
+        let direct = run_task(&mut lab, &Task { id, steps });
+        let middle = started.elapsed();
+        let before: Vec<usize> = direct
+            .steps
+            .iter()
+            .map(|step| {
+                let (args, response) = step.split_once(' ').unwrap().1.split_once('+').unwrap();
+                args.parse::<usize>().unwrap() + response.parse::<usize>().unwrap()
+            })
+            .collect();
+        let args = json!({"connection": "Shop", "code": code});
+        let (error, text) = call(&mut lab, "code", &args);
+        let mut missing = direct.missing.clone();
+        if error {
+            missing.push(format!("code error: {text}"));
+        }
+        missing.extend(
+            expect
+                .iter()
+                .filter(|expected| !text.contains(*expected))
+                .map(|expected| format!("code lacks {expected:?}: {text}")),
+        );
+        let after = vec![
+            docs(function),
+            serde_json::to_string(&args).unwrap().len() + text.len(),
+        ];
+        let (old, new) = (before.iter().sum::<usize>(), after.iter().sum::<usize>());
+        let inputs = [(PHASE6_MCP_LIST, mcp), (bridge_before, bridge)]
+            .map(|(old, new)| (cumulative(&[old], &before), cumulative(&[new], &after)));
+        println!(
+            "| {id} | {} | {old} | {} | {new} | {:.0} % | {} → {} | {:.0} % | {} → {} | {:.0} % | {} | {} / {} |",
+            before.len(),
+            after.len(),
+            100.0 * (1.0 - new as f64 / old as f64),
+            inputs[0].0,
+            inputs[0].1,
+            100.0 * (1.0 - inputs[0].1 as f64 / inputs[0].0 as f64),
+            inputs[1].0,
+            inputs[1].1,
+            100.0 * (1.0 - inputs[1].1 as f64 / inputs[1].0 as f64),
+            if missing.is_empty() { "yes".to_string() } else { missing.join("; ") },
+            middle.as_millis(),
+            (started.elapsed() - middle).as_millis()
+        );
+        println!("|  code steps: search {}, code {} |", after[0], after[1]);
+        if !missing.is_empty() || inputs.iter().any(|(old, new)| new >= old) {
+            failed.push(id);
+        }
+    }
+    for (old, new, label) in [
+        (PHASE6_MCP_LIST, mcp, "external MCP"),
+        (bridge_before, bridge, "bridge"),
+    ] {
+        println!(
+            "modeled single direct call on {label} (400 B traffic, 2 rounds): {:.0} % of the previous input",
+            100.0 * cumulative(&[new], &[400]) as f64 / cumulative(&[old], &[400]) as f64
+        );
+    }
+    assert!(over_budget("tools/list", mcp).is_none(), "{mcp}");
+    assert!(
+        over_budget("bridge tools/list", bridge).is_none(),
+        "{bridge}"
+    );
+    assert!(
+        over_budget("instructions", server::INSTRUCTIONS.len()).is_none(),
+        "{}",
+        server::INSTRUCTIONS.len()
+    );
+    assert!(failed.is_empty(), "failed: {failed:?}");
 }

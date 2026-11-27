@@ -1573,3 +1573,89 @@ async fn live_scripts_json_and_row_writes_follow_oracle() {
     let _ = conn.close();
     db.execute_query(&drop).await.unwrap();
 }
+
+#[tokio::test]
+#[ignore]
+async fn live_catalog_stays_fast_with_many_tables() {
+    const TABLES: usize = 200;
+    let Some(db) = adapter("live-catalog-perf") else {
+        return;
+    };
+    let owner = text(
+        &db.execute_query("SELECT USER AS owner FROM dual")
+            .await
+            .unwrap(),
+        "OWNER",
+    );
+    let drop = format!(
+        "BEGIN FOR i IN REVERSE 1..{TABLES} LOOP BEGIN EXECUTE IMMEDIATE 'DROP TABLE l8cat_' || TO_CHAR(i, 'FM000') || ' PURGE'; EXCEPTION WHEN OTHERS THEN NULL; END; END LOOP; END;"
+    );
+    db.execute_query(&drop).await.unwrap();
+    db.execute_query(&format!(
+        "BEGIN FOR i IN 1..{TABLES} LOOP EXECUTE IMMEDIATE 'CREATE TABLE l8cat_' || TO_CHAR(i, 'FM000') || ' (id NUMBER PRIMARY KEY, parent_id NUMBER' || CASE WHEN i > 1 THEN ' REFERENCES l8cat_' || TO_CHAR(i - 1, 'FM000') || '(id)' END || ', bez VARCHAR2(80), menge NUMBER(12,3), datum DATE, kz CHAR(1), text_1 VARCHAR2(200), text_2 VARCHAR2(200), wert_1 NUMBER, wert_2 NUMBER)'; END LOOP; EXECUTE IMMEDIATE 'COMMENT ON TABLE l8cat_001 IS ''Katalogtest'''; END;"
+    ))
+    .await
+    .unwrap();
+
+    let started = Instant::now();
+    let map = crate::mcp::schema_map(&db, crate::db::DatabaseKind::Oracle, &owner)
+        .await
+        .unwrap();
+    let map_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let seeded = map
+        .tables
+        .iter()
+        .filter(|table| table.name.starts_with("L8CAT_"))
+        .count();
+    let (mut columns, mut indexes, mut keys) = (Vec::new(), Vec::new(), Vec::new());
+    for i in (TABLES / 10..=TABLES).step_by(TABLES / 10) {
+        let table = format!("L8CAT_{i:03}");
+        let started = Instant::now();
+        let detailed = db
+            .list_table_columns_detailed(&owner, &table)
+            .await
+            .unwrap();
+        columns.push(started.elapsed().as_secs_f64() * 1000.0);
+        assert_eq!(detailed.len(), 10);
+        assert_eq!(
+            detailed
+                .iter()
+                .filter(|column| column.is_primary_key)
+                .map(|column| column.name.as_str())
+                .collect::<Vec<_>>(),
+            ["ID"]
+        );
+        let started = Instant::now();
+        let listed = db.list_indexes(&owner, &table).await.unwrap();
+        indexes.push(started.elapsed().as_secs_f64() * 1000.0);
+        assert!(listed.len() == 1 && listed[0].is_primary, "{table}");
+        let started = Instant::now();
+        let foreign = db.list_foreign_keys(&owner, &table).await.unwrap();
+        keys.push(started.elapsed().as_secs_f64() * 1000.0);
+        assert_eq!(foreign.len(), if i == TABLES { 1 } else { 2 }, "{table}");
+    }
+    db.execute_query(&drop).await.unwrap();
+    println!(
+        "performance oracle-catalog: tables={TABLES} schema_map_ms={map_ms:.0} links={} columns_ms={:.0}/{:.0} indexes_ms={:.0}/{:.0} foreign_keys_ms={:.0}/{:.0} (median/p95)",
+        map.links.len(),
+        percentile(&mut columns.clone(), 0.5),
+        percentile(&mut columns, 0.95),
+        percentile(&mut indexes.clone(), 0.5),
+        percentile(&mut indexes, 0.95),
+        percentile(&mut keys.clone(), 0.5),
+        percentile(&mut keys, 0.95),
+    );
+    assert_eq!(seeded, TABLES);
+    assert!(map.warning.is_none(), "{:?}", map.warning);
+    let commented: Vec<_> = map
+        .tables
+        .iter()
+        .filter(|table| table.comment.as_deref() == Some("Katalogtest"))
+        .map(|table| table.name.as_str())
+        .collect();
+    assert_eq!(commented, ["L8CAT_001"]);
+    assert!(map_ms < 5_000.0, "schema map {map_ms} ms");
+    assert!(percentile(&mut columns, 0.95) < 1_000.0, "{columns:?}");
+    assert!(percentile(&mut indexes, 0.95) < 1_000.0, "{indexes:?}");
+    assert!(percentile(&mut keys, 0.95) < 1_500.0, "{keys:?}");
+}

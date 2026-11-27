@@ -28,6 +28,7 @@ export interface AiUsageSummary extends Counts {
   cost: number | null;
   costUpper: number | null;
   costReported: boolean;
+  cacheSavings: number | null;
   currency: string;
   model: string;
   source: string | null;
@@ -381,6 +382,10 @@ export function summarizeAiUsage(
     cost,
     costUpper: upper,
     costReported: reportedCost !== null,
+    cacheSavings:
+      price && sum.reported && sum.cached > 0 && price.input > price.cached
+        ? (sum.cached * (price.input - price.cached)) / 1_000_000
+        : null,
     currency: typeof nativeCost.currency === "string" ? nativeCost.currency : "USD",
     model,
     source: price?.source ?? null,

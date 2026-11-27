@@ -1201,11 +1201,7 @@ impl DatabaseAdapter for MysqlAdapter {
             .filter(|col| columns.iter().any(|c| c == col))
             .map(|col| (col, order_desc));
         let terms = super::stable_order_terms(order, &pk, quote);
-        let order_sql = if terms.is_empty() {
-            String::new()
-        } else {
-            format!(" ORDER BY {}", terms.join(", "))
-        };
+        let order_sql = super::order_clause(&where_sql, &terms);
         let sql = format!(
             "SELECT * FROM {}.{}{}{} LIMIT {} OFFSET {}",
             quote(schema),

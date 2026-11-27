@@ -10,19 +10,25 @@ fn perf_url() -> String {
         .unwrap_or_else(|_| "postgresql://leon@127.0.0.1:5432/l8db_perf".to_string())
 }
 
-async fn median<F, Fut, T>(runs: usize, mut run: F) -> Duration
+async fn report<F, Fut, T>(name: &str, mut run: F)
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<T, String>>,
 {
-    let mut samples = Vec::with_capacity(runs);
-    for _ in 0..runs {
+    const RUNS: usize = 21;
+    run().await.expect("warmup failed");
+    let mut samples = Vec::with_capacity(RUNS);
+    for _ in 0..RUNS {
         let start = Instant::now();
         run().await.expect("query failed");
         samples.push(start.elapsed());
     }
     samples.sort();
-    samples[runs / 2]
+    println!(
+        "{name:<44} median {:>8.2} ms, p95 {:>8.2} ms ({RUNS} runs)",
+        samples[RUNS / 2].as_secs_f64() * 1000.0,
+        samples[(RUNS * 95).div_ceil(100) - 1].as_secs_f64() * 1000.0,
+    );
 }
 
 async fn table_open(adapter: &dyn DatabaseAdapter, table: &str) -> Result<(), String> {
@@ -39,10 +45,6 @@ async fn table_open(adapter: &dyn DatabaseAdapter, table: &str) -> Result<(), St
     keys?;
     views?;
     Ok(())
-}
-
-fn report(name: &str, duration: Duration) {
-    println!("{name:<44} {:>10.1} ms", duration.as_secs_f64() * 1000.0);
 }
 
 #[tokio::test]
@@ -62,129 +64,96 @@ async fn perf_table_loading() {
     };
     execution::run(Some(options), true, async {
         adapter.list_schemas().await?;
-        report(
-            "open big (parallel like frontend)",
-            median(5, || table_open(adapter, "big")).await,
-        );
-        report(
-            "open t_1 (parallel like frontend)",
-            median(5, || table_open(adapter, "t_1")).await,
-        );
-        report(
-            "rows big page 1 unsorted",
-            median(7, || {
-                adapter.fetch_rows("public", "big", None, 100, 0, None, false, false, false)
-            })
-            .await,
-        );
-        report(
-            "rows big page 1 sorted by id (indexed)",
-            median(7, || {
-                adapter.fetch_rows(
-                    "public",
-                    "big",
-                    None,
-                    100,
-                    0,
-                    Some("id"),
-                    false,
-                    false,
-                    false,
-                )
-            })
-            .await,
-        );
-        report(
-            "rows big page 1 sorted by name",
-            median(3, || {
-                adapter.fetch_rows(
-                    "public",
-                    "big",
-                    None,
-                    100,
-                    0,
-                    Some("name"),
-                    false,
-                    false,
-                    false,
-                )
-            })
-            .await,
-        );
-        report(
-            "rows big offset 1M unsorted",
-            median(3, || {
-                adapter.fetch_rows(
-                    "public", "big", None, 100, 1_000_000, None, false, false, false,
-                )
-            })
-            .await,
-        );
-        report(
-            "rows big offset 1M sorted by name",
-            median(1, || {
-                adapter.fetch_rows(
-                    "public",
-                    "big",
-                    None,
-                    100,
-                    1_000_000,
-                    Some("name"),
-                    false,
-                    false,
-                    false,
-                )
-            })
-            .await,
-        );
-        report(
-            "rows t_1 page 1 unsorted",
-            median(7, || {
-                adapter.fetch_rows("public", "t_1", None, 100, 0, None, false, false, false)
-            })
-            .await,
-        );
-        report(
-            "count big exact",
-            median(3, || adapter.count_rows("public", "big", None, false)).await,
-        );
-        report(
-            "count big filtered exact",
-            median(3, || {
-                adapter.count_rows("public", "big", Some("amount > 500"), false)
-            })
-            .await,
-        );
-        report(
-            "count big capped 100k",
-            median(3, || {
-                adapter.count_rows_capped("public", "big", None, false, 100_000)
-            })
-            .await,
-        );
-        report(
-            "count big filtered capped 100k",
-            median(3, || {
-                adapter.count_rows_capped("public", "big", Some("amount > 500"), false, 100_000)
-            })
-            .await,
-        );
-        report(
-            "columns detailed big",
-            median(7, || adapter.list_table_columns_detailed("public", "big")).await,
-        );
-        report(
-            "foreign keys big",
-            median(7, || adapter.list_foreign_keys("public", "big")).await,
-        );
-        report(
-            "list tables public",
-            median(5, || adapter.list_tables(Some("public"))).await,
-        );
-        report(
-            "list views public",
-            median(5, || adapter.list_views(Some("public"))).await,
-        );
+        report("open big (parallel like frontend)", || {
+            table_open(adapter, "big")
+        })
+        .await;
+        report("open t_1 (parallel like frontend)", || {
+            table_open(adapter, "t_1")
+        })
+        .await;
+        report("rows big page 1 unsorted", || {
+            adapter.fetch_rows("public", "big", None, 100, 0, None, false, false, false)
+        })
+        .await;
+        report("rows big page 1 sorted by id (indexed)", || {
+            adapter.fetch_rows(
+                "public",
+                "big",
+                None,
+                100,
+                0,
+                Some("id"),
+                false,
+                false,
+                false,
+            )
+        })
+        .await;
+        report("rows big page 1 sorted by name", || {
+            adapter.fetch_rows(
+                "public",
+                "big",
+                None,
+                100,
+                0,
+                Some("name"),
+                false,
+                false,
+                false,
+            )
+        })
+        .await;
+        report("rows big offset 1M unsorted", || {
+            adapter.fetch_rows(
+                "public", "big", None, 100, 1_000_000, None, false, false, false,
+            )
+        })
+        .await;
+        report("rows big offset 1M sorted by name", || {
+            adapter.fetch_rows(
+                "public",
+                "big",
+                None,
+                100,
+                1_000_000,
+                Some("name"),
+                false,
+                false,
+                false,
+            )
+        })
+        .await;
+        report("rows t_1 page 1 unsorted", || {
+            adapter.fetch_rows("public", "t_1", None, 100, 0, None, false, false, false)
+        })
+        .await;
+        report("count big exact", || {
+            adapter.count_rows("public", "big", None, false)
+        })
+        .await;
+        report("count big filtered exact", || {
+            adapter.count_rows("public", "big", Some("amount > 500"), false)
+        })
+        .await;
+        report("count big capped 100k", || {
+            adapter.count_rows_capped("public", "big", None, false, 100_000)
+        })
+        .await;
+        report("count big filtered capped 100k", || {
+            adapter.count_rows_capped("public", "big", Some("amount > 500"), false, 100_000)
+        })
+        .await;
+        report("columns detailed big", || {
+            adapter.list_table_columns_detailed("public", "big")
+        })
+        .await;
+        report("foreign keys big", || {
+            adapter.list_foreign_keys("public", "big")
+        })
+        .await;
+        report("list tables public", || adapter.list_tables(Some("public"))).await;
+        report("list views public", || adapter.list_views(Some("public"))).await;
         Ok::<_, String>(())
     })
     .await
@@ -367,4 +336,149 @@ async fn database_load_guards() {
         .batch_execute(&format!("DROP TABLE {target}"))
         .await
         .expect("drop table");
+}
+
+async fn deep_forward_pages(
+    kind: DatabaseKind,
+    url_env: &str,
+    schema: &str,
+    table: &str,
+    id: &str,
+    name: &str,
+) {
+    let url = std::env::var(url_env).expect("set fixture URL");
+    let adapter = create_adapter_from_string(kind, &url, None, create_pool_state()).unwrap();
+    let make_request = |order: &str, offset| super::transaction::TransactionTableRead {
+        schema: schema.into(),
+        table: table.into(),
+        filter: None,
+        limit: 100,
+        offset,
+        order_by: Some(order.into()),
+        order_desc: false,
+        is_view: false,
+        allow_raw: false,
+    };
+    for (col, desc) in [(name, false), (id, false), (id, true), (name, true)] {
+        let mut request = make_request(col, 1_000_000);
+        request.order_desc = desc;
+        let before = adapter
+            .fetch_rows(
+                schema,
+                table,
+                None,
+                100,
+                request.offset - 100,
+                Some(col),
+                desc,
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        let last = before.rows.last().unwrap();
+        let anchor = super::PageBoundary {
+            key: id.into(),
+            value: last[id].as_i64().unwrap(),
+            sort_text: (col != id).then(|| last[col].as_str().unwrap().into()),
+        };
+        let expected = adapter
+            .fetch_rows(
+                schema,
+                table,
+                None,
+                100,
+                request.offset,
+                Some(col),
+                desc,
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+        assert_eq!(expected.rows.len(), 100);
+        assert!(expected.rows.iter().all(|row| row["__ctid__"].is_string()));
+        let mut jumps = Vec::new();
+        let mut forward = Vec::new();
+        for n in 0..22 {
+            for pass in 0..2 {
+                let seek = (pass + n) % 2 == 0;
+                let start = Instant::now();
+                let page = if seek {
+                    adapter.fetch_rows_after(&request, &anchor).await
+                } else {
+                    adapter
+                        .fetch_rows(
+                            schema,
+                            table,
+                            None,
+                            100,
+                            request.offset,
+                            Some(col),
+                            desc,
+                            false,
+                            false,
+                        )
+                        .await
+                }
+                .unwrap();
+                let elapsed = start.elapsed();
+                assert_eq!(page.rows, expected.rows);
+                assert_eq!(page.columns, expected.columns);
+                if n > 0 {
+                    if seek {
+                        forward.push(elapsed);
+                    } else {
+                        jumps.push(elapsed);
+                    }
+                }
+            }
+        }
+        for (mode, mut samples, budget) in [("jump", jumps, 300), ("forward", forward, 20)] {
+            samples.sort();
+            println!(
+                "{kind:?} {mode} {col} desc={desc} median {:?} p95 {:?}",
+                samples[10], samples[19]
+            );
+            assert!(
+                samples[19] < Duration::from_millis(budget),
+                "{kind:?} {mode} {col}: {samples:?}"
+            );
+        }
+        let invalid = super::PageBoundary {
+            key: "missing".into(),
+            value: -1,
+            sort_text: None,
+        };
+        let fallback = adapter.fetch_rows_after(&request, &invalid).await.unwrap();
+        assert_eq!(fallback.rows, expected.rows);
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires indexed two-million-row BIG fixture"]
+async fn deep_forward_postgres() {
+    deep_forward_pages(
+        DatabaseKind::Postgres,
+        "L8DB_PERF_PG_URL",
+        "public",
+        "big",
+        "id",
+        "name",
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires indexed two-million-row BIG fixture and Oracle Instant Client"]
+async fn deep_forward_oracle() {
+    deep_forward_pages(
+        DatabaseKind::Oracle,
+        "L8DB_PERF_ORACLE_URL",
+        "L8DB",
+        "BIG",
+        "ID",
+        "NAME",
+    )
+    .await;
 }

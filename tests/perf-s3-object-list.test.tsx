@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { measureScenario, reportScenario } from "../scripts/performance-report";
+import { countDeleteTargets, deleteEffects } from "../src/features/storage/object-deletion";
 import { ObjectList } from "../src/features/storage/object-list";
+import { indexObjectRows } from "../src/features/storage/object-row-index";
 import type { RowActions } from "../src/features/storage/object-row-menu";
 import type { BrowserRow } from "../src/features/storage/use-object-listing";
 
@@ -30,6 +33,50 @@ function rows(count: number): BrowserRow[] {
     etag: null,
   }));
 }
+
+test("S3 deletion messages preserve the distinct effects of mixed object and folder selections", () => {
+  const items = rows(4);
+  items[2].versionId = "null";
+  items[3].versionId = "marker";
+  items[3].deleteMarker = true;
+  const selection = countDeleteTargets(items);
+  expect(selection).toEqual({ folders: 1, currentObjects: 1, versions: 1, markers: 1 });
+  const mixed = deleteEffects(selection, true, "Enabled");
+  for (const text of [
+    "in den ausgewählten Ordnern",
+    "Objektversionen",
+    "wieder sichtbar",
+    "S3 setzt",
+  ])
+    expect(mixed).toContain(text);
+  expect(deleteEffects(selection, false, "Unknown")).not.toContain("bleiben erhalten");
+  expect(deleteEffects(selection, false, "Checking")).not.toContain("bleiben erhalten");
+  expect(deleteEffects(selection, false, "Suspended")).toContain("Null-Versionen");
+  expect(deleteEffects(selection, false, "Off")).toContain("Versionierung ist aus");
+  const onlyMarkers = countDeleteTargets([items[3]]);
+  expect(deleteEffects(onlyMarkers, false, "Unknown")).not.toContain("Versionsstatus");
+});
+
+test("S3 deletion summary for 50,000 targets retains only four counters", async () => {
+  const selected = rows(50_000);
+  for (const [index, row] of selected.entries()) {
+    row.kind = index % 20 === 0 ? "folder" : "object";
+    row.versionId = index % 4 === 0 ? `v${index}` : undefined;
+    row.deleteMarker = false;
+  }
+  let counts = countDeleteTargets([]);
+  const timing = await measureScenario(() => {
+    counts = countDeleteTargets(selected);
+  }, 31);
+  expect(counts).toEqual({ folders: 2500, currentObjects: 37500, versions: 10000, markers: 0 });
+  expect(timing.medianMs).toBeLessThan(3);
+  expect(timing.p95Ms).toBeLessThan(6);
+  await reportScenario("s3-deletion-summary", {
+    ...timing,
+    targets: selected.length,
+    retainedCounters: Object.keys(counts).length,
+  });
+});
 
 function render(list: BrowserRow[], filtered = false) {
   return renderToStaticMarkup(
@@ -75,4 +122,58 @@ test("object list renders a bounded window of 50 000 rows with one tab stop", ()
 test("an empty filter result does not claim the folder is empty", () => {
   expect(render([], true)).toContain("Keine Treffer in den geladenen Einträgen");
   expect(render([])).toContain("Dieser Ordner ist leer.");
+});
+
+test("S3-Auswahl bleibt in Tabellenreihenfolge und bezieht sich auf die sichtbaren Einträge", () => {
+  const list = rows(12);
+  const index = indexObjectRows(list);
+  expect(index.folderCount).toBe(1);
+  expect(index.detail(null)).toBeNull();
+  expect(index.detail("k0")).toBeNull();
+  expect(index.detail("k8")).toBe(list[8]);
+  expect(index.selectedRows(new Set(["k8", "weg", "k1"]))).toEqual([list[1], list[8]]);
+  const all = new Set(list.map((row) => row.id).reverse());
+  expect(index.selectedRows(all)).toEqual(list);
+  const filtered = indexObjectRows(list.slice(4, 7));
+  expect(filtered.selectedRows(all)).toEqual(list.slice(4, 7));
+  expect(filtered.detail("k8")).toBeNull();
+  const overlap = indexObjectRows([list[1], list[2], list[1]]);
+  expect(overlap.selectedRows(new Set(["k1"]))).toEqual([list[1], list[1]]);
+});
+
+test("100 Auswahlwechsel in 50.000 S3-Einträgen besuchen nur die ausgewählten Zeilen", () => {
+  const list = rows(50_000);
+  let reads = 0;
+  const watched = new Proxy(list, {
+    get(target, key, receiver) {
+      if (typeof key === "string" && /^\d+$/.test(key)) reads++;
+      return Reflect.get(target, key, receiver);
+    },
+  });
+  const index = indexObjectRows(watched);
+  expect(reads).toBe(list.length);
+  const samples: number[] = [];
+  const sets = Array.from(
+    { length: 100 },
+    (_, i) => new Set([`k${49000 + i}`, "k1", "k300", "k1200"]),
+  );
+  for (let run = 0; run < 22; run++) {
+    reads = 0;
+    let sum = 0;
+    const start = performance.now();
+    for (let i = 0; i < 100; i++) {
+      sum += index.selectedRows(sets[i]).length;
+      sum += Number(Boolean(index.detail(`k${49000 + i}`)));
+      sum += index.folderCount;
+    }
+    if (run) samples.push(performance.now() - start);
+    expect(sum).toBe(100498);
+    expect(reads).toBe(500);
+  }
+  samples.sort((a, b) => a - b);
+  console.log(
+    `S3-Auswahl, 100 Wechsel: Median ${samples[10].toFixed(3)} ms, p95 ${samples[19].toFixed(3)} ms`,
+  );
+  expect(samples[10]).toBeLessThan(5);
+  expect(samples[19]).toBeLessThan(12);
 });

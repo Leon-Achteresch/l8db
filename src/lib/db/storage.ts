@@ -66,7 +66,7 @@ export interface ObjectHead {
 
 export interface ObjectPreview {
   content_type: string | null;
-  size: number;
+  size: number | null;
   truncated: boolean;
   data: string;
 }

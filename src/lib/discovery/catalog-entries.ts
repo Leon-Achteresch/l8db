@@ -927,10 +927,7 @@ export const CATALOG_ENTRIES: FeatureEntry[] = [
     videoId: "split-dnd",
     hiddenInEasyMode: true,
     related: ["workspace.saved-tabs", "connections.open-window"],
-    steps: [
-      { anchor: "view.split", title: "Ansicht teilen" },
-      { anchor: "workspace.saved-tabs", title: "Tabs speichern" },
-    ],
+    steps: [{ anchor: "view.split", title: "Ansicht teilen" }],
   },
   {
     id: "workspace.saved-tabs",

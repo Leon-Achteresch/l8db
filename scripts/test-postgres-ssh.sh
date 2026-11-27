@@ -69,7 +69,7 @@ if [ "${L8DB_BENCHMARK:-0}" = 1 ]; then
 fi
 
 "${compose[@]}" exec -T postgres psql -U postgres -d testdb < tests/lab/production-controls.sql
-"${compose[@]}" exec -T postgres psql -U postgres -d testdb -v control_schema=l8db_control -v control_owner=l8db_control_owner -v deployer=l8db_deployer -v reviewer=l8db_reviewer -v administrator=l8db_administrator < docs/postgres-production-controls.sql
+"${compose[@]}" exec -T postgres psql -U postgres -d testdb -v control_schema=l8db_control -v control_owner=l8db_control_owner -v deployer=l8db_deployer -v reviewer=l8db_reviewer -v administrator=l8db_administrator < tests/lab/postgres-production-controls.sql
 "${compose[@]}" exec -T postgres psql -U postgres -d testdb < tests/lab/production-controls-assert.sql
 cargo test --manifest-path src-tauri/Cargo.toml --locked --lib production_controls_separate_deployer -- --ignored --test-threads=1 --nocapture
 cargo test --manifest-path src-tauri/Cargo.toml --locked --lib enterprise_committed_release_preserves -- --ignored --test-threads=1 --nocapture

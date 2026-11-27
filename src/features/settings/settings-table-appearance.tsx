@@ -11,8 +11,10 @@ export function SettingsTableAppearance() {
     monochromeCells,
     tableStyle,
     filterBarStyle,
+    filterBarSorting,
     setTableStyle,
     setFilterBarStyle,
+    setFilterBarSorting,
     tableFilterMode,
     setTableFilterMode,
     setFitColumnsToHeader,
@@ -25,6 +27,13 @@ export function SettingsTableAppearance() {
       </SettingsRow>
       <SettingsRow settingId="filter-bar-style" featureId="settings.appearance.filter-bar" stacked>
         <FilterBarStylePicker value={filterBarStyle} onChange={setFilterBarStyle} />
+      </SettingsRow>
+      <SettingsRow settingId="filter-bar-sorting" featureId="settings.appearance.filter-sorting">
+        <Switch
+          aria-label="Sortierung in der Filterleiste"
+          checked={filterBarSorting}
+          onCheckedChange={setFilterBarSorting}
+        />
       </SettingsRow>
       <SettingsRow settingId="table-filter-mode" featureId="settings.appearance.filter-mode">
         <SegmentedControl

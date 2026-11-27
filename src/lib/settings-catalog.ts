@@ -50,7 +50,21 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     title: "Themes",
     description:
       "Je ein Theme für den hellen und den dunklen Modus wählen: linker Kreis hell, rechter Kreis dunkel.",
-    keywords: ["theme", "farbe", "akzent", "rose", "grove", "ocean", "ember", "iris", "graphite"],
+    keywords: [
+      "theme",
+      "farbe",
+      "akzent",
+      "rose",
+      "grove",
+      "ocean",
+      "ember",
+      "iris",
+      "graphite",
+      "eigenes theme",
+      "import",
+      "export",
+      "ki",
+    ],
   },
   {
     id: "db-themes",
@@ -329,6 +343,15 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     key: "filterBarStyle",
   },
   {
+    id: "filter-bar-sorting",
+    tabId: "appearance",
+    title: "Sortierung in der Filterleiste",
+    description:
+      "Die Sortierung zusätzlich in der Filterleiste setzen und ändern. Gespeicherte Ansichten merken sich die Sortierung zusammen mit dem Filter.",
+    keywords: ["sortierung", "sortieren", "sort", "order by", "filter", "filterleiste", "ansicht"],
+    key: "filterBarSorting",
+  },
+  {
     id: "table-filter-mode",
     tabId: "appearance",
     title: "Standardmodus für Tabellenfilter",
@@ -344,6 +367,20 @@ export const SETTINGS_CATALOG: readonly SettingDefinition[] = [
     description:
       "Oberflächengröße, UI-Dichte, Spaltenbreiten und Seitenleistenabstände auf Standard zurücksetzen. Änderungen werden sofort angewendet und gespeichert.",
     keywords: [],
+  },
+  {
+    id: "tasks",
+    tabId: "data",
+    title: "Aufgaben",
+    description: "Laufende und abgeschlossene Hintergrundaufgaben.",
+    keywords: ["tasks", "jobs", "hintergrund", "laufend"],
+  },
+  {
+    id: "drafts",
+    tabId: "data",
+    title: "Entwürfe",
+    description: "Ungespeicherte Entwürfe wiederherstellen.",
+    keywords: ["drafts", "wiederherstellen", "recovery", "ungespeichert"],
   },
   {
     id: "history-limit",

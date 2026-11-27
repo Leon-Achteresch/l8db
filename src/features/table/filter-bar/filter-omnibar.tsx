@@ -15,6 +15,7 @@ import { FilterAiPanel } from "./filter-ai-panel";
 import { FilterConditionTokens } from "./filter-condition-tokens";
 import { FilterModeToggle } from "./filter-mode-toggle";
 import { FilterRuleTokens } from "./filter-rule-tokens";
+import { FilterSortControl } from "./filter-sort-control";
 import { FilterSqlField } from "./filter-sql-field";
 import { OmnibarHelp } from "./omnibar-help";
 import { type OmnibarItem, OmnibarMenu } from "./omnibar-menu";
@@ -279,6 +280,7 @@ export function FilterOmnibar(props: FilterBarProps) {
                 />
               )}
               <FilterRuleTokens model={model} variant="chip" showLabel={false} />
+              <FilterSortControl sort={props.sort} columns={model.columns} showLabel={false} />
               {simple && focused && !trimmed ? (
                 <span className="hidden shrink-0 items-center gap-1 text-[11px] text-muted-foreground md:flex">
                   <Kbd>↵</Kbd>Filter

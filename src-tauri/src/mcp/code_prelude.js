@@ -1,9 +1,10 @@
-(host, log, limit, items) => {
+(host, log, limit, items, names) => {
   const stringify = JSON.stringify;
   const isArray = Array.isArray;
   const freeze = Object.freeze;
   const entries = Object.entries;
   const describe = Object.prototype.toString;
+  let missed = null;
   const idents = new WeakSet();
   const isIdent = WeakSet.prototype.has.bind(idents);
   const mark = WeakSet.prototype.add.bind(idents);
@@ -11,7 +12,7 @@
   const call = (op, args) => {
     const error = new Error();
     return host(op, stringify(args)).catch((message) => {
-      error.name = op === "sql" || op === "query" || op === "explain" ? "SqlError" : "CatalogError";
+      error.name = op === "sql" || op === "query" || op === "explain" ? "SqlError" : op === "tool" ? "ToolError" : "CatalogError";
       error.message = String(message);
       throw error;
     });
@@ -108,11 +109,23 @@
       return v;
     },
     catalog: catalogFor({}),
+    tools: new Proxy(freeze(Object.fromEntries(names.map((name) => [name, (args) => call("tool", { name, args })]))), {
+      get: (listed, key) => {
+        if (typeof key === "string" && key !== "then" && !(key in listed)) missed = key;
+        return listed[key];
+      },
+    }),
     console: freeze({ log: print, info: print, warn: print, error: print, debug: print }),
   });
   return async (fn) => {
     if (typeof fn !== "function") throw new TypeError("code must be an async arrow function: async () => { ... }");
-    let v = await fn();
+    let v;
+    try {
+      v = await fn();
+    } catch (e) {
+      if (missed && e instanceof TypeError && String(e.message).includes("not a function")) e.message += `; tools.${missed} does not exist here, search in=tools lists the functions`;
+      throw e;
+    }
     if (typeof v === "string" && v.length > limit) return stringify({ s: v.slice(0, limit), n: v.length });
     let n = null;
     if (isArray(v) && v.length > items) {

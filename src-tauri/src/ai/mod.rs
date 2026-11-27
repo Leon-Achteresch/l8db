@@ -403,9 +403,14 @@ pub async fn ai_run(
     let work = async {
         let external = integrations::connect(&request.servers, &cwd, &run).await?;
         if is_cli(&request.profile.provider) {
-            let bridge =
-                bridge::Bridge::start(server.clone(), config.clone(), run.clone(), external)
-                    .await?;
+            let bridge = bridge::Bridge::start(
+                server.clone(),
+                config.clone(),
+                run.clone(),
+                external,
+                request.profile.provider == "opencode",
+            )
+            .await?;
             cli::run(&request, &instructions, &bridge, &run).await
         } else {
             byok::run(&request, &instructions, &server, &config, external, &run).await

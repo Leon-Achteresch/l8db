@@ -322,6 +322,50 @@ test("default filter mode setting picks the mode of unsaved tables and keeps ren
   expect(bytes).toBeLessThan(8 * 1024 * 1024);
 });
 
+test("sort control stays bounded on 5000 columns and idle bars request nothing", async () => {
+  const { FilterSortControl } = await import("@/features/table/filter-bar/filter-sort-control");
+  const live = useSettingsStore.getState();
+  const initial = useSettingsStore.getInitialState();
+  const sort = {
+    sorting: [{ id: COLUMNS[4_999], desc: true }],
+    sortableColumns: COLUMNS,
+    onChange: () => {},
+  };
+  const render = () =>
+    renderToStaticMarkup(createElement(FilterSortControl, { sort, columns: COLUMNS }));
+  invokes.length = 0;
+  const off = render();
+  initial.filterBarSorting = true;
+  try {
+    let markup = "";
+    const timing = measure(() => {
+      markup = render();
+    });
+    const bytes = retainedBytes(() => {
+      for (let index = 0; index < 200; index++) render();
+    });
+    await reportScenario("filter-bar-sort-control", {
+      columns: COLUMNS.length,
+      sortableColumns: COLUMNS.length,
+      timing,
+      markupBytes: markup.length,
+      retainedBytes: bytes,
+      invokes: invokes.length,
+    });
+    expect(off).toBe("");
+    expect(markup).toContain('data-filter-token="sort"');
+    expect(markup.split("column_").length - 1).toBeLessThanOrEqual(4);
+    expect(markup.length).toBeLessThan(4_000);
+    expect(timing.medianMs).toBeLessThan(5);
+    expect(timing.p95Ms).toBeLessThan(15);
+    expect(bytes).toBeLessThan(4 * 1024 * 1024);
+    expect(invokes).toEqual([]);
+    expect(live.filterBarSorting).toBe(false);
+  } finally {
+    initial.filterBarSorting = false;
+  }
+});
+
 test("date filter inputs load the date picker only when the calendar opens", () => {
   const imports = new Bun.Transpiler({ loader: "tsx" }).scanImports(
     readFileSync(resolve(import.meta.dir, "../src/features/filters/date-filter-input.tsx"), "utf8"),

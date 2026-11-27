@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
+import { tagCommit } from "./release-utils.mjs";
 
 const SECTIONS = [
   ["feat", "Features"],
@@ -10,6 +11,15 @@ const SECTIONS = [
 const SKIP = new Set(["docs", "test", "build", "ci", "style", "chore"]);
 
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" }).trim();
+
+function merged(tag) {
+  try {
+    git("merge-base", "--is-ancestor", tagCommit(tag), head);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function commitsIn(range) {
   const raw = git("log", range, "--pretty=format:%s", "--no-merges");
@@ -57,27 +67,20 @@ const head = option("--head") ?? "HEAD";
 const previousTag = option("--previous");
 
 const canary = /^(\d+\.\d+\.\d+)-canary\.\d+$/.exec(next)?.[1];
-const tags = git(
-  "-c",
-  "versionsort.suffix=-",
-  "tag",
-  ...(canary ? [] : ["--merged", head]),
-  "--list",
-  "v*",
-  "--sort=-v:refname",
-)
+const tags = git("-c", "versionsort.suffix=-", "tag", "--list", "v*", "--sort=-v:refname")
   .split("\n")
   .filter(
     (tag) =>
       (/^v\d+\.\d+\.\d+$/.test(tag) ||
         (/^v\d+\.\d+\.\d+-canary\.\d+$/.test(tag) && tag.startsWith(`v${canary}-canary.`))) &&
-      tag !== `v${next}`,
+      tag !== `v${next}` &&
+      (canary || merged(tag)),
   );
 const today = option("--date") ?? new Date().toISOString().slice(0, 10);
 
 const sections = [];
 const previous = previousTag ?? tags[0];
-const headCommits = commitsIn(previous ? `${previous}..${head}` : head);
+const headCommits = commitsIn(previous ? `${tagCommit(previous)}..${head}` : head);
 if (next) sections.push(renderSection(`[${next}]`, today, headCommits));
 else if (headCommits.length) sections.push(renderSection("[Unreleased]", "", headCommits));
 
@@ -88,7 +91,11 @@ if (releaseBodyOnly) {
     const previous = tags[index + 1];
     const date = git("log", "-1", "--format=%cs", tag);
     sections.push(
-      renderSection(`[${tag.slice(1)}]`, date, commitsIn(previous ? `${previous}..${tag}` : tag)),
+      renderSection(
+        `[${tag.slice(1)}]`,
+        date,
+        commitsIn(previous ? `${tagCommit(previous)}..${tagCommit(tag)}` : tagCommit(tag)),
+      ),
     );
   });
 

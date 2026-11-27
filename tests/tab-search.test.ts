@@ -74,11 +74,9 @@ describe("searchQueryTabs", () => {
 
 describe("searchQueryTabs Regex-Fehler", () => {
   test("liefert Fehlerstelle für ungültige Muster", () => {
-    const result = searchQueryTabs(
-      [{ id: "a", title: "A", sql: "select 1" }],
-      "sel(",
-      { regex: true },
-    );
+    const result = searchQueryTabs([{ id: "a", title: "A", sql: "select 1" }], "sel(", {
+      regex: true,
+    });
     expect(result.invalidPattern).toBe(true);
     expect(result.patternError?.index).toBe(3);
   });
@@ -93,4 +91,33 @@ describe("searchQueryTabs Regex-Fehler", () => {
     expect(result.patternError).toBeNull();
     expect(result.matches.length).toBe(2);
   });
+});
+
+test("behält leere Abschlusszeilen, CRLF und exakte Treffergrenzen bei", () => {
+  const source = [{ id: "a", title: "A", sql: "\r\nSELECT\r\n" }];
+  const result = searchQueryTabs(source, "^$", { regex: true, maxMatches: 2 });
+  expect(result.matches.map(({ line, lineText }) => [line, lineText])).toEqual([
+    [1, ""],
+    [3, ""],
+  ]);
+  expect(result.truncated).toBe(false);
+  expect(searchQueryTabs(source, "^$", { regex: true, maxMatches: 1 }).truncated).toBe(true);
+});
+
+test("begrenzt die Suche in 250.000 SQL-Zeilen bei häufigen Treffern", () => {
+  const sources = [{ id: "a", title: "A", sql: "SELECT 1;\n".repeat(250000) }];
+  searchQueryTabs(sources, "select");
+  const times: number[] = [];
+  for (let sample = 0; sample < 25; sample++) {
+    const start = performance.now();
+    const result = searchQueryTabs(sources, "select");
+    times.push(performance.now() - start);
+    expect(result.matches).toHaveLength(500);
+    expect(result.matches.at(-1)?.line).toBe(500);
+    expect(result.truncated).toBe(true);
+  }
+  times.sort((a, b) => a - b);
+  console.log(`Tab-Suche: Median ${times[12].toFixed(2)} ms, p95 ${times[23].toFixed(2)} ms`);
+  expect(times[12]).toBeLessThan(2);
+  expect(times[23]).toBeLessThan(5);
 });

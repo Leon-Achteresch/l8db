@@ -54,6 +54,7 @@ Beispiele
   l8db doctor -o json
   l8db conn use prod
   l8db tui
+  l8db --url \"bestand.sqlite?mode=ro\" table list
   l8db q \"select count(*) from users\"
   l8db table rows users --where \"active\" --limit 20
   l8db query -c staging -f bericht.sql -o csv > bericht.csv
@@ -125,7 +126,7 @@ pub struct Global {
         global = true,
         value_enum,
         value_name = "FORMAT",
-        help = "Ausgabe: table, json, ndjson, csv, tsv (Standard: table im Terminal, sonst tsv)",
+        help = "Ausgabe: table, json, ndjson, csv, tsv, markdown (Standard: table im Terminal, sonst tsv)",
         hide_possible_values = true
     )]
     output: Option<Format>,
@@ -185,7 +186,7 @@ enum Command {
         alias = "q",
         help_template = SUB_HELP,
         override_usage = "l8db query [ABFRAGE] [-f DATEI] [-c NAME] [-o FORMAT]",
-        after_help = "Die Abfrage kommt als Argument, mit -f aus einer Datei oder über die Standardeingabe.\nMehrere Anweisungen werden nacheinander ausgeführt; beim ersten Fehler stoppt l8db.\nBindvariablen (:name) setzt die CLI nicht: Werte direkt ins SQL schreiben.\n\nBeispiele:\n  l8db q \"select * from users limit 5\"\n  l8db query -f migration.sql --yes\n  cat bericht.sql | l8db query -o csv > bericht.csv\n  l8db query --all -o ndjson \"select * from events\" | jq .id\n  l8db q \"HGETALL user:1\"  (Redis)"
+        after_help = "Die Abfrage kommt als Argument, mit -f aus einer Datei oder über die Standardeingabe.\nMehrere Anweisungen werden nacheinander ausgeführt; beim ersten Fehler stoppt l8db.\nBindvariablen (:name) setzt die CLI nicht: Werte direkt ins SQL schreiben.\n\nBeispiele:\n  l8db q \"select * from users limit 5\"\n  l8db query -f migration.sql --yes\n  cat bericht.sql | l8db query -o csv > bericht.csv\n  l8db q -o markdown -f bericht.sql > bericht.md\n  l8db query --all -o ndjson \"select * from events\" | jq .id\n  l8db q \"HGETALL user:1\"  (Redis)"
     )]
     Query(QueryArgs),
     #[command(

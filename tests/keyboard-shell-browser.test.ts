@@ -125,6 +125,11 @@ async function tabNames(page: Page) {
   return (await tabs(page).allTextContents()).map((text) => text.trim());
 }
 
+async function waitForTabCount(page: Page, count: number) {
+  const deadline = Date.now() + 3000;
+  while ((await tabNames(page)).length !== count && Date.now() < deadline) await frames(page);
+}
+
 async function activeTabIndex(page: Page) {
   return tabs(page).evaluateAll((nodes) => nodes.indexOf(document.activeElement as HTMLElement));
 }
@@ -288,7 +293,7 @@ scenario("d: Entf schließt den fokussierten Tab, Fokus bleibt in der Leiste", a
   const before = await tabNames(page);
   const target = before[1];
   await page.keyboard.press("Delete");
-  await frames(page, 4);
+  await waitForTabCount(page, before.length - 1);
   const after = await tabNames(page);
   expect(after).toHaveLength(before.length - 1);
   expect(after).not.toContain(target);
@@ -467,7 +472,7 @@ scenario("i: bestehende Tab-Kürzel funktionieren weiter", async (page) => {
   await expectSelectedTab(page, names[3]);
 
   await pressMod(page, "w");
-  await frames(page, 4);
+  await waitForTabCount(page, 3);
   expect(await tabNames(page)).toHaveLength(3);
   expect(await tabNames(page)).not.toContain(names[3]);
 

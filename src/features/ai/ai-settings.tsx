@@ -17,6 +17,7 @@ import { AiMcpServerDialog } from "./ai-mcp-server-dialog";
 import { aiProviderSvg } from "./ai-provider-icons";
 import { AiSettingsKeyField } from "./ai-settings-key-field";
 import { AiSettingsProviderRow } from "./ai-settings-provider-row";
+import { AiSpend } from "./ai-spend";
 import { AiUsageSettings } from "./ai-usage-settings";
 
 type Mode = "cli" | "byok";
@@ -569,6 +570,7 @@ export function AiSettings({ profile, cwd, setCwd, refresh, onError }: Props) {
             )}
           </div>
           <AiUsageSettings profile={profile} />
+          <AiSpend />
         </motion.section>
       </div>
     </MotionConfig>

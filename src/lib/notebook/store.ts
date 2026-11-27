@@ -20,6 +20,7 @@ export interface RecentNotebook {
 const MAX_RECENT = 12;
 
 interface NotebookState {
+  documentGeneration: number;
   doc: NotebookDoc;
   filePath: string | null;
   dirty: boolean;
@@ -36,7 +37,10 @@ interface NotebookState {
   moveCell: (id: string, delta: number) => void;
   setOutput: (id: string, output: NotebookOutput | null) => void;
   setRunning: (id: string, job: string | true | null) => void;
-  markSaved: (path: string) => void;
+  markSaved: (
+    path: string,
+    saved: Pick<NotebookState, "doc" | "outputs" | "documentGeneration">,
+  ) => void;
   forgetRecent: (path: string) => void;
   dismissRestored: () => void;
 }
@@ -51,6 +55,7 @@ function withRecent(recent: RecentNotebook[], path: string, name: string): Recen
 export const useNotebookStore = create<NotebookState>()(
   persist(
     (set) => ({
+      documentGeneration: 0,
       doc: newNotebook(),
       filePath: null,
       dirty: false,
@@ -60,6 +65,7 @@ export const useNotebookStore = create<NotebookState>()(
       recent: [],
       load: (doc, outputs, path) =>
         set((s) => ({
+          documentGeneration: s.documentGeneration + 1,
           doc,
           outputs,
           filePath: path,
@@ -69,14 +75,15 @@ export const useNotebookStore = create<NotebookState>()(
           recent: path ? withRecent(s.recent, path, doc.name) : s.recent,
         })),
       reset: (connectionId) =>
-        set({
+        set((s) => ({
+          documentGeneration: s.documentGeneration + 1,
           doc: newNotebook(connectionId),
           outputs: {},
           filePath: null,
           dirty: false,
           restored: false,
           running: {},
-        }),
+        })),
       patchDoc: (patch) => set((s) => ({ doc: { ...s.doc, ...patch }, dirty: true })),
       updateCell: (id, update) =>
         set((s) => ({
@@ -114,20 +121,28 @@ export const useNotebookStore = create<NotebookState>()(
       setOutput: (id, output) =>
         set((s) => {
           const { [id]: _previous, ...rest } = s.outputs;
-          return { outputs: output ? { ...rest, [id]: output } : rest };
+          if (s.outputs[id] === output || (!output && !(id in s.outputs))) return s;
+          return {
+            outputs: output ? { ...rest, [id]: output } : rest,
+            dirty: s.dirty || s.doc.saveResults,
+          };
         }),
       setRunning: (id, job) =>
         set((s) => {
           const { [id]: _previous, ...rest } = s.running;
           return { running: job ? { ...rest, [id]: job } : rest };
         }),
-      markSaved: (path) =>
-        set((s) => ({
-          filePath: path,
-          dirty: false,
-          restored: false,
-          recent: withRecent(s.recent, path, s.doc.name),
-        })),
+      markSaved: (path, saved) =>
+        set((s) => {
+          const recent = withRecent(s.recent, path, saved.doc.name);
+          if (s.documentGeneration !== saved.documentGeneration) return { recent };
+          return {
+            filePath: path,
+            dirty: s.doc !== saved.doc || (saved.doc.saveResults && s.outputs !== saved.outputs),
+            restored: false,
+            recent,
+          };
+        }),
       forgetRecent: (path) => set((s) => ({ recent: s.recent.filter((r) => r.path !== path) })),
       dismissRestored: () => set({ restored: false }),
     }),
@@ -174,6 +189,7 @@ syncAcrossWindows("l8db.notebook", (value) => {
       (stored.filePath ?? null) !== current.filePath ||
       Boolean(stored.dirty) !== current.dirty)
   ) {
+    if (!sameFile) next.documentGeneration = current.documentGeneration + 1;
     next.doc = stored.doc;
     next.filePath = stored.filePath ?? null;
     next.dirty = Boolean(stored.dirty);

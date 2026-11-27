@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { TableDataError } from "@/features/table/table-data-error";
 import { s3CreateFolder, s3RenameObject } from "@/lib/db";
+import { errorMessageOf } from "@/lib/error-details";
 import { useTableScrollState } from "@/lib/hooks/use-table-scroll-state";
 import { IS_MAC } from "@/lib/platform";
 import { setBucketDropHandler } from "@/lib/storage/drop-target";
@@ -14,6 +15,7 @@ import { CopyMoveDialog } from "./copy-move-dialog";
 import { DeleteObjectsDialog } from "./delete-objects-dialog";
 import { ObjectDetails } from "./object-details";
 import { ObjectList } from "./object-list";
+import { indexObjectRows } from "./object-row-index";
 import { ObjectTextEditorDialog } from "./object-text-editor-dialog";
 import { ObjectToolbar } from "./object-toolbar";
 import { TextPromptDialog } from "./text-prompt-dialog";
@@ -69,8 +71,10 @@ export function ObjectBrowser({
         : allRows,
     [allRows, needle, mode],
   );
-  const selectedRows = rows.filter((row) => selected.has(row.id));
-  const details = rows.find((row) => row.id === detailsId && row.kind === "object") ?? null;
+  const rowIndex = useMemo(() => indexObjectRows(rows), [rows]);
+  const selectedRows = useMemo(() => rowIndex.selectedRows(selected), [rowIndex, selected]);
+  const details = rowIndex.detail(detailsId);
+  const folderCount = rowIndex.folderCount;
   const truncated = listing.data?.pages.at(-1)?.truncated ?? false;
 
   const seen = useRef({ scope, prefix, mode });
@@ -119,14 +123,13 @@ export function ObjectBrowser({
     setDetailsId(row.kind === "object" ? row.id : null);
   }
 
-  const folderCount = rows.filter((row) => row.kind === "folder").length;
-
   function activate(row: BrowserRow) {
     if (row.kind === "folder") navigateTo(row.key);
     else setDetailsId(row.id);
   }
 
   function onKeyDown(event: React.KeyboardEvent) {
+    if (deleteRows !== null) return;
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
       return;
     if (
@@ -159,7 +162,11 @@ export function ObjectBrowser({
   };
 
   return (
-    <div className="flex h-full min-h-0" onKeyDown={onKeyDown}>
+    <fieldset
+      aria-label="Objektbrowser"
+      className="flex h-full min-h-0 min-w-0"
+      onKeyDown={onKeyDown}
+    >
       <div className="flex min-w-0 flex-1 flex-col">
         <ObjectToolbar
           bucket={bucket}
@@ -192,7 +199,7 @@ export function ObjectBrowser({
             <div className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
               <Spinner /> Lade Objekte…
             </div>
-          ) : listing.isError ? (
+          ) : listing.isError && !listing.isFetchNextPageError ? (
             <div className="p-4">
               <TableDataError
                 title="Objekte konnten nicht geladen werden"
@@ -232,16 +239,22 @@ export function ObjectBrowser({
             {rows.length - folderCount} {rows.length - folderCount === 1 ? "Objekt" : "Objekte"}
             {selectedRows.length ? ` · ${selectedRows.length} ausgewählt` : ""}
             {mode === "search" && truncated ? " · Suche begrenzt" : ""}
+            {mode !== "search" && truncated && !listing.hasNextPage
+              ? " · Liste unvollständig: Der Anbieter liefert keine neue Seitenmarke."
+              : ""}
+            {listing.isFetchNextPageError && (
+              <span role="alert"> · Nachladen fehlgeschlagen: {errorMessageOf(listing.error)}</span>
+            )}
           </span>
           {listing.hasNextPage ? (
             <Button
               size="xs"
               variant="outline"
               disabled={listing.isFetchingNextPage}
-              onClick={() => void listing.fetchNextPage()}
+              onClick={() => void listing.fetchNextPage({ cancelRefetch: false })}
             >
               {listing.isFetchingNextPage ? <Spinner className="size-3" /> : null}
-              Weitere laden
+              {listing.isFetchNextPageError ? "Erneut versuchen" : "Weitere laden"}
             </Button>
           ) : null}
           {!actions.readOnly && (
@@ -309,16 +322,18 @@ export function ObjectBrowser({
         request={copyMove}
         onClose={() => setCopyMove(null)}
       />
-      <DeleteObjectsDialog
-        bucket={bucket}
-        rows={deleteRows}
-        versionsMode={mode === "versions"}
-        onClose={() => setDeleteRows(null)}
-        onDeleted={() => {
-          setSelected(new Set());
-          setDetailsId(null);
-        }}
-      />
+      {deleteRows && (
+        <DeleteObjectsDialog
+          bucket={bucket}
+          rows={deleteRows}
+          versionsMode={mode === "versions"}
+          onClose={() => setDeleteRows(null)}
+          onDeleted={() => {
+            setSelected(new Set());
+            setDetailsId(null);
+          }}
+        />
+      )}
       <UploadOptionsDialog
         open={uploadOptions}
         prefix={prefix}
@@ -328,6 +343,6 @@ export function ObjectBrowser({
         }
       />
       <ObjectTextEditorDialog bucket={bucket} row={editRow} onClose={() => setEditRow(null)} />
-    </div>
+    </fieldset>
   );
 }

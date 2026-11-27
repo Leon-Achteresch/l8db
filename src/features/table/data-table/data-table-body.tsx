@@ -178,11 +178,10 @@ export function DataTableBody({
         >
           {rows.length === 0 ? (
             <tr>
-              <td
-                colSpan={colSpan}
-                className="px-3 py-16 text-center text-muted-foreground bg-background"
-              >
-                {emptyMessage}
+              <td colSpan={colSpan} className="bg-background p-0 text-muted-foreground">
+                <div className="sticky left-0 w-[100cqw] px-3 py-16 text-center">
+                  {emptyMessage}
+                </div>
               </td>
             </tr>
           ) : (

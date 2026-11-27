@@ -1,10 +1,29 @@
+import { useEffect } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { ContextLayout } from "@/lib/ai/context-map";
+import {
+  AI_CURRENCIES,
+  aiCurrencyRate,
+  formatAiCost,
+  refreshAiRates,
+  useAiCurrency,
+} from "@/lib/ai/currency";
+import { activeAiLimits, useAiLimits } from "@/lib/ai/limits";
+import { type AiSpend, settleAiSpend } from "@/lib/ai/spend";
 import type { AiSession } from "@/lib/ai/store";
 import { type AiUsageData, summarizeAiUsage } from "@/lib/ai/usage";
 import type { AiMessage, AiProfile } from "@/lib/db/ai";
 import { useNewFeatureVisibility } from "@/lib/hooks/use-new-feature-visibility";
+import { cn } from "@/lib/utils";
 import { AiContextMap } from "./ai-context-map";
+import { AiLimits } from "./ai-limits";
 
 interface Props {
   data: AiUsageData;
@@ -13,20 +32,41 @@ interface Props {
   messages: AiMessage[];
   prompt: string;
   summary?: AiSession["summary"];
+  spend?: AiSpend;
+  spendSeen?: AiSpend;
+  running?: boolean;
   onSettings: () => void;
 }
-export function AiUsage({ data, profile, metadata, messages, prompt, summary, onSettings }: Props) {
+export function AiUsage({
+  data,
+  profile,
+  metadata,
+  messages,
+  prompt,
+  summary,
+  spend,
+  spendSeen,
+  running,
+  onSettings,
+}: Props) {
   const feature = useNewFeatureVisibility<HTMLElement>("ai.usage");
   const map = useNewFeatureVisibility<HTMLDivElement>("ai.usage.context-map");
+  const money = useNewFeatureVisibility<HTMLDivElement>("ai.usage.currency");
+  const currency = useAiCurrency();
+  useEffect(() => {
+    if (currency.code !== "USD") void refreshAiRates();
+  }, [currency.code]);
   const usage = summarizeAiUsage(data, profile, metadata, messages, prompt);
   const count = (value: number) => value.toLocaleString("de-DE");
-  const price = (value: number) =>
-    new Intl.NumberFormat("de-DE", {
-      style: "currency",
-      currency: usage.currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 5,
-    }).format(value);
+  const price = (value: number) => formatAiCost(value, currency, usage.currency);
+  const rate = usage.currency === "USD" ? aiCurrencyRate(currency) : null;
+  const limit = Math.max(
+    0,
+    ...activeAiLimits(useAiLimits((state) => state.limits[profile.id])).map((entry) =>
+      entry.rejected ? 100 : entry.used,
+    ),
+  );
+  const total = running ? (settleAiSpend(usage, { spend, spendSeen })?.spend ?? spend) : spend;
   const percent = Math.min(100, (usage.context / usage.contextLimit) * 100);
   if (percent < 1 && !usage.total) return null;
   return (
@@ -69,6 +109,16 @@ export function AiUsage({ data, profile, metadata, messages, prompt, summary, on
             </svg>
             {usage.contextEstimated ? "≈" : ""}
             {Math.round(percent)}%
+            {limit >= 80 && (
+              <span
+                role="img"
+                aria-label={`Abo-Limit bei ${Math.round(limit)} %`}
+                className={cn(
+                  "size-1.5 rounded-full",
+                  limit >= 95 ? "bg-destructive" : "bg-amber-500",
+                )}
+              />
+            )}
           </button>
         </PopoverTrigger>
         <PopoverContent
@@ -105,7 +155,13 @@ export function AiUsage({ data, profile, metadata, messages, prompt, summary, on
             {usage.cached > 0 && (
               <>
                 <span className="text-muted-foreground">Cache</span>
-                <span className="text-right">{count(usage.cached)}</span>
+                <span className="text-right">
+                  {count(usage.cached)}
+                  {usage.input > 0
+                    ? ` · ${Math.round(Math.min(1, usage.cached / usage.input) * 100)} %`
+                    : ""}
+                  {usage.cacheSavings !== null ? ` · ≈ ${price(usage.cacheSavings)} gespart` : ""}
+                </span>
               </>
             )}
             <span className="text-muted-foreground">Kosten</span>
@@ -114,7 +170,17 @@ export function AiUsage({ data, profile, metadata, messages, prompt, summary, on
                 ? "Tarif nicht bekannt"
                 : `${usage.costReported ? "" : "≈ "}${price(usage.cost)}${usage.costUpper !== null ? `–${price(usage.costUpper)}` : ""}`}
             </span>
+            {total && total.requests > 1 && (
+              <>
+                <span className="text-muted-foreground">Gespräch · {total.requests} Anfragen</span>
+                <span className="text-right">
+                  {count(total.input + total.output)}
+                  {total.unpriced < total.requests ? ` · ≈ ${price(total.cost)}` : ""}
+                </span>
+              </>
+            )}
           </div>
+          <AiLimits profileId={profile.id} />
           <details>
             <summary className="min-h-7 cursor-pointer py-1 text-muted-foreground">
               Berechnung &amp; weitere Details
@@ -138,6 +204,17 @@ export function AiUsage({ data, profile, metadata, messages, prompt, summary, on
                   ? "Native Kostenmeldung; Abonnements und Rechnungen können abweichen."
                   : `${usage.custom ? "Eigener Tarif" : "API-Standardtarif, Stand 02.10.2026"}. Ohne weitere Tool-, Speicher- und Abonnementgebühren.`}
               </p>
+              {rate !== null && currency.code !== "USD" && (
+                <p>
+                  1 USD = {rate.toLocaleString("de-DE", { maximumFractionDigits: 4 })}{" "}
+                  {currency.code}
+                  {currency.manual !== null
+                    ? " · eigener Kurs"
+                    : currency.date
+                      ? ` · EZB-Referenzkurs ${new Date(`${currency.date}T12:00:00`).toLocaleDateString("de-DE")}`
+                      : ""}
+                </p>
+              )}
               {usage.source && !usage.custom && (
                 <a
                   href={usage.source}
@@ -150,13 +227,27 @@ export function AiUsage({ data, profile, metadata, messages, prompt, summary, on
               )}
             </div>
           </details>
-          <button
-            type="button"
-            onClick={onSettings}
-            className="min-h-8 rounded-md bg-muted/40 px-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            Tarif &amp; Kontextlimit einstellen
-          </button>
+          <div ref={money.ref} className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onSettings}
+              className="min-h-8 flex-1 rounded-md bg-muted/40 px-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Verbrauch &amp; Tarif
+            </button>
+            <Select value={currency.code} onValueChange={currency.setCode}>
+              <SelectTrigger size="sm" aria-label="Währung" className="h-8 text-xs tabular-nums">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {AI_CURRENCIES.map((code) => (
+                  <SelectItem key={code} value={code} className="text-xs">
+                    {code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </PopoverContent>
       </Popover>
     </section>

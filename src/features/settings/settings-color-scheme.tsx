@@ -14,8 +14,15 @@ const SCHEMES = [
 export function SettingsColorScheme() {
   const { theme, setTheme } = useTheme();
   const name = useId();
-  const light = appTheme(useSettingsStore((state) => state.lightTheme)).light;
-  const dark = appTheme(useSettingsStore((state) => state.darkTheme)).dark;
+  const customThemes = useSettingsStore((state) => state.customThemes);
+  const light = appTheme(
+    useSettingsStore((state) => state.lightTheme),
+    customThemes,
+  ).light;
+  const dark = appTheme(
+    useSettingsStore((state) => state.darkTheme),
+    customThemes,
+  ).dark;
   const current = theme ?? "system";
   return (
     <div

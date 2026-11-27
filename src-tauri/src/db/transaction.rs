@@ -1439,6 +1439,16 @@ mod tests {
             !crate::db::postgres::table_page_sql("s", "t", "", None, true, &[])
                 .contains("ORDER BY")
         );
+        let ordered = crate::db::postgres::table_page_sql(
+            "s",
+            "t",
+            " WHERE a = 1 ORDER BY b DESC\n",
+            None,
+            true,
+            &["id".into()],
+        );
+        assert!(ordered.contains("ORDER BY b DESC\n, t.\"id\" LIMIT"));
+        assert_eq!(ordered.matches("ORDER BY").count(), 1);
     }
 
     #[test]
@@ -1802,6 +1812,12 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(empty["id"], 3);
+
+        let count = tx
+            .count_rows_capped(&id, "main", "t", Some("id > 0"), false, 1)
+            .await
+            .unwrap();
+        assert_eq!((count.count, count.exact), (2, false));
 
         tx.delete_row(&id, "main", "t", dup["__ctid__"].as_str().unwrap())
             .await

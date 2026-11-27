@@ -3,6 +3,75 @@ import { chromium, webkit } from "playwright";
 import { saveBrowserArtifacts } from "./fixtures/browser-artifacts";
 
 test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
+  "JSON-Export einer SQL-Vorschau lädt erst nach Bestätigung und verwendet das volle Ergebnis erneut",
+  async () => {
+    const engine = process.env.L8DB_QUERY_BROWSER_ENGINE === "webkit" ? webkit : chromium;
+    const browser = await engine.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 1440, height: 940 } });
+      let dialogs = 0;
+      const queries: string[] = [];
+      const writes: number[] = [];
+      await page.exposeFunction("queryExportInvoke", (command: string, sql?: string) => {
+        if (command === "plugin:dialog|save") return ++dialogs === 1 ? null : "/fixtures/data.json";
+        if (command === "execute_query") {
+          if (sql?.startsWith("SELECT COUNT(*) AS l8db_count"))
+            return {
+              columns: ["l8db_count"],
+              rows: [{ l8db_count: 1200 }],
+              rows_affected: null,
+              execution_time_ms: 1,
+            };
+          if (!sql) throw new Error("SQL fehlt");
+          queries.push(sql);
+          return {
+            columns: ["id"],
+            rows: Array.from({ length: sql.includes("LIMIT 1000") ? 1000 : 1200 }, (_, id) => ({
+              id,
+            })),
+            execution_time_ms: 1,
+            rows_affected: null,
+          };
+        }
+        if (command === "plugin:fs|write_text_file") writes.push(JSON.parse(sql ?? "[]").length);
+        return [];
+      });
+      await page.addInitScript(() => {
+        Object.assign(window, {
+          __TAURI_INTERNALS__: {
+            invoke: (command: string, args?: { sql?: string } | Uint8Array) =>
+              (
+                window as unknown as {
+                  queryExportInvoke: (cmd: string, value?: string) => Promise<unknown>;
+                }
+              ).queryExportInvoke(
+                command,
+                args instanceof Uint8Array ? new TextDecoder().decode(args) : args?.sql,
+              ),
+          },
+        });
+      });
+      await page.goto(`${process.env.L8DB_QUERY_BROWSER_URL}/tests/fixtures/query-workspace.html`);
+      await page.getByRole("button", { name: "Statement ausführen", exact: true }).click();
+      await page.getByRole("button", { name: "Auf 1.000 Zeilen begrenzt" }).waitFor();
+      expect(queries).toHaveLength(1);
+      const trigger = page.getByRole("button", { name: "Export", exact: true });
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        await trigger.click();
+        await page.getByRole("menuitem", { name: "Als JSON exportieren", exact: true }).click();
+        await trigger.click({ trial: true });
+        expect(dialogs).toBe(attempt);
+        expect(queries.length, queries.join("\n")).toBe(attempt === 1 ? 1 : 2);
+        expect(writes).toEqual(Array(attempt - 1).fill(1200));
+      }
+    } finally {
+      await browser.close();
+    }
+  },
+  45_000,
+);
+
+test.skipIf(!process.env.L8DB_QUERY_BROWSER_URL)(
   "query workspace: layouts, schema, execution, result exports and custom shortcuts",
   async () => {
     const browser = await (process.env.L8DB_QUERY_BROWSER_ENGINE === "webkit"

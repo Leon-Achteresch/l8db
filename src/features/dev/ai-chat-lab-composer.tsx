@@ -143,7 +143,11 @@ export function AiChatLabComposer({
           trailing={
             <AiUsage
               data={{
-                usage: { input_tokens: 61_000, output_tokens: 2_400 },
+                usage: {
+                  input_tokens: 9_000,
+                  cache_read_input_tokens: 52_000,
+                  output_tokens: 2_400,
+                },
                 layout: {
                   system: 38_000,
                   tools: 59_000,
@@ -157,6 +161,14 @@ export function AiChatLabComposer({
               messages={[LAB_QUESTION, LAB_DONE, LAB_FOLLOWUP, LAB_TABLE]}
               summary={{ upTo: "a1", count: 2, text: "Umsatz der letzten 6 Monate geprüft." }}
               prompt=""
+              spend={{
+                input: 412_000,
+                output: 18_600,
+                cached: 331_000,
+                cost: 0.94,
+                requests: 7,
+                unpriced: 0,
+              }}
               onSettings={noop}
             />
           }
