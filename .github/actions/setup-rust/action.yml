@@ -41,6 +41,6 @@ runs:
     - name: Drop incomplete bundled DuckDB sources
       shell: bash
       run: |
-        for dir in src-tauri/target/*/build/libduckdb-sys-*/out/* src-tauri/target/*/*/build/libduckdb-sys-*/out/* src-tauri/target/*/build/libduckdb-sys-*/out/.duckdb-unpack-* src-tauri/target/*/*/build/libduckdb-sys-*/out/.duckdb-unpack-*; do
+        for dir in src-tauri/target/duckdb-sources/* src-tauri/target/duckdb-sources/.duckdb-unpack-*; do
           if [ -d "$dir" ] && [ ! -f "$dir/.complete" ]; then rm -rf "$dir"; fi
         done
