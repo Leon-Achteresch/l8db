@@ -4,18 +4,26 @@ import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import * as React from "react";
 import { usePortalContainer } from "@/lib/portal-container";
 import { cn } from "@/lib/utils";
+import { DropdownMenuArrow } from "./dropdown-menu-arrow";
+import { useMenuArrowContainer } from "./use-menu-arrow-container";
 
 export function DropdownMenuContent({
   className,
   align = "start",
   sideOffset = 4,
+  arrowPadding = 12,
+  ref,
+  children,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
   const portalContainer = usePortalContainer();
+  const [arrowContainer, attach] = useMenuArrowContainer(ref);
   return (
     <DropdownMenuPrimitive.Portal container={portalContainer}>
       <DropdownMenuPrimitive.Content
+        ref={attach}
         data-slot="dropdown-menu-content"
+        arrowPadding={arrowPadding}
         sideOffset={sideOffset}
         align={align}
         className={cn(
@@ -23,7 +31,10 @@ export function DropdownMenuContent({
           className,
         )}
         {...props}
-      />
+      >
+        {children}
+        <DropdownMenuArrow container={arrowContainer} />
+      </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>
   );
 }
