@@ -100,8 +100,8 @@ modules:
       # PLATZHALTER: sha256 muss durch den Hash des echten Release-Artefakts
       # ersetzt werden (siehe packaging/README.md, Abschnitt "sha256 ermitteln").
       - type: file
-        url: https://github.com/Leon-Achteresch/l8db/releases/download/v0.18.0/l8db_0.18.0_amd64.deb
-        sha256: '32b7223fed7466233c8f56e5a1b22898b53e581398f611cbaa1d8bbe63c36116'
+        url: https://github.com/Leon-Achteresch/l8db/releases/download/v0.20.0/l8db_0.20.0_amd64.deb
+        sha256: '99d40c4e46f189bbdc8931597821e93d47e910b533c844035f2b582519dba8d6'
         dest-filename: l8db.deb
       # Sobald vorhanden, hier die AppStream-Datei aus dem Repo einbinden:
       # - type: file
