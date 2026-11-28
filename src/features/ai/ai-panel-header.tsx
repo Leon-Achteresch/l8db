@@ -10,12 +10,22 @@ import {
   X,
 } from "lucide-react";
 import type { Ref } from "react";
-import { IconMenu, IconMenuContent, IconMenuItem, IconMenuSeparator } from "@/components/icon-menu";
+import { IconButton } from "@/components/icon-button";
 import { NewBadge } from "@/components/new-badge";
 import { Button } from "@/components/ui/button";
-import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+
 import { AiChatIcon } from "./ai-chat-icon";
+
+const WAIT = "Erst nach der laufenden Antwort möglich";
 
 export function AiPanelHeader({
   title,
@@ -62,18 +72,18 @@ export function AiPanelHeader({
       )}
     >
       {minimized ? (
-        <Button
+        <IconButton
           size="icon"
           variant="ghost"
           aria-label="Als Seitenleiste öffnen"
           onClick={onRestore}
         >
           <PanelRightOpen className="size-4" />
-        </Button>
+        </IconButton>
       ) : view !== "chat" ? (
-        <Button size="icon" variant="ghost" aria-label="Zurück zum Gespräch" onClick={onBack}>
+        <IconButton size="icon" variant="ghost" aria-label="Zurück zum Gespräch" onClick={onBack}>
           <ArrowLeft className="size-4" />
-        </Button>
+        </IconButton>
       ) : null}
       <h2
         className={cn(
@@ -93,63 +103,68 @@ export function AiPanelHeader({
       </h2>
       {!minimized && view === "chat" && (
         <>
-          <Button
+          <IconButton
             size="icon"
             variant="ghost"
             aria-label="Neues Gespräch"
-            title="Neues Gespräch"
             disabled={busy}
+            disabledReason={WAIT}
             onClick={onNew}
           >
             <SquarePen className="size-4" />
-          </Button>
-          <Button
+          </IconButton>
+          <IconButton
             data-feature="ai.history"
             size="icon"
             variant="ghost"
             aria-label="Gesprächsverlauf"
-            title="Gesprächsverlauf"
+            title="Frühere Gespräche"
             disabled={busy}
+            disabledReason={WAIT}
             onClick={onHistory}
           >
             <History className="size-4" />
-          </Button>
-          <IconMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                aria-label="Weitere Aktionen"
-                className="relative"
-              >
-                <Ellipsis className="size-4" />
-                {minimizeNew && (
-                  <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary" />
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <IconMenuContent>
-              <IconMenuItem
-                icon={<Maximize2 />}
-                label="Im Arbeitsbereich öffnen"
-                onSelect={onFullPage}
-              />
-              <IconMenuItem icon={<Minus />} label="Minimieren" onSelect={onMinimize}>
+          </IconButton>
+          <DropdownMenu>
+            <Tooltip delayDuration={350}>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label="Weitere Aktionen"
+                    className="relative"
+                  >
+                    <Ellipsis className="size-4" />
+                    {minimizeNew && (
+                      <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary" />
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent sideOffset={6}>Ansicht und Einstellungen</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent align="end" sideOffset={6} className="w-auto min-w-56">
+              <DropdownMenuItem onSelect={onFullPage}>
+                <Maximize2 />
+                Im Arbeitsbereich öffnen
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onMinimize}>
+                <Minus />
+                Minimieren
+                {minimizeNew && <NewBadge className="ml-auto" />}
                 <div ref={minimizeRef} className="pointer-events-none absolute inset-0" />
-                {minimizeNew && <NewBadge className="absolute -right-1 -top-1" />}
-              </IconMenuItem>
-              <IconMenuSeparator />
-              <IconMenuItem
-                icon={<Settings2 />}
-                label="KI-Einstellungen"
-                disabled={busy}
-                onSelect={onSettings}
-              />
-            </IconMenuContent>
-          </IconMenu>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled={busy} onSelect={onSettings}>
+                <Settings2 />
+                KI-Einstellungen
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </>
       )}
-      <Button
+      <IconButton
         size="icon"
         variant="ghost"
         aria-label="AI schließen"
@@ -157,7 +172,7 @@ export function AiPanelHeader({
         onClick={onClose}
       >
         <X className="size-4" />
-      </Button>
+      </IconButton>
     </div>
   );
 }

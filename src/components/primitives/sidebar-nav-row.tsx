@@ -1,7 +1,10 @@
 import { Ellipsis } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { IconMenu, IconMenuContent } from "@/components/icon-menu";
-import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 export interface SidebarNavItem {
@@ -73,7 +76,7 @@ export function SidebarNavRow({
         <span className="min-w-0 flex-1 truncate">{item.label}</span>
       </button>
       {menu && (
-        <IconMenu>
+        <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
@@ -83,7 +86,9 @@ export function SidebarNavRow({
               <Ellipsis className="size-3.5" />
             </button>
           </DropdownMenuTrigger>
-          <IconMenuContent
+          <DropdownMenuContent
+            align="end"
+            className="w-auto min-w-52"
             onCloseAutoFocus={(event) => {
               if (!renaming.current) return;
               renaming.current = false;
@@ -94,8 +99,8 @@ export function SidebarNavRow({
               renaming.current = true;
               setEditing(true);
             })}
-          </IconMenuContent>
-        </IconMenu>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
     </div>
   );

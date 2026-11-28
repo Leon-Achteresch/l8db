@@ -71,6 +71,7 @@ export function SidebarNav({
             <button
               type="button"
               aria-label="Seitenleiste ausklappen"
+              title="Seitenleiste ausklappen"
               onClick={() => setCollapsed(false)}
               className="flex size-9 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >
@@ -84,6 +85,7 @@ export function SidebarNav({
                 <button
                   type="button"
                   aria-label="Seitenleiste einklappen"
+                  title="Seitenleiste einklappen"
                   onClick={collapse}
                   className="flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 >
@@ -153,6 +155,7 @@ export function SidebarNav({
                   <button
                     type="button"
                     aria-label="Suche schließen"
+                    title="Suche schließen"
                     onClick={closeSearch}
                     className="flex size-8 shrink-0 items-center justify-center rounded-md outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                   >
@@ -163,6 +166,7 @@ export function SidebarNav({
                 <button
                   type="button"
                   aria-label="Gespräche durchsuchen"
+                  title="Gespräche durchsuchen"
                   disabled={!items.length}
                   onClick={() => setSearching(true)}
                   className="flex size-8 items-center justify-center rounded-md outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-0"

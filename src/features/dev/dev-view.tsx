@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { animatePageWave, PageWave } from "@/features/table/page-wave";
 import { cn } from "@/lib/utils";
 import { AiChatLab } from "./ai-chat-lab";
+import { AiPartsLab } from "./ai-parts-lab";
 import { AtlasLab } from "./atlas-lab";
 import { BlogSuggestionPreview } from "./blog-suggestion-preview";
 import { ConnectionSelectLab } from "./connection-select-lab";
@@ -72,6 +73,9 @@ export function DevView() {
               <TabsTrigger value="ai-chat" className="flex-none px-4">
                 KI-Chat
               </TabsTrigger>
+              <TabsTrigger value="ai-parts" className="flex-none px-4">
+                KI-Bausteine
+              </TabsTrigger>
               <TabsTrigger value="feature-video" className="flex-none px-4">
                 Feature-Popup
               </TabsTrigger>
@@ -119,6 +123,9 @@ export function DevView() {
         </TabsContent>
         <TabsContent value="ai-chat">
           <AiChatLab />
+        </TabsContent>
+        <TabsContent value="ai-parts">
+          <AiPartsLab />
         </TabsContent>
         <TabsContent value="feature-video">
           <FeatureVideoPreview />
