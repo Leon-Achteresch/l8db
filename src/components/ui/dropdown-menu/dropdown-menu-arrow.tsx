@@ -19,12 +19,12 @@ export function DropdownMenuArrow({
         viewBox="0 0 24 11"
         aria-hidden
         className={cn(
-          "pointer-events-none fill-(--menu) stroke-black/15 dark:stroke-black/70",
+          "pointer-events-none fill-(--menu) stroke-(--menu-ring) [stroke-width:calc(var(--menu-ring-width)*2)]",
           className,
         )}
       >
         <path d={`${TIP} Z`} stroke="none" />
-        <path d={TIP} fill="none" strokeWidth={1} />
+        <path d={TIP} fill="none" />
       </svg>
     </DropdownMenuPrimitive.Arrow>,
     container,

@@ -195,7 +195,9 @@
   --sidebar-ring: oklch(0.58 0.1 var(--db-hue));
   --menu: oklch(0.998 calc(0.002 * var(--db-tint)) var(--surface-hue));
   --menu-highlight: oklch(0.56 0.145 var(--db-hue));
-  --shadow-menu: 0 0 0 0.5px rgb(54 44 24 / 0.14), 0 12px 32px -8px rgb(54 44 24 / 0.2),
+  --menu-ring: rgb(54 44 24 / 0.16);
+  --menu-ring-width: 1px;
+  --shadow-menu: 0 0 0 var(--menu-ring-width) var(--menu-ring), 0 12px 32px -8px rgb(54 44 24 / 0.2),
     0 3px 8px rgb(54 44 24 / 0.06);
 }
 
@@ -233,7 +235,9 @@
   --sidebar-ring: oklch(0.7 0.08 var(--db-hue));
   --menu: oklch(0.25 calc(0.009 * var(--db-tint)) var(--surface-hue));
   --menu-highlight: oklch(0.6 0.14 var(--db-hue));
-  --shadow-menu: 0 0 0 0.5px rgb(0 0 0 / 0.7), 0 12px 32px -6px rgb(0 0 0 / 0.55),
+  --menu-ring: rgb(0 0 0 / 0.7);
+  --menu-ring-width: 0.5px;
+  --shadow-menu: 0 0 0 var(--menu-ring-width) var(--menu-ring), 0 12px 32px -6px rgb(0 0 0 / 0.55),
     0 3px 8px rgb(0 0 0 / 0.3);
   --chrome-gradient: linear-gradient(
     180deg,

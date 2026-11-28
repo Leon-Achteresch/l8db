@@ -48,7 +48,7 @@ export function IconMenuContent({
           <IconMenuTip ref={surface.tipRef} />
           <DropdownMenuArrow
             container={arrowContainer}
-            className="fill-popover stroke-border/70 dark:stroke-border/70"
+            className="fill-popover stroke-border/70 [stroke-width:2px]"
           />
         </IconMenuAimContext.Provider>
       </DropdownMenuPrimitive.Content>
